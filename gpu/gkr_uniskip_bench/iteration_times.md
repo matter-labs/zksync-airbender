@@ -2118,10 +2118,26 @@ slash) or it profiles nothing.
   sources are the best per-register retention: 42 % of producer passes come from the
   15 % of references that are E4. Landing the top-4 window models ≈ 14.3 ms ≈ 7.6
   ms/unit = 0.95× the windowed reference.
+
+  **Superseded (2026-08-09, v3 R3 — measured and refuted).** The top-4-BF register
+  window was built as a six-arm factorial and MISSED: the best window arm is 17.173 ms
+  (+5.44 % over the control), not ≈ 14.3. At fixed occupancy the machinery costs
+  +1.207 ms against a −0.879 ms removal. The *schedule* is validated (−1.124 ms alone,
+  100/100) — the register carrier is not. See *v3 R3* for the decomposition and the
+  recalibrated 18.70 µs/production slope, which raises the parity capture from ~19–24 %
+  to ~38 %.
 - **Second lever: twiddle-remat fix**, −1.5…−3.5 %, trivial A/B
   (`__launch_bounds__(256, 3)` so ptxas sees the true 80-reg budget, or a 448 B smem
   stage per block, which is remat-proof). Competes with the window for the same 8
   spare registers — decide jointly; the window subsumes part of it.
+
+  **Superseded (2026-08-09, v3 R3 — the A/B was run and does not test this).**
+  `__launch_bounds__(256, 3)` is **+3.43 %**, not −1.5…−3.5 %, and bank-resolved counters
+  show the twiddle remat **byte-identical** with and without it (824 loads/walk both
+  ways) — it moved a *different*, bank-0 stream from the uniform to the vector datapath.
+  The lever was tested in neither direction; it is now closed **on priority**, with the
+  smem-table variant closed too (no replay amplification is visible in any captured
+  counter). See *v3 R3*.
 - **Closed**: 4-block/64-reg occupancy (control above; −8 regs would spill); the 14
   residual exponent-zero pairs — **confirmed closed with a sharper argument**: at warp
   granularity they are lane slots inside the 8 mul warp-instructions each pass must
@@ -2187,7 +2203,9 @@ and the two-rung ladder** — with three refinements, each verified before adopt
    29.6 µs/pass slope ⇒ **~56–57 of 234 removable ≈ 24 % capture**. Top-4-BF alone
    saves 51 refs − 4 fills = 47 productions = 20.1 % ⇒ ≈ 14.9 ms — **borderline, not
    a 14.3 ms landing**; clearing 14.61 likely takes top-4 + the twiddle win together
-   (or a fifth retained source).
+   (or a fifth retained source). **Superseded (2026-08-09, v3 R3):** the direction was
+   right and the magnitude was not — top-4 + the launch bound measured **17.173 ms**,
+   and at the measured 18.70 µs/production slope parity needs ~38 % capture, not 24 %.
 2. **The 8-register top-4 figure is a coset-only window** — verified against
    `uniskip_pair_resolve(…, bf h[2], bf c[2])`: a fully retained BF source is 4 regs
    (h + c), so top-4 full retention = 16 regs; 8 regs retains `c[2]` only and reloads
@@ -2214,3 +2232,259 @@ Rung-2: W ∈ {0, 4, 16-BF-equivalent} with publish/read DRAM directions counted
 separately and `q` parity pinned across W. The shipping-production −32.5 % margin is
 directional comfort, **not** a reason to relax the 14.61 ms target (census and fold
 boundaries are not yet production-equivalent).
+
+## v3 R3 — register-window factorial (`--pair-arm` / `--factorial`): MISS, and what it decomposed
+
+The audit round named the coset-only top-4-BF register window as the one lever bigger than
+the parity gap and modelled it at **−8…−10 %**. Built and measured as a balanced
+same-session factorial, it is **a miss, and not a marginal one**: no window arm beats the
+R2 control, the best is **+5.44 %**, and the rung's value is what the decomposition buys
+rung 2 rather than any arm it produced.
+
+The rung is deliberately built as a factorial rather than as one candidate kernel, because
+the interesting quantity was never "is the window faster" — it is **what a retained source
+costs to carry and what a skipped production is worth**, separately. Those two numbers are
+the rung-2 calibration, and they only exist because arms were built that nobody would ship.
+
+### Design — what was built
+
+- **Carrier: a coset-only top-4-BF register window.** A retained slot keeps the BF source's
+  `c[2]` only; `h[2]` is still loaded on reuse. That is the audit's 8-register realization
+  (a fully retained BF source is 4 registers, so top-4 full retention would be 16) — it
+  skips the chain, not the resolve loads. The 8 registers are exactly the spare capacity to
+  the 80-register / 3-block cliff.
+- **Wire: a window-only side descriptor**, `UniskipWindowDesc` (272 B, align 16, offsets
+  0 / 256 / 264, `.cuh` twin with `static_assert`s). **The control wire is untouched**, so a
+  bare `--mode lsb-pair` is bit-identical to the R2 record — the window is additive, not a
+  re-plumbing.
+- **Tags: two-operand nibbles.** One byte per record carries operand A in the low nibble and
+  operand B in the high (`0 = None`, `1+slot = Fill`, `1+SLOTS+slot = Reuse`). Two operands
+  per byte is forced by the census: 11 of the tags on the default census land on operand B,
+  and 2 fills / 27 tags land *inside* group members where `uniskip_lsb_pair.cu` multiplies
+  `ac[k]` in place — so a fill must capture its slot copy before the clobber.
+- **Slots: named registers behind warp-uniform switches**, with the production done once
+  before the switch. A dynamically indexed slot array would spill to local memory and a
+  hardcoded source ID would dodge the addressability cost the arm exists to measure.
+- **Schedule: host-planned per (program, term order, census knobs)**, with an always-on
+  state-machine validator (a reuse of a slot that is not live is a plan bug, not a device
+  symptom). `select_slots` takes the top-4 BF sources by reference count; on the default
+  census that is sources 0–3 with **13 / 13 / 13 / 12** refs, **47 reuses**, component
+  passes per walk **326 → 279**.
+- **The six arms.** `control` = R2 unchanged. `t` = `__launch_bounds__(256, 3)` alone.
+  `w` = window alone. `wt` = both. `wnone` = the window kernel and its descriptor with an
+  all-`none` tag stream — it pays the machinery and takes none of the saving. `wtnone` = the
+  same at 3 blocks, which is what splits `wt − t` into **machinery alone** and **removal
+  alone** without crossing an occupancy class.
+
+Commits: `4814469b` (host schedule, tags, validator, CLI), `47cdf650` (kernel arms),
+`a9529726` + `3f9b7cbe` + `8f63acdc` (gates and two fix rounds), `2ca39cea` + `7184169f` +
+`0626a985` (factorial runner, the `wtnone` lane, emitted tables).
+
+### Gates — all pass, and two of them changed the result
+
+- **Control SASS frozen before any edit** and re-verified after: per-function, **5104**
+  instructions, verified independently and unmasked. Spill gate on every arm and arch: zero
+  stack, zero spill, zero `LDL`/`STL`.
+- **Registers and blocks/SM (sm_120)**: `control` 72/3, `t` 79/3, `w` 82/**2**, `wt` 80/3,
+  `wnone` 82/**2**, `wtnone` 80/3. **`w` and `wnone` are 2-block arms.** The cliff is
+  measured, not assumed: `__launch_bounds__(256, 3)` caps at **80** registers, not 85, and
+  allocation granularity is 8 — so 82 registers is 88 allocated and drops a block. `wt`'s
+  82 → 80 cut is the confirmation. Every contrast in the table below is labelled with its
+  occupancy class for exactly this reason.
+- **`q` parity, 32/32 cells**, every arm against the control, device-to-device via
+  `--dump-q` — with an empty-digest rejection, because an empty dump hashes identically on
+  both sides and would pass every cell vacuously.
+- **Production count EXACT, both term orders**: a compile-gated device counter reads **279**
+  chain executions per warp-program walk under `w`/`wt` and **326** under
+  `control`/`wnone` — the host model's 326 → 279 is achieved, not merely planned.
+- **Mutation tests discriminate slot identity and retention**, including a retarget that is
+  never uploaded (so the device would read an unfilled slot) and a poison-after-fill that
+  forces a later reuse to change `q`.
+- **Two hazards found by the gates, both now closed.** (1) The diag define was only passed
+  when set, so a CMake cache went sticky and an env-unset rebuild kept compiling the counter
+  atomic — the define is now always `ON`/`OFF`. (2) Diag and shipped objects share one native
+  build dir: **wipe the native build dir before any timed run**, then verify `GLOBAL:0`, zero
+  `ATOM`/`RED`, and per-function SASS identical to the frozen control before taking timings.
+  This ritual ran before the timings below and its evidence is saved.
+
+### The measurement — 6 arms, 100 paired rounds, one session
+
+`--factorial` runs all six arms in one process against shared allocations, in a generated
+cyclic rotation each round so no arm keeps a fixed position; every table below is emitted by
+`tools/factorial_table.py` from the run log, never transcribed.
+
+```bash
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --mode lsb-pair --factorial \
+    --term-order locality > /tmp/factorial.log
+python3 gpu/gkr_uniskip_bench/tools/factorial_table.py /tmp/factorial.log
+```
+
+| arm | regs | blocks/SM | `eval + finalize` locality | census |
+| --- | --- | --- | --- | --- |
+| `control` | 72 | 3 | **16.287** | **16.441** |
+| `t` | 79 | 3 | 16.846 | 17.054 |
+| `wt` | 80 | 3 | 17.173 | 17.252 |
+| `wtnone` | 80 | 3 | 18.052 | 18.251 |
+| `w` | 82 | **2** | 20.184 | 20.461 |
+| `wnone` | 82 | **2** | 21.308 | 21.690 |
+
+Paired contrasts, medians, **percentages of each contrast's own baseline** (the second term,
+named in the row) — not of the control:
+
+| contrast | locality | census | what it isolates |
+| --- | --- | --- | --- |
+| `t` − `control` | **+0.559** (+3.43 %) | +0.614 (+3.73 %) | the launch bound alone, 3 v 3 |
+| `wt` − `control` | **+0.886** (+5.44 %) | +0.812 (+4.94 %) | the best window arm, 3 v 3 |
+| `w` − `wnone` | **−1.124** (−5.28 %) | −1.229 (−5.67 %) | **the SCHEDULE alone** — identical kernel, 2 v 2 |
+| `wtnone` − `t` | **+1.207** (+7.16 %) | +1.197 (+7.02 %) | **the MACHINERY alone**, 3 v 3 |
+| `wt` − `wtnone` | **−0.879** (−4.87 %) | −0.998 (−5.47 %) | **the REMOVAL alone**, 3 v 3 |
+| `w` − `control` | +3.897 (+23.92 %) | +4.021 (+24.46 %) | **2 v 3 — NOT occupancy-neutral** |
+| `wnone` − `control` | +5.020 (+30.82 %) | +5.250 (+31.94 %) | **2 v 3 — NOT occupancy-neutral** |
+
+**Every one of the nine emitted contrasts holds its sign in 100/100 rounds**, and the
+decomposition closes: machinery + removal = +1.207 − 0.879 = **+0.328** against the directly
+measured `wt` − `t` = **+0.327** (census: +1.197 − 0.998 = +0.198 = the measured +0.198).
+Medians are not exactly additive; the per-round identity is exact by construction.
+
+The factorial interaction `wt − w − t + control` is **−3.570 ms** (census −3.823). It is
+reported for completeness and **must not be read as an effect size**: `w` and `wt` differ by
+one block/SM as well as by the launch bound, so the term mixes occupancy classes.
+
+### Verdict — MISS against the 14.61 ms bar, and the carrier is dead at this census
+
+**No arm beats the control.** The control at **16.287** is still the fastest arm this crate
+has measured; the best window arm `wt` is **17.173**, i.e. **+5.44 %** over the control and
+**+17.5 %** over the 14.61 ms bar (16.287 is +11.5 %). On the halving-adjusted unit basis:
+control 16.287 / 1.875 = **8.686 ms/unit**, `wt` 17.173 / 1.875 = **9.159**, against the
+windowed reference's 7.79.
+
+All three pre-registered prediction bands missed, all high, and `t` **inverted**:
+
+| arm | pre-registered band | measured (locality) | verdict |
+| --- | --- | --- | --- |
+| `w` | 14.65–14.98 | **20.184** | MISS, high |
+| `t` | 15.71–16.04 | **16.846** | MISS — a **slowdown** where −1.5…−3.5 % was predicted |
+| `wt` | 14.1–14.8 | **17.173** | MISS, high |
+
+Two separate findings, and they point opposite ways:
+
+- **The register-window CARRIER is dead at this census.** At fixed 3-block occupancy the
+  machinery costs **+1.207 ms** while the removal it enables refunds **−0.879 ms** — a
+  carrier that eats **1.37×** what it delivers. Widening it does not help: 82 registers
+  costs a block, and the 2-block arms are 24–31 % slower than the control.
+- **The SCHEDULE mechanism is validated.** `w` − `wnone` is the schedule alone at identical
+  kernel and identical occupancy: **−1.124 ms, 100/100 rounds**, and the ncu stream shows
+  the removal as **exactly 47 chain executions per walk**. The plan is right; the medium it
+  was carried in is wrong.
+
+### Slopes for rung 2 — the calibration deliverable
+
+Three slopes over the 47 removed productions, all emitted, **none of them "the" production
+cost**:
+
+| slope | locality | census | what it is |
+| --- | --- | --- | --- |
+| removal at 3 blocks `(wtnone − wt)/47` | **+18.70 µs** | +21.24 µs | **the shippable figure** — same carrier, control's occupancy |
+| gross removal at 2 blocks `(wnone − w)/47` | +23.92 µs | +26.14 µs | the removal alone, but in a carrier that costs a block |
+| net W = 4 `(control − w)/47` | −82.91 µs | −85.55 µs | carries the 3→2 block change with it |
+
+The 2-block slope is **1.279×** the 3-block one (23.92 / 18.70) — equivalently the shippable
+figure is **21.8 % lower** than the 2-block reading. Quoting the 2-block slope as the value
+of a production overstates it by that much, because the carrier's occupancy loss is inside
+it.
+
+**What 18.70 µs does to the capture arithmetic.** The gap to the bar is
+16.287 − 14.61 = **1.677 ms**. At 18.70 µs/production that is
+1.677 / 0.01870 = **89.7 productions**, i.e. **38 % of the 234 removable** — against R2's
+recorded 16.283 the same arithmetic gives 89.5. For comparison, the audit's ~19 % was
+(16.283 − 15.0) / 29.6 µs = 43.3 = 18.5 % of 234, and the ratification's ~24 % was
+1.673 / 29.6 µs = 56.5 = 24.2 %. The measured slope roughly **doubles the capture parity
+requires**. Top-4 alone is 47 = **20.1 %** of the removable set and is worth 0.879 ms =
+**52 %** of the gap — so even a **machinery-free** top-4 window does not reach the bar.
+
+**The bar this sets for rung 2 (realization D).** D — prologue-publish → barrier → `ld.ca`
+from a published bank — must cost **≪ the 1.207 ms** the register carrier paid, and it must
+capture roughly twice what top-4 captures. Its machinery is paid in DRAM and barrier
+currency rather than in hot-loop instructions on the binding pipe, which is precisely why it
+remains the designed rung-2 arm after this result: R3 did not refute publication, it priced
+the register medium and found it too expensive to carry the schedule.
+
+### ncu — where the +1.207 ms sits, and what the −0.879 ms removes
+
+Six captures, one per arm, one locked session, locality order, the profiling doc's Full
+Picture block verbatim (never `--set full`), NVTX `gkr_uniskip_pass0/` and source import
+under lineinfo, with a lineinfo↔shipped SASS parity gate passed **before** any capture:
+
+```
+target/profiling/ncu/20260809_1515{16,39,46,53,60,07}_v3r3_{control,t,w,wt,wnone,wtnone}_locality.ncu-rep
+```
+
+Counts below are per-SASS-instruction "Instructions Executed" = warp-instructions, opcode
+families (dot-suffixes and `U`-forms folded; `LDC`/`LDCU` kept split), 262,144 warps and 175
+records per walk. Full derivation in the Task 4 record.
+
+- **Machinery** (`wtnone` − `t`, 3 v 3): **+988,282,880 instructions (+5.23 %)** for
+  **+1.207 ms (+7.16 %)**. The largest term is **`MOV`, +435,421,184** — the slot switch's
+  register traffic, not the tag decode; then `LOP3` +186 M (nibble decode), `IMAD` +107 M,
+  `BRA` +86 M, `ISETP` +68 M. Net *new* constant traffic is only **+1.77 per record**
+  (`LDC` +243 M against `LDCU` −162 M). `short_scoreboard` 15.6 → 18.4 % and `mio_throttle`
+  1.3 → 2.8 %: dependency-bound work, not throughput-bound work.
+- **Removal** (`wt` − `wtnone`, 3 v 3): **−1,291,059,200 instructions (−6.50 %)** for
+  **−0.879 ms (−4.87 %)**, and it is *exactly* 47 chain executions per walk —
+  `SHFL` −73,924,608 = **282/walk = 47 × 6.0** to the instruction, `IMAD` and `VIMNMX`
+  −295,698,432 each = 1128/walk = 47 × 24.0. This is the same 279-vs-326 fact the device
+  counter proved, now visible in the executed stream.
+- **`fmaheavy` is still the wall in all six arms**, within **0.3 points of SM SOL**
+  everywhere (control 81.90 vs 81.62; `wtnone` 79.19 vs 79.10 = 0.09 pt). **R1's failure
+  mode did not recur**: `lsu` is at or below the control's 18.28 % in every window arm, so
+  the window's cost is register/dependency pressure, not a pipe migration.
+- **The 2-block arms are starved, not contended.** Issue-slot utilization 64.1 → 50.6 %,
+  eligible warps per scheduler (`smsp__warps_eligible.avg.per_cycle_active`) **1.85 → 0.94**,
+  `math_pipe_throttle` 22.3 → 12.2 % and `not_selected` 22.8 → 12.4 % — fewer warps to
+  select from, so the math pipe waits rather than queues.
+- **The asymmetry is the rung's real result.** Machinery instructions cost **1.37×**
+  proportional; removed chain instructions returned **0.75×** proportional. Removing 1.29 G
+  dense, well-pipelined `fmaheavy` instructions to add 0.99 G dependent `MOV`/`LOP3`/`BRA`
+  ones is a net **loss** of 0.33 ms even though the instruction count *falls*. Any future
+  window must be judged on the character of the instructions it adds, not their count.
+
+### The twiddle lever — CLOSED on priority, not by measurement
+
+The `t` arm was supposed to test the audit's second lever. **It tested it in neither
+direction.** Split by constant bank, the twiddle remat is *byte-identical* in all six arms:
+the eight register-indexed bank-3 sites each execute **27,000,832** times in both `control`
+and `t` = **824 per walk = 4.709 per record**, unchanged. (The audit's 5.03 is *total*
+`LDC`/record and reproduces as 232,292,352 / 262,144 / 175 = **5.064**; the bank-3 subset is
+5.051. Three different quantities.) All of `t`'s **+136,577,024** extra `LDC`s are **bank 0**
+— kernel parameters and the descriptor — and they match its `LDCU` decrease exactly, to the
+instruction: `__launch_bounds__` added or removed **zero** constant loads and moved that many
+from the uniform datapath to the vector one.
+
+**No replay amplification is visible in any counter the section list captures.** If each
+lane-divergent constant load serialized into several passes, the stream would be ~9 % of
+issue and a once-per-block 448 B smem table (distinct from R1's per-element staging) would be
+worth reviving. It does not: `idc__request_cycles_active` / `idc__requests` =
+49.852066 / 49.849729 = **1.00005**, one cache cycle per request; `idc__requests` − dynamic
+`LDC` = **1,614,807,040, invariant across all six arms** whose `LDC` counts span 232 M–612 M;
+issued == executed exactly. The stream is 824 / 72,256 = **1.14 % of warp-instructions**.
+
+**The `S`/`WS` arms were NOT built, and the lever is closed on priority — not by
+disproof.** The grounds: the prize is capped at **1.14 %** of the stream against the record's
+−1.5…−3.5 % bound; it competes for the *same* eight spare registers as the window, whose
+misallocation `w` prices at **+23.9 %**; R1 already measured the only removal of that
+indexed stream via shared memory at **−15 %**; and there is no replay amplification to
+recover. Reopening it needs a new argument, not a re-run.
+
+### Open
+
+- **`t` is +0.559 ms (+3.4 %) slower than the control while executing 54.3 M FEWER
+  instructions**, and the only structural change is a uniform→vector constant datapath swap.
+  Nothing in these captures explains it. Recorded open.
+- **A window body that reaches 3 blocks without `__launch_bounds__` was never built** — the
+  one untested carrier variant. `wt` gets to 80 registers by being told to; whether a
+  narrower window body gets there on its own is unmeasured.
+- **Everything here is one geometry, one census, one session** (`--log-trace 24`, the default
+  add/sub-shaped census, sm_120). The between-session shift this session measured was
+  ~0.1–0.2 % and concentrated in the 2-block arms; absolute medians above are from the 6-arm
+  session only and must never be mixed with the earlier 5-arm table.

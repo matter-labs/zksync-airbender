@@ -50,7 +50,10 @@ tabulated there). Counting the v3 modes the crate has **20** legal arms: 12 here
 `lsb-recompute` x 2 term orders (2), plus `lsb-compact` x 2 group counts x 2 term orders
 (4), plus `lsb-pair` x 2 term orders (2) — 12 + 2 + 4 + 2 = 20, or 24 if `--bank-perm`'s
 second value is counted as a shape rather than an A/B control. The v3 arms carry their own
-validation records in the *v3 R0*, *v3 R1* and *v3 R2* sections.
+validation records in the *v3 R0*, *v3 R1* and *v3 R2* sections. `--pair-arm`'s five
+non-default values add **10** further legal combinations (5 x 2 term orders) on top of
+those 20; they are R3 diagnostic arms rather than candidate shapes, and none of them beats
+the default — see [The window arms](#the-window-arms-v3-r3--diagnostic-not-candidates).
 `pass − fold` is `lde + eval + finalize` — the
 part the modes actually change, since `fold` is identical work everywhere (its
 challenge depends on `q` through the transcript, so it cannot be fused) and is already
@@ -203,6 +206,94 @@ loads perfectly coalesced — 1.000× the sector *minimum for the requests it is
 which is a coalescing ratio and not a traffic one; the W = 0 stream itself re-reads the
 backing 3.54×, absorbed by L1/L2 — on 40 registers, zero spills and 100 % theoretical
 occupancy.
+
+### The window arms (v3 R3) — diagnostic, not candidates
+
+`--pair-arm {control,t,w,wt,wnone,wtnone}` selects an R3 window arm of `--mode lsb-pair`.
+The **window** is a coset-only top-4-BF register window: the four most-referenced `bf`
+sources are retained across records in named registers behind warp-uniform switches, so a
+reuse skips the shuffle-NTT chain. A slot holds the source's `c[2]` only — `h[2]` is still
+loaded — which is why it costs 8 registers rather than 16 and skips the chain but not the
+resolve loads. The schedule is planned on the host per (program, term order, census knobs),
+validated by an always-on state machine, and shipped in a **window-only side descriptor**
+with one two-operand nibble-tag byte per record; the control wire is untouched, so a bare
+`--mode lsb-pair` run is unchanged by any of this.
+
+| `--pair-arm` | kernel | descriptor | regs, blocks/SM | what it isolates |
+| --- | --- | --- | --- | --- |
+| `control` (default) | R2 pair | none | 72, 3 | the recommended arm, unchanged |
+| `t` | R2 pair + `__launch_bounds__(256, 3)` | none | 79, 3 | the launch bound alone |
+| `w` | window | planned | 82, **2** | the window alone |
+| `wt` | window + launch bound | planned | 80, 3 | both |
+| `wnone` | window | all-`none` tags | 82, **2** | the machinery with none of the saving |
+| `wtnone` | window + launch bound | all-`none` tags | 80, 3 | the same at 3 blocks |
+
+`w` and `wnone` are **2-block arms** — 82 registers is 88 allocated at 8-register
+granularity, over the 80-register/3-block cliff — so a contrast against the 3-block control
+is not occupancy-neutral. `wtnone` exists so that `wt − t` splits into machinery
+(`wtnone − t`) and removal (`wt − wtnone`) without crossing an occupancy class.
+
+**All six arms are slower than the control**; the rung is a MISS and the arms are kept as
+the measurement that priced it. `iteration_times.md`'s *v3 R3* section carries the record:
+best window arm 17.173 ms against the control's 16.287, machinery +1.207 ms against a
+−0.879 ms removal, and the rung-2 calibration slope of **18.70 µs per removed production**.
+Every arm's `q` is bit-exact equal to the control's, 32/32 cells, both term orders.
+
+```bash
+# one arm
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --mode lsb-pair --pair-arm wt \
+    --term-order locality
+
+# the balanced factorial: all six arms in ONE process against shared allocations, in a
+# generated cyclic rotation each round so no arm keeps a fixed position in the order
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --mode lsb-pair --factorial \
+    --term-order locality > /tmp/factorial.log
+python3 gpu/gkr_uniskip_bench/tools/factorial_table.py /tmp/factorial.log
+```
+
+`--factorial` requires `--mode lsb-pair`, is mutually exclusive with `--pair-arm`, and
+rejects `--validate`/`--validate-flat-eq`/`--dump-q` (it is a timing run; those would print
+a verdict and check nothing). It emits one `SAMPLE` line per (round, arm) plus a
+`FACTORIAL schedule` line recording the planned reuses. **Use a round count that is a
+multiple of 6** so every arm starts an equal number of rounds.
+
+`tools/factorial_table.py` turns that log into the per-arm medians, the paired contrasts
+with their occupancy labels, the decomposition identity, the interaction and the three
+slopes. It **hard-errors** on duplicate samples, duplicate trailers or a missing `ARM`
+line, so two sessions cannot be silently merged into one table — the R1 and R2 records each
+lost review rounds to hand-assembled tables, and no R3 number is transcribed.
+
+#### Diagnostic build and its probes
+
+The production-count gate and the device-side mutations need symbols a shipped build does
+not carry, so they live behind a compile gate:
+
+```bash
+GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1 cargo build --release -p gpu_gkr_uniskip_bench
+```
+
+That sets the `window_diag` cfg on the Rust side and `AB_UNISKIP_WINDOW_DIAG` in CMake, and
+enables three test-only flags: `--window-count` (reads a device counter of chain executions
+per warp-program walk — **279** under `w`/`wt` against **326** under `control`/`wnone`),
+`--window-poison` (corrupts every slot's retained copy after its fill, so a later reuse must
+change `q`), and `--window-mutate {retarget,…}` (perturbs the schedule to prove the gates
+discriminate slot identity and retention). The define is passed as an explicit `ON`/`OFF`
+rather than only when set, because a CMake cache that keeps the last value will otherwise
+leave the counter atomic compiled into a build you believe is shipped.
+
+`tools/r3_gates.sh {matrix|diag|all}` runs the gates rather than describing them — `matrix`
+is the 32-cell `q`-parity sweep and runs on either build; `diag` and `all` need the
+diagnostic build. Its exit status is the verdict, and it rejects the empty digest, because
+an empty `--dump-q` hashes identically on both sides and would pass every parity cell
+vacuously.
+
+> **Before any timed run, wipe the native build dir and rebuild shipped.** Diagnostic and
+> shipped objects share one build directory, so a stale diagnostic object can survive an
+> env-unset rebuild. Verify `GLOBAL:0`, zero `ATOM`/`RED`, and per-function SASS identical
+> to the frozen control before taking a timing. Every R3 timing in `iteration_times.md` ran
+> that ritual first.
 
 ### Geometry
 
@@ -364,7 +455,9 @@ applies to the unfused mode only (no other mode has an LDE stage to shape) and
 `--cell-map` to the two fused modes only — `unfused` keeps the v1 block map and
 each LSB mode fixes its own (`lsb-recompute` lane = tap at two groups per warp,
 `lsb-pair` pair-resident at eight lanes per group and four groups per warp). `--compact-groups`
-and `--bank-perm` apply to `lsb-compact` alone, and `--compact-groups 8` additionally
+and `--bank-perm` apply to `lsb-compact` alone, `--pair-arm` and `--factorial` to
+`lsb-pair` alone (see [The window arms](#the-window-arms-v3-r3--diagnostic-not-candidates)),
+and `--compact-groups 8` additionally
 needs `--log-trace >= 10` (a compact block is 8 warps × `groups` rows and must tile the
 trace — rejected with a message, not an assert). The inapplicable knob prints as `n/a` in
 the config block and the summary line, so a recorded measurement can never name a shape
@@ -456,6 +549,13 @@ traffic is never below the floor and is usually above it (`--lde-shape cell` re-
 its input once per coset cell, ~16×; `row` reads it once, so there the two coincide),
 so the true GB/s is at least the number printed and can be many times it. Measured
 numbers and their interpretation live in `iteration_times.md`.
+
+Two rules that any recorded timing depends on. **Wipe the native build dir and rebuild
+shipped before timing** — diagnostic and shipped objects share one build directory, so
+verify `GLOBAL:0`, zero `ATOM`/`RED` and unchanged per-function SASS first (see [the window
+arms](#the-window-arms-v3-r3--diagnostic-not-candidates)). And **compare arms within a
+session**: absolute medians drift ~1 % between sessions on this part, so a contrast is only
+trustworthy if both sides ran in the same process — which is what `--factorial` is for.
 
 ## Census defaults and provenance
 
