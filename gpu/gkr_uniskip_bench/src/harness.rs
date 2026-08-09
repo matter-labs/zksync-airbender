@@ -288,10 +288,12 @@ impl CellMap {
 
 /// v3 R3 arms of `--mode lsb-pair`, the factorial's cells. `Control` is R2 exactly —
 /// same kernel, same wire, no side descriptor — so a bare `--mode lsb-pair` is unchanged.
-/// `T` is the twiddle-remat fix alone, `W` the coset-only top-4-BF window alone, `Wt`
-/// both, and `Wnone` the WØ diagnostic: the window kernel and its side descriptor with an
-/// all-`none` tag stream, which pays the window's register and branch cost and takes none
-/// of its saving.
+/// `T` is `__launch_bounds__(256, 3)` alone; it was built to test the twiddle-remat lever
+/// and MEASURED NOT TO — bank-3 twiddle loads are byte-identical with and without it, and
+/// what moved was a bank-0 stream from the uniform to the vector datapath. `W` is the
+/// coset-only top-4-BF window alone, `Wt` both, and `Wnone` the WØ diagnostic: the window
+/// kernel and its side descriptor with an all-`none` tag stream, which pays the window's
+/// register and branch cost and takes none of its saving.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
 pub enum PairArm {
     #[default]
@@ -359,11 +361,6 @@ impl PairArm {
             Self::W | Self::Wnone => Some(kernels::eval_lsb_pair_win),
             Self::Wt | Self::Wtnone => Some(kernels::eval_lsb_pair_win_lb),
         }
-    }
-
-    /// Task 0 lands the host machinery only; the kernels are Task 1+.
-    pub fn implemented(self) -> bool {
-        self == Self::Control
     }
 }
 

@@ -344,10 +344,13 @@ EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_kernel(const __grid_constant
   }
 }
 
-// The `t` arm: the control body verbatim, differing only by `__launch_bounds__`, which
-// makes ptxas rematerialize rather than keep the eight preloaded twiddles alive. A
-// `__global__` cannot be called as a device function and extracting a shared helper would
-// edit the frozen control, so the entry text is duplicated deliberately.
+// The `t` arm: the control body verbatim, differing only by `__launch_bounds__`. It was
+// built to make ptxas keep the eight preloaded twiddles alive rather than rematerialize
+// them; measured, it does NOT — the bank-3 twiddle loads are byte-identical with and
+// without the bound, and what the bound moved was a bank-0 stream from the uniform to the
+// vector datapath (see iteration_times.md, v3 R3). A `__global__` cannot be called as a
+// device function and extracting a shared helper would edit the frozen control, so the
+// entry text is duplicated deliberately.
 EXTERN __global__ __launch_bounds__(UNISKIP_THREADS_PER_BLOCK, 3) void ab_gkr_uniskip_eval_lsb_pair_lb_kernel(const __grid_constant__ uniskip_pair_desc desc) {
   __shared__ e4 plane[UNISKIP_WARPS_PER_BLOCK * UNISKIP_CELLS];
   const uniskip_pair_lane lane = uniskip_pair_lane_of(threadIdx.x);

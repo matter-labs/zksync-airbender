@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Emit the v3 R3 factorial table from a `--factorial` run log.
 
-Everything here is PAIRED per round: the runner executes all five arms inside one round,
+Everything here is PAIRED per round: the runner executes every arm inside one round,
 in a cyclic rotation, so a round's arms share whatever clock state that round had. Taking
 the contrast round-by-round and then summarizing removes the ~1 %/session drift that would
 otherwise swamp effects of this size. Per-arm medians are reported too, but the contrasts
@@ -74,18 +74,32 @@ def emit(order, rounds, trailer, occ):
             "occupancy labels."
         )
     arms = [a for a in ["control", "t", "w", "wt", "wnone", "wtnone"] if a in occ]
-    # SAME-SESSION GUARD: every round must carry every arm, or the pairing is a fiction.
-    complete = {r: v for r, v in rounds.items() if all(a in v for a in arms)}
-    dropped = len(rounds) - len(complete)
+    unknown = sorted(set(occ) - set(arms))
+    if unknown:
+        sys.exit(f"{order}: ARM lines name arms this emitter does not know: {unknown}")
+    # SAME-SESSION GUARD, all hard errors: the pairing is a fiction unless every round
+    # carries exactly the declared arm set, and a partial log must not be summarized as
+    # though it were whole.
+    if trailer and len(arms) != trailer[2]:
+        sys.exit(
+            f"{order}: {len(arms)} ARM lines but the trailer declares arms={trailer[2]} "
+            f"— the log is truncated or mixes builds"
+        )
+    for r in sorted(rounds):
+        got = set(rounds[r])
+        if got != set(arms):
+            sys.exit(
+                f"{order}: round {r} carries {sorted(got)}, expected {arms} "
+                f"— incomplete rounds are not droppable, the contrasts are paired"
+            )
+    complete = rounds
     if not complete:
         sys.exit(f"{order}: no complete rounds")
     if trailer and len(complete) != trailer[1]:
-        print(
-            f"note: {order}: {len(complete)} complete rounds, trailer claims {trailer[1]}",
-            file=sys.stderr,
+        sys.exit(
+            f"{order}: {len(complete)} rounds in the log, trailer claims rounds="
+            f"{trailer[1]} — truncated log"
         )
-    if dropped:
-        print(f"note: {order}: dropped {dropped} incomplete rounds", file=sys.stderr)
 
     print(f"#### `--term-order {order}` — {len(complete)} paired rounds, {len(arms)} arms per round\n")
     print("| arm | regs | blocks/SM | median `eval + finalize` (ms) | min | max |")

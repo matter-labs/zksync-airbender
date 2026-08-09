@@ -87,9 +87,11 @@ struct Cli {
     compact_groups: Option<u32>,
 
     /// v3 R3 arm of `--mode lsb-pair`: `control` (R2 exactly — same kernel, same wire),
-    /// `t` (twiddle-remat fix), `w` (coset-only top-4-BF register window), `wt` (both),
-    /// or `wnone` (the WØ diagnostic: window kernel with an all-`none` tag stream).
-    /// Compact-pair mode only.
+    /// `t` (`__launch_bounds__(256, 3)` alone — built to test the twiddle-remat lever and
+    /// measured not to: bank-3 loads are byte-identical either way), `w` (coset-only
+    /// top-4-BF register window), `wt` (both), `wnone` (the WØ diagnostic: window kernel
+    /// with an all-`none` tag stream), or `wtnone` (the same at 3 blocks, which splits
+    /// `wt - t` into machinery and removal). `lsb-pair` mode only.
     #[arg(long, value_enum)]
     pair_arm: Option<PairArm>,
 
@@ -112,9 +114,10 @@ struct Cli {
     #[arg(long)]
     profile: bool,
 
-    /// Run all five R3 arms in ONE process against shared allocations, executing them in
+    /// Run all six R3 arms in ONE process against shared allocations, executing them in
     /// a generated cyclic rotation each round so no arm keeps a fixed position in the
     /// order. Emits one `SAMPLE` line per (round, arm) for `tools/factorial_table.py`.
+    /// Use a round count that is a multiple of 6 so every arm starts equally often.
     /// Requires `--mode lsb-pair`; mutually exclusive with `--pair-arm`.
     #[arg(long)]
     factorial: bool,
@@ -237,6 +240,23 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         }
         // The factorial returns before the validation block, so accepting these would
         // print `validate true` and check nothing.
+        if cli.window_count || cli.window_poison {
+            fail(
+                "--factorial is a timing run; --window-count and --window-poison are \
+                 diagnostic probes that would contaminate it — use --pair-arm or \
+                 tools/r3_gates.sh"
+                    .into(),
+            );
+        }
+        // `--profile` wraps the first timed iteration, which in a factorial belongs to
+        // whichever arm the rotation put first — an NVTX range over one arbitrary arm.
+        if cli.profile {
+            fail(
+                "--factorial rotates arms, so --profile would wrap whichever arm the \
+                 rotation put first; profile one arm with --pair-arm"
+                    .into(),
+            );
+        }
         if cli.validate || cli.validate_flat_eq || cli.dump_q {
             fail(
                 "--factorial is a timing run; use --pair-arm or tools/r3_gates.sh for \

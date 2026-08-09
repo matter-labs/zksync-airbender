@@ -5,7 +5,7 @@
 # because the counter and the mutations need device symbols that a shipped build does not
 # carry:
 #
-#   matrix    q-parity, 32 cells                             — runs on EITHER build
+#   matrix    q-parity, 40 cells                             — runs on EITHER build
 #   diag      production-count gate + device mutations       — needs GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1
 #   all       both, so it needs a diagnostic build
 #
@@ -23,7 +23,7 @@
 set -uo pipefail
 
 B=${B:-target/release/gpu_gkr_uniskip_bench}
-ARMS="t w wt wnone"
+ARMS="t w wt wnone wtnone"
 fail=0
 note() { printf '%s\n' "$*"; }
 bad() { printf 'FAIL: %s\n' "$*"; fail=1; }
@@ -31,13 +31,17 @@ bad() { printf 'FAIL: %s\n' "$*"; fail=1; }
 # Empty input hashes to a fixed digest, so a missing binary or a failed run would make
 # BOTH sides of a comparison equal and every parity cell pass vacuously. Reject that.
 EMPTY_SHA=e3b0c44298fc
+# NOTE: qhash runs inside a command substitution, so it must never call bad() — the
+# assignment to `fail` would be made in the subshell and lost. Diagnostics go to stderr and
+# the sentinel INVALID comes back on stdout; usable(), which runs in the parent, is what
+# sets `fail`.
 qhash() {
   local out rc
   out=$("$B" --log-trace 12 --iterations 0 --dump-q --mode lsb-pair "$@" 2>/dev/null)
   rc=$?
-  if [ "$rc" != 0 ]; then bad "run failed (exit $rc): $*"; echo INVALID; return; fi
+  if [ "$rc" != 0 ]; then echo "  qhash: run failed (exit $rc): $*" >&2; echo INVALID; return; fi
   out=$(printf '%s\n' "$out" | grep -c '^q\[')
-  if [ "$out" != 32 ]; then bad "expected 32 q lines, got $out: $*"; echo INVALID; return; fi
+  if [ "$out" != 32 ]; then echo "  qhash: expected 32 q lines, got $out: $*" >&2; echo INVALID; return; fi
   "$B" --log-trace 12 --iterations 0 --dump-q --mode lsb-pair "$@" 2>/dev/null \
     | grep '^q\[' | sha256sum | cut -c1-12
 }
@@ -51,7 +55,7 @@ usable() {
 }
 
 matrix() {
-  note "### q parity: 4 arms x 2 orders x 2 eq forms x 2 censuses"
+  note "### q parity: 5 arms x 2 orders x 2 eq forms x 2 censuses"
   local cells=0 pass=0
   for order in census locality; do
     for eq in "" "--validate-flat-eq"; do
@@ -82,7 +86,7 @@ count() { "$B" --log-trace 9 --warmup 0 --iterations 1 --mode lsb-pair "$@" --wi
 production() {
   note "### production-count gate (exact)"
   for order in census locality; do
-    for spec in "control:326" "wnone:326" "w:279" "wt:279"; do
+    for spec in "control:326" "wnone:326" "wtnone:326" "w:279" "wt:279"; do
       local arm=${spec%%:*} want=${spec##*:} got
       local -a a=()
       [ "$arm" != control ] && a=(--pair-arm "$arm")
@@ -107,7 +111,7 @@ mutations() {
     done
   done
   note "### mutation (b) poison a slot after its fill -> only arms with reuses may change"
-  for spec in "control:same" "wnone:same" "w:diff" "wt:diff"; do
+  for spec in "control:same" "wnone:same" "wtnone:same" "w:diff" "wt:diff"; do
     local arm=${spec%%:*} want=${spec##*:} ref poi got
     local -a a=()
     [ "$arm" != control ] && a=(--pair-arm "$arm")
