@@ -237,8 +237,8 @@ pub fn upload_poison_slots(on: bool) -> CudaResult<()> {
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_poison_slots, &u32::from(on)) }
 }
 
-/// Read and reset the chain-execution counter (diagnostic builds only). `Err` in a
-/// shipped build, where the symbol does not exist.
+/// Read and reset the chain-execution counter. Exists only in a diagnostic build; the
+/// shipped stand-in panics, so callers must gate on [`window_diag_build`] first.
 #[cfg(window_diag)]
 pub fn take_chain_calls() -> CudaResult<u64> {
     let mut host = 0u64;
