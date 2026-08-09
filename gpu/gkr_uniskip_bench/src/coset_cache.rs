@@ -1035,8 +1035,57 @@ mod mixed_operand_probe {
     /// The self-product cell CANNOT be observed on the default census — it emits none, so
     /// the probe above always reports an empty list and asserting on it would be vacuous.
     /// `force_self_products` is the only way to reach it, and the admitted set has to
-    /// actually COVER the rewritten sources or the cell is still not exercised: `hot4`
-    /// caches ids 0-3 only, so this checks per arm rather than assuming.
+    /// actually COVER the rewritten sources or the cell is still not exercised.
+    ///
+    /// The knob VALUE decides which classes are reached. `force_self_products` rewrites
+    /// both `PRODUCT_BF_BF` and `PRODUCT_E4_E4` (`is_binary_product`), but it rewrites the
+    /// first `count` in program order, and in locality order the 6 E4xE4 records sit after
+    /// the 54 BF ones — so 12 reaches BF only and 60, the exact maximum, reaches all of
+    /// them. Without this, `resolve_second`'s cache-path short-circuit would be gated on
+    /// BF alone.
+    #[test]
+    fn cpu_cache_cached_self_products_cover_both_classes() {
+        let mut p = generate(0, Census::default()).unwrap();
+        p.apply_term_order(TermOrder::Locality);
+        assert_eq!(p.force_self_products(60), 60, "60 is the program's maximum");
+        let e4_self = p
+            .program
+            .iter()
+            .filter(|t| t.term_class == UNISKIP_CLASS_PRODUCT_E4_E4 && t.source_a == t.source_b)
+            .count();
+        assert_eq!(
+            e4_self, 6,
+            "all six E4xE4 records must be self-products at 60"
+        );
+        let mut e4_covered = vec![];
+        for arm in [
+            CacheArm::Hot4,
+            CacheArm::Hot16,
+            CacheArm::E4Top2,
+            CacheArm::E4Rich,
+            CacheArm::AllRepeat,
+        ] {
+            let state = plan_arm(&p, arm).unwrap();
+            let hit = p.program.iter().any(|t| {
+                t.term_class == UNISKIP_CLASS_PRODUCT_E4_E4
+                    && t.source_a == t.source_b
+                    && state.sources[t.source_a as usize].cache_slot != UNISKIP_CACHE_SLOT_NONE
+            });
+            if hit {
+                e4_covered.push(arm.as_str());
+            }
+        }
+        // MEASURED, not transcribed: `hot16` covers one too, because it admits the four
+        // top-ref E4 sources and one of the six E4xE4 self-products lands on them. The
+        // review's expected set named the three E4-heavy arms only.
+        assert_eq!(
+            e4_covered,
+            vec!["hot16", "e4top2", "e4rich", "allrepeat"],
+            "E4 cache-path self-product coverage at --self-products 60"
+        );
+    }
+
+    /// The same cell at the matrix's default knob value, which reaches BF only.
     #[test]
     fn cpu_cache_cached_self_products_are_reachable() {
         let mut p = generate(0, Census::default()).unwrap();

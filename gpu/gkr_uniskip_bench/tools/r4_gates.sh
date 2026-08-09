@@ -74,6 +74,34 @@ matrix() {
   [ "$cells" = 112 ] || bad "expected 112 parity cells, ran $cells — a loop dimension is missing"
   [ "$cells" = "$pass" ] || bad "parity matrix incomplete"
 
+  # E4 SELF-PRODUCT CELL. `force_self_products` rewrites both PRODUCT_BF_BF and
+  # PRODUCT_E4_E4, but it takes the first `count` in program order and the six E4xE4 records
+  # sit after the 54 BF ones — so the matrix's `--self-products 12` reaches BF only. 60 is
+  # the program's exact maximum and puts all six E4 self-products live, which is the only
+  # way `resolve_second`'s cache-path short-circuit gets exercised on the E4 side.
+  # Parity-only: the count oracles stay on the default census, and a cached-vs-control
+  # comparison of the SAME program is unaffected by the knob's census staleness.
+  note "### E4 self-product cell (--self-products 60, the program maximum)"
+  local scells=0 spass=0
+  for size in "" "--block-threads 128"; do
+    for order in census locality; do
+      # shellcheck disable=SC2086
+      local sref; sref=$(qhash $size --term-order "$order" --self-products 60)
+      usable "$sref" "control sp=60 size=[$size] order=$order" || continue
+      for arm in $ARMS; do
+        scells=$((scells + 1))
+        # shellcheck disable=SC2086
+        local sgot; sgot=$(qhash $size --cache-arm "$arm" --term-order "$order" --self-products 60)
+        usable "$sgot" "arm=$arm sp=60 size=[$size] order=$order" || continue
+        if [ "$sgot" = "$sref" ]; then spass=$((spass + 1));
+        else bad "sp60 parity arm=$arm size=[$size] order=$order ($sgot vs $sref)"; fi
+      done
+    done
+  done
+  note "  cells=$scells passed=$spass"
+  [ "$scells" = 28 ] || bad "expected 28 self-product cells, ran $scells"
+  [ "$scells" = "$spass" ] || bad "self-product matrix incomplete"
+
   # The two launch-bounds siblings at 128 must agree with the unbounded bodies they mirror.
   note "### 128 launch-bounds siblings"
   local a b
