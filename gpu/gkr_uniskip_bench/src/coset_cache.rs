@@ -362,7 +362,7 @@ pub fn validate(program: &SynthProgram, state: &CacheArmState) -> Result<(), Str
         let width = component_width(program.sources[id].source_class);
         let base = entry.base as u32;
         if width == UNISKIP_COSET_E4_UNITS
-            && (base as usize * UNISKIP_COSET_UNIT_BYTES) % UNISKIP_COSET_E4_ALIGN != 0
+            && !(base as usize * UNISKIP_COSET_UNIT_BYTES).is_multiple_of(UNISKIP_COSET_E4_ALIGN)
         {
             return Err(format!(
                 "source {id}: e4 span at unit {base} is not {}-byte aligned",

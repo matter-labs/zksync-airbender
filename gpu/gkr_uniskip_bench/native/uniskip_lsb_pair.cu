@@ -269,8 +269,14 @@ DEVICE_FORCEINLINE void uniskip_eval_pair_win_body(const uniskip_pair_desc &desc
   }
 }
 
-// The epilogue, shared by the three NEW entry points. The control keeps its own inline
-// copy so that its SASS cannot move; this is the same text, extracted once for the arms.
+// The epilogue, shared by the FOUR non-control entry points: the three R3 window arms and
+// R4's control128. The 256 control keeps its own inline copy so that its SASS cannot move;
+// this is the same text, extracted once for the arms.
+//
+// WARNING: templating it on WARPS gave it four FROZEN consumers at once - win, win_lb (R3
+// baselines) and control128 (the R4 128-axis baseline), plus the R3 t arm through the lane
+// map. One edit here puts all of them at risk in a single build; the per-function SASS
+// comparison against task1-final-sass.txt and task1a-control128-sass.txt is the only guard.
 template <u32 WARPS = UNISKIP_WARPS_PER_BLOCK>
 DEVICE_FORCEINLINE void uniskip_pair_epilogue(const uniskip_pair_desc &desc, const uniskip_pair_lane &lane, e4 acc_h[2], e4 acc_c[2], e4 *plane) {
   const e4 eq = uniskip_lsb_eq_at(desc, static_cast<u32>(lane.row));

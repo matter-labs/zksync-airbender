@@ -369,10 +369,12 @@ impl PairArm {
 /// `cell_map` to the fused modes only, and `compact_groups`/`bank_perm` to
 /// [`EvalMode::LsbCompact`] only; `main` rejects the other combinations.
 ///
-/// `Default` leaves `compact_groups` at 0, which is not a legal group count — construct
-/// through `main`'s `pass_config`, which fills it, or set it explicitly. `Harness::new`
-/// substitutes a legal value for the modes that ignore it, so only a hand-built
-/// `LsbCompact` config can reach the invalid state.
+/// `Default` leaves `compact_groups` AND `block_threads` at 0, neither of which is legal —
+/// construct through `main`'s `pass_config`, which fills both, or set them explicitly.
+/// `Harness::new` substitutes a legal `compact_groups` for the modes that ignore it, so
+/// only a hand-built `LsbCompact` config can reach that invalid state; `block_threads` has
+/// no such substitution and an illegal value panics at kernel dispatch, like
+/// `compact_groups` does for `LsbCompact`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PassConfig {
     pub mode: EvalMode,
@@ -675,12 +677,13 @@ impl Harness {
             (EvalMode::FusedCached, CellMap::Block) => kernels::eval_fused_cached,
             (EvalMode::FusedCached, CellMap::Interleave) => kernels::eval_fused_cached_interleave,
             (EvalMode::LsbRecompute, _) => kernels::eval_lsb_w0,
-            (EvalMode::LsbPair, _) if config.block_threads == UNISKIP_PAIR_THREADS_128 as u32 => {
-                kernels::eval_lsb_pair_128
-            }
-            (EvalMode::LsbPair, _) => match config.pair_arm {
-                PairArm::T => kernels::eval_lsb_pair_lb,
-                _ => kernels::eval_lsb_pair,
+            (EvalMode::LsbPair, _) => match config.block_threads as usize {
+                UNISKIP_PAIR_THREADS_128 => kernels::eval_lsb_pair_128,
+                UNISKIP_THREADS_PER_BLOCK => match config.pair_arm {
+                    PairArm::T => kernels::eval_lsb_pair_lb,
+                    _ => kernels::eval_lsb_pair,
+                },
+                other => panic!("--block-threads {other} has no kernel"),
             },
             (EvalMode::LsbCompact, _) => match compact_groups {
                 4 => kernels::eval_lsb_compact_g4,
@@ -1042,6 +1045,43 @@ impl Harness {
 mod cpu_tests {
     use super::*;
     use crate::synth::{generate, Census, SYNTH_E4_WINDOW};
+
+    /// The 128 branch and the constant pair the `.cuh` mirrors. `uniskip_lsb_pair.cuh`
+    /// holds `UNISKIP_PAIR_WARPS_128 = 4` with `static_assert(ROWS_PER_BLOCK_128 == 16)`;
+    /// if either side drifts the kernel and the grid disagree about rows per block, which
+    /// is silent corruption rather than a build error.
+    #[test]
+    fn cpu_pass_config_rows_per_block_tracks_the_block_size() {
+        assert_eq!(UNISKIP_PAIR_WARPS_128, 4);
+        assert_eq!(UNISKIP_PAIR_THREADS_128, 128);
+        assert_eq!(UNISKIP_PAIR_ROWS_PER_BLOCK_128, 16);
+        let at = |threads: usize| {
+            PassConfig {
+                mode: EvalMode::LsbPair,
+                block_threads: threads as u32,
+                ..Default::default()
+            }
+            .rows_per_block()
+        };
+        assert_eq!(
+            at(UNISKIP_THREADS_PER_BLOCK),
+            UNISKIP_PAIR_ROWS_PER_BLOCK as u32
+        );
+        assert_eq!(
+            at(UNISKIP_PAIR_THREADS_128),
+            UNISKIP_PAIR_ROWS_PER_BLOCK_128 as u32
+        );
+        // The block axis is `lsb-pair`'s alone: no other mode reads it.
+        assert_eq!(
+            PassConfig {
+                mode: EvalMode::Unfused,
+                block_threads: UNISKIP_PAIR_THREADS_128 as u32,
+                ..Default::default()
+            }
+            .rows_per_block(),
+            UNISKIP_ROWS_PER_BLOCK as u32
+        );
+    }
 
     #[test]
     fn cpu_layout_tiles_backings() {

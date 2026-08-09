@@ -6,8 +6,9 @@
 # carry:
 #
 #   matrix    q-parity, 40 cells                             — runs on EITHER build
+#   blocks    128-vs-256 block-size parity, 8 cells (v3 R4)  — runs on EITHER build
 #   diag      production-count gate + device mutations       — needs GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1
-#   all       both, so it needs a diagnostic build
+#   all       matrix + blocks + diag, so it needs a diagnostic build
 #
 # The parity matrix is normally run on the shipped build, because that is the binary the
 # arms are timed with; `all` is only valid on a diagnostic one.
@@ -15,6 +16,8 @@
 # Usage, from the repo root:
 #   cargo build --release -p gpu_gkr_uniskip_bench
 #   .agents/bin/with_gpu_lock.sh gpu/gkr_uniskip_bench/tools/r3_gates.sh matrix
+#
+#   .agents/bin/with_gpu_lock.sh gpu/gkr_uniskip_bench/tools/r3_gates.sh blocks
 #
 #   GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1 cargo build --release -p gpu_gkr_uniskip_bench
 #   .agents/bin/with_gpu_lock.sh gpu/gkr_uniskip_bench/tools/r3_gates.sh diag   # or: all
@@ -78,6 +81,31 @@ matrix() {
   [ "$cells" = "$pass" ] || bad "parity matrix incomplete"
 }
 
+# v3 R4 control128: the 128-thread no-cache baseline must agree with the 256 control on `q`
+# across the full validate set. Its own kernel, its own grid and its own epilogue reduction,
+# so this is a real re-derivation of every cell, not a launch-parameter change.
+blocks() {
+  note "### block-size parity: control128 vs the 256 control, 2 orders x 2 eq forms x 2 censuses"
+  local cells=0 pass=0
+  for order in census locality; do
+    for eq in "" "--validate-flat-eq"; do
+      for sp in 0 12; do
+        cells=$((cells + 1))
+        # shellcheck disable=SC2086
+        local ref; ref=$(qhash --term-order "$order" --self-products "$sp" $eq)
+        usable "$ref" "256 control order=$order eq=[$eq] sp=$sp" || continue
+        # shellcheck disable=SC2086
+        local got; got=$(qhash --block-threads 128 --term-order "$order" --self-products "$sp" $eq)
+        usable "$got" "control128 order=$order eq=[$eq] sp=$sp" || continue
+        if [ "$got" = "$ref" ]; then pass=$((pass + 1));
+        else bad "block parity order=$order eq=[$eq] self-products=$sp ($got vs $ref)"; fi
+      done
+    done
+  done
+  note "  cells=$cells passed=$pass"
+  [ "$cells" = "$pass" ] || bad "block-size parity matrix incomplete"
+}
+
 # Chain executions per warp-program walk. The tiny geometry keeps the counter's atomic off
 # the critical path and makes one block the whole grid.
 count() { "$B" --log-trace 9 --warmup 0 --iterations 1 --mode lsb-pair "$@" --window-count \
@@ -128,9 +156,10 @@ mutations() {
 
 case "${1:-all}" in
   matrix) matrix ;;
+  blocks) blocks ;;
   diag) production; mutations ;;
-  all) matrix; production; mutations ;;
-  *) echo "usage: $0 {matrix|diag|all}" >&2; exit 2 ;;
+  all) matrix; blocks; production; mutations ;;
+  *) echo "usage: $0 {matrix|blocks|diag|all}" >&2; exit 2 ;;
 esac
 [ "$fail" = 0 ] && note "ALL GATES PASS"
 exit "$fail"
