@@ -456,16 +456,14 @@ fn main() {
         gib(bytes.total)
     );
 
-    if cli.window_count || cli.window_poison {
-        let diag = gpu_gkr_uniskip_bench::kernels::window_diag_build()
-            .unwrap_or_else(|e| fail(format!("diagnostic probe failed: {e}")));
-        if !diag {
-            fail(
-                "--window-count / --window-poison need a build with \
-                 GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1"
-                    .into(),
-            );
-        }
+    if (cli.window_count || cli.window_poison || cli.window_mutate.is_some())
+        && !gpu_gkr_uniskip_bench::kernels::window_diag_build()
+    {
+        fail(
+            "--window-count / --window-poison / --window-mutate need a build with \
+             GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1"
+                .into(),
+        );
     }
     if cli.window_poison {
         gpu_gkr_uniskip_bench::kernels::upload_poison_slots(true)
@@ -501,9 +499,18 @@ fn main() {
     if cli.window_count {
         let calls = gpu_gkr_uniskip_bench::kernels::take_chain_calls()
             .unwrap_or_else(|e| fail(format!("chain-counter readback failed: {e}")));
-        // One walk per warp; the counter ticks once per warp per chain execution.
+        // One walk per warp; the counter ticks once per warp per chain execution. Every
+        // pass runs every warp, so the total must divide exactly — a truncating division
+        // would hide a deviation of up to `warps * passes - 1`, far larger than the
+        // 47-execution signal this gate exists to see.
         let warps = u64::from(harness.eval_blocks()) * UNISKIP_WARPS_PER_BLOCK as u64;
-        let passes = u64::from(cli.warmup) + samples.len().max(1) as u64;
+        let passes = u64::from(cli.warmup) + samples.len() as u64;
+        assert!(passes > 0, "--window-count needs at least one pass");
+        assert_eq!(
+            calls % (warps * passes),
+            0,
+            "chain executions {calls} are not a whole multiple of {warps} warps x {passes} passes"
+        );
         println!(
             "chain executions     {calls} total / {warps} warps / {passes} passes = {} per warp-program walk",
             calls / (warps * passes)

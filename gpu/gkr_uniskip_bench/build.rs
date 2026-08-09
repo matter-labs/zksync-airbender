@@ -11,11 +11,15 @@ fn main() {
     // Window diagnostics (chain-execution counter + slot poison) are compile-gated OFF:
     // the shipped build must emit the same SASS as without them.
     println!("cargo:rerun-if-env-changed=GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG");
+    println!("cargo:rustc-check-cfg=cfg(window_diag)");
     let mut archive =
         gpu_native_build::CudaArchive::new("gpu_gkr_uniskip_bench_native", "GPU_GKR_UNISKIP_BENCH")
             .define("GPU_CORE_NATIVE_INCLUDE", native_headers.to_str().unwrap());
     if std::env::var_os("GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG").is_some() {
         archive = archive.define("AB_UNISKIP_WINDOW_DIAG", "ON");
+        // The host side is gated by the same switch, so a shipped build neither defines
+        // the device symbols nor references them.
+        println!("cargo:rustc-cfg=window_diag");
     }
     archive.build();
 }

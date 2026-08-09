@@ -15,11 +15,13 @@
 #define AB_UNISKIP_WINDOW_DIAG_ON 0
 #endif
 
-// The symbols exist in every build so the host needs no cfg; only the code that touches
-// them is gated, and `ab_gkr_uniskip_window_diag` tells the host which build it has.
+// Declared and defined ONLY in a diagnostic build; the Rust side is gated by the same
+// switch (`cfg(window_diag)`), so a shipped binary carries neither the symbols nor a
+// reference to them.
+#if AB_UNISKIP_WINDOW_DIAG_ON
 EXTERN __device__ unsigned long long ab_gkr_uniskip_chain_calls;
 EXTERN __device__ __constant__ u32 ab_gkr_uniskip_poison_slots;
-EXTERN __device__ __constant__ u32 ab_gkr_uniskip_window_diag;
+#endif
 
 namespace airbender::gkr_uniskip_bench {
 

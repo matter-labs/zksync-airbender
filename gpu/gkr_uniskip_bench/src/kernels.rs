@@ -11,9 +11,9 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use era_cudart_sys::{
-    cudaMemcpyFromSymbol, cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKind,
-};
+#[cfg(window_diag)]
+use era_cudart_sys::cudaMemcpyFromSymbol;
+use era_cudart_sys::{cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKind};
 
 use crate::abi::{
     UniskipCompactSlot, UniskipVmDesc, UniskipWindowDesc, UNISKIP_CACHE_UNITS, UNISKIP_CELLS,
@@ -29,12 +29,13 @@ cuda_struct_and_stub! { static ab_gkr_uniskip_cache_fill: [u16; UNISKIP_CACHE_UN
 cuda_struct_and_stub! { static ab_gkr_uniskip_ntt_twiddles: [u32; UNISKIP_NTT_TABLES * UNISKIP_TAPS]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_compact_sched: [UniskipCompactSlot; UNISKIP_COMPACT_MAX_ROUNDS * 32]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_compact_perm: [u32; UNISKIP_TAPS]; }
-// Window diagnostics, present only in an `AB_UNISKIP_WINDOW_DIAG` build. The stubs exist
-// unconditionally on the host so the Rust side needs no cfg; a shipped build simply has
-// nothing to link them to, which is why `window_diag_available()` probes before use.
+// Window diagnostics. Both the device symbols and these host references exist only in a
+// `GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1` build, so a shipped binary carries neither — the
+// symbols would otherwise be a permanent (if tiny) footprint on every build.
+#[cfg(window_diag)]
 cuda_struct_and_stub! { static ab_gkr_uniskip_poison_slots: u32; }
+#[cfg(window_diag)]
 cuda_struct_and_stub! { static ab_gkr_uniskip_chain_calls: u64; }
-cuda_struct_and_stub! { static ab_gkr_uniskip_window_diag: u32; }
 
 /// Blocks a grid-stride launch may use. The kernels loop, so this only bounds the
 /// launch; every configuration above it is covered by the stride.
@@ -225,30 +226,20 @@ pub fn upload_compact_perm(perm: &[u32; UNISKIP_TAPS]) -> CudaResult<()> {
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_compact_perm, perm) }
 }
 
-/// Whether this binary was built with `GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1`. The symbols
-/// exist either way; only the device code that touches them is compile-gated.
-pub fn window_diag_build() -> CudaResult<bool> {
-    let mut host = 0u32;
-    unsafe {
-        cudaMemcpyFromSymbol(
-            &mut host as *mut u32 as *mut c_void,
-            &ab_gkr_uniskip_window_diag as *const u32 as *const c_void,
-            size_of::<u32>(),
-            0,
-            CudaMemoryCopyKind::DeviceToHost,
-        )
-        .wrap()?;
-    }
-    Ok(host != 0)
+/// Whether this binary was built with `GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1`.
+pub const fn window_diag_build() -> bool {
+    cfg!(window_diag)
 }
 
 /// Set the slot-poison flag (diagnostic builds only).
+#[cfg(window_diag)]
 pub fn upload_poison_slots(on: bool) -> CudaResult<()> {
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_poison_slots, &u32::from(on)) }
 }
 
 /// Read and reset the chain-execution counter (diagnostic builds only). `Err` in a
 /// shipped build, where the symbol does not exist.
+#[cfg(window_diag)]
 pub fn take_chain_calls() -> CudaResult<u64> {
     let mut host = 0u64;
     unsafe {
@@ -263,6 +254,17 @@ pub fn take_chain_calls() -> CudaResult<u64> {
     }
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_chain_calls, &0u64) }?;
     Ok(host)
+}
+
+/// Shipped-build stand-ins: the diagnostics have no symbols to talk to here.
+#[cfg(not(window_diag))]
+pub fn upload_poison_slots(_on: bool) -> CudaResult<()> {
+    unreachable!("guarded by window_diag_build()")
+}
+
+#[cfg(not(window_diag))]
+pub fn take_chain_calls() -> CudaResult<u64> {
+    unreachable!("guarded by window_diag_build()")
 }
 
 /// Fill a `bf` backing with the deterministic init generator; `dst` is one word

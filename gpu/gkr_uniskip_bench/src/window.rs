@@ -244,14 +244,15 @@ pub fn validate(program: &SynthProgram, schedule: &WindowSchedule) -> Result<(),
                 op.record, op.operand, op.source
             ));
         }
-        if schedule.slot_source[slot] != op.source {
-            return Err(format!(
-                "record {} operand {}: slot {slot} holds source {}, operand references {}",
-                op.record, op.operand, schedule.slot_source[slot], op.source
-            ));
-        }
         match tag {
             WindowTag::Fill(_) => {
+                if schedule.slot_source[slot] != op.source {
+                    return Err(format!(
+                        "record {} operand {}: fill of slot {slot}, assigned to source {}, \
+                         operand references {}",
+                        op.record, op.operand, schedule.slot_source[slot], op.source
+                    ));
+                }
                 if live[slot].is_some() {
                     return Err(format!(
                         "record {} operand {}: fill of slot {slot}, already live with source {}",
@@ -323,27 +324,37 @@ pub fn mutate(
     kind: WindowMutation,
 ) -> WindowSchedule {
     let mut out = schedule.clone();
-    assert!(
-        schedule.slot_source.len() >= 2,
-        "a retarget needs two live slots"
-    );
     match kind {
+        // The target must be LIVE at this point of the walk and hold a DIFFERENT source.
+        // Picking `(slot + 1) % slots` does neither: under `--term-order locality` the
+        // first reuse sits at record 1 with only slot 0 filled, so that target is an
+        // unfilled slot and the device reads uninitialized slot registers — a different
+        // (and undefined) experiment from the one this mutation is for. So the state
+        // machine is replayed here, exactly as `validate` replays it.
         WindowMutation::Retarget => {
+            let mut live: Vec<Option<u16>> = vec![None; schedule.slot_source.len()];
             for op in program.resolver_operands() {
                 let (a, b) = unpack(out.tags[op.record]).expect("built schedules decode");
                 let tag = if op.operand == 0 { a } else { b };
-                if let WindowTag::Reuse(slot) = tag {
-                    let other = (slot + 1) % out.slot_source.len() as u8;
-                    let swapped = WindowTag::Reuse(other);
-                    out.tags[op.record] = if op.operand == 0 {
-                        pack(swapped, b)
-                    } else {
-                        pack(a, swapped)
-                    };
-                    return out;
+                match tag {
+                    WindowTag::Fill(slot) => live[slot as usize] = Some(op.source),
+                    WindowTag::Reuse(slot) => {
+                        let target = live.iter().enumerate().find(|(other, held)| {
+                            *other != slot as usize && held.is_some_and(|s| s != op.source)
+                        });
+                        let Some((target, _)) = target else { continue };
+                        let swapped = WindowTag::Reuse(target as u8);
+                        out.tags[op.record] = if op.operand == 0 {
+                            pack(swapped, b)
+                        } else {
+                            pack(a, swapped)
+                        };
+                        return out;
+                    }
+                    WindowTag::None => {}
                 }
             }
-            panic!("no reuse to retarget");
+            panic!("no reuse with another live slot holding a different source");
         }
     }
 }
@@ -581,6 +592,59 @@ mod cpu_tests {
         assert!(err.contains("not a resolution"), "{err}");
 
         assert_eq!(validate(&p, &good), Ok(()));
+    }
+
+    /// Q4: `mutate` must produce the mutation it advertises — a reuse pointed at a slot
+    /// that is LIVE at that walk point and holds a DIFFERENT source — under both term
+    /// orders. The first version picked `(slot + 1) % slots` and under `locality` hit an
+    /// unfilled slot, which the validator still rejected (so the device test still
+    /// "passed") while the device was reading uninitialized registers.
+    #[test]
+    fn cpu_window_mutate_retargets_a_live_slot() {
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            let good = plan(&p);
+            let bad = mutate(&p, &good, WindowMutation::Retarget);
+
+            // Exactly one record byte moves, and only its tag's slot.
+            let moved: Vec<usize> = (0..good.tags.len())
+                .filter(|&r| good.tags[r] != bad.tags[r])
+                .collect();
+            assert_eq!(moved.len(), 1, "{order:?}");
+
+            // Replay to the mutated operand and check the target's liveness there.
+            let mut live: Vec<Option<u16>> = vec![None; good.slot_source.len()];
+            let mut checked = false;
+            for op in p.resolver_operands() {
+                let (ga, gb) = unpack(good.tags[op.record]).unwrap();
+                let (ba, bb) = unpack(bad.tags[op.record]).unwrap();
+                let (gt, bt) = if op.operand == 0 { (ga, ba) } else { (gb, bb) };
+                if gt != bt {
+                    let (WindowTag::Reuse(from), WindowTag::Reuse(to)) = (gt, bt) else {
+                        panic!("{order:?}: retarget did not stay a reuse");
+                    };
+                    assert_ne!(from, to, "{order:?}");
+                    let held = live[to as usize];
+                    assert!(held.is_some(), "{order:?}: target slot {to} is not live");
+                    assert_ne!(
+                        held.unwrap(),
+                        op.source,
+                        "{order:?}: target holds the same source"
+                    );
+                    checked = true;
+                    break;
+                }
+                if let WindowTag::Fill(slot) = gt {
+                    live[slot as usize] = Some(op.source);
+                }
+            }
+            assert!(checked, "{order:?}: no mutated operand found");
+
+            // And the rejection must be the WRONG-SOURCE one, not reuse-before-fill.
+            let err = validate(&p, &bad).unwrap_err();
+            assert!(err.contains("holding source"), "{order:?}: {err}");
+            assert!(!err.contains("before any fill"), "{order:?}: {err}");
+        }
     }
 
     /// The nibble encoding round-trips and reserves `0` for `None`.
