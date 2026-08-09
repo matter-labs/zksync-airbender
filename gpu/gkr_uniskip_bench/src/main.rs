@@ -8,11 +8,13 @@ use gpu_gkr_uniskip_bench::abi::{
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::compact::BankPerm;
 use gpu_gkr_uniskip_bench::geometry::Geometry;
+use gpu_gkr_uniskip_bench::harness::PairArm;
 use gpu_gkr_uniskip_bench::harness::{
     CellMap, EvalMode, Harness, LdeShape, PassConfig, StageTimes, STAGES,
 };
 use gpu_gkr_uniskip_bench::kernels::NvtxRange;
 use gpu_gkr_uniskip_bench::synth::{generate, Census, TermOrder};
+use gpu_gkr_uniskip_bench::window;
 
 /// Standalone CUDA benchmark for one uniskip sumcheck pass (k = 4).
 #[derive(Parser)]
@@ -82,6 +84,13 @@ struct Cli {
     /// elements, so one program walk serves `groups` rows. Compact mode only.
     #[arg(long)]
     compact_groups: Option<u32>,
+
+    /// v3 R3 arm of `--mode lsb-pair`: `control` (R2 exactly — same kernel, same wire),
+    /// `t` (twiddle-remat fix), `w` (coset-only top-4-BF register window), `wt` (both),
+    /// or `wnone` (the WØ diagnostic: window kernel with an all-`none` tag stream).
+    /// Compact-pair mode only.
+    #[arg(long, value_enum)]
+    pair_arm: Option<PairArm>,
 
     /// Staging tap permutation in `--mode lsb-compact`: `linear` (the shipped,
     /// bank-conflict-free layout) or `identity` (the pre-fix layout, kept so the
@@ -191,6 +200,12 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             cli.mode.as_str()
         ));
     }
+    if !cli.mode.uses_pair_arm() && cli.pair_arm.is_some() {
+        fail(format!(
+            "--pair-arm applies to --mode lsb-pair only; --mode {} has no R3 arms",
+            cli.mode.as_str()
+        ));
+    }
     if !cli.mode.uses_compact_groups() && cli.bank_perm.is_some() {
         fail(format!(
             "--bank-perm applies to --mode lsb-compact only; --mode {} has no compaction \
@@ -212,6 +227,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         cell_map: cli.cell_map.unwrap_or_default(),
         compact_groups,
         bank_perm: cli.bank_perm.unwrap_or_default(),
+        pair_arm: cli.pair_arm.unwrap_or_default(),
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
     // small --log-trace can leave fewer rows than one block covers. Rejected here rather
@@ -247,6 +263,11 @@ fn main() {
     } else {
         "n/a"
     };
+    let pair_arm_label = if config.mode.uses_pair_arm() {
+        config.pair_arm.as_str()
+    } else {
+        "n/a"
+    };
     let (compact_groups_label, bank_perm_label) = if config.mode.uses_compact_groups() {
         (config.compact_groups.to_string(), config.bank_perm.as_str())
     } else {
@@ -271,6 +292,18 @@ fn main() {
     // Order-invariant: the plan is ranked off the reference census, which is a property
     // of the record multiset.
     let plan = cache::plan(&program);
+    // The window schedule is per (program, term order, census knobs), so it is built
+    // AFTER `force_self_products` and `apply_term_order`. Built and validated even for
+    // the control arm, which ships it as the all-`none` stream, so the machinery is
+    // exercised on every run rather than only on the arms that read it.
+    let window = if config.pair_arm.uses_schedule() {
+        window::plan(&program)
+    } else {
+        window::WindowSchedule::empty(&program)
+    };
+    if let Err(e) = window::validate(&program, &window) {
+        fail(format!("window schedule is invalid: {e}"));
+    }
 
     println!("gpu_gkr_uniskip_bench config");
     println!("  log_trace           {}", cli.log_trace);
@@ -285,6 +318,7 @@ fn main() {
     println!("  cell_map            {cell_map_label}");
     println!("  compact_groups      {compact_groups_label}");
     println!("  bank_perm           {bank_perm_label}");
+    println!("  pair_arm            {pair_arm_label}");
     println!("  term_order          {}", cli.term_order.as_str());
     println!("  self_products       {self_products}");
     if self_products > 0 {
@@ -320,6 +354,15 @@ fn main() {
     );
     // Printed in every mode: the plan is a property of the program, and `C` / `Ru` /
     // the op split are what decide whether an all-cell fill producer is worth building.
+    if config.mode.uses_pair_arm() && config.pair_arm.uses_window() {
+        println!("window schedule");
+        println!("  window sources      {:?}", window.slot_source);
+        println!("  window refs         {:?}", window.slot_refs);
+        println!(
+            "  window reuses       {} ({} -> {} component passes per walk)",
+            window.reuses, window.passes_without, window.passes_with
+        );
+    }
     println!(
         "cache plan{}{}",
         if config.mode.uses_cache() {
@@ -330,6 +373,14 @@ fn main() {
         if self_products > 0 { " (STALE)" } else { "" }
     );
     println!("{plan}");
+
+    if !config.pair_arm.implemented() {
+        fail(format!(
+            "--pair-arm {} is not yet implemented (v3 R3 task 0 lands the host schedule \
+             only; the kernels are a later task)",
+            config.pair_arm.as_str()
+        ));
+    }
 
     let validate = cli.validate || cli.validate_flat_eq;
     let mut harness = Harness::new(

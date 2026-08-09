@@ -208,6 +208,11 @@ impl EvalMode {
         self == Self::FusedCached
     }
 
+    /// Whether `--pair-arm` names an arm this mode runs.
+    pub fn uses_pair_arm(self) -> bool {
+        self == Self::LsbPair
+    }
+
     /// Element ordering of the tap backing this mode's accessor expects.
     pub fn source_layout(self) -> SourceLayout {
         match self {
@@ -281,6 +286,50 @@ impl CellMap {
     }
 }
 
+/// v3 R3 arms of `--mode lsb-pair`, the factorial's cells. `Control` is R2 exactly —
+/// same kernel, same wire, no side descriptor — so a bare `--mode lsb-pair` is unchanged.
+/// `T` is the twiddle-remat fix alone, `W` the coset-only top-4-BF window alone, `Wt`
+/// both, and `Wnone` the WØ diagnostic: the window kernel and its side descriptor with an
+/// all-`none` tag stream, which pays the window's register and branch cost and takes none
+/// of its saving.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum PairArm {
+    #[default]
+    Control,
+    T,
+    W,
+    Wt,
+    Wnone,
+}
+
+impl PairArm {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Control => "control",
+            Self::T => "t",
+            Self::W => "w",
+            Self::Wt => "wt",
+            Self::Wnone => "wnone",
+        }
+    }
+
+    /// Whether the arm ships a window side descriptor at all.
+    pub fn uses_window(self) -> bool {
+        matches!(self, Self::W | Self::Wt | Self::Wnone)
+    }
+
+    /// Whether the descriptor carries a planned schedule rather than the all-`none`
+    /// stream. `Wnone` is the difference between the two.
+    pub fn uses_schedule(self) -> bool {
+        matches!(self, Self::W | Self::Wt)
+    }
+
+    /// Task 0 lands the host machinery only; the kernels are Task 1+.
+    pub fn implemented(self) -> bool {
+        self == Self::Control
+    }
+}
+
 /// The shape knobs of one pass. `lde_shape` applies to [`EvalMode::Unfused`] only,
 /// `cell_map` to the fused modes only, and `compact_groups`/`bank_perm` to
 /// [`EvalMode::LsbCompact`] only; `main` rejects the other combinations.
@@ -299,6 +348,8 @@ pub struct PassConfig {
     /// Staging tap permutation in [`EvalMode::LsbCompact`]; ignored elsewhere. `Identity`
     /// is the pre-fix layout, kept reachable so the bank-conflict A/B is re-runnable.
     pub bank_perm: BankPerm,
+    /// v3 R3 arm of [`EvalMode::LsbPair`]; ignored elsewhere. `Control` is R2 exactly.
+    pub pair_arm: PairArm,
 }
 
 /// The timed stages of one pass, in execution order.

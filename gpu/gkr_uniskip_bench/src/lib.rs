@@ -14,6 +14,7 @@ pub mod kernels;
 pub mod pair;
 pub mod reference;
 pub mod synth;
+pub mod window;
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

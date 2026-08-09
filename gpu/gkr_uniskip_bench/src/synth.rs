@@ -150,6 +150,15 @@ impl fmt::Display for CensusSummary {
     }
 }
 
+/// One `uniskip_*_resolve` call in device order. `operand` is 0 for `source_a`, 1 for
+/// `source_b`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResolverOperand {
+    pub record: usize,
+    pub operand: u8,
+    pub source: u16,
+}
+
 /// A generated program: the exact wire arrays plus the allocation spec.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SynthProgram {
@@ -268,6 +277,66 @@ impl SynthProgram {
             }
         }
         done
+    }
+
+    /// One resolver invocation: a `uniskip_*_resolve` call, in the exact order the device
+    /// term walk issues them. This is the order the window schedule is expressed in, and
+    /// the only definition of "reference" the window counts.
+    ///
+    /// A self-product (`source_b == source_a`) contributes ONE invocation, because
+    /// `resolve_second` short-circuits; a group header contributes none, its members
+    /// contribute their own.
+    pub fn resolver_operands(&self) -> Vec<ResolverOperand> {
+        let mut out = Vec::new();
+        let mut push = |record: usize, operand: u8, source: u16| {
+            out.push(ResolverOperand {
+                record,
+                operand,
+                source,
+            })
+        };
+        let mut pc = 0usize;
+        while pc < self.program.len() {
+            let term = self.program[pc];
+            if term.term_class == UNISKIP_CLASS_GROUP_BF {
+                let arity = term.source_a as usize;
+                for m in 1..=arity {
+                    let member = self.program[pc + m];
+                    push(pc + m, 0, member.source_a);
+                    if member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF
+                        && member.source_b != member.source_a
+                    {
+                        push(pc + m, 1, member.source_b);
+                    }
+                }
+                pc += arity + 1;
+                continue;
+            }
+            push(pc, 0, term.source_a);
+            match term.term_class {
+                UNISKIP_CLASS_PRODUCT_BF_BF | UNISKIP_CLASS_PRODUCT_E4_E4
+                    if term.source_b != term.source_a =>
+                {
+                    push(pc, 1, term.source_b)
+                }
+                UNISKIP_CLASS_PRODUCT_BF_E4 => push(pc, 1, term.source_b),
+                _ => {}
+            }
+            pc += 1;
+        }
+        out
+    }
+
+    /// References per source in resolver-invocation order — the count the window's slot
+    /// policy ranks by. Recomputed from `program`, so it stays correct under
+    /// [`Self::force_self_products`] and any census override, where
+    /// `census.per_source_refs` is stale.
+    pub fn resolver_refs(&self) -> Vec<u32> {
+        let mut refs = vec![0u32; self.sources.len()];
+        for op in self.resolver_operands() {
+            refs[op.source as usize] += 1;
+        }
+        refs
     }
 
     /// Little-endian image of everything that reaches the device wire.

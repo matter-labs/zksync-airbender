@@ -51,6 +51,33 @@ pub struct UniskipCompactSlot {
 /// `native/uniskip_lsb_pair.cuh`; derivation in [`crate::pair`].
 pub const UNISKIP_PAIR_ROWS_PER_BLOCK: usize = UNISKIP_WARPS_PER_BLOCK * (32 / (UNISKIP_TAPS / 2));
 
+/// v3 R3 register-window slots: BF sources whose produced coset pair a lane retains.
+/// Four is the plan's W — an `e4` source would take four slots' worth of registers.
+pub const UNISKIP_WINDOW_SLOTS: usize = 4;
+
+/// WINDOW SIDE DESCRIPTOR. Separate from [`UniskipVmDesc`] on purpose: the control wire
+/// format is untouched, so `--mode lsb-pair` without a window is byte-for-byte the R2
+/// arm. One tag byte per record position (operand A low nibble, operand B high — see
+/// `window::WindowTag::encode`), plus the slot -> source map the validator checks against.
+/// An all-zero descriptor is a valid all-`none` schedule.
+#[repr(C, align(16))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UniskipWindowDesc {
+    pub tags: [u8; UNISKIP_PROGRAM_CAPACITY],
+    pub slot_source: [u16; UNISKIP_WINDOW_SLOTS],
+    pub slot_count: u32,
+}
+
+impl Default for UniskipWindowDesc {
+    fn default() -> Self {
+        Self {
+            tags: [0; UNISKIP_PROGRAM_CAPACITY],
+            slot_source: [0; UNISKIP_WINDOW_SLOTS],
+            slot_count: 0,
+        }
+    }
+}
+
 /// Lane-indexed twiddle tables of the factorized coset transform — see
 /// [`crate::domain::ntt_twiddles`] for the stage order. The two distance-1 butterfly
 /// stages carry only unity and are elided, so the chain's 8 exchange stages need 7
@@ -337,6 +364,16 @@ mod cpu_tests {
         // to lanes, so a one-sided edit would otherwise surface only as a failed
         // `--validate` on a GPU.
         assert_eq!(UNISKIP_PAIR_ROWS_PER_BLOCK, 32);
+        // v3 R3 window side descriptor.
+        assert_eq!(UNISKIP_WINDOW_SLOTS, 4);
+        assert_eq!(offset_of!(UniskipWindowDesc, tags), 0);
+        assert_eq!(offset_of!(UniskipWindowDesc, slot_source), 256);
+        assert_eq!(offset_of!(UniskipWindowDesc, slot_count), 264);
+        assert_eq!(size_of::<UniskipWindowDesc>(), 272);
+        assert_eq!(align_of::<UniskipWindowDesc>(), 16);
+        assert!(size_of::<UniskipWindowDesc>() <= 32764);
+        // Two tags per record must fit one byte, so a slot index must fit a nibble.
+        const { assert!(1 + 2 * UNISKIP_WINDOW_SLOTS <= 16) };
         assert_eq!(
             UNISKIP_PAIR_ROWS_PER_BLOCK,
             UNISKIP_WARPS_PER_BLOCK * (32 / (UNISKIP_TAPS / 2))
