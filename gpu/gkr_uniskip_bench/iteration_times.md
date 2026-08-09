@@ -2291,15 +2291,21 @@ Commits: `4814469b` (host schedule, tags, validator, CLI), `47cdf650` (kernel ar
   allocation granularity is 8 — so 82 registers is 88 allocated and drops a block. `wt`'s
   82 → 80 cut is the confirmation. Every contrast in the table below is labelled with its
   occupancy class for exactly this reason.
-- **`q` parity, 32/32 cells**, every arm against the control, device-to-device via
-  `--dump-q` — with an empty-digest rejection, because an empty dump hashes identically on
-  both sides and would pass every cell vacuously.
+- **`q` parity, 40/40 cells** — all five non-control arms against the control across
+  2 term orders x 2 `eq` forms x 2 censuses, device-to-device via `--dump-q`, with an
+  empty-digest rejection because an empty dump hashes identically on both sides and would
+  pass every cell vacuously. Run on both the shipped and the diagnostic build.
 - **Production count EXACT, both term orders**: a compile-gated device counter reads **279**
   chain executions per warp-program walk under `w`/`wt` and **326** under
-  `control`/`wnone` — the host model's 326 → 279 is achieved, not merely planned.
-- **Mutation tests discriminate slot identity and retention**, including a retarget that is
-  never uploaded (so the device would read an unfilled slot) and a poison-after-fill that
-  forces a later reuse to change `q`.
+  `control`/`wnone`/`wtnone` — the host model's 326 → 279 is achieved, not merely planned,
+  and the all-`none` stream provably skips nothing.
+- **Mutation tests discriminate slot identity and retention.** (a) *Retarget*: a reuse is
+  pointed at a **different, already-live slot holding another source**, and the corrupted
+  descriptor is uploaded through the unchecked path that bypasses the always-on validator —
+  `q` diverges in all four (arm x order) cells. This is the strongest evidence in the rung
+  that the device reads the tag's slot number rather than deriving it. (b) *Poison*: every
+  slot's retained copy is corrupted after its fill, and `q` changes for exactly the arms
+  that have reuses (`w`, `wt`) while `control`, `wnone` and `wtnone` are unaffected.
 - **Two hazards found by the gates, both now closed.** (1) The diag define was only passed
   when set, so a CMake cache went sticky and an env-unset rebuild kept compiling the counter
   atomic — the define is now always `ON`/`OFF`. (2) Diag and shipped objects share one native
@@ -2319,6 +2325,11 @@ cyclic rotation each round so no arm keeps a fixed position; every table below i
     --term-order locality > /tmp/factorial.log
 python3 gpu/gkr_uniskip_bench/tools/factorial_table.py /tmp/factorial.log
 ```
+
+**Use a round count that is a multiple of 6** — `--iterations 102` — so every arm starts an
+equal number of rounds. The run below used 100, leaving starting positions at
+16/16/17/17/17/17; the residual is ≤ 0.005 ms, below every contrast here, so the data stands
+and the rule is for the next run.
 
 | arm | regs | blocks/SM | `eval + finalize` locality | census |
 | --- | --- | --- | --- | --- |
@@ -2389,10 +2400,10 @@ cost**:
 | gross removal at 2 blocks `(wnone − w)/47` | +23.92 µs | +26.14 µs | the removal alone, but in a carrier that costs a block |
 | net W = 4 `(control − w)/47` | −82.91 µs | −85.55 µs | carries the 3→2 block change with it |
 
-The 2-block slope is **1.279×** the 3-block one (23.92 / 18.70) — equivalently the shippable
-figure is **21.8 % lower** than the 2-block reading. Quoting the 2-block slope as the value
-of a production overstates it by that much, because the carrier's occupancy loss is inside
-it.
+The 2-block slope is **1.279×** the 3-block one (23.92 / 18.70). Stated with its
+denominator both ways: 23.92 is **27.9 % above** 18.70, and 18.70 is **21.8 % below** 23.92.
+Quoting the 2-block slope as the value of a production overstates it, because the carrier's
+occupancy loss is inside it.
 
 **What 18.70 µs does to the capture arithmetic.** The gap to the bar is
 16.287 − 14.61 = **1.677 ms**. At 18.70 µs/production that is
@@ -2417,7 +2428,12 @@ Picture block verbatim (never `--set full`), NVTX `gkr_uniskip_pass0/` and sourc
 under lineinfo, with a lineinfo↔shipped SASS parity gate passed **before** any capture:
 
 ```
-target/profiling/ncu/20260809_1515{16,39,46,53,60,07}_v3r3_{control,t,w,wt,wnone,wtnone}_locality.ncu-rep
+target/profiling/ncu/20260809_151516_v3r3_control_locality.ncu-rep
+target/profiling/ncu/20260809_151539_v3r3_t_locality.ncu-rep
+target/profiling/ncu/20260809_151546_v3r3_w_locality.ncu-rep
+target/profiling/ncu/20260809_151553_v3r3_wt_locality.ncu-rep
+target/profiling/ncu/20260809_151600_v3r3_wnone_locality.ncu-rep
+target/profiling/ncu/20260809_151607_v3r3_wtnone_locality.ncu-rep
 ```
 
 Counts below are per-SASS-instruction "Instructions Executed" = warp-instructions, opcode

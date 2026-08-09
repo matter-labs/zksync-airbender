@@ -237,7 +237,8 @@ is not occupancy-neutral. `wtnone` exists so that `wt − t` splits into machine
 the measurement that priced it. `iteration_times.md`'s *v3 R3* section carries the record:
 best window arm 17.173 ms against the control's 16.287, machinery +1.207 ms against a
 −0.879 ms removal, and the rung-2 calibration slope of **18.70 µs per removed production**.
-Every arm's `q` is bit-exact equal to the control's, 32/32 cells, both term orders.
+Every arm's `q` is bit-exact equal to the control's — **40/40 cells**, five arms x 2 term
+orders x 2 `eq` forms x 2 censuses, run on both the shipped and the diagnostic build.
 
 ```bash
 # one arm
@@ -257,13 +258,19 @@ python3 gpu/gkr_uniskip_bench/tools/factorial_table.py /tmp/factorial.log
 rejects `--validate`/`--validate-flat-eq`/`--dump-q` (it is a timing run; those would print
 a verdict and check nothing). It emits one `SAMPLE` line per (round, arm) plus a
 `FACTORIAL schedule` line recording the planned reuses. **Use a round count that is a
-multiple of 6** so every arm starts an equal number of rounds.
+multiple of 6** so every arm starts an equal number of rounds: **use `--iterations 102`**,
+the smallest multiple of 6 at or above 100. The recorded run used 100, which left starting
+positions at 16/16/17/17/17/17; the residual imbalance is ≤ 0.005 ms, below every contrast
+in the record, so that data stands — but there is no reason to repeat it.
 
 `tools/factorial_table.py` turns that log into the per-arm medians, the paired contrasts
 with their occupancy labels, the decomposition identity, the interaction and the three
-slopes. It **hard-errors** on duplicate samples, duplicate trailers or a missing `ARM`
-line, so two sessions cannot be silently merged into one table — the R1 and R2 records each
-lost review rounds to hand-assembled tables, and no R3 number is transcribed.
+slopes. It **hard-errors** on a duplicate sample, a duplicate trailer, a missing `ARM`
+line, any round that does not carry the full declared arm set, an `ARM` count that
+disagrees with the trailer's `arms=`, and a round count that disagrees with the trailer's
+`rounds=`. A truncated or two-session log therefore cannot be summarized as though it were
+whole — the R1 and R2 records each lost review rounds to hand-assembled tables, and no R3
+number is transcribed.
 
 #### Diagnostic build and its probes
 
@@ -284,7 +291,7 @@ rather than only when set, because a CMake cache that keeps the last value will 
 leave the counter atomic compiled into a build you believe is shipped.
 
 `tools/r3_gates.sh {matrix|diag|all}` runs the gates rather than describing them — `matrix`
-is the 32-cell `q`-parity sweep and runs on either build; `diag` and `all` need the
+is the 40-cell `q`-parity sweep and runs on either build; `diag` and `all` need the
 diagnostic build. Its exit status is the verdict, and it rejects the empty digest, because
 an empty `--dump-q` hashes identically on both sides and would pass every parity cell
 vacuously.
