@@ -371,7 +371,10 @@ EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_win_kernel(const __grid_cons
   uniskip_pair_epilogue(desc, lane, acc_h, acc_c, plane);
 }
 
-// The `wt` arm: window plus the launch-bounds twiddle trade.
+// The `wt` arm: window plus `__launch_bounds__`. The bound was meant as a twiddle-remat
+// trade; measured, it trades nothing there — bank-3 twiddle loads are byte-identical with
+// and without it. Its real effect is the 82 -> 80 register cut that buys back the third
+// block (see iteration_times.md, v3 R3).
 EXTERN __global__ __launch_bounds__(UNISKIP_THREADS_PER_BLOCK,
                                     3) void ab_gkr_uniskip_eval_lsb_pair_win_lb_kernel(const __grid_constant__ uniskip_pair_desc desc,
                                                                                        const __grid_constant__ uniskip_window_desc win) {

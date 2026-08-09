@@ -498,7 +498,9 @@ pub fn eval_lsb_pair_win(
     EvalLsbPairWinFunction::default().launch(&config, &args)
 }
 
-/// The v3 R3 `wt` arm: window plus the launch-bounds twiddle trade.
+/// The v3 R3 `wt` arm: window plus `__launch_bounds__`. The bound was meant as a
+/// twiddle-remat trade and measured not to be one — bank-3 loads are byte-identical
+/// either way; what it buys is the 82 -> 80 register cut back to 3 blocks/SM.
 pub fn eval_lsb_pair_win_lb(
     desc: &UniskipVmDesc,
     win: &UniskipWindowDesc,

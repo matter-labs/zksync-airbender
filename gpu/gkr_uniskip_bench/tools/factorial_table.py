@@ -24,6 +24,7 @@ from statistics import median
 SAMPLE = re.compile(r"^SAMPLE (\S+) (\d+) (\S+) ([\d.]+) ([\d.]+)$")
 DONE = re.compile(r"^FACTORIAL done order=(\S+) warmup=(\d+) rounds=(\d+) arms=(\d+)$")
 ARM = re.compile(r"^ARM (\S+) (\d+) (\d+)$")
+SCHEDULE = re.compile(r"^FACTORIAL schedule order=(\S+) ")
 
 REMOVED = 47  # productions the top-4 window skips per warp-program walk
 
@@ -35,8 +36,13 @@ def parse(path):
     log would otherwise overwrite each other silently and still report a full set of paired
     rounds, with medians drawn from two different sessions.
     """
-    runs, done, occ = defaultdict(lambda: defaultdict(dict)), {}, {}
+    runs, done = defaultdict(lambda: defaultdict(dict)), {}
+    occ, section = defaultdict(dict), None
     for n, line in enumerate(open(path), 1):
+        m = SCHEDULE.match(line.strip())
+        if m:
+            section = m.group(1)
+            continue
         m = SAMPLE.match(line.strip())
         if m:
             order, rnd, arm, ev, fin = m.groups()
@@ -50,7 +56,17 @@ def parse(path):
             continue
         m = ARM.match(line.strip())
         if m:
-            occ[m.group(1)] = (int(m.group(2)), int(m.group(3)))
+            if section is None:
+                sys.exit(
+                    f"{path}:{n}: `ARM {m.group(1)}` before any `FACTORIAL schedule` line "
+                    f"— occupancy metadata cannot be bound to a term order"
+                )
+            if m.group(1) in occ[section]:
+                sys.exit(
+                    f"{path}:{n}: duplicate `ARM {m.group(1)}` for order={section} "
+                    f"— the log mixes runs"
+                )
+            occ[section][m.group(1)] = (int(m.group(2)), int(m.group(3)))
             continue
         m = DONE.match(line.strip())
         if m:
@@ -67,11 +83,19 @@ def iqr(xs):
 
 
 def emit(order, rounds, trailer, occ):
+    # occ and trailer are this ORDER's own: metadata never borrows across orders, so a log
+    # that lost one order's ARM block or its trailer fails instead of being papered over
+    # with the other order's facts.
     if not occ:
         sys.exit(
-            "no ARM lines in the log: this is an old-format run. Re-run with a build that "
-            "emits `ARM <name> <regs> <blocks>`, or the table would be written with no "
-            "occupancy labels."
+            f"{order}: no ARM lines for this order. Either this is an old-format run "
+            f"(re-run with a build that emits `ARM <name> <regs> <blocks>`) or the log is "
+            f"truncated — the table would otherwise be written with no occupancy labels."
+        )
+    if trailer is None:
+        sys.exit(
+            f"{order}: no `FACTORIAL done order={order} …` trailer — the run did not "
+            f"finish, or the log is truncated; round and arm counts cannot be checked"
         )
     arms = [a for a in ["control", "t", "w", "wt", "wnone", "wtnone"] if a in occ]
     unknown = sorted(set(occ) - set(arms))
@@ -80,7 +104,7 @@ def emit(order, rounds, trailer, occ):
     # SAME-SESSION GUARD, all hard errors: the pairing is a fiction unless every round
     # carries exactly the declared arm set, and a partial log must not be summarized as
     # though it were whole.
-    if trailer and len(arms) != trailer[2]:
+    if len(arms) != trailer[2]:
         sys.exit(
             f"{order}: {len(arms)} ARM lines but the trailer declares arms={trailer[2]} "
             f"— the log is truncated or mixes builds"
@@ -95,7 +119,7 @@ def emit(order, rounds, trailer, occ):
     complete = rounds
     if not complete:
         sys.exit(f"{order}: no complete rounds")
-    if trailer and len(complete) != trailer[1]:
+    if len(complete) != trailer[1]:
         sys.exit(
             f"{order}: {len(complete)} rounds in the log, trailer claims rounds="
             f"{trailer[1]} — truncated log"
@@ -214,7 +238,7 @@ def main():
     for order in sorted(runs, key=lambda o: (o != "locality", o)):
         if args.order and order != args.order:
             continue
-        emit(order, runs[order], done.get(order), occ)
+        emit(order, runs[order], done.get(order), occ.get(order, {}))
 
 
 if __name__ == "__main__":

@@ -265,12 +265,15 @@ in the record, so that data stands — but there is no reason to repeat it.
 
 `tools/factorial_table.py` turns that log into the per-arm medians, the paired contrasts
 with their occupancy labels, the decomposition identity, the interaction and the three
-slopes. It **hard-errors** on a duplicate sample, a duplicate trailer, a missing `ARM`
-line, any round that does not carry the full declared arm set, an `ARM` count that
-disagrees with the trailer's `arms=`, and a round count that disagrees with the trailer's
-`rounds=`. A truncated or two-session log therefore cannot be summarized as though it were
-whole — the R1 and R2 records each lost review rounds to hand-assembled tables, and no R3
-number is transcribed.
+slopes. **All of its guards are hard errors, and each order is checked against its own
+metadata** — an order never borrows another order's `ARM` block or trailer. It rejects: a
+duplicate sample; a duplicate `ARM` line or a duplicate trailer for one order; an `ARM`
+line that precedes any `FACTORIAL schedule` line, so occupancy facts cannot float free of
+a term order; an order with no `ARM` block or no trailer; any round that does not carry the
+full declared arm set; an `ARM` count that disagrees with the trailer's `arms=`; and a
+round count that disagrees with the trailer's `rounds=`. A truncated or two-session log
+therefore cannot be summarized as though it were whole — the R1 and R2 records each lost
+review rounds to hand-assembled tables, and no R3 number is transcribed.
 
 #### Diagnostic build and its probes
 
@@ -283,7 +286,8 @@ GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1 cargo build --release -p gpu_gkr_uniskip_ben
 
 That sets the `window_diag` cfg on the Rust side and `AB_UNISKIP_WINDOW_DIAG` in CMake, and
 enables three test-only flags: `--window-count` (reads a device counter of chain executions
-per warp-program walk — **279** under `w`/`wt` against **326** under `control`/`wnone`),
+per warp-program walk — **279** under `w`/`wt` against **326** under
+`control`/`wnone`/`wtnone`),
 `--window-poison` (corrupts every slot's retained copy after its fill, so a later reuse must
 change `q`), and `--window-mutate {retarget,…}` (perturbs the schedule to prove the gates
 discriminate slot identity and retention). The define is passed as an explicit `ON`/`OFF`
