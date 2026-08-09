@@ -1271,6 +1271,20 @@ session creation time; the report's internal command line still shows the origin
 `-o`). Future captures should use the prefixed form — the commands carry `-f`, so a
 stable name silently overwrites the report a recorded table cites.
 
+**Capture deviation (applies to every report in this directory to date, v2's first
+capture onward).** The doc's Full Picture recipe (`gpu/docs/profiling_ncu.md`) does not
+use `--set full` — it prescribes an explicit 17-section list precisely to exclude what
+`full` adds on this ncu (2026.2.1): `NumaAffinity`, `Nvlink_Tables`, `Nvlink_Topology`,
+`PmSampling`, `Tile`. It also prescribes `--nvtx --nvtx-include` (this crate's
+`--profile` flag emits the `gkr_uniskip_pass0` range for exactly that) and
+`--import-source yes` + `--source-folders` under lineinfo. The as-run commands used
+none of these. Every counter the tables here cite lives in sections common to both
+recipes (SpeedOfLight, InstructionStats, SchedulerStats/WarpStateStats,
+MemoryWorkloadAnalysis*, Occupancy, LaunchStats), so the recorded values are
+unaffected; the cost was capture-side only — unrequested sections, PM sampling,
+250–360 MB reports, extra replay passes. Future captures: use the doc's Full Picture
+block verbatim.
+
 | metric | v2 `fused-cached` interleave/locality | **v3 R0 `lsb-recompute` locality** |
 | --- | --- | --- |
 | duration under the profiler | 23.79 ms | **21.14 ms** |
@@ -1995,7 +2009,9 @@ this command line internally:
 ```
 
 As with R0, the `-o` omitted the doc's date prefix; the report was renamed post-capture
-to `target/profiling/ncu/20260808_190552_v3r2_pair_locality_full.ncu-rep`.
+to `target/profiling/ncu/20260808_190552_v3r2_pair_locality_full.ncu-rep`. The R0
+section's capture-deviation note (`--set full` vs the doc's explicit section list, no
+NVTX include, no source import) applies to this capture identically.
 
 | metric | R0 `lsb-recompute` | R1 `lsb-compact` G = 4 | **R2 `lsb-pair`** |
 | --- | --- | --- | --- |
