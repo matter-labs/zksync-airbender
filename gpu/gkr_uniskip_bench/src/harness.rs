@@ -9,7 +9,7 @@ use era_cudart::stream::CudaStream;
 use crate::abi::*;
 use crate::cache::CachePlan;
 use crate::compact::{self, BankPerm};
-use crate::coset_cache::{self, CacheArm, CacheArmState, PrologueOrder};
+use crate::coset_cache::{self, CacheArm, CacheArmState, CacheMutation, PrologueOrder};
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
 use crate::kernels;
@@ -393,6 +393,8 @@ pub struct PassConfig {
     /// Class the v3 R4 prologue produces first. A table-emission order only — the kernel
     /// walks what the host uploaded, so this costs no SASS.
     pub prologue_order: PrologueOrder,
+    /// TEST-ONLY: corrupt the selected cached arm's records and upload them UNCHECKED.
+    pub cache_mutate: Option<CacheMutation>,
     /// Whether the 128-thread NO-CACHE baseline runs the `__launch_bounds__(128, 7)`
     /// sibling. FALSE is the default and is the frozen control128; TRUE selects the bounded
     /// baseline, which is what makes the 128 cache contrast bound-to-bound.
@@ -459,6 +461,11 @@ pub struct Harness {
     config: PassConfig,
     lde: Option<[LdeLaunch; CLASSES]>,
     eval: EvalLaunch,
+    /// The eval kernel this harness will launch, by name. Set at the SAME match that picks
+    /// the launch function, so a config block quoting it cannot drift from what runs — a
+    /// separate name-computing mirror is exactly how the unwired launch-bounds selector
+    /// stayed invisible.
+    eval_kernel: &'static str,
     /// Set only on a cached arm; when set it replaces `eval` and carries the prologue
     /// table. Its descriptor is the arm's own CLONED source array, uploaded at build, and
     /// the launch it holds already encodes the block size AND the launch-bounds choice —
@@ -468,9 +475,9 @@ pub struct Harness {
     /// descriptor. The control path never touches either field.
     eval_window: Option<(WindowLaunch, UniskipWindowDesc)>,
     /// v3 R4: every coset-cache arm's CLONED state, planned once and resident together
-    /// so nothing re-plans or re-uploads inside a timed rotation. Task 1B consumes them;
-    /// today they exist so the planner and its always-on validator run on every
-    /// `lsb-pair` run, control included.
+    /// so nothing re-plans or re-uploads inside a timed rotation. The selected arm's copy
+    /// is what reaches `desc.source`; the rest exist so the planner and its always-on
+    /// validator run on every `lsb-pair` run, control included.
     ///
     /// Each arm is INDEPENDENTLY fallible: a census can push an arm past the cache frame
     /// (`--sources 60` already does), and an arm this run never selects must not take the
@@ -688,6 +695,9 @@ impl Harness {
             | EvalMode::LsbCompact
             | EvalMode::LsbPair => None,
         };
+        // Name and launch are chosen together, once, so the config block cannot describe a
+        // kernel the run did not use.
+        let mut eval_kernel = "n/a";
         let eval: EvalLaunch = match (config.mode, config.cell_map) {
             (EvalMode::Unfused, _) => kernels::eval,
             (EvalMode::FusedRecompute, CellMap::Block) => kernels::eval_fused,
@@ -697,12 +707,22 @@ impl Harness {
             (EvalMode::LsbRecompute, _) => kernels::eval_lsb_w0,
             (EvalMode::LsbPair, _) => match config.block_threads as usize {
                 UNISKIP_PAIR_THREADS_128 if config.control_launch_bounds => {
+                    eval_kernel = "eval_lsb_pair_128_lb";
                     kernels::eval_lsb_pair_128_lb
                 }
-                UNISKIP_PAIR_THREADS_128 => kernels::eval_lsb_pair_128,
+                UNISKIP_PAIR_THREADS_128 => {
+                    eval_kernel = "eval_lsb_pair_128";
+                    kernels::eval_lsb_pair_128
+                }
                 UNISKIP_THREADS_PER_BLOCK => match config.pair_arm {
-                    PairArm::T => kernels::eval_lsb_pair_lb,
-                    _ => kernels::eval_lsb_pair,
+                    PairArm::T => {
+                        eval_kernel = "eval_lsb_pair_lb";
+                        kernels::eval_lsb_pair_lb
+                    }
+                    _ => {
+                        eval_kernel = "eval_lsb_pair";
+                        kernels::eval_lsb_pair
+                    }
                 },
                 other => panic!("--block-threads {other} has no kernel"),
             },
@@ -729,12 +749,19 @@ impl Harness {
                 // = 6 blocks/SM against control128's 7, which the occupancy gate forbids
                 // accepting silently. `cache_launch_bounds = false` selects the stepped one
                 // deliberately, to price what the bound costs.
-                let launch: CachedLaunch =
+                let (launch, name): (CachedLaunch, &'static str) =
                     match (config.block_threads as usize, config.cache_launch_bounds) {
-                        (UNISKIP_PAIR_THREADS_128, true) => kernels::eval_lsb_pair_cached_128_lb,
-                        (UNISKIP_PAIR_THREADS_128, false) => kernels::eval_lsb_pair_cached_128,
-                        _ => kernels::eval_lsb_pair_cached,
+                        (UNISKIP_PAIR_THREADS_128, true) => (
+                            kernels::eval_lsb_pair_cached_128_lb,
+                            "eval_lsb_pair_cached_128_lb",
+                        ),
+                        (UNISKIP_PAIR_THREADS_128, false) => (
+                            kernels::eval_lsb_pair_cached_128,
+                            "eval_lsb_pair_cached_128",
+                        ),
+                        _ => (kernels::eval_lsb_pair_cached, "eval_lsb_pair_cached"),
                     };
+                eval_kernel = name;
                 Some((launch, state.descriptor(config.prologue_order)))
             }
             _ => None,
@@ -743,12 +770,24 @@ impl Harness {
         // The arm's CLONED source array is what reaches the device — `cache_slot` written
         // on admitted records, sentinel elsewhere. The canonical program is never mutated;
         // this happens once at build, never inside a timed rotation.
-        if let Some((_, _)) = &eval_cached {
-            let state = cache_arms
+        if eval_cached.is_some() {
+            let mut state = cache_arms
                 .iter()
                 .find(|(a, _)| *a == config.cache_arm)
                 .and_then(|(_, s)| s.as_ref().ok())
-                .expect("checked above");
+                .expect("checked above")
+                .clone();
+            if let Some(how) = config.cache_mutate {
+                // UNCHECKED on purpose: `validate` would reject this, and the gate is that
+                // the DEVICE notices.
+                match coset_cache::mutate(&mut state, how) {
+                    Some(what) => println!("  cache mutation      {what}"),
+                    None => panic!(
+                        "arm {} has no slot pair this mutation can use",
+                        config.cache_arm.as_str()
+                    ),
+                }
+            }
             desc.source[..state.sources.len()].copy_from_slice(&state.sources);
         }
 
@@ -776,6 +815,7 @@ impl Harness {
             config,
             lde,
             eval,
+            eval_kernel,
             eval_window,
             eval_cached,
             cache_arms,
@@ -890,6 +930,19 @@ impl Harness {
             .iter()
             .find(|(a, _)| *a == arm)
             .and_then(|(_, s)| s.as_ref().ok())
+    }
+
+    /// The eval kernel this harness launches, by name — bound to the dispatch, not
+    /// recomputed. A window arm replaces `eval` after the name is set, so it reports its
+    /// own placeholder rather than the control's.
+    pub fn eval_kernel(&self) -> &'static str {
+        if self.eval_cached.is_some() {
+            return self.eval_kernel;
+        }
+        match &self.eval_window {
+            Some(_) => "eval_lsb_pair_win*",
+            None => self.eval_kernel,
+        }
     }
 
     /// Why an arm is unavailable at this census, if it is.

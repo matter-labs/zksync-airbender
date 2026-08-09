@@ -150,6 +150,48 @@ pub struct CacheCounts {
     pub bytes: u32,
 }
 
+/// TEST-ONLY corruption of a planned arm, uploaded UNCHECKED — the always-on validator
+/// would reject these, which is the point: they prove the device reads the record's
+/// `cache_slot` rather than deriving a base.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum CacheMutation {
+    /// Point one cached reference at a different LIVE slot of the SAME width, so the
+    /// device reads real, wrong cosets. Same-width keeps the access forms identical, so a
+    /// divergence cannot be blamed on a malformed load.
+    Retarget,
+}
+
+/// Apply a mutation to an arm's CLONED record array. Returns what it did, or `None` when
+/// the arm has too few same-width slots for the mutation to mean anything.
+pub fn mutate(state: &mut CacheArmState, how: CacheMutation) -> Option<String> {
+    match how {
+        CacheMutation::Retarget => {
+            let rows: Vec<PrologueEntry> = state.prologue().collect();
+            for (i, row) in rows.iter().enumerate() {
+                let width = state
+                    .admitted
+                    .iter()
+                    .find(|e| e.source == row.source)
+                    .map(|e| e.width)?;
+                if let Some(other) = rows.iter().skip(i + 1).find(|o| {
+                    state
+                        .admitted
+                        .iter()
+                        .any(|e| e.source == o.source && e.width == width)
+                }) {
+                    state.sources[row.source as usize].cache_slot = other.base;
+                    return Some(format!(
+                        "source {} retargeted from unit {} to unit {} (source {}, same width {width})",
+                        row.source, row.base, other.base, other.source
+                    ));
+                }
+            }
+            None
+        }
+    }
+}
+
 /// Everything one arm uploads: its own source array and its own prologue table.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CacheArmState {
@@ -933,5 +975,60 @@ mod cpu_tests {
         s.counts.removals += 1;
         let err = validate(&p, &s).unwrap_err();
         assert!(err.contains("disagree with the admitted set"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod mixed_operand_probe {
+    use super::*;
+    use crate::abi::*;
+    use crate::synth::{generate, Census, TermOrder};
+
+    /// The R3 two-operand lesson's direct guard: PRODUCT records whose two operands have
+    /// DIFFERENT cache dispositions. Source-global admission is supposed to make these
+    /// trivially correct, and this is what names the cells the device gate checks.
+    #[test]
+    fn cpu_cache_mixed_operand_products_exist() {
+        let mut p = generate(0, Census::default()).unwrap();
+        p.apply_term_order(TermOrder::Locality);
+        for arm in [CacheArm::Hot4, CacheArm::E4Top2, CacheArm::Hot16] {
+            let state = plan_arm(&p, arm).unwrap();
+            let cached = |id: u16| state.sources[id as usize].cache_slot != UNISKIP_CACHE_SLOT_NONE;
+            let (mut a_only, mut b_only, mut selfp) = (vec![], vec![], vec![]);
+            for (pc, t) in p.program.iter().enumerate() {
+                let is_product = matches!(
+                    t.term_class,
+                    UNISKIP_CLASS_PRODUCT_BF_BF
+                        | UNISKIP_CLASS_PRODUCT_BF_E4
+                        | UNISKIP_CLASS_PRODUCT_E4_E4
+                );
+                if !is_product {
+                    continue;
+                }
+                if t.source_a == t.source_b {
+                    if cached(t.source_a) {
+                        selfp.push(pc);
+                    }
+                    continue;
+                }
+                match (cached(t.source_a), cached(t.source_b)) {
+                    (true, false) => a_only.push(pc),
+                    (false, true) => b_only.push(pc),
+                    _ => {}
+                }
+            }
+            println!(
+                "arm {}: A-cached/B-not {:?}; B-cached/A-not {:?}; cached self-product {:?}",
+                arm.as_str(),
+                &a_only[..a_only.len().min(4)],
+                &b_only[..b_only.len().min(4)],
+                &selfp[..selfp.len().min(4)]
+            );
+            assert!(
+                !a_only.is_empty() && !b_only.is_empty(),
+                "arm {} has no mixed-operand product to gate",
+                arm.as_str()
+            );
+        }
     }
 }

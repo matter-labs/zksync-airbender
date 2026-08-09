@@ -4,11 +4,11 @@ use clap::{CommandFactory, Parser};
 use era_cudart::device::{get_device, get_device_properties};
 use gpu_gkr_uniskip_bench::abi::{
     UNISKIP_CELLS, UNISKIP_COMPACT_DEFAULT_GROUPS, UNISKIP_LOG_TAPS, UNISKIP_PAIR_THREADS_128,
-    UNISKIP_SRC_E4_GLOBAL, UNISKIP_THREADS_PER_BLOCK, UNISKIP_WARPS_PER_BLOCK,
+    UNISKIP_SRC_E4_GLOBAL, UNISKIP_THREADS_PER_BLOCK,
 };
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::compact::BankPerm;
-use gpu_gkr_uniskip_bench::coset_cache::{self, CacheArm, PrologueOrder};
+use gpu_gkr_uniskip_bench::coset_cache::{self, CacheArm, CacheMutation, PrologueOrder};
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::PairArm;
 use gpu_gkr_uniskip_bench::harness::{
@@ -121,6 +121,12 @@ struct Cli {
     #[arg(long)]
     no_cache_launch_bounds: bool,
 
+    /// TEST-ONLY. Corrupt the selected cached arm's records and upload them UNCHECKED —
+    /// the always-on validator would reject them, which is the point. `retarget` points a
+    /// cached reference at a different LIVE same-width slot, so `q` must change.
+    #[arg(long, value_enum)]
+    cache_mutate: Option<CacheMutation>,
+
     /// Class the v3 R4 prologue produces FIRST. `e4first` is the spec's pinned production
     /// order; `bffirst` is the capacity-arm diagnostic — whichever class is produced last
     /// is the one still warm in L1 at walk entry. A table-emission order only: the kernel
@@ -199,6 +205,18 @@ fn fail(message: String) -> ! {
     Cli::command()
         .error(clap::error::ErrorKind::InvalidValue, message)
         .exit()
+}
+
+/// `cudaDevAttrLocalL1CacheSupported`, recorded because "local hits are L1 hits" is an
+/// ASSUMPTION on any part until this says otherwise — spec 7 requires it queried once.
+fn local_l1_supported() -> String {
+    let Ok(id) = get_device() else {
+        return "unknown".into();
+    };
+    match get_device_properties(id) {
+        Ok(props) => format!("{}", props.localL1CacheSupported != 0),
+        Err(e) => format!("unknown ({e})"),
+    }
 }
 
 fn device_name() -> String {
@@ -390,6 +408,9 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ));
         }
     }
+    if cli.cache_mutate.is_some() && !cli.cache_arm.is_some_and(|a| a.uses_cache()) {
+        fail("--cache-mutate needs a cached --cache-arm to corrupt".into());
+    }
     if cli.control_launch_bounds
         && !(block_threads as usize == UNISKIP_PAIR_THREADS_128
             && !cli.cache_arm.is_some_and(|a| a.uses_cache()))
@@ -451,6 +472,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         prologue_order: cli.prologue_order.unwrap_or_default(),
         cache_launch_bounds: !cli.no_cache_launch_bounds,
         control_launch_bounds: cli.control_launch_bounds,
+        cache_mutate: cli.cache_mutate,
         block_threads,
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
@@ -523,29 +545,6 @@ fn run_factorial(harness: &mut Harness, cli: &Cli) {
     );
 }
 
-/// The eval kernel this configuration launches, by name. Mirrors `Harness::new`'s dispatch
-/// and exists so the config block can state it; a selector that never reaches a call site
-/// is invisible without this.
-fn eval_kernel_name(config: &PassConfig) -> &'static str {
-    use gpu_gkr_uniskip_bench::abi::UNISKIP_PAIR_THREADS_128;
-    if !config.mode.uses_pair_arm() {
-        return "n/a";
-    }
-    let at_128 = config.block_threads as usize == UNISKIP_PAIR_THREADS_128;
-    match (config.cache_arm.uses_cache(), at_128) {
-        (true, true) if config.cache_launch_bounds => "eval_lsb_pair_cached_128_lb",
-        (true, true) => "eval_lsb_pair_cached_128",
-        (true, false) => "eval_lsb_pair_cached",
-        (false, true) if config.control_launch_bounds => "eval_lsb_pair_128_lb",
-        (false, true) => "eval_lsb_pair_128",
-        (false, false) => match config.pair_arm {
-            PairArm::T => "eval_lsb_pair_lb",
-            PairArm::Control => "eval_lsb_pair",
-            _ => "eval_lsb_pair_win*",
-        },
-    }
-}
-
 fn main() {
     let cli = Cli::parse();
     let geometry = Geometry::new(cli.log_trace).unwrap_or_else(|e| fail(e));
@@ -579,7 +578,6 @@ fn main() {
     };
     // The kernel a timed run actually launches, printed so a recorded number is
     // attributable to one body — an unwired selector is otherwise invisible.
-    let eval_kernel_label = eval_kernel_name(&config);
     let cache_arm_label = if config.mode.uses_pair_arm() {
         config.cache_arm.as_str()
     } else {
@@ -659,7 +657,6 @@ fn main() {
     println!("  cache_arm           {cache_arm_label}");
     println!("  block_threads       {block_threads_label}");
     println!("  prologue_order      {prologue_order_label}");
-    println!("  eval kernel         {eval_kernel_label}");
     println!("  term_order          {}", cli.term_order.as_str());
     println!("  self_products       {self_products}");
     if self_products > 0 {
@@ -755,6 +752,10 @@ fn main() {
             "  per walk            {} chains ({} without), {} removals, {} stores, {} loads",
             c.chains, c.passes_without, c.removals, c.store_instrs, c.load_instrs
         );
+        println!(
+            "  local L1 supported  {} (cudaDevAttrLocalL1CacheSupported)",
+            local_l1_supported()
+        );
     }
     println!(
         "cache plan{}{}",
@@ -778,6 +779,11 @@ fn main() {
         window.descriptor(),
     )
     .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
+
+    // Printed AFTER construction and read straight off the harness, so a recorded number
+    // is attributable to the kernel that actually ran.
+    let eval_kernel_label = harness.eval_kernel();
+    println!("  eval kernel         {eval_kernel_label}");
 
     let bytes = harness.pass_bytes();
     let columns: u32 = program.windows.iter().map(|w| w.columns).sum();
@@ -881,7 +887,10 @@ fn main() {
         // pass runs every warp, so the total must divide exactly — a truncating division
         // would hide a deviation of up to `warps * passes - 1`, far larger than the
         // 47-execution signal this gate exists to see.
-        let warps = u64::from(harness.eval_blocks()) * UNISKIP_WARPS_PER_BLOCK as u64;
+        // Warps per block follows the BLOCK SIZE, not the 256-thread constant: at
+        // --block-threads 128 a block is 4 warps, and using 8 would silently halve the
+        // reported per-walk figure.
+        let warps = u64::from(harness.eval_blocks()) * u64::from(config.block_threads / 32);
         let passes = u64::from(cli.warmup) + samples.len() as u64;
         assert!(passes > 0, "--window-count needs at least one pass");
         assert_eq!(

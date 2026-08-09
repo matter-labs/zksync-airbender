@@ -214,7 +214,17 @@ static_assert(sizeof(uniskip_coset_cache) == 736);
 static_assert(alignof(uniskip_coset_cache) == 16);
 
 DEVICE_FORCEINLINE void uniskip_coset_store(uniskip_coset_cache &cache, const u32 base, const bf c[2]) {
-  *reinterpret_cast<uint2 *>(&cache.word[2 * base]) = make_uint2(bf::into_raw_u32(c[0]), bf::into_raw_u32(c[1]));
+  uint2 v = make_uint2(bf::into_raw_u32(c[0]), bf::into_raw_u32(c[1]));
+#if AB_UNISKIP_WINDOW_DIAG_ON
+  // POISON HOOK, diagnostic builds only: corrupt what the prologue stored so any later
+  // cached READ must change `q`. A cached arm that does not diverge under this is not
+  // reading the frame it filled.
+  if (ab_gkr_uniskip_poison_slots) {
+    v.x = bf::into_raw_u32(bf::add(c[0], bf::ONE()));
+    v.y = bf::into_raw_u32(bf::add(c[1], bf::ONE()));
+  }
+#endif
+  *reinterpret_cast<uint2 *>(&cache.word[2 * base]) = v;
 }
 
 DEVICE_FORCEINLINE void uniskip_coset_load(const uniskip_coset_cache &cache, const u32 base, bf c[2]) {
@@ -240,8 +250,16 @@ DEVICE_FORCEINLINE e4 uniskip_coset_unpack(const uint4 v) {
 }
 
 DEVICE_FORCEINLINE void uniskip_coset_store(uniskip_coset_cache &cache, const u32 base, const e4 c[2]) {
-  *reinterpret_cast<uint4 *>(&cache.word[2 * base]) = uniskip_coset_pack(c[0]);
-  *reinterpret_cast<uint4 *>(&cache.word[2 * base + 4]) = uniskip_coset_pack(c[1]);
+  uint4 lo = uniskip_coset_pack(c[0]);
+  uint4 hi = uniskip_coset_pack(c[1]);
+#if AB_UNISKIP_WINDOW_DIAG_ON
+  if (ab_gkr_uniskip_poison_slots) {
+    lo.x = bf::into_raw_u32(bf::add(bf(lo.x), bf::ONE()));
+    hi.x = bf::into_raw_u32(bf::add(bf(hi.x), bf::ONE()));
+  }
+#endif
+  *reinterpret_cast<uint4 *>(&cache.word[2 * base]) = lo;
+  *reinterpret_cast<uint4 *>(&cache.word[2 * base + 4]) = hi;
 }
 
 DEVICE_FORCEINLINE void uniskip_coset_load(const uniskip_coset_cache &cache, const u32 base, e4 c[2]) {
