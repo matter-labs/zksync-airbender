@@ -40,6 +40,12 @@ namespace airbender::gkr_uniskip_bench {
 constexpr u32 UNISKIP_PAIR_LANES = UNISKIP_TAPS / 2;
 constexpr u32 UNISKIP_PAIR_GROUPS_PER_WARP = 32 / UNISKIP_PAIR_LANES;
 constexpr u32 UNISKIP_PAIR_ROWS_PER_BLOCK = UNISKIP_WARPS_PER_BLOCK * UNISKIP_PAIR_GROUPS_PER_WARP;
+// The v3 R4 second block size (spec 3.5). Only the BLOCK shape changes: per-warp geometry,
+// the lane map and the program walk are identical, so a 4-warp block covers 16 rows and
+// the grid doubles.
+constexpr u32 UNISKIP_PAIR_WARPS_128 = 4;
+constexpr u32 UNISKIP_PAIR_ROWS_PER_BLOCK_128 = UNISKIP_PAIR_WARPS_128 * UNISKIP_PAIR_GROUPS_PER_WARP;
+static_assert(UNISKIP_PAIR_ROWS_PER_BLOCK_128 == 16);
 constexpr u32 UNISKIP_PAIR_TWIDDLES = 8; // six stage twiddles + two twist values
 static_assert(UNISKIP_PAIR_LANES == 8);
 static_assert(UNISKIP_PAIR_GROUPS_PER_WARP == 4);
@@ -130,13 +136,16 @@ struct uniskip_pair_lane {
   bf tw[UNISKIP_PAIR_TWIDDLES];
 };
 
-DEVICE_FORCEINLINE uniskip_pair_lane uniskip_pair_lane_of(const u32 thread) {
+// WARPS is the block's warp count; the default keeps every existing call site and its
+// emitted SASS untouched, and 4 is the R4 128-thread baseline. It reaches only the row
+// origin - a block covers WARPS * GROUPS_PER_WARP rows - never the lane map.
+template <u32 WARPS = UNISKIP_WARPS_PER_BLOCK> DEVICE_FORCEINLINE uniskip_pair_lane uniskip_pair_lane_of(const u32 thread) {
   const u32 warp = thread / 32;
   const u32 id = thread % 32;
   uniskip_pair_lane out;
   out.lane = id & (UNISKIP_PAIR_LANES - 1);
   out.group = id / UNISKIP_PAIR_LANES;
-  out.row = blockIdx.x * u64{UNISKIP_PAIR_ROWS_PER_BLOCK} + warp * UNISKIP_PAIR_GROUPS_PER_WARP + out.group;
+  out.row = blockIdx.x * u64{WARPS * UNISKIP_PAIR_GROUPS_PER_WARP} + warp * UNISKIP_PAIR_GROUPS_PER_WARP + out.group;
   const u32 bits[6] = {3, 2, 1, 1, 2, 3};
   const u32 tables[6] = {0, 1, 2, 4, 5, 6};
   u32 at = 0;

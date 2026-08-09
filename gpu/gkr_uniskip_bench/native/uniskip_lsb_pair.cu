@@ -271,6 +271,7 @@ DEVICE_FORCEINLINE void uniskip_eval_pair_win_body(const uniskip_pair_desc &desc
 
 // The epilogue, shared by the three NEW entry points. The control keeps its own inline
 // copy so that its SASS cannot move; this is the same text, extracted once for the arms.
+template <u32 WARPS = UNISKIP_WARPS_PER_BLOCK>
 DEVICE_FORCEINLINE void uniskip_pair_epilogue(const uniskip_pair_desc &desc, const uniskip_pair_lane &lane, e4 acc_h[2], e4 acc_c[2], e4 *plane) {
   const e4 eq = uniskip_lsb_eq_at(desc, static_cast<u32>(lane.row));
 #pragma unroll
@@ -298,7 +299,7 @@ DEVICE_FORCEINLINE void uniskip_pair_epilogue(const uniskip_pair_desc &desc, con
   if (threadIdx.x < UNISKIP_CELLS) {
     e4 total = plane[threadIdx.x];
 #pragma unroll
-    for (u32 w = 1; w < UNISKIP_WARPS_PER_BLOCK; ++w)
+    for (u32 w = 1; w < WARPS; ++w)
       total = e4::add(total, plane[w * UNISKIP_CELLS + threadIdx.x]);
     desc.partials[blockIdx.x * UNISKIP_CELLS + threadIdx.x] = total;
   }
@@ -383,6 +384,20 @@ EXTERN __global__ __launch_bounds__(UNISKIP_THREADS_PER_BLOCK,
   e4 acc_h[2], acc_c[2];
   uniskip_eval_pair_win_body(desc, win, lane, acc_h, acc_c);
   uniskip_pair_epilogue(desc, lane, acc_h, acc_c, plane);
+}
+
+// The v3 R4 128-thread no-cache BASELINE (spec 3.5). Four warps, so the shared reduction
+// plane and the epilogue's cross-warp sum halve and a block covers 16 rows; the grid
+// doubles. Per-warp geometry, the lane map and the program walk are the 256 control's,
+// unchanged - only the block shape moves. No `__launch_bounds__`, matching the 256
+// control: a baseline must not carry a codegen hint the arm it anchors does not.
+// It is FROZEN from here: no cache code ever enters this entry point.
+EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_128_kernel(const __grid_constant__ uniskip_pair_desc desc) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  const uniskip_pair_lane lane = uniskip_pair_lane_of<UNISKIP_PAIR_WARPS_128>(threadIdx.x);
+  e4 acc_h[2], acc_c[2];
+  uniskip_eval_pair_body(desc, lane, acc_h, acc_c);
+  uniskip_pair_epilogue<UNISKIP_PAIR_WARPS_128>(desc, lane, acc_h, acc_c, plane);
 }
 
 } // namespace airbender::gkr_uniskip_bench

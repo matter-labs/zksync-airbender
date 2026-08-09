@@ -388,6 +388,20 @@ pub struct PassConfig {
     /// v3 R4 coset-cache arm of [`EvalMode::LsbPair`]; ignored elsewhere. `Control` is
     /// the uncached body. The cached kernels land in R4 Task 1B.
     pub cache_arm: CacheArm,
+    /// Threads per eval block in [`EvalMode::LsbPair`]; ignored elsewhere. 256 is the R2
+    /// shape, 128 is v3 R4's second block size — a distinct kernel, not a launch
+    /// parameter, because the shared plane and the epilogue reduction are static.
+    pub block_threads: u32,
+}
+
+impl PassConfig {
+    /// Logical rows one eval block covers under this configuration.
+    pub fn rows_per_block(&self) -> u32 {
+        if self.mode == EvalMode::LsbPair && self.block_threads == UNISKIP_PAIR_THREADS_128 as u32 {
+            return UNISKIP_PAIR_ROWS_PER_BLOCK_128 as u32;
+        }
+        self.mode.rows_per_block_with(self.compact_groups)
+    }
 }
 
 /// The timed stages of one pass, in execution order.
@@ -487,7 +501,11 @@ impl Harness {
         } else {
             UNISKIP_COMPACT_MAX_GROUPS as u32
         };
-        let rows_per_block = config.mode.rows_per_block_with(compact_groups);
+        let rows_per_block = PassConfig {
+            compact_groups,
+            ..config
+        }
+        .rows_per_block();
         let eval_blocks = geometry.eval_blocks(rows_per_block);
         let eval_partials = geometry.eval_partials(rows_per_block);
         let stream = CudaStream::create()?;
@@ -657,6 +675,9 @@ impl Harness {
             (EvalMode::FusedCached, CellMap::Block) => kernels::eval_fused_cached,
             (EvalMode::FusedCached, CellMap::Interleave) => kernels::eval_fused_cached_interleave,
             (EvalMode::LsbRecompute, _) => kernels::eval_lsb_w0,
+            (EvalMode::LsbPair, _) if config.block_threads == UNISKIP_PAIR_THREADS_128 as u32 => {
+                kernels::eval_lsb_pair_128
+            }
             (EvalMode::LsbPair, _) => match config.pair_arm {
                 PairArm::T => kernels::eval_lsb_pair_lb,
                 _ => kernels::eval_lsb_pair,

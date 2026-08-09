@@ -18,7 +18,7 @@ use era_cudart_sys::{cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKin
 use crate::abi::{
     UniskipCompactSlot, UniskipVmDesc, UniskipWindowDesc, UNISKIP_CACHE_UNITS, UNISKIP_CELLS,
     UNISKIP_COEFF_BANK, UNISKIP_COMPACT_MAX_ROUNDS, UNISKIP_EQ_HIGH, UNISKIP_NTT_TABLES,
-    UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
+    UNISKIP_PAIR_THREADS_128, UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
 };
 
 cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
@@ -124,6 +124,11 @@ cuda_kernel!(
 cuda_kernel!(
     EvalLsbPair,
     ab_gkr_uniskip_eval_lsb_pair_kernel(desc: UniskipVmDesc)
+);
+// The v3 R4 128-thread no-cache baseline: same wire, same signature, 4 warps.
+cuda_kernel!(
+    EvalLsbPair128,
+    ab_gkr_uniskip_eval_lsb_pair_128_kernel(desc: UniskipVmDesc)
 );
 // v3 R3 arms. `pair_lb` is the control body under `__launch_bounds__`; the two window
 // entry points take the side descriptor as a SECOND by-value parameter, so the control's
@@ -477,6 +482,14 @@ pub fn eval_lsb_pair(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> 
     let args = EvalLsbPairArguments::new(*desc);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
     EvalLsbPairFunction::default().launch(&config, &args)
+}
+
+/// The v3 R4 128-thread no-cache baseline: 4 warps x 4 groups = 16 logical rows per
+/// block, so `blocks` is twice the 256 control's for the same trace.
+pub fn eval_lsb_pair_128(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+    let args = EvalLsbPair128Arguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbPair128Function::default().launch(&config, &args)
 }
 
 /// The v3 R3 `t` arm: the control body under `__launch_bounds__(256, 3)`.

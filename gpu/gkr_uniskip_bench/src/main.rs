@@ -3,8 +3,8 @@ use std::ffi::CStr;
 use clap::{CommandFactory, Parser};
 use era_cudart::device::{get_device, get_device_properties};
 use gpu_gkr_uniskip_bench::abi::{
-    UNISKIP_CELLS, UNISKIP_COMPACT_DEFAULT_GROUPS, UNISKIP_LOG_TAPS, UNISKIP_SRC_E4_GLOBAL,
-    UNISKIP_WARPS_PER_BLOCK,
+    UNISKIP_CELLS, UNISKIP_COMPACT_DEFAULT_GROUPS, UNISKIP_LOG_TAPS, UNISKIP_PAIR_THREADS_128,
+    UNISKIP_SRC_E4_GLOBAL, UNISKIP_THREADS_PER_BLOCK, UNISKIP_WARPS_PER_BLOCK,
 };
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::compact::BankPerm;
@@ -106,6 +106,14 @@ struct Cli {
     /// on every `lsb-pair` run.
     #[arg(long, value_enum)]
     cache_arm: Option<CacheArm>,
+
+    /// Threads per eval block in `--mode lsb-pair`: 256 (the R2 shape) or 128 (v3 R4's
+    /// second block size — 4 warps, 16 rows per block, doubled grid). 128 is a distinct
+    /// kernel, not a launch parameter: the shared plane and the epilogue reduction are
+    /// static. It is the no-cache BASELINE for the 128 axis, so it composes with
+    /// `--pair-arm control` only.
+    #[arg(long)]
+    block_threads: Option<u32>,
 
     /// Staging tap permutation in `--mode lsb-compact`: `linear` (the shipped,
     /// bank-conflict-free layout) or `identity` (the pre-fix layout, kept so the
@@ -283,6 +291,44 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             cli.mode.as_str()
         ));
     }
+    let block_threads = cli
+        .block_threads
+        .unwrap_or(UNISKIP_THREADS_PER_BLOCK as u32);
+    if cli.block_threads.is_some() {
+        if !cli.mode.uses_pair_arm() {
+            fail(format!(
+                "--block-threads applies to --mode lsb-pair only; --mode {} has one block \
+                 shape",
+                cli.mode.as_str()
+            ));
+        }
+        if block_threads as usize != UNISKIP_THREADS_PER_BLOCK
+            && block_threads as usize != UNISKIP_PAIR_THREADS_128
+        {
+            fail(format!(
+                "--block-threads {block_threads} is not one of {UNISKIP_THREADS_PER_BLOCK}, \
+                 {UNISKIP_PAIR_THREADS_128}"
+            ));
+        }
+    }
+    if block_threads == UNISKIP_PAIR_THREADS_128 as u32 {
+        // The R3 arms are 256-thread kernels; there is no 128-thread window body, and the
+        // 128 kernel is the no-cache baseline of its own axis.
+        if cli.pair_arm.is_some_and(|a| a != PairArm::Control) {
+            fail(
+                "--block-threads 128 is the no-cache baseline; the R3 --pair-arm bodies \
+                  exist at 256 threads only"
+                    .into(),
+            );
+        }
+        if cli.factorial {
+            fail(
+                "--factorial rotates the R3 256-thread arms; --block-threads 128 has no \
+                  place in it"
+                    .into(),
+            );
+        }
+    }
     if cli.cache_arm.is_some() {
         if !cli.mode.uses_pair_arm() {
             fail(format!(
@@ -321,12 +367,13 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         bank_perm: cli.bank_perm.unwrap_or_default(),
         pair_arm: cli.pair_arm.unwrap_or_default(),
         cache_arm: cli.cache_arm.unwrap_or_default(),
+        block_threads,
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
     // small --log-trace can leave fewer rows than one block covers. Rejected here rather
     // than through Geometry's bare assert, so it exits like every other illegal
     // combination.
-    let rows_per_block = u64::from(config.mode.rows_per_block_with(config.compact_groups));
+    let rows_per_block = u64::from(config.rows_per_block());
     let rows = 1u64 << geometry.log_rows;
     if !rows.is_multiple_of(rows_per_block) {
         fail(format!(
@@ -413,6 +460,11 @@ fn main() {
     } else {
         "n/a"
     };
+    let block_threads_label = if config.mode.uses_pair_arm() {
+        config.block_threads.to_string()
+    } else {
+        "n/a".to_string()
+    };
     let cache_arm_label = if config.mode.uses_pair_arm() {
         config.cache_arm.as_str()
     } else {
@@ -490,6 +542,7 @@ fn main() {
     println!("  bank_perm           {bank_perm_label}");
     println!("  pair_arm            {pair_arm_label}");
     println!("  cache_arm           {cache_arm_label}");
+    println!("  block_threads       {block_threads_label}");
     println!("  term_order          {}", cli.term_order.as_str());
     println!("  self_products       {self_products}");
     if self_products > 0 {
@@ -502,8 +555,8 @@ fn main() {
     println!("  logical rows        {}", geometry.logical_rows);
     println!(
         "  blocks              {} ({} rows per block)",
-        geometry.eval_blocks(config.mode.rows_per_block_with(config.compact_groups)),
-        config.mode.rows_per_block_with(config.compact_groups)
+        geometry.eval_blocks(config.rows_per_block()),
+        config.rows_per_block()
     );
     println!(
         "  eq sizes            high {} / {} low {}",
@@ -511,7 +564,7 @@ fn main() {
     );
     println!(
         "  partials            {} e4",
-        geometry.eval_partials(config.mode.rows_per_block_with(config.compact_groups))
+        geometry.eval_partials(config.rows_per_block())
     );
     println!("census");
     println!("{}", program.census);
@@ -842,7 +895,8 @@ fn main() {
     println!(
         "summary: log_trace {} | mode {} | lde_shape {lde_shape_label} | cell_map {cell_map_label} | \
          compact_groups {compact_groups_label} | bank_perm {bank_perm_label} | pair_arm {pair_arm_label} | \
-         cache_arm {cache_arm_label} | term_order {} | C {} Ru {} | {sources} sources / \
+         cache_arm {cache_arm_label} | block_threads {block_threads_label} | term_order {} | \
+         C {} Ru {} | {sources} sources / \
          {columns} columns / {} B ({:.2} GiB) per pass | total median {total_median:.3} ms over \
          {} iterations | {device}",
         cli.log_trace,

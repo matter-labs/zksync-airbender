@@ -50,6 +50,12 @@ pub struct UniskipCompactSlot {
 /// holds 4 groups and a block covers 32 logical rows. Mirrored in
 /// `native/uniskip_lsb_pair.cuh`; derivation in [`crate::pair`].
 pub const UNISKIP_PAIR_ROWS_PER_BLOCK: usize = UNISKIP_WARPS_PER_BLOCK * (32 / (UNISKIP_TAPS / 2));
+/// v3 R4's second block size: 4 warps = 128 threads, so a block covers 16 rows and the
+/// grid doubles. The per-warp geometry, lane map and program walk are unchanged.
+pub const UNISKIP_PAIR_WARPS_128: usize = 4;
+pub const UNISKIP_PAIR_THREADS_128: usize = UNISKIP_PAIR_WARPS_128 * 32;
+pub const UNISKIP_PAIR_ROWS_PER_BLOCK_128: usize =
+    UNISKIP_PAIR_WARPS_128 * (32 / (UNISKIP_TAPS / 2));
 
 /// v3 R3 register-window slots: BF sources whose produced coset pair a lane retains.
 /// Four is the plan's W — an `e4` source would take four slots' worth of registers.

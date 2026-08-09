@@ -306,6 +306,27 @@ vacuously.
 > to the frozen control before taking a timing. Every R3 timing in `iteration_times.md` ran
 > that ritual first.
 
+### Block size (v3 R4) — `--block-threads {256,128}`
+
+`--block-threads 128` runs a **distinct kernel**, not a launch-parameter change: the shared
+reduction plane and the epilogue's cross-warp sum are static, so a 4-warp block needs its
+own entry point. Per-warp geometry, the lane map and the program walk are the 256 control's
+exactly — only the block shape moves, so a block covers **16** logical rows instead of 32
+and the grid doubles.
+
+It is the **no-cache baseline of the 128 axis** and is source-frozen from R4 Task 1A, which
+is why it composes with `--pair-arm control` only: the R3 window bodies exist at 256 threads
+alone. Measured on sm_120, both kernels compile to **72 registers**, and the finer block
+granularity is worth resident warps:
+
+| kernel | threads | static smem | blocks/SM | warps/SM | theoretical occupancy |
+| --- | --- | --- | --- | --- | --- |
+| `..._lsb_pair_kernel` | 256 | 4096 B | 3 (register-bound) | 24 | 50.00 % |
+| `..._lsb_pair_128_kernel` | 128 | 2048 B | 7 (register-bound) | 28 | 58.33 % |
+
+`q` is bit-exact against the 256 control across both term orders x both `eq` forms x
+{default, `--self-products`}.
+
 ### The coset cache (v3 R4) — host machinery only today
 
 `--cache-arm control|cache0|hot4|hot16|allrepeat|all59|e4rich` selects an R4 arm of
@@ -505,8 +526,8 @@ applies to the unfused mode only (no other mode has an LDE stage to shape) and
 `--cell-map` to the two fused modes only — `unfused` keeps the v1 block map and
 each LSB mode fixes its own (`lsb-recompute` lane = tap at two groups per warp,
 `lsb-pair` pair-resident at eight lanes per group and four groups per warp). `--compact-groups`
-and `--bank-perm` apply to `lsb-compact` alone, `--pair-arm`, `--factorial` and
-`--cache-arm` to `lsb-pair` alone (see [The window arms](#the-window-arms-v3-r3--diagnostic-not-candidates)
+and `--bank-perm` apply to `lsb-compact` alone, `--pair-arm`, `--factorial`,
+`--cache-arm` and `--block-threads` to `lsb-pair` alone (see [The window arms](#the-window-arms-v3-r3--diagnostic-not-candidates)
 and [The coset cache](#the-coset-cache-v3-r4--host-machinery-only-today)), and
 `--compact-groups 8` additionally
 needs `--log-trace >= 10` (a compact block is 8 warps × `groups` rows and must tile the
