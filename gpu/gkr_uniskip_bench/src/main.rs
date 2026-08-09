@@ -112,6 +112,13 @@ struct Cli {
     #[arg(long)]
     profile: bool,
 
+    /// Run all five R3 arms in ONE process against shared allocations, executing them in
+    /// a generated cyclic rotation each round so no arm keeps a fixed position in the
+    /// order. Emits one `SAMPLE` line per (round, arm) for `tools/factorial_table.py`.
+    /// Requires `--mode lsb-pair`; mutually exclusive with `--pair-arm`.
+    #[arg(long)]
+    factorial: bool,
+
     /// TEST-ONLY. Corrupt the window schedule and upload it UNCHECKED — the always-on
     /// validator would reject these streams, which is the point: it proves the device
     /// reads the tag's slot number rather than deriving it. `retarget` points one reuse at
@@ -218,6 +225,17 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             cli.mode.as_str()
         ));
     }
+    if cli.factorial {
+        if !cli.mode.uses_pair_arm() {
+            fail(format!(
+                "--factorial applies to --mode lsb-pair only; --mode {} has no R3 arms",
+                cli.mode.as_str()
+            ));
+        }
+        if cli.pair_arm.is_some() {
+            fail("--factorial runs every arm; it is mutually exclusive with --pair-arm".into());
+        }
+    }
     if !cli.mode.uses_pair_arm() && cli.pair_arm.is_some() {
         fail(format!(
             "--pair-arm applies to --mode lsb-pair only; --mode {} has no R3 arms",
@@ -263,6 +281,53 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         ));
     }
     config
+}
+
+/// The in-process balanced factorial. One harness, one set of allocations, both window
+/// descriptors resident; each round runs every arm once in a CYCLIC ROTATION of the arm
+/// list, so no arm ever holds a fixed position and any per-round drift is shared. Warmup
+/// rounds rotate identically. Every sample is emitted; nothing is summarized here.
+fn run_factorial(harness: &mut Harness, cli: &Cli, config: PassConfig) {
+    let arms = PairArm::FACTORIAL;
+    let mut round = |harness: &mut Harness, index: u32, timed: bool| {
+        for offset in 0..arms.len() {
+            let arm = arms[(index as usize + offset) % arms.len()];
+            harness
+                .run_pass_arm(arm)
+                .unwrap_or_else(|e| fail(format!("{} launch failed: {e}", arm.as_str())));
+            harness
+                .synchronize()
+                .unwrap_or_else(|e| fail(format!("{} failed: {e}", arm.as_str())));
+            if !timed {
+                continue;
+            }
+            let t = harness
+                .stage_times()
+                .unwrap_or_else(|e| fail(format!("stage timing failed: {e}")));
+            // `lde` and `fold` do not run in this mode; eval + finalize is the arm.
+            println!(
+                "SAMPLE {} {index} {} {:.6} {:.6}",
+                cli.term_order.as_str(),
+                arm.as_str(),
+                t.stage_ms[1],
+                t.stage_ms[2]
+            );
+        }
+    };
+    for i in 0..cli.warmup {
+        round(harness, i, false);
+    }
+    for i in 0..cli.iterations {
+        round(harness, cli.warmup + i, true);
+    }
+    println!(
+        "FACTORIAL done order={} warmup={} rounds={} arms={}",
+        cli.term_order.as_str(),
+        cli.warmup,
+        cli.iterations,
+        arms.len()
+    );
+    let _ = config;
 }
 
 fn main() {
@@ -314,7 +379,10 @@ fn main() {
     // AFTER `force_self_products` and `apply_term_order`. Built and validated even for
     // the control arm, which ships it as the all-`none` stream, so the machinery is
     // exercised on every run rather than only on the arms that read it.
-    let window = if config.pair_arm.uses_schedule() {
+    // The factorial runs `w`/`wt` itself, so it needs the PLANNED schedule even though
+    // `--pair-arm` is absent (they are mutually exclusive). Getting this wrong is silent:
+    // the window arms would run the all-`none` stream and read as identical to `wnone`.
+    let window = if config.pair_arm.uses_schedule() || cli.factorial {
         window::plan(&program)
     } else {
         window::WindowSchedule::empty(&program)
@@ -468,6 +536,26 @@ fn main() {
     if cli.window_poison {
         gpu_gkr_uniskip_bench::kernels::upload_poison_slots(true)
             .unwrap_or_else(|e| fail(format!("poison upload failed: {e}")));
+    }
+
+    if cli.factorial {
+        // Recorded in the log so the emitted table can never be read without knowing which
+        // schedule produced it.
+        println!(
+            "FACTORIAL schedule order={} slots={:?} refs={:?} reuses={} passes={}->{}",
+            cli.term_order.as_str(),
+            window.slot_source,
+            window.slot_refs,
+            window.reuses,
+            window.passes_without,
+            window.passes_with
+        );
+        assert!(
+            window.reuses > 0,
+            "the factorial needs a planned schedule; an empty one makes w indistinguishable from wnone"
+        );
+        run_factorial(&mut harness, &cli, config);
+        return;
     }
 
     for _ in 0..cli.warmup {

@@ -303,6 +303,21 @@ pub enum PairArm {
 }
 
 impl PairArm {
+    /// The factorial's arms in rotation order.
+    pub const FACTORIAL: [Self; 5] = [Self::Control, Self::T, Self::W, Self::Wt, Self::Wnone];
+
+    /// Compiled registers and the resulting blocks/SM on sm_120 (8-register allocation
+    /// granularity). `w`/`wnone` are 2-block arms: they are over the 80-register cliff, so
+    /// a contrast against the 3-block control is NOT occupancy-neutral.
+    pub fn occupancy(self) -> (u32, u32) {
+        match self {
+            Self::Control => (72, 3),
+            Self::T => (79, 3),
+            Self::W | Self::Wnone => (82, 2),
+            Self::Wt => (80, 3),
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Control => "control",
@@ -395,6 +410,10 @@ pub struct Harness {
     /// Set only on a window arm; when set it replaces `eval` and carries the side
     /// descriptor. The control path never touches either field.
     eval_window: Option<(WindowLaunch, UniskipWindowDesc)>,
+    /// Both window descriptors, resident together so the in-process factorial can switch
+    /// arms per round without reallocating or re-uploading anything.
+    window_tagged: UniskipWindowDesc,
+    window_none: UniskipWindowDesc,
     taps: [DeviceAllocation<u32>; CLASSES],
     /// One unused word per class in a fused mode — see [`EvalMode::materializes_coset`].
     cosets: [DeviceAllocation<u32>; CLASSES],
@@ -638,6 +657,8 @@ impl Harness {
             lde,
             eval,
             eval_window,
+            window_tagged: window,
+            window_none: UniskipWindowDesc::default(),
             taps,
             cosets,
             eq_low,
@@ -709,6 +730,41 @@ impl Harness {
         kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;
         self.events[3].record(&self.stream)?;
         self.run_fold()?;
+        self.events[4].record(&self.stream)
+    }
+
+    /// One pass with the eval stage forced to `arm` — the in-process factorial's unit of
+    /// work. Every arm shares this harness's backings, control descriptor and both window
+    /// descriptors, so a round differs only in which kernel runs. `lde` and `fold` are
+    /// absent in this mode, so the recorded stages are `eval` and `finalize` alone.
+    pub fn run_pass_arm(&mut self, arm: PairArm) -> CudaResult<()> {
+        self.events[0].record(&self.stream)?;
+        self.events[1].record(&self.stream)?;
+        match arm {
+            PairArm::Control => kernels::eval_lsb_pair(&self.desc, self.eval_blocks, &self.stream)?,
+            PairArm::T => kernels::eval_lsb_pair_lb(&self.desc, self.eval_blocks, &self.stream)?,
+            PairArm::W => kernels::eval_lsb_pair_win(
+                &self.desc,
+                &self.window_tagged,
+                self.eval_blocks,
+                &self.stream,
+            )?,
+            PairArm::Wt => kernels::eval_lsb_pair_win_lb(
+                &self.desc,
+                &self.window_tagged,
+                self.eval_blocks,
+                &self.stream,
+            )?,
+            PairArm::Wnone => kernels::eval_lsb_pair_win(
+                &self.desc,
+                &self.window_none,
+                self.eval_blocks,
+                &self.stream,
+            )?,
+        }
+        self.events[2].record(&self.stream)?;
+        kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;
+        self.events[3].record(&self.stream)?;
         self.events[4].record(&self.stream)
     }
 
