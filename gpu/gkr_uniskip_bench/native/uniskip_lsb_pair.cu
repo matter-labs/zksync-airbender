@@ -1,5 +1,9 @@
 #include "uniskip_lsb_pair.cuh"
 
+__device__ unsigned long long ab_gkr_uniskip_chain_calls;
+__device__ __constant__ u32 ab_gkr_uniskip_poison_slots;
+__device__ __constant__ u32 ab_gkr_uniskip_window_diag = AB_UNISKIP_WINDOW_DIAG_ON;
+
 namespace airbender::gkr_uniskip_bench {
 
 // Term execution at the lane's TWO taps x 2 cells. Same wire, same classes, same

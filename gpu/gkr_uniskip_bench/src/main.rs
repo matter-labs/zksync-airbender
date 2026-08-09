@@ -4,6 +4,7 @@ use clap::{CommandFactory, Parser};
 use era_cudart::device::{get_device, get_device_properties};
 use gpu_gkr_uniskip_bench::abi::{
     UNISKIP_CELLS, UNISKIP_COMPACT_DEFAULT_GROUPS, UNISKIP_LOG_TAPS, UNISKIP_SRC_E4_GLOBAL,
+    UNISKIP_WARPS_PER_BLOCK,
 };
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::compact::BankPerm;
@@ -14,7 +15,7 @@ use gpu_gkr_uniskip_bench::harness::{
 };
 use gpu_gkr_uniskip_bench::kernels::NvtxRange;
 use gpu_gkr_uniskip_bench::synth::{generate, Census, TermOrder};
-use gpu_gkr_uniskip_bench::window;
+use gpu_gkr_uniskip_bench::window::{self, WindowMutation};
 
 /// Standalone CUDA benchmark for one uniskip sumcheck pass (k = 4).
 #[derive(Parser)]
@@ -110,6 +111,23 @@ struct Cli {
     /// Needs `--iterations >= 1`.
     #[arg(long)]
     profile: bool,
+
+    /// TEST-ONLY. Corrupt the window schedule and upload it UNCHECKED — the always-on
+    /// validator would reject these streams, which is the point: it proves the device
+    /// reads the tag's slot number rather than deriving it. `retarget` points one reuse at
+    /// a different already-filled slot. Requires a window arm.
+    #[arg(long, value_enum)]
+    window_mutate: Option<WindowMutation>,
+
+    /// TEST-ONLY, diagnostic builds only (`GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1`): report
+    /// the device chain-execution counter per warp-program walk, and optionally poison
+    /// every slot's retained copy after its fill so a later reuse must change `q`.
+    #[arg(long)]
+    window_count: bool,
+
+    /// TEST-ONLY, diagnostic builds only. See `--window-count`.
+    #[arg(long)]
+    window_poison: bool,
 
     /// Print the 32 evaluations as raw hex words, one cell per line. Two runs that
     /// claim the same `q` can then be compared device-to-device, without going through
@@ -304,6 +322,23 @@ fn main() {
     if let Err(e) = window::validate(&program, &window) {
         fail(format!("window schedule is invalid: {e}"));
     }
+    // TEST-ONLY unchecked path: the mutation is applied AFTER validation and deliberately
+    // not re-validated, because every mutation here is exactly what the validator rejects.
+    let window = match cli.window_mutate {
+        None => window,
+        Some(kind) => {
+            if !config.pair_arm.uses_schedule() {
+                fail("--window-mutate needs a window arm with a schedule (w or wt)".into());
+            }
+            let mutated = window::mutate(&program, &window, kind);
+            println!("window mutation      {kind:?} applied UNCHECKED (test-only)");
+            assert!(
+                window::validate(&program, &mutated).is_err(),
+                "a mutation the validator accepts is not a mutation"
+            );
+            mutated
+        }
+    };
 
     println!("gpu_gkr_uniskip_bench config");
     println!("  log_trace           {}", cli.log_trace);
@@ -421,6 +456,22 @@ fn main() {
         gib(bytes.total)
     );
 
+    if cli.window_count || cli.window_poison {
+        let diag = gpu_gkr_uniskip_bench::kernels::window_diag_build()
+            .unwrap_or_else(|e| fail(format!("diagnostic probe failed: {e}")));
+        if !diag {
+            fail(
+                "--window-count / --window-poison need a build with \
+                 GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1"
+                    .into(),
+            );
+        }
+    }
+    if cli.window_poison {
+        gpu_gkr_uniskip_bench::kernels::upload_poison_slots(true)
+            .unwrap_or_else(|e| fail(format!("poison upload failed: {e}")));
+    }
+
     for _ in 0..cli.warmup {
         harness
             .run_pass()
@@ -444,6 +495,18 @@ fn main() {
             harness
                 .stage_times()
                 .unwrap_or_else(|e| fail(format!("stage timing failed: {e}"))),
+        );
+    }
+
+    if cli.window_count {
+        let calls = gpu_gkr_uniskip_bench::kernels::take_chain_calls()
+            .unwrap_or_else(|e| fail(format!("chain-counter readback failed: {e}")));
+        // One walk per warp; the counter ticks once per warp per chain execution.
+        let warps = u64::from(harness.eval_blocks()) * UNISKIP_WARPS_PER_BLOCK as u64;
+        let passes = u64::from(cli.warmup) + samples.len().max(1) as u64;
+        println!(
+            "chain executions     {calls} total / {warps} warps / {passes} passes = {} per warp-program walk",
+            calls / (warps * passes)
         );
     }
 

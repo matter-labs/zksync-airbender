@@ -2,6 +2,25 @@
 
 #include "uniskip_lsb.cuh"
 
+// WINDOW DIAGNOSTICS, compile-gated. `AB_UNISKIP_WINDOW_DIAG` is never defined in a
+// shipped build, so the emitted SASS is identical with and without this block; the Task 2
+// gate checks exactly that. `ab_gkr_uniskip_chain_calls` counts chain EXECUTIONS once per
+// warp (the chain's control flow is warp-uniform), which is the decisive proof that a
+// reuse tag actually skips production. `ab_gkr_uniskip_poison_slots` corrupts a slot's
+// RETAINED copy after the fill has already handed its own `c` back, so only a later reuse
+// can see it.
+#ifdef AB_UNISKIP_WINDOW_DIAG
+#define AB_UNISKIP_WINDOW_DIAG_ON 1
+#else
+#define AB_UNISKIP_WINDOW_DIAG_ON 0
+#endif
+
+// The symbols exist in every build so the host needs no cfg; only the code that touches
+// them is gated, and `ab_gkr_uniskip_window_diag` tells the host which build it has.
+EXTERN __device__ unsigned long long ab_gkr_uniskip_chain_calls;
+EXTERN __device__ __constant__ u32 ab_gkr_uniskip_poison_slots;
+EXTERN __device__ __constant__ u32 ab_gkr_uniskip_window_diag;
+
 namespace airbender::gkr_uniskip_bench {
 
 // v3 R2 GEOMETRY: PAIR-RESIDENT radix-2. R0 binds lane = tap, so a butterfly's two halves
@@ -77,6 +96,10 @@ DEVICE_FORCEINLINE void uniskip_pair_dit(uniskip_pair_regs &x, const bf tw) {
 // R0's 7 * 16 = 112. Six re-pair shuffles against R0's eight partner-fetches, and each
 // serves a pair rather than an element.
 DEVICE_FORCEINLINE void uniskip_pair_chain(uniskip_pair_regs &x, const u32 lane, const bf tw[UNISKIP_PAIR_TWIDDLES]) {
+#if AB_UNISKIP_WINDOW_DIAG_ON
+  if ((threadIdx.x & 31) == 0)
+    atomicAdd(&ab_gkr_uniskip_chain_calls, 1ull);
+#endif
   uniskip_pair_dif(x, tw[0]); // bit 3
   uniskip_pair_repair<4>(x, lane);
   uniskip_pair_dif(x, tw[1]); // bit 2
@@ -188,7 +211,13 @@ struct uniskip_win_slots {
   bf lo0, hi0, lo1, hi1, lo2, hi2, lo3, hi3;
 };
 
-DEVICE_FORCEINLINE void uniskip_win_store(uniskip_win_slots &s, const u32 slot, const bf lo, const bf hi) {
+DEVICE_FORCEINLINE void uniskip_win_store(uniskip_win_slots &s, const u32 slot, bf lo, bf hi) {
+#if AB_UNISKIP_WINDOW_DIAG_ON
+  if (ab_gkr_uniskip_poison_slots) {
+    lo = bf::add(lo, bf::ONE());
+    hi = bf::add(hi, bf::ONE());
+  }
+#endif
   switch (slot) {
   case 0:
     s.lo0 = lo;

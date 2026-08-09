@@ -305,6 +305,49 @@ pub fn validate(program: &SynthProgram, schedule: &WindowSchedule) -> Result<(),
     Ok(())
 }
 
+/// TEST-ONLY schedule corruptions. Each is something [`validate`] rejects, so they can
+/// only reach the device through an unchecked upload — which is exactly what makes them
+/// evidence: `Retarget` proves the kernel reads the tag's slot number rather than
+/// recovering it from the operand's source id, a substitution the parity matrix alone
+/// cannot see.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum WindowMutation {
+    /// Point the first reuse at a different slot that is already filled with another
+    /// source.
+    Retarget,
+}
+
+pub fn mutate(
+    program: &SynthProgram,
+    schedule: &WindowSchedule,
+    kind: WindowMutation,
+) -> WindowSchedule {
+    let mut out = schedule.clone();
+    assert!(
+        schedule.slot_source.len() >= 2,
+        "a retarget needs two live slots"
+    );
+    match kind {
+        WindowMutation::Retarget => {
+            for op in program.resolver_operands() {
+                let (a, b) = unpack(out.tags[op.record]).expect("built schedules decode");
+                let tag = if op.operand == 0 { a } else { b };
+                if let WindowTag::Reuse(slot) = tag {
+                    let other = (slot + 1) % out.slot_source.len() as u8;
+                    let swapped = WindowTag::Reuse(other);
+                    out.tags[op.record] = if op.operand == 0 {
+                        pack(swapped, b)
+                    } else {
+                        pack(a, swapped)
+                    };
+                    return out;
+                }
+            }
+            panic!("no reuse to retarget");
+        }
+    }
+}
+
 #[cfg(test)]
 mod cpu_tests {
     use super::*;
