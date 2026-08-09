@@ -18,20 +18,33 @@
 use crate::abi::*;
 use crate::synth::SynthProgram;
 
-/// Bytes of one accounting unit: a `bf` source's produced coset pair `c[2]`.
-pub const UNISKIP_COSET_UNIT_BYTES: usize = 8;
-/// Units an `e4` source occupies: `[c[0] 16 B][c[1] 16 B]`, c-object-major.
-pub const UNISKIP_COSET_E4_UNITS: u32 = 4;
-/// Byte alignment an `e4` span needs so both halves load as `LDL.128`.
-pub const UNISKIP_COSET_E4_ALIGN: usize = 16;
-/// Units of the device's static local frame. Sized once at the default census's `all-59`
-/// footprint so every cached arm compiles to ONE body with ONE frame — varying the frame
-/// per arm would confound codegen with footprint. A program needing more is a plan-time
-/// rejection, not a silent truncation.
-pub const UNISKIP_COSET_FRAME_UNITS: u32 = 92;
-// `cache_slot` encodes the BASE alone, so bases stay representable for any frame up to
-// 256 units; only `0xff` itself collides with the uncached sentinel (checked per base).
+// The layout constants live in `abi` beside the wire structs they describe; the frame is
+// sized once at the default census's `all-59` footprint so every cached arm compiles to
+// ONE body with ONE frame. A program needing more is a plan-time rejection, not a silent
+// truncation. `cache_slot` encodes the BASE alone, so bases stay representable for any
+// frame up to 256 units; only `0xff` collides with the sentinel (checked per base).
 const _: () = assert!(UNISKIP_COSET_FRAME_UNITS <= 256);
+
+/// Which class the prologue produces FIRST. Purely a table-emission order: the kernel
+/// walks whatever the host uploaded, so this knob costs no SASS. Spec 3.3 pins
+/// `E4First` as the production order; `BfFirst` is the capacity-arm diagnostic, since
+/// whichever class is produced last is the one still warm in L1 at walk entry.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum PrologueOrder {
+    #[default]
+    E4First,
+    BfFirst,
+}
+
+impl PrologueOrder {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::E4First => "e4first",
+            Self::BfFirst => "bffirst",
+        }
+    }
+}
 
 /// The R4 arms. `Control` runs the uncached body; every other arm runs the cached body
 /// and differs only in uploaded state — `Cache0` with an empty admitted set, which prices
@@ -152,6 +165,40 @@ impl CacheArmState {
     /// Prologue rows in production order — E4 first, then BF (spec-pinned).
     pub fn prologue(&self) -> impl Iterator<Item = PrologueEntry> + '_ {
         self.prologue_e4.iter().chain(&self.prologue_bf).copied()
+    }
+
+    /// Prologue rows with the class order chosen at launch.
+    pub fn prologue_in(
+        &self,
+        order: PrologueOrder,
+    ) -> Box<dyn Iterator<Item = PrologueEntry> + '_> {
+        match order {
+            PrologueOrder::E4First => {
+                Box::new(self.prologue_e4.iter().chain(&self.prologue_bf).copied())
+            }
+            PrologueOrder::BfFirst => {
+                Box::new(self.prologue_bf.iter().chain(&self.prologue_e4).copied())
+            }
+        }
+    }
+
+    /// The uploaded table. SLOT ASSIGNMENT never moves — only the row order does, which is
+    /// the whole of the production-order knob.
+    pub fn descriptor(&self, order: PrologueOrder) -> UniskipCacheDesc {
+        let mut desc = UniskipCacheDesc {
+            count: (self.prologue_e4.len() + self.prologue_bf.len()) as u32,
+            e4_count: self.prologue_e4.len() as u32,
+            bf_count: self.prologue_bf.len() as u32,
+            ..Default::default()
+        };
+        for (slot, row) in self.prologue_in(order).enumerate() {
+            desc.entry[slot] = UniskipPrologueEntry {
+                source: row.source,
+                base: row.base,
+                reserved: 0,
+            };
+        }
+        desc
     }
 }
 
@@ -581,6 +628,53 @@ mod cpu_tests {
             UNISKIP_COSET_FRAME_UNITS as usize * UNISKIP_COSET_UNIT_BYTES,
             736
         );
+    }
+
+    /// The uploaded table mirrors `native/uniskip_abi.cuh`; drift there is silent
+    /// corruption, so the layout and the row contents are both pinned.
+    #[test]
+    fn cpu_cache_descriptor_layout_and_rows() {
+        assert_eq!(size_of::<UniskipPrologueEntry>(), 4);
+        assert_eq!(align_of::<UniskipPrologueEntry>(), 4);
+        assert_eq!(align_of::<UniskipCacheDesc>(), 16);
+        assert_eq!(
+            size_of::<UniskipCacheDesc>(),
+            4 * UNISKIP_COSET_FRAME_UNITS as usize + 16
+        );
+        assert_eq!(UNISKIP_COSET_UNIT_BYTES, 8);
+        assert_eq!(UNISKIP_COSET_E4_UNITS, 4);
+        assert_eq!(UNISKIP_COSET_E4_ALIGN, 16);
+        assert_eq!(UNISKIP_COSET_FRAME_UNITS, 92);
+
+        let p = program(TermOrder::Locality);
+        let state = plan_arm(&p, CacheArm::AllRepeat).unwrap();
+        let e4 = state.descriptor(PrologueOrder::E4First);
+        let bf = state.descriptor(PrologueOrder::BfFirst);
+        assert_eq!((e4.count, e4.e4_count, e4.bf_count), (55, 11, 44));
+        assert_eq!((bf.count, bf.e4_count, bf.bf_count), (55, 11, 44));
+
+        // Only the ROW ORDER moves; slot assignment is identical, which is the whole of
+        // the production-order knob.
+        let base_of = |d: &UniskipCacheDesc| {
+            let mut v: Vec<(u16, u8)> = d.entry[..d.count as usize]
+                .iter()
+                .map(|e| (e.source, e.base))
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(base_of(&e4), base_of(&bf));
+        assert_eq!(e4.entry[0].source, state.prologue_e4[0].source);
+        assert_eq!(bf.entry[0].source, state.prologue_bf[0].source);
+        for e in &e4.entry[..e4.count as usize] {
+            assert_ne!(e.base, UNISKIP_CACHE_SLOT_NONE);
+            assert_eq!(e.reserved, 0);
+        }
+        // Unused rows stay zeroed, and cache0 uploads an empty table.
+        let empty = plan_arm(&p, CacheArm::Cache0)
+            .unwrap()
+            .descriptor(PrologueOrder::E4First);
+        assert_eq!((empty.count, empty.e4_count, empty.bf_count), (0, 0, 0));
     }
 
     #[test]

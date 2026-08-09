@@ -130,6 +130,52 @@ pub const UNISKIP_CACHE_SLOT_NONE: u8 = 0xff;
 /// Entry of a free unit in the inverse (unit -> source) fill plan.
 pub const UNISKIP_CACHE_FILL_NONE: u16 = 0xffff;
 
+// v3 R4 coset cache. A DIFFERENT cache from the v2 shared pool above: per-thread local
+// memory holding produced coset PAIRS. Mirrors `native/uniskip_abi.cuh`; the asserts in
+// `cpu_coset_cache_abi` and the `static_assert`s there are the only guard.
+/// Bytes of one accounting unit: a `bf` source's produced `c[2]`.
+pub const UNISKIP_COSET_UNIT_BYTES: usize = 8;
+/// Units an `e4` source occupies: `[c[0] 16 B][c[1] 16 B]`, c-object-major.
+pub const UNISKIP_COSET_E4_UNITS: u32 = 4;
+/// Byte alignment an `e4` span needs so both halves move as one 128-bit access.
+pub const UNISKIP_COSET_E4_ALIGN: usize = 16;
+/// Units of the device's static local frame, sized once at the default census's `all-59`
+/// footprint so every cached arm is one body with one frame.
+pub const UNISKIP_COSET_FRAME_UNITS: u32 = 92;
+
+/// One prologue row: the SEMANTIC source id plus its base unit.
+#[repr(C, align(4))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct UniskipPrologueEntry {
+    pub source: u16,
+    pub base: u8,
+    pub reserved: u8,
+}
+
+/// The prologue table, walked in the order the host emits it — which is what makes the
+/// production-order knob a different upload rather than a different kernel.
+#[repr(C, align(16))]
+#[derive(Clone, Copy, Debug)]
+pub struct UniskipCacheDesc {
+    pub entry: [UniskipPrologueEntry; UNISKIP_COSET_FRAME_UNITS as usize],
+    pub count: u32,
+    pub e4_count: u32,
+    pub bf_count: u32,
+    pub reserved: u32,
+}
+
+impl Default for UniskipCacheDesc {
+    fn default() -> Self {
+        Self {
+            entry: [UniskipPrologueEntry::default(); UNISKIP_COSET_FRAME_UNITS as usize],
+            count: 0,
+            e4_count: 0,
+            bf_count: 0,
+            reserved: 0,
+        }
+    }
+}
+
 /// `bf` limbs of one element of a source class — the component width the cache plan
 /// prices slabs and resolver work in.
 pub const fn component_width(source_class: u8) -> u32 {

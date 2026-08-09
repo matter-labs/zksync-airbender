@@ -8,7 +8,7 @@ use gpu_gkr_uniskip_bench::abi::{
 };
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::compact::BankPerm;
-use gpu_gkr_uniskip_bench::coset_cache::{self, CacheArm};
+use gpu_gkr_uniskip_bench::coset_cache::{self, CacheArm, PrologueOrder};
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::PairArm;
 use gpu_gkr_uniskip_bench::harness::{
@@ -106,6 +106,20 @@ struct Cli {
     /// on every `lsb-pair` run.
     #[arg(long, value_enum)]
     cache_arm: Option<CacheArm>,
+
+    /// Run the 128-thread cached arm WITHOUT `__launch_bounds__(128, 7)`. Unbounded it
+    /// takes 75 registers = 6 blocks/SM against control128's 7, so the cache-vs-control
+    /// contrast would carry an occupancy step; the bounded sibling is the measurement arm
+    /// and this flag prices what the bound costs. 128-thread cached arms only.
+    #[arg(long)]
+    no_cache_launch_bounds: bool,
+
+    /// Class the v3 R4 prologue produces FIRST. `e4first` is the spec's pinned production
+    /// order; `bffirst` is the capacity-arm diagnostic — whichever class is produced last
+    /// is the one still warm in L1 at walk entry. A table-emission order only: the kernel
+    /// walks what the host uploads, so the two cost the same SASS.
+    #[arg(long, value_enum)]
+    prologue_order: Option<PrologueOrder>,
 
     /// Threads per eval block in `--mode lsb-pair`: 256 (the R2 shape) or 128 (v3 R4's
     /// second block size — 4 warps, 16 rows per block, doubled grid). 128 is a distinct
@@ -329,6 +343,37 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             );
         }
     }
+    if let Some(order) = cli.prologue_order {
+        // Spec 3.3: the alternate class order is a capacity-arm diagnostic, not a design
+        // fork — it says nothing on an arm whose footprint fits comfortably.
+        let arm = cli.cache_arm.unwrap_or_default();
+        if order != PrologueOrder::E4First && !matches!(arm, CacheArm::AllRepeat | CacheArm::All59)
+        {
+            fail(format!(
+                "--prologue-order {} is a capacity-arm diagnostic; it applies to \
+                 --cache-arm allrepeat or all59, not {}",
+                order.as_str(),
+                arm.as_str()
+            ));
+        }
+        if !cli.mode.uses_pair_arm() {
+            fail(format!(
+                "--prologue-order applies to --mode lsb-pair only; --mode {} has no \
+                 coset-cache prologue",
+                cli.mode.as_str()
+            ));
+        }
+    }
+    if cli.no_cache_launch_bounds
+        && !(block_threads as usize == UNISKIP_PAIR_THREADS_128
+            && cli.cache_arm.is_some_and(|a| a.uses_cache()))
+    {
+        fail(
+            "--no-cache-launch-bounds applies to a 128-thread cached arm only; at 256 the \
+             cached body already holds the control's block count"
+                .into(),
+        );
+    }
     if cli.cache_arm.is_some() {
         if !cli.mode.uses_pair_arm() {
             fail(format!(
@@ -367,6 +412,8 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         bank_perm: cli.bank_perm.unwrap_or_default(),
         pair_arm: cli.pair_arm.unwrap_or_default(),
         cache_arm: cli.cache_arm.unwrap_or_default(),
+        prologue_order: cli.prologue_order.unwrap_or_default(),
+        cache_launch_bounds: !cli.no_cache_launch_bounds,
         block_threads,
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
@@ -610,7 +657,7 @@ fn main() {
             println!(
                 "  unavailable         {} (past the {}-unit frame at this census)",
                 unavailable.join(", "),
-                coset_cache::UNISKIP_COSET_FRAME_UNITS
+                gpu_gkr_uniskip_bench::abi::UNISKIP_COSET_FRAME_UNITS
             );
         }
         // The SELECTED arm must be plannable — that failure is fatal, and it is a
@@ -638,16 +685,6 @@ fn main() {
             "  per walk            {} chains ({} without), {} removals, {} stores, {} loads",
             c.chains, c.passes_without, c.removals, c.store_instrs, c.load_instrs
         );
-        // Checked here, not in `pass_config`: an arm must be constructible at this census
-        // before its implementation status is worth reporting.
-        if config.cache_arm.uses_cache() {
-            fail(format!(
-                "--cache-arm {} is not yet implemented: the R4 cached kernels land in \
-                 Task 1B. The host plan for every arm is built and validated on any \
-                 --mode lsb-pair run.",
-                config.cache_arm.as_str()
-            ));
-        }
     }
     println!(
         "cache plan{}{}",

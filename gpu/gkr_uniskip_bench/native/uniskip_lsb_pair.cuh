@@ -200,6 +200,129 @@ DEVICE_FORCEINLINE void uniskip_pair_resolve(const uniskip_vm_desc &desc, const 
 }
 
 // ---------------------------------------------------------------------------------------
+// v3 R4 COSET CACHE. Per-thread local frame holding produced coset pairs for the admitted
+// sources. `h[2]` is still loaded at every reference; only the chain is skipped.
+// ---------------------------------------------------------------------------------------
+
+// The frame. `u32` words rather than `bf` so every access states its WIDTH: a `bf` unit is
+// one `uint2` (LDL.64/STL.64) and an `e4` span is two `uint4` (LDL.128/STL.128). A base is
+// a multiple of four units for `e4`, i.e. a multiple of 32 B, so both halves are aligned.
+struct alignas(16) uniskip_coset_cache {
+  u32 word[2 * UNISKIP_COSET_FRAME_UNITS];
+};
+static_assert(sizeof(uniskip_coset_cache) == 736);
+static_assert(alignof(uniskip_coset_cache) == 16);
+
+DEVICE_FORCEINLINE void uniskip_coset_store(uniskip_coset_cache &cache, const u32 base, const bf c[2]) {
+  *reinterpret_cast<uint2 *>(&cache.word[2 * base]) = make_uint2(bf::into_raw_u32(c[0]), bf::into_raw_u32(c[1]));
+}
+
+DEVICE_FORCEINLINE void uniskip_coset_load(const uniskip_coset_cache &cache, const u32 base, bf c[2]) {
+  const uint2 v = *reinterpret_cast<const uint2 *>(&cache.word[2 * base]);
+  c[0] = bf(v.x);
+  c[1] = bf(v.y);
+}
+
+// c-object-major: `c[0]` occupies the span's first 16 B and `c[1]` the second. Limb-major
+// would force a repack after the two loads - exactly the register motion this rung avoids.
+DEVICE_FORCEINLINE uint4 uniskip_coset_pack(const e4 x) {
+  uint4 v;
+  v.x = bf::into_raw_u32(x.base_coefficient_from_flat_idx(0));
+  v.y = bf::into_raw_u32(x.base_coefficient_from_flat_idx(1));
+  v.z = bf::into_raw_u32(x.base_coefficient_from_flat_idx(2));
+  v.w = bf::into_raw_u32(x.base_coefficient_from_flat_idx(3));
+  return v;
+}
+
+DEVICE_FORCEINLINE e4 uniskip_coset_unpack(const uint4 v) {
+  const bf limbs[4] = {bf(v.x), bf(v.y), bf(v.z), bf(v.w)};
+  return e4(limbs);
+}
+
+DEVICE_FORCEINLINE void uniskip_coset_store(uniskip_coset_cache &cache, const u32 base, const e4 c[2]) {
+  *reinterpret_cast<uint4 *>(&cache.word[2 * base]) = uniskip_coset_pack(c[0]);
+  *reinterpret_cast<uint4 *>(&cache.word[2 * base + 4]) = uniskip_coset_pack(c[1]);
+}
+
+DEVICE_FORCEINLINE void uniskip_coset_load(const uniskip_coset_cache &cache, const u32 base, e4 c[2]) {
+  c[0] = uniskip_coset_unpack(*reinterpret_cast<const uint4 *>(&cache.word[2 * base]));
+  c[1] = uniskip_coset_unpack(*reinterpret_cast<const uint4 *>(&cache.word[2 * base + 4]));
+}
+
+// The H load alone. Same text as the control's first two lines, duplicated rather than
+// extracted so that `uniskip_pair_resolve` - and with it the frozen control's SASS - is
+// not touched. A cached reference still reloads H from `addr`; only `c` is retained.
+DEVICE_FORCEINLINE void uniskip_pair_load_h(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const u16 source_id, bf h[2]) {
+  const uniskip_source_record rec = desc.source[source_id];
+  const bf *base = reinterpret_cast<const bf *>(desc.tap_bases[rec.addr >> 7].base);
+  h[0] = load<bf, ld_modifier::ca>(base, uniskip_pair_offset(desc, rec, lane, 0));
+  h[1] = load<bf, ld_modifier::ca>(base, uniskip_pair_offset(desc, rec, lane, 1));
+}
+
+DEVICE_FORCEINLINE void uniskip_pair_load_h(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const u16 source_id, e4 h[2]) {
+  const uniskip_source_record rec = desc.source[source_id];
+  const e4 *base = reinterpret_cast<const e4 *>(desc.tap_bases[rec.addr >> 7].base);
+  h[0] = load<e4, ld_modifier::ca>(base, uniskip_pair_offset(desc, rec, lane, 0));
+  h[1] = load<e4, ld_modifier::ca>(base, uniskip_pair_offset(desc, rec, lane, 1));
+}
+
+// The prologue: produce each admitted source once into this thread's frame, in the order
+// the HOST emitted the table. The store happens ONCE after the resolver returns, never per
+// limb - the e4 resolver only has `c[0]`/`c[1]` complete at that point.
+//
+// ONE walking loop with a class branch, not two typed loops. The class branch is
+// warp-uniform (every thread walks the same rows), and this is what makes PRODUCTION ORDER
+// a host-side property: the alternate BF-first variant is a different upload of the same
+// table, not a second kernel. Two typed loops would pin the class order in the kernel text
+// and the diagnostic would need its own SASS body. Both bodies appear once either way.
+DEVICE_FORCEINLINE void uniskip_coset_prologue(const uniskip_vm_desc &desc, const uniskip_cache_desc &plan, const uniskip_pair_lane &lane,
+                                               uniskip_coset_cache &cache) {
+  for (u32 i = 0; i < plan.count; ++i) {
+    const uniskip_prologue_entry row = plan.entry[i];
+    if (desc.source[row.source].source_class == UNISKIP_SRC_E4_GLOBAL) {
+      e4 h[2], c[2];
+      uniskip_pair_resolve(desc, lane, row.source, h, c);
+      uniskip_coset_store(cache, row.base, c);
+    } else {
+      bf h[2], c[2];
+      uniskip_pair_resolve(desc, lane, row.source, h, c);
+      uniskip_coset_store(cache, row.base, c);
+    }
+  }
+}
+
+// The cached resolve. `h` is loaded exactly as the control loads it; only `c` changes
+// provenance. Admission is source-global, so the disposition rides the record byte the
+// resolver already fetches - there is no per-record tag and no two-operand problem.
+template <typename T>
+DEVICE_FORCEINLINE void uniskip_pair_resolve_cached(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const u16 source_id,
+                                                    const uniskip_coset_cache &cache, T h[2], T c[2]) {
+  const u32 base = desc.source[source_id].cache_slot;
+  if (base == UNISKIP_CACHE_SLOT_NONE) {
+    uniskip_pair_resolve(desc, lane, source_id, h, c);
+    return;
+  }
+  uniskip_pair_load_h(desc, lane, source_id, h);
+  uniskip_coset_load(cache, base, c);
+}
+
+// W = 0 duplicate rule under the cache: a repeated operand inside one term still resolves
+// once, so a self-product performs no second load and no second chain.
+template <typename T>
+DEVICE_FORCEINLINE void uniskip_pair_resolve_second_cached(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const uniskip_term term,
+                                                           const uniskip_coset_cache &cache, const T ah[2], const T ac[2], T bh[2], T bc[2]) {
+  if (term.source_b == term.source_a) {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k) {
+      bh[k] = ah[k];
+      bc[k] = ac[k];
+    }
+    return;
+  }
+  uniskip_pair_resolve_cached(desc, lane, term.source_b, cache, bh, bc);
+}
+
+// ---------------------------------------------------------------------------------------
 // v3 R3 WINDOW. Coset-only: a slot retains one BF source's produced `c[2]` (2 regs/lane);
 // `h[2]` is still loaded on reuse. A reuse therefore skips exactly the shuffle-NTT chain
 // and its twist for that operand resolution, which is the whole saving.

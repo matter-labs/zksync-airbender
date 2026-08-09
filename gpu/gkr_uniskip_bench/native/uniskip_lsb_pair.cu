@@ -130,6 +130,133 @@ DEVICE_FORCEINLINE void uniskip_eval_pair_body(const uniskip_pair_desc &desc, co
   }
 }
 
+// v3 R4 CACHED TERM BODY. A separate text from `uniskip_eval_pair_body` on purpose: the R2
+// control is source-frozen, so it cannot be templated or wrapped without putting its
+// emitted SASS at risk. Differences from the control are exactly the resolve calls, which
+// take the frame and consult the record's `cache_slot`. Admission is source-global, so
+// every operand - A, B, group member, either class - carries its own disposition and the
+// R3 two-operand problem cannot recur.
+DEVICE_FORCEINLINE void uniskip_eval_pair_cached_body(const uniskip_pair_desc &desc, const uniskip_pair_lane &lane, const uniskip_coset_cache &cache,
+                                                      e4 acc_h[2], e4 acc_c[2]) {
+#pragma unroll
+  for (u32 k = 0; k < 2; ++k) {
+    acc_h[k] = e4::ZERO();
+    acc_c[k] = e4::ZERO();
+  }
+
+  for (u32 pc = 0; pc < desc.record_count;) {
+    const uniskip_term term = desc.program[pc];
+    const e4 coeff = ab_gkr_uniskip_coeff_bank[term.coeff];
+    if (term.term_class == UNISKIP_CLASS_GROUP_BF) {
+      const u32 arity = term.source_a;
+      bf sum_h[2], sum_c[2];
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        sum_h[k] = bf::ZERO();
+        sum_c[k] = bf::ZERO();
+      }
+      for (u32 m = 1; m <= arity; ++m) {
+        const uniskip_term member = desc.program[pc + m];
+        bf ah[2], ac[2];
+        uniskip_pair_resolve_cached(desc, lane, member.source_a, cache, ah, ac);
+        if (member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF) {
+          bf bh[2], bc[2];
+          uniskip_pair_resolve_second_cached(desc, lane, member, cache, ah, ac, bh, bc);
+#pragma unroll
+          for (u32 k = 0; k < 2; ++k) {
+            ah[k] = bf::mul(ah[k], bh[k]);
+            ac[k] = bf::mul(ac[k], bc[k]);
+          }
+        }
+        if (member.coeff == UNISKIP_IMMEDIATE_ONE) {
+#pragma unroll
+          for (u32 k = 0; k < 2; ++k) {
+            sum_h[k] = bf::add(sum_h[k], ah[k]);
+            sum_c[k] = bf::add(sum_c[k], ac[k]);
+          }
+        } else if (member.coeff == UNISKIP_IMMEDIATE_NEG_ONE) {
+#pragma unroll
+          for (u32 k = 0; k < 2; ++k) {
+            sum_h[k] = bf::sub(sum_h[k], ah[k]);
+            sum_c[k] = bf::sub(sum_c[k], ac[k]);
+          }
+        } else {
+          const bf immediate = desc.immediates[member.coeff - UNISKIP_IMMEDIATE_RESERVED];
+#pragma unroll
+          for (u32 k = 0; k < 2; ++k) {
+            sum_h[k] = bf::fma(immediate, ah[k], sum_h[k]);
+            sum_c[k] = bf::fma(immediate, ac[k], sum_c[k]);
+          }
+        }
+      }
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, sum_h[k], acc_h[k]);
+        acc_c[k] = e4::fma(coeff, sum_c[k], acc_c[k]);
+      }
+      pc += arity + 1;
+      continue;
+    }
+    switch (term.term_class) {
+    case UNISKIP_CLASS_LINEAR_BF: {
+      bf ah[2], ac[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, ah[k], acc_h[k]);
+        acc_c[k] = e4::fma(coeff, ac[k], acc_c[k]);
+      }
+      break;
+    }
+    case UNISKIP_CLASS_LINEAR_E4: {
+      e4 ah[2], ac[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, ah[k], acc_h[k]);
+        acc_c[k] = e4::fma(coeff, ac[k], acc_c[k]);
+      }
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_BF_BF: {
+      bf ah[2], ac[2], bh[2], bc[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+      uniskip_pair_resolve_second_cached(desc, lane, term, cache, ah, ac, bh, bc);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, bf::mul(ah[k], bh[k]), acc_h[k]);
+        acc_c[k] = e4::fma(coeff, bf::mul(ac[k], bc[k]), acc_c[k]);
+      }
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_BF_E4: {
+      bf ah[2], ac[2];
+      e4 bh[2], bc[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+      uniskip_pair_resolve_cached(desc, lane, term.source_b, cache, bh, bc);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, e4::mul(bh[k], ah[k]), acc_h[k]);
+        acc_c[k] = e4::fma(coeff, e4::mul(bc[k], ac[k]), acc_c[k]);
+      }
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_E4_E4: {
+      e4 ah[2], ac[2], bh[2], bc[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+      uniskip_pair_resolve_second_cached(desc, lane, term, cache, ah, ac, bh, bc);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, e4::mul(ah[k], bh[k]), acc_h[k]);
+        acc_c[k] = e4::fma(coeff, e4::mul(ac[k], bc[k]), acc_c[k]);
+      }
+      break;
+    }
+    }
+    ++pc;
+  }
+}
+
 // v3 R2: LSB lane-striped uniskip at W = 0 with a PAIR-RESIDENT producer. A block is
 // 8 warps x 4 groups = 32 logical rows; `finalize` and the partials layout are R0's.
 //
@@ -404,6 +531,44 @@ EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_128_kernel(const __grid_cons
   e4 acc_h[2], acc_c[2];
   uniskip_eval_pair_body(desc, lane, acc_h, acc_c);
   uniskip_pair_epilogue<UNISKIP_PAIR_WARPS_128>(desc, lane, acc_h, acc_c, plane);
+}
+
+// v3 R4 CACHED KERNELS - one function per block size, sharing the device body. The frame is
+// C_max-sized for EVERY arm, so all arms are one SASS body varying only in uploaded state;
+// a per-arm frame would confound codegen with footprint. `cache0` is this same kernel with
+// an all-sentinel record clone and an empty table, which prices the fixed machinery the way
+// R3's `wnone` priced the window's.
+template <u32 WARPS> DEVICE_FORCEINLINE void uniskip_eval_pair_cached(const uniskip_pair_desc &desc, const uniskip_cache_desc &plan, e4 *plane) {
+  const uniskip_pair_lane lane = uniskip_pair_lane_of<WARPS>(threadIdx.x);
+  uniskip_coset_cache cache;
+  uniskip_coset_prologue(desc, plan, lane, cache);
+  e4 acc_h[2], acc_c[2];
+  uniskip_eval_pair_cached_body(desc, lane, cache, acc_h, acc_c);
+  uniskip_pair_epilogue<WARPS>(desc, lane, acc_h, acc_c, plane);
+}
+
+EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_cached_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                  const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_WARPS_PER_BLOCK * UNISKIP_CELLS];
+  uniskip_eval_pair_cached<UNISKIP_WARPS_PER_BLOCK>(desc, plan, plane);
+}
+
+EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_cached_128_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                      const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached<UNISKIP_PAIR_WARPS_128>(desc, plan, plane);
+}
+
+// OCCUPANCY-GATE SIBLING. Unbounded, the 128 cached body compiles to 75 registers = 6
+// blocks/SM against control128's 7, so the 128-axis cache-vs-control contrast would carry
+// an occupancy step - R3's `w` failure mode exactly. The bound restores the control's block
+// count by capping registers at 72. Both variants ship (R3's wt/wtnone precedent): this is
+// the measurement arm, and the unbounded one prices what the bound costs.
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    7) void ab_gkr_uniskip_eval_lsb_pair_cached_128_lb_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                              const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached<UNISKIP_PAIR_WARPS_128>(desc, plan, plane);
 }
 
 } // namespace airbender::gkr_uniskip_bench

@@ -9,7 +9,7 @@ use era_cudart::stream::CudaStream;
 use crate::abi::*;
 use crate::cache::CachePlan;
 use crate::compact::{self, BankPerm};
-use crate::coset_cache::{self, CacheArm, CacheArmState};
+use crate::coset_cache::{self, CacheArm, CacheArmState, PrologueOrder};
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
 use crate::kernels;
@@ -388,8 +388,16 @@ pub struct PassConfig {
     /// v3 R3 arm of [`EvalMode::LsbPair`]; ignored elsewhere. `Control` is R2 exactly.
     pub pair_arm: PairArm,
     /// v3 R4 coset-cache arm of [`EvalMode::LsbPair`]; ignored elsewhere. `Control` is
-    /// the uncached body. The cached kernels land in R4 Task 1B.
+    /// the uncached body; every other arm runs the cached one.
     pub cache_arm: CacheArm,
+    /// Class the v3 R4 prologue produces first. A table-emission order only — the kernel
+    /// walks what the host uploaded, so this costs no SASS.
+    pub prologue_order: PrologueOrder,
+    /// Whether the 128-thread cached arm runs the `__launch_bounds__(128, 7)` sibling.
+    /// TRUE is the measurement arm: unbounded it takes 75 registers = 6 blocks/SM against
+    /// control128's 7, and the contrast would carry an occupancy step. Ignored at 256,
+    /// where the cached body already holds the control's 3 blocks.
+    pub cache_launch_bounds: bool,
     /// Threads per eval block in [`EvalMode::LsbPair`]; ignored elsewhere. 256 is the R2
     /// shape, 128 is v3 R4's second block size — a distinct kernel, not a launch
     /// parameter, because the shared plane and the epilogue reduction are static.
@@ -432,6 +440,7 @@ type LdeLaunch = fn(&UniskipVmDesc, &DeviceSlice<u16>, usize, &CudaStream) -> Cu
 type EvalLaunch = fn(&UniskipVmDesc, u32, &CudaStream) -> CudaResult<()>;
 /// A window arm's launch: the control descriptor plus the side descriptor.
 type WindowLaunch = fn(&UniskipVmDesc, &UniskipWindowDesc, u32, &CudaStream) -> CudaResult<()>;
+type CachedLaunch = fn(&UniskipVmDesc, &UniskipCacheDesc, u32, &CudaStream) -> CudaResult<()>;
 
 pub struct Harness {
     pub layout: Layout,
@@ -446,6 +455,9 @@ pub struct Harness {
     config: PassConfig,
     lde: Option<[LdeLaunch; CLASSES]>,
     eval: EvalLaunch,
+    /// Set only on a cached arm; when set it replaces `eval` and carries the prologue
+    /// table. Its descriptor is the arm's own CLONED source array, uploaded at build.
+    eval_cached: Option<(CachedLaunch, UniskipCacheDesc)>,
     /// Set only on a window arm; when set it replaces `eval` and carries the side
     /// descriptor. The control path never touches either field.
     eval_window: Option<(WindowLaunch, UniskipWindowDesc)>,
@@ -692,6 +704,41 @@ impl Harness {
             },
         };
 
+        let cache_arms = match config.mode {
+            EvalMode::LsbPair => coset_cache::plan_all(program),
+            _ => Vec::new(),
+        };
+
+        let eval_cached = match config.mode {
+            EvalMode::LsbPair if config.cache_arm.uses_cache() => {
+                let state = cache_arms
+                    .iter()
+                    .find(|(a, _)| *a == config.cache_arm)
+                    .and_then(|(_, s)| s.as_ref().ok())
+                    .expect("main rejects an unplannable selected arm before device setup");
+                let launch: CachedLaunch =
+                    if config.block_threads as usize == UNISKIP_PAIR_THREADS_128 {
+                        kernels::eval_lsb_pair_cached_128
+                    } else {
+                        kernels::eval_lsb_pair_cached
+                    };
+                Some((launch, state.descriptor(config.prologue_order)))
+            }
+            _ => None,
+        };
+
+        // The arm's CLONED source array is what reaches the device — `cache_slot` written
+        // on admitted records, sentinel elsewhere. The canonical program is never mutated;
+        // this happens once at build, never inside a timed rotation.
+        if let Some((_, _)) = &eval_cached {
+            let state = cache_arms
+                .iter()
+                .find(|(a, _)| *a == config.cache_arm)
+                .and_then(|(_, s)| s.as_ref().ok())
+                .expect("checked above");
+            desc.source[..state.sources.len()].copy_from_slice(&state.sources);
+        }
+
         let none = UniskipWindowDesc::default();
         let eval_window = match config.mode {
             EvalMode::LsbPair => config.pair_arm.kernel_for().map(|launch| {
@@ -703,11 +750,6 @@ impl Harness {
                 (launch, desc)
             }),
             _ => None,
-        };
-
-        let cache_arms = match config.mode {
-            EvalMode::LsbPair => coset_cache::plan_all(program),
-            _ => Vec::new(),
         };
 
         Ok(Self {
@@ -722,6 +764,7 @@ impl Harness {
             lde,
             eval,
             eval_window,
+            eval_cached,
             cache_arms,
             window_tagged: window,
             window_none: none,
@@ -788,9 +831,10 @@ impl Harness {
         self.events[0].record(&self.stream)?;
         self.run_lde()?;
         self.events[1].record(&self.stream)?;
-        match &self.eval_window {
-            Some((launch, win)) => launch(&self.desc, win, self.eval_blocks, &self.stream)?,
-            None => (self.eval)(&self.desc, self.eval_blocks, &self.stream)?,
+        match (&self.eval_cached, &self.eval_window) {
+            (Some((launch, plan)), _) => launch(&self.desc, plan, self.eval_blocks, &self.stream)?,
+            (None, Some((launch, win))) => launch(&self.desc, win, self.eval_blocks, &self.stream)?,
+            (None, None) => (self.eval)(&self.desc, self.eval_blocks, &self.stream)?,
         }
         self.events[2].record(&self.stream)?;
         kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;

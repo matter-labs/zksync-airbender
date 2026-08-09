@@ -155,6 +155,48 @@ constexpr u8 UNISKIP_CACHE_SLOT_NONE = 0xff;
 // whole source table: `source_id | limb << 8`, or UNISKIP_CACHE_FILL_NONE for a free
 // unit. Host-precomputed; see `src/cache.rs`.
 constexpr u16 UNISKIP_CACHE_FILL_NONE = 0xffff;
+
+// ---------------------------------------------------------------------------------------
+// v3 R4 COSET CACHE. A different cache from the v2 shared pool above and deliberately not
+// sharing its constants: this one is PER-THREAD LOCAL memory holding produced coset PAIRS,
+// where a unit is one `bf` source's `c[2]` (8 B) and an `e4` source's span is four units
+// laid out c-object-major, `[c[0] 16 B][c[1] 16 B]`. It rides the same `cache_slot` byte.
+// The Rust mirror is `src/coset_cache.rs`; keep the two in step - the static_asserts here
+// and the layout tests there are the only guard.
+// ---------------------------------------------------------------------------------------
+constexpr u32 UNISKIP_COSET_UNIT_BYTES = 8;
+constexpr u32 UNISKIP_COSET_E4_UNITS = 4;
+// The frame is sized ONCE at the default census's all-59 footprint so every cached arm
+// compiles to one body with one static frame; varying it per arm would confound codegen
+// with footprint. The host validator rejects a program that needs more.
+constexpr u32 UNISKIP_COSET_FRAME_UNITS = 92;
+static_assert(UNISKIP_COSET_FRAME_UNITS * UNISKIP_COSET_UNIT_BYTES == 736);
+// `cache_slot` encodes the BASE alone, so bases stay representable for any frame up to 256
+// units; only 0xff itself collides with the sentinel, which the host validator rejects.
+static_assert(UNISKIP_COSET_FRAME_UNITS <= 256, "a base unit must fit `cache_slot`");
+
+// One prologue row: the SEMANTIC source id the resolver consumes (columns are neither
+// unique nor sufficient) plus its base unit. Mirrors `coset_cache::PrologueEntry`.
+struct alignas(4) uniskip_prologue_entry {
+  u16 source;
+  u8 base;
+  u8 reserved;
+};
+static_assert(sizeof(uniskip_prologue_entry) == 4);
+static_assert(alignof(uniskip_prologue_entry) == 4);
+
+// The prologue table, walked E4 rows first then BF rows - the pinned production order.
+// Capacity is the frame: every admitted source consumes at least one unit, so no legal
+// plan can have more rows than units.
+struct alignas(16) uniskip_cache_desc {
+  uniskip_prologue_entry entry[UNISKIP_COSET_FRAME_UNITS];
+  u32 count; // rows to walk; the kernel branches per row on the record's class
+  u32 e4_count;
+  u32 bf_count;
+  u32 reserved;
+};
+static_assert(sizeof(uniskip_cache_desc) == 4 * UNISKIP_COSET_FRAME_UNITS + 16);
+static_assert(offsetof(uniskip_cache_desc, count) == 4 * UNISKIP_COSET_FRAME_UNITS);
 static_assert(UNISKIP_SOURCE_CAPACITY <= 0x100, "the fill entry packs a source id in its low byte");
 static_assert(UNISKIP_CACHE_UNITS < UNISKIP_CACHE_SLOT_NONE, "a unit index must fit `cache_slot` beside its sentinel");
 // The fill assigns one lane per (unit, row) and strides by the block, so the two must

@@ -16,9 +16,9 @@ use era_cudart_sys::cudaMemcpyFromSymbol;
 use era_cudart_sys::{cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKind};
 
 use crate::abi::{
-    UniskipCompactSlot, UniskipVmDesc, UniskipWindowDesc, UNISKIP_CACHE_UNITS, UNISKIP_CELLS,
-    UNISKIP_COEFF_BANK, UNISKIP_COMPACT_MAX_ROUNDS, UNISKIP_EQ_HIGH, UNISKIP_NTT_TABLES,
-    UNISKIP_PAIR_THREADS_128, UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
+    UniskipCacheDesc, UniskipCompactSlot, UniskipVmDesc, UniskipWindowDesc, UNISKIP_CACHE_UNITS,
+    UNISKIP_CELLS, UNISKIP_COEFF_BANK, UNISKIP_COMPACT_MAX_ROUNDS, UNISKIP_EQ_HIGH,
+    UNISKIP_NTT_TABLES, UNISKIP_PAIR_THREADS_128, UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
 };
 
 cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
@@ -124,6 +124,20 @@ cuda_kernel!(
 cuda_kernel!(
     EvalLsbPair,
     ab_gkr_uniskip_eval_lsb_pair_kernel(desc: UniskipVmDesc)
+);
+// The v3 R4 cached kernels: the vm desc plus the prologue table as a SECOND by-value
+// parameter, so both no-cache controls keep their launch signature untouched.
+cuda_kernel!(
+    EvalLsbPairCached,
+    ab_gkr_uniskip_eval_lsb_pair_cached_kernel(desc: UniskipVmDesc, plan: UniskipCacheDesc)
+);
+cuda_kernel!(
+    EvalLsbPairCached128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_128_kernel(desc: UniskipVmDesc, plan: UniskipCacheDesc)
+);
+cuda_kernel!(
+    EvalLsbPairCached128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_128_lb_kernel(desc: UniskipVmDesc, plan: UniskipCacheDesc)
 );
 // The v3 R4 128-thread no-cache baseline: same wire, same signature, 4 warps.
 cuda_kernel!(
@@ -490,6 +504,43 @@ pub fn eval_lsb_pair_128(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream)
     let args = EvalLsbPair128Arguments::new(*desc);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
     EvalLsbPair128Function::default().launch(&config, &args)
+}
+
+/// The v3 R4 cached kernel at 256 threads.
+pub fn eval_lsb_pair_cached(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbPairCachedArguments::new(*desc, *plan);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalLsbPairCachedFunction::default().launch(&config, &args)
+}
+
+/// The v3 R4 cached kernel at 128 threads.
+pub fn eval_lsb_pair_cached_128(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbPairCached128Arguments::new(*desc, *plan);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbPairCached128Function::default().launch(&config, &args)
+}
+
+/// The v3 R4 cached kernel at 128 threads under `__launch_bounds__(128, 7)` — the variant
+/// that holds control128's block count. See the kernel comment for why both ship.
+pub fn eval_lsb_pair_cached_128_lb(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbPairCached128LbArguments::new(*desc, *plan);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbPairCached128LbFunction::default().launch(&config, &args)
 }
 
 /// The v3 R3 `t` arm: the control body under `__launch_bounds__(256, 3)`.
