@@ -2,7 +2,7 @@
 
 Generic Nsight Systems methodology for any `gpu/` crate. Start from
 [`profiling.md`](./profiling.md) for the parameter conventions; supply
-`$TEST_BINARY` and `$NVTX_RANGE` from your crate's profiling doc, and invoke
+`$TEST_BINARY` and `$NSYS_NVTX_RANGE` from your crate's profiling doc, and invoke
 `$TEST_BINARY` with the libtest args that select + run the work to profile.
 
 Prefer capturing an existing NVTX range instead of profiling the whole process:
@@ -11,7 +11,7 @@ Prefer capturing an existing NVTX range instead of profiling the whole process:
 .agents/bin/with_gpu_lock.sh nsys profile \
   --trace=cuda,nvtx,osrt \
   --capture-range=nvtx \
-  --nvtx-capture="$NVTX_RANGE" \
+  --nvtx-capture="$NSYS_NVTX_RANGE" \
   --capture-range-end=stop-shutdown \
   --output "target/profiling/nsys/$(date +%Y%m%d_%H%M%S)_profile" \
   "$TEST_BINARY" --exact <test> --nocapture
