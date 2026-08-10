@@ -2829,6 +2829,19 @@ The ledger is **linear in removals with a fixed intercept**, and it explains eve
   changes with width. What changes is only the ratio to the fixed intercept — and, past
   `hot16`, which resource the removal is removed *from* (next section).
 
+  **Superseded in part (2026-08-10, v3 R5 — the instruction leg holds, the *price* does
+  not).** This bullet's flatness claim is about *instructions*, and it survives: R5 measures
+  it at the margin, where `k24@128` executes **1,478 fewer instructions per warp** than
+  `hot16@128` for its 16 extra removals = **92.4 net instructions per marginal removal**
+  (105–110 is the *gross* slope against `cache0`; the marginal is lower because the 8 added
+  sources pay their own +8 `STL`, +24 `LDL`, +16 `LDG` inside the same step). What does not
+  survive is the **blended** reading the R5 spec §1 built on this bullet — instructions *and*
+  the µs slopes as one flat marginal value. At this section's ncu-clock-locked −17…−23 µs @128
+  those 16 removals model **−0.27…−0.37 ms**; at R5's own *timed* @128 machinery-corrected
+  slope (−12.97 census / −15.26 locality µs/removal) they model **−0.21…−0.24 ms**. They
+  measured **+0.140 ms locality / +0.188 census**, 100/100 both — wrong in sign either way.
+  The bite point is between **C = 28 and C = 36**, not near `allrepeat`. See *v3 R5*.
+
 ### Residency — no arm is L1-resident, and the winner is an L2 cache
 
 **The spec's §6 residency predicate does not discriminate.** Leg (a) — local-load L1 hit
@@ -2843,6 +2856,14 @@ L1 is not merely exceeded — it is **structurally unavailable as the medium**. 
 between a slot's fill and its use; capacity against the *frame* is irrelevant next to capacity
 against the *stream*. The only lever that has ever moved this number is shortening the reuse
 distance (§*Term order*), never shrinking the footprint.
+
+**Order-scoped (2026-08-10, v3 R5).** This paragraph's conclusion does not hold for the winner
+in both term orders. R5 captured `hot16@128` under both, on the same body, the same admitted
+set and the same instruction stream: local-load L1 hit is **0.010 % in census and 47.871 % in
+locality**. So "structurally unavailable" describes reuse distance *in census order*, not the
+medium — and the lever the last sentence names is exactly the one that moves it. (The
+elsewhere-cited locality readings in this section, e.g. `allrepeat`'s, are unaffected; so is
+the capacity finding below.) See *v3 R5*.
 
 **What `hot16` actually is: an L2-resident cache**, and that is the headline of the rung —
 but the two block sizes must be quoted separately, because **the candidate is the 128 one and
@@ -2859,6 +2880,14 @@ statement is that `hot16` is **L2-served, not L1-served, at both sizes** — com
 and at 128 with the L2 hit rate already **2.3 pt down** and DRAM SOL at half the machine while
 it still wins by −1.45…−1.83 ms. The 128 candidate is closer to the wall than the 256 arm is,
 and that is the number rung 2 inherits.
+
+**Order-scoped (2026-08-10, v3 R5) — the capacity half survives, the residency half gains a
+qualifier.** Both rows above are census captures. R5 re-captured `hot16@128` in both orders:
+the **L2-resident framing is the durable part** — 28.1 % of L2 in either order, and it is the
+L2/DRAM counters that price the knee one step later — but **"not L1-served" is census-order
+only**. In `locality` the frame is roughly half L1-served (47.871 % local-load L1 hit), so the
+sentence to carry forward is "`hot16` is L2-served, not L1-served, **in census order**". See
+*v3 R5*.
 
 **The capacity wall is the L2 occupancy fraction, not the L1 one:**
 
@@ -3032,3 +3061,491 @@ The LDC rider (`native/uniskip_ldc_probe.cu`, `src/ldc_probe.rs`,
 patches** under `.agents/sdd/2026-08-09-v3-r4/patches/`, not committed: the signing agent was
 down and `commit.gpgsign` is on. Tip is `30e648e4`; the rider's files are live in the working
 tree; nothing is pushed.
+
+## v3 R5 — admission frontier (hotK sweep)
+
+R4 priced the two ends of the local-memory cache and left the middle unmeasured: `hot16`
+(C = 28 units) wins by **−1.422 census / −1.795 locality on `eval + finalize`** against the
+shipping control, `allrepeat` (C = 88) collapses, and nobody had looked in between. R5 looks —
+six canonical prefix points from C = 36 to C = 69, rotated in one process against the
+incumbent, the machinery-only lane and both no-cache baselines. Every timed figure in this
+section is `eval + finalize`, the bar quantity, unless it says otherwise.
+
+**Result: there is nothing in the middle to find.** `hot16@128` is the frontier optimum in
+**both** term orders, and the next lane in the sweep — `k24@128`, eight sources and eight units
+further along the list at C = 36 — already loses by **+0.140 ms locality / +0.188 census**,
+100/100 rounds. The knee is between C = 28 and C = 36 — far below `allrepeat` — and it is an
+**L2** knee in both orders. Against the 14.61 ms
+windowed-candidate bar the raw in-rotation medians are over (14.717 locality / 15.120 census);
+the spec's anchor mini-session **upgrades the locality bar claim** (both bridge forms under, at
+14.537 / 14.538) and returns **no decision** in census. Everything below is one branch,
+`rr/gkr_uniskip_bench`, tip `30e648e4`; the per-task reports, the oracle, the raw logs and
+every emitted table live under `.agents/sdd/2026-08-10-v3-r5/` (uncommitted working-tree
+artifacts, referenced by name).
+
+### Design — what was built
+
+The lanes are **prefix truncations of the one canonical R4 admission list**, and nothing else:
+references descending, ties E4-before-BF then lower source id — the R4 comparator verbatim,
+`b.refs.cmp(&a.refs).then(b.width.cmp(&a.width)).then(a.source.cmp(&b.source))` — cut at
+**refs ≥ 2**, giving 55 reused sources of the 59 live. Because an E4 entry is four units wide,
+only **prefix-K points are canonical**, so the sweep walks K and never C directly; `hot16` is
+exactly the K16 point, which is what makes the incumbent a member of its own frontier rather
+than a neighbour of it. Admission depends on reference counts alone, so **the frontier is
+identical under both term orders**. The kernel is untouched — a lane differs from an R4 arm
+only in the host-built admission list and prologue table, same body, same 736 B `C_max` frame.
+`--frontier-factorial` runs **ten lanes in one process** — {`k24`, `k32`, `k40`, `k45`, `k46`,
+`k48`, `hot16`, `cache0`, `control_lb`}@128 plus the in-rotation shipping anchor
+`control@256` — at **100 paired rounds per term order, warmup 10**, both orders, one locked
+session; `--frontier-extension` (eight lanes, 104 rounds, warmup 16, `k49`–`k51`) is
+conditional and did not run. Three preregistered rules are binding verbatim and are
+implemented in the emitter, not in prose: the **signed rule** (A *wins over* B iff the paired
+per-round contrast has median < 0 **and ≥ 90/100 on-sign**; loses iff median > 0 and ≥ 90/100
+positive; anything else a *wash*), the **headline selector** (eligible = lanes that win over
+`hot16@128` under BOTH orders; select the maximum worst-order improvement; ties toward smaller
+C; an empty eligible set is the valid outcome "hot16 remains the frontier optimum"), and
+**bar success** = the selected lane's raw `eval + finalize` median < 14.61 ms in both orders,
+this session.
+
+Oracle for the lane set — controller-derived out-of-tree before any implementation, by the R4
+method, and reproduced by the planner rather than defined by it
+(`.agents/sdd/2026-08-10-v3-r5/expected-counts-r5.md`, derivation in `oracle-derivation.txt`,
+which also pins the full 55-entry admission ordering):
+
+| lane | prefix K | C (units / B) | Rc | chains | stores | loads | removals |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `hot16` (incumbent) | 16 | **28 / 224** | 173 | 181 | 20 | 133 | **145** |
+| `k24` | 24 | **36 / 288** | 197 | 165 | 28 | 157 | **161** |
+| `k32` | 32 | 44 / 352 | 221 | 149 | 36 | 181 | 177 |
+| `k40` | 40 | 52 / 416 | 245 | 133 | 44 | 205 | 193 |
+| `k45` | 45 | 57 / 456 | 260 | 123 | 49 | 220 | 203 |
+| `k46` | 46 | 61 / 488 | 268 | 119 | 51 | 224 | 207 |
+| `k48` | 48 | 69 / 552 | 284 | 111 | 55 | 232 | 215 |
+| `k49` † | 49 | 73 / 584 | 292 | 107 | 57 | 236 | 219 |
+| `k50` † | 50 | 77 / 616 | 300 | 103 | 59 | 240 | 223 |
+| `k51` † | 51 | 81 / 648 | 308 | 99 | 61 | 244 | 227 |
+
+† extension lanes — built and gated, never run (the trigger did not fire). The shape of the
+tail is the reason the sweep was drawn this way: through K45 the list is the refs-3 BF band,
+and from K46 it is the refs-2 E4 block, where each added source is +4 units, +8 `Rc` and only
++4 removals — **marginal removals-per-unit halves to 1.0** while footprint grows 4× faster per
+source. The knee, if it were inside the sweep, was expected at that transition. It is not
+inside the sweep at all.
+
+### Gates — all pass, and the kernel never moved
+
+- **Oracle reproduction, 12 fields × 9 `kN` lanes + `hot16`, both term orders**, exactly
+  matching `expected-counts-r5.md`; every lane's admitted-id list equals the ordered first-K
+  prefix of the pinned 55-entry ordering, and `hot16` is whole-struct equal to `prefix(16)`.
+- **The reversal gate is mutation-proven.** Counts alone cannot see a reordering among
+  equal-ref, equal-class sources: flipping the comparator's final tie-break leaves the count
+  tests **passing** and fails the ordered-list tests. That is why the gate is on the lists.
+- **`tools/r5_gates.sh`**: `q`-parity **72/72** cells plus **18/18** E4 self-product cells
+  (`--self-products 60` — the `kN` arms admit up to 10 E4 sources against `hot16`'s 4, and
+  `--self-products 12` never reaches an E4×E4 record, so the E4 cache path was uncovered
+  surface) plus **9/9** CPU-oracle cells; direct ncu local ld/st counts **9/9** lanes with
+  `pred_off_all = 0`; the chain counter
+  **36/36** cells, both term orders **and** both block sizes; admitted-id lists **20/20**
+  ordered prefixes from four *live* rotations, with a negative control (ids 6↔7 swapped) that
+  fails all 24 gated appearances; frozen SASS **9/9**.
+- **Zero native churn all rung.** The nine frozen bodies are byte-identical at every step,
+  including the post-wipe shipped rebuild and Task 4's `-lineinfo` rebuild: **5104, 5104,
+  5592, 5600, 5048, 5064, 6024, 5976, 5992** instructions. No `.cu` file was edited in this
+  rung, by construction.
+- **R4 and R3 stay green**: `r4_gates.sh` 112/112 + 28/28 + 14/14 + 7/7, `r3_gates.sh` 40/40 +
+  8/8, `--cache-factorial` still runs, and the R4 emitter's tables are byte-for-byte what they
+  were (15 R4 fixtures reproduce message for message).
+- **Infrastructure hazard, found live and fixed.** `with_gpu_lock.sh` holds the GPU lock on
+  **fd 9**; a `cargo build` under it starts the **sccache** daemon, which inherits fd 9 and
+  keeps holding the lock after the build exits — every later locked run then blocks forever
+  (recovery: `sccache --stop-server`). Every build in this rung either runs outside the lock or
+  closes the fd (`9>&-`). Task 3's insurance ritual rebuilds several times and inherited the
+  rule.
+
+**Process note.** The emitter (`tools/r4_table.py`) is the **single decision authority** for
+every derived quantity in this rung — curves, signed verdicts, C\*, the extension trigger, the
+broad-knee test, the first loser, the headline selector, the bar verdict, the dual bridges and
+the ncu capture manifest. It was double-reviewed (one round found a Critical: canonical
+neighbours were computed for the per-order winners but not for the headline candidate, which
+would have silently dropped the knee bracket for the named lane) and covered by **50 fixtures**
+plus a **57-case rejection matrix** *before* any timing ran. Nothing in the sections below is
+re-derived from the logs by hand.
+
+### The measurement — ten lanes, 100 paired rounds per order, one session
+
+```bash
+# insurance first: gate suites (under the lock), then wipe + shipped rebuild (outside it),
+# then diag-OFF / zero ATOM-RED / 9-of-9 frozen SASS / res-usage, then hash the inputs.
+.agents/bin/with_gpu_lock.sh bash -c '
+  B=target/release/gpu_gkr_uniskip_bench
+  for order in census locality; do
+    $B --log-trace 24 --warmup 10 --iterations 100 --mode lsb-pair --frontier-factorial \
+       --term-order $order > task3-primary-$order.log
+  done'
+python3 gpu/gkr_uniskip_bench/tools/r4_table.py \
+  task3-primary-census.log task3-primary-locality.log      # ONE invocation, both orders
+```
+
+One process per term order, both inside a single lock hold (04:37:45 → 04:38:22 UTC), and
+**zero builds from the shipped rebuild through the last timed run** — the binary, the native
+archive and the emitter hash identically before the first run and after the last. The rebuilt
+shipped binary came out **byte-identical to the pre-wipe one**, and the in-session emission is
+`cmp`-clean against a post-session re-emission of the same two logs, so the emitter is
+deterministic on this input.
+
+**Sanity anchors — 4 of 4 IN.** The preregistered gate is ±2 % of R4's frozen in-rotation
+medians on `control@256` and `hot16@128`, per order; one violation aborts the session:
+
+| order | anchor | this session | R4 frozen | delta | verdict |
+| --- | --- | --- | --- | --- | --- |
+| `locality` | `control@256` | 16.567 | 16.624 | −0.34 % | **IN** |
+| `locality` | `hot16@128` | 14.717 | 14.836 | −0.80 % | **IN** |
+| `census` | `control@256` | 16.666 | 16.545 | +0.73 % | **IN** |
+| `census` | `hot16@128` | 15.120 | 15.129 | −0.06 % | **IN** |
+
+Worst |delta| is 0.80 % of a ±2 % band, so no abort, no cool-down repeat, and the
+PAIRED-RESULTS-ONLY clause does **not** apply — the raw-vs-bar claim is admissible from this
+session. The **extension trigger was evaluated inside the lock and did not fire**: it requires
+`k48` to *win over* `k46` in either order under the signed rule (a wash does not trigger), and
+`k48 − k46` is **+0.407 ms locality / +1.515 census, 100/100 on-sign** — a loss in both. No
+extension log exists, which is the correct state.
+
+**Telemetry, and what it costs the absolutes.** `nvidia-smi` sampled before and after every
+phase: SM clock 2332 → 2280 MHz, power 543–562 W, memory clock 12481 MHz throughout, no
+thermal and no hardware-slowdown bit at any sample — but `clocks_event_reasons.active = 0x4`
+(**SW Power Cap**) at *every* sample during and after the timed runs. That is the same
+behaviour R4 recorded. Paired per-round contrasts are the drift-robust currency and are
+unaffected; **every absolute in this session inherits a capped clock**, which matters when it
+is set beside Task 4's two uncapped sessions (below) and must never be mixed with the
+clock-locked ncu durations.
+
+**Per-lane `eval + finalize` medians** (ms). Both columns are copied cell-by-cell from the two
+emitted per-order lane tables in `task3-frontier.md`; no arithmetic was done to combine them.
+The emitter also reports `eval` and `finalize` separately on purpose — the 128 lanes reduce
+twice the partials — and `finalize` is 0.061–0.063 ms on every 128 lane and 0.033 on
+`control@256` in both orders.
+
+| lane | regs, blocks/SM | C | removals | census | locality |
+| --- | --- | --- | --- | --- | --- |
+| `hot16@128` | 72, 7 | 28 | 145 | **15.120** | **14.717** |
+| `k24@128` | 72, 7 | 36 | 161 | 15.292 | 14.824 |
+| `k32@128` | 72, 7 | 44 | 177 | 15.474 | 14.893 |
+| `k40@128` | 72, 7 | 52 | 193 | 16.048 | 14.998 |
+| `k45@128` | 72, 7 | 57 | 203 | 17.113 | 15.076 |
+| `k46@128` | 72, 7 | 61 | 207 | 17.862 | 15.106 |
+| `k48@128` | 72, 7 | 69 | 215 | 19.372 | 15.504 |
+| `cache0@128` | 72, 7 | 0 | 0 | 17.002 | 16.936 |
+| `control_lb@128` | 72, 7 | 0 | 0 | 16.356 | 16.302 |
+| `control@256` | 72, 3 | 0 | 0 | 16.666 | 16.567 |
+
+The three curves are the emitter's, and are **never pooled across term orders**; all three are
+paired per round on `eval + finalize`, the bar quantity. Each table below sets the emitter's
+two per-order emissions side by side — every cell **copied cell-by-cell, no arithmetic**. IQRs
+for every cell are in `task3-frontier.md`; every row below is 100/100 on-sign.
+
+**Curve 1 — total-net vs `control_lb@128`.** The bound-matched baseline; this is the curve
+C\* is read off.
+
+| lane | C | census | verdict | locality | verdict |
+| --- | --- | --- | --- | --- | --- |
+| `hot16@128` | 28 | **−1.242** | win | **−1.580** | win |
+| `k24@128` | 36 | −1.043 | win | −1.468 | win |
+| `k32@128` | 44 | −0.874 | win | −1.404 | win |
+| `k40@128` | 52 | −0.300 | win | −1.300 | win |
+| `k45@128` | 57 | **+0.756** | lose | −1.224 | win |
+| `k46@128` | 61 | **+1.511** | lose | −1.198 | win |
+| `k48@128` | 69 | **+3.017** | lose | −0.794 | win |
+
+**Curve 2 — marginal vs `hot16@128`.** The incumbent as baseline; the per-removal column
+divides by the *incremental* removals over `hot16`, from the runner's `ARM` lines.
+
+| lane | C | census | µs / incr. removal | locality | µs / incr. removal | verdict (both orders) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `k24@128` | 36 | **+0.188** | +11.77 | **+0.140** | +8.78 | lose |
+| `k32@128` | 44 | +0.371 | +11.58 | +0.197 | +6.15 | lose |
+| `k40@128` | 52 | +0.934 | +19.46 | +0.301 | +6.27 | lose |
+| `k45@128` | 57 | +1.996 | +34.41 | +0.377 | +6.50 | lose |
+| `k46@128` | 61 | +2.748 | +44.33 | +0.384 | +6.20 | lose |
+| `k48@128` | 69 | +4.253 | +60.75 | +0.789 | +11.28 | lose |
+
+**Curve 3 — machinery-corrected refund vs `cache0@128`.** `cache0` pays the frame, the walk
+and the lookup and removes nothing, so this curve is the removals alone; the per-removal
+column divides by the lane's own removals.
+
+| lane | C | census | µs / removal | verdict | locality | µs / removal | verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `hot16@128` | 28 | **−1.881** | −12.97 | win | **−2.213** | −15.26 | win |
+| `k24@128` | 36 | −1.667 | −10.36 | win | −2.081 | −12.92 | win |
+| `k32@128` | 44 | −1.500 | −8.47 | win | −2.020 | −11.41 | win |
+| `k40@128` | 52 | −0.925 | −4.79 | win | −1.917 | −9.93 | win |
+| `k45@128` | 57 | **+0.114** | +0.56 | lose | −1.840 | −9.06 | win |
+| `k46@128` | 61 | **+0.861** | +4.16 | lose | −1.832 | −8.85 | win |
+| `k48@128` | 69 | **+2.364** | +11.00 | lose | −1.427 | −6.64 | win |
+
+Curve 3 is the one that separates the two orders cleanly: in `locality` every prefix point
+still refunds more than the machinery costs, all the way to C = 69 — the sweep is *profitable*
+there and merely *less* profitable than `hot16`. In `census` the refund itself turns negative
+at `k45`. Both orders nonetheless pick the same optimum — C\* is read off Curve 1, and no lane
+beats the incumbent in either order, which is Curve 2's story.
+
+### The frontier verdict
+
+The decision lines below are the emitter's own, quoted from `task3-frontier.md`; nothing in
+this subsection is re-derived.
+
+> - winner (C\*): **`hot16@128`** at C = 28, -1.580 ms vs `control_lb@128` — spec 2.3.
+> - broad knee in `locality`: **no** — longest run of consecutive canonical lanes within
+>   0.10 ms of the optimum is 1 (spec 2.3 needs >= 3).
+> - first loser in `locality`: **`k24@128`** (C = 36), +0.140 ms vs the winner, 100/100
+>   on-sign — spec 2.5.
+
+> - winner (C\*): **`hot16@128`** at C = 28, -1.242 ms vs `control_lb@128` — spec 2.3.
+> - broad knee in `census`: **no** — longest run of consecutive canonical lanes within
+>   0.10 ms of the optimum is 1 (spec 2.3 needs >= 3).
+> - first loser in `census`: **`k24@128`** (C = 36), +0.188 ms vs the winner, 100/100
+>   on-sign — spec 2.5.
+
+> ⇒ eligible set is EMPTY ⇒ **hot16 remains the frontier optimum** (spec 2.3 — a valid
+> outcome).
+
+No lane wins over `hot16@128` in either order, let alone both, so the headline selector's
+eligible set is empty by the widest possible margin — the best worst-order figure on the whole
+sweep is `k24`'s **+0.1884 ms** *against* the incumbent. **Not broad** in either order gates
+off the preregistered reuse-distance follow-up, which is therefore not part of this rung.
+**No right-censoring**: a first loser exists in both orders, so the emitter's censoring branch
+was never taken, and with no extension there is no session seam to be undecidable across.
+
+**The marginal-removal slope is falsified above C = 28.** The model under test is the R5
+spec's own hypothesis (§1), which blended R4's two separate findings — the *instruction* figure
+this rung confirms, and R4's **ncu-clock-locked** µs slopes — into a single flat marginal value
+"from C = 4 to C = 92". `k24` brings **16 extra removals** over `hot16`. At R4's clock-locked
+−17…−23 µs @128 those removals model **−0.27…−0.37 ms**; priced instead on R5's own *timed*
+@128 machinery-corrected slope (Curve 3's −12.97 census / −15.26 locality µs per removal, which
+is the like-for-like currency) they model **−0.21…−0.24 ms**. They measured **+0.140 ms
+locality / +0.188 census**, 100/100 — the model is wrong in *sign*, not merely in magnitude,
+and the conclusion does not depend on which slope is used. Its instruction leg is intact
+(Task 4 measures 1,478 fewer instructions per warp for those 16 removals, exactly as predicted
+in kind), so what has changed is not what a removal saves but what its footprint costs: at
+`k24`'s **288 B/thread** (the oracle's `touched = 8C`) the frame occupies **36.1 % of the
+128 MiB L2** at 128×7 threads against `hot16`'s 28.1 % (Task 4's ncu extraction), and that
+capacity price already exceeds the removal value. **The bite point is between C = 28 and
+C = 36** — one lane along the sweep, and far below `allrepeat`, where R4 could first see it.
+The supersession note sits at the R4 economics bullet.
+
+### The bar — three layers, kept separate
+
+*The locality-order bar claim now stands on both bridge forms and a standalone raw run; census
+remains open.* The three layers below are preregistered as distinct and **must not be blended**
+— each has its own scope, and the first is the one the spec fixes as THE raw finding.
+
+**(a) Raw, in-rotation — NOT met.** The spec fixes bar success to the selected lane's raw
+`eval + finalize` median in the primary session's rotation, in both orders:
+
+| order | lane | raw median | vs 14.61 bar |
+| --- | --- | --- | --- |
+| `locality` | `hot16@128` | 14.717 | **over** |
+| `census` | `hot16@128` | 15.120 | **over** |
+
+All four sanity anchors were IN, so this raw claim stands as measured rather than being
+downgraded to paired-results-only. **This is the rung's raw answer against the bar.**
+
+**(b) The anchor mini-session — locality upgrades, census returns no decision.** The
+mini-session is conditional and it applied: 14.717 − 14.61 = **+0.107 ms**, inside the ±0.25 ms
+trigger in at least one order. It ran **first**, in its own lock hold, on the untouched Task 3
+binary, as an ABBA block of standalone runs per order, 33 timed rounds each, arm order reversed
+between blocks. **This table is not the emitter's**: it is `task4-anchor-bridges.md`, computed
+by `task4-anchor-analyze.py` from the eight mini-session run logs. Bridge forms are the spec's,
+with `R2c` = 16.453 census / 16.283 locality, and the spec fixes the base for this procedure to
+the standalone `control@256`:
+
+| order | medC (`control@256`) | medW (`hot16@128`) | additive | ratio | flank spread (ctrl / winner) | verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| `locality` | 16.288 | 14.542 | **14.537** | **14.538** | 0.000 / 0.030 | **bar claim UPGRADES — both forms under 14.61** |
+| `census` | 16.517 | 15.027 | 14.963 | 14.969 | **0.135** / 0.021 | **unstable — no decision** |
+
+`locality` is not a split and not drift-sensitive: both forms land under, with 0.072–0.073 ms
+of margin, on flanks that agree to 0.000 and 0.030 ms; the `total`-median cross-check gives
+14.540 / 14.540, the same verdict. Its `control@256` anchor reproduces `R2c` to **0.005 ms**
+(16.288 against 16.283), so in this session the bridge barely bridges — which is the reason it
+lands where it does. **It is also one session's evidence about a 0.072–0.073 ms margin**: R4's
+addendum measured the same standalone arm at 16.608 the day before (+2.0 % over R2), and the
+same procedure would have produced a materially different additive number from it. The upgrade
+is what the preregistered procedure returns, not a wide margin (see *Open*).
+
+`census` fails the flank gate first — its control flank drifts **0.135 ms**, 2.7× the 0.05 ms
+gate, because that block starts from a cold 180 MHz idle — so per the spec it is reported
+**unstable and carries no upgrade**. Its two forms did agree with each other and with Task 3's
+raw census result (both over, 14.963 / 14.969); that is recorded as data, **not** as a verdict.
+
+**The emitter's own dual bridges — unconditional corroboration, and they split by base.**
+Separately from the mini-session, the emitter computes an in-rotation bridge for `hot16@128`
+against *both* baselines, unconditionally, from Task 3's own medians (`task3-frontier.md`):
+
+| order | base | medW | medBase | additive | ratio |
+| --- | --- | --- | --- | --- | --- |
+| `locality` | `control@256` | 14.717 | 16.567 | **14.433** | **14.465** |
+| `locality` | `control_lb@128` | 14.717 | 16.302 | **14.698** | **14.700** |
+| `census` | `control@256` | 15.120 | 16.666 | 14.908 | 14.927 |
+| `census` | `control_lb@128` | 15.120 | 16.356 | 15.218 | 15.210 |
+
+In `locality` these **split by base**: on `control@256` both forms land under 14.61 (14.433 /
+14.465), on `control_lb@128` both land over (14.698 / 14.700). R4's own rule governs that
+shape — *the whole span is the honest uncertainty and must not be collapsed by choosing a
+base* — so the in-rotation corroboration is **14.433–14.700 across bases**, straddling the bar.
+It neither confirms nor refutes (b)'s upgrade, and it is not what (b) rests on: the upgrade
+comes from the preregistered anchor procedure (spec §2.3), which fixes a **single** base — the
+standalone `control@256` — by design, precisely so the answer cannot be chosen by base
+selection after the fact. In `census` all four figures land over, consistent with everything
+else that order produced.
+
+**(c) Two side facts, with their scope stated.** Neither changes (a).
+
+- **Standalone, `locality`, raw: 14.527 and 14.557** — the two mini-session `hot16@128` runs
+  are already *below* 14.61 with no bridge at all. The spec fixes "bar success" to the primary
+  session's in-rotation medians, so this does not move (a); it is the reason the bridge lands
+  under.
+- **The two sessions are not on the same footing.** Task 3's timed session read SW Power Cap
+  (`0x4`) at every sample; Task 4's anchor and capture sessions read `0x0` on all 32 samples.
+  That is a plausible mechanism for the standalone runs being **0.16–0.19 ms** faster than
+  Task 3's in-rotation 14.717 at the identical arm. Paired within-session contrasts are
+  unaffected by it; absolutes across the two are not comparable.
+
+### The knee — L2-priced, in both orders
+
+The direction was fixed before the captures: past the winner, **L2 hit rate falls and/or DRAM
+SOL rises** while executed-instruction savings keep improving; `long_scoreboard` growth and
+fmaheavy recession corroborate but never suffice. Any other pattern would have forced the
+record to say "timing optimum located; mechanism unresolved". It does not.
+
+Four Full Picture captures plus four supplementary `--metrics` passes, driven by the emitter's
+own two-line ncu manifest (`hot16@128` and `k24@128`, each under both orders), on a `-lineinfo`
+rebuild whose nine frozen bodies were re-proved identical at both the archive and the
+device-linked-executable level. **The `ncu ms` column below is clock-locked and belongs to a
+different scale from every timed median above — the two are never mixed.**
+
+| lane | ncu ms | inst/warp | local-ld L1 hit % | L2 hit % | DRAM SOL % | DRAM rd sectors | fmaheavy active % | long_scoreboard | L2-occupancy |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `hot16@128` census | 15.270 | 57,637 | 0.010 | **69.06** | **50.57** | 340,235,488 | 75.8 | 2.387 | 28.1 % |
+| `k24@128` census | 15.425 | 56,159 | 0.009 | **65.97** | **59.77** | 396,660,464 | 73.0 | 2.920 | 36.1 % |
+| `hot16@128` locality | 14.820 | 57,637 | **47.871** | 63.14 | **41.99** | 266,107,656 | 77.0 | 1.890 | 28.1 % |
+| `k24@128` locality | 14.841 | 56,159 | **41.595** | 63.09 | **48.45** | 294,366,496 | 74.7 | 2.174 | 36.1 % |
+
+Occupancy is 57.8–57.9 % on all four (same body, same 72 registers, 7 blocks/SM), so nothing
+here is an occupancy artifact. The counts close **exactly** against the oracle in both orders:
+20.0 / 133.0 `STL`/`LDL` per warp at `hot16` against the oracle's 20 and 133, 28.0 / 157.0 at
+`k24` against 28 and 157, and the prologue's global fill moves 481 → 497 `LDG`/warp = **+2 per
+added cached source**, matching R4's pin. `hot16`'s 57,637 instructions per warp reproduces
+R4's figure exactly, on a different build in a different session.
+
+**The signature holds in both orders.** In `census` both primary counters move decisively:
+L2 hit **−3.10 pp**, DRAM SOL **+9.20 pp**. In `locality` the L2-hit movement is **−0.05 pp**,
+which sits inside the ±0.15 pp resolution floor established by the two independent ncu passes
+and is therefore **not claimed** — but the rule is disjunctive, and DRAM SOL moves **+6.46 pp**,
+far outside any noise, so the memory leg carries that order on its own. The instruction leg is
+exact rather than statistical in both orders: **−1,478 instructions per warp** for +16
+removals, i.e. 92.4 net instructions per marginal removal. The corroborators agree — fmaheavy
+pipe activity recedes 2.3–2.7 pp and `long_scoreboard` grows 0.28–0.53 — so the arm is spending
+instruction savings on a resource that has become scarcer. **Verdict: the knee is L2-priced.**
+
+The traffic accounting is the capacity claim in counter form. `k24` adds **+67,108,864** local
+sectors over `hot16` (421.5 M → 488.6 M, +15.9 %); of that added traffic, **84.1 %** arrives
+from DRAM in `census` and **42.1 %** in `locality` (≥ 59.1 % / ≥ 17.1 % after subtracting the
+prologue's own extra global fill). The L2 stops absorbing **exactly at the margin**: 28.1 % of
+L2 coexists with the walk's global stream, 36.1 % does not. DRAM *write* sectors move the same
+way (+18.2 M census, +20.0 M locality) — the added frame is being written back, not held.
+
+**Caveat, stated plainly: this is established at the knee, not along a curve.** The manifest is
+the deterministic capture set and it names two lanes, so "monotonic across the captured lanes"
+degenerates to one step per order. Tracing the curve would need `k32`/`k40` captures, which
+nothing in this rung authorizes. Magnitudes also do not travel: ncu's clock-locked `k24 − hot16`
+deltas are +0.155 ms census / +0.021 locality against the timed session's +0.188 / +0.140 — the
+sign agrees in both orders and census agrees in size, but a single clock-locked launch does not
+resolve a 0.14 ms separation. **The timing session remains the authority on size.**
+
+### ★ The winner's residency is order-dependent — and R4 said otherwise
+
+R4 captured `hot16@128` in `census` only and concluded that essentially *nothing* is resident
+(local-load L1 hit 0.01 %). That reading is reproduced here exactly — **0.010 %** — and it is a
+**census-order fact, not a property of the arm**. The same body, the same admitted set and the
+same instruction stream read **47.871 %** local-load L1 hit in `locality`; `k24` reads
+**41.595 %**, so the larger footprint measurably erodes it. This is the reuse-distance
+mechanism R4 identified for `allrepeat@128` (0.010 % → 26.918 %), now observed **at the winner**
+and roughly twice as strong. Store-side hit rates stay ≈ 0 in every cell.
+
+Two consequences, and both are written back into the R4 record at the passages they correct:
+
+- **"L1 is structurally unavailable as the medium"** is census-scoped. The mechanism it names
+  — reuse distance, not footprint — is precisely what the locality permutation changes.
+- **"`hot16` is an L2-resident cache"** survives as the **capacity** story (28.1 % of L2 in
+  either order, and the L2/DRAM counters are what price the knee), but the **residency** half
+  now carries a term-order qualifier: in `locality` the frame is roughly half L1-served.
+
+The practical rule: **never write "`hot16` is not L1-resident" without naming the term order.**
+
+### The bar this sets for rung 2 (realization D / segmented carrier)
+
+- **The local-memory carrier's ceiling is `hot16`, C = 28.** Not the frame's capacity — the
+  frame holds 92 units — but the machine's willingness to pay for them. Anything past C = 28
+  costs at least `k24`'s delta, **+0.140 ms locality / +0.188 census per +8 units (+16
+  removals)** at 128×7 threads. That is the price D must undercut to justify capturing more.
+- **D's structural advantage is exactly the thing this rung ran out of.** Every thread here
+  pays its own prologue and its own frame, so bytes-per-removal is fixed; D's cross-warp
+  sharing divides it by the sharing factor. That is the only known lever that moves the
+  capacity price, and this rung shows the capacity price is now what binds.
+- **What D must beat, concretely.** (i) **Machinery ≪ 0.7–0.9 ms on `eval`** — R4's measured
+  intercept in R4's own measure (+0.910 @256 / +0.743 @128, paired on `eval`, not on this
+  section's default `eval + finalize`), carried forward unchanged; R5's rotation contains
+  `cache0@128` and `control_lb@128` but the
+  emitter's three curves are baselined on `control_lb`, `hot16` and `cache0`, and no
+  `cache0 − control_lb` contrast was emitted, so the intercept was **not re-measured here**.
+  (ii) **Capacity at equal capture ≤ `hot16`'s 28.1 % of L2** — 36.1 % is already past the
+  knee. (iii) Or **capture beyond C = 28 at no more than the measured marginal price** above.
+- **Term order is a first-class knob for D, and now has a measured L1 leg at the winner**
+  (47.871 % vs 0.010 %), not only the L2/DRAM leg R4 priced.
+- **The smem-twiddle cycle probe remains the open side item** it was at the end of R4 —
+  independent of this rung, and untouched by it.
+
+### Open
+
+- **The `census` bridge returned no decision.** Its control flank drifted 0.135 ms because the
+  block started from a cold GPU; a repeat with a soak in front of it would probably pass. The
+  spec did not authorize one inside this rung and none was run.
+- **The `locality` upgrade is one session's evidence about a 0.072–0.073 ms margin** — stated
+  where it is claimed, in §*The bar* (b) — and the emitter's unconditional in-rotation bridges
+  straddle the bar across bases (**14.433–14.700**), so nothing outside the preregistered
+  procedure corroborates it. A second anchor mini-session would settle it; none was authorized.
+- **Every absolute from the timed session inherits a capped clock** (`0x4` at every in-run
+  sample), and Task 4's two sessions ran uncapped. The 0.16–0.19 ms gap between in-rotation and
+  standalone `hot16@128 locality` is consistent with that and is not otherwise explained.
+- **Every ncu figure is a single NVTX-wrapped launch.** Instruction and sector counts are
+  deterministic and close exactly against the oracle; the *rate* metrics (SOL, hit rates, stall
+  ratios) carry one sample's uncertainty — which is why `locality`'s −0.05 pp L2-hit movement
+  is reported as inside noise rather than as evidence.
+- **The knee is established at the knee, not along a curve** (two-lane manifest, above).
+- **The tree is left on the `-lineinfo` build** Task 4 profiled, deliberately: rebuilding would
+  break the captures' provenance. Any future timing session must run the insurance sequence —
+  wipe the build dirs, rebuild shipped, re-prove 9/9 — before it times anything. That was
+  already mandatory; it is now also not optional.
+- **The machinery intercept was not re-measured** in this rung (above), so R4's +0.743 ms @128
+  — an `eval` figure, not `eval + finalize` — is still the incumbent number.
+- **C = 29…35 is unmeasured.** The sweep's first step is eight sources wide: K17…K23 are
+  canonical prefix points by this section's own definition and none was sampled. The bracket
+  "the knee is between C = 28 and C = 36" is therefore exactly as tight as the evidence, and
+  where inside it the crossing sits is unknown.
+- **Parked minors** carried out of the gate work: the gate script's negative-control evidence
+  is prose-only for the cases the reviewer did not re-run, a `mktemp`-before-trap window, the
+  55-entry admission ordering duplicated between the script and Rust without a cross-check,
+  and the emitter's "Incomplete for Task 4" note sitting *outside* the fenced manifest block
+  (the in-band `orders=` field carries the same signal, which is why no code fix was made).
+- **N/A, and recorded as such**: the conditional extension (`k49`–`k51`) — trigger evaluated,
+  did not fire; **right-censoring** — a first loser exists in both orders, so the branch was
+  never taken.
+
+### Branch state
+
+The rung parks as patches under `.agents/sdd/2026-08-10-v3-r5/patches/`, each with its intended
+commit message, none committed — the signing agent is still down and `commit.gpgsign` is on:
+`task0` (prefix-K admission + frontier lanes), `task1` (frontier factorial runner + curve
+emitter), `task2` (frontier gates), `task5` (this record + README). Tasks 3 and 4 are
+evidence-only and carry no patch. They replay in that order on top of R4's three parked patches
+(`task4-ldc-rider`, `task5-record`, `task5b-tooling`) at tip `30e648e4`. Nothing is pushed.

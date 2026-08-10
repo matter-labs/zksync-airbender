@@ -408,7 +408,8 @@ over the 16-byte-aligned E4 span. At 128 threads the cached body needs
 be taken bound-to-bound. `--prologue-order bffirst` reorders the uploaded table on the
 capacity arms — a different upload, not a different kernel.
 
-Every `--mode lsb-pair` run builds and validates the plan for all eight arms and prints a
+Every `--mode lsb-pair` run builds and validates the plan for all **seventeen** arms —
+`CacheArm::ALL`, i.e. these eight plus v3 R5's nine `kN` prefix lanes — and prints a
 `coset cache (v3 R4)` block plus the exact `eval kernel` it will launch; arms a census
 pushes past the frame are reported `unavailable` rather than failing runs that never select
 them. Admission is recomputed from the live resolver stream, so unlike the shared-memory
@@ -420,12 +421,15 @@ control in the same session, 110/110 rounds**; `hot4` is a wash (it brings exact
 breakeven 47 removals) and `allrepeat` loses on L2 capacity in **three of the four**
 arm×order cells against `cache0` — worst at 128 census (**+7.461 ms**), +2.631 at 256 census,
 +1.636 at 128 locality; only at 256 in locality is it **−0.523 ms faster** than `cache0`.
-**No arm is L1-resident** at either block size; `hot16` is an **L2-served** cache — 24 % of
-the 128 MiB L2 at 256 threads with its L2 hit rate rising,
+**In R4's census captures no arm is L1-resident** at either block size; `hot16` is an
+**L2-served** cache — 24 % of the 128 MiB L2 at 256 threads with its L2 hit rate rising,
 28 % at the candidate's 128 threads with its L2 hit rate already **falling** (71.26 → 68.99 %)
-and DRAM at half SOL. Full record, the three-state verdict against the 14.61 ms bar, the
+and DRAM at half SOL. **v3 R5 supersedes the residency half by term order**: the same
+`hot16@128` body reads **47.871 %** local-load L1 hit in `locality` against census's 0.010 %,
+so never state the no-L1-residency result without naming the order — the L2 capacity story is
+what carries across both. Full record, the three-state verdict against the 14.61 ms bar, the
 machinery/removal economics and the session-drift methodology: `iteration_times.md`'s
-*v3 R4* section.
+*v3 R4* section (and *v3 R5* for the order-dependent residency finding).
 
 #### The LDC-divergence rider
 
@@ -439,6 +443,34 @@ record left hedged: does a **lane-divergent constant load** serialize on sm_120?
 pipelining so latency grows sublinearly. `K` is runtime data behind a mask, so the
 instruction stream is identical at every point of the sweep. It shares nothing with the cache
 arms.
+
+### The admission frontier (v3 R5) — `--frontier-factorial`
+
+`--frontier-factorial` runs the R5 rotation: **ten lanes** in one process — `k24`, `k32`,
+`k40`, `k45`, `k46`, `k48`, `hot16`, `cache0` and `control_lb` at 128 threads plus the shipping
+`control@256` anchor — at `--iterations` a multiple of 10, and in practice **100** per term
+order at `--warmup 10`: the emitter's signed rule is pinned to the preregistered **≥ 90/100**
+literal and **hard-errors on any other round count** (the extension's is ≥ 94/104), so a legal
+rotation length is not by itself a usable one. A `kN` lane is a `--cache-arm` value like any
+other: it admits the first **N** sources of the same canonical list `hot4`,
+`hot16` and `allrepeat` are prefixes of, so the sweep walks that list rather than redefining
+it, and `hot16` is exactly that list's K = 16 point. Only prefix-K points are canonical,
+because an E4 entry is four units wide. `--frontier-extension` is the conditional eight-lane
+continuation (`k49`, `k50`, `k51` at 104 rounds, `--warmup 16`); it runs only if `k48` wins
+over `k46`, which it did not. `tools/r4_table.py` grows the three named frontier curves and is the single authority for
+every derived decision in the rung; `tools/r5_gates.sh {matrix|counts|admitted|sass|regression|all}`
+is the R5 wall, and it gates the admitted-id **lists** as ordered prefixes, because counts alone
+cannot detect a reordering among equal-ref, equal-class sources.
+
+**The frontier ends where R4 left it.** `hot16@128` is the optimum in **both** term orders and
+the next lane in the sweep — `k24@128`, +8 sources and +8 units at C = 36 — already loses by
+**+0.140 ms locality / +0.188 census**, 100/100 rounds; the L2 knee sits between C = 28 and
+C = 36 (K17…K23 were not sampled). Against the 14.61 ms windowed-candidate bar the raw
+in-rotation `eval + finalize` medians are **14.717 locality / 15.120 census** (over), while the spec's anchor mini-session
+**upgrades the locality bar claim** — both bridge forms land under, at 14.537 additive /
+14.538 ratio — and census returns no decision. Full record, the three-layer bar verdict, the
+L2-knee counters and the order-dependent L1 residency finding: `iteration_times.md`'s
+*v3 R5* section.
 
 ### Geometry
 
