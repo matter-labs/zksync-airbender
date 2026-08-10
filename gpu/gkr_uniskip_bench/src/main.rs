@@ -8,7 +8,7 @@ use gpu_gkr_uniskip_bench::abi::{
 };
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::compact::BankPerm;
-use gpu_gkr_uniskip_bench::coset_cache::{self, CacheArm, CacheMutation, PrologueOrder};
+use gpu_gkr_uniskip_bench::coset_cache::{self, CacheArm, CacheMutation, LaneSet, PrologueOrder};
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::PairArm;
 use gpu_gkr_uniskip_bench::harness::{
@@ -26,13 +26,17 @@ struct Cli {
     #[arg(long, default_value_t = 20)]
     log_trace: u32,
 
-    /// Untimed iterations run before measurement.
-    #[arg(long, default_value_t = 3)]
-    warmup: u32,
+    /// Untimed iterations run before measurement. Default 3, or a factorial rotation's
+    /// PREREGISTERED warmup when one is selected (`--frontier-factorial` 10,
+    /// `--frontier-extension` 16 — a whole number of rotations either way).
+    #[arg(long)]
+    warmup: Option<u32>,
 
-    /// Timed iterations.
-    #[arg(long, default_value_t = 20)]
-    iterations: u32,
+    /// Timed iterations. Default 20, or a factorial rotation's PREREGISTERED round count
+    /// when one is selected (`--frontier-factorial` 100, `--frontier-extension` 104). An
+    /// explicit value is accepted only if it still balances the rotation.
+    #[arg(long)]
+    iterations: Option<u32>,
 
     /// Seed of the deterministic synthetic program and data generator.
     #[arg(long, default_value_t = 0)]
@@ -130,6 +134,21 @@ struct Cli {
     #[arg(long)]
     cache_factorial: bool,
 
+    /// Run the v3 R5 primary admission-frontier factorial: 10 lanes at 128 threads
+    /// (`k24 k32 k40 k45 k46 k48 hot16 cache0 control_lb`) plus the shipping `control@256`
+    /// anchor, in ONE process against shared allocations, in a generated cyclic rotation.
+    /// 100 rounds / 10 warmup per term order unless overridden; an override must still be a
+    /// multiple of 10. Mutually exclusive with every other rotation.
+    #[arg(long)]
+    frontier_factorial: bool,
+
+    /// Run the v3 R5 conditional frontier extension: 8 lanes — the refs-2 E4 tail
+    /// `k49 k50 k51` with `k48` riding along so the k48 -> k49 boundary is PAIRED
+    /// in-session, plus the anchors both sessions share. 104 rounds / 16 warmup per term
+    /// order unless overridden; an override must still be a multiple of 8.
+    #[arg(long)]
+    frontier_extension: bool,
+
     /// TEST-ONLY. Corrupt the selected cached arm's records and upload them UNCHECKED —
     /// the always-on validator would reject them, which is the point. `retarget` points a
     /// cached reference at a different LIVE same-width slot, so `q` must change.
@@ -210,6 +229,48 @@ struct Cli {
     validate_flat_eq: bool,
 }
 
+/// The single-arm defaults of `--warmup` / `--iterations`; a factorial rotation supplies
+/// its own preregistered pair instead.
+const DEFAULT_WARMUP: u32 = 3;
+const DEFAULT_ITERATIONS: u32 = 20;
+
+impl Cli {
+    /// Every rotation flag that is set. More than one is rejected before anything reads
+    /// [`Cli::lane_set`], so the ambiguity never reaches a lane list.
+    fn lane_sets(&self) -> Vec<LaneSet> {
+        [
+            (self.cache_factorial, LaneSet::CacheFactorial),
+            (self.frontier_factorial, LaneSet::FrontierFactorial),
+            (self.frontier_extension, LaneSet::FrontierExtension),
+        ]
+        .into_iter()
+        .filter_map(|(on, set)| on.then_some(set))
+        .collect()
+    }
+
+    fn lane_set(&self) -> Option<LaneSet> {
+        self.lane_sets().first().copied()
+    }
+
+    /// Timed rounds: the flag if given, else the selected rotation's preregistered count,
+    /// else the single-arm default.
+    fn rounds(&self) -> u32 {
+        self.iterations.unwrap_or_else(|| {
+            self.lane_set()
+                .and_then(LaneSet::rounds_and_warmup)
+                .map_or(DEFAULT_ITERATIONS, |(rounds, _)| rounds)
+        })
+    }
+
+    fn warmup_rounds(&self) -> u32 {
+        self.warmup.unwrap_or_else(|| {
+            self.lane_set()
+                .and_then(LaneSet::rounds_and_warmup)
+                .map_or(DEFAULT_WARMUP, |(_, warmup)| warmup)
+        })
+    }
+}
+
 fn fail(message: String) -> ! {
     Cli::command()
         .error(clap::error::ErrorKind::InvalidValue, message)
@@ -272,6 +333,16 @@ fn gb_per_s(bytes: u64, median_ms: f64) -> f64 {
 /// grid. Rejecting the combination is deliberate — silently ignoring it would let a
 /// recorded measurement name a shape the run never used.
 fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
+    // FIRST, before anything reads the selected rotation: each rotation pins its own lane
+    // list, round count and log keyword, so two of them at once is not a configuration.
+    if let [first, second, ..] = cli.lane_sets()[..] {
+        fail(format!(
+            "{} and {} each own the whole rotation — its lanes, its round count and its \
+             log grammar; pick one",
+            first.flag(),
+            second.flag()
+        ));
+    }
     if !cli.mode.uses_lde_shape() && cli.lde_shape.is_some() {
         fail(format!(
             "--lde-shape applies to unfused modes only; --mode {} runs no LDE stage",
@@ -417,15 +488,20 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ));
         }
     }
-    if cli.cache_factorial {
+    // ONE matrix for all three rotations: R4's primary and both R5 frontier sets face the
+    // same exclusions, parameterized by the flag that selected the set. A per-mode copy is
+    // how a knob ends up rejected under one rotation and silently accepted under another.
+    if let Some(set) = cli.lane_set() {
+        let flag = set.flag();
         // Everything the rotation must own itself, or that would contaminate it.
         if !cli.mode.uses_pair_arm() {
             fail(format!(
-                "--cache-factorial applies to --mode lsb-pair only; --mode {} has no R4 arms",
-                cli.mode.as_str()
+                "{flag} applies to --mode lsb-pair only; --mode {} has no {}",
+                cli.mode.as_str(),
+                set.arms_noun()
             ));
         }
-        for (flag, set) in [
+        for (other, on) in [
             ("--pair-arm", cli.pair_arm.is_some()),
             ("--cache-arm", cli.cache_arm.is_some()),
             ("--block-threads", cli.block_threads.is_some()),
@@ -435,25 +511,25 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ("--control-launch-bounds", cli.control_launch_bounds),
             ("--no-cache-launch-bounds", cli.no_cache_launch_bounds),
         ] {
-            if set {
+            if on {
                 fail(format!(
-                    "--cache-factorial owns the arm set and both block sizes; {flag} would \
+                    "{flag} owns the arm set and both block sizes; {other} would \
                      change what the rotation runs"
                 ));
             }
         }
         if cli.window_count || cli.window_poison || cli.window_mutate.is_some() {
-            fail(
-                "--cache-factorial is a timing run; the diagnostic probes would contaminate \
-                  it — use tools/r4_gates.sh"
-                    .into(),
-            );
+            fail(format!(
+                "{flag} is a timing run; the diagnostic probes would contaminate \
+                  it — use {}",
+                set.gates()
+            ));
         }
         // The removals the emitter divides by are the DEFAULT census's. Any census knob
         // silently invalidates them, and a slope is worse than useless when its denominator
         // is wrong.
         let default = Census::default();
-        for (flag, differs) in [
+        for (knob, differs) in [
             ("--sources", cli.sources != default.sources),
             (
                 "--semantic-terms",
@@ -468,7 +544,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         ] {
             if differs {
                 fail(format!(
-                    "--cache-factorial prices removals against the DEFAULT census; {flag} \
+                    "{flag} prices removals against the DEFAULT census; {knob} \
                      changes the program and invalidates every slope"
                 ));
             }
@@ -476,27 +552,26 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         // Balance is a GATE, not a note: an unbalanced rotation gives some lanes more
         // first-position rounds than others, and first position is the one that pays for
         // whatever the previous round left in cache.
-        let lane_count = gpu_gkr_uniskip_bench::coset_cache::CACHE_FACTORIAL.len() as u32;
-        if !cli.iterations.is_multiple_of(lane_count) {
+        let lane_count = set.lanes().len() as u32;
+        if !cli.rounds().is_multiple_of(lane_count) {
             fail(format!(
-                "--cache-factorial needs --iterations a multiple of {lane_count} so every \
+                "{flag} needs --iterations a multiple of {lane_count} so every \
                  lane starts equally often; got {}",
-                cli.iterations
+                cli.rounds()
             ));
         }
         if cli.profile {
-            fail(
-                "--cache-factorial rotates lanes, so --profile would wrap whichever lane \
+            fail(format!(
+                "{flag} rotates lanes, so --profile would wrap whichever lane \
                   the rotation put first; profile one arm with --cache-arm"
-                    .into(),
-            );
+            ));
         }
         if cli.validate || cli.validate_flat_eq || cli.dump_q {
-            fail(
-                "--cache-factorial is a timing run; use --cache-arm or tools/r4_gates.sh \
-                  for --validate / --dump-q"
-                    .into(),
-            );
+            fail(format!(
+                "{flag} is a timing run; use --cache-arm or {} \
+                  for --validate / --dump-q",
+                set.gates()
+            ));
         }
     }
     if cli.cache_mutate.is_some() && !cli.cache_arm.is_some_and(|a| a.uses_cache()) {
@@ -557,7 +632,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
     // 256 lanes take half of it. Left at 256 every lane would launch a grid for half the
     // rows, and the row map is fixed rather than grid-stride, so the upper half would
     // simply never be evaluated.
-    let block_threads = if cli.cache_factorial {
+    let block_threads = if cli.lane_set().is_some() {
         UNISKIP_PAIR_THREADS_128 as u32
     } else {
         block_threads
@@ -574,7 +649,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         cache_launch_bounds: !cli.no_cache_launch_bounds,
         control_launch_bounds: cli.control_launch_bounds,
         cache_mutate: cli.cache_mutate,
-        cache_factorial: cli.cache_factorial,
+        lane_set: cli.lane_set(),
         block_threads,
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
@@ -599,12 +674,16 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
 /// descriptors resident; each round runs every arm once in a CYCLIC ROTATION of the arm
 /// list, so no arm ever holds a fixed position and any per-round drift is shared. Warmup
 /// rounds rotate identically. Every sample is emitted; nothing is summarized here.
-/// The v3 R4 primary factorial. Same shape as R3's: one process, shared allocations, a
-/// generated cyclic rotation over warmup and timed rounds so no lane keeps a position.
-/// Differences: eleven lanes spanning BOTH block sizes, and `eval`/`finalize` are logged as
-/// separate raw fields because the 128 grid doubles the partial count and finalize is not
-/// the same work on the two sides.
-fn run_cache_factorial(harness: &mut Harness, cli: &Cli) {
+/// The in-process balanced factorial of one PINNED rotation — R4's eleven-lane primary or
+/// either R5 frontier set. Same shape as R3's: one process, shared allocations, a generated
+/// cyclic rotation over warmup and timed rounds so no lane keeps a position. Differences
+/// from R3: lanes spanning BOTH block sizes, and `eval`/`finalize` logged as separate raw
+/// fields because the 128 grid doubles the partial count and finalize is not the same work
+/// on the two sides.
+///
+/// The lane set decides the log keyword AND whether the ARM lines carry the ordered
+/// admitted-id list; nothing else about the loop differs, so the two grammars cannot fork.
+fn run_lane_factorial(harness: &mut Harness, cli: &Cli, set: LaneSet) {
     let lanes: Vec<_> = harness
         .cache_lanes()
         .iter()
@@ -613,56 +692,65 @@ fn run_cache_factorial(harness: &mut Harness, cli: &Cli) {
     if lanes.is_empty() {
         fail("the harness prepared no factorial lanes".into());
     }
+    // The pre-flight validated the PINNED set; this is what ties that verdict to what the
+    // harness actually prepared, so the structural gates cannot be passed by one list and
+    // the rotation run on another.
+    if !lanes
+        .iter()
+        .map(|(l, ..)| *l)
+        .eq(set.lanes().iter().copied())
+    {
+        fail(format!(
+            "the harness prepared a rotation {} does not name — the validated lane set and \
+             the executed one are not the same list",
+            set.flag()
+        ));
+    }
     let n = lanes.len();
+    let rounds = cli.rounds();
+    let warmup = cli.warmup_rounds();
     // The rotation about to be generated, checked before it runs: the CLI gate proves only
     // that the round count divides by the lane count, not that the schedule realizes it.
-    let want_starts = cli.iterations / n as u32;
+    let want_starts = rounds / n as u32;
     let mut starts = vec![0u32; n];
-    for i in 0..cli.iterations {
-        starts[(cli.warmup + i) as usize % n] += 1;
+    for i in 0..rounds {
+        starts[(warmup + i) as usize % n] += 1;
     }
-    if !cli.iterations.is_multiple_of(n as u32) || starts.iter().any(|&c| c != want_starts) {
+    if !rounds.is_multiple_of(n as u32) || starts.iter().any(|&c| c != want_starts) {
         fail(format!(
-            "the generated rotation starts lanes {starts:?} times over {} timed rounds; \
-             every lane must start exactly {want_starts}, or a lane keeps a position and \
-             its median carries that position's clock state",
-            cli.iterations
+            "the generated rotation starts lanes {starts:?} times over {rounds} timed \
+             rounds; every lane must start exactly {want_starts}, or a lane keeps a \
+             position and its median carries that position's clock state"
         ));
     }
     // Occupancy, kernel and geometry facts come from Rust so the emitter carries no
     // constants of its own — it reads the arm schema off these lines.
     println!(
-        "CACHE-FACTORIAL schedule order={} lanes={n} rounds={} warmup={}",
-        cli.term_order.as_str(),
-        cli.iterations,
-        cli.warmup
+        "{} schedule order={} lanes={n} rounds={rounds} warmup={warmup}",
+        set.tag(),
+        cli.term_order.as_str()
     );
-    // Lane FACTS, not just labels: C, removals and the admitted-set size travel with the
-    // occupancy so the emitter carries no constant and an aliased lane is visible.
-    let mut seen: Vec<(Vec<u16>, &str, u32)> = Vec::new();
+    // Lane FACTS, not just labels: C, removals and the admitted set travel with the
+    // occupancy so the emitter carries no constant and an aliased lane is visible. The
+    // frontier sets carry the admitted ids IN ADMISSION ORDER as well — counts alone cannot
+    // detect a reversal among equal-ref, equal-class sources, so the emitter gates the LIST.
     for (lane, blocks, counts, admitted) in &lanes {
-        if lane.arm.uses_cache() && lane.arm != CacheArm::Cache0 {
-            if counts.removals == 0 {
-                fail(format!(
-                    "lane {} is a cached arm that removes nothing — it is cache0 under \
-                     another name, and the contrast would read as a zero effect",
-                    lane.label
-                ));
-            }
-            if let Some((_, other, _)) = seen
-                .iter()
-                .find(|(set, _, size)| set == admitted && *size == lane.block_threads)
-            {
-                fail(format!(
-                    "lanes {} and {other} admit the SAME set — one experiment under two \
-                     labels, which reads as +0.000 rather than as a bug",
-                    lane.label
-                ));
-            }
-            seen.push((admitted.clone(), lane.label, lane.block_threads));
-        }
+        let ids = if !set.is_frontier() {
+            String::new()
+        } else if admitted.is_empty() {
+            " -".into()
+        } else {
+            format!(
+                " {}",
+                admitted
+                    .iter()
+                    .map(u16::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        };
         println!(
-            "ARM {} {} {} {} {} {} {} {} {}",
+            "ARM {} {} {} {} {} {} {} {} {}{ids}",
             lane.label,
             lane.regs,
             lane.blocks_per_sm,
@@ -701,17 +789,16 @@ fn run_cache_factorial(harness: &mut Harness, cli: &Cli) {
             );
         }
     };
-    for w in 0..cli.warmup {
+    for w in 0..warmup {
         round(harness, w, false);
     }
-    for i in 0..cli.iterations {
-        round(harness, cli.warmup + i, true);
+    for i in 0..rounds {
+        round(harness, warmup + i, true);
     }
     println!(
-        "CACHE-FACTORIAL done order={} warmup={} rounds={} lanes={n}",
-        cli.term_order.as_str(),
-        cli.warmup,
-        cli.iterations
+        "{} done order={} warmup={warmup} rounds={rounds} lanes={n}",
+        set.tag(),
+        cli.term_order.as_str()
     );
 }
 
@@ -748,17 +835,17 @@ fn run_factorial(harness: &mut Harness, cli: &Cli) {
             );
         }
     };
-    for i in 0..cli.warmup {
+    for i in 0..cli.warmup_rounds() {
         round(harness, i, false);
     }
-    for i in 0..cli.iterations {
-        round(harness, cli.warmup + i, true);
+    for i in 0..cli.rounds() {
+        round(harness, cli.warmup_rounds() + i, true);
     }
     println!(
         "FACTORIAL done order={} warmup={} rounds={} arms={}",
         cli.term_order.as_str(),
-        cli.warmup,
-        cli.iterations,
+        cli.warmup_rounds(),
+        cli.rounds(),
         arms.len()
     );
 }
@@ -786,7 +873,7 @@ fn main() {
     };
     let block_threads_label = if !config.mode.uses_pair_arm() {
         "n/a".to_string()
-    } else if cli.cache_factorial {
+    } else if cli.lane_set().is_some() {
         "256 + 128 (both, per lane)".to_string()
     } else {
         config.block_threads.to_string()
@@ -801,12 +888,10 @@ fn main() {
     // A factorial run has no single arm or block size — printing one would name a
     // configuration the run never uses, which is how C1's half-trace grid hid behind a
     // "block_threads 256" line that was load-bearing and wrong.
-    let cache_arm_label = if !config.mode.uses_pair_arm() {
-        "n/a"
-    } else if cli.cache_factorial {
-        "factorial (11 lanes)"
-    } else {
-        config.cache_arm.as_str()
+    let cache_arm_label = match cli.lane_set() {
+        _ if !config.mode.uses_pair_arm() => "n/a".to_string(),
+        Some(set) => format!("{} ({} lanes)", set.noun(), set.lanes().len()),
+        None => config.cache_arm.as_str().to_string(),
     };
     let (compact_groups_label, bank_perm_label) = if config.mode.uses_compact_groups() {
         (config.compact_groups.to_string(), config.bank_perm.as_str())
@@ -867,8 +952,8 @@ fn main() {
 
     println!("gpu_gkr_uniskip_bench config");
     println!("  log_trace           {}", cli.log_trace);
-    println!("  warmup              {}", cli.warmup);
-    println!("  iterations          {}", cli.iterations);
+    println!("  warmup              {}", cli.warmup_rounds());
+    println!("  iterations          {}", cli.rounds());
     println!("  seed                {}", cli.seed);
     println!("  profile             {}", cli.profile);
     println!("  validate            {}", cli.validate);
@@ -926,13 +1011,13 @@ fn main() {
             window.reuses, window.passes_without, window.passes_with
         );
     }
-    if cli.cache_factorial {
-        // PRE-FLIGHT: every lane must be plannable before the harness exists, so an
-        // unplannable one exits cleanly here instead of panicking inside device setup.
-        for lane in coset_cache::CACHE_FACTORIAL {
-            if let Err(e) = coset_cache::plan_arm(&program, lane.arm) {
-                fail(format!("factorial lane {}: {e}", lane.label));
-            }
+    if let Some(set) = cli.lane_set() {
+        // PRE-FLIGHT, through the one shared validator: every lane plannable and inside the
+        // frame before the harness exists (so an unplannable one exits cleanly here instead
+        // of panicking inside device setup), no cached lane that removes nothing, and no two
+        // lanes of one kernel admitting the same set.
+        if let Err(e) = coset_cache::validate_lane_set(&program, set.lanes()) {
+            fail(format!("{}: {e}", set.flag()));
         }
     }
     if config.mode.uses_pair_arm() {
@@ -975,7 +1060,7 @@ fn main() {
         let c = state.counts;
         println!(
             "  arm {:<16}admitted {} ({} bf / {} e4), C = {} units / {} B per thread",
-            state.arm.as_str(),
+            state.id,
             state.admitted.len(),
             c.b,
             c.e,
@@ -1028,7 +1113,7 @@ fn main() {
     println!("work");
     // A factorial has no single kernel — naming one lane's body as THE kernel is the same
     // class of mistake as printing one block size for a two-size rotation.
-    if cli.cache_factorial {
+    if cli.lane_set().is_some() {
         println!("  eval kernel         per lane (see the ARM lines)");
     } else {
         println!("  eval kernel         {}", harness.eval_kernel());
@@ -1092,12 +1177,12 @@ fn main() {
         return;
     }
 
-    if cli.cache_factorial {
-        run_cache_factorial(&mut harness, &cli);
+    if let Some(set) = cli.lane_set() {
+        run_lane_factorial(&mut harness, &cli, set);
         return;
     }
 
-    for _ in 0..cli.warmup {
+    for _ in 0..cli.warmup_rounds() {
         harness
             .run_pass()
             .unwrap_or_else(|e| fail(format!("pass launch failed: {e}")));
@@ -1106,8 +1191,8 @@ fn main() {
         .synchronize()
         .unwrap_or_else(|e| fail(format!("warmup failed: {e}")));
 
-    let mut samples: Vec<StageTimes> = Vec::with_capacity(cli.iterations as usize);
-    for iteration in 0..cli.iterations {
+    let mut samples: Vec<StageTimes> = Vec::with_capacity(cli.rounds() as usize);
+    for iteration in 0..cli.rounds() {
         let range = (cli.profile && iteration == 0).then(|| NvtxRange::new(c"gkr_uniskip_pass0"));
         harness
             .run_pass()
@@ -1134,7 +1219,7 @@ fn main() {
         // --block-threads 128 a block is 4 warps, and using 8 would silently halve the
         // reported per-walk figure.
         let warps = u64::from(harness.eval_blocks()) * u64::from(config.block_threads / 32);
-        let passes = u64::from(cli.warmup) + samples.len() as u64;
+        let passes = u64::from(cli.warmup_rounds()) + samples.len() as u64;
         assert!(passes > 0, "--window-count needs at least one pass");
         assert_eq!(
             calls % (warps * passes),
@@ -1261,7 +1346,7 @@ fn main() {
          {} iterations | {device}",
         cli.log_trace,
         config.mode.as_str(),
-        if cli.cache_factorial { "per-lane" } else { harness.eval_kernel() },
+        if cli.lane_set().is_some() { "per-lane" } else { harness.eval_kernel() },
         cli.term_order.as_str(),
         plan.cached_width,
         plan.uncached_refs,

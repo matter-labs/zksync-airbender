@@ -147,6 +147,34 @@ impl CacheArm {
     }
 }
 
+/// What a planned state IS: a named arm, or the canonical prefix at a K no enum variant
+/// names. `Cache0` is not a neutral stand-in for the second — it names an EMPTY admitted
+/// set, so a `plan_prefix(_, 7)` labelled `cache0` describes a plan that admits nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlanId {
+    Arm(CacheArm),
+    Prefix(usize),
+}
+
+impl PlanId {
+    /// The named arm, or `None` at an unnamed prefix point.
+    pub fn arm(self) -> Option<CacheArm> {
+        match self {
+            Self::Arm(arm) => Some(arm),
+            Self::Prefix(_) => None,
+        }
+    }
+}
+
+impl std::fmt::Display for PlanId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Arm(arm) => f.pad(arm.as_str()),
+            Self::Prefix(k) => f.pad(&format!("prefix{k}")),
+        }
+    }
+}
+
 /// One entry of an ordered admission list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AdmissionEntry {
@@ -244,7 +272,9 @@ pub fn mutate(state: &mut CacheArmState, how: CacheMutation) -> Option<String> {
 /// Everything one arm uploads: its own source array and its own prologue table.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CacheArmState {
-    pub arm: CacheArm,
+    /// What this plan IS. A LABEL: it reaches error strings and the config dump, never the
+    /// plan. Lane identity in a factorial comes from the [`CacheLane`], never from here.
+    pub id: PlanId,
     /// The canonical source array CLONED with `cache_slot` written; `0xff` elsewhere.
     pub sources: Vec<UniskipSourceRecord>,
     /// Admitted sources in admission order.
@@ -369,43 +399,55 @@ pub fn prefix_admission(program: &SynthProgram, k: usize) -> Vec<AdmissionEntry>
 }
 
 /// The admitted set of one arm. `All59` is ALL live sources including refs = 1 — the
-/// zero-removal waste diagnostic — and is deliberately NOT a prefix of the cutoff list.
+/// zero-removal waste diagnostic — and is deliberately NOT a prefix of the cutoff list;
+/// `E4Rich` and `E4Top2` are FILTERS of the canonical list rather than prefixes of it.
+///
+/// EXHAUSTIVE by construction: a new arm must state which family it joins here rather
+/// than inheriting `allrepeat`'s whole list from a wildcard.
 pub fn admitted_for(program: &SynthProgram, arm: CacheArm) -> Vec<AdmissionEntry> {
-    if arm == CacheArm::All59 {
-        return ranked_live(program);
-    }
-    if let Some(k) = arm.prefix_k() {
-        return prefix_admission(program, k);
-    }
-    // `E4Rich` and `E4Top2` are FILTERS of the canonical list, not prefixes of it — the
-    // only arms that are. Everything downstream takes a source list, so the selection is
-    // the whole change. What is left is `AllRepeat`: the list entire.
-    let canonical = canonical_admission(program);
     match arm {
-        CacheArm::E4Rich => e4_rich(&canonical),
-        CacheArm::E4Top2 => e4_top2(&canonical),
-        _ => canonical,
+        CacheArm::All59 => ranked_live(program),
+        CacheArm::E4Rich => e4_rich(&canonical_admission(program)),
+        CacheArm::E4Top2 => e4_top2(&canonical_admission(program)),
+        CacheArm::AllRepeat => canonical_admission(program),
+        CacheArm::Control
+        | CacheArm::Cache0
+        | CacheArm::Hot4
+        | CacheArm::Hot16
+        | CacheArm::K24
+        | CacheArm::K32
+        | CacheArm::K40
+        | CacheArm::K45
+        | CacheArm::K46
+        | CacheArm::K48
+        | CacheArm::K49
+        | CacheArm::K50
+        | CacheArm::K51 => prefix_admission(
+            program,
+            arm.prefix_k().expect("every arm in this leg is a prefix"),
+        ),
     }
 }
 
 /// Build one arm's state. The program is read, never written: `sources` is a clone.
 pub fn plan_arm(program: &SynthProgram, arm: CacheArm) -> Result<CacheArmState, String> {
-    plan_admitted(program, arm, admitted_for(program, arm))
+    plan_admitted(program, PlanId::Arm(arm), admitted_for(program, arm))
 }
 
 /// The canonical prefix-K plan, defined at every K rather than only at the nine the enum
 /// names. `hot16` IS `plan_prefix(_, 16)`: one list, one truncation, one planner.
 pub fn plan_prefix(program: &SynthProgram, k: usize) -> Result<CacheArmState, String> {
-    plan_admitted(program, prefix_arm(k), prefix_admission(program, k))
+    plan_admitted(program, prefix_id(k), prefix_admission(program, k))
 }
 
-/// The arm a prefix point reports as. LABEL ONLY — it reaches error strings and the config
-/// dump, never the plan. A K no arm names reports as `cache0`.
-fn prefix_arm(k: usize) -> CacheArm {
+/// What a prefix point IS. LABEL ONLY — it reaches error strings and the config dump,
+/// never the plan. A K a cached arm names reports as that arm (K = 0 is `cache0`); a K no
+/// arm names reports as itself, since `cache0` would claim an empty admitted set.
+fn prefix_id(k: usize) -> PlanId {
     CacheArm::ALL
         .into_iter()
         .find(|a| a.uses_cache() && a.prefix_k() == Some(k))
-        .unwrap_or(CacheArm::Cache0)
+        .map_or(PlanId::Prefix(k), PlanId::Arm)
 }
 
 /// SLOT ASSIGNMENT, decoupled from admission: all E4 spans first (4 units each, so every
@@ -418,7 +460,7 @@ fn prefix_arm(k: usize) -> CacheArm {
 /// C = 92, far inside. The validator enforces both.
 fn plan_admitted(
     program: &SynthProgram,
-    arm: CacheArm,
+    id: PlanId,
     admitted: Vec<AdmissionEntry>,
 ) -> Result<CacheArmState, String> {
     let mut sources = program.sources.clone();
@@ -450,7 +492,7 @@ fn plan_admitted(
 
     let counts = count(program, &admitted);
     let state = CacheArmState {
-        arm,
+        id,
         sources,
         admitted,
         prologue_e4,
@@ -461,7 +503,7 @@ fn plan_admitted(
     // lesson is that the host is where that must be caught. FALLIBLE, not a panic: a
     // census can push an arm past the frame (`--sources 60` already does), and an arm
     // nobody selected must not kill a run — least of all a control or R3 run.
-    validate(program, &state).map_err(|e| format!("arm {} is not plannable: {e}", arm.as_str()))?;
+    validate(program, &state).map_err(|e| format!("arm {id} is not plannable: {e}"))?;
     Ok(state)
 }
 
@@ -512,7 +554,7 @@ pub fn validate(program: &SynthProgram, state: &CacheArmState) -> Result<(), Str
     if state.sources.len() != program.sources.len() {
         return Err(format!(
             "arm {} has {} source records, program has {}",
-            state.arm.as_str(),
+            state.id,
             state.sources.len(),
             program.sources.len()
         ));
@@ -589,9 +631,7 @@ pub fn validate(program: &SynthProgram, state: &CacheArmState) -> Result<(), Str
     if expect != state.counts {
         return Err(format!(
             "arm {}: recorded counts {:?} disagree with the admitted set {:?}",
-            state.arm.as_str(),
-            state.counts,
-            expect
+            state.id, state.counts, expect
         ));
     }
     Ok(())
@@ -1535,11 +1575,14 @@ pub const FRONTIER_EXTENSION: [CacheLane; 8] = [
     FRONTIER_CONTROL_256,
 ];
 
-/// Fail-closed structural check of a pinned lane set, for the runner to call before it
-/// builds anything: a duplicate label, an unplannable lane, a footprint past the frame, or
-/// two lanes at one block size admitting the SAME set — R3's aliasing failure shape, where
-/// one experiment runs under two labels. `control` and `cache0` admit nothing BY DESIGN,
-/// so distinctness is a claim about the lanes that admit something.
+/// Fail-closed structural check of a pinned lane set — THE one implementation of the
+/// factorial pre-flight, called by the runner before it builds anything and by the tests
+/// that pin the shipped rotations. Rejects a duplicate label, an unplannable lane, a
+/// footprint past the frame, a cached lane that removes nothing (cache0 under another
+/// name, which reads as a clean zero effect rather than as a bug), and two lanes of the
+/// same kernel admitting the SAME set — R3's aliasing failure shape, where one experiment
+/// runs under two labels. `control` and `cache0` admit nothing BY DESIGN, so both of the
+/// last two are claims about the lanes that admit something.
 pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<(), String> {
     let mut labels: Vec<&str> = lanes.iter().map(|l| l.label).collect();
     labels.sort_unstable();
@@ -1547,31 +1590,130 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
         return Err(format!("lane label {} appears twice", dup[0]));
     }
 
-    let mut seen: Vec<(Vec<u16>, u32, &str)> = Vec::new();
+    // (admitted ids, block size, bounded, label) — flat, so the tuple stays readable.
+    let mut seen: Vec<(Vec<u16>, u32, bool, &str)> = Vec::new();
     for lane in lanes {
         let state = plan_arm(program, lane.arm).map_err(|e| format!("lane {}: {e}", lane.label))?;
+        // BELT AND BRACES: unreachable today, because `plan_arm`'s always-on validator
+        // rejects an over-frame span first (that is the error the line above carries). It
+        // stays because the frame is the lane set's claim as much as the plan's, and a
+        // future planner that only warns must not slip a lane past this function.
         if state.counts.c > UNISKIP_COSET_FRAME_UNITS {
             return Err(format!(
                 "lane {}: C = {} units exceeds the {UNISKIP_COSET_FRAME_UNITS}-unit frame",
                 lane.label, state.counts.c
             ));
         }
+        if lane.is_zero_removal_alias(state.counts) {
+            return Err(format!(
+                "lane {} is a cached arm that removes nothing — it is cache0 under \
+                 another name, and the contrast would read as a zero effect",
+                lane.label
+            ));
+        }
         if !lane.arm.uses_cache() || lane.arm == CacheArm::Cache0 {
             continue;
         }
         let ids: Vec<u16> = state.admitted.iter().map(|e| e.source).collect();
-        if let Some((.., other)) = seen
-            .iter()
-            .find(|(s, size, _)| *s == ids && *size == lane.block_threads)
-        {
+        // The key is the whole EXPERIMENT, not the admitted set alone: the same set on the
+        // bounded and unbounded bodies is a legitimate contrast (that is what prices the
+        // bound), so `launch_bounds` belongs in it or the pair would false-alias.
+        if let Some((.., other)) = seen.iter().find(|(set, size, bounded, _)| {
+            *set == ids && *size == lane.block_threads && *bounded == lane.launch_bounds
+        }) {
             return Err(format!(
                 "lanes {} and {other} admit the same set at {} threads",
                 lane.label, lane.block_threads
             ));
         }
-        seen.push((ids, lane.block_threads, lane.label));
+        seen.push((ids, lane.block_threads, lane.launch_bounds, lane.label));
     }
     Ok(())
+}
+
+/// A pinned rotation the runner can execute, with the flag that selects it, the log
+/// keyword its lines carry and its preregistered round counts. ONE value names all four,
+/// so a mode cannot be paired with another mode's lane set or balance divisor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LaneSet {
+    /// R4's eleven-lane primary rotation (spec R4 2.2). UNTOUCHED by R5.
+    CacheFactorial,
+    /// R5's ten-lane admission-frontier rotation (spec R5 2.2).
+    FrontierFactorial,
+    /// R5's conditional eight-lane extension over the refs-2 E4 tail (spec R5 2.3).
+    FrontierExtension,
+}
+
+impl LaneSet {
+    pub fn lanes(self) -> &'static [CacheLane] {
+        match self {
+            Self::CacheFactorial => &CACHE_FACTORIAL,
+            Self::FrontierFactorial => &FRONTIER_FACTORIAL,
+            Self::FrontierExtension => &FRONTIER_EXTENSION,
+        }
+    }
+
+    /// The CLI flag that selects this rotation.
+    pub fn flag(self) -> &'static str {
+        match self {
+            Self::CacheFactorial => "--cache-factorial",
+            Self::FrontierFactorial => "--frontier-factorial",
+            Self::FrontierExtension => "--frontier-extension",
+        }
+    }
+
+    /// The log keyword this rotation's schedule and trailer lines carry. R4's logs keep
+    /// R4's word: the emitter keys its lane set, round count and signed threshold off it,
+    /// so the two grammars are told apart by the log itself and never by a flag.
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::CacheFactorial => "CACHE-FACTORIAL",
+            Self::FrontierFactorial => "FRONTIER-FACTORIAL",
+            Self::FrontierExtension => "FRONTIER-EXTENSION",
+        }
+    }
+
+    /// Preregistered `(rounds, warmup)` per term order — spec R5 2.2/2.3. 100/10 over ten
+    /// lanes and 104/16 over eight; the warmup is a whole number of rotations either way.
+    /// R4's own defaults are not preregistered here (its record used 110 explicitly).
+    pub fn rounds_and_warmup(self) -> Option<(u32, u32)> {
+        match self {
+            Self::CacheFactorial => None,
+            Self::FrontierFactorial => Some((100, 10)),
+            Self::FrontierExtension => Some((104, 16)),
+        }
+    }
+
+    /// Whether the rotation is one of the R5 frontier sets — the ones whose ARM lines
+    /// carry the ordered admitted-id list.
+    pub fn is_frontier(self) -> bool {
+        self != Self::CacheFactorial
+    }
+
+    /// What this rotation's lanes ARE, for the wrong-mode rejection.
+    pub fn arms_noun(self) -> &'static str {
+        match self {
+            Self::CacheFactorial => "R4 arms",
+            Self::FrontierFactorial | Self::FrontierExtension => "R5 frontier lanes",
+        }
+    }
+
+    /// The gate suite a diagnostic probe belongs in instead of a timing run.
+    pub fn gates(self) -> &'static str {
+        match self {
+            Self::CacheFactorial => "tools/r4_gates.sh",
+            Self::FrontierFactorial | Self::FrontierExtension => "tools/r5_gates.sh",
+        }
+    }
+
+    /// How the config block names this rotation.
+    pub fn noun(self) -> &'static str {
+        match self {
+            Self::CacheFactorial => "factorial",
+            Self::FrontierFactorial => "frontier factorial",
+            Self::FrontierExtension => "frontier extension",
+        }
+    }
 }
 
 impl CacheLane {
@@ -1590,6 +1732,14 @@ impl CacheLane {
             (_, true, _) => LaneKernel::Cached,
             (_, false, _) => LaneKernel::Pair,
         }
+    }
+
+    /// Whether this lane claims a cache but removes nothing — `cache0` under another name,
+    /// whose contrast reads as a clean +0.000 rather than as a bug. Structural, so the gate
+    /// is exercisable without a census that produces the degenerate plan: none can, because
+    /// every prefix cuts at refs >= 2 and so removes at least one production per source.
+    pub fn is_zero_removal_alias(self, counts: CacheCounts) -> bool {
+        self.arm.uses_cache() && self.arm != CacheArm::Cache0 && counts.removals == 0
     }
 
     /// Logical rows one block of this lane covers.
@@ -1766,6 +1916,8 @@ mod lane_tests {
 
     /// The validator's teeth. Two lanes admitting one set is R3's aliasing failure shape —
     /// one experiment under two labels — and a duplicated label is the same bug earlier.
+    /// The bounded/unbounded pair is the counter-case: same arm, same block size, DIFFERENT
+    /// experiment, so the key carries `launch_bounds` and the pair must pass.
     #[test]
     fn cpu_frontier_lane_set_validator_rejects_aliases_and_duplicates() {
         let p = program(TermOrder::Locality);
@@ -1782,10 +1934,57 @@ mod lane_tests {
         ];
         let err = validate_lane_set(&p, &duped).unwrap_err();
         assert!(err.contains("appears twice"), "{err}");
+
+        let bound_contrast = [
+            frontier_128("k48@128", CacheArm::K48),
+            CacheLane {
+                launch_bounds: false,
+                label: "k48_nolb@128",
+                ..frontier_128("k48@128", CacheArm::K48)
+            },
+        ];
+        validate_lane_set(&p, &bound_contrast).unwrap();
+    }
+
+    /// A cached lane that removes nothing is `cache0` under another name: its contrast
+    /// reads as a clean +0.000 rather than as a bug. No census the generator can build
+    /// produces that plan (every prefix cuts at refs >= 2), so the gate's predicate is
+    /// exercised directly — and every shipped lane is asserted clear of it.
+    #[test]
+    fn cpu_lane_zero_removal_alias_is_rejected() {
+        let zero = CacheCounts::default();
+        let one = CacheCounts {
+            removals: 1,
+            ..CacheCounts::default()
+        };
+        let k48 = frontier_128("k48@128", CacheArm::K48);
+        assert!(k48.is_zero_removal_alias(zero));
+        assert!(!k48.is_zero_removal_alias(one));
+        // `cache0` admits nothing BY DESIGN and is exempt; so is the uncached control.
+        assert!(!frontier_128("cache0@128", CacheArm::Cache0).is_zero_removal_alias(zero));
+        assert!(!FRONTIER_CONTROL_256.is_zero_removal_alias(zero));
+
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            for lane in FRONTIER_FACTORIAL
+                .iter()
+                .chain(&FRONTIER_EXTENSION)
+                .chain(&CACHE_FACTORIAL)
+            {
+                let counts = plan_arm(&p, lane.arm).unwrap().counts;
+                assert!(
+                    !lane.is_zero_removal_alias(counts),
+                    "{} under {order:?}",
+                    lane.label
+                );
+            }
+        }
     }
 
     /// A census that pushes a lane past the frame fails THAT LANE SET, not a panic and not
-    /// a silently truncated plan.
+    /// a silently truncated plan. The FULL message is asserted: the rejection comes from
+    /// `plan_arm`'s always-on validator (which is why `validate_lane_set`'s own frame
+    /// branch is belt-and-braces), and only the exact string proves which check fired.
     #[test]
     fn cpu_frontier_lane_set_validator_rejects_over_frame_lanes() {
         let mut p = generate(
@@ -1797,9 +1996,65 @@ mod lane_tests {
         )
         .unwrap();
         p.apply_term_order(TermOrder::Locality);
+        let direct = plan_arm(&p, CacheArm::All59).unwrap_err();
+        assert!(
+            direct.ends_with(&format!(
+                "exceeds the {UNISKIP_COSET_FRAME_UNITS}-unit frame"
+            )),
+            "{direct}"
+        );
         let over = [frontier_128("all59@128", CacheArm::All59)];
         let err = validate_lane_set(&p, &over).unwrap_err();
-        assert!(err.contains("frame"), "{err}");
+        assert_eq!(err, format!("lane all59@128: {direct}"));
+    }
+
+    /// The four preregistered facts of each rotation — lane set, flag, log keyword and
+    /// round counts — come from ONE value, and the round counts divide their rotations.
+    #[test]
+    fn cpu_lane_set_selector_is_consistent() {
+        assert_eq!(LaneSet::CacheFactorial.lanes().len(), 11);
+        assert_eq!(LaneSet::FrontierFactorial.lanes(), &FRONTIER_FACTORIAL);
+        assert_eq!(LaneSet::FrontierExtension.lanes(), &FRONTIER_EXTENSION);
+        assert_eq!(LaneSet::CacheFactorial.tag(), "CACHE-FACTORIAL");
+        assert_eq!(LaneSet::CacheFactorial.rounds_and_warmup(), None);
+        assert!(!LaneSet::CacheFactorial.is_frontier());
+        for set in [LaneSet::FrontierFactorial, LaneSet::FrontierExtension] {
+            assert!(set.is_frontier());
+            assert!(set.tag().starts_with("FRONTIER-"));
+            let (rounds, warmup) = set.rounds_and_warmup().unwrap();
+            let n = set.lanes().len() as u32;
+            assert!(rounds.is_multiple_of(n), "{} rounds over {n}", set.flag());
+            assert!(warmup.is_multiple_of(n), "{} warmup over {n}", set.flag());
+        }
+        // The preregistered literals themselves (spec 2.2 / 2.3), not merely their
+        // divisibility: the emitter's 90/100 and 94/104 thresholds are keyed to them.
+        assert_eq!(
+            LaneSet::FrontierFactorial.rounds_and_warmup(),
+            Some((100, 10))
+        );
+        assert_eq!(
+            LaneSet::FrontierExtension.rounds_and_warmup(),
+            Some((104, 16))
+        );
+    }
+
+    /// A prefix point no arm names must SAY so. `cache0` is not a neutral placeholder: it
+    /// names an empty admitted set, so it would describe a plan admitting seven sources as
+    /// admitting none.
+    #[test]
+    fn cpu_prefix_plan_at_an_unnamed_k_is_not_labelled_cache0() {
+        let p = program(TermOrder::Locality);
+        let state = plan_prefix(&p, 7).unwrap();
+        assert_eq!(state.id, PlanId::Prefix(7));
+        assert_eq!(state.id.arm(), None);
+        assert_eq!(format!("{}", state.id), "prefix7");
+        assert_eq!(state.admitted.len(), 7);
+        // The named points still report as themselves, K = 0 included.
+        assert_eq!(
+            plan_prefix(&p, 0).unwrap().id,
+            PlanId::Arm(CacheArm::Cache0)
+        );
+        assert_eq!(plan_prefix(&p, 48).unwrap().id, PlanId::Arm(CacheArm::K48));
     }
 
     /// The primary rotation's shape, pinned. A dropped lane or a stray diagnostic arm would
@@ -1875,31 +2130,14 @@ mod lane_tests {
         }
     }
 
-    /// Admitted sets must be distinct across the lanes of one block size, or two lanes are
-    /// the same experiment under two labels — R3's aliasing failure shape.
+    /// Admitted sets must be distinct across the lanes of one kernel, or two lanes are the
+    /// same experiment under two labels — R3's aliasing failure shape. Checked through the
+    /// ONE implementation the runner also calls, so the shipped rotation and the pre-flight
+    /// cannot disagree about what counts as an alias.
     #[test]
     fn cpu_cache_factorial_admitted_sets_are_distinct() {
-        let mut p = crate::synth::generate(0, crate::synth::Census::default()).unwrap();
-        p.apply_term_order(crate::synth::TermOrder::Locality);
-        for size in [256u32, 128] {
-            let mut seen: Vec<(Vec<u16>, &str)> = Vec::new();
-            // `control` and `cache0` both admit nothing BY DESIGN — cache0 is the
-            // machinery arm. Distinctness is a claim about the arms that admit something.
-            for lane in CACHE_FACTORIAL.iter().filter(|l| {
-                l.block_threads == size && l.arm != CacheArm::Control && l.arm != CacheArm::Cache0
-            }) {
-                let ids: Vec<u16> = admitted_for(&p, lane.arm)
-                    .iter()
-                    .map(|e| e.source)
-                    .collect();
-                if let Some((_, other)) = seen.iter().find(|(s, _)| *s == ids) {
-                    panic!(
-                        "lanes {} and {} admit the same set at {size}",
-                        lane.label, other
-                    );
-                }
-                seen.push((ids, lane.label));
-            }
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            validate_lane_set(&program(order), &CACHE_FACTORIAL).unwrap();
         }
     }
 }

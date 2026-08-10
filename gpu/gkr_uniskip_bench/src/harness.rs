@@ -10,8 +10,7 @@ use crate::abi::*;
 use crate::cache::CachePlan;
 use crate::compact::{self, BankPerm};
 use crate::coset_cache::{
-    self, CacheArm, CacheArmState, CacheLane, CacheMutation, LaneKernel, PrologueOrder,
-    CACHE_FACTORIAL,
+    self, CacheArm, CacheArmState, CacheLane, CacheMutation, LaneKernel, LaneSet, PrologueOrder,
 };
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
@@ -398,9 +397,10 @@ pub struct PassConfig {
     pub prologue_order: PrologueOrder,
     /// TEST-ONLY: corrupt the selected cached arm's records and upload them UNCHECKED.
     pub cache_mutate: Option<CacheMutation>,
-    /// Run the 11-lane R4 primary factorial. The harness then prepares every lane instead
-    /// of one arm, and owns BOTH block sizes internally.
-    pub cache_factorial: bool,
+    /// The pinned rotation this run executes, or `None` for a single-arm run. The harness
+    /// then prepares every lane of that set instead of one arm, and owns BOTH block sizes
+    /// internally. ONE field, so a run cannot be two factorials at once.
+    pub lane_set: Option<LaneSet>,
     /// Whether the 128-thread NO-CACHE baseline runs the `__launch_bounds__(128, 7)`
     /// sibling. FALSE is the default and is the frozen control128; TRUE selects the bounded
     /// baseline, which is what makes the 128 cache contrast bound-to-bound.
@@ -826,8 +826,8 @@ impl Harness {
         // FACTORIAL LANES. Built at the 128 row tile (see `rows_per_block`), so `partials`
         // is allocated for the larger grid and the 256 lanes use half of it. Each lane
         // carries its own by-value descriptors; no lane re-uploads anything.
-        let cache_lanes = if config.cache_factorial && config.mode == EvalMode::LsbPair {
-            CACHE_FACTORIAL
+        let cache_lanes = if let (Some(set), EvalMode::LsbPair) = (config.lane_set, config.mode) {
+            set.lanes()
                 .iter()
                 .map(|&lane| {
                     let mut lane_desc = desc;
