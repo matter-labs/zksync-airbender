@@ -289,13 +289,25 @@ DEVICE_FORCEINLINE void uniskip_seg_epilogue(const uniskip_pair_desc &desc, cons
 }
 
 // ACCUMULATOR-FIRST DIAGNOSTIC. The four warps hold TERM-DISJOINT partials of the same four
-// rows, so their accumulators can meet before `eq` and before either shuffle: warps 1..3
-// publish four `e4` per thread, warp 0 absorbs them and finishes the reduction alone. It
-// prices the fold-first epilogue's two extra shuffles per warp against a wider plane.
+// rows, so their accumulators can meet before either shuffle: warps 1..3 publish four `e4`
+// per thread, warp 0 absorbs them and finishes the reduction alone. It prices the fold-first
+// epilogue's two extra shuffles per warp against a wider plane.
+//
+// `eq` is applied PRE-PUBLISH by all four warps, not post-barrier by warp 0. Exact by
+// linearity - `eq` is a function of the cohort row, which is warp-independent, so
+// `(sum_w a_w) * eq == sum_w (a_w * eq)` - and load-bearing twice: it holds the arm at 72
+// registers with no spill, and it makes the eq work identical to the fold-first arm's, so
+// the A/B prices the shuffles alone.
 DEVICE_FORCEINLINE void uniskip_seg_epilogue_acc(const uniskip_pair_desc &desc, const uniskip_pair_lane &lane, const u32 cohort, e4 acc_h[2], e4 acc_c[2],
                                                  e4 *plane) {
   const u32 warp = threadIdx.x / 32;
   const u32 lane32 = threadIdx.x & 31;
+  const e4 eq = uniskip_lsb_eq_at(desc, static_cast<u32>(lane.row));
+#pragma unroll
+  for (u32 k = 0; k < 2; ++k) {
+    acc_h[k] = e4::mul(acc_h[k], eq);
+    acc_c[k] = e4::mul(acc_c[k], eq);
+  }
   if (warp != 0) {
     e4 *slot = plane + (warp - 1) * 128 + lane32 * 4;
     slot[0] = acc_h[0];
@@ -313,12 +325,6 @@ DEVICE_FORCEINLINE void uniskip_seg_epilogue_acc(const uniskip_pair_desc &desc, 
     acc_h[1] = e4::add(acc_h[1], slot[1]);
     acc_c[0] = e4::add(acc_c[0], slot[2]);
     acc_c[1] = e4::add(acc_c[1], slot[3]);
-  }
-  const e4 eq = uniskip_lsb_eq_at(desc, static_cast<u32>(lane.row));
-#pragma unroll
-  for (u32 k = 0; k < 2; ++k) {
-    acc_h[k] = e4::mul(acc_h[k], eq);
-    acc_c[k] = e4::mul(acc_c[k], eq);
   }
 #pragma unroll
   for (int mask = UNISKIP_PAIR_LANES; mask < 32; mask <<= 1)
