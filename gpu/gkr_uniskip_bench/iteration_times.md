@@ -3587,3 +3587,107 @@ tooling fixes) → `591f8ff8` (task0: prefix-K admission + frontier lanes) → `
 frontier factorial runner + curve emitter) → `1b814909` (task2: frontier gates) → `e51b1f95`
 (task5: this record + README). Replay verified byte- and mode-identical to the live tree
 (`.agents/**` excluded). Pushed to `origin/rr/gkr_uniskip_bench` 2026-08-10.
+
+## v3 R6 — the carveout probe
+
+RR-ordered ("do (a)") after the R5-capture finding: the cached 128-thread kernels ran with a
+64 KiB shared-memory carveout of the 128 KB unified L1/smem pool while using 3.07 KB/block ×
+7 resident blocks = 21.5 KB — L1 at ~62 KB with ~43 KB of SRAM idle — while the uncached
+`control@256` got 32 KiB (L1 ≈ 95 KB). The driver APPEARS to size the carveout for the
+WARP-limit block count (12 @128, 6 @256), ignoring the register limit (72 regs → 7 blocks)
+that actually binds — a heuristic inferred from two kernels, not proven — so every R4/R5
+cached-vs-control contrast carried a ~33 KB L1 handicap on the cached side, and the cached
+arms won anyway. The probe: hand the idle carveout back to
+L1 on the one frozen cached body and re-measure the R5 knee neighborhood. **Locality order
+only** (RR ruling: the reordered/locality order IS the shipping order — that is the point of
+the reordering machinery; the census bar question is moot). Spec + codex READY-with-
+amendments: `.agents/specs/2026-08-10-gkr-uniskip-v3-r6-carveout-probe-design.md`.
+
+### Mechanism and G0 — the hint ladder is NOT the documented rounding
+
+`--carveout-hint <pct>` → `cudaFuncSetAttribute(PreferredSharedMemoryCarveout)` on
+`eval_lsb_pair_cached_128_lb_kernel` only, once per process before any launch. Host-only:
+the 9/9 frozen SASS bodies are byte-identical through the whole probe (r5_gates `all`
+re-proved on the shipped rebuild). The documented percent-of-max-rounds-up model predicts
+25 → 32 KB; the driver actually realized **65.54 KB for every hint in 24–40** (the first G0
+attempt FAILED on it). Empirical ladder (config captures, this driver/arch):
+
+| hint % | realized config | Block Limit Shared Mem | Theoretical Occupancy |
+|-------:|----------------:|-----------------------:|----------------------:|
+| 0 | 8 KB | 2 | 16.67 % (LOST) |
+| 8 | 16 KB | 5 | 41.67 % (LOST) |
+| **16** | **32 KB** | **10** | **58.33 % unchanged** |
+| 24–40 | 64 KB | 21 | 58.33 % |
+| 50–100 | 100 KB | 33 | 58.33 % |
+
+Every rung has a saved report (`target/profiling/ncu/*_v3r6_ladder_hint*` +
+`ladder-probe.log` in the evidence dir — the ladder was re-run with persisted artifacts
+after review found the first pass unsaved).
+
+⇒ the probe value is **16**, and the G0 realized-configuration gate (codex amendment 1) is
+what caught the doc-model failure. G0 at `--log-trace 24`, fresh processes: hinted 32.77 KB
+/ limit 10 / occupancy unchanged — PASS; unhinted 65.54 KB — R5 reproduction, PASS.
+Non-gating memory evidence at `hot16`/locality (one launch each): local-load L1 hit sectors
+**47.7 % → 56.2 %** (+8.5 pp) under the hint, DRAM read sectors −0.5 % — the L1-capacity
+mechanism is real at the winner.
+
+### The sessions — a preregistered design, emitter-decided
+
+5-lane rotation `--carveout-probe` `[k24, k32, k40, hot16, control@256]` (k40 per codex, so
+a moved frontier needs no second probe; `control@256` launches the uncached body and is
+never hinted — the cross-process anchor), 100 rounds / warmup 10, four processes ABBA by
+hint state (off, on, on, off), one locked session each. `tools/r6_probe_table.py` is the
+single decision authority — fail-closed, PINNED to the final contract (locality, hint 16,
+100 rounds / 10 warmup, applied-hint echo cross-checked against the schedule line); 47
+fixtures incl. both-sided threshold pins, mutation-tested with 11 single-line mutants each
+caught. `tools/r6_gates.sh` carries the 25-row rejection matrix (both the Rust and the
+emitter pins), the self-generating fixture lane (`tools/r6_fixtures/`) and the cpu lane.
+
+- **Session 1** (07:32): sanity anchors all IN (±2 % of R4's frozen medians). ABBA pair 1
+  failed the 0.05 ms control flank gate (0.098 — the GPU started cold at 180 MHz/29 °C):
+  P2 withheld. P1 decided (below).
+- **Soaked repeat** (07:44) — pre-declared in the ledger AFTER the cold raw session was
+  observed but BEFORE anything was emitted: remediation of the known cold-start instrument
+  failure, with both sessions reported and P1 required to agree across them. ~80 s
+  discarded soak first; both pairs then pass the flank gate (0.032 / 0.037).
+
+### VERDICTS (the emitter's lines; both sessions agree on P1)
+
+- **P1 — the frontier does NOT move: "carveout is not the binding capacity term."** Every
+  k-lane loses to `hot16` in every process (98–100/100); Δk24 does not shrink under the
+  hint in any adjacent pair (session 1: +0.045/+0.047 off vs +0.052/+0.049 on; soaked:
+  +0.024/+0.032 off vs +0.032/+0.026 on). Scope: the tested 32 KiB carveout did not move
+  the measured {hot16, k24, k32, k40} frontier in this rotation — it does not rule out an
+  unmeasured K17–23 optimum, and only `hot16` received memory profiling. Within that
+  scope, `hot16` (C = 28) remains the admission optimum and the R5 knee is not
+  L1-capacity-priced via the carveout despite the +8.5 pp L1 leg — consistent with the
+  knee's DRAM/L2 signature being about traffic the bigger L1 does not intercept.
+- **P2 — `hot16` itself improves under the hint: δ = −0.103 / −0.088 ms** (soaked session,
+  both pairs stable, control-bridged in-rotation; session 1's one stable pair corroborates
+  at −0.100). ~0.6–0.7 % on the winner from a one-line host-side attribute. Locality/
+  shipping order only; NOT comparable to the R5 bar layers (the emitter prints this
+  scoping on every run).
+- In-rotation k-lane deltas are rotation-composition-dependent: this 5-lane rotation prices
+  Δk24 at +0.045 (session 1 off) vs R5's 10-lane +0.140 — the signed RELATIONS replicate,
+  the magnitudes do not transfer across rotation shapes. Absolutes additionally carry
+  SwPowerCap `0x4` (R4/R5-consistent) and the soaked session runs ~0.15 ms slower at 65 °C.
+
+### Follow-ups this opens
+
+- **Baking `carveout-hint 16` into the cached launcher** as the default is a one-line win
+  candidate (−0.09..−0.10 ms on the winner) — parked for RR: it shifts every future
+  session's baseline, so it should land as its own deliberate step, not ride along.
+- **The driver heuristic generalizes.** Any production kernel whose register limit binds
+  below its warp limit may be running with an oversized carveout and a shrunken L1 for no
+  reason. A sweep of the production prover's kernels (`Shared Memory Configuration Size`
+  vs static-smem-×-resident-blocks) is cheap and could surface free L1 elsewhere.
+- **D-rung pricing note:** smem and L1 are ONE 128 KB pool (carveout cap ~100 KB) on this
+  architecture — a shared-memory publish buffer prices against the L1 the locality order
+  demonstrably uses, not against idle capacity.
+
+### Artifacts and branch state
+
+`.agents/sdd/2026-08-10-v3-r6/`: spec-amended G0 evidence (`g0-*`), the hint-ladder probe
+(`ladder-probe.log` + saved reports), both sessions' logs + telemetry + emitted verdicts
+(`session*-verdict.md`), the emitter report, ledger (`progress.md`). Lands as a feat + docs
+commit pair on top of `a39da580`.

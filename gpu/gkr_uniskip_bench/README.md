@@ -472,6 +472,23 @@ in-rotation `eval + finalize` medians are **14.717 locality / 15.120 census** (o
 L2-knee counters and the order-dependent L1 residency finding: `iteration_times.md`'s
 *v3 R5* section.
 
+### v3 R6 — the carveout probe
+
+The cached 128-thread kernels were running with a driver-chosen 64 KiB shared-memory
+carveout of the 128 KB unified pool while using 21.5 KB — the driver appears to size the
+carveout for the warp-limit block count, ignoring the register limit that binds. `--carveout-hint
+<pct>` steers the cached body's carveout (`cudaFuncSetAttribute`; the realized ladder is
+empirical, NOT the documented rounding — hint **16** = the 32 KB config here), and
+`--carveout-probe` runs the 5-lane knee-neighborhood rotation `[k24 k32 k40 hot16
+control@256]` under one hint state per process; `tools/r6_probe_table.py` decides a
+4-process ABBA session, `tools/r6_gates.sh` gates. Outcome (locality/shipping order): the
+tested 32 KiB carveout does **not** move the measured `{hot16, k24, k32, k40}` frontier —
+`hot16` stays the optimum within that scope (K17–23 remains unsampled) and the knee is not
+L1-capacity-priced — but `hot16` itself gains **−0.09..−0.10 ms** under the hint
+(control-bridged, both soaked pairs stable), and the driver-heuristic finding suggests a
+broader audit opportunity: any kernel whose register limit binds below its warp limit may
+be idling carveout the same way. Full record: `iteration_times.md`'s *v3 R6* section.
+
 ### Geometry
 
 - 16 taps of a logical row live on the multiplicative subgroup `H` of order 16;
