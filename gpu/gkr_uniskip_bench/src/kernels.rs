@@ -197,6 +197,14 @@ cuda_kernel!(
     )
 );
 cuda_kernel!(
+    EvalLsbSegG,
+    ab_gkr_uniskip_eval_lsb_seg_g_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc,
+        seg: UniskipSegDesc
+    )
+);
+cuda_kernel!(
     EvalLsbSegRecompute,
     ab_gkr_uniskip_eval_lsb_seg_recompute_kernel(desc: UniskipVmDesc, seg: UniskipSegDesc)
 );
@@ -720,6 +728,21 @@ pub fn eval_lsb_seg_s_acc(
     )
 }
 
+/// The v3 R7 carrier-G arm: the slab is a per-block region of `seg.slab_base` device
+/// scratch, so the reduction plane is static shared and the launch takes no `shared_bytes`.
+/// The caller owns the allocation and fills `slab_base` / `slab_stride_words`.
+pub fn eval_lsb_seg_g(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    seg: &UniskipSegDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbSegGArguments::new(*desc, *plan, *seg);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbSegGFunction::default().launch(&config, &args)
+}
+
 /// The machinery floor: the cohort loop and the segmented walk with no slab and no
 /// prologue, so every reference recomputes. Static shared plane, hence no `shared_bytes`.
 pub fn eval_lsb_seg_recompute(
@@ -764,6 +787,19 @@ pub fn set_seg_s_acc_carveout(percent: u32) -> CudaResult<()> {
     unsafe {
         cudaFuncSetAttribute(
             EvalLsbSegSAccFunction::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
+}
+
+/// [`set_seg_s_cv64_carveout`] for the carrier-G arm. Its slab is device memory, so what a
+/// smaller shared partition buys here is L1 for the slab's own re-reads.
+pub fn set_seg_g_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbSegGFunction::default().as_ptr(),
             CudaFuncAttribute::PreferredSharedMemoryCarveout,
             percent as std::os::raw::c_int,
         )

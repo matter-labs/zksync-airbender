@@ -61,16 +61,56 @@ DEVICE_FORCEINLINE void uniskip_seg_slab_load(const u32 *slab, const u32 base, c
   c[1] = uniskip_coset_unpack(span[32 + lane32]);
 }
 
+// The same addressing through the cached global path. `st.wb` keeps a block's fills in its
+// own L1 for the `ld.ca` re-reads, which is what makes a device-memory slab a carrier rather
+// than a round trip to DRAM - the seg-VM production pattern (gkr/backward/segmented_vm.cu).
+DEVICE_FORCEINLINE void uniskip_seg_gmem_store(u32 *slab, const u32 base, const u32 lane32, const bf c[2]) {
+  uint2 v = make_uint2(bf::into_raw_u32(c[0]), bf::into_raw_u32(c[1]));
+#if AB_UNISKIP_WINDOW_DIAG_ON
+  if (ab_gkr_uniskip_poison_slots) {
+    v.x = bf::into_raw_u32(bf::add(c[0], bf::ONE()));
+    v.y = bf::into_raw_u32(bf::add(c[1], bf::ONE()));
+  }
+#endif
+  store<uint2, st_modifier::wb>(reinterpret_cast<uint2 *>(slab), v, base * 32 + lane32);
+}
+
+DEVICE_FORCEINLINE void uniskip_seg_gmem_load(const u32 *slab, const u32 base, const u32 lane32, bf c[2]) {
+  const uint2 v = load<uint2, ld_modifier::ca>(reinterpret_cast<const uint2 *>(slab), base * 32 + lane32);
+  c[0] = bf(v.x);
+  c[1] = bf(v.y);
+}
+
+DEVICE_FORCEINLINE void uniskip_seg_gmem_store(u32 *slab, const u32 base, const u32 lane32, const e4 c[2]) {
+  uint4 *span = reinterpret_cast<uint4 *>(slab + base * 64);
+  uint4 lo = uniskip_coset_pack(c[0]);
+  uint4 hi = uniskip_coset_pack(c[1]);
+#if AB_UNISKIP_WINDOW_DIAG_ON
+  if (ab_gkr_uniskip_poison_slots) {
+    lo.x = bf::into_raw_u32(bf::add(bf(lo.x), bf::ONE()));
+    hi.x = bf::into_raw_u32(bf::add(bf(hi.x), bf::ONE()));
+  }
+#endif
+  store<uint4, st_modifier::wb>(span, lo, lane32);
+  store<uint4, st_modifier::wb>(span, hi, 32 + lane32);
+}
+
+DEVICE_FORCEINLINE void uniskip_seg_gmem_load(const u32 *slab, const u32 base, const u32 lane32, e4 c[2]) {
+  const uint4 *span = reinterpret_cast<const uint4 *>(slab + base * 64);
+  c[0] = uniskip_coset_unpack(load<uint4, ld_modifier::ca>(span, lane32));
+  c[1] = uniskip_coset_unpack(load<uint4, ld_modifier::ca>(span, 32 + lane32));
+}
+
 struct uniskip_seg_carrier_smem {
   u32 *slab; // dynamic extern __shared__, plane aliases its first 2,048 B
   template <typename T> DEVICE_FORCEINLINE void store(u32 b, u32 l, const T c[2]) const { uniskip_seg_slab_store(slab, b, l, c); }
   template <typename T> DEVICE_FORCEINLINE void load(u32 b, u32 l, T c[2]) const { uniskip_seg_slab_load(slab, b, l, c); }
 };
 
-struct uniskip_seg_carrier_gmem {                                                        // Task 4 wires it; declared here so the body templates once
-  u32 *slab;                                                                             // slab_base + blockIdx.x * slab_stride_words
-  template <typename T> DEVICE_FORCEINLINE void store(u32 b, u32 l, const T c[2]) const; // st.wb via store<> modifier
-  template <typename T> DEVICE_FORCEINLINE void load(u32 b, u32 l, T c[2]) const;        // ld.ca via load<> modifier
+struct uniskip_seg_carrier_gmem {
+  u32 *slab; // slab_base + blockIdx.x * slab_stride_words
+  template <typename T> DEVICE_FORCEINLINE void store(u32 b, u32 l, const T c[2]) const { uniskip_seg_gmem_store(slab, b, l, c); }
+  template <typename T> DEVICE_FORCEINLINE void load(u32 b, u32 l, T c[2]) const { uniskip_seg_gmem_load(slab, b, l, c); }
 };
 
 DEVICE_FORCEINLINE void uniskip_seg_set_row(uniskip_pair_lane &lane, const u32 cohort) {

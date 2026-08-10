@@ -32,6 +32,17 @@ EXTERN __global__ void __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32, 7)
   uniskip_seg_body<uniskip_seg_carrier_smem, false, true>(desc, plan, seg, car, reinterpret_cast<e4 *>(seg_slab));
 }
 
+// CARRIER G: the slab is a per-block region of device scratch, so the carveout is no longer
+// a launch property and the reduction plane goes back to being static shared. One symbol is
+// enough - what a rotation would steer here is the L2 residency of the slab, not a partition.
+EXTERN __global__ void __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32, 7)
+    ab_gkr_uniskip_eval_lsb_seg_g_kernel(const __grid_constant__ uniskip_pair_desc desc, const __grid_constant__ uniskip_cache_desc plan,
+                                         const __grid_constant__ uniskip_seg_desc seg) {
+  __shared__ e4 plane[UNISKIP_SEG_K * UNISKIP_CELLS];
+  const uniskip_seg_carrier_gmem car{reinterpret_cast<u32 *>(seg.slab_base) + blockIdx.x * seg.slab_stride_words};
+  uniskip_seg_body<uniskip_seg_carrier_gmem, false>(desc, plan, seg, car, plane);
+}
+
 // The MACHINERY FLOOR: no slab, no prologue, no fill-release barrier. Every reference takes
 // the recompute leg because the uploaded records carry the sentinel, which is what makes
 // this the seg cohort loop's own price rather than a second body.
