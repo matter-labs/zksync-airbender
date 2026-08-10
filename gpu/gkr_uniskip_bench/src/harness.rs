@@ -367,6 +367,30 @@ impl PairArm {
     }
 }
 
+/// The process's carveout state for the bounded 128-thread cached kernel. `Default` applies
+/// the R6-measured hint 16 whenever the prepared configuration launches that kernel;
+/// [`CarveoutHint::None`] is the pre-R7 state, in which nothing is set and nothing is echoed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CarveoutHint {
+    #[default]
+    Default,
+    None,
+    Explicit(u32),
+}
+
+impl std::str::FromStr for CarveoutHint {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "none" {
+            return Ok(Self::None);
+        }
+        s.parse().map(Self::Explicit).map_err(|_| {
+            format!("`{s}` is neither `none` nor a percent of the maximum shared memory")
+        })
+    }
+}
+
 /// The shape knobs of one pass. `lde_shape` applies to [`EvalMode::Unfused`] only,
 /// `cell_map` to the fused modes only, and `compact_groups`/`bank_perm` to
 /// [`EvalMode::LsbCompact`] only; `main` rejects the other combinations.
@@ -414,10 +438,10 @@ pub struct PassConfig {
     /// shape, 128 is v3 R4's second block size — a distinct kernel, not a launch
     /// parameter, because the shared plane and the epilogue reduction are static.
     pub block_threads: u32,
-    /// v3 R6: preferred shared-memory carveout (percent) set on the bounded 128-thread
-    /// cached kernel before any launch, or `None` for the driver default. Per-function and
-    /// process-sticky, so a run has exactly one hint state.
-    pub carveout_hint: Option<u32>,
+    /// v3 R6: preferred shared-memory carveout set on the bounded 128-thread cached kernel
+    /// before any launch. Per-function and process-sticky, so a run has exactly one hint
+    /// state.
+    pub carveout_hint: CarveoutHint,
 }
 
 impl PassConfig {
@@ -492,6 +516,10 @@ pub struct Harness {
     seed: u32,
     flat_eq: bool,
     config: PassConfig,
+    /// The carveout percent this harness APPLIED, which under [`CarveoutHint::Default`] is
+    /// not readable off the config. Every log line stating a hint state reads it from here,
+    /// so the schedule line and the applied-hint echo cannot disagree.
+    carveout: Option<u32>,
     lde: Option<[LdeLaunch; CLASSES]>,
     eval: EvalLaunch,
     /// The eval kernel this harness will launch, by name. Set at the SAME match that picks
@@ -921,7 +949,18 @@ impl Harness {
 
         // v3 R6: one carveout state per process, applied before any launch. Only the
         // bounded cached body is steered; the uncached control is the probe's anchor.
-        if let Some(pct) = config.carveout_hint {
+        // v3 R7: the hint is the DEFAULT wherever that body runs, so the predicate comes
+        // from the kernel selection above rather than from the flags that fed it.
+        let launches_cached_128_lb = eval_kernel == LaneKernel::Cached128Lb.name()
+            || cache_lanes
+                .iter()
+                .any(|prepared| prepared.lane.kernel() == LaneKernel::Cached128Lb);
+        let carveout = match config.carveout_hint {
+            CarveoutHint::Explicit(pct) => Some(pct),
+            CarveoutHint::None => None,
+            CarveoutHint::Default => launches_cached_128_lb.then_some(16),
+        };
+        if let Some(pct) = carveout {
             kernels::set_cached_128_lb_carveout(pct)?;
             println!("  carveout hint       {pct}% (eval_lsb_pair_cached_128_lb)");
         }
@@ -935,6 +974,7 @@ impl Harness {
             seed,
             flat_eq,
             config,
+            carveout,
             lde,
             eval,
             eval_kernel,
@@ -1091,6 +1131,11 @@ impl Harness {
             Some(_) => "eval_lsb_pair_win*",
             None => self.eval_kernel,
         }
+    }
+
+    /// The carveout percent this harness applied, or `None` for the driver's own sizing.
+    pub fn carveout(&self) -> Option<u32> {
+        self.carveout
     }
 
     /// Why an arm is unavailable at this census, if it is.

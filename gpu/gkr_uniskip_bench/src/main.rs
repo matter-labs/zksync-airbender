@@ -12,7 +12,7 @@ use gpu_gkr_uniskip_bench::coset_cache::{self, CacheArm, CacheMutation, LaneSet,
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::PairArm;
 use gpu_gkr_uniskip_bench::harness::{
-    CellMap, EvalMode, Harness, LdeShape, PassConfig, StageTimes, STAGES,
+    CarveoutHint, CellMap, EvalMode, Harness, LdeShape, PassConfig, StageTimes, STAGES,
 };
 use gpu_gkr_uniskip_bench::kernels::NvtxRange;
 use gpu_gkr_uniskip_bench::synth::{generate, Census, TermOrder};
@@ -158,11 +158,12 @@ struct Cli {
     carveout_probe: bool,
 
     /// v3 R6: preferred shared-memory carveout (percent of the maximum) set on the bounded
-    /// 128-thread cached kernel before any launch; absent = the driver's default sizing.
-    /// Composes with `--carveout-probe` or with a single cached `--cache-arm` at 128
-    /// threads (the ncu gate surface); rejected everywhere else.
-    #[arg(long)]
-    carveout_hint: Option<u32>,
+    /// 128-thread cached kernel before any launch; absent = the R7 default of 16 wherever
+    /// that kernel runs, `none` = the driver's own sizing. A percent composes with
+    /// `--carveout-probe` or with a single cached `--cache-arm` at 128 threads (the ncu
+    /// gate surface) and is rejected everywhere else; `none` composes with everything.
+    #[arg(long, value_name = "none|0..=100")]
+    carveout_hint: Option<CarveoutHint>,
 
     /// TEST-ONLY. Corrupt the selected cached arm's records and upload them UNCHECKED —
     /// the always-on validator would reject them, which is the point. `retarget` points a
@@ -632,7 +633,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                     .into(),
             );
         }
-        if cli.carveout_hint.is_some_and(|p| p != 16) {
+        if matches!(cli.carveout_hint, Some(CarveoutHint::Explicit(p)) if p != 16) {
             fail(
                 "--carveout-probe's preregistered hint is 16 — the one value the G0 \
                  ladder verified as the 32 KiB configuration"
@@ -640,7 +641,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             );
         }
     }
-    if let Some(pct) = cli.carveout_hint {
+    if let Some(CarveoutHint::Explicit(pct)) = cli.carveout_hint {
         if pct > 100 {
             fail(format!(
                 "--carveout-hint {pct} is a percent of the maximum shared memory; 0..=100"
@@ -734,7 +735,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         cache_mutate: cli.cache_mutate,
         lane_set: cli.lane_set(),
         block_threads,
-        carveout_hint: cli.carveout_hint,
+        carveout_hint: cli.carveout_hint.unwrap_or_default(),
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
     // small --log-trace can leave fewer rows than one block covers. Rejected here rather
@@ -812,7 +813,7 @@ fn run_lane_factorial(harness: &mut Harness, cli: &Cli, set: LaneSet) {
     // state rides IN the log (never inferred from a filename); the older tags keep their
     // grammar byte-stable.
     let hint = if set == LaneSet::CarveoutProbe {
-        match cli.carveout_hint {
+        match harness.carveout() {
             Some(p) => format!(" carveout-hint={p}"),
             None => " carveout-hint=default".to_string(),
         }

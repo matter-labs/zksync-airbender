@@ -487,7 +487,9 @@ tested 32 KiB carveout does **not** move the measured `{hot16, k24, k32, k40}` f
 L1-capacity-priced — but `hot16` itself gains **−0.09..−0.10 ms** under the hint
 (control-bridged, both soaked pairs stable), and the driver-heuristic finding suggests a
 broader audit opportunity: any kernel whose register limit binds below its warp limit may
-be idling carveout the same way. Full record: `iteration_times.md`'s *v3 R6* section.
+be idling carveout the same way. Since R7, hint 16 is the launcher default for this kernel;
+`--carveout-hint N` overrides and `--carveout-hint none` restores the pre-R7 echo-free
+off-state. Full record: `iteration_times.md`'s *v3 R6* section.
 
 ### Geometry
 
