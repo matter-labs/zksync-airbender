@@ -143,7 +143,9 @@ pub const UNISKIP_COSET_E4_ALIGN: usize = 16;
 /// footprint so every cached arm is one body with one frame.
 pub const UNISKIP_COSET_FRAME_UNITS: u32 = 92;
 
-/// One prologue row: the SEMANTIC source id plus its base unit.
+/// One prologue row: the SEMANTIC source id plus its base unit. `reserved` carries the R7
+/// prologue owner warp (`0..UNISKIP_SEG_K`), stamped by the harness after descriptor build;
+/// the builder always emits 0 and no pre-R7 consumer reads it beyond the builder-zero test.
 #[repr(C, align(4))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct UniskipPrologueEntry {
@@ -266,6 +268,37 @@ impl Default for UniskipVmDesc {
             num_sources: 0,
             log_rows: 0,
             eq_sizes: UniskipEqSizes::default(),
+        }
+    }
+}
+
+/// v3 R7 segmentation: the atoms a pass splits its program into, one owner warp each.
+pub const UNISKIP_SEG_K: usize = 4;
+/// Rows one cohort covers, and the cohorts a block runs — 16 rows/block at 128 threads.
+pub const UNISKIP_SEG_COHORT_ROWS: u32 = 4;
+pub const UNISKIP_SEG_COHORTS: u32 = 4;
+
+/// SEG SIDE DESCRIPTOR. `list_offset` carries record indices into `program[]`, the atom
+/// boundaries; `slab_base` is carrier G's device scratch base (0 under S/recompute) and
+/// `slab_stride_words` its per-block region stride in u32 words.
+#[repr(C, align(16))]
+#[derive(Clone, Copy, Debug)]
+pub struct UniskipSegDesc {
+    pub list_offset: [u16; UNISKIP_SEG_K + 1],
+    pub reserved0: [u16; 3],
+    pub slab_base: u64,
+    pub slab_stride_words: u32,
+    pub reserved1: u32,
+}
+
+impl Default for UniskipSegDesc {
+    fn default() -> Self {
+        Self {
+            list_offset: [0; UNISKIP_SEG_K + 1],
+            reserved0: [0; 3],
+            slab_base: 0,
+            slab_stride_words: 0,
+            reserved1: 0,
         }
     }
 }
@@ -439,6 +472,17 @@ mod cpu_tests {
         assert_eq!(offset_of!(UniskipCompactSlot, tw), 4);
         // The staging offsets must fit the u16 the slot carries.
         assert!(UNISKIP_COMPACT_MAX_GROUPS * UNISKIP_TAPS <= u16::MAX as usize);
+        // v3 R7 seg wire.
+        assert_eq!(UNISKIP_SEG_K, 4);
+        assert_eq!(UNISKIP_SEG_COHORT_ROWS, 4);
+        assert_eq!(UNISKIP_SEG_COHORTS, 4);
+        assert_eq!(offset_of!(UniskipSegDesc, list_offset), 0);
+        assert_eq!(offset_of!(UniskipSegDesc, reserved0), 10);
+        assert_eq!(offset_of!(UniskipSegDesc, slab_base), 16);
+        assert_eq!(offset_of!(UniskipSegDesc, slab_stride_words), 24);
+        assert_eq!(offset_of!(UniskipSegDesc, reserved1), 28);
+        assert_eq!(size_of::<UniskipSegDesc>(), 32);
+        assert_eq!(align_of::<UniskipSegDesc>(), 16);
 
         // Addressing bound, mirrored from the header's constants of the same name.
         assert_eq!(UNISKIP_LOG_TAPS, 4);

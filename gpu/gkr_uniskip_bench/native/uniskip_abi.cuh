@@ -177,6 +177,9 @@ static_assert(UNISKIP_COSET_FRAME_UNITS <= 256, "a base unit must fit `cache_slo
 
 // One prologue row: the SEMANTIC source id the resolver consumes (columns are neither
 // unique nor sufficient) plus its base unit. Mirrors `coset_cache::PrologueEntry`.
+// `reserved` carries the R7 prologue owner warp (0..UNISKIP_SEG_K), stamped by the harness
+// after descriptor build; the builder always emits 0 and no pre-R7 consumer reads it beyond
+// the builder-zero test.
 struct alignas(4) uniskip_prologue_entry {
   u16 source;
   u8 base;
@@ -206,6 +209,19 @@ static_assert((UNISKIP_CACHE_UNITS * UNISKIP_ROWS_PER_BLOCK) % UNISKIP_THREADS_P
 // Static shared memory is capped at 48 KB per block without an opt-in, and the pool is
 // the only shared allocation the eval kernel makes (the cell reduction is `shfl`-only).
 static_assert(UNISKIP_CACHE_POOL_WORDS * sizeof(u32) <= 48 * 1024);
+
+constexpr u32 UNISKIP_SEG_K = 4;
+constexpr u32 UNISKIP_SEG_COHORT_ROWS = 4;
+constexpr u32 UNISKIP_SEG_COHORTS = 4; // 16 rows/block at 128 threads
+struct alignas(16) uniskip_seg_desc {
+  u16 list_offset[UNISKIP_SEG_K + 1]; // record indices into program[], atom boundaries
+  u16 reserved0[3];
+  u64 slab_base;         // carrier G: device scratch base; 0 under S/recompute
+  u32 slab_stride_words; // carrier G: per-block region stride in u32 words
+  u32 reserved1;
+};
+static_assert(sizeof(uniskip_seg_desc) == 32, "seg desc ABI size drift");
+static_assert(sizeof(uniskip_vm_desc) + sizeof(uniskip_cache_desc) + sizeof(uniskip_seg_desc) <= 32764, "seg launch parameter budget");
 
 // v3 R3 WINDOW SIDE DESCRIPTOR — the device twin of `abi::UniskipWindowDesc`. It is a
 // SEPARATE parameter from `uniskip_vm_desc`: the control wire format is untouched, so an
