@@ -155,6 +155,9 @@ metric() { # metric() <arm> -> "name value" lines for one small-geometry capture
 }
 
 # Oracle rows: arm C B E R_B R_E (from .agents/sdd/2026-08-09-v3-r4/expected-counts.md).
+# COUNT_ARMS is the roll call: a row that never ran (edited-away oracle line, ncu failure,
+# a `continue` taken) must not reach ALL GATES PASS just because nothing compared unequal.
+COUNT_ARMS="cache0 hot4 hot16 allrepeat e4rich e4top2 all59"
 COUNT_ORACLE="cache0 0 0 0 0 0
 hot4 4 4 0 51 0
 hot16 28 12 4 93 20
@@ -166,7 +169,7 @@ all59 92 48 11 190 34"
 counts() {
   note "### local instruction / sector / prologue-H gates (ncu, 1 block x 8 warps)"
   note "  metrics: $NCU_LOCAL_METRICS"
-  local base=""
+  local base="" gated=" "
   while read -r arm C Bc E RB RE; do
     [ -n "$arm" ] || continue
     local out; out=$(metric "$arm")
@@ -189,8 +192,18 @@ counts() {
     [ "$se" = "$want_se" ] || bad "$arm store sectors $se want $want_se"
     [ "$le" = "$want_le" ] || bad "$arm load sectors $le want $want_le"
     [ "$got_h" = "$want_h" ] || bad "$arm prologue H bytes $got_h want $want_h"
+    gated="$gated$arm "
     note "  $arm: st=$st/$want_st ld=$ld/$want_ld pred_off=$po sect=$se/$le H=$got_h/$want_h"
   done <<< "$COUNT_ORACLE"
+  local ran=0
+  for arm in $COUNT_ARMS; do
+    case "$gated" in
+      *" $arm "*) ran=$((ran + 1)) ;;
+      *) bad "count gate never ran for $arm — a missing row is a failure, not a pass" ;;
+    esac
+  done
+  note "  gated arms=$ran/7"
+  [ "$ran" = 7 ] || bad "expected 7 gated count rows, completed $ran"
 }
 
 # Chain executions per warp-program walk, against the spec 4 formula C + (326 - Rc).

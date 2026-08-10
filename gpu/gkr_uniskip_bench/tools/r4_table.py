@@ -6,10 +6,12 @@ cyclic rotation, so a round's lanes share whatever clock state that round had. T
 contrast round-by-round and then summarizing removes the ~1 %/session drift that would
 otherwise swamp effects of this size.
 
-The arm schema is DATA-DRIVEN: lanes, their registers, blocks/SM, block size, grid and
-kernel all come from the log's `ARM` lines, which the runner emits from Rust. Nothing here
-hardcodes an arm list, an occupancy fact or a kernel name — R3's emitter did, and the spec
-called that out as the thing to fix.
+The lane SET is pinned here (`EXPECTED_LANES`) as an integrity gate: a log carrying a
+different rotation is a different experiment, and it is rejected rather than partially
+summarized. Every per-lane FACT is data-driven from the log's `ARM` lines, which the runner
+emits from Rust — registers, blocks/SM, block size, grid, kernel, C, removals, admitted-set
+size. No occupancy number, kernel name or removal count is written here; R3's emitter held
+all three, and the spec called that out as the thing to fix.
 
 `eval` and `finalize` are summarized SEPARATELY. The 128 lanes run twice the grid, so
 finalize reduces twice the partials; summing the two stages would fold a real block-size
@@ -107,6 +109,10 @@ def emit(order, rounds, arms, trailer, sched):
     if trailer is None:
         sys.exit(f"{order}: no `CACHE-FACTORIAL done order={order} …` trailer — the run did "
                  f"not finish, or the log is truncated")
+    if not rounds:
+        sys.exit(f"{order}: the log declares this order ({sched[1]} rounds x {sched[0]} lanes) "
+                 f"but carries no SAMPLE rows — a declared order is emitted or it is an "
+                 f"error, never silently skipped")
     lanes = list(arms)
     if set(lanes) != EXPECTED_LANES:
         missing = sorted(EXPECTED_LANES - set(lanes))
@@ -131,6 +137,35 @@ def emit(order, rounds, arms, trailer, sched):
     if len(rounds) != trailer[1]:
         sys.exit(f"{order}: {len(rounds)} rounds in the log, trailer claims rounds="
                  f"{trailer[1]} — truncated log")
+    if (sched[1], sched[2]) != (trailer[1], trailer[0]):
+        sys.exit(f"{order}: the schedule line declares rounds={sched[1]} warmup={sched[2]} "
+                 f"but the trailer declares rounds={trailer[1]} warmup={trailer[0]} — the "
+                 f"log mixes two runs, or the header does not describe what ran")
+    # ROUND IDS. The runner numbers timed rounds `warmup .. warmup + rounds - 1`, so the ids
+    # are a consecutive run with a known anchor. Counting rounds alone accepts gaps,
+    # duplicates and a renumbered log (0, 11, 22, … passes `rounds % lanes == 0`).
+    want_ids = list(range(trailer[0], trailer[0] + trailer[1]))
+    if sorted(rounds) != want_ids:
+        got = sorted(rounds)
+        sys.exit(f"{order}: round ids are {got[:4]}…{got[-1]}, expected the consecutive run "
+                 f"{want_ids[0]}…{want_ids[-1]} (warmup {trailer[0]}, rounds {trailer[1]}) — "
+                 f"gaps, duplicates or a renumbered log, none of which is a paired rotation")
+    # ROTATION BALANCE. Samples arrive in execution order, so a lane's position inside a
+    # round IS its rotation slot. Every lane must take every slot equally often — that is
+    # what makes the contrast paired; a lane that keeps a slot carries that slot's clock
+    # state into its median. `rounds % lanes == 0` only counts rounds.
+    per = len(rounds) // len(lanes)
+    slots = defaultdict(int)
+    for r in sorted(rounds):
+        for slot, lane in enumerate(rounds[r]):
+            slots[(lane, slot)] += 1
+    for lane in lanes:
+        for slot in range(len(lanes)):
+            if slots[(lane, slot)] != per:
+                sys.exit(f"{order}: lane {lane} runs at rotation position {slot} in "
+                         f"{slots[(lane, slot)]} rounds, expected {per} — the rotation is "
+                         f"not balanced, so a lane keeps a position and its median carries "
+                         f"that position's clock state")
     keys = sorted(rounds)
     EV, FIN = 0, 1
 
@@ -226,7 +261,9 @@ def emit(order, rounds, arms, trailer, sched):
         m = median(d)
         lo, hi = iqr(d)
         sign = sum(1 for x in d if (x > 0) == (m > 0) and x != 0)
-        base = med[b][0] + med[b][1]
+        # The denominator is the median of the per-round SUM, not the sum of the two stage
+        # medians: the median is not additive, and the numerator is already a per-round sum.
+        base = median(rounds[r][b][EV] + rounds[r][b][FIN] for r in keys)
         print(f"| `{a}` − `{b}` | `{b}` | **{m:+.3f}** | {lo:+.3f} … {hi:+.3f} | "
               f"{100.0 * m / base:+.2f} % | {sign}/{len(d)} |")
 
@@ -249,11 +286,18 @@ def main():
     ap.add_argument("--order", help="emit only this term order")
     args = ap.parse_args()
     runs, arms, done, sched = parse(args.log)
-    if not runs:
-        sys.exit(f"{args.log}: no SAMPLE lines")
-    for order in sorted(runs, key=lambda o: (o != "locality", o)):
-        if args.order and order != args.order:
-            continue
+    # A DECLARED order is emitted or it is an error. Iterating the orders that happen to
+    # carry SAMPLE rows silently drops a section whose samples were truncated away, and
+    # `--order X` against a log without X used to exit 0 with no output at all.
+    orders = sorted(set(runs) | set(sched), key=lambda o: (o != "locality", o))
+    if not orders:
+        sys.exit(f"{args.log}: no SAMPLE lines and no `CACHE-FACTORIAL schedule` line")
+    if args.order:
+        if args.order not in orders:
+            sys.exit(f"{args.log}: no `{args.order}` section — the log carries "
+                     f"{', '.join(orders)}")
+        orders = [args.order]
+    for order in orders:
         emit(order, runs[order], arms.get(order, {}), done.get(order), sched.get(order))
 
 

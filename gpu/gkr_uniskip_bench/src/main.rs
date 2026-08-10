@@ -123,7 +123,7 @@ struct Cli {
 
     /// Run the v3 R4 primary factorial: 11 lanes (5 arms at 256, 6 at 128 including both
     /// no-cache baselines) in ONE process against shared allocations, in a generated cyclic
-    /// rotation. Use `--iterations` a multiple of 11 (the record uses 99 per term order).
+    /// rotation. Use `--iterations` a multiple of 11 (the record uses 110 per term order).
     /// The factorial owns both block sizes internally, so it takes neither --block-threads
     /// nor a single --cache-arm.
     #[arg(long)]
@@ -613,6 +613,21 @@ fn run_cache_factorial(harness: &mut Harness, cli: &Cli) {
         fail("the harness prepared no factorial lanes".into());
     }
     let n = lanes.len();
+    // The rotation about to be generated, checked before it runs: the CLI gate proves only
+    // that the round count divides by the lane count, not that the schedule realizes it.
+    let want_starts = cli.iterations / n as u32;
+    let mut starts = vec![0u32; n];
+    for i in 0..cli.iterations {
+        starts[(cli.warmup + i) as usize % n] += 1;
+    }
+    if !cli.iterations.is_multiple_of(n as u32) || starts.iter().any(|&c| c != want_starts) {
+        fail(format!(
+            "the generated rotation starts lanes {starts:?} times over {} timed rounds; \
+             every lane must start exactly {want_starts}, or a lane keeps a position and \
+             its median carries that position's clock state",
+            cli.iterations
+        ));
+    }
     // Occupancy, kernel and geometry facts come from Rust so the emitter carries no
     // constants of its own — it reads the arm schema off these lines.
     println!(
