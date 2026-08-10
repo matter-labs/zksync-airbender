@@ -161,7 +161,8 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     let mem_oracle = ColumnMajorBaseOracleForLDE::CosetRecompute(mem_commitment); // 8 cols
     let wit_oracle = ColumnMajorBaseOracleForLDE::CosetRecompute(wit_commitment); // 1 col
                                                                                   // empty setup oracle (borrowed, held for the whole call, but carries no cosets)
-    let setup_oracle = commit_trace_part::<Proth120, Tree>(
+    let setup_oracle = commit_trace_part::<Proth120, Proth120, Tree>(
+        &crate::gkr::prover::backend::NaiveBackend,
         &[],
         &twiddles,
         lde_factor,
@@ -201,6 +202,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         seed,
         cap_size,
         n,
+        &crate::gkr::prover::backend::NaiveBackend,
         WhirIntermediateOracleMode::CosetByCoset,
         worker,
     );

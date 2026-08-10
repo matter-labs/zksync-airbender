@@ -734,6 +734,7 @@ where
 /// Build the intermediate oracle for a folded monomial form, returning its Merkle
 /// cap (to commit) and the oracle.
 fn build_intermediate_oracle<F, E, T>(
+    backend: &impl crate::gkr::prover::backend::Backend<F, E>,
     monomial_form: &[E],
     lde_factor: usize,
     values_per_leaf: usize,
@@ -750,14 +751,18 @@ where
 {
     match mode {
         WhirIntermediateOracleMode::Monolithic => {
-            let rs = compute_column_major_lde_from_monomial_form(
-                monomial_form,
-                twiddles,
-                lde_factor,
-                Some(worker),
-            );
+            let t_lde = std::time::Instant::now();
+            let rs =
+                backend.lde_ext_poly_from_monomial_form(monomial_form, twiddles, lde_factor, worker);
+            let t_lde = t_lde.elapsed();
+            let t_tree = std::time::Instant::now();
             let oracle =
                 commit_single_ext_poly::<F, E, T>(rs, values_per_leaf, tree_cap_size, worker);
+            println!(
+                "  [timing]   (intermediate split: LDE {:.3?}, tree {:.3?})",
+                t_lde,
+                t_tree.elapsed()
+            );
             let cap = oracle.tree.get_cap();
             (cap, IntermediateOracle::Monolithic(oracle))
         }
@@ -795,6 +800,9 @@ pub fn whir_fold<
     mut transcript_seed: TR::Seed,
     tree_cap_size: usize,
     trace_len_log2: usize,
+    // Compute backend for the in-memory-path heavy ops (intermediate-oracle LDEs,
+    // the batching IFFT). The backend must not change any produced values.
+    backend: &impl crate::gkr::prover::backend::Backend<F, E>,
     // How to materialize each intermediate (folded) RS oracle. Independent from the
     // storage policy of the base oracles: the base oracles carry their own policy in
     // their `ColumnMajorBaseOracleForLDE` variant, so e.g. recompute-based base
@@ -1027,7 +1035,7 @@ where
         // form is itself — skip the (otherwise wasted) inverse transform.
         batched_evals
     } else {
-        compute_column_major_monomial_form_from_main_domain_owned(batched_evals, twiddles)
+        backend.monomial_form_from_main_domain(batched_evals, twiddles, worker)
     };
     // `monomial_form += batched_monomials_direct` (both are `1 << trace_len_log2`
     // long — `batch_columns` always returns a full zero-filled buffer), parallelized
@@ -1227,7 +1235,9 @@ where
         {
             let lde_factor = *whir_steps_lde_factors.next().unwrap();
             let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+            let t_build = std::time::Instant::now();
             let (cap, next_oracle) = build_intermediate_oracle::<F, E, T>(
+                backend,
                 &sumchecked_poly_monomial_form,
                 lde_factor,
                 1 << next_folding_steps,
@@ -1235,6 +1245,12 @@ where
                 intermediate_oracle_mode,
                 twiddles,
                 worker,
+            );
+            println!(
+                "  [timing] intermediate oracle 0: poly 2^{}, lde {} -> built in {:.3?}",
+                poly_size_log2,
+                lde_factor,
+                t_build.elapsed()
             );
             let c = WhirIntermediateCommitmentAndQueries {
                 commitment: WhirCommitment {
@@ -1350,6 +1366,7 @@ where
         // query-index order as before, so proof layout and transcript are
         // unchanged.
         println!("  drawing {num_queries} queries...");
+        let t_queries = std::time::Instant::now();
         let mut set_query_iters: [Option<
             std::vec::IntoIter<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>,
         >; 3] = [
@@ -1369,6 +1386,11 @@ where
                     .into_iter()
             }),
         ];
+
+        println!(
+            "  [timing] round-0 base queries ({num_queries}) served in {:.3?}",
+            t_queries.elapsed()
+        );
 
         // Every round-0 query has been served: the (potentially large) base oracles
         // can be dropped before the memory-heavy folding rounds.
@@ -1609,7 +1631,9 @@ where
         let rs_oracle_to_query = {
             let lde_factor = *whir_steps_lde_factors.next().unwrap();
             let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+            let t_build = std::time::Instant::now();
             let (cap, next_oracle) = build_intermediate_oracle::<F, E, T>(
+                backend,
                 &sumchecked_poly_monomial_form,
                 lde_factor,
                 1 << next_folding_steps,
@@ -1617,6 +1641,13 @@ where
                 intermediate_oracle_mode,
                 twiddles,
                 worker,
+            );
+            println!(
+                "  [timing] intermediate oracle {}: poly 2^{}, lde {} -> built in {:.3?}",
+                internal_round + 1,
+                poly_size_log2,
+                lde_factor,
+                t_build.elapsed()
             );
             let c = WhirIntermediateCommitmentAndQueries {
                 commitment: WhirCommitment {
@@ -1712,7 +1743,13 @@ where
         // coset-by-coset oracle recomputes each touched coset group once), then
         // consume them in the original unsorted query order.
         println!("  drawing {num_queries} queries...");
+        let t_queries = std::time::Instant::now();
         let mut round_queries = rs_oracle_to_query.query_many(&query_indexes, twiddles, worker).into_iter();
+        println!(
+            "  [timing] round {} queries ({num_queries}) served in {:.3?}",
+            internal_round + 1,
+            t_queries.elapsed()
+        );
         drop(rs_oracle_to_query);
         for &query_index in query_indexes.iter() {
             assert!(query_index < query_domain_size as usize);
@@ -1928,9 +1965,14 @@ where
 
         // Same batched-then-ordered serving as the internal rounds.
         println!("  drawing {num_queries} queries...");
+        let t_queries = std::time::Instant::now();
         let mut round_queries = rs_oracle_to_query
             .query_many(&query_indexes, twiddles, worker)
             .into_iter();
+        println!(
+            "  [timing] final-round queries ({num_queries}) served in {:.3?}",
+            t_queries.elapsed()
+        );
         drop(rs_oracle_to_query);
         for &query_index in query_indexes.iter() {
             assert!(query_index < query_domain_size as usize);
@@ -2180,14 +2222,35 @@ fn commit_single_ext_poly<
 where
     [(); E::DEGREE]: Sized,
 {
-    let mut t = Vec::with_capacity(cosets.len());
+    let mut cosets = cosets;
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     let trace_len = 1usize << trace_len_log2;
 
     let conv = ExtCoeffConvCtx::<F>::new(trace_len, values_per_leaf);
-    for (mut column, offset) in cosets.into_iter() {
-        assert_eq!(column.len(), trace_len);
-        conv.apply(&mut column, offset, worker);
+    // Leaf coeff-conversion, scheduled like the backend's coset grids: with at
+    // least as many cosets as threads, convert the cosets IN PARALLEL with the
+    // serial per-coset kernel (a sequential loop of worker-wide scopes over tiny
+    // per-coset slices costs a fixed ~ms of spawn/barrier overhead per coset —
+    // measured ~45 ms/coset at 88 threads, which dominated the huge-LDE
+    // intermediate oracles: 524k cosets => minutes of pure overhead). With fewer
+    // cosets than threads keep the historical sequential loop with the
+    // worker-parallel conversion.
+    if cosets.len() >= worker.get_num_cores() {
+        use worker::rayon::prelude::*;
+        worker.pool.install(|| {
+            cosets.par_iter_mut().for_each(|(column, offset)| {
+                assert_eq!(column.len(), trace_len);
+                conv.apply_serial(&mut column[..], *offset);
+            })
+        });
+    } else {
+        for (column, offset) in cosets.iter_mut() {
+            assert_eq!(column.len(), trace_len);
+            conv.apply(&mut column[..], *offset, worker);
+        }
+    }
+    let mut t = Vec::with_capacity(cosets.len());
+    for (column, offset) in cosets.into_iter() {
         let el = ColumnMajorExtensionOracleForCoset {
             values_normal_order: ColumnMajorCosetBoundTracePart {
                 column: Arc::new(column),
@@ -3849,6 +3912,7 @@ mod test {
             ::transcript::Seed::default(),
             1,
             size.trailing_zeros() as usize,
+            &crate::gkr::prover::backend::NaiveBackend,
             WhirIntermediateOracleMode::Monolithic,
             &worker,
         );

@@ -131,7 +131,7 @@ fn load_boundary_transcript_prefix() -> (
 
 #[test]
 fn gkr_unified_packed_commitment_basic_fibonacci() {
-    gkr_unified_packed_commitment_basic_fibonacci_impl(8, false);
+    gkr_unified_packed_commitment_basic_fibonacci_impl(8, false, false);
 }
 
 /// Copy of [`gkr_unified_packed_commitment_basic_fibonacci`] configured for large
@@ -144,7 +144,17 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
 #[test]
 #[ignore = "cloud-machine scale: 64 cores + enough RAM to materialize the 2^31 packed RS codewords"]
 fn gkr_unified_packed_commitment_basic_fibonacci_64core_in_memory() {
-    gkr_unified_packed_commitment_basic_fibonacci_impl(64, true);
+    // BENCH_THREADS overrides the worker width for machines that are not
+    // 64-core (e.g. the 88-core benchmark VM). SETUP_ON_DISK=1 keeps the
+    // mem/witness base + intermediate oracles fully in memory but serves the
+    // SETUP commitment from disk — shaves ~64 GiB off the peak for boxes where
+    // the fully-in-memory ~370 GiB working set does not fit.
+    let threads = std::env::var("BENCH_THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(64);
+    let setup_in_memory = std::env::var("SETUP_ON_DISK").map_or(true, |v| v != "1");
+    gkr_unified_packed_commitment_basic_fibonacci_impl(threads, true, setup_in_memory);
 }
 
 /// Shared body of the packed unified fibonacci proving tests. `fully_in_memory`
@@ -152,7 +162,11 @@ fn gkr_unified_packed_commitment_basic_fibonacci_64core_in_memory() {
 /// (coset-recompute base/intermediate oracles + on-disk cached setup, reference
 /// fixtures written), `true` = everything materialized in RAM (in-memory packed
 /// setup commitment + in-memory oracles, no fixtures written).
-fn gkr_unified_packed_commitment_basic_fibonacci_impl(num_threads: usize, fully_in_memory: bool) {
+fn gkr_unified_packed_commitment_basic_fibonacci_impl(
+    num_threads: usize,
+    fully_in_memory: bool,
+    setup_in_memory: bool,
+) {
     let worker = Worker::new_with_num_threads(num_threads);
     let level = SecurityLevel::Sec100;
     // With `pack_log2 = 4` the 2^22 base trace is packed into a single 2^26-variate
@@ -338,7 +352,8 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(num_threads: usize, fully_
     //    `SetupCommitment::OnDisk` (so the setup never has to sit in RAM while
     //    proving). Delete the `*.rscw`/`*.tree` cache files to force a recompute.
     use crate::gkr::prover::{
-        prove_configured_with_gkr_with_storage, SetupCommitment, WhirOracleStorage,
+        prove_configured_with_gkr_with_storage_and_backend, SetupCommitment, WhirOracleStorage,
+        Proth120WorkStealingLazyBackend,
     };
     use crate::gkr::whir::coset_commit::serialize_packed_base_commitment_split_to_disk;
     use crate::gkr::whir::rs_on_disk::{coset_file_path, OnDiskRsCodewords};
@@ -350,7 +365,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(num_threads: usize, fully_
     let lde_factor = prover_config.lde_factor;
     let values_per_leaf = prover_config.base_oracles_values_per_leaf;
 
-    let setup_commitment = if fully_in_memory {
+    let setup_commitment = if setup_in_memory {
         // Commit the packed setup fully in memory: RS codewords + monolithic Merkle
         // tree materialized (byte-identical commitment to the on-disk/split path).
         println!("Committing setup in memory (packed)");
@@ -440,17 +455,20 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(num_threads: usize, fully_
     };
 
     println!("Trying to prove (unified, packed commitment, pack_log2 = {pack_log2})");
-    if fully_in_memory {
-        println!("  memory/witness RS codewords: InMemory; setup: in-memory");
-    } else {
-        println!("  memory/witness RS codewords: Recompute; setup: on-disk");
-    }
+    println!(
+        "  memory/witness RS codewords: {}; setup: {}",
+        if fully_in_memory { "InMemory" } else { "Recompute" },
+        if setup_in_memory { "in-memory" } else { "on-disk" },
+    );
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr_with_storage::<
+    // This test is concretely Proth120, so it opts into the Proth120-only
+    // lazy-reduction work-stealing backend (byte-identical proofs, faster LDEs).
+    let proof = prove_configured_with_gkr_with_storage_and_backend::<
         Proth120,
         Proth120,
         Keccak256MerkleTreeWithCap,
         Keccak256Transcript,
+        _,
     >(
         &unified_circuit,
         &external_challenges,
@@ -463,6 +481,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(num_threads: usize, fully_
         storage,
         top_bits,
         trace_len,
+        &Proth120WorkStealingLazyBackend,
         &worker,
     );
     println!("Packed unified proving time is {:?}", now.elapsed());

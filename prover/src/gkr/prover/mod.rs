@@ -13,6 +13,7 @@ pub use crate::definitions::GKRExternalChallenges;
 use crate::fft::Twiddles;
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
+pub use crate::gkr::prover::backend::{Backend, NaiveBackend, WorkStealingBackend, Proth120WorkStealingLazyBackend};
 use crate::gkr::prover::stages::commitment_utils;
 use crate::gkr::prover::transcript_utils::{
     commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
@@ -35,6 +36,7 @@ use crate::worker::Worker;
 use common_constants::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::definitions::{GKRAddress, VirtualSetupPoly};
 
+pub mod backend;
 mod debug_utils;
 pub mod dimension_reduction;
 pub mod forward_loop;
@@ -423,7 +425,7 @@ where
             WhirOracleStorage::fully_in_memory()
         }
     };
-    prove_configured_with_gkr_impl::<F, E, T, TR>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, _>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -435,6 +437,7 @@ where
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
+        &WorkStealingBackend,
         worker,
     )
 }
@@ -443,7 +446,10 @@ where
 /// ([`WhirOracleStorage`]: base RS-codeword source and intermediate-oracle mode,
 /// independently) and wraps the setup commitment in [`SetupCommitment`]
 /// (in-memory or on-disk). For a given [`CommitmentMode`] the resulting proof is
-/// independent of these storage choices.
+/// independent of these storage choices. Runs on the default
+/// [`WorkStealingBackend`]; use
+/// [`prove_configured_with_gkr_with_storage_and_backend`] to also choose the
+/// compute backend (e.g. the Proth120-only [`Proth120WorkStealingLazyBackend`]).
 #[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage<
     F: PrimeField + TwoAdicField,
@@ -468,7 +474,7 @@ where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
 {
-    prove_configured_with_gkr_impl::<F, E, T, TR>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, _>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -480,16 +486,23 @@ where
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
+        &WorkStealingBackend,
         worker,
     )
 }
 
+/// [`prove_configured_with_gkr_with_storage`] with an explicit compute backend.
+/// Backends must (and do — see `backend::tests`) produce byte-identical proofs;
+/// only the execution strategy differs. Field-specific backends (like the
+/// Proth120 lazy-reduction [`Proth120WorkStealingLazyBackend`]) are selected HERE by
+/// callers that concretely know their field — there is no runtime dispatch.
 #[allow(clippy::too_many_arguments)]
-fn prove_configured_with_gkr_impl<
+pub fn prove_configured_with_gkr_with_storage_and_backend<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
     TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -502,6 +515,50 @@ fn prove_configured_with_gkr_impl<
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
+    backend: &B,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
+    prove_configured_with_gkr_impl::<F, E, T, TR, B>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        storage,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        backend,
+        worker,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_configured_with_gkr_impl<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &Twiddles<F, Global>,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    storage: WhirOracleStorage,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    backend: &B,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
@@ -546,7 +603,8 @@ where
             // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
             let (mem_oracle, wit_oracle) = match rs_codeword_source {
                 RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, T>(
+                    stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, E, T>(
+                        backend,
                         &witness_eval_data,
                         twiddles,
                         prover_config.lde_factor,
@@ -632,7 +690,8 @@ where
         CommitmentMode::MergedMemoryAndWitness => {
             let merged_oracle = match rs_codeword_source {
                 RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, T>(
+                    stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, E, T>(
+                        backend,
                         &witness_eval_data,
                         twiddles,
                         prover_config.lde_factor,
@@ -722,7 +781,8 @@ where
             // yield the same proof.
             let merged_oracle = match rs_codeword_source {
                 RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_packed_merged_memory_and_witness_subtrees::<F, T>(
+                    stages::initial_commit::commit_packed_merged_memory_and_witness_subtrees::<F, E, T>(
+                        backend,
                         &witness_eval_data,
                         twiddles,
                         prover_config.lde_factor,
@@ -1317,6 +1377,7 @@ where
         seed,
         prover_config.whir_schedule.cap_size,
         trace_len_log2_for_whir,
+        backend,
         intermediate_oracle_mode,
         worker,
     );

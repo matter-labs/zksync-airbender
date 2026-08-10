@@ -1,0 +1,26 @@
+[package]
+name = "experiments_runner"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+# Fast-iteration experiment harness: depends only on the small leaf crates
+# (field / fft / worker), so a release rebuild takes seconds instead of the
+# minutes a `prover` test build costs. Cross-compiled and run on remote
+# benchmark machines.
+
+[dependencies]
+field.workspace = true
+fft.workspace = true
+worker.workspace = true
+blake2s_u32.workspace = true
+rand = { workspace = true, features = ["std", "std_rng", "thread_rng"] }
+
+[[bin]]
+name = "experiments_runner"
+path = "src/main.rs"

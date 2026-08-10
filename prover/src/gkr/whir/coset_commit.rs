@@ -1054,7 +1054,12 @@ mod test {
         // twiddles are sized for the packed domain.
         let twiddles = Twiddles::<Proth120, Global>::new(1usize << packed_trace_len_log2, &worker);
 
-        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> = commit_trace_part_packed(
+        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> = commit_trace_part_packed::<
+            Proth120,
+            Proth120,
+            Tree,
+        >(
+            &crate::gkr::prover::backend::NaiveBackend,
             &col_refs,
             &twiddles,
             lde_factor,
@@ -1153,7 +1158,12 @@ mod test {
 
         let twiddles = Twiddles::<Proth120, Global>::new(trace_len, &worker);
 
-        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> = commit_trace_part(
+        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> = commit_trace_part::<
+            Proth120,
+            Proth120,
+            Tree,
+        >(
+            &crate::gkr::prover::backend::NaiveBackend,
             &col_refs,
             &twiddles,
             lde_factor,
@@ -1242,7 +1252,12 @@ mod test {
         let twiddles = Twiddles::<Proth120, Global>::new(trace_len, &worker);
 
         let mono: crate::gkr::whir::ColumnMajorBaseOracleForLDE<Proth120, Tree> =
-            crate::gkr::prover::stages::commitment_utils::commit_trace_part(
+            crate::gkr::prover::stages::commitment_utils::commit_trace_part::<
+                Proth120,
+                Proth120,
+                Tree,
+            >(
+                &crate::gkr::prover::backend::NaiveBackend,
                 &col_refs,
                 &twiddles,
                 lde_factor,
