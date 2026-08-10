@@ -96,13 +96,14 @@ struct Cli {
     #[arg(long, value_enum)]
     pair_arm: Option<PairArm>,
 
-    /// v3 R4 coset-cache arm of `--mode lsb-pair`: `control` (no cache — today's
+    /// v3 R4/R5 coset-cache arm of `--mode lsb-pair`: `control` (no cache — today's
     /// behavior), `cache0` (cached body, empty admitted set — the fixed-machinery
-    /// diagnostic), a prefix of the canonical admission list (`hot4`, `hot16`,
-    /// `allrepeat`), the E4-only set `e4rich`, or the `all59` capacity-stress
-    /// diagnostic (every live source, refs = 1 included). Mutually
-    /// exclusive with `--pair-arm` and with `--factorial`. The host plan for every arm is
-    /// built and validated on any `lsb-pair` run, whichever arm is selected.
+    /// diagnostic), a prefix of the canonical admission list (`hot4`, `hot16`, the R5
+    /// frontier points `k24 k32 k40 k45 k46 k48 k49 k50 k51`, `allrepeat`), the E4-only
+    /// set `e4rich`, or the `all59` capacity-stress diagnostic (every live source,
+    /// refs = 1 included). Mutually exclusive with `--pair-arm` and with `--factorial`.
+    /// The host plan for every arm is built and validated on any `lsb-pair` run,
+    /// whichever arm is selected.
     #[arg(long, value_enum)]
     cache_arm: Option<CacheArm>,
 

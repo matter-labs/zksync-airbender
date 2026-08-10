@@ -46,9 +46,10 @@ impl PrologueOrder {
     }
 }
 
-/// The R4 arms. `Control` runs the uncached body; every other arm runs the cached body
-/// and differs only in uploaded state — `Cache0` with an empty admitted set, which prices
-/// the fixed lookup/frame/branch machinery the way R3's `wnone` priced the window's.
+/// The R4 arms plus the R5 frontier's `kN` prefix points. `Control` runs the uncached
+/// body; every other arm runs the cached body and differs only in uploaded state —
+/// `Cache0` with an empty admitted set, which prices the fixed lookup/frame/branch
+/// machinery the way R3's `wnone` priced the window's.
 ///
 /// `rename_all = "lower"` is load-bearing: clap's default is kebab-case, which would make
 /// `allrepeat` and `e4rich` — the spellings [`CacheArm::as_str`] emits and the R4 runner
@@ -65,10 +66,19 @@ pub enum CacheArm {
     All59,
     E4Rich,
     E4Top2,
+    K24,
+    K32,
+    K40,
+    K45,
+    K46,
+    K48,
+    K49,
+    K50,
+    K51,
 }
 
 impl CacheArm {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 17] = [
         Self::Control,
         Self::Cache0,
         Self::Hot4,
@@ -77,6 +87,15 @@ impl CacheArm {
         Self::All59,
         Self::E4Rich,
         Self::E4Top2,
+        Self::K24,
+        Self::K32,
+        Self::K40,
+        Self::K45,
+        Self::K46,
+        Self::K48,
+        Self::K49,
+        Self::K50,
+        Self::K51,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -89,12 +108,42 @@ impl CacheArm {
             Self::All59 => "all59",
             Self::E4Rich => "e4rich",
             Self::E4Top2 => "e4top2",
+            Self::K24 => "k24",
+            Self::K32 => "k32",
+            Self::K40 => "k40",
+            Self::K45 => "k45",
+            Self::K46 => "k46",
+            Self::K48 => "k48",
+            Self::K49 => "k49",
+            Self::K50 => "k50",
+            Self::K51 => "k51",
         }
     }
 
     /// Whether the arm runs the cached kernel body at all.
     pub fn uses_cache(self) -> bool {
         self != Self::Control
+    }
+
+    /// The canonical-list prefix length this arm admits, when the arm IS a prefix point.
+    /// `AllRepeat` is the whole list at whatever length the census gives it and the three
+    /// diagnostics are not prefixes at all, so both answer `None`.
+    pub fn prefix_k(self) -> Option<usize> {
+        Some(match self {
+            Self::Control | Self::Cache0 => 0,
+            Self::Hot4 => 4,
+            Self::Hot16 => 16,
+            Self::K24 => 24,
+            Self::K32 => 32,
+            Self::K40 => 40,
+            Self::K45 => 45,
+            Self::K46 => 46,
+            Self::K48 => 48,
+            Self::K49 => 49,
+            Self::K50 => 50,
+            Self::K51 => 51,
+            Self::AllRepeat | Self::All59 | Self::E4Rich | Self::E4Top2 => return None,
+        })
     }
 }
 
@@ -310,33 +359,55 @@ pub fn e4_top2(canonical: &[AdmissionEntry]) -> Vec<AdmissionEntry> {
     e4_rich(canonical).into_iter().take(2).collect()
 }
 
+/// The canonical prefix-K set: [`canonical_admission`] truncated at `k`. THE one
+/// truncation — every prefix arm and [`plan_prefix`] route through here, so a named arm
+/// and its K can never describe different sets, and there is no second ordering to drift.
+pub fn prefix_admission(program: &SynthProgram, k: usize) -> Vec<AdmissionEntry> {
+    let mut admitted = canonical_admission(program);
+    admitted.truncate(k);
+    admitted
+}
+
 /// The admitted set of one arm. `All59` is ALL live sources including refs = 1 — the
 /// zero-removal waste diagnostic — and is deliberately NOT a prefix of the cutoff list.
 pub fn admitted_for(program: &SynthProgram, arm: CacheArm) -> Vec<AdmissionEntry> {
     if arm == CacheArm::All59 {
         return ranked_live(program);
     }
+    if let Some(k) = arm.prefix_k() {
+        return prefix_admission(program, k);
+    }
+    // `E4Rich` and `E4Top2` are FILTERS of the canonical list, not prefixes of it — the
+    // only arms that are. Everything downstream takes a source list, so the selection is
+    // the whole change. What is left is `AllRepeat`: the list entire.
     let canonical = canonical_admission(program);
-    // `E4Rich` is a FILTER of the canonical list, not a prefix of it — the only arm that
-    // is. Everything downstream takes a source list, so the selection is the whole change.
-    if arm == CacheArm::E4Rich {
-        return e4_rich(&canonical);
+    match arm {
+        CacheArm::E4Rich => e4_rich(&canonical),
+        CacheArm::E4Top2 => e4_top2(&canonical),
+        _ => canonical,
     }
-    if arm == CacheArm::E4Top2 {
-        return e4_top2(&canonical);
-    }
-    let take = match arm {
-        CacheArm::Control | CacheArm::Cache0 => 0,
-        CacheArm::Hot4 => 4,
-        CacheArm::Hot16 => 16,
-        CacheArm::AllRepeat => canonical.len(),
-        CacheArm::All59 | CacheArm::E4Rich | CacheArm::E4Top2 => unreachable!("handled above"),
-    };
-    canonical.into_iter().take(take).collect()
 }
 
 /// Build one arm's state. The program is read, never written: `sources` is a clone.
-///
+pub fn plan_arm(program: &SynthProgram, arm: CacheArm) -> Result<CacheArmState, String> {
+    plan_admitted(program, arm, admitted_for(program, arm))
+}
+
+/// The canonical prefix-K plan, defined at every K rather than only at the nine the enum
+/// names. `hot16` IS `plan_prefix(_, 16)`: one list, one truncation, one planner.
+pub fn plan_prefix(program: &SynthProgram, k: usize) -> Result<CacheArmState, String> {
+    plan_admitted(program, prefix_arm(k), prefix_admission(program, k))
+}
+
+/// The arm a prefix point reports as. LABEL ONLY — it reaches error strings and the config
+/// dump, never the plan. A K no arm names reports as `cache0`.
+fn prefix_arm(k: usize) -> CacheArm {
+    CacheArm::ALL
+        .into_iter()
+        .find(|a| a.uses_cache() && a.prefix_k() == Some(k))
+        .unwrap_or(CacheArm::Cache0)
+}
+
 /// SLOT ASSIGNMENT, decoupled from admission: all E4 spans first (4 units each, so every
 /// base is a multiple of 4 units = 32 B and both 16 B halves are aligned), then one unit
 /// per BF source. ENCODE-SITE BOUND: `cache_slot` encodes the base unit ALONE, so the only
@@ -345,8 +416,11 @@ pub fn admitted_for(program: &SynthProgram, arm: CacheArm) -> Vec<AdmissionEntry
 /// frame: bases stay representable for any frame up to 256 units, and
 /// [`UNISKIP_COSET_FRAME_UNITS`] is statically held under that. At the default census
 /// C = 92, far inside. The validator enforces both.
-pub fn plan_arm(program: &SynthProgram, arm: CacheArm) -> Result<CacheArmState, String> {
-    let admitted = admitted_for(program, arm);
+fn plan_admitted(
+    program: &SynthProgram,
+    arm: CacheArm,
+    admitted: Vec<AdmissionEntry>,
+) -> Result<CacheArmState, String> {
     let mut sources = program.sources.clone();
     for rec in sources.iter_mut() {
         rec.cache_slot = UNISKIP_CACHE_SLOT_NONE;
@@ -652,6 +726,166 @@ mod cpu_tests {
         }
     }
 
+    /// The literals of `.agents/sdd/2026-08-10-v3-r5/expected-counts-r5.md`, controller-
+    /// derived independently of this module by the R4 out-of-tree method. Fields in the
+    /// artifact's own column order: K, B, E, C, Rc, R_B, R_E, chains, stores, loads,
+    /// removals, touched B/thread. `hot16` rides along because the artifact's claim that it
+    /// IS the K16 prefix point is one of the things being reproduced.
+    #[rustfmt::skip]
+    const EXPECTED_R5: [(CacheArm, [u32; 12]); 10] = [
+        (CacheArm::Hot16, [16, 12,  4, 28, 173,  93, 20, 181, 20, 133, 145, 224]),
+        (CacheArm::K24,   [24, 20,  4, 36, 197, 117, 20, 165, 28, 157, 161, 288]),
+        (CacheArm::K32,   [32, 28,  4, 44, 221, 141, 20, 149, 36, 181, 177, 352]),
+        (CacheArm::K40,   [40, 36,  4, 52, 245, 165, 20, 133, 44, 205, 193, 416]),
+        (CacheArm::K45,   [45, 41,  4, 57, 260, 180, 20, 123, 49, 220, 203, 456]),
+        (CacheArm::K46,   [46, 41,  5, 61, 268, 180, 22, 119, 51, 224, 207, 488]),
+        (CacheArm::K48,   [48, 41,  7, 69, 284, 180, 26, 111, 55, 232, 215, 552]),
+        (CacheArm::K49,   [49, 41,  8, 73, 292, 180, 28, 107, 57, 236, 219, 584]),
+        (CacheArm::K50,   [50, 41,  9, 77, 300, 180, 30, 103, 59, 240, 223, 616]),
+        (CacheArm::K51,   [51, 41, 10, 81, 308, 180, 32,  99, 61, 244, 227, 648]),
+    ];
+
+    /// The FULL 55-entry ordering printed on `oracle-derivation.txt`'s
+    /// `admission head (id,refs,w)` line, identical under both term orders. Every lane's
+    /// admitted-id list is a PREFIX of this, in this order: counts alone cannot detect a
+    /// reversal among equal-ref, equal-class sources, which is what this pins.
+    #[rustfmt::skip]
+    const ADMISSION_ORDER: [(u16, u32, u32); 55] = [
+        (0, 13, 1), (1, 13, 1), (2, 13, 1), (3, 12, 1), (4, 12, 1), (5, 12, 1),
+        (48, 7, 4), (49, 7, 4), (50, 3, 4), (51, 3, 4),
+        (6, 3, 1), (7, 3, 1), (8, 3, 1), (9, 3, 1), (10, 3, 1), (11, 3, 1), (12, 3, 1),
+        (13, 3, 1), (14, 3, 1), (15, 3, 1), (16, 3, 1), (17, 3, 1), (18, 3, 1), (19, 3, 1),
+        (20, 3, 1), (21, 3, 1), (22, 3, 1), (23, 3, 1), (24, 3, 1), (25, 3, 1), (26, 3, 1),
+        (27, 3, 1), (28, 3, 1), (29, 3, 1), (30, 3, 1), (31, 3, 1), (32, 3, 1), (33, 3, 1),
+        (34, 3, 1), (35, 3, 1), (36, 3, 1), (37, 3, 1), (38, 3, 1), (39, 3, 1), (40, 3, 1),
+        (52, 2, 4), (53, 2, 4), (54, 2, 4), (55, 2, 4), (56, 2, 4), (57, 2, 4), (58, 2, 4),
+        (41, 2, 1), (42, 2, 1), (43, 2, 1),
+    ];
+
+    fn actual_r5(state: &CacheArmState) -> [u32; 12] {
+        let c = state.counts;
+        [
+            state.admitted.len() as u32,
+            c.b,
+            c.e,
+            c.c,
+            c.rc,
+            c.r_b,
+            c.r_e,
+            c.chains,
+            c.store_instrs,
+            c.load_instrs,
+            c.removals,
+            c.bytes,
+        ]
+    }
+
+    /// All twelve oracle fields, every frontier lane, both orders — the artifact's claim
+    /// that the frontier is identical under census and locality included.
+    #[test]
+    fn cpu_frontier_counts_match_the_r5_oracle() {
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            for (arm, want) in EXPECTED_R5 {
+                let state = plan_arm(&p, arm).unwrap();
+                assert_eq!(
+                    actual_r5(&state),
+                    want,
+                    "arm {} under {order:?}",
+                    arm.as_str()
+                );
+                assert!(
+                    state.counts.c <= UNISKIP_COSET_FRAME_UNITS,
+                    "arm {} needs {} units of the {UNISKIP_COSET_FRAME_UNITS}-unit frame",
+                    arm.as_str(),
+                    state.counts.c
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cpu_frontier_admission_order_matches_the_oracle() {
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            let got: Vec<(u16, u32, u32)> = canonical_admission(&p)
+                .iter()
+                .map(|e| (e.source, e.refs, e.width))
+                .collect();
+            assert_eq!(got, ADMISSION_ORDER.to_vec(), "{order:?}");
+        }
+    }
+
+    /// The reversal gate: the admitted-id LIST, order-sensitive, against the oracle's
+    /// first-K prefix. A swap of two equal-ref, equal-class entries leaves every count
+    /// identical and only this test sees it.
+    #[test]
+    fn cpu_frontier_admitted_ids_are_the_oracle_prefixes() {
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            for (arm, want) in EXPECTED_R5 {
+                let k = want[0] as usize;
+                let got: Vec<u16> = plan_arm(&p, arm)
+                    .unwrap()
+                    .admitted
+                    .iter()
+                    .map(|e| e.source)
+                    .collect();
+                let expect: Vec<u16> = ADMISSION_ORDER[..k].iter().map(|&(id, ..)| id).collect();
+                assert_eq!(got, expect, "arm {} under {order:?}", arm.as_str());
+            }
+        }
+    }
+
+    /// The spelling clap parses and the spelling a log line carries are one string. They
+    /// come from two different mechanisms — `rename_all = "lower"` and [`CacheArm::as_str`]
+    /// — so nothing but this keeps `--cache-arm k48` and an ARM line's `k48` in agreement.
+    #[test]
+    fn cpu_cache_arm_clap_spellings_match_as_str() {
+        use clap::ValueEnum;
+        for arm in CacheArm::ALL {
+            assert_eq!(
+                arm.to_possible_value().unwrap().get_name(),
+                arm.as_str(),
+                "{arm:?}"
+            );
+        }
+        assert_eq!(CacheArm::value_variants().len(), CacheArm::ALL.len());
+    }
+
+    /// hot16 IS the K16 prefix point — the WHOLE plan, not merely the counts. The frontier
+    /// is truncations of one list, so a second admission ordering cannot exist to drift.
+    #[test]
+    fn cpu_frontier_prefix16_is_hot16() {
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            assert_eq!(
+                plan_prefix(&p, 16).unwrap(),
+                plan_arm(&p, CacheArm::Hot16).unwrap(),
+                "{order:?}"
+            );
+        }
+        // Every named prefix arm, likewise, at its own K. `control` is excluded: it admits
+        // nothing but is not a cached arm, so the K = 0 label belongs to `cache0`.
+        let p = program(TermOrder::Locality);
+        for arm in CacheArm::ALL.into_iter().filter(|a| a.uses_cache()) {
+            let Some(k) = arm.prefix_k() else { continue };
+            assert_eq!(
+                plan_prefix(&p, k).unwrap(),
+                plan_arm(&p, arm).unwrap(),
+                "{}",
+                arm.as_str()
+            );
+        }
+        // A K past the list is the list, and allrepeat is that point by another name.
+        assert_eq!(
+            plan_prefix(&p, canonical_admission(&p).len())
+                .unwrap()
+                .admitted,
+            plan_arm(&p, CacheArm::AllRepeat).unwrap().admitted
+        );
+    }
+
     /// hot-4 is R3's window arm exactly: same four sources, same 13/13/13/12, same 47.
     #[test]
     fn cpu_cache_hot4_mirrors_the_r3_window() {
@@ -804,7 +1038,10 @@ mod cpu_tests {
                     .count()
             })
             .collect();
-        assert_eq!(cached, vec![0, 0, 4, 16, 55, 59, 11, 2]);
+        assert_eq!(
+            cached,
+            vec![0, 0, 4, 16, 55, 59, 11, 2, 24, 32, 40, 45, 46, 48, 49, 50, 51]
+        );
         for (_, state) in &all {
             validate(&p, state.as_ref().unwrap()).unwrap();
         }
@@ -1241,6 +1478,102 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
     },
 ];
 
+/// A bounded 128-thread R5 frontier lane. Every one launches the SAME frozen
+/// `eval_lsb_pair_cached_128_lb` / `eval_lsb_pair_128_lb` body R4 measured — the kernel is
+/// untouched all rung and an arm differs only in uploaded state — so R4's 72 registers /
+/// 7 blocks per SM carry over verbatim rather than being a new claim.
+const fn frontier_128(label: &'static str, arm: CacheArm) -> CacheLane {
+    CacheLane {
+        label,
+        block_threads: 128,
+        arm,
+        launch_bounds: true,
+        regs: 72,
+        blocks_per_sm: 7,
+    }
+}
+
+/// The in-rotation shipping anchor, identical to `CACHE_FACTORIAL`'s first lane.
+const FRONTIER_CONTROL_256: CacheLane = CacheLane {
+    label: "control@256",
+    block_threads: 256,
+    arm: CacheArm::Control,
+    launch_bounds: false,
+    regs: 72,
+    blocks_per_sm: 3,
+};
+
+/// The R5 primary frontier rotation (spec 2.2), in a fixed order: the six canonical
+/// prefix points under test, then the incumbent, the machinery arm and the bounded control
+/// at 128, then the shipping anchor at 256. 10 lanes, so a round count must be a multiple
+/// of 10 for every lane to start equally often.
+pub const FRONTIER_FACTORIAL: [CacheLane; 10] = [
+    frontier_128("k24@128", CacheArm::K24),
+    frontier_128("k32@128", CacheArm::K32),
+    frontier_128("k40@128", CacheArm::K40),
+    frontier_128("k45@128", CacheArm::K45),
+    frontier_128("k46@128", CacheArm::K46),
+    frontier_128("k48@128", CacheArm::K48),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    frontier_128("cache0@128", CacheArm::Cache0),
+    frontier_128("control_lb@128", CacheArm::Control),
+    FRONTIER_CONTROL_256,
+];
+
+/// The conditional extension rotation (spec 2.3): the refs-2 E4 tail past k48, with k48
+/// itself riding along so the k48 -> k49 boundary is PAIRED in-session, plus the four
+/// anchor lanes both sessions share (k48, hot16, cache0, control_lb, control@256) so a
+/// cross-session comparison never has to go raw. 8 lanes => rounds a multiple of 8.
+pub const FRONTIER_EXTENSION: [CacheLane; 8] = [
+    frontier_128("k48@128", CacheArm::K48),
+    frontier_128("k49@128", CacheArm::K49),
+    frontier_128("k50@128", CacheArm::K50),
+    frontier_128("k51@128", CacheArm::K51),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    frontier_128("cache0@128", CacheArm::Cache0),
+    frontier_128("control_lb@128", CacheArm::Control),
+    FRONTIER_CONTROL_256,
+];
+
+/// Fail-closed structural check of a pinned lane set, for the runner to call before it
+/// builds anything: a duplicate label, an unplannable lane, a footprint past the frame, or
+/// two lanes at one block size admitting the SAME set — R3's aliasing failure shape, where
+/// one experiment runs under two labels. `control` and `cache0` admit nothing BY DESIGN,
+/// so distinctness is a claim about the lanes that admit something.
+pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<(), String> {
+    let mut labels: Vec<&str> = lanes.iter().map(|l| l.label).collect();
+    labels.sort_unstable();
+    if let Some(dup) = labels.windows(2).find(|w| w[0] == w[1]) {
+        return Err(format!("lane label {} appears twice", dup[0]));
+    }
+
+    let mut seen: Vec<(Vec<u16>, u32, &str)> = Vec::new();
+    for lane in lanes {
+        let state = plan_arm(program, lane.arm).map_err(|e| format!("lane {}: {e}", lane.label))?;
+        if state.counts.c > UNISKIP_COSET_FRAME_UNITS {
+            return Err(format!(
+                "lane {}: C = {} units exceeds the {UNISKIP_COSET_FRAME_UNITS}-unit frame",
+                lane.label, state.counts.c
+            ));
+        }
+        if !lane.arm.uses_cache() || lane.arm == CacheArm::Cache0 {
+            continue;
+        }
+        let ids: Vec<u16> = state.admitted.iter().map(|e| e.source).collect();
+        if let Some((.., other)) = seen
+            .iter()
+            .find(|(s, size, _)| *s == ids && *size == lane.block_threads)
+        {
+            return Err(format!(
+                "lanes {} and {other} admit the same set at {} threads",
+                lane.label, lane.block_threads
+            ));
+        }
+        seen.push((ids, lane.block_threads, lane.label));
+    }
+    Ok(())
+}
+
 impl CacheLane {
     /// The kernel this lane launches, by name — the same strings `Harness::eval_kernel`
     /// reports, so a log line and a single-arm config block are comparable.
@@ -1302,6 +1635,172 @@ impl LaneKernel {
 #[cfg(test)]
 mod lane_tests {
     use super::*;
+    use crate::synth::{generate, Census, TermOrder};
+
+    fn program(order: TermOrder) -> SynthProgram {
+        let mut p = generate(0, Census::default()).unwrap();
+        p.apply_term_order(order);
+        p
+    }
+
+    /// The R5 rotations' shape, pinned exactly as spec 2.2/2.3 name them. A dropped lane
+    /// or a stray arm would otherwise surface only as a changed round count in a timed log.
+    #[test]
+    fn cpu_frontier_lane_sets() {
+        assert_eq!(FRONTIER_FACTORIAL.len(), 10);
+        assert_eq!(FRONTIER_EXTENSION.len(), 8);
+        let labels = |set: &[CacheLane]| set.iter().map(|l| l.label).collect::<Vec<_>>();
+        assert_eq!(
+            labels(&FRONTIER_FACTORIAL),
+            vec![
+                "k24@128",
+                "k32@128",
+                "k40@128",
+                "k45@128",
+                "k46@128",
+                "k48@128",
+                "hot16@128",
+                "cache0@128",
+                "control_lb@128",
+                "control@256",
+            ]
+        );
+        assert_eq!(
+            labels(&FRONTIER_EXTENSION),
+            vec![
+                "k48@128",
+                "k49@128",
+                "k50@128",
+                "k51@128",
+                "hot16@128",
+                "cache0@128",
+                "control_lb@128",
+                "control@256",
+            ]
+        );
+        for lane in FRONTIER_FACTORIAL.iter().chain(&FRONTIER_EXTENSION) {
+            assert_eq!(lane.regs, 72, "{}", lane.label);
+            assert!(
+                !matches!(
+                    lane.arm,
+                    CacheArm::All59
+                        | CacheArm::E4Rich
+                        | CacheArm::E4Top2
+                        | CacheArm::Hot4
+                        | CacheArm::AllRepeat
+                ),
+                "{} is not an R5 frontier arm",
+                lane.label
+            );
+            if lane.block_threads == 128 {
+                // The occupancy gate: an unbounded cached lane at 128 would carry a
+                // block-count step against the control it is contrasted with.
+                assert!(lane.launch_bounds, "{} must be bounded", lane.label);
+                assert_eq!(lane.blocks_per_sm, 7, "{}", lane.label);
+                assert_eq!(lane.rows_per_block(), 16, "{}", lane.label);
+                let want = if lane.arm.uses_cache() {
+                    LaneKernel::Cached128Lb
+                } else {
+                    LaneKernel::Pair128Lb
+                };
+                assert_eq!(lane.kernel(), want, "{}", lane.label);
+            } else {
+                assert_eq!(lane.label, "control@256");
+                assert_eq!(lane.kernel(), LaneKernel::Pair, "{}", lane.label);
+                assert_eq!(lane.rows_per_block(), 32, "{}", lane.label);
+                assert_eq!(lane.blocks_per_sm, 3, "{}", lane.label);
+            }
+        }
+        // The lanes both sessions share: the seam a cross-session comparison goes through,
+        // so it never has to be taken raw.
+        let shared: Vec<&str> = FRONTIER_FACTORIAL
+            .iter()
+            .map(|l| l.label)
+            .filter(|l| FRONTIER_EXTENSION.iter().any(|e| e.label == *l))
+            .collect();
+        assert_eq!(
+            shared,
+            vec![
+                "k48@128",
+                "hot16@128",
+                "cache0@128",
+                "control_lb@128",
+                "control@256"
+            ]
+        );
+    }
+
+    /// The preregistered round and warmup counts divide their rotations, so every lane
+    /// occupies every rotation position the same number of times.
+    #[test]
+    fn cpu_frontier_round_counts_balance() {
+        for n in [100u32, 10] {
+            assert!(n.is_multiple_of(FRONTIER_FACTORIAL.len() as u32), "{n}");
+        }
+        for n in [104u32, 16] {
+            assert!(n.is_multiple_of(FRONTIER_EXTENSION.len() as u32), "{n}");
+        }
+    }
+
+    #[test]
+    fn cpu_frontier_lane_sets_validate() {
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            for set in [
+                &FRONTIER_FACTORIAL[..],
+                &FRONTIER_EXTENSION[..],
+                &CACHE_FACTORIAL[..],
+            ] {
+                validate_lane_set(&p, set).unwrap();
+                for lane in set {
+                    let c = plan_arm(&p, lane.arm).unwrap().counts.c;
+                    assert!(
+                        c <= UNISKIP_COSET_FRAME_UNITS,
+                        "{} needs {c} of {UNISKIP_COSET_FRAME_UNITS} units, {order:?}",
+                        lane.label
+                    );
+                }
+            }
+        }
+    }
+
+    /// The validator's teeth. Two lanes admitting one set is R3's aliasing failure shape —
+    /// one experiment under two labels — and a duplicated label is the same bug earlier.
+    #[test]
+    fn cpu_frontier_lane_set_validator_rejects_aliases_and_duplicates() {
+        let p = program(TermOrder::Locality);
+        let aliased = [
+            frontier_128("k48@128", CacheArm::K48),
+            frontier_128("k48-again@128", CacheArm::K48),
+        ];
+        let err = validate_lane_set(&p, &aliased).unwrap_err();
+        assert!(err.contains("admit the same set"), "{err}");
+
+        let duped = [
+            frontier_128("k48@128", CacheArm::K48),
+            frontier_128("k48@128", CacheArm::K49),
+        ];
+        let err = validate_lane_set(&p, &duped).unwrap_err();
+        assert!(err.contains("appears twice"), "{err}");
+    }
+
+    /// A census that pushes a lane past the frame fails THAT LANE SET, not a panic and not
+    /// a silently truncated plan.
+    #[test]
+    fn cpu_frontier_lane_set_validator_rejects_over_frame_lanes() {
+        let mut p = generate(
+            0,
+            Census {
+                sources: 60,
+                ..Census::default()
+            },
+        )
+        .unwrap();
+        p.apply_term_order(TermOrder::Locality);
+        let over = [frontier_128("all59@128", CacheArm::All59)];
+        let err = validate_lane_set(&p, &over).unwrap_err();
+        assert!(err.contains("frame"), "{err}");
+    }
 
     /// The primary rotation's shape, pinned. A dropped lane or a stray diagnostic arm would
     /// otherwise only show up as a changed round count in a timed log.
