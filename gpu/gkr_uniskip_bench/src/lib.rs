@@ -12,6 +12,7 @@ pub mod domain;
 pub mod geometry;
 pub mod harness;
 pub mod kernels;
+pub mod ldc_probe;
 pub mod pair;
 pub mod reference;
 pub mod synth;

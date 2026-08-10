@@ -13,6 +13,9 @@ add_library(gpu_gkr_uniskip_bench_native STATIC
         uniskip_lsb.cu
         uniskip_lsb_compact.cu
         uniskip_lsb_pair.cu
+        # LAST on purpose: the pair TU's SASS is frozen, and appending the rider's own
+        # `__constant__` array must not renumber constant-bank offsets ahead of it.
+        uniskip_ldc_probe.cu
 )
 ab_cuda_configure_target(gpu_gkr_uniskip_bench_native PREFIX GPU_GKR_UNISKIP_BENCH INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE})
 if (AB_UNISKIP_WINDOW_DIAG)
