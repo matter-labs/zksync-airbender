@@ -19,9 +19,10 @@ use era_cudart_sys::{
 };
 
 use crate::abi::{
-    UniskipCacheDesc, UniskipCompactSlot, UniskipVmDesc, UniskipWindowDesc, UNISKIP_CACHE_UNITS,
-    UNISKIP_CELLS, UNISKIP_COEFF_BANK, UNISKIP_COMPACT_MAX_ROUNDS, UNISKIP_EQ_HIGH,
-    UNISKIP_NTT_TABLES, UNISKIP_PAIR_THREADS_128, UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
+    UniskipCacheDesc, UniskipCompactSlot, UniskipSegDesc, UniskipVmDesc, UniskipWindowDesc,
+    UNISKIP_CACHE_UNITS, UNISKIP_CELLS, UNISKIP_COEFF_BANK, UNISKIP_COMPACT_MAX_ROUNDS,
+    UNISKIP_EQ_HIGH, UNISKIP_NTT_TABLES, UNISKIP_PAIR_THREADS_128, UNISKIP_SEG_K, UNISKIP_TAPS,
+    UNISKIP_THREADS_PER_BLOCK,
 };
 
 cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
@@ -166,6 +167,38 @@ cuda_kernel!(
 cuda_kernel!(
     EvalLsbPairWinLb,
     ab_gkr_uniskip_eval_lsb_pair_win_lb_kernel(desc: UniskipVmDesc, win: UniskipWindowDesc)
+);
+// v3 R7 segmented kernels. A third by-value parameter carries the per-warp atom lists, so
+// every earlier launch signature is untouched. `_cv64` and `_cv100` are one body under two
+// symbols: the shared-memory carveout is a sticky per-function attribute, so a rotation
+// between two carveout requests needs two functions.
+cuda_kernel!(
+    EvalLsbSegSCv64,
+    ab_gkr_uniskip_eval_lsb_seg_s_cv64_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc,
+        seg: UniskipSegDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbSegSCv100,
+    ab_gkr_uniskip_eval_lsb_seg_s_cv100_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc,
+        seg: UniskipSegDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbSegSAcc,
+    ab_gkr_uniskip_eval_lsb_seg_s_acc_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc,
+        seg: UniskipSegDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbSegRecompute,
+    ab_gkr_uniskip_eval_lsb_seg_recompute_kernel(desc: UniskipVmDesc, seg: UniskipSegDesc)
 );
 cuda_kernel!(
     Finalize,
@@ -609,6 +642,145 @@ pub fn eval_lsb_pair_win_lb(
     let args = EvalLsbPairWinLbArguments::new(*desc, *win);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
     EvalLsbPairWinLbFunction::default().launch(&config, &args)
+}
+
+/// Bytes the fold-first reduction plane occupies at the slab head: one `e4` per warp per
+/// cell.
+const SEG_FOLD_PLANE_BYTES: u32 = (UNISKIP_SEG_K * UNISKIP_CELLS * 4 * size_of::<u32>()) as u32;
+/// The accumulator-first plane is wider: four `e4` per thread for the three publishing warps.
+const SEG_ACC_PLANE_BYTES: u32 = ((UNISKIP_SEG_K - 1) * 32 * 4 * 4 * size_of::<u32>()) as u32;
+
+/// A 128-thread launch whose coset slab is DYNAMIC shared memory: `shared_bytes` is the
+/// slab the carrier addresses, and the reduction plane aliases its head — so a launch that
+/// does not cover the plane would corrupt shared memory rather than merely lose a slot.
+fn seg_config(
+    blocks: u32,
+    shared_bytes: u32,
+    plane_bytes: u32,
+    stream: &CudaStream,
+) -> CudaLaunchConfig<'_> {
+    assert!(
+        shared_bytes >= plane_bytes,
+        "a seg slab of {shared_bytes} B cannot hold the {plane_bytes} B reduction plane"
+    );
+    CudaLaunchConfig::builder()
+        .grid_dim(blocks)
+        .block_dim(UNISKIP_PAIR_THREADS_128 as u32)
+        .dynamic_smem_bytes(shared_bytes as usize)
+        .stream(stream)
+        .build()
+}
+
+/// The v3 R7 carrier-S arm at the 64 % carveout request.
+pub fn eval_lsb_seg_s_cv64(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    seg: &UniskipSegDesc,
+    blocks: u32,
+    shared_bytes: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbSegSCv64Arguments::new(*desc, *plan, *seg);
+    EvalLsbSegSCv64Function::default().launch(
+        &seg_config(blocks, shared_bytes, SEG_FOLD_PLANE_BYTES, stream),
+        &args,
+    )
+}
+
+/// [`eval_lsb_seg_s_cv64`]'s clone, carrying the second carveout request.
+pub fn eval_lsb_seg_s_cv100(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    seg: &UniskipSegDesc,
+    blocks: u32,
+    shared_bytes: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbSegSCv100Arguments::new(*desc, *plan, *seg);
+    EvalLsbSegSCv100Function::default().launch(
+        &seg_config(blocks, shared_bytes, SEG_FOLD_PLANE_BYTES, stream),
+        &args,
+    )
+}
+
+/// The accumulator-first reduction diagnostic: warps 1..3 publish their accumulators and
+/// warp 0 finishes the reduction alone, pricing the fold-first epilogue's extra shuffles.
+pub fn eval_lsb_seg_s_acc(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    seg: &UniskipSegDesc,
+    blocks: u32,
+    shared_bytes: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbSegSAccArguments::new(*desc, *plan, *seg);
+    EvalLsbSegSAccFunction::default().launch(
+        &seg_config(blocks, shared_bytes, SEG_ACC_PLANE_BYTES, stream),
+        &args,
+    )
+}
+
+/// The machinery floor: the cohort loop and the segmented walk with no slab and no
+/// prologue, so every reference recomputes. Static shared plane, hence no `shared_bytes`.
+pub fn eval_lsb_seg_recompute(
+    desc: &UniskipVmDesc,
+    seg: &UniskipSegDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbSegRecomputeArguments::new(*desc, *seg);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbSegRecomputeFunction::default().launch(&config, &args)
+}
+
+/// Steer the shared-memory carveout of the carrier-S 64 % symbol — a host-side function
+/// attribute (percent of the maximum shared memory, rounded by the driver to a supported
+/// config), sticky for the process; the SASS is untouched.
+pub fn set_seg_s_cv64_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbSegSCv64Function::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
+}
+
+/// [`set_seg_s_cv64_carveout`] for the clone symbol.
+pub fn set_seg_s_cv100_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbSegSCv100Function::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
+}
+
+/// [`set_seg_s_cv64_carveout`] for the accumulator-first diagnostic.
+pub fn set_seg_s_acc_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbSegSAccFunction::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
+}
+
+/// [`set_seg_s_cv64_carveout`] for the machinery floor.
+pub fn set_seg_recompute_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbSegRecomputeFunction::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
 }
 
 /// Reduce the `blocks * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.
