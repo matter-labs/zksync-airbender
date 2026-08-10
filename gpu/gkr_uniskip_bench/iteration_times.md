@@ -3689,5 +3689,10 @@ emitter pins), the self-generating fixture lane (`tools/r6_fixtures/`) and the c
 
 `.agents/sdd/2026-08-10-v3-r6/`: spec-amended G0 evidence (`g0-*`), the hint-ladder probe
 (`ladder-probe.log` + saved reports), both sessions' logs + telemetry + emitted verdicts
-(`session*-verdict.md`), the emitter report, ledger (`progress.md`). Lands as a feat + docs
+(`session*-verdict.md`), the emitter report, ledger (`progress.md`). RR-requested
+follow-up: a Full Picture of the WINNING configuration (hot16@128, locality, hint 16) at
+`target/profiling/ncu/20260810_084735_v3r6_hot16_128_locality_hinted16_full.ncu-rep` —
+sections-only on the shipped post-rebase binary (no lineinfo, so no source correlation),
+one launch: 14.78 ms, config 32.77 KB, L1/TEX hit 38.70 % (unhinted R5 capture: 32.96 %),
+L2 hit 60.34 %, DRAM 41.87 % SOL, SM 77.18 %, occupancy 57.88 %. Lands as a feat + docs
 commit pair on top of `a39da580`.
