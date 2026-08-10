@@ -252,6 +252,9 @@ impl GkrPrograms {
 }
 
 #[cfg(test)]
+mod census;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use gpu_gkr_compiler::{LeanBoundColumn, LeanBoundWindow, LeanSourceBinding};

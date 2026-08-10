@@ -71,6 +71,10 @@ pub(crate) enum FwdVmLowerError {
     ProgramOverflow {
         lanes: usize,
     },
+    GroupSourceWindowOverflow {
+        required: usize,
+    },
+    MissingLookupAdditiveSlot,
     ConstBankOverflow {
         n: usize,
     },
@@ -109,21 +113,21 @@ pub(crate) enum FwdVmLowerError {
     },
     SourceWindowOverflow {
         window: u8,
-        column: u8,
+        column: u16,
     },
     UnmappedSource {
         window: u8,
-        column: u8,
+        column: u16,
     },
     SourceFieldMismatch {
         window: u8,
-        column: u8,
+        column: u16,
         expect_e4: bool,
         got_e4: bool,
     },
     SourceColumnOffStride {
         window: u8,
-        column: u8,
+        column: u16,
     },
     SourceColRemapCollision {
         window: u8,
@@ -181,11 +185,11 @@ pub(crate) fn read_place_to_gkr_address(place: &ReadPlace) -> GKRAddress {
 struct SourceGeometry {
     base: [*mut u8; SOURCE_WINDOW_COUNT],
     stride_bytes: [u32; SOURCE_WINDOW_COUNT],
-    remap: BTreeMap<(u8, u8), (u8, u8)>,
+    remap: BTreeMap<(u8, u16), (u8, u16)>,
     n_windows: usize,
 }
 
-fn source_coordinates(program: &Program) -> BTreeSet<(u8, u8)> {
+fn source_coordinates(program: &Program) -> BTreeSet<(u8, u16)> {
     let mut coordinates = BTreeSet::new();
     let mut record = |operand: &OperandLine| {
         if let OperandLine::Source { window, column, .. } = *operand {
@@ -227,7 +231,7 @@ fn derive_source_geometry(
             .source_field(compiler_window)
             .expect("dense source-window table")
             == OperandField::Ext;
-        let mut groups = Vec::<(*mut u8, u32, Vec<(u8, usize)>)>::new();
+        let mut groups = Vec::<(*mut u8, u32, Vec<(u16, usize)>)>::new();
         for &(window, column) in coordinates
             .iter()
             .filter(|(window, _)| *window == compiler_window)
@@ -310,7 +314,7 @@ fn derive_source_geometry(
                 };
                 geometry.remap.insert(
                     (compiler_window, column),
-                    (wire, (matrix_col - first_matrix_col) as u8),
+                    (wire, (matrix_col - first_matrix_col) as u16),
                 );
             }
         }
@@ -662,7 +666,7 @@ pub(crate) fn lower_layer_desc(
                 } else if mask != pred_ptr {
                     return Err(FwdVmLowerError::DecoderMaskConflict);
                 }
-                pack_desc(SD_DECODER, arena, col, 0)
+                pack_desc(SD_DECODER, arena, col, (CONST_DERIVED_E4_CAP - 1) as u32)
             }
             SpecialStrategy::VirtualSetup { kind } => {
                 // vkind = the NATIVE `gkr_base_source_kind` value VERBATIM:

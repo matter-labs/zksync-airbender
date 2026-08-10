@@ -7,13 +7,21 @@
 
 namespace airbender::gkr {
 
-// --- caps (census maxima: lanes 6574, consts 27, arg-e4 7, const-e4 1, descs 296)
+// --- caps (full-circuit census maxima: lanes 9778, consts 27, arg-e4 7,
+// grouped const-e4 2, descs 296)
 constexpr u32 FWD_VM_PROGRAM_CAP = 12288;      // u16 lanes, 24 KB inline
 constexpr u32 FWD_VM_CONST_CAP = 64;           // compiled + runtime bf constants
 constexpr u32 FWD_VM_ARG_DERIVED_E4_CAP = 12;  // schedule-time derived e4 values
 constexpr u32 FWD_VM_DESC_CAP = 370;           // packed special descriptors
 constexpr u32 FWD_VM_CONST_DERIVED_E4_CAP = 8; // Includes the optional decoder fill.
 constexpr u32 FWD_VM_SOURCE_WINDOW_COUNT = 64;
+constexpr u32 FWD_VM_GROUP_SOURCE_WINDOW_COUNT = 16;
+constexpr u32 FWD_VM_GROUP_SOURCE_WINDOW_BITS = 4;
+constexpr u32 FWD_VM_GROUP_SOURCE_COLUMN_BITS = 9;
+constexpr u32 FWD_VM_GROUP_SOURCE_COLUMN_SHIFT = FWD_VM_SOURCE_WINDOW_SHIFT + FWD_VM_GROUP_SOURCE_WINDOW_BITS;
+constexpr u32 FWD_VM_GROUP_SOURCE_WINDOW_MASK = (1u << FWD_VM_GROUP_SOURCE_WINDOW_BITS) - 1;
+constexpr u32 FWD_VM_GROUP_SOURCE_COLUMN_MASK = (1u << FWD_VM_GROUP_SOURCE_COLUMN_BITS) - 1;
+constexpr u32 FWD_VM_GROUP_LAYER_CAP = 8;
 constexpr u32 FWD_VM_DST_SLOT_COUNT = 16;
 constexpr u32 FWD_VM_MAPPING_ARENA_COUNT = 3; // generic_family / range_check_16 / timestamp
 
@@ -25,7 +33,7 @@ constexpr u32 SD_SINGLE_COLUMN = 0;  // PeekSingleColumn: lift(mapping[row])
 constexpr u32 SD_AGGREGATE = 1;      // PeekAggregate: table[mapping[row]]
 constexpr u32 SD_SETUP = 2;          // PeekSetup: row < table_len ? table[row] : 0
 constexpr u32 SD_DECODER = 3;        // PeekDecoder: mask[row] != 0 ? table[mapping[row]]
-                                     //                            : const_derived_e4[last]
+                                     //                            : const_derived_e4[vkind]
 constexpr u32 SD_VIRTUAL = 4;        // VirtualSetup: lift(n(vkind, gid)), no memory reads
 constexpr u32 SD_INITS_TOP_BITS = 5; // runtime init/teardown address prefix
 
@@ -87,9 +95,37 @@ struct fwd_vm_desc {
   u16 program[FWD_VM_PROGRAM_CAP]; // 2940, 24,576 B
 };
 
+struct fwd_vm_group_layer {
+  u16 program_offset;
+  u16 instruction_count;
+};
+
+struct fwd_vm_group_desc {
+  e4 arg_derived_e4[FWD_VM_ARG_DERIVED_E4_CAP];
+  char *source_base[FWD_VM_GROUP_SOURCE_WINDOW_COUNT];
+  char *dst_base[FWD_VM_DST_SLOT_COUNT];
+  const u32 *mapping_arena[FWD_VM_MAPPING_ARENA_COUNT];
+  const e4 *table;
+  const bf *mask;
+  u32 source_stride_bytes[FWD_VM_GROUP_SOURCE_WINDOW_COUNT];
+  u32 dst_stride_bytes[FWD_VM_DST_SLOT_COUNT];
+  bf consts[FWD_VM_CONST_CAP];
+  u32 table_len;
+  u32 descs[FWD_VM_DESC_CAP];
+  u32 count;
+  u32 layer_count;
+  fwd_vm_group_layer layers[FWD_VM_GROUP_LAYER_CAP];
+  u16 program[FWD_VM_PROGRAM_CAP];
+};
+
 static_assert(sizeof(fwd_vm_desc) == 27520, "fwd_vm_desc/FwdVmDesc ABI size drift");
 static_assert(sizeof(fwd_vm_desc) <= 32764, "fwd_vm_desc exceeds the __grid_constant__ param budget");
 static_assert(alignof(fwd_vm_desc) == 16, "fwd_vm_desc alignment drift (e4 is __align__(16))");
 static_assert(__builtin_offsetof(fwd_vm_desc, arg_derived_e4) == 0, "arg_derived_e4 ABI offset drift");
+static_assert(sizeof(fwd_vm_group_layer) == 4, "fwd_vm_group_layer ABI size drift");
+static_assert(sizeof(fwd_vm_group_desc) == 26976, "fwd_vm_group_desc ABI size drift");
+static_assert(sizeof(fwd_vm_group_desc) <= 32764, "fwd_vm_group_desc exceeds the __grid_constant__ param budget");
+static_assert(alignof(fwd_vm_group_desc) == 16, "fwd_vm_group_desc alignment drift");
+static_assert(__builtin_offsetof(fwd_vm_group_desc, program) == 2396, "fwd_vm_group_desc program offset drift");
 
 } // namespace airbender::gkr

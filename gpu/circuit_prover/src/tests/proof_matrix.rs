@@ -11,6 +11,15 @@ pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
 }
 
+pub(super) fn run_proof_parity_with_forward_vm(
+    fixture: &BasicUnrolledProofFixture,
+    execution: ForwardVmExecutionConfig<'static>,
+) {
+    let proof_job = fixture.schedule_prove_with_forward_vm(execution).unwrap();
+    let (gpu_proof, _ms) = proof_job.finish().unwrap();
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+}
+
 /// Two concurrently-scheduled proofs on a recycled-block arena (the
 /// uninitialized-witness regression guard). schedule -> schedule -> finish -> finish.
 pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
@@ -32,12 +41,65 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
     );
 }
 
+pub(super) fn run_multi_schedule_with_forward_vm(
+    fixture: &BasicUnrolledProofFixture,
+    execution: ForwardVmExecutionConfig<'static>,
+) {
+    let baseline = fixture.base.context.get_used_mem_current();
+    let job0 = fixture.schedule_prove_with_forward_vm(execution).unwrap();
+    let job1 = fixture.schedule_prove_with_forward_vm(execution).unwrap();
+    let (p0, _) = job0.finish().unwrap();
+    assert_gkr_proof_eq_for_test(&p0, &fixture.expected_cpu_proof);
+    drop(p0);
+    let (p1, _) = job1.finish().unwrap();
+    assert_gkr_proof_eq_for_test(&p1, &fixture.expected_cpu_proof);
+    drop(p1);
+    assert_eq!(fixture.base.context.get_used_mem_current(), baseline);
+}
+
+fn parse_add_sub_forward_vm_profile_mode(
+    value: Option<&std::ffi::OsStr>,
+) -> Result<ForwardVmExecutionConfig<'static>, String> {
+    let Some(value) = value else {
+        return Ok(ForwardVmExecutionConfig::independent());
+    };
+    match value.to_str() {
+        Some("independent") => Ok(ForwardVmExecutionConfig::independent()),
+        Some("device-singleton") => Ok(ForwardVmExecutionConfig::grouped_by_value(
+            1,
+            ForwardVmStorePolicy::Streaming,
+            &[1, 1, 1, 1],
+        )),
+        Some("fused-streaming") => Ok(ForwardVmExecutionConfig::grouped_by_value(
+            4,
+            ForwardVmStorePolicy::Streaming,
+            &[4],
+        )),
+        Some("fused-writeback") => Ok(ForwardVmExecutionConfig::grouped_by_value(
+            4,
+            ForwardVmStorePolicy::WriteBack,
+            &[4],
+        )),
+        Some(other) => Err(format!("invalid AB_GKR_FORWARD_VM_PROFILE_MODE={other:?}")),
+        None => Err(format!(
+            "AB_GKR_FORWARD_VM_PROFILE_MODE is not UTF-8: {value:?}"
+        )),
+    }
+}
+
 /// Warmup + profiled prove; structure check only (no CPU reference needed).
 pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
+    run_profile_with_forward_vm(fixture, ForwardVmExecutionConfig::independent());
+}
+
+pub(super) fn run_profile_with_forward_vm(
+    fixture: &BasicUnrolledFixture,
+    execution: ForwardVmExecutionConfig<'static>,
+) {
     let baseline = fixture.context.get_used_mem_current();
     let warm = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
-    let warm_job = fixture.prove(warm).unwrap();
+    let warm_job = fixture.prove_with_forward_vm(warm, execution).unwrap();
     let (warm_proof, warm_ms) = warm_job.finish().unwrap();
     eprintln!("warmup proof time: {warm_ms} ms");
     assert_gkr_proof_structure_for_test(&warm_proof, &fixture.prover_config.whir_schedule);
@@ -50,7 +112,11 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
             Some("gpu_circuit_prover.tests"),
             "test.gpu.prove.profiled_call",
         );
-        fixture.prove(prof).unwrap().finish().unwrap()
+        fixture
+            .prove_with_forward_vm(prof, execution)
+            .unwrap()
+            .finish()
+            .unwrap()
     };
     eprintln!("profiled proof time: {prof_ms} ms");
     assert_gkr_proof_structure_for_test(&prof_proof, &fixture.prover_config.whir_schedule);
@@ -84,8 +150,74 @@ fn run_add_sub_multi_schedule_test() {
 
 #[test]
 #[ignore]
+fn run_add_sub_fused_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_basic_unrolled_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::Streaming, &[4]),
+    );
+}
+
+#[test]
+#[ignore]
+fn run_add_sub_device_singleton_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_basic_unrolled_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(
+            1,
+            ForwardVmStorePolicy::Streaming,
+            &[1, 1, 1, 1],
+        ),
+    );
+}
+
+#[test]
+#[ignore]
+fn run_add_sub_fused_forward_multi_schedule_test() {
+    run_multi_schedule_with_forward_vm(
+        &prepare_basic_unrolled_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::Streaming, &[4]),
+    );
+}
+
+#[test]
+#[ignore]
+fn run_add_sub_writeback_fused_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_basic_unrolled_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::WriteBack, &[4]),
+    );
+}
+
+#[test]
+fn add_sub_forward_vm_profile_mode_is_strict() {
+    use std::ffi::OsStr;
+
+    assert!(matches!(
+        parse_add_sub_forward_vm_profile_mode(None).unwrap().mode,
+        ForwardVmExecutionMode::IndependentByValue
+    ));
+    assert_eq!(
+        parse_add_sub_forward_vm_profile_mode(Some(OsStr::new("device-singleton")))
+            .unwrap()
+            .expected_device_group_sizes,
+        Some(&[1, 1, 1, 1][..])
+    );
+    assert!(parse_add_sub_forward_vm_profile_mode(Some(OsStr::new("typo"))).is_err());
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        assert!(parse_add_sub_forward_vm_profile_mode(Some(OsStr::from_bytes(&[0xff]))).is_err());
+    }
+}
+
+#[test]
+#[ignore]
 fn run_add_sub_profile_test() {
-    run_profile(&prepare_basic_unrolled_profiling_fixture());
+    let execution = parse_add_sub_forward_vm_profile_mode(
+        std::env::var_os("AB_GKR_FORWARD_VM_PROFILE_MODE").as_deref(),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    run_profile_with_forward_vm(&prepare_basic_unrolled_profiling_fixture(), execution);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +257,15 @@ fn prepare_jump_branch_slt_profiling_fixture() -> BasicUnrolledFixture {
 #[ignore]
 fn run_jump_branch_slt_proof_parity_test() {
     run_proof_parity(&prepare_jump_branch_slt_proof_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_jump_branch_slt_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_jump_branch_slt_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::Streaming, &[4]),
+    );
 }
 
 #[test]
@@ -180,6 +321,15 @@ fn run_shift_binop_proof_parity_test() {
 
 #[test]
 #[ignore]
+fn run_shift_binop_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_shift_binop_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::Streaming, &[4]),
+    );
+}
+
+#[test]
+#[ignore]
 fn run_shift_binop_multi_schedule_test() {
     run_multi_schedule(&prepare_shift_binop_proof_fixture());
 }
@@ -227,6 +377,15 @@ fn prepare_mul_div_profiling_fixture() -> BasicUnrolledFixture {
 #[ignore]
 fn run_mul_div_proof_parity_test() {
     run_proof_parity(&prepare_mul_div_proof_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_mul_div_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_mul_div_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::Streaming, &[4]),
+    );
 }
 
 #[test]
@@ -298,6 +457,15 @@ fn run_load_store_word_only_proof_parity_test() {
 
 #[test]
 #[ignore]
+fn run_load_store_word_only_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_load_store_word_only_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::Streaming, &[4]),
+    );
+}
+
+#[test]
+#[ignore]
 fn run_load_store_word_only_multi_schedule_test() {
     run_multi_schedule(&prepare_load_store_word_only_proof_fixture());
 }
@@ -364,6 +532,15 @@ fn prepare_load_store_subword_only_profiling_fixture() -> BasicUnrolledFixture {
 #[ignore]
 fn run_load_store_subword_only_proof_parity_test() {
     run_proof_parity(&prepare_load_store_subword_only_proof_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_load_store_subword_only_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_load_store_subword_only_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::Streaming, &[4]),
+    );
 }
 
 #[test]
@@ -497,6 +674,15 @@ fn run_bigint_proof_parity_test() {
 
 #[test]
 #[ignore]
+fn run_bigint_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_bigint_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(8, ForwardVmStorePolicy::Streaming, &[6]),
+    );
+}
+
+#[test]
+#[ignore]
 fn run_bigint_multi_schedule_test() {
     run_multi_schedule(&prepare_bigint_proof_fixture());
 }
@@ -593,6 +779,15 @@ fn prepare_keccak_special5_profiling_fixture() -> BasicUnrolledFixture {
 #[ignore]
 fn run_keccak_special5_proof_parity_test() {
     run_proof_parity(&prepare_keccak_special5_proof_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_keccak_special5_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_keccak_special5_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(8, ForwardVmStorePolicy::Streaming, &[6]),
+    );
 }
 
 #[test]
@@ -716,6 +911,15 @@ fn run_blake2_with_compression_proof_parity_test() {
 
 #[test]
 #[ignore]
+fn run_blake2_with_compression_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_blake2_with_compression_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(8, ForwardVmStorePolicy::Streaming, &[8]),
+    );
+}
+
+#[test]
+#[ignore]
 fn run_blake2_with_compression_multi_schedule_test() {
     run_multi_schedule(&prepare_blake2_with_compression_proof_fixture());
 }
@@ -824,6 +1028,15 @@ fn run_blake2_g_function_proof_parity_test() {
 
 #[test]
 #[ignore]
+fn run_blake2_g_function_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_blake2_g_function_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(8, ForwardVmStorePolicy::Streaming, &[5]),
+    );
+}
+
+#[test]
+#[ignore]
 fn run_blake2_g_function_multi_schedule_test() {
     run_multi_schedule(&prepare_blake2_g_function_proof_fixture());
 }
@@ -842,6 +1055,15 @@ fn run_blake2_g_function_profile_test() {
 #[ignore]
 fn run_unified_proof_parity_test() {
     run_proof_parity(&prepare_unified_proof_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_unified_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_unified_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::Streaming, &[4]),
+    );
 }
 
 /// Full e2e unified proof parity + closure-to-ONE.
@@ -957,6 +1179,15 @@ fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixtur
 #[ignore]
 fn run_inits_and_teardowns_proof_parity_test() {
     run_proof_parity(&prepare_inits_and_teardowns_matrix_proof_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_inits_and_teardowns_grouped_forward_proof_parity_test() {
+    run_proof_parity_with_forward_vm(
+        &prepare_inits_and_teardowns_matrix_proof_fixture(),
+        ForwardVmExecutionConfig::grouped_by_value(4, ForwardVmStorePolicy::Streaming, &[4]),
+    );
 }
 
 #[test]

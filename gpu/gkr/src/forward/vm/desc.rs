@@ -14,6 +14,8 @@ pub(crate) const ARG_DERIVED_E4_CAP: usize = 12; // schedule-time derived E4 val
 pub(crate) const DESC_CAP: usize = 370; // packed special descriptors
 pub(crate) const CONST_DERIVED_E4_CAP: usize = 8; // Includes the optional decoder fill.
 pub(crate) const SOURCE_WINDOW_COUNT: usize = 64;
+pub(crate) const GROUP_SOURCE_WINDOW_COUNT: usize = 16;
+pub(crate) const GROUP_LAYER_CAP: usize = 8;
 pub(crate) const DST_SLOT_COUNT: usize = 16;
 pub(crate) const MAPPING_ARENA_COUNT: usize = 3; // generic_family / range_check_16 / timestamp
 
@@ -22,7 +24,7 @@ pub(crate) const SD_SINGLE_COLUMN: u32 = 0; // PeekSingleColumn: lift(mapping[ro
 pub(crate) const SD_AGGREGATE: u32 = 1; // PeekAggregate: table[mapping[row]]
 pub(crate) const SD_SETUP: u32 = 2; // PeekSetup: row < table_len ? table[row] : 0
 pub(crate) const SD_DECODER: u32 = 3; // PeekDecoder: mask[row] != 0 ? table[mapping[row]]
-                                      //                            : const_derived_e4[last]
+                                      //                            : const_derived_e4[vkind]
 pub(crate) const SD_VIRTUAL: u32 = 4; // VirtualSetup: lift(n(vkind, gid)), no memory reads
 pub(crate) const SD_INITS_TOP_BITS: u32 = 5; // runtime init/teardown address prefix
 
@@ -102,10 +104,17 @@ pub(crate) const DESC_VKIND_MASK: u32 = 0x7;
 pub(crate) fn pack_desc(kind: u32, arena: u32, set_index: u16, vkind: u32) -> u32 {
     assert!(kind <= SD_INITS_TOP_BITS, "desc kind {kind} out of range");
     assert!(arena <= ARENA_TIMESTAMP, "desc arena {arena} out of range");
-    assert!(
-        vkind == 0 || (2..=5).contains(&vkind),
-        "desc vkind {vkind} out of range"
-    );
+    if kind == SD_DECODER {
+        assert!(
+            vkind < CONST_DERIVED_E4_CAP as u32,
+            "decoder const-derived-E4 slot {vkind} out of range"
+        );
+    } else {
+        assert!(
+            vkind == 0 || (2..=5).contains(&vkind),
+            "desc vkind {vkind} out of range"
+        );
+    }
     (kind << DESC_KIND_SHIFT)
         | (arena << DESC_ARENA_SHIFT)
         | ((set_index as u32) << DESC_SET_INDEX_SHIFT)
@@ -146,6 +155,33 @@ pub(crate) struct FwdVmDesc {
     pub program: [u16; PROGRAM_CAP],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct FwdVmGroupLayer {
+    pub program_offset: u16,
+    pub instruction_count: u16,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct FwdVmGroupDesc {
+    pub arg_derived_e4: [E4; ARG_DERIVED_E4_CAP],
+    pub source_base: [*mut u8; GROUP_SOURCE_WINDOW_COUNT],
+    pub dst_base: [*mut u8; DST_SLOT_COUNT],
+    pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT],
+    pub table: *const E4,
+    pub mask: *const BF,
+    pub source_stride_bytes: [u32; GROUP_SOURCE_WINDOW_COUNT],
+    pub dst_stride_bytes: [u32; DST_SLOT_COUNT],
+    pub consts: [BF; CONST_CAP],
+    pub table_len: u32,
+    pub descs: [u32; DESC_CAP],
+    pub count: u32,
+    pub layer_count: u32,
+    pub layers: [FwdVmGroupLayer; GROUP_LAYER_CAP],
+    pub program: [u16; PROGRAM_CAP],
+}
+
 /// ABI size guards, paired with the CUDA `static_assert`s in `fwd_vm.cuh`.
 const _: () = {
     assert!(
@@ -160,11 +196,43 @@ const _: () = {
         core::mem::align_of::<FwdVmDesc>() == 16,
         "FwdVmDesc alignment drift (E4 is 16-aligned)"
     );
+    assert!(core::mem::size_of::<FwdVmGroupLayer>() == 4);
+    assert!(core::mem::size_of::<FwdVmGroupDesc>() == 26_976);
+    assert!(core::mem::size_of::<FwdVmGroupDesc>() <= 32_764);
+    assert!(core::mem::align_of::<FwdVmGroupDesc>() == 16);
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grouped_desc_layout_matches_the_compact_cuda_abi() {
+        use core::mem::{align_of, offset_of, size_of};
+
+        assert_eq!(size_of::<FwdVmGroupLayer>(), 4);
+        assert_eq!(align_of::<FwdVmGroupLayer>(), 2);
+        assert_eq!(offset_of!(FwdVmGroupLayer, program_offset), 0);
+        assert_eq!(offset_of!(FwdVmGroupLayer, instruction_count), 2);
+
+        assert_eq!(offset_of!(FwdVmGroupDesc, arg_derived_e4), 0);
+        assert_eq!(offset_of!(FwdVmGroupDesc, source_base), 192);
+        assert_eq!(offset_of!(FwdVmGroupDesc, dst_base), 320);
+        assert_eq!(offset_of!(FwdVmGroupDesc, mapping_arena), 448);
+        assert_eq!(offset_of!(FwdVmGroupDesc, table), 472);
+        assert_eq!(offset_of!(FwdVmGroupDesc, mask), 480);
+        assert_eq!(offset_of!(FwdVmGroupDesc, source_stride_bytes), 488);
+        assert_eq!(offset_of!(FwdVmGroupDesc, dst_stride_bytes), 552);
+        assert_eq!(offset_of!(FwdVmGroupDesc, consts), 616);
+        assert_eq!(offset_of!(FwdVmGroupDesc, table_len), 872);
+        assert_eq!(offset_of!(FwdVmGroupDesc, descs), 876);
+        assert_eq!(offset_of!(FwdVmGroupDesc, count), 2_356);
+        assert_eq!(offset_of!(FwdVmGroupDesc, layer_count), 2_360);
+        assert_eq!(offset_of!(FwdVmGroupDesc, layers), 2_364);
+        assert_eq!(offset_of!(FwdVmGroupDesc, program), 2_396);
+        assert_eq!(size_of::<FwdVmGroupDesc>(), 26_976);
+        assert_eq!(align_of::<FwdVmGroupDesc>(), 16);
+    }
 
     /// Walk the byte offsets documented in the struct (and mirrored in
     /// `fwd_vm.cuh`) — the ABI contract is offset-for-offset, so any layout
@@ -216,6 +284,16 @@ mod tests {
                 unpack_desc(packed),
                 (kind, arena, set_index, vkind),
                 "round-trip failed for kind={kind} arena={arena} set_index={set_index} vkind={vkind}"
+            );
+        }
+    }
+
+    #[test]
+    fn decoder_descriptor_carries_its_const_derived_e4_slot_in_vkind() {
+        for slot in 0..CONST_DERIVED_E4_CAP as u32 {
+            assert_eq!(
+                unpack_desc(pack_desc(SD_DECODER, 0, 17, slot)),
+                (3, 0, 17, slot)
             );
         }
     }

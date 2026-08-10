@@ -1,5 +1,8 @@
 use super::*;
 
+const DEFAULT_FIXTURE_DEVICE_ARENA_BYTES: usize = 64usize << 30;
+const NCU_PROFILE_DEVICE_ARENA_BYTES: usize = 32usize << 30;
+
 pub(super) fn default_fixture_device_allocator_block_log_size() -> u32 {
     gpu_prover_context::ProverContextConfig::default().allocator_block_log_size
 }
@@ -165,6 +168,7 @@ pub(super) fn finish_proof_fixture(
     witness_gen_data: &[CSExecutorFamilyDecoderData],
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
+    device_allocator_arena_bytes: usize,
     security_level: SecurityLevel,
 ) -> (
     BasicUnrolledFixture,
@@ -172,9 +176,6 @@ pub(super) fn finish_proof_fixture(
 ) {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    // Match the production-sized arena used by full GPU proofs.
-    let device_allocator_arena_bytes: usize = 64usize << 30;
-
     let trace_len: usize = compiled_circuit.trace_len;
 
     let memory_argument_alpha =
@@ -427,6 +428,7 @@ pub(super) fn prepare_unrolled_non_memory_proof_fixture<const FAMILY_IDX: u8>(
         &ex.witness_gen_data,
         compute_cpu_reference,
         default_fixture_device_allocator_block_log_size(),
+        DEFAULT_FIXTURE_DEVICE_ARENA_BYTES,
         crate::upstream::SecurityLevel::Sec80,
     )
 }
@@ -866,6 +868,7 @@ pub(super) fn prepare_basic_unrolled_fixture(
         &ex.witness_gen_data,
         build_config.compute_cpu_reference,
         build_config.device_allocator_block_log_size,
+        build_config.device_allocator_arena_bytes,
         build_config.security_level,
     )
 }
@@ -882,6 +885,7 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixtur
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            device_allocator_arena_bytes: DEFAULT_FIXTURE_DEVICE_ARENA_BYTES,
             security_level: crate::upstream::SecurityLevel::Sec80,
         });
     BasicUnrolledProofFixture {
@@ -907,6 +911,7 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture_sec100() -> BasicUnrolledProo
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            device_allocator_arena_bytes: DEFAULT_FIXTURE_DEVICE_ARENA_BYTES,
             security_level: crate::upstream::SecurityLevel::Sec100,
         });
     BasicUnrolledProofFixture {
@@ -928,6 +933,11 @@ pub(super) fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture
             non_determinism_reads: &[],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            // NCU range replay snapshots the entire arena. The regular 64 GiB
+            // fixture consumes ~143 GiB of host shared memory and is OOM-killed;
+            // the measured live peak is 28.174 GiB, so 32 GiB preserves the
+            // workload with enough allocator headroom for this audit fixture.
+            device_allocator_arena_bytes: NCU_PROFILE_DEVICE_ARENA_BYTES,
             security_level: crate::upstream::SecurityLevel::Sec80,
         });
     assert!(

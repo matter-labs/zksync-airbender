@@ -15,7 +15,7 @@ use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
-use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
+use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget, ForwardVmExecutionConfig};
 use gpu_gkr::GkrPrograms;
 use gpu_prover_context::ProverContext;
 
@@ -39,6 +39,26 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         prover_config,
         final_trace_size_log_2,
         inputs,
+        ForwardVmExecutionConfig::independent(),
+        None,
+        context,
+    )
+}
+
+pub(crate) fn prove_with_forward_vm_execution<'a, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    forward_vm_execution: ForwardVmExecutionConfig<'_>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    prove_inner(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        forward_vm_execution,
         None,
         context,
     )
@@ -57,6 +77,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         prover_config,
         final_trace_size_log_2,
         inputs,
+        ForwardVmExecutionConfig::independent(),
         Some(Box::default()),
         context,
     )
@@ -67,6 +88,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
+    forward_vm_execution: ForwardVmExecutionConfig<'_>,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
@@ -167,6 +189,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         output_evaluations_slab,
         gkr_programs,
+        forward_vm_execution,
         context,
     )?;
     let ForwardToBackwardHandoff {

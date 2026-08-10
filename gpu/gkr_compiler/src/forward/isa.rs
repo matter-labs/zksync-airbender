@@ -6,10 +6,43 @@
 pub(crate) const TYPE_BITS: u32 = 2;
 pub(crate) const SOURCE_WINDOW_SHIFT: u32 = TYPE_BITS;
 pub(crate) const SOURCE_WINDOW_BITS: u32 = 6;
+#[cfg(test)]
 pub(crate) const SOURCE_COLUMN_SHIFT: u32 = SOURCE_WINDOW_SHIFT + SOURCE_WINDOW_BITS;
 pub(crate) const SOURCE_COLUMN_BITS: u32 = 7;
 pub(crate) const MAX_SOURCE_WINDOWS: u32 = 1 << SOURCE_WINDOW_BITS;
 pub const SOURCE_WINDOW_COLUMNS: u32 = 1 << SOURCE_COLUMN_BITS;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceLayout {
+    window_bits: u32,
+    column_bits: u32,
+}
+
+impl SourceLayout {
+    pub const fn new(window_bits: u32, column_bits: u32) -> Option<Self> {
+        if window_bits > 0 && column_bits > 0 && window_bits + column_bits == 13 {
+            Some(Self {
+                window_bits,
+                column_bits,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub(crate) const fn window_bits(self) -> u32 {
+        self.window_bits
+    }
+
+    pub(crate) const fn column_bits(self) -> u32 {
+        self.column_bits
+    }
+}
+
+pub const DEFAULT_SOURCE_LAYOUT: SourceLayout = SourceLayout {
+    window_bits: SOURCE_WINDOW_BITS,
+    column_bits: SOURCE_COLUMN_BITS,
+};
 // Compiler-private backing and destination coordinates. These are not source-lane fields.
 pub(crate) const SLOT_BITS: u32 = 4; // ≤16 logical backings/layer
 pub(crate) const COL_BITS: u32 = 10; // ≤1024 logical cols/backing
@@ -122,7 +155,7 @@ pub enum OperandLine {
     /// Final physical source coordinate carried by the 16-bit program lane.
     Source {
         window: u8,
-        column: u8,
+        column: u16,
     },
     Smem {
         cell: u16,

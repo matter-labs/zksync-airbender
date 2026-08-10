@@ -18,6 +18,8 @@ use gpu_prover_context::ProverContext;
 
 use crate::GkrPrograms;
 
+pub use vm::{ForwardVmExecutionConfig, ForwardVmExecutionMode, ForwardVmStorePolicy};
+
 pub struct GpuGKRForwardOutput<B, E> {
     tracing_ranges: Vec<Range>,
     storage: GpuGKRStorage<B, E>,
@@ -130,6 +132,7 @@ pub fn schedule_forward_pass(
     final_trace_size_log_2: u32,
     output_evaluations_slab: Option<ForwardOutputSlabTarget<E4>>,
     programs: &GkrPrograms,
+    forward_vm_execution: ForwardVmExecutionConfig<'_>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E4>> {
     let compiled_circuit = programs.runtime_circuit();
@@ -180,26 +183,78 @@ pub fn schedule_forward_pass(
         "forward GKR program must cover every main layer",
     );
 
-    for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
-        let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
-        layer_range.start(stream)?;
-        schedule_layer(
-            layer_idx,
-            layer,
-            compiled_circuit,
-            &mut storage,
-            stage1,
-            forward_setup,
-            external_challenges,
-            trace_len,
-            inits_and_teardowns_top_bits,
-            &programs.forward.layers[layer_idx],
-            context,
-        )?;
-        layer_range.end(stream)?;
-        tracing_ranges.push(layer_range);
-        release_forward_lookup_resources_after_layer(layer_idx, &usage, stage1, forward_setup);
+    let mut witness = vm::ForwardVmExecutionWitness::default();
+    match forward_vm_execution.mode {
+        ForwardVmExecutionMode::IndependentByValue => {
+            for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+                let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
+                layer_range.start(stream)?;
+                schedule_layer(
+                    layer_idx,
+                    layer,
+                    compiled_circuit,
+                    &mut storage,
+                    stage1,
+                    forward_setup,
+                    external_challenges,
+                    trace_len,
+                    inits_and_teardowns_top_bits,
+                    &programs.forward.layers[layer_idx],
+                    context,
+                )?;
+                layer_range.end(stream)?;
+                tracing_ranges.push(layer_range);
+                release_forward_lookup_resources_after_layer(
+                    layer_idx,
+                    &usage,
+                    stage1,
+                    forward_setup,
+                );
+            }
+        }
+        ForwardVmExecutionMode::GroupedByValue {
+            max_group_size,
+            store_policy,
+        } => {
+            for group in vm::plan_device_groups(compiled_circuit.layers.len(), max_group_size) {
+                let group_range = Range::new(format!(
+                    "gkr.forward.vm.device_group.{}-{}",
+                    group.start, group.end
+                ))?;
+                group_range.start(stream)?;
+                vm::production_bind::schedule_grouped_vm(
+                    group.clone(),
+                    compiled_circuit,
+                    &programs.forward.layers,
+                    &mut storage,
+                    stage1,
+                    forward_setup,
+                    external_challenges,
+                    trace_len,
+                    inits_and_teardowns_top_bits,
+                    store_policy,
+                    context,
+                )?;
+                group_range.end(stream)?;
+                tracing_ranges.push(group_range);
+                witness.record_device_group(group.len());
+                for layer_idx in group {
+                    release_forward_lookup_resources_after_layer(
+                        layer_idx,
+                        &usage,
+                        stage1,
+                        forward_setup,
+                    );
+                }
+            }
+            // No grid barrier is required between grouped layers: every source
+            // and destination row is indexed by this thread's stable gid;
+            // materialized destination backings stay owned by storage; mapping
+            // arenas and lookup tables are read-only. A future operand that can
+            // read another row's VM output must disable this grouped path.
+        }
     }
+    witness.verify(forward_vm_execution.expected_device_group_sizes);
 
     for (output_type, addresses) in compiled_circuit.global_output_map.iter() {
         for address in addresses.iter().copied() {
