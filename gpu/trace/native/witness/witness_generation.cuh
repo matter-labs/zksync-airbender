@@ -156,39 +156,67 @@ typedef wrapped_integer<u16, u32> wrapped_u16;
 typedef wrapped_integer<u32, u64> wrapped_u32;
 typedef wrapped_integer<i32, i64> wrapped_i32;
 
-template <class R> struct WitnessProxy {
-  const R oracle;
-  const wrapped_f *const __restrict__ generic_lookup_tables;
+struct GlobalTraceProvider {
   const wrapped_f *const __restrict__ memory;
   wrapped_f *const __restrict__ witness;
+  const unsigned stride;
+  const unsigned offset;
+
+  template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_memory() const {
+    const auto value = memory[IDX * stride + offset];
+#ifdef PRINT_THREAD_IDX
+    if (offset == PRINT_THREAD_IDX)
+      printf("M[%u] -> %u\n", IDX, value.inner.limb);
+#endif
+    return T::from(value);
+  }
+
+  template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_witness() const {
+    const auto value = witness[IDX * stride + offset];
+#ifdef PRINT_THREAD_IDX
+    if (offset == PRINT_THREAD_IDX)
+      printf("W[%u] -> %u\n", IDX, value.inner.limb);
+#endif
+    return T::from(value);
+  }
+
+  template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_memory(const T &value) const {
+    const auto f = wrapped_f::from(value);
+#ifdef PRINT_THREAD_IDX
+    if (offset == PRINT_THREAD_IDX)
+      printf("M[%u] <- %u\n", IDX, f.inner.limb);
+#endif
+    memory[IDX * stride + offset] = f;
+  }
+
+  template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_witness(const T &value) const {
+    const auto f = wrapped_f::from(value);
+#ifdef PRINT_THREAD_IDX
+    if (offset == PRINT_THREAD_IDX)
+      printf("W[%u] <- %u\n", IDX, f.inner.limb);
+#endif
+    witness[IDX * stride + offset] = f;
+  }
+};
+
+template <class R, class Places> struct WitnessProxy {
+  const R oracle;
+  const wrapped_f *const __restrict__ generic_lookup_tables;
+  const Places places;
   u32 *const __restrict__ lookup_mapping;
   wrapped_f *const scratch;
   const unsigned stride;
   const unsigned offset;
 
-  template <typename T> DEVICE_FORCEINLINE T get_memory_place(const unsigned idx) const {
-    const auto value = memory[idx * stride + offset];
-#ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("M[%u] -> %u\n", idx, value.inner.limb);
-#endif
-    return T::from(value);
-  }
+  template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_memory_place() const { return places.template get_memory<T, IDX>(); }
 
-  template <typename T> DEVICE_FORCEINLINE T get_witness_place(const unsigned idx) const {
-    auto value = witness[idx * stride + offset];
-#ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("W[%u] -> %u\n", idx, value.inner.limb);
-#endif
-    return T::from(value);
-  }
+  template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_witness_place() const { return places.template get_witness<T, IDX>(); }
 
-  template <typename T> DEVICE_FORCEINLINE T get_scratch_place(const unsigned idx) const {
-    auto value = scratch[idx * stride];
+  template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_scratch_place() const {
+    const auto value = scratch[IDX * stride];
 #ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
-      printf("S[%u] -> %u\n", idx, value.inner.limb);
+      printf("S[%u] -> %u\n", IDX, value.inner.limb);
 #endif
     return T::from(value);
   }
@@ -202,31 +230,17 @@ template <class R> struct WitnessProxy {
     return wrapped_u32(value);
   }
 
-  template <typename T> DEVICE_FORCEINLINE void set_memory_place(const unsigned idx, const T &value) const {
-    auto f = wrapped_f::from(value);
-#ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("M[%u] <- %u\n", idx, f.inner.limb);
-#endif
-    memory[idx * stride + offset] = f;
-  }
+  template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_memory_place(const T &value) const { places.template set_memory<IDX>(value); }
 
-  template <typename T> DEVICE_FORCEINLINE void set_witness_place(const unsigned idx, const T &value) const {
+  template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_witness_place(const T &value) const { places.template set_witness<IDX>(value); }
+
+  template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_scratch_place(const T &value) const {
     const auto f = wrapped_f::from(value);
 #ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
-      printf("W[%u] <- %u\n", idx, f.inner.limb);
+      printf("S[%u] <- %u\n", IDX, f.inner.limb);
 #endif
-    witness[idx * stride + offset] = f;
-  }
-
-  template <typename T> DEVICE_FORCEINLINE void set_scratch_place(const unsigned idx, const T &value) const {
-    auto f = wrapped_f::from(value);
-#ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("S[%u] <- %u\n", idx, f.inner.limb);
-#endif
-    scratch[idx * stride] = f;
+    scratch[IDX * stride] = f;
   }
 
   template <unsigned I, unsigned O>
@@ -279,9 +293,9 @@ template <class R> struct WitnessProxy {
 
 #define VAR(N) var_##N
 #define CONSTANT(T, N, VALUE) [[maybe_unused]] constexpr wrapped_##T VAR(N) = wrapped_##T::new_const(VALUE);
-#define GET_MEMORY_PLACE(T, N, IDX) [[maybe_unused]] const wrapped_##T VAR(N) = p.template get_memory_place<wrapped_##T>(IDX);
-#define GET_WITNESS_PLACE(T, N, IDX) [[maybe_unused]] const wrapped_##T VAR(N) = p.template get_witness_place<wrapped_##T>(IDX);
-#define GET_SCRATCH_PLACE(T, N, IDX) [[maybe_unused]] const wrapped_##T VAR(N) = p.template get_scratch_place<wrapped_##T>(IDX);
+#define GET_MEMORY_PLACE(T, N, IDX) [[maybe_unused]] const wrapped_##T VAR(N) = p.template get_memory_place<wrapped_##T, IDX>();
+#define GET_WITNESS_PLACE(T, N, IDX) [[maybe_unused]] const wrapped_##T VAR(N) = p.template get_witness_place<wrapped_##T, IDX>();
+#define GET_SCRATCH_PLACE(T, N, IDX) [[maybe_unused]] const wrapped_##T VAR(N) = p.template get_scratch_place<wrapped_##T, IDX>();
 #define GET_ORACLE_VALUE(T, N, P) [[maybe_unused]] const wrapped_##T VAR(N) = p.get_oracle_value_##T(P);
 #define LOOKUP_TABLE_OFFSETS(...) static constexpr __device__ u32 lookup_table_offsets[] = {__VA_ARGS__};
 #define LOOKUP_OUTPUTS(N, NO) [[maybe_unused]] wrapped_f VAR(N)[NO] = {};
@@ -337,17 +351,18 @@ template <class R> struct WitnessProxy {
   if (VAR(S).inner) {                                                                                                                                          \
     T                                                                                                                                                          \
   }
-#define SET_MEMORY_PLACE(IDX, V) p.set_memory_place(IDX, VAR(V));
-#define SET_WITNESS_PLACE(IDX, V) p.set_witness_place(IDX, VAR(V));
+#define SET_MEMORY_PLACE(IDX, V) p.template set_memory_place<IDX>(VAR(V));
+#define SET_WITNESS_PLACE(IDX, V) p.template set_witness_place<IDX>(VAR(V));
 // Unconditional store of `COND ? V : 0`, used for the FIRST write to a witness
 // column that is only ever written under a guard. Folds the zero-default into
 // the write as a branchless select, so rows whose guard is false get a definite
 // zero without a separate prologue pass. Only valid when the column has no
 // unconditional write (else the `: 0` could clobber it).
-#define SET_WITNESS_PLACE_OR_ZERO(IDX, COND, V) p.set_witness_place(IDX, wrapped_b::select(VAR(COND), wrapped_f::from(VAR(V)), wrapped_f::new_const(0)));
-#define SET_SCRATCH_PLACE(IDX, V) p.set_scratch_place(IDX, VAR(V));
+#define SET_WITNESS_PLACE_OR_ZERO(IDX, COND, V)                                                                                                                \
+  p.template set_witness_place<IDX>(wrapped_b::select(VAR(COND), wrapped_f::from(VAR(V)), wrapped_f::new_const(0)));
+#define SET_SCRATCH_PLACE(IDX, V) p.template set_scratch_place<IDX>(VAR(V));
 
-#define FN_BEGIN(N) template <class R> DEVICE_FORCEINLINE void fn_##N(const WitnessProxy<R> p) {
+#define FN_BEGIN(N) template <class R, class Places> DEVICE_FORCEINLINE void fn_##N(const WitnessProxy<R, Places> p) {
 #define FN_END }
 
 #define FN_CALL(N) fn_##N(p);
@@ -378,7 +393,8 @@ template <class R> struct WitnessProxy {
     if (gid >= count)                                                                                                                                          \
       return;                                                                                                                                                  \
     SCRATCH                                                                                                                                                    \
-    const WitnessProxy<ORACLE> p = {oracle, generic_lookup_tables, memory, witness, lookup_mapping, scratch, stride, gid};                                     \
+    const GlobalTraceProvider places = {memory, witness, stride, gid};                                                                                         \
+    const WitnessProxy<ORACLE, GlobalTraceProvider> p = {oracle, generic_lookup_tables, places, lookup_mapping, scratch, stride, gid};                         \
     FN_CALL(generate)                                                                                                                                          \
   }
 

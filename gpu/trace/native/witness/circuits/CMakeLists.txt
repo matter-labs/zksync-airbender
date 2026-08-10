@@ -3,6 +3,7 @@ target_sources(gpu_trace_native PRIVATE
         blake2_g_function.cu
         blake2_with_compression.cu
         add_sub_lui_auipc_mop.cu
+        add_sub_lui_auipc_mop.cuh
         keccak_special5.cu
         jump_branch_slt.cu
         load_store_subword_only.cu

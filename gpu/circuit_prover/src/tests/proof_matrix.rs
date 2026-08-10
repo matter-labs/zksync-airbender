@@ -64,9 +64,181 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     assert_eq!(fixture.context.get_used_mem_current(), baseline);
 }
 
+fn assert_device_slices_equal_chunked<T>(
+    label: &str,
+    lhs: &era_cudart::slice::DeviceSlice<T>,
+    rhs: &era_cudart::slice::DeviceSlice<T>,
+    context: &ProverContext,
+) where
+    T: Copy + Default + PartialEq + std::fmt::Debug,
+{
+    assert_eq!(lhs.len(), rhs.len(), "{label} length mismatch");
+    const CHUNK_BYTES: usize = 64 << 20;
+    let chunk_len = (CHUNK_BYTES / std::mem::size_of::<T>()).max(1);
+    let mut lhs_host = vec![T::default(); chunk_len.min(lhs.len())];
+    let mut rhs_host = vec![T::default(); chunk_len.min(rhs.len())];
+    for offset in (0..lhs.len()).step_by(chunk_len) {
+        let len = chunk_len.min(lhs.len() - offset);
+        memory_copy_async(
+            &mut lhs_host[..len],
+            &lhs[offset..offset + len],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        memory_copy_async(
+            &mut rhs_host[..len],
+            &rhs[offset..offset + len],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        if lhs_host[..len] != rhs_host[..len] {
+            let local = lhs_host[..len]
+                .iter()
+                .zip(&rhs_host[..len])
+                .position(|(lhs, rhs)| lhs != rhs)
+                .unwrap();
+            assert_eq!(
+                lhs_host[local],
+                rhs_host[local],
+                "{label} mismatch at element {}",
+                offset + local
+            );
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // add_sub hand-written per-circuit test functions
 // ---------------------------------------------------------------------------
+
+#[test]
+fn cpu_add_sub_specialization_accepts_committed_layout() {
+    let circuit: GKRCircuitArtifact<BF> =
+        deserialize_json_for_test(BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH);
+    assert!(gpu_trace::witness::add_sub::add_sub_layout_is_compatible(
+        &circuit
+    ));
+}
+
+#[test]
+fn cpu_add_sub_specialization_rejects_relation_drift() {
+    let mut circuit: GKRCircuitArtifact<BF> =
+        deserialize_json_for_test(BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH);
+    circuit.timestamp_range_check_lookup_expressions[2].lookup_set_index = 99;
+    assert!(!gpu_trace::witness::add_sub::add_sub_layout_is_compatible(
+        &circuit
+    ));
+}
+
+#[test]
+#[ignore]
+fn run_add_sub_stage1_buffer_parity_test() {
+    use gpu_gkr::proof_layout::GpuGKRTraceGeometry;
+    use gpu_gkr::stage1::{generate_with_add_sub_mode, AddSubGenerationMode, GpuGKRStage1Output};
+
+    let fixture = prepare_basic_unrolled_profiling_fixture();
+    let transfers = fixture.schedule_transfers().unwrap();
+    transfers
+        .transfer
+        .ensure_transferred(&fixture.context)
+        .unwrap();
+    let setup = transfers
+        .setup
+        .as_ref()
+        .expect("add/sub fixture requires a setup transfer");
+    let geometry = GpuGKRTraceGeometry {
+        log_domain_size: setup.trace_holder.log_domain_size,
+        log_lde_factor: setup.trace_holder.log_lde_factor,
+        log_rows_per_leaf: setup.trace_holder.log_rows_per_leaf,
+        log_tree_cap_size: setup.trace_holder.log_tree_cap_size,
+    };
+    let generate = |mode| -> GpuGKRStage1Output {
+        generate_with_add_sub_mode(
+            fixture.circuit_type,
+            &fixture.compiled_circuit,
+            geometry,
+            Some(setup.trace_holder.get_hypercube_evals()),
+            transfers
+                .decoder
+                .as_ref()
+                .map(|decoder| &decoder.data_device[..]),
+            transfers
+                .inits_and_teardowns
+                .as_ref()
+                .map(|transfer| &transfer.data_device),
+            transfers
+                .tracing_data
+                .as_ref()
+                .map(|transfer| &transfer.data_device),
+            None,
+            &fixture.context,
+            mode,
+        )
+        .unwrap()
+    };
+
+    let baseline = fixture.context.get_used_mem_current();
+    fixture.context.reset_used_mem_peak();
+    let generic = generate(AddSubGenerationMode::ForceGeneric);
+    fixture.context.get_exec_stream().synchronize().unwrap();
+    let first_stage_peak_delta = fixture
+        .context
+        .get_used_mem_peak()
+        .checked_sub(baseline)
+        .expect("stage-1 peak must not precede the transfer baseline");
+    let headroom = fixture
+        .context
+        .get_mem_size()
+        .saturating_sub(fixture.context.get_used_mem_current());
+    assert!(
+        headroom >= first_stage_peak_delta,
+        "insufficient arena headroom for a second retained stage-1 output: \
+         headroom={headroom} first_stage_peak_delta={first_stage_peak_delta}"
+    );
+
+    let specialized = generate(AddSubGenerationMode::Auto);
+    fixture.context.get_exec_stream().synchronize().unwrap();
+    assert_device_slices_equal_chunked(
+        "memory hypercube",
+        generic.memory_trace_holder.get_hypercube_evals(),
+        specialized.memory_trace_holder.get_hypercube_evals(),
+        &fixture.context,
+    );
+    assert_device_slices_equal_chunked(
+        "witness hypercube",
+        generic.witness_trace_holder.get_hypercube_evals(),
+        specialized.witness_trace_holder.get_hypercube_evals(),
+        &fixture.context,
+    );
+    assert_device_slices_equal_chunked(
+        "generic/decoder mappings",
+        generic.lookup_mappings.generic_family(),
+        specialized.lookup_mappings.generic_family(),
+        &fixture.context,
+    );
+    assert_device_slices_equal_chunked(
+        "range-16 mappings",
+        generic.lookup_mappings.range_check_16(),
+        specialized.lookup_mappings.range_check_16(),
+        &fixture.context,
+    );
+    assert_device_slices_equal_chunked(
+        "timestamp mappings",
+        generic.lookup_mappings.timestamp(),
+        specialized.lookup_mappings.timestamp(),
+        &fixture.context,
+    );
+
+    drop(specialized);
+    drop(generic);
+    fixture.context.get_exec_stream().synchronize().unwrap();
+    assert_eq!(
+        fixture.context.get_used_mem_current(),
+        baseline,
+        "device memory must return to the post-transfer baseline"
+    );
+}
 
 /// Full-proof parity at Sec100, where the lookup-challenge and WHIR-batching
 /// PoWs are non-zero — exercises the on-device grinding + nonce path.

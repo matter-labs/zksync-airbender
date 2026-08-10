@@ -64,8 +64,9 @@ because the witness CUDA it guards moved here.
 - **Archive / `links` key**: `gpu_trace_native` (`build.rs` is a one-line
   `gpu_native_build::CudaArchive::new("gpu_trace_native", "GPU_TRACE").build()`
   call — no `export_include`, no `deterministic_pow`).
-- **Kernel count**: 28 (`__global__` kernels, verified by grep) — 17 literal
-  (`memory_delegation.cu` 8, `memory_unrolled.cu` 7, `multiplicities.cu` 2)
+- **Kernel count**: 31 (`__global__` kernels, verified by grep) — 20 literal
+  (`memory_delegation.cu` 8, `memory_unrolled.cu` 7, `multiplicities.cu` 2,
+  `circuits/add_sub_lui_auipc_mop.cuh` 3)
   plus 11 token-pasted `ab_generate_witness_values_<NAME>_kernel` symbols
   (never appear as literals in native — formed by the `KERNEL_NAME(NAME)`
   macro in `witness_generation.cuh`, one per circuit under

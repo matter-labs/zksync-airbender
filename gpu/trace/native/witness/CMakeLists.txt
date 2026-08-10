@@ -3,6 +3,7 @@ target_sources(gpu_trace_native PRIVATE
         memory.cuh
         memory_delegation.cu
         memory_unrolled.cu
+        memory_unrolled.cuh
         multiplicities.cu
         option.cuh
         placeholder.cuh

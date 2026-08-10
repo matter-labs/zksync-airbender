@@ -55,8 +55,6 @@ pub(crate) use cs::tables::TableType;
 // -----------------------------------------------------------------------
 
 pub(crate) use field::baby_bear::base::BabyBearField;
-// Trait methods only exercised by `trace::holder::tests` (LDE/coset host-side checks).
-#[cfg(test)]
 pub(crate) use field::{Field, PrimeField};
 
 // -----------------------------------------------------------------------
