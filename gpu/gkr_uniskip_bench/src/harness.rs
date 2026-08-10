@@ -378,6 +378,16 @@ pub enum CarveoutHint {
     Explicit(u32),
 }
 
+impl CarveoutHint {
+    fn resolve(self, launches_cached_128_lb: bool) -> Option<u32> {
+        match self {
+            Self::Explicit(pct) => Some(pct),
+            Self::None => None,
+            Self::Default => launches_cached_128_lb.then_some(16),
+        }
+    }
+}
+
 impl std::str::FromStr for CarveoutHint {
     type Err = String;
 
@@ -517,8 +527,7 @@ pub struct Harness {
     flat_eq: bool,
     config: PassConfig,
     /// The carveout percent this harness APPLIED, which under [`CarveoutHint::Default`] is
-    /// not readable off the config. Every log line stating a hint state reads it from here,
-    /// so the schedule line and the applied-hint echo cannot disagree.
+    /// not readable off the config.
     carveout: Option<u32>,
     lde: Option<[LdeLaunch; CLASSES]>,
     eval: EvalLaunch,
@@ -949,17 +958,11 @@ impl Harness {
 
         // v3 R6: one carveout state per process, applied before any launch. Only the
         // bounded cached body is steered; the uncached control is the probe's anchor.
-        // v3 R7: the hint is the DEFAULT wherever that body runs, so the predicate comes
-        // from the kernel selection above rather than from the flags that fed it.
         let launches_cached_128_lb = eval_kernel == LaneKernel::Cached128Lb.name()
             || cache_lanes
                 .iter()
                 .any(|prepared| prepared.lane.kernel() == LaneKernel::Cached128Lb);
-        let carveout = match config.carveout_hint {
-            CarveoutHint::Explicit(pct) => Some(pct),
-            CarveoutHint::None => None,
-            CarveoutHint::Default => launches_cached_128_lb.then_some(16),
-        };
+        let carveout = config.carveout_hint.resolve(launches_cached_128_lb);
         if let Some(pct) = carveout {
             kernels::set_cached_128_lb_carveout(pct)?;
             println!("  carveout hint       {pct}% (eval_lsb_pair_cached_128_lb)");
@@ -1383,6 +1386,30 @@ mod cpu_tests {
             }
             .rows_per_block(),
             UNISKIP_ROWS_PER_BLOCK as u32
+        );
+    }
+
+    /// The three-state hint, resolved without a device. `Default` is the only state that
+    /// reads the predicate, and it is the one a silent regression would turn into a
+    /// baseline shift no log states.
+    #[test]
+    fn cpu_carveout_hint_resolves_three_states() {
+        assert_eq!(CarveoutHint::default(), CarveoutHint::Default);
+        assert_eq!(CarveoutHint::Default.resolve(true), Some(16));
+        assert_eq!(CarveoutHint::Default.resolve(false), None);
+        assert_eq!(CarveoutHint::None.resolve(true), None);
+        assert_eq!(CarveoutHint::None.resolve(false), None);
+        assert_eq!(CarveoutHint::Explicit(25).resolve(true), Some(25));
+        assert_eq!(CarveoutHint::Explicit(25).resolve(false), Some(25));
+    }
+
+    /// One leg of that predicate compares `eval_kernel` against this name, so a rename on
+    /// either side would silently stop applying the default on the single-arm path.
+    #[test]
+    fn cpu_cached_128_lb_kernel_name_is_pinned() {
+        assert_eq!(
+            LaneKernel::Cached128Lb.name(),
+            "eval_lsb_pair_cached_128_lb"
         );
     }
 

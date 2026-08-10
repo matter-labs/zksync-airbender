@@ -3678,7 +3678,10 @@ emitter pins), the self-generating fixture lane (`tools/r6_fixtures/`) and the c
   candidate (−0.09..−0.10 ms on the winner) — parked for RR: it shifts every future
   session's baseline, so it should land as its own deliberate step, not ride along.
   ADDENDUM: R7 Task 0 baked hint 16 as the default (parked item (a)); the historical
-  off-state is reproducible via `--carveout-hint none`.
+  off-state is reproducible via `--carveout-hint none`. Every R4/R5 median recorded above
+  predates the bake, and `r4_table.py` / `factorial_table.py` carry no hint field, so a
+  post-bake log is identified ONLY by the harness's `carveout hint 16%` config echo in the
+  raw log — never by the emitted tables.
 - **The driver heuristic generalizes.** Any production kernel whose register limit binds
   below its warp limit may be running with an oversized carveout and a shrunken L1 for no
   reason. A sweep of the production prover's kernels (`Shared Memory Configuration Size`

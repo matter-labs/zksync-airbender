@@ -151,7 +151,8 @@ struct Cli {
 
     /// Run the v3 R6 carveout probe: 5 lanes — the R5 knee neighborhood `k24 k32 k40
     /// hot16` at 128 threads plus the shipping `control@256` anchor — in ONE process, one
-    /// carveout state (`--carveout-hint 16` or the driver default) for the whole process.
+    /// carveout state (the R7 default 16, or `--carveout-hint none` for the driver
+    /// default) for the whole process.
     /// The whole contract is preregistered and PINNED: locality order only, exactly
     /// 100 rounds / 10 warmup, hint 16. Mutually exclusive with every other rotation.
     #[arg(long)]
@@ -660,7 +661,9 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             fail(
                 "--carveout-hint steers the bounded 128-thread cached kernel; it composes \
                  with --carveout-probe or with a single cached --cache-arm at \
-                 --block-threads 128, nothing else"
+                 --block-threads 128, nothing else; the launcher default (hint 16) applies \
+                 to cached@128lb lanes regardless — use --carveout-hint none for the \
+                 unhinted state"
                     .into(),
             );
         }
