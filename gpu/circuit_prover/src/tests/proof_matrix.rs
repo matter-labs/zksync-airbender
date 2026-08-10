@@ -900,6 +900,26 @@ fn prepare_blake2_with_compression_profiling_fixture() -> BasicUnrolledFixture {
     )
 }
 
+fn parse_blake2_with_compression_forward_vm_profile_mode(
+    value: Option<&std::ffi::OsStr>,
+) -> Result<ForwardVmExecutionConfig<'static>, String> {
+    let Some(value) = value else {
+        return Ok(ForwardVmExecutionConfig::independent());
+    };
+    match value.to_str() {
+        Some("independent") => Ok(ForwardVmExecutionConfig::independent()),
+        Some("fused-writeback") => Ok(ForwardVmExecutionConfig::grouped_by_value(
+            8,
+            ForwardVmStorePolicy::WriteBack,
+            &[8],
+        )),
+        Some(other) => Err(format!("invalid AB_GKR_FORWARD_VM_PROFILE_MODE={other:?}")),
+        None => Err(format!(
+            "AB_GKR_FORWARD_VM_PROFILE_MODE is not UTF-8: {value:?}"
+        )),
+    }
+}
+
 /// blake2_with_compression (blake2_with_extended_control) delegation proof_parity:
 /// GPU proof == CPU reference, byte-identical. `#[ignore]`d as a heavy GPU test —
 /// run with `--ignored`.
@@ -925,9 +945,52 @@ fn run_blake2_with_compression_multi_schedule_test() {
 }
 
 #[test]
+fn blake2_with_compression_forward_vm_profile_mode_is_strict() {
+    use std::ffi::OsStr;
+
+    assert!(matches!(
+        parse_blake2_with_compression_forward_vm_profile_mode(None)
+            .unwrap()
+            .mode,
+        ForwardVmExecutionMode::IndependentByValue
+    ));
+
+    let fused =
+        parse_blake2_with_compression_forward_vm_profile_mode(Some(OsStr::new("fused-writeback")))
+            .unwrap();
+    assert_eq!(
+        fused.mode,
+        ForwardVmExecutionMode::GroupedByValue {
+            max_group_size: 8,
+            store_policy: ForwardVmStorePolicy::WriteBack,
+        }
+    );
+    assert_eq!(fused.expected_device_group_sizes, Some(&[8][..]));
+
+    assert!(
+        parse_blake2_with_compression_forward_vm_profile_mode(Some(OsStr::new("typo"))).is_err()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        assert!(
+            parse_blake2_with_compression_forward_vm_profile_mode(Some(OsStr::from_bytes(&[0xff])))
+                .is_err()
+        );
+    }
+}
+
+#[test]
 #[ignore]
 fn run_blake2_with_compression_profile_test() {
-    run_profile(&prepare_blake2_with_compression_profiling_fixture());
+    let execution = parse_blake2_with_compression_forward_vm_profile_mode(
+        std::env::var_os("AB_GKR_FORWARD_VM_PROFILE_MODE").as_deref(),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    run_profile_with_forward_vm(
+        &prepare_blake2_with_compression_profiling_fixture(),
+        execution,
+    );
 }
 
 // ---------------------------------------------------------------------------
