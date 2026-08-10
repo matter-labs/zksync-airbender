@@ -15,6 +15,7 @@ pub mod kernels;
 pub mod ldc_probe;
 pub mod pair;
 pub mod reference;
+pub mod seg;
 pub mod synth;
 pub mod window;
 
