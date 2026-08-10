@@ -297,19 +297,26 @@ leave the counter atomic compiled into a build you believe is shipped.
 `--cache-factorial` runs the R4 primary rotation: **eleven lanes** in one process — at 256
 `control`, `cache0`, `hot4`, `hot16`, `allrepeat`; at 128 the same five plus `control128_lb`,
 the bounded no-cache baseline that makes the cache contrast bound-to-bound. Use
-`--iterations` a multiple of 11 (the record uses 99 per term order). It owns both block
+`--iterations` a multiple of 11 (the record uses **110** per term order, at `--warmup 11`;
+an arm "wins" or "loses" only at **≥ 99/110** rounds on-sign). It owns both block
 sizes internally and rejects anything that would change what the rotation runs —
 `--cache-arm`, `--block-threads`, `--prologue-order`, the launch-bounds flags, the diag
 probes, `--profile` and the validation flags. `all59`, `e4rich`, `e4top2`, the BF-first
 prologue order and the unbounded cached-128 body are excluded by construction and run as
 separate single-arm diagnostics.
 
-`tools/r4_table.py` emits the table from that log. The arm schema is data-driven from the
-log's `ARM` lines, which the runner writes from Rust, so the emitter carries no arm list, no
-occupancy fact and no kernel name of its own. `eval` and `finalize` are summarized
+`tools/r4_table.py` emits the table from that log. The lane SET is pinned in the emitter as
+an integrity gate — a log carrying a different rotation is a different experiment and is
+rejected, not partially summarized — while every per-lane FACT is data-driven from the log's
+`ARM` lines, which the runner writes from Rust, so the emitter carries no occupancy fact, no
+kernel name and no removal count of its own. `eval` and `finalize` are summarized
 separately (the 128 lanes run twice the grid, so finalize is not the same work), every
 contrast names its baseline, and the guards — duplicate sample, missing or duplicate
-trailer, `ARM` before a schedule line, wrong arm set, lane-count mismatch — are hard errors.
+trailer, `ARM` before a schedule line, wrong arm set, lane-count mismatch, a declared order
+with no samples, round ids that are not the consecutive run the schedule declares, a
+rotation in which a lane keeps a position, and schedule/trailer disagreement — are hard
+errors; a declared order is never silently skipped, and `--order X` against a log without
+`X` is an error rather than an empty exit 0.
 
 `tools/r4_gates.sh {matrix|counts|diag|all}` is the R4 wall: `matrix` is 112 `q`-parity
 cells (7 cached arms x 2 block sizes x 2 term orders x 2 `eq` forms x 2 censuses) plus both
@@ -357,7 +364,7 @@ granularity is worth resident warps:
 `q` is bit-exact against the 256 control across both term orders x both `eq` forms x
 {default, `--self-products`}.
 
-### The coset cache (v3 R4) — host machinery only today
+### The coset cache (v3 R4) — the produce-once budget line
 
 `--cache-arm control|cache0|hot4|hot16|allrepeat|all59|e4rich|e4top2` selects an R4 arm of
 `--mode lsb-pair`. The design caches **cosets only** — `h` is still loaded at every
@@ -406,6 +413,32 @@ Every `--mode lsb-pair` run builds and validates the plan for all eight arms and
 pushes past the frame are reported `unavailable` rather than failing runs that never select
 them. Admission is recomputed from the live resolver stream, so unlike the shared-memory
 cache plan it does **not** go stale under `--self-products`.
+
+**The cache pays at the right width.** `hot16@128` is **15.129 ms** `eval + finalize`
+(census) / **14.836** (locality), i.e. **−1.453 / −1.826 ms on `eval` against the shipping
+control in the same session, 110/110 rounds**; `hot4` is a wash (it brings exactly the
+breakeven 47 removals) and `allrepeat` loses on L2 capacity in **three of the four**
+arm×order cells against `cache0` — worst at 128 census (**+7.461 ms**), +2.631 at 256 census,
++1.636 at 128 locality; only at 256 in locality is it **−0.523 ms faster** than `cache0`.
+**No arm is L1-resident** at either block size; `hot16` is an **L2-served** cache — 24 % of
+the 128 MiB L2 at 256 threads with its L2 hit rate rising,
+28 % at the candidate's 128 threads with its L2 hit rate already **falling** (71.26 → 68.99 %)
+and DRAM at half SOL. Full record, the three-state verdict against the 14.61 ms bar, the
+machinery/removal economics and the session-drift methodology: `iteration_times.md`'s
+*v3 R4* section.
+
+#### The LDC-divergence rider
+
+```bash
+.agents/bin/with_gpu_lock.sh target/release/uniskip_ldc_divergence
+```
+
+A standalone probe (spec §8, `src/bin/uniskip_ldc_divergence.rs`) for one question the R3
+record left hedged: does a **lane-divergent constant load** serialize on sm_120? It does —
+**2.0 cycles per unique address**, per *address* and not per line, with the replays
+pipelining so latency grows sublinearly. `K` is runtime data behind a mask, so the
+instruction stream is identical at every point of the sweep. It shares nothing with the cache
+arms.
 
 ### Geometry
 

@@ -2010,6 +2010,14 @@ A second independent run of the two `lsb-pair` cells gives 16.612 / 16.294 — c
 control sits +0.5 to +0.6 % above its recorded bar, so the win is −20.6 % to −21.4 %
 whichever denominator is used.
 
+**Annotation (2026-08-09, v3 R4): these numbers are a record, not a cross-session gate.**
+R4 used the 16.28–16.51 ms band derived from them as a sanity gate and the **frozen,
+byte-identical shipping kernel missed it in both orders** (16.545 / 16.624 in the factorial,
+16.690 / 16.608 standalone in a second session) under an active `SwPowerCap` and a
+monotonically warming session. The band is kept — it caught a real 1.4–2.0 % session effect
+— but a miss now demands a standalone anchor plus an event-reason sample before it is read
+as a regression. See *v3 R4*.
+
 Against the whole ladder: **v1 90.462 -> v2 23.078 -> R0 20.596 -> R2 16.283** on
 `pass − fold`, i.e. **5.56x v1** and **−29.4 % against v2's recommended arm**. On the
 corrected unit basis, 16.283 / 1.875 = **8.68 ms/unit**, **1.09x** the 8.00 ms/unit
@@ -2428,6 +2436,12 @@ currency rather than in hot-loop instructions on the binding pipe, which is prec
 remains the designed rung-2 arm after this result: R3 did not refute publication, it priced
 the register medium and found it too expensive to carry the schedule.
 
+**Tightened (2026-08-09, v3 R4).** The local-memory carrier now sets the incumbent budget at
+**≪ 0.7–0.9 ms** of machinery — roughly two-thirds of the register carrier's 1.207 ms
+(0.910 = 75 %, 0.743 = 62 % of it) — and, unlike this carrier, it wins: −1.45…−1.83 ms at
+`hot16` with no synchronization at all. D must beat *that*, not this paragraph's 1.207 ms.
+See *v3 R4 — the bar this sets for rung 2*.
+
 ### ncu — where the +1.207 ms sits, and what the −0.879 ms removes
 
 Six captures, one per arm, one locked session, locality order, the profiling doc's Full
@@ -2492,6 +2506,23 @@ worth reviving. It does not: `idc__request_cycles_active` / `idc__requests` =
 `LDC` = **1,614,807,040, invariant across all six arms** whose `LDC` counts span 232 M–612 M;
 issued == executed exactly. The stream is 824 / 72,256 = **1.14 % of warp-instructions**.
 
+  **Corrected and re-grounded (2026-08-09, v3 R4's LDC rider).** The unhedged **"It does
+  not"** above is right about these counters and wrong about the hardware. A direct
+  microbenchmark measures lane-divergent `LDC` at **2.0 cycles per unique address**
+  (31.98× throughput on a 32× address axis); `idc__request_cycles_active` / `idc__requests`
+  is simply blind to it. Three consequences: (1) the fourth closure ground below — *"there
+  is no replay amplification to recover"* — is **RETIRED**; (2) the conditional in this
+  paragraph is therefore **live and unquantified** — 1.14 % bounds the stream's share of
+  *instructions*, not of *cycles*, and once an `LDC` costs 2.0 cycles per unique address the
+  448 B smem-table prize needs a cycle-level measurement nobody has taken; it is recorded as
+  an open item and a rung-2 side experiment, **not** as a revived lever; (3) the closure
+  **still stands on its other three grounds** — the audit round had already priced this
+  stream indirectly and found it **not binding** (ADU 31.6 pt below the fmaheavy pipe, its
+  remat-replay model predicting 50.0 % against 50.25 % measured), it competes for the same
+  eight spare registers as the window (`w` prices that misallocation at +23.9 %), and R1
+  measured the only actual removal of the indexed stream at **−15 %**. See *v3 R4 — the
+  LDC-divergence rider*.
+
 **The `S`/`WS` arms were NOT built, and the lever is closed on priority — not by
 disproof.** The grounds: the prize is capped at **1.14 %** of the stream against the record's
 −1.5…−3.5 % bound; it competes for the *same* eight spare registers as the window, whose
@@ -2511,3 +2542,493 @@ recover. Reopening it needs a new argument, not a re-run.
   add/sub-shaped census, sm_120). The between-session shift this session measured was
   ~0.1–0.2 % and concentrated in the 2-block arms; absolute medians above are from the 6-arm
   session only and must never be mixed with the earlier 5-arm table.
+
+## v3 R4 — local-memory coset cache (`--cache-arm` / `--cache-factorial`): the produce-once budget line
+
+R3 killed the register *carrier* and left the *schedule* validated. R4 carries that same
+admission schedule in the cheapest medium the current kernel shape allows — a per-thread
+local frame filled by a prologue — because here **producer = consumer thread**: no barrier,
+no cross-warp traffic, no publish direction. It is the **budget line** the segmented rung
+(realization D) has to beat, not a shipping candidate.
+
+**Result: the cache pays, at the right width.** `hot16` (28 units, 145 of the 234 removable
+productions) at 128 threads is **15.129 ms `eval + finalize` census / 14.836 locality** raw,
+and **−1.453 ms census / −1.826 locality on `eval` against the in-session shipping control,
+110/110 rounds**. Against the 14.61 ms windowed-candidate bar the honest answer is
+**drift-sensitive**: this session's frozen shipping control missed its own sanity band, and
+four defensible bridges straddle the bar (§*Verdict*). Everything below is one branch,
+`rr/gkr_uniskip_bench`, tip `30e648e4`; the per-task reports and the oracle live under
+`.agents/sdd/2026-08-09-v3-r4/` (uncommitted working-tree artifacts; referenced by name).
+
+### Design — what was built
+
+- **Admission is plan-time and source-global.** One canonical list off the live resolver
+  stream (post-`force_self_products`, post-`apply_term_order`): references descending, cut at
+  **refs ≥ 2**, ties **E4 before BF** then lower source id. Default census: **59 live sources
+  (48 BF + 11 E4), 55 reused (44 + 11), 4 once-used BF**. Because a disposition belongs to a
+  *source*, R3's two-operand tag problem cannot recur — a `PRODUCT`'s operands each fetch
+  their own record.
+- **Slots are assigned E4-first**, 4 units per E4 source as an aligned 32 B c-object-major
+  span, 1 unit (8 B) per BF source — so every span is 16 B-aligned with zero padding.
+- **One body, one frame, per block size.** The static frame is **736 B/thread**
+  (`struct alignas(16) uniskip_coset_cache`, `UNISKIP_COSET_FRAME_UNITS = 92` with a
+  `static_assert` on both sides of the ABI), sized at `C_max` for *every* arm, so arms differ
+  only in uploaded records + prologue table and never in codegen. ptxas: **STACK 736, LOCAL 0,
+  zero spill** on all three cached bodies.
+- **Wire: the record's existing `cache_slot` u8** (`0xff` = recompute, else the source's first
+  unit index). No record widening, no side descriptor, no per-record tag decode.
+- **Prologue = store-once through the *unchanged* resolver**, E4 class first then BF, one
+  walking loop with a warp-uniform class branch. The E4 resolver builds `c[0]`/`c[1]` only
+  after all four limbs, so the store is **2 × `STL.128` immediately after resolve returns**,
+  never per-limb. Static local forms measured in SASS: `LDL.64` ×6, `LDL.128` ×8, `STL.64` ×1,
+  `STL.128` ×2 — no 4 × `LDL.64` on an E4 span.
+- **Consume** = `LDL.64` (BF) / 2 × `LDL.128` (E4 span) plus the unchanged `h[2]` load; every
+  admitted source's H is therefore loaded once in the prologue **and** reread at each
+  reference (+8C B/thread, pinned in the gates).
+- **Kernels**: `cached@256` **75 regs / 3 blocks/SM**; `cached@128_lb` **72 / 7**
+  (`__launch_bounds__(128, 7)`, the 128 measurement arm); `cached@128` unbounded **75 / 6** —
+  the occupancy step, kept as the pricing arm.
+
+Arm menu and its oracle (`expected-counts.md`, controller-derived out-of-tree before any
+implementation and reproduced first try by the planner, both term orders):
+
+| arm | admitted | C (units / B) | Rc | chains | stores | loads | removals |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `cache0` | 0 | 0 / 0 | 0 | 326 | 0 | 0 | 0 |
+| `hot4` | 4 bf | **4 / 32** | 51 | 279 | 4 | 51 | **47** |
+| `hot16` | 12 bf + 4 e4 | **28 / 224** | 173 | 181 | 20 | 133 | **145** |
+| `e4top2` | 2 e4 | 8 / 64 | 56 | 278 | 4 | 28 | 48 |
+| `e4rich` | 11 e4 | 44 / 352 | 136 | 234 | 22 | 68 | 92 |
+| `allrepeat` | 44 bf + 11 e4 | **88 / 704** | 322 | 92 | 66 | 254 | **234** |
+| `all59` | 48 bf + 11 e4 | **92 / 736** | 326 | 92 | 70 | 258 | **234** |
+
+`hot4` is R3's window with a different carrier — same four sources, same 13/13/13/12
+references, same 47 removals — which is what makes the two rungs directly comparable.
+`all59` buys **zero** extra removals over `allrepeat` for +4 stores, +4 loads and +32 B: the
+once-used-caching waste, priced below. `e4top2` is the family-stop lane (RR ruling 2); it
+replaced an all-11-E4 stop arm that could never satisfy its own L1-residency precondition.
+
+Commits: `aa413e51` + `8b4943d0` (admission, slots, wire, always-on validator, CLI),
+`d0301375` + `2d06d34b` (`control128`), `b1a988af` + `fc4c3689` (cached kernels, the
+launch-bounds sibling, `control128_lb`, `e4top2`), `0807f5ed` + `a461e8a5` + `c0b43fd5` +
+`d6b8aebc` (gates), `c22665cf` + `cc54d0b0` + `30e648e4` (factorial runner + emitter).
+
+### Gates — all pass
+
+**Frozen SASS 9/9 byte-identical** through every edit of the rung, including the LDC rider's
+TUs and a `-lineinfo` rebuild: **5104, 5104, 5592, 5600** (the four R3 pair functions),
+**5048** (`control128`), **5064** (`control128_lb`), **6024** (`cached@256`), **5992**
+(`cached@128` bounded), **5976** (`cached@128` unbounded); per-fatbin, scoped by TU/function
+name, never by archive ordinal. **Occupancy gate held**: 75 regs / 3 blocks at 256 = the
+control's 3; 72 / 7 at 128 = `control128`'s 7. The 128 axis **stepped** (unbounded 75 regs →
+6 blocks) and was corrected with the `__launch_bounds__(128, 7)` sibling rather than measured
+around — both bodies ship, `--no-cache-launch-bounds` prices the bound and
+`--control-launch-bounds` supplies the bound-matched no-cache baseline. **Parity 112/112**
+(7 cached arms × 2 block sizes × 2 term orders × 2 `eq` forms × 2 censuses) plus **28/28**
+E4 self-product cells and **14/14** CPU-oracle cells; both 128 launch-bounds sibling pairs
+bit-identical. **Dynamic counts exact**: chain executions per warp-program walk 326 / 279 /
+181 / 92 / 92 / 234 / 278 for `cache0` / `hot4` / `hot16` / `allrepeat` / `all59` / `e4rich` /
+`e4top2`, direct `smsp__inst_executed_op_local_{ld,st}` equal to the oracle on all seven arms
+with `pred_off_all = 0`, local sectors equal to the width identity on every arm, and the
+prologue H delta equal to **8C B/thread to the byte**. Mutations discriminate: retarget
+through the unchecked upload path diverges `q` on the **three** arms it was run against;
+poison after the prologue diverges on cached arms only, leaving `cache0` and both controls
+untouched. R3 regression green throughout (matrix 40/40, blocks 8/8, six `--pair-arm` lanes
+32/32); 77 lib tests.
+
+**Process note.** The 3A review caught a **Critical** in the factorial runner: the pass config
+was not forced to the 128-thread row tile, so every lane's grid covered half the rows — and
+the runner's own "grid doubling" self-check was ratio-only and survived it. It was fixed and
+then verified three ways — Opus re-review (all medians recomputed from the raw log), an
+independent codex full verification, and a focused codex audit of the grid math at the
+minimum legal `log_rows` — and **every functional number produced before the fix was
+discarded, not reconciled**. The pre-3B evidence log was regenerated from the committed
+binary under the lock.
+
+### The measurement — 11 lanes, 110 paired rounds per order, one session
+
+```bash
+.agents/bin/with_gpu_lock.sh bash -c '
+  B=target/release/gpu_gkr_uniskip_bench
+  for order in census locality; do
+    $B --log-trace 24 --warmup 11 --iterations 110 --mode lsb-pair --cache-factorial \
+       --term-order $order
+  done' > /tmp/r4.log
+python3 gpu/gkr_uniskip_bench/tools/r4_table.py /tmp/r4.log
+```
+
+Eleven lanes in one process against shared allocations in a generated cyclic rotation;
+**110 rounds per term order** (a multiple of 11), 1210 samples per order, both orders in one
+locked session with **zero builds between the shipped rebuild and the last timing**.
+
+**Provenance, because these two things differ.** Every **contrast** table below is emitted by
+`tools/r4_table.py` from the run log, never transcribed — medians, IQRs, on-sign counts,
+baselines and occupancy labels alike. The **`eval + finalize` per-lane medians** and the
+sanity-gate row are *not* emitter output: the emitter summarizes `eval` and `finalize`
+separately on purpose (the 128 lanes reduce twice the partials), so the combined figures are
+computed in the 3B report as medians of the per-round sums over the same log. The two are
+never mixed inside one table here, and each is labelled by measure.
+
+**Pre-registered before the run**: an arm loses iff its paired per-round contrast has
+median > 0 with **≥ 99/110 on-sign** — spec §6's 90 % rule restated at the 11-lane round
+count. (The spec's "≥ 90/100" wording assumed 10 arms; the amendment was recorded
+pre-dispatch and needed no code change, since the emitter never hardcoded a round count.)
+
+**The sanity gate FAILED, and is reported as a failure.** The frozen shipping control fell
+outside the R2 band in **both** orders:
+
+| order | `control@256` `eval + finalize` | band | miss |
+| --- | --- | --- | --- |
+| census | **16.545** | 16.28–16.51 | +0.035 |
+| locality | **16.624** | 16.28–16.51 | +0.114 |
+
+and the historical `locality < census` relation for `control@256` **inverted**. Per the
+brief the implementer stopped without interpreting; an authorized ABA discriminator session
+followed (§*Verdict*, drift paragraph).
+
+Per-lane medians, `eval + finalize` (ms):
+
+| lane | regs, blocks/SM | census | locality |
+| --- | --- | --- | --- |
+| `control@256` | 72, 3 | 16.545 | 16.624 |
+| `cache0@256` | 75, 3 | 17.455 | 17.353 |
+| `hot4@256` | 75, 3 | 16.606 | 16.515 |
+| `hot16@256` | 75, 3 | **15.178** | **14.938** |
+| `allrepeat@256` | 75, 3 | 20.092 | 16.828 |
+| `control@128` | 72, 7 | 16.262 | 16.467 |
+| `control_lb@128` | 72, 7 | 16.216 | 16.390 |
+| `cache0@128` | 72, 7 | 16.952 | 17.063 |
+| `hot4@128` | 72, 7 | 16.186 | 16.198 |
+| `hot16@128` | 72, 7 | **15.129** | **14.836** |
+| `allrepeat@128` | 72, 7 | 24.416 | 18.697 |
+
+Paired contrasts on `eval` (medians; each row's percentage is of its own named baseline;
+`eval` and `finalize` are summarized separately because the 128 lanes reduce twice the
+partials):
+
+| contrast | census | on-sign | locality | on-sign |
+| --- | --- | --- | --- | --- |
+| `cache0@256` − `control@256` | **+0.910** (+5.51 %) | 110/110 | **+0.768** (+4.63 %) | 110/110 |
+| `hot4@256` − `cache0@256` | −0.855 | 110/110 | −0.875 | 110/110 |
+| `hot16@256` − `cache0@256` | **−2.285** | 110/110 | **−2.464** | 110/110 |
+| `allrepeat@256` − `cache0@256` | **+2.631** | 110/110 | −0.523 | 110/110 |
+| `hot4@256` − `control@256` | **+0.072** | **96/110** | −0.107 | 108/110 |
+| `hot16@256` − `control@256` | −1.387 | 110/110 | −1.694 | 110/110 |
+| `cache0@128` − `control_lb@128` | **+0.743** (+4.60 %) | 110/110 | **+0.665** (+4.07 %) | 110/110 |
+| `hot4@128` − `cache0@128` | −0.777 | 110/110 | −0.889 | 110/110 |
+| `hot16@128` − `cache0@128` | **−1.824** | 110/110 | **−2.230** | 110/110 |
+| `allrepeat@128` − `cache0@128` | **+7.461** | 110/110 | +1.636 | 110/110 |
+| `control_lb@128` − `control@128` | −0.052 | **89/110** | −0.062 | 109/110 |
+| `hot4@128` − `control@256` | −0.419 | 110/110 | −0.483 | 110/110 |
+| `hot16@128` − `control@256` | **−1.453** | 110/110 | **−1.826** | 110/110 |
+| `allrepeat@128` − `control@256` | **+7.832** | 110/110 | +2.043 | 110/110 |
+
+The three cross-size rows are the decision contrasts and are **7 v 3 blocks/SM — not
+occupancy-neutral**; on `eval + finalize`, where the doubled finalize is load-bearing, they
+are `hot4@128` **−0.389 / −0.454**, `hot16@128` **−1.422 / −1.795**, `allrepeat@128`
+**+7.863 / +2.072** (census / locality, 110/110 each).
+
+Three contrasts fall **below** the pre-registered 99/110 threshold and are reported as
+measured, with the rule unadjusted: `hot4@256 − control@256` at 96/110 (a **wash**, not a
+loss — the distinction is what kept the family stop-lane from firing, below),
+`control_lb@128 − control@128` at 89/110, and `hot4@128 − control_lb@128` at 71/110 on the
+census run — the same story as the first, within its size: −0.023 ms at 71/110 census,
+−0.228 at 110/110 locality.
+
+### Verdict — three yardsticks, three different answers
+
+**1. Against the 14.61 ms windowed-candidate bar: drift-sensitive / inconclusive.** Raw
+`hot16@128` is **15.129** (census) / **14.836** (locality) on `eval + finalize` — **above the
+bar in both orders**; only bridging onto the recorded R2 level brings any construction under
+it. That bridge is the honest thing to do — the session's own frozen control missed the R2
+band — but it must be stated as what it is. Two constructions (additive
+`R2_control + (hot16 − base)`, and ratio-normalized `R2_control × hot16/base`) over two bases:
+
+| order | base | additive | normalized |
+| --- | --- | --- | --- |
+| census | `control@256` | 14.863 | 14.886 |
+| census | `control_lb@128` | **15.129** | 15.126 |
+| locality | `control@256` | **14.357** | 14.395 |
+| locality | `control_lb@128` | 14.595 | 14.604 |
+
+The four constructions span **14.357–15.129 and the 14.61 bar sits inside that span**. Per the
+framing fixed before the analysis, a straddle is reported as **drift-sensitive**; the whole
+span is the honest uncertainty and **must not be collapsed by choosing a base**.
+
+**The straddle splits by term order, not by base**, which is the informative part: all four
+census constructions (14.863–15.129) are **above** the bar and all four locality constructions
+(14.357–14.604) are **below** it, whichever base or normalization is used. **That split is a
+real term-order effect, and it is a different object from the raw pair's.** The bridge is
+built from R2's *recorded per-order levels* and this session's *standalone* anchors, where the
+ordering is the stable historical one — locality faster in all six standalone runs
+(−0.082 / −0.054 / −0.418), matching R2 and R3. The factorial-context caveat below applies to
+the raw 15.129-vs-14.836 pair, which was measured *inside* the rotation; it does not travel to
+the bridged numbers. What remains genuinely open is which order a shipping pass would run in,
+not whether the order difference is real. Note also the terminology collision with spec §6,
+which reserved *drift band* for the numeric interval 14.36–14.61; **drift-sensitive** here
+means the bridge span straddles the bar, and applying §6's original three-state test literally
+to the raw candidate returns **MISS in both orders** (see the spec amendment).
+
+**2. Against the in-session shipping control: a clear win.** `hot16@128` − `control@256` =
+**−1.453 ms census / −1.826 locality on `eval`, 110/110 rounds** (−1.422 / −1.795 on
+`eval + finalize`). Both legs are the same session, the same rotation, the same allocations;
+this contrast owes nothing to the band.
+
+**3. Against shipping production: the margin widens.** The audit round priced shipping
+layer-0 rounds 0–3 at **24.11 ms** (green nsys, `av_gkr_compiler`, add_sub, 2^24, not
+windowed) and the R2 pass at **−32.5 %**. At `hot16@128`'s raw ≈ 14.8–15.1 ms the same
+comparison extends to ≈ **−37…−38 %**. This one is cross-session by construction and inherits
+every caveat of the pricing report (single-sample profile, synthetic census mix, fold-boundary
+accounting) plus this session's own (below).
+
+**Sanity and drift — method, because the number matters less than the procedure.** The band
+miss is a **real session effect, not a rotation artifact**, and the discriminator says so
+three ways. (i) A standalone `control@256` in a fresh locked session reproduces the miss on
+its own: **16.690 census / 16.608 locality**, +1.4 % / +2.0 % over R2 — outside the band with
+no factorial anywhere near it. (ii) The rotation does **not** inflate the controls: factorial
+lane minus *time-interpolated* flanking anchors is **−0.195 / −0.223 ms** at census (the
+controls run *faster* in rotation) and within ±0.02 ms at locality, and the frozen 3B run
+reproduces that pattern to within 0.06 ms. (iii) Telemetry flags the cause class: `SwPowerCap`
+active in **5 of 28** inter-phase samples, power peaking at **561 W**, no thermal or
+hardware-slowdown bits, memory clock pinned, P0 throughout — and the session **warms
+monotonically** (on all six anchor runs the second standalone block is **+0.074…+0.189 ms
+slower** than the first),
+which is exactly why the anchors are interpolated rather than averaged.
+
+The census/locality **inversion is a property of the factorial context, not of the program**:
+it appears in both factorial sessions (`control@256` +0.079 and +0.070) and in **none** of the
+six standalone runs, which all show the historical `locality < census` (−0.082 / −0.054 /
+−0.418). Its cause is unmeasured. **Never read a term-order difference taken inside a
+factorial as a program property.** Two rules for future rungs follow: sample `nvidia-smi`
+event reasons around every timed session, and put an **in-session anchor** in any run whose
+conclusion is a cross-history absolute.
+
+### Economics — the budget lines rung 2 consumes
+
+The ledger is **linear in removals with a fixed intercept**, and it explains every arm.
+
+- **Machinery intercept** (`cache0` − control, the frame + prologue walk + slot addressing
+  with *zero* removals): **+0.910 ms @256 / +0.743 ms @128** timed, 110/110 both. Under ncu's
+  locked clocks the same quantity reads **+1.051 / +0.676** — a different scale (absolutes
+  there run ~6 % high), never to be mixed with the timed one. The 128 ncu figure is also not
+  bound-to-bound (`cache0@128` bounded − `control@128` unbounded); the timed +0.743 is.
+- **Removal slope, by block size.** Under ncu: **−21…−26 µs per removed production @256**
+  (`hot4` −25.7, `hot16` −20.8), **−17…−23 µs @128** (`hot4` −22.5, `hot16` −17.1). Against
+  each size's own intercept that is a breakeven of **≈ 41–50 removals @256** and **≈ 30–40
+  @128**. The timed machinery-corrected slopes are the same order of magnitude, not the same
+  number — `hot4@256` −18.20 (census) / −18.63 (locality) µs, `hot16@256` −15.76 / −16.99 —
+  and all four **sit just under R3's 18.70 µs** removal slope at 3 blocks (15.8–18.6):
+  **this carrier buys a production back at roughly the price the register carrier did, and
+  pays 62–75 % of the register carrier's 1.207 ms for the privilege.**
+- **`hot4` brings 47 removals = exactly the breakeven.** It buys back its own machinery and
+  nothing else. That *is* the +0.072 ms / 96/110 wash at 256 — arithmetic, not noise.
+- **`hot16` brings 145 ≈ 3.1× the intercept**, so two thirds of the refund is profit: under
+  ncu, −3.011 ms against a −1.051 ms bill = net **−1.96 ms ≈ 1.9× its machinery**.
+- **A removed production is worth 105–110 executed instructions per warp, flat from C = 4 to
+  C = 92.** The instruction side of the ledger is perfectly linear; nothing about the removal
+  changes with width. What changes is only the ratio to the fixed intercept — and, past
+  `hot16`, which resource the removal is removed *from* (next section).
+
+### Residency — no arm is L1-resident, and the winner is an L2 cache
+
+**The spec's §6 residency predicate does not discriminate.** Leg (a) — local-load L1 hit
+≥ 95 % — is failed by **every one of the 11 arm × size cells**, best non-`allrepeat`-locality
+reading **2.41 %** (`hot4@256`), most below 0.1 %. Leg (b)'s known contamination never flips a
+verdict. The predicate returns *NOT L1-resident* for the −2.3 ms winner and the +7.5 ms loser
+alike, so **"is it L1-resident" is not the gate this family needs**.
+
+L1 is not merely exceeded — it is **structurally unavailable as the medium**. `hot4` touches
+24 KiB/SM @256×3 and 28 KiB @128×7, fits the 128 KiB L1 five times over, and still hits at
+2.41 % / 0.09 %. The walk streams **684 M global sectors ≈ 21.9 GB** through the same L1
+between a slot's fill and its use; capacity against the *frame* is irrelevant next to capacity
+against the *stream*. The only lever that has ever moved this number is shortening the reuse
+distance (§*Term order*), never shrinking the footprint.
+
+**What `hot16` actually is: an L2-resident cache**, and that is the headline of the rung —
+but the two block sizes must be quoted separately, because **the candidate is the 128 one and
+its L2 hit rate falls**:
+
+| `hot16` | device-wide local set | % of 128 MiB L2 | local sectors L2-served | L2 hit % on L1TEX reads | DRAM SOL % |
+| --- | --- | --- | --- | --- | --- |
+| @256×3 | 32.3 MB | **24 %** | **≥ 84 %** (≤ 67.0 M of 421.5 M reach DRAM, +2.1 GB) | 69.20 → **75.40 (rises)** | 37.50 |
+| @128×7 (the candidate) | 37.7 MB | **28 %** | **≥ 65 %** (≤ 146.9 M of 421.5 M reach DRAM) | 71.26 → **68.99 (falls)** | 50.40 |
+
+Both are floors: part of each DRAM delta is the arm's own prologue global re-reads (bound
+58.7 M sectors), which the device cannot separate from local traffic beyond L1. So the honest
+statement is that `hot16` is **L2-served, not L1-served, at both sizes** — comfortably at 256,
+and at 128 with the L2 hit rate already **2.3 pt down** and DRAM SOL at half the machine while
+it still wins by −1.45…−1.83 ms. The 128 candidate is closer to the wall than the 256 arm is,
+and that is the number rung 2 inherits.
+
+**The capacity wall is the L2 occupancy fraction, not the L1 one:**
+
+| arm | device-wide local set | % of L2 | L2 hit % @256 | L2 hit % @128 | DRAM SOL % | verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| `hot4` | 4.6 / 5.4 MB | 3 / 4 % | 69.20 → 74.17 | 71.26 → 75.44 | 22.28 / 23.42 | coexists, wins nothing |
+| `hot16` | **32.3 / 37.7 MB** | **24 / 28 %** | 69.20 → **75.40** | 71.26 → **68.99** | 37.50 / 50.40 | **the winner** |
+| `allrepeat` | 101.6 / 118.6 MB | 76 / **88 %** | 69.20 → 56.53 | 71.26 → 44.43 | **84.46 / 85.13** | collapses |
+| `all59` | 106.3 / 124.0 MB | 79 / **92 %** | 69.20 → 56.02 | 71.26 → 42.91 | 83.53 / 85.75 | collapses harder |
+
+(Every paired cell is `@256×3 / @128×7`; `allrepeat@128` is its census capture.) The pipe
+signature crosses at the same place: `math_pipe_throttle` 1.735 → 1.364 (`hot4`) → 1.149
+(`hot16`) → **0.449** (`allrepeat`) while `long_scoreboard` 1.267 → 1.523 → 2.189 → **7.712**.
+Through `hot16` the kernel is *still* fmaheavy-issue-limited (72.8 % cycles active), so each
+removed production comes off the binding resource; at `allrepeat` the arm has flipped
+**DRAM-bound at 84.5 % SOL** and further removals are free instructions on a pipe that is no
+longer the bottleneck. **Never quote "`hot16` is not L1-resident" without this half of the
+finding** — alone it is misleading. (The `allrepeat`/`all59` rows are census captures; in
+locality order at 256 the same `allrepeat` body is **faster than `cache0` by −0.523 ms** — see
+§*Term order*. The capacity verdict is a per-term-order statement, not a property of the
+admitted set alone.)
+
+The sizing rule a future admission policy inherits is therefore the **L2 budget** (share of
+128 MiB across 188 SMs), and the cliff is where DRAM SOL crosses ~80 %.
+
+### Term order and prologue order — one mechanism, priced twice
+
+**`allrepeat@128` moves 5.7 ms on term order alone**, with an **identical instruction stream**
+(12.856 G, 254 `LDL` + 66 `STL` per warp) and identical request counts (168,820,736 local-load
+requests). The only counter that moves at the source is the L1 hit rate:
+
+| | census | locality | delta |
+| --- | --- | --- | --- |
+| local-load L1 hit | 0.010 % | **26.918 %** | +181.7 M sectors |
+| DRAM read sectors | 854,131,072 | 611,587,352 | **−242.5 M (−7.76 GB)** |
+| DRAM SOL | 85.13 % | 85.41 % | both saturated |
+| duration | 24.459 ms | 18.704 ms | **−5.755 ms** |
+
+This is **reuse distance, not eviction interleave**. Each admitted source is referenced
+**4.0× on average** per walk (the admitted range runs from 13 references down to the cut at
+2), and in census order the consumers of one source are scattered across the record stream,
+so megabytes pass through a 128 KiB L1 between two loads of the same slot and essentially
+every load misses. The locality permutation clusters records reading the same sources, so
+consecutive loads land inside one L1 lifetime. The arm is DRAM-saturated either way, so each
+sector L1 absorbs is a sector DRAM does not fetch: at the arm's measured **1.359 GB/ms**,
+7.76 GB is **5.71 ms** against the 5.755 ms measured — the swing is accounted for with nothing
+left over. It is an `allrepeat`-class phenomenon by construction: it needs an arm whose local
+traffic is DRAM-bound in the first place (`hot16@128` sits at 50.4 % DRAM SOL and shows
+nothing like it).
+
+**The same mechanism reaches into the arm ordering at 256.** `allrepeat@256 − cache0@256` is
+**+2.631 ms in census but −0.523 ms in locality**, 110/110 both — in locality order the
+capacity arm *beats* the machinery-only arm, and its net against the control shrinks from
++3.547 to +0.194 (still a loss against the control in both orders). **Only the 256 cell
+flips**: `allrepeat@128 − cache0@128` stays a loss in both orders, +7.461 census and +1.636
+locality. So the capacity verdict is three losses and one win across the four
+arm×order cells, and the size that flips is the one with the smaller footprint per SM. Only
+the census capture exists for `allrepeat@256` under ncu, so the flip has timing evidence and
+no counter evidence.
+
+**The prologue's class order is the same mechanism at the other end of the fill, and
+`e4first` stays pinned.** BF-first loses everywhere: timed ABBA (33 rounds, positions 1 and 4
+agreeing to ≤ 0.014 ms, so block drift is negligible) gives **+2.087** (`allrepeat@256`),
+**+2.043** (`all59@256`), **+1.514** (`allrepeat@128`), **+1.414** (`all59@128`); ncu brackets
+it at +2.63 / +2.29 @256 and explains it — producing the E4 units first leaves the 32 B spans,
+4× the bytes per unit, coldest at walk entry: DRAM reads **+124.2 M / +110.7 M sectors** and
+L2 hit 56.5 → 49.0 / 56.0 → 48.7.
+
+**The waste case is priced.** `all59` − `allrepeat` = **+0.640 ms @256 / +0.700 @128** timed
+(+0.380 / +0.810 under ncu) for the oracle's +4 stores, +4 loads, +32 B and **zero** extra
+removals. Caching a once-used source is not free — it is measurably negative — which is the
+`refs ≥ 2` admission cut, validated.
+
+### The LDC-divergence rider — the lore is true, and R3's counters could not see it
+
+Spec §8's standalone probe (`src/bin/uniskip_ldc_divergence.rs`, one instruction stream for
+all K — the address count is runtime data behind a mask — with a live sink and a true
+loop-carried dependency in the latency arm):
+
+| stride | latency K=1 → K=32 (cyc/dependent load) | ratio (baseline-corrected) | throughput cyc/warp-`LDC` K=1 → K=32 | ratio |
+| --- | --- | --- | --- | --- |
+| 4 B | 35.01 → 376.00 | 10.74× (11.59×) | 2.001 → 64.001 | **31.98×** |
+| 64 B | 35.01 → 376.10 | 10.74× (11.60×) | 2.001 → 64.005 | **31.99×** |
+| 128 B | 35.01 → 3416.02 | 97.58× (106.03×) | 2.001 → 104.943 | **52.45×** |
+
+**Lane-divergent constant loads serialize, at exactly 2.0 cycles per UNIQUE ADDRESS** —
+per *address*, not per line: 32 addresses packed into a single 128 B line (4 B stride,
+**31.98×**) cost the same as 32 addresses each in their own 64 B line (64 B stride,
+**31.99×**). Single-warp latency grows by a **constant +11.0 cycles per extra address** — a
+linear increment, but only **10.74×** across a 32× address axis, which is what says the
+replays *pipeline* rather than serializing the dependent load end to end. The 128 B-stride
+row is a separate, larger cliff (**52.45×** throughput, 106× latency): at K = 32 that sweep
+spans 4 KB, and per-SM constant-cache overflow is the natural hypothesis — **the probe
+records the cliff, it does not establish its cause.**
+
+**Reconciliation with R3, which said something stronger than it could support.** R3 wrote an
+unhedged **"It does not"** against exactly this mechanism, on
+`idc__request_cycles_active / idc__requests = 1.00005`, and then listed *"there is no replay
+amplification to recover"* as one of four grounds for closing the twiddle lever. The rider
+settles it in three parts:
+
+- **That ground is retired.** The serialization is real; the `idc__*` counter set is blind to
+  it. R3's *measurement* stands — those counters do read 1.00005 — but it never licensed the
+  hardware claim. (The audit round, by contrast, *had* seen the replays indirectly: its ADU
+  resolution modelled this same lane-indexed remat stream and predicted the pipe at 50.0 %
+  against 50.25 % measured. What the rider adds is the per-address price, not the existence.)
+- **R3's conditional is now live, and unquantified.** It read: *if* each divergent constant
+  load serialized into several passes, a once-per-block 448 B smem table would be worth
+  reviving. It does serialize — but **1.14 % bounds the stream's share of instructions, not
+  of cycles**, and at 2.0 cycles per unique address the two are no longer interchangeable.
+  Nobody has taken the cycle-level measurement. It is recorded below as an open item and a
+  rung-2 side experiment, **not** as a reopened lever.
+- **The closure still holds on its other three grounds**: not binding (audit round: ADU
+  31.6 pt below the fmaheavy pipe), it competes for the same eight spare registers as the
+  window (`w` prices that misallocation at +23.9 %), and R1 already measured the only actual
+  removal of the indexed stream — shared-memory staging — at **−15 %**.
+
+The lesson imported from the red/blue worktrees — never put a lane-indexed constant load in a
+hot path — now has a number behind it.
+
+### The bar this sets for rung 2 (realization D / segmented carrier)
+
+- **Machinery budget: ≪ 0.7–0.9 ms.** That is this rung's measured intercept and it replaces
+  R3's ≪ 1.207 ms as the incumbent. D must land its prologue-publish + barrier + `ld.ca`
+  machinery under it *at equal capture*, or it loses to a cache that needs no synchronization
+  at all.
+- **Where D can beat this: removals this carrier cannot reach.** The per-thread frame caps at
+  C = 92 units / 234 removals on this census and **every thread pays its own prologue and its
+  own frame** — there is no cross-warp sharing. D's upside is exactly the removals beyond that
+  cap plus the amortization of one production across consumers.
+- **D's risk currency is L2/DRAM traffic, and `allrepeat` prices it.** Saturating L2 is not a
+  gentle degradation: +7.461 ms against `cache0@128`, L2 hit collapsing to 42–56 %, the arm
+  flipping DRAM-bound. The publish direction must therefore stay inside the L2 headroom
+  `hot16` leaves — **~76 % of L2 unused at C = 28 @256×3, ~72 % @128×7** — and be counted per
+  direction, published bytes and read bytes separately, as the audit round already required.
+  The 128 candidate is the one rung 2 must beat and it is the one with less headroom: its L2
+  hit rate is already falling (71.26 → 68.99) at 28 % occupancy.
+- **Term order is a first-class knob for D**, not a tie-break: the 5.755 ms swing above is
+  what reuse distance is worth once local traffic is DRAM-bound.
+
+### Open
+
+- **`control_lb@128` was never captured under ncu**, so the 128 machinery intercept is
+  bound-to-bound only in the timed data, not in the counter evidence.
+- **The conditional mini-factorial machinery was never built** — correctly: spec §6's stop
+  lane requires `hot4` to *lose* at both block sizes under the ≥ 99/110 rule, and it **washed**
+  at 256 (96/110) and **did not lose at either size** (at 128 it is −0.023 ms at 71/110
+  census, a wash, and −0.228 at 110/110 locality). The condition was evaluated, not skipped.
+- **`e4top2` was never timed.** It is built, its literals are verified on the binary, and it
+  is the only clean BF-vs-E4 carrier comparison at equal removals — 48 removals at 64 B
+  against `hot4`'s 47 at 32 B.
+- **The factorial-context census/locality inversion has no measured cause.**
+- **The twiddle stream's cost in CYCLES is unmeasured**, and R3's conditional is now live.
+  Its 1.14 %-of-stream bound is an *instruction* share; at 2.0 cycles per unique address the
+  cycle share can be larger, and R3's own "if it serializes, a once-per-block 448 B smem table
+  would be worth reviving" is no longer counterfactual. This is a rung-2 **side experiment**
+  (measure the bank-3 stream's cycles, then decide), not a reopened lever — the other three
+  closure grounds are untouched.
+- **Every ncu figure is a single NVTX-wrapped launch.** Instruction and sector counts are
+  deterministic and close exactly against the oracle; the *rate* metrics (SOL, hit rates,
+  stall ratios) carry one sample's uncertainty, unlike the 110-round timed medians.
+- **The R2 band is no longer usable as a cross-session gate without telemetry control.** Do
+  not delete it — it caught a real 1.4–2.0 % session effect on its first use. Annotate it: a
+  band miss now demands a standalone anchor and an event-reason sample before it is read as a
+  regression.
+
+### Branch state
+
+The LDC rider (`native/uniskip_ldc_probe.cu`, `src/ldc_probe.rs`,
+`src/bin/uniskip_ldc_divergence.rs`, CMake/lib wiring) and this record are **parked as
+patches** under `.agents/sdd/2026-08-09-v3-r4/patches/`, not committed: the signing agent was
+down and `commit.gpgsign` is on. Tip is `30e648e4`; the rider's files are live in the working
+tree; nothing is pushed.
