@@ -414,6 +414,10 @@ pub struct PassConfig {
     /// shape, 128 is v3 R4's second block size — a distinct kernel, not a launch
     /// parameter, because the shared plane and the epilogue reduction are static.
     pub block_threads: u32,
+    /// v3 R6: preferred shared-memory carveout (percent) set on the bounded 128-thread
+    /// cached kernel before any launch, or `None` for the driver default. Per-function and
+    /// process-sticky, so a run has exactly one hint state.
+    pub carveout_hint: Option<u32>,
 }
 
 impl PassConfig {
@@ -914,6 +918,13 @@ impl Harness {
             }),
             _ => None,
         };
+
+        // v3 R6: one carveout state per process, applied before any launch. Only the
+        // bounded cached body is steered; the uncached control is the probe's anchor.
+        if let Some(pct) = config.carveout_hint {
+            kernels::set_cached_128_lb_carveout(pct)?;
+            println!("  carveout hint       {pct}% (eval_lsb_pair_cached_128_lb)");
+        }
 
         Ok(Self {
             layout,

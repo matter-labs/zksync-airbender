@@ -13,7 +13,10 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 #[cfg(window_diag)]
 use era_cudart_sys::cudaMemcpyFromSymbol;
-use era_cudart_sys::{cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKind};
+use era_cudart_sys::{
+    cudaFuncSetAttribute, cudaMemcpyToSymbol, cuda_struct_and_stub, CudaFuncAttribute,
+    CudaMemoryCopyKind,
+};
 
 use crate::abi::{
     UniskipCacheDesc, UniskipCompactSlot, UniskipVmDesc, UniskipWindowDesc, UNISKIP_CACHE_UNITS,
@@ -558,6 +561,21 @@ pub fn eval_lsb_pair_cached_128_lb(
     let args = EvalLsbPairCached128LbArguments::new(*desc, *plan);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
     EvalLsbPairCached128LbFunction::default().launch(&config, &args)
+}
+
+/// v3 R6: steer the shared-memory carveout of the bounded 128-thread cached kernel — the
+/// one body every cached probe lane launches. A host-side function attribute (percent of
+/// the maximum shared memory, rounded by the driver to a supported config), sticky for the
+/// process; the SASS is untouched.
+pub fn set_cached_128_lb_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbPairCached128LbFunction::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
 }
 
 /// The v3 R3 `t` arm: the control body under `__launch_bounds__(256, 3)`.

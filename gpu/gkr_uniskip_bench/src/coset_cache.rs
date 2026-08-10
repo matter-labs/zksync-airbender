@@ -1575,6 +1575,20 @@ pub const FRONTIER_EXTENSION: [CacheLane; 8] = [
     FRONTIER_CONTROL_256,
 ];
 
+/// The v3 R6 carveout-probe rotation (spec R6): the three lanes past the R5 knee (`k40`
+/// sizes a moved frontier so a `k32` win needs no second probe), the incumbent, and the
+/// shipping anchor. The cached lanes all launch the frozen `eval_lsb_pair_cached_128_lb`
+/// body, whose carveout the `--carveout-hint` flag steers; `control@256` launches the
+/// uncached body and is NEVER hinted — the cross-process anchor. 5 lanes, so a round count
+/// must be a multiple of 5.
+pub const CARVEOUT_PROBE: [CacheLane; 5] = [
+    frontier_128("k24@128", CacheArm::K24),
+    frontier_128("k32@128", CacheArm::K32),
+    frontier_128("k40@128", CacheArm::K40),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    FRONTIER_CONTROL_256,
+];
+
 /// Fail-closed structural check of a pinned lane set — THE one implementation of the
 /// factorial pre-flight, called by the runner before it builds anything and by the tests
 /// that pin the shipped rotations. Rejects a duplicate label, an unplannable lane, a
@@ -1642,6 +1656,9 @@ pub enum LaneSet {
     FrontierFactorial,
     /// R5's conditional eight-lane extension over the refs-2 E4 tail (spec R5 2.3).
     FrontierExtension,
+    /// R6's five-lane carveout probe (spec R6): the R5 knee neighborhood re-measured under
+    /// a steered shared-memory carveout.
+    CarveoutProbe,
 }
 
 impl LaneSet {
@@ -1650,6 +1667,7 @@ impl LaneSet {
             Self::CacheFactorial => &CACHE_FACTORIAL,
             Self::FrontierFactorial => &FRONTIER_FACTORIAL,
             Self::FrontierExtension => &FRONTIER_EXTENSION,
+            Self::CarveoutProbe => &CARVEOUT_PROBE,
         }
     }
 
@@ -1659,6 +1677,7 @@ impl LaneSet {
             Self::CacheFactorial => "--cache-factorial",
             Self::FrontierFactorial => "--frontier-factorial",
             Self::FrontierExtension => "--frontier-extension",
+            Self::CarveoutProbe => "--carveout-probe",
         }
     }
 
@@ -1670,6 +1689,7 @@ impl LaneSet {
             Self::CacheFactorial => "CACHE-FACTORIAL",
             Self::FrontierFactorial => "FRONTIER-FACTORIAL",
             Self::FrontierExtension => "FRONTIER-EXTENSION",
+            Self::CarveoutProbe => "CARVEOUT-PROBE",
         }
     }
 
@@ -1681,6 +1701,7 @@ impl LaneSet {
             Self::CacheFactorial => None,
             Self::FrontierFactorial => Some((100, 10)),
             Self::FrontierExtension => Some((104, 16)),
+            Self::CarveoutProbe => Some((100, 10)),
         }
     }
 
@@ -1695,6 +1716,7 @@ impl LaneSet {
         match self {
             Self::CacheFactorial => "R4 arms",
             Self::FrontierFactorial | Self::FrontierExtension => "R5 frontier lanes",
+            Self::CarveoutProbe => "R6 probe lanes",
         }
     }
 
@@ -1703,6 +1725,7 @@ impl LaneSet {
         match self {
             Self::CacheFactorial => "tools/r4_gates.sh",
             Self::FrontierFactorial | Self::FrontierExtension => "tools/r5_gates.sh",
+            Self::CarveoutProbe => "tools/r6_gates.sh",
         }
     }
 
@@ -1712,6 +1735,7 @@ impl LaneSet {
             Self::CacheFactorial => "factorial",
             Self::FrontierFactorial => "frontier factorial",
             Self::FrontierExtension => "frontier extension",
+            Self::CarveoutProbe => "carveout probe",
         }
     }
 }
@@ -1889,6 +1913,35 @@ mod lane_tests {
         }
         for n in [104u32, 16] {
             assert!(n.is_multiple_of(FRONTIER_EXTENSION.len() as u32), "{n}");
+        }
+        for n in [100u32, 10] {
+            assert!(n.is_multiple_of(CARVEOUT_PROBE.len() as u32), "{n}");
+        }
+    }
+
+    /// The R6 probe rotation's shape, pinned exactly as spec R6 names it: the knee
+    /// neighborhood on the ONE steerable cached body, the incumbent, and the never-hinted
+    /// uncached anchor — nothing else, because a fifth cached lane would stretch the
+    /// session and a second anchor would blur the cross-process seam.
+    #[test]
+    fn cpu_carveout_probe_lane_set() {
+        let labels: Vec<&str> = CARVEOUT_PROBE.iter().map(|l| l.label).collect();
+        assert_eq!(
+            labels,
+            vec!["k24@128", "k32@128", "k40@128", "hot16@128", "control@256"]
+        );
+        assert_eq!(LaneSet::CarveoutProbe.rounds_and_warmup(), Some((100, 10)));
+        for lane in &CARVEOUT_PROBE {
+            if lane.block_threads == 128 {
+                assert!(lane.arm.uses_cache(), "{}", lane.label);
+                assert_eq!(lane.kernel(), LaneKernel::Cached128Lb, "{}", lane.label);
+            } else {
+                assert_eq!(lane.label, "control@256");
+                assert_eq!(lane.kernel(), LaneKernel::Pair, "{}", lane.label);
+            }
+        }
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            validate_lane_set(&program(order), &CARVEOUT_PROBE).unwrap();
         }
     }
 

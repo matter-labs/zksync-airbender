@@ -149,6 +149,21 @@ struct Cli {
     #[arg(long)]
     frontier_extension: bool,
 
+    /// Run the v3 R6 carveout probe: 5 lanes — the R5 knee neighborhood `k24 k32 k40
+    /// hot16` at 128 threads plus the shipping `control@256` anchor — in ONE process, one
+    /// carveout state (`--carveout-hint 16` or the driver default) for the whole process.
+    /// The whole contract is preregistered and PINNED: locality order only, exactly
+    /// 100 rounds / 10 warmup, hint 16. Mutually exclusive with every other rotation.
+    #[arg(long)]
+    carveout_probe: bool,
+
+    /// v3 R6: preferred shared-memory carveout (percent of the maximum) set on the bounded
+    /// 128-thread cached kernel before any launch; absent = the driver's default sizing.
+    /// Composes with `--carveout-probe` or with a single cached `--cache-arm` at 128
+    /// threads (the ncu gate surface); rejected everywhere else.
+    #[arg(long)]
+    carveout_hint: Option<u32>,
+
     /// TEST-ONLY. Corrupt the selected cached arm's records and upload them UNCHECKED —
     /// the always-on validator would reject them, which is the point. `retarget` points a
     /// cached reference at a different LIVE same-width slot, so `q` must change.
@@ -242,6 +257,7 @@ impl Cli {
             (self.cache_factorial, LaneSet::CacheFactorial),
             (self.frontier_factorial, LaneSet::FrontierFactorial),
             (self.frontier_extension, LaneSet::FrontierExtension),
+            (self.carveout_probe, LaneSet::CarveoutProbe),
         ]
         .into_iter()
         .filter_map(|(on, set)| on.then_some(set))
@@ -597,6 +613,73 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                 .into(),
         );
     }
+    // The R6 rotation is preregistered whole: locality order (the shipping order), hint
+    // 16 (the one empirically verified 32 KiB config), 100 rounds / 10 warmup. The emitter
+    // pins the same contract on the analysis side; this keeps an off-contract log from
+    // ever existing.
+    if cli.lane_set() == Some(LaneSet::CarveoutProbe) {
+        if cli.term_order != TermOrder::Locality {
+            fail(
+                "--carveout-probe is preregistered locality-only — the shipping order; \
+                 the census bar question is closed"
+                    .into(),
+            );
+        }
+        if cli.iterations.is_some_and(|i| i != 100) || cli.warmup.is_some_and(|w| w != 10) {
+            fail(
+                "--carveout-probe is preregistered at 100 rounds / 10 warmup; other \
+                 round counts are not part of its contract"
+                    .into(),
+            );
+        }
+        if cli.carveout_hint.is_some_and(|p| p != 16) {
+            fail(
+                "--carveout-probe's preregistered hint is 16 — the one value the G0 \
+                 ladder verified as the 32 KiB configuration"
+                    .into(),
+            );
+        }
+    }
+    if let Some(pct) = cli.carveout_hint {
+        if pct > 100 {
+            fail(format!(
+                "--carveout-hint {pct} is a percent of the maximum shared memory; 0..=100"
+            ));
+        }
+        let probe = cli.lane_set() == Some(LaneSet::CarveoutProbe);
+        // The single-arm gate surface: the ncu configuration check profiles exactly the
+        // body the hint steers, so the unbounded sibling is excluded with the rest. The
+        // pct stays free HERE (this is how the ladder was mapped), but the surface is
+        // profiling-only: it must carry --profile and no validation/dump knob.
+        let single_cached_128 = cli.lane_set().is_none()
+            && cli.cache_arm.is_some_and(|a| a.uses_cache())
+            && block_threads as usize == UNISKIP_PAIR_THREADS_128
+            && !cli.no_cache_launch_bounds;
+        if !(probe || single_cached_128) {
+            fail(
+                "--carveout-hint steers the bounded 128-thread cached kernel; it composes \
+                 with --carveout-probe or with a single cached --cache-arm at \
+                 --block-threads 128, nothing else"
+                    .into(),
+            );
+        }
+        if single_cached_128 && !probe {
+            if !cli.profile {
+                fail(
+                    "--carveout-hint on a single cached arm is the ncu gate surface; \
+                     add --profile"
+                        .into(),
+                );
+            }
+            if cli.validate || cli.validate_flat_eq || cli.dump_q {
+                fail(
+                    "--carveout-hint is a profiling knob; --validate / --dump-q have no \
+                     hint contract"
+                        .into(),
+                );
+            }
+        }
+    }
     if cli.cache_arm.is_some() {
         if !cli.mode.uses_pair_arm() {
             fail(format!(
@@ -651,6 +734,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         cache_mutate: cli.cache_mutate,
         lane_set: cli.lane_set(),
         block_threads,
+        carveout_hint: cli.carveout_hint,
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
     // small --log-trace can leave fewer rows than one block covers. Rejected here rather
@@ -724,9 +808,19 @@ fn run_lane_factorial(harness: &mut Harness, cli: &Cli, set: LaneSet) {
         ));
     }
     // Occupancy, kernel and geometry facts come from Rust so the emitter carries no
-    // constants of its own — it reads the arm schema off these lines.
+    // constants of its own — it reads the arm schema off these lines. The probe's hint
+    // state rides IN the log (never inferred from a filename); the older tags keep their
+    // grammar byte-stable.
+    let hint = if set == LaneSet::CarveoutProbe {
+        match cli.carveout_hint {
+            Some(p) => format!(" carveout-hint={p}"),
+            None => " carveout-hint=default".to_string(),
+        }
+    } else {
+        String::new()
+    };
     println!(
-        "{} schedule order={} lanes={n} rounds={rounds} warmup={warmup}",
+        "{} schedule order={} lanes={n} rounds={rounds} warmup={warmup}{hint}",
         set.tag(),
         cli.term_order.as_str()
     );
