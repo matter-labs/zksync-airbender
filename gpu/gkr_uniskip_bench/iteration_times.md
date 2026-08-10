@@ -3502,8 +3502,8 @@ The practical rule: **never write "`hot16` is not L1-resident" without naming th
   knee. (iii) Or **capture beyond C = 28 at no more than the measured marginal price** above.
 - **Term order is a first-class knob for D, and now has a measured L1 leg at the winner**
   (47.871 % vs 0.010 %), not only the L2/DRAM leg R4 priced.
-- **The smem-twiddle cycle probe remains the open side item** it was at the end of R4 —
-  independent of this rung, and untouched by it.
+- **The smem-twiddle cycle probe** was still open when this rung closed; it was resolved
+  zero-build the next day — see *The smem-twiddle side item — CLOSED* below.
 
 ### Open
 
@@ -3541,11 +3541,49 @@ The practical rule: **never write "`hot16` is not L1-resident" without naming th
   did not fire; **right-censoring** — a first loser exists in both orders, so the branch was
   never taken.
 
+### The smem-twiddle side item — CLOSED (2026-08-10, zero-build)
+
+The cycle-level measurement R3 left as a conditional and the LDC rider made priceable was
+taken **from the R5 Task 4 captures that already existed** — no kernel variant was built. The
+zero-build route (per-PC source counters from the winner's own Full Picture reports,
+`ncu --import --page source --csv` on `20260810_0452*_v3r5_hot16_128_{census,locality}_full`)
+is a *reject* gate: it can prove the prize too small to chase; only a built variant could have
+proven a positive. It rejected.
+
+- **The stream, at the winner.** 40 bank-3 `LDC`/`LDCU` sites (9 entry-block at 262,144
+  executions each = once per warp-walk; 31 in-loop, the 8 hottest at 27,000,832 each), total
+  **313,524,224 warp executions = 2.075 %** of the launch's 15,109,128,192 warp instructions.
+  Byte-identical across both orders, as R3's bank-split established.
+- **Warp residency at those PCs** (PC sampling, ~1.5 M samples/launch): 3.268 % of all samples
+  in `census`, 3.573 % in `locality` — that is *everything* the sites cost, issue included.
+- **Actually stalled (not-issued) at those PCs: 0.933 % (`census`) / 0.986 % (`locality`) of
+  all samples** — below the 1.5 %-of-wall build threshold preregistered for this probe, in
+  both orders. This is the decision line.
+- **The stall mix says the smem table would not collect even that.** `stall_mio` dominates
+  (51.6 % / 53.4 % of samples at the sites) — MIO instruction-queue backpressure, and the
+  replacement `LDS` issues through the *same shared MIO queue*, which in this kernel also
+  carries the coset cache's local-memory traffic. Next is `stall_wait` (24.1 % / 22.8 %) —
+  the lane-indexed address arithmetic dependency, unchanged by moving the table. The
+  serialization the rider priced (2.0 cyc/unique address) is real as *pipe occupancy*
+  (1.25–5.02 G SM-cycles device-wide for Ū ∈ [2, 8]) but overlapped: the exposed part is the
+  ≤ 1 % above.
+- **Attribution caveat**: PC sampling charges dependency stalls to consumers, so
+  twiddle-*latency* exposure at consuming FMAs is not in the 0.93–0.99 %. Against chasing it:
+  R3's `t`-arm — the one measured attempt to touch this codegen — inverted **+3.43 %**, and
+  R1's smem move lost 15 % on the LSU wall.
+- **Corroboration**: the resident-codex static bound (R2-normalized, taken independently the
+  same day) put the exposed prize at ~1.50 % for the *uncached control* and "probably below"
+  at the winner (181/326 chains remaining); the capture-derived number lands at 0.93–0.99 %.
+
+**Verdict: NOT BUILT — closed below threshold.** Reopening needs a new argument, not a re-run;
+the standing candidate argument is a D-style variant in which the MIO queue is no longer
+contended by local-memory cache traffic, re-pricing `stall_mio` at the sites.
+
 ### Branch state
 
-The rung parks as patches under `.agents/sdd/2026-08-10-v3-r5/patches/`, each with its intended
-commit message, none committed — the signing agent is still down and `commit.gpgsign` is on:
-`task0` (prefix-K admission + frontier lanes), `task1` (frontier factorial runner + curve
-emitter), `task2` (frontier gates), `task5` (this record + README). Tasks 3 and 4 are
-evidence-only and carry no patch. They replay in that order on top of R4's three parked patches
-(`task4-ldc-rider`, `task5-record`, `task5b-tooling`) at tip `30e648e4`. Nothing is pushed.
+The rung's parked patches landed as signed commits via the layered-patch replay (2026-08-10),
+on top of `30e648e4`: `d51251f1` (R4 LDC rider) → `f6b42072` (R4 record) → `6ab19f66` (R4
+tooling fixes) → `591f8ff8` (task0: prefix-K admission + frontier lanes) → `e7b048df` (task1:
+frontier factorial runner + curve emitter) → `1b814909` (task2: frontier gates) → `e51b1f95`
+(task5: this record + README). Replay verified byte- and mode-identical to the live tree
+(`.agents/**` excluded). Pushed to `origin/rr/gkr_uniskip_bench` 2026-08-10.
