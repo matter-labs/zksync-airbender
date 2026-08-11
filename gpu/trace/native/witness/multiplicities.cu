@@ -1,4 +1,5 @@
 #include "common.cuh"
+#include "lookup_mapping.cuh"
 #include "memory.cuh"
 #include "primitives/memory.cuh"
 
@@ -28,28 +29,6 @@ EXTERN __global__ void ab_generate_multiplicities_kernel(const u32 *const __rest
   multiplicities.set(row, col, value);
 }
 
-#define MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT 128
-
-struct LookupExpressions {
-  u32 relations_count;
-  NoFieldLinearRelation relations[MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT];
-};
-
-DEVICE_FORCEINLINE void process_expressions(const matrix_getter<bf, ld_modifier::cg> memory, const matrix_getter<bf, ld_modifier::cg> witness,
-                                            const matrix_getter<bf, ld_modifier::cg> scratch, const LookupExpressions expressions,
-                                            matrix_setter<unsigned, st_modifier::cs> mapping) {
-#pragma unroll
-  for (int i = 0; i < MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT; i++) {
-    if (i == expressions.relations_count)
-      break;
-    const auto relation = expressions.relations[i];
-    const bf field_value = evaluate_linear_relation(memory, witness, scratch, relation);
-    const u32 value = bf::into_canonical_u32(field_value);
-    mapping.set(value);
-    mapping.add_col(1);
-  }
-}
-
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_generate_range_check_lookup_mapping_kernel(matrix_getter<bf, ld_modifier::cg> memory, matrix_getter<bf, ld_modifier::cg> witness,
                                                        matrix_getter<bf, ld_modifier::cg> scratch,
@@ -66,8 +45,8 @@ EXTERN __launch_bounds__(128, 8) __global__
   scratch.add_row(gid);
   range_check_16_lookup_mapping.add_row(gid);
   range_check_timestamp_lookup_mapping.add_row(gid);
-  process_expressions(memory, witness, scratch, range_check_16_lookup_expressions, range_check_16_lookup_mapping);
-  process_expressions(memory, witness, scratch, range_check_timestamp_lookup_expressions, range_check_timestamp_lookup_mapping);
+  process_lookup_expressions(memory, witness, scratch, range_check_16_lookup_expressions, range_check_16_lookup_mapping);
+  process_lookup_expressions(memory, witness, scratch, range_check_timestamp_lookup_expressions, range_check_timestamp_lookup_mapping);
 }
 
 } // namespace airbender::trace::witness::multiplicities

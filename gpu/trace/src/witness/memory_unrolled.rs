@@ -121,8 +121,6 @@ pub(crate) struct UnrolledMemoryLayout {
 }
 
 impl UnrolledMemoryLayout {
-    // The add/sub specialization is a sibling witness module and shares this
-    // exact Rust↔CUDA layout conversion with the generic unrolled launchers.
     pub(crate) fn from_parts(value: &GKRMemoryLayout, decoder_lookup_offset: u32) -> Self {
         let (shuffle_ram_access_sets_count, shuffle_ram_access_sets) = {
             let ram_access_sets = &value.ram_access_sets;

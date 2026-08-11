@@ -26,17 +26,6 @@ pub(crate) enum ColumnAddress {
 
 pub type F = ::field::baby_bear::base::BabyBearField;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct GeneratedReadColumns {
-    pub memory: BTreeSet<usize>,
-    pub witness: BTreeSet<usize>,
-}
-
-pub struct GeneratedWitnessCuda {
-    pub source: String,
-    pub read_columns: GeneratedReadColumns,
-}
-
 pub struct Generator {
     write_into_memory: bool,
     layout: BTreeMap<Variable, ColumnAddress>,
@@ -54,7 +43,7 @@ pub struct Generator {
     // Conditional-only witness columns whose first write has already been
     // emitted (as `SET_WITNESS_PLACE_OR_ZERO`). Subsequent writes stay `IF`.
     witness_zero_default_emitted: BTreeSet<usize>,
-    read_columns: GeneratedReadColumns,
+    written_lookup_mapping_indices: BTreeSet<usize>,
 }
 
 impl Generator {
@@ -81,7 +70,7 @@ impl Generator {
             fn_indexes: Vec::new(),
             conditional_only_witness: BTreeSet::new(),
             witness_zero_default_emitted: BTreeSet::new(),
-            read_columns: GeneratedReadColumns::default(),
+            written_lookup_mapping_indices: BTreeSet::new(),
         }
     }
 
@@ -202,13 +191,11 @@ impl Generator {
         let address = self.get_column_address(variable);
         match address {
             ColumnAddress::WitnessSubtree(idx) => {
-                self.read_columns.witness.insert(idx);
                 self.push(&format!(
                     "GET_WITNESS_PLACE({type_tag}, {new_ident}, {idx})\n"
                 ));
             }
             ColumnAddress::MemorySubtree(idx) => {
-                self.read_columns.memory.insert(idx);
                 self.push(&format!(
                     "GET_MEMORY_PLACE({type_tag}, {new_ident}, {idx})\n"
                 ));
@@ -267,12 +254,16 @@ impl Generator {
                     lookup_mapping_idx,
                     self.num_lookup_mappings
                 );
+                self.written_lookup_mapping_indices
+                    .insert(lookup_mapping_idx);
                 let new_ident = self.create_var();
                 let num_inputs = input_subexpr_idxes.len();
                 let num_outputs = *num_outputs;
                 let table_id = *table_id_subexpr_idx;
                 if num_outputs > 0 {
-                    self.push(&format!("LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {lookup_mapping_idx}"));
+                    self.push(&format!(
+                        "LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {lookup_mapping_idx}"
+                    ));
                 } else {
                     self.push(&format!(
                         "LOOKUP_ENFORCE({num_inputs}, {table_id}, {lookup_mapping_idx}"
@@ -325,12 +316,7 @@ impl Generator {
                         let source_ident = self.expression_into_var(source_subexpr);
                         if let Some(condition) = condition_subexpr_idx {
                             let condition_ident = *condition;
-                            // For a column that is ONLY ever written under a guard, fold the
-                            // zero-default into its FIRST write (in evaluation order): emit a
-                            // branchless `cond ? source : 0` store instead of an `IF`, so rows
-                            // whose guard is false get a definite zero with no separate prologue.
-                            // Later writes (mutually-exclusive opcode branches) stay `IF` and
-                            // overwrite where they fire.
+                            // Initialize conditionally written columns when their first guard is false.
                             if self.conditional_only_witness.contains(&idx)
                                 && self.witness_zero_default_emitted.insert(idx)
                             {
@@ -461,15 +447,7 @@ impl Generator {
         circuit: &GKRCircuitArtifact<F>,
         perform_assignments_to_memory: bool,
     ) -> String {
-        Self::generate_with_metadata(graph, circuit, perform_assignments_to_memory).source
-    }
-
-    pub fn generate_with_metadata(
-        graph: &[Vec<RawExpression<F>>],
-        circuit: &GKRCircuitArtifact<F>,
-        perform_assignments_to_memory: bool,
-    ) -> GeneratedWitnessCuda {
-        let num_lookup_mappings = circuit.num_generic_lookups;
+        let num_lookup_mappings = circuit.generic_lookups.len();
         let mut layout = BTreeMap::new();
         let mut next_scratch_slot = 0usize;
         for (var, pos) in circuit.placement_data.iter() {
@@ -506,10 +484,12 @@ impl Generator {
         generator.collect_conditional_only_witness(graph);
         generator.generate_functions(graph, &layout);
         generator.generate_footer();
-        GeneratedWitnessCuda {
-            source: generator.output,
-            read_columns: generator.read_columns,
-        }
+        let expected_lookup_mapping_indices: BTreeSet<_> = (0..num_lookup_mappings).collect();
+        assert_eq!(
+            generator.written_lookup_mapping_indices, expected_lookup_mapping_indices,
+            "generated generic lookup mappings must cover every generic lookup set"
+        );
+        generator.output
     }
 }
 
@@ -518,23 +498,12 @@ pub fn generate_from_files(
     ssa_path: impl AsRef<Path>,
     perform_assignments_to_memory: bool,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    Ok(
-        generate_from_files_with_metadata(layout_path, ssa_path, perform_assignments_to_memory)?
-            .source,
-    )
-}
-
-pub fn generate_from_files_with_metadata(
-    layout_path: impl AsRef<Path>,
-    ssa_path: impl AsRef<Path>,
-    perform_assignments_to_memory: bool,
-) -> Result<GeneratedWitnessCuda, Box<dyn std::error::Error>> {
     let layout = File::open(layout_path)?;
     let ssa = File::open(ssa_path)?;
     let compiled_circuit: GKRCircuitArtifact<F> = serde_json::from_reader(layout)?;
     let compiled_graph: Vec<Vec<RawExpression<F>>> = serde_json::from_reader(ssa)?;
 
-    Ok(Generator::generate_with_metadata(
+    Ok(Generator::generate(
         &compiled_graph,
         &compiled_circuit,
         perform_assignments_to_memory,
@@ -564,15 +533,6 @@ impl GeneratedCircuit {
         let layout = repo_root.join(format!("cs/compiled_circuits/{}_layout_gkr.json", self.id));
         let ssa = repo_root.join(format!("cs/compiled_circuits/{}_ssa_gkr.json", self.id));
         generate_from_files(layout, ssa, false)
-    }
-
-    pub fn regenerate_with_metadata(
-        &self,
-        repo_root: &Path,
-    ) -> Result<GeneratedWitnessCuda, Box<dyn std::error::Error>> {
-        let layout = repo_root.join(format!("cs/compiled_circuits/{}_layout_gkr.json", self.id));
-        let ssa = repo_root.join(format!("cs/compiled_circuits/{}_ssa_gkr.json", self.id));
-        generate_from_files_with_metadata(layout, ssa, false)
     }
 
     /// Absolute path of the checked-in artifact under `repo_root`.
@@ -756,27 +716,6 @@ mod tests {
             "found {} committed .cuh under circuit_defs but CIRCUITS lists {}",
             found.len(),
             CIRCUITS.len()
-        );
-    }
-
-    /// The add/sub fused provider is specialized for exactly these global
-    /// trace reads. Any generated read-set drift must fail before CUDA code is
-    /// built with a stale captured-row contract.
-    #[test]
-    fn add_sub_provider_read_set_is_current() {
-        let generated = CIRCUITS
-            .iter()
-            .find(|circuit| circuit.id == "add_sub_lui_auipc_mop")
-            .expect("add/sub circuit is listed")
-            .regenerate_with_metadata(&repo_root())
-            .expect("regenerate add/sub witness CUDA with metadata");
-        assert_eq!(
-            generated.read_columns.memory,
-            [2, 3, 7, 8, 12, 13, 18, 19].into()
-        );
-        assert_eq!(
-            generated.read_columns.witness,
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 10].into()
         );
     }
 }
