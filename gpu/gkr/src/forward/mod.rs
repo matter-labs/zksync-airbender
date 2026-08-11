@@ -219,7 +219,8 @@ pub fn schedule_forward_pass(
     )?;
     dimension_reduction_range.end(stream)?;
     tracing_ranges.push(dimension_reduction_range);
-    let (initial_layer_for_sumcheck, dimension_reducing_inputs) = prepared_reductions.into_result();
+    let initial_layer_for_sumcheck = prepared_reductions.final_layer_idx;
+    let dimension_reducing_inputs = prepared_reductions.dimension_reduction_description;
     forward_range.end(stream)?;
     tracing_ranges.push(forward_range);
 

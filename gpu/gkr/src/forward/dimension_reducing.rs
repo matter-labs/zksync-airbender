@@ -26,12 +26,6 @@ pub(super) struct LoweredDimReducingForwardRound<E> {
     pub(super) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
 }
 
-/// `(final_layer_idx, per-layer layer_description map)`.
-pub(super) type DimensionReductionForwardResult = (
-    usize,
-    BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
-);
-
 pub(super) struct PreparedDimensionReductionForward<E> {
     pub(super) initial_trace_log_2: u32,
     pub(super) total_rounds: u32,
@@ -41,12 +35,6 @@ pub(super) struct PreparedDimensionReductionForward<E> {
     pub(super) slot_initial_inputs: Vec<LoweredSlotInitialInput<E>>,
     pub(super) slot_output_types: Vec<OutputType>,
     pub(super) per_round_slot_outputs: Vec<Vec<LoweredSlotOutput<E>>>,
-}
-
-impl<E> PreparedDimensionReductionForward<E> {
-    pub(super) fn into_result(self) -> DimensionReductionForwardResult {
-        (self.final_layer_idx, self.dimension_reduction_description)
-    }
 }
 
 pub(super) fn prepare_dimension_reduction_forward<E>(
@@ -61,7 +49,10 @@ pub(super) fn prepare_dimension_reduction_forward<E>(
 where
     E: FieldExtension<BF> + Field + 'static,
 {
-    let total_rounds = initial_trace_log_2.saturating_sub(final_trace_log_2);
+    let total_rounds = initial_trace_log_2
+        .checked_sub(final_trace_log_2)
+        .expect("final trace size must not exceed the initial trace size");
+    assert!(total_rounds >= vm::desc::FUSED_REDUCTION_ROUNDS as u32);
     let mut dimension_reduction_description = BTreeMap::new();
     let mut per_round_slot_outputs = Vec::with_capacity(total_rounds as usize);
     let mut slot_initial_inputs = None;
@@ -109,14 +100,10 @@ where
     Ok(PreparedDimensionReductionForward {
         initial_trace_log_2,
         total_rounds,
-        final_layer_idx: if total_rounds == 0 {
-            initial_layer_idx
-        } else {
-            current_layer_idx - 1
-        },
+        final_layer_idx: current_layer_idx - 1,
         dimension_reduction_description,
-        slot_initial_inputs: slot_initial_inputs.unwrap_or_default(),
-        slot_output_types: slot_output_types.unwrap_or_default(),
+        slot_initial_inputs: slot_initial_inputs.expect("dimension reduction inputs must exist"),
+        slot_output_types: slot_output_types.expect("dimension reduction output types must exist"),
         per_round_slot_outputs,
     })
 }

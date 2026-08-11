@@ -381,15 +381,6 @@ DEVICE_FORCEINLINE void fused_reduction_pair(const fwd_vm_reduction_pair &pair, 
   }
 }
 
-DEVICE_FORCEINLINE void fused_reduction_prefix(const fwd_vm_desc &desc, e4 *cell_file) {
-  const u32 warp = threadIdx.x >> FWD_VM_WARP_SHIFT;
-  e4 *smem = cell_file + warp * FWD_VM_BUCKETS * FWD_VM_WARP_LANES;
-  if (warp < desc.reduction_pair_count)
-    fused_reduction_pair(desc.reduction_pairs[warp], smem);
-  if (warp + 4 < desc.reduction_pair_count)
-    fused_reduction_pair(desc.reduction_pairs[warp + 4], smem);
-}
-
 // minBlocks = the occupancy the static smem permits: SM shared capacity
 // (~100 KB) / per-block footprint (BUCKETS * 16 B * 128 threads + ~1 KB driver
 // overhead), clamped to the 12-block warp limit (4 warps/block). ptxas then
@@ -399,7 +390,12 @@ EXTERN __launch_bounds__(128, 11) __global__ void ab_gkr_fwd_vm_kernel(const __g
   vm_body(desc, fwd_vm_cells);
   // Each reduction warp reloads rows written by the whole CTA.
   __syncthreads();
-  fused_reduction_prefix(desc, fwd_vm_cells);
+  const u32 warp = threadIdx.x >> FWD_VM_WARP_SHIFT;
+  e4 *smem = fwd_vm_cells + warp * FWD_VM_BUCKETS * FWD_VM_WARP_LANES;
+  if (warp < desc.reduction_pair_count)
+    fused_reduction_pair(desc.reduction_pairs[warp], smem);
+  if (warp + 4 < desc.reduction_pair_count)
+    fused_reduction_pair(desc.reduction_pairs[warp + 4], smem);
 }
 
 } // namespace airbender::gkr

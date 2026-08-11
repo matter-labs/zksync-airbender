@@ -149,7 +149,8 @@ fn dimension_reducing_forward_tower_matches_reference() {
     schedule_prepared_dimension_reduction_forward(&prepared, 7, &mut tracing_ranges, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
-    let (final_layer_idx, dim_reducing_inputs) = prepared.into_result();
+    let final_layer_idx = prepared.final_layer_idx;
+    let dim_reducing_inputs = prepared.dimension_reduction_description;
 
     let total_rounds = initial_trace_log_2 - final_trace_log_2;
     assert_eq!(

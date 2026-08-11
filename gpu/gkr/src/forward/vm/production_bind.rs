@@ -233,7 +233,6 @@ fn bind_fused_reduction_prefix(
 ) {
     assert!(desc.count > 0 && desc.count % 128 == 0);
     assert_eq!(desc.count.trailing_zeros(), prepared.initial_trace_log_2);
-    assert!(prepared.total_rounds >= FUSED_REDUCTION_ROUNDS as u32);
     assert_eq!(
         prepared.per_round_slot_outputs.len(),
         prepared.total_rounds as usize
@@ -331,7 +330,6 @@ fn bind_fused_reduction_prefix(
         pair += 1;
         slot = range_end;
     }
-    assert!(pair > 0);
     desc.reduction_pair_count = pair as u32;
 }
 
