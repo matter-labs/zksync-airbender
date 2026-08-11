@@ -18,8 +18,6 @@ constexpr u32 LDC_SPECIAL = 3;
 constexpr u32 SPECIAL_ONE = 1;
 constexpr u32 SPECIAL_NEG_ONE = 2;
 
-DEVICE_FORCEINLINE u16 vm_lane(const fwd_vm_desc &d, const u32 i) { return d.program[i]; }
-
 // --- warp-partitioned bucket smem cell file ------------------------------------
 // The block's cell file is partitioned into per-warp partitions of contiguous
 // shared memory. No
@@ -44,9 +42,9 @@ DEVICE_FORCEINLINE u16 vm_lane(const fwd_vm_desc &d, const u32 i) { return d.pro
 // OTHER lanes' e4 slices. This is safe because (a) all aliasing is
 // warp-contained (the partition), and (b) a converged warp issues instructions
 // in program order and the smem/MIO pipeline processes a warp's wavefronts in
-// issue order — and the interpreter's control flow is warp-uniform (program
-// lanes are grid-constant broadcasts; the only divergence is the
-// `gid >= count` early-exit, which only removes writers). Formally the PTX
+// issue order — and the interpreter's control flow is warp-uniform for active
+// rows (program lanes are grid-constant broadcasts). Tail lanes skip VM
+// execution but participate in the layer barriers. Formally the PTX
 // memory model calls unsynchronized cross-lane conflicting access a race; the
 // in-order-per-warp hardware argument is load-bearing and holds only under
 // warp-uniform control flow.
@@ -98,6 +96,15 @@ DEVICE_FORCEINLINE char *dst_col(const fwd_vm_desc &d, const u32 slot, const u32
   return d.dst_base[slot] + static_cast<size_t>(col) * d.dst_stride_bytes[slot];
 }
 
+struct fwd_vm_source_coordinate {
+  u32 window;
+  u32 column;
+};
+
+DEVICE_FORCEINLINE fwd_vm_source_coordinate decode_source(const u16 lane) {
+  return {(lane >> FWD_VM_SOURCE_WINDOW_SHIFT) & FWD_VM_SOURCE_WINDOW_MASK, (lane >> FWD_VM_SOURCE_COLUMN_SHIFT) & FWD_VM_SOURCE_COLUMN_MASK};
+}
+
 // --- special descriptors ------------------------------------------------------
 
 struct fwd_vm_special {
@@ -122,6 +129,8 @@ DEVICE_FORCEINLINE const u32 *special_mapping(const fwd_vm_desc &d, const fwd_vm
 }
 
 // `vkind` is the native `gkr_base_source_kind` value.
+DEVICE_FORCEINLINE e4 read_const_derived_e4(const u32 idx) { return ::ab_gkr_fwd_vm_const_derived_e4[idx]; }
+
 DEVICE_FORCEINLINE e4 read_special_e4(const fwd_vm_desc &d, const u32 desc, const unsigned gid) {
   const fwd_vm_special s = unpack_special(d.descs[desc]);
   switch (s.kind) {
@@ -144,7 +153,7 @@ DEVICE_FORCEINLINE e4 read_special_e4(const fwd_vm_desc &d, const u32 desc, cons
       // Challenge-dependent fill from the __constant__ bank: the index is
       // warp-uniform (grid-constant desc), only the mask predicate is
       // per-lane, so this is a constant-cache broadcast.
-      return ::ab_gkr_fwd_vm_const_derived_e4[FWD_VM_CONST_DERIVED_E4_CAP - 1];
+      return read_const_derived_e4(s.vkind);
     const u32 row = load<u32, ld_modifier::ca>(special_mapping(d, s), gid);
     return load<e4, ld_modifier::ca>(d.table, row);
   }
@@ -190,7 +199,7 @@ DEVICE_FORCEINLINE bf read_ldc_bf(const fwd_vm_desc &d, const u32 sub, const u32
 DEVICE_FORCEINLINE e4 read_ldc_e4(const fwd_vm_desc &d, const u32 sub, const u32 idx) {
   switch (sub) {
   case LDC_CONST_DERIVED_E4:
-    return ::ab_gkr_fwd_vm_const_derived_e4[idx];
+    return read_const_derived_e4(idx);
   case LDC_ARG_DERIVED_E4:
     return d.arg_derived_e4[idx];
   case LDC_SPECIAL:
@@ -213,9 +222,8 @@ DEVICE_FORCEINLINE e4 read_ldc_e4(const fwd_vm_desc &d, const u32 sub, const u32
 DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, const unsigned gid, const u16 l) {
   switch (l & FWD_VM_OPERAND_TAG_MASK) {
   case FWD_VM_OPERAND_SOURCE: {
-    const u32 window = (l >> FWD_VM_SOURCE_WINDOW_SHIFT) & FWD_VM_SOURCE_WINDOW_MASK;
-    const u32 col = (l >> FWD_VM_SOURCE_COLUMN_SHIFT) & FWD_VM_SOURCE_COLUMN_MASK;
-    return load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(source_col(d, window, col)), gid);
+    const fwd_vm_source_coordinate source = decode_source(l);
+    return load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(source_col(d, source.window, source.column)), gid);
   }
   case FWD_VM_OPERAND_SMEM: { // Smem { cell }: bf -> 4-B lane index
     const u32 cell = l >> FWD_VM_OPERAND_CELL_SHIFT;
@@ -231,9 +239,8 @@ DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, con
 DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, const unsigned gid, const u16 l) {
   switch (l & FWD_VM_OPERAND_TAG_MASK) {
   case FWD_VM_OPERAND_SOURCE: {
-    const u32 window = (l >> FWD_VM_SOURCE_WINDOW_SHIFT) & FWD_VM_SOURCE_WINDOW_MASK;
-    const u32 col = (l >> FWD_VM_SOURCE_COLUMN_SHIFT) & FWD_VM_SOURCE_COLUMN_MASK;
-    return load<e4, ld_modifier::ca>(reinterpret_cast<const e4 *>(source_col(d, window, col)), gid);
+    const fwd_vm_source_coordinate source = decode_source(l);
+    return load<e4, ld_modifier::ca>(reinterpret_cast<const e4 *>(source_col(d, source.window, source.column)), gid);
   }
   case FWD_VM_OPERAND_SMEM: { // Smem { cell }: ext -> BUCKET index
     const u32 bucket = l >> FWD_VM_OPERAND_CELL_SHIFT;
@@ -247,8 +254,6 @@ DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, con
 }
 
 // --- typed dst writes ---------------------------------------------------------
-// GlobalMaterialize (and DstFromAcc to global) is the only DRAM write path.
-// st.cs (streaming): the current lowering never re-reads a stored value.
 
 DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const unsigned gid, const u16 dl, const bf v) {
   if ((dl & FWD_VM_DST_TAG_MASK) == FWD_VM_DST_SMEM) { // Smem { cell }: bf lane
@@ -257,7 +262,7 @@ DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const unsi
   } else { // GlobalMaterialize { slot, col }
     const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_DST_SLOT_MASK;
     const u32 col = dl >> FWD_VM_DST_COL_SHIFT;
-    store<bf, st_modifier::cs>(reinterpret_cast<bf *>(dst_col(d, slot, col)), v, gid);
+    store<bf, st_modifier::wb>(reinterpret_cast<bf *>(dst_col(d, slot, col)), v, gid);
   }
 }
 
@@ -268,7 +273,7 @@ DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const unsi
   } else { // GlobalMaterialize { slot, col }
     const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_DST_SLOT_MASK;
     const u32 col = dl >> FWD_VM_DST_COL_SHIFT;
-    store<e4, st_modifier::cs>(reinterpret_cast<e4 *>(dst_col(d, slot, col)), v, gid);
+    store<e4, st_modifier::wb>(reinterpret_cast<e4 *>(dst_col(d, slot, col)), v, gid);
   }
 }
 
@@ -278,8 +283,9 @@ struct FwdVmAdapter {
   const fwd_vm_desc &desc;
   bf *cells;
   unsigned gid;
+  u32 program_offset;
 
-  DEVICE_FORCEINLINE u16 lane(const u32 index) const { return vm_lane(desc, index); }
+  DEVICE_FORCEINLINE u16 lane(const u32 index) const { return desc.program[program_offset + index]; }
 
   DEVICE_FORCEINLINE bf read_bf(const u16 lane) { return read_operand_bf(desc, cells, gid, lane); }
 
@@ -290,20 +296,27 @@ struct FwdVmAdapter {
   DEVICE_FORCEINLINE void write_e4(const u16 dst, const e4 value) { write_dst_e4(desc, cells, gid, dst, value); }
 };
 
-DEVICE_FORCEINLINE void execute_fwd_vm(const fwd_vm_desc &desc, bf *cells, const unsigned gid) {
-  FwdVmAdapter adapter{desc, cells, gid};
-  eval_vm_execute(adapter, desc.n_instr);
+DEVICE_FORCEINLINE void execute_fwd_vm(const fwd_vm_desc &desc, bf *cells, const unsigned gid, const u32 program_offset, const u32 instruction_count) {
+  FwdVmAdapter adapter{desc, cells, gid, program_offset};
+  eval_vm_execute(adapter, instruction_count);
 }
 
-DEVICE_FORCEINLINE void vm_body(const fwd_vm_desc &d, e4 *cell_file) {
+// Inactive rows must participate in both barriers: the first publishes zeroed
+// cells, and the second prevents the next layer's zeroing from racing reads.
+// No grid barrier is needed because mutable layer values stay within one gid.
+DEVICE_FORCEINLINE void vm_body(const fwd_vm_desc &desc, e4 *cell_file) {
   bf *cells = reinterpret_cast<bf *>(cell_file);
-  // Zero-init before the row early-exit because neighboring lanes share E4 slices.
-  for (u32 c = 0; c < FWD_VM_BUCKETS * FWD_VM_BF_PER_BUCKET; c++)
-    smem_st_bf(cells, c, bf::ZERO());
-  const unsigned gid = blockIdx.x * 128 + threadIdx.x;
-  if (gid >= d.count)
-    return;
-  execute_fwd_vm(d, cells, gid);
+  const u32 gid = blockIdx.x * 128 + threadIdx.x;
+  for (u32 layer = 0; layer < desc.layer_count; layer++) {
+    for (u32 c = 0; c < FWD_VM_BUCKETS * FWD_VM_BF_PER_BUCKET; c++)
+      smem_st_bf(cells, c, bf::ZERO());
+    __syncwarp();
+    if (gid < desc.count) {
+      const fwd_vm_layer &metadata = desc.layers[layer];
+      execute_fwd_vm(desc, cells, gid, metadata.program_offset, metadata.instruction_count);
+    }
+    __syncwarp();
+  }
 }
 
 // minBlocks = the occupancy the static smem permits: SM shared capacity

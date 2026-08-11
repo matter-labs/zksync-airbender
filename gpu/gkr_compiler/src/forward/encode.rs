@@ -3,21 +3,25 @@
 use super::error::EncodeError;
 use super::isa::*;
 
-fn pack_operand(o: OperandLine) -> Result<u16, EncodeError> {
+fn pack_operand(
+    o: OperandLine,
+    source_window_bits: u32,
+    source_column_bits: u32,
+) -> Result<u16, EncodeError> {
     match o {
         OperandLine::LogicalGlobal { slot, col } => {
             Err(EncodeError::UnboundLogicalSource { slot, col })
         }
         OperandLine::Source { window, column } => {
-            if (window as u32) >= MAX_SOURCE_WINDOWS {
+            if (window as u32) >= 1 << source_window_bits {
                 return Err(EncodeError::SourceWindowOutOfRange(window));
             }
-            if (column as u32) >= SOURCE_WINDOW_COLUMNS {
+            if (column as u32) >= 1 << source_column_bits {
                 return Err(EncodeError::SourceColumnOutOfRange(column));
             }
             Ok(TAG_SOURCE
                 | ((window as u16) << SOURCE_WINDOW_SHIFT)
-                | ((column as u16) << SOURCE_COLUMN_SHIFT))
+                | (column << (SOURCE_WINDOW_SHIFT + source_window_bits)))
         }
         OperandLine::Smem { cell } => {
             if (cell as u32) >= MAX_CELL {
@@ -81,7 +85,11 @@ fn pack_arith_header(
         | ((sign as u16) << SIGN_SHIFT))
 }
 
-pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
+fn encode_with_source_bits(
+    p: &Program,
+    source_window_bits: u32,
+    source_column_bits: u32,
+) -> Result<Vec<u16>, EncodeError> {
     let mut out = Vec::new();
     for instr in &p.instrs {
         match instr {
@@ -98,7 +106,7 @@ pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
                     *sign,
                 )?);
                 for o in operands {
-                    out.push(pack_operand(*o)?);
+                    out.push(pack_operand(*o, source_window_bits, source_column_bits)?);
                 }
             }
             Instr::Mul {
@@ -115,7 +123,7 @@ pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
                     sign,
                 )?);
                 for o in operands {
-                    out.push(pack_operand(*o)?);
+                    out.push(pack_operand(*o, source_window_bits, source_column_bits)?);
                 }
             }
             Instr::Fma {
@@ -135,8 +143,8 @@ pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
                     *sign,
                 )?);
                 for (l, r) in pairs {
-                    out.push(pack_operand(*l)?);
-                    out.push(pack_operand(*r)?);
+                    out.push(pack_operand(*l, source_window_bits, source_column_bits)?);
+                    out.push(pack_operand(*r, source_window_bits, source_column_bits)?);
                 }
             }
             Instr::Mov {
@@ -151,15 +159,67 @@ pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
                         | ((*field as u16) << MOV_FIELD_SHIFT),
                 );
                 match dir {
-                    MovDir::AccFromSrc => out.push(pack_operand(src.expect("AccFromSrc src"))?),
+                    MovDir::AccFromSrc => out.push(pack_operand(
+                        src.expect("AccFromSrc src"),
+                        source_window_bits,
+                        source_column_bits,
+                    )?),
                     MovDir::DstFromAcc => out.push(pack_dst(dst.expect("DstFromAcc dst"))?),
                     MovDir::DstFromSrc => {
                         out.push(pack_dst(dst.expect("DstFromSrc dst"))?);
-                        out.push(pack_operand(src.expect("DstFromSrc src"))?);
+                        out.push(pack_operand(
+                            src.expect("DstFromSrc src"),
+                            source_window_bits,
+                            source_column_bits,
+                        )?);
                     }
                 }
             }
         }
     }
     Ok(out)
+}
+
+pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
+    encode_with_source_bits(p, SOURCE_WINDOW_BITS, SOURCE_COLUMN_BITS)
+}
+
+pub fn encode_runtime(p: &Program) -> Result<Vec<u16>, EncodeError> {
+    encode_with_source_bits(p, RUNTIME_SOURCE_WINDOW_BITS, RUNTIME_SOURCE_COLUMN_BITS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn program_with_source(window: u8, column: u16) -> Program {
+        Program {
+            instrs: vec![Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Base,
+                dst: None,
+                src: Some(OperandLine::Source { window, column }),
+            }],
+        }
+    }
+
+    #[test]
+    fn runtime_source_layout_encodes_its_maximum_coordinate() {
+        assert_eq!(
+            encode_runtime(&program_with_source(15, 511)),
+            Ok(vec![3, 32_764]),
+        );
+    }
+
+    #[test]
+    fn runtime_source_layout_rejects_each_overflow_boundary() {
+        assert_eq!(
+            encode_runtime(&program_with_source(16, 0)),
+            Err(EncodeError::SourceWindowOutOfRange(16)),
+        );
+        assert_eq!(
+            encode_runtime(&program_with_source(0, 512)),
+            Err(EncodeError::SourceColumnOutOfRange(512)),
+        );
+    }
 }

@@ -12,7 +12,6 @@ use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRLayerSource, GpuGKRSt
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr_compiler::CompiledLayer;
 use gpu_ops::simple::{Add, BinaryOp, Mul, SetByRef, SetByVal, Sub};
 use gpu_prover_context::ProverContext;
 
@@ -104,15 +103,13 @@ pub(crate) mod kernels;
 pub(super) use kernels::*;
 
 mod dimension_reducing;
-mod lookup_lifetime;
 pub(crate) mod vm;
 
 use crate::upstream::{
     DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, GKRCircuitArtifact,
-    GKRExternalChallenges, GKRLayerDescription, OutputType,
+    GKRExternalChallenges, OutputType,
 };
 use dimension_reducing::schedule_dimension_reduction_forward;
-use lookup_lifetime::{analyze_forward_lookup_usage, release_forward_lookup_resources_after_layer};
 
 // The optional slab target transfers ownership into the scheduled forward pass.
 #[allow(clippy::needless_pass_by_value)]
@@ -122,10 +119,6 @@ pub fn schedule_forward_pass(
     stage1: &mut GpuGKRStage1Output,
     forward_setup: &mut GpuGKRForwardSetup,
     external_challenges: &GKRExternalChallenges<BF, E4>,
-    // ACTUAL per-circuit inits-and-teardowns top bits (one per teardown set):
-    // canonical `0..sets` for circuits with real i&t data, all zeros for
-    // trivial (dummy) unified chunks. Values feed only constant terms in the
-    // i&t initial-pair materialization; plan structure is invariant to them.
     inits_and_teardowns_top_bits: &[u32],
     final_trace_size_log_2: u32,
     output_evaluations_slab: Option<ForwardOutputSlabTarget<E4>>,
@@ -138,7 +131,6 @@ pub fn schedule_forward_pass(
     let mut tracing_ranges = Vec::new();
     let forward_range = Range::new("gkr.forward.schedule")?;
     forward_range.start(stream)?;
-    let usage = analyze_forward_lookup_usage(programs);
     let setup_trace_holder = setup_trace_holder
         .or(synthetic_setup_trace_holder)
         .expect("forward pass requires either uploaded or synthetic setup trace holder");
@@ -161,45 +153,32 @@ pub fn schedule_forward_pass(
     storage.set_layout(storage_layout);
     bind_scratch_space_into_storage(compiled_circuit, stage1, &mut storage);
 
-    if usage.last_generic_mapping_layer.is_none() {
-        stage1.lookup_mappings.release_generic_family();
-    }
-    if usage.last_range_mapping_layer.is_none() {
-        stage1.lookup_mappings.release_range_check_16();
-    }
-    if usage.last_timestamp_mapping_layer.is_none() {
-        stage1.lookup_mappings.release_timestamp();
-    }
-    if usage.last_generic_lookup_layer.is_none() {
-        forward_setup.release_generic_lookup();
-    }
-
     assert_eq!(
         programs.forward.layers.len(),
         compiled_circuit.layers.len(),
         "forward GKR program must cover every main layer",
     );
 
-    for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
-        let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
-        layer_range.start(stream)?;
-        schedule_layer(
-            layer_idx,
-            layer,
-            compiled_circuit,
-            &mut storage,
-            stage1,
-            forward_setup,
-            external_challenges,
-            trace_len,
-            inits_and_teardowns_top_bits,
-            &programs.forward.layers[layer_idx],
-            context,
-        )?;
-        layer_range.end(stream)?;
-        tracing_ranges.push(layer_range);
-        release_forward_lookup_resources_after_layer(layer_idx, &usage, stage1, forward_setup);
-    }
+    let vm_range = Range::new("gkr.forward.vm")?;
+    vm_range.start(stream)?;
+    vm::production_bind::schedule_vm(
+        compiled_circuit,
+        &programs.forward.layers,
+        &mut storage,
+        stage1,
+        forward_setup,
+        external_challenges,
+        trace_len,
+        inits_and_teardowns_top_bits,
+        context,
+    )?;
+    vm_range.end(stream)?;
+    tracing_ranges.push(vm_range);
+
+    stage1.lookup_mappings.release_generic_family();
+    stage1.lookup_mappings.release_range_check_16();
+    stage1.lookup_mappings.release_timestamp();
+    forward_setup.release_generic_lookup();
 
     for (output_type, addresses) in compiled_circuit.global_output_map.iter() {
         for address in addresses.iter().copied() {
@@ -238,35 +217,6 @@ pub fn schedule_forward_pass(
     })
 }
 
-fn schedule_layer(
-    layer_idx: usize,
-    layer: &GKRLayerDescription,
-    compiled_circuit: &GKRCircuitArtifact<BF>,
-    storage: &mut GpuGKRStorage<BF, E4>,
-    stage1: &GpuGKRStage1Output,
-    forward_setup: &GpuGKRForwardSetup,
-    external_challenges: &GKRExternalChallenges<BF, E4>,
-    trace_len: usize,
-    inits_and_teardowns_top_bits: &[u32],
-    program: &CompiledLayer,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
-    vm::production_bind::schedule_vm_layer(
-        layer_idx,
-        layer,
-        program,
-        storage,
-        stage1,
-        forward_setup,
-        external_challenges,
-        trace_len,
-        inits_and_teardowns_top_bits,
-        context,
-    )?;
-    Ok(())
-}
-
 fn hydrate_scratch_space_layer<E>(
     layer_idx: usize,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -293,14 +243,7 @@ fn hydrate_scratch_space_layer<E>(
     }
 }
 
-/// Register `stage1.scratch_space_trace` as the consolidated `AddressClass::ScratchSpace`
-/// backing at layer 0, plus per-`ScratchSpace` poly views. Mirrors the trace-holder
-/// pattern in `bind_trace_holder_columns_into_storage`: scratch is a first-class
-/// trace-aligned class (poly_idx == scratch_idx), so the layout-driven backward
-/// path picks it up uniformly with witness/memory.
-///
-/// Called once by `schedule_forward_pass` after the storage layout is bound and
-/// before per-layer scheduling begins.
+/// Register scratch columns and their consolidated backing for layout-driven backward.
 fn bind_scratch_space_into_storage<E>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     stage1: &GpuGKRStage1Output,
