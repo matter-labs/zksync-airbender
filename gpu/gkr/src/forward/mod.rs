@@ -12,7 +12,6 @@ use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRLayerSource, GpuGKRSt
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_ops::simple::{Add, BinaryOp, Mul, SetByRef, SetByVal, Sub};
 use gpu_prover_context::ProverContext;
 
 use crate::GkrPrograms;
@@ -109,7 +108,9 @@ use crate::upstream::{
     DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, GKRCircuitArtifact,
     GKRExternalChallenges, OutputType,
 };
-use dimension_reducing::schedule_dimension_reduction_forward;
+use dimension_reducing::{
+    prepare_dimension_reduction_forward, schedule_prepared_dimension_reduction_forward,
+};
 
 // The optional slab target transfers ownership into the scheduled forward pass.
 #[allow(clippy::needless_pass_by_value)]
@@ -159,9 +160,7 @@ pub fn schedule_forward_pass(
         "forward GKR program must cover every main layer",
     );
 
-    let vm_range = Range::new("gkr.forward.vm")?;
-    vm_range.start(stream)?;
-    vm::production_bind::schedule_vm(
+    let mut lowered_vm = vm::production_bind::prepare_vm(
         compiled_circuit,
         &programs.forward.layers,
         &mut storage,
@@ -170,6 +169,25 @@ pub fn schedule_forward_pass(
         external_challenges,
         trace_len,
         inits_and_teardowns_top_bits,
+        context,
+    )?;
+
+    let prepared_reductions = prepare_dimension_reduction_forward(
+        &mut storage,
+        compiled_circuit.layers.len(),
+        &compiled_circuit.global_output_map,
+        trace_len.trailing_zeros(),
+        final_trace_size_log_2,
+        output_evaluations_slab.as_ref(),
+        context,
+    )?;
+
+    let vm_range = Range::new("gkr.forward.vm")?;
+    vm_range.start(stream)?;
+    vm::production_bind::schedule_vm(
+        &mut lowered_vm,
+        &prepared_reductions,
+        forward_setup,
         context,
     )?;
     vm_range.end(stream)?;
@@ -193,19 +211,15 @@ pub fn schedule_forward_pass(
 
     let dimension_reduction_range = Range::new("gkr.forward.dimension_reduction")?;
     dimension_reduction_range.start(stream)?;
-    let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
-        schedule_dimension_reduction_forward(
-            &mut storage,
-            compiled_circuit.layers.len(),
-            &compiled_circuit.global_output_map,
-            trace_len.trailing_zeros(),
-            final_trace_size_log_2,
-            output_evaluations_slab.as_ref(),
-            &mut tracing_ranges,
-            context,
-        )?;
+    schedule_prepared_dimension_reduction_forward(
+        &prepared_reductions,
+        vm::desc::FUSED_REDUCTION_ROUNDS as u32,
+        &mut tracing_ranges,
+        context,
+    )?;
     dimension_reduction_range.end(stream)?;
     tracing_ranges.push(dimension_reduction_range);
+    let (initial_layer_for_sumcheck, dimension_reducing_inputs) = prepared_reductions.into_result();
     forward_range.end(stream)?;
     tracing_ranges.push(forward_range);
 

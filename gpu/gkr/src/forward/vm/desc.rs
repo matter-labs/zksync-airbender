@@ -12,6 +12,10 @@ pub(crate) const SOURCE_WINDOW_COUNT: usize = 16;
 pub(crate) const LAYER_CAP: usize = 8;
 pub(crate) const DST_SLOT_COUNT: usize = 16;
 pub(crate) const MAPPING_ARENA_COUNT: usize = 3;
+pub(crate) const FUSED_REDUCTION_ROUNDS: usize = 7;
+pub(crate) const REDUCTION_PAIR_CAP: usize = 5;
+pub(crate) const REDUCTION_PAIR_PAIRWISE2: u32 = 0;
+pub(crate) const REDUCTION_PAIR_LOOKUP: u32 = 1;
 
 // --- special-descriptor strategy kinds (packed-desc `kind` field) ------------
 pub(crate) const SD_SINGLE_COLUMN: u32 = 0;
@@ -122,6 +126,15 @@ pub(crate) struct FwdVmLayer {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+pub(crate) struct FwdVmReductionPair {
+    pub input: [*const E4; 2],
+    pub round_outputs: [[*mut E4; 2]; FUSED_REDUCTION_ROUNDS],
+    pub kind: u32,
+    pub reserved: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub(crate) struct FwdVmDesc {
     pub arg_derived_e4: [E4; ARG_DERIVED_E4_CAP],
     pub source_base: [*mut u8; SOURCE_WINDOW_COUNT],
@@ -137,13 +150,17 @@ pub(crate) struct FwdVmDesc {
     pub count: u32,
     pub layer_count: u32,
     pub layers: [FwdVmLayer; LAYER_CAP],
+    pub reduction_pair_count: u32,
+    pub reduction_pairs: [FwdVmReductionPair; REDUCTION_PAIR_CAP],
     pub program: [u16; PROGRAM_CAP],
 }
 
 /// ABI size guards, paired with the CUDA `static_assert`s in `fwd_vm.cuh`.
 const _: () = {
     assert!(core::mem::size_of::<FwdVmLayer>() == 4);
-    assert!(core::mem::size_of::<FwdVmDesc>() == 26_976);
+    assert!(core::mem::size_of::<FwdVmReductionPair>() == 136);
+    assert!(core::mem::align_of::<FwdVmReductionPair>() == 8);
+    assert!(core::mem::size_of::<FwdVmDesc>() == 27_664);
     assert!(core::mem::size_of::<FwdVmDesc>() <= 32_764);
     assert!(core::mem::align_of::<FwdVmDesc>() == 16);
 };
@@ -161,6 +178,13 @@ mod tests {
         assert_eq!(offset_of!(FwdVmLayer, program_offset), 0);
         assert_eq!(offset_of!(FwdVmLayer, instruction_count), 2);
 
+        assert_eq!(size_of::<FwdVmReductionPair>(), 136);
+        assert_eq!(align_of::<FwdVmReductionPair>(), 8);
+        assert_eq!(offset_of!(FwdVmReductionPair, input), 0);
+        assert_eq!(offset_of!(FwdVmReductionPair, round_outputs), 16);
+        assert_eq!(offset_of!(FwdVmReductionPair, kind), 128);
+        assert_eq!(offset_of!(FwdVmReductionPair, reserved), 132);
+
         assert_eq!(offset_of!(FwdVmDesc, arg_derived_e4), 0);
         assert_eq!(offset_of!(FwdVmDesc, source_base), 192);
         assert_eq!(offset_of!(FwdVmDesc, dst_base), 320);
@@ -175,8 +199,10 @@ mod tests {
         assert_eq!(offset_of!(FwdVmDesc, count), 2_356);
         assert_eq!(offset_of!(FwdVmDesc, layer_count), 2_360);
         assert_eq!(offset_of!(FwdVmDesc, layers), 2_364);
-        assert_eq!(offset_of!(FwdVmDesc, program), 2_396);
-        assert_eq!(size_of::<FwdVmDesc>(), 26_976);
+        assert_eq!(offset_of!(FwdVmDesc, reduction_pair_count), 2_396);
+        assert_eq!(offset_of!(FwdVmDesc, reduction_pairs), 2_400);
+        assert_eq!(offset_of!(FwdVmDesc, program), 3_080);
+        assert_eq!(size_of::<FwdVmDesc>(), 27_664);
         assert_eq!(align_of::<FwdVmDesc>(), 16);
     }
 

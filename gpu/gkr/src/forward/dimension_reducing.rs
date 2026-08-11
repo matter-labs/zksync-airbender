@@ -32,59 +32,55 @@ pub(super) type DimensionReductionForwardResult = (
     BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
 );
 
-pub(super) fn schedule_dimension_reduction_forward<E>(
+pub(super) struct PreparedDimensionReductionForward<E> {
+    pub(super) initial_trace_log_2: u32,
+    pub(super) total_rounds: u32,
+    pub(super) final_layer_idx: usize,
+    pub(super) dimension_reduction_description:
+        BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
+    pub(super) slot_initial_inputs: Vec<LoweredSlotInitialInput<E>>,
+    pub(super) slot_output_types: Vec<OutputType>,
+    pub(super) per_round_slot_outputs: Vec<Vec<LoweredSlotOutput<E>>>,
+}
+
+impl<E> PreparedDimensionReductionForward<E> {
+    pub(super) fn into_result(self) -> DimensionReductionForwardResult {
+        (self.final_layer_idx, self.dimension_reduction_description)
+    }
+}
+
+pub(super) fn prepare_dimension_reduction_forward<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     initial_layer_idx: usize,
     initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
     initial_trace_log_2: u32,
     final_trace_log_2: u32,
     output_evaluations_slab: Option<&ForwardOutputSlabTarget<E>>,
-    tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
-) -> CudaResult<DimensionReductionForwardResult>
+) -> CudaResult<PreparedDimensionReductionForward<E>>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal,
-    E: crate::ForwardKernels,
-    Add: BinaryOp<E, E, E>,
-    Add: BinaryOp<BF, E, E>,
-    Add: BinaryOp<E, BF, E>,
-    Mul: BinaryOp<E, E, E>,
-    Mul: BinaryOp<BF, E, E>,
-    Mul: BinaryOp<E, BF, E>,
-    Sub: BinaryOp<E, E, E>,
-    Sub: BinaryOp<E, BF, E>,
-    Sub: BinaryOp<BF, BF, BF>,
+    E: FieldExtension<BF> + Field + 'static,
 {
-    let mut dimension_reduction_description = BTreeMap::new();
-    let mut current_layer_idx = initial_layer_idx;
-    let stream = context.get_exec_stream();
     let total_rounds = initial_trace_log_2.saturating_sub(final_trace_log_2);
-    if total_rounds == 0 {
-        return Ok((current_layer_idx, dimension_reduction_description));
-    }
-
-    // Phase 1: lower + commit every round sequentially so subsequent rounds can resolve inputs
-    // from storage. Collect per-round per-slot output pointers for the later tower assembly.
-    let mut per_round_slot_outputs: Vec<Vec<LoweredSlotOutput<E>>> =
-        Vec::with_capacity(total_rounds as usize);
-    let mut slot_initial_inputs: Option<Vec<LoweredSlotInitialInput<E>>> = None;
-    let mut slot_output_types: Option<Vec<OutputType>> = None;
+    let mut dimension_reduction_description = BTreeMap::new();
+    let mut per_round_slot_outputs = Vec::with_capacity(total_rounds as usize);
+    let mut slot_initial_inputs = None;
+    let mut slot_output_types = None;
+    let mut current_layer_idx = initial_layer_idx;
 
     for round_idx in 0..total_rounds {
         let input_size_log_2 = initial_trace_log_2 - round_idx;
         let output_trace_len = 1usize << (input_size_log_2 - 1);
         let is_final_round = round_idx + 1 == total_rounds;
-
-        let layer_inputs = if current_layer_idx != initial_layer_idx {
+        let layer_inputs = if current_layer_idx == initial_layer_idx {
+            initial_output_map.clone()
+        } else {
             let previous: &BTreeMap<OutputType, DimensionReducingInputOutput> =
                 dimension_reduction_description
                     .get(&(current_layer_idx - 1))
                     .expect("dimension reduction input layer must exist");
-            BTreeMap::from_iter(previous.iter().map(|(k, v)| (*k, v.output.clone())))
-        } else {
-            initial_output_map.clone()
+            BTreeMap::from_iter(previous.iter().map(|(kind, io)| (*kind, io.output.clone())))
         };
-
         let lowered = lower_dimension_reducing_forward_round(
             &layer_inputs,
             current_layer_idx,
@@ -103,7 +99,6 @@ where
             slot_output_types = Some(lowered.slot_output_types.clone());
         }
         per_round_slot_outputs.push(lowered.slot_outputs.clone());
-
         for (address, poly) in lowered.computed_extension_outputs {
             storage.insert_extension_at_layer(current_layer_idx + 1, address, poly);
         }
@@ -111,78 +106,100 @@ where
         current_layer_idx += 1;
     }
 
-    // Phase 2: slot-major dispatch, all launches on exec_stream. Each slot's full reduction
-    // chain (every tower chunk) runs contiguously before the next slot starts. One NVTX range
-    // per OutputType wraps all slots belonging to that type — PermutationProduct covers both
-    // read_set and write_set chains; each lookup type covers its single (num, den) chain.
-    let slot_initial_inputs =
-        slot_initial_inputs.expect("non-zero rounds implies we captured initial inputs");
-    let slot_output_types =
-        slot_output_types.expect("non-zero rounds implies we captured slot output types");
-    let slot_count = slot_initial_inputs.len();
-    let log_block = GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK;
+    Ok(PreparedDimensionReductionForward {
+        initial_trace_log_2,
+        total_rounds,
+        final_layer_idx: if total_rounds == 0 {
+            initial_layer_idx
+        } else {
+            current_layer_idx - 1
+        },
+        dimension_reduction_description,
+        slot_initial_inputs: slot_initial_inputs.unwrap_or_default(),
+        slot_output_types: slot_output_types.unwrap_or_default(),
+        per_round_slot_outputs,
+    })
+}
 
+pub(super) fn schedule_prepared_dimension_reduction_forward<E>(
+    prepared: &PreparedDimensionReductionForward<E>,
+    start_round: u32,
+    tracing_ranges: &mut Vec<Range>,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    E: crate::ForwardKernels,
+{
+    assert!(start_round <= prepared.total_rounds);
+    if start_round == prepared.total_rounds {
+        return Ok(());
+    }
+
+    let stream = context.get_exec_stream();
+    let slot_count = prepared.slot_initial_inputs.len();
+    assert_eq!(prepared.slot_output_types.len(), slot_count);
     let mut slot_idx = 0usize;
     while slot_idx < slot_count {
-        let range_type = slot_output_types[slot_idx];
-        let range_end = slot_output_types[slot_idx..]
+        let range_type = prepared.slot_output_types[slot_idx];
+        let range_end = prepared.slot_output_types[slot_idx..]
             .iter()
-            .position(|t| *t != range_type)
+            .position(|kind| *kind != range_type)
             .map(|offset| slot_idx + offset)
             .unwrap_or(slot_count);
-
         let range = Range::new(format!(
-            "gkr.forward.dimension_reduction.tower.{:?}",
-            range_type
+            "gkr.forward.dimension_reduction.tower.{range_type:?}"
         ))?;
         range.start(stream)?;
 
-        for s in slot_idx..range_end {
-            let mut cur_input = slot_initial_inputs[s];
-            let mut cur_input_log_2 = initial_trace_log_2;
-            let mut r = 0u32;
-            while r < total_rounds {
-                let remaining = total_rounds - r;
-                let chunk_rounds = remaining.min(log_block);
-                let chunk_input_len = 1u32 << cur_input_log_2;
+        for slot in slot_idx..range_end {
+            let mut current_input = if start_round == 0 {
+                prepared.slot_initial_inputs[slot]
+            } else {
+                output_as_input(prepared.per_round_slot_outputs[start_round as usize - 1][slot])
+            };
+            let mut current_input_log_2 = prepared.initial_trace_log_2 - start_round;
+            let mut round = start_round;
+            while round < prepared.total_rounds {
+                let chunk_rounds =
+                    (prepared.total_rounds - round).min(GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK);
                 dispatch_tower_slot_launch(
-                    cur_input,
-                    s,
-                    r,
+                    current_input,
+                    slot,
+                    round,
                     chunk_rounds,
-                    chunk_input_len,
-                    &per_round_slot_outputs,
+                    1u32 << current_input_log_2,
+                    &prepared.per_round_slot_outputs,
                     stream,
                 )?;
-                r += chunk_rounds;
-                cur_input_log_2 -= chunk_rounds;
-                if r < total_rounds {
-                    let last_round = (r - 1) as usize;
-                    cur_input = match per_round_slot_outputs[last_round][s] {
-                        LoweredSlotOutput::PairwiseProduct { output } => {
-                            LoweredSlotInitialInput::PairwiseProduct {
-                                input: output as *const E,
-                            }
-                        }
-                        LoweredSlotOutput::LookupPair {
-                            output_num,
-                            output_den,
-                        } => LoweredSlotInitialInput::LookupPair {
-                            num: output_num as *const E,
-                            den: output_den as *const E,
-                        },
-                    };
+                round += chunk_rounds;
+                current_input_log_2 -= chunk_rounds;
+                if round < prepared.total_rounds {
+                    current_input =
+                        output_as_input(prepared.per_round_slot_outputs[round as usize - 1][slot]);
                 }
             }
         }
 
         range.end(stream)?;
         tracing_ranges.push(range);
-
         slot_idx = range_end;
     }
+    Ok(())
+}
 
-    Ok((current_layer_idx - 1, dimension_reduction_description))
+fn output_as_input<E>(output: LoweredSlotOutput<E>) -> LoweredSlotInitialInput<E> {
+    match output {
+        LoweredSlotOutput::PairwiseProduct { output } => {
+            LoweredSlotInitialInput::PairwiseProduct { input: output }
+        }
+        LoweredSlotOutput::LookupPair {
+            output_num,
+            output_den,
+        } => LoweredSlotInitialInput::LookupPair {
+            num: output_num,
+            den: output_den,
+        },
+    }
 }
 
 fn dispatch_tower_slot_launch<E>(

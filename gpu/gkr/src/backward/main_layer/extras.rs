@@ -206,7 +206,7 @@ pub(crate) fn schedule_main_layer_extras_eval(
     })
 }
 
-/// Structural variant of [`schedule_dimension_reduction_forward`]'s
+/// Structural variant of `prepare_dimension_reduction_forward`'s
 /// `dimension_reduction_description` output: replicates the address-only
 /// portion of the per-round lowering in
 /// `gpu/gkr/src/forward/dimension_reducing.rs`'s

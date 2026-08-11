@@ -1,6 +1,10 @@
 use super::*;
 use helpers::*;
 
+use super::dimension_reducing::{
+    prepare_dimension_reduction_forward, schedule_prepared_dimension_reduction_forward,
+    LoweredSlotOutput,
+};
 use crate::test_utils::make_test_context;
 use gpu_core::primitives::field::E4;
 
@@ -106,19 +110,46 @@ fn dimension_reducing_forward_tower_matches_reference() {
         final_trace_log_2,
     );
 
-    let mut tracing_ranges = Vec::new();
-    let (final_layer_idx, dim_reducing_inputs) = schedule_dimension_reduction_forward::<E4>(
+    let prepared = prepare_dimension_reduction_forward::<E4>(
         &mut storage,
         current_layer_idx,
         &initial_output_map,
         initial_trace_log_2,
         final_trace_log_2,
         None,
-        &mut tracing_ranges,
         &context,
     )
     .unwrap();
+    let mut tracing_ranges = Vec::new();
+    schedule_prepared_dimension_reduction_forward(&prepared, 0, &mut tracing_ranges, &context)
+        .unwrap();
+
+    let stream = context.get_exec_stream();
+    for (round_idx, outputs) in prepared.per_round_slot_outputs.iter().enumerate().skip(7) {
+        let output_len = 1usize << (initial_trace_log_2 - round_idx as u32 - 1);
+        for output in outputs {
+            let pointers = match *output {
+                LoweredSlotOutput::PairwiseProduct { output } => [output, std::ptr::null_mut()],
+                LoweredSlotOutput::LookupPair {
+                    output_num,
+                    output_den,
+                } => [output_num, output_den],
+            };
+            for pointer in pointers.into_iter().filter(|pointer| !pointer.is_null()) {
+                let output = unsafe { DeviceSlice::from_raw_parts_mut(pointer, output_len) };
+                era_cudart::memory::memory_set_async(
+                    unsafe { output.transmute_mut::<u8>() },
+                    0,
+                    stream,
+                )
+                .unwrap();
+            }
+        }
+    }
+    schedule_prepared_dimension_reduction_forward(&prepared, 7, &mut tracing_ranges, &context)
+        .unwrap();
     context.get_exec_stream().synchronize().unwrap();
+    let (final_layer_idx, dim_reducing_inputs) = prepared.into_result();
 
     let total_rounds = initial_trace_log_2 - final_trace_log_2;
     assert_eq!(
