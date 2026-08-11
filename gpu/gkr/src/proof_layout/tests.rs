@@ -52,9 +52,7 @@ fn sample_inputs() -> ProofLayoutInputs {
             final_step_eval_degree: 2,
             // Exercise non-empty cached-relation extras to validate the extra
             // range's sizing + parser round-trip in this slot.
-            // Production code derives this list via a BTreeSet
-            // (`compute_main_layer_extra_evaluation_addresses_per_layer`),
-            // so the ordering matches `GKRAddress`'s `Ord` impl —
+            // Production stores this list in `GKRAddress` order, so
             // `InnerLayer` < `ScratchSpace` per the enum-variant
             // declaration order.
             extra_evaluations_addresses: vec![

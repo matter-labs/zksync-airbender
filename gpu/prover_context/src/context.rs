@@ -51,7 +51,6 @@ pub struct ProverContext {
     exec_stream: CudaStream,
     side_stream: CudaStream,
     h2d_stream: CudaStream,
-    d2h_stream: CudaStream,
     device_allocator_mem_size: usize,
     device_id: i32,
     device_properties: DeviceProperties,
@@ -80,7 +79,6 @@ impl ProverContext {
         let exec_stream = CudaStream::create()?;
         let side_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
-        let d2h_stream = CudaStream::create()?;
         let mut device_blocks_count =
             if let Some(max_blocks_count) = config.max_device_allocation_blocks_count {
                 max_blocks_count
@@ -140,7 +138,6 @@ impl ProverContext {
             exec_stream,
             side_stream,
             h2d_stream,
-            d2h_stream,
             device_allocator_mem_size,
             device_id,
             device_properties,
@@ -170,15 +167,6 @@ impl ProverContext {
 
     pub fn get_h2d_stream(&self) -> &CudaStream {
         &self.h2d_stream
-    }
-
-    /// Device-to-host transfer stream. Use for D2H copies (and their consumer callbacks) that
-    /// would otherwise serialize on `exec_stream`. Producers on `exec_stream` hand off to
-    /// `d2h_stream` via a fork event; `d2h_stream` joins back via a second event before the next
-    /// exec-stream op that reads what d2h wrote or frees a pool-backed source. See
-    /// `gpu/docs/gpu_scheduling_contract.md` for the fork/join/drop ownership rules.
-    pub fn get_d2h_stream(&self) -> &CudaStream {
-        &self.d2h_stream
     }
 
     pub fn alloc<T>(
@@ -246,9 +234,6 @@ impl ProverContext {
     /// device contents); reading from it before that is UB on the uninit
     /// memory.
     ///
-    /// `pub` (not `pub(crate)`): production code in `gpu_circuit_prover`'s
-    /// `trace::memory` and `proof::orchestration::terminal` allocates host
-    /// readback staging through this across the crate boundary.
     pub unsafe fn alloc_host_uninit_slice<T: Sized>(&self, len: usize) -> HostAllocation<[T]> {
         HostAllocation::new_uninit_slice_in(len, self.get_host_allocator())
     }
@@ -261,32 +246,9 @@ impl ProverContext {
         self.device_allocator.get_used_mem_current()
     }
 
-    // `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
-    // reach this helper across the crate boundary. // test-reference readers
     #[doc(hidden)]
     pub fn get_used_mem_peak(&self) -> usize {
         self.device_allocator.get_used_mem_peak()
-    }
-
-    // `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
-    // reach this helper across the crate boundary. // test-reference readers
-    #[doc(hidden)]
-    pub fn get_host_used_mem_current(&self) -> usize {
-        self.host_allocator.get_used_mem_current()
-    }
-
-    // `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
-    // reach this helper across the crate boundary. // test-reference readers
-    #[doc(hidden)]
-    pub fn get_host_used_mem_peak(&self) -> usize {
-        self.host_allocator.get_used_mem_peak()
-    }
-
-    // `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
-    // reach this helper across the crate boundary. // test-reference readers
-    #[doc(hidden)]
-    pub fn reset_host_used_mem_peak(&self) {
-        self.host_allocator.reset_used_mem_peak();
     }
 
     pub fn reset_used_mem_peak(&self) {

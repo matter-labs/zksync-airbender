@@ -127,11 +127,6 @@ fn gpu_worker(
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
     let mut context = ProverContext::new(&prover_context_config)?;
-    // One-time, process-global flat-kernel cache-preference setup (Once-guarded
-    // in gkr::backward::flat). Must run before the first backward flat-kernel
-    // launch; the prover layer owns it, so we trigger it here rather than from
-    // the primitives substrate.
-    gpu_gkr::configure_kernel_attributes();
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
@@ -272,8 +267,7 @@ fn schedule_phase_one<'a>(
             } else {
                 None
             };
-        // Geometry must match what `commit_memory_inner` used to produce the
-        // caps (it reads `lde_factor` and `cap_size` from `prover_config`).
+        // Geometry must match the configuration used to commit the caps.
         // `circuit_type.get_lde_factor()` / `get_tree_cap_size()` are derived
         // from `OPTIMAL_FOLDING_PROPERTIES` and can disagree with the
         // `prover_config` the commit phase actually used, so use the
@@ -297,7 +291,11 @@ fn schedule_phase_one<'a>(
         let external_challenges_value = state
             .external_challenges
             .expect("Proof requires external_challenges");
-        let compiled_circuit = state.precomputations.compiled_circuit.as_ref();
+        let compiled_circuit = state
+            .precomputations
+            .gkr_programs
+            .compiled_circuit()
+            .as_ref();
         // ACTUAL top bits for this circuit: canonical (== the real top bits in
         // the supported regime) for circuits with real i&t data; all zeros for
         // trivial unified chunks, mirroring the CPU reference
@@ -353,17 +351,15 @@ fn enqueue_phase_two<'a>(
         gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
             .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
     let final_trace_size_log_2 = 4u32;
-    let compiled_circuit_arc = state.precomputations.compiled_circuit.clone();
+    let compiled_circuit_arc = Arc::clone(state.precomputations.gkr_programs.compiled_circuit());
 
     let job = match inputs {
         PhaseOneInputs::Proof(bundle) => {
-            let compiled_circuit_value = (*compiled_circuit_arc).clone();
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
             let job = prove::<A>(
-                circuit_type,
-                compiled_circuit_value,
+                &state.precomputations.gkr_programs,
                 &prover_config,
                 final_trace_size_log_2,
                 bundle,

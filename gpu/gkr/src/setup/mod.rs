@@ -7,9 +7,9 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
 
 use super::GpuGKRStorage;
-use crate::upstream::{
-    CpuGKRSetup, Field, FieldExtension, GKRAddress, GKRCircuitArtifact, TableType,
-};
+#[cfg(test)]
+use crate::upstream::Field;
+use crate::upstream::{CpuGKRSetup, GKRAddress, GKRCircuitArtifact, TableType};
 use era_cudart::slice::DeviceSlice;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::callbacks::Callbacks;
@@ -108,10 +108,11 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 
     #[cfg(test)]
     pub(crate) fn bind_setup_columns_into_storage<E>(&self, storage: &mut GpuGKRStorage<BF, E>) {
+        assert!(self.host.columns_count > 0);
         assert_eq!(self.trace_holder.columns_count, self.host.columns_count);
         assert_eq!(
             1usize << self.trace_holder.log_domain_size,
-            self.host.trace_len
+            self.host.raw_hypercube_evals.len() / self.host.columns_count
         );
         bind_trace_holder_columns_into_storage(&self.trace_holder, storage, GKRAddress::Setup);
     }
@@ -165,20 +166,12 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     /// have already ensured the H2D into `self.trace_holder` is visible to
     /// `exec_stream` (via the bundle's `ensure_transferred` in production, or
     /// `h2d_stream.synchronize()` in tests).
-    pub fn schedule_forward_setup<E>(
+    pub fn schedule_forward_setup(
         &self,
         compiled_circuit: &GKRCircuitArtifact<BF>,
-        d_lookup_challenges: DeviceAllocation<E>,
+        d_lookup_challenges: DeviceAllocation<E4>,
         context: &ProverContext,
-    ) -> CudaResult<GpuGKRForwardSetup<E>>
-    where
-        // `GpuKernels` (not the sealed `SetupKernels`): see ../gpu_kernels.rs.
-        E: Field
-            + FieldExtension<BF>
-            + crate::GpuKernels
-            + gpu_ops::powers::GetPowersByRef
-            + 'static,
-    {
+    ) -> CudaResult<GpuGKRForwardSetup> {
         schedule_forward_setup_for_shape(
             Some((&self.trace_holder, self.host.columns_count)),
             compiled_circuit.trace_len,
@@ -191,19 +184,15 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     }
 }
 
-pub fn schedule_forward_setup_for_shape<E>(
+pub fn schedule_forward_setup_for_shape(
     setup_trace_holder: Option<(&TraceHolder<BF>, usize)>,
     trace_len: usize,
     generic_lookup_width: usize,
     generic_lookup_len: usize,
     tables_ids_in_generic_lookups: bool,
-    d_lookup_challenges: DeviceAllocation<E>,
+    d_lookup_challenges: DeviceAllocation<E4>,
     context: &ProverContext,
-) -> CudaResult<GpuGKRForwardSetup<E>>
-where
-    // `GpuKernels` (not the sealed `SetupKernels`): see ../gpu_kernels.rs.
-    E: Field + FieldExtension<BF> + crate::GpuKernels + gpu_ops::powers::GetPowersByRef + 'static,
-{
+) -> CudaResult<GpuGKRForwardSetup> {
     if let Some((setup_trace_holder, setup_columns_count)) = setup_trace_holder {
         assert_eq!(
             trace_len,
@@ -241,7 +230,7 @@ where
     let callbacks = Callbacks::new();
 
     let mut device_decoder_lookup_fill_value =
-        context.alloc::<E>(1, AllocationPlacement::BestFit)?;
+        context.alloc::<E4>(1, AllocationPlacement::BestFit)?;
 
     // We need `alpha_powers` populated in setup constant memory whenever we'll
     // launch the generic-lookup kernel. The kernel runs when either:
@@ -262,8 +251,7 @@ where
         )?;
     }
     if decoder_table_id_value == 0 {
-        // No decoder fill value to compute. Zero-init the 1-E slot so it's deterministic;
-        // downstream forward-cache kernels won't read from it when `decoder_mask` is null.
+        // Keep the unused forward-VM slot deterministic.
         unsafe {
             era_cudart::memory::memory_set_async(
                 device_decoder_lookup_fill_value.transmute_mut::<u8>(),
@@ -274,7 +262,7 @@ where
     }
 
     let mut generic_lookup = if generic_lookup_len > 0 {
-        Some(context.alloc::<E>(generic_lookup_len, AllocationPlacement::BestFit)?)
+        Some(context.alloc::<E4>(generic_lookup_len, AllocationPlacement::BestFit)?)
     } else {
         None
     };
@@ -393,36 +381,31 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
     Ok(storage)
 }
 
-pub struct GpuGKRForwardSetup<E> {
+pub struct GpuGKRForwardSetup {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
-    d_lookup_challenges: DeviceAllocation<E>,
-    device_decoder_lookup_fill_value: DeviceAllocation<E>,
-    generic_lookup: Option<DeviceAllocation<E>>,
+    d_lookup_challenges: DeviceAllocation<E4>,
+    device_decoder_lookup_fill_value: DeviceAllocation<E4>,
+    generic_lookup: Option<DeviceAllocation<E4>>,
 }
 
-pub struct GpuGKRForwardSetupHostKeepalive<E> {
+pub struct GpuGKRForwardSetupHostKeepalive {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
-    _marker: PhantomData<E>,
 }
 
-impl<E> GpuGKRForwardSetup<E> {
-    pub fn has_generic_lookup(&self) -> bool {
-        self.generic_lookup.is_some()
-    }
-
+impl GpuGKRForwardSetup {
     /// Device view over `d_lookup_challenges[1..2]` — `lookup_additive_part` lives in the
     /// second slot of the device-resident lookup challenges buffer. No standalone allocation.
-    pub(crate) fn lookup_additive_part_device(&self) -> &era_cudart::slice::DeviceSlice<E> {
+    pub(crate) fn lookup_additive_part_device(&self) -> &era_cudart::slice::DeviceSlice<E4> {
         &self.d_lookup_challenges[1..2]
     }
 
-    pub(crate) fn decoder_lookup_fill_value_device(&self) -> &DeviceAllocation<E> {
+    pub(crate) fn decoder_lookup_fill_value_device(&self) -> &DeviceAllocation<E4> {
         &self.device_decoder_lookup_fill_value
     }
 
-    pub fn generic_lookup(&self) -> &DeviceAllocation<E> {
+    pub fn generic_lookup(&self) -> &DeviceAllocation<E4> {
         self.generic_lookup
             .as_ref()
             .expect("generic lookup runtime was released")
@@ -442,12 +425,12 @@ impl<E> GpuGKRForwardSetup<E> {
     /// Hands the `d_lookup_challenges` device buffer back to the caller instead
     /// of dropping it. The forward pass no longer reads it once this is called,
     /// so it can be repurposed as the lookup-and-constraint device input for
-    /// `schedule_execute_backward_workflow_from_shared_state` — saves the
+    /// `schedule_execute_backward_workflow` — saves the
     /// otherwise-required separate allocation + D2D from the post-forward
     /// transcript squeeze.
     pub fn into_host_keepalive_taking_lookup_challenges(
         self,
-    ) -> (GpuGKRForwardSetupHostKeepalive<E>, DeviceAllocation<E>) {
+    ) -> (GpuGKRForwardSetupHostKeepalive, DeviceAllocation<E4>) {
         let Self {
             _tracing_ranges,
             _callbacks,
@@ -459,7 +442,6 @@ impl<E> GpuGKRForwardSetup<E> {
             GpuGKRForwardSetupHostKeepalive {
                 _tracing_ranges,
                 _callbacks,
-                _marker: PhantomData,
             },
             d_lookup_challenges,
         )

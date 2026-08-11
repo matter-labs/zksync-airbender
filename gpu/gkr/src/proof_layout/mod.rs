@@ -24,15 +24,6 @@
 //! `ProverContext::new` asserts `host_allocator_block_log_size >= 5` (32-byte
 //! blocks) so block addresses meet the `FIELD_ALIGN` requirement above.
 //!
-//! ## Layer position
-//!
-//! This module holds only plain layout DATA: the slab byte-range geometry and
-//! the typed accessors over a built slab. It depends solely on `primitives` +
-//! `upstream` and is a lower leaf in the `prover` module DAG — `gkr` and `whir`
-//! depend DOWN on it. The gkr-dependent builder that *derives* these inputs
-//! from a compiled circuit lives one layer up, in `prover::proof::layout`
-//! (`build_proof_layout_inputs`).
-
 use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::ops::Range;
@@ -265,11 +256,11 @@ pub struct ProofLayout {
 }
 
 mod accessors;
+mod build_inputs;
 pub use accessors::WhirBaseLayerKind; // pinned public API (apex whir/proof)
+pub use build_inputs::build_proof_layout_inputs;
 
-/// Trace-holder geometry subset needed to size WHIR base-layer fields in the
-/// slab. Constructed by the gkr-side `build_proof_layout_inputs` builder one
-/// layer up.
+/// Trace-holder geometry subset needed to size WHIR base-layer fields in the slab.
 #[derive(Clone, Copy, Debug)]
 pub struct ProofLayoutBaseLayerGeometry {
     pub columns_count: usize,

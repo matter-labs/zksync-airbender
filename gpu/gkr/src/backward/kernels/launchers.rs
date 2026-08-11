@@ -2,18 +2,12 @@ use std::ffi::c_void;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
-use era_cudart::slice::DeviceSlice;
-use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use era_cudart_sys::cudaGetSymbolAddress;
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
-use super::super::super::{
-    GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
-};
 use super::encoding::{
     GpuGKRDimensionReducingContinuationBatchCompact, GpuGKRDimensionReducingRound0BatchCompact,
 };
-use crate::upstream::Field;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use gpu_prover_context::ProverContext;
@@ -39,7 +33,12 @@ pub struct GkrEqSizes {
     pub(crate) low: u32,
 }
 
-const _: () = assert!(std::mem::size_of::<GkrEqSizes>() == 12);
+const _: () = {
+    assert!(std::mem::size_of::<GkrEqSizes>() == 12);
+    assert!(std::mem::align_of::<GkrEqSizes>() == 4);
+    assert!(std::mem::offset_of!(GkrEqSizes, high) == 0);
+    assert!(std::mem::offset_of!(GkrEqSizes, low) == 8);
+};
 
 impl GkrEqSizes {
     /// Zero-initialised descriptor; used as the `Default` impl for the compact
@@ -80,7 +79,7 @@ pub fn make_eq_sizes(challenge_count: usize) -> GkrEqSizes {
     GkrEqSizes { high, low }
 }
 
-extern "C" {
+cuda_struct_and_stub! {
     static ab_gkr_eq_high: [[E4; GKR_EQ_GROUP_TABLE_LEN]; GKR_EQ_HIGH_SLOTS];
 }
 
@@ -97,51 +96,6 @@ pub(crate) fn get_eq_high_constant_device_ptr() -> *mut E4 {
         .expect("cudaGetSymbolAddress failed for ab_gkr_eq_high");
     ptr as *mut E4
 }
-
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuDimensionReducingPairwiseRound0<T>,
-    inputs: *const GpuExtensionFieldPolyInitialSource<T>,
-    outputs: *const GpuExtensionFieldPolyInitialSource<T>,
-    batch_challenges: *const T,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuDimensionReducingLookupRound0<T>,
-    inputs: *const GpuExtensionFieldPolyInitialSource<T>,
-    outputs: *const GpuExtensionFieldPolyInitialSource<T>,
-    batch_challenges: *const T,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuDimensionReducingPairwiseContinuation<T>,
-    inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<T>,
-    folding_challenge: *const T,
-    batch_challenges: *const T,
-    explicit_form: bool,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuDimensionReducingLookupContinuation<T>,
-    inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<T>,
-    folding_challenge: *const T,
-    batch_challenges: *const T,
-    explicit_form: bool,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuDimensionReducingBuildEqGroupTablesFromPairs<T>,
-    eq_pair_values: *const T,
-    challenge_count: u32,
-    eq_group_tables: *mut T,
-);
 
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) GpuDimensionReducingBuildEqGroupTablesFromPoint<T>,
@@ -166,18 +120,6 @@ cuda_kernel_signature_arguments_and_function!(
     challenge_count: u32,
     eq_values: *mut T,
     acc_size: u32,
-);
-
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuDimensionReducingFoldEqValues<T>,
-    eq_values: *mut T,
-    half_len: u32,
-);
-
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuDimensionReducingFoldEqHighGroup<T>,
-    high_slab_group_base: *mut T,
-    new_g_len: u32,
 );
 
 cuda_kernel_signature_arguments_and_function!(
@@ -210,59 +152,6 @@ cuda_kernel_signature_arguments_and_function!(
     step: u32,
 );
 
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuGKREqInlineMaterializeForTest<T>,
-    eq_low: *const T,
-    sizes: GkrEqSizes,
-    eq_values: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_pairwise_round0_e4_kernel(
-        inputs: *const GpuExtensionFieldPolyInitialSource<E4>,
-        outputs: *const GpuExtensionFieldPolyInitialSource<E4>,
-        batch_challenges: *const E4,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_lookup_round0_e4_kernel(
-        inputs: *const GpuExtensionFieldPolyInitialSource<E4>,
-        outputs: *const GpuExtensionFieldPolyInitialSource<E4>,
-        batch_challenges: *const E4,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_pairwise_continuation_e4_kernel(
-        inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<E4>,
-        folding_challenge: *const E4,
-        batch_challenges: *const E4,
-        explicit_form: bool,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_lookup_continuation_e4_kernel(
-        inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<E4>,
-        folding_challenge: *const E4,
-        batch_challenges: *const E4,
-        explicit_form: bool,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_build_eq_group_tables_from_pairs_e4_kernel(
-        eq_pair_values: *const E4,
-        challenge_count: u32,
-        eq_group_tables: *mut E4,
-    )
-);
 cuda_kernel_declaration!(pub(crate)
     ab_gkr_dim_reducing_build_eq_group_tables_from_point_e4_kernel(
         claim_point: *const E4,
@@ -286,18 +175,6 @@ cuda_kernel_declaration!(pub(crate)
         challenge_count: u32,
         eq_values: *mut E4,
         acc_size: u32,
-    )
-);
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_fold_eq_values_e4_kernel(
-        eq_values: *mut E4,
-        half_len: u32,
-    )
-);
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_fold_eq_high_group_in_place_e4_kernel(
-        high_slab_group_base: *mut E4,
-        new_g_len: u32,
     )
 );
 cuda_kernel_declaration!(pub(crate)
@@ -330,40 +207,6 @@ cuda_kernel_declaration!(pub(crate)
         step: u32,
     )
 );
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_eq_inline_materialize_for_test_e4_kernel(
-        eq_low: *const E4,
-        sizes: GkrEqSizes,
-        eq_values: *mut E4,
-        acc_size: u32,
-    )
-);
-
-/// Dispatches the fused per-round backward-sumcheck state update kernel for
-/// `E4`. The wrapper is preserved so the call site in `backward.rs` can stay
-/// generic over `<E: GpuKernels>` once E6 ships; today only `E4` is supported.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn launch_backward_sumcheck_round_update_e4(
-    reduction_output: &DeviceSlice<E4>,
-    prev_claim_coord: &DeviceSlice<E4>,
-    seed: &mut DeviceSlice<u32>,
-    claim: &mut DeviceSlice<E4>,
-    eq_prefactor: &mut DeviceSlice<E4>,
-    coeffs_out: &mut DeviceSlice<E4>,
-    challenge_out: &mut DeviceSlice<E4>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    crate::gkr_ops::backward_sumcheck_round_update(
-        reduction_output,
-        prev_claim_coord,
-        seed,
-        claim,
-        eq_prefactor,
-        coeffs_out,
-        challenge_out,
-        stream,
-    )
-}
 
 pub fn gkr_dim_reducing_launch_config(count: u32, context: &ProverContext) -> CudaLaunchConfig<'_> {
     let (grid_dim, block_dim) =
@@ -382,34 +225,34 @@ pub(crate) fn gkr_trace_holder_partials_launch_config(
     )
 }
 
-pub(crate) fn launch_dim_reducing_round0_batched_compact<E: crate::BackwardKernels + Field>(
-    batch: &GpuGKRDimensionReducingRound0BatchCompact<E>,
+pub(crate) fn launch_dim_reducing_round0_batched_compact(
+    batch: &GpuGKRDimensionReducingRound0BatchCompact<E4>,
     acc_size: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let args = GpuDimensionReducingRound0BatchedCompactArguments::new(*batch, acc_size as u32);
-    GpuDimensionReducingRound0BatchedCompactFunction(E::ROUND0_BATCHED_COMPACT)
-        .launch(&config, &args)
+    GpuDimensionReducingRound0BatchedCompactFunction(
+        ab_gkr_dim_reducing_round0_batched_compact_e4_kernel,
+    )
+    .launch(&config, &args)
 }
 
-pub(crate) fn launch_dim_reducing_round1_batched_compact<E: crate::BackwardKernels + Field>(
-    batch: &GpuGKRDimensionReducingContinuationBatchCompact<E>,
-    _folding_challenge: *const E,
+pub(crate) fn launch_dim_reducing_round1_batched_compact(
+    batch: &GpuGKRDimensionReducingContinuationBatchCompact<E4>,
     acc_size: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let args = GpuDimensionReducingRound1BatchedCompactArguments::new(*batch, acc_size as u32);
-    GpuDimensionReducingRound1BatchedCompactFunction(E::ROUND1_BATCHED_COMPACT)
-        .launch(&config, &args)
+    GpuDimensionReducingRound1BatchedCompactFunction(
+        ab_gkr_dim_reducing_round1_batched_compact_e4_kernel,
+    )
+    .launch(&config, &args)
 }
 
-pub(crate) fn launch_dim_reducing_continuation_batched_compact<
-    E: crate::BackwardKernels + Field,
->(
-    batch: &GpuGKRDimensionReducingContinuationBatchCompact<E>,
-    _folding_challenge: *const E,
+pub(crate) fn launch_dim_reducing_continuation_batched_compact(
+    batch: &GpuGKRDimensionReducingContinuationBatchCompact<E4>,
     acc_size: usize,
     step: usize,
     context: &ProverContext,
@@ -420,17 +263,18 @@ pub(crate) fn launch_dim_reducing_continuation_batched_compact<
         acc_size as u32,
         step as u32,
     );
-    GpuDimensionReducingContinuationBatchedCompactFunction(E::CONTINUATION_BATCHED_COMPACT)
-        .launch(&config, &args)
+    GpuDimensionReducingContinuationBatchedCompactFunction(
+        ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel,
+    )
+    .launch(&config, &args)
 }
 
-// `GpuKernels` (not the sealed `BackwardKernels`): see ../../gpu_kernels.rs.
-pub fn launch_build_eq_values_from_point<E: crate::GpuKernels>(
-    claim_point: *const E,
+pub fn launch_build_eq_values_from_point(
+    claim_point: *const E4,
     challenge_offset: usize,
     challenge_count: usize,
-    eq_group_tables: *mut E,
-    eq_values: *mut E,
+    eq_group_tables: *mut E4,
+    eq_values: *mut E4,
     acc_size: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
@@ -451,7 +295,7 @@ pub fn launch_build_eq_values_from_point<E: crate::GpuKernels>(
             eq_group_tables,
         );
         GpuDimensionReducingBuildEqGroupTablesFromPointFunction(
-            E::BUILD_EQ_GROUP_TABLES_FROM_POINT,
+            ab_gkr_dim_reducing_build_eq_group_tables_from_point_e4_kernel,
         )
         .launch(&config, &args)?;
     }
@@ -463,8 +307,10 @@ pub fn launch_build_eq_values_from_point<E: crate::GpuKernels>(
         eq_values,
         acc_size as u32,
     );
-    GpuDimensionReducingBuildEqValuesFromGroupTablesFunction(E::BUILD_EQ_VALUES_FROM_GROUP_TABLES)
-        .launch(&config, &args)
+    GpuDimensionReducingBuildEqValuesFromGroupTablesFunction(
+        ab_gkr_dim_reducing_build_eq_values_from_group_tables_e4_kernel,
+    )
+    .launch(&config, &args)
 }
 
 /// Builds the factored eq representation directly from a claim point:
@@ -479,12 +325,12 @@ pub fn launch_build_eq_values_from_point<E: crate::GpuKernels>(
 /// of every block initializes its high slot's `[0]` entry to `E::ONE()` —
 /// degenerate slots (small `challenge_count`) need this sentinel because
 /// the inline-eq read is unconditional.
-pub(crate) fn launch_build_eq_high_and_low_groups_from_point<E: crate::BackwardKernels>(
-    claim_point: *const E,
+pub(crate) fn launch_build_eq_high_and_low_groups_from_point(
+    claim_point: *const E4,
     challenge_offset: usize,
     challenge_count: usize,
-    high_slab: *mut E,
-    low_buffer: *mut E,
+    high_slab: *mut E4,
+    low_buffer: *mut E4,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(challenge_offset <= u32::MAX as usize);
@@ -506,35 +352,10 @@ pub(crate) fn launch_build_eq_high_and_low_groups_from_point<E: crate::BackwardK
         high_slab,
         low_buffer,
     );
-    GpuDimensionReducingBuildEqHighLowFromPointFunction(E::BUILD_EQ_HIGH_LOW_FROM_POINT)
-        .launch(&config, &args)
-}
-
-/// Test-only launcher that materializes a dense `eq_values[0..acc_size]`
-/// buffer by calling the inline-eq device helper for each `gid`. Used by
-/// parity tests to compare the factored representation against the CPU
-/// ground truth. The high slabs are read from the `ab_gkr_eq_high`
-/// `__constant__` symbol — the caller must have populated it via the
-/// build path before calling this launcher.
-#[cfg(test)]
-pub(crate) fn launch_materialize_eq_from_factored_for_test<E: crate::BackwardKernels>(
-    eq_low: *const E,
-    sizes: &GkrEqSizes,
-    eq_values: *mut E,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    assert!(acc_size <= u32::MAX as usize);
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args =
-        GpuGKREqInlineMaterializeForTestArguments::new(eq_low, *sizes, eq_values, acc_size as u32);
-    GpuGKREqInlineMaterializeForTestFunction(E::EQ_INLINE_MATERIALIZE_FOR_TEST)
-        .launch(&config, &args)
-}
-
-#[cfg(test)]
-pub(crate) fn round0_eq_pair_values_len(folding_steps: usize) -> usize {
-    2 * folding_steps.saturating_sub(1)
+    GpuDimensionReducingBuildEqHighLowFromPointFunction(
+        ab_gkr_dim_reducing_build_eq_high_low_from_point_e4_kernel,
+    )
+    .launch(&config, &args)
 }
 
 pub fn eq_group_count(challenge_count: usize) -> usize {
@@ -545,92 +366,10 @@ pub fn eq_group_tables_len(challenge_count: usize) -> usize {
     eq_group_count(challenge_count) * GKR_EQ_GROUP_TABLE_LEN
 }
 
-#[cfg(test)]
-pub(crate) fn round0_eq_group_tables_len(folding_steps: usize) -> usize {
-    eq_group_tables_len(folding_steps.saturating_sub(1))
-}
-
-#[cfg(test)]
-pub(crate) fn launch_fold_eq_values_in_place<E: crate::BackwardKernels>(
-    eq_values: *mut E,
-    half_len: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    assert!(half_len <= u32::MAX as usize);
-    let config = gkr_dim_reducing_launch_config(half_len as u32, context);
-    let args = GpuDimensionReducingFoldEqValuesArguments::new(eq_values, half_len as u32);
-    GpuDimensionReducingFoldEqValuesFunction(E::FOLD_EQ_VALUES).launch(&config, &args)
-}
-
-/// Halves the slot whose base pointer is supplied, in place. After the call
-/// the top half is summed into the bottom half. `g_size_before` is the slot's
-/// bit-count BEFORE the fold (must be >= 1); after the call its size is
-/// `g_size_before - 1`. When `g_size_before == 1` the result is the eq
-/// identity sum (`E::ONE()`) sitting at index 0.
-pub(crate) fn launch_fold_eq_slot_in_place<E: crate::BackwardKernels>(
-    slot_base: *mut E,
-    g_size_before: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    assert!(g_size_before >= 1);
-    assert!(g_size_before <= GKR_EQ_GROUP_SIZE);
-    let new_g_len = 1u32 << (g_size_before - 1);
-    // One block, up to GKR_EQ_GROUP_TABLE_LEN / 2 = 128 threads. The largest
-    // fold has 128 active threads, well under occupancy limits.
-    let config = CudaLaunchConfig::basic(1, new_g_len, context.get_exec_stream());
-    let args = GpuDimensionReducingFoldEqHighGroupArguments::new(slot_base, new_g_len);
-    GpuDimensionReducingFoldEqHighGroupFunction(E::FOLD_EQ_HIGH_GROUP_IN_PLACE)
-        .launch(&config, &args)
-}
-
-/// Halves the high slab slot `slot` (0..GKR_EQ_HIGH_SLOTS) of the
-/// `ab_gkr_eq_high` `__constant__` symbol in place. Looks up the symbol's
-/// device address via `cudaGetSymbolAddress` and offsets to the slot base.
-pub(crate) fn launch_fold_eq_high_in_constant<E: crate::BackwardKernels>(
-    slot: usize,
-    g_size_before: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    assert!(slot < GKR_EQ_HIGH_SLOTS);
-    let base = get_eq_high_constant_device_ptr();
-    let slot_offset = slot * GKR_EQ_GROUP_TABLE_LEN;
-    // SAFETY: ab_gkr_eq_high has GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN
-    // elements; `slot < GKR_EQ_HIGH_SLOTS` keeps the offset in bounds.
-    let slot_base = unsafe { (base as *mut E).add(slot_offset) };
-    launch_fold_eq_slot_in_place::<E>(slot_base, g_size_before, context)
-}
-
-/// Folds the factored eq representation by one bit. With the strict 3-slot
-/// layout, we fold `high[0]` first, then `high[1]`, then `low`. High slabs
-/// live in the `ab_gkr_eq_high` `__constant__` symbol — the launcher writes
-/// through the device pointer obtained from `cudaGetSymbolAddress`. The low
-/// slab lives in global memory; the caller passes its pointer.
-pub(crate) fn fold_factored_eq_one_round<E: crate::BackwardKernels>(
-    eq_sizes: &mut GkrEqSizes,
-    eq_low: *mut E,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    if eq_sizes.high[0] > 0 {
-        let g_size_before = eq_sizes.high[0] as usize;
-        launch_fold_eq_high_in_constant::<E>(0, g_size_before, context)?;
-        eq_sizes.high[0] -= 1;
-    } else if eq_sizes.high[1] > 0 {
-        let g_size_before = eq_sizes.high[1] as usize;
-        launch_fold_eq_high_in_constant::<E>(1, g_size_before, context)?;
-        eq_sizes.high[1] -= 1;
-    } else {
-        let g_size_before = eq_sizes.low as usize;
-        debug_assert!(g_size_before >= 1);
-        launch_fold_eq_slot_in_place::<E>(eq_low, g_size_before, context)?;
-        eq_sizes.low -= 1;
-    }
-    Ok(())
-}
-
-pub(crate) fn launch_trace_holder_block_partials<E: crate::BackwardKernels>(
+pub(crate) fn launch_trace_holder_block_partials(
     raw_values: *const BF,
-    eq_values: *const E,
-    block_partials: *mut E,
+    eq_values: *const E4,
+    block_partials: *mut E4,
     trace_len: usize,
     column_start: usize,
     chunk_cols: usize,
@@ -652,137 +391,8 @@ pub(crate) fn launch_trace_holder_block_partials<E: crate::BackwardKernels>(
         blocks_count as u32,
     );
 
-    GpuDimensionReducingTraceHolderBlockPartialsFunction(E::TRACE_HOLDER_BLOCK_PARTIALS)
-        .launch(&config, &args)
-}
-
-#[cfg(test)]
-pub(crate) fn launch_pairwise_round0<E: crate::BackwardKernels>(
-    descriptors: &crate::GpuSumcheckRound0ScheduledLaunchDescriptors<impl Sized, E>,
-    batch_challenges: *const E,
-    contributions: *mut E,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let inputs = descriptors.device.extension_field_inputs.as_ptr();
-    let outputs = descriptors.device.extension_field_outputs.as_ptr();
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingPairwiseRound0Arguments::new(
-        inputs,
-        outputs,
-        batch_challenges,
-        contributions,
-        acc_size as u32,
-    );
-
-    GpuDimensionReducingPairwiseRound0Function(E::PAIRWISE_ROUND0).launch(&config, &args)
-}
-
-#[cfg(test)]
-pub(crate) fn launch_lookup_round0<E: crate::BackwardKernels>(
-    descriptors: &crate::GpuSumcheckRound0ScheduledLaunchDescriptors<impl Sized, E>,
-    batch_challenges: *const E,
-    contributions: *mut E,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let inputs = descriptors.device.extension_field_inputs.as_ptr();
-    let outputs = descriptors.device.extension_field_outputs.as_ptr();
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingLookupRound0Arguments::new(
-        inputs,
-        outputs,
-        batch_challenges,
-        contributions,
-        acc_size as u32,
-    );
-
-    GpuDimensionReducingLookupRound0Function(E::LOOKUP_ROUND0).launch(&config, &args)
-}
-
-#[cfg(test)]
-pub(crate) fn launch_pairwise_continuation<E: crate::BackwardKernels>(
-    descriptors: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<E>,
-    folding_challenge: *const E,
-    batch_challenges: *const E,
-    explicit_form: bool,
-    contributions: *mut E,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingPairwiseContinuationArguments::new(
-        descriptors,
-        folding_challenge,
-        batch_challenges,
-        explicit_form,
-        contributions,
-        acc_size as u32,
-    );
-
-    GpuDimensionReducingPairwiseContinuationFunction(E::PAIRWISE_CONTINUATION)
-        .launch(&config, &args)
-}
-
-#[cfg(test)]
-pub(crate) fn launch_lookup_continuation<E: crate::BackwardKernels>(
-    descriptors: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<E>,
-    folding_challenge: *const E,
-    batch_challenges: *const E,
-    explicit_form: bool,
-    contributions: *mut E,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingLookupContinuationArguments::new(
-        descriptors,
-        folding_challenge,
-        batch_challenges,
-        explicit_form,
-        contributions,
-        acc_size as u32,
-    );
-
-    GpuDimensionReducingLookupContinuationFunction(E::LOOKUP_CONTINUATION).launch(&config, &args)
-}
-
-#[cfg(test)]
-pub(crate) fn launch_build_round0_eq_values_from_pairs<E: crate::BackwardKernels>(
-    eq_pair_values: *const E,
-    challenge_count: usize,
-    eq_group_tables: *mut E,
-    eq_values: *mut E,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    assert!(challenge_count <= u32::MAX as usize);
-    assert!(acc_size <= u32::MAX as usize);
-    let group_count = eq_group_count(challenge_count);
-    if group_count > 0 {
-        let config = CudaLaunchConfig::basic(
-            group_count as u32,
-            GKR_EQ_GROUP_TABLE_LEN as u32,
-            context.get_exec_stream(),
-        );
-        let args = GpuDimensionReducingBuildEqGroupTablesFromPairsArguments::new(
-            eq_pair_values,
-            challenge_count as u32,
-            eq_group_tables,
-        );
-        GpuDimensionReducingBuildEqGroupTablesFromPairsFunction(
-            E::BUILD_EQ_GROUP_TABLES_FROM_PAIRS,
-        )
-        .launch(&config, &args)?;
-    }
-
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingBuildEqValuesFromGroupTablesArguments::new(
-        eq_group_tables,
-        challenge_count as u32,
-        eq_values,
-        acc_size as u32,
-    );
-    GpuDimensionReducingBuildEqValuesFromGroupTablesFunction(E::BUILD_EQ_VALUES_FROM_GROUP_TABLES)
-        .launch(&config, &args)
+    GpuDimensionReducingTraceHolderBlockPartialsFunction(
+        ab_gkr_dim_reducing_trace_holder_block_partials_e4_kernel,
+    )
+    .launch(&config, &args)
 }

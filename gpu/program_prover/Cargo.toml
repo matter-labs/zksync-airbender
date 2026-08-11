@@ -38,8 +38,16 @@ log = "0.4.29"
 
 [features]
 default = ["security_80", "deterministic_pow"]
-security_80 = ["gpu_execution_prover/security_80", "gpu_circuit_prover/security_80"]
-security_100 = ["gpu_execution_prover/security_100", "gpu_circuit_prover/security_100"]
+security_80 = [
+    "gpu_execution_prover/security_80",
+    "gpu_circuit_prover/security_80",
+    "prover_examples/security_80",
+]
+security_100 = [
+    "gpu_execution_prover/security_100",
+    "gpu_circuit_prover/security_100",
+    "prover_examples/security_100",
+]
 deterministic_pow = ["gpu_execution_prover/deterministic_pow"]
 eval_leaves = ["gpu_execution_prover/eval_leaves", "gpu_circuit_prover/eval_leaves"]
 # Pulls in the embedded verifier circuits so proofs can be verified natively.
@@ -54,7 +62,10 @@ verifiers = [
 env_logger = "0.11"
 serde_json = "*"
 # CPU reference prover, used only by the GPU-vs-CPU proof-diff test.
-prover_examples = { workspace = true }
+prover_examples = { workspace = true, default-features = false, features = [
+    "timing_logs",
+    "gkr_self_checks",
+] }
 
 [lints.rust]
 # `no_cuda` is set by gpu_circuit_prover's build script; gpu_program_prover has no

@@ -4,14 +4,10 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::domain_generator_for_size;
-// Only consumed by the (now `test-utils`-gated) `debug.rs` builders and the
-// crate's own tests, both via `use super::*`.
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(test)]
 use fft::materialize_powers_serial_starting_with_one;
 
-// Only consumed by the `test-utils`-gated `debug.rs` fold helpers (via `use super::*`);
-// production folds with the `_vectorized` / `_pair` launchers below.
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(test)]
 use crate::kernels::whir_fold_split_half_in_place;
 use crate::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
@@ -21,6 +17,8 @@ use crate::kernels::{
     whir_fold_split_half_in_place_pair, whir_fold_split_half_in_place_vectorized,
 };
 use crate::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
+#[cfg(test)]
+use crate::upstream::Field;
 use crate::upstream::FieldExtension;
 use crate::GpuWhirExtensionOracle;
 use gpu_core::allocator::tracker::AllocationPlacement;
@@ -36,26 +34,16 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_cub::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use gpu_cub::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
+use gpu_gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
+use gpu_gkr::proof_layout::ProofLayout;
 use gpu_ntt::ntt::{
     hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
     natural_evals_to_bitreversed_monomials,
 };
-// Only consumed by the `test-utils`-gated `debug.rs` `special_three_point_eval_device`
-// (via `use super::*`); production uses the fused three-point / eq kernels.
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(test)]
 use gpu_ops::simple::{add, mul, mul_into_x};
 use gpu_ops::transpose::transpose;
 use gpu_prover_context::ProverContext;
-// Consumed only by the `test-utils`-gated `debug.rs` builders via `use super::*`
-// (`debug.rs` imports `BaseFieldQuery`/`DefaultTreeConstructor` itself now, so
-// those two aren't re-exported here). Gated to match `debug.rs`.
-#[cfg(any(test, feature = "test-utils"))]
-use crate::upstream::{
-    add_whir_commitment_to_transcript, commit_field_els, draw_random_field_els, Field,
-    MerkleTreeCapVarLength, Seed, WhirCommitment,
-};
-use gpu_gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
-use gpu_gkr::proof_layout::ProofLayout;
 use gpu_trace::trace::holder::TraceHolder;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
@@ -72,11 +60,7 @@ pub(super) struct GpuWhirState {
     eq_group_tables: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
     scratch1: DeviceAllocation<E4>,
-    // Test-support only (behind `test-utils`): the `debug.rs` checkpoint builders
-    // stage per-round scalars here (16-byte device reservation). Unused on the
-    // production fold path, so it — and its ctor init below — are gated out of
-    // normal builds.
-    #[cfg(any(test, feature = "test-utils"))]
+    #[cfg(test)]
     scalar: DeviceAllocation<E4>,
     reduce_temp: DeviceAllocation<u8>,
     reduce_out: DeviceAllocation<E4>,
@@ -176,7 +160,7 @@ impl GpuWhirState {
             )?,
             scratch0: context.alloc(half_len, AllocationPlacement::BestFit)?,
             scratch1: context.alloc(half_len, AllocationPlacement::BestFit)?,
-            #[cfg(any(test, feature = "test-utils"))]
+            #[cfg(test)]
             scalar: context.alloc(1, AllocationPlacement::BestFit)?,
             reduce_temp: context
                 .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
@@ -454,14 +438,6 @@ pub(super) fn schedule_monomial_eval_device(
     Ok(vec![schedule_reduce_outputs_readback(1, state, context)?])
 }
 
-/// Selects the WHIR query-eq accumulator backend. `true` uses the 2-chunk
-/// balanced-split layout (one E4 mul + add per query in the inner loop, ~1/3
-/// the compute of the legacy path); `false` uses the legacy 3-slot GKR-style
-/// 8/8/7 layout. Flip and rebuild to A/B with `ncu`.
-const USE_SPLIT_EQ_ACCUMULATOR: bool = true;
-
-/// Returned scratch allocations must outlive the launched kernels — push onto
-/// a per-round keepalive vec.
 pub(super) fn schedule_accumulate_eq_samples_batched(
     state: &mut GpuWhirState,
     claim_points: &DeviceSlice<E4>,
@@ -472,7 +448,7 @@ pub(super) fn schedule_accumulate_eq_samples_batched(
 ) -> CudaResult<(DeviceAllocation<E4>, DeviceAllocation<E4>)> {
     assert_eq!(claim_points.len(), num_queries * challenge_count);
     assert!(challenges.len() >= num_queries);
-    if USE_SPLIT_EQ_ACCUMULATOR && challenge_count >= 2 {
+    if challenge_count >= 2 {
         let (high_len, low_len) = split_eq_factor_scratch_lens(num_queries, challenge_count);
         let mut eq_high_scratch = context.alloc::<E4>(high_len, AllocationPlacement::BestFit)?;
         let mut eq_low_scratch = context.alloc::<E4>(low_len, AllocationPlacement::BestFit)?;
@@ -507,25 +483,8 @@ pub(super) fn schedule_accumulate_eq_samples_batched(
     }
 }
 
-// debug.rs holds the WHIR-fold debug/checkpoint builders. It is a test-support
-// surface (behind the non-default `test-utils` feature — plus `test` for the
-// crate's own tests) so the apex e2e/parity suite can reach the
-// `debug_*_for_test` entry points across the crate boundary — a dependency's
-// #[cfg(test)] items are invisible to consumers, so `#[cfg(test)]` alone would
-// not do. The five entry points are re-exported here as #[doc(hidden)] pub for
-// `gpu_whir::fold::debug_*`. Gating the whole module means its contents need no
-// per-item cfg.
-#[cfg(any(test, feature = "test-utils"))]
-#[doc(hidden)]
-pub mod debug;
-
-#[cfg(any(test, feature = "test-utils"))]
-#[doc(hidden)]
-pub use debug::{
-    debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,
-    debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
-    debug_initial_round_checkpoint_for_test,
-};
+#[cfg(test)]
+mod debug;
 
 #[cfg(test)]
 mod tests;

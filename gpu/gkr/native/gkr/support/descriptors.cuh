@@ -23,12 +23,6 @@ template <typename E> struct gkr_ext_initial_source {
   size_t next_layer_size;
 };
 
-template <typename B> struct gkr_base_initial_source {
-  const B *start;
-  size_t next_layer_size;
-  gkr_base_source_kind source_kind;
-};
-
 template <typename E> struct gkr_ext_continuing_source {
   const E *previous_layer_start;
   E *this_layer_start;
@@ -37,18 +31,10 @@ template <typename E> struct gkr_ext_continuing_source {
   bool first_access;
 };
 
-// blake2_with_compression's largest main layer fuses 547 kernels; 1024 gives
-// ~2x headroom. Sizes no native array (a capacity guard only).
-// MUST stay in lockstep with the Rust mirror in
-// src/prover/gkr/backward/kernels/shared.rs (asserted by the
-// gkr_backward_max_kernels_lockstep #[test]).
-static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 1024;
 // Dim-reducing layers are keyed by OutputType: 2 pairwise records for
 // PermutationProduct, up to 3 lookup records, plus (unified circuit)
 // 2 pairwise records for InitsAndTeardownsProduct = 7 records / 10 challenges.
-// MUST stay in lockstep with the Rust mirror in
-// src/prover/gkr/backward/kernels/dim_reducing.rs (asserted by the
-// gkr_dim_reducing_caps_lockstep #[test]).
+// Kept in lockstep with the Rust mirror by `compact_cuda_constants_match_rust`.
 static constexpr unsigned GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER = 7;
 static constexpr unsigned GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN = 10;
 static constexpr unsigned GKR_BACKWARD_MAX_TRACE_LEN_LOG2 = 24;
@@ -82,15 +68,16 @@ struct gkr_eq_sizes {
   unsigned low;
 };
 
+static_assert(alignof(gkr_eq_sizes) == 4 && sizeof(gkr_eq_sizes) == 12, "eq sizes ABI drift");
+static_assert(__builtin_offsetof(gkr_eq_sizes, high) == 0 && __builtin_offsetof(gkr_eq_sizes, low) == 8, "eq sizes offsets drift");
+
 enum gkr_dim_reducing_kernel_kind : u32 {
   GKR_DIM_REDUCING_PAIRWISE = 0,
   GKR_DIM_REDUCING_LOOKUP = 1,
 };
 
-constexpr unsigned GKR_DIM_REDUCING_INLINE_U16_BUDGET = 1280;
-// 4-bit ptr_idx in every u16 source encoding sizes the backing pool: each main-layer
-// flat launch needs one slot per backing (read + cache for both base and ext), so the
-// table holds up to 16 entries.
+constexpr unsigned GKR_DIM_REDUCING_INLINE_RECORD_CAP = 28;
+// The 4-bit pointer index in each source encoding addresses this table.
 constexpr unsigned GKR_DIM_REDUCING_BASE_SLOTS = 16;
 
 struct gkr_dim_reducing_payload_range_16 {
@@ -103,7 +90,7 @@ struct gkr_dim_reducing_batch_record_compact {
   gkr_dim_reducing_payload_range_16 inputs;
   gkr_dim_reducing_payload_range_16 outputs;
   u16 batch_challenge_offset;
-  u16 batch_challenge_count;
+  u16 reserved;
 };
 
 static_assert(sizeof(gkr_dim_reducing_batch_record_compact) == 16, "compact batch record must be 16 B");
@@ -121,39 +108,67 @@ struct gkr_source_record {
 template <typename E> struct gkr_dim_reducing_round0_batch_compact {
   u32 record_count;
   u32 reserved0;
-  u32 reserved1;
-  u32 reserved2;
   const E *eq_low;
   gkr_eq_sizes eq_sizes;
+  u32 eq_sizes_pad;
   E *contributions;
   gkr_dim_reducing_tables tables;
   gkr_dim_reducing_batch_record_compact records[GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER];
-  gkr_source_record inline_payload[GKR_DIM_REDUCING_INLINE_U16_BUDGET];
+  gkr_source_record inline_payload[GKR_DIM_REDUCING_INLINE_RECORD_CAP];
 };
 
 template <typename E> struct gkr_dim_reducing_continuation_batch_compact {
   u32 record_count;
   u32 reserved0;
-  u32 reserved1;
-  u32 reserved2;
   const E *eq_low;
   gkr_eq_sizes eq_sizes;
+  u32 eq_sizes_pad;
   E *contributions;
-  bool explicit_form;
-  u8 padding[7];
   gkr_dim_reducing_tables tables;
   gkr_dim_reducing_batch_record_compact records[GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER];
-  gkr_source_record inline_payload[GKR_DIM_REDUCING_INLINE_U16_BUDGET];
+  gkr_source_record inline_payload[GKR_DIM_REDUCING_INLINE_RECORD_CAP];
 };
 
-constexpr unsigned GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS = 8;
-
-enum gkr_forward_cache_address_space_kind : u32 {
-  GKR_FORWARD_CACHE_ADDRESS_SPACE_EMPTY = 0,
-  GKR_FORWARD_CACHE_ADDRESS_SPACE_CONSTANT = 1,
-  GKR_FORWARD_CACHE_ADDRESS_SPACE_IS = 2,
-  GKR_FORWARD_CACHE_ADDRESS_SPACE_NOT = 3,
-};
+static_assert(sizeof(gkr_dim_reducing_round0_batch_compact<e4>) == 456, "round-0 descriptor ABI drift");
+static_assert(sizeof(gkr_dim_reducing_continuation_batch_compact<e4>) == 456, "continuation descriptor ABI drift");
+static_assert(alignof(gkr_dim_reducing_payload_range_16) == 2 && sizeof(gkr_dim_reducing_payload_range_16) == 4, "payload range ABI drift");
+static_assert(__builtin_offsetof(gkr_dim_reducing_payload_range_16, offset) == 0 && __builtin_offsetof(gkr_dim_reducing_payload_range_16, count) == 2,
+              "payload range offsets drift");
+static_assert(alignof(gkr_dim_reducing_batch_record_compact) == 4 && sizeof(gkr_dim_reducing_batch_record_compact) == 16, "batch record ABI drift");
+static_assert(__builtin_offsetof(gkr_dim_reducing_batch_record_compact, kind) == 0 && __builtin_offsetof(gkr_dim_reducing_batch_record_compact, inputs) == 4 &&
+                  __builtin_offsetof(gkr_dim_reducing_batch_record_compact, outputs) == 8 &&
+                  __builtin_offsetof(gkr_dim_reducing_batch_record_compact, batch_challenge_offset) == 12 &&
+                  __builtin_offsetof(gkr_dim_reducing_batch_record_compact, reserved) == 14,
+              "batch record offsets drift");
+static_assert(alignof(gkr_dim_reducing_tables) == 8 && sizeof(gkr_dim_reducing_tables) == 192, "dim-reducing tables ABI drift");
+static_assert(__builtin_offsetof(gkr_dim_reducing_tables, bases) == 0 && __builtin_offsetof(gkr_dim_reducing_tables, log2_stride) == 128,
+              "dim-reducing table offsets drift");
+static_assert(alignof(gkr_source_record) == 2 && sizeof(gkr_source_record) == 4, "source record ABI drift");
+static_assert(__builtin_offsetof(gkr_source_record, src) == 0 && __builtin_offsetof(gkr_source_record, cache) == 2, "source record offsets drift");
+static_assert(alignof(gkr_dim_reducing_round0_batch_compact<e4>) == 8, "round-0 descriptor alignment drift");
+static_assert(__builtin_offsetof(gkr_dim_reducing_round0_batch_compact<e4>, record_count) == 0 &&
+                  __builtin_offsetof(gkr_dim_reducing_round0_batch_compact<e4>, reserved0) == 4 &&
+                  __builtin_offsetof(gkr_dim_reducing_round0_batch_compact<e4>, eq_low) == 8 &&
+                  __builtin_offsetof(gkr_dim_reducing_round0_batch_compact<e4>, eq_sizes) == 16 &&
+                  __builtin_offsetof(gkr_dim_reducing_round0_batch_compact<e4>, eq_sizes_pad) == 28 &&
+                  __builtin_offsetof(gkr_dim_reducing_round0_batch_compact<e4>, contributions) == 32 &&
+                  __builtin_offsetof(gkr_dim_reducing_round0_batch_compact<e4>, tables) == 40 &&
+                  __builtin_offsetof(gkr_dim_reducing_round0_batch_compact<e4>, records) == 232 &&
+                  __builtin_offsetof(gkr_dim_reducing_round0_batch_compact<e4>, inline_payload) == 344,
+              "round-0 descriptor offsets drift");
+static_assert(sizeof(gkr_dim_reducing_round0_batch_compact<e4>) + sizeof(u32) <= 32764, "round-0 kernel parameters exceed CUDA limit");
+static_assert(alignof(gkr_dim_reducing_continuation_batch_compact<e4>) == 8, "continuation descriptor alignment drift");
+static_assert(__builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>, record_count) == 0 &&
+                  __builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>, reserved0) == 4 &&
+                  __builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>, eq_low) == 8 &&
+                  __builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>, eq_sizes) == 16 &&
+                  __builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>, eq_sizes_pad) == 28 &&
+                  __builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>, contributions) == 32 &&
+                  __builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>, tables) == 40 &&
+                  __builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>, records) == 232 &&
+                  __builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>, inline_payload) == 344,
+              "continuation descriptor offsets drift");
+static_assert(sizeof(gkr_dim_reducing_continuation_batch_compact<e4>) + 2 * sizeof(u32) <= 32764, "continuation kernel parameters exceed CUDA limit");
 
 // Tower batches: one per slot (no cross-slot batching). Each tower kernel consumes a single slot's
 // contiguous input row range (B = GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK elements per block) and
@@ -185,40 +200,6 @@ template <typename E> struct gkr_forward_setup_generic_lookup_batch {
   E *output;
   E *decoder_fill_value_out;
   gkr_forward_setup_generic_lookup_descriptor descriptors[GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
-};
-
-constexpr unsigned GKR_FORWARD_CACHE_MAX_RELATIONS = 20;
-
-enum gkr_forward_cache_kind : u32 {
-  GKR_FORWARD_CACHE_EMPTY = 0,
-  GKR_FORWARD_CACHE_SINGLE_COLUMN_LOOKUP = 1,
-  GKR_FORWARD_CACHE_VECTORIZED_LOOKUP = 2,
-  GKR_FORWARD_CACHE_VECTORIZED_LOOKUP_SETUP = 3,
-  GKR_FORWARD_CACHE_MEMORY_TUPLE = 4,
-};
-
-template <typename E> struct gkr_forward_cache_descriptor {
-  gkr_forward_cache_kind kind;
-  gkr_forward_cache_address_space_kind address_space_kind;
-  const u32 *mapping;
-  const bf *setup_values;
-  gkr_base_source_kind setup_source_kind;
-  const E *generic_lookup;
-  const bf *decoder_mask;
-  const E *decoder_fill_value;
-  bf *base_output;
-  E *ext_output;
-  u32 generic_lookup_len;
-  const bf *address_space_ptr;
-  bf address_space_constant;
-  E constant_term;
-  const bf *linear_inputs[GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS];
-  E linear_challenges[GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS];
-};
-
-template <typename E> struct gkr_forward_cache_batch {
-  u32 count;
-  gkr_forward_cache_descriptor<E> descriptors[GKR_FORWARD_CACHE_MAX_RELATIONS];
 };
 
 static constexpr unsigned GKR_TIMESTAMP_COLUMNS_NUM_BITS = 19;

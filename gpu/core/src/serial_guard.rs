@@ -92,15 +92,19 @@ mod tests {
     /// explicitly exempted here with a reason.
     #[test]
     fn cpu_nextest_config_covers_all_gpu_crates() {
-        // No GPU tests to serialize: build-script helper / pure-CPU codegen.
-        const FILTER_EXEMPT: &[&str] = &["gpu_native_build", "gpu_witness_eval_generator"];
-        // Additionally guard-exempt: pure-CPU model crate without a gpu_core
-        // dep; its tests never touch CUDA (nextest still serializes them via
-        // the gpu-serial group).
+        // No GPU tests to serialize: build-script helper / pure-CPU tooling.
+        const FILTER_EXEMPT: &[&str] = &[
+            "gpu_native_build",
+            "gpu_witness_eval_generator",
+            "gpu_gkr_model",
+            "gpu_gkr_compiler",
+        ];
+        // Pure-CPU crates without a gpu_core dependency are guard-exempt too.
         const GUARD_EXEMPT: &[&str] = &[
             "gpu_native_build",
             "gpu_witness_eval_generator",
             "gpu_gkr_model",
+            "gpu_gkr_compiler",
         ];
         let gpu_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -140,17 +144,19 @@ mod tests {
             // Integration-test targets are separate crates that do NOT
             // inherit the lib's #[cfg(test)] guard: each top-level file must
             // invoke the macro itself.
-            if let Ok(entries) = std::fs::read_dir(dir.join("tests")) {
-                for entry in entries {
-                    let path = entry.unwrap().path();
-                    if path.extension().is_some_and(|e| e == "rs") {
-                        let src = std::fs::read_to_string(&path).unwrap();
-                        assert!(
-                            src.contains("force_serial_libtest!"),
-                            "integration-test target {path:?} does not invoke \
-                             gpu_core::force_serial_libtest!() at its root — it is not \
-                             covered by {name}'s lib guard"
-                        );
+            if !GUARD_EXEMPT.contains(&name.as_str()) {
+                if let Ok(entries) = std::fs::read_dir(dir.join("tests")) {
+                    for entry in entries {
+                        let path = entry.unwrap().path();
+                        if path.extension().is_some_and(|e| e == "rs") {
+                            let src = std::fs::read_to_string(&path).unwrap();
+                            assert!(
+                                src.contains("force_serial_libtest!"),
+                                "integration-test target {path:?} does not invoke \
+                                 gpu_core::force_serial_libtest!() at its root — it is not \
+                                 covered by {name}'s lib guard"
+                            );
+                        }
                     }
                 }
             }

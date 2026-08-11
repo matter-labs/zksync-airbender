@@ -10,7 +10,7 @@ use worker::Worker;
 use super::*;
 use crate::upstream::{
     multivariate_coeffs_into_hypercube_evals, Blake2sU32MerkleTreeWithCap,
-    ColumnMajorMerkleTreeConstructor, Field, MerkleTreeCapVarLength, PrimeField,
+    ColumnMajorMerkleTreeConstructor, Field, MerkleTreeCapVarLength, PathQueriable, PrimeField,
 };
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_prover_context::ProverContextConfig;
@@ -124,7 +124,7 @@ fn stage1_caps_from_cpu_cosets(
         .collect_vec();
     let tree = <Blake2sU32MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             BF,
-        >>::construct_from_cosets::<BF, Global>(
+        >>::construct_from_cosets::<BF>(
             &source_refs,
             rows_per_leaf,
             total_cap_size,
@@ -134,7 +134,7 @@ fn stage1_caps_from_cpu_cosets(
             worker,
         );
     let subcap_size = total_cap_size >> log_lde_factor;
-    <Blake2sU32MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&tree)
+    PathQueriable::get_cap(&tree)
         .cap
         .chunks_exact(subcap_size)
         .map(|chunk| MerkleTreeCapVarLength {

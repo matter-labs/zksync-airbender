@@ -7,12 +7,9 @@ use era_cudart::slice::{CudaSlice, DeviceSlice};
 use crate::proof_layout::ProofLayout;
 use crate::{GpuBaseFieldPoly, GpuGKRStorage};
 use gpu_core::primitives::field::E4;
-use gpu_cub::cub::device_reduce::Reduce;
 
 use super::super::kernels::*;
-use crate::upstream::{
-    DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, OutputType,
-};
+use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_structures::DeviceMatrix;
@@ -28,16 +25,16 @@ use gpu_prover_context::ProverContext;
 /// `exec_stream` op scheduled by `schedule_main_layer_extras_eval`; the
 /// pool defers underlying free until exec_stream has progressed past the
 /// last write that uses these buffers.
-pub(crate) struct MainLayerExtrasKeepalive<B, E> {
-    _eq_group_tables: DeviceAllocation<E>,
-    _eq_values: DeviceAllocation<E>,
-    _block_partials: DeviceAllocation<E>,
+pub(crate) struct MainLayerExtrasKeepalive {
+    _eq_group_tables: DeviceAllocation<E4>,
+    _eq_values: DeviceAllocation<E4>,
+    _block_partials: DeviceAllocation<E4>,
     _reduction_temp: DeviceAllocation<u8>,
     /// Per-extra resolved views over the consolidated
     /// `base_class_backings`. Holding the views keeps the underlying
     /// `Arc<DeviceAllocation<B>>` backings alive until kernels reading
     /// from them have been scheduled and the pool drop is safe.
-    _extra_views: Vec<GpuBaseFieldPoly<B>>,
+    _extra_views: Vec<GpuBaseFieldPoly<BF>>,
 }
 
 /// Schedules the on-device evaluation of `extra_addresses` at the
@@ -60,26 +57,19 @@ pub(crate) struct MainLayerExtrasKeepalive<B, E> {
 /// Operates entirely on `exec_stream`. No host blocking. Compatible
 /// with the GPU scheduling contract (`gpu/docs/gpu_scheduling_contract.md`).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn schedule_main_layer_extras_eval<E>(
+pub(crate) fn schedule_main_layer_extras_eval(
     layer_idx: usize,
     extra_addresses: &[GKRAddress],
-    storage: &GpuGKRStorage<BF, E>,
-    folding_point_ptr: *const E,
+    storage: &GpuGKRStorage<BF, E4>,
+    folding_point_ptr: *const E4,
     folding_steps: usize,
     trace_len: usize,
-    extras_dst_ptr: *mut E,
+    extras_dst_ptr: *mut E4,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     layer_slot: usize,
     context: &ProverContext,
-) -> CudaResult<MainLayerExtrasKeepalive<BF, E>>
-where
-    // `GpuKernels` (not the sealed `BackwardKernels`): this pub(crate) fn
-    // calls into `launch_build_eq_values_from_point`, which is bound on the
-    // umbrella (see ../gpu_kernels.rs) — the bound has to be at least that
-    // wide here too, and widening a `pub(crate)` fn's bound leaks nothing.
-    E: crate::GpuKernels + Field + FieldExtension<BF> + Reduce + 'static,
-{
+) -> CudaResult<MainLayerExtrasKeepalive> {
     let extra_count = extra_addresses.len();
     assert!(
         extra_count > 0,
@@ -98,11 +88,11 @@ where
     //    The dim-reducing eq builder is reused: it derives `eq_values`
     //    over the entire hypercube of size `2^challenge_count` from a
     //    single contiguous challenge slab — exactly what we need here.
-    let mut eq_group_tables: DeviceAllocation<E> = context.alloc(
+    let mut eq_group_tables: DeviceAllocation<E4> = context.alloc(
         eq_group_tables_len(folding_steps).max(1),
         AllocationPlacement::Top,
     )?;
-    let mut eq_values: DeviceAllocation<E> = context.alloc(trace_len, AllocationPlacement::Top)?;
+    let mut eq_values: DeviceAllocation<E4> = context.alloc(trace_len, AllocationPlacement::Top)?;
     launch_build_eq_values_from_point(
         folding_point_ptr,
         0,
@@ -139,9 +129,9 @@ where
     let blocks_count = context.get_device_properties().sm_count;
     assert!(blocks_count > 0, "device must expose at least one SM");
     assert!(blocks_count <= u32::MAX as usize);
-    let mut block_partials: DeviceAllocation<E> =
+    let mut block_partials: DeviceAllocation<E4> =
         context.alloc(extra_count * blocks_count, AllocationPlacement::Top)?;
-    let reduction_temp_bytes = get_batch_reduce_temp_storage_bytes::<E>(
+    let reduction_temp_bytes = get_batch_reduce_temp_storage_bytes::<E4>(
         ReduceOperation::Sum,
         extra_count as i32,
         blocks_count as i32,
@@ -158,7 +148,7 @@ where
         // contiguous slots starting at this pointer (since we pass
         // `column_start = 0`, `chunk_cols = 1`).
         let row_partials_ptr = unsafe { block_partials.as_mut_ptr().add(extra_i * blocks_count) };
-        launch_trace_holder_block_partials::<E>(
+        launch_trace_holder_block_partials(
             view.as_ptr(),
             eq_values.as_ptr(),
             row_partials_ptr,
@@ -196,14 +186,14 @@ where
             proof_layout
                 .backward_extra_evaluations_device_mut(proof_slab.as_ptr() as *mut u8, layer_slot)
         };
-        debug_assert_eq!(
+        assert_eq!(
             slab_dst_len, extra_count,
             "slab extra_evaluations range must match extra_count for layer {layer_slot}",
         );
         let slab_dst_slice =
-            unsafe { DeviceSlice::from_raw_parts_mut(slab_dst_ptr as *mut E, extra_count) };
+            unsafe { DeviceSlice::from_raw_parts_mut(slab_dst_ptr as *mut E4, extra_count) };
         let extras_src_slice =
-            unsafe { DeviceSlice::from_raw_parts(extras_dst_ptr as *const E, extra_count) };
+            unsafe { DeviceSlice::from_raw_parts(extras_dst_ptr as *const E4, extra_count) };
         memory_copy_async(slab_dst_slice, extras_src_slice, stream)?;
     }
 
@@ -230,9 +220,8 @@ where
 /// - Round 0's `layer_inputs` is `compiled_circuit.global_output_map`; subsequent
 ///   rounds chain from the previous round's `output`.
 ///
-/// Used by `build_proof_layout_inputs` in the apex proof layer.
-/// to size the proof slab before forward runs.
-pub fn derive_dimension_reducing_inputs(
+/// Used to size the proof slab before forward runs.
+pub(crate) fn derive_dimension_reducing_inputs(
     initial_layer_idx: usize,
     initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
     initial_trace_log_2: u32,

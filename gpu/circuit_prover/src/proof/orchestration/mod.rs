@@ -5,12 +5,19 @@ use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransferKeepalive;
-use crate::upstream::{DefaultTreeConstructor, Field, GKRCircuitArtifact, GKRProof, OutputType};
+use crate::upstream::{
+    DefaultTreeConstructor, DimensionReducingInputOutput, Field, GKRCircuitArtifact, GKRProof,
+    OutputType,
+};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::backward::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
+#[cfg(test)]
+use gpu_gkr::backward::GKRBackwardStageSnapshot;
+use gpu_gkr::backward::{
+    ClaimBufferLayout, GKRBackwardStageSnapshotSink, GpuGKRBackwardScheduledExecution,
+};
 use gpu_gkr::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
 use gpu_gkr::setup::GpuGKRForwardSetupHostKeepalive;
 use gpu_gkr::stage1::GpuGKRStage1Keepalive;
@@ -35,9 +42,9 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     /// tracing_data, memory caps, canonical_top_bits, external_challenges) plus the
     /// shared `Transfer`'s accumulated `Callbacks`.
     pub(super) _inputs: GpuGKRProofTransferKeepalive<'a, A>,
-    pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
-    pub(super) _backward: GpuGKRBackwardScheduledExecution<BF, E4>,
-    pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
+    pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive,
+    pub(super) _backward: GpuGKRBackwardScheduledExecution,
+    pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution,
     pub(super) _whir: GpuWhirFoldScheduledExecution,
     /// Pinned host mirror of the device-resident proof slab. Populated
     /// by the terminal D2H; read by the single assembly callback. This is the
@@ -45,30 +52,35 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     /// device reservations (proof slab, WHIR caps/ephemerals, batching
     /// challenge, backward handoff buffers) are released stream-ordered at the
     /// end of `prove()`.
-    #[allow(dead_code)]
     pub(super) _proof_host_mirror: Option<HostAllocation<[u8]>>,
 }
+
+type FinishedProof = GKRProof<BF, E4, DefaultTreeConstructor>;
+type FinishedProofWithSnapshots = (
+    FinishedProof,
+    Option<Box<GKRBackwardStageSnapshotSink>>,
+    f32,
+);
+#[cfg(test)]
+type StagewiseFinishedProof = (FinishedProof, Vec<GKRBackwardStageSnapshot>, f32);
 
 pub struct GpuGKRProofJob<'a, A: GoodAllocator> {
     pub(crate) is_finished_event: CudaEvent,
     pub(crate) callbacks: Callbacks<'a>,
     pub(crate) proof: Box<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     pub(crate) ranges: Vec<Range>,
+    pub(crate) stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     pub(super) keepalive: GpuGKRProofJobKeepalive<'a, A>,
 }
 
 impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
-    #[cfg(test)]
-    pub(crate) fn is_finished(&self) -> CudaResult<bool> {
-        self.is_finished_event.query()
-    }
-
-    pub fn finish(self) -> CudaResult<(GKRProof<BF, E4, DefaultTreeConstructor>, f32)> {
+    fn finish_inner(self) -> CudaResult<FinishedProofWithSnapshots> {
         let Self {
             is_finished_event,
             callbacks,
             mut proof,
             ranges,
+            stage_snapshots,
             keepalive,
         } = self;
         is_finished_event.synchronize()?;
@@ -82,15 +94,29 @@ impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
             .expect("proof job must keep the top-level range")
             .elapsed()?;
 
+        Ok((proof, stage_snapshots, proof_time_ms))
+    }
+
+    pub fn finish(self) -> CudaResult<(GKRProof<BF, E4, DefaultTreeConstructor>, f32)> {
+        let (proof, _, proof_time_ms) = self.finish_inner()?;
         Ok((proof, proof_time_ms))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn finish_stagewise(self) -> CudaResult<StagewiseFinishedProof> {
+        let (proof, snapshots, proof_time_ms) = self.finish_inner()?;
+        Ok((
+            proof,
+            snapshots
+                .expect("stagewise proof job must collect snapshots")
+                .into_snapshots(),
+            proof_time_ms,
+        ))
     }
 }
 
 pub(crate) fn top_layer_claim_layout(
-    output_layer_for_sumcheck: &BTreeMap<
-        OutputType,
-        prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput,
-    >,
+    output_layer_for_sumcheck: &BTreeMap<OutputType, DimensionReducingInputOutput>,
 ) -> ClaimBufferLayout {
     let mut addresses = BTreeSet::new();
     let permutation_output = &output_layer_for_sumcheck[&OutputType::PermutationProduct];

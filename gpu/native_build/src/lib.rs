@@ -12,9 +12,12 @@
 //! `ab_cuda_configure_target` function that owns the common target
 //! configuration), whose directory is passed to CMake as `AB_CUDA_CMAKE_DIR`.
 
-use era_cudart_sys::{
-    get_cuda_include_path, get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_message,
-};
+use era_cudart_sys::{get_cuda_include_path, get_cuda_lib_path, get_cuda_version, no_cuda_message};
+
+/// Re-exported so a kernel `build.rs` can skip Toolkit-dependent steps — including a
+/// host `cc` compile, like `gpu_core`'s NVTX wrapper — without its own
+/// `era_cudart_sys` build-dependency.
+pub use era_cudart_sys::is_no_cuda;
 use std::env;
 use std::fs;
 use std::path::Path;

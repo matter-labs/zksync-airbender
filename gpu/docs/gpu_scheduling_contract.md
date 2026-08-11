@@ -28,7 +28,7 @@ edge cases, and wiring behind each rule.
   construction invariant and what belongs there.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or `d2h_stream`)
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or `side_stream`)
   against `exec_stream` with explicit CUDA events. The driver gives independent
   streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
@@ -46,13 +46,12 @@ edge cases, and wiring behind each rule.
 - **MUST** keep `prove()` enqueue-only. No `stream.synchronize()`, no host
   blocking for `exec_stream` progress — not even for profiling or logging.
   Host blocking belongs in `GpuGKRProofJob::finish()`.
-- **Default to `exec_stream`** for H2D/D2H copies. Use `h2d_stream` /
-  `d2h_stream` only when meaningful copy/compute overlap justifies the
-  fork/join machinery.
+- **Default to `exec_stream`** for copies. Use `h2d_stream` only when meaningful
+  H2D overlap justifies the fork/join machinery.
 
 ## Streams
 
-`ProverContext` (`gpu/prover_context/src/context.rs`) owns four streams:
+`ProverContext` (`gpu/prover_context/src/context.rs`) owns three streams:
 
 - **exec stream** (`exec_stream`): the single reference stream for all GPU work.
   Kernel launches, pool allocations, pool frees, and host callbacks are all
@@ -64,19 +63,13 @@ edge cases, and wiring behind each rule.
   host-to-device transfers with exec-stream compute. It is **not** the default
   path for H2D copies — see *H2D copies* below.
 
-- **D2H stream** (`d2h_stream`): an auxiliary stream used to overlap
-  device-to-host transfers (and any host callbacks that consume those D2Hs) with
-  exec-stream compute. Ownership is transferred to `d2h_stream` via a fork event
-  and returned to `exec_stream` via a join event — see *D2H copies* below.
-
 - **Side stream** (`side_stream`, `get_side_stream()`): an auxiliary compute
-  stream used to overlap independent kernel work (not a copy direction like
-  the two streams above) with exec_stream. Currently its only consumer is
-  `gpu_trace`'s trace holder, for parallel trace commit — see *Side stream*
-  below.
+  stream used to overlap independent kernel work with exec_stream. Its only
+  consumer is `gpu_trace`'s trace holder, for parallel trace commit — see
+  *Side stream* below.
 
 **Rule for auxiliary streams**: any operation on an auxiliary stream
-(h2d_stream, d2h_stream, or side_stream) must be explicitly ordered with
+(h2d_stream or side_stream) must be explicitly ordered with
 respect to exec_stream using CUDA events. The driver gives independent
 streams no implicit ordering guarantees.
 
@@ -229,86 +222,21 @@ kernels do not read a buffer that is still being transferred.
 
 ## D2H copies
 
-D2H copies can be scheduled on either stream:
-
-**On exec_stream (default)**: call `memory_copy_async` directly on exec_stream.
-No additional fencing is required.
-
-**On d2h_stream (for copy/compute overlap)**: follow the fork/join/drop rules
-below. This is worthwhile when the D2H source is written well before any host
-consumer reads the destination, and meaningful exec-stream compute can run in
-parallel with the transfer.
-
-> The terminal proof-slab D2H in `prove()` runs on exec_stream because it is
-> the last scheduled op before the assembly callback, so there is no
-> concurrent exec-stream work to overlap with. Per-layer D2Hs that feed WHIR
-> host setup continue to use d2h_stream via the fork/join pattern below.
-
-### Fork/join/drop ownership rules
-
-Pool-backed `DeviceAllocation` and `HostAllocation` handles are always allocated
-and dropped with **exec_stream** ordering; that never changes. A secondary
-stream (h2d_stream or d2h_stream) may access these allocations between a fork
-event and a join event, after which ordering returns to exec_stream for the
-drop.
-
-1. **Fork**: exec_stream records a `CudaEvent` after the last op that writes the
-   source; the secondary stream calls `wait_event` on that event before issuing
-   its first op on the source.
-2. **Join**: the secondary stream records a `CudaEvent` after its last op on
-   any shared buffer; exec_stream calls `wait_event` on that event before any
-   subsequent op that conflicts with the secondary stream's activity (see
-   write-exclusivity below) and before the allocation's Rust-level drop.
-3. **Drop always on exec_stream**: pool-backed allocations are freed on
-   exec_stream regardless of which streams accessed them. The Rust-level drop
-   must occur after the join wait has been scheduled on exec_stream;
-   stream-ordered pool free then guarantees the block is not recycled until the
-   secondary stream has finished. Skipping the join before drop is a
-   use-after-free.
-4. **Write-exclusivity**: within a fork/join window, exactly one stream
-   writes any shared buffer (pool-backed allocation or `UnsafeMutAccessor`
-   target such as shared host state); the other side may only read.
-   Concurrent reads are fine. If the secondary stream writes, exec_stream
-   must not also touch the buffer inside the window.
-
-```text
-exec_stream:   kernels write source buffer S and/or update shared host state X
-exec_stream:   record E_src_ready                ("S is written")
-d2h_stream:    wait_event(E_src_ready)           ("don't read S before it's written")
-d2h_stream:    memory_copy_async(H, S)           ("D2H into pinned host H")
-d2h_stream:    schedule consumer callback        ("reads H, writes X")
-d2h_stream:    record E_d2h_done                 ("X updated, H complete")
-exec_stream:   wait_event(E_d2h_done)            ("don't read X or drop S yet")
-exec_stream:   (subsequent ops / S drop)
-```
-
-The E_src_ready fence ensures the secondary stream does not read S before
-exec_stream has finished writing it. The E_d2h_done fence ensures exec_stream
-does not read X, recycle H's pool block, or free S before the secondary stream
-has finished with them.
-
-**CUDA event handle lifetime**: `cudaEventRecord` and `cudaStreamWaitEvent`
-hold internal refcounts. The Rust `CudaEvent` handle may be dropped immediately
-after its last `record` / `wait_event` call — no explicit keepalive is needed.
-
-**HostAllocation keepalive across streams**: pinned host slabs must live until
-their last scheduled op on any stream. Handles stored in execution keepalive
-structs automatically satisfy this because those structs outlive the
-final join.
+D2H copies run on `exec_stream`. Schedule the consumer callback after the copy
+and keep the host destination alive until that callback has been scheduled.
 
 ## Side stream
 
-`side_stream` (`ProverContext::get_side_stream()`) is the fourth stream. Unlike
-`h2d_stream`/`d2h_stream`, it is not dedicated to one copy direction: it carries
-general compute kernels in parallel with the same kind of kernels on
+`side_stream` (`ProverContext::get_side_stream()`) carries general compute
+kernels in parallel with the same kind of kernels on
 exec_stream. Its only current consumer is `gpu_trace`'s trace holder
 (`commit_trace_from_ntt_single_tree` in `gpu/trace/src/trace/holder/mod.rs`),
 for parallel trace commit — ping-ponging LDE, leaf-transform, and leaf-commit
 kernels across coset-index chunks between `exec_stream` and `side_stream` to
 overlap the two streams' compute.
 
-The same fork/join/write-exclusivity/drop discipline as the aux streams above
-applies, adapted to a compute (not copy) workload:
+The same fork/join/write-exclusivity/drop discipline as H2D applies, adapted to
+a compute workload:
 
 ```text
 exec_stream:  record E_start                     ("first chunk's inputs are ready")
@@ -325,7 +253,7 @@ exec_stream:  build_merkle_tree_nodes(...)         (exec_stream-only; reads ever
   H2D fork above, generalized from "before a copy" to "before a kernel").
 - **Join**: a single event recorded on `side_stream` after its last chunk;
   `exec_stream` waits on it before the exec_stream-only Merkle-tree node build
-  that follows (mirrors the D2H join above).
+  that follows (mirrors the H2D join above).
 - **Write-exclusivity**: each stream's kernels write a disjoint coset-index
   range of the shared trace/leaf buffers (the per-chunk offset is computed
   from the chunk's coset-index base), so the two streams never write the same

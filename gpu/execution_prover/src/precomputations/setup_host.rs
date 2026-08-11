@@ -1,6 +1,7 @@
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use gpu_gkr::setup::GpuGKRSetupHost;
+use gpu_gkr::GkrPrograms;
 use gpu_prover_context::ProverContext;
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
@@ -84,7 +85,7 @@ impl LazyGpuGKRSetupHost {
 /// constructor.
 #[derive(Clone)]
 pub(crate) struct CircuitPrecomputations {
-    pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
+    pub gkr_programs: Arc<GkrPrograms>,
     pub setup_host: Arc<LazyGpuGKRSetupHost>,
     pub decoder_host: Option<Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>>,
 }
@@ -107,6 +108,11 @@ impl CircuitPrecomputations {
             circuit_type.get_domain_size(),
             "compiled circuit trace_len disagrees with CircuitType geometry for {circuit_type:?}"
         );
+        let compiled_circuit = Arc::new(compiled_circuit);
+        let gkr_programs = Arc::new(
+            GkrPrograms::compile(circuit_type, Arc::clone(&compiled_circuit))
+                .unwrap_or_else(|error| panic!("{circuit_type:?} GKR programs: {error}")),
+        );
         let setup_host = Arc::new(LazyGpuGKRSetupHost::new(
             Arc::new(cpu_setup),
             log_lde_factor,
@@ -125,7 +131,7 @@ impl CircuitPrecomputations {
             _ => None,
         };
         Ok(Self {
-            compiled_circuit: Arc::new(compiled_circuit),
+            gkr_programs,
             setup_host,
             decoder_host,
         })

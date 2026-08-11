@@ -4,6 +4,11 @@ use std::marker::PhantomData;
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
+/// Re-export so `Worker` users can drive its [`ThreadPool`] with rayon's
+/// parallel iterators (work stealing) without their own rayon dependency:
+/// `worker.pool.install(|| items.par_iter().map(..) .. )`.
+pub use rayon;
+
 // We allocate a pool of (ideally) high-performance cores only!
 pub struct Worker {
     pub pool: ThreadPool,

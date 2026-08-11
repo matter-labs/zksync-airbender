@@ -14,14 +14,17 @@ used to live under `circuit_prover/native/gkr/` and `native/ops/gkr_ops.cu`).
 gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
 gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. Dependencies point only down: this crate depends on `gpu_core`,
-`gpu_ntt`, `gpu_ops`, `gpu_hash`, `gpu_cub`, `gpu_prover_context`, `gpu_trace`,
-and `gpu_gkr_model`, plus the upstream crates below; `gpu_whir` and
-`gpu_circuit_prover` depend on it, never the reverse.
+`gpu_ops`, `gpu_hash`, `gpu_cub`, `gpu_prover_context`, `gpu_trace`,
+`gpu_gkr_model`, `gpu_gkr_compiler`, and `gkr_eval_ir`, plus the upstream crates below;
+`gpu_whir` and `gpu_circuit_prover` depend on it, never the reverse.
 
-The GPU-free CPU model of the GKR layout (address audit, storage layout,
-circuit transform) lives in the standalone `gpu_gkr_model` crate (deps `cs` +
-`field`; no CUDA, off-DAG). This crate consumes it via facade re-exports:
-`gpu_gkr::{gkr_address_audit, storage_layout, transform}`.
+The GPU-free CPU model of the GKR layout lives in the standalone
+`gpu_gkr_model` crate; this crate imports it internally.
+
+The GPU-independent evaluation DAG lives in the root `gkr_eval_ir` crate. The
+CPU-only `gpu_gkr_compiler` consumes that DAG and produces the checked forward,
+R0, and continuation programs used here; its offline search is feature-gated and
+never runs during prover initialization.
 
 ## GPU Scheduling Contract
 
@@ -31,10 +34,6 @@ these, or anything else that launches kernels or manages streams, read
 [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md) in
 full. It governs the async stream-ordered model used by GKR, WHIR, and
 related proving workflows.
-
-This crate also owns `configure_kernel_attributes()` — the one-time kernel
-configuration (idempotent via a `Once` guard in `backward::flat`) that must
-run before the first `prove()` call.
 
 ## Upstream imports
 
@@ -49,9 +48,7 @@ exempt.
 
 ## Upstream constant drift guards
 
-This crate's native code hard-codes no upstream-crate-owned values today (no
-`assert!(crate::upstream::…)` compile-time guards exist here — the constants
-its kernels use, e.g. `FLAT_CONST_MAX`, are owned by this crate itself). The
+This crate's native code hard-codes no upstream-crate-owned values today. The
 established drift-guard pattern and its current home (`gpu_trace`'s
 `src/witness/mod.rs`, guarding witness-circuit constants owned by `cs` /
 `common_constants`) are documented in
@@ -66,16 +63,9 @@ drift by convention.
 
 - **Archive / `links` key**: `gpu_gkr_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_gkr_native", "GPU_GKR").export_include(true).build()`).
-- **Kernel count**: 62 `__global__` kernels (verified by grep, across
-  `gkr/{forward,backward,setup,support}/*.cu` and `ops/gkr_ops.cu`) plus
-  **all 8** of the cluster's `__device__ __constant__` symbols
-  (`ab_gkr_lookup_gamma_consts`, `ab_gkr_flat_coefficients`,
-  `ab_gkr_lookup_alpha_powers`, `ab_gkr_eq_high`,
-  `ab_gkr_dim_reducing_batch_challenge_table`,
-  `ab_gkr_dim_reducing_layer_claim_point`, `ab_gkr_round2_challenges`,
-  `ab_gkr_main_layer_claim_point`). Nothing device-side crosses the archive
-  boundary — `gpu_whir` reads only pointer-based inline helpers and
-  compile-time constants from this crate, never a `__constant__` symbol.
+- Nothing device-side crosses the archive boundary — `gpu_whir` reads only
+  pointer-based inline helpers and compile-time constants from this crate,
+  never a `__constant__` symbol.
 - **Namespace**: `airbender::gkr::{backward, forward, ops, setup}` (plus
   shared support code directly under `airbender::gkr`).
 - **Header relationships**: `export_include(true)` — this crate exports its
@@ -85,21 +75,9 @@ drift by convention.
   headers and `gpu_hash`'s `hash.cuh` (via `DEP_GPU_HASH_NATIVE_INCLUDE`) for
   the blake2s-dependent protocol kernels in `ops/gkr_ops.cu`.
 
-## Widening convention
+## Public API
 
-- `#[doc(hidden)] pub mod gpu_kernels` / `pub use gpu_kernels::GpuKernels` —
-  the apex e2e test suite names `GpuKernels` as a generic bound; its
-  `pub(crate)` supertraits (`BackwardKernels`, `ForwardKernels`,
-  `SetupKernels`) stay internal.
-- `#[doc(hidden)] pub use storage_types::{...}` — storage/descriptor types
-  the apex e2e suite and proof orchestration name across the crate boundary
-  (test-reference surface, not production API).
-- `#[doc(hidden)] pub use support::immediate_factors` — test-reference: the
-  apex `expected_specs` test module builds these recipes directly.
-- Plain `pub` (e.g. `configure_kernel_attributes`, the
-  `gkr_address_audit`/`storage_layout`/`transform`/`gkr_initial_inner_products`
-  facade re-exports) = production cross-crate API, no why-pub comment needed
-  beyond the module doc above.
+- Plain `pub` is production cross-crate API. Storage internals stay crate-private.
 
 ## Build and Test
 
@@ -126,10 +104,3 @@ drift by convention.
   [`../.clang-format`](../.clang-format) (see [`../AGENTS.md`](../AGENTS.md)).
   `cargo fmt` does not cover this; CI does not enforce it. A change that
   touches both languages needs both formatters.
-
-## Design Documents
-
-- [`docs/backward_immediate_factor_encoding.md`](docs/backward_immediate_factor_encoding.md):
-  design note on the backward-pass immediate-factor encoding implemented in
-  `src/backward/flat/` (relocated here from `circuit_prover/docs/` when that
-  code moved in the split).

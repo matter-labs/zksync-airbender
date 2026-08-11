@@ -21,12 +21,7 @@ pub(crate) fn build_unified_setup_direct(
 
     let compiled_circuit = get_unified_reduced_machine_circuit(true);
 
-    // Decoder table via the unified reduced-machine preprocessing (mirrors
-    // setups::unrolled_circuits::unifier_reduced_machine_circuit's
-    // `unified_reduced_machine_circuit_setup`: `UnifiedReducedMachineDecoder`
-    // over `ReducedMachineDecoderConfig` with the 5 supported CSRs). pr-332
-    // removed the `UnifiedRiscvCircuitOracle::new` derivation this used to
-    // mirror; the oracle is now a plain borrow of an externally built table.
+    // Decoder table for the five supported reduced-machine CSRs.
     let decoder_table = {
         use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
         use common_constants::{

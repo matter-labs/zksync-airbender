@@ -392,7 +392,8 @@ fn commit_memory_cap(
         level,
     );
     let twiddles: Twiddles<BabyBearField, Global> = Twiddles::new(trace_len, worker);
-    let mem = commit_trace_part::<BabyBearField, DefaultTreeConstructor>(
+    let mem = commit_trace_part::<BabyBearField, BabyBearField, DefaultTreeConstructor>(
+        &crate::gkr::prover::backend::NaiveBackend,
         columns,
         &twiddles,
         prover_config.lde_factor,
@@ -401,7 +402,7 @@ fn commit_memory_cap(
         trace_len_log2,
         worker,
     );
-    mem.tree.get_cap()
+    mem.get_cap()
 }
 
 fn unified_register_final_values<C>(vm: &VmRunOutput<C>) -> Vec<FinalRegisterValue>

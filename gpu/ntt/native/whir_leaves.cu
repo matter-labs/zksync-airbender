@@ -35,7 +35,7 @@ EXTERN __launch_bounds__(512, 2) __global__
   src.add_row(base_lane_in_coset);
   dst.add_row(base_lane_in_coset);
 
-  extern __shared__ uint8_t smem[];
+  extern __shared__ __align__(16) uint8_t smem[];
 
   const unsigned leaves_per_coset = 1 << log_leaves_per_coset;
   const unsigned initial_slot_in_leaf = threadIdx.y;

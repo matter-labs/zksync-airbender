@@ -3,9 +3,7 @@
 //! `gpu_gkr`'s own unit tests need a `ProverContext`; the apex crate's
 //! `prover::test_utils::make_test_context` stays in `gpu_circuit_prover` (it is
 //! shared by the apex e2e suite and can't move down without dragging the proof
-//! layer). This self-contained copy mirrors that helper — build a
-//! `ProverContext` directly and run the one-time kernel configuration
-//! (`crate::configure_kernel_attributes`, in-crate now).
+//! layer). This self-contained copy mirrors that helper.
 
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 
@@ -44,7 +42,5 @@ pub(crate) fn make_test_context_with_device_allocator_block_log_size(
     {
         config.small_allocator_log_chunk_size = None;
     }
-    let context = ProverContext::new(&config).unwrap();
-    crate::configure_kernel_attributes();
-    context
+    ProverContext::new(&config).unwrap()
 }
