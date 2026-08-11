@@ -491,6 +491,36 @@ be idling carveout the same way. Since R7, hint 16 is the launcher default for t
 `--carveout-hint N` overrides and `--carveout-hint none` restores the pre-R7 echo-free
 off-state. Full record: `iteration_times.md`'s *v3 R6* section.
 
+### v3 R7 — the segmented pair (seg-K4)
+
+The segmented restructuring: the four warps of a block work on the same four rows at a time (in
+four sequential cohorts), produce the cached coset sources once per cohort into a slab they
+share, each walk a quarter of the term list, and combine through a shared reduction plane per
+cohort — production's segmented-VM shape, with the slab's medium as an open axis (`--carrier
+seg-s` / `seg-s100` = dynamic shared memory at the 64 KiB / 100 KiB carveout request, `seg-g` = a
+per-block device-scratch region with `st.wb` publish / `ld.ca` consume, `seg-s-acc` = the
+accumulator-first reduction, `seg-recompute` = the machinery floor). `--seg-smem-factorial` (10
+lanes), `--seg-gmem-factorial` (9) and `--seg-anchor` (2, which also prices the incumbent's
+carveout hint) are the rotations; `tools/r7_table.py` decides and `tools/r7_gates.sh` gates.
+**Outcome: no segmented lane beats the incumbent** — every one loses by **+1.822 to +3.939 ms**
+at 100/100 (smem) or 99/99 (gmem) sign-stability, in both term orders, with the first loser at
+`seg-hot16-s64@128` +1.822 ms locality. The decomposition is clean and says it is not an
+implementation defect: the cohort walk alone costs **+3.690 ms** before anything is published,
+the publish machinery is cheap (**+0.24 ms**) and the capture is real (**−2.11 ms**), so the sum
+never crosses zero; the carrier axis resolves at **±0.08 ms** and the capture slope is
+**positive on both carriers** (+8–12 µs per removal), so `hot16` (C = 28) stays the admission
+optimum under segmentation too. Two findings travel beyond the rung. **Capture economics:** the
+publish round-trip's write differential closes to the arithmetic slab floor at 1.0000×
+(1.879 GB/pass at `hot16`) and only 24.4 % of it reaches DRAM, so a shared slab and a
+device-scratch slab price within ~0.08 ms of each other — where the produced sources live is not
+where the time goes. **The carveout ladder is body-dependent:** R6's hint→configuration map holds
+row for row on a static-shared body and does NOT transfer to a dynamic-shared one (hint 32 →
+32.77 KB and 4 blocks/SM instead of 65.54 KB and 7; 33 is the dynamic body's crossing), which
+aborted the first measurement attempt at the realized-configuration gate; every seg lane now
+verifies its pinned occupancy in-process via
+`cudaOccupancyMaxActiveBlocksPerMultiprocessor`, and `--carveout-hint` composes with `--carrier`
+as the ladder-mapping surface. Full record: `iteration_times.md`'s *v3 R7* section.
+
 ### Geometry
 
 - 16 taps of a logical row live on the multiplicative subgroup `H` of order 16;

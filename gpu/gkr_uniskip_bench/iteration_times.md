@@ -3680,8 +3680,9 @@ emitter pins), the self-generating fixture lane (`tools/r6_fixtures/`) and the c
   ADDENDUM: R7 Task 0 baked hint 16 as the default (parked item (a)); the historical
   off-state is reproducible via `--carveout-hint none`. Every R4/R5 median recorded above
   predates the bake, and `r4_table.py` / `factorial_table.py` carry no hint field, so a
-  post-bake log is identified ONLY by the harness's `carveout hint 16%` config echo in the
-  raw log — never by the emitted tables.
+  post-bake log is identified ONLY by the harness's config echo in the raw log — never by the
+  emitted tables. The echo is column-aligned, so the grep literal is
+  `  carveout hint       16% (eval_lsb_pair_cached_128_lb)`.
 - **The driver heuristic generalizes.** Any production kernel whose register limit binds
   below its warp limit may be running with an oversized carveout and a shrunken L1 for no
   reason. A sweep of the production prover's kernels (`Shared Memory Configuration Size`
@@ -3701,3 +3702,537 @@ sections-only on the shipped post-rebase binary (no lineinfo, so no source corre
 one launch: 14.78 ms, config 32.77 KB, L1/TEX hit 38.70 % (unhinted R5 capture: 32.96 %),
 L2 hit 60.34 %, DRAM 41.87 % SOL, SM 77.18 %, occupancy 57.88 %. Lands as a feat + docs
 commit pair on top of `a39da580`.
+
+## v3 R7 — the segmented pair (seg-K4)
+
+This is rung 2 of the ladder R4/R5 set a bar for — "realization D", the segmented carrier.
+The winning kernel today gives each 8-lane group one row and walks all 175 term records of
+that row, recomputing coset values on the fly out of a 16-source per-thread cache in local
+memory (which physically lives in L2). R7 reshapes the kernel the way production's segmented
+VM is shaped: the four warps of a block work on the SAME four rows at a time (rows in flight
+per block drop 16 → 4, in four sequential *cohorts*), the cached sources are produced ONCE per
+cohort cooperatively into a slab the four warps share, each warp then walks only a quarter of
+the term list, and the quarter-sums are combined through a shared reduction plane at the end of
+every cohort. Total math work is unchanged — there is no 1/K speedup — so the whole thesis was
+economic: the cache's live working set shrinks 4×, and if that re-prices residency then the
+cache can grow again past R5's `hot16` frontier. The bill for it is ~15 block barriers instead
+of 1. The slab's MEDIUM was measured as an open axis (RR: the carrier is not a settled call):
+**carrier S** puts it in dynamic shared memory (SRAM on the SM, immune to tap-stream eviction,
+but it hard-partitions the one 128 KB L1+smem pool) and **carrier G** puts it in a small
+per-block device-scratch region reused across the four cohorts, `st.wb` publish / `ld.ca`
+consume (production's exact pattern — no carveout demand, adaptive L1, eviction risk). Spec:
+`.agents/specs/2026-08-10-gkr-uniskip-v3-r7-segmented-pair-design.md`; its §7 prior, which
+codex and I shared going in, was "seg-recompute is a wash or loss (barriers, unchanged math);
+the hot16-capture seg lanes have a credible low-single-digit-% path if the carrier change beats
+15 barriers; the capture lanes are where a real step lives (~13.8–14.0 ms IF a carrier
+re-prices the frontier)".
+
+**R7 preregisters no closure threshold** (spec, RR ruling): every arm is a datapoint about
+where the optimum lies, and the record has to let a reader tell an implementation defect from a
+refuted idea. Nothing here declares a winner. The baseline is `hot16@128` WITH the R6 carveout
+hint baked in (best-vs-best, RR ruling) — R7 Task 0 made hint 16 the launcher default.
+
+**Headline: no segmented lane beats the incumbent, and it is not an implementation defect.**
+Every seg lane in both rotations loses by **+1.822 to +3.939 ms** at maximal sign-stability
+(100/100 SMEM, 99/99 GMEM). The decomposition says why: the segmented cohort walk costs
+**+3.690 ms** before anything is published, the publish machinery adds **+0.242 ms**, and the
+capture only refunds **−2.113 ms**.
+
+### Design — what was built
+
+Five kernel symbols, all 72 registers under `__launch_bounds__(128, 7)`:
+`eval_lsb_seg_recompute` (the machinery floor — cohort loop, quarter-lists, reduction plane, no
+slab and no prologue), `eval_lsb_seg_s_cv64` / `eval_lsb_seg_s_cv100` (carrier S at the 64 KiB
+and 100 KiB carveout requests — one body, two carveout clones, byte-identical SASS),
+`eval_lsb_seg_s_acc` (carrier S with the accumulator-first reduction shape) and
+`eval_lsb_seg_g` (carrier G). S and G share one templated eval-loop source body behind
+compile-time carrier accessors. Host side: a capture-blind K4 dealer (quarter-lists +
+prologue owner striping) checked against a committed oracle (`tools/r7_fixtures/seg_oracle.json`,
+fnv1a64 over LE record bytes), the `--seg-smem-factorial` (10 lanes) / `--seg-gmem-factorial`
+(9 lanes) / `--seg-anchor` (2 lanes) rotations and a single-arm `--carrier
+{seg-s,seg-s100,seg-s-acc,seg-g,seg-recompute}` surface for gates and profiling.
+`tools/r7_table.py` is the single decision authority (positional, fail-closed, tag/order/rounds/
+warmup/per-symbol-carveout all read from the log, never from a filename) and
+`tools/r7_gates.sh` is the wall (74-cell support matrix, seg-body SASS digests with teeth so a
+diag build cannot be accepted, 76 fixtures, the R5 regression lane). Device parity: **q parity
+24/24 bit-exact** against the local control, poison 12/12.
+
+### G0 aborted the first attempt — the carveout ladder is BODY-DEPENDENT
+
+The P4-AMENDED realized-configuration gate failed 2 of 6 points on the first frozen binary
+(`7df8640a…`): the two symbols requesting the 64 KiB tier (`eval_lsb_seg_s_cv64`,
+`eval_lsb_seg_s_acc`, both at hint 32) realized a **32.77 KB** configuration and ran **4
+blocks/SM against a pinned 7**. No timed session was started — the correct abort; zero sessions
+wasted. A profiler-independent ABBA×2 corroboration (same body, same slab, differing only in
+the carveout request) priced the mis-configuration at **+3.31 ms (+20.4 %), stable to ±0.03 ms**
+— an order of magnitude larger than the differentials the rung exists to measure, so had the
+sessions run, three decision rows would have been 4-blocks-vs-7-blocks comparisons wearing the
+label of a carrier or capture effect.
+
+Root cause, from the diagnostic captures (task-7 report, Part I): **R6's hint ladder is exactly
+right on the body it was mapped on, and does not transfer across the shared-memory KIND.**
+
+| body | shared kind, size | hint | realized configuration | Block Limit Shared Mem |
+| --- | --- | --- | --- | --- |
+| `eval_lsb_pair_cached_128_lb` | **static** 2.05 KB | 16 | 32.77 KB | 10 |
+| " | " | 20 | 32.77 KB | 10 |
+| " | " | **24** | **65.54 KB** | 21 |
+| " | " | **32** | **65.54 KB** | 21 |
+| " | " | 40 | 65.54 KB | 21 |
+| " | " | 50 | 102.40 KB | 33 |
+| `eval_lsb_seg_s_cv64` / `_acc` | **dynamic** 7.17 KB | **32** | **32.77 KB** | 4 |
+| `eval_lsb_seg_s_cv100` (hot16) | **dynamic** 7.17 KB | 100 | 102.40 KB | 12 |
+| `eval_lsb_seg_s_cv100` (k40) | **dynamic** 13.31 KB | 100 | 102.40 KB | 7 |
+
+The fix wave (`29e36e34`) did three things: made `--carveout-hint` compose with `--carrier` as a
+permanent ladder-mapping surface (the frozen CLI could not probe a dynamic body at all),
+re-mapped the ladder on a dynamic body — **65.54 KB from hint 33, plateau 33–56, next tier at
+64** — and set `SegS64 | SegSAcc => 33`. It also added an in-process **occupancy self-gate**:
+`cudaOccupancyMaxActiveBlocksPerMultiprocessor` per seg lane after the carveout is set, asserting
+against the lane table's pinned `blocks_per_sm` (it floors rather than asserts on the
+static-plane symbols, where the calculator models a smaller partition than the driver selects).
+That matters beyond this rung: the `ARM` line prints `lane.blocks_per_sm`, a pinned constant, so
+before the self-gate the emitter would have faithfully reproduced a claim of 7 blocks for a lane
+the hardware ran at 4. **G0 then passed 6/6** on the fixed binary (`fabf2b5b…`, tip `29e36e34`),
+with both former failures realizing 65.54 KB at 7 blocks.
+
+Portable finding: **a carveout-hint ladder is per-body.** Mapping it on a static-shared kernel
+says nothing about a dynamic-shared one, and the pinned occupancy constant must be verified
+in-process, not only under `ncu`.
+
+### The measurement — eight positional processes, and a corrected soak
+
+`.agents/bin/with_gpu_lock.sh` around every GPU execution; the P1 binary sha (`fabf2b5b…`) was
+equal before G0 and after the last session log, with no cargo/cmake invocation anywhere in the
+window. A peer agent shared the GPU throughout (prover `ncu`/`nsys` jobs in another worktree),
+which is why each session holds the lock across soak *and* measurement.
+
+P3 as briefed defined the soak as an **idle** wait. Measured on session 1, that reproduces
+exactly the R6 cold-start artifact the soak exists to remove:
+
+| session-1 attempt | soak | state at first timed launch | `control@256` flank | `hot16@128` flank |
+| --- | --- | --- | --- | --- |
+| `tuning-nosoak-…` | none (nvidia-smi field error voided it) | cold | — | — |
+| `session-reanchor-census-cold` | 80 s **idle** | 180 MHz, 31 °C | 0.008 | **+0.295** |
+| `tuning-worksoak80-…` | 80 s **discarded work** | 2295 MHz, 78 °C | 0.044 | 0.060 |
+| `tuning-worksoak150-…` | 150 s discarded work | 2317 MHz, 77 °C | 0.200 | 0.182 |
+
+The adopted procedure is R6's 80 s, as **discarded work**: one lock hold containing 80 s of
+discarded work on the same rotation, immediately followed by the timed process, 1 Hz telemetry
+across both and a `.mark` file at the boundary. 150 s was not better than 80 s — the residual
+drift is the inter-process gap (the timed process re-allocates and regenerates 5.75 GiB before
+its first launch, ~1.4 s of relative cooldown), not soak length. Session 1 was re-run fresh
+under the finalized procedure rather than promoting a tuning run, so no session was selected on
+its own flank. Every timed process started at steady state (2295–2385 MHz, 77–78 °C, ~600 W,
+6.48 GiB resident, or 9.75 GiB on the GMEM rotation whose G lanes allocate the device slab), and
+no foreign compute process appears in any measurement window.
+
+The Step-7 repeat trigger fired on the first pass, so four sessions were re-run in full, soaked,
+same flags, and the emitter was re-run with them substituted. Both emitter outputs are kept:
+`r7-tables.md` (first pass, history) and **`r7-tables-repeat.md` — the primary decision record,
+from which every table below is copied verbatim.** Every paired figure is stable across the two
+passes, which is the strongest evidence the tripped flanks did not move the decision:
+attribution +0.063 → +0.067 (cv64) and +0.280 → +0.295 (cv100); census machinery +0.315 →
++0.305; census capture −2.243 → −2.197; census acc A/B +0.253 → +0.257. The repeat pass also
+brought the one out-of-band anchor back in (`reanchor-census/control@256` +2.20 % → +1.54 %), so
+the primary record carries no `ANCHOR OUT OF BAND` banner.
+
+| # | position | tag | order | rounds | warmup | incumbent hint | log |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | reanchor-census | SEG-ANCHOR | `census` | 100 | 10 | 16% | `.agents/sdd/2026-08-10-v3-r7/session-reanchor-census-repeat.log` |
+| 2 | reanchor-locality | SEG-ANCHOR | `locality` | 100 | 10 | 16% | `.agents/sdd/2026-08-10-v3-r7/session-reanchor-locality-repeat.log` |
+| 3 | smem-locality | SEG-SMEM | `locality` | 100 | 10 | 16% | `.agents/sdd/2026-08-10-v3-r7/session-smem-locality.log` |
+| 4 | smem-census | SEG-SMEM | `census` | 100 | 10 | 16% | `.agents/sdd/2026-08-10-v3-r7/session-smem-census-repeat.log` |
+| 5 | gmem-locality | SEG-GMEM | `locality` | 99 | 9 | 16% | `.agents/sdd/2026-08-10-v3-r7/session-gmem-locality.log` |
+| 6 | gmem-census | SEG-GMEM | `census` | 99 | 9 | 16% | `.agents/sdd/2026-08-10-v3-r7/session-gmem-census.log` |
+| 7 | attr-cv64 | SEG-ANCHOR | `locality` | 100 | 10 | 32% | `.agents/sdd/2026-08-10-v3-r7/session-attr-cv64.log` |
+| 8 | attr-cv100 | SEG-ANCHOR | `locality` | 100 | 10 | 100% | `.agents/sdd/2026-08-10-v3-r7/session-attr-cv100-repeat.log` |
+
+Dealt-plan identity, validated against the committed Task 2 oracle (the owner census is the
+`hot16` REFERENCE stripe the dealer pins arm-independently, not what any one run's prologue
+striped):
+
+| order | carried by | list offsets | predicted cost | owners e4 | owners bf | program hash |
+| --- | --- | --- | --- | --- | --- | --- |
+| `census` | smem-census, gmem-census | 0,49,87,137,175 | 783,731,749,725 | 1,1,1,1 | 3,3,3,3 | `e10a9e26dbf0b75d` |
+| `locality` | smem-locality, gmem-locality | 0,46,89,132,175 | 759,713,772,744 | 1,1,1,1 | 3,3,3,3 | `02dbf4b0cd52aae9` |
+
+Lane facts, from the `ARM` lines (identical across every process that carries the lane):
+
+| rotation | lane | kernel | regs | blocks/SM | threads | grid | C | removals | admitted |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SEG-ANCHOR | `control@256` | `eval_lsb_pair` | 72 | 3 | 256 | 32768 | 0 | 0 | 0 |
+| SEG-ANCHOR | `hot16@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 |
+| SEG-SMEM | `control@256` | `eval_lsb_pair` | 72 | 3 | 256 | 32768 | 0 | 0 | 0 |
+| SEG-SMEM | `control_lb@128` | `eval_lsb_pair_128_lb` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 |
+| SEG-SMEM | `hot16@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 |
+| SEG-SMEM | `seg-recompute@128` | `eval_lsb_seg_recompute` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 |
+| SEG-SMEM | `seg-cache0-s@128` | `eval_lsb_seg_s_cv64` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 |
+| SEG-SMEM | `seg-hot16-s64@128` | `eval_lsb_seg_s_cv64` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 |
+| SEG-SMEM | `seg-hot16-s100@128` | `eval_lsb_seg_s_cv100` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 |
+| SEG-SMEM | `seg-k24-s@128` | `eval_lsb_seg_s_cv100` | 72 | 7 | 128 | 65536 | 36 | 161 | 24 |
+| SEG-SMEM | `seg-k40-s@128` | `eval_lsb_seg_s_cv100` | 72 | 7 | 128 | 65536 | 52 | 193 | 40 |
+| SEG-SMEM | `seg-hot16-acc@128` | `eval_lsb_seg_s_acc` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 |
+| SEG-GMEM | `control@256` | `eval_lsb_pair` | 72 | 3 | 256 | 32768 | 0 | 0 | 0 |
+| SEG-GMEM | `control_lb@128` | `eval_lsb_pair_128_lb` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 |
+| SEG-GMEM | `hot16@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 |
+| SEG-GMEM | `seg-recompute@128` | `eval_lsb_seg_recompute` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 |
+| SEG-GMEM | `seg-cache0-g@128` | `eval_lsb_seg_g` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 |
+| SEG-GMEM | `seg-hot16-g@128` | `eval_lsb_seg_g` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 |
+| SEG-GMEM | `seg-k24-g@128` | `eval_lsb_seg_g` | 72 | 7 | 128 | 65536 | 36 | 161 | 24 |
+| SEG-GMEM | `seg-k40-g@128` | `eval_lsb_seg_g` | 72 | 7 | 128 | 65536 | 52 | 193 | 40 |
+| SEG-GMEM | `seg-allrepeat-g@128` | `eval_lsb_seg_g` | 72 | 7 | 128 | 65536 | 88 | 234 | 55 |
+
+### The arms — per-lane medians (`eval`, `finalize`, `eval + finalize`, ms)
+
+Copied cell-by-cell from the primary emitter record; the metric is `eval + finalize` per round.
+
+| position | lane | eval | finalize | eval+finalize |
+| --- | --- | --- | --- | --- |
+| reanchor-census | `control@256` | 16.767 | 0.034 | **16.801** |
+| reanchor-census | `hot16@128` | 15.214 | 0.063 | **15.277** |
+| reanchor-locality | `control@256` | 16.621 | 0.033 | **16.654** |
+| reanchor-locality | `hot16@128` | 14.644 | 0.065 | **14.709** |
+| smem-locality | `control@256` | 16.625 | 0.033 | **16.659** |
+| smem-locality | `control_lb@128` | 16.313 | 0.061 | **16.374** |
+| smem-locality | `hot16@128` | 14.641 | 0.065 | **14.705** |
+| smem-locality | `seg-recompute@128` | 18.334 | 0.061 | **18.396** |
+| smem-locality | `seg-cache0-s@128` | 18.577 | 0.061 | **18.639** |
+| smem-locality | `seg-hot16-s64@128` | 16.467 | 0.061 | **16.528** |
+| smem-locality | `seg-hot16-s100@128` | 16.582 | 0.061 | **16.644** |
+| smem-locality | `seg-k24-s@128` | 16.715 | 0.061 | **16.776** |
+| smem-locality | `seg-k40-s@128` | 17.073 | 0.061 | **17.134** |
+| smem-locality | `seg-hot16-acc@128` | 16.706 | 0.061 | **16.767** |
+| smem-census | `control@256` | 16.718 | 0.033 | **16.751** |
+| smem-census | `control_lb@128` | 16.399 | 0.061 | **16.462** |
+| smem-census | `hot16@128` | 15.161 | 0.063 | **15.224** |
+| smem-census | `seg-recompute@128` | 18.402 | 0.061 | **18.463** |
+| smem-census | `seg-cache0-s@128` | 18.708 | 0.061 | **18.770** |
+| smem-census | `seg-hot16-s64@128` | 16.512 | 0.061 | **16.574** |
+| smem-census | `seg-hot16-s100@128` | 16.629 | 0.061 | **16.691** |
+| smem-census | `seg-k24-s@128` | 16.754 | 0.062 | **16.817** |
+| smem-census | `seg-k40-s@128` | 17.200 | 0.061 | **17.262** |
+| smem-census | `seg-hot16-acc@128` | 16.769 | 0.062 | **16.830** |
+| gmem-locality | `control@256` | 16.636 | 0.033 | **16.669** |
+| gmem-locality | `control_lb@128` | 16.326 | 0.061 | **16.387** |
+| gmem-locality | `hot16@128` | 14.651 | 0.065 | **14.714** |
+| gmem-locality | `seg-recompute@128` | 18.344 | 0.061 | **18.406** |
+| gmem-locality | `seg-cache0-g@128` | 18.592 | 0.061 | **18.653** |
+| gmem-locality | `seg-hot16-g@128` | 16.557 | 0.063 | **16.621** |
+| gmem-locality | `seg-k24-g@128` | 16.748 | 0.065 | **16.812** |
+| gmem-locality | `seg-k40-g@128` | 17.153 | 0.063 | **17.217** |
+| gmem-locality | `seg-allrepeat-g@128` | 17.464 | 0.063 | **17.529** |
+| gmem-census | `control@256` | 16.875 | 0.033 | **16.908** |
+| gmem-census | `control_lb@128` | 16.538 | 0.061 | **16.602** |
+| gmem-census | `hot16@128` | 15.280 | 0.063 | **15.344** |
+| gmem-census | `seg-recompute@128` | 18.582 | 0.061 | **18.644** |
+| gmem-census | `seg-cache0-g@128` | 18.860 | 0.061 | **18.922** |
+| gmem-census | `seg-hot16-g@128` | 16.770 | 0.063 | **16.834** |
+| gmem-census | `seg-k24-g@128` | 16.913 | 0.063 | **16.977** |
+| gmem-census | `seg-k40-g@128` | 17.375 | 0.063 | **17.438** |
+| gmem-census | `seg-allrepeat-g@128` | 17.729 | 0.063 | **17.792** |
+| attr-cv64 | `control@256` | 16.633 | 0.033 | **16.666** |
+| attr-cv64 | `hot16@128` | 14.722 | 0.063 | **14.787** |
+| attr-cv100 | `control@256` | 16.680 | 0.033 | **16.713** |
+| attr-cv100 | `hot16@128` | 14.992 | 0.063 | **15.056** |
+
+Paired deltas vs the incumbent `hot16@128`, per round, on `eval + finalize`. Sign-stability is
+the count of rounds on the median's own side against ceil(0.9 N); R7 preregisters no closure
+threshold, so it is REPORTED and no row selects a winner:
+
+| position | lane | C | removals | median Δ (ms) | sign-stability |
+| --- | --- | --- | --- | --- | --- |
+| smem-locality | `seg-recompute@128` | 0 | 0 | **+3.690** | 100/100 pos (≥ 90) |
+| smem-locality | `seg-cache0-s@128` | 0 | 0 | **+3.934** | 100/100 pos (≥ 90) |
+| smem-locality | `seg-hot16-s64@128` | 28 | 145 | **+1.822** | 100/100 pos (≥ 90) |
+| smem-locality | `seg-hot16-s100@128` | 28 | 145 | **+1.938** | 100/100 pos (≥ 90) |
+| smem-locality | `seg-k24-s@128` | 36 | 161 | **+2.071** | 100/100 pos (≥ 90) |
+| smem-locality | `seg-k40-s@128` | 52 | 193 | **+2.430** | 100/100 pos (≥ 90) |
+| smem-locality | `seg-hot16-acc@128` | 28 | 145 | **+2.062** | 100/100 pos (≥ 90) |
+| smem-census | `seg-recompute@128` | 0 | 0 | **+3.244** | 100/100 pos (≥ 90) |
+| smem-census | `seg-cache0-s@128` | 0 | 0 | **+3.545** | 100/100 pos (≥ 90) |
+| smem-census | `seg-hot16-s64@128` | 28 | 145 | **+1.349** | 100/100 pos (≥ 90) |
+| smem-census | `seg-hot16-s100@128` | 28 | 145 | **+1.467** | 100/100 pos (≥ 90) |
+| smem-census | `seg-k24-s@128` | 36 | 161 | **+1.591** | 100/100 pos (≥ 90) |
+| smem-census | `seg-k40-s@128` | 52 | 193 | **+2.037** | 100/100 pos (≥ 90) |
+| smem-census | `seg-hot16-acc@128` | 28 | 145 | **+1.605** | 100/100 pos (≥ 90) |
+| gmem-locality | `seg-recompute@128` | 0 | 0 | **+3.693** | 99/99 pos (≥ 90) |
+| gmem-locality | `seg-cache0-g@128` | 0 | 0 | **+3.939** | 99/99 pos (≥ 90) |
+| gmem-locality | `seg-hot16-g@128` | 28 | 145 | **+1.909** | 99/99 pos (≥ 90) |
+| gmem-locality | `seg-k24-g@128` | 36 | 161 | **+2.099** | 99/99 pos (≥ 90) |
+| gmem-locality | `seg-k40-g@128` | 52 | 193 | **+2.503** | 99/99 pos (≥ 90) |
+| gmem-locality | `seg-allrepeat-g@128` | 88 | 234 | **+2.816** | 99/99 pos (≥ 90) |
+| gmem-census | `seg-recompute@128` | 0 | 0 | **+3.291** | 99/99 pos (≥ 90) |
+| gmem-census | `seg-cache0-g@128` | 0 | 0 | **+3.567** | 99/99 pos (≥ 90) |
+| gmem-census | `seg-hot16-g@128` | 28 | 145 | **+1.483** | 99/99 pos (≥ 90) |
+| gmem-census | `seg-k24-g@128` | 36 | 161 | **+1.627** | 99/99 pos (≥ 90) |
+| gmem-census | `seg-k40-g@128` | 52 | 193 | **+2.080** | 99/99 pos (≥ 90) |
+| gmem-census | `seg-allrepeat-g@128` | 88 | 234 | **+2.438** | 99/99 pos (≥ 90) |
+
+### The four decision differentials
+
+**1 — publish machinery at zero capture** (`seg-cache0` − `seg-recompute`, paired inside one
+process): **+0.242 ms** carrier S / **+0.246 ms** carrier G on `locality`. **2 — capture value at
+`hot16`** (`seg-hot16` − the same carrier's `seg-cache0`): **−2.113 ms** S at its 64 KiB request,
+**−1.995 ms** S at the 100 KiB request, **−2.030 ms** G. **3 — the accumulator-first reduction
+A/B** (`seg-hot16-acc` − `seg-hot16-s64`, matched carveout tier): **+0.241 ms**, i.e. fold-first
+wins. All rows 100/100 or 99/99 on sign, and all reproduce in `census`:
+
+| position | contrast | symbols | isolates | median Δ (ms) | sign-stability |
+| --- | --- | --- | --- | --- | --- |
+| smem-locality | `seg-cache0-s@128` − `seg-recompute@128` | `eval_lsb_seg_s_cv64` − `eval_lsb_seg_recompute` | publish machinery at zero capture | **+0.242** | 100/100 pos (≥ 90) |
+| smem-locality | `seg-hot16-s64@128` − `seg-cache0-s@128` | `eval_lsb_seg_s_cv64` − `eval_lsb_seg_s_cv64` | capture at hot16, 64 KiB request | **-2.113** | 100/100 neg (≥ 90) |
+| smem-locality | `seg-hot16-s100@128` − `seg-cache0-s@128` | `eval_lsb_seg_s_cv100` − `eval_lsb_seg_s_cv64` | capture at hot16, 100 KiB request | **-1.995** | 100/100 neg (≥ 90) |
+| smem-locality | `seg-hot16-acc@128` − `seg-hot16-s64@128` | `eval_lsb_seg_s_acc` − `eval_lsb_seg_s_cv64` | accumulator-first reduction A/B | **+0.241** | 100/100 pos (≥ 90) |
+| smem-census | `seg-cache0-s@128` − `seg-recompute@128` | `eval_lsb_seg_s_cv64` − `eval_lsb_seg_recompute` | publish machinery at zero capture | **+0.305** | 100/100 pos (≥ 90) |
+| smem-census | `seg-hot16-s64@128` − `seg-cache0-s@128` | `eval_lsb_seg_s_cv64` − `eval_lsb_seg_s_cv64` | capture at hot16, 64 KiB request | **-2.197** | 100/100 neg (≥ 90) |
+| smem-census | `seg-hot16-s100@128` − `seg-cache0-s@128` | `eval_lsb_seg_s_cv100` − `eval_lsb_seg_s_cv64` | capture at hot16, 100 KiB request | **-2.080** | 100/100 neg (≥ 90) |
+| smem-census | `seg-hot16-acc@128` − `seg-hot16-s64@128` | `eval_lsb_seg_s_acc` − `eval_lsb_seg_s_cv64` | accumulator-first reduction A/B | **+0.257** | 100/100 pos (≥ 90) |
+| gmem-locality | `seg-cache0-g@128` − `seg-recompute@128` | `eval_lsb_seg_g` − `eval_lsb_seg_recompute` | publish machinery at zero capture | **+0.246** | 99/99 pos (≥ 90) |
+| gmem-locality | `seg-hot16-g@128` − `seg-cache0-g@128` | `eval_lsb_seg_g` − `eval_lsb_seg_g` | capture at hot16 | **-2.030** | 99/99 neg (≥ 90) |
+| gmem-census | `seg-cache0-g@128` − `seg-recompute@128` | `eval_lsb_seg_g` − `eval_lsb_seg_recompute` | publish machinery at zero capture | **+0.275** | 99/99 pos (≥ 90) |
+| gmem-census | `seg-hot16-g@128` − `seg-cache0-g@128` | `eval_lsb_seg_g` − `eval_lsb_seg_g` | capture at hot16 | **-2.074** | 99/99 neg (≥ 90) |
+
+**Semantic note on the acc A/B** (Task 3 ledger, and the record is required to state it): the
+reviewer's measured spill fix hoisted the eq scaling pre-publish in the acc epilogue, so the
+fixed acc arm carries eq in all four warps, matched with fold-first. The contrast therefore
+isolates the xor-fold-plus-plane **shape** at matched eq work — fairer than the original design,
+but it is no longer a test of the full epilogue-prefix redundancy. Both bodies realize the same
+65.54 KB configuration, so the tier is matched too.
+
+**4 — capture slope per carrier**, paired, matched symbol, per removal (the divisor is the
+removals delta read off the two `ARM` lines, so the slope carries no literal of its own):
+
+| position | contrast | Δ removals | median Δ (ms) | µs per removal | sign-stability |
+| --- | --- | --- | --- | --- | --- |
+| smem-locality | `seg-k24-s@128` − `seg-hot16-s100@128` | 16 | **+0.134** | +8.35 | 100/100 pos (≥ 90) |
+| smem-locality | `seg-k40-s@128` − `seg-hot16-s100@128` | 48 | **+0.491** | +10.22 | 100/100 pos (≥ 90) |
+| smem-census | `seg-k24-s@128` − `seg-hot16-s100@128` | 16 | **+0.124** | +7.74 | 100/100 pos (≥ 90) |
+| smem-census | `seg-k40-s@128` − `seg-hot16-s100@128` | 48 | **+0.572** | +11.91 | 100/100 pos (≥ 90) |
+| gmem-locality | `seg-k24-g@128` − `seg-hot16-g@128` | 16 | **+0.190** | +11.86 | 99/99 pos (≥ 90) |
+| gmem-locality | `seg-k40-g@128` − `seg-hot16-g@128` | 48 | **+0.592** | +12.34 | 99/99 pos (≥ 90) |
+| gmem-locality | `seg-allrepeat-g@128` − `seg-hot16-g@128` | 89 | **+0.906** | +10.18 | 99/99 pos (≥ 90) |
+| gmem-census | `seg-k24-g@128` − `seg-hot16-g@128` | 16 | **+0.144** | +9.01 | 99/99 pos (≥ 90) |
+| gmem-census | `seg-k40-g@128` − `seg-hot16-g@128` | 48 | **+0.588** | +12.26 | 99/99 pos (≥ 90) |
+| gmem-census | `seg-allrepeat-g@128` − `seg-hot16-g@128` | 89 | **+0.954** | +10.72 | 99/99 pos (≥ 90) |
+
+**The carrier axis** — S vs G at matched capture, bridged over the two lanes both rotations carry
+(the R4/R5 cross-session anchor method; δ = (S − A_S) − (G − A_G), negative favours S; the flank
+is |A_S − A_G| and past 0.05 ms the row is `unstable`). `locality`, the headline:
+
+| capture | S lane | G lane | anchor | flank (ms) | stable | S med | G med | δ (ms) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| machinery floor | `seg-recompute@128` | `seg-recompute@128` | `control@256` | 0.010 | **stable** | 18.396 | 18.406 | **+0.000** |
+| machinery floor | `seg-recompute@128` | `seg-recompute@128` | `hot16@128` | 0.009 | **stable** | 18.396 | 18.406 | **-0.001** |
+| cache0 | `seg-cache0-s@128` | `seg-cache0-g@128` | `control@256` | 0.010 | **stable** | 18.639 | 18.653 | **-0.004** |
+| cache0 | `seg-cache0-s@128` | `seg-cache0-g@128` | `hot16@128` | 0.009 | **stable** | 18.639 | 18.653 | **-0.005** |
+| hot16 | `seg-hot16-s64@128` | `seg-hot16-g@128` | `control@256` | 0.010 | **stable** | 16.528 | 16.621 | **-0.082** |
+| hot16 | `seg-hot16-s64@128` | `seg-hot16-g@128` | `hot16@128` | 0.009 | **stable** | 16.528 | 16.621 | **-0.083** |
+| hot16, 100 KiB request | `seg-hot16-s100@128` | `seg-hot16-g@128` | `control@256` | 0.010 | **stable** | 16.644 | 16.621 | **+0.034** |
+| hot16, 100 KiB request | `seg-hot16-s100@128` | `seg-hot16-g@128` | `hot16@128` | 0.009 | **stable** | 16.644 | 16.621 | **+0.033** |
+| k24 | `seg-k24-s@128` | `seg-k24-g@128` | `control@256` | 0.010 | **stable** | 16.776 | 16.812 | **-0.025** |
+| k24 | `seg-k24-s@128` | `seg-k24-g@128` | `hot16@128` | 0.009 | **stable** | 16.776 | 16.812 | **-0.026** |
+| k40 | `seg-k40-s@128` | `seg-k40-g@128` | `control@256` | 0.010 | **stable** | 17.134 | 17.217 | **-0.072** |
+| k40 | `seg-k40-s@128` | `seg-k40-g@128` | `hot16@128` | 0.009 | **stable** | 17.134 | 17.217 | **-0.073** |
+
+The `census` bridge is the dealing-damage diagnostic and is never pooled with the locality row;
+in the primary record all twelve of its rows are `unstable` (flank 0.157 on `control@256`, 0.120
+on `hot16@128`), so **there is no census carrier decision** — its δ values run −0.140…+0.014 and
+agree in sign with locality without being admissible on their own.
+
+### Verdict — no winner; the loss is the cohort walk, not the carrier
+
+- **No winner.** No seg lane has a negative paired median against `hot16@128` in any process;
+  every one is positive at the maximum sign-stability the rotation can produce.
+- **First loser: `seg-hot16-s64@128`, +1.822 ms** locality (+1.349 census) — carrier S, `hot16`
+  capture, at its 64 KiB request.
+- **The three terms add up.** Walk floor +3.690, publish machinery +0.242, capture −2.113 ⇒
+  +1.819, which is the first loser's +1.822 to rounding. The machinery is cheap and the capture
+  is real and large; the segmented walk floor is what nothing refunds. The same arithmetic holds
+  on carrier G (+3.693 / +0.246 / −2.030 ⇒ +1.909) and in `census`.
+- **Absolutes, for the bar.** The best seg lane's in-rotation median is **16.528 ms** against the
+  same process's incumbent at **14.705** and the 14.61 ms windowed-candidate bar — the rung is
+  not near it. Against R5's rung-2 requirement, "machinery ≪ 0.7–0.9 ms" (an R4 `eval` figure,
+  not this section's `eval + finalize`), the publish machinery at ~0.25 ms passes comfortably and
+  the cohort-walk floor at +3.690 ms does not.
+- **`hot16` (C = 28) stays the frontier optimum under segmentation.** The capture slope is
+  POSITIVE on both carriers, +8.35/+10.22 µs per removal on S and +11.86/+12.34/+10.18 on G:
+  past `hot16` each additional admitted source costs 8–12 µs rather than saving time. R5's
+  admission-frontier result survives the restructuring, so the "re-priced frontier" half of the
+  spec's thesis is refuted as well as the carrier half.
+- **The carrier axis resolves at ±0.08 ms.** S is slightly ahead of G at matched capture
+  (−0.082/−0.083 locality, both anchors, stable) when S runs its 64 KiB request; at the matched
+  100 KiB request the two are within ±0.03 ms. The carrier choice is worth less than the carveout
+  tier it is measured at — and an order of magnitude less than the walk floor.
+- **Spec §7's prior, scored:** "seg-recompute is a wash or loss" — a loss, +3.690 ms; "the
+  hot16-capture lanes have a credible low-single-digit-% path" — they do not: the best of them is
+  +1.822 ms on a 14.705 ms incumbent;
+  "the capture lanes are where a real step lives IF a carrier re-prices the frontier" — no
+  carrier re-priced it.
+
+### Differential scratch accounting — the publish round-trip
+
+`ncu` has no per-address-range attribution, so the round-trip is priced KERNEL-WIDE as carrier G
+minus the matched carrier-S lane (identical work, slab in shared memory instead of device
+scratch) and minus `seg-recompute`. Targeted `--metrics` captures, one round each; deliberately
+not a Full Picture, because the 17-section list does not report these sums exactly. Arithmetic
+floor = slab bytes per block × cohorts × blocks, the prologue publishing once per cohort
+(`uniskip_seg_prologue` inside the `UNISKIP_SEG_COHORTS = 4` loop), slab = C units × 256 B,
+65 536 blocks:
+
+| capture point | C | slab/block/cohort | write floor | in 32-B sectors |
+| --- | --- | --- | --- | --- |
+| hot16 | 28 | 7 168 B | 1 879 048 192 B = **1.879 GB** | 58 720 256 |
+| k40 | 52 | 13 312 B | 3 489 660 928 B = **3.490 GB** | 109 051 904 |
+
+| counter | G−S at hot16 | vs floor | G−S at k40 | vs floor |
+| --- | --- | --- | --- | --- |
+| `l1tex__t_sectors_…_op_st.sum` | 62 914 560 − 4 194 304 = **58 720 256** | **1.0000×** | 113 246 208 − 4 194 304 = **109 051 904** | **1.0000×** |
+| `lts__t_sectors_op_write.sum` | 62 932 644 − 4 214 107 = 58 718 537 | 0.99997× | 113 268 549 − 4 217 250 = 109 051 299 | 0.99999× |
+| `dram__bytes_op_write.sum` | 496.00 − 38.09 = **457.91 MB** | **0.244×** | 889.89 − 37.86 = **852.03 MB** | 0.244× |
+| `l1tex__t_sectors_…_op_ld.sum` | 1 110 441 984 − 747 634 688 = 362 807 296 | 6.18× the write side | 1 311 768 576 − 797 966 336 = 513 802 240 | 4.71× |
+| `lts__t_sectors_op_read.sum` | 677 280 226 − 536 050 788 = 141 229 438 | 0.39× of the L1 read side | 910 344 345 − 736 778 847 = 173 565 498 | 0.34× |
+| `dram__bytes_op_read.sum` | 6.18 GB in **every** arm | unchanged | 6.18 GB | unchanged |
+
+**The accounting closes to the sector: the G−S write differential equals the arithmetic slab
+floor at 1.0000×** (1.879 GB per pass at `hot16`, 3.490 GB at k40), which independently confirms
+the slab is published once per cohort and never re-written. Two facts fall out. **Only 24.4 % of
+the published bytes ever reach DRAM** (457.91 MB of 1.879 GB, the same ratio at both capture
+points), so the spec's re-dirtying hypothesis — "region re-dirtying across cohorts means most
+publish writes plausibly die in L2 before reaching DRAM" — is largely confirmed: three quarters
+of them do. And the read side never reaches DRAM at all (`dram__bytes_op_read` is 6.18 GB in
+every arm = the tap backing alone), so the whole round-trip lives in L1/L2. That is why carrier G
+loses only ~0.08 ms to S rather than the 1.9 GB of DRAM traffic the floor would suggest — and
+equally why neither carrier can pay for the walk.
+
+### Full Pictures — the deterministic set, doc recipe
+
+Ten captures on `gpu/docs/profiling_ncu.md`'s explicit 17-section list (never `--set full`),
+`--nvtx-include "gkr_uniskip_pass0/"` with the trailing slash, date-prefixed `-o`, one round
+each: `seg-recompute`, both `cache0`s, S-`hot16` (= the first loser), G-`hot16`, S-`hot16`-acc,
+`seg-hot16-s100` (the matched-carveout reference), S-`k40`, G-`k40`, G-`allrepeat`. **Deviation,
+unavoidable under P1: lineinfo was NOT enabled** — the doc's Full Picture step requires a
+rebuild and no build may run inside the freeze window, so `SourceCounters` has no line mapping.
+
+| capture | duration (ms, profiled) | SM SOL % | DRAM SOL % | L1/TEX hit % | L2 hit % | L1/TEX throughput % |
+| --- | --- | --- | --- | --- | --- | --- |
+| seg-recompute | 18.05 | 80.27 | 21.57 | 42.90 | 51.34 | 17.01 |
+| seg-cache0-s | 18.36 | 80.39 | 21.20 | 28.02 | 61.35 | 16.70 |
+| seg-cache0-g | 18.34 | 80.38 | 21.23 | 43.07 | 51.23 | 16.72 |
+| **seg-S-hot16** (first-loser) | 16.31 | 74.17 | 23.86 | 28.51 | 64.12 | 14.03 |
+| seg-G-hot16 | 16.23 | 73.20 | 25.75 | 38.52 | 71.81 | 14.10 |
+| seg-S-hot16-acc | 16.63 | 75.46 | 23.41 | 28.64 | 64.06 | 13.90 |
+| seg-hot16-s100 | 16.38 | 73.89 | 23.78 | **8.75** | 71.85 | 13.97 |
+| seg-S-k40 | 17.17 | 82.93 | 22.67 | **8.03** | 73.81 | 12.36 |
+| seg-G-k40 | 16.91 | 82.34 | 26.19 | 29.22 | 78.38 | 12.55 |
+| seg-G-allrepeat | 17.36 | 86.06 | 27.89 | 23.30 | 82.09 | 14.63 |
+
+Three readings. (1) Every seg arm is **SM-bound** (73–86 % SM SOL against 21–28 % DRAM), so the
+segmented floor is instruction work, not memory — the same binding term v3 has had since R2, and
+the reason a carrier swap cannot pay for the walk. (2) The 100 KiB request collapses the L1 hit
+rate (8.75 % at `s100` against 28.51 % at the same body's 64 KiB request) for +0.116 ms: the
+carveout tier is a real cost, measured twice now. (3) Carrier G's slab shows up exactly where it
+should — DRAM SOL 25.75 vs S's 23.86 and L2 hit 71.81 vs 64.12 at matched `hot16`.
+
+### Attribution — what the incumbent's carveout hint alone does
+
+The same 2-lane SEG-ANCHOR rotation at three hints, so the contrast is the paired per-round
+`hot16@128 − control@256` INSIDE each process (drift-immune) and the attribution is the
+difference of those contrasts across processes; `control@256` is a different symbol and is never
+hinted.
+
+| position | hint | median (hot16 − control@256) | sign-stability | Δ vs reanchor-locality |
+| --- | --- | --- | --- | --- |
+| reanchor-locality | 16% | **-1.948** | 100/100 neg (≥ 90) | — |
+| attr-cv64 | 32% | **-1.880** | 100/100 neg (≥ 90) | **+0.067** |
+| attr-cv100 | 100% | **-1.653** | 100/100 neg (≥ 90) | **+0.295** |
+
+Handing shared memory away from L1 costs the incumbent monotonically: **+0.067 ms at the 64 KiB
+tier and +0.295 ms at 100 KiB.** This prices the *realized tiers the seg carriers run at*, which
+is the point — the seg bodies reach 65.54 KB at hint 33 and the incumbent at 32, but the
+configuration is the same. It also means carrier S's 100 KiB lanes (`s100`, `k24`, `k40`) carry a
+~0.3 ms carveout tax that is invisible in the S-vs-G contrast at matched request: that ±0.03 ms
+row compares two arms which both pay it.
+
+Re-anchor against R4's frozen in-rotation medians (±2 %, NON-FATAL — it scopes the absolutes and
+invalidates no paired contrast; `hot16@128` here carries the R6 hint the frozen anchor did not,
+so only `control@256` is like-for-like):
+
+| position | lane | this session | R4 frozen | delta | verdict |
+| --- | --- | --- | --- | --- | --- |
+| reanchor-census | `control@256` | 16.801 | 16.545 | +1.54 % | **IN** |
+| reanchor-census | `hot16@128` | 15.277 | 15.129 | +0.98 % | **IN** |
+| reanchor-locality | `control@256` | 16.654 | 16.624 | +0.18 % | **IN** |
+| reanchor-locality | `hot16@128` | 14.709 | 14.836 | -0.86 % | **IN** |
+
+### Protocol lessons
+
+- **"Soak" must mean discarded work, not idle.** An idle soak leaves the part at 180 MHz / 31 °C
+  at the first timed launch and the session heats through its own rounds — the R6 cold-start
+  artifact the soak was invented to prevent, measured here at +0.295 ms of flank and absolutes
+  ~0.6 ms off the warm state. The runbook wording is what caused it, and the fix is one word.
+- **The 0.05 ms flank rule must scale with the rotation's timed span.** On the 2-lane SEG-ANCHOR
+  rotation (~3.4 s timed) the "first full cycle" is two rounds taken within ~30 ms of the first
+  launch: 3 of 6 attempts tripped, two of them twice, while every 9- and 10-lane rotation (cycle
+  ~150 ms) held at 0.001–0.029 ms in every process. This is an instrument finding, not a data
+  problem — the anchor rotations' payload is the PAIRED in-process contrast, which reproduces to
+  ±0.015 ms across tripped and untripped versions.
+
+| session | first pass | after the soaked repeat |
+| --- | --- | --- |
+| **smem-locality (headline)** | control 0.009, control_lb 0.008, hot16 0.002 — **held** | (not repeated) |
+| gmem-locality | 0.014 / 0.029 / 0.011 — **held** | (not repeated) |
+| gmem-census | 0.006 / 0.003 / 0.006 — **held** | (not repeated) |
+| attr-cv64 | 0.049 / 0.048 — **held** | (not repeated) |
+| smem-census | 0.148 / 0.124 / 0.111 — **TRIPPED** | 0.007 / 0.008 / 0.001 — **held** |
+| reanchor-locality | control 0.050 — **TRIPPED** | 0.028 / 0.010 — **held** |
+| reanchor-census | hot16 0.071 — **TRIPPED** | 0.195 / 0.151 — **TRIPPED again** |
+| attr-cv100 | 0.073 / 0.064 — **TRIPPED** | 0.187 / 0.160 — **TRIPPED again** |
+
+- **A 100 KiB carveout costs 0.295 ms on this kernel** (attribution above). Any future arm that
+  asks for the top tier is spending that before it does anything useful, and the contrast it
+  appears in must say so.
+- **Full Pictures taken under a build freeze have no source correlation.** P1 forbids the rebuild
+  the doc's recipe asks for, so `--import-source` is present but `SourceCounters` has no line
+  mapping. Per-line attribution of the walk needs its own lineinfo build outside a freeze window.
+- **Hold the lock across soak and measurement.** The soak is GPU work; a peer's job interleaved
+  with two idle soaks before the switch, and both were refused and re-taken.
+
+### Follow-ups this opens
+
+- **Attack the cohort walk, not the carrier.** +3.690 ms of the loss is the `seg-recompute`
+  floor: the cohort loop, the four-warp quarter-lists, the per-cohort epilogue through the shared
+  reduction plane, and ~15 block barriers where the incumbent has 1 — all of it SM-bound
+  (73–86 % SM SOL). A future segmented attempt has to cut that instruction work; where the coset
+  pairs live is settled at ±0.08 ms and cannot pay for it.
+- **Group chunking is a corpus-wide dealer requirement** (RR, 2026-08-10). This rung's dealer
+  deals whole groups and the default census still balances to 1.08, which is why chopping was
+  omitted as a POLICY — the rationale is cost, never semantics: production's seg-VM already
+  chops expensive groups into still-valid chunks (the core coeff multiply is paid per chunk), and
+  that mechanism is the blueprint. The 1.08 figure is single-census evidence (one circuit, one
+  layer, one round) and RR expects chunking to be a MUST across the corpus.
+- **The accumulator-first question is answered and closed**: fold-first wins by +0.241 ms
+  locality / +0.257 census at matched capture and matched carveout tier, 100/100 both orders.
+  Read with the semantic note above.
+- **The carveout self-gate should outlive the rung.** `cudaOccupancyMaxActiveBlocksPerMultiprocessor`
+  per lane after `cudaFuncSetAttribute` costs nothing at run time, turns the `ARM` line's pinned
+  `blocks_per_sm` into a verified fact, and would have caught the Part-I defect before any
+  session was dispatched.
+
+### Artifacts and branch state
+
+`.agents/sdd/2026-08-10-v3-r7/`: the emitter records **`r7-tables-repeat.md` (primary)** and
+`r7-tables.md` (first pass); the eight canonical
+`session-{reanchor-census,reanchor-locality,smem-locality,smem-census,gmem-locality,gmem-census,attr-cv64,attr-cv100}.log`
+plus the four `session-*-repeat.log`, each with `.telemetry` / `.warm` / `.mark` sidecars; the
+soak-procedure history (`session-reanchor-census-cold.*`, `tuning-worksoak{80,150}-*`,
+`tuning-nosoak-*`); G0 (`g0b-*`, and the Part-I abort evidence `g0-*` + `g0diag-*`); the dynamic
+ladder (`ladder-*`); `full-*.log` and `counters-*.log`; the ledger `progress.md` and the
+measurement report `task-7-report.md` (Part I = the abort, Part II = the result).
+
+`target/profiling/ncu/`: `20260811_1341*_v3r7b_g0_*` (6 G0 points),
+`20260811_1434-1437*_v3r7_full_*` (10 Full Pictures), `20260811_1437-1440*_v3r7_counters_*` (7
+counter captures); the Part-I abort captures `*_v3r7_g0_*` and `*_v3r7_g0diag_*` are retained.
+
+R7 is twelve `gkr_uniskip_bench` commits, `677fc03d`..`29e36e34`, on top of the R6 record; the
+frozen session binary is `fabf2b5b…` at tip `29e36e34`.
