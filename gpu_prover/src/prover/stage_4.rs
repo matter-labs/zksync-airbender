@@ -183,9 +183,9 @@ impl StageFourOutput {
             &d_alloc_evals,
             &stream,
         )?;
-        let mut alpha = unsafe { context.alloc_host_uninit::<E4>() };
-        let alpha_accessor = alpha.get_mut_accessor();
-        let get_alpha = move || unsafe {
+        let mut deep_poly_challenges = unsafe { context.alloc_host_uninit::<[E4; 2]>() };
+        let deep_poly_challenges_accessor = deep_poly_challenges.get_mut_accessor();
+        let get_deep_poly_challenges = move || unsafe {
             let transcript_input = values_at_z_accessor
                 .get()
                 .iter()
@@ -196,18 +196,14 @@ impl StageFourOutput {
             let seed = seed_accessor.get_mut();
             Transcript::commit_with_seed(seed, &transcript_input);
             let mut transcript_challenges =
-                [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+                [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
             Transcript::draw_randomness(seed, &mut transcript_challenges);
-            let alpha_coeffs = transcript_challenges
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .next()
-                .unwrap()
-                .map(BF::from_nonreduced_u32);
-            alpha_accessor.set(E4::from_coeffs_in_base(&alpha_coeffs));
+            let mut it = transcript_challenges.as_chunks::<4>().0.iter();
+            let mut get_challenge =
+                || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
+            deep_poly_challenges_accessor.set([get_challenge(), get_challenge()]);
         };
-        callbacks.schedule(get_alpha, stream)?;
+        callbacks.schedule(get_deep_poly_challenges, stream)?;
         let mut d_denom_at_z = context.alloc(trace_len, AllocationPlacement::BestFit)?;
         compute_deep_denom_at_z_on_main_domain(
             &mut d_denom_at_z,
@@ -230,9 +226,11 @@ impl StageFourOutput {
         let omega_inv = PRECOMPUTATIONS.omegas_inv[log_domain_size as usize];
         let circuit_clone = circuit.clone();
         let get_challenges = move || unsafe {
+            let [alpha, deep_poly_beta] = *deep_poly_challenges_accessor.get();
             let _ = get_metadata(
                 values_at_z_accessor.get(),
-                *alpha_accessor.get(),
+                alpha,
+                deep_poly_beta,
                 omega_inv,
                 &cached_data_clone,
                 &circuit_clone,
@@ -264,6 +262,7 @@ impl StageFourOutput {
         let mut d_quotient = DeviceMatrixMut::new(&mut vectorized_ldes[COSET_INDEX], trace_len);
         let metadata = get_metadata(
             &vec![E4::ZERO; num_evals],
+            E4::ZERO,
             E4::ZERO,
             omega_inv,
             &cached_data,

@@ -68,7 +68,10 @@ struct NonWitnessChallengesAtZOmega {
 struct ChallengesTimesEvals {
   const e4 at_z_sum_neg;
   const e4 at_z_omega_sum_neg;
+  const e4 deep_poly_beta;
 };
+
+static_assert(sizeof(ChallengesTimesEvals) == 48);
 
 EXTERN __launch_bounds__(512, 2) __global__ void ab_deep_quotient_kernel(
     matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
@@ -173,7 +176,11 @@ EXTERN __launch_bounds__(512, 2) __global__ void ab_deep_quotient_kernel(
   acc_z = e4::mul(acc_z, denom_z);
   acc_z_omega = e4::mul(acc_z_omega, denom_z_omega);
 
-  quotient.set(e4::add(acc_z, acc_z_omega));
+  const unsigned log_shift = CIRCLE_GROUP_LOG_ORDER - log_n;
+  const e2 x = get_power_of_w(raw_row << log_shift, false);
+  const e4 linear_factor = e4::add(e4::mul(challenges_times_evals_ref->deep_poly_beta, x), bf::one());
+  const e4 deep_quotient = e4::add(acc_z, acc_z_omega);
+  quotient.set(e4::mul(deep_quotient, linear_factor));
 }
 
 } // namespace airbender::stage4

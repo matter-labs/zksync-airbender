@@ -77,7 +77,10 @@ pub struct NonWitnessChallengesAtZOmega {
 pub(super) struct ChallengesTimesEvals {
     at_z_sum_neg: E4,
     at_z_omega_sum_neg: E4,
+    deep_poly_beta: E4,
 }
+
+const _: [(); 48] = [(); std::mem::size_of::<ChallengesTimesEvals>()];
 
 cuda_kernel!(
     DeepQuotient,
@@ -124,6 +127,7 @@ pub(super) struct Metadata {
 pub(super) fn get_metadata(
     evals: &[E4],
     alpha: E4,
+    deep_poly_beta: E4,
     omega_inv: E2,
     cached_data: &ProverCachedData,
     circuit: &CompiledCircuitArtifact<BF>,
@@ -267,6 +271,7 @@ pub(super) fn get_metadata(
     *challenges_times_evals = ChallengesTimesEvals {
         at_z_sum_neg: challenges_times_evals_at_z_sum_neg,
         at_z_omega_sum_neg: challenges_times_evals_at_z_omega_sum_neg,
+        deep_poly_beta,
     };
     for (i, challenge) in flat_non_witness_challenges_at_z_omega.iter().enumerate() {
         non_witness_challenges_at_z_omega.challenges[i] = *challenge;
@@ -448,6 +453,7 @@ pub(crate) mod tests {
         let evals = &prover_data.deep_poly_result.values_at_z;
         let z = prover_data.deep_poly_result.z;
         let alpha = prover_data.deep_poly_result.alpha;
+        let deep_poly_beta = prover_data.deep_poly_result.beta;
         // Repackage row-major data as column-major for GPU
         let range = 0..domain_size;
         let domain_index = 0;
@@ -563,6 +569,7 @@ pub(crate) mod tests {
             let metadata = get_metadata(
                 evals,
                 alpha,
+                deep_poly_beta,
                 twiddles.omega_inv,
                 &cached_data,
                 &circuit,
