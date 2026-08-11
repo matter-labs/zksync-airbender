@@ -8,12 +8,14 @@
 #               only, and it says so instead of comparing the wrong binary. `all` runs this lane
 #               FIRST and again LAST, so the binary the tree ends on is the gated one.
 #   matrix      Task 5's validation matrix, scripted: q parity over the 12 pinned carrier x arm
-#               pairs against the LOCAL control128, the self-product cells (also against the
-#               local reference), the CPU-oracle cells, the dealt-plan SEG line against the
-#               committed oracle, the per-symbol carveout echoes, the ARM lane facts and the
-#               three rotations end to end
+#               pairs against the LOCAL control128 and over R7b's five segb pairs, the
+#               self-product cells (also against the local reference), the CPU-oracle cells,
+#               the dealt-plan SEG line against the committed oracle, the per-symbol carveout
+#               echoes, the ARM lane facts and the four rotations end to end
 #   counts      the diagnostic chain counter per cohort, over every pinned pair and both term
-#               orders — needs the diagnostic binary, which this lane builds
+#               orders, plus R7b's per-BLOCK counter (no cohort divisor) and the 4x grid the
+#               transplant's four-row block implies — needs the diagnostic binary, which this
+#               lane builds
 #   cpu         the crate's GPU-free unit tests (cpu_*)
 #   fixtures    the emitter's fixture matrix — every decision row and every fail-closed guard
 #               of tools/r7_table.py, self-generating, GPU-free
@@ -77,6 +79,15 @@ seg-g hot16
 seg-g k24
 seg-g k40
 seg-g allrepeat"
+
+# R7b's support matrix, the five pinned (carrier, arm) pairs the transplant lanes name: the
+# floor at cache0, carrier G's transplant at three capture points, and the slotted-slab
+# variant at the incumbent capture point only.
+SEGB_PAIRS="segb-recompute cache0
+segb-g cache0
+segb-g hot16
+segb-g k40
+segb-g-slotted hot16"
 
 # The eight seg symbols: fn|normalized instruction count|shared bytes|12-hex sha256 of the
 # NORMALIZED body. Task 3 and Task 4 measured the R7 counts on the shipped build and R7b Task 1
@@ -268,7 +279,7 @@ q_parity() {
   note "### CPU oracle (--validate), one cell per carrier family and order"
   local oks=0 runs=0
   for order in census locality; do
-    for carrier in seg-s seg-g; do
+    for carrier in seg-s seg-g segb-g; do
       runs=$((runs + 1))
       if "$B" --log-trace 12 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
            --cache-arm hot16 --carrier "$carrier" --term-order "$order" --validate 2>/dev/null \
@@ -278,8 +289,33 @@ q_parity() {
     done
   done
   note "  oracle cells=$runs passed=$oks"
-  [ "$runs" = 4 ] || bad "expected 4 oracle cells, ran $runs"
+  [ "$runs" = 6 ] || bad "expected 6 oracle cells, ran $runs"
   [ "$runs" = "$oks" ] || bad "CPU oracle incomplete"
+}
+
+# R7b's five pairs, against the SAME local reference: the transplant is a different geometry
+# (four rows per block, one published slot per warp) computing the same q, so nothing about
+# it is allowed to move a single hash.
+segb_q_parity() {
+  note "### q parity: R7b's 5 pinned segb pairs, both orders, vs the LOCAL control128"
+  local cells=0 pass=0 order carrier arm ref got
+  for order in census locality; do
+    ref=$(qhash --block-threads 128 --term-order "$order")
+    usable "$ref" "local control128 order=$order" || continue
+    note "  reference control128 $order = $ref"
+    while read -r carrier arm; do
+      [ -n "$carrier" ] || continue
+      cells=$((cells + 1))
+      got=$(qhash --block-threads 128 --cache-arm "$arm" --carrier "$carrier" \
+                  --term-order "$order")
+      usable "$got" "$carrier/$arm order=$order" || continue
+      if [ "$got" = "$ref" ]; then pass=$((pass + 1))
+      else bad "q parity $carrier/$arm order=$order ($got vs $ref)"; fi
+    done <<< "$SEGB_PAIRS"
+  done
+  note "  cells=$cells passed=$pass"
+  [ "$cells" = 10 ] || bad "expected 10 segb q-parity cells, ran $cells — a pair or an order is missing"
+  [ "$cells" = "$pass" ] || bad "segb q parity incomplete"
 }
 
 seg_line_cells() {
@@ -290,7 +326,7 @@ seg_line_cells() {
     if [ -z "$want" ]; then bad "the emitter rendered no oracle SEG line for $order"; continue; fi
     note "  oracle $order: $want"
     # A rotation owns both block sizes internally, so only the single-arm surface names one.
-    for flag in --seg-smem-factorial --seg-gmem-factorial \
+    for flag in --seg-smem-factorial --seg-gmem-factorial --segb-factorial \
                 "--block-threads 128 --cache-arm hot16 --carrier seg-s"; do
       cells=$((cells + 1))
       log="$TMP/seg-line-$order-$(echo "$flag" | tr -c 'a-z0-9' '-').log"
@@ -320,7 +356,7 @@ seg_line_cells() {
     else bad "--seg-anchor order=$order printed a SEG line; the anchor rotation deals nothing"; fi
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 8 ] || bad "expected 8 SEG-line cells, ran $cells"
+  [ "$cells" = 10 ] || bad "expected 10 SEG-line cells, ran $cells"
   [ "$cells" = "$pass" ] || bad "SEG-line cells incomplete"
 }
 
@@ -338,7 +374,11 @@ echo_cells() {
 --block-threads 128 --cache-arm hot16 --carrier seg-g|16:eval_lsb_seg_g
 --block-threads 128 --cache-arm cache0 --carrier seg-recompute|16:eval_lsb_seg_recompute
 --block-threads 128 --cache-arm hot16 --carrier seg-s --carveout-hint 40 --profile|40:eval_lsb_seg_s_cv64
---block-threads 128 --cache-arm hot16 --carrier seg-s100 --carveout-hint 33 --profile|33:eval_lsb_seg_s_cv100"
+--block-threads 128 --cache-arm hot16 --carrier seg-s100 --carveout-hint 33 --profile|33:eval_lsb_seg_s_cv100
+--segb-factorial|16:$cached 16:eval_lsb_segb_g 16:eval_lsb_segb_recompute 16:eval_lsb_segb_g_slotted
+--block-threads 128 --cache-arm hot16 --carrier segb-g|16:eval_lsb_segb_g
+--block-threads 128 --cache-arm cache0 --carrier segb-recompute|16:eval_lsb_segb_recompute
+--block-threads 128 --cache-arm hot16 --carrier segb-g-slotted|16:eval_lsb_segb_g_slotted"
   local cells=0 pass=0 args want got
   while IFS='|' read -r args want; do
     [ -n "$args" ] || continue
@@ -355,14 +395,14 @@ echo_cells() {
     fi
   done <<< "$rows"
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 12 ] || bad "expected 12 echo cells, ran $cells"
+  [ "$cells" = 16 ] || bad "expected 16 echo cells, ran $cells"
   [ "$cells" = "$pass" ] || bad "echo cells incomplete"
 }
 
 lane_facts() {
   note "### ARM lane facts: C and removals per arm, off the rotations' own lines"
   local cells=0 pass=0 flag log lane c removals arm want_c want_rem chains
-  for flag in --seg-smem-factorial --seg-gmem-factorial --seg-anchor; do
+  for flag in --seg-smem-factorial --seg-gmem-factorial --seg-anchor --segb-factorial; do
     log="$TMP/facts-$flag.log"
     if ! "$B" --log-trace 12 --mode lsb-pair --warmup 0 --iterations 0 --term-order locality \
            "$flag" >"$log" 2>&1; then
@@ -375,6 +415,10 @@ lane_facts() {
         control@256 | control_lb@128) arm=control ;;
         seg-recompute@128) arm=cache0 ;;
         seg-*) arm=$(printf '%s' "${lane#seg-}" | cut -d- -f1) ;;
+        # R7b's labels carry the carrier BEFORE the arm as well, but under the `segb-` stem:
+        # `${lane#seg-}` would read the `b` as the arm.
+        segb-recompute@128) arm=cache0 ;;
+        segb-*) arm=$(printf '%s' "${lane#segb-}" | cut -d- -f1) ;;
         *) arm=${lane%@*} ;;
       esac
       if [ "$arm" = control ]; then
@@ -391,14 +435,15 @@ lane_facts() {
     done < <(grep '^ARM ' "$log")
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 21 ] || bad "expected 21 lane-fact cells (10 + 9 + 2), ran $cells"
+  [ "$cells" = 29 ] || bad "expected 29 lane-fact cells (10 + 9 + 2 + 8), ran $cells"
   [ "$cells" = "$pass" ] || bad "lane facts incomplete"
 }
 
 rotations() {
-  note "### the three rotations end to end (one sample per lane per round)"
+  note "### the four rotations end to end (one sample per lane per round)"
   local cells=0 pass=0 spec flag rounds lanes log n
-  for spec in "--seg-smem-factorial:10:10" "--seg-gmem-factorial:9:9" "--seg-anchor:10:2"; do
+  for spec in "--seg-smem-factorial:10:10" "--seg-gmem-factorial:9:9" "--seg-anchor:10:2" \
+              "--segb-factorial:8:8"; do
     flag=${spec%%:*}; rounds=$(echo "$spec" | cut -d: -f2); lanes=$(echo "$spec" | cut -d: -f3)
     cells=$((cells + 1))
     log="$TMP/rotation-$flag.log"
@@ -418,7 +463,7 @@ rotations() {
     note "  $flag: $n samples over $lanes lanes"
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 3 ] || bad "expected 3 rotation cells, ran $cells"
+  [ "$cells" = 4 ] || bad "expected 4 rotation cells, ran $cells"
   [ "$cells" = "$pass" ] || bad "rotation cells incomplete"
 }
 
@@ -429,6 +474,7 @@ matrix() {
   fi
   note_flavor
   q_parity
+  segb_q_parity
   seg_line_cells
   echo_cells
   lane_facts
@@ -446,10 +492,20 @@ chain_line() {
     | sed -n 's|^chain executions  *\([0-9]*\) total / \([0-9]*\) blocks / \([0-9]*\) cohorts = \([0-9]*\) per cohort$|\1 \2 \3 \4|p'
 }
 
+# The transplant's block IS the cohort — four rows, no cohort loop — so its counter line
+# carries no cohort divisor at all. Parsed separately rather than made optional: a per-cohort
+# line read as a per-block one would silently divide the expectation by four.
+chain_line_block() {
+  "$B" --log-trace 12 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
+       --window-count "$@" 2>/dev/null \
+    | sed -n 's|^chain executions  *\([0-9]*\) total / \([0-9]*\) blocks = \([0-9]*\) per block$|\1 \2 \3|p'
+}
+
 counts() {
   ensure_diag || return
   note "### chain-count gate: per-cohort chains for every pinned pair, both term orders"
   local cells=0 pass=0 order carrier arm calls blocks cohorts per want
+  local seg_blocks="" segb_blocks=""
   for order in census locality; do
     while read -r carrier arm; do
       [ -n "$carrier" ] || continue
@@ -471,12 +527,54 @@ counts() {
         bad "$carrier/$arm order=$order: $per chains per cohort, want $want"; continue
       fi
       pass=$((pass + 1))
+      seg_blocks=$blocks
       note "  $carrier/$arm/$order: $calls total / $blocks blocks / $cohorts cohorts = $per per cohort"
     done <<< "$PAIRS"
   done
   note "  cells=$cells passed=$pass"
   [ "$cells" = 24 ] || bad "expected 24 chain cells, ran $cells"
   [ "$cells" = "$pass" ] || bad "chain-count gate incomplete"
+
+  note "### chain-count gate, R7b: per-BLOCK chains, no cohort divisor, both term orders"
+  local bcells=0 bpass=0
+  for order in census locality; do
+    while read -r carrier arm; do
+      [ -n "$carrier" ] || continue
+      bcells=$((bcells + 1))
+      read -r calls blocks per <<< "$(chain_line_block --cache-arm "$arm" \
+        --carrier "$carrier" --term-order "$order")"
+      if [ -z "${per:-}" ]; then
+        bad "$carrier/$arm order=$order printed no per-block chain-count line"; continue
+      fi
+      want=$(awk -v a="$arm" '$1==a {print $2}' <<< "$ARM_FACTS")
+      if [ -z "$want" ]; then bad "$arm has no pinned chain count"; continue; fi
+      if [ "$calls" != $((blocks * per)) ]; then
+        bad "$carrier/$arm order=$order: $calls total is not $blocks x $per"; continue
+      fi
+      if [ "$per" != "$want" ]; then
+        bad "$carrier/$arm order=$order: $per chains per block, want $want"; continue
+      fi
+      bpass=$((bpass + 1))
+      segb_blocks=$blocks
+      note "  $carrier/$arm/$order: $calls total / $blocks blocks = $per per block"
+    done <<< "$SEGB_PAIRS"
+  done
+  note "  cells=$bcells passed=$bpass"
+  [ "$bcells" = 10 ] || bad "expected 10 segb chain cells, ran $bcells"
+  [ "$bcells" = "$bpass" ] || bad "segb chain-count gate incomplete"
+
+  # THE GRID ITSELF, read off the two counter lines rather than pinned: a transplant block
+  # covers four rows where an R7 seg block covers sixteen, so `eval_blocks(4)` is exactly 4x
+  # `eval_blocks(16)` at one trace. Same binary, same --log-trace, so the ratio is the claim.
+  if [ -n "$seg_blocks" ] && [ -n "$segb_blocks" ]; then
+    if [ "$segb_blocks" = $((seg_blocks * 4)) ]; then
+      note "  grid: $segb_blocks segb blocks = 4 x $seg_blocks seg blocks (eval_blocks(4) vs eval_blocks(16))"
+    else
+      bad "the transplant launched $segb_blocks blocks against the seg rotation's $seg_blocks; a four-row block is 4x the grid"
+    fi
+  else
+    bad "no block counts to compare — one of the chain-count sections printed nothing"
+  fi
 }
 
 # ---------------------------------------------------------------- sass

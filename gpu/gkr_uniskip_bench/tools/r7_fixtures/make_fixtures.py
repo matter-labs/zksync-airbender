@@ -31,6 +31,7 @@ CTL = "control@256"
 CTL_LB = "control_lb@128"
 HOT = "hot16@128"
 FLOOR = "seg-recompute@128"
+SEGB_FLOOR = "segb-recompute@128"
 
 PAIR = "eval_lsb_pair"
 PAIR_LB = "eval_lsb_pair_128_lb"
@@ -40,6 +41,9 @@ CV100 = "eval_lsb_seg_s_cv100"
 ACC = "eval_lsb_seg_s_acc"
 SEG_G = "eval_lsb_seg_g"
 RECOMPUTE = "eval_lsb_seg_recompute"
+SEGB_G = "eval_lsb_segb_g"
+SEGB_RECOMPUTE = "eval_lsb_segb_recompute"
+SEGB_G_SLOTTED = "eval_lsb_segb_g_slotted"
 
 ROTATION = {
     "SEG-ANCHOR": (CTL, HOT),
@@ -48,8 +52,11 @@ ROTATION = {
                  "seg-hot16-acc@128"),
     "SEG-GMEM": (CTL, CTL_LB, HOT, FLOOR, "seg-cache0-g@128", "seg-hot16-g@128",
                  "seg-k24-g@128", "seg-k40-g@128", "seg-allrepeat-g@128"),
+    "SEGB": (CTL, CTL_LB, HOT, SEGB_FLOOR, "segb-cache0-g@128", "segb-hot16-g@128",
+             "segb-k40-g@128", "segb-hot16-g-slotted@128"),
 }
-ROUNDS = {"SEG-ANCHOR": (100, 10), "SEG-SMEM": (100, 10), "SEG-GMEM": (99, 9)}
+ROUNDS = {"SEG-ANCHOR": (100, 10), "SEG-SMEM": (100, 10), "SEG-GMEM": (99, 9),
+          "SEGB": (96, 8)}
 
 # lane -> (regs, blocks/SM, threads, grid, kernel, C, removals, admitted). The plan facts are
 # the real ones: hot16 C=28/145 removals, k24 36/161, k40 52/193, allrepeat 88/234, and the
@@ -70,6 +77,13 @@ FACTS = {
     "seg-k24-g@128": (72, 7, 128, 65536, SEG_G, 36, 161, 24),
     "seg-k40-g@128": (72, 7, 128, 65536, SEG_G, 52, 193, 40),
     "seg-allrepeat-g@128": (72, 7, 128, 65536, SEG_G, 88, 234, 55),
+    # The transplant lanes: four rows per block, so 4x the grid of a 16-row lane at the same
+    # trace, and one published slot per warp — the 16x finalize the emitter derives.
+    SEGB_FLOOR: (72, 7, 128, 262144, SEGB_RECOMPUTE, 0, 0, 0),
+    "segb-cache0-g@128": (72, 7, 128, 262144, SEGB_G, 0, 0, 0),
+    "segb-hot16-g@128": (72, 7, 128, 262144, SEGB_G, 28, 145, 16),
+    "segb-k40-g@128": (72, 7, 128, 262144, SEGB_G, 52, 193, 40),
+    "segb-hot16-g-slotted@128": (72, 7, 128, 262144, SEGB_G_SLOTTED, 28, 145, 16),
 }
 # The canonical admission ordering, all 55 reused sources (r5_gates.sh's transcription); a
 # lane's id list is its first-K prefix.
@@ -78,10 +92,14 @@ ADMISSION = [0, 1, 2, 3, 4, 5, 48, 49, 50, 51] + list(range(6, 41)) + \
 
 # The steered symbols and their preregistered percents. The local incumbent's percent is the
 # position's, so it is filled in per log.
-SEG_HINT = ((CV64, 33), (CV100, 100), (ACC, 33), (SEG_G, 16), (RECOMPUTE, 16))
+SEG_HINT = ((CV64, 33), (CV100, 100), (ACC, 33), (SEG_G, 16), (RECOMPUTE, 16),
+            (SEGB_G, 16), (SEGB_RECOMPUTE, 16), (SEGB_G_SLOTTED, 16))
 
 FIN_128 = 0.008192
 FIN_256 = 0.006144
+# The transplant reduces 16x the slots, so its finalize is a different cost and the emitter
+# must never pool the two.
+FIN_SEGB = 16 * FIN_128
 
 # eval+finalize bases, ms. Plausible magnitudes off the R5/R6 anchors; the hinted incumbent
 # sits ~0.09 below its unhinted frozen median.
@@ -92,6 +110,8 @@ BASE = {
     "seg-hot16-acc@128": 15.200,
     "seg-cache0-g@128": 16.300, "seg-hot16-g@128": 15.000, "seg-k24-g@128": 14.850,
     "seg-k40-g@128": 14.650, "seg-allrepeat-g@128": 15.500,
+    SEGB_FLOOR: 15.500, "segb-cache0-g@128": 15.900, "segb-hot16-g@128": 14.600,
+    "segb-k40-g@128": 14.400, "segb-hot16-g-slotted@128": 14.500,
 }
 # The census processes take the dealing-damage shift on the seg lanes, and the local lanes take
 # their own census absolutes (R4's frozen anchors are per term order).
@@ -146,7 +166,7 @@ def bases_for(tag, order, patch=None):
     out = {lane: BASE[lane] for lane in ROTATION[tag]}
     if order == "census":
         for lane in out:
-            if lane.startswith("seg-"):
+            if lane.startswith(("seg-", "segb-")):
                 out[lane] += CENSUS_SHIFT
             elif lane in CENSUS_LOCAL:
                 out[lane] = CENSUS_LOCAL[lane]
@@ -217,7 +237,10 @@ def log(tag, order, hint, *, bases=None, rounds=None, warmup=None, echoes=None, 
             if drop == (r, lane):
                 continue
             metric = bases[lane] + drift(r) + (wobble(lane, r) if wobble else 0.0)
-            fin = FIN_256 if facts[lane]["threads"] == 256 else FIN_128
+            if facts[lane]["kernel"].startswith("eval_lsb_segb"):
+                fin = FIN_SEGB
+            else:
+                fin = FIN_256 if facts[lane]["threads"] == 256 else FIN_128
             # `renumber` moves one round's id off the consecutive run without changing how many
             # rounds carry samples — the shape a count-only check accepts.
             stamped = renumber[1] if renumber and r == renumber[0] else r
@@ -252,6 +275,24 @@ def specs(oracle):
     ]
 
 
+SEGB_POSITIONS = ("reanchor-census", "reanchor-locality", "segb-locality", "segb-census",
+                  "r7-gmem-locality", "r7-gmem-census")
+
+
+def segb_specs(oracle):
+    """R7b's six positional processes: the two re-anchors, the SEGB rotation at both orders,
+    and R7's own gmem session (positions 5-6, optional at the emitter) — the logs that make
+    the walk-floor comparison a difference of two IN-SESSION differentials."""
+    return [
+        dict(tag="SEG-ANCHOR", order="census", hint=16, oracle=oracle),
+        dict(tag="SEG-ANCHOR", order="locality", hint=16, oracle=oracle),
+        dict(tag="SEGB", order="locality", hint=16, oracle=oracle),
+        dict(tag="SEGB", order="census", hint=16, oracle=oracle),
+        dict(tag="SEG-GMEM", order="locality", hint=16, oracle=oracle),
+        dict(tag="SEG-GMEM", order="census", hint=16, oracle=oracle),
+    ]
+
+
 def write(outdir, name, lines):
     with open(os.path.join(outdir, name), "w") as fh:
         fh.write("\n".join(lines) + "\n")
@@ -266,6 +307,17 @@ def session(outdir, name, oracle, patches=None, order=None):
     if order:
         rows = [rows[i] for i in order]
     for tag, spec in zip(POSITIONS, rows):
+        write(outdir, f"{name}-{tag}.log", log(**spec))
+
+
+def segb_session(outdir, name, oracle, patches=None, order=None):
+    """One R7b session, same contract as `session` over R7b's own positional inventory."""
+    rows = segb_specs(oracle)
+    for i, patch in (patches or {}).items():
+        rows[i] = dict(rows[i], **patch)
+    if order:
+        rows = [rows[i] for i in order]
+    for tag, spec in zip(SEGB_POSITIONS, rows):
         write(outdir, f"{name}-{tag}.log", log(**spec))
 
 
@@ -425,6 +477,22 @@ def main():
         f"SAMPLE locality 10 {HOT} 14.828000 0.008192 {CACHED}",
         "CARVEOUT-PROBE done order=locality warmup=10 rounds=100 lanes=5",
     ])
+
+    # 9b. R7b's SEGB session, and the mutants of its own contract: the positional pin (an R7
+    #     rotation in the SEGB slot), the dealt plan a transplant rotation must carry, the
+    #     round pin, the per-symbol carveout of the slotted body, the lane's symbol, and a
+    #     supplied R7 log whose shared lanes come from another build.
+    segb_session(outdir, "segb", oracle)
+    segb_session(outdir, "segb-wrong-tag", oracle, order=[0, 1, 4, 3, 4, 5])
+    segb_session(outdir, "segb-seg-missing", oracle, {2: dict(seg=None)})
+    segb_session(outdir, "segb-rounds-not-96", oracle, {2: dict(rounds=100)})
+    segb_session(outdir, "segb-echo-slotted-wrong", oracle,
+                 {2: dict(echoes=[(CACHED, 16), (SEGB_G, 16), (SEGB_RECOMPUTE, 16),
+                                  (SEGB_G_SLOTTED, 32)])})
+    segb_session(outdir, "segb-lane-symbol-forged", oracle,
+                 {2: dict(arm_patch={"segb-hot16-g-slotted@128": {"kernel": SEGB_G}})})
+    segb_session(outdir, "segb-r7-other-build", oracle,
+                 {4: dict(arm_patch={HOT: {"c": 36}})})
 
     # 10. A DIFFERENT ORACLE. The committed file's own contract is pinned field by field, so a
     #     redirected oracle that documents another hash algorithm, another reference stripe or

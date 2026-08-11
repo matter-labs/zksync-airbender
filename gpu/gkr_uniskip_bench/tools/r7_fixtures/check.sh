@@ -75,6 +75,18 @@ sess() {
   done
 }
 
+# R7b's own positional set: four required logs, plus R7's two gmem logs when the caller asks
+# for six (`segb_sess <name> 6`) — the pair that makes the walk-floor comparison a difference
+# of in-session differentials rather than a cross-session subtraction.
+segb_sess() {
+  local n=$1 want=${2:-4} i=0 p
+  for p in reanchor-census reanchor-locality segb-locality segb-census r7-gmem-locality \
+           r7-gmem-census; do
+    i=$((i+1))
+    [ "$i" -le "$want" ] && printf '%s ' "$TMP/$n-$p.log"
+  done
+}
+
 echo "### the real grammar"
 # The one row that reads outside the tracked tree. It decides nothing — it proves the emitter
 # accepts what the runner actually writes.
@@ -289,6 +301,91 @@ rejects "another rung's log (the R6 probe grammar)" \
   "before the schedule line — the lane facts cannot be bound" \
   -- "$TMP/not-r7.log" "$TMP/not-r7.log" "$TMP/not-r7.log" "$TMP/not-r7.log" \
      "$TMP/not-r7.log" "$TMP/not-r7.log" "$TMP/not-r7.log" "$TMP/not-r7.log"
+
+echo "### R7b: the SEGB transplant rotation"
+# The mode is chosen by the LOGS' tag, so the R7 rows above and these share one entry point;
+# every R7 row in this file is also the regression that the eight-log contract did not move.
+emits "a set carrying a SEGB log is summarized under R7b's inventory" \
+  "## v3 R7b — the direct transplant (segb)" -- $(segb_sess segb)
+emits "the SEGB position pins the (96, 8) round shape" \
+  "| 3 | segb-locality | SEGB | \`locality\` | 96 | 8 | 16% |" -- $(segb_sess segb)
+emits "the finalize slots are DERIVED from the body and the grid, not read from a field" \
+  "| SEGB | \`segb-hot16-g-slotted@128\` | \`eval_lsb_segb_g_slotted\` | 72 | 7 | 128 | 262144 | 4 | 1048576 | 28 | 145 | 16 |" \
+  -- $(segb_sess segb)
+emits "a transplant lane's finalize is reported on its own, never pooled with eval" \
+  "| segb-locality | \`segb-hot16-g@128\` | 14.469 | 0.131 | **14.600** |" -- $(segb_sess segb)
+emits "a 16-row lane in the same rotation keeps its own finalize" \
+  "| segb-locality | \`hot16@128\` | 14.738 | 0.008 | **14.746** |" -- $(segb_sess segb)
+emits "A5: the empty-plan / barrier intercept" \
+  "the empty-plan / barrier intercept — C = 0, so no slab traffic (A5) | **+0.400** |" \
+  -- $(segb_sess segb)
+emits "capture at hot16" "capture at hot16 | **-1.300** |" -- $(segb_sess segb)
+emits "the verdict row is the transplant against the hinted incumbent" \
+  "THE VERDICT — the transplant against the hinted incumbent | **-0.146** |" \
+  -- $(segb_sess segb)
+emits "the slope divides by the removals delta off the ARM lines" \
+  "the capture slope, re-tested on the transplant | **-0.200** | -4.17 µs (48 removals) |" \
+  -- $(segb_sess segb)
+emits "the slotted footprint row (A9)" \
+  "one admitted set on two region maps (A9) | **-0.100** |" -- $(segb_sess segb)
+emits "the census rows are labelled never-pooled" \
+  "dealing-damage diagnostic — NEVER pooled" -- $(segb_sess segb)
+emits "A4: the walk floor on eval alone" \
+  "| R7b | segb-locality | body floor (eval only) | \`segb-recompute@128\` − \`control_lb@128\` | **-0.723** |" \
+  -- $(segb_sess segb)
+emits "A4: the same floor on eval + finalize" \
+  "| R7b | segb-locality | transplant floor (eval + finalize) | \`segb-recompute@128\` − \`control_lb@128\` | **-0.600** |" \
+  -- $(segb_sess segb)
+emits "without R7's logs the cross-rung row states its own absence" \
+  "— (no R7 log at this position)" -- $(segb_sess segb)
+emits "with R7's logs the comparison is a difference of IN-SESSION differentials" \
+  "| \`locality\` | body floor (eval only) | -0.723 | -0.200 | **-0.523** |" \
+  -- $(segb_sess segb 6)
+emits "the same comparison on eval + finalize" \
+  "| \`locality\` | transplant floor (eval + finalize) | -0.600 | -0.200 | **-0.400** |" \
+  -- $(segb_sess segb 6)
+emits "the re-anchor still prices control@256 against its frozen median" \
+  "| reanchor-locality | \`control@256\` | 16.624 | 16.624 | +0.00 % | **IN** |" \
+  -- $(segb_sess segb)
+absent "no R7b row declares a winner either" \
+  "WINS|LOSES|FRONTIER MOVED" -- $(segb_sess segb)
+rejects "an R7 rotation log in the SEGB slot" \
+  "this position is preregistered as SEGB at \`--term-order locality\`" \
+  -- $(segb_sess segb-wrong-tag)
+rejects "a SEGB rotation with no SEG line" \
+  "no \`SEG\` line — a SEGB rotation deals a program" -- $(segb_sess segb-seg-missing)
+rejects "the SEGB session ran 100 rounds" \
+  "SEGB is preregistered at 96 rounds / 8 warmup" -- $(segb_sess segb-rounds-not-96)
+rejects "the slotted symbol echoed at 32 instead of the equalized 16" \
+  "$ECHOMSG" -- $(segb_sess segb-echo-slotted-wrong)
+rejects "the slotted lane declares the plain transplant body" \
+  "rotation runs it on \`eval_lsb_segb_g_slotted\`" -- $(segb_sess segb-lane-symbol-forged)
+rejects "the supplied R7 logs come from another build" \
+  "declares a different plan than" -- $(segb_sess segb-r7-other-build 6)
+rejects "five logs" "expects exactly 4 or 6 logs in session order" \
+  -- $(segb_sess segb 6 | tr ' ' '\n' | head -5 | tr '\n' ' ')
+
+# The R7b half of the accepted-grammar row: it replays Task 4's session logs when they exist
+# and skips otherwise, exactly like the R7 row at the top of this file. The two gmem logs are
+# added when R7's own session is present, so the replay exercises the six-log form.
+SEGB_SESSION=${SEGB_SESSION:-$ROOT/.agents/sdd/2026-08-11-v3-r7b}
+have_segb=1
+for p in segb-reanchor-census segb-reanchor-locality segb-locality segb-census; do
+  [ -r "$SEGB_SESSION/$p.log" ] || have_segb=0
+done
+if [ "$have_segb" = 1 ]; then
+  gmem=""
+  if [ -r "$SESSION/session-gmem-locality.log" ] && [ -r "$SESSION/session-gmem-census.log" ]
+  then
+    gmem="$SESSION/session-gmem-locality.log $SESSION/session-gmem-census.log"
+  fi
+  emits "the real SEGB session logs are accepted" "### The R7b decision rows" \
+    -- "$SEGB_SESSION/segb-reanchor-census.log" "$SEGB_SESSION/segb-reanchor-locality.log" \
+       "$SEGB_SESSION/segb-locality.log" "$SEGB_SESSION/segb-census.log" $gmem
+else
+  echo "  SKIP accepted-grammar row: no SEGB session logs at $SEGB_SESSION (not measured yet)"
+  skip=$((skip+1))
+fi
 
 printf 'fixture matrix: %d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
 exit $(( fail > 0 ))
