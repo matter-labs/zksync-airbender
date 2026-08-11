@@ -2,7 +2,7 @@
 # v3 R7 segmented-pair gates, executable rather than transcribed.
 #
 #   sass        the nine frozen bodies (by INVOKING r5_gates.sh sass, so that table lives in
-#               one place) plus the five seg symbols: symbol set, per-symbol normalized
+#               one place) plus the seven seg symbols: symbol set, per-symbol normalized
 #               instruction counts AND body digests, `_cv64` normalized-IDENTICAL to `_cv100`,
 #               and the shipped resource usage (72 regs, no stack, no local) — SHIPPED build
 #               only, and it says so instead of comparing the wrong binary. `all` runs this lane
@@ -77,18 +77,20 @@ seg-g k24
 seg-g k40
 seg-g allrepeat"
 
-# The five seg symbols: fn|normalized instruction count|shared bytes|12-hex sha256 of the
-# NORMALIZED body. Task 3 and Task 4 measured the counts on the shipped build; the digest closes
-# the gap an instruction count leaves open — a body can be rewritten at a constant count, and
-# these five are the kernels the sessions measure. The digests are taken over the same
-# normalized text `norm_dump` produces here, and they survive a rebuild: the diagnostic
-# round-trip recompiles this TU twice and reproduces all five. `_cv64` and `_cv100` are ONE body
-# under two symbols, so they share a digest as well as a count.
+# The seven seg symbols: fn|normalized instruction count|shared bytes|12-hex sha256 of the
+# NORMALIZED body. Task 3 and Task 4 measured the R7 counts on the shipped build and R7b Task 1
+# the two `segb` ones; the digest closes the gap an instruction count leaves open — a body can be
+# rewritten at a constant count, and these seven are the kernels the sessions measure. The
+# digests are taken over the same normalized text `norm_dump` produces here, and they survive a
+# rebuild: the diagnostic round-trip recompiles this TU twice and reproduces all seven. `_cv64`
+# and `_cv100` are ONE body under two symbols, so they share a digest as well as a count.
 SEG_SYMBOLS="ab_gkr_uniskip_eval_lsb_seg_recompute_kernel|8336|2048|dc7e31370bb1
 ab_gkr_uniskip_eval_lsb_seg_g_kernel|9560|2048|5e330b3f2dff
 ab_gkr_uniskip_eval_lsb_seg_s_acc_kernel|10088|0|7ef3be21eec9
 ab_gkr_uniskip_eval_lsb_seg_s_cv100_kernel|9784|0|2ef383967d12
-ab_gkr_uniskip_eval_lsb_seg_s_cv64_kernel|9784|0|2ef383967d12"
+ab_gkr_uniskip_eval_lsb_seg_s_cv64_kernel|9784|0|2ef383967d12
+ab_gkr_uniskip_eval_lsb_segb_recompute_kernel|8368|0|8d0c0350ba2c
+ab_gkr_uniskip_eval_lsb_segb_g_kernel|9696|0|cb905a5c1a37"
 SEG_TU=uniskip_lsb_seg.cu.o
 
 build_bench() { # build_bench <diag-env-value-or-empty>
@@ -502,7 +504,7 @@ norm_dump() { # norm_dump <cuobjdump-text> <outdir>
 body_digest() { sha256sum "$1" | cut -c1-12; }
 
 seg_sass() {
-  note "### the five seg symbols: symbol set, instruction counts, cv64 = cv100, resources"
+  note "### the seven seg symbols: symbol set, instruction counts, cv64 = cv100, resources"
   local ar=$ARCHIVE work="$TMP/sass" ar_abs
   ar_abs=$(readlink -f "$ar")
   mkdir -p "$work"
@@ -564,8 +566,8 @@ seg_sass() {
   else
     note "  negative control: 1 instruction rewritten at $n_doc instructions changes the digest"
   fi
-  [ "$rows" = 5 ] || bad "expected 5 seg symbols, checked $rows"
-  [ "$ok" = 5 ] || bad "the seg symbol table is not 5/5"
+  [ "$rows" = 7 ] || bad "expected 7 seg symbols, checked $rows"
+  [ "$ok" = 7 ] || bad "the seg symbol table is not 7/7"
   # cv64 and cv100 are ONE body under two symbols — the carveout attribute is per function and
   # sticky, which is the only reason both exist. If they ever diverge, the S contrast is
   # measuring two bodies.
@@ -639,7 +641,7 @@ case "${1:-all}" in
   # `sass` LAST as well, and that is not belt-and-braces: the diagnostic round-trip recompiles
   # the seg TU twice, and r5's own sass lane (which `regression` inherits) covers the frozen
   # NINE only. Without this the binary the tree ends on — the one Task 7 measures — would never
-  # have had the five seg bodies verified. No lane may be appended after it that can rebuild.
+  # have had the seven seg bodies verified. No lane may be appended after it that can rebuild.
   all)
     sass; matrix; counts; cpu; fixtures; regression
     note ""

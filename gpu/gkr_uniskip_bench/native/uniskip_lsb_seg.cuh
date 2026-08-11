@@ -411,4 +411,38 @@ DEVICE_FORCEINLINE void uniskip_seg_body(const uniskip_pair_desc &desc, const un
   }
 }
 
+template <typename Carrier, bool RECOMPUTE>
+DEVICE_FORCEINLINE void uniskip_segb_body(const uniskip_pair_desc &desc, const uniskip_cache_desc &plan, const uniskip_seg_desc &seg, const Carrier &car) {
+  uniskip_pair_lane lane = uniskip_pair_lane_of<UNISKIP_SEG_K>(threadIdx.x);
+  lane.row = blockIdx.x * u64{UNISKIP_SEG_COHORT_ROWS} + lane.group; // 4 rows/block, warp id NEVER enters
+  const u32 warp = threadIdx.x / 32;
+  if constexpr (!RECOMPUTE) {
+    uniskip_seg_prologue(desc, plan, lane, warp, car);
+    __syncthreads(); // the ONLY barrier
+  }
+  e4 acc_h[2] = {e4::ZERO(), e4::ZERO()};
+  e4 acc_c[2] = {e4::ZERO(), e4::ZERO()};
+  uniskip_seg_eval_body(desc, seg, lane, warp, car, acc_h, acc_c);
+  const e4 eq = uniskip_lsb_eq_at(desc, static_cast<u32>(lane.row));
+#pragma unroll
+  for (u32 k = 0; k < 2; ++k) {
+    acc_h[k] = e4::mul(acc_h[k], eq);
+    acc_c[k] = e4::mul(acc_c[k], eq);
+  }
+#pragma unroll
+  for (int mask = UNISKIP_PAIR_LANES; mask < 32; mask <<= 1)
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k) {
+      acc_h[k] = e4::add(acc_h[k], uniskip_lsb_shfl_xor_e4(acc_h[k], mask));
+      acc_c[k] = e4::add(acc_c[k], uniskip_lsb_shfl_xor_e4(acc_c[k], mask));
+    }
+  if (lane.group == 0) {
+    e4 *slot = desc.partials + (u64{blockIdx.x} * UNISKIP_SEG_K + warp) * UNISKIP_CELLS;
+    slot[lane.lane] = acc_h[0];
+    slot[lane.lane + UNISKIP_PAIR_LANES] = acc_h[1];
+    slot[UNISKIP_TAPS + lane.lane] = acc_c[0];
+    slot[UNISKIP_TAPS + lane.lane + UNISKIP_PAIR_LANES] = acc_c[1];
+  }
+}
+
 } // namespace airbender::gkr_uniskip_bench

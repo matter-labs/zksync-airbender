@@ -54,4 +54,18 @@ EXTERN __global__ void __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32, 7)
   uniskip_seg_body<uniskip_seg_carrier_smem, true>(desc, unread_plan, seg, car, plane);
 }
 
+EXTERN __global__ void __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32, 7)
+    ab_gkr_uniskip_eval_lsb_segb_g_kernel(const __grid_constant__ uniskip_pair_desc desc, const __grid_constant__ uniskip_cache_desc plan,
+                                          const __grid_constant__ uniskip_seg_desc seg) {
+  const uniskip_seg_carrier_gmem car{reinterpret_cast<u32 *>(seg.slab_base) + blockIdx.x * seg.slab_stride_words};
+  uniskip_segb_body<uniskip_seg_carrier_gmem, false>(desc, plan, seg, car);
+}
+
+EXTERN __global__ void __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32, 7)
+    ab_gkr_uniskip_eval_lsb_segb_recompute_kernel(const __grid_constant__ uniskip_pair_desc desc, const __grid_constant__ uniskip_seg_desc seg) {
+  const uniskip_seg_carrier_gmem car{reinterpret_cast<u32 *>(seg.slab_base) + blockIdx.x * seg.slab_stride_words};
+  uniskip_cache_desc unread_plan;
+  uniskip_segb_body<uniskip_seg_carrier_gmem, true>(desc, unread_plan, seg, car);
+}
+
 } // namespace airbender::gkr_uniskip_bench

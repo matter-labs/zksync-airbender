@@ -210,6 +210,20 @@ cuda_kernel!(
     EvalLsbSegRecompute,
     ab_gkr_uniskip_eval_lsb_seg_recompute_kernel(desc: UniskipVmDesc, seg: UniskipSegDesc)
 );
+// v3 R7b transplant kernels: one cohort of four rows per block, per-warp output, no shared
+// memory — so neither symbol takes `shared_bytes` and the grid is `rows / 4`.
+cuda_kernel!(
+    EvalLsbSegbG,
+    ab_gkr_uniskip_eval_lsb_segb_g_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc,
+        seg: UniskipSegDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbSegbRecompute,
+    ab_gkr_uniskip_eval_lsb_segb_recompute_kernel(desc: UniskipVmDesc, seg: UniskipSegDesc)
+);
 cuda_kernel!(
     Finalize,
     ab_gkr_uniskip_finalize_kernel(partials: *const u32, blocks: u32, q: *mut u32)
@@ -803,6 +817,33 @@ pub fn eval_lsb_seg_recompute(
     EvalLsbSegRecomputeFunction::default().launch(&config, &args)
 }
 
+/// The v3 R7b transplant arm: `blocks` covers four rows each, and every warp writes its own
+/// partial slot, so the caller sizes partials at `blocks * UNISKIP_SEG_K` slots.
+pub fn eval_lsb_segb_g(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    seg: &UniskipSegDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbSegbGArguments::new(*desc, *plan, *seg);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbSegbGFunction::default().launch(&config, &args)
+}
+
+/// [`eval_lsb_segb_g`]'s machinery floor: no slab and no prologue, so every reference
+/// recomputes.
+pub fn eval_lsb_segb_recompute(
+    desc: &UniskipVmDesc,
+    seg: &UniskipSegDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbSegbRecomputeArguments::new(*desc, *seg);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbSegbRecomputeFunction::default().launch(&config, &args)
+}
+
 /// Steer the shared-memory carveout of the carrier-S 64 % symbol — a host-side function
 /// attribute (percent of the maximum shared memory, rounded by the driver to a supported
 /// config), sticky for the process; the SASS is untouched.
@@ -859,6 +900,31 @@ pub fn set_seg_recompute_carveout(percent: u32) -> CudaResult<()> {
     unsafe {
         cudaFuncSetAttribute(
             EvalLsbSegRecomputeFunction::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
+}
+
+/// [`set_seg_s_cv64_carveout`] for the transplant arm. Its body allocates no shared memory
+/// at all, so what a carveout request steers here is L1 alone.
+pub fn set_segb_g_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbSegbGFunction::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
+}
+
+/// [`set_segb_g_carveout`] for the transplant machinery floor.
+pub fn set_segb_recompute_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbSegbRecomputeFunction::default().as_ptr(),
             CudaFuncAttribute::PreferredSharedMemoryCarveout,
             percent as std::os::raw::c_int,
         )
