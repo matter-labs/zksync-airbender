@@ -721,7 +721,7 @@ fn seg_line(deal: &SegPlan, state: &CacheArmState) -> String {
     };
     let counts = |values: &[u32]| list(&values.iter().map(|&v| u64::from(v)).collect::<Vec<_>>());
     format!(
-        "SEG list_offset={} cost={} owners=e4:{};bf:{} hash={}",
+        "SEG list_offset={} cost={} owners=e4:{};bf:{} hash={} stripe=hot16",
         counts(&deal.list_offset.map(u32::from)),
         list(&deal.predicted_cost),
         counts(&e4),
