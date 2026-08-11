@@ -1828,7 +1828,8 @@ impl Harness {
         self.config
     }
 
-    /// Eval grid at this mode's row tile — the number `finalize` reduces over.
+    /// Eval grid at this mode's row tile. NOT what `finalize` reduces over: that is the slot
+    /// count, which a transplant carrier's four warps per block multiply.
     pub fn eval_blocks(&self) -> u32 {
         self.eval_blocks
     }

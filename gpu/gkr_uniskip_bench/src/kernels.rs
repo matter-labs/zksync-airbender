@@ -989,14 +989,15 @@ pub fn set_segb_recompute_carveout(percent: u32) -> CudaResult<()> {
     .wrap()
 }
 
-/// Reduce the `blocks * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.
+/// Reduce the `partial_slots * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.
+/// Slots, not blocks: a transplant carrier publishes one per warp.
 pub fn finalize(
     partials: &DeviceSlice<u32>,
-    blocks: u32,
+    partial_slots: u32,
     q: &mut DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let args = FinalizeArguments::new(partials.as_ptr(), blocks, q.as_mut_ptr());
+    let args = FinalizeArguments::new(partials.as_ptr(), partial_slots, q.as_mut_ptr());
     let config = CudaLaunchConfig::basic(
         UNISKIP_CELLS as u32,
         UNISKIP_THREADS_PER_BLOCK as u32,
