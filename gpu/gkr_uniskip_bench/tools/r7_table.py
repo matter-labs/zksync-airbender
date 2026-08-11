@@ -63,7 +63,9 @@ Positions 5 and 6 are the R7 rotation's logs, and they are what makes the R7-vs-
 comparison legal: it is the difference of two IN-SESSION differentials (`segb-recompute −
 control_lb` here against `seg-recompute − control_lb` there), per term order, never a raw
 cross-session median. Supply them or don't; with them the comparison is emitted, without them
-only this session's half is.
+only this session's half is. R7b's lane grids are pinned to `--log-trace 24` on top of that:
+the trace size is printed in no decision-bearing line, so a four-log set recorded at another
+one is self-consistent and no cross-log gate can see it.
 
 Usage:
     python3 gpu/gkr_uniskip_bench/tools/r7_table.py L1 L2 L3 L4 L5 L6 L7 L8
@@ -123,6 +125,26 @@ SEGB_G_SLOTTED = "eval_lsb_segb_g_slotted"
 # lane's carrier (its symbol) and its block count — a transplant block is four rows and
 # publishes one slot per warp, every other body publishes one slot per block.
 SEGB_PARTIALS_PER_BLOCK = 4
+
+# THE TRACE PIN, R7b's own. Every other gate here is RELATIVE — logs are checked against each
+# other and against the committed plan oracle — and the trace size appears in no log line at
+# all, so a whole session recorded at another `--log-trace` is internally consistent. The
+# six-log form still catches it (R7's supplied logs share three lanes, and the lane-plan
+# identity gate compares their grids), but the four-log form has nothing to compare against.
+# These are the grids R7b's arms are preregistered at, one per lane of the SEGB rotation: the
+# trace's row count over each body's row tile, which is a fact of the build and the trace and
+# of nothing else. Lanes outside this table ride the identity gate against the ones in it.
+SEGB_TRACE = 24
+SEGB_TRACE_GRID = {
+    CTL: 32768,
+    CTL_LB: 65536,
+    HOT: 65536,
+    SEGB_FLOOR: 262144,
+    SEGB_CACHE0: 262144,
+    SEGB_HOT: 262144,
+    SEGB_K40: 262144,
+    SEGB_SLOTTED: 262144,
+}
 
 # THE PINNED ROTATIONS — label and symbol, in execution order. A log carrying a different lane
 # set is a different experiment and is rejected rather than partially summarized; a lane
@@ -652,7 +674,7 @@ def load(path, index, oracles, positions=POSITIONS):
     }
 
 
-def session(paths, positions=POSITIONS, counts=None):
+def session(paths, positions=POSITIONS, counts=None, grid_pin=None):
     """The session's processes plus the cross-log gates: one experiment, one dealt plan per
     term order, one build."""
     counts = counts or (len(positions),)
@@ -662,6 +684,17 @@ def session(paths, positions=POSITIONS, counts=None):
             f"here is POSITIONAL, so a short or long set has no defined positions")
     oracles = oracle()
     procs = [load(p, i, oracles, positions) for i, p in enumerate(paths)]
+    # THE TRACE PIN, before the relative gates: a session recorded at another `--log-trace` is
+    # self-consistent, so it passes every one of them.
+    for p in procs:
+        for lane, facts in p["arms"].items():
+            want = (grid_pin or {}).get(lane)
+            if want is not None and facts["grid"] != want:
+                die(f"{p['path']} ({p['name']}): lane {lane} declares grid={facts['grid']}, "
+                    f"and this rung's arms are preregistered at `--log-trace {SEGB_TRACE}`, "
+                    f"where that lane launches {want} blocks — the trace size is printed in "
+                    f"no decision-bearing line, so a session recorded at another one would "
+                    f"otherwise be summarized as if it were this one")
     # LANE-PLAN IDENTITY across logs. The hint is host-only and the deal is capture-blind, so a
     # lane that appears in two processes must declare the same plan in both; this is where a
     # set assembled from two builds, two censuses or two trace sizes is caught.
@@ -1095,7 +1128,7 @@ def main():
         print(seg_line_of(oracles[argv[1]]))
         return
     if is_segb_session(argv):
-        segb_report(*session(argv, SEGB_POSITIONS, SEGB_COUNTS))
+        segb_report(*session(argv, SEGB_POSITIONS, SEGB_COUNTS, SEGB_TRACE_GRID))
         return
     procs, oracles = session(argv)
     head = procs[HEADLINE]

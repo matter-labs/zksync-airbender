@@ -254,14 +254,16 @@ q_parity() {
 
   # E4 SELF-PRODUCT CELL. `--self-products 60` is the program's maximum and the only way to
   # exercise the duplicate rule. The LOCAL reference is printed and compared here too: four
-  # seg carriers agreeing with each other proves only that they agree.
-  note "### self-products 60: one S and one G pair, both orders, vs the LOCAL reference"
+  # seg carriers agreeing with each other proves only that they agree. R7b's two published
+  # bodies run it as well — the transplant publishes one slot per WARP, so the duplicate rule
+  # meets a different reduction there and is a separate claim from carrier G's.
+  note "### self-products 60: the S and G pairs plus R7b's two segb pairs, both orders, vs the LOCAL reference"
   local scells=0 spass=0
   for order in census locality; do
     local sref; sref=$(qhash --block-threads 128 --self-products 60 --term-order "$order")
     usable "$sref" "local control128 sp60 order=$order" || continue
     note "  reference control128 sp60 $order = $sref"
-    for carrier in seg-s seg-g; do
+    for carrier in seg-s seg-g segb-g segb-g-slotted; do
       scells=$((scells + 1))
       local sgot
       sgot=$(qhash --block-threads 128 --cache-arm hot16 --carrier "$carrier" \
@@ -272,7 +274,7 @@ q_parity() {
     done
   done
   note "  cells=$scells passed=$spass"
-  [ "$scells" = 4 ] || bad "expected 4 self-product cells, ran $scells"
+  [ "$scells" = 8 ] || bad "expected 8 self-product cells, ran $scells"
   [ "$scells" = "$spass" ] || bad "self-product matrix incomplete"
 
   # CPU oracle — the only leg that does not go through `q` alone.

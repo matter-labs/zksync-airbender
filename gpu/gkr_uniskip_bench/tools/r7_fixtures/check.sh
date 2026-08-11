@@ -362,6 +362,10 @@ rejects "the slotted lane declares the plain transplant body" \
   "rotation runs it on \`eval_lsb_segb_g_slotted\`" -- $(segb_sess segb-lane-symbol-forged)
 rejects "the supplied R7 logs come from another build" \
   "declares a different plan than" -- $(segb_sess segb-r7-other-build 6)
+# The four-log form has no second session to be checked against, so a session recorded at
+# another trace is self-consistent and only the absolute grid pin sees it.
+rejects "a four-log session recorded at another --log-trace" \
+  "preregistered at \`--log-trace 24\`" -- $(segb_sess segb-wrong-trace)
 rejects "five logs" "expects exactly 4 or 6 logs in session order" \
   -- $(segb_sess segb 6 | tr ' ' '\n' | head -5 | tr '\n' ' ')
 

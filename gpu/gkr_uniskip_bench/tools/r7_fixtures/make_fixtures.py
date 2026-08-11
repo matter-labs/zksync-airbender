@@ -493,6 +493,15 @@ def main():
                  {2: dict(arm_patch={"segb-hot16-g-slotted@128": {"kernel": SEGB_G}})})
     segb_session(outdir, "segb-r7-other-build", oracle,
                  {4: dict(arm_patch={HOT: {"c": 36}})})
+    # 9c. THE WRONG TRACE, four-log form: every lane of every required log at half its grid,
+    #     which is what `--log-trace 23` produces. Nothing here is inconsistent — the logs
+    #     agree with each other, so only the absolute trace pin can see it.
+    def half_grid(tag):
+        return {lane: {"grid": FACTS[lane][3] // 2} for lane in ROTATION[tag]}
+
+    segb_session(outdir, "segb-wrong-trace", oracle,
+                 {i: dict(arm_patch=half_grid(tag)) for i, tag in
+                  enumerate(("SEG-ANCHOR", "SEG-ANCHOR", "SEGB", "SEGB"))})
 
     # 10. A DIFFERENT ORACLE. The committed file's own contract is pinned field by field, so a
     #     redirected oracle that documents another hash algorithm, another reference stripe or
