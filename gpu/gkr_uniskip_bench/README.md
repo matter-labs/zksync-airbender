@@ -508,12 +508,13 @@ at 100/100 (smem) or 99/99 (gmem) sign-stability, in both term orders, with the 
 implementation defect: the cohort walk alone costs **+3.690 ms** before anything is published,
 the publish machinery is cheap (**+0.24 ms**) and the capture is real (**−2.11 ms**), so the sum
 never crosses zero; the carrier axis resolves at **±0.08 ms** and the capture slope is
-**positive on both carriers** (+8–12 µs per removal), so `hot16` (C = 28) stays the admission
-optimum under segmentation too. Two findings travel beyond the rung. **Capture economics:** the
-publish round-trip's write differential closes to the arithmetic slab floor at 1.0000×
-(1.879 GB/pass at `hot16`) and only 24.4 % of it reaches DRAM, so a shared slab and a
-device-scratch slab price within ~0.08 ms of each other — where the produced sources live is not
-where the time goes. **The carveout ladder is body-dependent:** R6's hint→configuration map holds
+**positive on both carriers** (+8–12 µs per removal), so `hot16` (C = 28) stays the best TESTED
+admission point under segmentation too — K17–23 is unmeasured here as in R5/R6. Two findings
+travel beyond the rung. **Capture economics:** the publish round-trip's write differential closes
+to the arithmetic slab floor at 1.0000× (1.879 GB/pass at `hot16`) and only 24.4 % of it reaches
+DRAM, so a shared slab and a device-scratch slab price within ~0.08 ms of each other (at unmatched
+shared-memory configurations — carrier G asks for no slab carveout) — where the produced sources
+live is not where the time goes. **The carveout ladder is body-dependent:** R6's hint→configuration map holds
 row for row on a static-shared body and does NOT transfer to a dynamic-shared one (hint 32 →
 32.77 KB and 4 blocks/SM instead of 65.54 KB and 7; 33 is the dynamic body's crossing), which
 aborted the first measurement attempt at the realized-configuration gate; every seg lane now

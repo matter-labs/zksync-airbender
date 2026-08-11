@@ -3829,9 +3829,18 @@ no foreign compute process appears in any measurement window.
 
 The Step-7 repeat trigger fired on the first pass, so four sessions were re-run in full, soaked,
 same flags, and the emitter was re-run with them substituted. Both emitter outputs are kept:
-`r7-tables.md` (first pass, history) and **`r7-tables-repeat.md` — the primary decision record,
-from which every table below is copied verbatim.** Every paired figure is stable across the two
-passes, which is the strongest evidence the tripped flanks did not move the decision:
+`r7-tables.md` (first pass, history) and **`r7-tables-repeat.md` — the primary decision record.**
+
+Provenance of everything below, stated once. Every **timing** table — session inventory, dealt
+plan, lane facts, per-lane medians, paired deltas, machinery decomposition, capture slope, the
+carrier bridge, attribution, re-anchor — is copied cell-by-cell from `r7-tables-repeat.md`, and no
+timing number here was assembled by hand. The **G0, hint-ladder, soak, flank, Full-Picture and
+counter** tables come from the measurement report `.agents/sdd/2026-08-10-v3-r7/task-7-report.md`
+(whose only hand-computed figures are the scratch-accounting floors, from C / cohorts / blocks read
+off the logs and the ABI). The gate and parity counts quoted in *Design* (74-cell support matrix,
+76 fixtures, q parity 24/24, poison 12/12) come from the Task 5 and Task 6 implementation reports.
+
+Every paired figure is stable across the two passes, which is the strongest evidence the tripped flanks did not move the decision:
 attribution +0.063 → +0.067 (cv64) and +0.280 → +0.295 (cv100); census machinery +0.315 →
 +0.305; census capture −2.243 → −2.197; census acc A/B +0.253 → +0.257. The repeat pass also
 brought the one out-of-band anchor back in (`reanchor-census/control@256` +2.20 % → +1.54 %), so
@@ -4018,7 +4027,9 @@ removals delta read off the two `ARM` lines, so the slope carries no literal of 
 
 **The carrier axis** — S vs G at matched capture, bridged over the two lanes both rotations carry
 (the R4/R5 cross-session anchor method; δ = (S − A_S) − (G − A_G), negative favours S; the flank
-is |A_S − A_G| and past 0.05 ms the row is `unstable`). `locality`, the headline:
+is |A_S − A_G| and past 0.05 ms the row is `unstable`). Matched **capture**, not matched
+configuration: the `capture` column names S's carveout request, while G needs no slab carveout and
+runs hint 16 / 32.77 KB on every one of these rows. `locality`, the headline:
 
 | capture | S lane | G lane | anchor | flank (ms) | stable | S med | G med | δ (ms) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -4046,24 +4057,35 @@ agree in sign with locality without being admissible on their own.
   every one is positive at the maximum sign-stability the rotation can produce.
 - **First loser: `seg-hot16-s64@128`, +1.822 ms** locality (+1.349 census) — carrier S, `hot16`
   capture, at its 64 KiB request.
-- **The three terms add up.** Walk floor +3.690, publish machinery +0.242, capture −2.113 ⇒
-  +1.819, which is the first loser's +1.822 to rounding. The machinery is cheap and the capture
-  is real and large; the segmented walk floor is what nothing refunds. The same arithmetic holds
-  on carrier G (+3.693 / +0.246 / −2.030 ⇒ +1.909) and in `census`.
+- **The three terms account for the loss.** Walk floor +3.690, publish machinery +0.242, capture
+  −2.113 ⇒ +1.819 against the measured +1.822. The 3 µs gap is not an accounting error and the
+  agreement is not an identity: each Δ is its own per-round median and medians are not additive,
+  so summing them is an approximation (plus three roundings). The machinery is cheap and the
+  capture is real and large; the segmented walk floor is what nothing refunds. The same
+  decomposition holds on carrier G (+3.693 / +0.246 / −2.030 ⇒ +1.909 vs a measured +1.909) and
+  in `census`.
 - **Absolutes, for the bar.** The best seg lane's in-rotation median is **16.528 ms** against the
   same process's incumbent at **14.705** and the 14.61 ms windowed-candidate bar — the rung is
   not near it. Against R5's rung-2 requirement, "machinery ≪ 0.7–0.9 ms" (an R4 `eval` figure,
   not this section's `eval + finalize`), the publish machinery at ~0.25 ms passes comfortably and
   the cohort-walk floor at +3.690 ms does not.
-- **`hot16` (C = 28) stays the frontier optimum under segmentation.** The capture slope is
-  POSITIVE on both carriers, +8.35/+10.22 µs per removal on S and +11.86/+12.34/+10.18 on G:
-  past `hot16` each additional admitted source costs 8–12 µs rather than saving time. R5's
-  admission-frontier result survives the restructuring, so the "re-priced frontier" half of the
-  spec's thesis is refuted as well as the carrier half.
-- **The carrier axis resolves at ±0.08 ms.** S is slightly ahead of G at matched capture
-  (−0.082/−0.083 locality, both anchors, stable) when S runs its 64 KiB request; at the matched
-  100 KiB request the two are within ±0.03 ms. The carrier choice is worth less than the carveout
-  tier it is measured at — and an order of magnitude less than the walk floor.
+- **`hot16` (C = 28) stays the best TESTED admission point under segmentation.** The capture
+  slope is POSITIVE on both carriers, +8.35/+10.22 µs per removal on S and +11.86/+12.34/+10.18
+  on G: past `hot16` each additional admitted source costs 8–12 µs rather than saving time. Scope
+  is the same as R5's and R6's — the tested points are {`hot16`, k24, k40} on S and {`hot16`, k24,
+  k40, allrepeat} on G, and **K17–23 (C = 29…35) remains unmeasured in every rung**, so this rules
+  out a *further* frontier, not an unsampled one just past C = 28. R5's admission-frontier result
+  survives the restructuring within that scope, so the "re-priced frontier" half of the spec's
+  thesis is refuted as well as the carrier half.
+- **The carrier axis resolves at ±0.08 ms — and not at a matched configuration.** At matched
+  capture (`hot16`, C = 28) S is ahead of G by −0.082/−0.083 ms (locality, both anchors, stable)
+  when S runs its 64 KiB request; when the same S body instead requests 100 KiB the sign flips to
+  +0.034/+0.033. Neither row is a matched-configuration comparison: **carrier G runs hint 16 /
+  32.77 KB at every capture size** (it needs no slab carveout — smem carries only its reduction
+  plane), while S realizes 65.54 KB or 102.40 KB. So the carrier δ is entangled with the
+  shared-memory configuration the two arms run at, and the honest reading is that the whole
+  carrier axis lives inside a ±0.09 ms band that is an order of magnitude below the walk floor —
+  not that one carrier is established as better at a matched config.
 - **Spec §7's prior, scored:** "seg-recompute is a wash or loss" — a loss, +3.690 ms; "the
   hot16-capture lanes have a credible low-single-digit-% path" — they do not: the best of them is
   +1.822 ms on a 14.705 ms incumbent;
@@ -4100,17 +4122,21 @@ the slab is published once per cohort and never re-written. Two facts fall out. 
 the published bytes ever reach DRAM** (457.91 MB of 1.879 GB, the same ratio at both capture
 points), so the spec's re-dirtying hypothesis — "region re-dirtying across cohorts means most
 publish writes plausibly die in L2 before reaching DRAM" — is largely confirmed: three quarters
-of them do. And the read side never reaches DRAM at all (`dram__bytes_op_read` is 6.18 GB in
-every arm = the tap backing alone), so the whole round-trip lives in L1/L2. That is why carrier G
-loses only ~0.08 ms to S rather than the 1.9 GB of DRAM traffic the floor would suggest — and
-equally why neither carrier can pay for the walk.
+of them do. And the consume side shows **no measurable incremental DRAM-read signal**:
+`dram__bytes_op_read` reads 6.18 GB in every arm — the tap backing alone — so the slab's reads add
+nothing the counter can resolve above it. Read both facts for what the method is: a kernel-wide
+differential from one capture per point, with no per-address-range attribution, so it bounds the
+slab's traffic rather than isolating it. Within that bound the round-trip lives in L1/L2, which is
+why carrier G loses only ~0.08 ms to S rather than the 1.9 GB of DRAM traffic the arithmetic floor
+would suggest — and equally why neither carrier can pay for the walk.
 
 ### Full Pictures — the deterministic set, doc recipe
 
 Ten captures on `gpu/docs/profiling_ncu.md`'s explicit 17-section list (never `--set full`),
 `--nvtx-include "gkr_uniskip_pass0/"` with the trailing slash, date-prefixed `-o`, one round
 each: `seg-recompute`, both `cache0`s, S-`hot16` (= the first loser), G-`hot16`, S-`hot16`-acc,
-`seg-hot16-s100` (the matched-carveout reference), S-`k40`, G-`k40`, G-`allrepeat`. **Deviation,
+`seg-hot16-s100` (the carveout-matched reference for S's cv100 capture lanes), S-`k40`, G-`k40`,
+G-`allrepeat`. **Deviation,
 unavoidable under P1: lineinfo was NOT enabled** — the doc's Full Picture step requires a
 rebuild and no build may run inside the freeze window, so `SourceCounters` has no line mapping.
 
@@ -4130,9 +4156,10 @@ rebuild and no build may run inside the freeze window, so `SourceCounters` has n
 Three readings. (1) Every seg arm is **SM-bound** (73–86 % SM SOL against 21–28 % DRAM), so the
 segmented floor is instruction work, not memory — the same binding term v3 has had since R2, and
 the reason a carrier swap cannot pay for the walk. (2) The 100 KiB request collapses the L1 hit
-rate (8.75 % at `s100` against 28.51 % at the same body's 64 KiB request) for +0.116 ms: the
-carveout tier is a real cost, measured twice now. (3) Carrier G's slab shows up exactly where it
-should — DRAM SOL 25.75 vs S's 23.86 and L2 hit 71.81 vs 64.12 at matched `hot16`.
+rate (8.75 % at `s100` against 28.51 % at the same body's 64 KiB request) for **+0.116 ms** — that
+one is the segmented body's own price for the tier, paired inside the SMEM rotation (`s100` +1.938
+− `s64` +1.822). (3) Carrier G's slab shows up exactly where it should — DRAM SOL 25.75 vs S's
+23.86 and L2 hit 71.81 vs 64.12 at matched `hot16`, where G runs 32.77 KB and S 65.54 KB.
 
 ### Attribution — what the incumbent's carveout hint alone does
 
@@ -4148,11 +4175,16 @@ hinted.
 | attr-cv100 | 100% | **-1.653** | 100/100 neg (≥ 90) | **+0.295** |
 
 Handing shared memory away from L1 costs the incumbent monotonically: **+0.067 ms at the 64 KiB
-tier and +0.295 ms at 100 KiB.** This prices the *realized tiers the seg carriers run at*, which
-is the point — the seg bodies reach 65.54 KB at hint 33 and the incumbent at 32, but the
-configuration is the same. It also means carrier S's 100 KiB lanes (`s100`, `k24`, `k40`) carry a
-~0.3 ms carveout tax that is invisible in the S-vs-G contrast at matched request: that ±0.03 ms
-row compares two arms which both pay it.
+tier and +0.295 ms at 100 KiB.** These figures are measured **on the incumbent's own body, in the
+2-lane attribution rotation** — they are not a measurement of any segmented arm, and nothing here
+licenses subtracting them from a seg lane. What they are good for is the configurations: the
+attribution walks the same realized tiers the seg carriers run at (the seg bodies reach 65.54 KB at
+hint 33 and the incumbent at 32, but the configuration is identical), so it says what a 100 KiB
+carveout costs a cached body of this shape when nothing else changes. The segmented body's own
+price for that tier is the +0.116 ms `s100` − `s64` step above. Both readings matter for the
+carrier axis: carrier G asks for no slab carveout at all and runs hint 16 / 32.77 KB at every
+capture size, so the S100-vs-G bridge row is comparing arms at 102.40 KB and 32.77 KB, not at a
+matched configuration.
 
 Re-anchor against R4's frozen in-rotation medians (±2 %, NON-FATAL — it scopes the absolutes and
 invalidates no paired contrast; `hot16@128` here carries the R6 hint the frozen anchor did not,
@@ -4189,9 +4221,12 @@ so only `control@256` is like-for-like):
 | reanchor-census | hot16 0.071 — **TRIPPED** | 0.195 / 0.151 — **TRIPPED again** |
 | attr-cv100 | 0.073 / 0.064 — **TRIPPED** | 0.187 / 0.160 — **TRIPPED again** |
 
-- **A 100 KiB carveout costs 0.295 ms on this kernel** (attribution above). Any future arm that
-  asks for the top tier is spending that before it does anything useful, and the contrast it
-  appears in must say so.
+- **The top carveout tier is not free, and every contrast must name the tiers it compares.**
+  Measured on the incumbent's cached body, 100 KiB costs it +0.295 ms against hint 16 (+0.067 at
+  64 KiB); measured on the segmented body, the same request costs +0.116 ms (`s100` − `s64`). An
+  arm that asks for the top tier is spending that before it does anything useful — and any A/B
+  where the two sides realize different configurations is reporting the tier as well as the
+  mechanism.
 - **Full Pictures taken under a build freeze have no source correlation.** P1 forbids the rebuild
   the doc's recipe asks for, so `--import-source` is present but `SourceCounters` has no line
   mapping. Per-line attribution of the walk needs its own lineinfo build outside a freeze window.
