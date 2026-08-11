@@ -2,6 +2,7 @@
 // each thread keeps one E4 accumulator whose first limb is the base-field view.
 
 #include "../eval_vm_exec.cuh"
+#include "../support/lookup_helpers.cuh"
 #include "fwd_vm.cuh"
 
 // Runtime-produced derived E4 values and the optional decoder fill.
@@ -319,6 +320,67 @@ DEVICE_FORCEINLINE void vm_body(const fwd_vm_desc &desc, e4 *cell_file) {
   }
 }
 
+DEVICE_FORCEINLINE void fused_reduction_round0(const fwd_vm_reduction_pair &pair, e4 *smem) {
+  constexpr u32 round_len = 64;
+  const u32 lane = threadIdx.x & FWD_VM_LANE_MASK;
+  const u32 block_input = blockIdx.x * 128;
+  const u32 block_output = blockIdx.x * round_len;
+
+#pragma unroll
+  for (u32 local = lane; local < round_len; local += FWD_VM_WARP_LANES) {
+    const u32 even = block_input + 2 * local;
+    const u32 odd = even + 1;
+    e4 out0;
+    e4 out1;
+    if (pair.kind == FWD_VM_REDUCTION_PAIR_PAIRWISE2) {
+      gkr_eval_product(load<e4, ld_modifier::ca>(pair.input[0], even), load<e4, ld_modifier::ca>(pair.input[0], odd), out0);
+      gkr_eval_product(load<e4, ld_modifier::ca>(pair.input[1], even), load<e4, ld_modifier::ca>(pair.input[1], odd), out1);
+    } else {
+      const e4 a = load<e4, ld_modifier::ca>(pair.input[0], even);
+      const e4 b = load<e4, ld_modifier::ca>(pair.input[1], even);
+      const e4 c = load<e4, ld_modifier::ca>(pair.input[0], odd);
+      const e4 d = load<e4, ld_modifier::ca>(pair.input[1], odd);
+      gkr_eval_lookup_pair(a, b, c, d, out0, out1);
+    }
+    smem[local] = out0;
+    smem[round_len + local] = out1;
+    store<e4, st_modifier::cs>(pair.round_outputs[0][0], out0, block_output + local);
+    store<e4, st_modifier::cs>(pair.round_outputs[0][1], out1, block_output + local);
+  }
+  // Round 1 reads values written by other lanes.
+  __syncwarp();
+}
+
+DEVICE_FORCEINLINE void fused_reduction_pair(const fwd_vm_reduction_pair &pair, e4 *smem) {
+  fused_reduction_round0(pair, smem);
+  const u32 lane = threadIdx.x & FWD_VM_LANE_MASK;
+
+#pragma unroll
+  for (u32 round = 1; round < FWD_VM_FUSED_REDUCTION_ROUNDS; round++) {
+    const u32 round_len = 64 >> round;
+    e4 out0;
+    e4 out1;
+    if (lane < round_len) {
+      if (pair.kind == FWD_VM_REDUCTION_PAIR_PAIRWISE2) {
+        gkr_eval_product(smem[2 * lane], smem[2 * lane + 1], out0);
+        gkr_eval_product(smem[64 + 2 * lane], smem[64 + 2 * lane + 1], out1);
+      } else {
+        gkr_eval_lookup_pair(smem[2 * lane], smem[64 + 2 * lane], smem[2 * lane + 1], smem[64 + 2 * lane + 1], out0, out1);
+      }
+    }
+    // Finish all reads before overwriting inputs, then publish writes before the next round.
+    __syncwarp();
+    if (lane < round_len) {
+      smem[lane] = out0;
+      smem[64 + lane] = out1;
+      const u32 output = blockIdx.x * round_len + lane;
+      store<e4, st_modifier::cs>(pair.round_outputs[round][0], out0, output);
+      store<e4, st_modifier::cs>(pair.round_outputs[round][1], out1, output);
+    }
+    __syncwarp();
+  }
+}
+
 // minBlocks = the occupancy the static smem permits: SM shared capacity
 // (~100 KB) / per-block footprint (BUCKETS * 16 B * 128 threads + ~1 KB driver
 // overhead), clamped to the 12-block warp limit (4 warps/block). ptxas then
@@ -326,6 +388,14 @@ DEVICE_FORCEINLINE void vm_body(const fwd_vm_desc &desc, e4 *cell_file) {
 EXTERN __launch_bounds__(128, 11) __global__ void ab_gkr_fwd_vm_kernel(const __grid_constant__ fwd_vm_desc desc) {
   __shared__ e4 fwd_vm_cells[FWD_VM_BUCKETS * 128];
   vm_body(desc, fwd_vm_cells);
+  // Each reduction warp reloads rows written by the whole CTA.
+  __syncthreads();
+  const u32 warp = threadIdx.x >> FWD_VM_WARP_SHIFT;
+  e4 *smem = fwd_vm_cells + warp * FWD_VM_BUCKETS * FWD_VM_WARP_LANES;
+  if (warp < desc.reduction_pair_count)
+    fused_reduction_pair(desc.reduction_pairs[warp], smem);
+  if (warp + 4 < desc.reduction_pair_count)
+    fused_reduction_pair(desc.reduction_pairs[warp + 4], smem);
 }
 
 } // namespace airbender::gkr
