@@ -152,6 +152,13 @@ jobs:
         run: |
           tools/reproduce/reproduce.sh
 
+      - name: Upload rebuilt verifiers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tools_verifier
+          path: tools/verifier
+
       - name: Fail if any files were modified
         run: |
           git status --porcelain

@@ -199,9 +199,9 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         skeleton.transcript_elements_evaluations_at_z(),
     );
 
-    // draw initial challenge for DEEP-poly
+    // draw initial challenges for DEEP-poly
     let mut transcript_challenges = MaybeUninit::<
-        [u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)],
+        [u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)],
     >::uninit()
     .assume_init();
     Transcript::draw_randomness_using_hasher(
@@ -212,6 +212,13 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
 
     let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let deep_poly_alpha = Mersenne31Quartic::from_array_of_base(
+        it.next()
+            .unwrap_unchecked()
+            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+    );
+    // prover multiplies the DEEP poly by (1 + beta * x) before committing,
+    // to make it of full degree
+    let deep_poly_beta = Mersenne31Quartic::from_array_of_base(
         it.next()
             .unwrap_unchecked()
             .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
@@ -641,6 +648,14 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
 
             let mut expected_value = expected_value;
             let mut evaluation_point = evaluation_point;
+
+            // committed FRI poly is the DEEP quotient additionally multiplied by (1 + beta * x),
+            // so we adjust the value reconstructed from the oracle leafs before comparing
+            // against the FRI oracle leaf
+            let mut linear_factor = deep_poly_beta;
+            linear_factor.mul_assign_by_base(&evaluation_point);
+            linear_factor.add_assign_base(&Mersenne31Field::ONE);
+            expected_value.mul_assign(&linear_factor);
 
             let mut domain_size_log_2 = TRACE_LEN_LOG2;
             let mut domain_index = domain_index as usize;

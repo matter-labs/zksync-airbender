@@ -7,9 +7,10 @@ pub struct FourthStageOutput<const N: usize, A: GoodAllocator, T: MerkleTreeCons
     pub values_at_z: Vec<Mersenne31Quartic>,
     pub ldes: Vec<CosetBoundColumnMajorTracePart<A>>,
     pub trees: Vec<T>,
-    // gpu comparison test needs z and alpha
+    // gpu comparison test needs z, alpha and beta
     pub z: Mersenne31Quartic,
     pub alpha: Mersenne31Quartic,
+    pub beta: Mersenne31Quartic,
 }
 
 fn comptute_barycentric_eval_coefficients_and_z_minus_x<A: GoodAllocator>(
@@ -487,7 +488,7 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     // now we can compute \sum alpha^i f_i(z)
 
     let mut transcript_challenges =
-        [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+        [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
     Transcript::draw_randomness(seed, &mut transcript_challenges);
 
     let mut it = transcript_challenges.as_chunks::<4>().0.iter();
@@ -496,9 +497,18 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
             .unwrap()
             .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
     );
+    // extra challenge to multiply the DEEP poly by (1 + beta * x) before committing,
+    // to make it of full degree
+    let deep_poly_beta = Mersenne31Quartic::from_coeffs_in_base(
+        &it.next()
+            .unwrap()
+            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+    );
 
     #[cfg(feature = "debug_logs")]
     dbg!(deep_poly_alpha);
+    #[cfg(feature = "debug_logs")]
+    dbg!(deep_poly_beta);
     let alphas =
         materialize_powers_serial_starting_with_one::<_, Global>(deep_poly_alpha, total_num_evals);
 
@@ -564,11 +574,14 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                 let mut deep_poly_trace_view = deep_poly_trace.row_view(range.clone());
                 let mut z_minus_omega_powers_view = z_minus_omega_powers_values.row_view(range);
                 let omega_inv = twiddles.omega_inv;
+                let omega = twiddles.omega;
 
                 Worker::smart_spawn(
                     scope,
                     thread_idx == geometry.len() - 1,
                     move |_| {
+                    // domain element for the current row, needed for multiplication by (1 + beta * x)
+                    let mut omega_pow = omega.pow(chunk_start as u32);
                     for _i in 0..chunk_size {
                         let (exec_trace_view_row, exec_trace_view_next_row) =
                             exec_trace_view.current_and_next_row_ref();
@@ -779,8 +792,17 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                         let mut accumulated = contribution_at_z;
                         accumulated.add_assign(&contribution_at_z_omega);
 
+                        // multiply by (1 + beta * x), where x is the domain element of this row,
+                        // so committed FRI poly is of the full degree
+                        let mut linear_factor = deep_poly_beta;
+                        linear_factor.mul_assign_by_base(&omega_pow);
+                        linear_factor.add_assign_base(&Mersenne31Field::ONE);
+                        accumulated.mul_assign(&linear_factor);
+
                         // write back accumulated value
                         deep_poly_trace_view_row_ptr.write(accumulated);
+
+                        omega_pow.mul_assign(&omega);
 
                         exec_trace_view.advance_row();
                         setup_trace_view.advance_row();
@@ -797,26 +819,10 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     #[cfg(feature = "timing_logs")]
     dbg!(now.elapsed());
 
-    if DEBUG_QUOTIENT == true {
-        // check that we have highest monomial coefficient 0
-        let mut tmp = deep_poly_trace.clone();
-        parallel_row_major_full_line_partial_ifft(&mut tmp, &twiddles.inverse_twiddles, worker);
-
-        // NOTE: output is bitreversed, but we are interested at the highest monomial coefficient,
-        // so it stays at the same place
-        let row_view = tmp.row_view((trace_len - 1)..trace_len);
-        let row = row_view.current_row_ref();
-        for el in row {
-            assert!(el.is_zero());
-        }
-
-        // let mut row_view = tmp.row_view((trace_len - 3)..trace_len);
-        // for _ in 0..3 {
-        //     let row = row_view.current_row_ref();
-        //     dbg!(row);
-        //     row_view.advance_row();
-        // }
-    }
+    // NOTE: after multiplication by (1 + beta * x) the DEEP poly has full degree (highest monomial
+    // coefficient is non-zero in general), so there is no highest-coefficient check here anymore.
+    // Consistency of evaluations on the main domain and on the coset is checked in stage 5
+    // under DEBUG_QUOTIENT and catches a malformed quotient
 
     // now we can LDE and make oracles
     let ldes = compute_wide_ldes(
@@ -897,6 +903,7 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         trees,
         z,
         alpha: deep_poly_alpha,
+        beta: deep_poly_beta,
     };
 
     output

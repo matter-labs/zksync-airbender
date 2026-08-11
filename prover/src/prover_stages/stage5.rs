@@ -98,23 +98,8 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
             panic!("DEEP quotient poly is most likely malformed, evaluations on main and other domains result in different monomials");
         }
 
-        assert_eq!(
-            *monomials_from_main_domain.0.last().unwrap(),
-            Mersenne31Complex::ZERO
-        );
-        assert_eq!(
-            *monomials_from_main_domain.1.last().unwrap(),
-            Mersenne31Complex::ZERO
-        );
-
-        assert_eq!(
-            *monomials_from_coset.0.last().unwrap(),
-            Mersenne31Complex::ZERO
-        );
-        assert_eq!(
-            *monomials_from_coset.1.last().unwrap(),
-            Mersenne31Complex::ZERO
-        );
+        // NOTE: DEEP poly is multiplied by (1 + beta * x) at stage 4, so it has full degree
+        // and the highest monomial coefficient is non-zero in general
     }
 
     // Now we should compute a schedule, assuming that we have rather large number of queries.
