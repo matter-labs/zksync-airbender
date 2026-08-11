@@ -69,11 +69,10 @@ struct NoopUnrolledCapture {
   template <unsigned I> DEVICE_FORCEINLINE void on_ram_access(TimestampData, u32, bool, u32, bool) const {}
 };
 
-template <bool COMPUTE_WITNESS, typename ORACLE, typename Capture>
-DEVICE_FORCEINLINE void
-process_machine_state_assuming_preprocessed_decoder(const UnrolledMemoryLayout &layout, const ORACLE &oracle, const matrix_setter<bf, st_modifier::cg> memory,
-                                                    const matrix_setter<bf, st_modifier::cg> witness, u32 *const __restrict__ decoder_lookup_mapping,
-                                                    Capture &capture, const unsigned index) {
+template <bool COMPUTE_WITNESS, typename ORACLE, typename Capture, typename Memory, typename Witness>
+DEVICE_FORCEINLINE void process_machine_state_assuming_preprocessed_decoder(const UnrolledMemoryLayout &layout, const ORACLE &oracle, const Memory &memory,
+                                                                            const Witness &witness, u32 *const __restrict__ decoder_lookup_mapping,
+                                                                            Capture &capture, const unsigned index) {
   const MachineStatePermutationDescription machine_state = layout.machine_state;
   const u32 execute_column = machine_state.execute;
   const bool execute_value = oracle.get_witness_from_placeholder_bool({ExecuteOpcodeFamilyCycle}, index);
@@ -152,10 +151,10 @@ process_machine_state_assuming_preprocessed_decoder(const UnrolledMemoryLayout &
   decoder_lookup_mapping[index] = execute_value ? initial_pc_value / 4 + layout.decoder_lookup_offset : 0xffffffff;
 }
 
-template <unsigned I, bool COMPUTE_WITNESS, typename ORACLE, typename Capture>
+template <unsigned I, bool COMPUTE_WITNESS, typename ORACLE, typename Capture, typename Memory, typename Witness>
 DEVICE_FORCEINLINE void process_shuffle_ram_access_set(const UnrolledMemoryLayout &layout, const AuxLayoutData &aux_layout_data, const ORACLE &oracle,
-                                                       const TimestampScalar cycle_timestamp, const matrix_setter<bf, st_modifier::cg> memory,
-                                                       const matrix_setter<bf, st_modifier::cg> witness, Capture &capture, const unsigned index) {
+                                                       const TimestampScalar cycle_timestamp, const Memory &memory, const Witness &witness, Capture &capture,
+                                                       const unsigned index) {
   if (I >= layout.shuffle_ram_access_sets_count)
     return;
   const auto [tag, payload] = layout.shuffle_ram_access_sets[I];
@@ -234,10 +233,9 @@ DEVICE_FORCEINLINE void process_shuffle_ram_access_set(const UnrolledMemoryLayou
   capture.template on_ram_access<I>(read_timestamp_value, read_value_value, has_write, write_value_value, intermediate_borrow);
 }
 
-template <bool COMPUTE_WITNESS, typename ORACLE, typename Capture>
+template <bool COMPUTE_WITNESS, typename ORACLE, typename Capture, typename Memory, typename Witness>
 DEVICE_FORCEINLINE void process_shuffle_ram_access_sets(const UnrolledMemoryLayout &layout, const AuxLayoutData &aux_layout_data, const ORACLE &oracle,
-                                                        const matrix_setter<bf, st_modifier::cg> memory, const matrix_setter<bf, st_modifier::cg> witness,
-                                                        Capture &capture, const unsigned index) {
+                                                        const Memory &memory, const Witness &witness, Capture &capture, const unsigned index) {
   const TimestampScalar cycle_timestamp = oracle.get_witness_from_placeholder_ts({OpcodeFamilyCycleInitialTimestamp}, index).as_scalar();
   process_shuffle_ram_access_set<0, COMPUTE_WITNESS>(layout, aux_layout_data, oracle, cycle_timestamp, memory, witness, capture, index);
   process_shuffle_ram_access_set<1, COMPUTE_WITNESS>(layout, aux_layout_data, oracle, cycle_timestamp, memory, witness, capture, index);

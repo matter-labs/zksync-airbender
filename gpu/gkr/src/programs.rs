@@ -189,6 +189,8 @@ impl GkrPrograms {
         circuit_type: CircuitType,
         artifact: Arc<GKRCircuitArtifact<BF>>,
     ) -> Result<Self, String> {
+        gpu_trace::witness::validate_generated_witness_artifact(circuit_type, &artifact)
+            .map_err(|error| format!("generated witness artifact: {error}"))?;
         let runtime_circuit = Arc::new(normalize_compiled_circuit_for_gpu(
             artifact.as_ref().clone(),
         ));
@@ -256,6 +258,27 @@ mod tests {
     use super::*;
     use gpu_gkr_compiler::{LeanBoundColumn, LeanBoundWindow, LeanSourceBinding};
     use std::collections::BTreeSet;
+    use std::fs::File;
+    use std::path::PathBuf;
+
+    #[test]
+    fn cpu_generated_witness_artifact_is_validated_before_program_compilation() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json");
+        let mut artifact: GKRCircuitArtifact<BF> =
+            serde_json::from_reader(File::open(path).expect("open add/sub layout"))
+                .expect("deserialize add/sub layout");
+        artifact.timestamp_range_check_lookup_expressions[2].lookup_set_index += 1;
+        let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+        ));
+
+        let error = match GkrPrograms::compile(circuit_type, Arc::new(artifact)) {
+            Ok(_) => panic!("accepted generated witness layout drift"),
+            Err(error) => error,
+        };
+        assert!(error.contains("generated witness artifact"), "{error}");
+    }
 
     #[test]
     fn bound_inputs_include_cache_and_virtual_setup_sources() {

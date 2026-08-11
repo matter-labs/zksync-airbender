@@ -1,5 +1,8 @@
-pub mod add_sub;
+pub mod artifact_validation;
 pub mod circuit_type;
+mod generated_fingerprints;
+
+pub use artifact_validation::{validate_generated_witness_artifact, GeneratedWitnessArtifactError};
 
 use crate::upstream::GKRAddress;
 

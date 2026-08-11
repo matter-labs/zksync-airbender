@@ -199,6 +199,19 @@ struct GlobalTraceProvider {
   }
 };
 
+template <typename Memory, typename Witness> struct MaterializedTraceProvider {
+  const Memory &memory;
+  const Witness &witness;
+
+  template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_memory() const { return T::from(wrapped_f::new_(memory.get_at_col(IDX))); }
+
+  template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_witness() const { return T::from(wrapped_f::new_(witness.get_at_col(IDX))); }
+
+  template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_memory(const T &value) const { memory.set_at_col(IDX, wrapped_f::from(value).inner); }
+
+  template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_witness(const T &value) const { witness.set_at_col(IDX, wrapped_f::from(value).inner); }
+};
+
 template <class R, class Places> struct WitnessProxy {
   const R oracle;
   const wrapped_f *const __restrict__ generic_lookup_tables;

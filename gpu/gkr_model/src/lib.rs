@@ -5,5 +5,6 @@
 mod upstream;
 
 pub mod address_audit;
+pub mod fingerprint;
 pub mod storage_layout;
 pub mod transform;

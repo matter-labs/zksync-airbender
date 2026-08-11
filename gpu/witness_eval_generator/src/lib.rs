@@ -5,7 +5,9 @@ use cs::witness_placer::graph_description::{
     BoolNodeExpression, Expression, FieldNodeExpression, FixedWidthIntegerNodeExpression,
     RawExpression,
 };
+use gpu_gkr_model::fingerprint::witness_artifact_fingerprint;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -26,17 +28,6 @@ pub(crate) enum ColumnAddress {
 
 pub type F = ::field::baby_bear::base::BabyBearField;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct GeneratedReadColumns {
-    pub memory: BTreeSet<usize>,
-    pub witness: BTreeSet<usize>,
-}
-
-pub struct GeneratedWitnessCuda {
-    pub source: String,
-    pub read_columns: GeneratedReadColumns,
-}
-
 pub struct Generator {
     write_into_memory: bool,
     layout: BTreeMap<Variable, ColumnAddress>,
@@ -54,7 +45,7 @@ pub struct Generator {
     // Conditional-only witness columns whose first write has already been
     // emitted (as `SET_WITNESS_PLACE_OR_ZERO`). Subsequent writes stay `IF`.
     witness_zero_default_emitted: BTreeSet<usize>,
-    read_columns: GeneratedReadColumns,
+    written_lookup_mapping_indices: BTreeSet<usize>,
 }
 
 impl Generator {
@@ -81,7 +72,7 @@ impl Generator {
             fn_indexes: Vec::new(),
             conditional_only_witness: BTreeSet::new(),
             witness_zero_default_emitted: BTreeSet::new(),
-            read_columns: GeneratedReadColumns::default(),
+            written_lookup_mapping_indices: BTreeSet::new(),
         }
     }
 
@@ -202,13 +193,11 @@ impl Generator {
         let address = self.get_column_address(variable);
         match address {
             ColumnAddress::WitnessSubtree(idx) => {
-                self.read_columns.witness.insert(idx);
                 self.push(&format!(
                     "GET_WITNESS_PLACE({type_tag}, {new_ident}, {idx})\n"
                 ));
             }
             ColumnAddress::MemorySubtree(idx) => {
-                self.read_columns.memory.insert(idx);
                 self.push(&format!(
                     "GET_MEMORY_PLACE({type_tag}, {new_ident}, {idx})\n"
                 ));
@@ -267,12 +256,16 @@ impl Generator {
                     lookup_mapping_idx,
                     self.num_lookup_mappings
                 );
+                self.written_lookup_mapping_indices
+                    .insert(lookup_mapping_idx);
                 let new_ident = self.create_var();
                 let num_inputs = input_subexpr_idxes.len();
                 let num_outputs = *num_outputs;
                 let table_id = *table_id_subexpr_idx;
                 if num_outputs > 0 {
-                    self.push(&format!("LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {lookup_mapping_idx}"));
+                    self.push(&format!(
+                        "LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {lookup_mapping_idx}"
+                    ));
                 } else {
                     self.push(&format!(
                         "LOOKUP_ENFORCE({num_inputs}, {table_id}, {lookup_mapping_idx}"
@@ -325,12 +318,7 @@ impl Generator {
                         let source_ident = self.expression_into_var(source_subexpr);
                         if let Some(condition) = condition_subexpr_idx {
                             let condition_ident = *condition;
-                            // For a column that is ONLY ever written under a guard, fold the
-                            // zero-default into its FIRST write (in evaluation order): emit a
-                            // branchless `cond ? source : 0` store instead of an `IF`, so rows
-                            // whose guard is false get a definite zero with no separate prologue.
-                            // Later writes (mutually-exclusive opcode branches) stay `IF` and
-                            // overwrite where they fire.
+                            // Initialize conditionally written columns when their first guard is false.
                             if self.conditional_only_witness.contains(&idx)
                                 && self.witness_zero_default_emitted.insert(idx)
                             {
@@ -461,15 +449,7 @@ impl Generator {
         circuit: &GKRCircuitArtifact<F>,
         perform_assignments_to_memory: bool,
     ) -> String {
-        Self::generate_with_metadata(graph, circuit, perform_assignments_to_memory).source
-    }
-
-    pub fn generate_with_metadata(
-        graph: &[Vec<RawExpression<F>>],
-        circuit: &GKRCircuitArtifact<F>,
-        perform_assignments_to_memory: bool,
-    ) -> GeneratedWitnessCuda {
-        let num_lookup_mappings = circuit.num_generic_lookups;
+        let num_lookup_mappings = circuit.generic_lookups.len();
         let mut layout = BTreeMap::new();
         let mut next_scratch_slot = 0usize;
         for (var, pos) in circuit.placement_data.iter() {
@@ -506,10 +486,12 @@ impl Generator {
         generator.collect_conditional_only_witness(graph);
         generator.generate_functions(graph, &layout);
         generator.generate_footer();
-        GeneratedWitnessCuda {
-            source: generator.output,
-            read_columns: generator.read_columns,
-        }
+        let expected_lookup_mapping_indices: BTreeSet<_> = (0..num_lookup_mappings).collect();
+        assert_eq!(
+            generator.written_lookup_mapping_indices, expected_lookup_mapping_indices,
+            "generated generic lookup mappings must cover every generic lookup set"
+        );
+        generator.output
     }
 }
 
@@ -518,23 +500,12 @@ pub fn generate_from_files(
     ssa_path: impl AsRef<Path>,
     perform_assignments_to_memory: bool,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    Ok(
-        generate_from_files_with_metadata(layout_path, ssa_path, perform_assignments_to_memory)?
-            .source,
-    )
-}
-
-pub fn generate_from_files_with_metadata(
-    layout_path: impl AsRef<Path>,
-    ssa_path: impl AsRef<Path>,
-    perform_assignments_to_memory: bool,
-) -> Result<GeneratedWitnessCuda, Box<dyn std::error::Error>> {
     let layout = File::open(layout_path)?;
     let ssa = File::open(ssa_path)?;
     let compiled_circuit: GKRCircuitArtifact<F> = serde_json::from_reader(layout)?;
     let compiled_graph: Vec<Vec<RawExpression<F>>> = serde_json::from_reader(ssa)?;
 
-    Ok(Generator::generate_with_metadata(
+    Ok(Generator::generate(
         &compiled_graph,
         &compiled_circuit,
         perform_assignments_to_memory,
@@ -554,6 +525,8 @@ pub struct GeneratedCircuit {
     pub id: &'static str,
     /// Repo-relative path of the checked-in `witness_generation_fn.cuh`.
     pub committed_cuh: &'static str,
+    /// Rust expression naming the corresponding `gpu_trace::CircuitType`.
+    pub circuit_type_expr: &'static str,
 }
 
 impl GeneratedCircuit {
@@ -566,18 +539,15 @@ impl GeneratedCircuit {
         generate_from_files(layout, ssa, false)
     }
 
-    pub fn regenerate_with_metadata(
-        &self,
-        repo_root: &Path,
-    ) -> Result<GeneratedWitnessCuda, Box<dyn std::error::Error>> {
-        let layout = repo_root.join(format!("cs/compiled_circuits/{}_layout_gkr.json", self.id));
-        let ssa = repo_root.join(format!("cs/compiled_circuits/{}_ssa_gkr.json", self.id));
-        generate_from_files_with_metadata(layout, ssa, false)
-    }
-
     /// Absolute path of the checked-in artifact under `repo_root`.
     pub fn committed_path(&self, repo_root: &Path) -> PathBuf {
         repo_root.join(self.committed_cuh)
+    }
+
+    pub fn fingerprint(&self, repo_root: &Path) -> Result<[u32; 8], Box<dyn std::error::Error>> {
+        let layout = repo_root.join(format!("cs/compiled_circuits/{}_layout_gkr.json", self.id));
+        let artifact: GKRCircuitArtifact<F> = serde_json::from_reader(File::open(layout)?)?;
+        Ok(witness_artifact_fingerprint(&artifact)?)
     }
 }
 
@@ -591,48 +561,90 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "add_sub_lui_auipc_mop",
         committed_cuh: "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Unrolled(UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop))",
     },
     GeneratedCircuit {
         id: "bigint_with_extended_control",
         committed_cuh: "circuit_defs/bigint_with_control/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Delegation(DelegationCircuitType::BigIntWithControl)",
     },
     GeneratedCircuit {
         id: "blake2_g_function",
         committed_cuh: "circuit_defs/blake2_g_function/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)",
     },
     GeneratedCircuit {
         id: "blake2_with_extended_control",
         committed_cuh: "circuit_defs/blake2_with_compression/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)",
     },
     GeneratedCircuit {
         id: "jump_branch_slt",
         committed_cuh: "circuit_defs/unrolled_circuits/jump_branch_slt/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Unrolled(UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::JumpBranchSlt))",
     },
     GeneratedCircuit {
         id: "keccak_special5",
         committed_cuh: "circuit_defs/keccak_special5/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5)",
     },
     GeneratedCircuit {
         id: "mem_subword_only",
         committed_cuh: "circuit_defs/unrolled_circuits/load_store_subword_only/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Unrolled(UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreSubwordOnly))",
     },
     GeneratedCircuit {
         id: "mem_word_only",
         committed_cuh: "circuit_defs/unrolled_circuits/load_store_word_only/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Unrolled(UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly))",
     },
     GeneratedCircuit {
         id: "shift_binop",
         committed_cuh: "circuit_defs/unrolled_circuits/shift_binary/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Unrolled(UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinary))",
     },
     GeneratedCircuit {
         id: "unified_reduced_machine",
         committed_cuh: "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Unrolled(UnrolledCircuitType::Unified)",
     },
     GeneratedCircuit {
         id: "unsigned_mul_div",
         committed_cuh: "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/witness_generation_fn.cuh",
+        circuit_type_expr: "CircuitType::Unrolled(UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::MulDivUnsigned))",
     },
 ];
+
+pub fn render_committed_fingerprint_catalog(
+    repo_root: &Path,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut output = String::from(
+        r#"// @generated by gpu_witness_eval_generator::regenerate_committed.
+// Do not edit by hand.
+
+use super::circuit_type::{
+    CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
+    UnrolledNonMemoryCircuitType,
+};
+
+#[rustfmt::skip]
+pub(crate) fn expected_generated_witness_fingerprint(
+    circuit_type: CircuitType,
+) -> Option<[u32; 8]> {
+    match circuit_type {
+"#,
+    );
+    for circuit in CIRCUITS {
+        writeln!(
+            output,
+            "        {} => Some({:?}),",
+            circuit.circuit_type_expr,
+            circuit.fingerprint(repo_root)?
+        )?;
+    }
+    output.push_str("        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => None,\n    }\n}\n", );
+    Ok(output)
+}
 
 /// Absolute path to the repository root. This crate lives at
 /// `<root>/gpu/witness_eval_generator`, so the root is two levels up from
@@ -646,9 +658,24 @@ pub fn repo_root() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CIRCUITS, repo_root};
+    use crate::{CIRCUITS, render_committed_fingerprint_catalog, repo_root};
     use std::collections::HashSet;
     use std::path::Path;
+
+    #[test]
+    fn committed_fingerprint_catalog_is_current() {
+        let root = repo_root();
+        let generated = render_committed_fingerprint_catalog(&root)
+            .expect("render committed fingerprint catalog");
+        let path = root.join("gpu/trace/src/witness/generated_fingerprints.rs");
+        let committed = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
+        assert_eq!(
+            generated, committed,
+            "committed generated witness fingerprint catalog is stale; run \
+             cargo run -p gpu_witness_eval_generator --bin regenerate_committed"
+        );
+    }
 
     /// A readable description of the first byte where `generated` and
     /// `committed` differ. Byte-level (matching the pass/fail comparison), so it
@@ -756,27 +783,6 @@ mod tests {
             "found {} committed .cuh under circuit_defs but CIRCUITS lists {}",
             found.len(),
             CIRCUITS.len()
-        );
-    }
-
-    /// The add/sub fused provider is specialized for exactly these global
-    /// trace reads. Any generated read-set drift must fail before CUDA code is
-    /// built with a stale captured-row contract.
-    #[test]
-    fn add_sub_provider_read_set_is_current() {
-        let generated = CIRCUITS
-            .iter()
-            .find(|circuit| circuit.id == "add_sub_lui_auipc_mop")
-            .expect("add/sub circuit is listed")
-            .regenerate_with_metadata(&repo_root())
-            .expect("regenerate add/sub witness CUDA with metadata");
-        assert_eq!(
-            generated.read_columns.memory,
-            [2, 3, 7, 8, 12, 13, 18, 19].into()
-        );
-        assert_eq!(
-            generated.read_columns.witness,
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 10].into()
         );
     }
 }

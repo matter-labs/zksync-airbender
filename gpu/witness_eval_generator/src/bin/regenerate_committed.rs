@@ -10,7 +10,7 @@
 //! current codegen again. This binary and that test share the [`CIRCUITS`]
 //! table, so they cannot disagree about which files to touch.
 
-use gpu_witness_eval_generator::{CIRCUITS, repo_root};
+use gpu_witness_eval_generator::{CIRCUITS, render_committed_fingerprint_catalog, repo_root};
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,5 +24,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fs::write(&out, code)?;
         println!("wrote {}", circuit.committed_cuh);
     }
+    let fingerprints = root.join("gpu/trace/src/witness/generated_fingerprints.rs");
+    fs::write(&fingerprints, render_committed_fingerprint_catalog(&root)?)?;
+    println!("wrote {}", fingerprints.display());
     Ok(())
 }
