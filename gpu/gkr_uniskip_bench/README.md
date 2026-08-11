@@ -522,6 +522,27 @@ verifies its pinned occupancy in-process via
 `cudaOccupancyMaxActiveBlocksPerMultiprocessor`, and `--carveout-hint` composes with `--carrier`
 as the ladder-mapping surface. Full record: `iteration_times.md`'s *v3 R7* section.
 
+### v3 R7b — the direct transplant (segb)
+
+The simplification RR asked for on top of R7: a block owns just four rows (one warp's worth), its
+four warps fill the shared slab once and each then writes **its own** partial straight out — no
+reduction plane, no accumulator, no cohort loop — which costs 4× the blocks and 16× the finalize
+slots. Device-scratch carrier only (`--carrier segb-g` / `segb-recompute` / `segb-g-slotted`,
+rotation `--segb-factorial`, same `tools/r7_table.py` + `tools/r7_gates.sh`). **Outcome:
+negative** — `segb-hot16-g@128` loses to the incumbent by **+2.766 ms** locality / **+2.212 ms**
+census at 96/96 sign-stability, worse than R7's own segmented arm, and the walk floor did not
+drop: it is +0.17/+0.20 ms above R7's in the body and +1.02/+1.04 ms above it once the finalize
+is paid, because the cost moved out of the cohort epilogues and into block count plus a flat
++0.85 ms finalize tax (16.0× on both the L1-sector and DRAM-read counters). The `segb-g-slotted`
+rider — slab regions claimed per resident block from a small `%smid`-addressed pool — does what
+it was built for, removing **1.848 GB (−98.3 %)** of scratch DRAM writes per pass at bit-identical
+L1 traffic, and still costs +0.178 ms: every arm here is **SM-bound** (72–80 % SM SOL against
+23–41 % DRAM SOL), so the scratch stream was never the binding resource. Two scoped notes: the
+capture slope **inverted** versus R7 (−5.55 µs per removal), but on two points only (k24 and
+allrepeat are off this matrix), and the carveout ladder proved body-dependent a third time — four
+bytes of static shared memory compress it ~8×, caught by the pre-freeze probe and pinned before
+any session ran. Full record: `iteration_times.md`'s *v3 R7b* section.
+
 ### Geometry
 
 - 16 taps of a logical row live on the multiplicative subgroup `H` of order 16;

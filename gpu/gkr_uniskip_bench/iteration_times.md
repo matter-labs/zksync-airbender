@@ -4295,3 +4295,281 @@ different pipe, it adds instructions and synchronization on the same one. Any wa
 attack has two named targets: the per-cohort epilogue (amortize the reduction across
 cohorts, e.g. keep running cell partials in registers where the 72-reg budget allows) and
 the barrier count (fewer, wider cohorts trade slab size against sync).
+
+## v3 R7b — the direct transplant (segb)
+
+R7 kept 16 rows in flight per block and walked them in four sequential *cohorts*, merging the
+four warps' quarter-sums through a shared reduction plane at the end of each one — and that
+cohort machinery cost more than the restructuring saved. R7b is the version RR specified
+directly: "let each warp write out the result independently to make it simple." A block now owns
+exactly one warp-worth of rows — **four rows, not sixteen** — its four warps produce the cached
+coset sources once into a slab they share (one fill barrier; the empty-plan floor lane has none
+at all), each warp then walks its quarter of the 175-record term list, and **each warp writes its
+own partial straight out**. No shared reduction plane, no read-modify-write accumulator, no
+cohort loop: everything R7 spent on merging is deleted, and nothing is recomputed. What that
+buys in simplicity it pays for in shape — the same trace now needs **4× the blocks** (262,144
+against 65,536), and the finalize kernel that reduces the partials sees **16× the slots**
+(1,048,576 against 65,536: four per block instead of one). Only the device-scratch carrier is
+carried forward (R7 settled the medium question at ±0.08 ms), plus one rider RR cleared
+mid-rung: a **slotted slab**, where a block claims its slab region out of a small
+software-managed pool addressed by the SM id it is running on (`%smid`; 1,024 SM ids × 16 slots
+× one slab each) instead of owning a private region per block in the grid. The pool is small
+enough to stay L2-resident, so it is the direct test of whether R7's scratch write stream is
+worth removing at all.
+
+**R7b preregisters no closure threshold**, inheriting R7's ruling: every arm is a datapoint about
+where the optimum lies, and nothing here declares a winner. The baseline is the same `hot16@128`
+incumbent with the R6 carveout hint baked in (best-vs-best).
+
+**Headline: no transplant lane beats the incumbent, and it loses by more than R7's segmented arm
+did.** THE VERDICT row — `segb-hot16-g@128 − hot16@128`, paired per round on `eval + finalize` —
+is **+2.766 ms on locality (96/96 sign-stable)** and **+2.212 ms on census (96/96)**, against
+R7's own gmem arm at +1.909 ms. The cohort epilogues are gone and the walk floor still did not
+drop: it is **+0.168 ms (locality) / +0.195 ms (census)** *above* R7's in the body, and
+**+1.017 / +1.040 ms** above it once the 16× finalize the transplant creates is paid. The cost
+did not disappear; it moved into block count and finalize.
+
+Provenance, stated once. Every **timing** table below is copied cell-by-cell from the emitter
+record `.agents/sdd/2026-08-11-v3-r7b/r7b-tables.md`; the **configuration, profiler and counter**
+tables come from the measurement report `.agents/sdd/2026-08-11-v3-r7b/task-4-report.md`. No
+timing number here was assembled by hand. Four timed processes (two 2-lane re-anchors, the 8-lane
+SEGB rotation at both term orders, 96 rounds × warmup 8) plus one soaked repeat, all on one
+frozen binary (`0e89690e…` at tip `172edebb`), all under `.agents/bin/with_gpu_lock.sh`, all
+using R7's soak procedure (80 s of discarded work in the same lock hold).
+
+### The arms — per-lane medians (`eval`, `finalize`, `eval + finalize`, ms)
+
+| position | lane | eval | finalize | eval+finalize |
+| --- | --- | --- | --- | --- |
+| segb-locality | `control@256` | 16.548 | 0.033 | **16.581** |
+| segb-locality | `control_lb@128` | 16.252 | 0.061 | **16.312** |
+| segb-locality | `hot16@128` | 14.599 | 0.063 | **14.663** |
+| segb-locality | `segb-recompute@128` | 18.436 | 0.908 | **19.344** |
+| segb-locality | `segb-cache0-g@128` | 18.287 | 0.910 | **19.199** |
+| segb-locality | `segb-hot16-g@128` | 16.504 | 0.914 | **17.420** |
+| segb-locality | `segb-k40-g@128` | 16.240 | 0.916 | **17.155** |
+| segb-locality | `segb-hot16-g-slotted@128` | 16.691 | 0.909 | **17.600** |
+| segb-census | `control@256` | 16.673 | 0.033 | **16.706** |
+| segb-census | `control_lb@128` | 16.335 | 0.061 | **16.397** |
+| segb-census | `hot16@128` | 15.088 | 0.063 | **15.151** |
+| segb-census | `segb-recompute@128` | 18.559 | 0.908 | **19.470** |
+| segb-census | `segb-cache0-g@128` | 18.424 | 0.908 | **19.334** |
+| segb-census | `segb-hot16-g@128` | 16.453 | 0.916 | **17.369** |
+| segb-census | `segb-k40-g@128` | 16.307 | 0.916 | **17.223** |
+| segb-census | `segb-hot16-g-slotted@128` | 16.509 | 0.908 | **17.416** |
+
+`segb-recompute` is the machinery floor (empty plan, nothing captured, nothing published),
+`segb-cache0-g` publishes a slab with zero sources admitted, `segb-hot16-g` captures R5's
+frontier set (16 admitted sources, C = 28 slab units), `segb-k40-g` captures 40 (C = 52) and
+`segb-hot16-g-slotted` is the same capture on the slotted pool. The `census` rows are the
+dealing-damage diagnostic and are never pooled with `locality`.
+
+### The decision rows — paired per round, inside one process
+
+Sign-stability is the count of rounds on the median's own side, against ceil(0.9 · 96) = 87.
+
+| position | contrast | isolates | median Δ (ms) | per removal | sign-stability |
+| --- | --- | --- | --- | --- | --- |
+| segb-locality | `segb-cache0-g` − `segb-recompute` | publish machinery at zero capture | **−0.149** | — | 95/96 neg (≥ 87) |
+| segb-locality | `segb-hot16-g` − `segb-cache0-g` | capture at hot16 | **−1.786** | — | 96/96 neg (≥ 87) |
+| segb-locality | `segb-hot16-g` − `hot16@128` | **THE VERDICT** — transplant vs incumbent | **+2.766** | — | 96/96 pos (≥ 87) |
+| segb-locality | `segb-k40-g` − `segb-hot16-g` | the capture slope | **−0.266** | −5.55 µs (48 removals) | 96/96 neg (≥ 87) |
+| segb-locality | `segb-recompute` − `control_lb@128` | the walk floor | **+3.037** | — | 96/96 pos (≥ 87) |
+| segb-locality | `segb-hot16-g-slotted` − `segb-hot16-g` | slotted-slab footprint / L2 | **+0.178** | — | 96/96 pos (≥ 87) |
+| segb-census | `segb-cache0-g` − `segb-recompute` | publish machinery at zero capture | **−0.144** | — | 96/96 neg (≥ 87) |
+| segb-census | `segb-hot16-g` − `segb-cache0-g` | capture at hot16 | **−1.969** | — | 96/96 neg (≥ 87) |
+| segb-census | `segb-hot16-g` − `hot16@128` | **THE VERDICT** | **+2.212** | — | 96/96 pos (≥ 87) |
+| segb-census | `segb-k40-g` − `segb-hot16-g` | the capture slope | **−0.144** | −3.00 µs (48 removals) | 96/96 neg (≥ 87) |
+| segb-census | `segb-recompute` − `control_lb@128` | the walk floor | **+3.074** | — | 96/96 pos (≥ 87) |
+| segb-census | `segb-hot16-g-slotted` − `segb-hot16-g` | slotted footprint / L2 | **+0.044** | — | **84/96 pos (< 87)** |
+
+The publish machinery at zero capture is *negative* and small (−0.144/−0.149), so on this body
+the publish path costs nothing measurable before anything is captured.
+
+### The walk floor, in both currencies (A4)
+
+The floor lane runs the transplant body with an empty plan, so floor − `control_lb@128` is what
+the restructured walk costs over the uncached control. It is reported twice because the
+transplant's finalize is 16× the slots: `eval` alone is the body floor, `eval + finalize` is what
+a transplant would actually pay. Every row is paired inside its own session.
+
+| rung | position | currency | median Δ (ms) | sign-stability |
+| --- | --- | --- | --- | --- |
+| R7b | segb-locality | body floor (eval only) | **+2.188** | 96/96 pos (≥ 87) |
+| R7b | segb-locality | transplant floor (eval + finalize) | **+3.037** | 96/96 pos (≥ 87) |
+| R7b | segb-census | body floor (eval only) | **+2.229** | 96/96 pos (≥ 87) |
+| R7b | segb-census | transplant floor (eval + finalize) | **+3.074** | 96/96 pos (≥ 87) |
+| R7 | r7-gmem-locality | body floor (eval only) | **+2.020** | 99/99 pos (≥ 90) |
+| R7 | r7-gmem-locality | transplant floor (eval + finalize) | **+2.020** | 99/99 pos (≥ 90) |
+| R7 | r7-gmem-census | body floor (eval only) | **+2.034** | 99/99 pos (≥ 90) |
+| R7 | r7-gmem-census | transplant floor (eval + finalize) | **+2.034** | 99/99 pos (≥ 90) |
+
+R7's two currencies are identical because its floor lane and its control both publish one slot
+per block; only the transplant separates them. The rung-over-rung comparison is the difference of
+the two in-session differentials — never a raw cross-session subtraction:
+
+| order | currency | R7b Δ | R7 Δ | R7b − R7 |
+| --- | --- | --- | --- | --- |
+| `locality` | body floor (eval only) | +2.188 | +2.020 | **+0.168** |
+| `locality` | transplant floor (eval + finalize) | +3.037 | +2.020 | **+1.017** |
+| `census` | body floor (eval only) | +2.229 | +2.034 | **+0.195** |
+| `census` | transplant floor (eval + finalize) | +3.074 | +2.034 | **+1.040** |
+
+**Removing the cohort epilogues did not lower the floor.** In the body it rose slightly
+(+0.17/+0.20 ms — the same math over 4× as many blocks), and the 16× finalize adds the rest.
+That finalize costs a **flat ≈ +0.85 ms** on every transplant lane (0.908–0.916 ms against
+0.061–0.065 ms on a 16-row lane, see the arms table — identical whichever carrier or capture the
+eval used). The profiler agrees exactly: the finalize kernel reads **33,554,432 L1 load sectors
+and 536.88 MB from DRAM in every transplant arm** against 2,097,152 sectors / 33.56 MB on a
+16-row lane — **16.0× on both counters** — and ncu measures it at 897–919 µs, matching the
+session medians. It is a pure bandwidth stage (1.2 % SM SOL, ~37 % DRAM SOL, 16.7 % occupancy):
+a fixed tax of the four-rows-per-block geometry, not of any carrier choice.
+
+### Capture economics — the slope inverted, on two points
+
+Capture is still worth a lot on this body: admitting R5's 16 sources refunds **−1.786 ms**
+(locality) / **−1.969 ms** (census) against the same body with nothing admitted. What changed is
+the direction past that point. R7 measured a *positive* capture slope on both its carriers
+(+8–12 µs per additional removal, i.e. `hot16` was the frontier optimum); on the transplant,
+`segb-k40-g − segb-hot16-g` is **−0.266 ms = −5.55 µs per removal on locality** and −0.144 ms =
+−3.00 µs on census, both 96/96 — more capture is now *cheaper* on this body. State it for what it
+is: a **two-point claim**. R7b's matrix carries only `hot16` and `k40`; k24 and allrepeat were
+not run here, and K17–23 remains unmeasured in every rung. It is a hint about where the optimum
+would sit if this geometry were pursued, not a law — and it rescues nothing, since `k40` is still
++2.500 ms above the incumbent.
+
+### The slotted lane — the footprint fix works, and buys nothing here
+
+`segb-hot16-g-slotted` runs the identical admitted set and the identical publishes; only the
+region map changes (a claimed pool slot per resident block instead of a private region per grid
+block). Kernel-wide `--metrics` differentials, one round each:
+
+| counter | `segb-hot16-g` | `segb-hot16-g-slotted` | differential |
+| --- | --- | --- | --- |
+| `dram__bytes_op_write.sum` | 2.38 GB | 531.98 MB | **−1.848 GB (−98.3 % of the slab floor)** |
+| `dram__bytes_op_read.sum` | 6.18 GB | 6.18 GB | **0** |
+| `l1tex__t_sectors_…_op_st.sum` | 75,497,472 | 75,497,472 | **0** |
+| `l1tex__t_sectors_…_op_ld.sum` | 1,107,296,256 | 1,107,296,256 | **0** |
+| `lts__t_sectors_op_write.sum` | 75,508,274 | 75,515,417 | +7,143 |
+| `lts__t_sectors_op_read.sum` | 684,167,359 | 672,170,700 | −11,996,659 |
+| L2 hit rate (Full Picture) | 64.64 % | **71.93 %** | +7.29 pp |
+| DRAM SOL (Full Picture) | 33.92 % | **26.11 %** | −7.81 pp |
+
+The L1 traffic is **bit-identical** — same loads, same stores, to the sector — and the scratch
+stream's DRAM writes essentially vanish: 531.98 MB is within **1.08 MB (0.057 % of the slab
+floor)** of the `segb-recompute` lane that publishes nothing at all. The pool touches at most
+21.6 MB (16 slots × 188 SMs × 7,168 B) of the 117.4 MB allocated, small enough that every slab
+line is overwritten before it can be evicted; that 21.6 MB is a bound rather than a measured
+residency, because `%smid` is virtualized. **And it costs +0.178 ms** (96/96 locality; +0.044 and
+below the sign threshold on census). The Full Pictures say why nothing came back: every
+transplant arm is **SM-bound — 72–80 % SM SOL against 23–41 % DRAM SOL** — so the scratch write
+stream was never the binding resource in this kernel family. The allocator itself works as
+designed and is the reusable artifact: claim and release verified on hardware at the measurement
+tip (no trap, slot mask all-clear, occupancy hard-gated at exactly 7 blocks/SM against 16 slots).
+
+### Scratch accounting — the grid slab closes at the arithmetic floor
+
+Arithmetic floor = slab bytes per block × blocks, with **no cohort factor** (each region is
+written once, within one block's four-row pass); slab = C units × 256 B over 262,144 blocks:
+
+| capture point | C | slab / block | blocks | write floor | in 32-B sectors |
+| --- | --- | --- | --- | --- | --- |
+| hot16 | 28 | 7,168 B | 262,144 | 1,879,048,192 B = **1.879 GB** | 58,720,256 |
+| k40 | 52 | 13,312 B | 262,144 | 3,489,660,928 B = **3.490 GB** | 109,051,904 |
+
+Measured on the eval kernel, minus the `segb-recompute` floor lane:
+
+| counter | hot16 − recompute | vs floor | k40 − recompute | vs floor |
+| --- | --- | --- | --- | --- |
+| `l1tex__t_sectors_…_op_st.sum` | 75,497,472 − 16,777,216 = **58,720,256** | **1.0000×** | 125,829,120 − 16,777,216 = **109,051,904** | **1.0000×** |
+| `lts__t_sectors_op_write.sum` | 75,508,274 − 16,781,210 = 58,727,064 | 1.00012× | 125,841,009 − 16,781,210 = 109,059,799 | 1.00007× |
+| `dram__bytes_op_write.sum` | 2.38 GB − 530.90 MB = **1.849 GB** | **0.984×** | 3.98 GB − 530.90 MB = **3.449 GB** | 0.988× |
+| `dram__bytes_op_read.sum` | 6.18 GB in **every** arm | unchanged | 6.18 GB | unchanged |
+
+The write differential equals the arithmetic floor **to the sector, 1.0000×**, with no cohort
+factor — the direct confirmation that a transplant block publishes its slab once and reads it
+back inside its own four-row pass. The number that changed versus R7 is where those bytes go:
+**98.4 % of the published bytes reach DRAM here** (1.849 GB of 1.879 GB; 98.8 % at k40), against
+**24.4 % in R7**. R7's four-cohort reuse rewrote each block's slab four times into the same
+region and L2 absorbed three quarters of it; R7b's 4-row regions, spread over 4× the blocks, are
+written once and there is nothing left to absorb. The transplant converted an L2-resident write
+stream into a DRAM write stream of the same nominal size — which is exactly what the slotted lane
+then removed again, for no time.
+
+### Portable finding — the carveout ladder is body-dependent a third time
+
+The realized-configuration gate (G0) requires every arm on a decision row to run the same
+shared-memory/L1 partition, so a partition difference cannot masquerade as a carrier or capture
+effect. The pre-freeze probe found the slotted symbol was **not** equalized with its siblings,
+despite carrying the same hint percentage:
+
+| hint | `segb-g` / `segb-recompute` (0 B static shared) | `segb-g-slotted` (4 B static shared) |
+| --- | --- | --- |
+| 0 | 32.77 KB | **8.19 KB** |
+| 1 | — | 16.38 KB |
+| **2** | — | **32.77 KB** |
+| 4 | — | 65.54 KB |
+| 6 | — | 65.54 KB |
+| 8 | 32.77 KB | 102.40 KB |
+| **16** | **32.77 KB** | 102.40 KB |
+| 33 | 65.54 KB | 102.40 KB |
+| 50 | 65.54 KB | 102.40 KB |
+| 66 | 102.40 KB | — |
+| 100 | 102.40 KB | 102.40 KB |
+
+**Four bytes of static shared memory compress the whole ladder by roughly 8×.** At the
+placeholder hint of 16 the slotted body realized **102.40 KB** where its zero-shared sibling
+realizes **32.77 KB** — a ~77 KB partition difference sitting directly under the slotted decision
+row. Equal *percentages* did not equalize the *configuration*. The fix (commit `172edebb`, taken
+before the freeze) pins the slotted symbol at hint 2, the same 32.77 KB tier; G0 then passed 4/4
+at one equalized configuration, all four arms register-bound at 7 blocks/SM. This is the third
+independent datapoint that the hint→configuration ladder belongs to the body, not to the kernel
+family: R6 mapped it on a static-shared body, R7 found it did not transfer to a dynamic-shared
+one, and R7b finds four static bytes are enough to move it again. Nothing in-process observes the
+realized partition, so the probe has to be re-run per rung — and the pin is a measured percent
+for this driver on this part, not a derivable one.
+
+### Instrument notes
+
+- **The flank rule was rescaled for this rung, and nothing trips it.** The flank check compares
+  the first and last full rotation cycle of each anchor lane; R7's flat 0.05 ms threshold is
+  replaced by max(0.05 ms, 0.5 % of that lane's session median). Under it, all ten anchor lanes
+  hold, the two decision-carrying SEGB rotations by an order of magnitude (0.004–0.037 ms against
+  thresholds of 0.073–0.084). The emitter still carries R7's flat constant and prints
+  `REPEAT TRIGGER FIRED` for one lane at Δ 0.058 — that line is a cosmetic lag in the tool, not a
+  finding; the numbers in its table are the ones the scaled rule was applied to.
+- **The 2-lane anchor rotation's flank artifact reproduced exactly.** That session was re-run in
+  full, soaked, anyway: its session medians reproduce the original to **0.002 ms / 0.001 ms**
+  while its flank came out *worse* (0.095 against 0.058). Same conclusion as R7 — the short
+  anchor rotation cannot hold a tight flank on this part, and it is an instrument property, not a
+  data problem. The two emitter outputs differ only in the re-anchor and flank sections; every
+  decision row and walk floor is byte-identical.
+- **Absolutes on the census order are session-scoped.** `control@256` came in **+2.25 %** off its
+  frozen R4 anchor (out of the ±2 % band); the locality order — the headline — is in band on both
+  anchor lanes. Every decision row is paired inside one process and is unaffected.
+- **Full Pictures are lineinfo-free**, unavoidable under the build freeze (the recipe wants a
+  rebuild). Per-line attribution of the transplant walk needs its own lineinfo build.
+
+### Follow-ups this opens
+
+- **Chunking is a corpus-wide MUST for any production segmented dealer** (RR's ruling, carried
+  from R7). The imbalance this rung's dealer shows is single-circuit, single-layer, single-round
+  evidence; a real dealer has to chop expensive groups into still-valid chunks, and production's
+  seg-VM already has that mechanism.
+- **K17–23 remains unmeasured on the capture axis**, in this rung as in R5/R6/R7 — and the
+  transplant's inverted slope makes it more interesting, not less, if this geometry is ever
+  pursued. Two points do not locate an optimum.
+- **The slotted allocator is available to any future lane whose scratch really is DRAM-bound.**
+  It removes ~98 % of a scratch stream's DRAM writes for ~0.18 ms of claim work, with L1 traffic
+  untouched. It bought nothing here only because this kernel family is SM-bound.
+
+### Artifacts
+
+`.agents/sdd/2026-08-11-v3-r7b/`: the emitter records `r7b-tables.md` (primary) and
+`r7b-tables-repeat.md`; the sessions `segb-{reanchor-census,reanchor-locality,locality,census}.log`
+plus `segb-reanchor-census-repeat.log`, each with `.telemetry` / `.warm` / `.mark` sidecars;
+`segb-binary.sha`, `prefreeze-gates.log`, `diag-slotted-validation.log`; G0 and the hint-ladder
+probes (`g0b-*`, `g0-*`, `g0probe-*`, `g0diag*-*`); `full-*.log` and `counters-*.log`; the ledger
+`progress.md` and the measurement report `task-4-report.md`. Profiler captures under
+`target/profiling/ncu/` as `*_v3r7b_*`. The frozen session binary is `0e89690e…` at tip
+`172edebb`.
