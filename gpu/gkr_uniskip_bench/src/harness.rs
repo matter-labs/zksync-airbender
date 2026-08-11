@@ -10,12 +10,14 @@ use crate::abi::*;
 use crate::cache::CachePlan;
 use crate::compact::{self, BankPerm};
 use crate::coset_cache::{
-    self, CacheArm, CacheArmState, CacheLane, CacheMutation, LaneKernel, LaneSet, PrologueOrder,
+    self, CacheArm, CacheArmState, CacheLane, CacheMutation, LaneCarrier, LaneKernel, LaneSet,
+    PrologueOrder,
 };
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
 use crate::kernels;
 use crate::reference;
+use crate::seg::{self, SegPlan};
 use crate::synth::SynthProgram;
 
 /// Backing classes: one tap allocation and one coset allocation each.
@@ -426,6 +428,9 @@ pub struct PassConfig {
     /// v3 R4 coset-cache arm of [`EvalMode::LsbPair`]; ignored elsewhere. `Control` is
     /// the uncached body; every other arm runs the cached one.
     pub cache_arm: CacheArm,
+    /// v3 R7 carrier of a single-arm [`EvalMode::LsbPair`] run; ignored elsewhere.
+    /// `Local` is the R4 per-thread frame — the absence of `--carrier`.
+    pub carrier: LaneCarrier,
     /// Class the v3 R4 prologue produces first. A table-emission order only — the kernel
     /// walks what the host uploaded, so this costs no SASS.
     pub prologue_order: PrologueOrder,
@@ -491,6 +496,239 @@ type EvalLaunch = fn(&UniskipVmDesc, u32, &CudaStream) -> CudaResult<()>;
 /// A window arm's launch: the control descriptor plus the side descriptor.
 type WindowLaunch = fn(&UniskipVmDesc, &UniskipWindowDesc, u32, &CudaStream) -> CudaResult<()>;
 type CachedLaunch = fn(&UniskipVmDesc, &UniskipCacheDesc, u32, &CudaStream) -> CudaResult<()>;
+/// Carrier S: the slab is the launch's own dynamic shared memory, so its size is a launch
+/// parameter and the reduction plane aliases its head.
+type SegSharedLaunch =
+    fn(&UniskipVmDesc, &UniskipCacheDesc, &UniskipSegDesc, u32, u32, &CudaStream) -> CudaResult<()>;
+/// Carrier G: the slab is device scratch the caller owns, so the plane is static shared.
+type SegSlabLaunch =
+    fn(&UniskipVmDesc, &UniskipCacheDesc, &UniskipSegDesc, u32, &CudaStream) -> CudaResult<()>;
+/// The machinery floor: no slab and no prologue, hence no plan parameter at all.
+type SegRecomputeLaunch = fn(&UniskipVmDesc, &UniskipSegDesc, u32, &CudaStream) -> CudaResult<()>;
+
+/// Slab bytes and words one accounting unit occupies: a `bf` source's produced pair per
+/// lane identity, 32 identities to a warp row.
+const SEG_SLAB_UNIT_BYTES: u32 = UNISKIP_COSET_UNIT_BYTES as u32 * 32;
+const SEG_SLAB_UNIT_WORDS: u32 = SEG_SLAB_UNIT_BYTES / size_of::<u32>() as u32;
+
+/// The segmented launch of one carrier. ONE dispatch, shared by the factorial lanes and
+/// the `--carrier` single-arm path, so a carrier cannot be wired two different ways.
+#[derive(Clone, Copy)]
+enum SegLaunch {
+    Shared(SegSharedLaunch),
+    Slab(SegSlabLaunch),
+    Recompute(SegRecomputeLaunch),
+}
+
+impl SegLaunch {
+    fn of(carrier: LaneCarrier) -> Option<Self> {
+        Some(match carrier {
+            LaneCarrier::Local => return None,
+            LaneCarrier::SegS64 => Self::Shared(kernels::eval_lsb_seg_s_cv64),
+            LaneCarrier::SegS100 => Self::Shared(kernels::eval_lsb_seg_s_cv100),
+            LaneCarrier::SegSAcc => Self::Shared(kernels::eval_lsb_seg_s_acc),
+            LaneCarrier::SegG => Self::Slab(kernels::eval_lsb_seg_g),
+            LaneCarrier::SegRecompute => Self::Recompute(kernels::eval_lsb_seg_recompute),
+        })
+    }
+}
+
+/// One prepared segmented launch: everything a seg kernel needs beyond the control
+/// descriptor. Built once, resident for the run — nothing here is rebuilt or re-uploaded
+/// inside a timed rotation.
+struct PreparedSeg {
+    launch: SegLaunch,
+    /// The owner-stamped prologue table; `UniskipCacheDesc::default()` on the machinery
+    /// floor, whose kernel takes no plan.
+    plan: UniskipCacheDesc,
+    seg: UniskipSegDesc,
+    /// Dynamic shared request of a carrier-S launch; 0 where the plane is static.
+    shared_bytes: u32,
+    /// The arm's footprint in accounting units — what `seg.slab_stride_words` is derived
+    /// from, kept so the derivation is re-checked at every launch.
+    units: u32,
+    /// Carrier G's per-block scratch. The lane (or the harness) OWNS this allocation:
+    /// `seg.slab_base` is a bare `u64`, so this field is the only thing keeping it alive.
+    #[allow(dead_code)] // referenced by seg.slab_base
+    slab: Option<DeviceAllocation<u32>>,
+}
+
+impl PreparedSeg {
+    fn run(&self, desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+        match self.launch {
+            SegLaunch::Shared(launch) => launch(
+                desc,
+                &self.plan,
+                &self.seg,
+                blocks,
+                self.shared_bytes,
+                stream,
+            ),
+            SegLaunch::Slab(launch) => {
+                debug_assert!(
+                    self.seg.slab_base != 0
+                        && self.seg.slab_stride_words == self.units * SEG_SLAB_UNIT_WORDS,
+                    "carrier G launched against slab base {:#x} stride {} words, not the \
+                     {} units this arm plans",
+                    self.seg.slab_base,
+                    self.seg.slab_stride_words,
+                    self.units
+                );
+                launch(desc, &self.plan, &self.seg, blocks, stream)
+            }
+            SegLaunch::Recompute(launch) => launch(desc, &self.seg, blocks, stream),
+        }
+    }
+}
+
+/// Build one carrier's launch state against one planned arm and the shared deal.
+fn prepare_seg(
+    carrier: LaneCarrier,
+    state: &CacheArmState,
+    deal: &SegPlan,
+    blocks: u32,
+) -> CudaResult<PreparedSeg> {
+    let launch = SegLaunch::of(carrier).expect("a seg carrier names a seg kernel");
+    let units = state.counts.c;
+    let mut plan = UniskipCacheDesc::default();
+    if carrier.uses_plan() {
+        plan = state.descriptor(PrologueOrder::E4First);
+        let owners = seg::stripe_prologue(state);
+        seg::validate_owners(&owners, state)
+            .unwrap_or_else(|e| panic!("the prologue owner stripe is invalid: {e}"));
+        assert_eq!(
+            owners.len(),
+            plan.count as usize,
+            "the stripe covers {} rows against the table's {}",
+            owners.len(),
+            plan.count
+        );
+        // Matched by SOURCE, never by position: the stripe and the table are two walks of
+        // the same rows, and only the id says they are the same row.
+        for &(source, owner) in &owners {
+            let mut stamped = 0;
+            for entry in plan.entry[..plan.count as usize]
+                .iter_mut()
+                .filter(|entry| entry.source == source)
+            {
+                entry.reserved = owner;
+                stamped += 1;
+            }
+            assert_eq!(
+                stamped, 1,
+                "prologue source {source} matched {stamped} table rows, not exactly one"
+            );
+        }
+    } else {
+        // The machinery floor's carrier IS the reduction plane, so one live slot would be
+        // a shared read ~21 KiB past a 2 KiB allocation rather than a wrong number.
+        assert!(
+            state
+                .sources
+                .iter()
+                .all(|rec| rec.cache_slot == UNISKIP_CACHE_SLOT_NONE),
+            "the {} carrier needs the all-sentinel record clone; arm {} carries live slots",
+            carrier.as_str(),
+            state.id
+        );
+    }
+
+    let mut seg = UniskipSegDesc {
+        list_offset: deal.list_offset,
+        ..Default::default()
+    };
+    let mut shared_bytes = 0;
+    let mut slab = None;
+    if carrier.uses_slab() {
+        // Exactly the region the kernel addresses: `blocks` per-block slabs of the arm's
+        // own footprint. `cache0` plans nothing and never touches it, so the allocation
+        // still takes one word rather than none — `alloc(0)` has no valid pointer.
+        let words = blocks as usize * units as usize * SEG_SLAB_UNIT_WORDS as usize;
+        let mut alloc = DeviceAllocation::<u32>::alloc(words.max(1))?;
+        let base = alloc.as_mut_ptr() as u64;
+        assert_eq!(
+            base as usize % UNISKIP_COSET_E4_ALIGN,
+            0,
+            "the slab must be {UNISKIP_COSET_E4_ALIGN}-byte aligned for its uint4 halves"
+        );
+        seg.slab_base = base;
+        seg.slab_stride_words = units * SEG_SLAB_UNIT_WORDS;
+        slab = Some(alloc);
+    } else if matches!(launch, SegLaunch::Shared(_)) {
+        let plane = match carrier {
+            LaneCarrier::SegSAcc => kernels::SEG_ACC_PLANE_BYTES,
+            _ => kernels::SEG_FOLD_PLANE_BYTES,
+        };
+        shared_bytes = (units * SEG_SLAB_UNIT_BYTES).max(plane);
+    }
+    Ok(PreparedSeg {
+        launch,
+        plan,
+        seg,
+        shared_bytes,
+        units,
+        slab,
+    })
+}
+
+/// Set one seg symbol's preferred shared-memory carveout. Per function and sticky for the
+/// process, which is why `_cv64` and `_cv100` are two symbols over one body.
+fn set_seg_carveout(carrier: LaneCarrier, percent: u32) -> CudaResult<()> {
+    match carrier {
+        LaneCarrier::Local => Ok(()),
+        LaneCarrier::SegS64 => kernels::set_seg_s_cv64_carveout(percent),
+        LaneCarrier::SegS100 => kernels::set_seg_s_cv100_carveout(percent),
+        LaneCarrier::SegSAcc => kernels::set_seg_s_acc_carveout(percent),
+        LaneCarrier::SegG => kernels::set_seg_g_carveout(percent),
+        LaneCarrier::SegRecompute => kernels::set_seg_recompute_carveout(percent),
+    }
+}
+
+/// Put the DEALT program on a descriptor. The deal is a permutation of the same records,
+/// so nothing else about the descriptor moves — and a seg lane must never be composed with
+/// a position-keyed side table (R3's window tags), which is why no such path exists.
+fn upload_dealt_program(desc: &mut UniskipVmDesc, deal: &SegPlan) {
+    assert_eq!(
+        deal.program.len(),
+        desc.record_count as usize,
+        "the deal is not a permutation of this program"
+    );
+    desc.program[..deal.program.len()].copy_from_slice(&deal.program);
+    desc.record_count = deal.program.len() as u32;
+}
+
+/// The plan-identity line: the deal's list boundaries, its predicted per-warp costs, the
+/// owner census of the REFERENCE stripe (`hot16` — the arm the committed dealer oracle
+/// pins and every seg rotation carries), and the dealt record stream's fingerprint.
+fn seg_line(deal: &SegPlan, state: &CacheArmState) -> String {
+    let mut e4 = [0u32; UNISKIP_SEG_K];
+    let mut bf = [0u32; UNISKIP_SEG_K];
+    for (source, owner) in seg::stripe_prologue(state) {
+        let class = state.sources[source as usize].source_class;
+        let counted = if component_width(class) == UNISKIP_COSET_E4_UNITS {
+            &mut e4
+        } else {
+            &mut bf
+        };
+        counted[usize::from(owner)] += 1;
+    }
+    let list = |values: &[u64]| {
+        values
+            .iter()
+            .map(u64::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let counts = |values: &[u32]| list(&values.iter().map(|&v| u64::from(v)).collect::<Vec<_>>());
+    format!(
+        "SEG list_offset={} cost={} owners=e4:{};bf:{} hash={}",
+        counts(&deal.list_offset.map(u32::from)),
+        list(&deal.predicted_cost),
+        counts(&e4),
+        counts(&bf),
+        seg::program_hash(&deal.program)
+    )
+}
 
 /// One prepared factorial lane. The descriptors are kernel PARAMETERS (by value,
 /// `__grid_constant__`), so every lane's own source array and prologue table are resident
@@ -513,6 +751,9 @@ pub struct PreparedLane {
 enum LaneLaunch {
     Plain(EvalLaunch),
     Cached(CachedLaunch),
+    /// v3 R7. The segmented state lives IN the variant, so a seg lane cannot be launched
+    /// through a cached or a window entry point and a local lane cannot reach a slab.
+    Seg(Box<PreparedSeg>),
 }
 
 pub struct Harness {
@@ -544,6 +785,12 @@ pub struct Harness {
     /// Set only on a window arm; when set it replaces `eval` and carries the side
     /// descriptor. The control path never touches either field.
     eval_window: Option<(WindowLaunch, UniskipWindowDesc)>,
+    /// Set only on a `--carrier` run; when set it replaces `eval` and carries the dealt
+    /// lists, the owner-stamped table and (carrier G) the slab.
+    eval_seg: Option<PreparedSeg>,
+    /// The plan-identity line of the run's deal, printed by the runner; `None` unless the
+    /// run is segmented. The anchor rotation deals nothing and must not carry one.
+    seg_line: Option<String>,
     /// v3 R4 factorial lanes, prepared once and resident together; empty unless the run
     /// is a `--cache-factorial`.
     cache_lanes: Vec<PreparedLane>,
@@ -811,8 +1058,21 @@ impl Harness {
             _ => Vec::new(),
         };
 
+        // ONE deal per run — the lists are chosen CAPTURE-BLIND, so a single split serves
+        // every arm and every carrier of the rotation. `main` runs the same dealer as a
+        // pre-flight, so a program the dealer rejects exits there rather than here.
+        let segmented = config.carrier.is_seg()
+            || (config.mode == EvalMode::LsbPair && config.lane_set.is_some_and(LaneSet::is_seg));
+        let deal = segmented.then(|| {
+            let deal = seg::deal(program)
+                .unwrap_or_else(|e| panic!("the seg dealer rejected this program: {e}"));
+            seg::validate(&deal, program)
+                .unwrap_or_else(|e| panic!("the seg deal is invalid: {e}"));
+            deal
+        });
+
         let eval_cached = match config.mode {
-            EvalMode::LsbPair if config.cache_arm.uses_cache() => {
+            EvalMode::LsbPair if config.cache_arm.uses_cache() && !config.carrier.is_seg() => {
                 let state = cache_arms
                     .iter()
                     .find(|(a, _)| *a == config.cache_arm)
@@ -867,81 +1127,124 @@ impl Harness {
         // FACTORIAL LANES. Built at the 128 row tile (see `rows_per_block`), so `partials`
         // is allocated for the larger grid and the 256 lanes use half of it. Each lane
         // carries its own by-value descriptors; no lane re-uploads anything.
-        let cache_lanes = if let (Some(set), EvalMode::LsbPair) = (config.lane_set, config.mode) {
-            set.lanes()
-                .iter()
-                .map(|&lane| {
-                    let mut lane_desc = desc;
-                    let mut plan = UniskipCacheDesc::default();
-                    let mut counts = coset_cache::CacheCounts::default();
-                    let mut admitted: Vec<u16> = Vec::new();
-                    if lane.arm.uses_cache() {
-                        let state = cache_arms
-                            .iter()
-                            .find(|(a, _)| *a == lane.arm)
-                            .and_then(|(_, s)| s.as_ref().ok())
-                            .unwrap_or_else(|| {
-                                // UNREACHABLE by construction: `main` plans every lane and
-                                // exits cleanly before building the harness, so reaching
-                                // here means that check was removed.
-                                panic!(
-                                    "factorial lane {} is unplannable and main did not \
-                                     reject it — the pre-flight check is missing",
-                                    lane.label
-                                )
-                            });
-                        lane_desc.source[..state.sources.len()].copy_from_slice(&state.sources);
-                        plan = state.descriptor(PrologueOrder::E4First);
-                        counts = state.counts;
-                        admitted = state.admitted.iter().map(|e| e.source).collect();
+        let mut cache_lanes: Vec<PreparedLane> = Vec::new();
+        if let (Some(set), EvalMode::LsbPair) = (config.lane_set, config.mode) {
+            for &lane in set.lanes() {
+                let mut lane_desc = desc;
+                let mut plan = UniskipCacheDesc::default();
+                let mut counts = coset_cache::CacheCounts::default();
+                let mut admitted: Vec<u16> = Vec::new();
+                let mut state = None;
+                if lane.arm.uses_cache() {
+                    let planned = cache_arms
+                        .iter()
+                        .find(|(a, _)| *a == lane.arm)
+                        .and_then(|(_, s)| s.as_ref().ok())
+                        .unwrap_or_else(|| {
+                            // UNREACHABLE by construction: `main` plans every lane and
+                            // exits cleanly before building the harness, so reaching
+                            // here means that check was removed.
+                            panic!(
+                                "factorial lane {} is unplannable and main did not \
+                                 reject it — the pre-flight check is missing",
+                                lane.label
+                            )
+                        });
+                    lane_desc.source[..planned.sources.len()].copy_from_slice(&planned.sources);
+                    plan = planned.descriptor(PrologueOrder::E4First);
+                    counts = planned.counts;
+                    admitted = planned.admitted.iter().map(|e| e.source).collect();
+                    state = Some(planned);
+                }
+                // The harness is built at the 128 tile (`pass_config` forces it for the
+                // factorial), so `eval_blocks` is the 16-row grid and the 256 lanes take
+                // half of it.
+                let blocks = if lane.block_threads as usize == UNISKIP_PAIR_THREADS_128 {
+                    eval_blocks
+                } else {
+                    eval_blocks / 2
+                };
+                // ONE source of truth for which kernel: the lane picks a `LaneKernel`
+                // and both the launcher and the printed name come from it. A seg lane
+                // additionally takes the DEALT program — the same records permuted, so
+                // `q` is unchanged — while every local lane keeps the ordered one.
+                let launch = match lane.kernel() {
+                    LaneKernel::Cached128Lb => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128_lb)
                     }
-                    // ONE source of truth for which kernel: the lane picks a `LaneKernel`
-                    // and both the launcher and the printed name come from it.
-                    let launch = match lane.kernel() {
-                        LaneKernel::Cached128Lb => {
-                            LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128_lb)
-                        }
-                        LaneKernel::Cached128 => {
-                            LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128)
-                        }
-                        LaneKernel::Cached => LaneLaunch::Cached(kernels::eval_lsb_pair_cached),
-                        LaneKernel::Pair128Lb => LaneLaunch::Plain(kernels::eval_lsb_pair_128_lb),
-                        LaneKernel::Pair128 => LaneLaunch::Plain(kernels::eval_lsb_pair_128),
-                        LaneKernel::Pair => LaneLaunch::Plain(kernels::eval_lsb_pair),
-                    };
-                    // The harness is built at the 128 tile (`pass_config` forces it for the
-                    // factorial), so `eval_blocks` is the 16-row grid and the 256 lanes take
-                    // half of it.
-                    let blocks = if lane.block_threads as usize == UNISKIP_PAIR_THREADS_128 {
-                        eval_blocks
-                    } else {
-                        eval_blocks / 2
-                    };
-                    // FULL-TRACE INVARIANT. The row map is fixed, not grid-stride, so a
-                    // short grid evaluates a PREFIX of the trace and finalize reduces the
-                    // same prefix — silently. Every lane must cover every logical row.
-                    assert_eq!(
-                        u64::from(blocks) * u64::from(lane.rows_per_block()),
-                        geometry.logical_rows,
-                        "lane {} covers {} of {} logical rows",
-                        lane.label,
-                        u64::from(blocks) * u64::from(lane.rows_per_block()),
-                        geometry.logical_rows
-                    );
-                    PreparedLane {
-                        lane,
-                        desc: lane_desc,
-                        plan,
-                        launch,
-                        blocks,
-                        counts,
-                        admitted,
+                    LaneKernel::Cached128 => LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128),
+                    LaneKernel::Cached => LaneLaunch::Cached(kernels::eval_lsb_pair_cached),
+                    LaneKernel::Pair128Lb => LaneLaunch::Plain(kernels::eval_lsb_pair_128_lb),
+                    LaneKernel::Pair128 => LaneLaunch::Plain(kernels::eval_lsb_pair_128),
+                    LaneKernel::Pair => LaneLaunch::Plain(kernels::eval_lsb_pair),
+                    LaneKernel::SegSCv64
+                    | LaneKernel::SegSCv100
+                    | LaneKernel::SegSAcc
+                    | LaneKernel::SegG
+                    | LaneKernel::SegRecompute => {
+                        let deal = deal.as_ref().expect("a seg lane set deals its program");
+                        let state = state.expect("a seg carrier runs a planned arm");
+                        upload_dealt_program(&mut lane_desc, deal);
+                        LaneLaunch::Seg(Box::new(prepare_seg(lane.carrier, state, deal, blocks)?))
                     }
-                })
-                .collect()
-        } else {
-            Vec::new()
+                };
+                // FULL-TRACE INVARIANT. The row map is fixed, not grid-stride, so a
+                // short grid evaluates a PREFIX of the trace and finalize reduces the
+                // same prefix — silently. Every lane must cover every logical row.
+                assert_eq!(
+                    u64::from(blocks) * u64::from(lane.rows_per_block()),
+                    geometry.logical_rows,
+                    "lane {} covers {} of {} logical rows",
+                    lane.label,
+                    u64::from(blocks) * u64::from(lane.rows_per_block()),
+                    geometry.logical_rows
+                );
+                cache_lanes.push(PreparedLane {
+                    lane,
+                    desc: lane_desc,
+                    plan,
+                    launch,
+                    blocks,
+                    counts,
+                    admitted,
+                });
+            }
+        }
+
+        // The single-arm segmented path. It replaces the cached one rather than joining
+        // it: the arm's records still reach the device, but the walk bounds, the carrier
+        // and the reduction all come from the seg descriptor.
+        let eval_seg = match config.mode {
+            EvalMode::LsbPair if config.carrier.is_seg() => {
+                let state = cache_arms
+                    .iter()
+                    .find(|(a, _)| *a == config.cache_arm)
+                    .and_then(|(_, s)| s.as_ref().ok())
+                    .expect("main rejects an unplannable selected arm before device setup");
+                let deal = deal.as_ref().expect("a seg carrier deals its program");
+                desc.source[..state.sources.len()].copy_from_slice(&state.sources);
+                upload_dealt_program(&mut desc, deal);
+                eval_kernel = config
+                    .carrier
+                    .kernel()
+                    .expect("a seg carrier names a seg kernel")
+                    .name();
+                Some(prepare_seg(config.carrier, state, deal, eval_blocks)?)
+            }
+            _ => None,
         };
+
+        // The plan-identity line the runner prints, keyed to the REFERENCE stripe rather
+        // than to whichever arm this run selects: the deal is capture-blind, so the line
+        // fingerprints (program, term order) alone.
+        let seg_line = deal.as_ref().map(|deal| {
+            let state = cache_arms
+                .iter()
+                .find(|(a, _)| *a == CacheArm::Hot16)
+                .and_then(|(_, s)| s.as_ref().ok())
+                .expect("hot16 is the seg line's reference stripe and fits inside every frame");
+            seg_line(deal, state)
+        });
 
         let none = UniskipWindowDesc::default();
         let eval_window = match config.mode {
@@ -967,6 +1270,30 @@ impl Harness {
             kernels::set_cached_128_lb_carveout(pct)?;
             println!("  carveout hint       {pct}% (eval_lsb_pair_cached_128_lb)");
         }
+        // v3 R7: one hint per USED seg symbol, applied once before any launch and echoed
+        // once each. Not steerable — the percent IS the carrier's configuration under
+        // test, and an unhinted symbol would take the driver's own sizing (R6 measured
+        // that at 64 KiB for a 128-thread kernel), which is a different arm.
+        for carrier in LaneCarrier::SEG {
+            let used = config.carrier == carrier
+                || cache_lanes
+                    .iter()
+                    .any(|prepared| prepared.lane.carrier == carrier);
+            if !used {
+                continue;
+            }
+            let pct = carrier
+                .carveout()
+                .expect("a seg carrier states its carveout");
+            set_seg_carveout(carrier, pct)?;
+            println!(
+                "  carveout hint       {pct}% ({})",
+                carrier
+                    .kernel()
+                    .expect("a seg carrier names a seg kernel")
+                    .name()
+            );
+        }
 
         Ok(Self {
             layout,
@@ -984,6 +1311,8 @@ impl Harness {
             cache_lanes,
             eval_window,
             eval_cached,
+            eval_seg,
+            seg_line,
             cache_arms,
             window_tagged: window,
             window_none: none,
@@ -1050,10 +1379,15 @@ impl Harness {
         self.events[0].record(&self.stream)?;
         self.run_lde()?;
         self.events[1].record(&self.stream)?;
-        match (&self.eval_cached, &self.eval_window) {
-            (Some((launch, plan)), _) => launch(&self.desc, plan, self.eval_blocks, &self.stream)?,
-            (None, Some((launch, win))) => launch(&self.desc, win, self.eval_blocks, &self.stream)?,
-            (None, None) => (self.eval)(&self.desc, self.eval_blocks, &self.stream)?,
+        match (&self.eval_seg, &self.eval_cached, &self.eval_window) {
+            (Some(seg), ..) => seg.run(&self.desc, self.eval_blocks, &self.stream)?,
+            (None, Some((launch, plan)), _) => {
+                launch(&self.desc, plan, self.eval_blocks, &self.stream)?
+            }
+            (None, None, Some((launch, win))) => {
+                launch(&self.desc, win, self.eval_blocks, &self.stream)?
+            }
+            (None, None, None) => (self.eval)(&self.desc, self.eval_blocks, &self.stream)?,
         }
         self.events[2].record(&self.stream)?;
         kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;
@@ -1111,11 +1445,12 @@ impl Harness {
         let lane = &self.cache_lanes[index];
         self.events[0].record(&self.stream)?;
         self.events[1].record(&self.stream)?;
-        match lane.launch {
+        match &lane.launch {
             LaneLaunch::Cached(launch) => {
                 launch(&lane.desc, &lane.plan, lane.blocks, &self.stream)?
             }
             LaneLaunch::Plain(launch) => launch(&lane.desc, lane.blocks, &self.stream)?,
+            LaneLaunch::Seg(seg) => seg.run(&lane.desc, lane.blocks, &self.stream)?,
         }
         self.events[2].record(&self.stream)?;
         kernels::finalize(&self.partials, lane.blocks, &mut self.q, &self.stream)?;
@@ -1127,7 +1462,7 @@ impl Harness {
     /// recomputed. A window arm replaces `eval` after the name is set, so it reports its
     /// own placeholder rather than the control's.
     pub fn eval_kernel(&self) -> &'static str {
-        if self.eval_cached.is_some() {
+        if self.eval_cached.is_some() || self.eval_seg.is_some() {
             return self.eval_kernel;
         }
         match &self.eval_window {
@@ -1136,9 +1471,15 @@ impl Harness {
         }
     }
 
-    /// The carveout percent this harness applied, or `None` for the driver's own sizing.
+    /// The carveout percent this harness applied to the local incumbent's body, or `None`
+    /// for the driver's own sizing. The seg symbols' hints are fixed per carrier.
     pub fn carveout(&self) -> Option<u32> {
         self.carveout
+    }
+
+    /// The run's plan-identity line, or `None` when nothing was dealt.
+    pub fn seg_line(&self) -> Option<&str> {
+        self.seg_line.as_deref()
     }
 
     /// Why an arm is unavailable at this census, if it is.
@@ -1401,6 +1742,20 @@ mod cpu_tests {
         assert_eq!(CarveoutHint::None.resolve(false), None);
         assert_eq!(CarveoutHint::Explicit(25).resolve(true), Some(25));
         assert_eq!(CarveoutHint::Explicit(25).resolve(false), Some(25));
+    }
+
+    /// The spelling every operator doc points at. `none` is the ONLY word the parser
+    /// takes; anything else must be a bare percent, and a mistyped word must not fall
+    /// through to a default that silently applies a hint.
+    #[test]
+    fn cpu_carveout_hint_parses_none_and_percent() {
+        assert_eq!("none".parse::<CarveoutHint>(), Ok(CarveoutHint::None));
+        assert_eq!("16".parse::<CarveoutHint>(), Ok(CarveoutHint::Explicit(16)));
+        assert_eq!("0".parse::<CarveoutHint>(), Ok(CarveoutHint::Explicit(0)));
+        assert!("None".parse::<CarveoutHint>().is_err());
+        assert!("default".parse::<CarveoutHint>().is_err());
+        assert!("-1".parse::<CarveoutHint>().is_err());
+        assert!("16%".parse::<CarveoutHint>().is_err());
     }
 
     /// One leg of that predicate compares `eval_kernel` against this name, so a rename on

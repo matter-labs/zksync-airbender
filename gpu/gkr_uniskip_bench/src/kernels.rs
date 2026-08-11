@@ -653,10 +653,10 @@ pub fn eval_lsb_pair_win_lb(
 }
 
 /// Bytes the fold-first reduction plane occupies at the slab head: one `e4` per warp per
-/// cell.
-const SEG_FOLD_PLANE_BYTES: u32 = (UNISKIP_SEG_K * UNISKIP_CELLS * 4 * size_of::<u32>()) as u32;
+/// cell. Public because a carrier-S launch must SIZE its dynamic slab to cover it.
+pub const SEG_FOLD_PLANE_BYTES: u32 = (UNISKIP_SEG_K * UNISKIP_CELLS * 4 * size_of::<u32>()) as u32;
 /// The accumulator-first plane is wider: four `e4` per thread for the three publishing warps.
-const SEG_ACC_PLANE_BYTES: u32 = ((UNISKIP_SEG_K - 1) * 32 * 4 * 4 * size_of::<u32>()) as u32;
+pub const SEG_ACC_PLANE_BYTES: u32 = ((UNISKIP_SEG_K - 1) * 32 * 4 * 4 * size_of::<u32>()) as u32;
 
 /// A 128-thread launch whose coset slab is DYNAMIC shared memory: `shared_bytes` is the
 /// slab the carrier addresses, and the reduction plane aliases its head — so a launch that

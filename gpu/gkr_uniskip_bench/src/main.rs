@@ -4,17 +4,20 @@ use clap::{CommandFactory, Parser};
 use era_cudart::device::{get_device, get_device_properties};
 use gpu_gkr_uniskip_bench::abi::{
     UNISKIP_CELLS, UNISKIP_COMPACT_DEFAULT_GROUPS, UNISKIP_LOG_TAPS, UNISKIP_PAIR_THREADS_128,
-    UNISKIP_SRC_E4_GLOBAL, UNISKIP_THREADS_PER_BLOCK,
+    UNISKIP_SEG_COHORTS, UNISKIP_SRC_E4_GLOBAL, UNISKIP_THREADS_PER_BLOCK,
 };
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::compact::BankPerm;
-use gpu_gkr_uniskip_bench::coset_cache::{self, CacheArm, CacheMutation, LaneSet, PrologueOrder};
+use gpu_gkr_uniskip_bench::coset_cache::{
+    self, CacheArm, CacheMutation, LaneCarrier, LaneSet, PrologueOrder,
+};
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::PairArm;
 use gpu_gkr_uniskip_bench::harness::{
     CarveoutHint, CellMap, EvalMode, Harness, LdeShape, PassConfig, StageTimes, STAGES,
 };
 use gpu_gkr_uniskip_bench::kernels::NvtxRange;
+use gpu_gkr_uniskip_bench::seg;
 use gpu_gkr_uniskip_bench::synth::{generate, Census, TermOrder};
 use gpu_gkr_uniskip_bench::window::{self, WindowMutation};
 
@@ -158,6 +161,38 @@ struct Cli {
     #[arg(long)]
     carveout_probe: bool,
 
+    /// Run the v3 R7 shared-memory-carrier rotation: 10 lanes — the three local anchors
+    /// (`control@256`, `control_lb@128`, the hinted `hot16@128` incumbent), the segmented
+    /// machinery floor, and the carrier-S points `seg-cache0-s seg-hot16-s64
+    /// seg-hot16-s100 seg-k24-s seg-k40-s seg-hot16-acc` — in ONE process, one deal shared
+    /// by every seg lane. 100 rounds / 10 warmup unless overridden; an override must still
+    /// be a multiple of 10.
+    #[arg(long)]
+    seg_smem_factorial: bool,
+
+    /// Run the v3 R7 device-scratch-carrier rotation: 9 lanes — the same three local
+    /// anchors and machinery floor, then carrier G at `cache0 hot16 k24 k40 allrepeat`.
+    /// 99 rounds / 9 warmup unless overridden; an override must still be a multiple of 9.
+    #[arg(long)]
+    seg_gmem_factorial: bool,
+
+    /// Run the v3 R7 anchor rotation: 2 lanes — the hinted `hot16@128` incumbent against
+    /// the never-hinted shipping `control@256`. It deals no program and prints no SEG
+    /// line. Two jobs: re-anchoring the seg sessions, and pricing the incumbent's carveout
+    /// hint as a PAIRED per-round contrast when `--carveout-hint 32` or `100` is added —
+    /// which is what a standalone log cannot carry under session drift.
+    #[arg(long)]
+    seg_anchor: bool,
+
+    /// v3 R7 carrier of a single segmented arm: `seg-s` (carrier S at the 64 KiB carveout
+    /// request), `seg-s100` (the same body at 100 KiB), `seg-s-acc` (the accumulator-first
+    /// reduction diagnostic), `seg-g` (carrier G, a per-block device-scratch slab) or
+    /// `seg-recompute` (the machinery floor: the cohort loop with no slab and no
+    /// prologue). Needs `--mode lsb-pair --block-threads 128` and a `--cache-arm` on that
+    /// carrier's support matrix; composes with `--validate` / `--dump-q` / `--profile`.
+    #[arg(long, value_enum)]
+    carrier: Option<LaneCarrier>,
+
     /// v3 R6: preferred shared-memory carveout (percent of the maximum) set on the bounded
     /// 128-thread cached kernel before any launch; absent = the R7 default of 16 wherever
     /// that kernel runs, `none` = the driver's own sizing. A percent composes with
@@ -260,6 +295,9 @@ impl Cli {
             (self.frontier_factorial, LaneSet::FrontierFactorial),
             (self.frontier_extension, LaneSet::FrontierExtension),
             (self.carveout_probe, LaneSet::CarveoutProbe),
+            (self.seg_smem_factorial, LaneSet::SegSmem),
+            (self.seg_gmem_factorial, LaneSet::SegGmem),
+            (self.seg_anchor, LaneSet::SegAnchor),
         ]
         .into_iter()
         .filter_map(|(on, set)| on.then_some(set))
@@ -486,6 +524,16 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                 cli.mode.as_str()
             ));
         }
+        // The segmented prologue is STRIPED by owner warp against the pinned e4-first
+        // production order; re-ordering the table would move rows between warps without
+        // moving their owner bytes.
+        if let Some(carrier) = cli.carrier {
+            fail(format!(
+                "--prologue-order is not part of the segmented surface; --carrier {} \
+                 stripes the pinned e4first order by owner warp",
+                carrier.as_str()
+            ));
+        }
         let arm = cli.cache_arm.unwrap_or_default();
         if !arm.uses_cache() {
             fail(format!(
@@ -522,6 +570,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         for (other, on) in [
             ("--pair-arm", cli.pair_arm.is_some()),
             ("--cache-arm", cli.cache_arm.is_some()),
+            ("--carrier", cli.carrier.is_some()),
             ("--block-threads", cli.block_threads.is_some()),
             ("--prologue-order", cli.prologue_order.is_some()),
             ("--cache-mutate", cli.cache_mutate.is_some()),
@@ -592,6 +641,53 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ));
         }
     }
+    // The v3 R7 single-arm surface. A carrier names one kernel, one carveout and one
+    // supported arm set; everything that would change what that kernel reads, or steer a
+    // symbol it does not launch, is rejected rather than ignored.
+    if let Some(carrier) = cli.carrier {
+        if !cli.mode.uses_pair_arm() {
+            fail(format!(
+                "--carrier applies to --mode lsb-pair only; --mode {} has no R7 carriers",
+                cli.mode.as_str()
+            ));
+        }
+        if block_threads as usize != UNISKIP_PAIR_THREADS_128 {
+            fail(format!(
+                "--carrier {} is a {UNISKIP_PAIR_THREADS_128}-thread body; it needs \
+                 --block-threads {UNISKIP_PAIR_THREADS_128}",
+                carrier.as_str()
+            ));
+        }
+        let Some(arm) = cli.cache_arm else {
+            fail(format!(
+                "--carrier {} needs --cache-arm; the carrier decides where a produced \
+                 coset pair lives, the arm decides which ones are produced",
+                carrier.as_str()
+            ));
+        };
+        if !carrier.supports(arm) {
+            fail(format!(
+                "--carrier {} runs --cache-arm {}; {} is not on its support matrix",
+                carrier.as_str(),
+                carrier.supported_arms().join(" | "),
+                arm.as_str()
+            ));
+        }
+        for (other, on) in [
+            ("--cache-mutate", cli.cache_mutate.is_some()),
+            ("--carveout-hint", cli.carveout_hint.is_some()),
+            ("--control-launch-bounds", cli.control_launch_bounds),
+            ("--no-cache-launch-bounds", cli.no_cache_launch_bounds),
+        ] {
+            if on {
+                fail(format!(
+                    "--carrier {} pins its own kernel, records and carveout; {other} would \
+                     describe a configuration the run does not have",
+                    carrier.as_str()
+                ));
+            }
+        }
+    }
     if cli.cache_mutate.is_some() && !cli.cache_arm.is_some_and(|a| a.uses_cache()) {
         fail("--cache-mutate needs a cached --cache-arm to corrupt".into());
     }
@@ -649,6 +745,18 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ));
         }
         let probe = cli.lane_set() == Some(LaneSet::CarveoutProbe);
+        // The R7 attribution surface: the anchor rotation's `hot16` lane is the SAME body
+        // the probe steered, and `control@256` is a different symbol that never receives
+        // a hint — so the contrast is paired per round and immune to session drift. Only
+        // the two preregistered tiers, which are the seg carriers' own requests.
+        let anchor = cli.lane_set() == Some(LaneSet::SegAnchor);
+        if anchor && !matches!(pct, 32 | 100) {
+            fail(format!(
+                "--seg-anchor prices the {} attribution tiers 32 and 100 against its \
+                 unhinted default; --carveout-hint {pct} is not part of that contract",
+                LaneSet::SegAnchor.tag()
+            ));
+        }
         // The single-arm gate surface: the ncu configuration check profiles exactly the
         // body the hint steers, so the unbounded sibling is excluded with the rest. The
         // pct stays free HERE (this is how the ladder was mapped), but the surface is
@@ -657,13 +765,13 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             && cli.cache_arm.is_some_and(|a| a.uses_cache())
             && block_threads as usize == UNISKIP_PAIR_THREADS_128
             && !cli.no_cache_launch_bounds;
-        if !(probe || single_cached_128) {
+        if !(probe || anchor || single_cached_128) {
             fail(
                 "--carveout-hint steers the bounded 128-thread cached kernel; it composes \
-                 with --carveout-probe or with a single cached --cache-arm at \
-                 --block-threads 128, nothing else; the launcher default (hint 16) applies \
-                 to cached@128lb lanes regardless — use --carveout-hint none for the \
-                 unhinted state"
+                 with --carveout-probe, with --seg-anchor, or with a single cached \
+                 --cache-arm at --block-threads 128, nothing else; the launcher default \
+                 (hint 16) applies to cached@128lb lanes regardless — use --carveout-hint \
+                 none for the unhinted state"
                     .into(),
             );
         }
@@ -732,6 +840,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         bank_perm: cli.bank_perm.unwrap_or_default(),
         pair_arm: cli.pair_arm.unwrap_or_default(),
         cache_arm: cli.cache_arm.unwrap_or_default(),
+        carrier: cli.carrier.unwrap_or_default(),
         prologue_order: cli.prologue_order.unwrap_or_default(),
         cache_launch_bounds: !cli.no_cache_launch_bounds,
         control_launch_bounds: cli.control_launch_bounds,
@@ -828,6 +937,11 @@ fn run_lane_factorial(harness: &mut Harness, cli: &Cli, set: LaneSet) {
         set.tag(),
         cli.term_order.as_str()
     );
+    // The dealt program's identity, right after the schedule line. A rotation that deals
+    // nothing prints nothing — an anchor log carrying this line is a mislabelled log.
+    if let Some(line) = harness.seg_line() {
+        println!("{line}");
+    }
     // Lane FACTS, not just labels: C, removals and the admitted set travel with the
     // occupancy so the emitter carries no constant and an aliased lane is visible. The
     // frontier sets carry the admitted ids IN ADMISSION ORDER as well — counts alone cannot
@@ -991,6 +1105,13 @@ fn main() {
         Some(set) => format!("{} ({} lanes)", set.noun(), set.lanes().len()),
         None => config.cache_arm.as_str().to_string(),
     };
+    // A rotation names its carriers per lane; a single-arm run names the one it launches.
+    let carrier_label = match cli.lane_set() {
+        _ if !config.mode.uses_pair_arm() => "n/a",
+        Some(set) if set.is_seg() => "per lane (see the ARM lines)",
+        Some(_) => LaneCarrier::Local.as_str(),
+        None => config.carrier.as_str(),
+    };
     let (compact_groups_label, bank_perm_label) = if config.mode.uses_compact_groups() {
         (config.compact_groups.to_string(), config.bank_perm.as_str())
     } else {
@@ -1063,6 +1184,7 @@ fn main() {
     println!("  bank_perm           {bank_perm_label}");
     println!("  pair_arm            {pair_arm_label}");
     println!("  cache_arm           {cache_arm_label}");
+    println!("  carrier             {carrier_label}");
     println!("  block_threads       {block_threads_label}");
     println!("  prologue_order      {prologue_order_label}");
     println!("  term_order          {}", cli.term_order.as_str());
@@ -1116,6 +1238,18 @@ fn main() {
         // lanes of one kernel admitting the same set.
         if let Err(e) = coset_cache::validate_lane_set(&program, set.lanes()) {
             fail(format!("{}: {e}", set.flag()));
+        }
+    }
+    // The same pre-flight for the deal: a program that cannot fill four nonempty lists of
+    // whole atoms exits here, not inside device setup.
+    if config.carrier.is_seg() || cli.lane_set().is_some_and(LaneSet::is_seg) {
+        match seg::deal(&program) {
+            Ok(deal) => {
+                if let Err(e) = seg::validate(&deal, &program) {
+                    fail(format!("the seg deal is invalid: {e}"));
+                }
+            }
+            Err(e) => fail(format!("the seg dealer rejected this program: {e}")),
         }
     }
     if config.mode.uses_pair_arm() {
@@ -1240,6 +1374,13 @@ fn main() {
         bytes.total,
         gib(bytes.total)
     );
+    // The rotation path prints this after its schedule line instead, where the lanes it
+    // describes are already named.
+    if cli.lane_set().is_none() {
+        if let Some(line) = harness.seg_line() {
+            println!("{line}");
+        }
+    }
 
     if (cli.window_count || cli.window_poison || cli.window_mutate.is_some())
         && !gpu_gkr_uniskip_bench::kernels::window_diag_build()
@@ -1319,15 +1460,44 @@ fn main() {
         let warps = u64::from(harness.eval_blocks()) * u64::from(config.block_threads / 32);
         let passes = u64::from(cli.warmup_rounds()) + samples.len() as u64;
         assert!(passes > 0, "--window-count needs at least one pass");
-        assert_eq!(
-            calls % (warps * passes),
-            0,
-            "chain executions {calls} are not a whole multiple of {warps} warps x {passes} passes"
-        );
-        println!(
-            "chain executions     {calls} total / {warps} warps / {passes} passes = {} per warp-program walk",
-            calls / (warps * passes)
-        );
+        if config.carrier.is_seg() {
+            // A seg block's four warps SPLIT one program between them, so the per-warp
+            // walk is not the unit any more: the whole block executes the arm's chain
+            // count once per cohort. `counts.chains` already includes the prologue.
+            let blocks = u64::from(harness.eval_blocks());
+            let cohorts = u64::from(UNISKIP_SEG_COHORTS);
+            assert_eq!(
+                calls % (blocks * cohorts * passes),
+                0,
+                "chain executions {calls} are not a whole multiple of {blocks} blocks x \
+                 {cohorts} cohorts x {passes} passes"
+            );
+            let per_cohort = calls / (blocks * cohorts * passes);
+            let chains = harness
+                .cache_arm_state(config.cache_arm)
+                .expect("the selected arm is planned")
+                .counts
+                .chains;
+            assert_eq!(
+                per_cohort,
+                u64::from(chains),
+                "a {} cohort executed {per_cohort} chains against the arm's {chains}",
+                config.carrier.as_str()
+            );
+            println!(
+                "chain executions     {calls} total / {blocks} blocks / {cohorts} cohorts = {per_cohort} per cohort"
+            );
+        } else {
+            assert_eq!(
+                calls % (warps * passes),
+                0,
+                "chain executions {calls} are not a whole multiple of {warps} warps x {passes} passes"
+            );
+            println!(
+                "chain executions     {calls} total / {warps} warps / {passes} passes = {} per warp-program walk",
+                calls / (warps * passes)
+            );
+        }
     }
 
     let mut total_median = 0.0;

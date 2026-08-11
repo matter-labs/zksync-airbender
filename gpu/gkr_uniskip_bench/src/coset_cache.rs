@@ -1410,11 +1410,130 @@ mod mixed_operand_probe {
 /// construction rather than by convention — `all59`, `e4rich`, `e4top2`, the BF-first
 /// prologue order and the unbounded cached-128 body are 3B diagnostics that run as separate
 /// same-session single-arm runs, never inside the rotation.
+/// Where a lane's produced coset pairs live. `Local` is the R4/R5/R6 per-thread frame —
+/// every pre-R7 lane — and the five seg values are the R7 block-wide carriers, each naming
+/// exactly one kernel, one sticky carveout percent and one supported arm set.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum LaneCarrier {
+    /// Not reachable from the CLI: the absence of `--carrier` IS this value.
+    #[default]
+    #[clap(skip)]
+    Local,
+    #[clap(name = "seg-s")]
+    SegS64,
+    #[clap(name = "seg-s100")]
+    SegS100,
+    #[clap(name = "seg-s-acc")]
+    SegSAcc,
+    #[clap(name = "seg-g")]
+    SegG,
+    #[clap(name = "seg-recompute")]
+    SegRecompute,
+}
+
+impl LaneCarrier {
+    /// The segmented carriers, in the order their hints are applied and echoed.
+    pub const SEG: [Self; 5] = [
+        Self::SegS64,
+        Self::SegS100,
+        Self::SegSAcc,
+        Self::SegG,
+        Self::SegRecompute,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::SegS64 => "seg-s",
+            Self::SegS100 => "seg-s100",
+            Self::SegSAcc => "seg-s-acc",
+            Self::SegG => "seg-g",
+            Self::SegRecompute => "seg-recompute",
+        }
+    }
+
+    /// The kernel this carrier launches, or `None` for the local frame — whose kernel is
+    /// decided by the block size and the launch bound instead.
+    pub fn kernel(self) -> Option<LaneKernel> {
+        Some(match self {
+            Self::Local => return None,
+            Self::SegS64 => LaneKernel::SegSCv64,
+            Self::SegS100 => LaneKernel::SegSCv100,
+            Self::SegSAcc => LaneKernel::SegSAcc,
+            Self::SegG => LaneKernel::SegG,
+            Self::SegRecompute => LaneKernel::SegRecompute,
+        })
+    }
+
+    pub fn is_seg(self) -> bool {
+        self != Self::Local
+    }
+
+    /// The preferred shared-memory carveout this carrier's symbol is set to before any
+    /// launch. `_cv64` and `_cv100` are ONE body under two symbols precisely because the
+    /// attribute is per-function and sticky; carrier G and the machinery floor take the
+    /// winner's 32 KiB configuration, which at a 128-thread kernel is NOT the driver
+    /// default (R6 measured that at 64 KiB).
+    pub fn carveout(self) -> Option<u32> {
+        Some(match self {
+            Self::Local => return None,
+            Self::SegS64 | Self::SegSAcc => 32,
+            Self::SegS100 => 100,
+            Self::SegG | Self::SegRecompute => 16,
+        })
+    }
+
+    /// Whether the slab is device scratch the caller allocates, rather than the launch's
+    /// own dynamic shared memory.
+    pub fn uses_slab(self) -> bool {
+        self == Self::SegG
+    }
+
+    /// Whether the body reads the prologue table and the records' `cache_slot` at all. The
+    /// machinery floor does not: its carrier points at the reduction plane, so a live slot
+    /// would read ~21 KiB past a 2 KiB allocation.
+    pub fn uses_plan(self) -> bool {
+        self.is_seg() && self != Self::SegRecompute
+    }
+
+    /// THE support matrix: which cache arms this carrier is measured with. The lane-set
+    /// validator and the `--carrier` surface both read it, so a pair rejected on one is
+    /// rejected on the other.
+    pub fn supports(self, arm: CacheArm) -> bool {
+        match self {
+            Self::Local => true,
+            Self::SegRecompute => arm == CacheArm::Cache0,
+            Self::SegSAcc => arm == CacheArm::Hot16,
+            Self::SegS64 => matches!(arm, CacheArm::Cache0 | CacheArm::Hot16),
+            Self::SegS100 => matches!(arm, CacheArm::Hot16 | CacheArm::K24 | CacheArm::K40),
+            Self::SegG => matches!(
+                arm,
+                CacheArm::Cache0
+                    | CacheArm::Hot16
+                    | CacheArm::K24
+                    | CacheArm::K40
+                    | CacheArm::AllRepeat
+            ),
+        }
+    }
+
+    /// The arms this carrier runs, in `CacheArm::ALL` order — the rejection message's list.
+    pub fn supported_arms(self) -> Vec<&'static str> {
+        CacheArm::ALL
+            .iter()
+            .filter(|&&arm| self.supports(arm))
+            .map(|arm| arm.as_str())
+            .collect()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CacheLane {
     pub label: &'static str,
     pub block_threads: u32,
     pub arm: CacheArm,
+    /// Where this lane's produced coset pairs live. `Local` is every pre-R7 lane.
+    pub carrier: LaneCarrier,
     /// Bounded body. At 256 there is no sibling and this is always false; at 128 the
     /// cached arms are bounded (the occupancy gate) and `control128_lb` is the bounded
     /// no-cache baseline that makes the contrast bound-to-bound.
@@ -1432,6 +1551,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "control@256",
         block_threads: 256,
         arm: CacheArm::Control,
+        carrier: LaneCarrier::Local,
         launch_bounds: false,
         regs: 72,
         blocks_per_sm: 3,
@@ -1440,6 +1560,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "cache0@256",
         block_threads: 256,
         arm: CacheArm::Cache0,
+        carrier: LaneCarrier::Local,
         launch_bounds: false,
         regs: 75,
         blocks_per_sm: 3,
@@ -1448,6 +1569,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "hot4@256",
         block_threads: 256,
         arm: CacheArm::Hot4,
+        carrier: LaneCarrier::Local,
         launch_bounds: false,
         regs: 75,
         blocks_per_sm: 3,
@@ -1456,6 +1578,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "hot16@256",
         block_threads: 256,
         arm: CacheArm::Hot16,
+        carrier: LaneCarrier::Local,
         launch_bounds: false,
         regs: 75,
         blocks_per_sm: 3,
@@ -1464,6 +1587,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "allrepeat@256",
         block_threads: 256,
         arm: CacheArm::AllRepeat,
+        carrier: LaneCarrier::Local,
         launch_bounds: false,
         regs: 75,
         blocks_per_sm: 3,
@@ -1472,6 +1596,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "control@128",
         block_threads: 128,
         arm: CacheArm::Control,
+        carrier: LaneCarrier::Local,
         launch_bounds: false,
         regs: 72,
         blocks_per_sm: 7,
@@ -1480,6 +1605,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "control_lb@128",
         block_threads: 128,
         arm: CacheArm::Control,
+        carrier: LaneCarrier::Local,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1488,6 +1614,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "cache0@128",
         block_threads: 128,
         arm: CacheArm::Cache0,
+        carrier: LaneCarrier::Local,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1496,6 +1623,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "hot4@128",
         block_threads: 128,
         arm: CacheArm::Hot4,
+        carrier: LaneCarrier::Local,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1504,6 +1632,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "hot16@128",
         block_threads: 128,
         arm: CacheArm::Hot16,
+        carrier: LaneCarrier::Local,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1512,6 +1641,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         label: "allrepeat@128",
         block_threads: 128,
         arm: CacheArm::AllRepeat,
+        carrier: LaneCarrier::Local,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1527,6 +1657,7 @@ const fn frontier_128(label: &'static str, arm: CacheArm) -> CacheLane {
         label,
         block_threads: 128,
         arm,
+        carrier: LaneCarrier::Local,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1538,6 +1669,7 @@ const FRONTIER_CONTROL_256: CacheLane = CacheLane {
     label: "control@256",
     block_threads: 256,
     arm: CacheArm::Control,
+    carrier: LaneCarrier::Local,
     launch_bounds: false,
     regs: 72,
     blocks_per_sm: 3,
@@ -1589,6 +1721,75 @@ pub const CARVEOUT_PROBE: [CacheLane; 5] = [
     FRONTIER_CONTROL_256,
 ];
 
+/// A v3 R7 segmented lane: 128 threads and bounded like every seg symbol, at the 72
+/// registers / 7 blocks per SM Task 3 and Task 4 measured on all five of them.
+const fn seg_128(label: &'static str, arm: CacheArm, carrier: LaneCarrier) -> CacheLane {
+    CacheLane {
+        label,
+        block_threads: 128,
+        arm,
+        carrier,
+        launch_bounds: true,
+        regs: 72,
+        blocks_per_sm: 7,
+    }
+}
+
+/// The v3 R7 shared-memory-carrier rotation: the three local anchors (the shipping
+/// `control@256`, the bounded 128 control and the hinted incumbent), the machinery floor,
+/// and the carrier-S points. `seg-hot16-s64` and `seg-hot16-s100` are ONE body under two
+/// carveout requests, which is the whole reason two symbols exist. 10 lanes, so a round
+/// count must be a multiple of 10.
+pub const SEG_SMEM: [CacheLane; 10] = [
+    FRONTIER_CONTROL_256,
+    frontier_128("control_lb@128", CacheArm::Control),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    seg_128(
+        "seg-recompute@128",
+        CacheArm::Cache0,
+        LaneCarrier::SegRecompute,
+    ),
+    seg_128("seg-cache0-s@128", CacheArm::Cache0, LaneCarrier::SegS64),
+    seg_128("seg-hot16-s64@128", CacheArm::Hot16, LaneCarrier::SegS64),
+    seg_128("seg-hot16-s100@128", CacheArm::Hot16, LaneCarrier::SegS100),
+    seg_128("seg-k24-s@128", CacheArm::K24, LaneCarrier::SegS100),
+    seg_128("seg-k40-s@128", CacheArm::K40, LaneCarrier::SegS100),
+    seg_128("seg-hot16-acc@128", CacheArm::Hot16, LaneCarrier::SegSAcc),
+];
+
+/// The v3 R7 device-scratch-carrier rotation: the same three local anchors and machinery
+/// floor, then carrier G at four capture points. `allrepeat` rides here and not in
+/// [`SEG_SMEM`] because a whole-list slab is far past what a shared partition holds.
+/// 9 lanes, so a round count must be a multiple of 9.
+pub const SEG_GMEM: [CacheLane; 9] = [
+    FRONTIER_CONTROL_256,
+    frontier_128("control_lb@128", CacheArm::Control),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    seg_128(
+        "seg-recompute@128",
+        CacheArm::Cache0,
+        LaneCarrier::SegRecompute,
+    ),
+    seg_128("seg-cache0-g@128", CacheArm::Cache0, LaneCarrier::SegG),
+    seg_128("seg-hot16-g@128", CacheArm::Hot16, LaneCarrier::SegG),
+    seg_128("seg-k24-g@128", CacheArm::K24, LaneCarrier::SegG),
+    seg_128("seg-k40-g@128", CacheArm::K40, LaneCarrier::SegG),
+    seg_128(
+        "seg-allrepeat-g@128",
+        CacheArm::AllRepeat,
+        LaneCarrier::SegG,
+    ),
+];
+
+/// The v3 R7 anchor rotation: the hinted incumbent against the never-hinted shipping
+/// anchor, and nothing else. It carries no seg lane and no dealt program — its two jobs are
+/// re-anchoring the seg sessions and pricing the incumbent's carveout hint as a PAIRED
+/// per-round contrast, which a standalone log cannot do under session drift. 2 lanes.
+pub const SEG_ANCHOR: [CacheLane; 2] = [
+    FRONTIER_CONTROL_256,
+    frontier_128("hot16@128", CacheArm::Hot16),
+];
+
 /// Fail-closed structural check of a pinned lane set — THE one implementation of the
 /// factorial pre-flight, called by the runner before it builds anything and by the tests
 /// that pin the shipped rotations. Rejects a duplicate label, an unplannable lane, a
@@ -1604,9 +1805,33 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
         return Err(format!("lane label {} appears twice", dup[0]));
     }
 
-    // (admitted ids, block size, bounded, label) — flat, so the tuple stays readable.
-    let mut seen: Vec<(Vec<u16>, u32, bool, &str)> = Vec::new();
+    // (admitted ids, block size, bounded, carrier, label) — flat, so the tuple stays
+    // readable.
+    let mut seen: Vec<(Vec<u16>, u32, bool, LaneCarrier, &str)> = Vec::new();
     for lane in lanes {
+        if lane.carrier.is_seg() {
+            // Every seg symbol is `__launch_bounds__(128, 7)`: a lane naming another shape
+            // would launch a grid the body's row map does not cover.
+            if lane.block_threads as usize != UNISKIP_PAIR_THREADS_128 || !lane.launch_bounds {
+                return Err(format!(
+                    "seg lane {} must be the bounded {UNISKIP_PAIR_THREADS_128}-thread shape",
+                    lane.label
+                ));
+            }
+            // THE support matrix, enforced where the set is pinned rather than only at the
+            // CLI. `seg-recompute` off `cache0` is the sharp one: its carrier points at the
+            // reduction plane, so one live `cache_slot` is a shared read ~21 KiB past a
+            // 2 KiB allocation.
+            if !lane.carrier.supports(lane.arm) {
+                return Err(format!(
+                    "seg lane {}: carrier {} runs {}, not {}",
+                    lane.label,
+                    lane.carrier.as_str(),
+                    lane.carrier.supported_arms().join(" | "),
+                    lane.arm.as_str()
+                ));
+            }
+        }
         let state = plan_arm(program, lane.arm).map_err(|e| format!("lane {}: {e}", lane.label))?;
         // BELT AND BRACES: unreachable today, because `plan_arm`'s always-on validator
         // rejects an over-frame span first (that is the error the line above carries). It
@@ -1631,16 +1856,27 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
         let ids: Vec<u16> = state.admitted.iter().map(|e| e.source).collect();
         // The key is the whole EXPERIMENT, not the admitted set alone: the same set on the
         // bounded and unbounded bodies is a legitimate contrast (that is what prices the
-        // bound), so `launch_bounds` belongs in it or the pair would false-alias.
-        if let Some((.., other)) = seen.iter().find(|(set, size, bounded, _)| {
-            *set == ids && *size == lane.block_threads && *bounded == lane.launch_bounds
+        // bound), so `launch_bounds` belongs in it or the pair would false-alias. The
+        // CARRIER belongs in it for the same reason — one admitted set on two carriers, or
+        // on two carveout requests of one carrier, is the R7 contrast itself.
+        if let Some((.., other)) = seen.iter().find(|(set, size, bounded, carrier, _)| {
+            *set == ids
+                && *size == lane.block_threads
+                && *bounded == lane.launch_bounds
+                && *carrier == lane.carrier
         }) {
             return Err(format!(
                 "lanes {} and {other} admit the same set at {} threads",
                 lane.label, lane.block_threads
             ));
         }
-        seen.push((ids, lane.block_threads, lane.launch_bounds, lane.label));
+        seen.push((
+            ids,
+            lane.block_threads,
+            lane.launch_bounds,
+            lane.carrier,
+            lane.label,
+        ));
     }
     Ok(())
 }
@@ -1659,6 +1895,12 @@ pub enum LaneSet {
     /// R6's five-lane carveout probe (spec R6): the R5 knee neighborhood re-measured under
     /// a steered shared-memory carveout.
     CarveoutProbe,
+    /// R7's ten-lane shared-memory-carrier rotation (spec R7).
+    SegSmem,
+    /// R7's nine-lane device-scratch-carrier rotation (spec R7).
+    SegGmem,
+    /// R7's two-lane anchor/attribution rotation (spec R7): local kernels only.
+    SegAnchor,
 }
 
 impl LaneSet {
@@ -1668,7 +1910,16 @@ impl LaneSet {
             Self::FrontierFactorial => &FRONTIER_FACTORIAL,
             Self::FrontierExtension => &FRONTIER_EXTENSION,
             Self::CarveoutProbe => &CARVEOUT_PROBE,
+            Self::SegSmem => &SEG_SMEM,
+            Self::SegGmem => &SEG_GMEM,
+            Self::SegAnchor => &SEG_ANCHOR,
         }
+    }
+
+    /// Whether this rotation runs any segmented lane — the sets that deal the program and
+    /// print the `SEG` line. The anchor rotation is local-only and must not.
+    pub fn is_seg(self) -> bool {
+        self.lanes().iter().any(|lane| lane.carrier.is_seg())
     }
 
     /// The CLI flag that selects this rotation.
@@ -1678,6 +1929,9 @@ impl LaneSet {
             Self::FrontierFactorial => "--frontier-factorial",
             Self::FrontierExtension => "--frontier-extension",
             Self::CarveoutProbe => "--carveout-probe",
+            Self::SegSmem => "--seg-smem-factorial",
+            Self::SegGmem => "--seg-gmem-factorial",
+            Self::SegAnchor => "--seg-anchor",
         }
     }
 
@@ -1690,18 +1944,25 @@ impl LaneSet {
             Self::FrontierFactorial => "FRONTIER-FACTORIAL",
             Self::FrontierExtension => "FRONTIER-EXTENSION",
             Self::CarveoutProbe => "CARVEOUT-PROBE",
+            Self::SegSmem => "SEG-SMEM",
+            Self::SegGmem => "SEG-GMEM",
+            Self::SegAnchor => "SEG-ANCHOR",
         }
     }
 
-    /// Preregistered `(rounds, warmup)` per term order — spec R5 2.2/2.3. 100/10 over ten
-    /// lanes and 104/16 over eight; the warmup is a whole number of rotations either way.
-    /// R4's own defaults are not preregistered here (its record used 110 explicitly).
+    /// Preregistered `(rounds, warmup)` per term order — spec R5 2.2/2.3, R7 for the seg
+    /// sets. 100/10 over ten lanes, 104/16 over eight, 99/9 over the nine gmem lanes; the
+    /// warmup is a whole number of rotations in every case. R4's own defaults are not
+    /// preregistered here (its record used 110 explicitly).
     pub fn rounds_and_warmup(self) -> Option<(u32, u32)> {
         match self {
             Self::CacheFactorial => None,
             Self::FrontierFactorial => Some((100, 10)),
             Self::FrontierExtension => Some((104, 16)),
             Self::CarveoutProbe => Some((100, 10)),
+            Self::SegSmem => Some((100, 10)),
+            Self::SegGmem => Some((99, 9)),
+            Self::SegAnchor => Some((100, 10)),
         }
     }
 
@@ -1717,6 +1978,8 @@ impl LaneSet {
             Self::CacheFactorial => "R4 arms",
             Self::FrontierFactorial | Self::FrontierExtension => "R5 frontier lanes",
             Self::CarveoutProbe => "R6 probe lanes",
+            Self::SegSmem | Self::SegGmem => "R7 seg lanes",
+            Self::SegAnchor => "R7 anchor lanes",
         }
     }
 
@@ -1726,6 +1989,7 @@ impl LaneSet {
             Self::CacheFactorial => "tools/r4_gates.sh",
             Self::FrontierFactorial | Self::FrontierExtension => "tools/r5_gates.sh",
             Self::CarveoutProbe => "tools/r6_gates.sh",
+            Self::SegSmem | Self::SegGmem | Self::SegAnchor => "tools/r7_gates.sh",
         }
     }
 
@@ -1736,6 +2000,9 @@ impl LaneSet {
             Self::FrontierFactorial => "frontier factorial",
             Self::FrontierExtension => "frontier extension",
             Self::CarveoutProbe => "carveout probe",
+            Self::SegSmem => "seg smem factorial",
+            Self::SegGmem => "seg gmem factorial",
+            Self::SegAnchor => "seg anchor",
         }
     }
 }
@@ -1744,6 +2011,11 @@ impl CacheLane {
     /// The kernel this lane launches, by name — the same strings `Harness::eval_kernel`
     /// reports, so a log line and a single-arm config block are comparable.
     pub fn kernel(self) -> LaneKernel {
+        // Carrier FIRST: a seg lane names its symbol outright, and the block size / launch
+        // bound it also carries are facts about that symbol rather than a second selector.
+        if let Some(kernel) = self.carrier.kernel() {
+            return kernel;
+        }
         match (
             self.block_threads,
             self.arm.uses_cache(),
@@ -1787,9 +2059,16 @@ pub enum LaneKernel {
     Cached,
     Cached128,
     Cached128Lb,
+    SegSCv64,
+    SegSCv100,
+    SegSAcc,
+    SegG,
+    SegRecompute,
 }
 
 impl LaneKernel {
+    /// The exported symbol minus the `ab_gkr_uniskip_` / `_kernel` affixes — what the ARM
+    /// lines, the config block and the carveout echoes all print.
     pub fn name(self) -> &'static str {
         match self {
             Self::Pair => "eval_lsb_pair",
@@ -1798,9 +2077,16 @@ impl LaneKernel {
             Self::Cached => "eval_lsb_pair_cached",
             Self::Cached128 => "eval_lsb_pair_cached_128",
             Self::Cached128Lb => "eval_lsb_pair_cached_128_lb",
+            Self::SegSCv64 => "eval_lsb_seg_s_cv64",
+            Self::SegSCv100 => "eval_lsb_seg_s_cv100",
+            Self::SegSAcc => "eval_lsb_seg_s_acc",
+            Self::SegG => "eval_lsb_seg_g",
+            Self::SegRecompute => "eval_lsb_seg_recompute",
         }
     }
 
+    /// Whether the body reads the R4 per-thread coset frame. A seg body reads a block-wide
+    /// slab instead, so it is not one of these however its arm is planned.
     pub fn is_cached(self) -> bool {
         matches!(self, Self::Cached | Self::Cached128 | Self::Cached128Lb)
     }
@@ -1917,6 +2203,15 @@ mod lane_tests {
         for n in [100u32, 10] {
             assert!(n.is_multiple_of(CARVEOUT_PROBE.len() as u32), "{n}");
         }
+        for n in [100u32, 10] {
+            assert!(n.is_multiple_of(SEG_SMEM.len() as u32), "{n}");
+        }
+        for n in [99u32, 9] {
+            assert!(n.is_multiple_of(SEG_GMEM.len() as u32), "{n}");
+        }
+        for n in [100u32, 10] {
+            assert!(n.is_multiple_of(SEG_ANCHOR.len() as u32), "{n}");
+        }
     }
 
     /// The R6 probe rotation's shape, pinned exactly as spec R6 names it: the knee
@@ -1943,6 +2238,284 @@ mod lane_tests {
         for order in [TermOrder::Census, TermOrder::Locality] {
             validate_lane_set(&program(order), &CARVEOUT_PROBE).unwrap();
         }
+    }
+
+    /// The R7 shared-memory rotation's shape, pinned exactly as the spec names it: three
+    /// local anchors, the machinery floor, and the carrier-S points — including the two
+    /// `hot16` lanes that differ ONLY in which carveout symbol they launch, which is the
+    /// contrast the two symbols exist for.
+    #[test]
+    fn cpu_seg_smem_lane_set() {
+        let labels: Vec<&str> = SEG_SMEM.iter().map(|l| l.label).collect();
+        assert_eq!(
+            labels,
+            vec![
+                "control@256",
+                "control_lb@128",
+                "hot16@128",
+                "seg-recompute@128",
+                "seg-cache0-s@128",
+                "seg-hot16-s64@128",
+                "seg-hot16-s100@128",
+                "seg-k24-s@128",
+                "seg-k40-s@128",
+                "seg-hot16-acc@128",
+            ]
+        );
+        assert_eq!(LaneSet::SegSmem.rounds_and_warmup(), Some((100, 10)));
+        assert!(LaneSet::SegSmem.is_seg());
+        let carriers: Vec<LaneCarrier> = SEG_SMEM.iter().map(|l| l.carrier).collect();
+        assert_eq!(
+            carriers,
+            vec![
+                LaneCarrier::Local,
+                LaneCarrier::Local,
+                LaneCarrier::Local,
+                LaneCarrier::SegRecompute,
+                LaneCarrier::SegS64,
+                LaneCarrier::SegS64,
+                LaneCarrier::SegS100,
+                LaneCarrier::SegS100,
+                LaneCarrier::SegS100,
+                LaneCarrier::SegSAcc,
+            ]
+        );
+        let arms: Vec<CacheArm> = SEG_SMEM.iter().map(|l| l.arm).collect();
+        assert_eq!(
+            arms,
+            vec![
+                CacheArm::Control,
+                CacheArm::Control,
+                CacheArm::Hot16,
+                CacheArm::Cache0,
+                CacheArm::Cache0,
+                CacheArm::Hot16,
+                CacheArm::Hot16,
+                CacheArm::K24,
+                CacheArm::K40,
+                CacheArm::Hot16,
+            ]
+        );
+        seg_lane_facts(&SEG_SMEM);
+    }
+
+    /// The R7 device-scratch rotation, same shape check. `allrepeat` rides HERE and only
+    /// here: a whole-list slab is far past what a shared partition holds.
+    #[test]
+    fn cpu_seg_gmem_lane_set() {
+        let labels: Vec<&str> = SEG_GMEM.iter().map(|l| l.label).collect();
+        assert_eq!(
+            labels,
+            vec![
+                "control@256",
+                "control_lb@128",
+                "hot16@128",
+                "seg-recompute@128",
+                "seg-cache0-g@128",
+                "seg-hot16-g@128",
+                "seg-k24-g@128",
+                "seg-k40-g@128",
+                "seg-allrepeat-g@128",
+            ]
+        );
+        assert_eq!(LaneSet::SegGmem.rounds_and_warmup(), Some((99, 9)));
+        assert!(LaneSet::SegGmem.is_seg());
+        let carriers: Vec<LaneCarrier> = SEG_GMEM.iter().skip(4).map(|l| l.carrier).collect();
+        assert_eq!(carriers, vec![LaneCarrier::SegG; 5]);
+        assert_eq!(SEG_GMEM[3].carrier, LaneCarrier::SegRecompute);
+        assert_eq!(SEG_GMEM[8].arm, CacheArm::AllRepeat);
+        seg_lane_facts(&SEG_GMEM);
+    }
+
+    /// The R7 anchor rotation carries NO seg lane: it re-anchors the seg sessions and
+    /// prices the incumbent's hint as a paired contrast, so a dealt program would be a
+    /// second variable — and the emitter rejects an anchor log that carries the SEG line.
+    #[test]
+    fn cpu_seg_anchor_lane_set() {
+        let labels: Vec<&str> = SEG_ANCHOR.iter().map(|l| l.label).collect();
+        assert_eq!(labels, vec!["control@256", "hot16@128"]);
+        assert_eq!(LaneSet::SegAnchor.rounds_and_warmup(), Some((100, 10)));
+        assert!(!LaneSet::SegAnchor.is_seg());
+        assert!(SEG_ANCHOR.iter().all(|l| l.carrier == LaneCarrier::Local));
+        assert_eq!(SEG_ANCHOR[0].kernel(), LaneKernel::Pair);
+        assert_eq!(SEG_ANCHOR[1].kernel(), LaneKernel::Cached128Lb);
+    }
+
+    /// The facts every seg lane shares: the bounded 128 shape at Task 3/4's measured
+    /// occupancy, the kernel its carrier names, and an arm on that carrier's matrix.
+    fn seg_lane_facts(set: &[CacheLane]) {
+        for lane in set.iter().filter(|l| l.carrier.is_seg()) {
+            assert_eq!(lane.block_threads as usize, UNISKIP_PAIR_THREADS_128);
+            assert!(lane.launch_bounds, "{}", lane.label);
+            assert_eq!(lane.regs, 72, "{}", lane.label);
+            assert_eq!(lane.blocks_per_sm, 7, "{}", lane.label);
+            assert_eq!(lane.rows_per_block(), 16, "{}", lane.label);
+            assert_eq!(
+                lane.kernel(),
+                lane.carrier.kernel().unwrap(),
+                "{}",
+                lane.label
+            );
+            assert!(lane.carrier.supports(lane.arm), "{}", lane.label);
+        }
+        // The local anchors keep their pre-R7 dispatch, carrier or not.
+        for lane in set.iter().filter(|l| !l.carrier.is_seg()) {
+            let want = match (lane.block_threads as usize, lane.arm.uses_cache()) {
+                (UNISKIP_PAIR_THREADS_128, true) => LaneKernel::Cached128Lb,
+                (UNISKIP_PAIR_THREADS_128, false) => LaneKernel::Pair128Lb,
+                _ => LaneKernel::Pair,
+            };
+            assert_eq!(lane.kernel(), want, "{}", lane.label);
+        }
+    }
+
+    /// The five seg symbols and their sticky carveout requests, pinned: the names feed the
+    /// ARM lines, the config block and the hint echoes, and the percents ARE the carrier
+    /// configuration under test (16 -> 32 KiB, 32 -> 64 KiB, 100 -> 100 KiB).
+    #[test]
+    fn cpu_seg_carrier_kernels_and_carveouts_are_pinned() {
+        let named: Vec<(&str, Option<u32>)> = LaneCarrier::SEG
+            .iter()
+            .map(|&c| (c.kernel().unwrap().name(), c.carveout()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                ("eval_lsb_seg_s_cv64", Some(32)),
+                ("eval_lsb_seg_s_cv100", Some(100)),
+                ("eval_lsb_seg_s_acc", Some(32)),
+                ("eval_lsb_seg_g", Some(16)),
+                ("eval_lsb_seg_recompute", Some(16)),
+            ]
+        );
+        assert_eq!(LaneCarrier::Local.kernel(), None);
+        assert_eq!(LaneCarrier::Local.carveout(), None);
+        assert_eq!(LaneCarrier::default(), LaneCarrier::Local);
+        assert!(LaneCarrier::SegG.uses_slab());
+        assert!(LaneCarrier::SEG.iter().all(|c| c.is_seg()));
+        assert!(!LaneCarrier::SegS64.uses_slab());
+        // The machinery floor takes no plan: its carrier IS the reduction plane.
+        assert!(!LaneCarrier::SegRecompute.uses_plan());
+        assert!(LaneCarrier::SegS64.uses_plan());
+        assert_eq!(
+            LaneCarrier::SegG.supported_arms(),
+            vec!["cache0", "hot16", "allrepeat", "k24", "k40"]
+        );
+    }
+
+    /// The three R7 rotations' preregistered facts, from the ONE value that names them.
+    #[test]
+    fn cpu_seg_lane_set_selectors() {
+        let facts: Vec<(&str, &str, &str, &str, Option<(u32, u32)>)> =
+            [LaneSet::SegSmem, LaneSet::SegGmem, LaneSet::SegAnchor]
+                .iter()
+                .map(|&s| {
+                    (
+                        s.flag(),
+                        s.tag(),
+                        s.noun(),
+                        s.gates(),
+                        s.rounds_and_warmup(),
+                    )
+                })
+                .collect();
+        assert_eq!(
+            facts,
+            vec![
+                (
+                    "--seg-smem-factorial",
+                    "SEG-SMEM",
+                    "seg smem factorial",
+                    "tools/r7_gates.sh",
+                    Some((100, 10))
+                ),
+                (
+                    "--seg-gmem-factorial",
+                    "SEG-GMEM",
+                    "seg gmem factorial",
+                    "tools/r7_gates.sh",
+                    Some((99, 9))
+                ),
+                (
+                    "--seg-anchor",
+                    "SEG-ANCHOR",
+                    "seg anchor",
+                    "tools/r7_gates.sh",
+                    Some((100, 10))
+                ),
+            ]
+        );
+        for set in [LaneSet::SegSmem, LaneSet::SegGmem] {
+            assert_eq!(set.arms_noun(), "R7 seg lanes");
+        }
+        assert_eq!(LaneSet::SegAnchor.arms_noun(), "R7 anchor lanes");
+        assert_eq!(LaneSet::SegSmem.lanes(), &SEG_SMEM);
+        assert_eq!(LaneSet::SegGmem.lanes(), &SEG_GMEM);
+        assert_eq!(LaneSet::SegAnchor.lanes(), &SEG_ANCHOR);
+    }
+
+    #[test]
+    fn cpu_seg_lane_sets_validate() {
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            for set in [&SEG_SMEM[..], &SEG_GMEM[..], &SEG_ANCHOR[..]] {
+                validate_lane_set(&p, set).unwrap();
+            }
+        }
+    }
+
+    /// The seg validator's teeth. A carrier/arm pair off the pinned matrix is a wrong
+    /// measurement at best — `seg-recompute` with a live plan is a shared read past the
+    /// reduction plane — and two lanes of ONE carrier admitting one set is R3's aliasing
+    /// shape again. The counter-case is the R7 contrast itself: one admitted set on two
+    /// carriers must PASS, which is why the alias key carries the carrier.
+    #[test]
+    fn cpu_seg_lane_set_validator_rejects_off_matrix_pairs() {
+        let p = program(TermOrder::Locality);
+
+        let live_recompute = [seg_128(
+            "seg-recompute-hot16@128",
+            CacheArm::Hot16,
+            LaneCarrier::SegRecompute,
+        )];
+        let err = validate_lane_set(&p, &live_recompute).unwrap_err();
+        assert!(
+            err.contains("carrier seg-recompute runs cache0, not hot16"),
+            "{err}"
+        );
+
+        let off_matrix = [seg_128(
+            "seg-k24-s64@128",
+            CacheArm::K24,
+            LaneCarrier::SegS64,
+        )];
+        let err = validate_lane_set(&p, &off_matrix).unwrap_err();
+        assert!(err.contains("carrier seg-s runs cache0 | hot16"), "{err}");
+
+        let unbounded = [CacheLane {
+            launch_bounds: false,
+            ..seg_128("seg-hot16-s64@128", CacheArm::Hot16, LaneCarrier::SegS64)
+        }];
+        let err = validate_lane_set(&p, &unbounded).unwrap_err();
+        assert!(
+            err.contains("must be the bounded 128-thread shape"),
+            "{err}"
+        );
+
+        let aliased = [
+            seg_128("seg-hot16-g@128", CacheArm::Hot16, LaneCarrier::SegG),
+            seg_128("seg-hot16-g-again@128", CacheArm::Hot16, LaneCarrier::SegG),
+        ];
+        let err = validate_lane_set(&p, &aliased).unwrap_err();
+        assert!(err.contains("admit the same set"), "{err}");
+
+        let carrier_contrast = [
+            seg_128("seg-hot16-s64@128", CacheArm::Hot16, LaneCarrier::SegS64),
+            seg_128("seg-hot16-s100@128", CacheArm::Hot16, LaneCarrier::SegS100),
+            seg_128("seg-hot16-g@128", CacheArm::Hot16, LaneCarrier::SegG),
+            frontier_128("hot16@128", CacheArm::Hot16),
+        ];
+        validate_lane_set(&p, &carrier_contrast).unwrap();
     }
 
     #[test]
