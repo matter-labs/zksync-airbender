@@ -1012,6 +1012,7 @@ mod test {
             &|cs| mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(cs),
             common_constants::ROM_WORD_SIZE,
             24,
+            0,
         );
 
         serialize_to_file(
@@ -1048,6 +1049,7 @@ mod test {
                 &|cs| mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(cs),
                 common_constants::ROM_WORD_SIZE,
                 24,
+                0,
             );
 
         serialize_to_file(
