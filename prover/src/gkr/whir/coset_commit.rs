@@ -17,7 +17,7 @@
 //!
 //! WHIR's initial queries recompute the single coset a query lands in, produce
 //! the within-coset Merkle path there, and stitch it to the top-tree path. The
-//! result is byte-identical to `ColumnMajorBaseOracleForLDE::tree.get_proof`.
+//! result is byte-identical to the in-memory oracle's `tree.get_proof`.
 
 use super::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs;
 use super::offsets_vec_for_leaf_construction;
@@ -316,23 +316,6 @@ where
             .unwrap()
     }
 
-    /// Like [`query`](Self::query) but also returns the leaf values reshaped into
-    /// offset-major `[offset][column]` form (matching `query_for_folded_index`), as
-    /// needed by `whir_fold`'s base-layer batching hook.
-    pub fn query_structured(
-        &self,
-        query_index: usize,
-        twiddles: &Twiddles<F, Global>,
-        worker: &Worker,
-    ) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>) {
-        let q = self.query(query_index, twiddles, worker);
-        let num_cols = self.monomial_forms.len();
-        let leaf: Vec<Vec<F>> = (0..self.values_per_leaf)
-            .map(|o| q.leaf_values_concatenated[o * num_cols..(o + 1) * num_cols].to_vec())
-            .collect();
-        (leaf, q)
-    }
-
     /// Produce queries for many folded-domain indices, recomputing each distinct
     /// coset only once (a coset's LDE is 2^trace_len_log2 per column, so recomputing
     /// it per query would be wasteful). Returned queries are in input order.
@@ -413,6 +396,28 @@ where
         }
 
         out.into_iter().map(|q| q.unwrap()).collect()
+    }
+
+    /// Like [`query_many`](Self::query_many) but each result also carries the leaf
+    /// values reshaped into offset-major `[offset][column]` form (matching
+    /// `ColumnMajorBaseOracleForLDE::query_for_folded_index`), as consumed by
+    /// `whir_fold`'s round-0 batching. Results are in input order.
+    pub fn query_many_structured(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+    ) -> Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
+        let num_cols = self.monomial_forms.len();
+        self.query_many(query_indices, twiddles, worker)
+            .into_iter()
+            .map(|q| {
+                let leaf: Vec<Vec<F>> = (0..self.values_per_leaf)
+                    .map(|o| q.leaf_values_concatenated[o * num_cols..(o + 1) * num_cols].to_vec())
+                    .collect();
+                (leaf, q)
+            })
+            .collect()
     }
 }
 
@@ -888,6 +893,111 @@ where
         };
         (coset_index, values, query)
     }
+
+    /// Batched [`query`](Self::query): group the query indices by the top-tree
+    /// GROUP (the shared subtree over `2^group_log2` physically-adjacent cosets)
+    /// they land in and recompute each touched group's LDE columns + subtree
+    /// exactly once for all its queries. Per query the result tuple is identical
+    /// to [`query`](Self::query); results are in input order.
+    pub fn query_many(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+    ) -> Vec<(usize, Vec<E>, ExtensionFieldQuery<F, E, T>)> {
+        let num_cosets = self.lde_factor;
+        let cosets_log2 = num_cosets.trailing_zeros();
+        let coset_tree_size = (1usize << self.trace_len_log2) / self.values_per_leaf;
+        let group_log2 = self.group_log2;
+        let group_size = 1usize << group_log2;
+
+        // Group input positions by top-tree group index.
+        let mut by_group: std::collections::BTreeMap<usize, Vec<usize>> =
+            std::collections::BTreeMap::new();
+        for (pos, &qi) in query_indices.iter().enumerate() {
+            let coset_index = qi & (num_cosets - 1);
+            let physical_slot = bitreverse_index(coset_index, cosets_log2);
+            by_group
+                .entry(physical_slot >> group_log2)
+                .or_default()
+                .push(pos);
+        }
+
+        let ctx = ExtCommonCtx::<F>::new(
+            1usize << self.trace_len_log2,
+            num_cosets,
+            self.values_per_leaf,
+        );
+        let offsets =
+            offsets_vec_for_leaf_construction(1usize << self.trace_len_log2, self.values_per_leaf);
+
+        let mut out: Vec<Option<(usize, Vec<E>, ExtensionFieldQuery<F, E, T>)>> =
+            (0..query_indices.len()).map(|_| None).collect();
+
+        for (group_index, positions) in by_group.into_iter() {
+            // Recompute this group's cosets once (same recipe as `query`).
+            let columns: Vec<Box<[E]>> = if group_size == 1 {
+                let nat = bitreverse_index(group_index, cosets_log2);
+                vec![ext_coset_column::<F, E>(
+                    &self.monomial_form,
+                    twiddles,
+                    &ctx,
+                    nat,
+                    worker,
+                )]
+            } else {
+                parallel_collect(worker, group_size, |j| {
+                    let nat = bitreverse_index((group_index << group_log2) + j, cosets_log2);
+                    ext_coset_column_serial::<F, E>(&self.monomial_form, twiddles, &ctx, nat)
+                })
+            };
+
+            // Shared subtree over the group + the (group-independent) top-tree path.
+            let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
+            let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
+            let trace: &[&[&[E]]] = &coset_slices;
+            let subtree = T::construct_from_cosets::<E>(
+                trace,
+                self.values_per_leaf,
+                1,
+                true,
+                false,
+                false,
+                worker,
+            );
+            let (_root, top_path) = self.top_tree.get_proof(group_index);
+
+            for pos in positions {
+                let query_index = query_indices[pos];
+                let coset_index = query_index & (num_cosets - 1);
+                let internal_index = query_index >> cosets_log2;
+                assert!(internal_index < coset_tree_size);
+                let physical_slot = bitreverse_index(coset_index, cosets_log2);
+                let tree_index = physical_slot * coset_tree_size + internal_index;
+                let slot_in_group = physical_slot & (group_size - 1);
+
+                let my_column = &columns[slot_in_group];
+                let values: Vec<E> = offsets
+                    .iter()
+                    .map(|&off| my_column[off + internal_index])
+                    .collect();
+
+                let group_leaf_index = slot_in_group * coset_tree_size + internal_index;
+                let (_leaf, mut path) = subtree.get_proof(group_leaf_index);
+                path.extend_from_slice(&top_path);
+
+                let query = ExtensionFieldQuery {
+                    index: tree_index,
+                    leaf_values_concatenated: values.clone(),
+                    path,
+                    _marker: PhantomData,
+                };
+                out[pos] = Some((coset_index, values, query));
+            }
+        }
+
+        out.into_iter().map(|q| q.unwrap()).collect()
+    }
 }
 
 #[cfg(all(test, feature = "prover"))]
@@ -902,6 +1012,15 @@ mod test {
         let lo: u64 = rng.random();
         let hi: u64 = rng.random();
         Proth120::new((((hi as u128) << 64) | lo as u128) % Proth120::ORDER)
+    }
+
+    /// The monolithic Merkle tree of an in-memory base oracle (the reference the
+    /// coset-by-coset commitments are validated against).
+    fn mono_tree(oracle: &ColumnMajorBaseOracleForLDE<Proth120, Tree>) -> &Tree {
+        match oracle {
+            ColumnMajorBaseOracleForLDE::InMemory(o) => &o.tree,
+            _ => unreachable!("commit_trace_part returns the InMemory variant"),
+        }
     }
 
     /// The split on-disk setup preparation (per-coset RS + subtree files + top-tree,
@@ -935,16 +1054,18 @@ mod test {
         // twiddles are sized for the packed domain.
         let twiddles = Twiddles::<Proth120, Global>::new(1usize << packed_trace_len_log2, &worker);
 
-        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> = commit_trace_part_packed(
-            &col_refs,
-            &twiddles,
-            lde_factor,
-            vpl_log2,
-            cap_size,
-            packed_trace_len_log2,
-            pack_log2,
-            &worker,
-        );
+        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> =
+            commit_trace_part_packed::<Proth120, Proth120, Tree>(
+                &crate::gkr::prover::backend::NaiveBackend,
+                &col_refs,
+                &twiddles,
+                lde_factor,
+                vpl_log2,
+                cap_size,
+                packed_trace_len_log2,
+                pack_log2,
+                &worker,
+            );
 
         let prefix = format!("{}/split_setup_test", std::env::temp_dir().display());
         serialize_packed_base_commitment_split_to_disk::<Proth120, Tree>(
@@ -980,13 +1101,14 @@ mod test {
         // Cap must match.
         assert_eq!(
             PathQueriable::get_cap(&split_tree),
-            mono.tree.get_cap(),
+            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
             "split cap != monolithic cap"
         );
 
         let tree_size = lde_factor * coset_tree_size;
         for idx in 0..tree_size {
-            let (mono_leaf, mono_path) = mono.tree.get_proof(idx);
+            let (mono_leaf, mono_path) =
+                crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), idx);
             let (split_leaf, split_path) = PathQueriable::get_proof(&split_tree, idx);
             assert_eq!(split_leaf, mono_leaf, "leaf @ idx={idx}");
             assert_eq!(split_path, mono_path, "path @ idx={idx}");
@@ -1034,15 +1156,17 @@ mod test {
 
         let twiddles = Twiddles::<Proth120, Global>::new(trace_len, &worker);
 
-        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> = commit_trace_part(
-            &col_refs,
-            &twiddles,
-            lde_factor,
-            first_fold_log2,
-            cap_size,
-            trace_len_log2,
-            &worker,
-        );
+        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> =
+            commit_trace_part::<Proth120, Proth120, Tree>(
+                &crate::gkr::prover::backend::NaiveBackend,
+                &col_refs,
+                &twiddles,
+                lde_factor,
+                first_fold_log2,
+                cap_size,
+                trace_len_log2,
+                &worker,
+            );
         let coset = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(
             &col_refs,
             &twiddles,
@@ -1053,7 +1177,11 @@ mod test {
             &worker,
         );
 
-        assert_eq!(mono.tree.get_cap(), coset.get_cap(), "cap mismatch");
+        assert_eq!(
+            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            coset.get_cap(),
+            "cap mismatch"
+        );
 
         let vpl = 1usize << first_fold_log2;
         let tree_size = lde_factor * (trace_len / vpl);
@@ -1123,7 +1251,12 @@ mod test {
         let twiddles = Twiddles::<Proth120, Global>::new(trace_len, &worker);
 
         let mono: crate::gkr::whir::ColumnMajorBaseOracleForLDE<Proth120, Tree> =
-            crate::gkr::prover::stages::commitment_utils::commit_trace_part(
+            crate::gkr::prover::stages::commitment_utils::commit_trace_part::<
+                Proth120,
+                Proth120,
+                Tree,
+            >(
+                &crate::gkr::prover::backend::NaiveBackend,
                 &col_refs,
                 &twiddles,
                 lde_factor,
@@ -1141,7 +1274,11 @@ mod test {
             trace_len_log2,
             &worker,
         );
-        assert_eq!(mono.tree.get_cap(), coset.get_cap(), "cap mismatch");
+        assert_eq!(
+            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            coset.get_cap(),
+            "cap mismatch"
+        );
 
         // leaf hash = keccak256 of the column-major BE16 values (as the tree hashes).
         let leaf_hash = |vals: &[Proth120]| -> [u32; 8] {
@@ -1161,7 +1298,8 @@ mod test {
         let tree_size = lde_factor * (trace_len / vpl);
         for qi in 0..tree_size {
             let q = coset.query(qi, &twiddles, &worker);
-            let (leaf_h, expected_path) = mono.tree.get_proof(q.index);
+            let (leaf_h, expected_path) =
+                crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), q.index);
             assert_eq!(q.path, expected_path, "path @ q={qi}");
             assert_eq!(
                 leaf_hash(&q.leaf_values_concatenated),
@@ -1240,8 +1378,10 @@ mod test {
                 lde_factor,
                 Some(&worker),
             );
+            let conv =
+                crate::gkr::prover::backend::StandardExtCoeffConv::<Proth120>::new(trace_len, vpl);
             let mono = super::super::commit_single_ext_poly::<Proth120, Proth120, Tree>(
-                rs, vpl, cap, &worker,
+                rs, vpl, cap, &conv, &worker,
             );
             let coset = CosetByCosetExtCommitment::<Proth120, Proth120, Tree>::commit(
                 &monomial, &twiddles, lde_factor, vpl, cap, &worker,
