@@ -445,4 +445,42 @@ DEVICE_FORCEINLINE void uniskip_segb_body(const uniskip_pair_desc &desc, const u
   }
 }
 
+// SOFTWARE SLOT ALLOCATOR. A slab region is claimed per RESIDENT block rather than per block
+// index, so the pool is the machine's residency (SM ids x slots) instead of the grid.
+constexpr u32 UNISKIP_SLOT_LOG_SLOTS = 4;
+constexpr u32 UNISKIP_SLOTS_PER_SM = 1u << UNISKIP_SLOT_LOG_SLOTS;
+constexpr u32 UNISKIP_SLOT_SM_CAPACITY = 1024;
+
+// The id is read ONCE and returned packed with the slot: preemption may move the block and
+// report a different id later, so what the release clears must be the id it CLAIMED under.
+DEVICE_FORCEINLINE u32 uniskip_slot_claim(u32 *mask) {
+  u32 smid;
+  asm volatile("mov.u32 %0, %%smid;" : "=r"(smid));
+  if (smid >= UNISKIP_SLOT_SM_CAPACITY)
+    __trap(); // the raw id space is sparse; capacity is a bound, not a count of SMs
+  u32 *word = mask + smid;
+  u32 seen = atomicOr(word, 0u);
+  for (;;) {
+    const u32 free_bits = ~seen & ((1u << UNISKIP_SLOTS_PER_SM) - 1);
+    if (free_bits == 0)
+      __trap(); // more resident blocks than slots means the occupancy gate is wrong: never spin
+    const u32 slot = static_cast<u32>(__ffs(static_cast<int>(free_bits))) - 1;
+    const u32 prev = atomicCAS(word, seen, seen | (1u << slot));
+    if (prev == seen)
+      return (smid << UNISKIP_SLOT_LOG_SLOTS) | slot; // the packed pair IS the region index
+    seen = prev;
+  }
+}
+
+// Relaxed by construction: the caller's pre-release barrier has already retired every
+// block-local slab read, and the next owner's own fill-then-barrier covers its side.
+DEVICE_FORCEINLINE void uniskip_slot_release(u32 *mask, const u32 region) {
+  const u32 slot = region & (UNISKIP_SLOTS_PER_SM - 1);
+  [[maybe_unused]] const u32 prev = atomicAnd(mask + (region >> UNISKIP_SLOT_LOG_SLOTS), ~(1u << slot));
+#if AB_UNISKIP_WINDOW_DIAG_ON
+  if ((prev & (1u << slot)) == 0)
+    __trap();
+#endif
+}
+
 } // namespace airbender::gkr_uniskip_bench

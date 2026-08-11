@@ -224,6 +224,17 @@ cuda_kernel!(
     EvalLsbSegbRecompute,
     ab_gkr_uniskip_eval_lsb_segb_recompute_kernel(desc: UniskipVmDesc, seg: UniskipSegDesc)
 );
+// The slotted-slab variant. `mask` is a SEPARATE fourth parameter: growing `UniskipSegDesc`
+// would shift every seg kernel's parameter block and move the pinned digests.
+cuda_kernel!(
+    EvalLsbSegbGSlotted,
+    ab_gkr_uniskip_eval_lsb_segb_g_slotted_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc,
+        seg: UniskipSegDesc,
+        mask: *mut u32
+    )
+);
 cuda_kernel!(
     Finalize,
     ab_gkr_uniskip_finalize_kernel(partials: *const u32, blocks: u32, q: *mut u32)
@@ -831,6 +842,33 @@ pub fn eval_lsb_segb_g(
     EvalLsbSegbGFunction::default().launch(&config, &args)
 }
 
+/// Slots per SM id, and the SM-id capacity the slotted body traps above — the raw `%smid`
+/// space is sparse, so this bounds the index rather than counting SMs. The mask is
+/// [`UNISKIP_SLOT_SM_CAPACITY`] words, zeroed before the launch; the pool is
+/// `UNISKIP_SLOT_SM_CAPACITY * UNISKIP_SLOTS_PER_SM` slab regions.
+pub const UNISKIP_SLOT_SM_CAPACITY: u32 = 1024;
+pub const UNISKIP_SLOTS_PER_SM: u32 = 16;
+
+/// [`eval_lsb_segb_g`] with the slab region claimed from `mask` per RESIDENT block, so the
+/// pool is sized by the machine's residency instead of the grid.
+pub fn eval_lsb_segb_g_slotted(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    seg: &UniskipSegDesc,
+    mask: &mut DeviceSlice<u32>,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(
+        mask.len(),
+        UNISKIP_SLOT_SM_CAPACITY as usize,
+        "the slot mask is one word per SM id"
+    );
+    let args = EvalLsbSegbGSlottedArguments::new(*desc, *plan, *seg, mask.as_mut_ptr());
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbSegbGSlottedFunction::default().launch(&config, &args)
+}
+
 /// [`eval_lsb_segb_g`]'s machinery floor: no slab and no prologue, so every reference
 /// recomputes.
 pub fn eval_lsb_segb_recompute(
@@ -913,6 +951,18 @@ pub fn set_segb_g_carveout(percent: u32) -> CudaResult<()> {
     unsafe {
         cudaFuncSetAttribute(
             EvalLsbSegbGFunction::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
+}
+
+/// [`set_segb_g_carveout`] for the slotted-slab variant.
+pub fn set_segb_g_slotted_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbSegbGSlottedFunction::default().as_ptr(),
             CudaFuncAttribute::PreferredSharedMemoryCarveout,
             percent as std::os::raw::c_int,
         )

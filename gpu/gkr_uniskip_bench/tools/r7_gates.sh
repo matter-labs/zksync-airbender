@@ -2,7 +2,7 @@
 # v3 R7 segmented-pair gates, executable rather than transcribed.
 #
 #   sass        the nine frozen bodies (by INVOKING r5_gates.sh sass, so that table lives in
-#               one place) plus the seven seg symbols: symbol set, per-symbol normalized
+#               one place) plus the eight seg symbols: symbol set, per-symbol normalized
 #               instruction counts AND body digests, `_cv64` normalized-IDENTICAL to `_cv100`,
 #               and the shipped resource usage (72 regs, no stack, no local) — SHIPPED build
 #               only, and it says so instead of comparing the wrong binary. `all` runs this lane
@@ -28,9 +28,10 @@
 #
 # `counts` and `regression` need GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1. This script builds that
 # binary ITSELF and rebuilds the shipped one before any lane that needs it and on exit —
-# whatever it was handed and however it exits. The diagnostic build spills 8 B on the seg-S
-# symbols (Task 3), so a diagnostic binary left behind times like a diagnostic binary, and the
-# next thing anyone runs here is a measurement.
+# whatever it was handed and however it exits. The diagnostic build USED to spill 8 B on the
+# seg-S symbols (Task 3) until 87b5df89 hoisted the eq scaling pre-publish; it no longer does,
+# but a diagnostic binary left behind still carries the counters, and the next thing anyone runs
+# here is a measurement.
 #
 # `9>&-` on every cargo invocation is load-bearing, not hygiene: this script runs under
 # `.agents/bin/with_gpu_lock.sh`, which holds the GPU lock on fd 9, and a `cargo build` spawns
@@ -77,12 +78,12 @@ seg-g k24
 seg-g k40
 seg-g allrepeat"
 
-# The seven seg symbols: fn|normalized instruction count|shared bytes|12-hex sha256 of the
+# The eight seg symbols: fn|normalized instruction count|shared bytes|12-hex sha256 of the
 # NORMALIZED body. Task 3 and Task 4 measured the R7 counts on the shipped build and R7b Task 1
-# the two `segb` ones; the digest closes the gap an instruction count leaves open — a body can be
-# rewritten at a constant count, and these seven are the kernels the sessions measure. The
+# the three `segb` ones; the digest closes the gap an instruction count leaves open — a body can
+# be rewritten at a constant count, and these eight are the kernels the sessions measure. The
 # digests are taken over the same normalized text `norm_dump` produces here, and they survive a
-# rebuild: the diagnostic round-trip recompiles this TU twice and reproduces all seven. `_cv64`
+# rebuild: the diagnostic round-trip recompiles this TU twice and reproduces all eight. `_cv64`
 # and `_cv100` are ONE body under two symbols, so they share a digest as well as a count.
 SEG_SYMBOLS="ab_gkr_uniskip_eval_lsb_seg_recompute_kernel|8336|2048|dc7e31370bb1
 ab_gkr_uniskip_eval_lsb_seg_g_kernel|9560|2048|5e330b3f2dff
@@ -90,7 +91,8 @@ ab_gkr_uniskip_eval_lsb_seg_s_acc_kernel|10088|0|7ef3be21eec9
 ab_gkr_uniskip_eval_lsb_seg_s_cv100_kernel|9784|0|2ef383967d12
 ab_gkr_uniskip_eval_lsb_seg_s_cv64_kernel|9784|0|2ef383967d12
 ab_gkr_uniskip_eval_lsb_segb_recompute_kernel|8368|0|8d0c0350ba2c
-ab_gkr_uniskip_eval_lsb_segb_g_kernel|9696|0|cb905a5c1a37"
+ab_gkr_uniskip_eval_lsb_segb_g_kernel|9696|0|cb905a5c1a37
+ab_gkr_uniskip_eval_lsb_segb_g_slotted_kernel|9768|8|e3a4cd455280"
 SEG_TU=uniskip_lsb_seg.cu.o
 
 build_bench() { # build_bench <diag-env-value-or-empty>
@@ -504,7 +506,7 @@ norm_dump() { # norm_dump <cuobjdump-text> <outdir>
 body_digest() { sha256sum "$1" | cut -c1-12; }
 
 seg_sass() {
-  note "### the seven seg symbols: symbol set, instruction counts, cv64 = cv100, resources"
+  note "### the eight seg symbols: symbol set, instruction counts, cv64 = cv100, resources"
   local ar=$ARCHIVE work="$TMP/sass" ar_abs
   ar_abs=$(readlink -f "$ar")
   mkdir -p "$work"
@@ -530,8 +532,9 @@ seg_sass() {
     if [ ! -f "$work/live/$fn" ]; then bad "$fn is missing from the built archive"; continue; fi
     got=$(wc -l <"$work/live/$fn")
     dig=$(body_digest "$work/live/$fn")
-    # Resource usage is the SPILL gate: the diagnostic build spills 8 B on the S symbols, so
-    # the shipped one saying STACK:0 LOCAL:0 at 72 registers is what makes a timing comparable.
+    # Resource usage is the SPILL gate: the diagnostic build spilled 8 B on the S symbols until
+    # 87b5df89, so the shipped one saying STACK:0 LOCAL:0 at 72 registers is what makes a timing
+    # comparable — the pin stays because it is what would catch the next such regression.
     res=$(awk -v fn="$fn:" '$2 == fn {getline; print $0}' "$work/res.txt" \
           | tr -s ' ' | sed 's/^ //')
     if [ "$got" != "$want" ]; then
@@ -566,8 +569,8 @@ seg_sass() {
   else
     note "  negative control: 1 instruction rewritten at $n_doc instructions changes the digest"
   fi
-  [ "$rows" = 7 ] || bad "expected 7 seg symbols, checked $rows"
-  [ "$ok" = 7 ] || bad "the seg symbol table is not 7/7"
+  [ "$rows" = 8 ] || bad "expected 8 seg symbols, checked $rows"
+  [ "$ok" = 8 ] || bad "the seg symbol table is not 8/8"
   # cv64 and cv100 are ONE body under two symbols — the carveout attribute is per function and
   # sticky, which is the only reason both exist. If they ever diverge, the S contrast is
   # measuring two bodies.
@@ -641,7 +644,7 @@ case "${1:-all}" in
   # `sass` LAST as well, and that is not belt-and-braces: the diagnostic round-trip recompiles
   # the seg TU twice, and r5's own sass lane (which `regression` inherits) covers the frozen
   # NINE only. Without this the binary the tree ends on — the one Task 7 measures — would never
-  # have had the seven seg bodies verified. No lane may be appended after it that can rebuild.
+  # have had the eight seg bodies verified. No lane may be appended after it that can rebuild.
   all)
     sass; matrix; counts; cpu; fixtures; regression
     note ""

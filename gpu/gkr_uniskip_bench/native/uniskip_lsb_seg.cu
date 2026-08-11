@@ -62,6 +62,21 @@ EXTERN __global__ void __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32, 7)
 }
 
 EXTERN __global__ void __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32, 7)
+    ab_gkr_uniskip_eval_lsb_segb_g_slotted_kernel(const __grid_constant__ uniskip_pair_desc desc, const __grid_constant__ uniskip_cache_desc plan,
+                                                  const __grid_constant__ uniskip_seg_desc seg, u32 *mask) {
+  __shared__ u32 published;
+  if (threadIdx.x == 0)
+    published = uniskip_slot_claim(mask);
+  __syncthreads(); // claim-publish
+  const u32 region = published;
+  const uniskip_seg_carrier_gmem car{reinterpret_cast<u32 *>(seg.slab_base) + region * seg.slab_stride_words};
+  uniskip_segb_body<uniskip_seg_carrier_gmem, false>(desc, plan, seg, car);
+  __syncthreads(); // pre-release: every block-local slab read has retired
+  if (threadIdx.x == 0)
+    uniskip_slot_release(mask, region);
+}
+
+EXTERN __global__ void __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32, 7)
     ab_gkr_uniskip_eval_lsb_segb_recompute_kernel(const __grid_constant__ uniskip_pair_desc desc, const __grid_constant__ uniskip_seg_desc seg) {
   const uniskip_seg_carrier_gmem car{reinterpret_cast<u32 *>(seg.slab_base) + blockIdx.x * seg.slab_stride_words};
   uniskip_cache_desc unread_plan;
