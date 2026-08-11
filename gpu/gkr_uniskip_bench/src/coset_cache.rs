@@ -2406,6 +2406,11 @@ mod lane_tests {
             vec!["hot16", "k24", "k40"]
         );
         assert_eq!(LaneCarrier::SegSAcc.supported_arms(), vec!["hot16"]);
+        assert_eq!(
+            LaneCarrier::SegS64.supported_arms(),
+            vec!["cache0", "hot16"]
+        );
+        assert_eq!(LaneCarrier::SegRecompute.supported_arms(), vec!["cache0"]);
     }
 
     /// The three R7 rotations' preregistered facts, from the ONE value that names them.
