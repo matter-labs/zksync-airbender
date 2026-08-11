@@ -4568,12 +4568,14 @@ for this driver on this part, not a derivable one.
 
 Carried from this rung's two build reports — `.agents/sdd/2026-08-11-v3-r7b/task-1-report.md`
 (the Task 1b sections) and `task-2-report.md`. None of it changes a figure above; all of it is
-inside what the `segb-hot16-g-slotted` lane measured, which is why it is recorded rather than
-chased.
+inside what the `segb-hot16-g-slotted` lane measured (one exception: the k40 pool figure below
+is a projection — the slotted lane is pinned hot16-only), which is why it is recorded rather
+than chased.
 
-- **The pool is allocated at two tiers.** 16,384 regions (1,024 SM ids × 16 slots) × the arm's
-  slab stride: **117.4 MB at hot16** (7,168 B) and **218.1 MB at k40** (13,312 B), plus the
-  4 KB mask, and the host prints both figures on the prepare path. The **≈21.6 MB touched**
+- **The pool sizes at two tiers.** 16,384 regions (1,024 SM ids × 16 slots) × the arm's
+  slab stride: **117.4 MB at hot16** (7,168 B, the tier the lane ran — measured/allocated) and
+  a projected **218.1 MB at k40** (13,312 B; never allocated — the slotted lane supports hot16
+  only), plus the 4 KB mask; the host prints the pool figures on the prepare path. The **≈21.6 MB touched**
   (16 slots × 188 SMs × 7,168 B) is a BOUND on what the hot16 tier can reach, not a measured
   residency — it counts `multiProcessorCount`, and the id it is keyed to is virtualized.
 - **`%smid` lowers to `SR_VIRTUALSMID`.** Under MPS/MIG that is the virtualized id. It stays
@@ -4592,8 +4594,8 @@ chased.
   8 B is ptxas's shared allocation granularity and is what the SASS gate pins. Those four bytes
   are also what moved the carveout ladder — see the portable finding above.
 - **Region arithmetic is 32-bit-safe by construction.** Largest region index × slab stride =
-  16,383 × 5,632 ≈ **92.3 M words**, three orders below the u32 wrap that the grid-indexed
-  `segb_g` has to reason about; the host adds a `prepare_seg` assert on top.
+  16,383 × 5,632 ≈ **92.3 M words**, 46.5× (2.15 % of 2³²) below the u32 wrap that the
+  grid-indexed `segb_g` has to reason about; the host adds a `prepare_seg` assert on top.
 
 ### Artifacts
 
