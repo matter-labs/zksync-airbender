@@ -5,7 +5,6 @@
 #![feature(iter_advance_by)]
 #![feature(ptr_as_ref_unchecked)]
 #![feature(option_zip)]
-#![feature(assert_matches)]
 
 pub mod definitions;
 
