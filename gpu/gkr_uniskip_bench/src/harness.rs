@@ -1,5 +1,6 @@
 //! Device allocations, descriptor upload and the LDE pass.
 
+use era_cudart::device::{get_device, get_device_properties};
 use era_cudart::event::{elapsed_time, CudaEvent};
 use era_cudart::memory::{memory_copy, DeviceAllocation};
 use era_cudart::result::CudaResult;
@@ -460,12 +461,23 @@ pub struct PassConfig {
 }
 
 impl PassConfig {
-    /// Logical rows one eval block covers under this configuration.
+    /// Logical rows one eval block covers under this configuration. The carrier is read
+    /// FIRST: a transplant body's tile is a property of the body, not of the block size it
+    /// shares with every other 128-thread kernel.
     pub fn rows_per_block(&self) -> u32 {
+        if let Some(rows) = self.carrier.rows_per_block() {
+            return rows;
+        }
         if self.mode == EvalMode::LsbPair && self.block_threads == UNISKIP_PAIR_THREADS_128 as u32 {
             return UNISKIP_PAIR_ROWS_PER_BLOCK_128 as u32;
         }
         self.mode.rows_per_block_with(self.compact_groups)
+    }
+
+    /// Partial slots this configuration's eval grid writes over `geometry` — what
+    /// `finalize` reduces, and one per WARP rather than per block on a transplant carrier.
+    pub fn partial_slots(&self, geometry: &Geometry) -> u32 {
+        geometry.eval_blocks(self.rows_per_block()) * self.carrier.partials_per_block()
     }
 }
 
@@ -505,11 +517,31 @@ type SegSlabLaunch =
     fn(&UniskipVmDesc, &UniskipCacheDesc, &UniskipSegDesc, u32, &CudaStream) -> CudaResult<()>;
 /// The machinery floor: no slab and no prologue, hence no plan parameter at all.
 type SegRecomputeLaunch = fn(&UniskipVmDesc, &UniskipSegDesc, u32, &CudaStream) -> CudaResult<()>;
+/// Carrier G's slotted variant: the region is claimed per RESIDENT block out of the mask,
+/// so the mask travels with the launch.
+type SegSlottedLaunch = fn(
+    &UniskipVmDesc,
+    &UniskipCacheDesc,
+    &UniskipSegDesc,
+    &mut DeviceSlice<u32>,
+    u32,
+    &CudaStream,
+) -> CudaResult<()>;
 
 /// Slab bytes and words one accounting unit occupies: a `bf` source's produced pair per
 /// lane identity, 32 identities to a warp row.
 const SEG_SLAB_UNIT_BYTES: u32 = UNISKIP_COSET_UNIT_BYTES as u32 * 32;
 const SEG_SLAB_UNIT_WORDS: u32 = SEG_SLAB_UNIT_BYTES / size_of::<u32>() as u32;
+/// Slab regions the slotted pool holds: every SM id the body admits, times its slots.
+const SEG_SLOT_POOL_REGIONS: u32 =
+    kernels::UNISKIP_SLOT_SM_CAPACITY * kernels::UNISKIP_SLOTS_PER_SM;
+
+/// Words a slab of `regions` regions of a `units`-unit arm occupies. The DEVICE indexes it
+/// as `region * slab_stride_words` in 32-bit arithmetic, so this is also the bound a
+/// geometry must stay under — a wrapped region index reads another block's pairs.
+fn seg_slab_words(regions: u32, units: u32) -> u64 {
+    u64::from(regions) * u64::from(units) * u64::from(SEG_SLAB_UNIT_WORDS)
+}
 
 /// The segmented launch of one carrier. ONE dispatch, shared by the factorial lanes and
 /// the `--carrier` single-arm path, so a carrier cannot be wired two different ways.
@@ -517,6 +549,7 @@ const SEG_SLAB_UNIT_WORDS: u32 = SEG_SLAB_UNIT_BYTES / size_of::<u32>() as u32;
 enum SegLaunch {
     Shared(SegSharedLaunch),
     Slab(SegSlabLaunch),
+    Slotted(SegSlottedLaunch),
     Recompute(SegRecomputeLaunch),
 }
 
@@ -529,6 +562,9 @@ impl SegLaunch {
             LaneCarrier::SegSAcc => Self::Shared(kernels::eval_lsb_seg_s_acc),
             LaneCarrier::SegG => Self::Slab(kernels::eval_lsb_seg_g),
             LaneCarrier::SegRecompute => Self::Recompute(kernels::eval_lsb_seg_recompute),
+            LaneCarrier::SegbG => Self::Slab(kernels::eval_lsb_segb_g),
+            LaneCarrier::SegbRecompute => Self::Recompute(kernels::eval_lsb_segb_recompute),
+            LaneCarrier::SegbGSlotted => Self::Slotted(kernels::eval_lsb_segb_g_slotted),
         })
     }
 }
@@ -547,14 +583,28 @@ struct PreparedSeg {
     /// The arm's footprint in accounting units — what `seg.slab_stride_words` is derived
     /// from, kept so the derivation is re-checked at every launch.
     units: u32,
-    /// Carrier G's per-block scratch. The lane (or the harness) OWNS this allocation:
+    /// The GRID this state was sized for. Two block counts are in play (an R7 tile and the
+    /// transplant's quarter of it), and the slab is regioned per block, so a reuse at
+    /// another grid would be a silent out-of-bounds rather than a wrong number.
+    blocks: u32,
+    /// Carrier G's scratch. The lane (or the harness) OWNS this allocation:
     /// `seg.slab_base` is a bare `u64`, so this field is the only thing keeping it alive.
     #[allow(dead_code)] // referenced by seg.slab_base
     slab: Option<DeviceAllocation<u32>>,
+    /// The slotted carrier's claim mask, one word per SM id, zeroed here and asserted
+    /// all-zero again OUTSIDE any timed rotation — a set bit is a block that died without
+    /// releasing its region.
+    mask: Option<DeviceAllocation<u32>>,
 }
 
 impl PreparedSeg {
-    fn run(&self, desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+    fn run(&mut self, desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+        assert_eq!(
+            blocks, self.blocks,
+            "a seg state prepared for {} blocks was launched at {blocks}: its slab regions \
+             and its partial slots are both sized by that grid",
+            self.blocks
+        );
         match self.launch {
             SegLaunch::Shared(launch) => launch(
                 desc,
@@ -568,16 +618,41 @@ impl PreparedSeg {
                 debug_assert!(
                     self.seg.slab_base != 0
                         && self.seg.slab_stride_words == self.units * SEG_SLAB_UNIT_WORDS,
-                    "carrier G launched against slab base {:#x} stride {} words, not the \
-                     {} units this arm plans",
+                    "a device-scratch carrier launched against slab base {:#x} stride {} \
+                     words, not the {} units this arm plans",
                     self.seg.slab_base,
                     self.seg.slab_stride_words,
                     self.units
                 );
                 launch(desc, &self.plan, &self.seg, blocks, stream)
             }
-            SegLaunch::Recompute(launch) => launch(desc, &self.seg, blocks, stream),
+            SegLaunch::Slotted(launch) => {
+                let mask = self
+                    .mask
+                    .as_mut()
+                    .expect("the slotted carrier owns its claim mask");
+                launch(desc, &self.plan, &self.seg, mask, blocks, stream)
+            }
+            // The floor's carrier is never dereferenced, so its slab stays NULL: a base
+            // here would be a live pointer nothing releases.
+            SegLaunch::Recompute(launch) => {
+                debug_assert_eq!(
+                    self.seg.slab_base, 0,
+                    "the machinery floor recomputes every reference; it must carry no slab"
+                );
+                launch(desc, &self.seg, blocks, stream)
+            }
         }
+    }
+
+    /// The claim mask, downloaded. `None` off the slotted carrier.
+    fn download_mask(&self) -> CudaResult<Option<Vec<u32>>> {
+        let Some(mask) = &self.mask else {
+            return Ok(None);
+        };
+        let mut host = vec![0u32; mask.len()];
+        memory_copy(&mut host[..], &mask[..])?;
+        Ok(Some(host))
     }
 }
 
@@ -620,8 +695,10 @@ fn prepare_seg(
             );
         }
     } else {
-        // The machinery floor's carrier IS the reduction plane, so one live slot would be
-        // a shared read ~21 KiB past a 2 KiB allocation rather than a wrong number.
+        // A machinery floor carries no slab, so one live slot is a bad ADDRESS rather than
+        // a wrong number: the R7 floor's carrier IS the reduction plane, where the read
+        // lands ~21 KiB past a 2 KiB allocation, and the transplant floor's is the null
+        // slab base it is pinned to.
         assert!(
             state
                 .sources
@@ -639,12 +716,27 @@ fn prepare_seg(
     };
     let mut shared_bytes = 0;
     let mut slab = None;
+    let mut mask = None;
     if carrier.uses_slab() {
-        // Exactly the region the kernel addresses: `blocks` per-block slabs of the arm's
-        // own footprint. `cache0` plans nothing and never touches it, so the allocation
-        // still takes one word rather than none — `alloc(0)` has no valid pointer.
-        let words = blocks as usize * units as usize * SEG_SLAB_UNIT_WORDS as usize;
-        let mut alloc = DeviceAllocation::<u32>::alloc(words.max(1))?;
+        // Exactly the regions the kernel addresses: one per block where `blockIdx.x`
+        // selects it, the whole SM-id x slot space where a resident block CLAIMS one — so
+        // the slotted pool is sized by the machine's residency instead of by the grid.
+        // `cache0` plans nothing and never touches it, so the allocation still takes one
+        // word rather than none — `alloc(0)` has no valid pointer.
+        let regions = if carrier.is_slotted() {
+            SEG_SLOT_POOL_REGIONS
+        } else {
+            blocks
+        };
+        let words = seg_slab_words(regions, units);
+        // The device indexes the slab in 32-bit arithmetic, so a wrapped region would read
+        // another region's pairs rather than fault.
+        assert!(
+            words <= u64::from(u32::MAX),
+            "a {regions}-region slab of {units} units is {words} words, past the 32-bit \
+             region arithmetic the body indexes it with"
+        );
+        let mut alloc = DeviceAllocation::<u32>::alloc((words as usize).max(1))?;
         let base = alloc.as_mut_ptr() as u64;
         assert_eq!(
             base as usize % UNISKIP_COSET_E4_ALIGN,
@@ -654,6 +746,13 @@ fn prepare_seg(
         seg.slab_base = base;
         seg.slab_stride_words = units * SEG_SLAB_UNIT_WORDS;
         slab = Some(alloc);
+        if carrier.is_slotted() {
+            let zeros = vec![0u32; kernels::UNISKIP_SLOT_SM_CAPACITY as usize];
+            let mut words = DeviceAllocation::<u32>::alloc(zeros.len())?;
+            memory_copy(&mut words[..], &zeros[..])?;
+            mask = Some(words);
+            print_slot_pool_facts(units);
+        }
     } else if matches!(launch, SegLaunch::Shared(_)) {
         let plane = match carrier {
             LaneCarrier::SegSAcc => kernels::SEG_ACC_PLANE_BYTES,
@@ -667,8 +766,32 @@ fn prepare_seg(
         seg,
         shared_bytes,
         units,
+        blocks,
         slab,
+        mask,
     })
+}
+
+/// What the slotted pool costs, both ways: the SM-id space it must ALLOCATE for, and what
+/// the machine in front of it will actually touch. The allocated figure is a capacity bound
+/// on a sparse id space; the touched one is the footprint the L2 sees.
+fn print_slot_pool_facts(units: u32) {
+    let region_bytes = u64::from(units) * u64::from(SEG_SLAB_UNIT_BYTES);
+    let allocated = u64::from(SEG_SLOT_POOL_REGIONS) * region_bytes;
+    let sms = get_device()
+        .and_then(get_device_properties)
+        .map(|props| props.multiProcessorCount as u32)
+        .unwrap_or(0);
+    let touched = u64::from(sms) * u64::from(kernels::UNISKIP_SLOTS_PER_SM) * region_bytes;
+    let mb = |bytes: u64| bytes as f64 / 1e6;
+    println!(
+        "  slot pool           {SEG_SLOT_POOL_REGIONS} regions x {region_bytes} B = {:.1} MB \
+         allocated, {:.1} MB touched ({sms} SMs x {}), mask {} B",
+        mb(allocated),
+        mb(touched),
+        kernels::UNISKIP_SLOTS_PER_SM,
+        kernels::UNISKIP_SLOT_SM_CAPACITY * size_of::<u32>() as u32
+    );
 }
 
 /// Set one seg symbol's preferred shared-memory carveout. Per function and sticky for the
@@ -681,6 +804,9 @@ fn set_seg_carveout(carrier: LaneCarrier, percent: u32) -> CudaResult<()> {
         LaneCarrier::SegSAcc => kernels::set_seg_s_acc_carveout(percent),
         LaneCarrier::SegG => kernels::set_seg_g_carveout(percent),
         LaneCarrier::SegRecompute => kernels::set_seg_recompute_carveout(percent),
+        LaneCarrier::SegbG => kernels::set_segb_g_carveout(percent),
+        LaneCarrier::SegbRecompute => kernels::set_segb_recompute_carveout(percent),
+        LaneCarrier::SegbGSlotted => kernels::set_segb_g_slotted_carveout(percent),
     }
 }
 
@@ -743,9 +869,12 @@ pub struct PreparedLane {
     /// two labels, which is how R3's aliasing bug read as a zero effect.
     pub counts: coset_cache::CacheCounts,
     pub admitted: Vec<u16>,
-    /// This lane's grid. The 128 lanes cover 16 rows per block, the 256 lanes 32, so the
-    /// 128 grid is twice the 256 one over the same trace.
+    /// This lane's grid. The 128 lanes cover 16 rows per block, the 256 lanes 32 and a
+    /// transplant lane 4, so one rotation's grids span an 8x range over the same trace.
     pub blocks: u32,
+    /// Partial slots this lane's grid writes — what its own `finalize` reduces over. One
+    /// per block, or one per warp on a transplant carrier.
+    pub partial_slots: u32,
 }
 
 impl PreparedLane {
@@ -776,6 +905,9 @@ pub struct Harness {
     /// Eval grid and its partials count at this mode's row tile — NOT
     /// `geometry.blocks`, which is the warp-wide tile the v1/v2 modes use.
     eval_blocks: u32,
+    /// Partial slots that grid writes: `eval_blocks`, or four times it on a transplant
+    /// carrier, where every warp publishes its own. It is what `finalize` reduces over.
+    eval_slots: u32,
     eval_partials: u64,
     seed: u32,
     flat_eq: bool,
@@ -867,7 +999,10 @@ impl Harness {
         }
         .rows_per_block();
         let eval_blocks = geometry.eval_blocks(rows_per_block);
-        let eval_partials = geometry.eval_partials(rows_per_block);
+        // Slots, not blocks: a transplant carrier's four warps each publish their own, so
+        // the reduction is over four times its grid.
+        let eval_slots = eval_blocks * config.carrier.partials_per_block();
+        let eval_partials = UNISKIP_CELLS as u64 * u64::from(eval_slots);
         let stream = CudaStream::create()?;
 
         // `alloc(0)` has no valid device pointer; a class with no columns still gets
@@ -919,8 +1054,19 @@ impl Harness {
         let eq_low_words = eq_low_offset + geometry.eq_low_len() * CLASS_WORDS[CLASS_E4];
         let mut eq_low = DeviceAllocation::<u32>::alloc(eq_low_words)?;
 
-        let mut partials =
-            DeviceAllocation::<u32>::alloc(eval_partials as usize * CLASS_WORDS[CLASS_E4])?;
+        // Sized at the LARGEST lane of the run, which a transplant rotation's segb lanes
+        // set: every lane writes into the same buffer and each finalizes over its own slot
+        // count, so the allocation must cover the widest one.
+        let lane_slots = config.lane_set.map_or(0, |set| {
+            set.lanes()
+                .iter()
+                .map(|lane| lane.partial_slots(geometry.eval_blocks(lane.rows_per_block())))
+                .max()
+                .unwrap_or(0)
+        });
+        let mut partials = DeviceAllocation::<u32>::alloc(
+            eval_slots.max(lane_slots) as usize * UNISKIP_CELLS * CLASS_WORDS[CLASS_E4],
+        )?;
         let q = DeviceAllocation::<u32>::alloc(UNISKIP_CELLS * CLASS_WORDS[CLASS_E4])?;
         // A mode that runs no fold stage allocates no fold output: at the benchmark
         // geometry that buffer is ~1 GiB of device memory nothing would ever read.
@@ -1169,14 +1315,9 @@ impl Harness {
                     admitted = planned.admitted.iter().map(|e| e.source).collect();
                     state = Some(planned);
                 }
-                // The harness is built at the 128 tile (`pass_config` forces it for the
-                // factorial), so `eval_blocks` is the 16-row grid and the 256 lanes take
-                // half of it.
-                let blocks = if lane.block_threads as usize == UNISKIP_PAIR_THREADS_128 {
-                    eval_blocks
-                } else {
-                    eval_blocks / 2
-                };
+                // Each lane's own tile: the 128 lanes cover 16 rows, the 256 lanes 32, and
+                // a transplant lane 4 — so the grids of one rotation differ by 8x.
+                let blocks = geometry.eval_blocks(lane.rows_per_block());
                 // ONE source of truth for which kernel: the lane picks a `LaneKernel`
                 // and both the launcher and the printed name come from it. A seg lane
                 // additionally takes the DEALT program — the same records permuted, so
@@ -1194,7 +1335,10 @@ impl Harness {
                     | LaneKernel::SegSCv100
                     | LaneKernel::SegSAcc
                     | LaneKernel::SegG
-                    | LaneKernel::SegRecompute => {
+                    | LaneKernel::SegRecompute
+                    | LaneKernel::SegbG
+                    | LaneKernel::SegbRecompute
+                    | LaneKernel::SegbGSlotted => {
                         let deal = deal.as_ref().expect("a seg lane set deals its program");
                         let state = state.expect("a seg carrier runs a planned arm");
                         upload_dealt_program(&mut lane_desc, deal);
@@ -1218,6 +1362,7 @@ impl Harness {
                     plan,
                     launch,
                     blocks,
+                    partial_slots: lane.partial_slots(blocks),
                     counts,
                     admitted,
                 });
@@ -1402,12 +1547,42 @@ impl Harness {
                 seg.shared_bytes
             );
         }
+        // THE SLOTTED GATE, hard and fail-closed — the one occupancy figure that is a
+        // correctness precondition rather than a comparability one. The body traps when a
+        // block finds all 16 slots of its SM id taken, and a retiring block's RELAXED
+        // release is not ordered against a successor CTA's claim on the same SM: at a full
+        // 16 the trap is reachable on a healthy machine, so the residency must stay under
+        // it. Refuse to launch rather than measure a kernel that can abort mid-rotation.
+        let slotted = config.carrier.is_slotted()
+            || cache_lanes
+                .iter()
+                .any(|prepared| prepared.lane.carrier.is_slotted());
+        if slotted {
+            let realized = kernels::max_blocks_per_sm(
+                LaneKernel::SegbGSlotted,
+                UNISKIP_PAIR_THREADS_128 as u32,
+                0,
+            )?;
+            let slots = kernels::UNISKIP_SLOTS_PER_SM;
+            let pin = coset_cache::SEG_BLOCKS_PER_SM;
+            println!(
+                "  slot residency      {realized} blocks/SM ({}, pin {pin}, < {slots} slots)",
+                LaneKernel::SegbGSlotted.name()
+            );
+            assert!(
+                realized as u32 == pin && (realized as u32) < slots,
+                "the slotted carrier realizes {realized} blocks/SM against the pinned {pin} \
+                 and the {slots} slots one SM id holds — its claim would trap, so this is \
+                 not measurable"
+            );
+        }
 
         Ok(Self {
             layout,
             desc,
             geometry: *geometry,
             eval_blocks,
+            eval_slots,
             eval_partials,
             seed,
             flat_eq,
@@ -1487,18 +1662,28 @@ impl Harness {
         self.events[0].record(&self.stream)?;
         self.run_lde()?;
         self.events[1].record(&self.stream)?;
-        match (&self.eval_seg, &self.eval_cached, &self.eval_window) {
-            (Some(seg), ..) => seg.run(&self.desc, self.eval_blocks, &self.stream)?,
-            (None, Some((launch, plan)), _) => {
-                launch(&self.desc, plan, self.eval_blocks, &self.stream)?
+        {
+            // Destructured so the segmented state can be launched through `&mut` — it owns
+            // the slotted claim mask — without borrowing the whole harness.
+            let Self {
+                desc,
+                stream,
+                eval_blocks,
+                eval_seg,
+                eval_cached,
+                eval_window,
+                eval,
+                ..
+            } = self;
+            match (eval_seg, eval_cached, eval_window) {
+                (Some(seg), ..) => seg.run(desc, *eval_blocks, stream)?,
+                (None, Some((launch, plan)), _) => launch(desc, plan, *eval_blocks, stream)?,
+                (None, None, Some((launch, win))) => launch(desc, win, *eval_blocks, stream)?,
+                (None, None, None) => eval(desc, *eval_blocks, stream)?,
             }
-            (None, None, Some((launch, win))) => {
-                launch(&self.desc, win, self.eval_blocks, &self.stream)?
-            }
-            (None, None, None) => (self.eval)(&self.desc, self.eval_blocks, &self.stream)?,
         }
         self.events[2].record(&self.stream)?;
-        kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;
+        kernels::finalize(&self.partials, self.eval_slots, &mut self.q, &self.stream)?;
         self.events[3].record(&self.stream)?;
         self.run_fold()?;
         self.events[4].record(&self.stream)
@@ -1526,9 +1711,41 @@ impl Harness {
             }
         }
         self.events[2].record(&self.stream)?;
-        kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;
+        kernels::finalize(&self.partials, self.eval_slots, &mut self.q, &self.stream)?;
         self.events[3].record(&self.stream)?;
         self.events[4].record(&self.stream)
+    }
+
+    /// Every slotted launch state's claim mask, downloaded and checked all-zero: a set bit
+    /// is a region a block claimed and never released, which the next launch would then
+    /// share with a live owner. Returns the masks checked. NEVER call this inside a timed
+    /// rotation — it synchronizes and it is not part of the measured work.
+    pub fn validate_slot_masks(&self) -> CudaResult<Result<usize, String>> {
+        let states = self
+            .eval_seg
+            .iter()
+            .chain(
+                self.cache_lanes
+                    .iter()
+                    .filter_map(|lane| match &lane.launch {
+                        LaneLaunch::Seg(seg) => Some(&**seg),
+                        _ => None,
+                    }),
+            );
+        let mut checked = 0;
+        for state in states {
+            let Some(mask) = state.download_mask()? else {
+                continue;
+            };
+            checked += 1;
+            if let Some((id, word)) = mask.iter().enumerate().find(|(_, &word)| word != 0) {
+                return Ok(Err(format!(
+                    "SM id {id} still holds claimed slots {word:#06x}; a block released \
+                     none of them"
+                )));
+            }
+        }
+        Ok(Ok(checked))
     }
 
     /// One coset-cache arm's planned state — `None` outside `lsb-pair` or when this
@@ -1550,10 +1767,10 @@ impl Harness {
     /// in the grid the lane's block size implies. `lde` and `fold` are absent, so the
     /// recorded stages are `eval` and `finalize`.
     pub fn run_cache_lane(&mut self, index: usize) -> CudaResult<()> {
-        let lane = &self.cache_lanes[index];
+        let lane = &mut self.cache_lanes[index];
         self.events[0].record(&self.stream)?;
         self.events[1].record(&self.stream)?;
-        match &lane.launch {
+        match &mut lane.launch {
             LaneLaunch::Cached(launch) => {
                 launch(&lane.desc, &lane.plan, lane.blocks, &self.stream)?
             }
@@ -1561,7 +1778,11 @@ impl Harness {
             LaneLaunch::Seg(seg) => seg.run(&lane.desc, lane.blocks, &self.stream)?,
         }
         self.events[2].record(&self.stream)?;
-        kernels::finalize(&self.partials, lane.blocks, &mut self.q, &self.stream)?;
+        // ITS OWN slot count: the lanes of one rotation share this buffer and a transplant
+        // lane fills four times its grid, so reducing over the wrong count would either
+        // drop rows or read another lane's stale partials.
+        let slots = lane.partial_slots;
+        kernels::finalize(&self.partials, slots, &mut self.q, &self.stream)?;
         self.events[3].record(&self.stream)?;
         self.events[4].record(&self.stream)
     }
@@ -1836,6 +2057,123 @@ mod cpu_tests {
             .rows_per_block(),
             UNISKIP_ROWS_PER_BLOCK as u32
         );
+    }
+
+    /// The transplant's two geometries, which the harness must never conflate: its grid is
+    /// a quarter of an R7 one over the same trace, and its finalize reduces four slots per
+    /// block — so the two numbers differ by 16x from the lane the rotation compares it to.
+    #[test]
+    fn cpu_segb_config_separates_blocks_from_partial_slots() {
+        let geometry = Geometry::new(12).unwrap();
+        let at = |carrier| PassConfig {
+            mode: EvalMode::LsbPair,
+            block_threads: UNISKIP_PAIR_THREADS_128 as u32,
+            carrier,
+            ..Default::default()
+        };
+        let local = at(LaneCarrier::Local);
+        assert_eq!(
+            local.rows_per_block(),
+            UNISKIP_PAIR_ROWS_PER_BLOCK_128 as u32
+        );
+        assert_eq!(local.partial_slots(&geometry), geometry.eval_blocks(16));
+        // An R7 carrier walks four cohorts inside the same 16-row tile and publishes once.
+        assert_eq!(
+            at(LaneCarrier::SegG).rows_per_block(),
+            local.rows_per_block()
+        );
+        assert_eq!(
+            at(LaneCarrier::SegG).partial_slots(&geometry),
+            local.partial_slots(&geometry)
+        );
+        for carrier in [
+            LaneCarrier::SegbG,
+            LaneCarrier::SegbRecompute,
+            LaneCarrier::SegbGSlotted,
+        ] {
+            let config = at(carrier);
+            assert_eq!(config.rows_per_block(), UNISKIP_SEG_COHORT_ROWS);
+            assert_eq!(
+                config.partial_slots(&geometry),
+                geometry.eval_blocks(UNISKIP_SEG_COHORT_ROWS) * UNISKIP_SEG_K as u32
+            );
+            // One slot per logical row, which is 16 times the incumbent's count.
+            assert_eq!(
+                u64::from(config.partial_slots(&geometry)),
+                geometry.logical_rows
+            );
+            assert_eq!(
+                config.partial_slots(&geometry),
+                16 * local.partial_slots(&geometry)
+            );
+        }
+    }
+
+    /// A1, the widest geometry this bench can address: the DEVICE indexes a region as
+    /// `region * slab_stride_words` in 32-bit arithmetic, so the largest grid times the
+    /// heaviest arm is what has to stay under the wrap. A wrapped index would read another
+    /// block's pairs rather than fault.
+    #[test]
+    fn cpu_segb_max_geometry_stays_inside_the_32_bit_region_index() {
+        let geometry = Geometry::new(crate::geometry::UNISKIP_MAX_LOG_TRACE).unwrap();
+        assert_eq!(geometry.log_rows, 21);
+        let blocks = geometry.eval_blocks(UNISKIP_SEG_COHORT_ROWS);
+        assert_eq!(blocks, 524_288);
+        let program = generate(0, Census::default()).unwrap();
+        // The heaviest arm a shipped lane can name, and the highest word index its slab
+        // addresses: 11/16 of the 32-bit word space.
+        let allrepeat = coset_cache::plan_arm(&program, CacheArm::AllRepeat)
+            .unwrap()
+            .counts
+            .c;
+        assert_eq!(allrepeat, 88);
+        let words = seg_slab_words(blocks, allrepeat);
+        assert_eq!(words, 2_952_790_016);
+        assert_eq!(words - 1, 2_952_790_015);
+        assert_eq!(words * 16, 11 * (1u64 << 32));
+        // And the bound that holds for ANY arm, named by a lane or not: the whole frame.
+        let widest = CacheArm::ALL
+            .iter()
+            .filter_map(|&arm| coset_cache::plan_arm(&program, arm).ok())
+            .map(|state| state.counts.c)
+            .max()
+            .unwrap();
+        assert_eq!(widest, UNISKIP_COSET_FRAME_UNITS);
+        let words = seg_slab_words(blocks, widest);
+        assert_eq!(words, 3_087_007_744);
+        assert_eq!(words * 32, 23 * (1u64 << 32));
+        assert!(words <= u64::from(u32::MAX));
+    }
+
+    /// The slotted pool is sized by the machine's RESIDENCY, not by the grid: 1,024 SM ids
+    /// (a bound on a sparse id space, not a count) times 16 slots. Both figures are
+    /// recorded because they are far apart — the allocation must cover the id space, the
+    /// L2 only ever sees what the real SMs touch.
+    #[test]
+    fn cpu_segb_slot_pool_is_sized_by_residency() {
+        assert_eq!(kernels::UNISKIP_SLOT_SM_CAPACITY, 1024);
+        assert_eq!(kernels::UNISKIP_SLOTS_PER_SM, 16);
+        assert_eq!(SEG_SLOT_POOL_REGIONS, 16_384);
+        let program = generate(0, Census::default()).unwrap();
+        let hot16 = coset_cache::plan_arm(&program, CacheArm::Hot16)
+            .unwrap()
+            .counts
+            .c;
+        assert_eq!(hot16, 28);
+        let region_bytes = u64::from(hot16) * u64::from(SEG_SLAB_UNIT_BYTES);
+        assert_eq!(region_bytes, 7_168);
+        let words = size_of::<u32>() as u64;
+        assert_eq!(
+            seg_slab_words(SEG_SLOT_POOL_REGIONS, hot16) * words,
+            117_440_512
+        );
+        // What 188 real SMs touch of it.
+        assert_eq!(
+            188 * u64::from(kernels::UNISKIP_SLOTS_PER_SM) * region_bytes,
+            21_561_344
+        );
+        // The mask is one word per SM id, and the region index packs the pair.
+        assert_eq!(u64::from(kernels::UNISKIP_SLOT_SM_CAPACITY) * words, 4_096);
     }
 
     /// The three-state hint, resolved without a device. `Default` is the only state that

@@ -1429,16 +1429,27 @@ pub enum LaneCarrier {
     SegG,
     #[clap(name = "seg-recompute")]
     SegRecompute,
+    /// v3 R7b. The transplant carriers: four rows to a block, one cohort, and a partial
+    /// slot per WARP rather than per block.
+    #[clap(name = "segb-g")]
+    SegbG,
+    #[clap(name = "segb-recompute")]
+    SegbRecompute,
+    #[clap(name = "segb-g-slotted")]
+    SegbGSlotted,
 }
 
 impl LaneCarrier {
     /// The segmented carriers, in the order their hints are applied and echoed.
-    pub const SEG: [Self; 5] = [
+    pub const SEG: [Self; 8] = [
         Self::SegS64,
         Self::SegS100,
         Self::SegSAcc,
         Self::SegG,
         Self::SegRecompute,
+        Self::SegbG,
+        Self::SegbRecompute,
+        Self::SegbGSlotted,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -1449,6 +1460,9 @@ impl LaneCarrier {
             Self::SegSAcc => "seg-s-acc",
             Self::SegG => "seg-g",
             Self::SegRecompute => "seg-recompute",
+            Self::SegbG => "segb-g",
+            Self::SegbRecompute => "segb-recompute",
+            Self::SegbGSlotted => "segb-g-slotted",
         }
     }
 
@@ -1462,11 +1476,45 @@ impl LaneCarrier {
             Self::SegSAcc => LaneKernel::SegSAcc,
             Self::SegG => LaneKernel::SegG,
             Self::SegRecompute => LaneKernel::SegRecompute,
+            Self::SegbG => LaneKernel::SegbG,
+            Self::SegbRecompute => LaneKernel::SegbRecompute,
+            Self::SegbGSlotted => LaneKernel::SegbGSlotted,
         })
     }
 
     pub fn is_seg(self) -> bool {
         self != Self::Local
+    }
+
+    /// Whether this is a v3 R7b transplant carrier: one cohort of
+    /// [`UNISKIP_SEG_COHORT_ROWS`] rows per block, so the grid is four times an R7 one and
+    /// every warp publishes its own partial slot.
+    pub fn is_segb(self) -> bool {
+        matches!(self, Self::SegbG | Self::SegbRecompute | Self::SegbGSlotted)
+    }
+
+    /// Whether the slab region is claimed per RESIDENT block from a software slot pool
+    /// rather than indexed by `blockIdx.x` — which makes the pool the machine's residency
+    /// instead of the grid, and needs the mask and the hard occupancy gate.
+    pub fn is_slotted(self) -> bool {
+        self == Self::SegbGSlotted
+    }
+
+    /// Logical rows one block of this carrier covers, or `None` where the block size
+    /// decides it. An R7 block walks four cohorts of the same four rows the transplant
+    /// covers in one.
+    pub fn rows_per_block(self) -> Option<u32> {
+        self.is_segb().then_some(UNISKIP_SEG_COHORT_ROWS)
+    }
+
+    /// Partial slots one block of this carrier writes. The transplant's four warps hold
+    /// TERM-DISJOINT accumulators of four different rows, so each publishes its own.
+    pub fn partials_per_block(self) -> u32 {
+        if self.is_segb() {
+            UNISKIP_SEG_K as u32
+        } else {
+            1
+        }
     }
 
     /// The preferred shared-memory carveout this carrier's symbol is set to before any
@@ -1490,20 +1538,25 @@ impl LaneCarrier {
             Self::SegS64 | Self::SegSAcc => 33,
             Self::SegS100 => 100,
             Self::SegG | Self::SegRecompute => 16,
+            // The transplant bodies allocate no shared memory, so the request steers L1
+            // alone — and `segb-g` and its slotted variant must take the SAME one: the
+            // slotted symbol's 8 static bytes would otherwise let the driver partition the
+            // two differently and confound the decision row between them.
+            Self::SegbG | Self::SegbRecompute | Self::SegbGSlotted => 16,
         })
     }
 
     /// Whether the slab is device scratch the caller allocates, rather than the launch's
     /// own dynamic shared memory.
     pub fn uses_slab(self) -> bool {
-        self == Self::SegG
+        matches!(self, Self::SegG | Self::SegbG | Self::SegbGSlotted)
     }
 
     /// Whether the body reads the prologue table and the records' `cache_slot` at all. The
     /// machinery floor does not: its carrier points at the reduction plane, so a live slot
     /// would read ~21 KiB past a 2 KiB allocation.
     pub fn uses_plan(self) -> bool {
-        self.is_seg() && self != Self::SegRecompute
+        self.is_seg() && !matches!(self, Self::SegRecompute | Self::SegbRecompute)
     }
 
     /// THE support matrix: which cache arms this carrier is measured with. The lane-set
@@ -1524,6 +1577,9 @@ impl LaneCarrier {
                     | CacheArm::K40
                     | CacheArm::AllRepeat
             ),
+            Self::SegbRecompute => arm == CacheArm::Cache0,
+            Self::SegbG => matches!(arm, CacheArm::Cache0 | CacheArm::Hot16 | CacheArm::K40),
+            Self::SegbGSlotted => arm == CacheArm::Hot16,
         }
     }
 
@@ -1806,6 +1862,30 @@ pub const SEG_ANCHOR: [CacheLane; 2] = [
     frontier_128("hot16@128", CacheArm::Hot16),
 ];
 
+/// The v3 R7b transplant rotation: the same three local anchors and machinery floor as the
+/// R7 sets, carrier G's transplant at three capture points, and the slotted-slab variant of
+/// the incumbent capture point — the pair `segb-hot16-g-slotted` / `segb-hot16-g` is the
+/// footprint contrast, one admitted set on two region maps. 8 lanes, so a round count must
+/// be a multiple of 8.
+pub const SEGB: [CacheLane; 8] = [
+    FRONTIER_CONTROL_256,
+    frontier_128("control_lb@128", CacheArm::Control),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    seg_128(
+        "segb-recompute@128",
+        CacheArm::Cache0,
+        LaneCarrier::SegbRecompute,
+    ),
+    seg_128("segb-cache0-g@128", CacheArm::Cache0, LaneCarrier::SegbG),
+    seg_128("segb-hot16-g@128", CacheArm::Hot16, LaneCarrier::SegbG),
+    seg_128("segb-k40-g@128", CacheArm::K40, LaneCarrier::SegbG),
+    seg_128(
+        "segb-hot16-g-slotted@128",
+        CacheArm::Hot16,
+        LaneCarrier::SegbGSlotted,
+    ),
+];
+
 /// Fail-closed structural check of a pinned lane set — THE one implementation of the
 /// factorial pre-flight, called by the runner before it builds anything and by the tests
 /// that pin the shipped rotations. Rejects a duplicate label, an unplannable lane, a
@@ -1917,6 +1997,8 @@ pub enum LaneSet {
     SegGmem,
     /// R7's two-lane anchor/attribution rotation (spec R7): local kernels only.
     SegAnchor,
+    /// R7b's eight-lane transplant rotation (spec R7b).
+    Segb,
 }
 
 impl LaneSet {
@@ -1929,6 +2011,7 @@ impl LaneSet {
             Self::SegSmem => &SEG_SMEM,
             Self::SegGmem => &SEG_GMEM,
             Self::SegAnchor => &SEG_ANCHOR,
+            Self::Segb => &SEGB,
         }
     }
 
@@ -1948,6 +2031,7 @@ impl LaneSet {
             Self::SegSmem => "--seg-smem-factorial",
             Self::SegGmem => "--seg-gmem-factorial",
             Self::SegAnchor => "--seg-anchor",
+            Self::Segb => "--segb-factorial",
         }
     }
 
@@ -1963,6 +2047,7 @@ impl LaneSet {
             Self::SegSmem => "SEG-SMEM",
             Self::SegGmem => "SEG-GMEM",
             Self::SegAnchor => "SEG-ANCHOR",
+            Self::Segb => "SEGB",
         }
     }
 
@@ -1979,6 +2064,7 @@ impl LaneSet {
             Self::SegSmem => Some((100, 10)),
             Self::SegGmem => Some((99, 9)),
             Self::SegAnchor => Some((100, 10)),
+            Self::Segb => Some((96, 8)),
         }
     }
 
@@ -1996,6 +2082,7 @@ impl LaneSet {
             Self::CarveoutProbe => "R6 probe lanes",
             Self::SegSmem | Self::SegGmem => "R7 seg lanes",
             Self::SegAnchor => "R7 anchor lanes",
+            Self::Segb => "R7b segb lanes",
         }
     }
 
@@ -2005,7 +2092,7 @@ impl LaneSet {
             Self::CacheFactorial => "tools/r4_gates.sh",
             Self::FrontierFactorial | Self::FrontierExtension => "tools/r5_gates.sh",
             Self::CarveoutProbe => "tools/r6_gates.sh",
-            Self::SegSmem | Self::SegGmem | Self::SegAnchor => "tools/r7_gates.sh",
+            Self::SegSmem | Self::SegGmem | Self::SegAnchor | Self::Segb => "tools/r7_gates.sh",
         }
     }
 
@@ -2019,6 +2106,7 @@ impl LaneSet {
             Self::SegSmem => "seg smem factorial",
             Self::SegGmem => "seg gmem factorial",
             Self::SegAnchor => "seg anchor",
+            Self::Segb => "segb factorial",
         }
     }
 }
@@ -2054,13 +2142,24 @@ impl CacheLane {
         self.arm.uses_cache() && self.arm != CacheArm::Cache0 && counts.removals == 0
     }
 
-    /// Logical rows one block of this lane covers.
+    /// Logical rows one block of this lane covers. Carrier FIRST, for the same reason
+    /// [`Self::kernel`] reads it first: a transplant lane's tile is a property of its body,
+    /// not of the block size it shares with every other 128-thread lane.
     pub fn rows_per_block(self) -> u32 {
+        if let Some(rows) = self.carrier.rows_per_block() {
+            return rows;
+        }
         if self.block_threads == 128 {
             UNISKIP_PAIR_ROWS_PER_BLOCK_128 as u32
         } else {
             UNISKIP_PAIR_ROWS_PER_BLOCK as u32
         }
+    }
+
+    /// Partial slots this lane's grid writes, which is what `finalize` reduces over — one
+    /// per block everywhere but on a transplant carrier, where it is one per warp.
+    pub fn partial_slots(self, blocks: u32) -> u32 {
+        blocks * self.carrier.partials_per_block()
     }
 }
 
@@ -2080,6 +2179,9 @@ pub enum LaneKernel {
     SegSAcc,
     SegG,
     SegRecompute,
+    SegbG,
+    SegbRecompute,
+    SegbGSlotted,
 }
 
 impl LaneKernel {
@@ -2098,6 +2200,9 @@ impl LaneKernel {
             Self::SegSAcc => "eval_lsb_seg_s_acc",
             Self::SegG => "eval_lsb_seg_g",
             Self::SegRecompute => "eval_lsb_seg_recompute",
+            Self::SegbG => "eval_lsb_segb_g",
+            Self::SegbRecompute => "eval_lsb_segb_recompute",
+            Self::SegbGSlotted => "eval_lsb_segb_g_slotted",
         }
     }
 
@@ -2357,6 +2462,92 @@ mod lane_tests {
         assert_eq!(SEG_ANCHOR[1].kernel(), LaneKernel::Cached128Lb);
     }
 
+    /// The R7b transplant rotation's shape. The two `hot16` transplant lanes are the
+    /// footprint contrast — one admitted set, one carveout, two region maps — so a dropped
+    /// slotted lane would silently turn the decision row into a self-comparison.
+    #[test]
+    fn cpu_segb_lane_set() {
+        let labels: Vec<&str> = SEGB.iter().map(|l| l.label).collect();
+        assert_eq!(
+            labels,
+            vec![
+                "control@256",
+                "control_lb@128",
+                "hot16@128",
+                "segb-recompute@128",
+                "segb-cache0-g@128",
+                "segb-hot16-g@128",
+                "segb-k40-g@128",
+                "segb-hot16-g-slotted@128",
+            ]
+        );
+        assert_eq!(LaneSet::Segb.rounds_and_warmup(), Some((96, 8)));
+        assert!(LaneSet::Segb.is_seg());
+        let carriers: Vec<LaneCarrier> = SEGB.iter().map(|l| l.carrier).collect();
+        assert_eq!(
+            carriers,
+            vec![
+                LaneCarrier::Local,
+                LaneCarrier::Local,
+                LaneCarrier::Local,
+                LaneCarrier::SegbRecompute,
+                LaneCarrier::SegbG,
+                LaneCarrier::SegbG,
+                LaneCarrier::SegbG,
+                LaneCarrier::SegbGSlotted,
+            ]
+        );
+        let arms: Vec<CacheArm> = SEGB.iter().map(|l| l.arm).collect();
+        assert_eq!(
+            arms,
+            vec![
+                CacheArm::Control,
+                CacheArm::Control,
+                CacheArm::Hot16,
+                CacheArm::Cache0,
+                CacheArm::Cache0,
+                CacheArm::Hot16,
+                CacheArm::K40,
+                CacheArm::Hot16,
+            ]
+        );
+        seg_lane_facts(&SEGB);
+    }
+
+    /// GEOMETRY SEPARATION, the R7b hazard in one place: a transplant lane's grid is four
+    /// times an R7 lane's over the same trace, and its finalize reduces four slots per
+    /// block rather than one — so blocks and partial slots are 16x apart between the
+    /// rotation's own lanes and cannot be the same number anywhere.
+    #[test]
+    fn cpu_segb_blocks_and_partial_slots_are_separate() {
+        let rows: u32 = 1 << 12;
+        for lane in SEGB {
+            let blocks = rows / lane.rows_per_block();
+            let slots = lane.partial_slots(blocks);
+            match lane.carrier {
+                LaneCarrier::SegbG | LaneCarrier::SegbRecompute | LaneCarrier::SegbGSlotted => {
+                    assert_eq!(
+                        lane.rows_per_block(),
+                        UNISKIP_SEG_COHORT_ROWS,
+                        "{}",
+                        lane.label
+                    );
+                    assert_eq!(blocks, rows / 4, "{}", lane.label);
+                    assert_eq!(slots, rows, "{}", lane.label);
+                }
+                _ => {
+                    assert_eq!(lane.carrier.partials_per_block(), 1, "{}", lane.label);
+                    assert_eq!(slots, blocks, "{}", lane.label);
+                }
+            }
+            assert_eq!(blocks * lane.rows_per_block(), rows, "{}", lane.label);
+        }
+        // The widest lane sets the shared partials buffer; the 256 lane is the narrowest.
+        let slots = |lane: CacheLane| lane.partial_slots(rows / lane.rows_per_block());
+        assert_eq!(slots(SEGB[7]), 16 * slots(SEGB[2]));
+        assert_eq!(slots(SEGB[2]), 2 * slots(SEGB[0]));
+    }
+
     /// The facts every seg lane shares: the bounded 128 shape at Task 3/4's measured
     /// occupancy, the kernel its carrier names, and an arm on that carrier's matrix.
     fn seg_lane_facts(set: &[CacheLane]) {
@@ -2365,7 +2556,9 @@ mod lane_tests {
             assert!(lane.launch_bounds, "{}", lane.label);
             assert_eq!(lane.regs, 72, "{}", lane.label);
             assert_eq!(lane.blocks_per_sm, 7, "{}", lane.label);
-            assert_eq!(lane.rows_per_block(), 16, "{}", lane.label);
+            // An R7 block walks four cohorts of four rows; a transplant block covers ONE.
+            let rows = if lane.carrier.is_segb() { 4 } else { 16 };
+            assert_eq!(lane.rows_per_block(), rows, "{}", lane.label);
             assert_eq!(
                 lane.kernel(),
                 lane.carrier.kernel().unwrap(),
@@ -2404,6 +2597,9 @@ mod lane_tests {
                 ("eval_lsb_seg_s_acc", Some(33)),
                 ("eval_lsb_seg_g", Some(16)),
                 ("eval_lsb_seg_recompute", Some(16)),
+                ("eval_lsb_segb_g", Some(16)),
+                ("eval_lsb_segb_recompute", Some(16)),
+                ("eval_lsb_segb_g_slotted", Some(16)),
             ]
         );
         // The 64 KiB tier is a DYNAMIC-shared crossing, one percent above the 32.77 KB
@@ -2436,6 +2632,40 @@ mod lane_tests {
             vec!["cache0", "hot16"]
         );
         assert_eq!(LaneCarrier::SegRecompute.supported_arms(), vec!["cache0"]);
+
+        // R7b. The slotted symbol carries 8 static shared bytes its sibling does not, so
+        // an unequal carveout request would let the driver partition L1 differently
+        // between the two and confound the one row they exist to compare.
+        assert_eq!(
+            LaneCarrier::SegbG.carveout(),
+            LaneCarrier::SegbGSlotted.carveout()
+        );
+        assert!(LaneCarrier::SegbG.uses_slab());
+        assert!(LaneCarrier::SegbGSlotted.uses_slab());
+        assert!(LaneCarrier::SegbGSlotted.is_slotted());
+        assert!(!LaneCarrier::SegbG.is_slotted());
+        assert!(!LaneCarrier::SegbRecompute.uses_slab());
+        assert!(!LaneCarrier::SegbRecompute.uses_plan());
+        assert!(LaneCarrier::SegbG.uses_plan());
+        assert!(LaneCarrier::SegbGSlotted.uses_plan());
+        assert_eq!(
+            LaneCarrier::SegbG.supported_arms(),
+            vec!["cache0", "hot16", "k40"]
+        );
+        assert_eq!(LaneCarrier::SegbGSlotted.supported_arms(), vec!["hot16"]);
+        assert_eq!(LaneCarrier::SegbRecompute.supported_arms(), vec!["cache0"]);
+        // The transplant tile and its per-warp publication, from the carrier alone.
+        for carrier in LaneCarrier::SEG {
+            let (rows, slots) = if carrier.is_segb() {
+                (Some(UNISKIP_SEG_COHORT_ROWS), UNISKIP_SEG_K as u32)
+            } else {
+                (None, 1)
+            };
+            assert_eq!(carrier.rows_per_block(), rows, "{}", carrier.as_str());
+            assert_eq!(carrier.partials_per_block(), slots, "{}", carrier.as_str());
+        }
+        assert_eq!(LaneCarrier::Local.rows_per_block(), None);
+        assert_eq!(LaneCarrier::Local.partials_per_block(), 1);
     }
 
     /// The three R7 rotations' preregistered facts, from the ONE value that names them.
@@ -2489,14 +2719,83 @@ mod lane_tests {
         assert_eq!(LaneSet::SegAnchor.lanes(), &SEG_ANCHOR);
     }
 
+    /// The R7b rotation's preregistered facts, from the ONE value that names them.
+    #[test]
+    fn cpu_segb_lane_set_selectors() {
+        assert_eq!(LaneSet::Segb.flag(), "--segb-factorial");
+        assert_eq!(LaneSet::Segb.tag(), "SEGB");
+        assert_eq!(LaneSet::Segb.noun(), "segb factorial");
+        assert_eq!(LaneSet::Segb.gates(), "tools/r7_gates.sh");
+        assert_eq!(LaneSet::Segb.arms_noun(), "R7b segb lanes");
+        assert!(LaneSet::Segb.is_frontier());
+        assert_eq!(LaneSet::Segb.lanes(), &SEGB);
+        // The round count must be a whole number of rotations over the eight lanes.
+        let (rounds, warmup) = LaneSet::Segb.rounds_and_warmup().unwrap();
+        assert_eq!(rounds as usize % SEGB.len(), 0);
+        assert_eq!(warmup as usize % SEGB.len(), 0);
+    }
+
     #[test]
     fn cpu_seg_lane_sets_validate() {
         for order in [TermOrder::Census, TermOrder::Locality] {
             let p = program(order);
-            for set in [&SEG_SMEM[..], &SEG_GMEM[..], &SEG_ANCHOR[..]] {
+            for set in [&SEG_SMEM[..], &SEG_GMEM[..], &SEG_ANCHOR[..], &SEGB[..]] {
                 validate_lane_set(&p, set).unwrap();
             }
         }
+    }
+
+    /// The support matrix has the same teeth on the transplant carriers, and the pair the
+    /// rotation exists for must PASS: `segb-hot16-g-slotted` and `segb-hot16-g` admit one
+    /// set on two region maps, which is the contrast, not an alias.
+    #[test]
+    fn cpu_segb_lane_set_validator_rejects_off_matrix_pairs() {
+        let p = program(TermOrder::Locality);
+
+        let slotted_off_hot16 = [seg_128(
+            "segb-k40-g-slotted@128",
+            CacheArm::K40,
+            LaneCarrier::SegbGSlotted,
+        )];
+        let err = validate_lane_set(&p, &slotted_off_hot16).unwrap_err();
+        assert!(
+            err.contains("carrier segb-g-slotted runs hot16, not k40"),
+            "{err}"
+        );
+
+        let live_recompute = [seg_128(
+            "segb-recompute-hot16@128",
+            CacheArm::Hot16,
+            LaneCarrier::SegbRecompute,
+        )];
+        let err = validate_lane_set(&p, &live_recompute).unwrap_err();
+        assert!(
+            err.contains("carrier segb-recompute runs cache0, not hot16"),
+            "{err}"
+        );
+
+        let off_matrix = [seg_128(
+            "segb-allrepeat-g@128",
+            CacheArm::AllRepeat,
+            LaneCarrier::SegbG,
+        )];
+        let err = validate_lane_set(&p, &off_matrix).unwrap_err();
+        assert!(
+            err.contains("carrier segb-g runs cache0 | hot16 | k40"),
+            "{err}"
+        );
+
+        let region_contrast = [
+            seg_128("segb-hot16-g@128", CacheArm::Hot16, LaneCarrier::SegbG),
+            seg_128(
+                "segb-hot16-g-slotted@128",
+                CacheArm::Hot16,
+                LaneCarrier::SegbGSlotted,
+            ),
+            seg_128("seg-hot16-g@128", CacheArm::Hot16, LaneCarrier::SegG),
+            frontier_128("hot16@128", CacheArm::Hot16),
+        ];
+        validate_lane_set(&p, &region_contrast).unwrap();
     }
 
     /// The seg validator's teeth. A carrier/arm pair off the pinned matrix is a wrong

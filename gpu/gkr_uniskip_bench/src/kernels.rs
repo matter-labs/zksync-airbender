@@ -665,6 +665,13 @@ pub fn max_blocks_per_sm(
         LaneKernel::SegRecompute => {
             occupancy(&EvalLsbSegRecomputeFunction::default(), threads, dynamic)
         }
+        LaneKernel::SegbG => occupancy(&EvalLsbSegbGFunction::default(), threads, dynamic),
+        LaneKernel::SegbRecompute => {
+            occupancy(&EvalLsbSegbRecomputeFunction::default(), threads, dynamic)
+        }
+        LaneKernel::SegbGSlotted => {
+            occupancy(&EvalLsbSegbGSlottedFunction::default(), threads, dynamic)
+        }
     }
 }
 

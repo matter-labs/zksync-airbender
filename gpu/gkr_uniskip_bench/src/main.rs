@@ -184,12 +184,22 @@ struct Cli {
     #[arg(long)]
     seg_anchor: bool,
 
+    /// Run the v3 R7b transplant rotation: 8 lanes — the same three local anchors and
+    /// machinery floor as the R7 sets, then the four-rows-per-block transplant at
+    /// `cache0 hot16 k40` plus the slotted-slab variant of `hot16`. 96 rounds / 8 warmup
+    /// unless overridden; an override must still be a multiple of 8.
+    #[arg(long)]
+    segb_factorial: bool,
+
     /// v3 R7 carrier of a single segmented arm: `seg-s` (carrier S at the 64 KiB carveout
     /// request), `seg-s100` (the same body at 100 KiB), `seg-s-acc` (the accumulator-first
     /// reduction diagnostic), `seg-g` (carrier G, a per-block device-scratch slab) or
     /// `seg-recompute` (the machinery floor: the cohort loop with no slab and no
-    /// prologue). Needs `--mode lsb-pair --block-threads 128` and a `--cache-arm` on that
-    /// carrier's support matrix; composes with `--validate` / `--dump-q` / `--profile`.
+    /// prologue). The v3 R7b transplants take the same surface: `segb-g`,
+    /// `segb-recompute` and `segb-g-slotted` (the slab region claimed per resident block
+    /// out of a software slot pool). Needs `--mode lsb-pair --block-threads 128` and a
+    /// `--cache-arm` on that carrier's support matrix; composes with `--validate` /
+    /// `--dump-q` / `--profile`.
     #[arg(long, value_enum)]
     carrier: Option<LaneCarrier>,
 
@@ -302,6 +312,7 @@ impl Cli {
             (self.seg_smem_factorial, LaneSet::SegSmem),
             (self.seg_gmem_factorial, LaneSet::SegGmem),
             (self.seg_anchor, LaneSet::SegAnchor),
+            (self.segb_factorial, LaneSet::Segb),
         ]
         .into_iter()
         .filter_map(|(on, set)| on.then_some(set))
@@ -360,6 +371,23 @@ fn device_name() -> String {
             .to_string_lossy()
             .into_owned(),
         Err(e) => format!("unknown ({e})"),
+    }
+}
+
+/// The slotted carrier's claim mask, after every launch this process made: a set bit is a
+/// region a block claimed and never released, which the next launch would hand to a second
+/// owner. Outside every timed loop by construction — it runs once, after the rotation.
+fn check_slot_masks(harness: &Harness) {
+    match harness
+        .validate_slot_masks()
+        .unwrap_or_else(|e| fail(format!("slot mask download failed: {e}")))
+    {
+        Ok(0) => (),
+        Ok(checked) => println!("slot mask: all clear ({checked} checked)"),
+        Err(leak) => {
+            eprintln!("slot mask: LEAKED — {leak}");
+            std::process::exit(1);
+        }
     }
 }
 
@@ -1259,7 +1287,7 @@ fn main() {
     );
     println!(
         "  partials            {} e4",
-        geometry.eval_partials(config.rows_per_block())
+        UNISKIP_CELLS as u64 * u64::from(config.partial_slots(&geometry))
     );
     println!("census");
     println!("{}", program.census);
@@ -1469,6 +1497,7 @@ fn main() {
 
     if let Some(set) = cli.lane_set() {
         run_lane_factorial(&mut harness, &cli, set);
+        check_slot_masks(&harness);
         return;
     }
 
@@ -1514,9 +1543,14 @@ fn main() {
         if config.carrier.is_seg() {
             // A seg block's four warps SPLIT one program between them, so the per-warp
             // walk is not the unit any more: the whole block executes the arm's chain
-            // count once per cohort. `counts.chains` already includes the prologue.
+            // count once per cohort. `counts.chains` already includes the prologue. The
+            // transplant covers ONE cohort per block, so its unit is the block itself.
             let blocks = u64::from(harness.eval_blocks());
-            let cohorts = u64::from(UNISKIP_SEG_COHORTS);
+            let cohorts = if config.carrier.is_segb() {
+                1
+            } else {
+                u64::from(UNISKIP_SEG_COHORTS)
+            };
             assert_eq!(
                 calls % (blocks * cohorts * passes),
                 0,
@@ -1535,9 +1569,15 @@ fn main() {
                 "a {} cohort executed {per_cohort} chains against the arm's {chains}",
                 config.carrier.as_str()
             );
-            println!(
-                "chain executions     {calls} total / {blocks} blocks / {cohorts} cohorts = {per_cohort} per cohort"
-            );
+            if config.carrier.is_segb() {
+                println!(
+                    "chain executions     {calls} total / {blocks} blocks = {per_cohort} per block"
+                );
+            } else {
+                println!(
+                    "chain executions     {calls} total / {blocks} blocks / {cohorts} cohorts = {per_cohort} per cohort"
+                );
+            }
         } else {
             assert_eq!(
                 calls % (warps * passes),
@@ -1654,6 +1694,7 @@ fn main() {
             std::process::exit(1);
         }
     }
+    check_slot_masks(&harness);
 
     println!(
         "summary: log_trace {} | mode {} | lde_shape {lde_shape_label} | cell_map {cell_map_label} | \
