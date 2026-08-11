@@ -4310,7 +4310,8 @@ cohort loop: everything R7 spent on merging is deleted, and nothing is recompute
 buys in simplicity it pays for in shape — the same trace now needs **4× the blocks** (262,144
 against 65,536), and the finalize kernel that reduces the partials sees **16× the slots**
 (1,048,576 against 65,536: four per block instead of one). Only the device-scratch carrier is
-carried forward (R7 settled the medium question at ±0.08 ms), plus one rider RR cleared
+carried forward (R7 settled the medium question at ±0.08 ms — that figure is quoted from the R7
+section above, not from this rung's own sources), plus one rider RR cleared
 mid-rung: a **slotted slab**, where a block claims its slab region out of a small
 software-managed pool addressed by the SM id it is running on (`%smid`; 1,024 SM ids × 16 slots
 × one slab each) instead of owning a private region per block in the grid. The pool is small
@@ -4562,6 +4563,37 @@ for this driver on this part, not a derivable one.
 - **The slotted allocator is available to any future lane whose scratch really is DRAM-bound.**
   It removes ~98 % of a scratch stream's DRAM writes for ~0.18 ms of claim work, with L1 traffic
   untouched. It bought nothing here only because this kernel family is SM-bound.
+
+### Addendum: the slotted allocator's machinery, record-only (A9b)
+
+Carried from this rung's two build reports — `.agents/sdd/2026-08-11-v3-r7b/task-1-report.md`
+(the Task 1b sections) and `task-2-report.md`. None of it changes a figure above; all of it is
+inside what the `segb-hot16-g-slotted` lane measured, which is why it is recorded rather than
+chased.
+
+- **The pool is allocated at two tiers.** 16,384 regions (1,024 SM ids × 16 slots) × the arm's
+  slab stride: **117.4 MB at hot16** (7,168 B) and **218.1 MB at k40** (13,312 B), plus the
+  4 KB mask, and the host prints both figures on the prepare path. The **≈21.6 MB touched**
+  (16 slots × 188 SMs × 7,168 B) is a BOUND on what the hot16 tier can reach, not a measured
+  residency — it counts `multiProcessorCount`, and the id it is keyed to is virtualized.
+- **`%smid` lowers to `SR_VIRTUALSMID`.** Under MPS/MIG that is the virtualized id. It stays
+  unique per resident SM within the process, which is all the allocator needs, but the mask's
+  occupied bits are a residency bound and NOT an SM-utilization readout.
+- **The claim CAS lowers to `.SYS` scope** (`ATOMG.E.CAS.STRONG.SYS`, generic addressing) while
+  the release keeps `.GPU` with global-descriptor addressing. An nvcc lowering artifact, not a
+  correctness issue — SYS is the stronger scope. `__restrict__` on the mask pointer did not
+  move it; only a PTX-level `atom.global.cas` would. One SYS atomic per block sits inside every
+  slotted timing here.
+- **The release is a returning `ATOMG.E.AND.STRONG.GPU`, not a `RED` reduction.** The kernel
+  binds the `atomicAnd` result (the owned-bit assert reads it), so the returning form is emitted
+  in the shipped build too. Two atomics per block total, both part of the +0.178 ms the slotted
+  row prices.
+- **`SHARED:8` for a 4-byte publish variable.** The body declares exactly one `__shared__ u32`;
+  8 B is ptxas's shared allocation granularity and is what the SASS gate pins. Those four bytes
+  are also what moved the carveout ladder — see the portable finding above.
+- **Region arithmetic is 32-bit-safe by construction.** Largest region index × slab stride =
+  16,383 × 5,632 ≈ **92.3 M words**, three orders below the u32 wrap that the grid-indexed
+  `segb_g` has to reason about; the host adds a `prepare_seg` assert on top.
 
 ### Artifacts
 
