@@ -107,9 +107,28 @@ with_oracle "$TMP/nonexistent.json" "a missing oracle is not a pass" \
   "the committed dealer oracle is unreadable" -- $(sess good)
 with_oracle "$TMP/oracle-wrong-algo.json" "an oracle with another hash algorithm" \
   "program_hash_algo is 'sha256'" -- $(sess good)
+with_oracle "$TMP/oracle-wrong-stripe.json" "an oracle naming another reference stripe" \
+  "owner_arm is 'k40'" -- $(sess good)
+with_oracle "$TMP/oracle-wrong-seg-k.json" "an oracle dealing another segment count" \
+  "seg_k is 3, this rung is K = 4" -- $(sess good)
 with_oracle "$TMP/oracle-no-locality.json" "an oracle missing the log's own order" \
   "the committed oracle carries no \`locality\` block, so this log's dealt plan has nothing" \
   -- $(sess good)
+# A verbatim COPY is accepted — and must announce itself, because the committed-file rule exists
+# precisely so that a forged oracle + forged log PAIR is not acceptable, and the override makes
+# that pair constructible. The printed path plus this banner are what keep it safe.
+export R7_SEG_ORACLE=$TMP/oracle-copy.json
+emits "a redirected oracle announces itself in the record" \
+  "**NON-DEFAULT ORACLE**" -- $(sess good)
+unset R7_SEG_ORACLE
+absent "the committed oracle raises no banner" \
+  "NON-DEFAULT ORACLE" -- $(sess good)
+
+# NOT FIXTURABLE, on purpose: the cross-log dealt-plan identity gate (`its SEG line differs from
+# … at the same term order`) is unreachable while the per-field oracle comparison is in place —
+# two logs of one order that both equal the oracle in offsets, costs, e4, bf, hash and stripe are
+# byte-equal by construction. It is defense in depth for the case where a field gate is disabled,
+# which the teeth check in the report demonstrates. Do not chase a fixture for it.
 
 echo "### the emitted decision surface"
 emits "the inventory states every position's pinned contract" \
@@ -250,6 +269,8 @@ rejects "the samples declare another term order" \
   -- $(sess order-forged-in-samples)
 rejects "no done trailer" "the run did not finish, or the log is truncated" \
   -- $(sess no-done-trailer)
+rejects "one round renumbered off the consecutive run" \
+  "expected the consecutive run 10…109" -- $(sess round-renumbered)
 rejects "one lane is one sample short" \
   "incomplete rounds are not droppable" -- $(sess sample-dropped)
 rejects "a duplicated (round, lane) sample" \

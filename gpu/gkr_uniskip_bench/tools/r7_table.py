@@ -228,11 +228,15 @@ def die(message):
     sys.exit(message)
 
 
+def oracle_path():
+    return os.environ.get(ORACLE_ENV, ORACLE_DEFAULT)
+
+
 def oracle():
     """The committed dealer oracle, with its own contract pinned: a file that documents a
     different hash algorithm, segment count or reference stripe is not the oracle these rules
     are registered against."""
-    path = os.environ.get(ORACLE_ENV, ORACLE_DEFAULT)
+    path = oracle_path()
     try:
         with open(path) as fh:
             data = json.load(fh)
@@ -629,6 +633,13 @@ def inventory_table(procs):
 
 def plan_table(procs, oracles):
     print("\n### Dealt plan identity — validated against the committed Task 2 oracle\n")
+    # The printed path is what makes the override safe to have: the committed-oracle rule exists
+    # so a forged plan cannot be validated against a matching forged oracle, and a redirect makes
+    # that pair constructible — so a redirect has to be VISIBLE in the emitted record.
+    if oracle_path() != ORACLE_DEFAULT:
+        print(f"> **NON-DEFAULT ORACLE** — `{ORACLE_ENV}` redirected the dealer oracle away "
+              f"from the committed file. A record quoting this output is only valid if the "
+              f"path below is `gpu/gkr_uniskip_bench/tools/r7_fixtures/seg_oracle.json`.\n")
     print(f"Oracle: `{next(iter(oracles.values()))['path']}` ({ORACLE_ALGO} over "
           f"little-endian record bytes). The owner census is the `{ORACLE_STRIPE}` REFERENCE "
           f"stripe, which the dealer pins arm-independently — it is NOT what any one run's "

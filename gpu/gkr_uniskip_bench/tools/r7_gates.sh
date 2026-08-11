@@ -3,9 +3,10 @@
 #
 #   sass        the nine frozen bodies (by INVOKING r5_gates.sh sass, so that table lives in
 #               one place) plus the five seg symbols: symbol set, per-symbol normalized
-#               instruction counts, `_cv64` normalized-IDENTICAL to `_cv100`, and the shipped
-#               resource usage (72 regs, no stack, no local) — SHIPPED build only, and it says
-#               so instead of comparing the wrong binary
+#               instruction counts AND body digests, `_cv64` normalized-IDENTICAL to `_cv100`,
+#               and the shipped resource usage (72 regs, no stack, no local) — SHIPPED build
+#               only, and it says so instead of comparing the wrong binary. `all` runs this lane
+#               FIRST and again LAST, so the binary the tree ends on is the gated one.
 #   matrix      Task 5's validation matrix, scripted: q parity over the 12 pinned carrier x arm
 #               pairs against the LOCAL control128, the self-product cells (also against the
 #               local reference), the CPU-oracle cells, the dealt-plan SEG line against the
@@ -17,8 +18,9 @@
 #   fixtures    the emitter's fixture matrix — every decision row and every fail-closed guard
 #               of tools/r7_table.py, self-generating, GPU-free
 #   regression  tools/r5_gates.sh all, which itself chains r3 + r4
-#   all         sass; matrix; counts; cpu; fixtures; regression — sequenced so `sass` sees the
-#               shipped build and every later lane that needs it gets it back
+#   all         sass; matrix; counts; cpu; fixtures; regression; sass — sequenced so `sass` sees
+#               the shipped build, every later lane that needs it gets it back, and the final
+#               re-gate lands on the binary the run leaves behind
 #
 # Usage, from the repo root:
 #   cargo build --release -p gpu_gkr_uniskip_bench
@@ -75,14 +77,18 @@ seg-g k24
 seg-g k40
 seg-g allrepeat"
 
-# The five seg symbols: fn|normalized instruction count|shared bytes. Task 3 and Task 4
-# measured these on the shipped build; `_cv64` and `_cv100` are ONE body under two symbols, so
-# their bodies must also be identical to each other after normalization.
-SEG_SYMBOLS="ab_gkr_uniskip_eval_lsb_seg_recompute_kernel|8336|2048
-ab_gkr_uniskip_eval_lsb_seg_g_kernel|9560|2048
-ab_gkr_uniskip_eval_lsb_seg_s_acc_kernel|10088|0
-ab_gkr_uniskip_eval_lsb_seg_s_cv100_kernel|9784|0
-ab_gkr_uniskip_eval_lsb_seg_s_cv64_kernel|9784|0"
+# The five seg symbols: fn|normalized instruction count|shared bytes|12-hex sha256 of the
+# NORMALIZED body. Task 3 and Task 4 measured the counts on the shipped build; the digest closes
+# the gap an instruction count leaves open — a body can be rewritten at a constant count, and
+# these five are the kernels the sessions measure. The digests are taken over the same
+# normalized text `norm_dump` produces here, and they survive a rebuild: the diagnostic
+# round-trip recompiles this TU twice and reproduces all five. `_cv64` and `_cv100` are ONE body
+# under two symbols, so they share a digest as well as a count.
+SEG_SYMBOLS="ab_gkr_uniskip_eval_lsb_seg_recompute_kernel|8336|2048|dc7e31370bb1
+ab_gkr_uniskip_eval_lsb_seg_g_kernel|9560|2048|5e330b3f2dff
+ab_gkr_uniskip_eval_lsb_seg_s_acc_kernel|10088|0|7ef3be21eec9
+ab_gkr_uniskip_eval_lsb_seg_s_cv100_kernel|9784|0|2ef383967d12
+ab_gkr_uniskip_eval_lsb_seg_s_cv64_kernel|9784|0|2ef383967d12"
 SEG_TU=uniskip_lsb_seg.cu.o
 
 build_bench() { # build_bench <diag-env-value-or-empty>
@@ -489,6 +495,10 @@ norm_dump() { # norm_dump <cuobjdump-text> <outdir>
   ' "$1"
 }
 
+# The pinned identity of one normalized body: 12 hex of its sha256, the same width the frozen
+# artifacts' hashes are quoted at elsewhere in this suite.
+body_digest() { sha256sum "$1" | cut -c1-12; }
+
 seg_sass() {
   note "### the five seg symbols: symbol set, instruction counts, cv64 = cv100, resources"
   local ar=$ARCHIVE work="$TMP/sass" ar_abs
@@ -509,12 +519,13 @@ seg_sass() {
   if [ "$live" != "$want_set" ]; then
     bad "the seg TU exports [$live], the pinned symbol set is [$want_set]"
   fi
-  local rows=0 ok=0 fn want shared got res
-  while IFS='|' read -r fn want shared; do
+  local rows=0 ok=0 fn want shared digest got res dig
+  while IFS='|' read -r fn want shared digest; do
     [ -n "$fn" ] || continue
     rows=$((rows + 1))
     if [ ! -f "$work/live/$fn" ]; then bad "$fn is missing from the built archive"; continue; fi
     got=$(wc -l <"$work/live/$fn")
+    dig=$(body_digest "$work/live/$fn")
     # Resource usage is the SPILL gate: the diagnostic build spills 8 B on the S symbols, so
     # the shipped one saying STACK:0 LOCAL:0 at 72 registers is what makes a timing comparable.
     res=$(awk -v fn="$fn:" '$2 == fn {getline; print $0}' "$work/res.txt" \
@@ -523,14 +534,34 @@ seg_sass() {
       bad "$fn has $got normalized instructions, the record pins $want"
       continue
     fi
+    if [ "$dig" != "$digest" ]; then
+      bad "$fn body digest is $dig, the record pins $digest — the body changed at a constant instruction count"
+      continue
+    fi
     case "$res" in
       "REG:72 STACK:0 SHARED:$shared LOCAL:0 CONSTANT[0]:"*) ;;
       *) bad "$fn resource usage is [$res]; want REG:72 STACK:0 SHARED:$shared LOCAL:0"; continue ;;
     esac
     ok=$((ok + 1))
-    note "  $fn: $got instrs, $res"
+    note "  $fn: $got instrs, digest $dig, $res"
   done <<< "$SEG_SYMBOLS"
   note "  seg bodies $ok/$rows pinned"
+  # NEGATIVE CONTROL for the digest pin, on a DOCTORED normalized body: one instruction
+  # rewritten, the instruction count untouched. That is exactly the drift a count cannot see, so
+  # the row proves the digest is what catches it — a pin table that is never compared, or a
+  # digest taken over something other than the body, would pass every row above.
+  local one="$work/live/ab_gkr_uniskip_eval_lsb_seg_s_cv64_kernel"
+  local doctored="$work/doctored"
+  sed '1s/.*/NOP/' "$one" >"$doctored"
+  local n_one n_doc
+  n_one=$(wc -l <"$one"); n_doc=$(wc -l <"$doctored")
+  if [ "$n_one" != "$n_doc" ]; then
+    bad "the digest negative control changed the instruction count ($n_one vs $n_doc); it no longer tests what a count cannot see"
+  elif [ "$(body_digest "$doctored")" = "$(body_digest "$one")" ]; then
+    bad "a one-instruction edit did not change the body digest — the digest pin is not a pin"
+  else
+    note "  negative control: 1 instruction rewritten at $n_doc instructions changes the digest"
+  fi
   [ "$rows" = 5 ] || bad "expected 5 seg symbols, checked $rows"
   [ "$ok" = 5 ] || bad "the seg symbol table is not 5/5"
   # cv64 and cv100 are ONE body under two symbols — the carveout attribute is per function and
@@ -603,7 +634,16 @@ case "${1:-all}" in
   regression) regression ;;
   # `sass` first: it is the only lane that must see the shipped build, and `counts` swaps the
   # binary underneath everything after it — the lanes that need it back ask for it themselves.
-  all) sass; matrix; counts; cpu; fixtures; regression ;;
+  # `sass` LAST as well, and that is not belt-and-braces: the diagnostic round-trip recompiles
+  # the seg TU twice, and r5's own sass lane (which `regression` inherits) covers the frozen
+  # NINE only. Without this the binary the tree ends on — the one Task 7 measures — would never
+  # have had the five seg bodies verified. No lane may be appended after it that can rebuild.
+  all)
+    sass; matrix; counts; cpu; fixtures; regression
+    note ""
+    note "### RE-GATE after the diagnostic round-trip: the binary the tree ENDS on"
+    sass
+    ;;
   *) echo "usage: $0 {sass|matrix|counts|cpu|fixtures|regression|all}" >&2; exit 2 ;;
 esac
 [ "$fail" = 0 ] && note "ALL GATES PASS"

@@ -135,7 +135,7 @@ def bases_for(tag, order, patch=None):
 
 def log(tag, order, hint, *, bases=None, rounds=None, warmup=None, echoes=None, seg="auto",
         seg_patch=None, wobble=None, arm_patch=None, lanes=None, drop=None, dup=None,
-        done=True, sample_order=None, rotate=True, oracle=None):
+        done=True, sample_order=None, rotate=True, oracle=None, renumber=None):
     """One process. Everything a mutant needs to bend is a keyword here, so the mutation is
     visible in the scenario list rather than buried in a post-hoc text edit."""
     lanes = list(lanes if lanes is not None else ROTATION[tag])
@@ -190,7 +190,10 @@ def log(tag, order, hint, *, bases=None, rounds=None, warmup=None, echoes=None, 
                 continue
             metric = bases[lane] + drift(r) + (wobble(lane, r) if wobble else 0.0)
             fin = FIN_256 if facts[lane]["threads"] == 256 else FIN_128
-            row = (f"SAMPLE {sample_order or order} {r} {lane} {metric - fin:.6f} "
+            # `renumber` moves one round's id off the consecutive run without changing how many
+            # rounds carry samples — the shape a count-only check accepts.
+            stamped = renumber[1] if renumber and r == renumber[0] else r
+            row = (f"SAMPLE {sample_order or order} {stamped} {lane} {metric - fin:.6f} "
                    f"{fin:.6f} {facts[lane]['kernel']}")
             out.append(row)
             if dup == (r, lane):
@@ -249,11 +252,11 @@ def main():
     # 1. THE CONFORMING SESSION. Every table's shape is proved on this one.
     session(outdir, "good", oracle)
 
-    # 1b. The sign-stability count, pinned from both sides. seg-k40-s beats hot16 by 0.146 ms
-    #     in most rounds and loses by 0.054 in the rest, so the median stays negative either
-    #     way and only the on-sign count moves: 90/100 is at the reported ceil(0.9 N)
-    #     threshold, 89/100 is below it. A fixture set whose lanes are all 100/100 would not
-    #     notice the literal moving at all.
+    # 1b. The sign-stability count, pinned from both sides. seg-k40-s beats hot16 by 0.046 ms in
+    #     most rounds and loses by 0.154 in the wobbled ones, so the median stays -0.046 either
+    #     way and only the on-sign count moves: 90/100 is at the reported ceil(0.9 N) threshold,
+    #     89/100 is below it. A fixture set whose lanes are all 100/100 would not notice the
+    #     literal moving at all.
     def flip(rs):
         return lambda lane, r: 0.200 if lane == "seg-k40-s@128" and r in rs else 0.0
 
@@ -364,6 +367,9 @@ def main():
     session(outdir, "order-forged-in-samples", oracle,
             {2: dict(sample_order="census")})
     session(outdir, "no-done-trailer", oracle, {4: dict(done=False)})
+    # Round 15 stamped as 210: still 100 rounds carrying samples, but no longer the consecutive
+    # run the runner numbers, which is how a renumbered or spliced log reads.
+    session(outdir, "round-renumbered", oracle, {2: dict(renumber=(15, 210))})
     session(outdir, "sample-dropped", oracle, {2: dict(drop=(15, "seg-k24-s@128"))})
     session(outdir, "sample-duplicated", oracle, {2: dict(dup=(15, "seg-k24-s@128"))})
 
@@ -392,19 +398,25 @@ def main():
         "CARVEOUT-PROBE done order=locality warmup=10 rounds=100 lanes=5",
     ])
 
-    # 10. A DIFFERENT ORACLE. The committed file's own contract is pinned, so a redirected
-    #     oracle that documents another hash algorithm is not the one these rules are
-    #     registered against.
-    with open(oracle) as fh:
-        data = json.load(fh)
-    data["program_hash_algo"] = "sha256"
-    with open(os.path.join(outdir, "oracle-wrong-algo.json"), "w") as fh:
-        json.dump(data, fh)
-    with open(oracle) as fh:
-        data = json.load(fh)
-    data["orders"] = [r for r in data["orders"] if r["term_order"] != "locality"]
-    with open(os.path.join(outdir, "oracle-no-locality.json"), "w") as fh:
-        json.dump(data, fh)
+    # 10. A DIFFERENT ORACLE. The committed file's own contract is pinned field by field, so a
+    #     redirected oracle that documents another hash algorithm, another reference stripe or
+    #     another segment count is not the one these rules are registered against. The verbatim
+    #     COPY is here too: it is accepted, and the emitted record has to say out loud that the
+    #     oracle was redirected (a matching forged oracle + log pair is what the committed-file
+    #     rule exists to prevent, so a redirect must never be invisible).
+    def variant(name, patch):
+        with open(oracle) as fh:
+            data = json.load(fh)
+        patch(data)
+        with open(os.path.join(outdir, name), "w") as fh:
+            json.dump(data, fh)
+
+    variant("oracle-copy.json", lambda d: None)
+    variant("oracle-wrong-algo.json", lambda d: d.update(program_hash_algo="sha256"))
+    variant("oracle-wrong-stripe.json", lambda d: d.update(owner_arm="k40"))
+    variant("oracle-wrong-seg-k.json", lambda d: d.update(seg_k=3))
+    variant("oracle-no-locality.json", lambda d: d.update(
+        orders=[r for r in d["orders"] if r["term_order"] != "locality"]))
 
 
 if __name__ == "__main__":
