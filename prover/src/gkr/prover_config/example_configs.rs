@@ -15,6 +15,8 @@ pub fn config_for_security_level_under_pessimistic_conjecture(
 pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -> ProverConfig {
     match trace_len_log_2 {
         20 => ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
@@ -30,6 +32,8 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
             },
         },
         22 => ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
@@ -45,6 +49,8 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
             },
         },
         23 => ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
@@ -60,6 +66,8 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
             },
         },
         24 => ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
@@ -83,6 +91,8 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
 pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -> ProverConfig {
     match trace_len_log_2 {
         20 => ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
@@ -98,6 +108,8 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             },
         },
         22 => ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
@@ -113,6 +125,8 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             },
         },
         23 => ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
@@ -128,6 +142,8 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             },
         },
         24 => ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,

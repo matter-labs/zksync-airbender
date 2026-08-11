@@ -44,6 +44,7 @@ use cs::definitions::{GKRAddress, VirtualSetupPoly};
 pub mod backend;
 mod debug_utils;
 pub mod dimension_reduction;
+pub mod gkr_backend;
 pub mod forward_loop;
 pub mod setup;
 pub mod stages;
@@ -252,7 +253,7 @@ unsafe impl<T: Send + Sync> Send for SendPtr<T> {}
 )]
 pub struct SumcheckIntermediateProofValues<F: PrimeField, E: FieldExtension<F> + Field> {
     pub sumcheck_num_rounds: usize,
-    pub internal_round_coefficients: Vec<[E; 4]>, // max quadratic gates
+    pub internal_round_coefficients: Vec<SumcheckRoundCoefficients<E>>,
     #[serde_as(as = "Vec<(_, _)>")]
     pub final_step_evaluations: BTreeMap<GKRAddress, Vec<E>>,
     #[serde_as(as = "Vec<(_, _)>")]
@@ -260,9 +261,44 @@ pub struct SumcheckIntermediateProofValues<F: PrimeField, E: FieldExtension<F> +
     pub _marker: core::marker::PhantomData<F>,
 }
 
+/// One transcript message of a sumcheck: either the classic per-variable
+/// multilinear round (degree <= 3 round polynomial, 4 coefficients) or a
+/// univariate-skip round (monomial coefficients of the packed q -- for a
+/// window of k variables, `2^(k+1)` coefficients of degree `< 2^(k+1)`).
+#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(bound = "E: serde::Serialize + serde::de::DeserializeOwned")]
+pub enum SumcheckRoundCoefficients<E: Field> {
+    Multilinear([E; 4]),
+    Uniskip(Vec<E>),
+}
+
+impl<E: Field> SumcheckRoundCoefficients<E> {
+    #[track_caller]
+    pub fn as_multilinear(&self) -> &[E; 4] {
+        match self {
+            SumcheckRoundCoefficients::Multilinear(c) => c,
+            SumcheckRoundCoefficients::Uniskip(_) => {
+                panic!("expected a multilinear round, found a uniskip round")
+            }
+        }
+    }
+
+    pub fn num_values(&self) -> usize {
+        match self {
+            SumcheckRoundCoefficients::Multilinear(_) => 4,
+            SumcheckRoundCoefficients::Uniskip(v) => v.len(),
+        }
+    }
+}
+
 impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValues<F, E> {
     pub fn estimate_size(&self) -> usize {
-        self.internal_round_coefficients.len() * E::DEGREE * 4 * core::mem::size_of::<u32>()
+        self.internal_round_coefficients
+            .iter()
+            .map(|c| c.num_values())
+            .sum::<usize>()
+            * E::DEGREE
+            * core::mem::size_of::<u32>()
             + self
                 .final_step_evaluations
                 .iter()
@@ -983,8 +1019,33 @@ where
     // final trace size on which we output the polynomials in plain text
     let final_trace_size_log_2 = prover_config.sumcheck_explicit_output_size_log_2;
 
+    // Sumcheck schedules: validated up front; the non-naive dispatchers land
+    // with the LSB-binding integration, so until then only NaiveSumcheck
+    // steps (or the empty schedule, which means naive-everywhere) are
+    // accepted -- this keeps a misconfigured schedule from silently proving
+    // with the wrong transcript shape.
+    for (name, schedule) in [
+        (
+            "same_size_sumcheck_schedule",
+            &prover_config.same_size_sumcheck_schedule,
+        ),
+        (
+            "dimension_reducing_sumcheck_schedule",
+            &prover_config.dimension_reducing_sumcheck_schedule,
+        ),
+    ] {
+        assert!(
+            schedule
+                .iter()
+                .all(|s| matches!(s, crate::gkr::prover_config::SumcheckStep::NaiveSumcheck)),
+            "{name}: only NaiveSumcheck steps are wired at this integration stage"
+        );
+    }
+
+    // GKRBackend seam: the dimension-reducing paths run through the backend
+    // selection in `gkr_backend` (platform dispatch lives ONLY there)
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
-        dimension_reduction::forward::evaluate_dimension_reduction_forward(
+        gkr_backend::run_dimension_reduction_forward::<F, E>(
             &mut gkr_storage,
             compiled_circuit,
             trace_len.trailing_zeros() as usize,
@@ -1096,8 +1157,9 @@ where
 
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
+    let dim_reducing_total = std::time::Instant::now();
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
-        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer::<F, E, TR>(
+        let proof = gkr_backend::run_dimension_reducing_sumcheck_for_layer::<F, E, TR>(
             layer_idx,
             &layer,
             &mut points_for_claims_at_layer,
@@ -1110,6 +1172,14 @@ where
         );
         sumcheck_intermediate_values.insert(layer_idx, proof);
         reduced_trace_size_log_2 += 1;
+    }
+    println!(
+        "Dimension-reducing sumcheck layers total: {:?}",
+        dim_reducing_total.elapsed()
+    );
+    #[cfg(feature = "gkr_self_checks")]
+    if std::env::var("GKR_LSB_DEBUG").is_ok() {
+        panic!("GKR_LSB_DEBUG: deliberate stop after the dimension-reducing layers (all LSB validations passed)");
     }
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);

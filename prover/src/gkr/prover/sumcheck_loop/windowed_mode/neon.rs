@@ -87,7 +87,7 @@ pub(crate) unsafe fn add4(a: uint32x4_t, b: uint32x4_t) -> uint32x4_t {
 }
 
 #[inline(always)]
-unsafe fn sub4(a: uint32x4_t, b: uint32x4_t) -> uint32x4_t {
+pub(crate) unsafe fn sub4(a: uint32x4_t, b: uint32x4_t) -> uint32x4_t {
     let diff = vsubq_u32(a, b);
     vminq_u32(diff, vaddq_u32(diff, vdupq_n_u32(P)))
 }
@@ -104,14 +104,14 @@ unsafe fn store_e(dst: *mut BabyBearExt4, v: uint32x4_t) {
 
 /// Montgomery form of 11 (the quadratic non-residue of the tower)
 #[inline(always)]
-fn r11() -> u32 {
+pub(crate) fn r11() -> u32 {
     BabyBearField::new(11).raw_u32_value()
 }
 
 /// `a (x) b` for two variable `Ext4` values: build the permuted/scaled columns
 /// of `b` (1 mult + 3 shuffles), then accumulate the lane-broadcast products.
 #[inline(always)]
-unsafe fn ext_mul_var(a: uint32x4_t, b: uint32x4_t, r11v: uint32x4_t) -> uint32x4_t {
+pub(crate) unsafe fn ext_mul_var(a: uint32x4_t, b: uint32x4_t, r11v: uint32x4_t) -> uint32x4_t {
     let e = mont_mul4(b, r11v); // [11b0, 11b1, 11b2, 11b3]
     let col1 = vtrn2q_u32(e, vrev64q_u32(b)); // [11b1, b0, 11b3, b2]
     let col2 = vextq_u32::<2>(col1, b); // [11b3, b2, b0, b1]

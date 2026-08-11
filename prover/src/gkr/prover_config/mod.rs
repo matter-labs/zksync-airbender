@@ -6,6 +6,123 @@ use crate::gkr::{prover::WhirSchedule, whir::proximity_testing_modes::ProximityT
 pub mod example_configs;
 pub mod pow_bits;
 
+/// One step of a sumcheck schedule: how many variables the step binds and
+/// with which evaluation strategy. The prover binds variables LSB-first
+/// (consistent with monomial ordering and WHIR's RS-codeword folding), so a
+/// step always consumes the CURRENTLY LOWEST variables of the remaining
+/// hypercube.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SumcheckStep {
+    /// The classic mode: fold exactly one variable with the per-round batched
+    /// evaluator (one `[E; 4]` message per round).
+    NaiveSumcheck,
+    /// A windowed-accumulator step of the bracket-preserving SoA engine: the
+    /// window's `{0,1,inf}^w` accumulator is computed in one pass and the
+    /// per-round messages are emitted from the bind chain. `window = 1` is
+    /// logically equivalent to [`SumcheckStep::NaiveSumcheck`] but runs the
+    /// windowed kernels.
+    WindowedOp(WindowedOp),
+    /// Univariate skip: `window` variables are packed into ONE univariate
+    /// round (message = monomial coefficients of the packed q, degree
+    /// `< 2^{window + 1}`), then bound by a single challenge via the Lagrange
+    /// fold. Only `window == 3` is implemented initially.
+    Uniskip { window: usize },
+}
+
+/// Flavors of a windowed step; the flavor must be consistent with the step's
+/// position in the schedule (validated by
+/// [`validate_sumcheck_schedule`]): exactly one `Initial` at the front while
+/// inputs are unfolded, at most one `Transition` that performs the
+/// fold-to-extension, then `Interior` steps over extension buffers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum WindowedOp {
+    /// Window over the UNFOLDED inputs (mixed base/ext columns).
+    Initial { window: usize },
+    /// Window whose final bind also folds every input into the extension
+    /// buffers (the in-`w`-out-1 transition pass).
+    Transition { window: usize },
+    /// Window over already-folded extension buffers.
+    Interior { window: usize },
+}
+
+impl SumcheckStep {
+    /// Number of hypercube variables this step binds.
+    pub fn variables_bound(&self) -> usize {
+        match self {
+            SumcheckStep::NaiveSumcheck => 1,
+            SumcheckStep::WindowedOp(op) => match op {
+                WindowedOp::Initial { window }
+                | WindowedOp::Transition { window }
+                | WindowedOp::Interior { window } => *window,
+            },
+            SumcheckStep::Uniskip { window } => *window,
+        }
+    }
+}
+
+/// Checks that a schedule is well-formed for `folding_steps` variables: the
+/// bound-variable counts sum to `folding_steps`, windows are within the
+/// supported sizes, and windowed flavors appear in a consistent order
+/// (`Initial`* -> at most one `Transition` -> `Interior`*/naive tail). An
+/// EMPTY schedule is always valid and means "NaiveSumcheck for every round"
+/// (the current production behavior).
+pub fn validate_sumcheck_schedule(
+    schedule: &[SumcheckStep],
+    folding_steps: usize,
+) -> Result<(), String> {
+    if schedule.is_empty() {
+        return Ok(());
+    }
+    let total: usize = schedule.iter().map(|s| s.variables_bound()).sum();
+    if total != folding_steps {
+        return Err(format!(
+            "schedule binds {} variables, layer has {}",
+            total, folding_steps
+        ));
+    }
+    let mut seen_transition = false;
+    let mut past_initial = false;
+    for (i, step) in schedule.iter().enumerate() {
+        match step {
+            SumcheckStep::NaiveSumcheck => {
+                past_initial = true;
+            }
+            SumcheckStep::Uniskip { window } => {
+                if *window != 3 {
+                    return Err(format!("uniskip window {} unsupported (only 3)", window));
+                }
+            }
+            SumcheckStep::WindowedOp(op) => match op {
+                WindowedOp::Initial { window } => {
+                    if past_initial || seen_transition {
+                        return Err(format!("Initial window at position {} after fold", i));
+                    }
+                    if *window == 0 || *window > 3 {
+                        return Err(format!("window {} out of range 1..=3", window));
+                    }
+                }
+                WindowedOp::Transition { window } => {
+                    if seen_transition {
+                        return Err("second Transition step".to_string());
+                    }
+                    if *window == 0 || *window > 3 {
+                        return Err(format!("window {} out of range 1..=3", window));
+                    }
+                    seen_transition = true;
+                    past_initial = true;
+                }
+                WindowedOp::Interior { window } => {
+                    if *window == 0 || *window > 3 {
+                        return Err(format!("window {} out of range 1..=3", window));
+                    }
+                    past_initial = true;
+                }
+            },
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug)]
 pub struct ProverConfig {
     pub lde_factor: usize,
@@ -18,6 +135,13 @@ pub struct ProverConfig {
     // per-circuit from `security_level` via `pow_bits`, so neither is stored here.
     pub security_level: SecurityLevel,
     pub whir_schedule: WhirSchedule,
+    /// Step schedule for the SAME-SIZE (per-circuit batched relation)
+    /// sumchecks; empty = NaiveSumcheck for every round.
+    pub same_size_sumcheck_schedule: Vec<SumcheckStep>,
+    /// Step schedule for the DIMENSION-REDUCING layer sumchecks (pairwise
+    /// products + logup reduction gates only); empty = NaiveSumcheck for
+    /// every round.
+    pub dimension_reducing_sumcheck_schedule: Vec<SumcheckStep>,
 }
 
 impl WhirSchedule {

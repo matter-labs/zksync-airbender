@@ -31,6 +31,7 @@ use std::ops::Range;
 use crate::upstream::{
     BaseFieldQuery, DefaultTreeConstructor, ExtensionFieldQuery, GKRAddress,
     MerkleTreeCapVarLength, OutputType, SumcheckIntermediateProofValues,
+    SumcheckRoundCoefficients,
     WhirBaseLayerCommitmentAndQueries, WhirCommitment, WhirIntermediateCommitmentAndQueries,
     WhirPolyCommitProof, WhirSchedule,
 };

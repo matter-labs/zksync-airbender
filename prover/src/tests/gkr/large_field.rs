@@ -322,6 +322,8 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let prover_config = ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
         lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)
         cap_size: 8,
         // round-0 values-per-leaf = 2^whir_steps_schedule[0] = 2^2
@@ -1263,7 +1265,7 @@ fn verify_dim_reduce_layers() {
         {
             let siv = &proof.sumcheck_intermediate_values[&layer];
             for c in siv.internal_round_coefficients.iter() {
-                for e in c.iter() {
+                for e in c.as_multilinear().iter() {
                     push_e(&mut blob, e);
                 }
             }
@@ -1292,7 +1294,7 @@ fn verify_dim_reduce_layers() {
         let mut eq_prefactor = E::ONE;
         let mut new_point: Vec<E> = Vec::with_capacity(folding_steps + 1);
         for round in 0..folding_steps {
-            let c = siv.internal_round_coefficients[round];
+            let c = *siv.internal_round_coefficients[round].as_multilinear();
             let mut s = sum01(&c);
             s.mul_assign(&eq_prefactor);
             assert_eq!(s, claim, "dim layer {layer} round {round} sumcheck check");
@@ -1468,7 +1470,7 @@ fn verify_dim_reduce_layers() {
         // Cached/VirtualSetup are computed on the verifier heap, so they're NOT in calldata. ----
         {
             for c in siv.internal_round_coefficients.iter() {
-                for e in c.iter() {
+                for e in c.as_multilinear().iter() {
                     circuit_blob.extend_from_slice(&e.to_u128().to_be_bytes());
                 }
             }
@@ -1546,16 +1548,16 @@ fn verify_dim_reduce_layers() {
         println!(
             "[layer-dbg] layer {config_idx} initial_claim=0x{:032x}  batching=0x{:032x}  round0_c=[{:032x},{:032x},{:032x},{:032x}]",
             claim.to_u128(), batching.to_u128(),
-            siv.internal_round_coefficients[0][0].to_u128(),
-            siv.internal_round_coefficients[0][1].to_u128(),
-            siv.internal_round_coefficients[0][2].to_u128(),
-            siv.internal_round_coefficients[0][3].to_u128(),
+            siv.internal_round_coefficients[0].as_multilinear()[0].to_u128(),
+            siv.internal_round_coefficients[0].as_multilinear()[1].to_u128(),
+            siv.internal_round_coefficients[0].as_multilinear()[2].to_u128(),
+            siv.internal_round_coefficients[0].as_multilinear()[3].to_u128(),
         );
         // ---- 22 monomial sumcheck rounds (same loop as dim-reducing) ----
         let mut eq_prefactor = E::ONE;
         let mut new_point: Vec<E> = Vec::with_capacity(folding_steps);
         for round in 0..folding_steps {
-            let c = siv.internal_round_coefficients[round];
+            let c = *siv.internal_round_coefficients[round].as_multilinear();
             let mut s = sum01(&c);
             s.mul_assign(&eq_prefactor);
             assert_eq!(

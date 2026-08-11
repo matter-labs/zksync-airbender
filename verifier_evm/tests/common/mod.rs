@@ -12,6 +12,8 @@ pub const PACK_LOG2: usize = 4;
 /// Mirrors `prover/src/tests/gkr/large_field.rs` (Sec100, 2^22, 6 WHIR rounds).
 pub fn production_prover_config() -> ProverConfig {
     ProverConfig {
+            same_size_sumcheck_schedule: vec![],
+            dimension_reducing_sumcheck_schedule: vec![],
         lde_factor: 1 << 5,
         cap_size: 8,
         base_oracles_values_per_leaf: 1 << 2,
