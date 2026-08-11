@@ -1,4 +1,4 @@
-use crate::proof::{prove, prove_with_forward_vm_execution, GpuGKRProofJob};
+use crate::proof::{prove, GpuGKRProofJob};
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -10,7 +10,6 @@ use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::nvtx::scoped_range;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use gpu_gkr::{
-    forward::{ForwardVmExecutionConfig, ForwardVmExecutionMode, ForwardVmStorePolicy},
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     GkrPrograms,
 };
@@ -328,21 +327,6 @@ impl BasicUnrolledFixture {
         )
     }
 
-    fn prove_with_forward_vm(
-        &self,
-        transfers: BasicUnrolledTransfers<'static>,
-        execution: ForwardVmExecutionConfig<'_>,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
-        prove_with_forward_vm_execution::<Global>(
-            &self.gkr_programs,
-            &self.prover_config,
-            self.final_trace_size_log_2,
-            transfers,
-            execution,
-            &self.context,
-        )
-    }
-
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
         let mut transfers = self.create_transfers()?;
 
@@ -377,45 +361,11 @@ impl BasicUnrolledFixture {
         proof_job.ranges.insert(0, transfer_range);
         Ok(proof_job)
     }
-
-    fn schedule_prove_with_forward_vm(
-        &self,
-        execution: ForwardVmExecutionConfig<'_>,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
-        let mut transfers = self.create_transfers()?;
-
-        let h2d_stream = self.context.get_h2d_stream();
-        let transfer_range = Range::new("gkr.proof.h2d_transfers")?;
-        transfer_range.start(h2d_stream)?;
-        transfers.schedule(&self.context)?;
-        transfer_range.end(h2d_stream)?;
-
-        let mem_before_prove = self.context.get_used_mem_current();
-        let mut proof_job = self.prove_with_forward_vm(transfers, execution)?;
-        let mem_after_prove = self.context.get_used_mem_current();
-        assert_eq!(
-            mem_after_prove,
-            mem_before_prove,
-            "prove() must release every device allocation it makes: \
-             before={mem_before_prove} after={mem_after_prove} \
-             net_retained={}",
-            mem_after_prove as i64 - mem_before_prove as i64,
-        );
-        proof_job.ranges.insert(0, transfer_range);
-        Ok(proof_job)
-    }
 }
 
 impl BasicUnrolledProofFixture {
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
         self.base.schedule_prove()
-    }
-
-    fn schedule_prove_with_forward_vm(
-        &self,
-        execution: ForwardVmExecutionConfig<'_>,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
-        self.base.schedule_prove_with_forward_vm(execution)
     }
 }
 
@@ -430,7 +380,6 @@ struct BasicUnrolledFixtureBuildConfig<'a> {
     non_determinism_reads: &'a [u32],
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
-    device_allocator_arena_bytes: usize,
     security_level: crate::upstream::SecurityLevel,
 }
 

@@ -1,34 +1,24 @@
 //! Binds compiled forward layers to prover storage and runtime challenge data.
-//!
-//! Host-known challenges ride in the descriptor. Device-resident constants
-//! and the decoder fill are copied into the constant bank before launch.
 
 use std::ffi::c_void;
-use std::ops::Range;
 use std::ptr::{null, null_mut};
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart_sys::cudaGetSymbolAddress;
-use gpu_gkr_compiler::{CompiledLayer, ForwardSpecialStrategy as SpecialStrategy};
+use gpu_gkr_compiler::CompiledLayer;
 
-use super::desc::FwdVmDesc;
 use super::desc::CONST_DERIVED_E4_CAP;
-use super::group_lower::{lower_group_desc, LoweredFwdVmGroup};
-use super::lower::{FwdVmHeaderInputs, FwdVmLowerError, ResolvedColumn};
+use super::lower::{lower_desc, FwdVmInputs, LoweredFwdVm, ResolvedColumn};
 use super::output::{materialize_output_slot, register_layer_copy_aliases};
-use super::{
-    ab_gkr_fwd_vm_const_derived_e4, launch_grouped_fwd_vm_streaming,
-    launch_grouped_fwd_vm_writeback, lower::lower_layer_desc, ForwardVmStorePolicy,
-};
+use super::{ab_gkr_fwd_vm_const_derived_e4, launch_fwd_vm};
 use crate::gkr_address_audit::AddressClass;
 use crate::setup::GpuGKRForwardSetup;
 use crate::stage1::GpuGKRStage1Output;
 use crate::upstream::{
     ChallengeKey, ChallengePower, ChallengeRef, Field, GKRAddress, GKRCircuitArtifact,
-    GKRExternalChallenges, GKRLayerDescription, PermutationSlot,
-    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    GKRExternalChallenges, PermutationSlot, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
@@ -112,52 +102,20 @@ fn const_derived_e4_bank_device_ptr() -> *mut E4 {
     ptr.cast()
 }
 
-/// Fill this layer's `ConstDerivedE4` bank **from device memory**, on
-/// `exec_stream`, so no challenge value ever passes through the host.
-///
-/// Ordering contract (`lower_layer_desc`): every slot must be written before
-/// any launch of this layer's descriptor. Both copies are enqueued on
-/// `exec_stream`, and so is the launch, so the ordering is the stream's.
-pub(crate) fn stage_const_derived_e4_bank(
-    cl: &CompiledLayer,
-    forward_setup: &GpuGKRForwardSetup,
-    context: &ProverContext,
-) -> Result<(), BindError> {
-    let bank = const_derived_e4_bank_device_ptr();
-    if cl.derived_e4.uses_lookup_additive() {
-        let src = forward_setup.lookup_additive_part_device();
-        copy_one_e4_into_bank(bank, 0, src, context).map_err(BindError::Cuda)?;
-    }
-
-    if cl
-        .specials
-        .iter()
-        .any(|special| matches!(special, SpecialStrategy::PeekDecoder { .. }))
-    {
-        let src = forward_setup.decoder_lookup_fill_value_device();
-        copy_one_e4_into_bank(bank, CONST_DERIVED_E4_CAP - 1, &src[..1], context)
-            .map_err(BindError::Cuda)?;
-    }
-    Ok(())
-}
-
-/// One 16-byte D2D copy into bank slot `idx`.
 fn copy_one_e4_into_bank(
     bank: *mut E4,
     idx: usize,
     src: &DeviceSlice<E4>,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    // SAFETY: `bank` is the device address of an `e4[CONST_DERIVED_E4_CAP]`
-    // `__constant__` symbol and `idx < CONST_DERIVED_E4_CAP` (checked by the
-    // caller against `CONST_DERIVED_E4_CAP`), so `bank.add(idx)` is one valid
-    // E4 slot. `src` is one device-resident E4.
+    assert!(idx < CONST_DERIVED_E4_CAP);
+    // SAFETY: `bank` addresses the constant array and `idx` is in bounds.
     let dst = unsafe { DeviceSlice::from_raw_parts_mut(bank.add(idx), 1) };
     memory_copy_async(dst, src, context.get_exec_stream())
 }
 
-fn stage_group_const_derived_e4_bank(
-    lowered: &LoweredFwdVmGroup,
+fn stage_const_derived_e4_bank(
+    lowered: &LoweredFwdVm,
     forward_setup: &GpuGKRForwardSetup,
     context: &ProverContext,
 ) -> Result<(), BindError> {
@@ -178,9 +136,6 @@ fn stage_group_const_derived_e4_bank(
     Ok(())
 }
 
-/// One resolved storage column, through the production storage accessors.
-///
-/// Resolve a column through the production storage accessors.
 pub(crate) fn resolve_storage_column<E>(
     storage: &GpuGKRStorage<BF, E>,
     addr: GKRAddress,
@@ -204,20 +159,12 @@ where
     })
 }
 
-/// Per-layer header inputs from the production prover buffers: the three
-/// stage-1 mapping arenas, the decoder mapping column, and the shared
-/// α-folded generic-lookup table.
-///
-/// The generic-lookup table is released once no later layer needs it
-/// (`release_forward_lookup_resources_after_layer`), so read it through the
-/// length accessor, which reports 0 after release, rather than the panicking
-/// one.
 pub(crate) fn production_header<'a>(
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup,
     trace_len: usize,
     inits_and_teardowns_top_bits: &'a [u32],
-) -> FwdVmHeaderInputs<'a> {
+) -> FwdVmInputs<'a> {
     let m = &stage1.lookup_mappings;
     assert_eq!(
         m.trace_len, trace_len,
@@ -231,7 +178,7 @@ pub(crate) fn production_header<'a>(
     } else {
         (null(), 0)
     };
-    FwdVmHeaderInputs {
+    FwdVmInputs {
         mapping_arena: [
             if m.has_generic_family() {
                 m.generic_family().as_ptr()
@@ -274,74 +221,8 @@ pub(crate) fn prepare_layer_destinations(
     Ok(())
 }
 
-/// Lower one layer against the production prover state.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn bind_layer(
-    cl: &CompiledLayer,
-    storage: &GpuGKRStorage<BF, E4>,
-    stage1: &GpuGKRStage1Output,
-    forward_setup: &GpuGKRForwardSetup,
-    external_challenges: &GKRExternalChallenges<BF, E4>,
-    trace_len: usize,
-    inits_and_teardowns_top_bits: &[u32],
-) -> Result<FwdVmDesc, FwdVmLowerError> {
-    let header = production_header(
-        stage1,
-        forward_setup,
-        trace_len,
-        inits_and_teardowns_top_bits,
-    );
-    let resolve = |addr: GKRAddress| resolve_storage_column(storage, addr);
-    // The infallible callback contract makes a missing challenge a hard error.
-    let challenge = |r: &ChallengeRef| {
-        arg_derived_e4_value(external_challenges, r).unwrap_or_else(|e| panic!("{e}"))
-    };
-    lower_layer_desc(cl, &header, &resolve, &challenge)
-}
-
-/// Materialize destinations, bind the descriptor, stage constants, and launch.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn schedule_vm_layer(
-    layer_idx: usize,
-    layer: &GKRLayerDescription,
-    cl: &CompiledLayer,
-    storage: &mut GpuGKRStorage<BF, E4>,
-    stage1: &GpuGKRStage1Output,
-    forward_setup: &GpuGKRForwardSetup,
-    external_challenges: &GKRExternalChallenges<BF, E4>,
-    trace_len: usize,
-    inits_and_teardowns_top_bits: &[u32],
-    context: &ProverContext,
-) -> CudaResult<()> {
-    prepare_layer_destinations(layer_idx, storage, trace_len, context)?;
-
-    let setup = bind_layer(
-        cl,
-        storage,
-        stage1,
-        forward_setup,
-        external_challenges,
-        trace_len,
-        inits_and_teardowns_top_bits,
-    )
-    .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e:?}"));
-
-    stage_const_derived_e4_bank(cl, forward_setup, context)
-        .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e:?}"));
-
-    super::launch_fwd_vm(&setup, context)?;
-
-    // Pure copy gates alias existing storage instead of materializing output.
-    register_layer_copy_aliases(layer_idx, layer, storage);
-    Ok(())
-}
-
-/// Bind consecutive layers up front and launch them as one row-stable device
-/// group. Global materializations remain intact; the experiment only removes
-/// the host-visible kernel boundaries between layers.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn schedule_grouped_vm(
-    group: Range<usize>,
+pub(crate) fn schedule_vm(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     compiled_layers: &[CompiledLayer],
     storage: &mut GpuGKRStorage<BF, E4>,
@@ -350,27 +231,15 @@ pub(crate) fn schedule_grouped_vm(
     external_challenges: &GKRExternalChallenges<BF, E4>,
     trace_len: usize,
     inits_and_teardowns_top_bits: &[u32],
-    store_policy: ForwardVmStorePolicy,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    assert!(
-        group.start < group.end,
-        "forward VM device group must be non-empty"
-    );
-    assert!(group.end <= compiled_circuit.layers.len());
+    assert!(!compiled_circuit.layers.is_empty());
     assert_eq!(compiled_layers.len(), compiled_circuit.layers.len());
-    for layer_idx in group.clone() {
-        let layer = &compiled_circuit.layers[layer_idx];
-
-        // Preserve the production order. Hydrating later layers before earlier
-        // destinations exist can insert a scratch alias at an address the
-        // earlier materialization subsequently needs to own.
+    for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+        // Hydrate scratch aliases before output allocation can reuse their addresses.
         super::super::hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
         prepare_layer_destinations(layer_idx, storage, trace_len, context)?;
 
-        // A later descriptor can resolve this pure-copy output immediately;
-        // the backing it aliases is already materialized and the grouped
-        // launch remains stream-ordered after all descriptor construction.
         register_layer_copy_aliases(layer_idx, layer, storage);
     }
 
@@ -385,26 +254,12 @@ pub(crate) fn schedule_grouped_vm(
         arg_derived_e4_value(external_challenges, reference)
             .unwrap_or_else(|error| panic!("{error}"))
     };
-    let lowered = lower_group_desc(
-        &compiled_layers[group.clone()],
-        &header,
-        &resolve,
-        &challenge,
-    )
-    .unwrap_or_else(|error| panic!("forward VM group {}..{}: {error:?}", group.start, group.end));
+    let lowered = lower_desc(compiled_layers, &header, &resolve, &challenge)
+        .unwrap_or_else(|error| panic!("forward VM lowering failed: {error:?}"));
     assert_eq!(lowered.desc.count, trace_len as u32);
-    assert!(lowered.source_window_count <= super::desc::GROUP_SOURCE_WINDOW_COUNT);
-    stage_group_const_derived_e4_bank(&lowered, forward_setup, context)
-        .unwrap_or_else(|error| panic!("forward VM grouped derived bank: {error:?}"));
-    match store_policy {
-        ForwardVmStorePolicy::Streaming => launch_grouped_fwd_vm_streaming(&lowered.desc, context)?,
-        ForwardVmStorePolicy::WriteBack => launch_grouped_fwd_vm_writeback(&lowered.desc, context)?,
-    }
-
-    // Every raw-pointer consumer has now been scheduled on exec_stream. The
-    // scheduling contract permits these local handles to drop before GPU
-    // completion; pool reuse remains ordered behind the launch.
-    Ok(())
+    stage_const_derived_e4_bank(&lowered, forward_setup, context)
+        .unwrap_or_else(|error| panic!("forward VM constant staging failed: {error:?}"));
+    launch_fwd_vm(&lowered.desc, context)
 }
 
 #[cfg(test)]

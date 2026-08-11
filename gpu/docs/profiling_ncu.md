@@ -2,7 +2,7 @@
 
 Generic Nsight Compute methodology for any `gpu/` crate. Start from
 [`profiling.md`](./profiling.md) for the parameter conventions; supply
-`$TEST_BINARY`, `$NCU_NVTX_RANGE`, and `$SOURCE_FOLDERS` (plus the crate's
+`$TEST_BINARY`, `$NVTX_RANGE`, and `$SOURCE_FOLDERS` (plus the crate's
 `GPU_<X>_ENABLE_LINEINFO` for source correlation) from your crate's profiling
 doc. Invoke `$TEST_BINARY` with whatever libtest args select + run the
 kernel-exercising test (e.g. `--exact <test> --nocapture`, adding `--ignored`
@@ -10,7 +10,7 @@ only if that test is marked `#[ignore]`).
 
 > Concrete example (the prover): see
 > [`../circuit_prover/docs/profiling.md`](../circuit_prover/docs/profiling.md) —
-> `$NCU_NVTX_RANGE = gpu_circuit_prover.tests@test.gpu.prove.profiled_call`,
+> `$NVTX_RANGE = test.gpu.prove.profiled_call@gpu_circuit_prover.tests`,
 > `$SOURCE_FOLDERS = gpu/trace/native gpu/gkr/native gpu/whir/native`
 > (the apex has no native tree of its own), lineinfo env
 > `GPU_TRACE_ENABLE_LINEINFO` / `GPU_GKR_ENABLE_LINEINFO` /
@@ -23,7 +23,7 @@ Use the default/basic set for fast turnaround and filter to the kernel of intere
 ```bash
 .agents/bin/with_gpu_lock.sh ncu \
   --nvtx \
-  --nvtx-include "$NCU_NVTX_RANGE" \
+  --nvtx-include "$NVTX_RANGE" \
   --set basic \
   --kernel-name-base demangled \
   --kernel-name 'regex:<kernel_regex>' \
@@ -48,7 +48,7 @@ Then profile with source import enabled and the explicit full-section list:
 ```bash
 .agents/bin/with_gpu_lock.sh ncu \
   --nvtx \
-  --nvtx-include "$NCU_NVTX_RANGE" \
+  --nvtx-include "$NVTX_RANGE" \
   --import-source yes \
   --source-folders "$SOURCE_FOLDERS" \
   --section ComputeWorkloadAnalysis \
@@ -93,7 +93,7 @@ range replay, cache flushing disabled, and the same full-section list:
 ```bash
 .agents/bin/with_gpu_lock.sh ncu \
   --nvtx \
-  --nvtx-include '<your.domain>@profile.tmp.<kernel_group>' \
+  --nvtx-include 'profile.tmp.<kernel_group>@<your.domain>' \
   --replay-mode range \
   --cache-control none \
   --import-source yes \

@@ -14,8 +14,7 @@ generic GPU workflow from [`../../../.agents/gpu_work.md`](../../../.agents/gpu_
 | Parameter | Prover value |
 |---|---|
 | `$TEST_BINARY` | the `run_add_sub_profile_test` binary (built below) |
-| `$NSYS_NVTX_RANGE` | `test.gpu.prove.profiled_call@gpu_circuit_prover.tests` |
-| `$NCU_NVTX_RANGE` | `gpu_circuit_prover.tests@test.gpu.prove.profiled_call` |
+| `$NVTX_RANGE` | `test.gpu.prove.profiled_call@gpu_circuit_prover.tests` |
 | `$SOURCE_FOLDERS` | `gpu/trace/native gpu/gkr/native gpu/whir/native` (the apex has no native tree of its own) |
 | lineinfo env | `GPU_TRACE_ENABLE_LINEINFO` / `GPU_GKR_ENABLE_LINEINFO` / `GPU_WHIR_ENABLE_LINEINFO` |
 | build-diag env | `GPU_TRACE_ENABLE_BUILD_DIAG` / `GPU_GKR_ENABLE_BUILD_DIAG` / `GPU_WHIR_ENABLE_BUILD_DIAG` |

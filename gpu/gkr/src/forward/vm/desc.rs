@@ -1,32 +1,25 @@
 //! Rust half of the forward VM descriptor ABI.
-//!
-//! Keep field-for-field with the CUDA side. `E4` is 16-byte aligned, and the exact
-//! shared size is guarded below.
-//!
-//! Programs and banks are inline; values exceeding a capacity are rejected.
 
 use gpu_core::primitives::field::{BF, E4};
 
 // --- caps (mirror the FWD_VM_* constexprs in fwd_vm.cuh) ---------------------
-pub(crate) const PROGRAM_CAP: usize = 12288; // u16 lanes, 24 KB inline
-pub(crate) const CONST_CAP: usize = 64; // compiled + runtime BF constants
-pub(crate) const ARG_DERIVED_E4_CAP: usize = 12; // schedule-time derived E4 values
-pub(crate) const DESC_CAP: usize = 370; // packed special descriptors
-pub(crate) const CONST_DERIVED_E4_CAP: usize = 8; // Includes the optional decoder fill.
-pub(crate) const SOURCE_WINDOW_COUNT: usize = 64;
-pub(crate) const GROUP_SOURCE_WINDOW_COUNT: usize = 16;
-pub(crate) const GROUP_LAYER_CAP: usize = 8;
+pub(crate) const PROGRAM_CAP: usize = 12288;
+pub(crate) const CONST_CAP: usize = 64;
+pub(crate) const ARG_DERIVED_E4_CAP: usize = 12;
+pub(crate) const DESC_CAP: usize = 370;
+pub(crate) const CONST_DERIVED_E4_CAP: usize = 8;
+pub(crate) const SOURCE_WINDOW_COUNT: usize = 16;
+pub(crate) const LAYER_CAP: usize = 8;
 pub(crate) const DST_SLOT_COUNT: usize = 16;
-pub(crate) const MAPPING_ARENA_COUNT: usize = 3; // generic_family / range_check_16 / timestamp
+pub(crate) const MAPPING_ARENA_COUNT: usize = 3;
 
 // --- special-descriptor strategy kinds (packed-desc `kind` field) ------------
-pub(crate) const SD_SINGLE_COLUMN: u32 = 0; // PeekSingleColumn: lift(mapping[row])
-pub(crate) const SD_AGGREGATE: u32 = 1; // PeekAggregate: table[mapping[row]]
-pub(crate) const SD_SETUP: u32 = 2; // PeekSetup: row < table_len ? table[row] : 0
-pub(crate) const SD_DECODER: u32 = 3; // PeekDecoder: mask[row] != 0 ? table[mapping[row]]
-                                      //                            : const_derived_e4[vkind]
-pub(crate) const SD_VIRTUAL: u32 = 4; // VirtualSetup: lift(n(vkind, gid)), no memory reads
-pub(crate) const SD_INITS_TOP_BITS: u32 = 5; // runtime init/teardown address prefix
+pub(crate) const SD_SINGLE_COLUMN: u32 = 0;
+pub(crate) const SD_AGGREGATE: u32 = 1;
+pub(crate) const SD_SETUP: u32 = 2;
+pub(crate) const SD_DECODER: u32 = 3;
+pub(crate) const SD_VIRTUAL: u32 = 4;
+pub(crate) const SD_INITS_TOP_BITS: u32 = 5;
 
 // --- mapping-arena selectors (packed-desc `arena` field) ---------------------
 pub(crate) const ARENA_GENERIC_FAMILY: u32 = 0;
@@ -34,10 +27,6 @@ pub(crate) const ARENA_RANGE_CHECK_16: u32 = 1;
 pub(crate) const ARENA_TIMESTAMP: u32 = 2;
 
 // --- SD_VIRTUAL `vkind` codes -------------------------------------------------
-// vkind == the native `gkr_base_source_kind` value, stored VERBATIM on the wire
-// (`native/gkr/support/descriptors.cuh`: the four
-// GKR_BASE_SOURCE_VIRTUAL_* variants are 2..=5, in `KIND_ORDER`
-// (`gpu_gkr_compiler::KIND_ORDER`) order).
 pub(crate) const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS: u32 = 2;
 pub(crate) const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP: u32 = 3;
 pub(crate) const GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW: u32 = 4;
@@ -49,18 +38,9 @@ pub(crate) const VKIND_INITS_AND_TEARDOWNS_LOW: u32 =
 pub(crate) const VKIND_INITS_AND_TEARDOWNS_HIGH: u32 =
     GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH;
 
-/// Drift guard: the vkind codes above must stay in `KIND_ORDER` order
-/// (`KIND_ORDER` index + 2 == code) — `KIND_ORDER` is the single upstream
-/// source of truth for the wire code, and `GKR_BASE_SOURCE_VIRTUAL_*` above
-/// pin the native enum values (descriptors.cuh:12-18).
 const _: () = {
     use crate::upstream::VirtualSetupKind;
     use gpu_gkr_compiler::KIND_ORDER;
-    // KIND_ORDER index + 2 == vkind code (a 5th upstream kind fails here
-    // loudly: this assert trips on the length mismatch, and separately
-    // `pack_desc`'s `(2..=5)` range check would need widening to `(2..=6)` —
-    // vkind:3 has room (native value 6 still fits 3 bits), so neither guard
-    // is a bit-width problem, just an unhandled-case one).
     assert!(KIND_ORDER.len() == 4);
     assert!(matches!(
         &KIND_ORDER[(VKIND_RANGE_CHECK_16_BITS - 2) as usize],
@@ -133,9 +113,13 @@ fn unpack_desc(desc: u32) -> (u32, u32, u16, u32) {
     )
 }
 
-/// Forward VM kernel parameter; mirror of CUDA `fwd_vm_desc`
-/// (`native/gkr/forward/fwd_vm.cuh`), field-for-field. Offsets in the
-/// comments are byte offsets shared by both sides (zero internal padding).
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct FwdVmLayer {
+    pub program_offset: u16,
+    pub instruction_count: u16,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct FwdVmDesc {
@@ -145,61 +129,23 @@ pub(crate) struct FwdVmDesc {
     pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT],
     pub table: *const E4,
     pub mask: *const BF,
-    pub n_instr: u32,
     pub source_stride_bytes: [u32; SOURCE_WINDOW_COUNT],
     pub dst_stride_bytes: [u32; DST_SLOT_COUNT],
     pub consts: [BF; CONST_CAP],
     pub table_len: u32,
     pub descs: [u32; DESC_CAP],
     pub count: u32,
-    pub program: [u16; PROGRAM_CAP],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub(crate) struct FwdVmGroupLayer {
-    pub program_offset: u16,
-    pub instruction_count: u16,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(crate) struct FwdVmGroupDesc {
-    pub arg_derived_e4: [E4; ARG_DERIVED_E4_CAP],
-    pub source_base: [*mut u8; GROUP_SOURCE_WINDOW_COUNT],
-    pub dst_base: [*mut u8; DST_SLOT_COUNT],
-    pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT],
-    pub table: *const E4,
-    pub mask: *const BF,
-    pub source_stride_bytes: [u32; GROUP_SOURCE_WINDOW_COUNT],
-    pub dst_stride_bytes: [u32; DST_SLOT_COUNT],
-    pub consts: [BF; CONST_CAP],
-    pub table_len: u32,
-    pub descs: [u32; DESC_CAP],
-    pub count: u32,
     pub layer_count: u32,
-    pub layers: [FwdVmGroupLayer; GROUP_LAYER_CAP],
+    pub layers: [FwdVmLayer; LAYER_CAP],
     pub program: [u16; PROGRAM_CAP],
 }
 
 /// ABI size guards, paired with the CUDA `static_assert`s in `fwd_vm.cuh`.
 const _: () = {
-    assert!(
-        core::mem::size_of::<FwdVmDesc>() == 27520,
-        "fwd_vm_desc/FwdVmDesc ABI size drift"
-    );
-    assert!(
-        core::mem::size_of::<FwdVmDesc>() <= 32764,
-        "FwdVmDesc exceeds the __grid_constant__ param budget"
-    );
-    assert!(
-        core::mem::align_of::<FwdVmDesc>() == 16,
-        "FwdVmDesc alignment drift (E4 is 16-aligned)"
-    );
-    assert!(core::mem::size_of::<FwdVmGroupLayer>() == 4);
-    assert!(core::mem::size_of::<FwdVmGroupDesc>() == 26_976);
-    assert!(core::mem::size_of::<FwdVmGroupDesc>() <= 32_764);
-    assert!(core::mem::align_of::<FwdVmGroupDesc>() == 16);
+    assert!(core::mem::size_of::<FwdVmLayer>() == 4);
+    assert!(core::mem::size_of::<FwdVmDesc>() == 26_976);
+    assert!(core::mem::size_of::<FwdVmDesc>() <= 32_764);
+    assert!(core::mem::align_of::<FwdVmDesc>() == 16);
 };
 
 #[cfg(test)]
@@ -207,56 +153,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn grouped_desc_layout_matches_the_compact_cuda_abi() {
+    fn desc_layout_matches_the_cuda_abi() {
         use core::mem::{align_of, offset_of, size_of};
 
-        assert_eq!(size_of::<FwdVmGroupLayer>(), 4);
-        assert_eq!(align_of::<FwdVmGroupLayer>(), 2);
-        assert_eq!(offset_of!(FwdVmGroupLayer, program_offset), 0);
-        assert_eq!(offset_of!(FwdVmGroupLayer, instruction_count), 2);
+        assert_eq!(size_of::<FwdVmLayer>(), 4);
+        assert_eq!(align_of::<FwdVmLayer>(), 2);
+        assert_eq!(offset_of!(FwdVmLayer, program_offset), 0);
+        assert_eq!(offset_of!(FwdVmLayer, instruction_count), 2);
 
-        assert_eq!(offset_of!(FwdVmGroupDesc, arg_derived_e4), 0);
-        assert_eq!(offset_of!(FwdVmGroupDesc, source_base), 192);
-        assert_eq!(offset_of!(FwdVmGroupDesc, dst_base), 320);
-        assert_eq!(offset_of!(FwdVmGroupDesc, mapping_arena), 448);
-        assert_eq!(offset_of!(FwdVmGroupDesc, table), 472);
-        assert_eq!(offset_of!(FwdVmGroupDesc, mask), 480);
-        assert_eq!(offset_of!(FwdVmGroupDesc, source_stride_bytes), 488);
-        assert_eq!(offset_of!(FwdVmGroupDesc, dst_stride_bytes), 552);
-        assert_eq!(offset_of!(FwdVmGroupDesc, consts), 616);
-        assert_eq!(offset_of!(FwdVmGroupDesc, table_len), 872);
-        assert_eq!(offset_of!(FwdVmGroupDesc, descs), 876);
-        assert_eq!(offset_of!(FwdVmGroupDesc, count), 2_356);
-        assert_eq!(offset_of!(FwdVmGroupDesc, layer_count), 2_360);
-        assert_eq!(offset_of!(FwdVmGroupDesc, layers), 2_364);
-        assert_eq!(offset_of!(FwdVmGroupDesc, program), 2_396);
-        assert_eq!(size_of::<FwdVmGroupDesc>(), 26_976);
-        assert_eq!(align_of::<FwdVmGroupDesc>(), 16);
-    }
-
-    /// Walk the byte offsets documented in the struct (and mirrored in
-    /// `fwd_vm.cuh`) — the ABI contract is offset-for-offset, so any layout
-    /// drift (reorder, size change, surprise padding) fails here with the
-    /// field name instead of at the opaque exact-size assert.
-    #[test]
-    fn desc_layout_offsets_match_the_documented_abi() {
-        use core::mem::offset_of;
         assert_eq!(offset_of!(FwdVmDesc, arg_derived_e4), 0);
         assert_eq!(offset_of!(FwdVmDesc, source_base), 192);
-        assert_eq!(offset_of!(FwdVmDesc, dst_base), 704);
-        assert_eq!(offset_of!(FwdVmDesc, mapping_arena), 832);
-        assert_eq!(offset_of!(FwdVmDesc, table), 856);
-        assert_eq!(offset_of!(FwdVmDesc, mask), 864);
-        assert_eq!(offset_of!(FwdVmDesc, n_instr), 872);
-        assert_eq!(offset_of!(FwdVmDesc, source_stride_bytes), 876);
-        assert_eq!(offset_of!(FwdVmDesc, dst_stride_bytes), 1132);
-        assert_eq!(offset_of!(FwdVmDesc, consts), 1196);
-        assert_eq!(offset_of!(FwdVmDesc, table_len), 1452);
-        assert_eq!(offset_of!(FwdVmDesc, descs), 1456);
-        assert_eq!(offset_of!(FwdVmDesc, count), 2936);
-        assert_eq!(offset_of!(FwdVmDesc, program), 2940);
-        assert_eq!(offset_of!(FwdVmDesc, program) + 2 * PROGRAM_CAP, 27516);
-        assert_eq!(core::mem::size_of::<FwdVmDesc>(), 27520);
+        assert_eq!(offset_of!(FwdVmDesc, dst_base), 320);
+        assert_eq!(offset_of!(FwdVmDesc, mapping_arena), 448);
+        assert_eq!(offset_of!(FwdVmDesc, table), 472);
+        assert_eq!(offset_of!(FwdVmDesc, mask), 480);
+        assert_eq!(offset_of!(FwdVmDesc, source_stride_bytes), 488);
+        assert_eq!(offset_of!(FwdVmDesc, dst_stride_bytes), 552);
+        assert_eq!(offset_of!(FwdVmDesc, consts), 616);
+        assert_eq!(offset_of!(FwdVmDesc, table_len), 872);
+        assert_eq!(offset_of!(FwdVmDesc, descs), 876);
+        assert_eq!(offset_of!(FwdVmDesc, count), 2_356);
+        assert_eq!(offset_of!(FwdVmDesc, layer_count), 2_360);
+        assert_eq!(offset_of!(FwdVmDesc, layers), 2_364);
+        assert_eq!(offset_of!(FwdVmDesc, program), 2_396);
+        assert_eq!(size_of::<FwdVmDesc>(), 26_976);
+        assert_eq!(align_of::<FwdVmDesc>(), 16);
     }
 
     #[test]

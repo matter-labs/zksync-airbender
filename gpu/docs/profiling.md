@@ -18,8 +18,7 @@ Both guides are written against parameters that the calling crate supplies:
 | Parameter | Meaning |
 |---|---|
 | `$TEST_BINARY` | the unlocked-built test/bench binary that exercises the kernel(s) — capture it via `cargo test\|bench -p <crate> <filter> --release --no-run --message-format=json \| python3 .agents/bin/cargo_test_executables.py` |
-| `$NSYS_NVTX_RANGE` | the NVTX capture range as `message@domain` for `nsys` |
-| `$NCU_NVTX_RANGE` | the same registered range as `domain@message` for `ncu` (the tools use opposite orderings) |
+| `$NVTX_RANGE` | the NVTX capture range as `message@domain`, opened around the work to profile (a registered range via `gpu_core`'s `primitives::nvtx`) |
 | `$SOURCE_FOLDERS` | the crate's `native/` dir, for `ncu --import-source` |
 | lineinfo rebuild | rebuild with the crate's `GPU_<X>_ENABLE_LINEINFO=1` (e.g. `GPU_NTT_ENABLE_LINEINFO`, `GPU_GKR_ENABLE_LINEINFO`) — `gpu_native_build` wires it to `nvcc -lineinfo` for source correlation |
 | build-diag rebuild | rebuild with the crate's `GPU_<X>_ENABLE_BUILD_DIAG=1` (e.g. `GPU_NTT_ENABLE_BUILD_DIAG`, `GPU_GKR_ENABLE_BUILD_DIAG`) — `gpu_native_build` wires it to `nvcc --ptxas-options=-v` (per-kernel register/spill/smem report; captured to `target/<profile>/build/<crate>-<hash>/stderr`, echoed only under `cargo build -vv`) plus `--keep` (PTX/cubin intermediates retained in the crate's CMake build dir; with a compiler launcher such as sccache active, the ptxas report is still cached and replayed but the kept intermediates do not survive — disable the launcher for the run when you need them) |
