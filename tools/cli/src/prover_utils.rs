@@ -368,6 +368,23 @@ impl ProgramProver {
         }
     }
 
+    /// The app program's recursion-chain commitment (base -> unrolled -> unified), as carried
+    /// in a proof's final registers `18..=25`.
+    ///
+    /// Already derived while building the per-level setups, so this is a map lookup - callers
+    /// should use it instead of recomputing the setups from the binary, which costs minutes.
+    /// `None` on the CPU backend, which does not build setups up front.
+    pub fn program_commitment(&self) -> Option<[u32; 8]> {
+        match &self.inner {
+            ProgramProverInner::Cpu => None,
+            #[cfg(feature = "gpu")]
+            ProgramProverInner::Gpu(prover) => prover
+                .level_data
+                .get(&UnrolledProverLevel::RecursionUnified)
+                .map(|data| data.hash_chain),
+        }
+    }
+
     pub fn continue_artifact(&self, artifact: ProofArtifact) -> Result<ProofArtifact, String> {
         match &self.inner {
             ProgramProverInner::Cpu => self.continue_artifact_cpu(artifact),
