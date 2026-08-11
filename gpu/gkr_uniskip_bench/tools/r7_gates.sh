@@ -375,10 +375,10 @@ echo_cells() {
 --block-threads 128 --cache-arm cache0 --carrier seg-recompute|16:eval_lsb_seg_recompute
 --block-threads 128 --cache-arm hot16 --carrier seg-s --carveout-hint 40 --profile|40:eval_lsb_seg_s_cv64
 --block-threads 128 --cache-arm hot16 --carrier seg-s100 --carveout-hint 33 --profile|33:eval_lsb_seg_s_cv100
---segb-factorial|16:$cached 16:eval_lsb_segb_g 16:eval_lsb_segb_recompute 16:eval_lsb_segb_g_slotted
+--segb-factorial|16:$cached 16:eval_lsb_segb_g 16:eval_lsb_segb_recompute 2:eval_lsb_segb_g_slotted
 --block-threads 128 --cache-arm hot16 --carrier segb-g|16:eval_lsb_segb_g
 --block-threads 128 --cache-arm cache0 --carrier segb-recompute|16:eval_lsb_segb_recompute
---block-threads 128 --cache-arm hot16 --carrier segb-g-slotted|16:eval_lsb_segb_g_slotted"
+--block-threads 128 --cache-arm hot16 --carrier segb-g-slotted|2:eval_lsb_segb_g_slotted"
   local cells=0 pass=0 args want got
   while IFS='|' read -r args want; do
     [ -n "$args" ] || continue

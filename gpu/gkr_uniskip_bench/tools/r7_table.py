@@ -187,12 +187,15 @@ SYMBOL_HINT = {
     "eval_lsb_seg_s_acc": 33,
     "eval_lsb_seg_g": 16,
     "eval_lsb_seg_recompute": 16,
-    # The three transplant bodies hold no static and no dynamic shared memory, and the
-    # slotted one is EQUALIZED to carrier G's percent on purpose: its SHARED:8 would
-    # otherwise move the L1/shared partition under the `slotted − segb-hot16-g` row (A9b).
+    # The transplant bodies hold no dynamic shared memory, and the slotted one is EQUALIZED
+    # to carrier G's realized CONFIGURATION on purpose: its SHARED:8 would otherwise move the
+    # L1/shared partition under the `slotted − segb-hot16-g` row (A9b). Those static bytes
+    # also put it on a different hint ladder (R7b G0: 2 -> 32.77 KB on the slotted symbol, 16
+    # -> 32.77 KB on the zero-shared ones, 16 -> 102.40 KB on the slotted), so the equalized
+    # percents are UNEQUAL and 16 on all three would be the confound, not the control.
     SEGB_G: 16,
     SEGB_RECOMPUTE: 16,
-    SEGB_G_SLOTTED: 16,
+    SEGB_G_SLOTTED: 2,
 }
 
 # position -> (name, tag, term order, the LOCAL incumbent's hint). The incumbent's percent is

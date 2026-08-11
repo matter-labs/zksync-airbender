@@ -1539,10 +1539,21 @@ impl LaneCarrier {
             Self::SegS100 => 100,
             Self::SegG | Self::SegRecompute => 16,
             // The transplant bodies allocate no shared memory, so the request steers L1
-            // alone — and `segb-g` and its slotted variant must take the SAME one: the
-            // slotted symbol's 8 static bytes would otherwise let the driver partition the
-            // two differently and confound the decision row between them.
-            Self::SegbG | Self::SegbRecompute | Self::SegbGSlotted => 16,
+            // alone — and `segb-g` and its slotted variant must realize the SAME
+            // CONFIGURATION, not the same percent: the slotted symbol's static bytes put it
+            // on a different hint ladder, and an unequal partition would confound the one
+            // decision row the two exist to compare.
+            //
+            // Re-mapped on the bodies themselves (R7b G0, `--carrier` + `--carveout-hint`,
+            // ncu LaunchStats/Occupancy). Zero static shared (`segb-g`, `segb-recompute`):
+            // 0..16 -> 32.77 KB, 33..50 -> 65.54 KB, 66..100 -> 102.40 KB. Four static bytes
+            // (`segb-g-slotted`): 0 -> 8.19 KB, 1 -> 16.38 KB, **2 -> 32.77 KB**, 4..6 ->
+            // 65.54 KB, 8..100 -> 102.40 KB — the ladder is compressed ~8x, so the 16 that
+            // equalizes the percent puts the slotted body at 102.40 KB against its sibling's
+            // 32.77 KB. 32.77 KB is the smallest configuration either body reaches while
+            // holding the pinned 7 blocks/SM, so the pins are the percents that land there.
+            Self::SegbG | Self::SegbRecompute => 16,
+            Self::SegbGSlotted => 2,
         })
     }
 
@@ -2578,11 +2589,12 @@ mod lane_tests {
         }
     }
 
-    /// The five seg symbols and their sticky carveout requests, pinned: the names feed the
+    /// The eight seg symbols and their sticky carveout requests, pinned: the names feed the
     /// ARM lines, the config block and the hint echoes, and the percents ARE the carrier
     /// configuration under test. The two tiers are 65.54 KB and 102.40 KB on the DYNAMIC
     /// bodies (33 and 100 — the percent is not the static ladder's, see `carveout`) and
-    /// 32.77 KB on the static ones (16).
+    /// 32.77 KB on the static ones (16, and 2 on the transplant body that carries four
+    /// static bytes — same configuration, a compressed ladder).
     #[test]
     fn cpu_seg_carrier_kernels_and_carveouts_are_pinned() {
         let named: Vec<(&str, Option<u32>)> = LaneCarrier::SEG
@@ -2599,7 +2611,7 @@ mod lane_tests {
                 ("eval_lsb_seg_recompute", Some(16)),
                 ("eval_lsb_segb_g", Some(16)),
                 ("eval_lsb_segb_recompute", Some(16)),
-                ("eval_lsb_segb_g_slotted", Some(16)),
+                ("eval_lsb_segb_g_slotted", Some(2)),
             ]
         );
         // The 64 KiB tier is a DYNAMIC-shared crossing, one percent above the 32.77 KB
@@ -2634,12 +2646,13 @@ mod lane_tests {
         assert_eq!(LaneCarrier::SegRecompute.supported_arms(), vec!["cache0"]);
 
         // R7b. The slotted symbol carries 8 static shared bytes its sibling does not, so
-        // an unequal carveout request would let the driver partition L1 differently
-        // between the two and confound the one row they exist to compare.
-        assert_eq!(
-            LaneCarrier::SegbG.carveout(),
-            LaneCarrier::SegbGSlotted.carveout()
-        );
+        // an unequal carveout CONFIGURATION would let the driver partition L1 differently
+        // between the two and confound the one row they exist to compare. Those bytes also
+        // put it on a different hint ladder (see `carveout`), so equal configuration means
+        // UNEQUAL percents: 16 and 2 both realize 32.77 KB, and equal percents would not.
+        assert_eq!(LaneCarrier::SegbG.carveout(), Some(16));
+        assert_eq!(LaneCarrier::SegbRecompute.carveout(), Some(16));
+        assert_eq!(LaneCarrier::SegbGSlotted.carveout(), Some(2));
         assert!(LaneCarrier::SegbG.uses_slab());
         assert!(LaneCarrier::SegbGSlotted.uses_slab());
         assert!(LaneCarrier::SegbGSlotted.is_slotted());

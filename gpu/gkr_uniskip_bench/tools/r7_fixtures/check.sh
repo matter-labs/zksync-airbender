@@ -356,7 +356,7 @@ rejects "a SEGB rotation with no SEG line" \
   "no \`SEG\` line — a SEGB rotation deals a program" -- $(segb_sess segb-seg-missing)
 rejects "the SEGB session ran 100 rounds" \
   "SEGB is preregistered at 96 rounds / 8 warmup" -- $(segb_sess segb-rounds-not-96)
-rejects "the slotted symbol echoed at 32 instead of the equalized 16" \
+rejects "the slotted symbol echoed at 16 instead of the tier-equalized 2" \
   "$ECHOMSG" -- $(segb_sess segb-echo-slotted-wrong)
 rejects "the slotted lane declares the plain transplant body" \
   "rotation runs it on \`eval_lsb_segb_g_slotted\`" -- $(segb_sess segb-lane-symbol-forged)

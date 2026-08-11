@@ -93,7 +93,7 @@ ADMISSION = [0, 1, 2, 3, 4, 5, 48, 49, 50, 51] + list(range(6, 41)) + \
 # The steered symbols and their preregistered percents. The local incumbent's percent is the
 # position's, so it is filled in per log.
 SEG_HINT = ((CV64, 33), (CV100, 100), (ACC, 33), (SEG_G, 16), (RECOMPUTE, 16),
-            (SEGB_G, 16), (SEGB_RECOMPUTE, 16), (SEGB_G_SLOTTED, 16))
+            (SEGB_G, 16), (SEGB_RECOMPUTE, 16), (SEGB_G_SLOTTED, 2))
 
 FIN_128 = 0.008192
 FIN_256 = 0.006144
@@ -488,7 +488,7 @@ def main():
     segb_session(outdir, "segb-rounds-not-96", oracle, {2: dict(rounds=100)})
     segb_session(outdir, "segb-echo-slotted-wrong", oracle,
                  {2: dict(echoes=[(CACHED, 16), (SEGB_G, 16), (SEGB_RECOMPUTE, 16),
-                                  (SEGB_G_SLOTTED, 32)])})
+                                  (SEGB_G_SLOTTED, 16)])})
     segb_session(outdir, "segb-lane-symbol-forged", oracle,
                  {2: dict(arm_patch={"segb-hot16-g-slotted@128": {"kernel": SEGB_G}})})
     segb_session(outdir, "segb-r7-other-build", oracle,
