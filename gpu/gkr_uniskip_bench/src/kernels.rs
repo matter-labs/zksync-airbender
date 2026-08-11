@@ -8,6 +8,7 @@ use std::ffi::{c_char, c_void, CStr};
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
+use era_cudart::occupancy::max_active_blocks_per_multiprocessor;
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
@@ -24,6 +25,7 @@ use crate::abi::{
     UNISKIP_EQ_HIGH, UNISKIP_NTT_TABLES, UNISKIP_PAIR_THREADS_128, UNISKIP_SEG_K, UNISKIP_TAPS,
     UNISKIP_THREADS_PER_BLOCK,
 };
+use crate::coset_cache::LaneKernel;
 
 cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_eq_high: [[u32; 4]; 2 * UNISKIP_EQ_HIGH]; }
@@ -602,6 +604,51 @@ pub fn eval_lsb_pair_cached_128_lb(
     let args = EvalLsbPairCached128LbArguments::new(*desc, *plan);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
     EvalLsbPairCached128LbFunction::default().launch(&config, &args)
+}
+
+/// Blocks per SM the driver's own occupancy calculator gives one of the lane kernels at
+/// `block_threads` and `dynamic_smem_bytes`. It reads the SAME function attributes a launch
+/// will — the register count, the static shared plane and whatever
+/// `PreferredSharedMemoryCarveout` was last set — so it is the in-binary answer to "how many
+/// blocks will actually be resident", and must be asked AFTER the carveout is applied.
+///
+/// One function over [`LaneKernel`] rather than one per symbol: the enum is already the
+/// single source of truth for which body a lane launches, and a per-symbol family would let
+/// a lane be gated against a kernel it does not run.
+pub fn max_blocks_per_sm(
+    kernel: LaneKernel,
+    block_threads: u32,
+    dynamic_smem_bytes: u32,
+) -> CudaResult<i32> {
+    let threads = block_threads as i32;
+    let dynamic = dynamic_smem_bytes as usize;
+    match kernel {
+        LaneKernel::Pair => occupancy(&EvalLsbPairFunction::default(), threads, dynamic),
+        LaneKernel::Pair128 => occupancy(&EvalLsbPair128Function::default(), threads, dynamic),
+        LaneKernel::Pair128Lb => occupancy(&EvalLsbPair128LbFunction::default(), threads, dynamic),
+        LaneKernel::Cached => occupancy(&EvalLsbPairCachedFunction::default(), threads, dynamic),
+        LaneKernel::Cached128 => {
+            occupancy(&EvalLsbPairCached128Function::default(), threads, dynamic)
+        }
+        LaneKernel::Cached128Lb => {
+            occupancy(&EvalLsbPairCached128LbFunction::default(), threads, dynamic)
+        }
+        LaneKernel::SegSCv64 => occupancy(&EvalLsbSegSCv64Function::default(), threads, dynamic),
+        LaneKernel::SegSCv100 => occupancy(&EvalLsbSegSCv100Function::default(), threads, dynamic),
+        LaneKernel::SegSAcc => occupancy(&EvalLsbSegSAccFunction::default(), threads, dynamic),
+        LaneKernel::SegG => occupancy(&EvalLsbSegGFunction::default(), threads, dynamic),
+        LaneKernel::SegRecompute => {
+            occupancy(&EvalLsbSegRecomputeFunction::default(), threads, dynamic)
+        }
+    }
+}
+
+fn occupancy(
+    function: &impl KernelFunction,
+    block_threads: i32,
+    dynamic_smem_bytes: usize,
+) -> CudaResult<i32> {
+    max_active_blocks_per_multiprocessor(function, block_threads, dynamic_smem_bytes)
 }
 
 /// v3 R6: steer the shared-memory carveout of the bounded 128-thread cached kernel — the

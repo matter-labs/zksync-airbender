@@ -748,6 +748,19 @@ pub struct PreparedLane {
     pub blocks: u32,
 }
 
+impl PreparedLane {
+    /// Dynamic shared memory this lane's launch requests — carrier S's slab, and zero
+    /// everywhere else, where the plane and the frame are static. It is half of what
+    /// decides the lane's occupancy, so the self-gate reads it from the launch state
+    /// rather than recomputing it.
+    fn dynamic_smem_bytes(&self) -> u32 {
+        match &self.launch {
+            LaneLaunch::Seg(seg) => seg.shared_bytes,
+            LaneLaunch::Plain(_) | LaneLaunch::Cached(_) => 0,
+        }
+    }
+}
+
 enum LaneLaunch {
     Plain(EvalLaunch),
     Cached(CachedLaunch),
@@ -1265,26 +1278,44 @@ impl Harness {
             || cache_lanes
                 .iter()
                 .any(|prepared| prepared.lane.kernel() == LaneKernel::Cached128Lb);
-        let carveout = config.carveout_hint.resolve(launches_cached_128_lb);
+        // On a segmented single-arm run an explicit percent belongs to the CARRIER's symbol
+        // (the ladder-mapping surface below), so the local incumbent — which that run never
+        // launches — is left alone rather than steered and echoed.
+        let carveout = if config.carrier.is_seg() {
+            None
+        } else {
+            config.carveout_hint.resolve(launches_cached_128_lb)
+        };
         if let Some(pct) = carveout {
             kernels::set_cached_128_lb_carveout(pct)?;
             println!("  carveout hint       {pct}% (eval_lsb_pair_cached_128_lb)");
         }
         // v3 R7: one hint per USED seg symbol, applied once before any launch and echoed
-        // once each. Not steerable — the percent IS the carrier's configuration under
-        // test, and an unhinted symbol would take the driver's own sizing (R6 measured
-        // that at 64 KiB for a 128-thread kernel), which is a different arm.
+        // once each. The percent IS the carrier's configuration under test, so a rotation
+        // takes the carrier's own — an unhinted symbol would fall back to the driver's
+        // sizing, which is a different arm. A single-arm run may override it to MAP the
+        // ladder: the hint -> configuration map depends on the body's shared-memory kind,
+        // and carrier S's slab is dynamic, so its ladder is not the local body's.
+        let mut probed = None;
         for carrier in LaneCarrier::SEG {
-            let used = config.carrier == carrier
+            let single = config.carrier == carrier;
+            let used = single
                 || cache_lanes
                     .iter()
                     .any(|prepared| prepared.lane.carrier == carrier);
             if !used {
                 continue;
             }
-            let pct = carrier
+            let baked = carrier
                 .carveout()
                 .expect("a seg carrier states its carveout");
+            let pct = match (single, config.carveout_hint) {
+                (true, CarveoutHint::Explicit(probe)) => {
+                    probed = Some(probe);
+                    probe
+                }
+                _ => baked,
+            };
             set_seg_carveout(carrier, pct)?;
             println!(
                 "  carveout hint       {pct}% ({})",
@@ -1292,6 +1323,83 @@ impl Harness {
                     .kernel()
                     .expect("a seg carrier names a seg kernel")
                     .name()
+            );
+        }
+        // OCCUPANCY SELF-GATE, after the hints and before any launch. The lane table's
+        // `blocks_per_sm` reaches the ARM lines and the emitter's inventory, and until R7's
+        // G0 it was a pinned constant no in-binary check could contradict — two lanes ran 4
+        // blocks under a `7` and only a profiler could tell.
+        //
+        // SCOPE, measured rather than assumed. The calculator reads the same registers, the
+        // same static plane and the same `PreferredSharedMemoryCarveout` the launch will,
+        // but it does NOT reproduce the driver's launch-time round-up of the requested
+        // partition: at hint 16 it models a 16.38 KB partition (5 blocks at 3.07 KB each)
+        // where the driver selects 32.77 KB and runs 7 — ncu-verified on the local
+        // incumbent and on both static-plane seg symbols. A launch that REQUESTS dynamic
+        // shared memory forces the partition to hold the request, and there the two agree
+        // exactly (cv64 at hint 32 -> 4 blocks / 32.77 KB, at 33 -> 7 / 65.54 KB, both
+        // matching ncu). So the equality is an ASSERT exactly on the dynamic-slab lanes —
+        // which is where the defect class lives — and a reported floor elsewhere.
+        let mut seen: Vec<(LaneKernel, u32)> = Vec::new();
+        for prepared in &cache_lanes {
+            let kernel = prepared.lane.kernel();
+            let dynamic = prepared.dynamic_smem_bytes();
+            if seen.contains(&(kernel, dynamic)) {
+                continue;
+            }
+            seen.push((kernel, dynamic));
+            let realized =
+                kernels::max_blocks_per_sm(kernel, prepared.lane.block_threads, dynamic)?;
+            let pin = prepared.lane.blocks_per_sm;
+            let verdict = if dynamic > 0 { "verified" } else { "floor" };
+            println!(
+                "  occupancy           {realized} blocks/SM ({}, {dynamic} B dynamic, pin \
+                 {pin}, {verdict})",
+                kernel.name()
+            );
+            assert!(
+                dynamic == 0 || realized as u32 == pin,
+                "lane {} realizes {realized} blocks/SM against the {pin} its ARM line \
+                 claims ({} at {} threads, {dynamic} B dynamic shared) — fix the lane's \
+                 carveout or its pinned occupancy, do not measure this",
+                prepared.lane.label,
+                kernel.name(),
+                prepared.lane.block_threads
+            );
+        }
+        // The single-arm carrier path has no lane table to check against, so it gates the
+        // pinned seg figure directly. Under a PROBED percent the realized number IS the
+        // measurement, so it is reported rather than asserted — an abort would defeat the
+        // mapping the surface exists for.
+        if let Some(seg) = &eval_seg {
+            let kernel = config
+                .carrier
+                .kernel()
+                .expect("a seg carrier names a seg kernel");
+            let realized = kernels::max_blocks_per_sm(
+                kernel,
+                UNISKIP_PAIR_THREADS_128 as u32,
+                seg.shared_bytes,
+            )?;
+            let pin = coset_cache::SEG_BLOCKS_PER_SM;
+            let verdict = match (probed, seg.shared_bytes) {
+                (Some(_), _) => "probe",
+                (None, 0) => "floor",
+                (None, _) => "verified",
+            };
+            println!(
+                "  occupancy           {realized} blocks/SM ({}, {} B dynamic, pin {pin}, \
+                 {verdict})",
+                kernel.name(),
+                seg.shared_bytes
+            );
+            assert!(
+                probed.is_some() || seg.shared_bytes == 0 || realized as u32 == pin,
+                "carrier {} realizes {realized} blocks/SM against the pinned {pin} at its \
+                 own hint ({} B dynamic shared) — fix the carrier's carveout, do not \
+                 measure this",
+                config.carrier.as_str(),
+                seg.shared_bytes
             );
         }
 

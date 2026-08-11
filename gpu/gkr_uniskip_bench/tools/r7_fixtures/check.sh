@@ -198,9 +198,9 @@ emits "a held session says so" \
 
 echo "### the applied carveout, per symbol"
 ECHOMSG="the percent IS the configuration under test"
-rejects "cv64 echoed at 16 instead of 32" "$ECHOMSG" -- $(sess echo-cv64-wrong)
-rejects "cv100 echoed at 32 instead of 100" "$ECHOMSG" -- $(sess echo-cv100-wrong)
-rejects "the acc symbol echoed at 100 instead of 32" "$ECHOMSG" -- $(sess echo-acc-wrong)
+rejects "cv64 echoed at 16 instead of 33" "$ECHOMSG" -- $(sess echo-cv64-wrong)
+rejects "cv100 echoed at 33 instead of 100" "$ECHOMSG" -- $(sess echo-cv100-wrong)
+rejects "the acc symbol echoed at 100 instead of 33" "$ECHOMSG" -- $(sess echo-acc-wrong)
 rejects "the machinery floor echoed at 32 instead of 16" "$ECHOMSG" -- $(sess echo-recompute-wrong)
 rejects "carrier G echoed at 32 instead of 16" "$ECHOMSG" -- $(sess echo-g-wrong)
 rejects "the local incumbent echoed at 32 on a rotation" "$ECHOMSG" -- $(sess echo-incumbent-wrong)

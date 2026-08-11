@@ -196,8 +196,12 @@ struct Cli {
     /// v3 R6: preferred shared-memory carveout (percent of the maximum) set on the bounded
     /// 128-thread cached kernel before any launch; absent = the R7 default of 16 wherever
     /// that kernel runs, `none` = the driver's own sizing. A percent composes with
-    /// `--carveout-probe` or with a single cached `--cache-arm` at 128 threads (the ncu
-    /// gate surface) and is rejected everywhere else; `none` composes with everything.
+    /// `--carveout-probe`, with `--seg-anchor` (tiers 32 and 100 — the attribution
+    /// contrast), with a single cached `--cache-arm` at 128 threads (the ncu gate surface),
+    /// or with a `--carrier` arm — where it steers THAT carrier's symbol instead, which is
+    /// how a dynamic-shared body's hint ladder is mapped (`--profile`, one round, no
+    /// validation knob). Rejected everywhere else; `none` composes with everything except a
+    /// carrier, which must state its configuration.
     #[arg(long, value_name = "none|0..=100")]
     carveout_hint: Option<CarveoutHint>,
 
@@ -675,7 +679,6 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         }
         for (other, on) in [
             ("--cache-mutate", cli.cache_mutate.is_some()),
-            ("--carveout-hint", cli.carveout_hint.is_some()),
             ("--control-launch-bounds", cli.control_launch_bounds),
             ("--no-cache-launch-bounds", cli.no_cache_launch_bounds),
         ] {
@@ -686,6 +689,19 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                     carrier.as_str()
                 ));
             }
+        }
+        // `none` is the one hint spelling that cannot compose with a carrier: it would leave
+        // the symbol at the driver's own sizing, and an unhinted carrier is not the carrier
+        // the design specifies (R6 measured the 128-thread default at 64 KiB).
+        if cli.carveout_hint == Some(CarveoutHint::None) {
+            fail(format!(
+                "--carveout-hint none would leave {} at the driver's own sizing; a carrier \
+                 states its configuration — pass a percent to probe another tier",
+                carrier
+                    .kernel()
+                    .expect("a seg carrier names a seg kernel")
+                    .name()
+            ));
         }
     }
     if cli.cache_mutate.is_some() && !cli.cache_arm.is_some_and(|a| a.uses_cache()) {
@@ -757,23 +773,58 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                 LaneSet::SegAnchor.tag()
             ));
         }
+        // The R7 LADDER-MAPPING surface: on a `--carrier` arm the percent steers that
+        // carrier's OWN symbol, not the local incumbent's. It is a permanent probing
+        // surface, and it has to be one — the hint -> configuration map is a property of
+        // the body's shared-memory KIND, so a dynamic-shared symbol's ladder cannot be
+        // read off the static-shared one (R7 G0 aborted on exactly that transplant).
+        let carrier_probe = cli.carrier.is_some_and(LaneCarrier::is_seg);
         // The single-arm gate surface: the ncu configuration check profiles exactly the
         // body the hint steers, so the unbounded sibling is excluded with the rest. The
         // pct stays free HERE (this is how the ladder was mapped), but the surface is
         // profiling-only: it must carry --profile and no validation/dump knob.
         let single_cached_128 = cli.lane_set().is_none()
+            && !carrier_probe
             && cli.cache_arm.is_some_and(|a| a.uses_cache())
             && block_threads as usize == UNISKIP_PAIR_THREADS_128
             && !cli.no_cache_launch_bounds;
-        if !(probe || anchor || single_cached_128) {
+        if !(probe || anchor || single_cached_128 || carrier_probe) {
             fail(
                 "--carveout-hint steers the bounded 128-thread cached kernel; it composes \
-                 with --carveout-probe, with --seg-anchor, or with a single cached \
-                 --cache-arm at --block-threads 128, nothing else; the launcher default \
-                 (hint 16) applies to cached@128lb lanes regardless — use --carveout-hint \
-                 none for the unhinted state"
+                 with --carveout-probe, with --seg-anchor, with a single cached --cache-arm \
+                 at --block-threads 128, or with a --carrier arm (whose own symbol it then \
+                 steers), nothing else; the launcher default (hint 16) applies to \
+                 cached@128lb lanes regardless — use --carveout-hint none for the unhinted \
+                 state"
                     .into(),
             );
+        }
+        if carrier_probe {
+            // Profiling-only, like the local surface: what this maps is a CONFIGURATION,
+            // and a configuration is read off one launch with a profiler attached.
+            if !cli.profile {
+                fail(
+                    "--carveout-hint on a --carrier arm is the ladder-mapping surface; \
+                     add --profile"
+                        .into(),
+                );
+            }
+            if cli.validate || cli.validate_flat_eq || cli.dump_q {
+                fail(
+                    "--carveout-hint is a profiling knob; --validate / --dump-q have no \
+                     hint contract"
+                        .into(),
+                );
+            }
+            // A probed tier is off the shipped configuration, so a timing taken under it is
+            // not comparable with anything: one round, which is what a G0 capture takes.
+            if cli.rounds() > 1 {
+                fail(format!(
+                    "--carveout-hint on a --carrier arm maps a configuration, not a time; \
+                     --iterations 0 or 1, got {}",
+                    cli.rounds()
+                ));
+            }
         }
         if single_cached_128 && !probe {
             if !cli.profile {

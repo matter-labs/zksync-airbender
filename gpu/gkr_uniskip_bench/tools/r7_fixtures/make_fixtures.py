@@ -78,7 +78,7 @@ ADMISSION = [0, 1, 2, 3, 4, 5, 48, 49, 50, 51] + list(range(6, 41)) + \
 
 # The steered symbols and their preregistered percents. The local incumbent's percent is the
 # position's, so it is filled in per log.
-SEG_HINT = ((CV64, 32), (CV100, 100), (ACC, 32), (SEG_G, 16), (RECOMPUTE, 16))
+SEG_HINT = ((CV64, 33), (CV100, 100), (ACC, 33), (SEG_G, 16), (RECOMPUTE, 16))
 
 FIN_128 = 0.008192
 FIN_256 = 0.006144
@@ -118,6 +118,28 @@ def seg_text(seg):
 
 def drift(r):
     return 0.002 * ((r % 5) - 2)
+
+
+def occupancy_rows(lanes, facts):
+    """One row per distinct (symbol, dynamic slab), in lane order — the shape the harness's
+    self-gate prints. Carrier S sizes its slab at `C * 256 B` floored at the reduction plane
+    (2,048 fold / 6,144 acc); every other body's plane is static, and the calculator's figure
+    there is a floor rather than the driver's realized partition."""
+    rows, seen = [], set()
+    for lane in lanes:
+        symbol = facts[lane]["kernel"]
+        plane = 6144 if symbol == ACC else 2048
+        dynamic = max(facts[lane]["c"] * 256, plane) if symbol in (CV64, CV100, ACC) else 0
+        if (symbol, dynamic) in seen:
+            continue
+        seen.add((symbol, dynamic))
+        pin = facts[lane]["blocks_sm"]
+        # A 2 KB static plane at hint 16 is where the calculator and the driver part company:
+        # it models a 16.38 KB partition (5 blocks at 3.07 KB) where the driver selects
+        # 32.77 KB and runs 7. Bodies with no static plane are exact.
+        realized = 5 if not dynamic and symbol in (CACHED, SEG_G, RECOMPUTE) else pin
+        rows.append((symbol, dynamic, realized, pin, "verified" if dynamic else "floor"))
+    return rows
 
 
 def bases_for(tag, order, patch=None):
@@ -163,6 +185,12 @@ def log(tag, order, hint, *, bases=None, rounds=None, warmup=None, echoes=None, 
     ]
     for symbol, pct in echoes:
         out.append(f"  carveout hint       {pct}% ({symbol})")
+    # The harness's occupancy self-gate lines. The emitter has no contract on them — the
+    # realized block count is gated in the binary, not in the log — so they are here to prove
+    # it TOLERATES them rather than to be parsed. A conforming log carries them.
+    for symbol, dynamic, realized, pin, verdict in occupancy_rows(lanes, facts):
+        out.append(f"  occupancy           {realized} blocks/SM ({symbol}, {dynamic} B "
+                   f"dynamic, pin {pin}, {verdict})")
     out += [
         "work",
         "  device              NVIDIA RTX PRO 6000 Blackwell Server Edition",
@@ -283,17 +311,17 @@ def main():
     #    wrong, missing or spurious echo is a different arm — one row per symbol.
     gmem_echo = [(CACHED, 16), (SEG_G, 16), (RECOMPUTE, 16)]
     for name, pos, echo in (
-            ("echo-cv64-wrong", 2, [(CACHED, 16), (CV64, 16), (CV100, 100), (ACC, 32),
+            ("echo-cv64-wrong", 2, [(CACHED, 16), (CV64, 16), (CV100, 100), (ACC, 33),
                                     (RECOMPUTE, 16)]),
-            ("echo-cv100-wrong", 2, [(CACHED, 16), (CV64, 32), (CV100, 32), (ACC, 32),
+            ("echo-cv100-wrong", 2, [(CACHED, 16), (CV64, 33), (CV100, 33), (ACC, 33),
                                      (RECOMPUTE, 16)]),
-            ("echo-acc-wrong", 2, [(CACHED, 16), (CV64, 32), (CV100, 100), (ACC, 100),
+            ("echo-acc-wrong", 2, [(CACHED, 16), (CV64, 33), (CV100, 100), (ACC, 100),
                                    (RECOMPUTE, 16)]),
             ("echo-recompute-wrong", 4, [(CACHED, 16), (SEG_G, 16), (RECOMPUTE, 32)]),
             ("echo-g-wrong", 4, [(CACHED, 16), (SEG_G, 32), (RECOMPUTE, 16)]),
-            ("echo-incumbent-wrong", 2, [(CACHED, 32), (CV64, 32), (CV100, 100), (ACC, 32),
+            ("echo-incumbent-wrong", 2, [(CACHED, 32), (CV64, 33), (CV100, 100), (ACC, 33),
                                          (RECOMPUTE, 16)]),
-            ("echo-cv100-missing", 2, [(CACHED, 16), (CV64, 32), (ACC, 32),
+            ("echo-cv100-missing", 2, [(CACHED, 16), (CV64, 33), (ACC, 33),
                                        (RECOMPUTE, 16)]),
             ("echo-incumbent-missing", 4, [(SEG_G, 16), (RECOMPUTE, 16)]),
             ("echo-spurious-seg", 1, [(CACHED, 16), (SEG_G, 16)]),
@@ -302,11 +330,11 @@ def main():
     ):
         session(outdir, name, oracle, {pos: dict(echoes=echo)})
     session(outdir, "echo-malformed", oracle,
-            {2: dict(echoes=[(CACHED, 16), (CV64, 32), (CV100, 100), (ACC, 32),
+            {2: dict(echoes=[(CACHED, 16), (CV64, 33), (CV100, 100), (ACC, 33),
                              (RECOMPUTE, 16)])})
     path = os.path.join(outdir, "echo-malformed-smem-locality.log")
-    kept = [("  carveout hint 32% (eval_lsb_seg_s_cv64)"
-             if ln == f"  carveout hint       32% ({CV64})" else ln)
+    kept = [("  carveout hint 33% (eval_lsb_seg_s_cv64)"
+             if ln == f"  carveout hint       33% ({CV64})" else ln)
             for ln in open(path).read().splitlines()]
     write(outdir, "echo-malformed-smem-locality.log", kept)
     # A second echo for one symbol: the carveout is set once, before any launch.

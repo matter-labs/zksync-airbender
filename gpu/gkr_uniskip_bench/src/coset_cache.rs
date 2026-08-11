@@ -1474,10 +1474,20 @@ impl LaneCarrier {
     /// attribute is per-function and sticky; carrier G and the machinery floor take the
     /// winner's 32 KiB configuration, which at a 128-thread kernel is NOT the driver
     /// default (R6 measured that at 64 KiB).
+    ///
+    /// THE PERCENT IS NOT PORTABLE ACROSS THE SHARED-MEMORY KIND. R6's ladder was mapped on
+    /// a static-shared body, where 24..40 realize the 65.54 KB configuration; on carrier S,
+    /// whose slab is DYNAMIC shared, hint 32 realizes 32.77 KB and only 4 blocks/SM — which
+    /// is what aborted R7's first G0. Re-mapped on `eval_lsb_seg_s_cv64` itself (the
+    /// `--carrier` + `--carveout-hint` probing surface, ncu LaunchStats/Occupancy): 32 ->
+    /// 32.77 KB, **33..56 -> 65.54 KB**, 64 -> 102.40 KB. 33 is the lowest percent that
+    /// realizes the intended 64 KiB tier, so it leaves the most L1; the whole 33..56 plateau
+    /// realizes the identical configuration, and the harness's occupancy self-gate fails
+    /// loudly if a driver ever moves the crossing.
     pub fn carveout(self) -> Option<u32> {
         Some(match self {
             Self::Local => return None,
-            Self::SegS64 | Self::SegSAcc => 32,
+            Self::SegS64 | Self::SegSAcc => 33,
             Self::SegS100 => 100,
             Self::SegG | Self::SegRecompute => 16,
         })
@@ -1721,6 +1731,12 @@ pub const CARVEOUT_PROBE: [CacheLane; 5] = [
     FRONTIER_CONTROL_256,
 ];
 
+/// Blocks per SM every seg symbol is built for: `__launch_bounds__(128, 7)` at 72
+/// registers. The harness asks the driver's occupancy calculator for the realized figure and
+/// asserts THIS, so the number is a verified fact rather than a pinned claim — R7's G0 found
+/// two lanes running 4 under it, and nothing in the binary could contradict them.
+pub const SEG_BLOCKS_PER_SM: u32 = 7;
+
 /// A v3 R7 segmented lane: 128 threads and bounded like every seg symbol, at the 72
 /// registers / 7 blocks per SM Task 3 and Task 4 measured on all five of them.
 const fn seg_128(label: &'static str, arm: CacheArm, carrier: LaneCarrier) -> CacheLane {
@@ -1731,7 +1747,7 @@ const fn seg_128(label: &'static str, arm: CacheArm, carrier: LaneCarrier) -> Ca
         carrier,
         launch_bounds: true,
         regs: 72,
-        blocks_per_sm: 7,
+        blocks_per_sm: SEG_BLOCKS_PER_SM,
     }
 }
 
@@ -2371,7 +2387,9 @@ mod lane_tests {
 
     /// The five seg symbols and their sticky carveout requests, pinned: the names feed the
     /// ARM lines, the config block and the hint echoes, and the percents ARE the carrier
-    /// configuration under test (16 -> 32 KiB, 32 -> 64 KiB, 100 -> 100 KiB).
+    /// configuration under test. The two tiers are 65.54 KB and 102.40 KB on the DYNAMIC
+    /// bodies (33 and 100 — the percent is not the static ladder's, see `carveout`) and
+    /// 32.77 KB on the static ones (16).
     #[test]
     fn cpu_seg_carrier_kernels_and_carveouts_are_pinned() {
         let named: Vec<(&str, Option<u32>)> = LaneCarrier::SEG
@@ -2381,13 +2399,20 @@ mod lane_tests {
         assert_eq!(
             named,
             vec![
-                ("eval_lsb_seg_s_cv64", Some(32)),
+                ("eval_lsb_seg_s_cv64", Some(33)),
                 ("eval_lsb_seg_s_cv100", Some(100)),
-                ("eval_lsb_seg_s_acc", Some(32)),
+                ("eval_lsb_seg_s_acc", Some(33)),
                 ("eval_lsb_seg_g", Some(16)),
                 ("eval_lsb_seg_recompute", Some(16)),
             ]
         );
+        // The 64 KiB tier is a DYNAMIC-shared crossing, one percent above the 32.77 KB
+        // configuration; the R6 static ladder's 32 lands on the wrong side of it.
+        assert_eq!(
+            LaneCarrier::SegS64.carveout(),
+            LaneCarrier::SegSAcc.carveout()
+        );
+        assert_ne!(LaneCarrier::SegS64.carveout(), Some(32));
         assert_eq!(LaneCarrier::Local.kernel(), None);
         assert_eq!(LaneCarrier::Local.carveout(), None);
         assert_eq!(LaneCarrier::default(), LaneCarrier::Local);

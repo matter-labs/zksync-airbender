@@ -323,16 +323,18 @@ seg_line_cells() {
 echo_cells() {
   note "### the applied carveout, one echo per USED symbol (the emitter cross-checks these)"
   local cached=eval_lsb_pair_cached_128_lb
-  local rows="--seg-smem-factorial|16:$cached 32:eval_lsb_seg_s_cv64 100:eval_lsb_seg_s_cv100 32:eval_lsb_seg_s_acc 16:eval_lsb_seg_recompute
+  local rows="--seg-smem-factorial|16:$cached 33:eval_lsb_seg_s_cv64 100:eval_lsb_seg_s_cv100 33:eval_lsb_seg_s_acc 16:eval_lsb_seg_recompute
 --seg-gmem-factorial|16:$cached 16:eval_lsb_seg_g 16:eval_lsb_seg_recompute
 --seg-anchor|16:$cached
 --seg-anchor --carveout-hint 32|32:$cached
 --seg-anchor --carveout-hint 100|100:$cached
---block-threads 128 --cache-arm hot16 --carrier seg-s|32:eval_lsb_seg_s_cv64
+--block-threads 128 --cache-arm hot16 --carrier seg-s|33:eval_lsb_seg_s_cv64
 --block-threads 128 --cache-arm k40 --carrier seg-s100|100:eval_lsb_seg_s_cv100
---block-threads 128 --cache-arm hot16 --carrier seg-s-acc|32:eval_lsb_seg_s_acc
+--block-threads 128 --cache-arm hot16 --carrier seg-s-acc|33:eval_lsb_seg_s_acc
 --block-threads 128 --cache-arm hot16 --carrier seg-g|16:eval_lsb_seg_g
---block-threads 128 --cache-arm cache0 --carrier seg-recompute|16:eval_lsb_seg_recompute"
+--block-threads 128 --cache-arm cache0 --carrier seg-recompute|16:eval_lsb_seg_recompute
+--block-threads 128 --cache-arm hot16 --carrier seg-s --carveout-hint 40 --profile|40:eval_lsb_seg_s_cv64
+--block-threads 128 --cache-arm hot16 --carrier seg-s100 --carveout-hint 33 --profile|33:eval_lsb_seg_s_cv100"
   local cells=0 pass=0 args want got
   while IFS='|' read -r args want; do
     [ -n "$args" ] || continue
@@ -349,7 +351,7 @@ echo_cells() {
     fi
   done <<< "$rows"
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 10 ] || bad "expected 10 echo cells, ran $cells"
+  [ "$cells" = 12 ] || bad "expected 12 echo cells, ran $cells"
   [ "$cells" = "$pass" ] || bad "echo cells incomplete"
 }
 

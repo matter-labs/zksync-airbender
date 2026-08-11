@@ -131,12 +131,16 @@ ROTATION = {
 ROUNDS = {"SEG-ANCHOR": (100, 10), "SEG-SMEM": (100, 10), "SEG-GMEM": (99, 9)}
 
 # The carveout each symbol is set to before any launch — the percent IS the carrier's
-# configuration under test (16 -> 32 KiB, 32 -> 64 KiB, 100 -> 100 KiB). `cv64` and `cv100`
-# are ONE body under two symbols precisely because the attribute is per-function and sticky.
+# configuration under test. The percent is NOT portable across the shared-memory kind: the
+# static-shared incumbent reaches 65.54 KB at 24..40, while the DYNAMIC-shared carrier-S
+# bodies only cross it at 33 (32 realizes 32.77 KB and 4 blocks/SM — R7's first G0 aborted
+# on exactly that). Tiers here: 33 -> 65.54 KB, 100 -> 102.40 KB, 16 -> 32.77 KB. `cv64` and
+# `cv100` are ONE body under two symbols precisely because the attribute is per-function and
+# sticky.
 SYMBOL_HINT = {
-    "eval_lsb_seg_s_cv64": 32,
+    "eval_lsb_seg_s_cv64": 33,
     "eval_lsb_seg_s_cv100": 100,
-    "eval_lsb_seg_s_acc": 32,
+    "eval_lsb_seg_s_acc": 33,
     "eval_lsb_seg_g": 16,
     "eval_lsb_seg_recompute": 16,
 }
