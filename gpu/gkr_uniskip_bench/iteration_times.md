@@ -4271,3 +4271,27 @@ counter captures); the Part-I abort captures `*_v3r7_g0_*` and `*_v3r7_g0diag_*`
 
 R7 is twelve `gkr_uniskip_bench` commits, `677fc03d`..`29e36e34`, on top of the R6 record; the
 frozen session binary is `fabf2b5b…` at tip `29e36e34`.
+
+### Addendum: ncu attribution of the walk floor (post-rung, 2026-08-11)
+
+Question (RR): where does the ~2 ms structure cost actually go? Measured on the ncu-locked
+pair `seg-recompute` (18.05 ms, 43.84 G cycles) vs a fresh matched `control_lb@128` Full
+Picture (16.60 ms, 38.70 G cycles; `20260811_152907_v3r7_full_control_lb.ncu-rep` — locality,
+doc recipe, lineinfo-free; the locked delta 1.45 ms compresses the timed 2.02 ms, ratios
+consistent). Total warp-cycle delta +13.5 %, split two ways:
+
+- **~58 % is added work**: +1.48 G executed instructions (+7.9 %, 20.30 G vs 18.82 G) — the
+  four per-cohort epilogues (eq in all four warps, xor folds, shared-plane round-trip,
+  partials read-modify-write) plus the 4x restarted quarter-list walk.
+- **~42 % is slower issue**: warp cycles per issued instruction 10.71 -> 11.27, eligible
+  warps per scheduler 2.11 -> 1.70. The stall states that grow are `barrier` (+~0.7
+  cycles/issue; 11 block-wide barriers vs 1, each waiting on the slowest list) and
+  `short_scoreboard` (+0.87; the epilogues' shared-memory plane round-trips). The states
+  that shrink (`math_pipe_throttle` -0.58, `not_selected` -0.49, `long_scoreboard` -0.39)
+  are density states - the control is simply busier doing math.
+
+SM throughput is nearly unchanged (80.3 vs 82.6 %): the segmented shape does not hit a
+different pipe, it adds instructions and synchronization on the same one. Any walk-floor
+attack has two named targets: the per-cohort epilogue (amortize the reduction across
+cohorts, e.g. keep running cell partials in registers where the 72-reg budget allows) and
+the barrier count (fewer, wider cohorts trade slab size against sync).
