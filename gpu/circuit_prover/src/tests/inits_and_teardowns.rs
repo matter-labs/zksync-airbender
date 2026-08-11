@@ -317,7 +317,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             .collect::<Vec<_>>()
     } else {
         let (mem_oracle, _wit_oracle) =
-            commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+            commit_separate_memory_and_witness_subtrees::<BF, BF, DefaultTreeConstructor>(
+                &NaiveBackend,
                 &make_full_trace(),
                 &twiddles,
                 whir_schedule.base_lde_factor,
@@ -327,7 +328,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 &worker,
             );
         stage1_subcaps_from_cap(
-            &mem_oracle.tree.get_cap(),
+            &mem_oracle.get_cap(),
             whir_schedule.cap_size / whir_schedule.base_lde_factor,
         )
     };
