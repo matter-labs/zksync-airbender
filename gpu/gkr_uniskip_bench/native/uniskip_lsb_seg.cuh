@@ -459,7 +459,7 @@ DEVICE_FORCEINLINE u32 uniskip_slot_claim(u32 *mask) {
   if (smid >= UNISKIP_SLOT_SM_CAPACITY)
     __trap(); // the raw id space is sparse; capacity is a bound, not a count of SMs
   u32 *word = mask + smid;
-  u32 seen = atomicOr(word, 0u);
+  u32 seen = 0; // a failed CAS returns the fresh word, so an empty expectation is the only load
   for (;;) {
     const u32 free_bits = ~seen & ((1u << UNISKIP_SLOTS_PER_SM) - 1);
     if (free_bits == 0)

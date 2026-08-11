@@ -92,7 +92,7 @@ ab_gkr_uniskip_eval_lsb_seg_s_cv100_kernel|9784|0|2ef383967d12
 ab_gkr_uniskip_eval_lsb_seg_s_cv64_kernel|9784|0|2ef383967d12
 ab_gkr_uniskip_eval_lsb_segb_recompute_kernel|8368|0|8d0c0350ba2c
 ab_gkr_uniskip_eval_lsb_segb_g_kernel|9696|0|cb905a5c1a37
-ab_gkr_uniskip_eval_lsb_segb_g_slotted_kernel|9768|8|e3a4cd455280"
+ab_gkr_uniskip_eval_lsb_segb_g_slotted_kernel|9768|8|d716d4052268"
 SEG_TU=uniskip_lsb_seg.cu.o
 
 build_bench() { # build_bench <diag-env-value-or-empty>
