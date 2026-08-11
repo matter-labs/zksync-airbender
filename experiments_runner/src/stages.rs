@@ -61,7 +61,10 @@ pub fn bench_stages(worker: &Worker) {
         fft::precompute_all_twiddles_for_fft_serial::<F, Global, false>(n);
     let offset = fft::domain_generator_for_size::<F>((n * 2) as u64);
 
-    println!("\n== stage kernels: Proth120 2^{log_n} ({} MiB/poly), SERIAL ==", bytes >> 20);
+    println!(
+        "\n== stage kernels: Proth120 2^{log_n} ({} MiB/poly), SERIAL ==",
+        bytes >> 20
+    );
 
     // scaled copy
     let t = median(
@@ -157,9 +160,7 @@ pub fn bench_stages(worker: &Worker) {
     // The production grid: 88 concurrent serial coset FFTs (7 polys x LDE) —
     // aggregate effective bandwidth of the whole machine on the NTT stage.
     let tasks = worker.get_num_cores();
-    println!(
-        "\n== aggregate: {tasks} concurrent serial fused coset pipelines (one per core) =="
-    );
+    println!("\n== aggregate: {tasks} concurrent serial fused coset pipelines (one per core) ==");
     let inputs: Vec<Vec<F>> = (0..8)
         .map(|_| (0..n).map(|_| F::random_element(&mut rng)).collect())
         .collect();

@@ -1,3 +1,4 @@
+pub mod baby_bear_neon;
 pub mod four_step;
 pub mod fused;
 pub mod higher_radix;

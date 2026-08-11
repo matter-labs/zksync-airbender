@@ -5,12 +5,12 @@ use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::{
-    prove_configured_with_gkr, prove_configured_with_gkr_with_storage, CommitmentMode,
-    SetupCommitment, WhirOracleStorage,
+    prove_configured_with_gkr_with_storage, prove_configured_with_gkr_with_storage_and_backend,
+    CommitmentMode, DefaultBabyBearBackend, SetupCommitment, WhirOracleStorage,
 };
-use crate::gkr::whir::ColumnMajorBaseOracleForLDE;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
+use crate::gkr::whir::ColumnMajorBaseOracleForLDE;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::family_circuits::{
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
@@ -95,11 +95,15 @@ pub fn prove_built_family_trace(
 
     println!("Trying to prove");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<
+    // Concretely BabyBear/Ext4, so pick the target-recommended backend (the
+    // NEON one on aarch64). `SeparateMemoryAndWitness` historically maps to
+    // the fully-in-memory storage policy — kept explicitly here.
+    let proof = prove_configured_with_gkr_with_storage_and_backend::<
         BabyBearField,
         BabyBearExt4,
         DefaultTreeConstructor,
         Blake2sTranscript,
+        _,
     >(
         circuit,
         external_challenges,
@@ -109,8 +113,10 @@ pub fn prove_built_family_trace(
         &twiddles,
         &prover_config,
         CommitmentMode::SeparateMemoryAndWitness,
+        WhirOracleStorage::fully_in_memory(),
         Vec::new(),
         trace_len,
+        &DefaultBabyBearBackend::default(),
         worker,
     );
     println!("Proving time is {:?}", now.elapsed());
@@ -583,11 +589,12 @@ pub fn prove_inits_and_teardowns(
         .collect();
 
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<
+    let proof = prove_configured_with_gkr_with_storage_and_backend::<
         BabyBearField,
         BabyBearExt4,
         DefaultTreeConstructor,
         Blake2sTranscript,
+        _,
     >(
         &circuit,
         external_challenges,
@@ -597,8 +604,10 @@ pub fn prove_inits_and_teardowns(
         &twiddles,
         &prover_config,
         CommitmentMode::SeparateMemoryAndWitness,
+        WhirOracleStorage::fully_in_memory(),
         inits_and_teardowns_top_bits,
         trace_len,
+        &DefaultBabyBearBackend::default(),
         worker,
     );
     println!("Proving time is {:?}", now.elapsed());

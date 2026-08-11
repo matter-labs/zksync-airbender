@@ -19,10 +19,93 @@ use super::commitment_utils::{
 };
 use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
 use fft::{GoodAllocator, Twiddles};
+use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use field::{Field, FieldExtension, PrimeField, Proth120, TwoAdicField};
 use std::alloc::Global;
 use std::sync::Arc;
 use worker::Worker;
+
+mod proth120;
+pub use proth120::Proth120WorkStealingLazyBackend;
+
+#[cfg(target_arch = "aarch64")]
+mod aarch64;
+#[cfg(target_arch = "aarch64")]
+pub use aarch64::BabyBearNeonWorkStealingBackend;
+
+mod naive;
+pub use naive::NaiveBackend;
+
+mod work_stealing;
+pub use work_stealing::WorkStealingBackend;
+
+/// In-place conversion of a materialized intermediate-oracle coset from
+/// evaluation form to the PRODUCTION leaf encoding (multilinear-coefficient
+/// leaves by default; the identity under the `eval_leaves` feature). An
+/// ASSOCIATED TYPE of [`Backend`], so the conversion's tables and scratch
+/// buffers stay implementation-private and alternative backends may supply
+/// specialized (e.g. vectorized) conversions later.
+pub trait ExtCoeffConversion<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>:
+    Send + Sync
+{
+    /// Worker-parallel conversion of one coset (`column` in natural order,
+    /// with LDE `offset`).
+    fn apply(&self, column: &mut [E], offset: F, worker: &Worker);
+    /// Fully serial variant for flat per-coset task grids (bit-identical to
+    /// [`Self::apply`]).
+    fn apply_serial(&self, column: &mut [E], offset: F);
+}
+
+/// The standard conversion used by every current backend: wraps the
+/// coefficient-form context (or nothing when `eval_leaves` keeps raw
+/// evaluations committed). The leaf-encoding conditional compilation lives
+/// entirely INSIDE this type.
+pub struct StandardExtCoeffConv<F: PrimeField + TwoAdicField> {
+    #[cfg(not(feature = "eval_leaves"))]
+    ctx: crate::gkr::whir::ExtCoeffConvCtx<F>,
+    #[cfg(feature = "eval_leaves")]
+    _marker: core::marker::PhantomData<F>,
+}
+
+impl<F: PrimeField + TwoAdicField> StandardExtCoeffConv<F> {
+    pub fn new(coset_len: usize, values_per_leaf: usize) -> Self {
+        #[cfg(not(feature = "eval_leaves"))]
+        {
+            Self {
+                ctx: crate::gkr::whir::ExtCoeffConvCtx::new(coset_len, values_per_leaf),
+            }
+        }
+        #[cfg(feature = "eval_leaves")]
+        {
+            let _ = (coset_len, values_per_leaf);
+            Self {
+                _marker: core::marker::PhantomData,
+            }
+        }
+    }
+}
+
+impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> ExtCoeffConversion<F, E>
+    for StandardExtCoeffConv<F>
+{
+    fn apply(&self, column: &mut [E], offset: F, worker: &Worker) {
+        #[cfg(not(feature = "eval_leaves"))]
+        self.ctx.apply(column, offset, worker);
+        #[cfg(feature = "eval_leaves")]
+        {
+            let _ = (column, offset, worker);
+        }
+    }
+
+    fn apply_serial(&self, column: &mut [E], offset: F) {
+        #[cfg(not(feature = "eval_leaves"))]
+        self.ctx.apply_serial(column, offset);
+        #[cfg(feature = "eval_leaves")]
+        {
+            let _ = (column, offset);
+        }
+    }
+}
 
 /// The compute backend of the in-memory prover path. `F` is the base (proof)
 /// field, `E` the extension field the folded WHIR polynomials live in (equal to
@@ -42,9 +125,7 @@ use worker::Worker;
 ///
 /// Every method mirrors a historical free function: same inputs, same outputs
 /// (bit-for-bit — proofs must not depend on the backend choice).
-pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>:
-    Send + Sync
-{
+pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: Send + Sync {
     /// LDE a batch of base-field columns given on the boolean hypercube into all
     /// `lde_factor` cosets. `result[coset][column]` holds natural-order coset
     /// evaluations with the coset offset attached. Mirrors
@@ -106,7 +187,9 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>:
 
     /// Main-domain (coset 0) evaluations → multilinear monomial coefficients
     /// (inverse NTT + 1/N + bit-reversal), consuming the input. Used for the
-    /// batched proximity polynomial in `whir_fold`. Mirrors
+    /// batched proximity polynomial in `whir_fold` — an O(1)-per-proof
+    /// transformation of a full trace-length Ext poly, so implementations
+    /// should put ALL worker threads on it. Mirrors
     /// `compute_column_major_monomial_form_from_main_domain_owned`.
     fn monomial_form_from_main_domain(
         &self,
@@ -114,46 +197,47 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>:
         twiddles: &Twiddles<F, Global>,
         worker: &Worker,
     ) -> Vec<E>;
+
+    /// Monomial coefficients → boolean-hypercube evaluations (the ADD Mobius
+    /// transform) followed by the bit-reversal — the second O(1)-per-proof
+    /// transformation of the batched Ext poly in `whir_fold`; implementations
+    /// should put ALL worker threads on it. Mirrors
+    /// `parallel_multivariate_coeffs_into_hypercube_evals` + bitrev.
+    fn hypercube_evals_from_monomial_form(&self, monomial_form: Vec<E>, worker: &Worker) -> Vec<E>;
+
+    /// Accumulate one WHIR round's equality-poly contributions into the
+    /// (already folded) eq poly: `dst[i] += ch_ood * eq(i, ood_point)` followed
+    /// by `dst[i] += ch_q * eq(i, query_point)` for every in-domain sample, in
+    /// sample order — an O(1)-per-round pass over a full-size Ext poly with
+    /// `~64` samples, so implementations should batch samples and put ALL
+    /// worker threads on it. Mirrors `update_eq_poly_reference`.
+    fn update_eq_poly(
+        &self,
+        eq_poly: &mut [E],
+        ood_samples: &[(E, E)],
+        in_domain_samples: &[(F, E)],
+        worker: &Worker,
+    );
+
+    /// Leaf-encoding conversion context for materialized intermediate WHIR
+    /// oracles — built once per oracle commit (its tables are coset-length
+    /// sized) and shared across all that oracle's cosets. See
+    /// [`ExtCoeffConversion`].
+    type ExtCoeffConv: ExtCoeffConversion<F, E>;
+    fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv;
 }
 
-/// Work-stealing implementation: identical values to [`NaiveBackend`], but the
-/// LDE work is flattened into a `poly × coset` task grid and distributed over
-/// the [`Worker`]'s rayon thread pool, with each task running the fused SERIAL
-/// coset pipeline (`fft::lde_coset_natural_seq_fused`).
-///
-/// Why: the naive scheduling parallelizes either over polynomials only (base
-/// commits — idle cores when few columns meet many cores) or runs cosets
-/// sequentially with one barrier-heavy parallel NTT per coset (packed commits —
-/// per-FFT parallel efficiency measured at only ~30–50% beyond 8 threads,
-/// because every NTT stage is a synchronization barrier). Independent serial
-/// FFTs have no barriers at all: with `polys × lde_factor` tasks (e.g. 7 packed
-/// polys × 32 cosets = 224 tasks for the unified Proth120 circuit) every core
-/// stays busy until the tail, and rayon's work stealing absorbs the imbalance.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct WorkStealingBackend;
-
-/// Work-stealing backend running Proth120 LAZY-REDUCTION RADIX-8 coset
-/// kernels on BOTH planner branches: values held in `[0, 2p)` through the NTT
-/// (the Montgomery multiply loses its final conditional subtraction; one
-/// canonicalization pass at the end), and three butterfly levels fused per
-/// sweep (radix-4 / fused-radix-2 passes absorb leftover levels) — the array
-/// is traversed ~log_n/3 times instead of log_n, which matters most when the
-/// work saturates DRAM bandwidth (measured 2.0x vs the canonical kernel at
-/// 224 concurrent 2^26 tasks on 88-core Sapphire Rapids; ~1.6x serial).
-///
-/// - Flat grid tasks (tasks ≥ threads — the base commits) run the SERIAL
-///   `fft::proth120_lazy::lde_coset_lazy_r8`.
-/// - The parallel-within-task plan (tasks < threads — notably the SMALLER
-///   intermediate-WHIR-oracle FFTs, where `lde_factor` cosets < cores) runs
-///   the worker-parallel `fft::proth120_lazy::lde_coset_lazy_parallel_r8`, so
-///   the shrinking fold sizes keep the radix + lazy benefits.
-///
-/// Outputs are bit-identical to [`WorkStealingBackend`] / [`NaiveBackend`].
-/// Implemented ONLY for `Backend<Proth120, Proth120>` — the kernels are
-/// field-specific, and callers opt in where they concretely know the field
-/// (the Proth120 tests/examples) instead of any runtime type dispatch.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Proth120WorkStealingLazyBackend;
+/// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
+/// build target: the NEON backend on aarch64, the generic work-stealing
+/// backend elsewhere. Concrete-BabyBear call sites (family provers, tests)
+/// should use this alias via `DefaultBabyBearBackend::default()`.
+#[cfg(target_arch = "aarch64")]
+pub type DefaultBabyBearBackend = BabyBearNeonWorkStealingBackend;
+/// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
+/// build target: the NEON backend on aarch64, the generic work-stealing
+/// backend elsewhere.
+#[cfg(not(target_arch = "aarch64"))]
+pub type DefaultBabyBearBackend = WorkStealingBackend;
 
 /// Coset offsets `root^0..root^{lde_factor-1}` for message length `n`.
 fn coset_offsets<F: PrimeField + TwoAdicField>(n: usize, lde_factor: usize) -> Vec<F> {
@@ -211,9 +295,7 @@ fn lde_coset_by_plan<F: Field, E: Field + FieldExtension<F>>(
     worker: &Worker,
 ) -> Vec<E> {
     match plan {
-        CosetGridPlan::FlatSerialTasks => {
-            serial_kernel(monomials, offset, twiddles_bit_reversed)
-        }
+        CosetGridPlan::FlatSerialTasks => serial_kernel(monomials, offset, twiddles_bit_reversed),
         CosetGridPlan::ParallelWithinTask => {
             parallel_kernel(monomials, offset, twiddles_bit_reversed, worker)
         }
@@ -252,6 +334,7 @@ fn ws_lde_multiple_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
     twiddles: &Twiddles<F, Global>,
     lde_factor: usize,
     serial_kernel: &(impl Fn(&[F], F, &[F]) -> Vec<F> + Sync),
+    to_monomial: &(impl Fn(&mut [F], u32) + Sync),
     parallel_kernel: &(impl Fn(&[F], F, &[F], &Worker) -> Vec<F> + Sync),
     worker: &Worker,
 ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<F, F>>> {
@@ -287,9 +370,7 @@ fn ws_lde_multiple_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
                         let mut v = col.to_vec();
                         let size_log2 = v.len().trailing_zeros();
                         fft::bitreverse_enumeration_inplace(&mut v);
-                        crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs(
-                            &mut v, size_log2,
-                        );
+                        to_monomial(&mut v, size_log2);
                         v
                     })
                     .collect()
@@ -319,8 +400,15 @@ fn ws_lde_multiple_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
                     let coset = t / num_cols;
                     let col = t % num_cols;
                     let offset = root_powers[coset];
-                    let data =
-                        lde_coset_by_plan(&monomials[col], offset, tw, plan, serial_kernel, parallel_kernel, worker);
+                    let data = lde_coset_by_plan(
+                        &monomials[col],
+                        offset,
+                        tw,
+                        plan,
+                        serial_kernel,
+                        parallel_kernel,
+                        worker,
+                    );
                     ColumnMajorCosetBoundTracePart {
                         column: Arc::new(data.into_boxed_slice()),
                         offset,
@@ -368,8 +456,15 @@ fn ws_lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
                     let coset = t / num_cols;
                     let col = t % num_cols;
                     let offset = root_powers[coset];
-                    let data =
-                        lde_coset_by_plan(&monomials[col], offset, tw, plan, serial_kernel, parallel_kernel, worker);
+                    let data = lde_coset_by_plan(
+                        &monomials[col],
+                        offset,
+                        tw,
+                        plan,
+                        serial_kernel,
+                        parallel_kernel,
+                        worker,
+                    );
                     ColumnMajorCosetBoundTracePart {
                         column: Arc::new(data.into_boxed_slice()),
                         offset,
@@ -430,266 +525,179 @@ where
     })
 }
 
-impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
-    for WorkStealingBackend
-{
-    fn lde_multiple_polys_from_hypercubes(
-        &self,
-        evals: &[&[F]],
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<F, F>>> {
-        ws_lde_multiple_polys_from_hypercubes(
-            evals,
-            twiddles,
-            lde_factor,
-            &|m, o, t| fft::lde_coset_natural_seq_fused(m, o, t),
-            &|m, o, t, w| lde_coset_canonical_parallel(m, o, t, w),
-            worker,
-        )
+fn make_pows_local<T: Field>(el: T, num_powers: usize) -> Vec<T> {
+    let mut result = Vec::with_capacity(num_powers);
+    let mut current = el;
+    for _ in 0..num_powers {
+        result.push(current);
+        current.square();
     }
-
-    fn lde_packed_monomials_into_cosets(
-        &self,
-        monomials: Vec<Vec<F>>,
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<ColumnMajorBaseOracleForCoset<F>> {
-        ws_lde_packed_monomials_into_cosets(
-            monomials,
-            twiddles,
-            lde_factor,
-            &|m, o, t| fft::lde_coset_natural_seq_fused(m, o, t),
-            &|m, o, t, w| lde_coset_canonical_parallel(m, o, t, w),
-            worker,
-        )
-    }
-
-    fn lde_ext_poly_from_monomial_form(
-        &self,
-        monomial_form_normal_order: &[E],
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<(Box<[E]>, F)> {
-        ws_lde_single_poly_from_monomial_form(
-            monomial_form_normal_order,
-            twiddles,
-            lde_factor,
-            &|m, o, t| fft::lde_coset_natural_seq_fused(m, o, t),
-            &|m, o, t, w| lde_coset_canonical_parallel(m, o, t, w),
-            worker,
-        )
-    }
-
-    fn lde_base_poly_from_monomial_form(
-        &self,
-        monomial_form_normal_order: &[F],
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<(Box<[F]>, F)> {
-        ws_lde_single_poly_from_monomial_form(
-            monomial_form_normal_order,
-            twiddles,
-            lde_factor,
-            &|m, o, t| fft::lde_coset_natural_seq_fused(m, o, t),
-            &|m, o, t, w| lde_coset_canonical_parallel(m, o, t, w),
-            worker,
-        )
-    }
-
-    fn pack_polys_from_hypercubes_to_monomials(
-        &self,
-        evals: &[&[F]],
-        pack_log2: usize,
-        worker: &Worker,
-    ) -> Vec<Vec<F>> {
-        pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
-    }
-
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<E>,
-        twiddles: &Twiddles<F, Global>,
-        _worker: &Worker,
-    ) -> Vec<E> {
-        compute_column_major_monomial_form_from_main_domain_owned::<F, E, Global>(
-            source_domain,
-            twiddles,
-        )
-    }
+    result
 }
 
-impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
-    fn lde_multiple_polys_from_hypercubes(
-        &self,
-        evals: &[&[Proth120]],
-        twiddles: &Twiddles<Proth120, Global>,
-        lde_factor: usize,
+/// All-threads eq-poly contribution accumulation for the work-stealing
+/// backends: each sample's full `2^log_n` equality table factors EXACTLY into
+/// `hi (x) lo` tensors over the bit split (field multiplication is exact, so
+/// the regrouped product is byte-identical to the reference's flat chain), so
+/// instead of materializing `~64` full-size tables and accumulating them
+/// SERIALLY (the reference), we build tiny per-sample tensors and make ONE
+/// worker-parallel pass over the eq poly, accumulating all samples per element
+/// in the reference's sample order.
+fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
+    eq_poly: &mut [E],
+    ood_samples: &[(E, E)],
+    in_domain_samples: &[(F, E)],
+    worker: &Worker,
+) {
+    let n = eq_poly.len();
+    assert!(n.is_power_of_two());
+    let log_n = n.trailing_zeros() as usize;
+    if log_n < 2 {
+        return crate::gkr::whir::update_eq_poly_reference(
+            eq_poly,
+            ood_samples,
+            in_domain_samples,
+            worker,
+        );
+    }
+    // lo covers the LOW `log_c` index bits (the LAST log_c entries of the
+    // squared-powers vector), hi the rest.
+    let log_c = core::cmp::min(10, log_n - 1).max(1);
+    let c = 1usize << log_c;
+    let num_hi = n >> log_c;
+
+    fn split_tensors<T: Field>(
+        point: T,
+        log_n: usize,
+        log_c: usize,
         worker: &Worker,
-    ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<Proth120, Proth120>>> {
-        ws_lde_multiple_polys_from_hypercubes(
-            evals,
-            twiddles,
-            lde_factor,
-            &|m, o, t| fft::proth120_lazy::lde_coset_lazy_r8(m, o, t),
-            &|m, o, t, w| fft::proth120_lazy::lde_coset_lazy_parallel_r8(m, o, t, w),
+    ) -> (Box<[T]>, Box<[T]>) {
+        let pows = make_pows_local(point, log_n);
+        let lo = crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full::<T>(
+            &pows[log_n - log_c..],
             worker,
         )
+        .pop()
+        .unwrap();
+        let hi = if log_c == log_n {
+            vec![T::ONE].into_boxed_slice()
+        } else {
+            crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full::<T>(&pows[..log_n - log_c], worker)
+                .pop()
+                .unwrap()
+        };
+        (hi, lo)
     }
 
-    fn lde_packed_monomials_into_cosets(
-        &self,
-        monomials: Vec<Vec<Proth120>>,
-        twiddles: &Twiddles<Proth120, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<ColumnMajorBaseOracleForCoset<Proth120>> {
-        ws_lde_packed_monomials_into_cosets(
-            monomials,
-            twiddles,
-            lde_factor,
-            &|m, o, t| fft::proth120_lazy::lde_coset_lazy_r8(m, o, t),
-            &|m, o, t, w| fft::proth120_lazy::lde_coset_lazy_parallel_r8(m, o, t, w),
-            worker,
-        )
-    }
+    let ood: Vec<(E, Box<[E]>, Box<[E]>)> = ood_samples
+        .iter()
+        .map(|(point, ch)| {
+            let (hi, lo) = split_tensors(*point, log_n, log_c, worker);
+            (*ch, hi, lo)
+        })
+        .collect();
+    let base: Vec<(E, Box<[F]>, Box<[F]>)> = in_domain_samples
+        .iter()
+        .map(|(point, ch)| {
+            let (hi, lo) = split_tensors(*point, log_n, log_c, worker);
+            (*ch, hi, lo)
+        })
+        .collect();
 
-    fn lde_ext_poly_from_monomial_form(
-        &self,
-        monomial_form_normal_order: &[Proth120],
-        twiddles: &Twiddles<Proth120, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<(Box<[Proth120]>, Proth120)> {
-        ws_lde_single_poly_from_monomial_form(
-            monomial_form_normal_order,
-            twiddles,
-            lde_factor,
-            &|m, o, t| fft::proth120_lazy::lde_coset_lazy_r8(m, o, t),
-            &|m, o, t, w| fft::proth120_lazy::lde_coset_lazy_parallel_r8(m, o, t, w),
-            worker,
-        )
-    }
-
-    fn lde_base_poly_from_monomial_form(
-        &self,
-        monomial_form_normal_order: &[Proth120],
-        twiddles: &Twiddles<Proth120, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<(Box<[Proth120]>, Proth120)> {
-        ws_lde_single_poly_from_monomial_form(
-            monomial_form_normal_order,
-            twiddles,
-            lde_factor,
-            &|m, o, t| fft::proth120_lazy::lde_coset_lazy_r8(m, o, t),
-            &|m, o, t, w| fft::proth120_lazy::lde_coset_lazy_parallel_r8(m, o, t, w),
-            worker,
-        )
-    }
-
-    fn pack_polys_from_hypercubes_to_monomials(
-        &self,
-        evals: &[&[Proth120]],
-        pack_log2: usize,
-        worker: &Worker,
-    ) -> Vec<Vec<Proth120>> {
-        pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
-    }
-
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<Proth120>,
-        twiddles: &Twiddles<Proth120, Global>,
-        _worker: &Worker,
-    ) -> Vec<Proth120> {
-        compute_column_major_monomial_form_from_main_domain_owned::<Proth120, Proth120, Global>(
-            source_domain,
-            twiddles,
-        )
-    }
+    let base_addr = eq_poly.as_mut_ptr() as usize;
+    let ood_ref = &ood;
+    let base_ref = &base;
+    worker.scope(num_hi, |scope, geometry| {
+        for thread_idx in 0..geometry.len() {
+            let start = geometry.get_chunk_start_pos(thread_idx);
+            let size = geometry.get_chunk_size(thread_idx);
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let mut s_ood: Vec<E> = Vec::with_capacity(ood_ref.len());
+                let mut s_base: Vec<E> = Vec::with_capacity(base_ref.len());
+                for h in start..(start + size) {
+                    s_ood.clear();
+                    for (ch, hi, _) in ood_ref.iter() {
+                        let mut s = *ch;
+                        s.mul_assign(&hi[h]);
+                        s_ood.push(s);
+                    }
+                    s_base.clear();
+                    for (ch, hi, _) in base_ref.iter() {
+                        let mut s = *ch;
+                        s.mul_assign_by_base(&hi[h]);
+                        s_base.push(s);
+                    }
+                    let dst = (base_addr as *mut E).wrapping_add(h << log_c);
+                    for l in 0..c {
+                        let mut acc = unsafe { *dst.wrapping_add(l) };
+                        for (s, (_, _, lo)) in s_ood.iter().zip(ood_ref.iter()) {
+                            let mut v = *s;
+                            v.mul_assign(&lo[l]);
+                            acc.add_assign(&v);
+                        }
+                        for (s, (_, _, lo)) in s_base.iter().zip(base_ref.iter()) {
+                            let mut v = *s;
+                            v.mul_assign_by_base(&lo[l]);
+                            acc.add_assign(&v);
+                        }
+                        unsafe { *dst.wrapping_add(l) = acc };
+                    }
+                }
+            });
+        }
+    });
 }
 
-/// The reference implementation: delegates verbatim to the historical free
-/// functions, for any `<F, E>`.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct NaiveBackend;
+/// All-threads `main domain -> monomial form` for the work-stealing backends:
+/// worker-parallel inverse NTT, parallel `1/N` scaling, parallel bit-reversal.
+/// Byte-identical to the serial reference.
+fn ws_monomial_form_from_main_domain<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
+    source_domain: Vec<E>,
+    twiddles: &Twiddles<F, Global>,
+    worker: &Worker,
+) -> Vec<E> {
+    let n = source_domain.len();
+    let log_n = n.trailing_zeros();
+    let mut ifft = source_domain;
+    let size_inv = F::from_u32_unchecked(n as u32).inverse().unwrap();
+    fft::naive::parallel_ct_ntt_natural_to_bitreversed(
+        &mut ifft,
+        log_n,
+        &twiddles.inverse_twiddles[..(n / 2).max(1)],
+        worker,
+    );
+    worker.scope(n, |scope, geometry| {
+        let mut rest = &mut ifft[..];
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let (chunk, tail) = rest.split_at_mut(chunk_size);
+            rest = tail;
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                for el in chunk.iter_mut() {
+                    el.mul_assign_by_base(&size_inv);
+                }
+            });
+        }
+    });
+    fft::parallel_bitreverse_enumeration_inplace(&mut ifft, worker);
+    ifft
+}
 
-impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> for NaiveBackend {
-    fn lde_multiple_polys_from_hypercubes(
-        &self,
-        evals: &[&[F]],
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<F, F>>> {
-        lde_multiple_polys_parallel_from_hypercubes(evals, twiddles, lde_factor, worker)
-    }
-
-    fn lde_packed_monomials_into_cosets(
-        &self,
-        monomials: Vec<Vec<F>>,
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<ColumnMajorBaseOracleForCoset<F>> {
-        lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, worker)
-    }
-
-    fn lde_ext_poly_from_monomial_form(
-        &self,
-        monomial_form_normal_order: &[E],
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<(Box<[E]>, F)> {
-        compute_column_major_lde_from_monomial_form(
-            monomial_form_normal_order,
-            twiddles,
-            lde_factor,
-            Some(worker),
-        )
-    }
-
-    fn lde_base_poly_from_monomial_form(
-        &self,
-        monomial_form_normal_order: &[F],
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Vec<(Box<[F]>, F)> {
-        compute_column_major_lde_from_monomial_form(
-            monomial_form_normal_order,
-            twiddles,
-            lde_factor,
-            Some(worker),
-        )
-    }
-
-    fn pack_polys_from_hypercubes_to_monomials(
-        &self,
-        evals: &[&[F]],
-        pack_log2: usize,
-        worker: &Worker,
-    ) -> Vec<Vec<F>> {
-        pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
-    }
-
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<E>,
-        twiddles: &Twiddles<F, Global>,
-        _worker: &Worker,
-    ) -> Vec<E> {
-        compute_column_major_monomial_form_from_main_domain_owned::<F, E, Global>(
-            source_domain,
-            twiddles,
-        )
-    }
+/// All-threads `monomial form -> hypercube evals` (+ bitrev) for the
+/// work-stealing backends. Byte-identical to the serial reference.
+fn ws_hypercube_evals_from_monomial_form<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+>(
+    mut v: Vec<E>,
+    worker: &Worker,
+) -> Vec<E> {
+    let log_n = v.len().trailing_zeros();
+    crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_coeffs_into_hypercube_evals(
+        &mut v, log_n, worker,
+    );
+    fft::parallel_bitreverse_enumeration_inplace(&mut v, worker);
+    v
 }
 
 #[cfg(test)]
@@ -838,21 +846,183 @@ mod tests {
         check_ext_parity_shape::<F, E>(8, 2);
     }
 
+    /// The two O(1) batched-poly transforms must match NaiveBackend exactly
+    /// for any backend `b`, across sizes covering the parallel thresholds and
+    /// stage-count parities.
+    fn check_o1_transform_parity<
+        F: PrimeField + TwoAdicField + Rand,
+        E: FieldExtension<F> + Field + Rand,
+        B: Backend<F, E>,
+    >(
+        b: &B,
+    ) {
+        let worker = Worker::new_with_num_threads(4);
+
+        // eq-poly contribution accumulation: the tensor-split batched version
+        // must equal the reference exactly (1 OOD + many base samples, sizes
+        // around the chunk split incl. log_n <= log_c edge)
+        {
+            let mut rng = rand::rng();
+            for n_log in [1u32, 3, 9, 11, 13] {
+                let n = 1usize << n_log;
+                let mut a: Vec<E> = rand_cols::<E>(1, n).pop().unwrap();
+                let mut b_poly = a.clone();
+                let ood: Vec<(E, E)> =
+                    vec![(E::random_element(&mut rng), E::random_element(&mut rng))];
+                let base: Vec<(F, E)> = (0..13)
+                    .map(|_| (F::random_element(&mut rng), E::random_element(&mut rng)))
+                    .collect();
+                Backend::<F, E>::update_eq_poly(&NaiveBackend, &mut a, &ood, &base, &worker);
+                b.update_eq_poly(&mut b_poly, &ood, &base, &worker);
+                assert_eq!(a, b_poly, "update_eq_poly diverged at n_log={n_log}");
+            }
+        }
+        for n_log in [3u32, 8, 13, 14] {
+            let n = 1usize << n_log;
+            let twiddles = Twiddles::<F, Global>::new(n, &worker);
+            let v: Vec<E> = rand_cols::<E>(1, n).pop().unwrap();
+
+            let a = Backend::<F, E>::monomial_form_from_main_domain(
+                &NaiveBackend,
+                v.clone(),
+                &twiddles,
+                &worker,
+            );
+            let bres = b.monomial_form_from_main_domain(v.clone(), &twiddles, &worker);
+            assert_eq!(a, bres, "monomial_form diverged at n_log={n_log}");
+
+            let a = Backend::<F, E>::hypercube_evals_from_monomial_form(
+                &NaiveBackend,
+                v.clone(),
+                &worker,
+            );
+            let bres = b.hypercube_evals_from_monomial_form(v, &worker);
+            assert_eq!(a, bres, "hypercube_evals diverged at n_log={n_log}");
+        }
+    }
+
     #[test]
     fn work_stealing_backend_matches_naive_babybear() {
         check_backend_parity::<BabyBearField>();
         check_ext_parity::<BabyBearField, BabyBearExt4>();
+        check_o1_transform_parity::<BabyBearField, BabyBearExt4, _>(&WorkStealingBackend);
     }
 
     #[test]
     fn work_stealing_backend_matches_naive_proth120() {
         check_backend_parity::<Proth120>();
         check_ext_parity::<Proth120, Proth120>();
+        check_o1_transform_parity::<Proth120, Proth120, _>(&Proth120WorkStealingLazyBackend);
     }
 
     /// The LAZY backend (Proth120-only by construction — it does not implement
     /// `Backend` for any other field) must match NaiveBackend exactly on every
     /// LDE method, exercising the lazy-reduction serial kernel.
+    /// The NEON BabyBear backend (aarch64-only, `Backend<BabyBear, Ext4>` by
+    /// construction) must match NaiveBackend exactly on every method,
+    /// including TINY polys (n < 16 degrades to the scalar reference) and the
+    /// parallel-within-task plan.
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn baby_bear_neon_backend_matches_naive() {
+        type F = BabyBearField;
+        let backend = BabyBearNeonWorkStealingBackend;
+
+        // n covers: fallback (8 < 16), NEON without radix-4 pass (16), NEON
+        // with radix-4 + u64-acc passes (1024/4096)
+        for (num_threads, num_cols, n_log, lde) in
+            [(4, 5, 3, 2), (4, 3, 4, 2), (4, 5, 10, 8), (8, 2, 12, 2)]
+        {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let n = 1usize << n_log;
+            let twiddles = Twiddles::<F, Global>::new(n, &worker);
+            let cols: Vec<Vec<F>> = rand_cols(num_cols, n);
+            let col_refs: Vec<&[F]> = cols.iter().map(|c| &c[..]).collect();
+
+            let a = Backend::<F, BabyBearExt4>::lde_multiple_polys_from_hypercubes(
+                &NaiveBackend,
+                &col_refs,
+                &twiddles,
+                lde,
+                &worker,
+            );
+            let b = backend.lde_multiple_polys_from_hypercubes(&col_refs, &twiddles, lde, &worker);
+            check_equal_cosets(&a, &b);
+
+            let mono: Vec<F> = rand_cols::<F>(1, n).pop().unwrap();
+            let a = Backend::<F, BabyBearExt4>::lde_base_poly_from_monomial_form(
+                &NaiveBackend,
+                &mono,
+                &twiddles,
+                lde,
+                &worker,
+            );
+            let b = backend.lde_base_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
+            assert_eq!(a.len(), b.len());
+            for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
+                assert_eq!(oa, ob);
+                assert_eq!(&da[..], &db[..]);
+            }
+
+            let mono_ext: Vec<BabyBearExt4> = rand_cols::<BabyBearExt4>(1, n).pop().unwrap();
+            let a = Backend::<F, BabyBearExt4>::lde_ext_poly_from_monomial_form(
+                &NaiveBackend,
+                &mono_ext,
+                &twiddles,
+                lde,
+                &worker,
+            );
+            let b = backend.lde_ext_poly_from_monomial_form(&mono_ext, &twiddles, lde, &worker);
+            assert_eq!(a.len(), b.len());
+            for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
+                assert_eq!(oa, ob);
+                assert_eq!(&da[..], &db[..]);
+            }
+        }
+        check_o1_transform_parity::<BabyBearField, BabyBearExt4, _>(&backend);
+    }
+
+    /// The NEON leaf-fold conversion must be byte-identical to the scalar
+    /// context, across the production leaf widths (8/16/32), both scheduling
+    /// entry points, and a non-trivial coset offset.
+    #[cfg(all(target_arch = "aarch64", not(feature = "eval_leaves")))]
+    #[test]
+    fn baby_bear_neon_ext_coeff_conv_matches_scalar() {
+        use crate::gkr::whir::ExtCoeffConvCtx;
+        let worker = Worker::new_with_num_threads(4);
+        let mut rng = rand::rng();
+        for (coset_log, vpl) in [(10usize, 8usize), (12, 16), (12, 32), (8, 2), (6, 64)] {
+            let n = 1usize << coset_log;
+            let column: Vec<BabyBearExt4> = (0..n)
+                .map(|_| BabyBearExt4::random_element(&mut rng))
+                .collect();
+            let offset = fft::domain_generator_for_size::<BabyBearField>((n * 2) as u64);
+
+            let ctx = ExtCoeffConvCtx::<BabyBearField>::new(n, vpl);
+            let mut expected = column.clone();
+            ctx.apply(&mut expected, offset, &worker);
+
+            let conv = super::aarch64::BabyBearNeonExtCoeffConv::new(n, vpl);
+            let mut got = column.clone();
+            ExtCoeffConversion::<BabyBearField, BabyBearExt4>::apply(
+                &conv, &mut got, offset, &worker,
+            );
+            assert_eq!(
+                got, expected,
+                "NEON conv (parallel) diverged at 2^{coset_log} vpl {vpl}"
+            );
+
+            let mut got = column.clone();
+            ExtCoeffConversion::<BabyBearField, BabyBearExt4>::apply_serial(
+                &conv, &mut got, offset,
+            );
+            assert_eq!(
+                got, expected,
+                "NEON conv (serial) diverged at 2^{coset_log} vpl {vpl}"
+            );
+        }
+    }
+
     #[test]
     fn work_stealing_lazy_backend_matches_naive_proth120() {
         type F = Proth120;
@@ -870,9 +1040,8 @@ mod tests {
             lde,
             &worker,
         );
-        let b = Proth120WorkStealingLazyBackend.lde_multiple_polys_from_hypercubes(
-            &col_refs, &twiddles, lde, &worker,
-        );
+        let b = Proth120WorkStealingLazyBackend
+            .lde_multiple_polys_from_hypercubes(&col_refs, &twiddles, lde, &worker);
         check_equal_cosets(&a, &b);
 
         let mono: Vec<F> = rand_cols::<F>(1, n).pop().unwrap();
@@ -883,18 +1052,16 @@ mod tests {
             lde,
             &worker,
         );
-        let b = Proth120WorkStealingLazyBackend.lde_base_poly_from_monomial_form(
-            &mono, &twiddles, lde, &worker,
-        );
+        let b = Proth120WorkStealingLazyBackend
+            .lde_base_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
         assert_eq!(a.len(), b.len());
         for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
             assert_eq!(oa, ob);
             assert_eq!(&da[..], &db[..]);
         }
 
-        let c = Proth120WorkStealingLazyBackend.lde_ext_poly_from_monomial_form(
-            &mono, &twiddles, lde, &worker,
-        );
+        let c = Proth120WorkStealingLazyBackend
+            .lde_ext_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
         assert_eq!(a.len(), c.len());
         for ((da, oa), (dc, oc)) in a.iter().zip(c.iter()) {
             assert_eq!(oa, oc);
@@ -917,9 +1084,8 @@ mod tests {
             lde,
             &worker,
         );
-        let b = Proth120WorkStealingLazyBackend.lde_ext_poly_from_monomial_form(
-            &mono, &twiddles, lde, &worker,
-        );
+        let b = Proth120WorkStealingLazyBackend
+            .lde_ext_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
         assert_eq!(a.len(), b.len());
         for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
             assert_eq!(oa, ob);

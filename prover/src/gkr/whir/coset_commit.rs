@@ -1054,21 +1054,18 @@ mod test {
         // twiddles are sized for the packed domain.
         let twiddles = Twiddles::<Proth120, Global>::new(1usize << packed_trace_len_log2, &worker);
 
-        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> = commit_trace_part_packed::<
-            Proth120,
-            Proth120,
-            Tree,
-        >(
-            &crate::gkr::prover::backend::NaiveBackend,
-            &col_refs,
-            &twiddles,
-            lde_factor,
-            vpl_log2,
-            cap_size,
-            packed_trace_len_log2,
-            pack_log2,
-            &worker,
-        );
+        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> =
+            commit_trace_part_packed::<Proth120, Proth120, Tree>(
+                &crate::gkr::prover::backend::NaiveBackend,
+                &col_refs,
+                &twiddles,
+                lde_factor,
+                vpl_log2,
+                cap_size,
+                packed_trace_len_log2,
+                pack_log2,
+                &worker,
+            );
 
         let prefix = format!("{}/split_setup_test", std::env::temp_dir().display());
         serialize_packed_base_commitment_split_to_disk::<Proth120, Tree>(
@@ -1110,7 +1107,8 @@ mod test {
 
         let tree_size = lde_factor * coset_tree_size;
         for idx in 0..tree_size {
-            let (mono_leaf, mono_path) = crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), idx);
+            let (mono_leaf, mono_path) =
+                crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), idx);
             let (split_leaf, split_path) = PathQueriable::get_proof(&split_tree, idx);
             assert_eq!(split_leaf, mono_leaf, "leaf @ idx={idx}");
             assert_eq!(split_path, mono_path, "path @ idx={idx}");
@@ -1158,20 +1156,17 @@ mod test {
 
         let twiddles = Twiddles::<Proth120, Global>::new(trace_len, &worker);
 
-        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> = commit_trace_part::<
-            Proth120,
-            Proth120,
-            Tree,
-        >(
-            &crate::gkr::prover::backend::NaiveBackend,
-            &col_refs,
-            &twiddles,
-            lde_factor,
-            first_fold_log2,
-            cap_size,
-            trace_len_log2,
-            &worker,
-        );
+        let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> =
+            commit_trace_part::<Proth120, Proth120, Tree>(
+                &crate::gkr::prover::backend::NaiveBackend,
+                &col_refs,
+                &twiddles,
+                lde_factor,
+                first_fold_log2,
+                cap_size,
+                trace_len_log2,
+                &worker,
+            );
         let coset = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(
             &col_refs,
             &twiddles,
@@ -1182,7 +1177,11 @@ mod test {
             &worker,
         );
 
-        assert_eq!(crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)), coset.get_cap(), "cap mismatch");
+        assert_eq!(
+            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            coset.get_cap(),
+            "cap mismatch"
+        );
 
         let vpl = 1usize << first_fold_log2;
         let tree_size = lde_factor * (trace_len / vpl);
@@ -1275,7 +1274,11 @@ mod test {
             trace_len_log2,
             &worker,
         );
-        assert_eq!(crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)), coset.get_cap(), "cap mismatch");
+        assert_eq!(
+            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            coset.get_cap(),
+            "cap mismatch"
+        );
 
         // leaf hash = keccak256 of the column-major BE16 values (as the tree hashes).
         let leaf_hash = |vals: &[Proth120]| -> [u32; 8] {
@@ -1295,7 +1298,8 @@ mod test {
         let tree_size = lde_factor * (trace_len / vpl);
         for qi in 0..tree_size {
             let q = coset.query(qi, &twiddles, &worker);
-            let (leaf_h, expected_path) = crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), q.index);
+            let (leaf_h, expected_path) =
+                crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), q.index);
             assert_eq!(q.path, expected_path, "path @ q={qi}");
             assert_eq!(
                 leaf_hash(&q.leaf_values_concatenated),
@@ -1374,8 +1378,10 @@ mod test {
                 lde_factor,
                 Some(&worker),
             );
+            let conv =
+                crate::gkr::prover::backend::StandardExtCoeffConv::<Proth120>::new(trace_len, vpl);
             let mono = super::super::commit_single_ext_poly::<Proth120, Proth120, Tree>(
-                rs, vpl, cap, &worker,
+                rs, vpl, cap, &conv, &worker,
             );
             let coset = CosetByCosetExtCommitment::<Proth120, Proth120, Tree>::commit(
                 &monomial, &twiddles, lde_factor, vpl, cap, &worker,

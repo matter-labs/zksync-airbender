@@ -638,10 +638,14 @@ pub trait Kernel8 {
     /// `u128` stores. Same override story as [`Self::load8_split`].
     unsafe fn store8_combine(v: Self::V, ptr: *mut u128) {
         let mut yb = [[0u64; 8]; 3];
-        Self::store(v, yb[0].as_mut_ptr(), yb[1].as_mut_ptr(), yb[2].as_mut_ptr());
+        Self::store(
+            v,
+            yb[0].as_mut_ptr(),
+            yb[1].as_mut_ptr(),
+            yb[2].as_mut_ptr(),
+        );
         for l in 0..8 {
-            let val =
-                (yb[0][l] as u128) | ((yb[1][l] as u128) << 52) | ((yb[2][l] as u128) << 104);
+            let val = (yb[0][l] as u128) | ((yb[1][l] as u128) << 52) | ((yb[2][l] as u128) << 104);
             ptr.add(l).write_unaligned(val);
         }
     }

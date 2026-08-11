@@ -585,8 +585,12 @@ where
     let values_per_leaf = 1 << whir_first_fold_step_log2;
     use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
     let t_lde = std::time::Instant::now();
-    let evals =
-        backend.lde_multiple_polys_from_hypercubes(input_on_hypercube, twiddles, lde_factor, worker);
+    let evals = backend.lde_multiple_polys_from_hypercubes(
+        input_on_hypercube,
+        twiddles,
+        lde_factor,
+        worker,
+    );
     let t_lde = t_lde.elapsed();
     let mut cosets = Vec::with_capacity(lde_factor);
     for coset in evals.into_iter() {

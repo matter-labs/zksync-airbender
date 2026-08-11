@@ -10,8 +10,7 @@
 //!   `cargo bench -p prover --bench lde_scheduling`
 
 use field::{
-    baby_bear::base::BabyBearField, Field, FieldExtension, PrimeField, Proth120, Rand,
-    TwoAdicField,
+    baby_bear::base::BabyBearField, Field, FieldExtension, PrimeField, Proth120, Rand, TwoAdicField,
 };
 use prover::fft::Twiddles;
 use prover::gkr::prover::{Backend, NaiveBackend, WorkStealingBackend};
@@ -145,9 +144,8 @@ fn main() {
     //   BENCH_THREADS   — cap the worker pool (default: all cores)
     //   FULL_SIZE_LDE   — LDE factor of the 2^26 full-size shape (default 4;
     //                     production 32 needs ~224 GiB of codeword RAM)
-    let env_usize = |name: &str| -> Option<usize> {
-        std::env::var(name).ok().and_then(|v| v.parse().ok())
-    };
+    let env_usize =
+        |name: &str| -> Option<usize> { std::env::var(name).ok().and_then(|v| v.parse().ok()) };
     let worker = match env_usize("BENCH_THREADS") {
         Some(t) => Worker::new_with_num_threads(t),
         None => Worker::new(),

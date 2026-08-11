@@ -43,7 +43,8 @@ fn bench_field<F: PrimeField + TwoAdicField + Rand>(name: &str, log_sizes: &[u32
     let worker = Worker::new();
     for &log_n in log_sizes {
         let n = 1usize << log_n;
-        let twiddles: Vec<F, Global> = precompute_all_twiddles_for_fft_serial::<F, Global, false>(n);
+        let twiddles: Vec<F, Global> =
+            precompute_all_twiddles_for_fft_serial::<F, Global, false>(n);
         let offset = domain_generator_for_size::<F>((n * 2) as u64);
         let input: Vec<F> = rand_vec(n);
         let k = if log_n >= 24 { 5 } else { 9 };
@@ -128,7 +129,11 @@ fn bench_field<F: PrimeField + TwoAdicField + Rand>(name: &str, log_sizes: &[u32
                 || (),
                 |_| {
                     let v = fft::fft_natural_to_natural_four_step(
-                        &input, offset, omega, &twiddles, &mut scratch,
+                        &input,
+                        offset,
+                        omega,
+                        &twiddles,
+                        &mut scratch,
                     );
                     std::hint::black_box(v);
                 },
@@ -194,7 +199,8 @@ fn bench_ext(filter: &str) {
     let log_sizes = [20u32, 22];
     for &log_n in &log_sizes {
         let n = 1usize << log_n;
-        let twiddles: Vec<F, Global> = precompute_all_twiddles_for_fft_serial::<F, Global, false>(n);
+        let twiddles: Vec<F, Global> =
+            precompute_all_twiddles_for_fft_serial::<F, Global, false>(n);
         let offset = domain_generator_for_size::<F>((n * 2) as u64);
         let input: Vec<E> = rand_vec(n);
         let k = 7;
@@ -223,7 +229,11 @@ fn bench_ext(filter: &str) {
                 || (),
                 |_| {
                     let v = fft::fft_natural_to_natural_four_step(
-                        &input, offset, omega, &twiddles, &mut scratch,
+                        &input,
+                        offset,
+                        omega,
+                        &twiddles,
+                        &mut scratch,
                     );
                     std::hint::black_box(v);
                 },

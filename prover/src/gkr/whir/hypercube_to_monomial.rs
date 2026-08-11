@@ -53,6 +53,233 @@ pub fn multivariate_coeffs_into_hypercube_evals<F: Field>(input: &mut [F], size_
     }
 }
 
+/// One fused radix-4 sweep over the stride pair `(stride, stride/2)` of the
+/// evals→coeffs (Mobius) transform: same subtraction sequence as two
+/// single-stride sweeps => identical values, half the loads/stores.
+#[inline(always)]
+fn evals_into_coeffs_radix4_sweep<F: Field>(input: &mut [F], stride: usize) {
+    let len = input.len();
+    let s2 = stride / 2;
+    let mut base = 0usize;
+    while base < len {
+        for j in base..base + s2 {
+            unsafe {
+                let x0 = *input.get_unchecked(j);
+                let x1 = *input.get_unchecked(j + s2);
+                let x2 = *input.get_unchecked(j + stride);
+                let x3 = *input.get_unchecked(j + stride + s2);
+                // stage `stride`: x2 -= x0; x3 -= x1. stage `s2`: x1 -= x0; x3 -= x2'
+                let mut n2 = x2;
+                n2.sub_assign(&x0);
+                let mut n3 = x3;
+                n3.sub_assign(&x1);
+                n3.sub_assign(&n2);
+                let mut n1 = x1;
+                n1.sub_assign(&x0);
+                *input.get_unchecked_mut(j + s2) = n1;
+                *input.get_unchecked_mut(j + stride) = n2;
+                *input.get_unchecked_mut(j + stride + s2) = n3;
+            }
+        }
+        base += 2 * stride;
+    }
+}
+
+/// Radix-4 variant of [`multivariate_hypercube_evals_into_coeffs`]: two
+/// variables fused per sweep, so the array is traversed `~size_log2/2` times
+/// instead of `size_log2`. Identical values (same subtraction sequence);
+/// measured ~1.7x (BabyBear) / ~1.2x (Proth120) serial on M3. Supports every
+/// power-of-two size (odd variable counts finish with one single-stride pass).
+pub fn multivariate_hypercube_evals_into_coeffs_radix4<F: Field>(input: &mut [F], size_log2: u32) {
+    let len = 1usize << size_log2;
+    assert_eq!(input.len(), len);
+    let mut stride = len / 2;
+    let mut remaining = size_log2;
+    while remaining >= 2 {
+        evals_into_coeffs_radix4_sweep(input, stride);
+        stride /= 4;
+        remaining -= 2;
+    }
+    if remaining == 1 {
+        for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
+            b.sub_assign(&a);
+        }
+    }
+}
+
+/// NEON (aarch64) BabyBear variant of
+/// [`multivariate_hypercube_evals_into_coeffs`]: radix-8 sweeps with 4-lane
+/// vector subtractions for strides >= 4 and in-register `uzp`/`zip` passes for
+/// the contiguous small-stride tails. Works on the raw canonical Montgomery
+/// values (`repr(transparent)`), byte-identical to the reference; sizes below
+/// 16 degrade to the scalar radix-4 path.
+#[cfg(target_arch = "aarch64")]
+pub fn multivariate_hypercube_evals_into_coeffs_neon_bb(
+    input: &mut [::field::baby_bear::base::BabyBearField],
+    size_log2: u32,
+) {
+    use ::field::baby_bear::base::BabyBearField;
+    use core::arch::aarch64::*;
+
+    const P: u32 = BabyBearField::ORDER;
+    let len = 1usize << size_log2;
+    assert_eq!(input.len(), len);
+    if len < 16 {
+        return multivariate_hypercube_evals_into_coeffs_radix4(input, size_log2);
+    }
+
+    #[inline(always)]
+    unsafe fn subv(a: uint32x4_t, b: uint32x4_t) -> uint32x4_t {
+        let d = vsubq_u32(a, b);
+        vminq_u32(d, vaddq_u32(d, vdupq_n_u32(P)))
+    }
+
+    let p = input.as_mut_ptr() as *mut u32;
+    let mut stride = len / 2;
+    let mut remaining = size_log2;
+
+    unsafe {
+        // fused radix-8 sweeps while the smallest stride in the triple >= 4
+        while remaining >= 3 && stride / 4 >= 4 {
+            let s2 = stride / 2;
+            let s4 = stride / 4;
+            let mut base = 0usize;
+            while base < len {
+                let mut j = base;
+                while j < base + s4 {
+                    let offs = [
+                        j,
+                        j + s4,
+                        j + s2,
+                        j + s2 + s4,
+                        j + stride,
+                        j + stride + s4,
+                        j + stride + s2,
+                        j + stride + s2 + s4,
+                    ];
+                    let mut v = [
+                        vld1q_u32(p.add(offs[0])),
+                        vld1q_u32(p.add(offs[1])),
+                        vld1q_u32(p.add(offs[2])),
+                        vld1q_u32(p.add(offs[3])),
+                        vld1q_u32(p.add(offs[4])),
+                        vld1q_u32(p.add(offs[5])),
+                        vld1q_u32(p.add(offs[6])),
+                        vld1q_u32(p.add(offs[7])),
+                    ];
+                    for k in 0..4 {
+                        v[k + 4] = subv(v[k + 4], v[k]);
+                    }
+                    for (hi, lo) in [(2usize, 0usize), (3, 1), (6, 4), (7, 5)] {
+                        v[hi] = subv(v[hi], v[lo]);
+                    }
+                    for (hi, lo) in [(1usize, 0usize), (3, 2), (5, 4), (7, 6)] {
+                        v[hi] = subv(v[hi], v[lo]);
+                    }
+                    for k in 1..8 {
+                        vst1q_u32(p.add(offs[k]), v[k]);
+                    }
+                    j += 4;
+                }
+                base += 2 * stride;
+            }
+            stride /= 8;
+            remaining -= 3;
+        }
+
+        // leftover big strides (>= 4) as single vector sweeps until only a
+        // contiguous small-stride tail remains
+        while remaining > 3 && stride >= 4 {
+            let mut base = 0usize;
+            while base < len {
+                let mut j = base;
+                while j < base + stride {
+                    let lo = vld1q_u32(p.add(j));
+                    let hi = vld1q_u32(p.add(j + stride));
+                    vst1q_u32(p.add(j + stride), subv(hi, lo));
+                    j += 4;
+                }
+                base += 2 * stride;
+            }
+            stride /= 2;
+            remaining -= 1;
+        }
+
+        if remaining == 3 {
+            // contiguous (4, 2, 1) tail, 8 elements per block in-register.
+            // Modular sub against a ZERO lane is the identity, so untouched
+            // lanes simply subtract zero.
+            debug_assert_eq!(stride, 4);
+            let z = vdupq_n_u32(0);
+            let mut j = 0usize;
+            while j < len {
+                let v0 = vld1q_u32(p.add(j));
+                let v1 = vld1q_u32(p.add(j + 4));
+                let v1 = subv(v1, v0);
+                let sh0 = vreinterpretq_u32_u64(vtrn1q_u64(
+                    vreinterpretq_u64_u32(z),
+                    vreinterpretq_u64_u32(v0),
+                ));
+                let sh1 = vreinterpretq_u32_u64(vtrn1q_u64(
+                    vreinterpretq_u64_u32(z),
+                    vreinterpretq_u64_u32(v1),
+                ));
+                let v0 = subv(v0, sh0);
+                let v1 = subv(v1, sh1);
+                let e = vuzp1q_u32(v0, v1);
+                let o = vuzp2q_u32(v0, v1);
+                let no = subv(o, e);
+                vst1q_u32(p.add(j), vzip1q_u32(e, no));
+                vst1q_u32(p.add(j + 4), vzip2q_u32(e, no));
+                j += 8;
+            }
+            remaining = 0;
+        }
+        if remaining == 2 {
+            // contiguous (2, 1) tail
+            debug_assert_eq!(stride, 2);
+            let z = vdupq_n_u32(0);
+            let mut j = 0usize;
+            while j < len {
+                let v0 = vld1q_u32(p.add(j));
+                let v1 = vld1q_u32(p.add(j + 4));
+                let sh0 = vreinterpretq_u32_u64(vtrn1q_u64(
+                    vreinterpretq_u64_u32(z),
+                    vreinterpretq_u64_u32(v0),
+                ));
+                let sh1 = vreinterpretq_u32_u64(vtrn1q_u64(
+                    vreinterpretq_u64_u32(z),
+                    vreinterpretq_u64_u32(v1),
+                ));
+                let v0 = subv(v0, sh0);
+                let v1 = subv(v1, sh1);
+                let e = vuzp1q_u32(v0, v1);
+                let o = vuzp2q_u32(v0, v1);
+                let no = subv(o, e);
+                vst1q_u32(p.add(j), vzip1q_u32(e, no));
+                vst1q_u32(p.add(j + 4), vzip2q_u32(e, no));
+                j += 8;
+            }
+            remaining = 0;
+        }
+        if remaining == 1 {
+            let mut j = 0usize;
+            while j < len {
+                let v0 = vld1q_u32(p.add(j));
+                let v1 = vld1q_u32(p.add(j + 4));
+                let e = vuzp1q_u32(v0, v1);
+                let o = vuzp2q_u32(v0, v1);
+                let no = subv(o, e);
+                vst1q_u32(p.add(j), vzip1q_u32(e, no));
+                vst1q_u32(p.add(j + 4), vzip2q_u32(e, no));
+                j += 8;
+            }
+            remaining = 0;
+        }
+        debug_assert_eq!(remaining, 0, "unhandled tail");
+    }
+}
+
 pub fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2: u32) {
     assert_eq!(input.len(), 1 << size_log2);
     let len = 1 << size_log2;
@@ -208,6 +435,45 @@ mod test {
     use super::*;
 
     type F = BabyBearField;
+
+    /// Radix-4 (any field) and the NEON BabyBear variant must equal the
+    /// reference transform exactly, across variable-count parities and the
+    /// small-size degradation paths.
+    #[test]
+    fn radix_variants_match_reference() {
+        use field::Rand;
+        let mut rng = rand::rng();
+        for log_n in 1u32..=13 {
+            let n = 1usize << log_n;
+
+            let input: Vec<F> = (0..n).map(|_| F::random_element(&mut rng)).collect();
+            let mut expected = input.clone();
+            multivariate_hypercube_evals_into_coeffs(&mut expected, log_n);
+
+            let mut got = input.clone();
+            multivariate_hypercube_evals_into_coeffs_radix4(&mut got, log_n);
+            assert_eq!(got, expected, "radix-4 diverged at log_n={log_n}");
+
+            #[cfg(target_arch = "aarch64")]
+            {
+                let mut got = input.clone();
+                multivariate_hypercube_evals_into_coeffs_neon_bb(&mut got, log_n);
+                assert_eq!(got, expected, "NEON diverged at log_n={log_n}");
+            }
+
+            let input_p: Vec<field::Proth120> = (0..n)
+                .map(|_| field::Proth120::random_element(&mut rng))
+                .collect();
+            let mut expected_p = input_p.clone();
+            multivariate_hypercube_evals_into_coeffs(&mut expected_p, log_n);
+            let mut got_p = input_p.clone();
+            multivariate_hypercube_evals_into_coeffs_radix4(&mut got_p, log_n);
+            assert_eq!(
+                got_p, expected_p,
+                "radix-4 Proth120 diverged at log_n={log_n}"
+            );
+        }
+    }
 
     #[test]
     fn test_forward() {

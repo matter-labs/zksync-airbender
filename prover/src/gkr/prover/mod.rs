@@ -11,9 +11,14 @@ use worker::WorkerGeometry;
 use super::*;
 pub use crate::definitions::GKRExternalChallenges;
 use crate::fft::Twiddles;
+#[cfg(target_arch = "aarch64")]
+pub use crate::gkr::prover::backend::BabyBearNeonWorkStealingBackend;
+pub use crate::gkr::prover::backend::{
+    Backend, DefaultBabyBearBackend, NaiveBackend, Proth120WorkStealingLazyBackend,
+    WorkStealingBackend,
+};
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
-pub use crate::gkr::prover::backend::{Backend, NaiveBackend, WorkStealingBackend, Proth120WorkStealingLazyBackend};
 use crate::gkr::prover::stages::commitment_utils;
 use crate::gkr::prover::transcript_utils::{
     commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
@@ -781,7 +786,11 @@ where
             // yield the same proof.
             let merged_oracle = match rs_codeword_source {
                 RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_packed_merged_memory_and_witness_subtrees::<F, E, T>(
+                    stages::initial_commit::commit_packed_merged_memory_and_witness_subtrees::<
+                        F,
+                        E,
+                        T,
+                    >(
                         backend,
                         &witness_eval_data,
                         twiddles,
@@ -794,10 +803,7 @@ where
                     )
                 }
                 RsCodewordSource::Recompute => {
-                    stages::initial_commit::commit_packed_merged_memory_and_witness_recompute::<
-                        F,
-                        T,
-                    >(
+                    stages::initial_commit::commit_packed_merged_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
                         twiddles,
                         prover_config.lde_factor,
@@ -890,6 +896,8 @@ where
             )
         }
     };
+
+    let t_gkr_phase = std::time::Instant::now();
 
     // then GKR is the same until the end of backward pass and derivation of claims
 
@@ -1363,6 +1371,11 @@ where
             None
         };
 
+    println!(
+        "[timing] GKR phase (layers + sumcheck loops): {:.3?}",
+        t_gkr_phase.elapsed()
+    );
+    let t_whir = std::time::Instant::now();
     let whir_proof = whir_fold::<F, E, T, TR>(
         mem_oracle,
         mem_polys_claims,
@@ -1381,6 +1394,7 @@ where
         intermediate_oracle_mode,
         worker,
     );
+    println!("[timing] whir_fold total: {:.3?}", t_whir.elapsed());
 
     let [read_set_computed, write_set_computed] = final_explicit_evaluations
         .get(&OutputType::PermutationProduct)

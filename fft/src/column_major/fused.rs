@@ -248,7 +248,10 @@ mod tests {
         assert_eq!(got, expected, "fused pipeline diverged at log_n={log_n}");
 
         let got = lde_coset_natural_seq_fused(&x, offset, &tw);
-        assert_eq!(got, expected, "seq-fused pipeline diverged at log_n={log_n}");
+        assert_eq!(
+            got, expected,
+            "seq-fused pipeline diverged at log_n={log_n}"
+        );
     }
 
     #[test]

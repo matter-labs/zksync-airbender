@@ -644,7 +644,6 @@ fn lde_coset_lazy_with_kernel(
         .collect()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -658,12 +657,10 @@ mod tests {
         for log_n in [8u32, 11, 14] {
             let n = 1usize << log_n;
             let mut rng = rand::rng();
-            let input: Vec<Proth120> =
-                (0..n).map(|_| Proth120::random_element(&mut rng)).collect();
+            let input: Vec<Proth120> = (0..n).map(|_| Proth120::random_element(&mut rng)).collect();
             let tw: Vec<Proth120, Global> =
                 precompute_all_twiddles_for_fft_serial::<Proth120, Global, false>(n);
-            let offset =
-                crate::field_utils::domain_generator_for_size::<Proth120>((n * 8) as u64);
+            let offset = crate::field_utils::domain_generator_for_size::<Proth120>((n * 8) as u64);
 
             let expected = crate::lde_coset_natural_seq_fused(&input, offset, &tw);
             let got = lde_coset_lazy(&input, offset, &tw);
@@ -689,12 +686,10 @@ mod tests {
         for log_n in [8u32, 13, 14, 15, 16] {
             let n = 1usize << log_n;
             let mut rng = rand::rng();
-            let input: Vec<Proth120> =
-                (0..n).map(|_| Proth120::random_element(&mut rng)).collect();
+            let input: Vec<Proth120> = (0..n).map(|_| Proth120::random_element(&mut rng)).collect();
             let tw: Vec<Proth120, Global> =
                 precompute_all_twiddles_for_fft_serial::<Proth120, Global, false>(n);
-            let offset =
-                crate::field_utils::domain_generator_for_size::<Proth120>((n * 8) as u64);
+            let offset = crate::field_utils::domain_generator_for_size::<Proth120>((n * 8) as u64);
 
             let expected = crate::lde_coset_natural_seq_fused(&input, offset, &tw);
             let got = lde_coset_lazy_parallel_r8(&input, offset, &tw, &worker);

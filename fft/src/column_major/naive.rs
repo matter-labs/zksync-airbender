@@ -340,6 +340,73 @@ pub fn parallel_ct_ntt_bitreversed_to_natural<F: Field, E: Field + FieldExtensio
     });
 }
 
+/// Worker-parallel counterpart of [`cache_friendly_ntt_natural_to_bitreversed`]
+/// (natural input -> bit-reversed output, CT direction): every stage's `n/2`
+/// butterflies touch pairwise-disjoint index pairs `(j, j + distance)`, so each
+/// stage is one worker-wide scope; stages run sequentially. Identical butterfly
+/// arithmetic => bit-for-bit the same result (the serial routine's cache
+/// blocking only reorders independent butterflies).
+pub fn parallel_ct_ntt_natural_to_bitreversed<F: Field, E: Field + FieldExtension<F>>(
+    a: &mut [E],
+    log_n: u32,
+    omegas_bit_reversed: &[F],
+    worker: &Worker,
+) {
+    let n = a.len();
+    if n <= 1 {
+        return;
+    }
+    debug_assert!(n == (1 << log_n) as usize);
+
+    const PAR_THRESHOLD: usize = 1 << 12;
+    let eff_threshold = PAR_THRESHOLD / (core::mem::size_of::<E>() / core::mem::size_of::<u32>());
+    if n < eff_threshold {
+        cache_friendly_ntt_natural_to_bitreversed(a, log_n, omegas_bit_reversed);
+        return;
+    }
+
+    let base_addr = a.as_mut_ptr() as usize;
+    let half = n / 2;
+    let mut distance = n / 2;
+    let mut num_groups = 1usize;
+
+    while distance >= 1 {
+        let d = distance;
+        let first_stage = num_groups == 1;
+        let omegas = omegas_bit_reversed;
+        worker.scope(half, |scope, geometry| {
+            for thread_idx in 0..geometry.len() {
+                let start = geometry.get_chunk_start_pos(thread_idx);
+                let size = geometry.get_chunk_size(thread_idx);
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let base = base_addr as *mut E;
+                    for b in start..(start + size) {
+                        // flat butterfly index -> (group k, in-group offset jj)
+                        let k = b / d;
+                        let jj = b % d;
+                        let j = k * (d << 1) + jj;
+                        unsafe {
+                            let u = *base.add(j);
+                            let mut v = *base.add(j + d);
+                            if !first_stage {
+                                v.mul_assign_by_base(&omegas[k]);
+                            }
+                            let mut lo = u;
+                            lo.add_assign(&v);
+                            let mut hi = u;
+                            hi.sub_assign(&v);
+                            *base.add(j) = lo;
+                            *base.add(j + d) = hi;
+                        }
+                    }
+                });
+            }
+        });
+        distance /= 2;
+        num_groups *= 2;
+    }
+}
+
 pub fn cache_friendly_ntt_natural_to_bitreversed<F: Field, E: Field + FieldExtension<F>>(
     a: &mut [E],
     log_n: u32,

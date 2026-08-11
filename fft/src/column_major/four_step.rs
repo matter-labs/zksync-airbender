@@ -303,8 +303,8 @@ pub fn lde_coset_natural_four_step<F: Field, E: Field + FieldExtension<F>>(
 mod tests {
     use super::*;
     use crate::field_utils::distribute_powers_serial;
-    use crate::twiddles::precompute_all_twiddles_for_fft_serial;
     use crate::field_utils::domain_generator_for_size;
+    use crate::twiddles::precompute_all_twiddles_for_fft_serial;
     use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
     use ::field::Proth120;
     use std::alloc::Global;

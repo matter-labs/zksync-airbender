@@ -36,7 +36,8 @@ const SMALL_BITREVERSE_LOOKUP_TABLE: [u8; 1 << SMALL_BITREVERSE_LOOKUP_TABLE_LOG
 
 // in this case we can easily swap bytes, and then swap bits in bytes
 const MEDIUM_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE: usize = 8;
-pub(crate) const MEDIUM_BITREVERSE_LOOKUP_TABLE: [u8; 1 << MEDIUM_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE] = const {
+pub(crate) const MEDIUM_BITREVERSE_LOOKUP_TABLE: [u8; 1
+    << MEDIUM_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE] = const {
     let mut result = [0u8; 1 << MEDIUM_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE];
     let mut i = 0u64;
     let shift_right = 64 - MEDIUM_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE;

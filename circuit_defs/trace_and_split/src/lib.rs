@@ -221,7 +221,6 @@ where
     cap
 }
 
-
 /// Commit to the memory part of a unified-circuit chunk. The unified circuit
 /// folds every executor family plus its inline inits-and-teardowns into one GKR
 /// circuit, so this both feeds the per-cycle memory trace (via

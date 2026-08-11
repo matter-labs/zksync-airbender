@@ -352,8 +352,8 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    `SetupCommitment::OnDisk` (so the setup never has to sit in RAM while
     //    proving). Delete the `*.rscw`/`*.tree` cache files to force a recompute.
     use crate::gkr::prover::{
-        prove_configured_with_gkr_with_storage_and_backend, SetupCommitment, WhirOracleStorage,
-        Proth120WorkStealingLazyBackend,
+        prove_configured_with_gkr_with_storage_and_backend, Proth120WorkStealingLazyBackend,
+        SetupCommitment, WhirOracleStorage,
     };
     use crate::gkr::whir::coset_commit::serialize_packed_base_commitment_split_to_disk;
     use crate::gkr::whir::rs_on_disk::{coset_file_path, OnDiskRsCodewords};
@@ -395,8 +395,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
             println!(
                 "On-disk setup not present; preparing coset-by-coset (split tree) and caching"
             );
-            let inputs: Vec<&[Proth120]> =
-                setup.hypercube_evals.iter().map(|el| &el[..]).collect();
+            let inputs: Vec<&[Proth120]> = setup.hypercube_evals.iter().map(|el| &el[..]).collect();
             serialize_packed_base_commitment_split_to_disk::<Proth120, Keccak256MerkleTreeWithCap>(
                 &inputs,
                 &packed_twiddles,
@@ -457,8 +456,16 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     println!("Trying to prove (unified, packed commitment, pack_log2 = {pack_log2})");
     println!(
         "  memory/witness RS codewords: {}; setup: {}",
-        if fully_in_memory { "InMemory" } else { "Recompute" },
-        if setup_in_memory { "in-memory" } else { "on-disk" },
+        if fully_in_memory {
+            "InMemory"
+        } else {
+            "Recompute"
+        },
+        if setup_in_memory {
+            "in-memory"
+        } else {
+            "on-disk"
+        },
     );
     let now = std::time::Instant::now();
     // This test is concretely Proth120, so it opts into the Proth120-only
