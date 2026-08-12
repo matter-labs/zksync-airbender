@@ -17,20 +17,24 @@ use gpu_prover_context::ProverContext;
 
 pub const RANGE_CHECK_16_DOMAIN_SIZE: usize = 1 << 16;
 pub const TIMESTAMP_RANGE_CHECK_DOMAIN_SIZE: usize = 1 << TIMESTAMP_COLUMNS_NUM_BITS;
+const COUNTER_REPLICAS: usize = 8;
 
 cuda_kernel!(CountMultiplicities,
     ab_count_multiplicities_kernel(
         lookup_mapping: *mut u32,
         lookup_mapping_size: u32,
-        multiplicities: *mut BF,
+        counter_shards: *mut BF,
         active_counts_len: u32,
+        counter_replicas: u32,
     )
 );
 
-cuda_kernel!(ConvertMultiplicities,
-    ab_convert_multiplicities_kernel(
+cuda_kernel!(ReduceConvertMultiplicities,
+    ab_reduce_convert_multiplicities_kernel(
+        counter_shards: *const BF,
         multiplicities: *mut BF,
         active_counts_len: u32,
+        counter_replicas: u32,
     )
 );
 
@@ -45,35 +49,60 @@ pub fn generate_lookup_multiplicities(
     assert_eq!(stride, multiplicities.stride());
     let mapping_len = lookup_mapping.slice().len();
     let multiplicities_len = multiplicities.slice().len();
-    assert!(mapping_len <= u32::MAX as usize);
     let stream = context.get_exec_stream();
     set_to_zero(multiplicities.slice_mut(), stream)?;
     if mapping_len == 0 {
         return Ok(());
     }
     assert!(mapping_len < BF::CHARACTERISTICS_U32 as usize);
-    assert!(multiplicities_len > 0);
     assert!(active_counts_len > 0);
     assert!(active_counts_len <= multiplicities_len);
-    assert!(active_counts_len <= u32::MAX as usize);
+    let counter_storage_len = active_counts_len * COUNTER_REPLICAS;
+    assert!(counter_storage_len <= u32::MAX as usize);
 
     let mapping_len = mapping_len as u32;
     let active_counts_len = active_counts_len as u32;
+    let counter_replicas = COUNTER_REPLICAS as u32;
+    let multiplicities_ptr = multiplicities.as_mut_ptr();
+    let mut counter_storage = if counter_storage_len > multiplicities_len {
+        let mut storage: DeviceAllocation<BF> =
+            context.alloc(counter_storage_len, AllocationPlacement::BestFit)?;
+        set_to_zero(&mut storage, stream)?;
+        Some(storage)
+    } else {
+        None
+    };
+    let counter_shards = counter_storage
+        .as_mut()
+        .map_or(multiplicities_ptr, |storage| storage.as_mut_ptr());
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, mapping_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = CountMultiplicitiesArguments::new(
         lookup_mapping.as_mut_ptr(),
         mapping_len,
-        multiplicities.as_mut_ptr(),
+        counter_shards,
         active_counts_len,
+        counter_replicas,
     );
     CountMultiplicitiesFunction::default().launch(&config, &args)?;
 
     let (grid_dim, block_dim) =
         get_grid_block_dims_for_threads_count(WARP_SIZE * 4, active_counts_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = ConvertMultiplicitiesArguments::new(multiplicities.as_mut_ptr(), active_counts_len);
-    ConvertMultiplicitiesFunction::default().launch(&config, &args)
+    let args = ReduceConvertMultiplicitiesArguments::new(
+        counter_shards,
+        multiplicities_ptr,
+        active_counts_len,
+        counter_replicas,
+    );
+    ReduceConvertMultiplicitiesFunction::default().launch(&config, &args)?;
+    if counter_storage.is_none() {
+        set_to_zero(
+            &mut multiplicities.slice_mut()[active_counts_len as usize..counter_storage_len],
+            stream,
+        )?;
+    }
+    Ok(())
 }
 
 // Sized for delegation layouts that need many lookup expressions per circuit.
@@ -187,20 +216,14 @@ pub fn allocate_range_check_lookup_mappings(
 ) -> CudaResult<(DeviceAllocation<u32>, DeviceAllocation<u32>)> {
     let trace_len = circuit.trace_len;
     assert!(trace_len.is_power_of_two());
-    let range_check_16_mapping_len = circuit
-        .range_check_16_lookup_expressions
-        .len()
-        .checked_mul(trace_len)
-        .expect("range-check-16 lookup mapping length overflow");
-    let timestamp_mapping_len = circuit
-        .timestamp_range_check_lookup_expressions
-        .len()
-        .checked_mul(trace_len)
-        .expect("timestamp lookup mapping length overflow");
-    let range_check_16_lookup_mapping_allocation =
-        context.alloc(range_check_16_mapping_len, AllocationPlacement::BestFit)?;
-    let range_check_timestamp_lookup_mapping_allocation =
-        context.alloc(timestamp_mapping_len, AllocationPlacement::BestFit)?;
+    let range_check_16_lookup_mapping_allocation = context.alloc(
+        circuit.range_check_16_lookup_expressions.len() * trace_len,
+        AllocationPlacement::BestFit,
+    )?;
+    let range_check_timestamp_lookup_mapping_allocation = context.alloc(
+        circuit.timestamp_range_check_lookup_expressions.len() * trace_len,
+        AllocationPlacement::BestFit,
+    )?;
     Ok((
         range_check_16_lookup_mapping_allocation,
         range_check_timestamp_lookup_mapping_allocation,
@@ -235,27 +258,26 @@ mod tests {
         ProverContext::new(&config).unwrap()
     }
 
-    #[test]
-    fn atomic_counts_normalizes_and_clears_tail() {
-        const STRIDE: usize = 64;
-        const MAPPING_COLS: usize = 3;
-        const MULTIPLICITY_COLS: usize = 2;
-        const ACTIVE_COUNTS_LEN: usize = 96;
-
-        let mut mapping_host = vec![0u32; STRIDE * MAPPING_COLS];
+    fn assert_replicated_atomic_counts(
+        stride: usize,
+        mapping_cols: usize,
+        multiplicity_cols: usize,
+        active_counts_len: usize,
+    ) {
+        let mut mapping_host = vec![0u32; stride * mapping_cols];
         for (i, value) in mapping_host.iter_mut().enumerate() {
             *value = match i {
                 0..=79 => 7,
-                80..=95 => 65,
+                80..=95 => (active_counts_len / 2) as u32,
                 96..=111 => u32::MAX,
-                _ => (i % ACTIVE_COUNTS_LEN) as u32,
+                _ => (i % active_counts_len) as u32,
             };
         }
         let expected_mapping = mapping_host
             .iter()
             .map(|&value| if value == u32::MAX { 0 } else { value })
             .collect::<Vec<_>>();
-        let mut expected_counts = vec![0u32; ACTIVE_COUNTS_LEN];
+        let mut expected_counts = vec![0u32; active_counts_len];
         for &value in &mapping_host {
             if value != u32::MAX {
                 expected_counts[value as usize] += 1;
@@ -265,7 +287,7 @@ mod tests {
             .into_iter()
             .map(BF::from_u32_unchecked)
             .collect::<Vec<_>>();
-        expected_multiplicities.resize(STRIDE * MULTIPLICITY_COLS, BF::ZERO);
+        expected_multiplicities.resize(stride * multiplicity_cols, BF::ZERO);
 
         let context = make_test_context();
         let stream = context.get_exec_stream();
@@ -277,26 +299,33 @@ mod tests {
             .unwrap();
         let poisoned_multiplicities = vec![BF::ONE; expected_multiplicities.len()];
 
-        for _ in 0..2 {
-            memory_copy_async(&mut mapping_device, &mapping_host, stream).unwrap();
-            memory_copy_async(&mut multiplicities_device, &poisoned_multiplicities, stream)
-                .unwrap();
-            generate_lookup_multiplicities(
-                &mut DeviceMatrixMut::new(&mut mapping_device, STRIDE),
-                &mut DeviceMatrixMut::new(&mut multiplicities_device, STRIDE),
-                ACTIVE_COUNTS_LEN,
-                &context,
-            )
-            .unwrap();
+        memory_copy_async(&mut mapping_device, &mapping_host, stream).unwrap();
+        memory_copy_async(&mut multiplicities_device, &poisoned_multiplicities, stream).unwrap();
+        generate_lookup_multiplicities(
+            &mut DeviceMatrixMut::new(&mut mapping_device, stride),
+            &mut DeviceMatrixMut::new(&mut multiplicities_device, stride),
+            active_counts_len,
+            &context,
+        )
+        .unwrap();
 
-            let mut actual_mapping = vec![0u32; mapping_host.len()];
-            let mut actual_multiplicities = vec![BF::ZERO; expected_multiplicities.len()];
-            memory_copy_async(&mut actual_mapping, &mapping_device, stream).unwrap();
-            memory_copy_async(&mut actual_multiplicities, &multiplicities_device, stream).unwrap();
-            stream.synchronize().unwrap();
+        let mut actual_mapping = vec![0u32; mapping_host.len()];
+        let mut actual_multiplicities = vec![BF::ZERO; expected_multiplicities.len()];
+        memory_copy_async(&mut actual_mapping, &mapping_device, stream).unwrap();
+        memory_copy_async(&mut actual_multiplicities, &multiplicities_device, stream).unwrap();
+        stream.synchronize().unwrap();
 
-            assert_eq!(actual_mapping, expected_mapping);
-            assert_eq!(actual_multiplicities, expected_multiplicities);
-        }
+        assert_eq!(actual_mapping, expected_mapping);
+        assert_eq!(actual_multiplicities, expected_multiplicities);
+    }
+
+    #[test]
+    fn replicated_atomic_counts_reuse_output_storage() {
+        assert_replicated_atomic_counts(512, 3, 1, 64);
+    }
+
+    #[test]
+    fn replicated_atomic_counts_use_transient_storage() {
+        assert_replicated_atomic_counts(64, 3, 2, 96);
     }
 }

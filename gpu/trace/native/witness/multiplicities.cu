@@ -12,7 +12,8 @@ static_assert(sizeof(bf) == sizeof(u32));
 static_assert(alignof(bf) == alignof(u32));
 
 EXTERN __global__ void ab_count_multiplicities_kernel(u32 *const __restrict__ lookup_mapping, const unsigned lookup_mapping_size,
-                                                      bf *const __restrict__ multiplicities, const unsigned active_counts_len) {
+                                                      bf *const __restrict__ counter_shards, const unsigned active_counts_len,
+                                                      const unsigned counter_replicas) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   const unsigned active_mask = __activemask();
   const bool in_bounds = gid < lookup_mapping_size;
@@ -33,15 +34,21 @@ EXTERN __global__ void ab_count_multiplicities_kernel(u32 *const __restrict__ lo
   const unsigned lane = threadIdx.x & (warpSize - 1);
   const unsigned leader = __ffs(peers) - 1;
   if (lane == leader) {
-    (void)atomicAdd(&multiplicities[index].limb, __popc(peers));
+    const unsigned replica = blockIdx.x & (counter_replicas - 1);
+    (void)atomicAdd(&counter_shards[replica * active_counts_len + index].limb, __popc(peers));
   }
 }
 
-EXTERN __global__ void ab_convert_multiplicities_kernel(bf *const __restrict__ multiplicities, const unsigned active_counts_len) {
+// counter_shards may alias multiplicities when the output tail stores the replicas.
+EXTERN __global__ void ab_reduce_convert_multiplicities_kernel(const bf *const counter_shards, bf *const multiplicities, const unsigned active_counts_len,
+                                                               const unsigned counter_replicas) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= active_counts_len)
     return;
-  multiplicities[gid] = bf::from_u32_unchecked(multiplicities[gid].limb);
+  u32 count = 0;
+  for (unsigned replica = 0; replica < counter_replicas; ++replica)
+    count += counter_shards[replica * active_counts_len + gid].limb;
+  multiplicities[gid] = bf::from_u32_unchecked(count);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__

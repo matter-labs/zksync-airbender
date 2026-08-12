@@ -251,9 +251,7 @@ impl GpuGKRStage1Output {
 
         let num_generic_sets = compiled_circuit.generic_lookups.len();
         let has_decoder = compiled_circuit.has_decoder_lookup;
-        let num_generic_family_cols = num_generic_sets
-            .checked_add(usize::from(has_decoder))
-            .expect("generic lookup mapping column count overflow");
+        let num_generic_family_cols = num_generic_sets + usize::from(has_decoder);
         let use_fused_unrolled = strategy == WitnessGenerationStrategy::Fused
             && matches!(
                 circuit_type,
@@ -264,11 +262,10 @@ impl GpuGKRStage1Output {
         let use_fused_delegation = strategy == WitnessGenerationStrategy::Fused
             && matches!(circuit_type, CircuitType::Delegation(_));
         let produces_all_mappings_early = use_fused_unrolled || use_fused_delegation;
-        let generic_family_len = num_generic_family_cols
-            .checked_mul(trace_len)
-            .expect("generic lookup mapping length overflow");
-        let mut generic_family = context.alloc(generic_family_len, AllocationPlacement::Top)?;
-        assert_eq!(generic_family.len(), generic_family_len);
+        let mut generic_family = context.alloc(
+            num_generic_family_cols * trace_len,
+            AllocationPlacement::Top,
+        )?;
         let (mut early_range_check_16, mut early_timestamp) = if produces_all_mappings_early {
             let (range_check_16, timestamp) =
                 allocate_range_check_lookup_mappings(compiled_circuit, context)?;
@@ -294,9 +291,7 @@ impl GpuGKRStage1Output {
         };
 
         {
-            let generic_prefix_len = num_generic_sets
-                .checked_mul(trace_len)
-                .expect("generic lookup mapping prefix length overflow");
+            let generic_prefix_len = num_generic_sets * trace_len;
             let (generic_mapping_prefix, decoder_mapping_suffix) =
                 generic_family.split_at_mut(generic_prefix_len);
             let decoder_lookup_mapping = if has_decoder {
