@@ -466,7 +466,8 @@ cannot detect a reordering among equal-ref, equal-class sources.
 **The frontier ends where R4 left it.** `hot16@128` is the optimum in **both** term orders and
 the next lane in the sweep — `k24@128`, +8 sources and +8 units at C = 36 — already loses by
 **+0.140 ms locality / +0.188 census**, 100/100 rounds; the L2 knee sits between C = 28 and
-C = 36 (K17…K23 were not sampled). Against the 14.61 ms windowed-candidate bar the raw
+C = 36 — v3 R8 later sampled the seven interior points K17…K23 and found no winner among them
+either (below). Against the 14.61 ms windowed-candidate bar the raw
 in-rotation `eval + finalize` medians are **14.717 locality / 15.120 census** (over), while the spec's anchor mini-session
 **upgrades the locality bar claim** — both bridge forms land under, at 14.537 additive /
 14.538 ratio — and census returns no decision. Full record, the three-layer bar verdict, the
@@ -484,7 +485,8 @@ empirical, NOT the documented rounding — hint **16** = the 32 KB config here),
 control@256]` under one hint state per process; `tools/r6_probe_table.py` decides a
 4-process ABBA session, `tools/r6_gates.sh` gates. Outcome (locality/shipping order): the
 tested 32 KiB carveout does **not** move the measured `{hot16, k24, k32, k40}` frontier —
-`hot16` stays the optimum within that scope (K17–23 remains unsampled) and the knee is not
+`hot16` stays the optimum within that scope (K17–23 sampled later by v3 R8, no interior
+winner) and the knee is not
 L1-capacity-priced — but `hot16` itself gains **−0.09..−0.10 ms** under the hint
 (control-bridged, both soaked pairs stable), and the driver-heuristic finding suggests a
 broader audit opportunity: any kernel whose register limit binds below its warp limit may
@@ -543,6 +545,29 @@ capture slope **inverted** versus R7 (−5.55 µs per removal), but on two point
 allrepeat are off this matrix), and the carveout ladder proved body-dependent a third time — four
 bytes of static shared memory compress it ~8×, caught by the pre-freeze probe and pinned before
 any session ran. Full record: `iteration_times.md`'s *v3 R7b* section.
+
+### v3 R8 — the admission frontier interior (K17–23)
+
+The seven prefix points R5's eight-wide step skipped, measured on the incumbent with nothing
+built: `--frontier-interior` rotates **12 lanes** — `k17`…`k24` plus the four anchors every
+frontier session shares — at **96 paired rounds / warmup 12** per term order, and a lane differs
+from `hot16@128` only in the admission plan the host uploads (same frozen body, 72 registers,
+7 blocks/SM, carveout hint 16). Motivation: the family is fma-pipe-bound (R7b) and a cache hit
+trades a coset's twiddle-chain multiplies for one load on the slack LSU pipe, so capture is the
+mul-reduction lever and this interval was its unmeasured stretch. **Outcome: no interior
+winner** — `hot16` (K16, C = 28) is confirmed the frontier optimum at unit granularity, the axis
+is monotone-uphill (all eight adjacent steps positive, none individually signed on the
+shipping/locality order), and the first signed loss arrives at **`k19@128` (C = 31), +0.023 ms
+at 95/96**, accumulating to **+0.059 ms at `k24@128`** (96/96); the diagnostic census order loses
+one step earlier (`k18` +0.041, +0.124 by `k24`). The knee R5 bracketed is **smooth and
+traffic-priced, not a cliff**: `hot16 → k24` moves DRAM SOL **+6.328 pp locality / +9.207 pp
+census** (reproducing R5's +6.461/+9.200 at bit-identical L1 local sector counts) and `k19`
+already carries 36 % of that step, while every interior lane executes *fewer* instructions — the
+mul saving never outruns the bandwidth price. The claims are scoped: the axis is
+**right-censored at `k24`** and nothing is said about K > 24, the census anchor was valid only at
+the edge of its band and decides nothing, and the one route that could re-open the axis — a
+traffic-free shared cache, i.e. the slotted-slab direction — is unmeasured. Full record:
+`iteration_times.md`'s *v3 R8* section.
 
 ### Geometry
 

@@ -4607,3 +4607,286 @@ probes (`g0b-*`, `g0-*`, `g0probe-*`, `g0diag*-*`); `full-*.log` and `counters-*
 `progress.md` and the measurement report `task-4-report.md`. Profiler captures under
 `target/profiling/ncu/` as `*_v3r7b_*`. The frozen session binary is `0e89690e…` at tip
 `172edebb`.
+
+## v3 R8 — the admission frontier interior (K17–23)
+
+R5 walked the admission frontier in eight-source steps and left a hole in the middle of its own
+answer: the optimum it found is `hot16`, the **K16** prefix point of the canonical admission list
+(C = 28 cache units of 8 B each), its first measured loser is `k24` (C = 36), and the seven prefix
+points in between — **K17…K23, C = 29…35** — were never sampled, which is why every rung since has
+carried "K17–23 unmeasured" as an open item. R8 samples them. The motivation is RR's, and it is
+about the pipe R7b identified: this kernel family is **fma-pipe-bound**, and a cache hit is exactly
+what converts one coset's twiddle-chain multiplies into a single load on the slack LSU pipe — so
+*capture* (how many produced coset sources the cache holds; a **removal** is one production the walk
+therefore never executes) is the mul-reduction lever, and this interval was the one stretch of that
+lever nobody had priced. Nothing was built for it: a lane differs from the incumbent only in the
+host-built admission plan it uploads, the body is the frozen R5/R6 one
+(`eval_lsb_pair_cached_128_lb`, 72 registers, 7 blocks/SM, the R6 carveout hint 16 the launcher now
+bakes in), and `--frontier-interior` rotates **12 lanes** — `k17`…`k24` plus the four anchors every
+frontier session shares — at **96 paired rounds, warmup 12**, per term order. Every decision rule
+was preregistered before a single round was timed: the **signed rule at 87/96** (a lane wins iff its
+paired per-round contrast has a negative median with at least 87 of the 96 rounds on that side,
+loses iff the median is positive with 87/96 positive, and is a **wash** otherwise), winner /
+first-loser / wash as the only verdicts, the selection carried by the `locality` term order with
+`census` diagnostic-only, and the axis declared **right-censored at `k24`** — the largest measured
+point, past which this rung claims nothing.
+
+**Result: there is nothing between them either.** No interior point wins over the incumbent in
+either order; `hot16` stands as the frontier optimum at unit granularity, and the loss simply
+starts earlier than R5's eight-wide step could see.
+
+Provenance, stated once. Every **timing** figure below is copied verbatim from the emitter record
+`.agents/sdd/2026-08-12-v3-r8/emitter-output.md` (`tools/r4_table.py`, the single decision authority
+for this rung), and every **profiler** figure from the ncu extractor's own output,
+`.agents/sdd/2026-08-12-v3-r8/ncu-tables.md`. The two are never mixed and nothing here was assembled
+by hand. Two decision-bearing timed processes, one per term order, 96 × 12 = **1,152 timed launches**
+each, every one preceded by 80 s of discarded work on the same rotation inside the same lock hold;
+the census order needed three sessions to land its anchor (see *Instrument notes*). All of it on one
+frozen binary (`0781f5c3…3c4b0899` at tip `f10a022a`, unchanged from before the first session to
+after the last capture), all under `.agents/bin/with_gpu_lock.sh`, with the pre-freeze `r5_gates.sh
+all` and `r7_gates.sh all` suites ALL PASS and no build of any kind inside the window.
+
+### The arms — per-lane medians, both orders
+
+**`FRONTIER-INTERIOR` — `--term-order locality`, 96 paired rounds, 12 lanes**
+
+| lane | kernel | regs | blocks/SM | threads | grid | C | removals | admitted | median `eval` | median `finalize` | median `eval+fin` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `k17@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 29 | 147 | 17 | 14.763 | 0.063 | **14.827** |
+| `k18@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 30 | 149 | 18 | 14.770 | 0.063 | **14.834** |
+| `k19@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 31 | 151 | 19 | 14.775 | 0.063 | **14.840** |
+| `k20@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 32 | 153 | 20 | 14.783 | 0.063 | **14.846** |
+| `k21@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 33 | 155 | 21 | 14.794 | 0.063 | **14.858** |
+| `k22@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 34 | 157 | 22 | 14.799 | 0.063 | **14.862** |
+| `k23@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 35 | 159 | 23 | 14.801 | 0.063 | **14.865** |
+| `k24@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 36 | 161 | 24 | 14.809 | 0.063 | **14.872** |
+| `hot16@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 14.749 | 0.063 | **14.812** |
+| `cache0@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 | 17.034 | 0.061 | **17.095** |
+| `control_lb@128` | `eval_lsb_pair_128_lb` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 | 16.426 | 0.061 | **16.488** |
+| `control@256` | `eval_lsb_pair` | 72 | 3 | 256 | 32768 | 0 | 0 | 0 | 16.705 | 0.033 | **16.738** |
+
+**`FRONTIER-INTERIOR` — `--term-order census`, 96 paired rounds, 12 lanes**
+
+| lane | kernel | regs | blocks/SM | threads | grid | C | removals | admitted | median `eval` | median `finalize` | median `eval+fin` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `k17@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 29 | 147 | 17 | 15.292 | 0.063 | **15.355** |
+| `k18@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 30 | 149 | 18 | 15.307 | 0.063 | **15.371** |
+| `k19@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 31 | 151 | 19 | 15.325 | 0.063 | **15.389** |
+| `k20@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 32 | 153 | 20 | 15.338 | 0.063 | **15.401** |
+| `k21@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 33 | 155 | 21 | 15.358 | 0.063 | **15.421** |
+| `k22@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 34 | 157 | 22 | 15.364 | 0.063 | **15.427** |
+| `k23@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 35 | 159 | 23 | 15.383 | 0.063 | **15.445** |
+| `k24@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 36 | 161 | 24 | 15.394 | 0.063 | **15.458** |
+| `hot16@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.271 | 0.063 | **15.334** |
+| `cache0@128` | `eval_lsb_pair_cached_128_lb` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 | 17.171 | 0.061 | **17.232** |
+| `control_lb@128` | `eval_lsb_pair_128_lb` | 72 | 7 | 128 | 65536 | 0 | 0 | 0 | 16.526 | 0.061 | **16.588** |
+| `control@256` | `eval_lsb_pair` | 72 | 3 | 256 | 32768 | 0 | 0 | 0 | 16.834 | 0.033 | **16.866** |
+
+Each lane's admitted-id list was gated ORDERED against the controller's out-of-tree oracle
+(`expected-counts-r8.md` / `oracle-derivation.txt`) on all 12 lanes, and every grid against
+`--log-trace 24`; `cache0@128` is the cached body with an empty admitted set (the fixed-machinery
+diagnostic), `control_lb@128` the bound-matched uncached 128 baseline and `control@256` the shipping
+anchor. The `census` rows are the diagnostic order and are never pooled with `locality`.
+
+### The verdict — no winner anywhere on the axis
+
+The cumulative contrasts are the rows with teeth: each is the lane against `hot16@128`, paired per
+round on `eval + finalize`, inside one process.
+
+**Cumulative vs `hot16@128` (locality)** — the same axis read from the incumbent, which is what locates the winner and the first loser.
+
+| lane | K | C | removals over `hot16@128` | median (ms) | IQR | on-sign | verdict | µs / removal |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `k17@128` | 17 | 29 | 2 | **+0.013** | +0.004 … +0.025 | 84/96 | **WASH** | +6.45 |
+| `k18@128` | 18 | 30 | 4 | **+0.016** | +0.006 … +0.030 | 85/96 | **WASH** | +3.98 |
+| `k19@128` | 19 | 31 | 6 | **+0.023** | +0.016 … +0.033 | 95/96 | **LOSS** | +3.87 |
+| `k20@128` | 20 | 32 | 8 | **+0.035** | +0.021 … +0.044 | 95/96 | **LOSS** | +4.31 |
+| `k21@128` | 21 | 33 | 10 | **+0.045** | +0.034 … +0.052 | 96/96 | **LOSS** | +4.53 |
+| `k22@128` | 22 | 34 | 12 | **+0.047** | +0.037 … +0.057 | 96/96 | **LOSS** | +3.90 |
+| `k23@128` | 23 | 35 | 14 | **+0.054** | +0.046 … +0.060 | 96/96 | **LOSS** | +3.84 |
+| `k24@128` | 24 | 36 | 16 | **+0.059** | +0.052 … +0.066 | 96/96 | **LOSS** | +3.67 |
+
+**Cumulative vs `hot16@128` (census)** — the same axis read from the incumbent, which is what locates the winner and the first loser.
+
+| lane | K | C | removals over `hot16@128` | median (ms) | IQR | on-sign | verdict | µs / removal |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `k17@128` | 17 | 29 | 2 | **+0.022** | +0.010 … +0.057 | 83/96 | **WASH** | +11.12 |
+| `k18@128` | 18 | 30 | 4 | **+0.041** | +0.021 … +0.124 | 95/96 | **LOSS** | +10.37 |
+| `k19@128` | 19 | 31 | 6 | **+0.057** | +0.041 … +0.145 | 96/96 | **LOSS** | +9.45 |
+| `k20@128` | 20 | 32 | 8 | **+0.068** | +0.055 … +0.102 | 96/96 | **LOSS** | +8.44 |
+| `k21@128` | 21 | 33 | 10 | **+0.087** | +0.079 … +0.106 | 96/96 | **LOSS** | +8.67 |
+| `k22@128` | 22 | 34 | 12 | **+0.095** | +0.086 … +0.108 | 96/96 | **LOSS** | +7.94 |
+| `k23@128` | 23 | 35 | 14 | **+0.113** | +0.105 … +0.121 | 96/96 | **LOSS** | +8.10 |
+| `k24@128` | 24 | 36 | 16 | **+0.124** | +0.120 … +0.132 | 96/96 | **LOSS** | +7.75 |
+
+**There is no winner anywhere on the axis, so `hot16` stands** — and it now stands at unit
+granularity rather than as the survivor of an eight-wide step. On `locality`, the selection order,
+the first loser is **`k19@128`** (K = 19, C = 31) at **+0.023 ms, 95/96** on-sign; `k17@128` and
+`k18@128` are the only two lanes indistinguishable from the incumbent (+0.013 at 84/96 and +0.016 at
+85/96), and by the censoring endpoint the accumulated cost is **+0.059 ms at 96/96**. The `census`
+order — diagnostic only, and it alters nothing — reaches the same verdict one step earlier: first
+loser **`k18@128`** at **+0.041 ms, 95/96**, and **+0.124 ms at 96/96** by `k24`. The emitter's own
+decision block, quoted rather than re-derived:
+
+> **`locality` — SELECTION**
+>
+> - winner: **none** — no interior point wins over `hot16@128` under the signed rule, so the incumbent stands.
+> - first loser: **`k19@128`** (K = 19, C = 31) at +0.023 ms, 95/96 on-sign — the smallest K whose cumulative contrast is a signed LOSS.
+> - the axis is RIGHT-CENSORED at `k24@128`: K = 24 is the largest measured point and no claim is made past it.
+
+### The adjacent steps — the monotonicity evidence
+
+Each step admits ONE more BF source at refs 3, so it removes exactly two productions. These are the
+per-step contrasts, and the emitter reports their sign pattern verbatim because that pattern, not any
+single step, is what says the axis is monotone.
+
+**Adjacent steps (locality)** — each step admits ONE more BF source at refs 3, so it removes two productions; paired per round on `eval + finalize`.
+
+| step | K | C step | removals step | median (ms) | IQR | on-sign | verdict | µs / removal |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `k17@128` − `hot16@128` | 17 | +1 | +2 | **+0.013** | +0.004 … +0.025 | 84/96 | **WASH** | +6.45 |
+| `k18@128` − `k17@128` | 18 | +1 | +2 | **+0.002** | -0.005 … +0.010 | 56/96 | **WASH** | +1.18 |
+| `k19@128` − `k18@128` | 19 | +1 | +2 | **+0.006** | +0.001 … +0.012 | 75/96 | **WASH** | +2.87 |
+| `k20@128` − `k19@128` | 20 | +1 | +2 | **+0.008** | +0.002 … +0.015 | 78/96 | **WASH** | +3.88 |
+| `k21@128` − `k20@128` | 21 | +1 | +2 | **+0.013** | +0.006 … +0.018 | 82/96 | **WASH** | +6.65 |
+| `k22@128` − `k21@128` | 22 | +1 | +2 | **+0.003** | -0.005 … +0.010 | 60/96 | **WASH** | +1.50 |
+| `k23@128` − `k22@128` | 23 | +1 | +2 | **+0.006** | -0.002 … +0.013 | 67/96 | **WASH** | +2.95 |
+| `k24@128` − `k23@128` | 24 | +1 | +2 | **+0.006** | +0.000 … +0.014 | 73/96 | **WASH** | +2.99 |
+
+**Adjacent steps (census)** — each step admits ONE more BF source at refs 3, so it removes two productions; paired per round on `eval + finalize`.
+
+| step | K | C step | removals step | median (ms) | IQR | on-sign | verdict | µs / removal |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `k17@128` − `hot16@128` | 17 | +1 | +2 | **+0.022** | +0.010 … +0.057 | 83/96 | **WASH** | +11.12 |
+| `k18@128` − `k17@128` | 18 | +1 | +2 | **+0.020** | +0.012 … +0.035 | 89/96 | **LOSS** | +9.86 |
+| `k19@128` − `k18@128` | 19 | +1 | +2 | **+0.019** | +0.012 … +0.027 | 91/96 | **LOSS** | +9.62 |
+| `k20@128` − `k19@128` | 20 | +1 | +2 | **+0.013** | +0.007 … +0.020 | 79/96 | **WASH** | +6.66 |
+| `k21@128` − `k20@128` | 21 | +1 | +2 | **+0.021** | +0.014 … +0.027 | 80/96 | **WASH** | +10.29 |
+| `k22@128` − `k21@128` | 22 | +1 | +2 | **+0.008** | +0.002 … +0.013 | 75/96 | **WASH** | +4.02 |
+| `k23@128` − `k22@128` | 23 | +1 | +2 | **+0.018** | +0.011 … +0.022 | 90/96 | **LOSS** | +8.83 |
+| `k24@128` − `k23@128` | 24 | +1 | +2 | **+0.011** | +0.007 … +0.017 | 83/96 | **WASH** | +5.70 |
+
+The emitter's sign patterns, quoted rather than re-derived:
+
+> **`locality` — SELECTION**
+>
+> - adjacent-step sign pattern, `k17@128 − hot16@128` first: `+ + + + + + + +` (WASH WASH WASH WASH WASH WASH WASH WASH) — reported verbatim; this is the monotonicity evidence.
+>
+> **`census` — diagnostic only — alters nothing (A1)**
+>
+> - adjacent-step sign pattern, `k17@128 − hot16@128` first: `+ + + + + + + +` (WASH LOSS LOSS WASH WASH WASH LOSS WASH) — reported verbatim; this is the monotonicity evidence.
+
+**Every step in both orders costs time, and on the selection order not one of them is individually
+signed.** That is the monotonicity evidence: the axis is uphill in sign everywhere, while a single
+admission is too small to resolve against 96 rounds — which is why the verdict has to be read
+cumulatively. (On `census`, whose per-step contrasts are noisier and larger, three of the eight steps
+do clear the threshold; it changes nothing, since census decides nothing.) The
+per-removal column prices it directly and is remarkably flat: on `locality` the cumulative slope runs
+**+6.45, +3.98, +3.87, +4.31, +4.53, +3.90, +3.84, +3.67 µs per removal**, i.e. removing a production
+on this stretch **costs** ≈ 3.7–4.5 µs instead of saving anything, and `census` prices the same
+removals at **+11.12 … +7.75 µs**, roughly double. The mul-reduction lever is real — it is what
+`hot16` itself is built on — but past C = 28 each additional removal is bought at a price the machine
+charges elsewhere.
+
+### The knee — smooth, and traffic-priced
+
+R5 established the `hot16 → k24` knee as an L2/DRAM one from a two-lane manifest and could say
+nothing about its interior. R8 profiled three lanes — the incumbent, the first loser and the censoring
+endpoint — under both orders, on the frozen binary, at the same 72 registers / 7 blocks/SM and
+57.9 % achieved occupancy in every cell, so nothing below is an occupancy artifact. "DRAM SOL" is the
+profiler's DRAM speed-of-light utilization, in percentage points.
+
+| order | step | DRAM SOL pp | L2 hit pp | L2 rd sectors | L1 local ld sectors | L1 local st sectors | DRAM rd sectors | DRAM wr sectors | inst/warp |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| census | `k19@128` − `hot16@128` | **+3.330** | -1.153 | +26,569,368 | +18,874,368 | +6,291,456 | +20,805,192 | +6,689,152 | -555 |
+| census | `k24@128` − `hot16@128` | **+9.207** | -3.186 | +69,525,616 | +50,331,648 | +16,777,216 | +56,813,480 | +18,218,320 | -1,478 |
+| locality | `k19@128` − `hot16@128` | **+2.321** | -0.066 | +25,343,170 | +18,874,368 | +6,291,456 | +10,740,944 | +7,208,160 | -555 |
+| locality | `k24@128` − `hot16@128` | **+6.328** | -0.014 | +68,982,306 | +50,331,648 | +16,777,216 | +27,877,832 | +19,872,864 | -1,478 |
+
+R5 knee-signature contrast at the SAME step (`hot16@128` -> `k24@128`), R5 measured +9.200 pp census / +6.461 pp locality:
+
+| order | R5 DRAM SOL step (pp) | R8 DRAM SOL step (pp) | delta | reproduced? |
+| --- | --- | --- | --- | --- |
+| census | +9.200 | **+9.207** | +0.007 | yes — same sign, same order of magnitude |
+| locality | +6.461 | **+6.328** | -0.133 | yes — same sign, same order of magnitude |
+
+**The R5 signature reproduces on a different day, in both orders, and the interior of the step is
+smooth rather than a cliff.** At the first loser the DRAM SOL step is already **+3.330 pp census /
++2.321 pp locality** — about **36 % of the whole `k24` step for 3 of the 8 admissions** — while L2
+read sectors rise +26.6 M / +25.3 M and the L2 hit rate falls 1.15 pp (census) / 0.07 pp (locality).
+The L1 local sector counts are *bit-identical* to R5's captures (362,807,296 and 413,138,944 local
+loads, 58,720,256 and 75,497,472 local stores at the two ends), so the two sessions priced exactly
+the same work; each admitted source adds a fixed **2,097,152 local store sectors and 6,291,456 local
+load sectors**, and the store side closes as an identity against the oracle (`local st sectors /
+warp = 8C`, 224 / 248 / 288 B per thread at K = 16 / 19 / 24). The instruction leg keeps improving in
+exactly the predicted direction — **−555 instructions per warp at `k19`, −1,478 at `k24`** — and it
+does not help: the machine spends those savings on traffic. The order asymmetry is R5's L1-residency
+effect, unchanged: local-load L1 hit rate is **49–56 % under `locality` against 0.03–0.04 % under
+`census`**, so census pushes ~1.08–1.15 G L2 read sectors where locality pushes ~0.66–0.72 G, and
+census consequently prices each removal at about twice the µs. **The mul saving never outruns the
+bandwidth price at any interior point.**
+
+### What this bounds
+
+- **There is no free capture left on this axis.** Deeper admission on the incumbent shape is
+  flat-to-losing at every point measured: wash at K17–18, signed loss from K19 on, and the axis is
+  **right-censored at `k24`** — nothing here says anything about K > 24, in either direction. R5's
+  bracket "the knee is between C = 28 and C = 36" is now resolved to unit granularity: the crossing
+  first signed loss sits at C = 31 on the selection order, and the whole interval is uphill.
+- **The loss is DRAM/L2-priced, not compute-priced.** Every interior lane executes *fewer*
+  instructions and runs *slower*, and the counter that moves is DRAM SOL. So the only route that
+  could re-open this axis is a carrier that captures more without buying more traffic — a
+  traffic-free *shared* cache, which is the slotted-slab direction. That is **unmeasured** here, and
+  R7b's lesson applies to it unchanged: the slotted allocator removed ~98 % of a scratch stream's
+  DRAM writes and bought nothing, because this kernel family is SM-bound, and its own machinery cost
+  +0.178 ms. A shared-cache attempt has to clear both bars, and neither is priced by this rung.
+- **The per-removal price on this stretch is now a number a future carrier must beat**: between
+  C = 28 and C = 36 a removal is *paid for* at **+3.67…+6.45 µs** (locality) / **+7.75…+11.12 µs**
+  (census), cumulative against the incumbent.
+
+### Instrument notes
+
+- **The census anchor is valid at the band edge.** The hard gate is the R4-frozen ±2 % band on
+  `control@256` and `hot16@128`; a session with an OUT anchor is invalid and is repeated soaked. On
+  `census` it tripped twice: `control@256` came in at **16.894 (+2.11 %)** and **16.882 (+2.04 %)**
+  against the frozen 16.545, and the third, coldest-started session landed **16.866 (+1.94 %)** —
+  inside the 16.876 band edge by **0.010 ms**. The three attempts agree within 0.17 %, so the offset
+  is **systematic (≈ +1.4 % above the R4-frozen census literals), not drift**; a fourth attempt could
+  as easily land OUT. Nothing decision-bearing rides on it — census is diagnostic-only and the
+  selection order is comfortably in band at **+0.68 % / −0.16 %** — but **any future rung that wants
+  census to GATE anything must re-freeze the census anchor literals first.** Flanks (first vs last
+  full rotation cycle of each anchor lane) are **8/8 PASS** across the two recorded sessions, the
+  largest drift 0.028 ms against a 0.086 ms threshold; the 80 s soak is what buys that.
+- **Canonical log names carry the VALID sessions, not the chronological first.** `interior-census.log`
+  is the third census session, because Task 2's committed fixture row replays the emitter on exactly
+  `interior-locality.log` + `interior-census.log` and fails the lane if the emitter rejects them — a
+  log that fails the anchor gate under the canonical name would leave a committed gate red. The two
+  invalid attempts are preserved whole as `interior-census-invalid-a{1,2}.*` with their own emitter
+  outputs and stderr reasons. **This naming precedent is deliberately the opposite of R7b's** (where
+  the original name kept the first run and `-repeat` carried the valid one); it was forced by the
+  fixture, and the timestamps and sidecars make either reading recoverable.
+- **The Full Pictures are lineinfo-free**, unavoidable under the build freeze — the recipe's lineinfo
+  step requires a rebuild and no build may run in the window, so SourceCounters is collected without
+  line mapping. Same deviation R7 and R7b recorded.
+- **G0 — the realized-configuration gate — passed 4/4 at one equalized configuration.** All three
+  cached arms echo the baked hint 16 and realize a **32.768 KB** shared-memory partition with
+  `Block Limit Shared Mem` = 10 against 7 achieved blocks/SM, so shared memory is not the binding
+  limit and the arms are register-bound at 72 registers exactly as pinned; `control@256` prints no
+  hint line at all (the hint is applied per-function to the cached body) and is register-bound at 3
+  blocks/SM. Interior lanes cannot differ here by construction — they share the frozen body and
+  differ only in the uploaded plan — which is why G0 is a single configuration measured three times,
+  and it was measured rather than assumed.
+
+### Artifacts
+
+`.agents/sdd/2026-08-12-v3-r8/`: the emitter record `emitter-output.md` (the only timing authority)
+and `ncu-tables.md` (the only profiler authority); the sessions `interior-locality.*` and
+`interior-census.*`, each with `.warm` / `.soak` / `.mark` and three telemetry sidecars, plus the two
+invalid census attempts `interior-census-invalid-a{1,2}.*` with `emitter-output-invalid-a{1,2}.{md,err}`;
+`g0-{hot16_128,k20_128,k24_128,control_256}.log`; `prefreeze-r5-gates.log`, `prefreeze-r7-gates.log`,
+`frozen-binary.sha`; the controller oracle `expected-counts-r8.md` (+ `oracle-derivation.txt`); the
+session / G0 / capture drivers `task3-{session,g0,capture}.sh` and extractors
+`task3-{extract,g0extract}.py`; the ledger `progress.md` and the measurement report
+`task-3-report.md`. Profiler captures under `target/profiling/ncu/`: `20260812_1352*_v3r8_g0_*` (4 G0
+reports) and `20260812_1406-1407*_v3r8_{hot16,k19,k24}_128_{census,locality}_full` (6 Full Pictures).
+The frozen session binary is `0781f5c3…3c4b0899` at tip `f10a022a`.
