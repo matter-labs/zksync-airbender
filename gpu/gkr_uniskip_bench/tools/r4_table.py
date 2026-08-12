@@ -229,13 +229,27 @@ REORDER_ANCHOR_LANES = (R9_CTL, R9_INCUMBENT)
 # EVERY anchor reference this repo holds, each with the LANE COUNT of the rotation that produced it.
 # Absolute medians are rotation-composition dependent — a thinner rotation interleaves fewer heavy
 # lanes, so a lane sees less L2/DRAM/clock interference between its rounds — and this rung runs SIX
-# lanes against references from eleven and twelve. The emitter therefore prints all of them side by
-# side, labelled, and judges none: whether an offset is composition or machine is RR's call on the
-# whole table. `ANCHORS` / `R5_SESSION` are the same dicts the legacy paths read.
+# lanes against references from ten to twelve. The emitter prints all of them side by side, labelled,
+# and judges none: whether an offset is composition or machine is RR's call on the whole table. The
+# lane count IS the instrument here, so each one is derived from its own rotation's `lanes=` field
+# rather than from any prior note:
+#   R4 frozen  = 11, `CACHE-FACTORIAL schedule … lanes=11` (`.agents/sdd/2026-08-09-v3-r4/`
+#                session logs) and `EXPECTED_LANES` above, which this file enforces at 11.
+#   R5 session = 10, `FRONTIER-FACTORIAL schedule … lanes=10` in
+#                `.agents/sdd/2026-08-10-v3-r5/task3-primary-{locality,census}.log`, and
+#                `FRONTIER["FRONTIER-FACTORIAL"]["lanes"]` above, which holds 10 lanes. (The
+#                medians themselves are that rung's emitter output, cited at `R5_SESSION`.)
+#   R8 session = 12, `FRONTIER-INTERIOR schedule … lanes=12` in
+#                `.agents/sdd/2026-08-12-v3-r8/interior-{locality,census}.log`, and `INTERIOR`
+#                above, which holds 12 lanes.
+# `R8_SESSION`'s medians are this file's own `interior_emit` output over those two archived logs
+# (`control@256` and `hot16@128`, median `eval+fin`). `.agents/**` is gitignored, so those logs are
+# archived-but-untracked: `r9_fixtures/check.sh` pins both values verbatim, and that pin is what
+# protects them in a clean checkout where the logs cannot be re-read.
 R8_SESSION = {"locality": (16.738, 14.812), "census": (16.866, 15.334)}
 REORDER_REFERENCES = (
     ("R4 frozen", 11, ANCHORS),
-    ("R5 session", 11, R5_SESSION),
+    ("R5 session", 10, R5_SESSION),
     ("R8 session", 12, R8_SESSION),
 )
 # A delta this large against a reference is FLAGGED — a reporting duty, so an offset cannot pass
@@ -1519,6 +1533,12 @@ def rflag(flags, scope, tag, text):
     flags.append((scope, tag, text))
 
 
+def rtier(pct):
+    """How a carveout tier prints. `None` means the log's echoes did not agree on one, and the
+    word carries the unit itself — a stray `%` after it reads as a number that is not there."""
+    return f"{pct} %" if pct is not None else "non-uniform"
+
+
 def rpaired(s, a, b):
     """The paired per-round contrast `a - b` on `eval + finalize`, with the rung's signed LABEL: at
     least 87 of 96 rounds on one side and the median agreeing is called WIN or LOSS, anything else
@@ -1536,10 +1556,19 @@ def reorder_carveout(files, order, flags, where):
     `(path, percent)`; the percent is read off the echoes, and every disagreement with the rung's
     premise (the three hinted symbols, uniform, agreeing with the set line) is flagged."""
     hits = sorted(p for p, e in files.items() if (R9, order) in e["sections"])
-    if len(hits) != 1:
-        sys.exit(f"{where}: {len(hits)} log files declare a {R9} order={order} section — one "
-                 f"session is one process per term order, and with no file to read there is no "
-                 f"carveout block to report")
+    if not hits:
+        rflag(flags, order, "CARVEOUT-ATTRIBUTION",
+              f"no log file declares a {R9} order={order} section, so there is no carveout block "
+              f"to read — the L1 configuration these rows were taken at is unknown")
+        return None, None
+    if len(hits) > 1:
+        # The timing is all computable; the only unattributable thing is which process's carveout
+        # block describes these rows, and `hint = None` already renders that as **non-uniform**.
+        rflag(flags, order, "CARVEOUT-ATTRIBUTION",
+              f"{len(hits)} log files declare this section "
+              f"({', '.join(os.path.basename(p) for p in hits)}) — one session is one process per "
+              f"term order, so the carveout block read below is one of several and may not describe "
+              f"these rows")
     path, env = hits[0], files[hits[0]]
     if len(env["sections"]) != 1:
         rflag(flags, order, "CARVEOUT-ATTRIBUTION",
@@ -1583,8 +1612,8 @@ def reorder_session(key, rounds, arms, trailer, sched, flags):
     """One term order's session. ERRORS only where no meaningful number can be computed: no ARM
     lines, no schedule, no trailer, no samples, an unknown lane, an incomplete round, a round set
     that is not the declared run, or rounds that do not form complete cycles. Everything else — the
-    trace, the round shape, the rotation balance, the bodies, the plan, the admission order, the
-    aliasing shape — is computed and FLAGGED."""
+    trace, the round shape, the header's own consistency, the rotation balance, the bodies, the
+    plan, the admission order, the aliasing shape — is computed and FLAGGED."""
     order = key[1]
     if not arms:
         sys.exit(f"{R9}/{order}: no ARM lines for this order — old-format or truncated log")
@@ -1602,9 +1631,6 @@ def reorder_session(key, rounds, arms, trailer, sched, flags):
         extra = sorted(set(lanes) - REORDER["lanes"])
         sys.exit(f"{R9}/{order}: lane set is not the reorder rotation — missing {missing}, "
                  f"unexpected {extra}; an unknown lane has no row to be printed in")
-    if len(lanes) != trailer[2] or len(lanes) != sched[0]:
-        sys.exit(f"{R9}/{order}: {len(lanes)} ARM lines but the trailer declares {trailer[2]} "
-                 f"lanes — the log is truncated or mixes builds")
     for r in sorted(rounds):
         if set(rounds[r]) != set(lanes):
             sys.exit(f"{R9}/{order}: round {r} carries {sorted(rounds[r])}, expected {lanes} — the "
@@ -1623,6 +1649,11 @@ def reorder_session(key, rounds, arms, trailer, sched, flags):
                  f"are missing or renumbered, so the log does not describe the run it declares")
 
     # From here on: observations. Everything below computes.
+    if len(lanes) != trailer[2] or len(lanes) != sched[0]:
+        rflag(flags, order, "HEADER",
+              f"the log carries {len(lanes)} ARM lines while the schedule declares "
+              f"lanes={sched[0]} and the trailer lanes={trailer[2]} — the lane set is this "
+              f"rotation's, so what disagrees is the header's own count")
     if (sched[1], sched[2]) != (trailer[1], trailer[0]):
         rflag(flags, order, "HEADER",
               f"the schedule line declares rounds={sched[1]} warmup={sched[2]} and the trailer "
@@ -1646,13 +1677,20 @@ def reorder_session(key, rounds, arms, trailer, sched, flags):
                   f"lane `{lane}` declares body `{arms[lane]['kernel']}`; the rotation runs it on "
                   f"`{REORDER_BODY[lane]}` — the three cached lanes share one plan, so the body "
                   f"field is the only thing that says which body ran")
+    # ONE flag per lane, not per round: a lane whose every sample names another body would otherwise
+    # print 96 identical rows and drown the block, which is the only protection this rung has.
+    forged = {}
     for r in sorted(rounds):
         for lane, (_, _, kernel) in rounds[r].items():
+            if kernel != arms[lane]["kernel"] and lane not in forged:
+                forged[lane] = (r, kernel, 0)
             if kernel != arms[lane]["kernel"]:
-                rflag(flags, order, "SAMPLE-BODY",
-                      f"round {r} lane `{lane}` ran `{kernel}` but its ARM line declares "
-                      f"`{arms[lane]['kernel']}`")
-                break
+                first, k, n = forged[lane]
+                forged[lane] = (first, k, n + 1)
+    for lane, (first, kernel, n) in forged.items():
+        rflag(flags, order, "SAMPLE-BODY",
+              f"lane `{lane}` names `{kernel}` in {n} of {len(rounds)} rounds (first at round "
+              f"{first}) but its ARM line declares `{arms[lane]['kernel']}`")
     per = len(rounds) // len(lanes)
     slots = defaultdict(int)
     for r in sorted(rounds):
@@ -1738,11 +1776,15 @@ def reorder_readings(s, flags):
             if abs(rel) > R9_OFFSET_TELL:
                 tells.append(f"{name} ({lanes_n} lanes) {100.0 * rel:+.2f} %")
         if tells:
+            # The span is read off the reference table itself, so the prose cannot drift from the
+            # lane counts the rows print.
+            span = sorted({n for _, n, _ in REORDER_REFERENCES})
             rflag(flags, order, "ANCHOR",
                   f"`{lane}` reads {got:.3f} ms, more than "
                   f"{100.0 * R9_OFFSET_TELL:.1f} % off " + "; ".join(tells)
-                  + f" — this rotation carries {len(s['lanes'])} lanes against their 11–12, so read "
-                    f"the reference table before calling it machine drift")
+                  + f" — this rotation carries {len(s['lanes'])} lanes against their "
+                    f"{span[0]}–{span[-1]}, so read the reference table before calling it machine "
+                    f"drift")
     s["flank"] = {}
     for lane in REORDER_FLANK_LANES:
         first, last, drift, tol = reorder_flank(s, lane)
@@ -1842,13 +1884,18 @@ def reorder_report(sessions, paths, flags):
     for order in orders:
         pct = hints[order]
         print(f"| `{order}` | `{os.path.basename(paths[order])}` | "
-              f"{'**' + str(pct) + ' %**' if pct is not None else '**non-uniform**'} | "
+              f"**{rtier(pct)}** | "
               + ", ".join(f"`{sym}`" for sym in REORDER_HINTED) + " |")
     reorder_flags_block(flags)
     for order in orders:
         reorder_emit(sessions[order])
 
     print("\n### The whole picture, in one place\n")
+    # This is the block a record is most likely to quote, so it restates the flag COUNT: the flags
+    # block above is unmissable top-to-bottom and invisible to an excerpt.
+    print(f"**{len(flags)} flag(s) above; this table is not a verdict.**"
+          + ("" if flags else " Nothing disagreed with the rung's own description of itself.")
+          + "\n")
     headline = {o: rpaired(sessions[o], R9_BOUNDED, R9_INCUMBENT) for o in orders}
     print(f"**Row 1, the headline contrast** (`{R9_BOUNDED}` − `{R9_INCUMBENT}`), both orders side "
           f"by side. No gate: the medians, the sign counts and the spreads are the reading.\n")
@@ -1859,7 +1906,7 @@ def reorder_report(sessions, paths, flags):
         pct = hints[o]
         print(f"| `{o}` | **{c['med']:+.3f}** | {c['lo']:+.3f} … {c['hi']:+.3f} | "
               f"{c['min']:+.3f} … {c['max']:+.3f} | {c['on']}/{c['n']} | "
-              f"**{VERDICT[c['verdict']]}** | {pct if pct is not None else 'non-uniform'} % |")
+              f"**{VERDICT[c['verdict']]}** | {rtier(pct)} |")
 
     # THE BUILD FACTS, off the ARM lines rather than written here. Their cross-order comparison is
     # computed before the flags block prints (see `reorder`), so a disagreement is already up there.
@@ -1869,8 +1916,8 @@ def reorder_report(sessions, paths, flags):
     print(f"\n**Build facts** (off the ARM lines): `{R9_INCUMBENT}` {regs[R9_INCUMBENT]} regs / "
           f"{blocks[R9_INCUMBENT]} blocks/SM, `{R9_BOUNDED}` {regs[R9_BOUNDED]} / "
           f"{blocks[R9_BOUNDED]}, `{R9_FREE}` {regs[R9_FREE]} / {blocks[R9_FREE]}. Carveout "
-          f"{hints['locality'] if hints['locality'] is not None else 'non-uniform'} % on all three "
-          f"hinted symbols. Any disagreement between the two orders' logs is in the flags block.")
+          f"{rtier(hints['locality'])} on all three hinted symbols. Any disagreement between "
+          f"the two orders' logs is in the flags block.")
 
     cut = regs[R9_BOUNDED] < regs[R9_INCUMBENT]
     print(f"\n**Reference: what each combination would mean** — a labelled reading of the rung's "
@@ -1939,9 +1986,9 @@ def reorder(orders, runs, arms, done, sched, files, where, narrowed):
                   f"logs describe two builds and their rows are not one session")
     if sessions["locality"]["hint"] != sessions["census"]["hint"]:
         rflag(cross, "session", "CARVEOUT-TIER",
-              f"the two orders were recorded at {sessions['locality']['hint']} % and "
-              f"{sessions['census']['hint']} % — the rung's premise is one L1 configuration, so "
-              f"these are two experiments")
+              f"the two orders were recorded at {rtier(sessions['locality']['hint'])} and "
+              f"{rtier(sessions['census']['hint'])} — the rung's premise is one L1 configuration, "
+              f"so these are two experiments")
     flags.extend(cross)
     reorder_report(sessions, paths, flags)
 
@@ -1972,8 +2019,8 @@ def main():
     # Same for the reorder rung: it is a BODY contrast at one plan, and no other rotation's rules
     # can summarize it.
     if R9 in tags and tags - {R9}:
-        sys.exit(f"{where}: carries {R9} and {sorted(tags - {R9})} — the reorder rung is decided "
-                 f"under its own preregistered rules; emit it separately")
+        sys.exit(f"{where}: carries {R9} and {sorted(tags - {R9})} — the reorder rung is read "
+                 f"under its own rules; emit it separately")
 
     # A DECLARED order is emitted or it is an error. Iterating the orders that happen to
     # carry SAMPLE rows silently drops a section whose samples were truncated away, and

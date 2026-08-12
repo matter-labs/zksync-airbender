@@ -67,6 +67,19 @@ flagged() {
   pass=$((pass+1))
 }
 
+# flagged_once <name> <flag-substring> <expected-count> -- <args...>
+# Some observations are true in every round; the block is the rung's only protection, so they must
+# collapse to one row per lane rather than repeat.
+flagged_once() {
+  local name=$1 want=$2 want_n=$3; shift 4
+  local out rc n
+  out=$($E "$@" 2>/dev/null); rc=$?
+  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n' "$name"; fail=$((fail+1)); return; fi
+  n=$(printf '%s' "$out" | grep -cF -- "$want")
+  if [ "$n" = "$want_n" ]; then pass=$((pass+1));
+  else printf 'FAIL(count) %s\n  want %s row(s) matching: %s\n  got:  %s\n' "$name" "$want_n" "$want" "$n"; fail=$((fail+1)); fi
+}
+
 # rejects <name> <expected-substring> -- <args...>
 rejects() {
   local name=$1 want=$2; shift 3
@@ -176,8 +189,8 @@ emits "the build facts and the carveout are stated in one line" \
 echo "### the anchor reference table — every reference, with its lane count"
 emits "the R4-frozen literal, labelled 11 lanes" \
   "| \`control@256\` | 16.650 | R4 frozen | 11 | 16.624 | +0.15 % |" -- $(sess good)
-emits "the archived R5 session, labelled 11 lanes" \
-  "| \`control@256\` | 16.650 | R5 session | 11 | 16.567 | +0.50 % |" -- $(sess good)
+emits "the archived R5 session, labelled 10 lanes — that rotation's own \`lanes=\` field" \
+  "| \`control@256\` | 16.650 | R5 session | 10 | 16.567 | +0.50 % |" -- $(sess good)
 emits "the archived R8 session, labelled 12 lanes" \
   "| \`control@256\` | 16.650 | R8 session | 12 | 16.738 | -0.53 % |" -- $(sess good)
 emits "the incumbent anchor gets the same three references" \
@@ -241,17 +254,17 @@ flagged "a reversal among two equal-ref sources" \
   -- $(sess ids-reversed)
 flagged "two lanes carrying one lane's data" \
   "carry BIT-IDENTICAL samples in every round" -- $(half lane-aliased)
-flagged "a lane whose samples name another body" \
-  "round 20 lane \`reorder-hot16-free@128\` ran \`eval_lsb_pair_cached_reorder_128_lb\` but its ARM line declares" \
+flagged "a lane whose samples name another body in one round" \
+  "lane \`reorder-hot16-free@128\` names \`eval_lsb_pair_cached_reorder_128_lb\` in 1 of 96 rounds (first at round 20)" \
   -- $(half kernel-forged)
 flagged "one lane's register count moving between the two orders' logs" \
   "declares different facts in the two orders' logs (registers, occupancy tier, body or plan)" \
   -- $(half regs-cross-order)
 flagged "an anchor lane off every reference, with all three deltas named" \
-  "reads 17.149 ms, more than 1.5 % off R4 frozen (11 lanes) +3.16 %; R5 session (11 lanes) +3.51 %; R8 session (12 lanes) +2.46 %" \
+  "reads 17.149 ms, more than 1.5 % off R4 frozen (11 lanes) +3.16 %; R5 session (10 lanes) +3.51 %; R8 session (12 lanes) +2.46 %" \
   -- $(sess anchor-offset)
 flagged "and the flag says why a thin rotation is the first suspicion" \
-  "this rotation carries 6 lanes against their 11–12, so read the reference table before calling it machine drift" \
+  "this rotation carries 6 lanes against their 10–12, so read the reference table before calling it machine drift" \
   -- $(sess anchor-offset)
 flagged "a drifting anchor lane" \
   "\`hot16@128\`'s first and last full cycle differ by 0.302 ms against the 0.074 ms scaled reading" \
@@ -285,10 +298,36 @@ flagged "a carveout line that is neither grammar" \
 flagged "both term orders in one log: the carveout block is not attributable" \
   "one log is one process, so the carveout block below is shared between two term orders" \
   -- "$TMP/two-orders-locality.log"
+flagged "the header's own lane count disagreeing with the ARM lines" \
+  "the log carries 6 ARM lines while the schedule declares lanes=5 and the trailer lanes=5" \
+  -- $(sess header-lanes)
+flagged "two log files declaring one section: the carveout block is one of several" \
+  "2 log files declare this section (split-body-locality.log, split-trailer-locality.log)" \
+  -- "$TMP/split-body-locality.log" "$TMP/split-trailer-locality.log" "$TMP/good-census.log"
+# One row per lane, not per round: the same forgery in all 96 rounds used to print 96 rows.
+flagged_once "a lane whose EVERY sample names another body is ONE observation" \
+  "**SAMPLE-BODY** | lane \`reorder-hot16-free@128\` names \`eval_lsb_pair_cached_reorder_128_lb\` in 96 of 96 rounds (first at round 6)" \
+  1 -- $(half body-drift)
+flagged "the two orders recorded at different tiers, one of them non-uniform" \
+  "the two orders were recorded at non-uniform and 16 % — the rung's premise is one L1 configuration" \
+  -- "$TMP/echo-wrong-pct-locality.log" "$TMP/good-census.log"
+
+echo "### the flag count travels with the block a record quotes"
+emits "a clean session says so where the headline table is" \
+  "**0 flag(s) above; this table is not a verdict.** Nothing disagreed with the rung's own description of itself." \
+  -- $(sess good)
+emits "and a flagged session carries its count into the same place" \
+  "**12 flag(s) above; this table is not a verdict.**" -- $(sess wrong-trace)
+
 # A non-uniform session still prints, and says so where the percent would have gone.
 emits "a non-uniform carveout is reported as such in the header, not resolved to a number" \
   "| \`locality\` | \`echo-wrong-pct-locality.log\` | **non-uniform** |" -- $(sess echo-wrong-pct)
 emits "and in the capture set" "carveout=non-uniform" -- $(sess echo-wrong-pct)
+# The word carries its own unit: a stray `%` after it reads as a number that is not there.
+emits "a non-uniform tier prints without a stray percent sign in the headline table" \
+  "| 96/96 | **WIN** | non-uniform |" -- $(sess echo-wrong-pct)
+emits "and in the build-facts line" \
+  "Carveout non-uniform on all three hinted symbols." -- $(sess echo-wrong-pct)
 
 echo "### the errors that remain: no meaningful number can be computed"
 rejects "one order alone" "read over EXACTLY both term orders" -- "$TMP/good-locality.log"

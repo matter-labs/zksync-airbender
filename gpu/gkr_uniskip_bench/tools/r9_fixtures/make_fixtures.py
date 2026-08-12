@@ -135,11 +135,14 @@ def series(order, offsets, rounds=ROUNDS, override=None):
 
 
 def log(order, s, rounds=ROUNDS, warmup=WARMUP, tag=TAG, lanes=None, patch=None, fixed=False,
-        head=None):
+        head=None, lanes_field=None):
     lanes = lanes or LANES
     n = len(lanes)
+    # The header's OWN count, separable from the ARM lines: that disagreement is a header-
+    # consistency observation, and nothing else in the log can see it.
+    declared = n if lanes_field is None else lanes_field
     out = list(preamble()) if head is None else list(head)
-    out.append(f"{tag} schedule order={order} lanes={n} rounds={rounds} warmup={warmup}")
+    out.append(f"{tag} schedule order={order} lanes={declared} rounds={rounds} warmup={warmup}")
     out += [arm_line(lane, patch) for lane in lanes]
     for i in range(rounds):
         index = warmup + i
@@ -149,7 +152,7 @@ def log(order, s, rounds=ROUNDS, warmup=WARMUP, tag=TAG, lanes=None, patch=None,
             kernel = facts_of(lane, patch)["kernel"]
             out.append(f"SAMPLE {order} {index} {lane} {s[lane][i] - fin:.6f} {fin:.6f} "
                        f"{kernel}")
-    out.append(f"{tag} done order={order} warmup={warmup} rounds={rounds} lanes={n}")
+    out.append(f"{tag} done order={order} warmup={warmup} rounds={rounds} lanes={declared}")
     return "\n".join(out) + "\n"
 
 
@@ -356,6 +359,31 @@ def main():
     # is what makes reading the two orders as one session a question.
     mutate(outdir, "good-locality.log", "regs-cross-order-locality.log",
            lambda t: t.replace(f"ARM {BOUNDED} 70 ", f"ARM {BOUNDED} 71 "))
+
+    # THE HEADER'S OWN COUNT: six ARM lines under a `lanes=5` header. The lane SET is this
+    # rotation's, so every number computes and only the header disagrees.
+    session(outdir, "header-lanes", good, lanes_field=5)
+
+    # ONE LANE'S SAMPLES NAMING ANOTHER BODY IN EVERY ROUND: one observation per lane, not per
+    # round — 96 identical rows would drown the block that is now the rung's only protection.
+    def body_drift(t):
+        out = []
+        for line in t.splitlines():
+            if line.startswith("SAMPLE locality ") and f" {FREE} " in line:
+                line = " ".join(line.split()[:-1] + [REORDER_LB])
+            out.append(line)
+        return "\n".join(out) + "\n"
+    mutate(outdir, "good-locality.log", "body-drift-locality.log", body_drift)
+
+    # TWO FILES DECLARING ONE SECTION: the schedule and the samples in one, the trailer alone in
+    # another. Neither `parse()` gate sees it (each line appears once), and the timing is entirely
+    # computable — only the carveout block's attribution is in doubt.
+    with open(os.path.join(outdir, "good-locality.log")) as fh:
+        whole = fh.read().splitlines(True)
+    write(outdir, "split-body-locality.log",
+          "".join(l for l in whole if not l.startswith(f"{TAG} done")))
+    write(outdir, "split-trailer-locality.log",
+          "".join(l for l in whole if l.startswith(f"{TAG} done")))
 
     # ANOTHER RUNG'S GRAMMAR: an R4 factorial log, which is decided under different rules.
     write(outdir, "not-r9.log",
