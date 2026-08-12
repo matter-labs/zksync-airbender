@@ -181,10 +181,26 @@ emits "one lane in two roles is one manifest line" \
 
 echo "### right-censoring and A7's fallback capture set"
 emits "no cumulative LOSS means no first loser" "- first loser: **none**" -- $(sess no-loser)
-emits "with no first loser the capture set takes the axis midpoint" \
-  "NCU-CAPTURE lane=k20@128 orders=census,locality roles=axis-midpoint" -- $(sess no-loser)
-absent "A7's fallback set names the midpoint INSTEAD of the winner" \
-  "roles=winner" -- $(sess no-loser)
+emits "a top-lane winner and the censoring endpoint are ONE manifest line" \
+  "NCU-CAPTURE lane=k24@128 orders=census,locality roles=censoring-endpoint,winner" \
+  -- $(sess no-loser)
+absent "a right-censored session that HAS a winner takes no fallback midpoint" \
+  "axis-midpoint" -- $(sess no-loser)
+# The winner IS the rung's answer when nothing loses, so the capture set must carry it: A7's
+# fallback midpoint is for the branch with no signed decision at all, not for this one.
+emits "an interior optimum with no first loser is profiled" \
+  "NCU-CAPTURE lane=k21@128 orders=census,locality roles=winner" \
+  -- $(sess no-loser-interior-winner)
+emits "and it is the lane the decisions name" \
+  "- winner: **\`k21@128\`** (K = 21, C = 33) at -0.500 ms" -- $(sess no-loser-interior-winner)
+absent "no fallback midpoint rides along with it" \
+  "axis-midpoint" -- $(sess no-loser-interior-winner)
+emits "neither a winner nor a first loser IS the fallback branch" \
+  "NCU-CAPTURE lane=k20@128 orders=census,locality roles=axis-midpoint" -- $(sess all-wash)
+absent "the fallback set carries no winner role, because there is no winner" \
+  "roles=winner" -- $(sess all-wash)
+emits "the manifest states the fallback's own condition" \
+  "applies when the sweep locates NEITHER a first loser nor a winner" -- $(sess good)
 emits "nothing winning means the incumbent stands" \
   "- winner: **none** — no interior point wins over \`hot16@128\` under the signed rule, so the incumbent stands." \
   -- $(sess no-winner)

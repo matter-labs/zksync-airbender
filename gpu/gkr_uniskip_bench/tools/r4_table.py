@@ -1334,22 +1334,21 @@ def interior_report(sessions):
 
     print("\n### ncu capture manifest (A7)\n")
     print(f"Deduplicated {{`{INTERIOR_AXIS[0]}`, the locality winner, the locality first "
-          f"loser, `{INTERIOR_AXIS[-1]}`}}, or {{`{INTERIOR_AXIS[0]}`, `k20@128`, "
-          f"`{INTERIOR_AXIS[-1]}`}} when no first loser exists — each under BOTH term orders "
-          f"(amendment A7). Task 3 consumes this block as AUTHORITATIVE and does not "
-          f"reconstruct it.\n")
+          f"loser, `{INTERIOR_AXIS[-1]}`}}, each under BOTH term orders (amendment A7). A7's "
+          f"fallback {{`{INTERIOR_AXIS[0]}`, `k20@128`, `{INTERIOR_AXIS[-1]}`}} applies when "
+          f"the sweep locates NEITHER a first loser nor a winner: with no signed decision on "
+          f"the axis the mechanism question is about its middle, not about a boundary nothing "
+          f"found. A winner without a first loser IS the decision, so it is profiled. Task 3 "
+          f"consumes this block as AUTHORITATIVE and does not reconstruct it.\n")
     roles = defaultdict(set)
     roles[INTERIOR_AXIS[0]].add("incumbent")
     roles[INTERIOR_AXIS[-1]].add("censoring-endpoint")
-    if loser is None:
-        # A7's fallback set names the axis midpoint INSTEAD of the winner: with no loser the
-        # frontier is right-censored, and the mechanism question is then about the middle of
-        # the axis, not about a boundary the sweep never found.
-        roles["k20@128"].add("axis-midpoint")
-    else:
+    if loser is not None:
         roles[loser].add("first-loser")
-        if winner is not None:
-            roles[winner].add("winner")
+    if winner is not None:
+        roles[winner].add("winner")
+    elif loser is None:
+        roles["k20@128"].add("axis-midpoint")
     if invalid:
         print(f"**NOT AUTHORITATIVE**: {', '.join(invalid)} is invalid under A6, so this "
               f"session selects no capture set. Repeat the session soaked and re-emit.")

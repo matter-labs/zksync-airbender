@@ -149,11 +149,31 @@ def main():
     }
     session(outdir, "good", good)
 
-    # EDGE: nothing above hot16 loses, so the axis is right-censored with no first loser and
-    # A7's fallback capture set applies (hot16, the axis midpoint, k24 — NOT the winner).
+    # EDGE: nothing above hot16 loses, so the axis is right-censored with no first loser. The
+    # winner here is the TOP lane, which the capture set already carries as the censoring
+    # endpoint, so this session pins the two roles landing on one manifest line.
     monotone = {order: {f"k{k}@128": -0.10 * (k - 16) for k in range(17, 25)}
                 for order in ORDERS}
     session(outdir, "no-loser", monotone)
+
+    # EDGE: the same right-censored shape with an INTERIOR optimum — every cumulative contrast
+    # is a signed WIN, so there is no first loser, and the winner (k21) is the rung's whole
+    # answer in that branch. A7's fallback midpoint would leave it unprofiled, which is the
+    # failure this session exists to catch.
+    interior_peak = {order: {"k17@128": -0.10, "k18@128": -0.20, "k19@128": -0.30,
+                             "k20@128": -0.40, "k21@128": -0.50, "k22@128": -0.45,
+                             "k23@128": -0.35, "k24@128": -0.20} for order in ORDERS}
+    session(outdir, "no-loser-interior-winner", interior_peak)
+
+    # EDGE: neither a winner nor a first loser — every axis lane wobbles around the incumbent
+    # far enough that no contrast is sign-stable. THAT is the branch A7's fallback set is for,
+    # so the axis midpoint appears here and nowhere else.
+    over, offs = {}, {}
+    for order in ORDERS:
+        over[f"override_{order}"] = {lane: flat(lane, BASE[order][HOT], ROUNDS, 0.20)
+                                     for lane in LANES[:8]}
+        offs[order] = {}
+    session(outdir, "all-wash", offs, **over)
 
     # EDGE: every interior point is slower than the incumbent, so there is no winner at all
     # and the first loser is the very first step.
