@@ -69,95 +69,6 @@ cuda_kernel!(
     )
 );
 
-/// Shared tail of the two multi-coset node launchers below: grid/args
-/// construction from already-derived raw pointers. The entry points exist
-/// solely because the borrow checker cannot express both the separate-backing
-/// and same-backing (offset-aliased) cases with one safe signature.
-fn launch_nodes_kernel_multi_coset_raw(
-    src_ptr: *const Digest,
-    dst_ptr: *mut Digest,
-    cosets_in_tile: usize,
-    per_coset_src_stride_digests: usize,
-    per_coset_dst_stride_digests: usize,
-    output_per_coset_count: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(cosets_in_tile >= 1);
-    assert!(
-        output_per_coset_count.is_power_of_two(),
-        "output_per_coset_count must be a power of two (got {output_per_coset_count})"
-    );
-    let log_per_coset_count = output_per_coset_count.trailing_zeros();
-    let total_count = checked_u32(
-        output_per_coset_count
-            .checked_mul(cosets_in_tile)
-            .expect("nodes total count overflow"),
-    );
-    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, total_count);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = NodesMultiCosetArguments::new(
-        src_ptr,
-        dst_ptr,
-        log_per_coset_count,
-        checked_u32(per_coset_src_stride_digests),
-        checked_u32(per_coset_dst_stride_digests),
-        total_count,
-    );
-    NodesMultiCosetFunction::default().launch(&config, &args)
-}
-
-/// Launch the multi-coset nodes kernel reading from `src_backing` (at
-/// `src_offset_in_coset` within each coset's slab of stride
-/// `per_coset_src_stride_digests`) and writing to `dst_backing` (at
-/// `dst_offset_in_coset` within each coset's slab of stride
-/// `per_coset_dst_stride_digests`). When src and dst are the same allocation,
-/// use `launch_nodes_kernel_multi_coset_at_offsets` to avoid the aliased
-/// `&mut` borrow.
-fn launch_nodes_kernel_multi_coset_separate(
-    src_backing: &DeviceSlice<Digest>,
-    dst_backing: &mut DeviceSlice<Digest>,
-    cosets_in_tile: usize,
-    per_coset_src_stride_digests: usize,
-    per_coset_dst_stride_digests: usize,
-    src_offset_in_coset: usize,
-    dst_offset_in_coset: usize,
-    output_per_coset_count: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    // Per-coset containment: each coset's read/write window must fit inside
-    // its own slab — the aggregate end checks below cannot see a window that
-    // spills into the next coset's slab.
-    let src_window_end = src_offset_in_coset
-        .checked_add(output_per_coset_count * 2)
-        .expect("src window overflow");
-    let dst_window_end = dst_offset_in_coset
-        .checked_add(output_per_coset_count)
-        .expect("dst window overflow");
-    assert!(src_window_end <= per_coset_src_stride_digests);
-    assert!(dst_window_end <= per_coset_dst_stride_digests);
-    let last_src_end = (cosets_in_tile - 1)
-        .checked_mul(per_coset_src_stride_digests)
-        .and_then(|x| x.checked_add(src_window_end))
-        .expect("src extent overflow");
-    let last_dst_end = (cosets_in_tile - 1)
-        .checked_mul(per_coset_dst_stride_digests)
-        .and_then(|x| x.checked_add(dst_window_end))
-        .expect("dst extent overflow");
-    assert!(src_backing.len() >= last_src_end);
-    assert!(dst_backing.len() >= last_dst_end);
-    let src_ptr = unsafe { src_backing.as_ptr().add(src_offset_in_coset) };
-    let dst_ptr = unsafe { dst_backing.as_mut_ptr().add(dst_offset_in_coset) };
-    launch_nodes_kernel_multi_coset_raw(
-        src_ptr,
-        dst_ptr,
-        cosets_in_tile,
-        per_coset_src_stride_digests,
-        per_coset_dst_stride_digests,
-        output_per_coset_count,
-        stream,
-    )
-}
-
 /// Launch the multi-coset nodes kernel against a single backing slab using
 /// per-coset src/dst offsets (in digests, relative to each coset's
 /// `per_coset_stride_digests` slab). Callers express a virtual src/dst view
@@ -209,15 +120,26 @@ fn launch_nodes_kernel_multi_coset_at_offsets(
     let base = backing.as_mut_ptr();
     let src_ptr = unsafe { base.add(src_offset_in_coset) } as *const Digest;
     let dst_ptr = unsafe { base.add(dst_offset_in_coset) };
-    launch_nodes_kernel_multi_coset_raw(
+    assert!(
+        output_per_coset_count.is_power_of_two(),
+        "output_per_coset_count must be a power of two (got {output_per_coset_count})"
+    );
+    let total_count = checked_u32(
+        output_per_coset_count
+            .checked_mul(cosets_in_tile)
+            .expect("nodes total count overflow"),
+    );
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, total_count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = NodesMultiCosetArguments::new(
         src_ptr,
         dst_ptr,
-        cosets_in_tile,
-        per_coset_stride_digests,
-        per_coset_stride_digests,
-        output_per_coset_count,
-        stream,
-    )
+        output_per_coset_count.trailing_zeros(),
+        checked_u32(per_coset_stride_digests),
+        checked_u32(per_coset_stride_digests),
+        total_count,
+    );
+    NodesMultiCosetFunction::default().launch(&config, &args)
 }
 
 /// Iteratively hash up `layers_count` Merkle layers across `cosets_in_tile`
@@ -255,44 +177,80 @@ fn build_merkle_tree_nodes_multi_coset(
     Ok(())
 }
 
-/// Multi-coset variant of `build_merkle_tree_nodes` for the partial-tree
-/// bottom-hashing case: the first layer's input lives in `src_backing` (a
-/// separate allocation, typically the tree_tops slab); subsequent layers hash
-/// up inside `dst_backing` (the tree_bottoms slab) starting at offset 0.
-pub fn build_merkle_tree_nodes_multi_coset_from_external_src(
-    src_backing: &DeviceSlice<Digest>,
-    dst_backing: &mut DeviceSlice<Digest>,
+cuda_kernel!(
+    PartialTreeMultiCoset,
+    ab_blake2s_partial_tree_multi_coset_kernel(
+        values: *const BF,
+        tree_backing: *mut Digest,
+        log_rows_per_hash: u32,
+        cols_count: u32,
+        log_per_coset_count: u32,
+        per_coset_values_stride_bf: u32,
+        per_coset_tree_stride_digests: u32,
+        count: u32,
+    )
+);
+
+/// `values` is exact `[coset][column][row]` storage without padding. Each tree
+/// slab has `leaves / 16` digests and is filled `[level 5 | level 6 | ...]`.
+pub fn build_partial_merkle_tree_multi_coset(
+    values: &DeviceSlice<BF>,
+    tree_backing: &mut DeviceSlice<Digest>,
+    log_rows_per_hash: u32,
     layers_count: u32,
     cosets_in_tile: usize,
-    per_coset_src_stride_digests: usize,
-    per_coset_dst_stride_digests: usize,
-    src_offset_in_coset: usize,
-    src_layer_count_per_coset: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    if layers_count == 0 {
-        return Ok(());
-    }
-    assert_eq!(src_layer_count_per_coset % 2, 0);
-    let first_output_per_coset = src_layer_count_per_coset / 2;
-    launch_nodes_kernel_multi_coset_separate(
-        src_backing,
-        dst_backing,
-        cosets_in_tile,
-        per_coset_src_stride_digests,
-        per_coset_dst_stride_digests,
-        src_offset_in_coset,
-        /*dst_offset_in_coset=*/ 0,
-        first_output_per_coset,
+    const THREADS_PER_BLOCK: u32 = 256;
+    const LEAVES_PER_BLOCK: u32 = 512;
+    const REDUCTION_LAYERS: u32 = WARP_SIZE.trailing_zeros();
+
+    assert_ne!(layers_count, 0);
+    assert!(cosets_in_tile >= 1);
+    assert!(log_rows_per_hash < 32);
+    assert_eq!(tree_backing.len() % cosets_in_tile, 0);
+    let per_coset_tree_stride_digests = tree_backing.len() / cosets_in_tile;
+    assert!(per_coset_tree_stride_digests.is_power_of_two());
+    let per_coset_leaves_count = per_coset_tree_stride_digests << (REDUCTION_LAYERS - 1);
+    assert!(layers_count <= per_coset_tree_stride_digests.trailing_zeros());
+    let boundary_roots_per_coset = per_coset_leaves_count >> REDUCTION_LAYERS;
+    assert_eq!(values.len() % cosets_in_tile, 0);
+    let per_coset_values_stride_bf = values.len() / cosets_in_tile;
+    let rows_per_coset = per_coset_leaves_count
+        .checked_mul(1usize << log_rows_per_hash)
+        .expect("partial tree rows count overflow");
+    assert_eq!(per_coset_values_stride_bf % rows_per_coset, 0);
+    let cols_count = per_coset_values_stride_bf / rows_per_coset;
+
+    let total_leaves = checked_u32(
+        per_coset_leaves_count
+            .checked_mul(cosets_in_tile)
+            .expect("partial tree leaves count overflow"),
+    );
+    let mut config = CudaLaunchConfig::basic(
+        total_leaves.div_ceil(LEAVES_PER_BLOCK),
+        THREADS_PER_BLOCK,
         stream,
-    )?;
+    );
+    config.dynamic_smem_bytes = LEAVES_PER_BLOCK as usize * core::mem::size_of::<Digest>();
+    let args = PartialTreeMultiCosetArguments::new(
+        values.as_ptr(),
+        tree_backing.as_mut_ptr(),
+        log_rows_per_hash,
+        checked_u32(cols_count),
+        per_coset_leaves_count.trailing_zeros(),
+        checked_u32(per_coset_values_stride_bf),
+        checked_u32(per_coset_tree_stride_digests),
+        total_leaves,
+    );
+    PartialTreeMultiCosetFunction::default().launch(&config, &args)?;
     build_merkle_tree_nodes_multi_coset(
-        dst_backing,
+        tree_backing,
         layers_count - 1,
         cosets_in_tile,
-        per_coset_dst_stride_digests,
-        /*initial_src_offset_in_coset=*/ 0,
-        /*initial_src_layer_count_per_coset=*/ first_output_per_coset,
+        per_coset_tree_stride_digests,
+        0,
+        boundary_roots_per_coset,
         stream,
     )
 }
