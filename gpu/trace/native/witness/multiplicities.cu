@@ -8,6 +8,9 @@ using namespace ::airbender::trace::witness::memory;
 
 namespace airbender::trace::witness::multiplicities {
 
+static_assert(sizeof(bf) == sizeof(u32));
+static_assert(alignof(bf) == alignof(u32));
+
 EXTERN __global__ void ab_count_multiplicities_kernel(u32 *const __restrict__ lookup_mapping, const unsigned lookup_mapping_size,
                                                       bf *const __restrict__ multiplicities, const unsigned active_counts_len) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -30,8 +33,7 @@ EXTERN __global__ void ab_count_multiplicities_kernel(u32 *const __restrict__ lo
   const unsigned lane = threadIdx.x & (warpSize - 1);
   const unsigned leader = __ffs(peers) - 1;
   if (lane == leader) {
-    auto *raw_counts = reinterpret_cast<u32 *>(multiplicities);
-    (void)atomicAdd(raw_counts + index, __popc(peers));
+    (void)atomicAdd(&multiplicities[index].limb, __popc(peers));
   }
 }
 
@@ -39,8 +41,7 @@ EXTERN __global__ void ab_convert_multiplicities_kernel(bf *const __restrict__ m
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= active_counts_len)
     return;
-  auto *raw_counts = reinterpret_cast<u32 *>(multiplicities);
-  multiplicities[gid] = bf::from_u32_unchecked(raw_counts[gid]);
+  multiplicities[gid] = bf::from_u32_unchecked(multiplicities[gid].limb);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__

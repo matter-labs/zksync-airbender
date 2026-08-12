@@ -251,7 +251,9 @@ impl GpuGKRStage1Output {
 
         let num_generic_sets = compiled_circuit.generic_lookups.len();
         let has_decoder = compiled_circuit.has_decoder_lookup;
-        let num_generic_family_cols = num_generic_sets + usize::from(has_decoder);
+        let num_generic_family_cols = num_generic_sets
+            .checked_add(usize::from(has_decoder))
+            .expect("generic lookup mapping column count overflow");
         let use_fused_unrolled = strategy == WitnessGenerationStrategy::Fused
             && matches!(
                 circuit_type,
@@ -292,7 +294,9 @@ impl GpuGKRStage1Output {
         };
 
         {
-            let generic_prefix_len = num_generic_sets * trace_len;
+            let generic_prefix_len = num_generic_sets
+                .checked_mul(trace_len)
+                .expect("generic lookup mapping prefix length overflow");
             let (generic_mapping_prefix, decoder_mapping_suffix) =
                 generic_family.split_at_mut(generic_prefix_len);
             let decoder_lookup_mapping = if has_decoder {
