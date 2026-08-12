@@ -751,6 +751,34 @@ pub fn set_cached_128_lb_carveout(percent: u32) -> CudaResult<()> {
     .wrap()
 }
 
+/// [`set_cached_128_lb_carveout`] for the v3 R9 bounded gate-first body. A separate symbol
+/// needs its own call: the attribute is per function, so a rotation running the incumbent and
+/// the reorder bodies together would otherwise take its headline contrast across two L1
+/// configurations.
+pub fn set_cached_reorder_128_lb_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbPairCachedReorder128LbFunction::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
+}
+
+/// [`set_cached_128_lb_carveout`] for the UNBOUNDED gate-first body — hinted like the other
+/// two, because it is a timed arm of this rung rather than a bound-pricing sibling.
+pub fn set_cached_reorder_128_carveout(percent: u32) -> CudaResult<()> {
+    unsafe {
+        cudaFuncSetAttribute(
+            EvalLsbPairCachedReorder128Function::default().as_ptr(),
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            percent as std::os::raw::c_int,
+        )
+    }
+    .wrap()
+}
+
 /// The v3 R3 `t` arm: the control body under `__launch_bounds__(256, 3)`.
 pub fn eval_lsb_pair_lb(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
     let args = EvalLsbPairLbArguments::new(*desc);

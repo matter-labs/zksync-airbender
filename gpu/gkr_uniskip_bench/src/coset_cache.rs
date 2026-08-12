@@ -1756,6 +1756,78 @@ impl LaneCarrier {
     }
 }
 
+/// Which LOCAL pair body a lane launches. `Incumbent` is every pre-R9 lane — the frozen
+/// R2/R4 bodies, cached or not. `Reorder` is the v3 R9 gate-first walk, which exists only as
+/// a 128-thread cached kernel; it is a different BODY at the same ABI and the same plan, so
+/// it is not a carrier and not an arm.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PairBody {
+    #[default]
+    Incumbent,
+    Reorder,
+}
+
+impl PairBody {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Incumbent => "incumbent",
+            Self::Reorder => "reorder",
+        }
+    }
+}
+
+/// The single-arm body/bound matrix as a VALUE: `Ok((body, bounded))` or the message the CLI
+/// exits with. It lives here rather than in `main` so the whole rejection matrix is a cpu test
+/// instead of a process spawn, and so the shape the reorder body exists at is stated once —
+/// [`validate_lane_set`] enforces the same one on a rotation's lanes.
+///
+/// `reorder` / `reorder_free` are the two body flags, `no_bounds` is
+/// `--no-cache-launch-bounds` (which prices the bound on the INCUMBENT), and the last three
+/// describe the shape the run selected. ONE spelling per body: three flags, three bodies.
+pub fn select_pair_body(
+    reorder: bool,
+    reorder_free: bool,
+    no_bounds: bool,
+    lsb_pair: bool,
+    block_threads: u32,
+    cached_arm: bool,
+) -> Result<(PairBody, bool), String> {
+    if reorder && reorder_free {
+        return Err(
+            "--reorder is the bounded gate-first body and --reorder-free the \
+                    unbounded one; pick one"
+                .into(),
+        );
+    }
+    if (reorder || reorder_free) && no_bounds {
+        return Err(
+            "--no-cache-launch-bounds prices the bound on the INCUMBENT body; the \
+                    unbounded gate-first arm is spelled --reorder-free"
+                .into(),
+        );
+    }
+    if (reorder || reorder_free)
+        && !(lsb_pair && block_threads as usize == UNISKIP_PAIR_THREADS_128 && cached_arm)
+    {
+        let flag = if reorder_free {
+            "--reorder-free"
+        } else {
+            "--reorder"
+        };
+        return Err(format!(
+            "{flag} runs the v3 R9 gate-first body, which exists only as a \
+             {UNISKIP_PAIR_THREADS_128}-thread cached kernel: it needs --mode lsb-pair \
+             --block-threads {UNISKIP_PAIR_THREADS_128} and a cached --cache-arm"
+        ));
+    }
+    let body = if reorder || reorder_free {
+        PairBody::Reorder
+    } else {
+        PairBody::Incumbent
+    };
+    Ok((body, !(no_bounds || reorder_free)))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CacheLane {
     pub label: &'static str,
@@ -1763,6 +1835,9 @@ pub struct CacheLane {
     pub arm: CacheArm,
     /// Where this lane's produced coset pairs live. `Local` is every pre-R7 lane.
     pub carrier: LaneCarrier,
+    /// Which local body runs the walk. `Incumbent` on every lane a seg carrier owns, since
+    /// the carrier names its symbol outright.
+    pub body: PairBody,
     /// Bounded body. At 256 there is no sibling and this is always false; at 128 the
     /// cached arms are bounded (the occupancy gate) and `control128_lb` is the bounded
     /// no-cache baseline that makes the contrast bound-to-bound.
@@ -1781,6 +1856,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 256,
         arm: CacheArm::Control,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: false,
         regs: 72,
         blocks_per_sm: 3,
@@ -1790,6 +1866,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 256,
         arm: CacheArm::Cache0,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: false,
         regs: 75,
         blocks_per_sm: 3,
@@ -1799,6 +1876,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 256,
         arm: CacheArm::Hot4,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: false,
         regs: 75,
         blocks_per_sm: 3,
@@ -1808,6 +1886,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 256,
         arm: CacheArm::Hot16,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: false,
         regs: 75,
         blocks_per_sm: 3,
@@ -1817,6 +1896,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 256,
         arm: CacheArm::AllRepeat,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: false,
         regs: 75,
         blocks_per_sm: 3,
@@ -1826,6 +1906,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 128,
         arm: CacheArm::Control,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: false,
         regs: 72,
         blocks_per_sm: 7,
@@ -1835,6 +1916,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 128,
         arm: CacheArm::Control,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1844,6 +1926,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 128,
         arm: CacheArm::Cache0,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1853,6 +1936,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 128,
         arm: CacheArm::Hot4,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1862,6 +1946,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 128,
         arm: CacheArm::Hot16,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1871,6 +1956,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         block_threads: 128,
         arm: CacheArm::AllRepeat,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1887,6 +1973,7 @@ const fn frontier_128(label: &'static str, arm: CacheArm) -> CacheLane {
         block_threads: 128,
         arm,
         carrier: LaneCarrier::Local,
+        body: PairBody::Incumbent,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: 7,
@@ -1899,6 +1986,7 @@ const FRONTIER_CONTROL_256: CacheLane = CacheLane {
     block_threads: 256,
     arm: CacheArm::Control,
     carrier: LaneCarrier::Local,
+    body: PairBody::Incumbent,
     launch_bounds: false,
     regs: 72,
     blocks_per_sm: 3,
@@ -1970,6 +2058,41 @@ pub const CARVEOUT_PROBE: [CacheLane; 5] = [
     FRONTIER_CONTROL_256,
 ];
 
+/// A v3 R9 gate-first reordered lane. The body exists at 128 threads on a cached arm only,
+/// on the incumbent's ABI and at the incumbent's plan, so a lane differs from its incumbent
+/// twin in the BODY alone. Registers and blocks per SM are Task 1's measured figures: the
+/// bounded body's 70 registers still round to the incumbent's 7 blocks, and the unbounded
+/// one's 64 clear the 8-block tier — which is the whole reason the free arm rides along
+/// (amendment A8). The driver's calculator, not this pin, is what the harness reports.
+const fn reorder_128(label: &'static str, arm: CacheArm, launch_bounds: bool) -> CacheLane {
+    CacheLane {
+        label,
+        block_threads: 128,
+        arm,
+        carrier: LaneCarrier::Local,
+        body: PairBody::Reorder,
+        launch_bounds,
+        regs: if launch_bounds { 70 } else { 64 },
+        blocks_per_sm: if launch_bounds { 7 } else { 8 },
+    }
+}
+
+/// The v3 R9 reorder rotation: the three anchors every local session shares (the shipping
+/// `control@256`, the bounded 128 control and the hinted `hot16@128` incumbent), then the
+/// gate-first body at the incumbent's own plan, its machinery floor, and the UNBOUNDED
+/// gate-first arm at that plan — the 64-register / 8-blocks-per-SM tier. The incumbent and
+/// `reorder-hot16` admit the same set on the same carrier at the same bound and differ in
+/// the body alone, which is exactly the contrast; `reorder-cache0` prices the reordered
+/// machinery against it. 6 lanes, so a round count must be a multiple of 6.
+pub const REORDER: [CacheLane; 6] = [
+    FRONTIER_CONTROL_256,
+    frontier_128("control_lb@128", CacheArm::Control),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    reorder_128("reorder-hot16@128", CacheArm::Hot16, true),
+    reorder_128("reorder-cache0@128", CacheArm::Cache0, true),
+    reorder_128("reorder-hot16-free@128", CacheArm::Hot16, false),
+];
+
 /// Blocks per SM every seg symbol is built for: `__launch_bounds__(128, 7)` at 72
 /// registers. The harness asks the driver's occupancy calculator for the realized figure and
 /// asserts THIS, so the number is a verified fact rather than a pinned claim — R7's G0 found
@@ -1984,6 +2107,7 @@ const fn seg_128(label: &'static str, arm: CacheArm, carrier: LaneCarrier) -> Ca
         block_threads: 128,
         arm,
         carrier,
+        body: PairBody::Incumbent,
         launch_bounds: true,
         regs: 72,
         blocks_per_sm: SEG_BLOCKS_PER_SM,
@@ -2069,6 +2193,23 @@ pub const SEGB: [CacheLane; 8] = [
     ),
 ];
 
+/// The hinted LOCAL symbols a prepared configuration launches, in [`LaneKernel::HINTED`]
+/// order — the set the harness applies one carveout percent to and echoes once each.
+/// `single_arm` is the local body a single-arm run launches, `lanes` the rotation's prepared
+/// lanes; a run has one or the other. Pure, so the echo set is a cpu test rather than a log
+/// read.
+pub fn hinted_local_symbols(
+    single_arm: Option<LaneKernel>,
+    lanes: &[CacheLane],
+) -> Vec<LaneKernel> {
+    LaneKernel::HINTED
+        .into_iter()
+        .filter(|kernel| {
+            single_arm == Some(*kernel) || lanes.iter().any(|lane| lane.kernel() == *kernel)
+        })
+        .collect()
+}
+
 /// Fail-closed structural check of a pinned lane set — THE one implementation of the
 /// factorial pre-flight, called by the runner before it builds anything and by the tests
 /// that pin the shipped rotations. Rejects a duplicate label, an unplannable lane, a
@@ -2084,10 +2225,24 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
         return Err(format!("lane label {} appears twice", dup[0]));
     }
 
-    // (admitted ids, block size, bounded, carrier, label) — flat, so the tuple stays
+    // (admitted ids, block size, bounded, carrier, body, label) — flat, so the tuple stays
     // readable.
-    let mut seen: Vec<(Vec<u16>, u32, bool, LaneCarrier, &str)> = Vec::new();
+    let mut seen: Vec<(Vec<u16>, u32, bool, LaneCarrier, PairBody, &str)> = Vec::new();
     for lane in lanes {
+        // The v3 R9 body is a 128-thread CACHED kernel and nothing else. Rejected here so
+        // the CLI pre-flight says which lane is malformed, rather than `kernel()` asserting
+        // inside device setup.
+        if lane.body == PairBody::Reorder
+            && (lane.block_threads as usize != UNISKIP_PAIR_THREADS_128
+                || !lane.arm.uses_cache()
+                || lane.carrier.is_seg())
+        {
+            return Err(format!(
+                "reorder lane {} must be a {UNISKIP_PAIR_THREADS_128}-thread cached local \
+                 lane; the gate-first body exists at no other shape",
+                lane.label
+            ));
+        }
         if lane.carrier.is_seg() {
             // Every seg symbol is `__launch_bounds__(128, 7)`: a lane naming another shape
             // would launch a grid the body's row map does not cover.
@@ -2137,12 +2292,15 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
         // bounded and unbounded bodies is a legitimate contrast (that is what prices the
         // bound), so `launch_bounds` belongs in it or the pair would false-alias. The
         // CARRIER belongs in it for the same reason — one admitted set on two carriers, or
-        // on two carveout requests of one carrier, is the R7 contrast itself.
-        if let Some((.., other)) = seen.iter().find(|(set, size, bounded, carrier, _)| {
+        // on two carveout requests of one carrier, is the R7 contrast itself. So does the
+        // BODY: one admitted set on the incumbent and on the R9 gate-first walk is the R9
+        // contrast itself.
+        if let Some((.., other)) = seen.iter().find(|(set, size, bounded, carrier, body, _)| {
             *set == ids
                 && *size == lane.block_threads
                 && *bounded == lane.launch_bounds
                 && *carrier == lane.carrier
+                && *body == lane.body
         }) {
             return Err(format!(
                 "lanes {} and {other} admit the same set at {} threads",
@@ -2154,6 +2312,7 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
             lane.block_threads,
             lane.launch_bounds,
             lane.carrier,
+            lane.body,
             lane.label,
         ));
     }
@@ -2184,6 +2343,9 @@ pub enum LaneSet {
     SegAnchor,
     /// R7b's eight-lane transplant rotation (spec R7b).
     Segb,
+    /// R9's six-lane reorder rotation (spec R9): the gate-first body against the incumbent
+    /// at one plan, plus the unbounded 8-block arm.
+    Reorder,
 }
 
 impl LaneSet {
@@ -2198,6 +2360,7 @@ impl LaneSet {
             Self::SegGmem => &SEG_GMEM,
             Self::SegAnchor => &SEG_ANCHOR,
             Self::Segb => &SEGB,
+            Self::Reorder => &REORDER,
         }
     }
 
@@ -2219,6 +2382,7 @@ impl LaneSet {
             Self::SegGmem => "--seg-gmem-factorial",
             Self::SegAnchor => "--seg-anchor",
             Self::Segb => "--segb-factorial",
+            Self::Reorder => "--reorder-factorial",
         }
     }
 
@@ -2236,14 +2400,16 @@ impl LaneSet {
             Self::SegGmem => "SEG-GMEM",
             Self::SegAnchor => "SEG-ANCHOR",
             Self::Segb => "SEGB",
+            Self::Reorder => "REORDER",
         }
     }
 
     /// Preregistered `(rounds, warmup)` per term order — spec R5 2.2/2.3, R7 for the seg
-    /// sets, R8 for the interior. 100/10 over ten lanes, 104/16 over eight, 99/9 over the
-    /// nine gmem lanes, 96/12 over the twelve interior lanes; the warmup is a whole number
-    /// of rotations in every case. R4's own defaults are not preregistered here (its record
-    /// used 110 explicitly).
+    /// sets, R8 for the interior, R9 for the reorder set. 100/10 over ten lanes, 104/16 over
+    /// eight, 99/9 over the nine gmem lanes, 96/12 over the twelve interior lanes, 96/6 over
+    /// the six reorder lanes (16 cycles, one cycle of warmup); the warmup is a whole number of
+    /// rotations in every case. R4's own defaults are not preregistered here (its record used
+    /// 110 explicitly).
     pub fn rounds_and_warmup(self) -> Option<(u32, u32)> {
         match self {
             Self::CacheFactorial => None,
@@ -2255,6 +2421,7 @@ impl LaneSet {
             Self::SegGmem => Some((99, 9)),
             Self::SegAnchor => Some((100, 10)),
             Self::Segb => Some((96, 8)),
+            Self::Reorder => Some((96, 6)),
         }
     }
 
@@ -2275,6 +2442,7 @@ impl LaneSet {
             Self::SegSmem | Self::SegGmem => "R7 seg lanes",
             Self::SegAnchor => "R7 anchor lanes",
             Self::Segb => "R7b segb lanes",
+            Self::Reorder => "R9 reorder lanes",
         }
     }
 
@@ -2286,7 +2454,9 @@ impl LaneSet {
                 "tools/r5_gates.sh"
             }
             Self::CarveoutProbe => "tools/r6_gates.sh",
-            Self::SegSmem | Self::SegGmem | Self::SegAnchor | Self::Segb => "tools/r7_gates.sh",
+            Self::SegSmem | Self::SegGmem | Self::SegAnchor | Self::Segb | Self::Reorder => {
+                "tools/r7_gates.sh"
+            }
         }
     }
 
@@ -2302,6 +2472,7 @@ impl LaneSet {
             Self::SegGmem => "seg gmem factorial",
             Self::SegAnchor => "seg anchor",
             Self::Segb => "segb factorial",
+            Self::Reorder => "reorder factorial",
         }
     }
 }
@@ -2314,6 +2485,23 @@ impl CacheLane {
         // bound it also carries are facts about that symbol rather than a second selector.
         if let Some(kernel) = self.carrier.kernel() {
             return kernel;
+        }
+        // Then the BODY, before the shape: the v3 R9 walk is built at one shape only, so a
+        // lane naming it at any other is a malformed lane rather than a silent fallback to
+        // the incumbent. `validate_lane_set` rejects it first with a lane-named message; this
+        // is the backstop for a hand-built lane that never went through the pre-flight.
+        if self.body == PairBody::Reorder {
+            assert!(
+                self.block_threads as usize == UNISKIP_PAIR_THREADS_128 && self.arm.uses_cache(),
+                "lane {} names the R9 gate-first body, which exists only as a \
+                 {UNISKIP_PAIR_THREADS_128}-thread cached kernel",
+                self.label
+            );
+            return if self.launch_bounds {
+                LaneKernel::Reorder128Lb
+            } else {
+                LaneKernel::Reorder128
+            };
         }
         match (
             self.block_threads,
@@ -2382,6 +2570,35 @@ pub enum LaneKernel {
 }
 
 impl LaneKernel {
+    /// Every kernel a lane can name. It exists so the symbol-drift pin over [`Self::name`]
+    /// is exhaustive by construction rather than by a hand-kept list in a test.
+    pub const ALL: [LaneKernel; 16] = [
+        Self::Pair,
+        Self::Pair128,
+        Self::Pair128Lb,
+        Self::Cached,
+        Self::Cached128,
+        Self::Cached128Lb,
+        Self::Reorder128,
+        Self::Reorder128Lb,
+        Self::SegSCv64,
+        Self::SegSCv100,
+        Self::SegSAcc,
+        Self::SegG,
+        Self::SegRecompute,
+        Self::SegbG,
+        Self::SegbRecompute,
+        Self::SegbGSlotted,
+    ];
+
+    /// The LOCAL symbols that run HINTED (amendment A3): the incumbent's bounded cached body
+    /// and both v3 R9 gate-first bodies. The carveout attribute is per FUNCTION and sticky, so
+    /// a process running two of these bodies has to set every one of them or its headline
+    /// contrast spans two L1 configurations. The unbounded incumbent is not on the list — no
+    /// timed arm launches it — and the uncached `control@256` is never hinted, which is what
+    /// makes it the cross-process anchor.
+    pub const HINTED: [LaneKernel; 3] = [Self::Cached128Lb, Self::Reorder128Lb, Self::Reorder128];
+
     /// The exported symbol minus the `ab_gkr_uniskip_` / `_kernel` affixes — what the ARM
     /// lines, the config block and the carveout echoes all print.
     pub fn name(self) -> &'static str {
@@ -2599,6 +2816,332 @@ mod lane_tests {
         );
         for order in [TermOrder::Census, TermOrder::Locality] {
             validate_lane_set(&program(order), &FRONTIER_INTERIOR).unwrap();
+        }
+    }
+
+    /// The R9 reorder rotation's shape, pinned exactly as spec R9 names it: three local
+    /// anchors, the gate-first body at the incumbent's plan, its machinery floor, and the
+    /// UNBOUNDED gate-first arm at that plan. The lane facts the ARM lines carry — body, bound,
+    /// registers, blocks per SM — are pinned with them, because a reorder lane that reported
+    /// the incumbent's 72/7 would describe the wrong occupancy tier in a timed log.
+    #[test]
+    fn cpu_reorder_lane_set() {
+        assert_eq!(REORDER.len(), 6);
+        let labels: Vec<&str> = REORDER.iter().map(|l| l.label).collect();
+        assert_eq!(
+            labels,
+            vec![
+                "control@256",
+                "control_lb@128",
+                "hot16@128",
+                "reorder-hot16@128",
+                "reorder-cache0@128",
+                "reorder-hot16-free@128",
+            ]
+        );
+        let arms: Vec<CacheArm> = REORDER.iter().map(|l| l.arm).collect();
+        assert_eq!(
+            arms,
+            vec![
+                CacheArm::Control,
+                CacheArm::Control,
+                CacheArm::Hot16,
+                CacheArm::Hot16,
+                CacheArm::Cache0,
+                CacheArm::Hot16,
+            ]
+        );
+        let bodies: Vec<PairBody> = REORDER.iter().map(|l| l.body).collect();
+        assert_eq!(
+            bodies,
+            vec![
+                PairBody::Incumbent,
+                PairBody::Incumbent,
+                PairBody::Incumbent,
+                PairBody::Reorder,
+                PairBody::Reorder,
+                PairBody::Reorder,
+            ]
+        );
+        let kernels: Vec<LaneKernel> = REORDER.iter().map(|l| l.kernel()).collect();
+        assert_eq!(
+            kernels,
+            vec![
+                LaneKernel::Pair,
+                LaneKernel::Pair128Lb,
+                LaneKernel::Cached128Lb,
+                LaneKernel::Reorder128Lb,
+                LaneKernel::Reorder128Lb,
+                LaneKernel::Reorder128,
+            ]
+        );
+        // Task 1's measured resource facts, per body: the bound is what holds the reorder at
+        // the incumbent's block count, and dropping it is what buys the eighth block.
+        for lane in &REORDER {
+            assert_eq!(lane.carrier, LaneCarrier::Local, "{}", lane.label);
+            match (lane.body, lane.launch_bounds) {
+                (PairBody::Reorder, true) => {
+                    assert_eq!((lane.regs, lane.blocks_per_sm), (70, 7), "{}", lane.label);
+                }
+                (PairBody::Reorder, false) => {
+                    assert_eq!((lane.regs, lane.blocks_per_sm), (64, 8), "{}", lane.label);
+                }
+                (PairBody::Incumbent, _) => {
+                    assert_eq!(lane.regs, 72, "{}", lane.label);
+                }
+            }
+            let rows = if lane.block_threads == 128 { 16 } else { 32 };
+            assert_eq!(lane.rows_per_block(), rows, "{}", lane.label);
+        }
+        // The anchors this rotation shares with every local session, so a cross-session
+        // comparison never has to be taken raw.
+        let shared: Vec<&str> = FRONTIER_INTERIOR
+            .iter()
+            .map(|l| l.label)
+            .filter(|l| REORDER.iter().any(|e| e.label == *l))
+            .collect();
+        assert_eq!(shared, vec!["hot16@128", "control_lb@128", "control@256"]);
+        assert_eq!(LaneSet::Reorder.rounds_and_warmup(), Some((96, 6)));
+        for n in [96u32, 6] {
+            assert!(n.is_multiple_of(REORDER.len() as u32), "{n}");
+        }
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            validate_lane_set(&program(order), &REORDER).unwrap();
+        }
+    }
+
+    /// The reorder set's four preregistered facts come from ONE value, like every other
+    /// rotation's, and it carries no seg lane — the gate-first body reads the R4 frame.
+    #[test]
+    fn cpu_reorder_lane_set_selector() {
+        assert_eq!(LaneSet::Reorder.lanes(), &REORDER);
+        assert_eq!(LaneSet::Reorder.flag(), "--reorder-factorial");
+        assert_eq!(LaneSet::Reorder.tag(), "REORDER");
+        assert_eq!(LaneSet::Reorder.noun(), "reorder factorial");
+        assert_eq!(LaneSet::Reorder.arms_noun(), "R9 reorder lanes");
+        assert_eq!(LaneSet::Reorder.gates(), "tools/r7_gates.sh");
+        assert!(LaneSet::Reorder.is_frontier());
+        assert!(!LaneSet::Reorder.is_seg());
+    }
+
+    /// The kernel derivation, BOTH directions. A reorder lane must reach the R9 symbols, and
+    /// no lane of any pre-R9 rotation may: the body field is the only thing that moved, so a
+    /// derivation that keyed on the shape alone would silently re-point 60 shipped lanes.
+    #[test]
+    fn cpu_reorder_kernel_derivation_leaves_every_other_lane_alone() {
+        assert_eq!(
+            reorder_128("r@128", CacheArm::Hot16, true).kernel(),
+            LaneKernel::Reorder128Lb
+        );
+        assert_eq!(
+            reorder_128("r@128", CacheArm::Hot16, false).kernel(),
+            LaneKernel::Reorder128
+        );
+        // The incumbent twin of each: same arm, same shape, the body alone differs.
+        assert_eq!(
+            frontier_128("hot16@128", CacheArm::Hot16).kernel(),
+            LaneKernel::Cached128Lb
+        );
+        for set in [
+            &CACHE_FACTORIAL[..],
+            &FRONTIER_FACTORIAL[..],
+            &FRONTIER_EXTENSION[..],
+            &FRONTIER_INTERIOR[..],
+            &CARVEOUT_PROBE[..],
+            &SEG_SMEM[..],
+            &SEG_GMEM[..],
+            &SEG_ANCHOR[..],
+            &SEGB[..],
+        ] {
+            for lane in set {
+                assert_eq!(lane.body, PairBody::Incumbent, "{}", lane.label);
+                assert!(
+                    !matches!(
+                        lane.kernel(),
+                        LaneKernel::Reorder128 | LaneKernel::Reorder128Lb
+                    ),
+                    "{}",
+                    lane.label
+                );
+            }
+        }
+    }
+
+    /// The gate-first body exists at ONE shape. A lane naming it anywhere else is rejected by
+    /// the pre-flight with the lane's name, and `kernel()` asserts as the backstop for a
+    /// hand-built lane that never went through it.
+    #[test]
+    fn cpu_reorder_lane_set_validator_rejects_off_shape_lanes() {
+        let p = program(TermOrder::Locality);
+        let at_256 = [CacheLane {
+            block_threads: 256,
+            ..reorder_128("reorder-hot16@256", CacheArm::Hot16, false)
+        }];
+        let err = validate_lane_set(&p, &at_256).unwrap_err();
+        assert!(
+            err.contains("must be a 128-thread cached local lane"),
+            "{err}"
+        );
+
+        let uncached = [reorder_128("reorder-control@128", CacheArm::Control, true)];
+        let err = validate_lane_set(&p, &uncached).unwrap_err();
+        assert!(
+            err.contains("must be a 128-thread cached local lane"),
+            "{err}"
+        );
+
+        let on_a_carrier = [CacheLane {
+            carrier: LaneCarrier::SegG,
+            ..reorder_128("reorder-seg@128", CacheArm::Hot16, true)
+        }];
+        let err = validate_lane_set(&p, &on_a_carrier).unwrap_err();
+        assert!(
+            err.contains("must be a 128-thread cached local lane"),
+            "{err}"
+        );
+
+        // THE COUNTER-CASE, and the reason the alias key carries the body: one admitted set on
+        // the incumbent and on the gate-first walk is the R9 contrast itself, so it must PASS.
+        let body_contrast = [
+            frontier_128("hot16@128", CacheArm::Hot16),
+            reorder_128("reorder-hot16@128", CacheArm::Hot16, true),
+            reorder_128("reorder-hot16-free@128", CacheArm::Hot16, false),
+        ];
+        validate_lane_set(&p, &body_contrast).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "names the R9 gate-first body")]
+    fn cpu_reorder_lane_at_a_shape_the_body_lacks_panics() {
+        let _ = CacheLane {
+            block_threads: 256,
+            ..reorder_128("reorder-hot16@256", CacheArm::Hot16, false)
+        }
+        .kernel();
+    }
+
+    /// The v3 R9 body-selector matrix, accept and reject cells. Fail-closed: three flags, three
+    /// bodies, and nothing names a body at a shape it was not built at.
+    #[test]
+    fn cpu_pair_body_selector_matrix() {
+        let at =
+            |reorder, free, no_bounds| select_pair_body(reorder, free, no_bounds, true, 128, true);
+        // The three legal spellings, one per body.
+        assert_eq!(at(false, false, false), Ok((PairBody::Incumbent, true)));
+        assert_eq!(at(false, false, true), Ok((PairBody::Incumbent, false)));
+        assert_eq!(at(true, false, false), Ok((PairBody::Reorder, true)));
+        assert_eq!(at(false, true, false), Ok((PairBody::Reorder, false)));
+        // Two bodies at once, and the two spellings of the unbounded reorder.
+        assert!(at(true, true, false).unwrap_err().contains("pick one"));
+        for cell in [at(true, false, true), at(false, true, true)] {
+            let err = cell.unwrap_err();
+            assert!(err.contains("spelled --reorder-free"), "{err}");
+        }
+        // The shape: the body is a 128-thread CACHED kernel and nothing else.
+        for cell in [
+            select_pair_body(true, false, false, false, 128, true),
+            select_pair_body(true, false, false, true, 256, true),
+            select_pair_body(true, false, false, true, 128, false),
+            select_pair_body(false, true, false, true, 256, true),
+            select_pair_body(false, true, false, true, 128, false),
+        ] {
+            let err = cell.unwrap_err();
+            assert!(err.contains("needs --mode lsb-pair"), "{err}");
+        }
+        // The incumbent's own shape rules are unchanged by the R9 flags: an unbounded
+        // incumbent at 256 is not this matrix's business.
+        assert_eq!(
+            select_pair_body(false, false, true, true, 256, true),
+            Ok((PairBody::Incumbent, false))
+        );
+    }
+
+    /// Every kernel a lane can name is exported under the name it prints, and the gate scripts
+    /// hardcode the exported symbols independently — so this is the drift guard between the two
+    /// (M4). A typo on either side would otherwise surface only at the first launch.
+    #[test]
+    fn cpu_lane_kernel_names_match_the_exported_symbols() {
+        let gates = concat!(
+            include_str!("../tools/r4_gates.sh"),
+            include_str!("../tools/r5_gates.sh"),
+            include_str!("../tools/r7_gates.sh"),
+        );
+        let mut names: Vec<&str> = LaneKernel::ALL.iter().map(|k| k.name()).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), LaneKernel::ALL.len(), "two kernels, one name");
+        for kernel in LaneKernel::ALL {
+            let symbol = format!("ab_gkr_uniskip_{}_kernel", kernel.name());
+            assert!(
+                gates.contains(&symbol),
+                "{symbol} is in no gate table — the launcher and the gates disagree"
+            );
+        }
+    }
+
+    /// The hinted set (amendment A3): the incumbent's bounded body and both gate-first bodies,
+    /// every one of them a LOCAL cached kernel. The uncached anchor and the unbounded incumbent
+    /// are not on it, which is what makes a hinted process's contrast one-configuration.
+    #[test]
+    fn cpu_hinted_local_symbols_cover_every_reorder_lane() {
+        assert_eq!(
+            LaneKernel::HINTED,
+            [
+                LaneKernel::Cached128Lb,
+                LaneKernel::Reorder128Lb,
+                LaneKernel::Reorder128
+            ]
+        );
+        for kernel in LaneKernel::HINTED {
+            assert!(kernel.is_cached(), "{}", kernel.name());
+            assert!(!LaneCarrier::SEG.iter().any(|c| c.kernel() == Some(kernel)));
+        }
+        assert!(!LaneKernel::HINTED.contains(&LaneKernel::Cached128));
+        assert!(!LaneKernel::HINTED.contains(&LaneKernel::Pair));
+        // Every cached lane of the reorder rotation is steerable, so the whole rotation runs at
+        // one carveout; the two controls are the never-hinted anchors.
+        for lane in &REORDER {
+            let hinted = LaneKernel::HINTED.contains(&lane.kernel());
+            assert_eq!(hinted, lane.arm.uses_cache(), "{}", lane.label);
+        }
+    }
+
+    /// THE ECHO SET, per surface: what a process applies its carveout to and echoes. The R9
+    /// rotation's three bodies must all appear — that is what makes its headline contrast
+    /// one-configuration — and the unbounded INCUMBENT must not, since no arm launches it
+    /// hinted.
+    #[test]
+    fn cpu_hinted_echo_set_per_surface() {
+        assert_eq!(
+            hinted_local_symbols(None, &REORDER),
+            vec![
+                LaneKernel::Cached128Lb,
+                LaneKernel::Reorder128Lb,
+                LaneKernel::Reorder128
+            ]
+        );
+        // The single-arm surface: one body, one echo.
+        for kernel in LaneKernel::HINTED {
+            assert_eq!(hinted_local_symbols(Some(kernel), &[]), vec![kernel]);
+        }
+        assert!(hinted_local_symbols(Some(LaneKernel::Cached128), &[]).is_empty());
+        assert!(hinted_local_symbols(Some(LaneKernel::Cached), &[]).is_empty());
+        assert!(hinted_local_symbols(None, &[]).is_empty());
+        // Every pre-R9 rotation keeps its one local echo, the incumbent's — the grammar the
+        // R6/R7 gates pin.
+        for set in [
+            &FRONTIER_FACTORIAL[..],
+            &FRONTIER_INTERIOR[..],
+            &CARVEOUT_PROBE[..],
+            &SEG_SMEM[..],
+            &SEG_GMEM[..],
+            &SEG_ANCHOR[..],
+            &SEGB[..],
+        ] {
+            assert_eq!(
+                hinted_local_symbols(None, set),
+                vec![LaneKernel::Cached128Lb]
+            );
         }
     }
 

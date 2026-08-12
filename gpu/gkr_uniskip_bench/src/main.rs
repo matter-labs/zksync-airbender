@@ -131,6 +131,21 @@ struct Cli {
     #[arg(long)]
     no_cache_launch_bounds: bool,
 
+    /// Run the v3 R9 gate-first reordered cached BODY at 128 threads under the incumbent's
+    /// `__launch_bounds__(128, 7)`, instead of the R4 cached body. Same ABI, same uploaded
+    /// plan and same `--cache-arm`: only the walk's interleaving between the h and c domains
+    /// moves, so `q` must be bit-identical to the incumbent's at every arm. 128-thread cached
+    /// arms only, and it carries the same carveout hint the incumbent does.
+    #[arg(long)]
+    reorder: bool,
+
+    /// Run the UNBOUNDED v3 R9 gate-first body — 64 registers, the 8-blocks-per-SM tier
+    /// (amendment A8). This is the only spelling of that arm: `--reorder` names the bounded
+    /// body and `--no-cache-launch-bounds` prices the bound on the INCUMBENT, so the three
+    /// bodies stay one flag each. 128-thread cached arms only.
+    #[arg(long)]
+    reorder_free: bool,
+
     /// Run the v3 R4 primary factorial: 11 lanes (5 arms at 256, 6 at 128 including both
     /// no-cache baselines) in ONE process against shared allocations, in a generated cyclic
     /// rotation. Use `--iterations` a multiple of 11 (the record uses 110 per term order).
@@ -200,6 +215,15 @@ struct Cli {
     /// unless overridden; an override must still be a multiple of 8.
     #[arg(long)]
     segb_factorial: bool,
+
+    /// Run the v3 R9 reorder rotation: 6 lanes — the three local anchors (`control@256`,
+    /// `control_lb@128`, the hinted `hot16@128` incumbent), the gate-first body at the
+    /// incumbent's own plan, its `cache0` machinery floor, and the UNBOUNDED gate-first arm at
+    /// that plan. All three hinted local symbols carry the same carveout, so the body contrast
+    /// is taken at one L1 configuration. 96 rounds / 6 warmup unless overridden; an override
+    /// must still be a multiple of 6.
+    #[arg(long)]
+    reorder_factorial: bool,
 
     /// v3 R7 carrier of a single segmented arm: `seg-s` (carrier S at the 64 KiB carveout
     /// request), `seg-s100` (the same body at 100 KiB), `seg-s-acc` (the accumulator-first
@@ -324,6 +348,7 @@ impl Cli {
             (self.seg_gmem_factorial, LaneSet::SegGmem),
             (self.seg_anchor, LaneSet::SegAnchor),
             (self.segb_factorial, LaneSet::Segb),
+            (self.reorder_factorial, LaneSet::Reorder),
         ]
         .into_iter()
         .filter_map(|(on, set)| on.then_some(set))
@@ -620,11 +645,13 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ("--factorial", cli.factorial),
             ("--control-launch-bounds", cli.control_launch_bounds),
             ("--no-cache-launch-bounds", cli.no_cache_launch_bounds),
+            ("--reorder", cli.reorder),
+            ("--reorder-free", cli.reorder_free),
         ] {
             if on {
                 fail(format!(
-                    "{flag} owns the arm set and both block sizes; {other} would \
-                     change what the rotation runs"
+                    "{flag} owns the arm set, both block sizes and every lane's body; \
+                     {other} would change what the rotation runs"
                 ));
             }
         }
@@ -720,6 +747,8 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ("--cache-mutate", cli.cache_mutate.is_some()),
             ("--control-launch-bounds", cli.control_launch_bounds),
             ("--no-cache-launch-bounds", cli.no_cache_launch_bounds),
+            ("--reorder", cli.reorder),
+            ("--reorder-free", cli.reorder_free),
         ] {
             if on {
                 fail(format!(
@@ -766,6 +795,19 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                 .into(),
         );
     }
+    // The v3 R9 body selectors, through the ONE matrix the lib states: the reorder body takes
+    // the incumbent's ABI and plan, so every other knob composes with it unchanged — but a
+    // spelling naming two bounds, or a shape the body was not built at, would describe a
+    // kernel the run cannot launch.
+    let (body, cache_launch_bounds) = coset_cache::select_pair_body(
+        cli.reorder,
+        cli.reorder_free,
+        cli.no_cache_launch_bounds,
+        cli.mode.uses_pair_arm(),
+        block_threads,
+        cli.cache_arm.is_some_and(|a| a.uses_cache()),
+    )
+    .unwrap_or_else(|e| fail(e));
     // The R6 rotation is preregistered whole: locality order (the shipping order), hint
     // 16 (the one empirically verified 32 KiB config), 100 rounds / 10 warmup. The emitter
     // pins the same contract on the analysis side; this keeps an off-contract log from
@@ -932,7 +974,8 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         cache_arm: cli.cache_arm.unwrap_or_default(),
         carrier: cli.carrier.unwrap_or_default(),
         prologue_order: cli.prologue_order.unwrap_or_default(),
-        cache_launch_bounds: !cli.no_cache_launch_bounds,
+        cache_launch_bounds,
+        body,
         control_launch_bounds: cli.control_launch_bounds,
         cache_mutate: cli.cache_mutate,
         lane_set: cli.lane_set(),

@@ -12,7 +12,7 @@ use crate::cache::CachePlan;
 use crate::compact::{self, BankPerm};
 use crate::coset_cache::{
     self, CacheArm, CacheArmState, CacheLane, CacheMutation, LaneCarrier, LaneKernel, LaneSet,
-    PrologueOrder,
+    PairBody, PrologueOrder,
 };
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
@@ -432,6 +432,10 @@ pub struct PassConfig {
     /// v3 R7 carrier of a single-arm [`EvalMode::LsbPair`] run; ignored elsewhere.
     /// `Local` is the R4 per-thread frame — the absence of `--carrier`.
     pub carrier: LaneCarrier,
+    /// v3 R9 local BODY of a single-arm [`EvalMode::LsbPair`] run; ignored elsewhere and on
+    /// a carrier, which names its own symbol. `Reorder` needs a cached arm at 128 threads —
+    /// `main` rejects every other combination rather than silently ignoring the selector.
+    pub body: PairBody,
     /// Class the v3 R4 prologue produces first. A table-emission order only — the kernel
     /// walks what the host uploaded, so this costs no SASS.
     pub prologue_order: PrologueOrder,
@@ -448,7 +452,8 @@ pub struct PassConfig {
     /// Whether the 128-thread cached arm runs the `__launch_bounds__(128, 7)` sibling.
     /// TRUE is the measurement arm: unbounded it takes 75 registers = 6 blocks/SM against
     /// control128's 7, and the contrast would carry an occupancy step. Ignored at 256,
-    /// where the cached body already holds the control's 3 blocks.
+    /// where the cached body already holds the control's 3 blocks. The v3 R9 body has the
+    /// same pair of siblings on the same axis — `--reorder-free` is its unbounded one.
     pub cache_launch_bounds: bool,
     /// Threads per eval block in [`EvalMode::LsbPair`]; ignored elsewhere. 256 is the R2
     /// shape, 128 is v3 R4's second block size — a distinct kernel, not a launch
@@ -792,6 +797,22 @@ fn print_slot_pool_facts(units: u32) {
         kernels::UNISKIP_SLOTS_PER_SM,
         kernels::UNISKIP_SLOT_SM_CAPACITY * size_of::<u32>() as u32
     );
+}
+
+/// Set one LOCAL symbol's preferred shared-memory carveout. Keyed on the kernel rather than
+/// on a body flag, so the applied set and the echoed set are the same list
+/// ([`LaneKernel::HINTED`]) and no hinted symbol can be added without a setter to reach it.
+fn set_local_carveout(kernel: LaneKernel, percent: u32) -> CudaResult<()> {
+    match kernel {
+        LaneKernel::Cached128Lb => kernels::set_cached_128_lb_carveout(percent),
+        LaneKernel::Reorder128Lb => kernels::set_cached_reorder_128_lb_carveout(percent),
+        LaneKernel::Reorder128 => kernels::set_cached_reorder_128_carveout(percent),
+        other => panic!(
+            "{} is not a hinted local symbol — LaneKernel::HINTED and this dispatch are one \
+             list",
+            other.name()
+        ),
+    }
 }
 
 /// Set one seg symbol's preferred shared-memory carveout. Per function and sticky for the
@@ -1230,6 +1251,9 @@ impl Harness {
             deal
         });
 
+        // The local body a single-arm cached run launches, kept for the occupancy report
+        // below — the launch itself travels as a function pointer, which names nothing.
+        let mut local_kernel = None;
         let eval_cached = match config.mode {
             EvalMode::LsbPair if config.cache_arm.uses_cache() && !config.carrier.is_seg() => {
                 let state = cache_arms
@@ -1241,19 +1265,38 @@ impl Harness {
                 // = 6 blocks/SM against control128's 7, which the occupancy gate forbids
                 // accepting silently. `cache_launch_bounds = false` selects the stepped one
                 // deliberately, to price what the bound costs.
-                let (launch, name): (CachedLaunch, &'static str) =
-                    match (config.block_threads as usize, config.cache_launch_bounds) {
-                        (UNISKIP_PAIR_THREADS_128, true) => (
-                            kernels::eval_lsb_pair_cached_128_lb,
-                            "eval_lsb_pair_cached_128_lb",
-                        ),
-                        (UNISKIP_PAIR_THREADS_128, false) => (
-                            kernels::eval_lsb_pair_cached_128,
-                            "eval_lsb_pair_cached_128",
-                        ),
-                        _ => (kernels::eval_lsb_pair_cached, "eval_lsb_pair_cached"),
-                    };
-                eval_kernel = name;
+                // The v3 R9 body selector sits on the same axis as the bound: one spelling per
+                // body, and `main` rejects the reorder body at any shape it was not built for.
+                let (launch, kernel): (CachedLaunch, LaneKernel) = match (
+                    config.body,
+                    config.block_threads as usize,
+                    config.cache_launch_bounds,
+                ) {
+                    (PairBody::Reorder, UNISKIP_PAIR_THREADS_128, true) => (
+                        kernels::eval_lsb_pair_cached_reorder_128_lb,
+                        LaneKernel::Reorder128Lb,
+                    ),
+                    (PairBody::Reorder, UNISKIP_PAIR_THREADS_128, false) => (
+                        kernels::eval_lsb_pair_cached_reorder_128,
+                        LaneKernel::Reorder128,
+                    ),
+                    (PairBody::Reorder, threads, _) => panic!(
+                        "the R9 gate-first body exists at {UNISKIP_PAIR_THREADS_128} threads \
+                         only, not {threads}"
+                    ),
+                    (PairBody::Incumbent, UNISKIP_PAIR_THREADS_128, true) => (
+                        kernels::eval_lsb_pair_cached_128_lb,
+                        LaneKernel::Cached128Lb,
+                    ),
+                    (PairBody::Incumbent, UNISKIP_PAIR_THREADS_128, false) => {
+                        (kernels::eval_lsb_pair_cached_128, LaneKernel::Cached128)
+                    }
+                    (PairBody::Incumbent, ..) => {
+                        (kernels::eval_lsb_pair_cached, LaneKernel::Cached)
+                    }
+                };
+                local_kernel = Some(kernel);
+                eval_kernel = kernel.name();
                 Some((launch, state.descriptor(config.prologue_order)))
             }
             _ => None,
@@ -1423,23 +1466,39 @@ impl Harness {
             _ => None,
         };
 
-        // v3 R6: one carveout state per process, applied before any launch. Only the
-        // bounded cached body is steered; the uncached control is the probe's anchor.
-        let launches_cached_128_lb = eval_kernel == LaneKernel::Cached128Lb.name()
-            || cache_lanes
-                .iter()
-                .any(|prepared| prepared.lane.kernel() == LaneKernel::Cached128Lb);
+        // v3 R6/R9: one carveout state per process, applied before any launch. Every hinted
+        // LOCAL symbol this run launches gets the SAME percent, independently — the attribute
+        // is per function and sticky, so a rotation carrying the incumbent and both gate-first
+        // bodies would otherwise compare them across two L1 configurations (amendment A3). The
+        // uncached control is nobody's hinted symbol; it is the anchor.
+        let prepared_lanes: Vec<CacheLane> = cache_lanes.iter().map(|p| p.lane).collect();
+        let hinted = coset_cache::hinted_local_symbols(local_kernel, &prepared_lanes);
         // On a segmented single-arm run an explicit percent belongs to the CARRIER's symbol
-        // (the ladder-mapping surface below), so the local incumbent — which that run never
-        // launches — is left alone rather than steered and echoed.
-        let carveout = if config.carrier.is_seg() {
+        // (the ladder-mapping surface below), so the local bodies — which that run never
+        // launches — are left alone rather than steered and echoed.
+        let carveout = if config.carrier.is_seg() || hinted.is_empty() {
             None
         } else {
-            config.carveout_hint.resolve(launches_cached_128_lb)
+            config.carveout_hint.resolve(true)
         };
         if let Some(pct) = carveout {
-            kernels::set_cached_128_lb_carveout(pct)?;
-            println!("  carveout hint       {pct}% (eval_lsb_pair_cached_128_lb)");
+            for kernel in &hinted {
+                set_local_carveout(*kernel, pct)?;
+                println!("  carveout hint       {pct}% ({})", kernel.name());
+            }
+            // The ECHO SET, one line, in the order the echoes were emitted: what a process's
+            // L1 configuration covers is a claim about the whole symbol set, and an emitter
+            // reading only the per-symbol lines cannot tell a missing symbol from an unhinted
+            // one.
+            println!(
+                "  carveout symbols    {} local ({})",
+                hinted.len(),
+                hinted
+                    .iter()
+                    .map(|k| k.name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
         }
         // v3 R7: one hint per USED seg symbol, applied once before any launch and echoed
         // once each. The percent IS the carrier's configuration under test, so a rotation
@@ -1516,6 +1575,19 @@ impl Harness {
                 prepared.lane.label,
                 kernel.name(),
                 prepared.lane.block_threads
+            );
+        }
+        // The single-arm LOCAL path has no lane table either, and nothing here is asserted:
+        // every local body requests 0 B dynamic shared, which is exactly where the calculator
+        // can under-report (the scope note above — it models 5 for the incumbent the driver
+        // runs 7 blocks of). The figure is printed so a `--dump-q` or single-arm timing log
+        // states which body ran and what the calculator says about it; the authoritative block
+        // count is ncu's.
+        if let Some(kernel) = local_kernel {
+            let realized = kernels::max_blocks_per_sm(kernel, config.block_threads, 0)?;
+            println!(
+                "  occupancy           {realized} blocks/SM ({}, 0 B dynamic, no pin, floor)",
+                kernel.name()
             );
         }
         // The single-arm carrier path has no lane table to check against, so it gates the
