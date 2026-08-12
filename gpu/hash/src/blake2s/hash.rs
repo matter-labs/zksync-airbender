@@ -230,3 +230,122 @@ pub fn hash_leaves_from_ntt_multi_coset(
     );
     LeavesFromNttMultiCosetFunction::default().launch(&config, &args)
 }
+
+cuda_kernel!(
+    LeavesFromNttMultiCosetToStaging,
+    ab_blake2s_leaves_from_ntt_multi_coset_to_staging_kernel(
+        ntt_output: *const BF,
+        staging: *mut Digest,
+        log_values_per_leaf: u32,
+        src_cols_per_coset: u32,
+        per_coset_count: u32,
+        log_per_coset_count: u32,
+        trace_len: u32,
+        count: u32,
+    )
+);
+
+pub fn hash_leaves_from_ntt_multi_coset_to_staging(
+    ntt_output: &DeviceSlice<BF>,
+    staging: &mut DeviceSlice<Digest>,
+    log_values_per_leaf: u32,
+    src_cols_per_coset: u32,
+    log_lde_factor: u32,
+    coset_index_base: u32,
+    cosets_in_tile: usize,
+    per_coset_leaves_count: usize,
+    trace_len: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(cosets_in_tile >= 1);
+    assert!(src_cols_per_coset.is_power_of_two());
+    assert!(trace_len.is_power_of_two());
+    assert!(per_coset_leaves_count.is_power_of_two());
+    assert_eq!(
+        per_coset_leaves_count,
+        trace_len as usize >> log_values_per_leaf
+    );
+    assert!(coset_index_base as usize + cosets_in_tile <= 1usize << log_lde_factor);
+    let count = per_coset_leaves_count
+        .checked_mul(cosets_in_tile)
+        .expect("leaf count overflow");
+    assert_eq!(staging.len(), count);
+    assert!(ntt_output.len() >= trace_len as usize * src_cols_per_coset as usize * cosets_in_tile);
+    let count = checked_u32(count);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = LeavesFromNttMultiCosetToStagingArguments::new(
+        ntt_output.as_ptr(),
+        staging.as_mut_ptr(),
+        log_values_per_leaf,
+        src_cols_per_coset,
+        checked_u32(per_coset_leaves_count),
+        per_coset_leaves_count.trailing_zeros(),
+        trace_len,
+        count,
+    );
+    LeavesFromNttMultiCosetToStagingFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    LeavesFromNttFlatRangeToStaging,
+    ab_blake2s_leaves_from_ntt_flat_range_to_staging_kernel(
+        ntt_output: *const BF,
+        staging: *mut Digest,
+        log_values_per_leaf: u32,
+        src_cols_per_coset: u32,
+        log_lde_factor: u32,
+        flat_leaf_base: u32,
+        per_coset_count: u32,
+        log_per_coset_count: u32,
+        trace_len: u32,
+        count: u32,
+    )
+);
+
+pub fn hash_leaves_from_ntt_flat_range_to_staging(
+    ntt_output: &DeviceSlice<BF>,
+    staging: &mut DeviceSlice<Digest>,
+    log_values_per_leaf: u32,
+    src_cols_per_coset: u32,
+    log_lde_factor: u32,
+    flat_leaf_base: usize,
+    leaves_count: usize,
+    per_coset_leaves_count: usize,
+    trace_len: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(src_cols_per_coset.is_power_of_two());
+    assert!(trace_len.is_power_of_two());
+    assert!(per_coset_leaves_count.is_power_of_two());
+    assert_eq!(
+        per_coset_leaves_count,
+        trace_len as usize >> log_values_per_leaf
+    );
+    assert_eq!(flat_leaf_base % WARP_SIZE as usize, 0);
+    assert!(leaves_count > 0);
+    assert_eq!(leaves_count % WARP_SIZE as usize, 0);
+    let total_leaves = per_coset_leaves_count << log_lde_factor;
+    assert!(flat_leaf_base + leaves_count <= total_leaves);
+    assert_eq!(staging.len(), leaves_count);
+    assert!(
+        ntt_output.len()
+            >= trace_len as usize * src_cols_per_coset as usize * (1usize << log_lde_factor)
+    );
+    let count = checked_u32(leaves_count);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = LeavesFromNttFlatRangeToStagingArguments::new(
+        ntt_output.as_ptr(),
+        staging.as_mut_ptr(),
+        log_values_per_leaf,
+        src_cols_per_coset,
+        log_lde_factor,
+        checked_u32(flat_leaf_base),
+        checked_u32(per_coset_leaves_count),
+        per_coset_leaves_count.trailing_zeros(),
+        trace_len,
+        count,
+    );
+    LeavesFromNttFlatRangeToStagingFunction::default().launch(&config, &args)
+}

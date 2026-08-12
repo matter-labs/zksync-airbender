@@ -585,6 +585,297 @@ pub(crate) fn transform_and_hash_whir_leaves_from_ntt_multi_coset(
 }
 
 cuda_kernel_signature_arguments_and_function!(
+    TransformAndHashWhirLeavesFromNttMultiCosetToStaging,
+    src: PtrAndStride<BF>,
+    staging: *mut u32,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    coset_index_base: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_kernel(
+        src: PtrAndStride<BF>,
+        staging: *mut u32,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        coset_index_base: u32,
+    )
+);
+
+pub(crate) fn transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging(
+    ntt_output: &DeviceSlice<BF>,
+    staging: &mut DeviceSlice<Digest>,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    coset_index_base: u32,
+    cosets_in_tile: u32,
+    transform_params: WhirLeafTransformParams,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_lde_factor >= 1);
+    assert!((1..=5).contains(&log_values_per_leaf));
+    assert!(log_trace_len > log_values_per_leaf);
+    assert!(cosets_in_tile >= 1);
+    assert!(coset_index_base + cosets_in_tile <= 1u32 << log_lde_factor);
+    let trace_len = 1usize << log_trace_len;
+    let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
+    let leaves_count = packed_leaf_count
+        .checked_mul(cosets_in_tile as usize)
+        .expect("tile leaf count overflow");
+    assert_eq!(staging.len(), leaves_count);
+    assert!(leaves_count <= u32::MAX as usize);
+    assert!(ntt_output.len() >= trace_len * 4 * cosets_in_tile as usize);
+
+    let values_per_leaf = 1usize << log_values_per_leaf;
+    let block_dim_x = if values_per_leaf == 2 {
+        (leaves_count as u32).min(4 * WARP_SIZE)
+    } else {
+        WARP_SIZE
+    };
+    // The transform uses block-wide barriers, so the x-grid cannot have inactive lanes.
+    assert_eq!(leaves_count as u32 % block_dim_x, 0);
+    let block_dim_y = (values_per_leaf / 2) as u32;
+    let grid_dim_x = leaves_count as u32 / block_dim_x;
+    let mut config = CudaLaunchConfig::basic(grid_dim_x, (block_dim_x, block_dim_y), stream);
+    config.dynamic_smem_bytes = block_dim_x as usize * values_per_leaf * core::mem::size_of::<E4>()
+        + if log_values_per_leaf > 1 {
+            block_dim_x as usize * block_dim_y as usize * core::mem::size_of::<BF>()
+        } else {
+            0
+        };
+    let args = TransformAndHashWhirLeavesFromNttMultiCosetToStagingArguments::new(
+        PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+        staging.as_mut_ptr() as *mut u32,
+        transform_params,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+        coset_index_base,
+    );
+    TransformAndHashWhirLeavesFromNttMultiCosetToStagingFunction(
+        ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_kernel,
+    )
+    .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    TransformAndHashWhirLeavesFromNttFlatRangeToStaging,
+    src: PtrAndStride<BF>,
+    staging: *mut u32,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    flat_leaf_base: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_transform_and_hash_whir_leaves_from_ntt_flat_range_to_staging_kernel(
+        src: PtrAndStride<BF>,
+        staging: *mut u32,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        flat_leaf_base: u32,
+    )
+);
+
+pub(crate) fn transform_and_hash_whir_leaves_from_ntt_flat_range_to_staging(
+    ntt_output: &DeviceSlice<BF>,
+    staging: &mut DeviceSlice<Digest>,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    flat_leaf_base: usize,
+    leaves_count: usize,
+    transform_params: WhirLeafTransformParams,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_lde_factor >= 1);
+    assert!((1..=5).contains(&log_values_per_leaf));
+    assert!(log_trace_len > log_values_per_leaf);
+    assert_eq!(flat_leaf_base % WARP_SIZE as usize, 0);
+    assert!(leaves_count > 0);
+    assert_eq!(leaves_count % WARP_SIZE as usize, 0);
+    let trace_len = 1usize << log_trace_len;
+    let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
+    let total_leaves = packed_leaf_count << log_lde_factor;
+    assert!(flat_leaf_base + leaves_count <= total_leaves);
+    assert_eq!(staging.len(), leaves_count);
+    assert!(ntt_output.len() >= trace_len * 4 * (1usize << log_lde_factor));
+
+    let values_per_leaf = 1usize << log_values_per_leaf;
+    let block_dim_x = WARP_SIZE;
+    let block_dim_y = (values_per_leaf / 2) as u32;
+    // The transform uses block-wide barriers, so the x-grid cannot have inactive lanes.
+    let grid_dim_x = leaves_count as u32 / block_dim_x;
+    let mut config = CudaLaunchConfig::basic(grid_dim_x, (block_dim_x, block_dim_y), stream);
+    config.dynamic_smem_bytes = block_dim_x as usize * values_per_leaf * core::mem::size_of::<E4>()
+        + if log_values_per_leaf > 1 {
+            block_dim_x as usize * block_dim_y as usize * core::mem::size_of::<BF>()
+        } else {
+            0
+        };
+    let args = TransformAndHashWhirLeavesFromNttFlatRangeToStagingArguments::new(
+        PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+        staging.as_mut_ptr() as *mut u32,
+        transform_params,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+        flat_leaf_base as u32,
+    );
+    TransformAndHashWhirLeavesFromNttFlatRangeToStagingFunction(
+        ab_transform_and_hash_whir_leaves_from_ntt_flat_range_to_staging_kernel,
+    )
+    .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    ReduceStagedWhirSubtreesFlat,
+    staged: *const u32,
+    boundary_roots: *mut u32,
+    roots_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_reduce_staged_whir_subtrees_flat_kernel(
+        staged: *const u32,
+        boundary_roots: *mut u32,
+        roots_count: u32,
+    )
+);
+
+pub(crate) fn reduce_staged_whir_subtrees_flat(
+    staged: &DeviceSlice<Digest>,
+    boundary_roots: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const ROOTS_PER_BLOCK: u32 = 16;
+    const LEAVES_PER_BLOCK: usize = 512;
+    assert!(!staged.is_empty());
+    assert_eq!(staged.len() % WARP_SIZE as usize, 0);
+    let roots_count = staged.len() / WARP_SIZE as usize;
+    assert!(boundary_roots.len() >= roots_count);
+    assert!(roots_count <= u32::MAX as usize);
+    let mut config = CudaLaunchConfig::basic(
+        (roots_count as u32).div_ceil(ROOTS_PER_BLOCK),
+        256u32,
+        stream,
+    );
+    config.dynamic_smem_bytes = LEAVES_PER_BLOCK * core::mem::size_of::<Digest>();
+    let args = ReduceStagedWhirSubtreesFlatArguments::new(
+        staged.as_ptr() as *const u32,
+        boundary_roots.as_mut_ptr() as *mut u32,
+        roots_count as u32,
+    );
+    ReduceStagedWhirSubtreesFlatFunction(ab_reduce_staged_whir_subtrees_flat_kernel)
+        .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    ReduceStagedWhirSubtreesNaturalTiles,
+    staged: *const u32,
+    boundary_roots: *mut u32,
+    log_packed_leaf_count: u32,
+    log_lde_factor: u32,
+    first_tile_coset_base: u32,
+    staged_tile_leaves: u32,
+    tiles_count: u32,
+    tile_coset_stride: u32,
+    roots_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_reduce_staged_whir_subtrees_natural_tiles_kernel(
+        staged: *const u32,
+        boundary_roots: *mut u32,
+        log_packed_leaf_count: u32,
+        log_lde_factor: u32,
+        first_tile_coset_base: u32,
+        staged_tile_leaves: u32,
+        tiles_count: u32,
+        tile_coset_stride: u32,
+        roots_count: u32,
+    )
+);
+
+pub(crate) fn reduce_staged_whir_subtrees_natural_tiles(
+    staged: &DeviceSlice<Digest>,
+    boundary_roots: &mut DeviceSlice<Digest>,
+    log_packed_leaf_count: u32,
+    log_lde_factor: u32,
+    first_tile_coset_base: u32,
+    staged_tile_leaves: u32,
+    tiles_count: u32,
+    tile_coset_stride: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const ROOTS_PER_BLOCK: u32 = 16;
+    const LEAVES_PER_BLOCK: usize = 512;
+    assert!(log_packed_leaf_count >= WARP_SIZE.trailing_zeros());
+    assert!(log_lde_factor < 32);
+    assert!(tiles_count >= 1);
+    assert!(staged_tile_leaves >= WARP_SIZE);
+    assert_eq!(staged_tile_leaves % WARP_SIZE, 0);
+    assert_eq!(
+        staged.len(),
+        staged_tile_leaves as usize * tiles_count as usize
+    );
+    let packed_leaf_count = 1usize << log_packed_leaf_count;
+    let lde_factor = 1usize << log_lde_factor;
+    assert_eq!(staged_tile_leaves as usize % packed_leaf_count, 0);
+    let tile_cosets = staged_tile_leaves as usize / packed_leaf_count;
+    assert!(tiles_count == 1 || tile_coset_stride as usize >= tile_cosets);
+    let last_natural_coset = first_tile_coset_base as usize
+        + (tiles_count as usize - 1) * tile_coset_stride as usize
+        + tile_cosets
+        - 1;
+    assert!(last_natural_coset < lde_factor);
+    let roots_per_coset = packed_leaf_count / WARP_SIZE as usize;
+    let max_bitrev_coset = (0..tiles_count as usize)
+        .flat_map(|tile| {
+            let tile_base = first_tile_coset_base as usize + tile * tile_coset_stride as usize;
+            (0..tile_cosets).map(move |coset| {
+                (tile_base + coset).reverse_bits() >> (usize::BITS - log_lde_factor)
+            })
+        })
+        .max()
+        .unwrap();
+    assert!(boundary_roots.len() >= (max_bitrev_coset + 1) * roots_per_coset);
+    let roots_count = staged.len() / WARP_SIZE as usize;
+    assert!(roots_count <= u32::MAX as usize);
+    let mut config = CudaLaunchConfig::basic(
+        (roots_count as u32).div_ceil(ROOTS_PER_BLOCK),
+        256u32,
+        stream,
+    );
+    config.dynamic_smem_bytes = LEAVES_PER_BLOCK * core::mem::size_of::<Digest>();
+    let args = ReduceStagedWhirSubtreesNaturalTilesArguments::new(
+        staged.as_ptr() as *const u32,
+        boundary_roots.as_mut_ptr() as *mut u32,
+        log_packed_leaf_count,
+        log_lde_factor,
+        first_tile_coset_base,
+        staged_tile_leaves,
+        tiles_count,
+        tile_coset_stride,
+        roots_count as u32,
+    );
+    ReduceStagedWhirSubtreesNaturalTilesFunction(
+        ab_reduce_staged_whir_subtrees_natural_tiles_kernel,
+    )
+    .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
     PackRowsForWhirLeavesMultiCoset,
     src: PtrAndStride<BF>,
     dst: MutPtrAndStride<BF>,

@@ -13,6 +13,58 @@ use gpu_ntt::ntt::{lde_with_coset_range, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS};
 
+enum LeafCommitTarget<'a> {
+    FullTree(&'a mut DeviceSlice<Digest>),
+    PartialTree(&'a mut DeviceSlice<Digest>),
+}
+
+const PARTIAL_TREE_STAGING_BYTES: usize = 32 << 20;
+const PARTIAL_TREE_STAGING_DIGESTS: usize =
+    PARTIAL_TREE_STAGING_BYTES / core::mem::size_of::<Digest>();
+
+#[derive(Default)]
+struct PartialTreeBatch {
+    leaves_len: usize,
+    first_tile_coset_base: usize,
+    staged_tile_leaves: usize,
+    tiles_count: usize,
+    tile_coset_stride: usize,
+    flat_root_base: usize,
+}
+
+fn flush_partial_tree_batch(
+    batch: &mut PartialTreeBatch,
+    staging: &DeviceSlice<Digest>,
+    boundary_roots: &mut DeviceSlice<Digest>,
+    log_packed_leaf_count: u32,
+    log_lde_factor: u32,
+    stream: &era_cudart::stream::CudaStream,
+) -> CudaResult<()> {
+    if batch.leaves_len == 0 {
+        return Ok(());
+    }
+    let staged = &staging[..batch.leaves_len];
+    if batch.staged_tile_leaves == 0 {
+        let roots_count = batch.leaves_len >> PARTIAL_TREE_REDUCTION_LAYERS;
+        let roots = &mut boundary_roots[batch.flat_root_base..batch.flat_root_base + roots_count];
+        crate::kernels::reduce_staged_whir_subtrees_flat(staged, roots, stream)?;
+    } else {
+        crate::kernels::reduce_staged_whir_subtrees_natural_tiles(
+            staged,
+            boundary_roots,
+            log_packed_leaf_count,
+            log_lde_factor,
+            batch.first_tile_coset_base as u32,
+            batch.staged_tile_leaves as u32,
+            batch.tiles_count as u32,
+            batch.tile_coset_stride as u32,
+            stream,
+        )?;
+    }
+    *batch = PartialTreeBatch::default();
+    Ok(())
+}
+
 /// Schedules the recursive WHIR oracle's natural multi-coset LDE, leaf
 /// commitment, tree construction, and cap gather. The holder uses the WHIR
 /// shape (`log_lde_factor = log_rows_per_leaf = 0`); the actual LDE and leaf
@@ -72,33 +124,27 @@ pub(crate) fn schedule_recursive_oracle_commit(
             )?;
         }
         TreesHolder::Partial(backing) => {
-            // The transient top contains leaves plus the four node layers
-            // omitted by the persistent partial-tree cache.
-            let mut tree_top =
-                context.alloc::<Digest>(full_tree_len, AllocationPlacement::BestFit)?;
-            let top_log_cap = total_leaf_count_log2 + 1 - PARTIAL_TREE_REDUCTION_LAYERS;
-            commit_trace_from_ntt_single_tree(
+            let boundary_roots_count = total_leaf_count >> PARTIAL_TREE_REDUCTION_LAYERS;
+            assert_eq!(backing.len(), boundary_roots_count << 1);
+            let (boundary_roots, upper_nodes) = backing.split_at_mut(boundary_roots_count);
+            commit_trace_from_ntt_partial_tree(
                 inputs_matrix,
                 ntt_output,
-                &mut tree_top,
+                boundary_roots,
                 log_trace_len,
                 natural_log_lde_factor,
                 log_values_per_leaf,
-                top_log_cap,
                 src_cols_per_coset,
                 transform_leaves_to_multilinear_coeffs,
                 context,
             )?;
-
             let bottom_layers_count =
                 total_leaf_count_log2 + 1 - PARTIAL_TREE_REDUCTION_LAYERS - log_tree_cap_size;
-            let tree_bottom_len = full_tree_len >> PARTIAL_TREE_REDUCTION_LAYERS;
-            assert_eq!(backing.len(), tree_bottom_len);
-            let values = &tree_top[full_tree_len - 2 * tree_bottom_len..][..tree_bottom_len];
+            assert!(bottom_layers_count >= 1);
             gpu_hash::blake2s::build_merkle_tree_nodes(
-                values,
-                backing,
-                bottom_layers_count,
+                boundary_roots,
+                upper_nodes,
+                bottom_layers_count - 1,
                 stream,
             )?;
         }
@@ -146,9 +192,6 @@ fn commit_trace_from_ntt_single_tree(
     transform_leaves_to_multilinear_coeffs: bool,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    assert!(natural_log_lde_factor >= 1);
-    assert!(log_trace_len >= log_values_per_leaf);
-    let trace_len = 1 << log_trace_len;
     let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
     let total_leaf_count = packed_leaf_count
         .checked_mul(1 << natural_log_lde_factor)
@@ -158,6 +201,85 @@ fn commit_trace_from_ntt_single_tree(
     assert!(log_tree_cap_size <= total_leaf_count_log2);
     let layers_count = total_leaf_count_log2 + 1 - log_tree_cap_size;
     let (leaves, nodes) = trees_backing.split_at_mut(total_leaf_count);
+
+    schedule_trace_leaves_from_ntt(
+        inputs_matrix,
+        ntt_output,
+        LeafCommitTarget::FullTree(leaves),
+        log_trace_len,
+        natural_log_lde_factor,
+        log_values_per_leaf,
+        src_cols_per_coset,
+        transform_leaves_to_multilinear_coeffs,
+        context,
+    )?;
+    gpu_hash::blake2s::build_merkle_tree_nodes(
+        leaves,
+        nodes,
+        layers_count - 1,
+        context.get_exec_stream(),
+    )
+}
+
+fn commit_trace_from_ntt_partial_tree(
+    inputs_matrix: &DeviceMatrixChunk<BF>,
+    ntt_output: &mut DeviceSlice<BF>,
+    boundary_roots: &mut DeviceSlice<Digest>,
+    log_trace_len: u32,
+    natural_log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    src_cols_per_coset: usize,
+    transform_leaves_to_multilinear_coeffs: bool,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert_eq!(
+        PARTIAL_TREE_REDUCTION_LAYERS,
+        gpu_core::primitives::utils::WARP_SIZE.trailing_zeros(),
+    );
+    let total_leaf_count =
+        1usize << ((log_trace_len - log_values_per_leaf) + natural_log_lde_factor);
+    assert_eq!(
+        boundary_roots.len(),
+        total_leaf_count >> PARTIAL_TREE_REDUCTION_LAYERS
+    );
+    schedule_trace_leaves_from_ntt(
+        inputs_matrix,
+        ntt_output,
+        LeafCommitTarget::PartialTree(boundary_roots),
+        log_trace_len,
+        natural_log_lde_factor,
+        log_values_per_leaf,
+        src_cols_per_coset,
+        transform_leaves_to_multilinear_coeffs,
+        context,
+    )
+}
+
+fn schedule_trace_leaves_from_ntt(
+    inputs_matrix: &DeviceMatrixChunk<BF>,
+    ntt_output: &mut DeviceSlice<BF>,
+    mut target: LeafCommitTarget<'_>,
+    log_trace_len: u32,
+    natural_log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    src_cols_per_coset: usize,
+    transform_leaves_to_multilinear_coeffs: bool,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(natural_log_lde_factor >= 1);
+    assert!(log_trace_len >= log_values_per_leaf);
+    let trace_len = 1 << log_trace_len;
+    let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
+    let total_leaf_count = packed_leaf_count
+        .checked_mul(1 << natural_log_lde_factor)
+        .expect("total_leaf_count overflow");
+    match &target {
+        LeafCommitTarget::FullTree(leaves) => assert_eq!(leaves.len(), total_leaf_count),
+        LeafCommitTarget::PartialTree(roots) => assert_eq!(
+            roots.len(),
+            total_leaf_count >> PARTIAL_TREE_REDUCTION_LAYERS
+        ),
+    }
 
     let device_properties = context.get_device_properties();
     let ntt_ctx = context.ntt_device_context();
@@ -205,6 +327,52 @@ fn commit_trace_from_ntt_single_tree(
         num_streams = 1;
         cosets_in_tile_chunk = total_cosets;
     }
+
+    let helpers_for_base = |coset_index_base: usize| {
+        let mut helpers = Vec::with_capacity(2);
+        for i in 0..num_streams {
+            let stream_coset_base = coset_index_base + i * cosets_in_tile_chunk;
+            if stream_coset_base < total_cosets {
+                let cosets_in_tile =
+                    std::cmp::min(cosets_in_tile_chunk, total_cosets - stream_coset_base);
+                let offset = src_cols_per_coset * trace_len * stream_coset_base;
+                helpers.push((stream_coset_base, cosets_in_tile, offset));
+            }
+        }
+        helpers
+    };
+    let is_partial = matches!(&target, LeafCommitTarget::PartialTree(_));
+    let use_flat_partial =
+        is_partial && packed_leaf_count < (1usize << PARTIAL_TREE_REDUCTION_LAYERS);
+    let staging_capacity = std::cmp::min(PARTIAL_TREE_STAGING_DIGESTS, total_leaf_count);
+    let mut flat_leaves_per_stream = [0usize; 2];
+    if use_flat_partial {
+        for coset_index_base in (0..total_cosets).step_by(num_streams * cosets_in_tile_chunk) {
+            for (i, &(_, cosets_in_tile, _)) in
+                helpers_for_base(coset_index_base).iter().enumerate()
+            {
+                flat_leaves_per_stream[i] += cosets_in_tile * packed_leaf_count;
+            }
+        }
+        assert_eq!(
+            flat_leaves_per_stream[..num_streams].iter().sum::<usize>(),
+            total_leaf_count
+        );
+        for &leaves_count in &flat_leaves_per_stream[..num_streams] {
+            assert_eq!(leaves_count % (1usize << PARTIAL_TREE_REDUCTION_LAYERS), 0);
+        }
+    }
+    let mut flat_leaf_cursors = [0usize, flat_leaves_per_stream[0]];
+    let mut staging_buffers = Vec::with_capacity(num_streams);
+    if is_partial {
+        for _ in 0..num_streams {
+            staging_buffers
+                .push(context.alloc::<Digest>(staging_capacity, AllocationPlacement::BestFit)?);
+        }
+    }
+    let mut partial_tree_batches = (0..num_streams)
+        .map(|_| PartialTreeBatch::default())
+        .collect::<Vec<_>>();
 
     let mut ntt_output_matrix = DeviceMatrixMut::new(ntt_output, trace_len);
     let (start_event, end_event) = if num_streams > 1 {
@@ -256,18 +424,7 @@ fn commit_trace_from_ntt_single_tree(
     }
 
     for coset_index_base in (0..total_cosets).step_by(num_streams * cosets_in_tile_chunk) {
-        let mut helpers_per_stream = Vec::with_capacity(2);
-        for i in 0..num_streams {
-            let coset_index_base_this_stream = coset_index_base + i * cosets_in_tile_chunk;
-            if coset_index_base_this_stream < total_cosets {
-                let cosets_in_tile = std::cmp::min(
-                    cosets_in_tile_chunk,
-                    total_cosets - coset_index_base_this_stream,
-                );
-                let offset = src_cols_per_coset * trace_len * coset_index_base_this_stream;
-                helpers_per_stream.push((coset_index_base_this_stream, cosets_in_tile, offset));
-            }
-        }
+        let helpers_per_stream = helpers_for_base(coset_index_base);
 
         // Preserve the breadth-first two-stream launch order.
         for (i, &(coset_index_base_this_stream, cosets_in_tile, offset)) in
@@ -292,42 +449,221 @@ fn commit_trace_from_ntt_single_tree(
                 )?;
             }
         }
-        if transform_leaves_to_multilinear_coeffs {
-            assert_eq!(src_cols_per_coset, 4, "coefficient WHIR leaves require E4");
-            let transform_params = ntt_ctx.whir_leaf_transform_params(log_values_per_leaf);
-            for (i, &(coset_index_base_this_stream, cosets_in_tile, offset)) in
-                helpers_per_stream.iter().enumerate()
-            {
-                crate::kernels::transform_and_hash_whir_leaves_from_ntt_multi_coset(
-                    &ntt_output_matrix.slice()[offset..],
-                    leaves,
-                    log_trace_len,
-                    natural_log_lde_factor,
-                    log_values_per_leaf,
-                    coset_index_base_this_stream as u32,
-                    cosets_in_tile as u32,
-                    transform_params,
-                    streams[i],
-                )?;
-            }
-        } else {
-            for (i, &(coset_index_base_this_stream, cosets_in_tile, offset)) in
-                helpers_per_stream.iter().enumerate()
-            {
-                gpu_hash::blake2s::hash_leaves_from_ntt_multi_coset(
-                    &ntt_output_matrix.slice()[offset..],
-                    leaves,
-                    log_values_per_leaf,
-                    src_cols_per_coset as u32,
-                    natural_log_lde_factor,
-                    coset_index_base_this_stream as u32,
-                    cosets_in_tile,
-                    packed_leaf_count,
-                    trace_len as u32,
-                    streams[i],
-                )?;
+        for (i, &(stream_coset_base, cosets_in_tile, offset)) in
+            helpers_per_stream.iter().enumerate()
+        {
+            match &mut target {
+                LeafCommitTarget::FullTree(leaves) => {
+                    if transform_leaves_to_multilinear_coeffs {
+                        assert_eq!(src_cols_per_coset, 4, "coefficient WHIR leaves require E4");
+                        let transform_params =
+                            ntt_ctx.whir_leaf_transform_params(log_values_per_leaf);
+                        crate::kernels::transform_and_hash_whir_leaves_from_ntt_multi_coset(
+                            &ntt_output_matrix.slice()[offset..],
+                            leaves,
+                            log_trace_len,
+                            natural_log_lde_factor,
+                            log_values_per_leaf,
+                            stream_coset_base as u32,
+                            cosets_in_tile as u32,
+                            transform_params,
+                            streams[i],
+                        )?;
+                    } else {
+                        gpu_hash::blake2s::hash_leaves_from_ntt_multi_coset(
+                            &ntt_output_matrix.slice()[offset..],
+                            leaves,
+                            log_values_per_leaf,
+                            src_cols_per_coset as u32,
+                            natural_log_lde_factor,
+                            stream_coset_base as u32,
+                            cosets_in_tile,
+                            packed_leaf_count,
+                            trace_len as u32,
+                            streams[i],
+                        )?;
+                    }
+                }
+                LeafCommitTarget::PartialTree(boundary_roots) => {
+                    let staging = &mut staging_buffers[i];
+                    let batch = &mut partial_tree_batches[i];
+                    if use_flat_partial {
+                        let subtree_leaves = 1usize << PARTIAL_TREE_REDUCTION_LAYERS;
+                        let mut leaves_remaining = cosets_in_tile * packed_leaf_count;
+                        while leaves_remaining > 0 {
+                            if batch.leaves_len == staging_capacity {
+                                flush_partial_tree_batch(
+                                    batch,
+                                    staging,
+                                    boundary_roots,
+                                    log_trace_len - log_values_per_leaf,
+                                    natural_log_lde_factor,
+                                    streams[i],
+                                )?;
+                            }
+                            let flat_leaf_base = flat_leaf_cursors[i];
+                            let leaves_count = std::cmp::min(
+                                leaves_remaining,
+                                staging_capacity - batch.leaves_len,
+                            );
+                            assert_eq!(flat_leaf_base % subtree_leaves, 0);
+                            assert_eq!(leaves_count % subtree_leaves, 0);
+                            if batch.leaves_len == 0 {
+                                batch.flat_root_base =
+                                    flat_leaf_base >> PARTIAL_TREE_REDUCTION_LAYERS;
+                            } else {
+                                assert_eq!(
+                                    batch.flat_root_base
+                                        + (batch.leaves_len >> PARTIAL_TREE_REDUCTION_LAYERS),
+                                    flat_leaf_base >> PARTIAL_TREE_REDUCTION_LAYERS
+                                );
+                            }
+                            let stage_offset = batch.leaves_len;
+                            let stage_dst = &mut staging[stage_offset..stage_offset + leaves_count];
+                            if transform_leaves_to_multilinear_coeffs {
+                                assert_eq!(
+                                    src_cols_per_coset, 4,
+                                    "coefficient WHIR leaves require E4"
+                                );
+                                let transform_params =
+                                    ntt_ctx.whir_leaf_transform_params(log_values_per_leaf);
+                                crate::kernels::transform_and_hash_whir_leaves_from_ntt_flat_range_to_staging(
+                                    ntt_output_matrix.slice(),
+                                    stage_dst,
+                                    log_trace_len,
+                                    natural_log_lde_factor,
+                                    log_values_per_leaf,
+                                    flat_leaf_base,
+                                    leaves_count,
+                                    transform_params,
+                                    streams[i],
+                                )?;
+                            } else {
+                                gpu_hash::blake2s::hash_leaves_from_ntt_flat_range_to_staging(
+                                    ntt_output_matrix.slice(),
+                                    stage_dst,
+                                    log_values_per_leaf,
+                                    src_cols_per_coset as u32,
+                                    natural_log_lde_factor,
+                                    flat_leaf_base,
+                                    leaves_count,
+                                    packed_leaf_count,
+                                    trace_len as u32,
+                                    streams[i],
+                                )?;
+                            }
+                            batch.leaves_len += leaves_count;
+                            flat_leaf_cursors[i] += leaves_count;
+                            leaves_remaining -= leaves_count;
+                        }
+                    } else {
+                        let max_cosets_per_stage = staging_capacity / packed_leaf_count;
+                        assert!(max_cosets_per_stage >= 1);
+                        let mut cosets_staged = 0;
+                        while cosets_staged < cosets_in_tile {
+                            let sub_cosets =
+                                std::cmp::min(max_cosets_per_stage, cosets_in_tile - cosets_staged);
+                            let tile_leaves = sub_cosets * packed_leaf_count;
+                            let tile_coset_base = stream_coset_base + cosets_staged;
+                            let shape_matches = batch.leaves_len == 0
+                                || (batch.staged_tile_leaves == tile_leaves
+                                    && batch.leaves_len + tile_leaves <= staging_capacity
+                                    && (batch.tiles_count == 1
+                                        || tile_coset_base
+                                            == batch.first_tile_coset_base
+                                                + batch.tiles_count * batch.tile_coset_stride));
+                            if !shape_matches {
+                                flush_partial_tree_batch(
+                                    batch,
+                                    staging,
+                                    boundary_roots,
+                                    log_trace_len - log_values_per_leaf,
+                                    natural_log_lde_factor,
+                                    streams[i],
+                                )?;
+                            }
+                            if batch.leaves_len == 0 {
+                                batch.first_tile_coset_base = tile_coset_base;
+                                batch.staged_tile_leaves = tile_leaves;
+                            } else if batch.tiles_count == 1 {
+                                batch.tile_coset_stride =
+                                    tile_coset_base - batch.first_tile_coset_base;
+                            }
+                            let stage_offset = batch.leaves_len;
+                            let stage_dst = &mut staging[stage_offset..stage_offset + tile_leaves];
+                            let source_offset =
+                                offset + cosets_staged * src_cols_per_coset * trace_len;
+                            if transform_leaves_to_multilinear_coeffs {
+                                assert_eq!(
+                                    src_cols_per_coset, 4,
+                                    "coefficient WHIR leaves require E4"
+                                );
+                                let transform_params =
+                                    ntt_ctx.whir_leaf_transform_params(log_values_per_leaf);
+                                crate::kernels::transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging(
+                                    &ntt_output_matrix.slice()[source_offset..],
+                                    stage_dst,
+                                    log_trace_len,
+                                    natural_log_lde_factor,
+                                    log_values_per_leaf,
+                                    tile_coset_base as u32,
+                                    sub_cosets as u32,
+                                    transform_params,
+                                    streams[i],
+                                )?;
+                            } else {
+                                gpu_hash::blake2s::hash_leaves_from_ntt_multi_coset_to_staging(
+                                    &ntt_output_matrix.slice()[source_offset..],
+                                    stage_dst,
+                                    log_values_per_leaf,
+                                    src_cols_per_coset as u32,
+                                    natural_log_lde_factor,
+                                    tile_coset_base as u32,
+                                    sub_cosets,
+                                    packed_leaf_count,
+                                    trace_len as u32,
+                                    streams[i],
+                                )?;
+                            }
+                            batch.leaves_len += tile_leaves;
+                            batch.tiles_count += 1;
+                            cosets_staged += sub_cosets;
+                            if batch.leaves_len == staging_capacity {
+                                flush_partial_tree_batch(
+                                    batch,
+                                    staging,
+                                    boundary_roots,
+                                    log_trace_len - log_values_per_leaf,
+                                    natural_log_lde_factor,
+                                    streams[i],
+                                )?;
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    if is_partial {
+        let LeafCommitTarget::PartialTree(boundary_roots) = &mut target else {
+            unreachable!()
+        };
+        for i in 0..num_streams {
+            flush_partial_tree_batch(
+                &mut partial_tree_batches[i],
+                &staging_buffers[i],
+                boundary_roots,
+                log_trace_len - log_values_per_leaf,
+                natural_log_lde_factor,
+                streams[i],
+            )?;
+        }
+    }
+
+    if use_flat_partial {
+        assert_eq!(flat_leaf_cursors[0], flat_leaves_per_stream[0]);
+        assert_eq!(flat_leaf_cursors[num_streams - 1], total_leaf_count);
     }
 
     if num_streams > 1 {
@@ -338,5 +674,5 @@ fn commit_trace_from_ntt_single_tree(
         )?;
     }
 
-    gpu_hash::blake2s::build_merkle_tree_nodes(leaves, nodes, layers_count - 1, exec_stream)
+    Ok(())
 }

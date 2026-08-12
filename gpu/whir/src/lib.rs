@@ -131,6 +131,7 @@ impl GpuWhirExtensionOracle {
             tree_cap_size,
             transform_leaves_to_multilinear_coeffs,
             CapTarget::OwnAllocation,
+            None,
             context,
         )
     }
@@ -160,6 +161,7 @@ impl GpuWhirExtensionOracle {
             tree_cap_size,
             transform_leaves_to_multilinear_coeffs,
             CapTarget::Slab(cap_dst_u32),
+            None,
             context,
         )
     }
@@ -172,6 +174,7 @@ impl GpuWhirExtensionOracle {
         tree_cap_size: usize,
         transform_leaves_to_multilinear_coeffs: bool,
         cap_target: CapTarget<'_>,
+        trees_cache_mode_override: Option<TreesCacheMode>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         assert!(!monomial_coeffs.slice().is_empty());
@@ -192,8 +195,9 @@ impl GpuWhirExtensionOracle {
         let packed_leaf_count = trace_len / values_per_leaf;
         let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
-        let trees_cache_mode =
-            Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size);
+        let trees_cache_mode = trees_cache_mode_override.unwrap_or_else(|| {
+            Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size)
+        });
 
         let mut trace_holder = TraceHolder::new(
             total_leaf_count_log2,
@@ -572,6 +576,27 @@ impl GpuWhirExtensionOracle {
         transform_leaves_to_multilinear_coeffs: bool,
         context: &ProverContext,
     ) -> CudaResult<Self> {
+        Self::from_monomial_coeffs_with_cache_mode(
+            monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            transform_leaves_to_multilinear_coeffs,
+            None,
+            context,
+        )
+    }
+
+    #[cfg(test)]
+    fn from_monomial_coeffs_with_cache_mode(
+        monomial_coeffs: &[E4],
+        lde_factor: usize,
+        values_per_leaf: usize,
+        tree_cap_size: usize,
+        transform_leaves_to_multilinear_coeffs: bool,
+        trees_cache_mode_override: Option<TreesCacheMode>,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let trace_len = monomial_coeffs.len();
         let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
         bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
@@ -584,35 +609,15 @@ impl GpuWhirExtensionOracle {
         let host = alloc_static_pinned_box_from_slice(&vectorized_monomial_coeffs[..])?;
         memory_copy_async(&mut monomial_coeffs_device_alloc, &host[..], stream)?;
         let monomial_coeffs_device = DeviceMatrix::new(&monomial_coeffs_device_alloc, trace_len);
-        Self::from_device_monomial_coeffs(
+        let oracle = Self::from_device_monomial_coeffs_impl(
             &monomial_coeffs_device,
             trace_len,
             lde_factor,
             values_per_leaf,
             tree_cap_size,
             transform_leaves_to_multilinear_coeffs,
-            context,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn from_device_monomial_coeffs(
-        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
-        trace_len: usize,
-        lde_factor: usize,
-        values_per_leaf: usize,
-        tree_cap_size: usize,
-        transform_leaves_to_multilinear_coeffs: bool,
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
-        let oracle = Self::from_device_monomial_coeffs_impl(
-            monomial_coeffs,
-            trace_len,
-            lde_factor,
-            values_per_leaf,
-            tree_cap_size,
-            transform_leaves_to_multilinear_coeffs,
             CapTarget::OwnAllocation,
+            trees_cache_mode_override,
             context,
         )?;
         context.get_exec_stream().synchronize()?;
@@ -753,6 +758,83 @@ pub(crate) mod tests {
                 ])
             })
             .collect()
+    }
+
+    fn copy_tree(oracle: &GpuWhirExtensionOracle, context: &ProverContext) -> Vec<Digest> {
+        let tree = match &oracle.trace_holder.trees {
+            TreesHolder::Full(tree) | TreesHolder::Partial(tree) => tree,
+            TreesHolder::None => panic!("recursive oracle has no tree backing"),
+        };
+        let mut host = vec![Digest::default(); tree.len()];
+        memory_copy_async(&mut host, &tree[..], context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        host
+    }
+
+    fn assert_partial_tree_prefix_matches_full(
+        log_trace_len: u32,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        cap_size: usize,
+        transform: bool,
+    ) {
+        let context = make_test_context(512, 32);
+        let monomial_coeffs = sample_monomial_coeffs(1 << log_trace_len);
+        let mut full = GpuWhirExtensionOracle::from_monomial_coeffs_with_cache_mode(
+            &monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            cap_size,
+            transform,
+            Some(TreesCacheMode::CacheFull),
+            &context,
+        )
+        .unwrap();
+        let mut partial = GpuWhirExtensionOracle::from_monomial_coeffs_with_cache_mode(
+            &monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            cap_size,
+            transform,
+            Some(TreesCacheMode::CachePartial),
+            &context,
+        )
+        .unwrap();
+
+        let leaves = (1usize << log_trace_len) * lde_factor / values_per_leaf;
+        let partial_len = leaves / 16;
+        let initialized_len = partial_len - cap_size;
+        let full_start = 2 * leaves - partial_len;
+        let full_tree = copy_tree(&full, &context);
+        let partial_tree = copy_tree(&partial, &context);
+        assert_eq!(partial_tree.len(), partial_len);
+        assert_eq!(
+            &partial_tree[..initialized_len],
+            &full_tree[full_start..full_start + initialized_len],
+        );
+        assert_eq!(
+            partial.get_tree_cap(&context).unwrap(),
+            full.get_tree_cap(&context).unwrap(),
+        );
+
+        let mut query_indexes = vec![
+            0,
+            31.min(leaves - 1),
+            32.min(leaves - 1),
+            leaves / 2,
+            leaves - 1,
+        ];
+        query_indexes.sort_unstable();
+        query_indexes.dedup();
+        for query_index in query_indexes {
+            assert_eq!(
+                partial
+                    .query_for_folded_index(query_index, &context)
+                    .unwrap(),
+                full.query_for_folded_index(query_index, &context).unwrap(),
+                "query {query_index} differs between partial and full cache",
+            );
+        }
     }
 
     fn compute_column_major_lde_from_monomial_form_for_test(
@@ -1554,5 +1636,26 @@ pub(crate) mod tests {
                 "query {query_index} path helper diverged"
             );
         }
+    }
+
+    #[test]
+    fn partial_tree_prefix_matches_full_tree() {
+        let shapes = [
+            (11u32, 2048usize, 32usize),
+            (8u32, 8192usize, 16usize),
+            (6u32, 32usize, 32usize),
+        ];
+        for transform in [false, true] {
+            for (log_trace_len, lde_factor, values_per_leaf) in shapes {
+                assert_partial_tree_prefix_matches_full(
+                    log_trace_len,
+                    lde_factor,
+                    values_per_leaf,
+                    1,
+                    transform,
+                );
+            }
+        }
+        assert_partial_tree_prefix_matches_full(14, 256, 32, 1, false);
     }
 }
