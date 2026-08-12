@@ -2,59 +2,6 @@
 
 namespace airbender::hash {
 
-// Warp-shuffle Merkle-path collection constants. Only the gather kernels below
-// need them, so they live here rather than in the shared hash.cuh surface.
-constexpr unsigned LOG_WARP_SIZE = 5;
-constexpr unsigned WARP_MASK = (1u << LOG_WARP_SIZE) - 1;
-constexpr u32 FULL_MASK = 0xffffffff;
-
-// Warp-cooperative Merkle-path collection for one query. Given this lane's
-// absorbed leaf `state`, hashes the bottom LOG_WARP_SIZE layers via warp-shuffle
-// (the output lane writes each layer's sibling digest), then walks the remaining
-// layers from the cached `tree_bottom`. `merkle_paths` points at layer 0's slot;
-// consecutive layers are `layer_stride_words` apart. `state` is consumed.
-DEVICE_FORCEINLINE void collect_merkle_path_warp(u32 state[STATE_SIZE], u32 *merkle_paths, const unsigned layer_stride_words, const unsigned lane_idx,
-                                                 const bool is_output_lane, const unsigned query_index, const unsigned log_total_leaves_count,
-                                                 const unsigned layers_count, const u32 *tree_bottom) {
-  u32 block[BLOCK_SIZE];
-#pragma unroll
-  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
-    digest other_state;
-    const bool take_other_first = (lane_idx >> layer) & 1;
-#pragma unroll
-    for (unsigned i = 0; i < STATE_SIZE; i++) {
-      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
-      if (take_other_first) {
-        block[i] = other_state[i];
-        block[i + STATE_SIZE] = state[i];
-      } else {
-        block[i] = state[i];
-        block[i + STATE_SIZE] = other_state[i];
-      }
-    }
-    if (is_output_lane)
-      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
-    initialize(state);
-    u32 t = 0;
-    compress<true>(state, t, block, BLOCK_SIZE);
-    merkle_paths += layer_stride_words;
-  }
-  if (lane_idx >= STATE_SIZE)
-    return;
-  unsigned digest_index = query_index >> LOG_WARP_SIZE;
-  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
-  const u32 *tree_layer = tree_bottom + lane_idx;
-  u32 *merkle_paths_dst = merkle_paths + lane_idx;
-  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
-    const unsigned other_index = digest_index ^ 1;
-    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
-    digest_index >>= 1;
-    tree_layer += (1u << log_digests_count) * STATE_SIZE;
-    log_digests_count--;
-    merkle_paths_dst += layer_stride_words;
-  }
-}
-
 EXTERN __global__ void ab_gather_leaf_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
                                                   const unsigned log_leaves_count, const unsigned log_rows_per_leaf,
                                                   const matrix_getter<bf, ld_modifier::cs> values, const matrix_setter<bf, st_modifier::cs> results) {
