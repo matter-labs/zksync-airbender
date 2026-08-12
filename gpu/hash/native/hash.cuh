@@ -141,6 +141,28 @@ template <typename ReadE4> DEVICE_FORCEINLINE void absorb_e4_stream(u32 state[ST
   }
 }
 
+DEVICE_FORCEINLINE void reduce_merkle_subtrees_block(digest *values, unsigned active) {
+#pragma unroll
+  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
+    const bool enabled = threadIdx.x < active;
+    digest children[2];
+    if (enabled) {
+      children[0] = values[2 * threadIdx.x];
+      children[1] = values[2 * threadIdx.x + 1];
+    }
+    __syncthreads();
+    if (enabled) {
+      digest state;
+      initialize(state.words);
+      u32 t = 0;
+      compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+      values[threadIdx.x] = state;
+    }
+    __syncthreads();
+    active >>= 1;
+  }
+}
+
 // Rebuilds the bottom five layers with warp shuffles before walking the cached tree.
 DEVICE_FORCEINLINE void collect_merkle_path_warp(u32 state[STATE_SIZE], u32 *merkle_paths, const unsigned layer_stride_words, const unsigned lane_idx,
                                                  const bool is_output_lane, const unsigned query_index, const unsigned log_total_leaves_count,

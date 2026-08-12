@@ -211,4 +211,128 @@ EXTERN __launch_bounds__(512, 2) __global__
   store_cs(reinterpret_cast<::airbender::hash::digest *>(results) + output_leaf, state);
 }
 
+EXTERN __launch_bounds__(512, 2) __global__
+    void ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_kernel(vectorized_e4_matrix_getter<ld_modifier::cs> ntt_output, u32 *staging,
+                                                                                  const ::airbender::ntt::whir_leaf_transform_params transform_params,
+                                                                                  const unsigned log_trace_len, const unsigned log_lde_factor,
+                                                                                  const unsigned log_values_per_leaf, const unsigned coset_index_base) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  const unsigned log_packed_leaf_count = log_trace_len - log_values_per_leaf;
+  const unsigned packed_leaf_count = 1u << log_packed_leaf_count;
+  const unsigned coset_in_tile = gid >> log_packed_leaf_count;
+  const unsigned leaf_in_coset = gid & (packed_leaf_count - 1u);
+  const unsigned natural_coset = coset_index_base + coset_in_tile;
+  ntt_output.add_col(coset_in_tile);
+  ntt_output.add_row(leaf_in_coset);
+
+  extern __shared__ __align__(16) uint8_t smem[];
+  e4 *coefficient_leaves = reinterpret_cast<e4 *>(smem);
+  bf *x_invs_smem = reinterpret_cast<bf *>(coefficient_leaves + (blockDim.x << log_values_per_leaf));
+  shared_query_leaf_destination destination{coefficient_leaves, log_values_per_leaf};
+  const ::airbender::ntt::params_inverse_power_source inverse_power_source{transform_params};
+  ::airbender::ntt::transform_whir_leaf_from_ntt(ntt_output, destination, log_trace_len, log_lde_factor, log_values_per_leaf, natural_coset, leaf_in_coset,
+                                                 coefficient_leaves, x_invs_smem, transform_params.two_inv_power, inverse_power_source);
+  __syncthreads();
+  if (threadIdx.y != 0)
+    return;
+
+  auto read_e4 = [=](const unsigned value_slot) -> e4 { return coefficient_leaves[value_slot * blockDim.x + threadIdx.x]; };
+  ::airbender::hash::digest state;
+  ::airbender::hash::initialize(state.words);
+  u32 t = 0;
+  ::airbender::hash::absorb_e4_stream(state.words, t, 1u << log_values_per_leaf, read_e4);
+  store_cs(reinterpret_cast<::airbender::hash::digest *>(staging) + gid, state);
+}
+
+EXTERN __launch_bounds__(512, 2) __global__
+    void ab_transform_and_hash_whir_leaves_from_ntt_flat_range_to_staging_kernel(vectorized_e4_matrix_getter<ld_modifier::cs> ntt_output, u32 *staging,
+                                                                                 const ::airbender::ntt::whir_leaf_transform_params transform_params,
+                                                                                 const unsigned log_trace_len, const unsigned log_lde_factor,
+                                                                                 const unsigned log_values_per_leaf, const unsigned flat_leaf_base) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  const unsigned flat_leaf = flat_leaf_base + gid;
+  const unsigned log_packed_leaf_count = log_trace_len - log_values_per_leaf;
+  const unsigned packed_leaf_count = 1u << log_packed_leaf_count;
+  const unsigned bitrev_coset = flat_leaf >> log_packed_leaf_count;
+  const unsigned leaf_in_coset = flat_leaf & (packed_leaf_count - 1u);
+  const unsigned natural_coset = bitreverse_low_bits(bitrev_coset, log_lde_factor);
+  ntt_output.add_col(natural_coset);
+  ntt_output.add_row(leaf_in_coset);
+
+  extern __shared__ __align__(16) uint8_t smem[];
+  e4 *coefficient_leaves = reinterpret_cast<e4 *>(smem);
+  bf *x_invs_smem = reinterpret_cast<bf *>(coefficient_leaves + (blockDim.x << log_values_per_leaf));
+  shared_query_leaf_destination destination{coefficient_leaves, log_values_per_leaf};
+  const ::airbender::ntt::params_inverse_power_source inverse_power_source{transform_params};
+  ::airbender::ntt::transform_whir_leaf_from_ntt(ntt_output, destination, log_trace_len, log_lde_factor, log_values_per_leaf, natural_coset, leaf_in_coset,
+                                                 coefficient_leaves, x_invs_smem, transform_params.two_inv_power, inverse_power_source);
+  __syncthreads();
+  if (threadIdx.y != 0)
+    return;
+
+  auto read_e4 = [=](const unsigned value_slot) -> e4 { return coefficient_leaves[value_slot * blockDim.x + threadIdx.x]; };
+  ::airbender::hash::digest state;
+  ::airbender::hash::initialize(state.words);
+  u32 t = 0;
+  ::airbender::hash::absorb_e4_stream(state.words, t, 1u << log_values_per_leaf, read_e4);
+  store_cs(reinterpret_cast<::airbender::hash::digest *>(staging) + gid, state);
+}
+
+EXTERN __launch_bounds__(256) __global__ void ab_reduce_staged_whir_subtrees_flat_kernel(const u32 *staged, u32 *boundary_roots, const unsigned roots_count) {
+  constexpr unsigned ROOTS_PER_BLOCK = 16;
+  constexpr unsigned LEAVES_PER_BLOCK = ROOTS_PER_BLOCK << ::airbender::hash::LOG_WARP_SIZE;
+  const unsigned root_base = blockIdx.x * ROOTS_PER_BLOCK;
+  const unsigned valid_roots = min(ROOTS_PER_BLOCK, roots_count - root_base);
+  const unsigned valid_leaves = valid_roots << ::airbender::hash::LOG_WARP_SIZE;
+  const unsigned leaf_base = blockIdx.x * LEAVES_PER_BLOCK;
+  const auto staged_d = reinterpret_cast<const ::airbender::hash::digest *>(staged);
+  auto boundary_roots_d = reinterpret_cast<::airbender::hash::digest *>(boundary_roots);
+  extern __shared__ __align__(32) uint8_t reducer_smem[];
+  auto values = reinterpret_cast<::airbender::hash::digest *>(reducer_smem);
+  if (threadIdx.x < valid_leaves)
+    values[threadIdx.x] = load_cs(staged_d + leaf_base + threadIdx.x);
+  if (threadIdx.x + blockDim.x < valid_leaves)
+    values[threadIdx.x + blockDim.x] = load_cs(staged_d + leaf_base + threadIdx.x + blockDim.x);
+  __syncthreads();
+  ::airbender::hash::reduce_merkle_subtrees_block(values, valid_leaves >> 1);
+  if (threadIdx.x < valid_roots)
+    store_cs(boundary_roots_d + root_base + threadIdx.x, values[threadIdx.x]);
+}
+
+EXTERN __launch_bounds__(256) __global__
+    void ab_reduce_staged_whir_subtrees_natural_tiles_kernel(const u32 *staged, u32 *boundary_roots, const unsigned log_packed_leaf_count,
+                                                             const unsigned log_lde_factor, const unsigned first_tile_coset_base,
+                                                             const unsigned staged_tile_leaves, const unsigned tiles_count, const unsigned tile_coset_stride,
+                                                             const unsigned roots_count) {
+  constexpr unsigned ROOTS_PER_BLOCK = 16;
+  constexpr unsigned LEAVES_PER_BLOCK = ROOTS_PER_BLOCK << ::airbender::hash::LOG_WARP_SIZE;
+  const unsigned root_base = blockIdx.x * ROOTS_PER_BLOCK;
+  const unsigned valid_roots = min(ROOTS_PER_BLOCK, roots_count - root_base);
+  const unsigned valid_leaves = valid_roots << ::airbender::hash::LOG_WARP_SIZE;
+  const unsigned leaf_base = blockIdx.x * LEAVES_PER_BLOCK;
+  const auto staged_d = reinterpret_cast<const ::airbender::hash::digest *>(staged);
+  auto boundary_roots_d = reinterpret_cast<::airbender::hash::digest *>(boundary_roots);
+  extern __shared__ __align__(32) uint8_t reducer_smem[];
+  auto values = reinterpret_cast<::airbender::hash::digest *>(reducer_smem);
+  if (threadIdx.x < valid_leaves)
+    values[threadIdx.x] = load_cs(staged_d + leaf_base + threadIdx.x);
+  if (threadIdx.x + blockDim.x < valid_leaves)
+    values[threadIdx.x + blockDim.x] = load_cs(staged_d + leaf_base + threadIdx.x + blockDim.x);
+  __syncthreads();
+  ::airbender::hash::reduce_merkle_subtrees_block(values, valid_leaves >> 1);
+  if (threadIdx.x < valid_roots) {
+    const unsigned staged_root = root_base + threadIdx.x;
+    const unsigned staged_leaf = staged_root << ::airbender::hash::LOG_WARP_SIZE;
+    const unsigned tile = staged_leaf / staged_tile_leaves;
+    const unsigned leaf_in_tile = staged_leaf - tile * staged_tile_leaves;
+    const unsigned coset_in_tile = leaf_in_tile >> log_packed_leaf_count;
+    const unsigned leaf_in_coset = leaf_in_tile & ((1u << log_packed_leaf_count) - 1u);
+    const unsigned natural_coset = first_tile_coset_base + tile * tile_coset_stride + coset_in_tile;
+    const unsigned bitrev_coset = bitreverse_low_bits(natural_coset, log_lde_factor);
+    const unsigned roots_per_coset = 1u << (log_packed_leaf_count - ::airbender::hash::LOG_WARP_SIZE);
+    const unsigned output_root = bitrev_coset * roots_per_coset + (leaf_in_coset >> ::airbender::hash::LOG_WARP_SIZE);
+    store_cs(boundary_roots_d + output_root, values[threadIdx.x]);
+  }
+}
+
 } // namespace airbender::whir
