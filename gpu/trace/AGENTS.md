@@ -3,8 +3,10 @@
 `gpu_trace` owns witness generation (`witness/**`) and trace commit/holder
 (`trace/**`): the machinery that turns a compiled circuit + captured
 non-determinism into a device-resident trace and commits it (LDE, leaf
-transform, Merkle-tree build). It carries the `gpu_trace_native` CUDA archive
-(the tree that used to live under `circuit_prover/native/witness/`).
+transform, Merkle-tree build). Recursive-WHIR oracle commitment is owned by
+`gpu_whir/src/oracle_commit.rs`. This crate carries the `gpu_trace_native`
+CUDA archive (the tree that used to live under
+`circuit_prover/native/witness/`).
 
 ## Layer position
 
@@ -18,14 +20,13 @@ it, never the reverse.
 
 ## GPU Scheduling Contract
 
-`trace::holder` schedules GPU work directly (LDE, leaf-transform, and
-leaf-commit kernels; the Merkle-tree build; the trace holder's parallel-commit
-use of `side_stream`). Before editing anything under `src/trace/` or
+`trace::holder` schedules GPU work directly (LDE, leaf-transform and
+leaf-commit kernels, and Merkle-tree builds). Before editing anything under `src/trace/` or
 `src/witness/` that launches kernels, schedules host callbacks, or manages
 streams, read [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md)
-in full — in particular the *Side stream* section, which documents this
-crate's `commit_trace_from_ntt_single_tree` (`src/trace/holder/mod.rs`) as the
-only current consumer of `ProverContext::get_side_stream()`.
+in full. The contract's *Side stream* section now belongs to `gpu_whir`'s
+recursive-oracle scheduler; `gpu_trace` does not call
+`ProverContext::get_side_stream()`.
 
 ## Upstream imports
 

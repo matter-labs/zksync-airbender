@@ -59,8 +59,9 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   `gpu_ntt_native`; `circuit_prover` drops `gpu_prover_ntt` and links gpu_ntt's
   archive via build-script propagation. Co-locating the `cuda_struct_and_stub!`
   twiddle stubs with their `native/ntt __constant__` defs fixes the NTT
-  cross-wall pitfall. Its tests are self-contained (raw era_cudart allocations +
-  `DeviceContext::create`, no `ProverContext`).
+  cross-wall pitfall. Its build exports `native/` so gpu_whir can include the
+  reusable `whir_leaf_transform.cuh` device helper. Its tests are self-contained
+  (raw era_cudart allocations + `DeviceContext::create`, no `ProverContext`).
 - **`gpu_ops`** = the generic math/transform kernels (`simple`, `powers`,
   `squaring`, `transpose`, `bit_reverse`) with its own
   `gpu_ops_native`. `bit_reverse` is **size-generic**: `bit_reverse_in_place<T>`
@@ -132,10 +133,12 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   `gkr/support/{eq_inline,kernel_helpers}.cuh`; reads `gpu_hash`'s `hash.cuh`
   for its own blake2s-dependent protocol kernels. See [`gkr/AGENTS.md`](gkr/AGENTS.md).
 - **`gpu_whir`** = WHIR folds (`fold/`) + PoW/query scheduling (`pow.rs`) +
-  the recursive WHIR extension oracle, with its own `gpu_whir_native` (17
-  kernels, no `__constant__` symbols), namespace `airbender::whir`. Reads
+  the recursive WHIR extension oracle and its side-stream LDE/Merkle commit
+  scheduler, with its own `gpu_whir_native` (20 kernels, no `__constant__`
+  symbols), namespace `airbender::whir`. Reads
   `gpu_gkr`'s exported headers (`accumulate_eq.cu`) and `gpu_hash`'s
-  `hash.cuh` (`leaves.cu`). Features `deterministic_pow =
+  `hash.cuh` plus gpu_ntt's exported `whir_leaf_transform.cuh` (`leaves.cu`).
+  Features `deterministic_pow =
   ["prover/deterministic_pow","gpu_hash/deterministic_pow"]` (owns both
   determinism legs; `prover` is a normal, not dev-only, dependency here only
   for that forward), and `eval_leaves`. See [`whir/AGENTS.md`](whir/AGENTS.md).

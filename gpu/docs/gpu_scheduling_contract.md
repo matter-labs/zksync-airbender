@@ -65,8 +65,8 @@ edge cases, and wiring behind each rule.
 
 - **Side stream** (`side_stream`, `get_side_stream()`): an auxiliary compute
   stream used to overlap independent kernel work with exec_stream. Its only
-  consumer is `gpu_trace`'s trace holder, for parallel trace commit — see
-  *Side stream* below.
+  consumer is `gpu_whir`'s recursive-oracle commit scheduler — see *Side
+  stream* below.
 
 **Rule for auxiliary streams**: any operation on an auxiliary stream
 (h2d_stream or side_stream) must be explicitly ordered with
@@ -229,11 +229,12 @@ and keep the host destination alive until that callback has been scheduled.
 
 `side_stream` (`ProverContext::get_side_stream()`) carries general compute
 kernels in parallel with the same kind of kernels on
-exec_stream. Its only current consumer is `gpu_trace`'s trace holder
-(`commit_trace_from_ntt_single_tree` in `gpu/trace/src/trace/holder/mod.rs`),
-for parallel trace commit — ping-ponging LDE, leaf-transform, and leaf-commit
-kernels across coset-index chunks between `exec_stream` and `side_stream` to
-overlap the two streams' compute.
+exec_stream. Its only current consumer is the recursive-WHIR commit scheduler
+(`commit_trace_from_ntt_single_tree` in
+`gpu/whir/src/oracle_commit.rs`), which ping-pongs LDE and leaf-commit work
+across coset-index chunks between `exec_stream` and `side_stream`. Coefficient
+commit uses the fused shared-memory transform-and-hash kernel; evaluation
+commit uses the ordinary leaf-hash kernel.
 
 The same fork/join/write-exclusivity/drop discipline as H2D applies, adapted to
 a compute workload:
@@ -241,8 +242,8 @@ a compute workload:
 ```text
 exec_stream:  record E_start                     ("first chunk's inputs are ready")
 side_stream:  wait_event(E_start)                 ("don't start before exec_stream is ready")
-exec_stream:  chunk 0, 2, 4, … : LDE / leaf-transform / leaf-commit kernels
-side_stream:  chunk 1, 3, 5, … : LDE / leaf-transform / leaf-commit kernels
+exec_stream:  chunk 0, 2, 4, … : LDE / leaf-commit kernels
+side_stream:  chunk 1, 3, 5, … : LDE / leaf-commit kernels
 side_stream:  record E_done                       ("side_stream's chunks are committed")
 exec_stream:  wait_event(E_done)                  ("don't build Merkle-tree nodes yet")
 exec_stream:  build_merkle_tree_nodes(...)         (exec_stream-only; reads every chunk)
