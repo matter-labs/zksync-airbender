@@ -12,7 +12,7 @@ transform, Merkle-tree build). It carries the `gpu_trace_native` CUDA archive
 gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
 gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. Dependencies point only down: this crate depends on `gpu_core`,
-`gpu_ntt`, `gpu_ops`, `gpu_hash`, `gpu_cub`, and `gpu_prover_context`, plus
+`gpu_ntt`, `gpu_ops`, `gpu_hash`, and `gpu_prover_context`, plus
 the upstream crates below; `gpu_gkr`/`gpu_whir`/`gpu_circuit_prover` depend on
 it, never the reverse.
 
@@ -64,13 +64,11 @@ because the witness CUDA it guards moved here.
 - **Archive / `links` key**: `gpu_trace_native` (`build.rs` is a one-line
   `gpu_native_build::CudaArchive::new("gpu_trace_native", "GPU_TRACE").build()`
   call — no `export_include`, no `deterministic_pow`).
-- **Kernel count**: 31 (`__global__` kernels, verified by grep) — 20 literal
-  (`memory_delegation.cu` 8, `memory_unrolled.cu` 7, `multiplicities.cu` 2,
-  `circuits/add_sub_lui_auipc_mop.cuh` 3)
-  plus 11 token-pasted `ab_generate_witness_values_<NAME>_kernel` symbols
-  (never appear as literals in native — formed by the `KERNEL_NAME(NAME)`
-  macro in `witness_generation.cuh`, one per circuit under
-  `witness/circuits/`). No `__device__ __constant__` symbols in this archive
+- **Kernel count**: 40 — 18 literal (`memory_delegation.cu` 8,
+  `memory_unrolled.cu` 7, `multiplicities.cu` 3) plus 22 token-pasted witness
+  and fused stage-1 kernels (two per circuit under `witness/circuits/`). The
+  three macro declarations make a source-level `__global__` grep report 21.
+  No `__device__ __constant__` symbols in this archive
   (all 8 cluster-wide ones live in `gpu_gkr`).
 - **Namespace**: `airbender::trace::witness::*` (sub-namespaces per concern:
   `memory`, `memory::delegation`, `memory::unrolled`, `multiplicities`,
