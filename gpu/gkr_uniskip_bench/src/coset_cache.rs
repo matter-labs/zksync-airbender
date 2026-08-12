@@ -2570,8 +2570,10 @@ pub enum LaneKernel {
 }
 
 impl LaneKernel {
-    /// Every kernel a lane can name. It exists so the symbol-drift pin over [`Self::name`]
-    /// is exhaustive by construction rather than by a hand-kept list in a test.
+    /// Every kernel a lane can name, so the symbol-drift pin over [`Self::name`] can iterate
+    /// them. The table itself is just a literal — what keeps it COMPLETE is the exhaustive
+    /// match in `cpu_lane_kernel_names_match_the_exported_symbols`, where a new variant fails
+    /// to compile until it has an entry here.
     pub const ALL: [LaneKernel; 16] = [
         Self::Pair,
         Self::Pair128,
@@ -3061,6 +3063,39 @@ mod lane_tests {
     /// (M4). A typo on either side would otherwise surface only at the first launch.
     #[test]
     fn cpu_lane_kernel_names_match_the_exported_symbols() {
+        // WHAT MAKES `ALL` COMPLETE — the type `[LaneKernel; 16]` does not: it only reacts to
+        // edits of the literal, so a 17th variant would compile with an unpinned symbol. This
+        // match is total over the enum, and every arm names that variant's OWN slot: a new
+        // variant fails to compile until it appears here, and its arm then fails to compile
+        // until the table has a slot to point at (an out-of-range index on a const array is
+        // `unconditional_panic`, i.e. a build error, not a test failure).
+        let entry = |kernel: LaneKernel| match kernel {
+            LaneKernel::Pair => LaneKernel::ALL[0],
+            LaneKernel::Pair128 => LaneKernel::ALL[1],
+            LaneKernel::Pair128Lb => LaneKernel::ALL[2],
+            LaneKernel::Cached => LaneKernel::ALL[3],
+            LaneKernel::Cached128 => LaneKernel::ALL[4],
+            LaneKernel::Cached128Lb => LaneKernel::ALL[5],
+            LaneKernel::Reorder128 => LaneKernel::ALL[6],
+            LaneKernel::Reorder128Lb => LaneKernel::ALL[7],
+            LaneKernel::SegSCv64 => LaneKernel::ALL[8],
+            LaneKernel::SegSCv100 => LaneKernel::ALL[9],
+            LaneKernel::SegSAcc => LaneKernel::ALL[10],
+            LaneKernel::SegG => LaneKernel::ALL[11],
+            LaneKernel::SegRecompute => LaneKernel::ALL[12],
+            LaneKernel::SegbG => LaneKernel::ALL[13],
+            LaneKernel::SegbRecompute => LaneKernel::ALL[14],
+            LaneKernel::SegbGSlotted => LaneKernel::ALL[15],
+        };
+        for (i, kernel) in LaneKernel::ALL.into_iter().enumerate() {
+            assert_eq!(
+                entry(kernel),
+                kernel,
+                "LaneKernel::ALL[{i}] ({}) is not the slot its variant names — the table and \
+                 the exhaustive match disagree about the order",
+                kernel.name()
+            );
+        }
         let gates = concat!(
             include_str!("../tools/r4_gates.sh"),
             include_str!("../tools/r5_gates.sh"),
