@@ -2,7 +2,7 @@ use crate::lazy_vec::LazyVec;
 use crate::structs::TranscriptState;
 use blake2s_u32::{AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use field::{Field, FieldExtension, PrimeField};
-use non_determinism_source::NonDeterminismSource;
+use non_determinism_source::U32WordNonDeterminismSource;
 use transcript::Blake2sTranscript;
 
 #[repr(usize)]
@@ -162,7 +162,7 @@ impl<
 pub fn make_initial_transcript<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    I: NonDeterminismSource,
+    I: U32WordNonDeterminismSource,
     const INIT_AND_TEARDOWN_SETS: usize,
     const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize,
     const CAP_SIZE: usize,
@@ -268,6 +268,8 @@ pub struct GKRVerifierOutput<E: Field, const ROUNDS: usize, const ADDRS: usize> 
     pub evaluation_point_len: usize,
     pub permutation_read_product: E,
     pub permutation_write_product: E,
+    pub inits_and_teardowns_read_product: E,
+    pub inits_and_teardowns_write_product: E,
     pub whir_batching_challenge: E,
     pub base_layer_claims: LazyVec<E, ADDRS>,
 }

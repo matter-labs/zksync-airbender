@@ -68,10 +68,11 @@ impl<C: Counters> State<C> {
 
 impl<C: Counters + From<MachineCounters>> From<MachineState> for State<C> {
     fn from(state: MachineState) -> Self {
+        let register_timestamps = state.register_timestamps_array();
         Self {
             registers: std::array::from_fn(|i| Register {
-                timestamp: state.register_timestamps[i],
-                value: state.registers[i],
+                timestamp: register_timestamps[i],
+                value: state.get_register(i),
             }),
             timestamp: state.timestamp,
             pc: state.pc,

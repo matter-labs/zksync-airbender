@@ -19,3 +19,7 @@ type-map = "0.5"
 [dev-dependencies]
 rand = { workspace = true, features = ["std", "std_rng", "thread_rng"]}
 
+[[bench]]
+name = "ntt"
+harness = false
+

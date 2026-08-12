@@ -134,7 +134,7 @@ impl From<MachineCounters> for DelegationsAndFamiliesCounters {
         Self {
             add_sub_family: counters[CounterType::AddSubLui as u8 as usize] as usize,
             slt_branch_family: counters[CounterType::BranchSlt as u8 as usize] as usize,
-            binary_shift_family: counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize,
+            binary_shift_family: counters[CounterType::ShiftBinary as u8 as usize] as usize,
             mul_div_family: counters[CounterType::MulDiv as u8 as usize] as usize,
             word_size_mem_family: counters[CounterType::MemWord as u8 as usize] as usize,
             subword_size_mem_family: counters[CounterType::MemSubword as u8 as usize] as usize,
@@ -225,7 +225,7 @@ impl From<MachineCounters> for DelegationsAndUnifiedCounters {
     fn from(counters: MachineCounters) -> Self {
         let add_sub_family = counters[CounterType::AddSubLui as u8 as usize] as usize;
         let slt_branch_family = counters[CounterType::BranchSlt as u8 as usize] as usize;
-        let binary_shift_family = counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize;
+        let binary_shift_family = counters[CounterType::ShiftBinary as u8 as usize] as usize;
         let mul_div_family = counters[CounterType::MulDiv as u8 as usize] as usize;
         let word_size_mem_family = counters[CounterType::MemWord as u8 as usize] as usize;
         let subword_size_mem_family = counters[CounterType::MemSubword as u8 as usize] as usize;

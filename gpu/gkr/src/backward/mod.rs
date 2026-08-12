@@ -1,0 +1,178 @@
+use std::collections::BTreeMap;
+
+use era_cudart::result::CudaResult;
+
+use super::GpuGKRStorage;
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::device_tracing::Range;
+use gpu_core::primitives::field::{BF, E4};
+use gpu_prover_context::ProverContext;
+
+mod dim_reducing_encoder;
+mod dim_reducing_sumcheck_plan;
+pub mod kernels;
+mod main_layer;
+mod scheduled_execution;
+mod stage_snapshots;
+pub(crate) mod vm;
+
+pub(crate) use kernels::*;
+pub use kernels::{
+    eq_group_count, eq_group_tables_len, gkr_dim_reducing_launch_config,
+    launch_build_eq_values_from_point, make_eq_sizes, ClaimBufferLayout, GkrEqSizes,
+    GpuGKRBackwardScheduledExecution, GpuGKRDimensionReducingBackwardState, GKR_EQ_GROUP_TABLE_LEN,
+    GKR_EQ_HIGH_SLOTS,
+};
+#[doc(hidden)]
+pub use stage_snapshots::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink};
+
+pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
+
+use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
+use main_layer::blueprints::build_dimension_reducing_kernel_blueprints_static;
+impl GpuGKRDimensionReducingBackwardState {
+    pub(super) fn new(
+        forward_tracing_ranges: Vec<Range>,
+        storage: GpuGKRStorage<BF, E4>,
+        initial_layer_for_sumcheck: usize,
+        dimension_reducing_inputs: BTreeMap<
+            usize,
+            BTreeMap<OutputType, DimensionReducingInputOutput>,
+        >,
+    ) -> Self {
+        let first_output_addr = dimension_reducing_inputs[&initial_layer_for_sumcheck]
+            .values()
+            .next()
+            .and_then(|io| io.output.first())
+            .copied()
+            .expect("dimension-reducing backward state requires at least one reduced output");
+        let next_trace_len_after_reduction = storage.get_ext_poly(first_output_addr).len();
+        let pending_layers = dimension_reducing_inputs.into_iter().rev().collect();
+
+        Self {
+            forward_tracing_ranges,
+            storage,
+            pending_layers,
+            next_trace_len_after_reduction,
+        }
+    }
+}
+
+impl GpuGKRDimensionReducingBackwardState {
+    pub(crate) fn into_main_layer_backward_state_static(
+        self,
+        inits_and_teardowns_top_bits: Vec<u32>,
+        programs: std::sync::Arc<crate::GkrPrograms>,
+    ) -> GpuGKRMainLayerBackwardState {
+        assert!(
+            self.pending_layers.is_empty(),
+            "main-layer handoff requires dimension-reducing layers to be exhausted"
+        );
+        let compiled_circuit = programs.runtime_circuit();
+        let num_layers = compiled_circuit.layers.len();
+        let trace_len = compiled_circuit.trace_len;
+        let teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
+        GpuGKRMainLayerBackwardState {
+            forward_tracing_ranges: self.forward_tracing_ranges,
+            storage: self.storage,
+            pending_layers: (0..num_layers).rev().collect(),
+            trace_len,
+            inits_and_teardowns_top_bits: {
+                assert_eq!(
+                    inits_and_teardowns_top_bits.len(),
+                    teardown_sets,
+                    "i&t top bits must have one entry per teardown set",
+                );
+                inits_and_teardowns_top_bits
+            },
+            programs,
+        }
+    }
+}
+
+impl GpuGKRDimensionReducingBackwardState {
+    fn prepare_layer_from_blueprints(
+        &mut self,
+        layer_idx: usize,
+        blueprints: &[GpuGKRDimensionReducingKernelPlan],
+        context: &ProverContext,
+    ) -> CudaResult<GpuGKRDimensionReducingSumcheckLayerPlan> {
+        let trace_len_after_reduction = self.next_trace_len_after_reduction;
+        assert!(trace_len_after_reduction.is_power_of_two());
+        let folding_steps = trace_len_after_reduction.trailing_zeros() as usize;
+        assert!(folding_steps >= 2);
+        assert!(
+            blueprints.len() <= GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
+            "fused dimension-reducing backward supports at most {} kernels per layer, got {}",
+            GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
+            blueprints.len()
+        );
+        let batch_challenge_count = blueprints
+            .iter()
+            .map(|blueprint| blueprint.kind.challenge_count())
+            .sum::<usize>();
+        assert!(
+            batch_challenge_count <= GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
+            "fused dimension-reducing backward supports at most {} batch challenges per layer, got {}",
+            GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
+            batch_challenge_count
+        );
+
+        let aliases = self.storage.layout.as_ref().map(|layout| &layout.aliases);
+        let dim_reducing_ext_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
+            .iter()
+            .flat_map(|bp| bp.inputs.inputs_in_extension.iter().copied())
+            .filter(|addr| *addr != GKRAddress::placeholder())
+            .map(|address| {
+                aliases
+                    .and_then(|aliases| aliases.get(&address))
+                    .copied()
+                    .unwrap_or(address)
+            })
+            .collect();
+        let kernel_plans = blueprints.to_vec();
+
+        let round0_batch_template_compact =
+            self::dim_reducing_encoder::build_round0_batch_compact(blueprints, &self.storage);
+        let max_acc_size = trace_len_after_reduction / 2;
+        let partials_len = kernels::max_partials_len(max_acc_size);
+        let partials = context.alloc(partials_len, AllocationPlacement::Top)?;
+
+        let round_scratch = GpuGKRDimensionReducingRoundScratch {
+            eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
+            accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
+            partials,
+        };
+
+        self.next_trace_len_after_reduction *= 2;
+
+        Ok(GpuGKRDimensionReducingSumcheckLayerPlan {
+            layer_idx,
+            trace_len_after_reduction,
+            folding_steps,
+            kernel_plans,
+            folding_addresses: dim_reducing_ext_inputs.into_iter().collect(),
+            round0_batch_template_compact,
+            round_scratch,
+            eq_sizes: GkrEqSizes::zeroed(),
+        })
+    }
+
+    pub(crate) fn prepare_next_layer_static(
+        &mut self,
+        context: &ProverContext,
+    ) -> CudaResult<Option<GpuGKRDimensionReducingSumcheckLayerPlan>> {
+        let Some((layer_idx, layer)) = self.pending_layers.pop_front() else {
+            return Ok(None);
+        };
+        let blueprints = build_dimension_reducing_kernel_blueprints_static(&layer);
+        Ok(Some(self.prepare_layer_from_blueprints(
+            layer_idx,
+            &blueprints,
+            context,
+        )?))
+    }
+}
+
+#[cfg(test)]
+mod tests;

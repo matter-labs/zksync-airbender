@@ -138,7 +138,7 @@ define_kernel_variants! {
         MaskIdentity(MaskIntoIdentityProductGKRRelation),
         PairwiseProductDimensionReducing(PairwiseProductDimensionReducingGKRRelation),
         MaxQuadratic(MaxQuadraticGKRRelation::<F, E>),
-        MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation),
+        MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation<F>),
         MaterializeVectorLookupInput(MaterializeVectorLookupInputGKRRelation<F, E>),
         MaterializeMemoryAccess(MaterializeMemoryTermGKRRelation),
         InitsAndTeardownsInitialProduct(InitsAndTeardownsInitialProductWithoutCachesGKRRelation),
@@ -149,27 +149,27 @@ define_kernel_variants! {
         LookupBasePair(LookupBasePairGKRRelation<F, E>),
         LookupBasePairWithoutCaches(LookupBasePairWithoutCachesGKRRelation<F, E>),
         LookupVectorPair(LookupExtensionPairGKRRelation<F, E>),
-        LookupVectorPairWithoutCaches(LookupExtensionPairWithoutCachesGKRRelation),
+        LookupVectorPairWithoutCaches(LookupExtensionPairWithoutCachesGKRRelation<F>),
         LookupBaseMinusMultiplicityByBase(LookupBaseMinusMultiplicityByBaseGKRRelation<F, E>),
         LookupExtensionMinusMultiplicityByExtension(LookupExtensionMinusMultiplicityByExtensionGKRRelation<F, E>),
-        LookupExtensionMinusMultiplicityByExtensionWithoutCaches(LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation),
+        LookupExtensionMinusMultiplicityByExtensionWithoutCaches(LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation<F>),
         LookupUnbalancedWithBase(LookupRationalPairWithUnbalancedBaseGKRRelation<F, E>),
         LookupUnbalancedWithExtension(LookupRationalPairWithUnbalancedExtensionGKRRelation<F, E>),
-        LookupUnbalancedWithExtensionWithoutCaches(LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation),
+        LookupUnbalancedWithExtensionWithoutCaches(LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation<F>),
         LookupMaskedVectorMinusSetup(LookupBaseExtMinusBaseExtGKRRelation<F, E>),
         LookupPairDimensionReducing(LookupPairDimensionReducingGKRRelation),
-        LookupBaseExtMinusBaseExtWithoutCaches(LookupBaseExtMinusBaseExtWithoutCachesGKRRelation),
+        LookupBaseExtMinusBaseExtWithoutCaches(LookupBaseExtMinusBaseExtWithoutCachesGKRRelation<F>),
     }
     // single challenge, no output
     no_output {
-        EnforceSingleMaxQuadraticConstraint(EnforceSingleMaxQuadraticConstraintGKRRelation),
+        EnforceSingleMaxQuadraticConstraint(EnforceSingleMaxQuadraticConstraintGKRRelation<F>),
         EnforceConstraintsMaxQuadratic(BatchConstraintEvalGKRRelation<F, E>),
     }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
     pub fn from_enforced_relations(
-        relation: &NoFieldGKRRelation,
+        relation: &NoFieldGKRRelation<F>,
         layer_idx: usize,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
@@ -352,7 +352,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::MaxQuadratic { input, output } => {
+            NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
                 let challenges = [get_challenge()];
                 Self::MaxQuadratic(
                     MaxQuadraticGKRRelation::new(input, *output),
@@ -495,7 +495,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 let challenges = [get_challenge()];
                 Self::EnforceSingleMaxQuadraticConstraint(
                     EnforceSingleMaxQuadraticConstraintGKRRelation {
@@ -574,7 +574,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     }
 
     pub(super) fn from_layer(
-        layer: &GKRLayerDescription,
+        layer: &GKRLayerDescription<F>,
         layer_idx: usize,
         batch_challenge_base: E,
         lookup_challenges_multiplicative_part: E,
@@ -672,14 +672,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
-        // let is_final_step = step + 1 == folding_steps;
         self.kernels.iter().for_each(|kernel| {
-            // let before = if is_final_step && accumulator.len() == 1 {
-            //     Some(accumulator[0])
-            // } else {
-            //     None
-            // };
-
             kernel.evaluate_over_storage(
                 storage,
                 step,
@@ -689,39 +682,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 last_evaluations,
                 worker,
             );
-
-            // if let Some(before) = before {
-            //     let after = accumulator[0];
-            //     let mut delta0 = after[0];
-            //     delta0.sub_assign(&before[0]);
-            //     let mut delta1 = after[1];
-            //     delta1.sub_assign(&before[1]);
-            //     #[cfg(feature = "gkr_self_checks")]
-            //     let expected = kernel.debug_compute_final_step_contribution(last_evaluations);
-            //     println!(
-            //         "Final-step kernel contribution {:?}: actual=[{:?}, {:?}]{}",
-            //         kernel,
-            //         delta0,
-            //         delta1,
-            //         {
-            //             #[cfg(feature = "gkr_self_checks")]
-            //             {
-            //                 format!(", expected=[{:?}, {:?}]", expected[0], expected[1])
-            //             }
-            //             #[cfg(not(feature = "gkr_self_checks"))]
-            //             {
-            //                 String::new()
-            //             }
-            //         }
-            //     );
-            //     #[cfg(feature = "gkr_self_checks")]
-            //     if [delta0, delta1] != expected {
-            //         println!(
-            //             "Final-step kernel mismatch for {:?}: actual=[{:?}, {:?}], expected=[{:?}, {:?}]",
-            //             kernel, delta0, delta1, expected[0], expected[1]
-            //         );
-            //     }
-            // }
         });
     }
 }

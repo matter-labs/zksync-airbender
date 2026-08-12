@@ -3,14 +3,14 @@ use cs::{definitions::GKRAddress, gkr_compiler::NoFieldMaxQuadraticConstraintsGK
 
 #[derive(Debug)]
 pub struct BatchConstraintEvalGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
-    pub relation: NoFieldMaxQuadraticConstraintsGKRRelation,
+    pub relation: NoFieldMaxQuadraticConstraintsGKRRelation<F>,
     pub kernel: BatchConstraintEvalGKRRelationKernel<F, E>,
     pub inputs: Vec<GKRAddress>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchConstraintEvalGKRRelation<F, E> {
     pub fn new(
-        input: &NoFieldMaxQuadraticConstraintsGKRRelation,
+        input: &NoFieldMaxQuadraticConstraintsGKRRelation<F>,
         challenge_for_constraints: E,
     ) -> Self {
         let mut remapper = DenseInputRemapper::default();
@@ -43,7 +43,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchConstraintEvalGKRRelation
             let mut total_prefactor = E::ZERO;
             for (c, pow) in set.iter() {
                 let mut t = challenge_for_constraints.pow(*pow as u32);
-                let c = F::from_u32_with_reduction(*c);
+                let c = *c;
                 t.mul_assign_by_base(&c);
                 total_prefactor.add_assign(&t);
             }
@@ -60,7 +60,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchConstraintEvalGKRRelation
             let mut total_prefactor = E::ZERO;
             for (c, pow) in set.iter() {
                 let mut t = challenge_for_constraints.pow(*pow as u32);
-                let c = F::from_u32_with_reduction(*c);
+                let c = *c;
                 t.mul_assign_by_base(&c);
                 total_prefactor.add_assign(&t);
             }
@@ -69,7 +69,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchConstraintEvalGKRRelation
 
         for (c, pow) in input.constants.iter() {
             let mut t = challenge_for_constraints.pow(*pow as u32);
-            let c = F::from_u32_with_reduction(*c);
+            let c = *c;
             t.mul_assign_by_base(&c);
             kernel.constant_offset.add_assign(&t);
         }
@@ -111,7 +111,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         //         let mut t = challenge_constants
         //             .constraints_batch_challenge
         //             .pow(*pow as u32);
-        //         let c = F::from_u32_with_reduction(*c);
+        //         let c = *c;
         //         t.mul_assign_by_base(&c);
         //         total_prefactor.add_assign(&t);
         //     }
@@ -124,7 +124,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         //         let mut t = challenge_constants
         //             .constraints_batch_challenge
         //             .pow(*pow as u32);
-        //         let c = F::from_u32_with_reduction(*c);
+        //         let c = *c;
         //         t.mul_assign_by_base(&c);
         //         total_prefactor.add_assign(&t);
         //     }
@@ -135,7 +135,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         //     let mut t = challenge_constants
         //         .constraints_batch_challenge
         //         .pow(*pow as u32);
-        //     let c = F::from_u32_with_reduction(*c);
+        //     let c = *c;
         //     t.mul_assign_by_base(&c);
         //     term.add_constant(t);
         // }

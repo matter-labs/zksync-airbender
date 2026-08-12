@@ -79,14 +79,13 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
     dir: &str,
 ) -> GKRGeneratedFiles {
     let compiled_circuit = circuit.compiled_circuit();
-    assert_eq!(compiled_circuit.trace_len, 1 << circuit.trace_len_log_2);
 
+    let prover_config = circuit.prover_config_for(level);
     let files = gkr::generate_gkr_inlined::<MW>(
         &compiled_circuit,
-        circuit
-            .prover_config_for(level)
-            .sumcheck_explicit_output_size_log_2,
+        prover_config.sumcheck_explicit_output_size_log_2,
         circuit.whir_schedule_for(level),
+        prover_config.security_level.security_bits() as u32,
     );
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
@@ -183,7 +182,7 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
         use ::verifier_common::errors::ErrorCreator;
         #field_use_stmts
 
-        pub fn verify<I: NonDeterminismSource, E: ErrorCreator>(
+        pub fn verify<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
             nd_source: &mut I,
         ) -> Result<constants::ConcreteVerifierOutput, E::Error> {
@@ -209,7 +208,7 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
 }
 
 macro_rules! generate_circuit_tests {
-    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $prod_path:expr),* $(,)?) => {
         $(
             #[test]
             fn $name() {

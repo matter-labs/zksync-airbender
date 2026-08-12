@@ -1,0 +1,314 @@
+use era_cudart::cuda_kernel;
+use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
+use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
+use era_cudart::stream::CudaStream;
+
+use gpu_core::primitives::field::E4;
+use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use gpu_hash::blake2s::STATE_SIZE;
+
+#[cfg(test)]
+mod tests;
+
+cuda_kernel!(
+    WhirFoldRoundUpdate,
+    ab_whir_fold_round_update_kernel(
+        reduction_output: *const E4,
+        seed_io: *mut u32,
+        coeffs_out: *mut E4,
+        challenge_out: *mut E4,
+    )
+);
+
+/// Fused device-side per-round WHIR fold state update.
+///
+/// Replaces the host callback that runs after each special 3-point reduction
+/// in the WHIR folding loop. Consumes device-resident state and writes back
+/// the new coefficients, challenge, and updated seed — no host round-trip.
+///
+/// Buffer contracts:
+/// - `reduction_output`: 3 E4 values `[f(0), f(1), ⟨eval_l+eval_h, eq_l+eq_h⟩]`
+///   as produced by the three reductions in `schedule_special_three_point_eval_device`.
+///   The kernel scales the third element by `1/4` internally to obtain `f(1/2)`.
+/// - `seed`: `STATE_SIZE` u32 words, updated in place with the new Blake2s seed.
+/// - `coeffs_out`: 3 E4 values `[c0, c1, c2]`, the round's sumcheck polynomial
+///   coefficients, written for later bulk readback.
+/// - `challenge_out`: 1 E4, the next round's folding challenge.
+pub fn whir_fold_round_update(
+    reduction_output: &DeviceSlice<E4>,
+    seed: &mut DeviceSlice<u32>,
+    coeffs_out: &mut DeviceSlice<E4>,
+    challenge_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(reduction_output.len(), 3);
+    assert_eq!(seed.len(), STATE_SIZE);
+    assert_eq!(coeffs_out.len(), 3);
+    assert_eq!(challenge_out.len(), 1);
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = WhirFoldRoundUpdateArguments::new(
+        reduction_output.as_ptr(),
+        seed.as_mut_ptr(),
+        coeffs_out.as_mut_ptr(),
+        challenge_out.as_mut_ptr(),
+    );
+    WhirFoldRoundUpdateFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    BackwardNewClaimsTwoVar,
+    ab_backward_new_claims_two_var_kernel(
+        last_evals_packed: *const E4,
+        challenges: *const E4,
+        new_claims_out: *mut E4,
+        num_addresses: u32,
+    )
+);
+
+cuda_kernel!(
+    BackwardNewClaimsLinear,
+    ab_backward_new_claims_linear_kernel(
+        last_evals_packed: *const E4,
+        challenges: *const E4,
+        new_claims_out: *mut E4,
+        num_addresses: u32,
+    )
+);
+
+cuda_kernel!(
+    BackwardDimReducingLsbLines,
+    ab_backward_dim_reducing_lsb_lines_kernel(
+        last_evals_packed: *const E4,
+        challenges: *const E4,
+        lsb_lines_out: *mut E4,
+        num_addresses: u32,
+    )
+);
+
+/// Device-side per-address dim-reducing `new_claims` evaluator.
+///
+/// Replaces the host loop inside the end-of-layer final-readback callback
+/// that computed `evaluate_with_two_variable_eq_ext(values, r_before_last,
+/// r_last)` per address. `last_evals_packed` holds 4 E4 values per address,
+/// `challenges` holds `[r_before_last, r_last]`. Produces `num_addresses`
+/// E4 outputs.
+pub(crate) fn backward_new_claims_two_var(
+    last_evals_packed: &DeviceSlice<E4>,
+    challenges: &DeviceSlice<E4>,
+    new_claims_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let num_addresses = new_claims_out.len();
+    assert!(num_addresses > 0);
+    assert!(num_addresses <= u32::MAX as usize);
+    assert_eq!(last_evals_packed.len(), num_addresses * 4);
+    assert!(challenges.len() >= 2);
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_addresses as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = BackwardNewClaimsTwoVarArguments::new(
+        last_evals_packed.as_ptr(),
+        challenges.as_ptr(),
+        new_claims_out.as_mut_ptr(),
+        num_addresses as u32,
+    );
+    BackwardNewClaimsTwoVarFunction::default().launch(&config, &args)
+}
+
+/// Device-side per-address main-layer `new_claims` evaluator.
+///
+/// Replaces the host loop inside the end-of-layer final-readback callback
+/// that computed `interpolate_linear(f0, f1, last_r)` per address.
+/// `last_evals_packed` holds 2 E4 values per address, `challenges` holds
+/// `[last_r, ..]`. Produces `num_addresses` E4 outputs.
+pub(crate) fn backward_new_claims_linear(
+    last_evals_packed: &DeviceSlice<E4>,
+    challenges: &DeviceSlice<E4>,
+    new_claims_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let num_addresses = new_claims_out.len();
+    assert!(num_addresses > 0);
+    assert!(num_addresses <= u32::MAX as usize);
+    assert_eq!(last_evals_packed.len(), num_addresses * 2);
+    assert!(!challenges.is_empty());
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_addresses as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = BackwardNewClaimsLinearArguments::new(
+        last_evals_packed.as_ptr(),
+        challenges.as_ptr(),
+        new_claims_out.as_mut_ptr(),
+        num_addresses as u32,
+    );
+    BackwardNewClaimsLinearFunction::default().launch(&config, &args)
+}
+
+/// Device-side dim-reducing final-round LSB-line reduction.
+///
+/// The last sumcheck round now emits a monomial and draws `r_before_last`
+/// in-loop; this reduces the `[E4; 4]` bilinear `last_evals` (packed 4 per
+/// address) over the last-output coordinate at `r_before_last` into the
+/// `[E4; 2]` LSB line that is sent in the proof and committed to the
+/// transcript. Per address: `out[0] = lerp(v0, v2, rbl)`,
+/// `out[1] = lerp(v1, v3, rbl)`, matching the host `interpolate_linear`
+/// over `(evals[0], evals[2])` / `(evals[1], evals[3])`. `challenges` reads
+/// only slot 0 (`r_before_last`). Produces `2 * num_addresses` outputs.
+pub(crate) fn backward_dim_reducing_lsb_lines(
+    last_evals_packed: &DeviceSlice<E4>,
+    challenges: &DeviceSlice<E4>,
+    lsb_lines_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(lsb_lines_out.len() % 2, 0);
+    let num_addresses = lsb_lines_out.len() / 2;
+    assert!(num_addresses > 0);
+    assert!(num_addresses <= u32::MAX as usize);
+    assert_eq!(last_evals_packed.len(), num_addresses * 4);
+    assert!(!challenges.is_empty());
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_addresses as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = BackwardDimReducingLsbLinesArguments::new(
+        last_evals_packed.as_ptr(),
+        challenges.as_ptr(),
+        lsb_lines_out.as_mut_ptr(),
+        num_addresses as u32,
+    );
+    BackwardDimReducingLsbLinesFunction::default().launch(&config, &args)
+}
+
+/// Maximum `(batch_challenge_offset, claim_idx)` pairs the
+/// `build_combined_claim` kernel-arg descriptor can hold.
+pub(crate) const GKR_COMBINED_CLAIM_MAX_PAIRS: usize = 1024;
+
+/// Kernel-arg descriptor for `build_combined_claim`. Inline form: passed
+/// by value as `__grid_constant__` data, avoiding per-layer H2D.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct GpuCombinedClaimDesc {
+    /// Number of `(exp, idx)` pairs populated in `entries`.
+    pub num_terms: u32,
+    /// Reserved padding to keep `entries` aligned at offset 8.
+    pub _pad: u32,
+    /// Flattened `(exp_0, idx_0, exp_1, idx_1, ...)` pairs.
+    pub entries: [u32; GKR_COMBINED_CLAIM_MAX_PAIRS * 2],
+}
+
+impl Default for GpuCombinedClaimDesc {
+    fn default() -> Self {
+        Self {
+            num_terms: 0,
+            _pad: 0,
+            entries: [0u32; GKR_COMBINED_CLAIM_MAX_PAIRS * 2],
+        }
+    }
+}
+
+const _: () = {
+    assert!(
+        std::mem::size_of::<GpuCombinedClaimDesc>() <= 32 * 1024,
+        "GpuCombinedClaimDesc must fit under the 32 KB inline kernel-arg ceiling"
+    );
+};
+
+cuda_kernel!(
+    BuildCombinedClaim,
+    ab_build_combined_claim_kernel(
+        claims: *const E4,
+        batching: *const E4,
+        desc: GpuCombinedClaimDesc,
+        claim_out: *mut E4,
+        eq_prefactor_out: *mut E4,
+    )
+);
+
+/// Builds the per-layer combined claim on device. `desc_pairs` is a host slice
+/// of `(exp, claim_idx)` u32 pairs (flattened: `[exp_0, idx_0, exp_1, idx_1, ...]`).
+/// Panics if `desc_pairs.len() / 2 > GKR_COMBINED_CLAIM_MAX_PAIRS` — production
+/// callers must respect the descriptor ceiling.
+pub(crate) fn build_combined_claim(
+    claims: &DeviceSlice<E4>,
+    batching: &DeviceSlice<E4>,
+    desc_pairs: &[u32],
+    claim_out: &mut DeviceSlice<E4>,
+    eq_prefactor_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(batching.len(), 1);
+    assert_eq!(claim_out.len(), 1);
+    assert_eq!(eq_prefactor_out.len(), 1);
+    assert_eq!(
+        desc_pairs.len() % 2,
+        0,
+        "combined-claim descriptor must be `(exponent, claim_idx)` pairs",
+    );
+    let num_pairs = desc_pairs.len() / 2;
+    assert!(
+        num_pairs <= GKR_COMBINED_CLAIM_MAX_PAIRS,
+        "combined-claim descriptor has {} pairs; exceeds GKR_COMBINED_CLAIM_MAX_PAIRS = {}",
+        num_pairs,
+        GKR_COMBINED_CLAIM_MAX_PAIRS,
+    );
+    let mut desc = GpuCombinedClaimDesc {
+        num_terms: num_pairs as u32,
+        ..Default::default()
+    };
+    desc.entries[..desc_pairs.len()].copy_from_slice(desc_pairs);
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = BuildCombinedClaimArguments::new(
+        claims.as_ptr(),
+        batching.as_ptr(),
+        desc,
+        claim_out.as_mut_ptr(),
+        eq_prefactor_out.as_mut_ptr(),
+    );
+    BuildCombinedClaimFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    AssembleQueryIndexes,
+    ab_assemble_query_indexes_kernel(
+        raw_bits: *const u32,
+        indexes_out: *mut u32,
+        num_queries: u32,
+        log_domain_size: u32,
+    )
+);
+
+/// Assembles `num_queries` query indexes on device from a padded random u32
+/// buffer as produced by `transcript_squeeze`.
+///
+/// Mirrors the host `draw_query_bits_after_verified_pow` + `BitSource` +
+/// `assemble_query_index` chain: the first 32 bits of `raw_bits` are skipped
+/// (they were the PoW header word), and each query reads `log_domain_size`
+/// LE-packed bits thereafter. `raw_bits.len()` must cover `ceil((32 +
+/// num_queries * log_domain_size) / 32)` u32 words (the caller typically
+/// over-allocates to a multiple of `STATE_SIZE` to match the squeeze output).
+pub fn assemble_query_indexes(
+    raw_bits: &DeviceSlice<u32>,
+    indexes_out: &mut DeviceSlice<u32>,
+    log_domain_size: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let num_queries = indexes_out.len() as u32;
+    assert!(num_queries > 0);
+    assert!(log_domain_size > 0);
+    assert!(log_domain_size <= 32);
+    let total_bits = 32u64 + (num_queries as u64) * (log_domain_size as u64);
+    let required_words = total_bits.div_ceil(32) as usize;
+    assert!(
+        raw_bits.len() >= required_words,
+        "raw_bits buffer is too small for query index assembly"
+    );
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_queries);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = AssembleQueryIndexesArguments::new(
+        raw_bits.as_ptr(),
+        indexes_out.as_mut_ptr(),
+        num_queries,
+        log_domain_size,
+    );
+    AssembleQueryIndexesFunction::default().launch(&config, &args)
+}

@@ -1,7 +1,5 @@
 use super::*;
 use crate::vm::delegations::keccak_special5::*;
-use common_constants::*;
-use std::mem::MaybeUninit;
 
 pub fn keccak_unrolled_implementation(
     trace_piece: &mut TraceChunk,
@@ -12,10 +10,10 @@ pub fn keccak_unrolled_implementation(
     assert!((trace_piece.len as usize) < TRACE_CHUNK_LEN);
     debug_assert_eq!(machine_state.timestamp % 4, 3);
     assert_eq!(
-        machine_state.registers[10],
+        machine_state.get_register(10),
         INITIAL_KECCAK_F1600_CONTROL_VALUE
     ); // initial control flow is expected to be zero
-    let state_ptr = machine_state.registers[11];
+    let state_ptr = machine_state.get_register(11);
     assert!(state_ptr as usize >= common_constants::rom::ROM_BYTE_SIZE);
     assert_eq!(state_ptr % 256, 0, "state pointer is unaligned");
 
@@ -23,20 +21,22 @@ pub fn keccak_unrolled_implementation(
 
     // Register accesses are easy - we just need to write final control flow value, and update timestamps
 
-    machine_state.registers[10] = FINAL_KECCAK_F1600_CONTROL_VALUE;
+    *machine_state.get_register_mut(10) = FINAL_KECCAK_F1600_CONTROL_VALUE;
 
     // save for accesses in individual cycles
     let initial_ts = machine_state.timestamp;
 
     // and full machine state also moves!
 
-    // x0 touch at the very end
-    machine_state.register_timestamps[0] +=
-        ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
     // timestamp itself
     machine_state.timestamp +=
         ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
     // pc is not needed
+
+    // x0 post-cycle touch at (last cycle base + 2): clear the low 2 bits of the (now 3 mod 4)
+    // timestamp to get the last base, then set 2 mod 4. Works for both eager (equals the old
+    // `register_timestamps[0] += (N-1)*STEP`) and packed_ts (no per-cycle x0 write existed).
+    machine_state.register_timestamps[0] = (machine_state.timestamp & !(TIMESTAMP_STEP - 1)) + 2;
 
     machine_state.register_timestamps[10] = machine_state.timestamp;
     machine_state.register_timestamps[11] = machine_state.timestamp;

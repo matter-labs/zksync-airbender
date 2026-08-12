@@ -30,7 +30,7 @@ fn run_native(name: &str, level: SecurityLevel) {
 }
 
 macro_rules! generate_native_tests {
-    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $prod_path:expr),* $(,)?) => {
         paste::paste! {
             $(
                 #[cfg(feature = "security_80")]

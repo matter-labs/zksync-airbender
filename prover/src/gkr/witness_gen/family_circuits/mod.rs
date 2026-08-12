@@ -13,14 +13,12 @@ use worker::WorkerGeometry;
 
 mod init_and_teardown;
 mod memory;
-// mod unified;
+mod unified;
 pub(crate) mod witness;
 
 pub use self::init_and_teardown::evaluate_init_and_teardown_memory_witness;
 pub use self::memory::evaluate_gkr_memory_witness_for_executor_family;
-// pub use self::unified::{
-//     evaluate_memory_witness_for_unified_executor, evaluate_witness_for_unified_executor,
-// };
+pub use self::unified::build_unified_table_driver;
 pub use self::witness::evaluate_gkr_witness_for_executor_family;
 
 pub use self::memory::GKRMemoryOnlyWitnessTrace;
@@ -89,10 +87,10 @@ pub(crate) fn chunk_vec_vec_capacity_for_geometry<
 }
 
 pub(crate) fn evaluate_linear_relation<'a, F: PrimeField, O: Oracle<F> + 'a>(
-    relation: &NoFieldLinearRelation,
+    relation: &NoFieldLinearRelation<F>,
     proxy: &ColumnMajorWitnessProxy<'a, O, F>,
 ) -> F {
-    let mut result = F::from_u32_unchecked(relation.constant);
+    let mut result = relation.constant;
     for (c, addr) in relation.linear_terms.iter() {
         let el = match *addr {
             GKRAddress::BaseLayerMemory(offset) => proxy.get_memory_place(offset),
@@ -102,7 +100,7 @@ pub(crate) fn evaluate_linear_relation<'a, F: PrimeField, O: Oracle<F> + 'a>(
                 unreachable!()
             }
         };
-        let mut t = F::from_u32_unchecked(*c);
+        let mut t = *c;
         t.mul_assign(&el);
         result.add_assign(&t);
     }

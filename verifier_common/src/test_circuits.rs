@@ -13,11 +13,10 @@ use crate::gkr::flatten::flatten_gkr_proof_for_nds;
 const REPO_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
 macro_rules! make_circuits {
-    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $prod_path:expr),* $(,)?) => {
         vec![$(CircuitData {
             name: stringify!($name),
-            layout_suffix: $layout_suffix,
-            trace_len_log_2: $trace_len_log_2,
+            production_path: $prod_path,
             security_levels: [SecurityLevel::Sec80, SecurityLevel::Sec100],
             prover_configs_cache: [OnceLock::new(), OnceLock::new()],
             nds_cache: [OnceLock::new(), OnceLock::new()],
@@ -33,8 +32,7 @@ const NUM_SECURITY_LEVELS: usize = 2;
 
 pub struct CircuitData {
     pub name: &'static str,
-    pub layout_suffix: &'static str,
-    pub trace_len_log_2: usize,
+    pub production_path: &'static str,
     security_levels: [SecurityLevel; NUM_SECURITY_LEVELS],
     prover_configs_cache: [OnceLock<ProverConfig>; NUM_SECURITY_LEVELS],
     nds_cache: [OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
@@ -44,12 +42,12 @@ pub struct CircuitData {
 impl CircuitData {
     pub fn prover_config_for(&self, level: SecurityLevel) -> &ProverConfig {
         let idx = level as usize;
-        self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.trace_len_log_2, level))
+        self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.compiled_circuit().trace_len.trailing_zeros() as usize, level))
     }
 
     pub fn whir_schedule_for(&self, level: SecurityLevel) -> &WhirSchedule {
         let idx = level as usize;
-        &self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.trace_len_log_2, level)).whir_schedule
+        &self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.compiled_circuit().trace_len.trailing_zeros() as usize, level)).whir_schedule
     }
 
     pub fn proof_path_for(&self, level: SecurityLevel) -> String {
@@ -64,8 +62,8 @@ impl CircuitData {
     pub fn circuit_path(&self) -> String {
         if self.name == "inits_and_teardowns" {
             format!(
-                "{}/cs/compiled_circuits/{}{}_no_caches_gkr.json",
-                REPO_ROOT, self.name, self.layout_suffix
+                "{}/cs/compiled_circuits/{}_layout_no_caches_gkr.json",
+                REPO_ROOT, self.name,
             )
         } else {
             #[cfg(feature = "no_caches")]
@@ -73,8 +71,8 @@ impl CircuitData {
             #[cfg(not(feature = "no_caches"))]
             let suffix = "";
             format!(
-                "{}/cs/compiled_circuits/{}{}{}_gkr.json",
-                REPO_ROOT, self.name, self.layout_suffix, suffix
+                "{}/cs/compiled_circuits/{}_layout{}_gkr.json",
+                REPO_ROOT, self.name, suffix
             )
         }
     }
@@ -109,7 +107,20 @@ impl CircuitData {
     }
 
     pub fn compiled_circuit(&self) -> GKRCircuitArtifact<BabyBearField> {
-        deserialize_from_file(&self.circuit_path())
+        let wip_layout: GKRCircuitArtifact<BabyBearField> =
+            deserialize_from_file(&self.circuit_path());
+        let prod_layout_path = format!("{}/generated/layout.json", self.production_path);
+        if let Ok(prod_layout) = try_deserialize_from_file(&prod_layout_path) {
+            assert!(
+                &wip_layout == &prod_layout,
+                "layouts differ in debug and production files, that may lead to subtle bugs: {} vs {}",
+                self.circuit_path(),
+                prod_layout_path,
+            );
+        } else {
+            println!("No production layout for circuit {}", self.name);
+        }
+        wip_layout
     }
 
     pub fn load_nds_for(
@@ -137,4 +148,9 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src =
         std::fs::File::open(filename).unwrap_or_else(|_| panic!("{} doesn't exist", filename));
     serde_json::from_reader(src).unwrap()
+}
+
+fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> Result<T, ()> {
+    let src = std::fs::File::open(filename).map_err(|_| ())?;
+    Ok(serde_json::from_reader(src).unwrap())
 }

@@ -6,14 +6,14 @@ use crate::gkr::prover::forward_loop::utils::vector_lookup_as_flattened_relation
 use super::*;
 
 #[derive(Debug)]
-pub struct LookupBaseExtMinusBaseExtWithoutCachesGKRRelation {
-    pub masked_input: (GKRAddress, NoFieldVectorLookupRelation),
+pub struct LookupBaseExtMinusBaseExtWithoutCachesGKRRelation<F: PrimeField> {
+    pub masked_input: (GKRAddress, NoFieldVectorLookupRelation<F>),
     pub setup: (GKRAddress, Box<[GKRAddress]>),
     pub outputs: [GKRAddress; 2],
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for LookupBaseExtMinusBaseExtWithoutCachesGKRRelation
+    for LookupBaseExtMinusBaseExtWithoutCachesGKRRelation<F>
 {
     fn num_challenges(&self) -> usize {
         2

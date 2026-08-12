@@ -1,0 +1,44 @@
+[package]
+name = "gpu_hash"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+build = "build.rs"
+links = "gpu_hash_native"
+
+[features]
+# Compiles `native/hash.cu`'s PoW kernel with `AB_DETERMINISTIC_POW`. Enabled
+# by `gpu_circuit_prover`'s `deterministic_pow` feature so the GPU PoW search matches
+# the host verifier (required for proof parity).
+deterministic_pow = []
+
+[dependencies]
+gpu_core = { workspace = true }
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
+
+[dev-dependencies]
+# Test setup only (`simple::set_to_zero`); production gpu_hash does not use gpu_ops.
+gpu_ops = { workspace = true }
+field = { workspace = true }
+worker = { workspace = true }
+blake2s_u32 = { workspace = true }
+# `deterministic_pow` keeps the CPU `search_pow` reference deterministic so the
+# feature-gated GPU parity test compares like against like (cargo cannot enable
+# dev-dep features from the [features] table).
+transcript = { workspace = true, features = ["deterministic_pow"] }
+# Dev-only: the transcript parity test verifies the GPU kernels against the host
+# `prover::transcript::Blake2sTranscript` reference. Production `gpu_hash` depends
+# only on gpu_core (+ era_cudart) — this does not leak downstream.
+prover = { workspace = true, features = ["prover"] }
+itertools = { workspace = true }
+# The workspace entry is default-features = false; tests need `rand::rng()`.
+rand = { workspace = true, features = ["thread_rng"] }
+
+[build-dependencies]
+gpu_native_build = { workspace = true }

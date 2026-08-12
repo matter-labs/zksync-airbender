@@ -339,6 +339,7 @@ pub fn evaluate_gkr_witness_for_executor_family<
     oracle: &O,
     table_driver: &TableDriver<F>,
     worker: &Worker,
+    inline_inits_and_teardowns: Option<Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>>,
     inner_allocator: A,
     outer_allocator: B,
 ) -> GKRFullWitnessTrace<F, A, B> {
@@ -487,6 +488,21 @@ pub fn evaluate_gkr_witness_for_executor_family<
 
     // everything but multiplicities is there
     full_trace.set_initialized_and_pad(num_cycles, trace_len, compiled_circuit);
+
+    if let Some(dumped) = inline_inits_and_teardowns {
+        super::init_and_teardown::populate_inline_inits_and_teardowns_columns(
+            &mut full_trace.column_major_memory_trace,
+            dumped,
+            &compiled_circuit.memory_layout.teardown_sets,
+            false,
+        );
+    } else {
+        assert!(
+            compiled_circuit.memory_layout.teardown_sets.is_empty(),
+            "circuit has inline teardown_sets ({} sets) but caller passed None for inline_inits_and_teardowns",
+            compiled_circuit.memory_layout.teardown_sets.len()
+        );
+    }
 
     // copy back multiplicities
     if compiled_circuit
@@ -708,7 +724,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
             assert!(trace_len >= 1 << 16);
             for absolute_row_idx in 0..(1 << 16) {
                 let multiplicity = *range_16_multiplicities.get_unchecked(absolute_row_idx);
-                debug_assert!(multiplicity < F::CHARACTERISTICS as u32);
+                debug_assert!(multiplicity < F::CHARACTERISTICS_U32 as u32);
                 *dst.get_unchecked_mut(absolute_row_idx) =
                     F::from_u32_unchecked(multiplicity as u32);
             }
@@ -753,7 +769,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
             for absolute_row_idx in 0..(1 << TIMESTAMP_COLUMNS_NUM_BITS) {
                 let multiplicity =
                     *timestamp_range_check_multiplicities.get_unchecked(absolute_row_idx);
-                debug_assert!(multiplicity < F::CHARACTERISTICS as u32);
+                debug_assert!(multiplicity < F::CHARACTERISTICS_U32 as u32);
                 *dst.get_unchecked_mut(absolute_row_idx) =
                     F::from_u32_unchecked(multiplicity as u32);
             }
@@ -848,7 +864,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
                                 // so it's used
                                 let multiplicity =
                                     *general_purpose_multiplicity_ref.get_unchecked(encoding_index);
-                                debug_assert!(multiplicity < F::CHARACTERISTICS as u32);
+                                debug_assert!(multiplicity < F::CHARACTERISTICS_U32 as u32);
                                 *dst.get_unchecked_mut(i) =
                                     F::from_u32_unchecked(multiplicity as u32);
                             }
@@ -864,7 +880,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
                             //         // so it's used
                             //         let multiplicity = *general_purpose_multiplicity_ref
                             //             .get_unchecked(encoding_index);
-                            //         debug_assert!(multiplicity < F::CHARACTERISTICS as u32);
+                            //         debug_assert!(multiplicity < F::CHARACTERISTICS_U32 as u32);
                             //         *dst.get_unchecked_mut() = F::from_u32_unchecked(multiplicity as u64);
                             //     } else {
                             //         todo!()

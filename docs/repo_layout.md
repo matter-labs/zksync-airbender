@@ -11,14 +11,12 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - fft/ - native and verifier fft implementations in multiple layout formats to mirror various gpu layouts
 - field/ - native optimised cpu prover and verifier Mersenne31 basic and extension field implementations
 - full_statement_verifier/ - full stark verifier logic, with support for chunking
-- gpu_prover/ - main Rust->CUDA gpu prover implementation
-- gpu_witness_eval_generator/ - Rust->CUDA gpu prover's witness generator
+- gpu/ - Rust->CUDA GPU prover crate stack (see the "gpu:" section under Prover Implementations)
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate
 - prover/ - main cpu prover implementation with its 5 stages
 - riscv_common/ - custom RiscV bytecode to be used by "kernel" OS programs
 - riscv_transpiler/ - bytecode preprocessing, transpiler VM execution, replay, and witness layouts used by the active proving path
 - tools/ - high-level shell programs used to conduct proving, gpu proving, and verification
-- trace_holder/ - basic trait impl for cpu prover trace layout options
 - transcript/ - non-interactive cpu prover's Fiat-Shamir transform implementation
 - verifier/ - core recursive and native verifier code
 - verifier_common/ - code related to recursive verifier
@@ -40,9 +38,24 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
         - merkle_trees/ - code optimised to perform merkle trees with trimmed tree root nodes and leaf packing of polynomials with shared columns
         - tracers/ - helper code for supporting witness gen of memory argument
         - witness_evaluator/ - code to help evaluate our special witness generation closures
-- gpu: 
-    - gpu_prover/ - rather comprehensive mix of cuda and rust glue code, to mirror our cpu prover
-    - gpu_witness_eval_generator/ - code to help evaluate our special witness generation closures
+- gpu: the Rust->CUDA GPU prover crate stack. Every crate lives at `gpu/<dir>/` but is named `gpu_<dir>` (e.g. `gpu/core/` is crate `gpu_core`). Dependency edges only point down the stack: `core < { ntt, ops, hash, cub } < prover_context < trace < gkr < whir < circuit_prover < execution_prover < program_prover`.
+    - core/ (`gpu_core`) - GPU substrate: static device/host allocators, device structures + accessors, field, callbacks, nvtx, machine type, utils; owns the base CUDA headers shared by the kernel crates
+    - ntt/ (`gpu_ntt`) - the NTT subsystem (launchers + twiddles + CUDA kernels)
+    - ops/ (`gpu_ops`) - generic math/transform kernels (simple, powers, squaring, transpose, bit-reverse, batch-inverse)
+    - hash/ (`gpu_hash`) - blake2s hashing + Merkle trees + gather + the Fiat-Shamir transcript (commit/squeeze/PoW)
+    - cub/ (`gpu_cub`) - CUB-library wrappers (reduce, radix sort, run-length encode); isolates the compile-heavy CUB template instantiations
+    - prover_context/ (`gpu_prover_context`) - shared device/host allocators, CUDA streams, and transfer coordination
+    - trace/ (`gpu_trace`) - GPU witness generation and trace commitment
+    - gkr/ (`gpu_gkr`) - GKR forward/backward execution, proof layout, setup, and protocol kernels
+    - whir/ (`gpu_whir`) - WHIR folding, query, and proof-of-work scheduling
+    - circuit_prover/ (`gpu_circuit_prover`) - the CUDA-backed single-circuit proving pipeline over the trace, GKR, and WHIR crates
+    - execution_prover/ (`gpu_execution_prover`) - the execution-level driver (`ExecutionProver`) that proves all of a program's circuits
+    - program_prover/ (`gpu_program_prover`) - the program-level driver + full recursion ladder; assembles proofs into `ProgramProof`, builds the non-determinism streams the `fsv_*` verifier binaries consume, and (behind a non-default `verifiers` feature) verifies proofs natively
+    - gkr_model/ (`gpu_gkr_model`) - pure-CPU model of the GKR layout (address audit, storage layout, circuit transform); no CUDA
+    - gkr_compiler/ (`gpu_gkr_compiler`) - CPU-only compiler for committed forward schedules and backward VM programs; offline search is feature-gated
+    - witness_eval_generator/ (`gpu_witness_eval_generator`) - pure-CPU Rust->CUDA codegen that emits the committed `witness_generation_fn.cuh` witness bodies
+    - native_build/ (`gpu_native_build`) - shared CUDA/native build-script helper (a build-dependency only)
+- gkr_eval_ir/ - GPU-independent GKR evaluation DAG and checked lowering model
 
 ## AIR Circuits
 - cs/

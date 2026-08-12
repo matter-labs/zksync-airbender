@@ -41,9 +41,7 @@ special_opcodes_extension = ["blake2s_u32/special_opcodes_extension", "transcrip
 modular_ops = ["field/modular_ops"]
 modular_fma = ["field/modular_fma"]
 verifier_program = ["modular_ops"]
-proof_utils = ["prover/prover", "dep:serde_json", "replace_csr", "dep:quote", "dep:proc-macro2"]
-# If enabled, allows passing custom values into CSR.
-replace_csr = ["prover/prover"]
+proof_utils = ["prover/prover", "dep:serde_json", "dep:quote", "dep:proc-macro2"]
 # Use no-caches circuit descriptors (default for testing)
 no_caches = []
 # Instrument verifier to collect per-phase field-op / NDS-read / blake-hash counts

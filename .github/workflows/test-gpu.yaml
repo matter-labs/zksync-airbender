@@ -24,7 +24,8 @@ jobs:
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
     env:
-      RUST_TOOLCHAIN: nightly-2026-02-10
+      RUST_TOOLCHAIN: nightly
+      RUST_MIN_STACK: 16777216
     steps:
       - name: Prepare environment
         env:
@@ -52,7 +53,7 @@ jobs:
         run: |
           nvcc --version
 
-      - name: Build CLI and copy binary to a separate dir
+      - name: Build CLI and GPU tests
         shell: bash
         run: |
           mkdir artifacts
@@ -61,11 +62,17 @@ jobs:
           cargo +$RUST_TOOLCHAIN build -p cli --no-default-features --features gpu,${{ matrix.security }} --release --target x86_64-unknown-linux-gnu
           cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
 
-      - name: Upload CLI binary
+          CUDAARCHS="80;89;90" \
+          cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover --no-default-features --features deterministic_pow,${{ matrix.security }} --release --target x86_64-unknown-linux-gnu --no-run
+          test_binary="$(find target/x86_64-unknown-linux-gnu/release/deps -maxdepth 1 -type f -executable -name 'gpu_circuit_prover-*' -print -quit)"
+          test -n "$test_binary"
+          cp "$test_binary" artifacts/gpu_circuit_prover-tests
+
+      - name: Upload GPU artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.security }}-cli
-          path: artifacts/cli
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.security }}-gpu
+          path: artifacts/
           if-no-files-found: error
 
   zksync-airbender-test:
@@ -111,16 +118,30 @@ jobs:
             echo "Low VRAM mode is not required"
           fi
 
-      - name: Download CLI binary
+      - name: Download GPU artifacts
         uses: actions/download-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.security }}-cli
-          path: zksync-airbender-cli/
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.security }}-gpu
+          path: zksync-airbender-gpu/
+
+      - name: Test GKR VM parity
+        env:
+          AB_TEST_ARTIFACT_ROOT: ${{ github.workspace }}
+        run: |
+          chmod +x zksync-airbender-gpu/gpu_circuit_prover-tests
+          if [ "${{ matrix.security }}" = "security_100" ]; then
+            parity_test=tests::proof_matrix::run_add_sub_proof_parity_test_sec100
+          else
+            parity_test=tests::stagewise::run_add_sub_stagewise_parity_test
+          fi
+          test_output="$(mktemp)"
+          zksync-airbender-gpu/gpu_circuit_prover-tests "$parity_test" --exact --ignored --nocapture --test-threads=1 2>&1 | tee "$test_output"
+          grep -Fq "test result: ok. 1 passed;" "$test_output"
 
       - name: Prove recursion unified on GPU
         run: |
-          chmod +x zksync-airbender-cli/cli
-          zksync-airbender-cli/cli prove \
+          chmod +x zksync-airbender-gpu/cli
+          zksync-airbender-gpu/cli prove \
             --bin examples/hashed_fibonacci/app.bin \
             --input-file examples/hashed_fibonacci/input.txt \
             --target recursion-unified \
@@ -130,7 +151,7 @@ jobs:
 
       - name: Verify recursion unified proof
         run: |
-          zksync-airbender-cli/cli verify \
+          zksync-airbender-gpu/cli verify \
             --proof output/proof.json \
             --bin examples/hashed_fibonacci/app.bin
 

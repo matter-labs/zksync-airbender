@@ -61,6 +61,22 @@ pub enum TableType {
     LoadHalfwordRomRead,
     LoadByteRomRead,
     Decoder,
+    // Unified-only xor-rotate tables (one per Blake2 rotation amount): map two operand bytes
+    // (a, b) -> the 4 bytes of `rotate_right((a ^ b) at byte 0, r)`. The unified xor-rotate body
+    // feeds a = rs1_byte, b = rd_old_byte. Dispatched as table_id = funct3.
+    XorRotate16,
+    XorRotate12,
+    XorRotate8,
+    XorRotate7,
+    // Unified-only 2^7 conditional-jump/branch/SLT resolution table (rs2-sign split): keys on
+    // rs2's pre-extracted sign bit instead of the full 16-bit sign source
+    // The standalone `jump_branch_slt_family` circuit keeps that 2^22 table.
+    ConditionalJmpBranchSltUnified,
+    // Unified-only 4-output binop tables: (a, b) -> (a OP b, 0, 0, 0) — the same output shape
+    // as XorRotate{r} with rotation 0
+    WideXor,
+    WideOr,
+    WideAnd,
     DynamicPlaceholder, // MUST be the last
 }
 

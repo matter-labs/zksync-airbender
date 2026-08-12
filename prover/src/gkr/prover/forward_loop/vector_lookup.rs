@@ -7,7 +7,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
     E: FieldExtension<F> + Field,
 >(
     decoder_predicate_address: GKRAddress,
-    decoder_relation: &NoFieldVectorLookupRelation,
+    decoder_relation: &NoFieldVectorLookupRelation<F>,
     multiplicity_address: GKRAddress,
     outputs: [GKRAddress; 2],
     gkr_storage: &mut GKRStorage<F, E>,
@@ -155,7 +155,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
 }
 
 pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtension<F> + Field>(
-    inputs: &[NoFieldVectorLookupRelation; 2],
+    inputs: &[NoFieldVectorLookupRelation<F>; 2],
     outputs: [GKRAddress; 2],
     gkr_storage: &mut GKRStorage<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
@@ -280,7 +280,7 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
     E: FieldExtension<F> + Field,
 >(
     inputs: [GKRAddress; 2],
-    remainder: &NoFieldVectorLookupRelation,
+    remainder: &NoFieldVectorLookupRelation<F>,
     outputs: [GKRAddress; 2],
     gkr_storage: &mut GKRStorage<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
@@ -395,7 +395,7 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
     F: PrimeField,
     E: FieldExtension<F> + Field,
 >(
-    input: &NoFieldVectorLookupRelation,
+    input: &NoFieldVectorLookupRelation<F>,
     multiplicity_address: GKRAddress,
     outputs: [GKRAddress; 2],
     gkr_storage: &mut GKRStorage<F, E>,

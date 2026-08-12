@@ -528,16 +528,22 @@ impl<F: PrimeField> LookupTable<F> {
     #[inline(always)]
     pub fn lookup_row(&self, key: &[F]) -> usize {
         let key = if key.len() >= self.width() {
-            for el in key[self.width()..].iter() {
-                assert!(el.is_zero());
+            for (i, el) in key[self.width()..].iter().enumerate() {
+                assert!(el.is_zero(), "additional padding elements must be zero, got {} at padding element {} for table ID {}", el, i, self.id);
             }
             &key[..self.width()]
         } else {
             // key is shorter than the table, that may happen in special case of zero entry
             // table, and so we hardcode it blindly
             assert_eq!(self.table_size(), 1);
-            for el in key.iter() {
-                assert!(el.is_zero());
+            for (i, el) in key.iter().enumerate() {
+                assert!(
+                    el.is_zero(),
+                    "key element is not zero: {} at position {} for table ID {}",
+                    el,
+                    i,
+                    self.id
+                );
             }
 
             return 0;
@@ -800,6 +806,9 @@ impl TableType {
             TableType::ConditionalJmpBranchSlt => {
                 LookupWrapper::Initialized(create_conditional_op_resolution_table(id))
             }
+            TableType::ConditionalJmpBranchSltUnified => {
+                LookupWrapper::Initialized(create_conditional_op_resolution_table_unified(id))
+            }
             TableType::JumpCleanupOffset => {
                 LookupWrapper::Initialized(create_jump_cleanup_offset_table(id))
             }
@@ -936,6 +945,21 @@ impl TableType {
             }
             TableType::AndN => LookupWrapper::Initialized(create_andn_table::<F>(id)),
             TableType::RotL => LookupWrapper::Initialized(create_rotl_table::<F>(id)),
+            TableType::XorRotate16 => {
+                LookupWrapper::Initialized(create_xor_rotate_table::<F, 16>(id))
+            }
+            TableType::XorRotate12 => {
+                LookupWrapper::Initialized(create_xor_rotate_table::<F, 12>(id))
+            }
+            TableType::XorRotate8 => {
+                LookupWrapper::Initialized(create_xor_rotate_table::<F, 8>(id))
+            }
+            TableType::XorRotate7 => {
+                LookupWrapper::Initialized(create_xor_rotate_table::<F, 7>(id))
+            }
+            TableType::WideXor => LookupWrapper::Initialized(create_wide_xor_table::<F>(id)),
+            TableType::WideOr => LookupWrapper::Initialized(create_wide_or_table::<F>(id)),
+            TableType::WideAnd => LookupWrapper::Initialized(create_wide_and_table::<F>(id)),
             a @ _ => {
                 todo!("Support {:?}", a);
             }
@@ -1049,21 +1073,22 @@ pub fn key_binary_generation_for_width<F: PrimeField, const N: usize, const WIDT
 }
 
 pub fn key_for_continuous_log2_range<F: PrimeField, const N: usize>(log2: usize) -> Vec<[F; N]> {
-    let keys = key_for_continuous_range((1u64 << log2) - 1);
+    let keys = key_for_continuous_range((1u32 << log2) - 1);
     assert_eq!(keys.len(), 1 << log2);
 
     keys
 }
 
 pub fn key_for_continuous_range<F: PrimeField, const N: usize>(
-    max_value_inclusive: u64,
+    max_value_inclusive: u32,
 ) -> Vec<[F; N]> {
     let len = max_value_inclusive as usize + 1;
+    assert!(len < F::CHARACTERISTICS_U32 as usize);
     let mut keys = Vec::with_capacity(len);
     if max_value_inclusive < (1 << 20) {
-        for a in 0u64..=max_value_inclusive {
+        for a in 0u32..=max_value_inclusive {
             let mut key = [F::ZERO; N];
-            key[0] = F::from_u64_with_reduction(a);
+            key[0] = F::from_u32_with_reduction(a);
             keys.push(key);
         }
     } else {
@@ -1071,7 +1096,7 @@ pub fn key_for_continuous_range<F: PrimeField, const N: usize>(
             .into_par_iter()
             .map(|a| {
                 let mut key = [F::ZERO; N];
-                key[0] = F::from_u64_with_reduction(a as u64);
+                key[0] = F::from_u32_with_reduction(a as u32);
                 key
             })
             .collect_into_vec(&mut keys);

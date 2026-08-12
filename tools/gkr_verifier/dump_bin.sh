@@ -1,12 +1,23 @@
 #!/bin/sh
 set -euo pipefail
 
+# These verifier binaries build on STABLE Rust (pinned to 1.97.1 by the local
+# rust-toolchain.toml), but still need a few unstable build options:
+#   -Z build-std=core,alloc, -Z panic-immediate-abort (cargo flags below), and
+#   the [unstable] section in .cargo/config.toml.
+# RUSTC_BOOTSTRAP=1 makes both cargo and rustc treat the stable toolchain as
+# nightly for the purpose of gating these options (cargo's release channel
+# reads as "nightly" when this is set), so no nightly toolchain is required.
+export RUSTC_BOOTSTRAP=1
+
 usage() {
     echo "Usage: $0 [options] [circuits...]"
     echo ""
     echo "Options:"
     echo "  --blake MODE    blake2_with_compression (default), blake2_g_function, mop_extension"
     echo "  --variant VAR   no_caches (default) or caches"
+    echo "  --sec LEVEL     80, 100, or both (default) — selects the security level of the"
+    echo "                  default circuit set (ignored when circuits are named explicitly)"
     echo "  --warnings      show compiler warnings (suppressed by default)"
     echo "  -h, --help      show this message"
     echo ""
@@ -14,7 +25,9 @@ usage() {
     ls src/bin/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|  |'
     echo ""
     echo "Examples:"
-    echo "  $0                                                # all circuits, defaults"
+    echo "  $0                                                # all circuits (80+100), defaults"
+    echo "  $0 --sec 100                                       # only the 100-bit circuits"
+    echo "  $0 --sec 80                                        # only the 80-bit circuits"
     echo "  $0 --blake mop_extension                          # all circuits, mop_extension"
     echo "  $0 --blake mop_extension blake2_with_extended_control  # single circuit"
     echo "  $0 --variant caches                               # all circuits, cached variant"
@@ -23,6 +36,7 @@ usage() {
 
 BLAKE_MODE="blake2_with_compression"
 VARIANT="no_caches"
+SEC="both"
 SHOW_WARNINGS=false
 
 while [ $# -gt 0 ]; do
@@ -30,16 +44,27 @@ while [ $# -gt 0 ]; do
         -h|--help) usage ;;
         --blake) BLAKE_MODE="$2"; shift 2 ;;
         --variant) VARIANT="$2"; shift 2 ;;
+        --sec) SEC="$2"; shift 2 ;;
         --warnings) SHOW_WARNINGS=true; shift ;;
         *) break ;;
     esac
 done
 
-# Remaining args are circuits, or default to all
+case "$SEC" in
+    80|100|both) ;;
+    *) echo "ERROR: --sec must be 80, 100, or both (got '$SEC')" >&2; exit 1 ;;
+esac
+
+# Remaining args are circuits, or default to all (filtered by --sec).
 if [ $# -gt 0 ]; then
     CIRCUITS="$@"
 else
-    CIRCUITS=$(ls src/bin/*.rs | sed 's|.*/||;s|\.rs||')
+    ALL=$(ls src/bin/*.rs | sed 's|.*/||;s|\.rs||')
+    case "$SEC" in
+        80)   CIRCUITS=$(echo "$ALL" | grep '_sec_80$') ;;
+        100)  CIRCUITS=$(echo "$ALL" | grep '_sec_100$') ;;
+        both) CIRCUITS="$ALL" ;;
+    esac
 fi
 
 FEATURES="${BLAKE_MODE}"

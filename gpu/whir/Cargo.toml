@@ -1,0 +1,52 @@
+[package]
+name = "gpu_whir"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+build = "build.rs"
+links = "gpu_whir_native"
+
+[dependencies]
+gpu_core = { workspace = true }
+gpu_ntt = { workspace = true }
+gpu_ops = { workspace = true }
+gpu_hash = { workspace = true }
+gpu_cub = { workspace = true }
+gpu_prover_context = { workspace = true }
+gpu_trace = { workspace = true }
+gpu_gkr = { workspace = true }
+
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
+
+field = { workspace = true }
+fft = { workspace = true }
+# `deterministic_pow` forwards a prover feature, so prover is a normal dependency.
+prover = { workspace = true, features = ["prover"] }
+
+[features]
+# Commit recursive WHIR oracle leaves in evaluation form instead of the default
+# coefficient form (#279). PROTOCOL-level: the generated verifier must be built
+# with the matching encoding (verifier_generator `eval_leaves`). Single cfg site:
+# `fold/schedule/round_phases.rs`. The GPU commit transform is native, independent
+# of `prover`/`gpu_hash`.
+eval_leaves = []
+# GPU PoW determinism (matches the host verifier for proof parity). The PoW
+# search kernel lives in gpu_hash; the host-side determinism is prover's — and
+# since gpu_whir depends on prover as a normal dependency, it forwards both legs
+# so the apex only needs `gpu_whir/deterministic_pow`.
+deterministic_pow = ["prover/deterministic_pow", "gpu_hash/deterministic_pow"]
+[build-dependencies]
+gpu_native_build = { workspace = true }
+
+[dev-dependencies]
+# CPU reference helpers used by this crate's tests.
+prover = { workspace = true, features = ["test-utils"] }
+worker = { workspace = true }
+rand = "0.9"
+itertools = "0.14"

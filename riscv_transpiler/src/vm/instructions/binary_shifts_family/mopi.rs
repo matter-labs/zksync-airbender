@@ -8,10 +8,11 @@ pub(crate) fn mopi_xor_rot<C: Counters, S: Snapshotter<C>, R: RAM>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    debug_assert_eq!(instr.rs2, 0);
-    touch_x0::<C, 1>(state);
+    // rs2 aliases rd (set at decode): the second XOR operand is rd's old value,
+    // read through the rs2 port at sub-slot +1.
+    debug_assert_eq!(instr.rs2, instr.rd);
+    let rd_old_value = read_register::<C, 1>(state, instr.rs2);
     let rotation_value = instr.imm;
-    let rd_old_value = unsafe { state.registers.get_unchecked(instr.rd as usize).value };
     let rd = (rd_old_value ^ rs1_value).rotate_right(rotation_value);
     write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
     default_increase_pc::<C>(state);

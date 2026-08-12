@@ -287,18 +287,21 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_183 = v_182.shl(8u32);
     let mut v_184 = v_180;
     W::U32::add_assign(&mut v_184, &v_183);
-    let mut v_185 = v_184;
-    W::U32::add_assign(&mut v_185, &v_183);
-    let mut v_186 = v_185;
-    W::U32::add_assign(&mut v_186, &v_169);
-    let v_187 = WitnessComputationCore::select(&v_38, &v_25, &v_12);
-    let v_188 = v_187.truncate();
-    let v_189 = v_188.widen();
-    let mut v_190 = v_186;
-    W::U32::sub_assign(&mut v_190, &v_189);
-    let v_191 = v_190.shr(16u32);
-    let v_192 = v_191.truncate();
-    witness_proxy.set_witness_place_u16(17usize, v_192);
+    let v_185 = W::U16::split_widening_product(&v_120, &v_151).0;
+    let v_186 = v_185.widen();
+    let v_187 = v_186.shl(8u32);
+    let mut v_188 = v_184;
+    W::U32::add_assign(&mut v_188, &v_187);
+    let mut v_189 = v_188;
+    W::U32::add_assign(&mut v_189, &v_169);
+    let v_190 = WitnessComputationCore::select(&v_38, &v_25, &v_12);
+    let v_191 = v_190.truncate();
+    let v_192 = v_191.widen();
+    let mut v_193 = v_189;
+    W::U32::sub_assign(&mut v_193, &v_192);
+    let v_194 = v_193.shr(16u32);
+    let v_195 = v_194.truncate();
+    witness_proxy.set_witness_place_u16(17usize, v_195);
 }
 #[allow(unused_variables)]
 #[inline(always)]

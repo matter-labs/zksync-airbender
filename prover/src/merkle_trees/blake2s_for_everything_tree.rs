@@ -1,7 +1,7 @@
 use super::*;
 use crate::definitions::Blake2sForEverythingVerifier;
 use blake2s_u32::*;
-use field::PrimeField;
+use field::{baby_bear::base::BabyBearField, PrimeField};
 use std::alloc::Global;
 
 #[derive(Clone, Debug)]
@@ -119,8 +119,8 @@ impl<A: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
     }
 }
 
-impl<F: PrimeField, B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
-    ColumnMajorMerkleTreeConstructor<F>
+impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
+    ColumnMajorMerkleTreeConstructor<BabyBearField>
     for Blake2sU32MerkleTreeWithCap<B, USE_REDUCED_BLAKE2_ROUNDS>
 {
     type Verifier = Blake2sForEverythingVerifier;
@@ -133,6 +133,103 @@ impl<F: PrimeField, B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         }
     }
 
+    fn write_disk_artifacts<'a, E: FieldExtension<BabyBearField> + 'a>(
+        base_path: &str,
+        layout: crate::merkle_trees::on_disk::OnDiskTreeLayout,
+        num_cosets: usize,
+        producer: CosetColumnsProducer<'a, E>,
+        combine_by: usize,
+        cap_size: usize,
+        bitreverse_evaluations: bool,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> std::io::Result<()>
+    where
+        [(); E::DEGREE]: Sized,
+    {
+        crate::merkle_trees::on_disk::write_disk_artifacts::<BabyBearField, Self, E, _>(
+            base_path,
+            layout,
+            num_cosets,
+            producer,
+            combine_by,
+            cap_size,
+            bitreverse_evaluations,
+            bitreverse_cosets,
+            bitreverse_leaf_hashes,
+            worker,
+            |tree: &Self| {
+                let node_layers: Vec<&[_]> = tree
+                    .node_hashes_enumerated_from_leafs
+                    .iter()
+                    .map(|l| &l[..])
+                    .collect();
+                crate::merkle_trees::on_disk::tree_layers(
+                    tree.cap_size,
+                    &tree.leaf_hashes[..],
+                    &node_layers,
+                )
+            },
+        )
+    }
+
+    fn open_disk_artifacts(
+        base_path: &str,
+        layout: crate::merkle_trees::on_disk::OnDiskTreeLayout,
+        num_cosets: usize,
+    ) -> crate::merkle_trees::on_disk::OnDiskTree<Self> {
+        crate::merkle_trees::on_disk::open_disk_artifacts::<Self>(base_path, layout, num_cosets)
+    }
+
+    fn construct_from_coset_producer<'a, E: FieldExtension<BabyBearField> + 'a>(
+        num_cosets: usize,
+        mut producer: CosetColumnsProducer<'a, E>,
+        combine_by: usize,
+        cap_size: usize,
+        bitreverse_evaluations: bool,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> Self
+    where
+        [(); E::DEGREE]: Sized,
+    {
+        use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_cosets;
+        let cosets: Vec<Vec<Cow<'a, [E]>>> = (0..num_cosets).map(|c| producer(c)).collect();
+        let trace: Vec<Vec<&[E]>> = cosets
+            .iter()
+            .map(|coset| coset.iter().map(|c| c.as_ref()).collect())
+            .collect();
+        let trace_refs: Vec<&[&[E]]> = trace.iter().map(|c| &c[..]).collect();
+        let leaf_hashes =
+            blake2s_leaf_hashes_from_cosets::<BabyBearField, E, B, USE_REDUCED_BLAKE2_ROUNDS>(
+                &trace_refs,
+                combine_by,
+                bitreverse_evaluations,
+                bitreverse_cosets,
+                bitreverse_leaf_hashes,
+                worker,
+            );
+
+        Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
+    }
+
+    fn build_over_leaf_hashes(
+        leaf_hashes: Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+        cap_size: usize,
+        worker: &Worker,
+    ) -> Self {
+        let mut v: Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B> =
+            Vec::with_capacity_in(leaf_hashes.len(), B::default());
+        v.extend(leaf_hashes);
+        Self::continue_from_leaf_hashes(v, cap_size, worker)
+    }
+}
+
+impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool> PathQueriable
+    for Blake2sU32MerkleTreeWithCap<B, USE_REDUCED_BLAKE2_ROUNDS>
+{
     fn get_cap(&self) -> MerkleTreeCapVarLength {
         let output = if let Some(cap) = self.node_hashes_enumerated_from_leafs.last() {
             let mut result = Vec::new();
@@ -149,15 +246,15 @@ impl<F: PrimeField, B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         MerkleTreeCapVarLength { cap: output }
     }
 
-    fn get_proof<C: GoodAllocator>(
+    fn get_proof(
         &self,
         idx: usize,
     ) -> (
         [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
+        Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
     ) {
         let depth = self.node_hashes_enumerated_from_leafs.len(); // we do not need the element of the cap
-        let mut result = Vec::with_capacity_in(depth, C::default());
+        let mut result = Vec::with_capacity(depth);
         let mut idx = idx;
         let this_el_leaf_hash = self.leaf_hashes[idx];
         for i in 0..depth {
@@ -173,53 +270,5 @@ impl<F: PrimeField, B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         }
 
         (this_el_leaf_hash, result)
-    }
-
-    // fn construct_for_column_major_coset<E: FieldExtension<F>, A: GoodAllocator>(
-    //     trace: &[&[E]],
-    //     combine_by: usize,
-    //     cap_size: usize,
-    //     bitreverse_input: bool,
-    //     bitreverse_output: bool,
-    //     worker: &Worker,
-    // ) -> Self
-    // where
-    //     [(); E::DEGREE]: Sized,
-    // {
-    //     use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_columns;
-    //     let leaf_hashes = blake2s_leaf_hashes_from_columns::<F, E, A, _>(
-    //         trace,
-    //         combine_by,
-    //         bitreverse_input,
-    //         bitreverse_output,
-    //         worker,
-    //     );
-
-    //     Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
-    // }
-
-    fn construct_from_cosets<E: FieldExtension<F>, A: GoodAllocator>(
-        trace: &[&[&[E]]], // slice of cosets, each coset - is a slice of column evaluations
-        combine_by: usize,
-        cap_size: usize,
-        bitreverse_evaluations: bool,
-        bitreverse_cosets: bool,
-        bitreverse_leaf_hashes: bool,
-        worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized,
-    {
-        use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_cosets;
-        let leaf_hashes = blake2s_leaf_hashes_from_cosets::<F, E, A, B, USE_REDUCED_BLAKE2_ROUNDS>(
-            trace,
-            combine_by,
-            bitreverse_evaluations,
-            bitreverse_cosets,
-            bitreverse_leaf_hashes,
-            worker,
-        );
-
-        Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
     }
 }

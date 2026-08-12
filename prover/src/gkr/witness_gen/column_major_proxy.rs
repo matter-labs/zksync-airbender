@@ -529,6 +529,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> WitnessProxy<F, ScalarWitnessTypeSet<
     }
 
     #[inline(always)]
+    #[track_caller]
     fn lookup_enforce<const M: usize>(
         &mut self,
         inputs: &[F; M],

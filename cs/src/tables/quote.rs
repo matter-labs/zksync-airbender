@@ -54,6 +54,9 @@ impl quote::ToTokens for TableType {
             TableType::ConditionalJmpBranchSlt => {
                 quote! { TableType::ConditionalJmpBranchSlt }
             }
+            TableType::ConditionalJmpBranchSltUnified => {
+                quote! { TableType::ConditionalJmpBranchSltUnified }
+            }
             TableType::MemStoreClearOriginalRamValueLimb => {
                 quote! { TableType::MemStoreClearOriginalRamValueLimb }
             }
@@ -68,6 +71,13 @@ impl quote::ToTokens for TableType {
             TableType::XorSpecialIota => quote!(TableType::XorSpecialIota),
             TableType::AndN => quote!(TableType::AndN),
             TableType::RotL => quote!(TableType::RotL),
+            TableType::XorRotate16 => quote!(TableType::XorRotate16),
+            TableType::XorRotate12 => quote!(TableType::XorRotate12),
+            TableType::XorRotate8 => quote!(TableType::XorRotate8),
+            TableType::XorRotate7 => quote!(TableType::XorRotate7),
+            TableType::WideXor => quote!(TableType::WideXor),
+            TableType::WideOr => quote!(TableType::WideOr),
+            TableType::WideAnd => quote!(TableType::WideAnd),
             TableType::Decoder => quote!(TableType::Decoder),
             TableType::DynamicPlaceholder => {
                 unimplemented!("should not appear in final circuits")

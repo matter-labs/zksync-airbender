@@ -2109,12 +2109,41 @@
     },
     {
       "Integer": {
+        "MulLow": {
+          "lhs": {
+            "U16SubExpression": 120
+          },
+          "rhs": {
+            "U16SubExpression": 151
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "WidenFromU16": {
+          "U16SubExpression": 185
+        }
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShl": {
+          "lhs": {
+            "U32SubExpression": 186
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
         "WrappingAdd": {
           "lhs": {
             "U32SubExpression": 184
           },
           "rhs": {
-            "U32SubExpression": 183
+            "U32SubExpression": 187
           }
         }
       }
@@ -2123,7 +2152,7 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 185
+            "U32SubExpression": 188
           },
           "rhs": {
             "U32SubExpression": 169
@@ -2149,14 +2178,14 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 187
+          "U32SubExpression": 190
         }
       }
     },
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 188
+          "U16SubExpression": 191
         }
       }
     },
@@ -2164,10 +2193,10 @@
       "Integer": {
         "WrappingSub": {
           "lhs": {
-            "U32SubExpression": 186
+            "U32SubExpression": 189
           },
           "rhs": {
-            "U32SubExpression": 189
+            "U32SubExpression": 192
           }
         }
       }
@@ -2176,7 +2205,7 @@
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U32SubExpression": 190
+            "U32SubExpression": 193
           },
           "magnitude": 16
         }
@@ -2185,7 +2214,7 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 191
+          "U32SubExpression": 194
         }
       }
     },
@@ -2194,7 +2223,7 @@
         "into_variable": 43,
         "source_subexpr": {
           "U16": {
-            "U16SubExpression": 192
+            "U16SubExpression": 195
           }
         },
         "condition_subexpr_idx": null
