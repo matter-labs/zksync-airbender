@@ -14,11 +14,14 @@ with its ordered admitted-id list, one `SAMPLE` per (round, lane) in the cyclic 
 the six lanes' registers, blocks/SM, bodies, C, removals and admitted prefixes as the shipped
 binary publishes them, and the grids the arms take at `--log-trace 24` (r7_gates.sh's `r9` lane
 gates those same lines against a live short rotation). Only the SAMPLE magnitudes are synthetic:
-these fixtures pin the emitter's grammar, arithmetic and decision surface, and predict nothing.
+these fixtures pin the emitter's grammar, arithmetic and reporting surface, and predict nothing.
 
-Every conforming session is the preregistered shape: both term orders, 96 rounds, 6 warmup,
-6 lanes = 16 full cycles. Mutants are generated fully SELF-CONSISTENT so each one fails on the
-gate it is named for and not on a side effect.
+Every conforming session is the rung's shape: both term orders, 96 rounds, 6 warmup, 6 lanes = 16
+full cycles. Mutants are generated fully SELF-CONSISTENT so each one produces the observation it is
+named for and not a side effect. The emitter REPORTS rather than adjudicates, so most mutants now
+prove that a FLAG fires with the right text; only the ones that make a number impossible to compute
+(a missing order, missing rounds, an incomplete round, an unknown lane, a truncated log) prove a
+rejection.
 """
 
 import os
@@ -45,8 +48,9 @@ ORDERS = ("locality", "census")
 LANES = [CTL, CTL_LB, HOT, BOUNDED, FLOOR, FREE]
 
 # The hinted LOCAL symbols, in the order the harness echoes them (`LaneKernel::HINTED`), all at
-# the shipped default percent — the rotation rejects `--carveout-hint`, so 16 is the only
-# configuration this rung's headline contrast is ever taken at.
+# the SHIPPED percent. This literal is the fixture's own: it describes what the runner writes today
+# (the rotation rejects `--carveout-hint`), while the emitter reads the tier off the log and holds no
+# expected value — which is why a re-pin needs no emitter change.
 HINTED = [CACHED, REORDER_LB, REORDER_FREE]
 HINT = 16
 
@@ -67,13 +71,14 @@ FACTS = {
 ORACLE = ([0, 1, 2, 3, 4, 5] + [48, 49, 50, 51] + list(range(6, 41))
           + [52, 53, 54, 55, 56, 57, 58] + [41, 42, 43])
 
-# The anchor lanes' `eval + finalize` targets: R4's frozen medians for `control@256` and
-# `hot16@128` (the emitter's HARD band), R5's base for `control_lb@128`, and the R5 cache0
-# machinery floor for the reordered one. A conforming session lands IN band by construction, so a
-# fixture that reports OUT means the band moved.
+# The anchor lanes' `eval + finalize` targets. The emitter compares them against EVERY reference the
+# repo holds (R4-frozen, the R5 session, the R8 session — 11, 11 and 12 lanes against this rung's
+# six) and FLAGS a delta past 1.5 %, so a conforming session is placed inside 1.5 % of all three:
+# that is what makes "no flags" a meaningful fixture state. `anchor-offset` is the session that
+# trips it on purpose. `control_lb@128` and the reordered floor have no reference and keep R5's.
 BASE = {
-    "locality": {CTL: 16.624, HOT: 14.836, CTL_LB: 16.406, FLOOR: 17.071},
-    "census": {CTL: 16.545, HOT: 15.129, CTL_LB: 16.219, FLOOR: 16.884},
+    "locality": {CTL: 16.650, HOT: 14.790, CTL_LB: 16.406, FLOOR: 17.071},
+    "census": {CTL: 16.690, HOT: 15.200, CTL_LB: 16.219, FLOOR: 16.884},
 }
 # The finalize stage, held per block size: the 128 lanes reduce twice the partials.
 FIN = {lane: (0.033 if FACTS[lane][2] == 256 else 0.063) for lane in LANES}
@@ -156,7 +161,7 @@ def write(outdir, name, text):
 def session(outdir, name, offsets, **kw):
     """One fixture SESSION: the two logs the emitter requires, one per term order. `offsets`
     is per order so a fixture can give the two orders different shapes — which is how the
-    both-orders gate is testable at all."""
+    two orders' rows are shown to be read side by side rather than reconciled."""
     over = {order: kw.pop(f"override_{order}", None) for order in ORDERS}
     for order in ORDERS:
         write(outdir, f"{name}-{order}.log",
@@ -180,42 +185,43 @@ def main():
     outdir = sys.argv[1]
     os.makedirs(outdir, exist_ok=True)
 
-    # THE CONFORMING SESSION. The bounded reorder body wins in both orders and the unbounded one
-    # wins by more, so the verdict row clears its wash-or-better gate, the envelope row is a WIN,
-    # and the register cut selects the R10-funding cell of the outcome matrix.
+    # THE CONFORMING SESSION, and the only one that must raise NO flag at all: the bounded reorder
+    # body is faster in both orders, the unbounded one faster still, every lane fact matches the
+    # rotation's own description of itself, and both anchors sit inside 1.5 % of all three
+    # references.
     good = {"locality": shift(-0.200, -0.350), "census": shift(-0.150, -0.300)}
     session(outdir, "good", good)
 
-    # EDGE: the verdict row is a WASH — the preregistered gate is wash-OR-BETTER, so this still
-    # funds R10 on the register cut, and that is the cell most easily got wrong.
+    # EDGE: row 1 wobbles around zero — the sign count falls below the label's threshold, so the
+    # printed label is WASH while the median is still reported to three decimals.
     over, offs = {}, {}
     for order in ORDERS:
         over[f"override_{order}"] = {BOUNDED: flat(BOUNDED, BASE[order][HOT], ROUNDS, 0.20)}
         offs[order] = shift(0.0, -0.350)
-    session(outdir, "verdict-wash", offs, **over)
+    session(outdir, "row1-wash", offs, **over)
 
-    # EDGE: the verdict row is a LOSS in both orders — the gate fails, and the register cut does
-    # not rescue it.
-    session(outdir, "verdict-loss",
-            {order: shift(+0.250, -0.100) for order in ORDERS})
+    # EDGE: row 1 is slower in both orders — the label is LOSS and the emitter still prints
+    # everything, including the fixed capture set.
+    session(outdir, "row1-loss", {order: shift(+0.250, -0.100) for order in ORDERS})
 
-    # EDGE: a WIN in locality and a LOSS in census. The gate is preregistered on BOTH orders, so
-    # one order's win cannot carry it.
-    session(outdir, "verdict-split",
+    # EDGE: faster in locality, slower in census. Nothing reconciles them: both rows print, side by
+    # side, and which one matters is not the emitter's call.
+    session(outdir, "row1-split",
             {"locality": shift(-0.200, -0.350), "census": shift(+0.250, -0.100)})
 
-    # EDGE: the reorder bodies at the INCUMBENT's register count, verdict row a WIN. The static
-    # REG facts come off the ARM lines, so this selects the performance-only cell — a time win
-    # that does not fund R10.
+    # EDGE: the reorder bodies at the INCUMBENT's register count. The build-facts line and the
+    # reference table's register statement are read off the ARM lines, so this session states the
+    # other side of that axis.
     same_regs = {BOUNDED: {"regs": 72}, FLOOR: {"regs": 72}, FREE: {"regs": 72, "blocks": 7}}
     session(outdir, "regs-unchanged", good, patch=same_regs)
 
-    # EDGE: no register cut and no time win — the matrix's fourth cell, which records nothing.
-    session(outdir, "regs-unchanged-loss",
-            {order: shift(+0.250, -0.100) for order in ORDERS}, patch=same_regs)
+    # EDGE: an anchor lane 3 % off every reference — the ANCHOR flag's own session. The rotation
+    # composition question this rung has to answer is exactly this reading.
+    over = {f"override_{order}": {CTL: flat(CTL, BASE[order][CTL] * 1.03)} for order in ORDERS}
+    session(outdir, "anchor-offset", good, **over)
 
-    # EDGE: the signed threshold, at it and one below it, on the VERDICT row. hot16 is held
-    # CONSTANT so the reordered body can carry an exact count of negative paired differences.
+    # EDGE: the sign label's threshold, at it and one below it, on row 1. hot16 is held CONSTANT so
+    # the reordered body can carry an exact count of negative paired differences.
     for name, neg in (("sign-at-threshold", 87), ("sign-below-threshold", 86)):
         over, offs = {}, {}
         for order in ORDERS:
@@ -227,33 +233,28 @@ def main():
             offs[order] = shift(0.0, -0.350)
         session(outdir, name, offs, **over)
 
-    # EDGE: the R4-frozen band is the HARD gate — `control@256` 3 % slow invalidates the session,
-    # and no capture manifest may be selected from it.
-    over = {f"override_{order}": {CTL: flat(CTL, BASE[order][CTL] * 1.03)} for order in ORDERS}
-    session(outdir, "anchor-out-of-band", good, **over)
-
-    # EDGE: the flank rule — the incumbent's LAST full cycle drifts 0.3 ms past the scaled
-    # threshold while its session median stays in band, which is exactly the case a
-    # session-median check cannot see.
+    # EDGE: the flank reading — the incumbent's LAST full cycle drifts 0.3 ms past the scaled
+    # reading while its session median stays put, which is exactly the case a session-median
+    # comparison cannot see.
     over = {}
     for order in ORDERS:
         s = flat(HOT, BASE[order][HOT])
         over[f"override_{order}"] = {HOT: s[:-6] + [x + 0.30 for x in s[-6:]]}
     session(outdir, "flank-tripped", good, **over)
 
-    # THE LOG CONTRACT, each mutant self-consistent so it fails on its own gate.
+    # THE LOG CONTRACT, each mutant self-consistent so it raises its own observation.
     session(outdir, "wrong-warmup", good, warmup=12)
     session(outdir, "wrong-rounds", good, rounds=102)
     session(outdir, "rotation-fixed", good, fixed=True)
     # The trace appears in no log line; the grid is what carries it, so a session recorded at
-    # `--log-trace 23` is internally consistent and only the grid pin sees it.
+    # `--log-trace 23` is internally consistent and only the grid reading sees it.
     session(outdir, "wrong-trace", good,
             patch={lane: {"grid": FACTS[lane][3] // 2} for lane in LANES})
     # The reordered lane declaring the INCUMBENT's body: every count is unchanged, and the three
-    # cached lanes are one plan on three bodies, so only the per-lane body pin sees it.
+    # cached lanes are one plan on three bodies, so only the per-lane body check sees it.
     session(outdir, "body-forged", good, patch={BOUNDED: {"kernel": CACHED}})
     # The reordered lane pricing a different plan from the incumbent it is contrasted against. Its
-    # admitted set and label still agree, so only the one-plan-three-bodies gate sees it.
+    # admitted set and label still agree, so only the one-plan-three-bodies check sees it.
     session(outdir, "plan-mismatch", good, patch={BOUNDED: {"c": 29, "removals": 147}})
     # A reversal among two equal-ref sources: every count is unchanged and only the ORDERED list
     # sees it.
@@ -261,9 +262,9 @@ def main():
     swapped[12], swapped[13] = swapped[13], swapped[12]
     session(outdir, "ids-reversed", good, patch={FREE: {"ids": swapped}})
 
-    # THE CARVEOUT GRAMMAR (Task 2's new log lines). The echo SET is part of the accepted
-    # grammar: the rung's whole headline contrast is taken at ONE L1 configuration, so a missing,
-    # wrong or spurious echo is a different arm.
+    # THE CARVEOUT GRAMMAR (Task 2's new log lines). The percent is READ off these echoes, and
+    # the rung's premise is that all three bodies were steered to the SAME one — so a missing,
+    # wrong, spurious or non-uniform echo is a flagged observation about the configuration.
     def head_session(name, **kw):
         for order in ORDERS:
             write(outdir, f"{name}-{order}.log",
@@ -280,8 +281,8 @@ def main():
     head_session("symbols-disagree", symbols=[CACHED, REORDER_LB, "eval_lsb_seg_g"])
     head_session("symbols-twice",
                  extra=[f"  carveout symbols    3 local ({', '.join(HINTED)})"])
-    # A `carveout` line that is neither grammar: the strictness check exists so a runner whose
-    # echo literal drifts is caught rather than read as an unhinted process.
+    # A `carveout` line that is neither grammar: the check exists so a runner whose echo literal
+    # drifts is reported rather than read as an unhinted process.
     head_session("echo-malformed", extra=["  carveout hint       16 % (eval_lsb_pair)"])
 
     mutate(outdir, "good-locality.log", "wrong-tag-locality.log",
@@ -315,7 +316,7 @@ def main():
     mutate(outdir, "good-locality.log", "sample-duplicated-locality.log", duplicated)
 
     # BOTH ORDERS IN ONE LOG: one log is one process, and one process runs one term order, so the
-    # carveout block cannot be bound to two orders.
+    # carveout block cannot be attributed to one of them.
     def merged(t):
         with open(os.path.join(outdir, "good-census.log")) as fh:
             census = fh.read()
@@ -351,8 +352,8 @@ def main():
     mutate(outdir, "good-locality.log", "kernel-forged-locality.log", kernel_forged)
 
     # ONE LANE'S REGISTER COUNT MOVING BETWEEN THE TWO ORDERS' LOGS: registers are a fact of the
-    # BUILD, so two logs that disagree are two builds and the static outcome matrix would be read
-    # off whichever one the emitter happened to look at.
+    # BUILD, so two logs that disagree describe two builds — the loudest flag in the set, since it
+    # is what makes reading the two orders as one session a question.
     mutate(outdir, "good-locality.log", "regs-cross-order-locality.log",
            lambda t: t.replace(f"ARM {BOUNDED} 70 ", f"ARM {BOUNDED} 71 "))
 

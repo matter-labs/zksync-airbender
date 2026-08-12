@@ -718,9 +718,11 @@ r9_q_parity() {
 }
 
 # The applied carveout per R9 surface: one echo per hinted local symbol AND the set line. The
-# rotation carries all three hinted bodies at ONE percent — that is what makes its headline
-# contrast a single-L1-configuration claim (amendment A3) — and the emitter rejects a log whose
-# echo set is not exactly this.
+# rotation carries all three hinted bodies at ONE percent — that is what makes its headline contrast
+# a single-L1-configuration claim (amendment A3). The `16:` literals below are THIS script's own, on
+# purpose: they gate what the SHIPPED binary applies today, which is a different claim from the
+# emitter's — that one reads the tier off the log and holds no expected value, so a re-pin moves
+# these rows and nothing in `r4_table.py`.
 r9_echo_cells() {
   note '### R9 applied carveout: the per-symbol echoes and the "carveout symbols" set line'
   local cached=eval_lsb_pair_cached_128_lb
@@ -850,7 +852,11 @@ r9() {
     bad "r9: no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
     return
   fi
-  note_flavor
+  # ENFORCED, not just documented: `r9_rotation` pins the two reorder bodies' register counts
+  # (70 / 64), which the diagnostic build's counters move — run against it, the lane would fail for
+  # the wrong reason. The `all` chain already orders this lane before `counts`; this is what makes
+  # the standalone invocation safe too.
+  require_shipped "the R9 lane" || return
   r9_q_parity
   r9_echo_cells
   r9_rotation

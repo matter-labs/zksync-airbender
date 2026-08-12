@@ -45,7 +45,11 @@ extension trigger, broad knee or both-orders headline selector.
 R9 NOTE. The reorder rung gets its own path for the same reason, one step further: it holds the
 PLAN fixed and moves the BODY, so the plan-keyed identities the other paths gate on (the aliasing
 key, the admission axis) cannot express it — three of its lanes share one plan by construction,
-and the kernel is the only field that separates them.
+and the kernel is the only field that separates them. It also REPORTS rather than adjudicates
+(RR's call for this rung): it prints the whole picture — every row under both term orders, the
+anchor lanes against every reference this repo holds, the flank readings, the build facts — and
+issues no verdict. It errors only where a number cannot be computed; every policy observation is a
+FLAG at the top of the output. The R4/R5/R8 paths keep their own preregistered gates untouched.
 
 Usage:
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py /tmp/cache.log [--order locality]
@@ -182,8 +186,15 @@ VERDICT = {"win": "WIN", "lose": "LOSS", "wash": "WASH"}
 # The reorder rung contrasts BODIES at one plan, not admission points: three cached lanes carry
 # hot16's identical plan on three bodies, so every R5/R8 identity that keys on the plan alone
 # (the aliasing guard, the admitted-prefix census, the one-BF-per-step axis) would either reject
-# the rotation or fail to see a swapped body. Hence its own lane pins, its own guards and its own
-# decision rows, and the R5/R8 paths are left byte-identical.
+# the rotation or fail to see a swapped body. Hence its own lane pins, its own observations and its
+# own rows, and the R5/R8 paths are left byte-identical.
+#
+# REPORTING, NOT ADJUDICATION (RR, this rung): the emitter prints the WHOLE PICTURE and decides
+# nothing. It errors only where it cannot compute a meaningful number — a log it cannot parse, a
+# missing order, missing rounds, an unknown lane, rounds that do not form complete cycles. Every
+# POLICY observation — trace, round shape, carveout tier, anchor offset, flank movement, body
+# identity, plan identity, admission order, aliasing, build facts — is a FLAG printed at the top of
+# the output, never a rejection and never a control-flow branch. WIN / LOSS / WASH are LABELS.
 R9 = "REORDER"
 R9_CTL, R9_CTL_LB = "control@256", "control_lb@128"
 R9_INCUMBENT, R9_BOUNDED = "hot16@128", "reorder-hot16@128"
@@ -210,26 +221,42 @@ REORDER_BODY = {
 # The K a lane claims, as elsewhere: a mislabelled lane is caught as well as a reordered prefix.
 REORDER_K = {R9_CTL: 0, R9_CTL_LB: 0, R9_FLOOR: 0,
              R9_INCUMBENT: 16, R9_BOUNDED: 16, R9_FREE: 16}
-# The three lanes that must declare ONE plan on three bodies.
+# The three lanes that declare ONE plan on three bodies — the rung's premise, reported per session.
 REORDER_ONE_PLAN = (R9_INCUMBENT, R9_BOUNDED, R9_FREE)
-# The R4-frozen ±2 % HARD band (`ANCHORS`, the legacy paths' constants) is read on these two.
-REORDER_BAND = (R9_CTL, R9_INCUMBENT)
+# The two anchor lanes the reference comparison is read on.
+REORDER_ANCHOR_LANES = (R9_CTL, R9_INCUMBENT)
+
+# EVERY anchor reference this repo holds, each with the LANE COUNT of the rotation that produced it.
+# Absolute medians are rotation-composition dependent — a thinner rotation interleaves fewer heavy
+# lanes, so a lane sees less L2/DRAM/clock interference between its rounds — and this rung runs SIX
+# lanes against references from eleven and twelve. The emitter therefore prints all of them side by
+# side, labelled, and judges none: whether an offset is composition or machine is RR's call on the
+# whole table. `ANCHORS` / `R5_SESSION` are the same dicts the legacy paths read.
+R8_SESSION = {"locality": (16.738, 14.812), "census": (16.866, 15.334)}
+REORDER_REFERENCES = (
+    ("R4 frozen", 11, ANCHORS),
+    ("R5 session", 11, R5_SESSION),
+    ("R8 session", 12, R8_SESSION),
+)
+# A delta this large against a reference is FLAGGED — a reporting duty, so an offset cannot pass
+# unremarked, and never a gate.
+R9_OFFSET_TELL = 0.015
 # The flank sentinels: the three INCUMBENT-body lanes. A body under test is not its own drift
 # sentinel, so the reorder lanes are excluded by construction.
-REORDER_ANCHORS = (R9_CTL, R9_CTL_LB, R9_INCUMBENT)
+REORDER_FLANK_LANES = (R9_CTL, R9_CTL_LB, R9_INCUMBENT)
 
-# The hinted LOCAL symbols, in the order the harness echoes them (`LaneKernel::HINTED`), at the
-# shipped default percent: the rotation rejects `--carveout-hint`, so this is the ONE L1
-# configuration the headline body contrast is taken at (Task 2 amendment A3).
+# The hinted LOCAL symbols, in the order the harness echoes them (`LaneKernel::HINTED`). The percent
+# is READ off the log's own echoes and printed — the emitter carries no expected tier, so a re-pin
+# needs no emitter change. What it reports is the UNIFORMITY the rung's premise wants (amendment
+# A3): all three bodies contrasted at ONE L1 configuration.
 REORDER_HINTED = ["eval_lsb_pair_cached_128_lb", "eval_lsb_pair_cached_reorder_128_lb",
                   "eval_lsb_pair_cached_reorder_128"]
-REORDER_HINT = 16
 
-# The decision rows, in order, each naming its baseline and what it isolates. Row 1 is THE
-# verdict row and carries the preregistered wash-or-better gate.
+# The decision rows, in order, each naming its baseline and what it isolates. Row 1 is the rung's
+# headline contrast; the emitter prints it and does not grade it.
 REORDER_ROWS = [
     (R9_BOUNDED, R9_INCUMBENT,
-     "THE verdict row — the gate-first body at the incumbent's plan, bound and L1 configuration"),
+     "THE headline row — the gate-first body at the incumbent's plan, bound and L1 configuration"),
     (R9_FREE, R9_INCUMBENT, "the envelope verdict — the unbounded gate-first body vs the "
                             "incumbent"),
     (R9_FREE, R9_BOUNDED, "the pure envelope delta — occupancy + twiddle remat BUNDLED: the "
@@ -239,8 +266,8 @@ REORDER_ROWS = [
     (R9_BOUNDED, R9_FLOOR, "capture under the reorder (amendment A7) — removals alone on the "
                            "gate-first body"),
 ]
-# The ncu capture set: a FIXED three lanes of interest, always profiled under both orders, so
-# no selection logic decides it (amendment A7).
+# The ncu capture set: a FIXED three lanes of interest, always printed under both orders, so no
+# timing outcome and no selection rule decides it.
 REORDER_CAPTURE = [(R9_INCUMBENT, "incumbent"), (R9_BOUNDED, "bounded-reorder"),
                    (R9_FREE, "unbounded-reorder")]
 
@@ -1481,70 +1508,84 @@ def interior(orders, runs, arms, done, sched, where, narrowed):
 
 # --- v3 R9 reorder emitter --------------------------------------------------------
 #
-# DEDICATED, on the R8 precedent: one contiguous BODY axis at one plan, decided by five named
-# contrasts under one signed rule, with the static register facts read off the log and printed as
-# the preregistered outcome matrix's selector.
+# DEDICATED, on the R8 precedent, and REPORTING rather than adjudicating (RR): every number the
+# rung asks for is computed and printed — the five rows under both term orders, the anchor lanes
+# against every reference this repo holds, the flank readings, the build facts — and the emitter
+# issues no verdict. Policy observations are collected as FLAGS and printed first, so nothing is
+# hidden and nothing is decided here.
+
+
+def rflag(flags, scope, tag, text):
+    flags.append((scope, tag, text))
 
 
 def rpaired(s, a, b):
-    """The paired per-round contrast `a - b` on `eval + finalize`, under R9's signed rule: a WIN
-    or a LOSS needs sign-stability >= 87/96; anything below that, either sign, is a WASH."""
+    """The paired per-round contrast `a - b` on `eval + finalize`, with the rung's signed LABEL: at
+    least 87 of 96 rounds on one side and the median agreeing is called WIN or LOSS, anything else
+    WASH. A label, not a gate — nothing branches on it."""
     d = [x - y for x, y in zip(s["tot"][a], s["tot"][b])]
     verdict, med, on = signed(d, REORDER["threshold"])
     lo, hi = iqr(d)
-    return {"med": med, "lo": lo, "hi": hi, "on": on, "n": len(d), "verdict": verdict}
+    return {"med": med, "lo": lo, "hi": hi, "on": on, "n": len(d), "verdict": verdict,
+            "min": min(d), "max": max(d)}
 
 
-def reorder_carveout(files, order, where):
-    """The carveout grammar (Task 2's new log lines), fail-closed. One log is one process, so the
-    hinted SET is a property of the FILE — the echoes precede every schedule line. The rung's
-    headline body contrast is a claim about ONE L1 configuration, so a wrong, missing, spurious,
-    duplicated or reordered echo is a different arm, not a cosmetic difference."""
+def reorder_carveout(files, order, flags, where):
+    """The carveout block (Task 2's log grammar) as OBSERVATION. One log is one process, so the
+    hinted set is a property of the FILE — the echoes precede every schedule line. Returns
+    `(path, percent)`; the percent is read off the echoes, and every disagreement with the rung's
+    premise (the three hinted symbols, uniform, agreeing with the set line) is flagged."""
     hits = sorted(p for p, e in files.items() if (R9, order) in e["sections"])
     if len(hits) != 1:
         sys.exit(f"{where}: {len(hits)} log files declare a {R9} order={order} section — one "
-                 f"session is one process per term order, and the applied-carveout block is a "
-                 f"property of that process")
-    path = hits[0]
-    env = files[path]
+                 f"session is one process per term order, and with no file to read there is no "
+                 f"carveout block to report")
+    path, env = hits[0], files[hits[0]]
     if len(env["sections"]) != 1:
-        sys.exit(f"{R9}/{order}: {path} declares "
-                 f"{sorted(f'{t}/{o}' for t, o in env['sections'])} — one log is one process and "
-                 f"one process runs one term order, so its carveout block cannot be bound to two")
-    if env["loose"]:
-        n, line = env["loose"][0]
-        sys.exit(f"{R9}/{order}: {path}:{n}: `{line}` is not the harness's carveout grammar — the "
-                 f"literals are `  carveout hint       <pct>% (<symbol>)` and `  carveout "
-                 f"symbols    <n> local (<symbols>)`, and this gate corroborates the L1 "
-                 f"configuration the body contrast was taken at")
-    want = [(REORDER_HINT, sym) for sym in REORDER_HINTED]
-    if env["echoes"] != want:
-        sys.exit(f"{R9}/{order}: {path} applied the carveout echoes "
-                 f"{[f'{p}%:{s}' for p, s in env['echoes']]}, and the rotation hints exactly "
-                 f"{[f'{p}%:{s}' for p, s in want]} in that order — the percent and the SET are "
-                 f"the configuration under test, so a wrong, missing, spurious, duplicated or "
-                 f"reordered echo is a different arm")
+        rflag(flags, order, "CARVEOUT-ATTRIBUTION",
+              f"`{os.path.basename(path)}` declares "
+              f"{sorted(f'{t}/{o}' for t, o in env['sections'])} — one log is one process, so the "
+              f"carveout block below is shared between two term orders rather than attributable "
+              f"to one")
+    for n, line in env["loose"]:
+        rflag(flags, order, "CARVEOUT-GRAMMAR",
+              f"`{os.path.basename(path)}`:{n}: `{line}` is not the harness's carveout literal "
+              f"(`  carveout hint       <pct>% (<symbol>)` / `  carveout symbols    <n> local "
+              f"(<symbols>)`) — the L1 configuration this line describes is unread")
+    got = [s for _, s in env["echoes"]]
+    if got != REORDER_HINTED:
+        rflag(flags, order, "CARVEOUT-SET",
+              f"the applied echoes are {[f'{p}%:{s}' for p, s in env['echoes']]}; the rotation's "
+              f"hinted set is {REORDER_HINTED} in that order — a missing, spurious, duplicated or "
+              f"reordered echo means the bodies were not steered as the rung's premise assumes")
+    pcts = sorted({p for p, _ in env["echoes"]})
+    if len(pcts) > 1:
+        rflag(flags, order, "CARVEOUT-UNIFORMITY",
+              f"the hinted symbols are steered to {pcts} % — the rung's premise is ONE L1 "
+              f"configuration for all three bodies (amendment A3), so these rows contrast bodies "
+              f"across two configurations")
     if len(env["symbols"]) != 1:
-        sys.exit(f"{R9}/{order}: {path} carries {len(env['symbols'])} `carveout symbols` lines, "
-                 f"expected exactly one — that line states the whole hinted set, which is what "
-                 f"makes a MISSING symbol distinguishable from an unhinted one")
-    count, names = env["symbols"][0]
-    if names != REORDER_HINTED or count != len(REORDER_HINTED):
-        sys.exit(f"{R9}/{order}: {path} declares `carveout symbols    {count} local "
-                 f"({', '.join(names)})`, and the rotation hints {len(REORDER_HINTED)} local "
-                 f"symbols ({', '.join(REORDER_HINTED)}) in that order — the set line and the "
-                 f"per-symbol echoes must describe one configuration")
-    return path
+        rflag(flags, order, "CARVEOUT-SETLINE",
+              f"`{os.path.basename(path)}` carries {len(env['symbols'])} `carveout symbols` lines, "
+              f"one expected — that line states the whole hinted set, and without exactly one a "
+              f"MISSING symbol is indistinguishable from an unhinted one")
+    else:
+        count, names = env["symbols"][0]
+        if names != REORDER_HINTED or count != len(REORDER_HINTED):
+            rflag(flags, order, "CARVEOUT-SETLINE",
+                  f"the set line says `{count} local ({', '.join(names)})` and the per-symbol "
+                  f"echoes say {[s for _, s in env['echoes']]} — the two must describe one "
+                  f"configuration")
+    return path, (pcts[0] if len(pcts) == 1 else None)
 
 
-def reorder_session(key, rounds, arms, trailer, sched):
-    """The R9 log contract, fail-closed: exactly this rotation, recorded at `--log-trace 24`, at
-    96 rounds / 6 warmup, one plan on three bodies with the pinned body per lane and ordered
-    admitted prefixes. A gate that cannot be evaluated is an error, never a skipped section."""
+def reorder_session(key, rounds, arms, trailer, sched, flags):
+    """One term order's session. ERRORS only where no meaningful number can be computed: no ARM
+    lines, no schedule, no trailer, no samples, an unknown lane, an incomplete round, a round set
+    that is not the declared run, or rounds that do not form complete cycles. Everything else — the
+    trace, the round shape, the rotation balance, the bodies, the plan, the admission order, the
+    aliasing shape — is computed and FLAGGED."""
     order = key[1]
-    if order not in ANCHORS:
-        sys.exit(f"{R9}/{order}: unknown term order — the R4-frozen anchor band is preregistered "
-                 f"for {sorted(ANCHORS)} only, so a `{order}` section cannot be adjudicated")
     if not arms:
         sys.exit(f"{R9}/{order}: no ARM lines for this order — old-format or truncated log")
     if trailer is None:
@@ -1554,119 +1595,115 @@ def reorder_session(key, rounds, arms, trailer, sched):
         sys.exit(f"{R9}/{order}: ARM or SAMPLE rows with no `{R9} schedule` line")
     if not rounds:
         sys.exit(f"{R9}/{order}: the log declares this order ({sched[1]} rounds x {sched[0]} "
-                 f"lanes) but carries no SAMPLE rows — a declared order is emitted or it is an "
-                 f"error, never silently skipped")
+                 f"lanes) but carries no SAMPLE rows — there is nothing to summarize")
     lanes = list(arms)
     if set(lanes) != REORDER["lanes"]:
         missing = sorted(REORDER["lanes"] - set(lanes))
         extra = sorted(set(lanes) - REORDER["lanes"])
         sys.exit(f"{R9}/{order}: lane set is not the reorder rotation — missing {missing}, "
-                 f"unexpected {extra}")
+                 f"unexpected {extra}; an unknown lane has no row to be printed in")
     if len(lanes) != trailer[2] or len(lanes) != sched[0]:
         sys.exit(f"{R9}/{order}: {len(lanes)} ARM lines but the trailer declares {trailer[2]} "
                  f"lanes — the log is truncated or mixes builds")
-    for lane in lanes:
-        want = REORDER_GRID[lane]
-        if arms[lane]["grid"] != want:
-            sys.exit(f"{R9}/{order}: lane {lane} declares grid={arms[lane]['grid']}, and this "
-                     f"rung's lanes are preregistered at `--log-trace {REORDER_TRACE}`, where it "
-                     f"is {want} — a session recorded at another trace is internally consistent, "
-                     f"so nothing else would see it")
-        # THE BODY PIN. Three lanes declare one plan, so the kernel is the only field that says
-        # which body ran, and the whole rung is that distinction.
-        if arms[lane]["kernel"] != REORDER_BODY[lane]:
-            sys.exit(f"{R9}/{order}: lane {lane} declares body `{arms[lane]['kernel']}`, the "
-                     f"rotation runs it on `{REORDER_BODY[lane]}` — the three cached lanes carry "
-                     f"ONE plan, so nothing but this pin can see a swapped body")
-    if (sched[1], sched[2]) != (trailer[1], trailer[0]):
-        sys.exit(f"{R9}/{order}: the schedule line declares rounds={sched[1]} warmup={sched[2]} "
-                 f"but the trailer declares rounds={trailer[1]} warmup={trailer[0]} — the log "
-                 f"mixes two runs, or the header does not describe what ran")
-    # THE PREREGISTERED SHAPE. The signed threshold is a literal keyed to 96 rounds, and the flank
-    # rule reads the first and last full 6-round cycle, so neither another round count nor a
-    # partial-cycle warmup has a preregistered rule to be decided under.
-    if (trailer[1], trailer[0]) != (REORDER["rounds"], REORDER["warmup"]):
-        sys.exit(f"{R9}/{order}: the log declares rounds={trailer[1]} warmup={trailer[0]}, and the "
-                 f"reorder rotation is preregistered at {REORDER['rounds']} rounds / "
-                 f"{REORDER['warmup']} warmup with the signed threshold "
-                 f"{REORDER['threshold']}/{REORDER['rounds']} — no other shape has a "
-                 f"preregistered threshold, so this log cannot be decided")
     for r in sorted(rounds):
         if set(rounds[r]) != set(lanes):
-            sys.exit(f"{R9}/{order}: round {r} carries {sorted(rounds[r])}, expected {lanes} — "
-                     f"incomplete rounds are not droppable, the contrasts are paired")
-        for lane, (_, _, kernel) in rounds[r].items():
-            if kernel != arms[lane]["kernel"]:
-                sys.exit(f"{R9}/{order}: round {r} lane {lane} ran `{kernel}` but its ARM line "
-                         f"declares `{arms[lane]['kernel']}` — the log describes a body the run "
-                         f"did not use")
+            sys.exit(f"{R9}/{order}: round {r} carries {sorted(rounds[r])}, expected {lanes} — the "
+                     f"contrasts are paired per round, so an incomplete round has no contrast")
     if len(rounds) != trailer[1]:
         sys.exit(f"{R9}/{order}: {len(rounds)} rounds in the log, trailer claims rounds="
                  f"{trailer[1]} — truncated log")
     if len(rounds) % len(lanes) != 0:
-        sys.exit(f"{R9}/{order}: {len(rounds)} rounds over {len(lanes)} lanes is not balanced — "
-                 f"every lane must start equally often")
+        sys.exit(f"{R9}/{order}: {len(rounds)} rounds over {len(lanes)} lanes is not a whole number "
+                 f"of cycles — the rotation's own arithmetic does not close")
     want_ids = list(range(trailer[0], trailer[0] + trailer[1]))
     if sorted(rounds) != want_ids:
         got = sorted(rounds)
         sys.exit(f"{R9}/{order}: round ids are {got[:4]}…{got[-1]}, expected the consecutive run "
-                 f"{want_ids[0]}…{want_ids[-1]} (warmup {trailer[0]}, rounds {trailer[1]}) — gaps, "
-                 f"duplicates or a renumbered log, none of which is a paired rotation")
+                 f"{want_ids[0]}…{want_ids[-1]} (warmup {trailer[0]}, rounds {trailer[1]}) — rounds "
+                 f"are missing or renumbered, so the log does not describe the run it declares")
+
+    # From here on: observations. Everything below computes.
+    if (sched[1], sched[2]) != (trailer[1], trailer[0]):
+        rflag(flags, order, "HEADER",
+              f"the schedule line declares rounds={sched[1]} warmup={sched[2]} and the trailer "
+              f"declares rounds={trailer[1]} warmup={trailer[0]} — the header does not describe "
+              f"what ran")
+    if (trailer[1], trailer[0]) != (REORDER["rounds"], REORDER["warmup"]):
+        rflag(flags, order, "ROUND-SHAPE",
+              f"the session ran {trailer[1]} rounds / {trailer[0]} warmup; the rung's shape is "
+              f"{REORDER['rounds']} / {REORDER['warmup']}, which is what the "
+              f"{REORDER['threshold']}/{REORDER['rounds']} sign label and the "
+              f"{REORDER['warmup']}-round flank cycle are written for")
+    for lane in lanes:
+        want = REORDER_GRID[lane]
+        if arms[lane]["grid"] != want:
+            rflag(flags, order, "TRACE",
+                  f"lane `{lane}` declares grid={arms[lane]['grid']}; at `--log-trace "
+                  f"{REORDER_TRACE}` it is {want} — this session was recorded at another trace, "
+                  f"which no other line in the log shows")
+        if arms[lane]["kernel"] != REORDER_BODY[lane]:
+            rflag(flags, order, "BODY",
+                  f"lane `{lane}` declares body `{arms[lane]['kernel']}`; the rotation runs it on "
+                  f"`{REORDER_BODY[lane]}` — the three cached lanes share one plan, so the body "
+                  f"field is the only thing that says which body ran")
+    for r in sorted(rounds):
+        for lane, (_, _, kernel) in rounds[r].items():
+            if kernel != arms[lane]["kernel"]:
+                rflag(flags, order, "SAMPLE-BODY",
+                      f"round {r} lane `{lane}` ran `{kernel}` but its ARM line declares "
+                      f"`{arms[lane]['kernel']}`")
+                break
     per = len(rounds) // len(lanes)
     slots = defaultdict(int)
     for r in sorted(rounds):
         for slot, lane in enumerate(rounds[r]):
             slots[(lane, slot)] += 1
     for lane in lanes:
-        for slot in range(len(lanes)):
-            if slots[(lane, slot)] != per:
-                sys.exit(f"{R9}/{order}: lane {lane} runs at rotation position {slot} in "
-                         f"{slots[(lane, slot)]} rounds, expected {per} — the rotation is not "
-                         f"balanced, so a lane keeps a position and its median carries that "
-                         f"position's clock state")
+        off = [slot for slot in range(len(lanes)) if slots[(lane, slot)] != per]
+        if off:
+            rflag(flags, order, "ROTATION-BALANCE",
+                  f"lane `{lane}` does not take rotation positions {off} exactly {per} times — a "
+                  f"lane that keeps a position carries that position's clock state into its median")
+            break
     keys = sorted(rounds)
-    # ADMITTED-ID GATE, ordered against the controller-derived oracle prefix, as in the R5/R8
-    # paths: counts are blind to a reversal among equal-ref, equal-class sources.
     for lane in lanes:
         f = arms[lane]
         ids, k = f["ids"], f["admitted"]
         if len(ids) != k:
-            sys.exit(f"{R9}/{order}: lane {lane} declares {k} admitted sources but lists "
-                     f"{len(ids)} ids")
+            rflag(flags, order, "ADMISSION",
+                  f"lane `{lane}` declares {k} admitted sources but lists {len(ids)} ids")
         if REORDER_K[lane] != k:
-            sys.exit(f"{R9}/{order}: lane {lane} admits {k} sources but its name claims K = "
-                     f"{REORDER_K[lane]} — the label and the plan disagree")
+            rflag(flags, order, "LANE-LABEL",
+                  f"lane `{lane}` admits {k} sources and its name claims K = {REORDER_K[lane]}")
         want = ORACLE_ORDER[:k]
         if ids != want:
-            at = next(i for i, (g, w) in enumerate(zip(ids, want)) if g != w)
-            sys.exit(f"{R9}/{order}: lane {lane} admits source {ids[at]} at admission position "
-                     f"{at}, the oracle ordering has {want[at]} — the admitted prefix is not the "
-                     f"canonical one (counts cannot see this)")
-    # ONE PLAN, THREE BODIES. The rung's premise: the cached lanes differ in the BODY alone, so a
-    # plan that moved with the body would price a different experiment under the verdict row.
+            at = next((i for i, (g, w) in enumerate(zip(ids, want)) if g != w), None)
+            where_at = (f"at admission position {at}: {ids[at]} where the oracle has {want[at]}"
+                        if at is not None else "in its length")
+            rflag(flags, order, "ADMISSION",
+                  f"lane `{lane}`'s admitted prefix is not the canonical one — {where_at} (no "
+                  f"count can see this)")
     base = arms[R9_INCUMBENT]
     for lane in REORDER_ONE_PLAN[1:]:
-        got = tuple(arms[lane][f] for f in ("c", "removals", "admitted", "ids", "threads"))
-        ref = tuple(base[f] for f in ("c", "removals", "admitted", "ids", "threads"))
-        if got != ref:
-            sys.exit(f"{R9}/{order}: lane {lane} declares C={arms[lane]['c']} "
-                     f"removals={arms[lane]['removals']} admitted={arms[lane]['admitted']} at "
-                     f"{arms[lane]['threads']} threads, and `{R9_INCUMBENT}` declares "
-                     f"{base['c']} / {base['removals']} / {base['admitted']} at "
-                     f"{base['threads']} — the verdict row contrasts BODIES at one plan, so a "
-                     f"plan that moves with the body is a different experiment")
-    # ALIASING GUARD, keyed on the BODY as well as the plan: `hot16@128` and `reorder-hot16@128`
-    # SHARE a plan by construction, so R5's key would reject the rotation; two lanes on one body
-    # AND one plan really are one experiment under two labels.
+        keyed = ("c", "removals", "admitted", "ids", "threads")
+        if tuple(arms[lane][k] for k in keyed) != tuple(base[k] for k in keyed):
+            rflag(flags, order, "PLAN",
+                  f"lane `{lane}` declares C={arms[lane]['c']} removals={arms[lane]['removals']} "
+                  f"admitted={arms[lane]['admitted']} at {arms[lane]['threads']} threads and "
+                  f"`{R9_INCUMBENT}` declares {base['c']} / {base['removals']} / "
+                  f"{base['admitted']} at {base['threads']} — the headline row reads as a BODY "
+                  f"contrast only while the plan is one plan")
     for i, a in enumerate(lanes):
         for b in lanes[i + 1:]:
             if (arms[a]["ids"], arms[a]["threads"], arms[a]["kernel"]) == \
                (arms[b]["ids"], arms[b]["threads"], arms[b]["kernel"]) and arms[a]["removals"]:
-                sys.exit(f"{R9}/{order}: lanes {a} and {b} declare the SAME plan on the SAME body "
-                         f"at the same block size — one experiment under two labels")
+                rflag(flags, order, "ALIAS",
+                      f"lanes `{a}` and `{b}` declare the same plan on the same body at the same "
+                      f"block size — one experiment under two labels")
             if all(rounds[r][a][:2] == rounds[r][b][:2] for r in keys):
-                sys.exit(f"{R9}/{order}: lanes {a} and {b} carry BIT-IDENTICAL samples in every "
-                         f"round — the log aliases one lane's data onto another")
+                rflag(flags, order, "ALIAS",
+                      f"lanes `{a}` and `{b}` carry BIT-IDENTICAL samples in every round — one "
+                      f"lane's data appears under two labels")
     tot = {a: [rounds[r][a][0] + rounds[r][a][1] for r in keys] for a in lanes}
     return {
         "order": order, "lanes": lanes, "arms": arms, "rounds": rounds, "keys": keys, "tot": tot,
@@ -1677,12 +1714,43 @@ def reorder_session(key, rounds, arms, trailer, sched):
 
 
 def reorder_flank(s, lane):
-    """The first and last full cycle's block medians for one anchor lane, with the scaled
-    threshold that goes with it: max(0.05 ms, 0.5 % of that lane's session median)."""
+    """The first and last full cycle's block medians for one anchor lane, with the scaled reading
+    that goes with it: max(0.05 ms, 0.5 % of that lane's session median)."""
     cycle = len(s["lanes"])
     first = median(s["tot"][lane][:cycle])
     last = median(s["tot"][lane][-cycle:])
     return first, last, abs(last - first), max(FLANK_MS, FLANK_REL * s["med"][lane])
+
+
+def reorder_readings(s, flags):
+    """The anchor-reference deltas and the flank readings, computed before anything prints so the
+    flags block can lead the output."""
+    order = s["order"]
+    s["refs"] = {}
+    for i, lane in enumerate(REORDER_ANCHOR_LANES):
+        got, tells = s["med"][lane], []
+        for name, lanes_n, table in REORDER_REFERENCES:
+            if order not in table:
+                continue
+            ref = table[order][i]
+            rel = (got - ref) / ref
+            s["refs"].setdefault(lane, []).append((name, lanes_n, ref, rel))
+            if abs(rel) > R9_OFFSET_TELL:
+                tells.append(f"{name} ({lanes_n} lanes) {100.0 * rel:+.2f} %")
+        if tells:
+            rflag(flags, order, "ANCHOR",
+                  f"`{lane}` reads {got:.3f} ms, more than "
+                  f"{100.0 * R9_OFFSET_TELL:.1f} % off " + "; ".join(tells)
+                  + f" — this rotation carries {len(s['lanes'])} lanes against their 11–12, so read "
+                    f"the reference table before calling it machine drift")
+    s["flank"] = {}
+    for lane in REORDER_FLANK_LANES:
+        first, last, drift, tol = reorder_flank(s, lane)
+        s["flank"][lane] = (first, last, drift, tol)
+        if drift > tol:
+            rflag(flags, order, "FLANK",
+                  f"`{lane}`'s first and last full cycle differ by {drift:.3f} ms against the "
+                  f"{tol:.3f} ms scaled reading — the session moved under itself")
 
 
 def reorder_emit(s):
@@ -1697,179 +1765,186 @@ def reorder_emit(s):
         print(f"| `{a}` | `{f['kernel']}` | {f['regs']} | {f['blocks_sm']} | {f['threads']} | "
               f"{f['grid']} | {f['c']} | {f['removals']} | {f['admitted']} | "
               f"{s['med_ev'][a]:.3f} | {s['med_fin'][a]:.3f} | **{s['med'][a]:.3f}** |")
-    print(f"\nBodies gated per lane, admitted-id lists gated ORDERED against the controller "
-          f"oracle, and grids gated against `--log-trace {REORDER_TRACE}`, all "
-          f"{len(s['lanes'])} lanes; the three cached lanes are gated as ONE plan on three "
-          f"bodies. Signed rule at this rotation: "
-          f"{REORDER['threshold']}/{REORDER['rounds']} (preregistered literal).")
+    print(f"\nBodies, admitted prefixes, grids and the one-plan-three-bodies premise are all "
+          f"checked and reported in the flags block above; nothing here is filtered out on their "
+          f"account. Sign label at this rotation: {REORDER['threshold']}/{REORDER['rounds']}.")
 
-    print(f"\n**Decision rows ({order})** — paired per round on `eval + finalize`, each naming "
-          f"its baseline. Row 1 is THE verdict row and carries the preregistered "
-          f"wash-or-better gate.\n")
-    print("| # | contrast | baseline | median (ms) | IQR | % of baseline | on-sign | verdict | "
-          "occupancy | what it isolates |")
-    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    print(f"\n**Rows ({order})** — paired per round on `eval + finalize`, each naming its baseline. "
+          f"WIN / LOSS / WASH are LABELS at "
+          f"{REORDER['threshold']}/{REORDER['rounds']}; the reading is the median, the sign count "
+          f"and the spread.\n")
+    print("| # | contrast | baseline | median (ms) | IQR | min … max | % of baseline | on-sign | "
+          "label | occupancy | what it isolates |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for i, (a, b, what) in enumerate(REORDER_ROWS, 1):
         c = rpaired(s, a, b)
         occ = "same class" if s["arms"][a]["blocks_sm"] == s["arms"][b]["blocks_sm"] else \
               f"**{s['arms'][a]['blocks_sm']} v {s['arms'][b]['blocks_sm']} blocks/SM — NOT " \
               f"occupancy-neutral**"
         print(f"| {i} | `{a}` − `{b}` | `{b}` | **{c['med']:+.3f}** | {c['lo']:+.3f} … "
-              f"{c['hi']:+.3f} | {100.0 * c['med'] / s['med'][b]:+.2f} % | {c['on']}/{c['n']} | "
+              f"{c['hi']:+.3f} | {c['min']:+.3f} … {c['max']:+.3f} | "
+              f"{100.0 * c['med'] / s['med'][b]:+.2f} % | {c['on']}/{c['n']} | "
               f"**{VERDICT[c['verdict']]}** | {occ} | {what} |")
 
-    # THE HARD GATE, the same R4-frozen band and constants the legacy paths use.
-    print(f"\n**Anchor band ({order})** — the R4-frozen ±2 % band, the HARD gate: a session with "
-          f"an OUT anchor is INVALID, is repeated soaked, and emits no conclusion.\n")
-    print("| anchor | this session | R4 frozen | delta | verdict |")
-    print("| --- | --- | --- | --- | --- |")
-    s["sanity"] = True
-    for lane, target in zip(REORDER_BAND, ANCHORS[order]):
-        got = s["med"][lane]
-        rel = (got - target) / target
-        ok = abs(rel) <= SANITY_TOL
-        s["sanity"] = s["sanity"] and ok
-        print(f"| `{lane}` | {got:.3f} | {target:.3f} | {100.0 * rel:+.2f} % | "
-              f"**{'IN' if ok else 'OUT'}** |")
+    print(f"\n**Anchor lanes against every reference we hold ({order})** — absolute medians are "
+          f"rotation-composition dependent, so each reference carries the LANE COUNT of the "
+          f"rotation that produced it against this rung's {len(s['lanes'])}. Nothing here gates; "
+          f"the flags block calls out a delta past {100.0 * R9_OFFSET_TELL:.1f} %.\n")
+    print("| anchor lane | this session (6 lanes) | reference | lanes | reference median | delta |")
+    print("| --- | --- | --- | --- | --- | --- |")
+    for lane in REORDER_ANCHOR_LANES:
+        for name, lanes_n, ref, rel in s["refs"].get(lane, []):
+            print(f"| `{lane}` | {s['med'][lane]:.3f} | {name} | {lanes_n} | {ref:.3f} | "
+                  f"{100.0 * rel:+.2f} % |")
 
     print(f"\n**Flank ({order})** — block medians of each INCUMBENT-body anchor lane's FIRST and "
-          f"LAST full cycle ({len(s['lanes'])} rounds each) against max({FLANK_MS:.2f} ms, "
-          f"{100.0 * FLANK_REL:.1f} % of that lane's session median). The bodies under test are "
-          f"not their own drift sentinels.\n")
-    print("| anchor lane | first cycle | last cycle | drift | threshold | verdict |")
+          f"LAST full cycle ({len(s['lanes'])} rounds each), against max({FLANK_MS:.2f} ms, "
+          f"{100.0 * FLANK_REL:.1f} % of that lane's session median). The bodies under test are not "
+          f"their own drift sentinels. A reading, not a mandate.\n")
+    print("| anchor lane | first cycle | last cycle | drift | scaled reading | over? |")
     print("| --- | --- | --- | --- | --- | --- |")
-    s["flank"] = True
-    for lane in REORDER_ANCHORS:
-        first, last, drift, tol = reorder_flank(s, lane)
-        ok = drift <= tol
-        s["flank"] = s["flank"] and ok
+    for lane in REORDER_FLANK_LANES:
+        first, last, drift, tol = s["flank"][lane]
         print(f"| `{lane}` | {first:.3f} | {last:.3f} | {drift:.3f} | {tol:.3f} | "
-              f"**{'PASS' if ok else 'TRIP'}** |")
+              f"{'**yes**' if drift > tol else 'no'} |")
 
 
-def reorder_report(sessions, paths):
+def reorder_flags_block(flags):
+    print("\n### Flags\n")
+    if not flags:
+        print("**None.** Every observation below matched the rung's own description of itself — "
+              "the trace, the round shape, the rotation balance, the bodies, the plan, the "
+              "admitted prefixes, the carveout set and its uniformity, the anchor references and "
+              "the flank. The tables are the reading.")
+        return
+    print(f"{len(flags)} observation(s). **Nothing here stops the emitter or decides anything** — "
+          f"each row is printed first so it cannot be missed, and every judgement it invites (is "
+          f"this offset composition or drift? does this shape still answer the question?) is RR's "
+          f"on the whole picture below.\n")
+    print("| # | scope | flag | what was observed |")
+    print("| --- | --- | --- | --- |")
+    for i, (scope, tag, text) in enumerate(flags, 1):
+        print(f"| {i} | `{scope}` | **{tag}** | {text} |")
+
+
+def reorder_report(sessions, paths, flags):
     orders = ("locality", "census")
+    hints = {o: sessions[o]["hint"] for o in orders}
     print("## v3 R9 — the gate-first reordered pair body\n")
-    print(f"Every figure below is EMITTED, not transcribed: this script is the single authority "
-          f"for the derived decisions. The rung contrasts BODIES at one plan — the incumbent, the "
-          f"bounded gate-first body and the unbounded one, all three at hot16's admitted set and "
-          f"at ONE L1 configuration ({REORDER_HINT} % on every hinted local symbol) — so it is "
-          f"decided by five named contrasts, paired per round on `eval + finalize`, under one "
-          f"signed rule ({REORDER['threshold']}/{REORDER['rounds']}). Rows are NEVER pooled "
-          f"across term orders, and the verdict row's gate is preregistered on BOTH.\n")
-    print("| term order | log | applied carveout |")
-    print("| --- | --- | --- |")
+    print(f"Every figure below is EMITTED, not transcribed. The rung contrasts BODIES at one plan — "
+          f"the incumbent, the bounded gate-first body and the unbounded one, all three at hot16's "
+          f"admitted set — under both term orders, paired per round on `eval + finalize`. This "
+          f"emitter REPORTS: it computes the whole picture, flags what disagrees with the rung's "
+          f"own description of itself, and issues NO verdict. Rows are never pooled across term "
+          f"orders.\n")
+    print("| term order | log | carveout applied (read off the log) | hinted symbols |")
+    print("| --- | --- | --- | --- |")
     for order in orders:
+        pct = hints[order]
         print(f"| `{order}` | `{os.path.basename(paths[order])}` | "
-              + ", ".join(f"{REORDER_HINT} % `{sym}`" for sym in REORDER_HINTED) + " |")
+              f"{'**' + str(pct) + ' %**' if pct is not None else '**non-uniform**'} | "
+              + ", ".join(f"`{sym}`" for sym in REORDER_HINTED) + " |")
+    reorder_flags_block(flags)
     for order in orders:
         reorder_emit(sessions[order])
 
-    print("\n### Preregistered decisions\n")
-    invalid = [o for o in orders if not sessions[o]["sanity"]]
-    tripped = [o for o in orders if not sessions[o]["flank"]]
-    if invalid:
-        print(f"> **SESSION INVALID** — an anchor outside the R4-frozen ±2 % band in: "
-              f"{', '.join(invalid)}. The rule is a soaked repeat, and NO conclusion is emitted "
-              f"from this session; the rows above and below are printed for diagnosis only and DO "
-              f"NOT STAND.\n")
-    if tripped:
-        print(f"> **FLANK TRIPPED** — an anchor lane whose first and last full cycle disagree past "
-              f"the scaled threshold in: {', '.join(tripped)}. That session is a soaked-repeat "
-              f"candidate; the flank table above names the lane that drifted.\n")
-
-    verdict = {o: rpaired(sessions[o], R9_BOUNDED, R9_INCUMBENT) for o in orders}
-    print(f"**The verdict row** (`{R9_BOUNDED}` − `{R9_INCUMBENT}`), and its preregistered gate: "
-          f"WASH-OR-BETTER in BOTH term orders.\n")
-    print("| order | median (ms) | on-sign | verdict | clears wash-or-better |")
-    print("| --- | --- | --- | --- | --- |")
+    print("\n### The whole picture, in one place\n")
+    headline = {o: rpaired(sessions[o], R9_BOUNDED, R9_INCUMBENT) for o in orders}
+    print(f"**Row 1, the headline contrast** (`{R9_BOUNDED}` − `{R9_INCUMBENT}`), both orders side "
+          f"by side. No gate: the medians, the sign counts and the spreads are the reading.\n")
+    print("| order | median (ms) | IQR | min … max | on-sign | label | carveout |")
+    print("| --- | --- | --- | --- | --- | --- | --- |")
     for o in orders:
-        c = verdict[o]
-        print(f"| `{o}` | **{c['med']:+.3f}** | {c['on']}/{c['n']} | **{VERDICT[c['verdict']]}** | "
-              f"{'yes' if c['verdict'] != 'lose' else 'NO'} |")
-    gate = all(verdict[o]["verdict"] != "lose" for o in orders)
-    won = all(verdict[o]["verdict"] == "win" for o in orders)
-    print(f"\n⇒ the preregistered gate is **{'MET' if gate else 'NOT met'}** — the gate-first body "
-          f"{'costs no time' if gate else 'LOSES time'} at the incumbent's plan"
-          + (", and wins it in both orders." if won else "."))
+        c = headline[o]
+        pct = hints[o]
+        print(f"| `{o}` | **{c['med']:+.3f}** | {c['lo']:+.3f} … {c['hi']:+.3f} | "
+              f"{c['min']:+.3f} … {c['max']:+.3f} | {c['on']}/{c['n']} | "
+              f"**{VERDICT[c['verdict']]}** | {pct if pct is not None else 'non-uniform'} % |")
 
-    # THE STATIC REGISTER FACTS, off the ARM lines rather than written here, and cross-checked
-    # between the two orders: they are facts of the BUILD, so two logs that disagree are two
-    # builds and nothing below them can be pooled.
-    a_loc, a_cen = (sessions[o]["arms"] for o in orders)
-    for lane in REORDER_LANES:
-        keys = ("regs", "blocks_sm", "threads", "grid", "kernel", "c", "removals", "admitted",
-                "ids")
-        if tuple(a_loc[lane][k] for k in keys) != tuple(a_cen[lane][k] for k in keys):
-            sys.exit(f"{R9}: lane {lane} declares different facts in the two term orders' logs — "
-                     f"registers, occupancy tier, body and plan are facts of the BUILD, so these "
-                     f"two logs are two builds and their rows cannot be read as one session")
+    # THE BUILD FACTS, off the ARM lines rather than written here. Their cross-order comparison is
+    # computed before the flags block prints (see `reorder`), so a disagreement is already up there.
+    a_loc = sessions["locality"]["arms"]
     regs = {lane: a_loc[lane]["regs"] for lane in REORDER_LANES}
     blocks = {lane: a_loc[lane]["blocks_sm"] for lane in REORDER_LANES}
-    print(f"\n**Static register facts** (off the ARM lines, identical in both orders): "
-          f"`{R9_INCUMBENT}` {regs[R9_INCUMBENT]} regs / {blocks[R9_INCUMBENT]} blocks/SM, "
-          f"`{R9_BOUNDED}` {regs[R9_BOUNDED]} / {blocks[R9_BOUNDED]}, `{R9_FREE}` "
-          f"{regs[R9_FREE]} / {blocks[R9_FREE]}.")
+    print(f"\n**Build facts** (off the ARM lines): `{R9_INCUMBENT}` {regs[R9_INCUMBENT]} regs / "
+          f"{blocks[R9_INCUMBENT]} blocks/SM, `{R9_BOUNDED}` {regs[R9_BOUNDED]} / "
+          f"{blocks[R9_BOUNDED]}, `{R9_FREE}` {regs[R9_FREE]} / {blocks[R9_FREE]}. Carveout "
+          f"{hints['locality'] if hints['locality'] is not None else 'non-uniform'} % on all three "
+          f"hinted symbols. Any disagreement between the two orders' logs is in the flags block.")
 
     cut = regs[R9_BOUNDED] < regs[R9_INCUMBENT]
-    reg_cell = (f"reduced ({regs[R9_INCUMBENT]} → {regs[R9_BOUNDED]})" if cut
-                else f"unchanged ({regs[R9_BOUNDED]} vs {regs[R9_INCUMBENT]})")
-    matrix = [
-        (True, "wash-or-better", "funds R10", "the register cut is real and costs no time"),
-        (True, "LOSS", "does NOT fund R10", "the cut is paid for in time"),
-        (False, "WIN", "performance-only, does NOT fund R10",
-         "a time win with no register headroom to spend"),
-        (False, "wash or LOSS", "nothing to record",
-         "neither a register cut nor a time win"),
-    ]
-    if cut:
-        picked = 0 if gate else 1
-    else:
-        picked = 2 if won else 3
-    print(f"\n**Preregistered outcome matrix** (amendment A5). The register facts are static and "
-          f"come off the log; the timing selects the cell.\n")
-    print("| registers vs the incumbent | verdict row | outcome | |")
-    print("| --- | --- | --- | --- |")
-    for i, (needs_cut, timing, outcome, why) in enumerate(matrix):
-        print(f"| {'reduced' if needs_cut else 'unchanged'} | {timing} | **{outcome}** — {why} | "
-              f"{'**⇐ SELECTED**' if i == picked else ''} |")
-    print(f"\n⇒ this session: registers **{reg_cell}**, verdict row "
-          f"{'wash-or-better' if gate else 'a LOSS'} ⇒ **{matrix[picked][2]}** "
-          f"({matrix[picked][3]}).")
+    print(f"\n**Reference: what each combination would mean** — a labelled reading of the rung's "
+          f"two axes, NOT a selection. The register facts are static (above); the timing is row 1 "
+          f"(above, both orders). Which cell this session sits in, and what to do about it, is "
+          f"RR's call.\n")
+    print("| registers vs the incumbent | row 1 | what it would mean |")
+    print("| --- | --- | --- |")
+    print("| reduced | wash or win | a register cut that costs no time — the R10 headroom case |")
+    print("| reduced | loss | a register cut paid for in time |")
+    print("| unchanged | win | a performance win with no register headroom |")
+    print("| unchanged | wash or loss | neither a register cut nor a time win |")
+    print(f"\nThis session's register axis, stated: `{R9_BOUNDED}` is "
+          f"{'BELOW' if cut else 'NOT below'} `{R9_INCUMBENT}` "
+          f"({regs[R9_BOUNDED]} vs {regs[R9_INCUMBENT]} registers), and `{R9_FREE}` runs "
+          f"{regs[R9_FREE]} registers at {blocks[R9_FREE]} blocks/SM.")
 
-    print("\n### ncu capture manifest\n")
-    print(f"A FIXED set — the incumbent and the two gate-first bodies — under BOTH term orders. "
-          f"The three lanes of interest are the rung's whole question, so no selection rule "
-          f"decides the manifest and no timing outcome can shrink it. Task 4 consumes this block "
-          f"as AUTHORITATIVE and does not reconstruct it.\n")
-    if invalid:
-        print(f"**NOT AUTHORITATIVE**: {', '.join(invalid)} is invalid, so this session selects no "
-              f"capture set. Repeat the session soaked and re-emit.")
-        sys.exit(f"{R9}: session invalid — {', '.join(invalid)} carries an anchor outside the "
-                 f"R4-frozen ±2 % band; repeat it soaked, and do not record conclusions from this "
-                 f"log set")
+    print("\n### ncu capture set\n")
+    print(f"A FIXED set — the incumbent and the two gate-first bodies — under BOTH term orders. The "
+          f"three lanes of interest are the rung's whole question, so no timing outcome and no "
+          f"selection rule decides it.\n")
     print("```")
     for lane, role in REORDER_CAPTURE:
+        pct = hints["locality"]
         print(f"NCU-CAPTURE lane={lane} orders=census,locality roles={role} "
-              f"body={REORDER_BODY[lane]} regs={regs[lane]}")
+              f"body={REORDER_BODY[lane]} regs={regs[lane]} "
+              f"carveout={pct if pct is not None else 'non-uniform'}")
     print("```")
+    # Restated at the foot as well as in the leading block: a cross-order disagreement is the one
+    # observation that invalidates reading the two orders as one session, and it is worth twice.
+    late = [f for f in flags if f[0] == "session"]
+    if late:
+        print("\n**Session-level flags** (restated from the flags block — they are what makes "
+              "reading the two orders together a question):\n")
+        for _, tag, text in late:
+            print(f"- **{tag}** — {text}")
 
 
 def reorder(orders, runs, arms, done, sched, files, where, narrowed):
     if narrowed:
-        sys.exit(f"{where}: the {R9} path is preregistered on BOTH term orders, so `--order` "
-                 f"cannot narrow it — emit the two session logs together")
+        sys.exit(f"{where}: the {R9} rung is read over BOTH term orders, so `--order` cannot narrow "
+                 f"it — emit the two session logs together")
     if set(orders) != {"census", "locality"}:
-        sys.exit(f"{where}: the {R9} rung is preregistered on EXACTLY both term orders (census and "
-                 f"locality); this log set carries {', '.join(orders) or 'none'} — a one-order log "
-                 f"set decides nothing")
-    sessions, paths = {}, {}
+        sys.exit(f"{where}: the {R9} rung is read over EXACTLY both term orders (census and "
+                 f"locality); this log set carries {', '.join(orders) or 'none'} — the missing "
+                 f"order's rows cannot be computed")
+    flags, sessions, paths = [], {}, {}
     for order in ("locality", "census"):
         key = (R9, order)
-        paths[order] = reorder_carveout(files, order, where)
+        paths[order], hint = reorder_carveout(files, order, flags, where)
         sessions[order] = reorder_session(key, runs[key], arms.get(key, {}), done.get(key),
-                                         sched.get(key))
-    reorder_report(sessions, paths)
+                                         sched.get(key), flags)
+        sessions[order]["hint"] = hint
+        reorder_readings(sessions[order], flags)
+    # The cross-order observations are appended by `reorder_report` while it reads the two orders
+    # together; it prints the flags block from the same list, so nothing lands after the fact
+    # unseen — the block is assembled first and the late rows are restated at the end.
+    cross = []
+    a_loc, a_cen = (sessions[o]["arms"] for o in ("locality", "census"))
+    keyed = ("regs", "blocks_sm", "threads", "grid", "kernel", "c", "removals", "admitted", "ids")
+    for lane in REORDER_LANES:
+        if tuple(a_loc[lane][k] for k in keyed) != tuple(a_cen[lane][k] for k in keyed):
+            rflag(cross, "session", "BUILD-FACTS",
+                  f"lane `{lane}` declares different facts in the two orders' logs (registers, "
+                  f"occupancy tier, body or plan) — those are facts of the BUILD, so these two "
+                  f"logs describe two builds and their rows are not one session")
+    if sessions["locality"]["hint"] != sessions["census"]["hint"]:
+        rflag(cross, "session", "CARVEOUT-TIER",
+              f"the two orders were recorded at {sessions['locality']['hint']} % and "
+              f"{sessions['census']['hint']} % — the rung's premise is one L1 configuration, so "
+              f"these are two experiments")
+    flags.extend(cross)
+    reorder_report(sessions, paths, flags)
+
 
 
 def main():
