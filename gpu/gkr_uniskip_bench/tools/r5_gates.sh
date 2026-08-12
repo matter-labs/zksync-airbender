@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# v3 R5 admission-frontier gates, executable rather than transcribed.
+# v3 R5 admission-frontier gates, executable rather than transcribed. The v3 R8 interior arms
+# (K17–23) are the same frontier measured at seven more prefix points, so they join these lanes
+# rather than getting a file of their own: same body, same oracle formulas, same rotation
+# grammar.
 #
 #   sass        the nine frozen bodies, byte-identical to the R3/R4 freeze artifacts —
 #               SHIPPED build only, and it says so instead of comparing the wrong binary
-#   matrix      q parity: the nine kN arms at 128 against the 128 control, over orders x
+#   matrix      q parity: the sixteen kN arms at 128 against the 128 control, over orders x
 #               eq forms x censuses, plus the CPU oracle — runs on EITHER build
 #   admitted    live frontier rotations; every lane's ORDERED admitted_ids against the
 #               canonical admission ordering — runs on EITHER build
 #   counts      the oracle's per-lane counts: ncu local ld/st instructions (+ sectors and
 #               prologue H), which need the SHIPPED build, then the chain counter, which
 #               needs the diagnostic one — this lane builds it
+#   fixtures    the emitter's fixture matrix: every R8 decision row and fail-closed guard,
+#               plus the R5 replay — needs no binary and no GPU
 #   regression  r3_gates.sh all + r4_gates.sh all — needs the diagnostic binary
 #   all         every lane, sequenced so `sass` sees the shipped build
 #
@@ -30,6 +35,12 @@ export B
 DIR=$(cd "$(dirname "$0")" && pwd)
 SDD=${SDD:-$(cd "$DIR/../../.." && pwd)/.agents/sdd}
 KN="k24 k32 k40 k45 k46 k48 k49 k50 k51"
+# The v3 R8 interior arms, kept as their OWN list: the R5 rows, cells and counts above stay
+# exactly what they were, and every cell family below gains the seven new arms by appending
+# this list rather than by editing that one.
+KN8="k17 k18 k19 k20 k21 k22 k23"
+ARMS="$KN $KN8"
+FIXTURES=$DIR/r8_fixtures/check.sh
 fail=0
 diag_built=0
 note() { printf '%s\n' "$*"; }
@@ -111,7 +122,25 @@ k51 51 41 10 81 308 180 32 99 61 244"
 # counts stay exactly nine, and hot16 still gets its C/removals gated in the admitted lane.
 R5_ANCHOR="hot16 16 12 4 28 173 93 20 181 20 133"
 
-oracle_rows() { printf '%s\n%s\n' "$R5_ORACLE" "$R5_ANCHOR"; }
+# The v3 R8 interior rows, same format, copied from
+# `.agents/sdd/2026-08-12-v3-r8/expected-counts-r8.md` (whose K17–23 rows are themselves
+# verbatim from the R5 derivation output — that derivation enumerated every prefix point). All
+# seven sit inside the refs-3 BF band, so each step is B+1, C+1, Rc+3, R_B+3, chains−2,
+# stores+1, loads+3, removals+2. The identities below are re-checked row by row, so a
+# transcription slip here fails the gate instead of moving it.
+R8_ORACLE="k17 17 13 4 29 176 96 20 179 21 136
+k18 18 14 4 30 179 99 20 177 22 139
+k19 19 15 4 31 182 102 20 175 23 142
+k20 20 16 4 32 185 105 20 173 24 145
+k21 21 17 4 33 188 108 20 171 25 148
+k22 22 18 4 34 191 111 20 169 26 151
+k23 23 19 4 35 194 114 20 167 27 154"
+
+oracle_rows() { printf '%s\n%s\n%s\n' "$R5_ORACLE" "$R5_ANCHOR" "$R8_ORACLE"; }
+
+# The count and chain lanes read this: the R5 rows FIRST and in their original order, then the
+# R8 rows appended, so no existing cell moves and the seven new lanes join every family.
+count_rows() { printf '%s\n%s\n' "$R5_ORACLE" "$R8_ORACLE"; }
 
 # The canonical admission ordering, all 55 reused sources, transcribed ONCE from the
 # `admission head (id,refs,w)` line of `.agents/sdd/2026-08-10-v3-r5/oracle-derivation.txt`
@@ -138,6 +167,26 @@ oracle_identities() {
     [ "$loads" = "$((RB + 2 * RE))" ] || bad "oracle row $lane: loads=$loads is not R_B+2R_E"
     case "$lane" in k*) [ "$lane" = "k$K" ] || bad "oracle row $lane names K=$K" ;; esac
   done <<< "$(oracle_rows)"
+
+  # THE R8 AXIS CLOSURE. hot16 -> k17 -> … -> k23 -> k24 is one refs-3 BF admission per step,
+  # so every step must move (K, B, E, C, Rc, R_B, R_E, chains, stores, loads) by
+  # (+1, +1, 0, +1, +3, +3, 0, -2, +1, +3) and the eight steps must close on the k24 row that
+  # was already there. A slipped digit that happens to satisfy the per-row identities above —
+  # they are five equations in nine unknowns — is caught here.
+  local first=1 pl pK pB pE pC pRc pRB pRE pch pst pld
+  while read -r lane K Bc E C Rc RB RE chains stores loads; do
+    [ -n "$lane" ] || continue
+    if [ "$first" = 0 ] && ! { [ "$K" = "$((pK + 1))" ] && [ "$Bc" = "$((pB + 1))" ] &&
+         [ "$E" = "$pE" ] && [ "$C" = "$((pC + 1))" ] && [ "$Rc" = "$((pRc + 3))" ] &&
+         [ "$RB" = "$((pRB + 3))" ] && [ "$RE" = "$pRE" ] && [ "$chains" = "$((pch - 2))" ] &&
+         [ "$stores" = "$((pst + 1))" ] && [ "$loads" = "$((pld + 3))" ]; }; then
+      bad "R8 axis step $pl -> $lane is not one refs-3 BF admission (+1 B, +1 C, +3 Rc, -2 chains)"
+    fi
+    first=0
+    pl=$lane; pK=$K; pB=$Bc; pE=$E; pC=$C; pRc=$Rc; pRB=$RB; pRE=$RE
+    pch=$chains; pst=$stores; pld=$loads
+  done <<< "$(printf '%s\n%s\n%s\n' "$R5_ANCHOR" "$R8_ORACLE" \
+                "$(printf '%s\n' "$R5_ORACLE" | head -1)")"
 }
 
 newest_archive() {
@@ -179,7 +228,7 @@ require_shipped() { # require_shipped <lane name>
 # ---------------------------------------------------------------- matrix
 
 matrix() {
-  note "### q parity: 9 kN arms @128 x 2 orders x 2 eq forms x 2 censuses"
+  note "### q parity: 16 kN arms @128 x 2 orders x 2 eq forms x 2 censuses"
   local cells=0 pass=0
   for order in census locality; do
     for eq in "" "--validate-flat-eq"; do
@@ -189,7 +238,7 @@ matrix() {
         # shellcheck disable=SC2086
         local ref; ref=$(qhash --block-threads 128 --term-order "$order" --self-products "$sp" $eq)
         usable "$ref" "control@128 order=$order eq=[$eq] sp=$sp" || continue
-        for arm in $KN; do
+        for arm in $ARMS; do
           cells=$((cells + 1))
           # shellcheck disable=SC2086
           local got; got=$(qhash --block-threads 128 --cache-arm "$arm" --term-order "$order" --self-products "$sp" $eq)
@@ -202,7 +251,7 @@ matrix() {
   done
   note "  cells=$cells passed=$pass"
   # A dropped loop dimension would otherwise pass silently with fewer cells.
-  [ "$cells" = 72 ] || bad "expected 72 parity cells, ran $cells — a loop dimension is missing"
+  [ "$cells" = 128 ] || bad "expected 128 parity cells, ran $cells — a loop dimension is missing"
   [ "$cells" = "$pass" ] || bad "parity matrix incomplete"
 
   # E4 SELF-PRODUCT CELL, R4's lesson carried to the new arms: `--self-products 12` takes
@@ -215,7 +264,7 @@ matrix() {
   for order in census locality; do
     local sref; sref=$(qhash --block-threads 128 --term-order "$order" --self-products 60)
     usable "$sref" "control@128 sp=60 order=$order" || continue
-    for arm in $KN; do
+    for arm in $ARMS; do
       scells=$((scells + 1))
       local sgot; sgot=$(qhash --block-threads 128 --cache-arm "$arm" --term-order "$order" --self-products 60)
       usable "$sgot" "arm=$arm sp=60 order=$order" || continue
@@ -224,13 +273,13 @@ matrix() {
     done
   done
   note "  cells=$scells passed=$spass"
-  [ "$scells" = 18 ] || bad "expected 18 self-product cells, ran $scells"
+  [ "$scells" = 32 ] || bad "expected 32 self-product cells, ran $scells"
   [ "$scells" = "$spass" ] || bad "self-product matrix incomplete"
 
   # CPU oracle once per arm — the only leg that does not go through `q` alone.
   note "### CPU oracle (--validate), one cell per kN arm"
   local oks=0 runs=0
-  for arm in $KN; do
+  for arm in $ARMS; do
     runs=$((runs + 1))
     if "$B" --log-trace 10 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
          --cache-arm "$arm" --validate 2>/dev/null | grep -q '^q validate: OK (32/32)'; then
@@ -238,7 +287,7 @@ matrix() {
     else bad "CPU oracle arm=$arm"; fi
   done
   note "  oracle cells=$runs passed=$oks"
-  [ "$runs" = 9 ] || bad "expected 9 oracle cells, ran $runs"
+  [ "$runs" = 16 ] || bad "expected 16 oracle cells, ran $runs"
   [ "$runs" = "$oks" ] || bad "CPU oracle incomplete"
 }
 
@@ -304,16 +353,16 @@ ncu_counts() {
     [ "$got_h" = "$want_h" ] || bad "$lane prologue H bytes $got_h want $want_h"
     gated="$gated$lane "
     note "  $lane: st=$st/$stores ld=$ld/$loads pred_off=$po sect=$se/$le H=$got_h/$want_h"
-  done <<< "$R5_ORACLE"
+  done <<< "$(count_rows)"
   local ran=0
-  for lane in $KN; do
+  for lane in $ARMS; do
     case "$gated" in
       *" $lane "*) ran=$((ran + 1)) ;;
       *) bad "count gate never ran for $lane — a missing row is a failure, not a pass" ;;
     esac
   done
-  note "  gated lanes=$ran/9"
-  [ "$ran" = 9 ] || bad "expected 9 gated count rows, completed $ran"
+  note "  gated lanes=$ran/16"
+  [ "$ran" = 16 ] || bad "expected 16 gated count rows, completed $ran"
 }
 
 # Chain executions per warp-program walk, against the spec 4 formula C + (326 - Rc).
@@ -321,7 +370,7 @@ count() { "$B" --log-trace 9 --warmup 0 --iterations 1 --mode lsb-pair "$@" --wi
   | sed -n 's/^chain executions .*= \([0-9]*\) per warp-program walk$/\1/p'; }
 
 chain_counts() {
-  note "### chain-count gate (exact, vs .agents/sdd/2026-08-10-v3-r5/expected-counts-r5.md)"
+  note "### chain-count gate (exact, vs expected-counts-r5.md + expected-counts-r8.md)"
   local cells=0 pass=0 lane K Bc E C Rc RB RE chains stores loads
   for order in census locality; do
     while read -r lane K Bc E C Rc RB RE chains stores loads; do
@@ -337,10 +386,10 @@ chain_counts() {
         else bad "chains lane=$lane order=$order got=${got:-<none>} want=$chains"; fi
       done
       note "  $lane/$order = ${got256:-<none>} @256, ${got128:-<none>} @128 (want $chains = C+(326-Rc))"
-    done <<< "$R5_ORACLE"
+    done <<< "$(count_rows)"
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 36 ] || bad "expected 36 chain cells, ran $cells"
+  [ "$cells" = 64 ] || bad "expected 64 chain cells, ran $cells"
   [ "$cells" = "$pass" ] || bad "chain-count gate incomplete"
 }
 
@@ -356,7 +405,9 @@ admitted() {
   oracle_identities
   note "### admitted_ids: live rotations, ORDERED, vs the canonical admission prefixes"
   local checked=" " arms=0
-  for spec in "--frontier-factorial:10:FRONTIER-FACTORIAL" "--frontier-extension:8:FRONTIER-EXTENSION"; do
+  for spec in "--frontier-factorial:10:FRONTIER-FACTORIAL" \
+              "--frontier-extension:8:FRONTIER-EXTENSION" \
+              "--frontier-interior:12:FRONTIER-INTERIOR"; do
     local flag=${spec%%:*} rest=${spec#*:}
     local lanes=${rest%%:*} tag=${rest#*:}
     for order in census locality; do
@@ -408,19 +459,19 @@ admitted() {
       done < <(grep '^ARM ' "$log")
     done
   done
-  # Roll call: every kN lane, under both orders, over the union of the two rotations.
+  # Roll call: every kN lane, under both orders, over the union of the three rotations.
   local ran=0
   for order in census locality; do
-    for arm in $KN hot16; do
+    for arm in $ARMS hot16; do
       case "$checked" in
         *" $order/$arm@128 "*) ran=$((ran + 1)) ;;
         *) bad "no admitted_ids check ran for $arm under $order" ;;
       esac
     done
   done
-  note "  ARM lines parsed=$arms, lane/order checks=$ran/20"
-  [ "$arms" = 36 ] || bad "expected 36 ARM lines over the four runs, parsed $arms"
-  [ "$ran" = 20 ] || bad "expected 20 lane/order admission checks, ran $ran"
+  note "  ARM lines parsed=$arms, lane/order checks=$ran/34"
+  [ "$arms" = 60 ] || bad "expected 60 ARM lines over the six runs, parsed $arms"
+  [ "$ran" = 34 ] || bad "expected 34 lane/order admission checks, ran $ran"
 }
 
 # ---------------------------------------------------------------- sass
@@ -527,6 +578,21 @@ ensure_diag() {
   return 0
 }
 
+# ---------------------------------------------------------------- fixtures
+
+# GPU-free, and the only lane here that is: it runs the emitter against generated logs, so it
+# gates the R8 interior decision path (and, by replaying the archived R5 logs when they are
+# there, that the R5 path this file's rung owns still emits).
+fixtures() {
+  note "### emitter fixture matrix (tools/r4_table.py, R8 interior + R5 replay)"
+  if bash "$FIXTURES" > "$TMP/fixtures.log" 2>&1; then
+    note "  $(tail -1 "$TMP/fixtures.log")"
+  else
+    bad "fixture matrix"
+    cat "$TMP/fixtures.log"
+  fi
+}
+
 regression() {
   ensure_diag || return
   local g out rc
@@ -545,11 +611,13 @@ case "${1:-all}" in
   counts) counts ;;
   admitted) admitted ;;
   sass) sass ;;
+  fixtures) fixtures ;;
   regression) regression ;;
   # `sass` first: it is the only lane that must see the shipped build, and `counts` swaps
-  # the binary underneath everything after it.
-  all) sass; matrix; admitted; counts; regression ;;
-  *) echo "usage: $0 {matrix|counts|admitted|sass|regression|all}" >&2; exit 2 ;;
+  # the binary underneath everything after it. `fixtures` needs no binary at all, so it sits
+  # before the lane that swaps one.
+  all) sass; matrix; admitted; fixtures; counts; regression ;;
+  *) echo "usage: $0 {matrix|counts|admitted|sass|fixtures|regression|all}" >&2; exit 2 ;;
 esac
 [ "$fail" = 0 ] && note "ALL GATES PASS"
 exit "$fail"

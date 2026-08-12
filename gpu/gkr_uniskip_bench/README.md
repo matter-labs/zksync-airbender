@@ -458,8 +458,9 @@ it, and `hot16` is exactly that list's K = 16 point. Only prefix-K points are ca
 because an E4 entry is four units wide. `--frontier-extension` is the conditional eight-lane
 continuation (`k49`, `k50`, `k51` at 104 rounds, `--warmup 16`); it runs only if `k48` wins
 over `k46`, which it did not. `tools/r4_table.py` grows the three named frontier curves and is the single authority for
-every derived decision in the rung; `tools/r5_gates.sh {matrix|counts|admitted|sass|regression|all}`
-is the R5 wall, and it gates the admitted-id **lists** as ordered prefixes, because counts alone
+every derived decision in the rung; `tools/r5_gates.sh {matrix|counts|admitted|sass|fixtures|regression|all}`
+is the R5 wall (extended by v3 R8 to the seven interior prefix points and the emitter fixture
+matrix under `tools/r8_fixtures/`), and it gates the admitted-id **lists** as ordered prefixes, because counts alone
 cannot detect a reordering among equal-ref, equal-class sources.
 
 **The frontier ends where R4 left it.** `hot16@128` is the optimum in **both** term orders and

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Emit the v3 R4 factorial table from a `--cache-factorial` run log, and the v3 R5
-admission-frontier tables from `--frontier-factorial` / `--frontier-extension` logs.
+"""Emit the v3 R4 factorial table from a `--cache-factorial` run log, the v3 R5
+admission-frontier tables from `--frontier-factorial` / `--frontier-extension` logs, and the
+v3 R8 admission-interior tables from a `--frontier-interior` session pair.
 
 R5 NOTE. For a frontier log this script is THE SINGLE AUTHORITY for every derived
 decision — the three named curves, the signed per-lane statuses, C*, the extension
@@ -35,9 +36,15 @@ Removals per lane ride the log's `ARM` line, which Rust fills from the arm's own
 `CacheCounts` — this script holds no oracle constant, so a census change cannot silently
 invalidate a slope (and the runner rejects the census knobs anyway).
 
+R8 NOTE. The interior sweep gets a DEDICATED decision path (plan amendment A2), not a flag
+threaded through the R5 one: it measures ONE contiguous admission axis and is decided by
+adjacent steps and cumulative contrasts under one signed rule, never by R5's curves, C\\*,
+extension trigger, broad knee or both-orders headline selector.
+
 Usage:
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py /tmp/cache.log [--order locality]
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py primary.log [extension.log ...]
+    python3 gpu/gkr_uniskip_bench/tools/r4_table.py interior-locality.log interior-census.log
 """
 
 import argparse
@@ -107,6 +114,58 @@ BAR = 14.61
 SANITY_TOL = 0.02
 KNEE_MS = 0.10
 
+# --- v3 R8 interior ---------------------------------------------------------------
+#
+# The interior rung sweeps the seven admission points R5 never sampled, between the R5
+# optimum (hot16 = K16, C = 28) and R5's first loser (k24, C = 36), on the same frozen cached
+# body. Its lane set, round shape and signed threshold are PREREGISTERED literals: the
+# threshold is ceil(0.9 x 96) = 87 (plan amendment A1), so a log at another round count has
+# no rule to be judged against.
+R8 = "FRONTIER-INTERIOR"
+
+# The K axis in admission order: the incumbent, the seven interior points, and R5's boundary
+# lane, which rides along so hot16 -> ... -> k24 is paired IN SESSION rather than across one.
+INTERIOR_AXIS = ["hot16@128"] + [f"k{k}@128" for k in range(17, 25)]
+# The lanes that admit nothing. `hot16@128` is an anchor as well as the axis bottom, so the
+# anchor list below is not a partition of the rotation.
+INTERIOR_BASES = ["cache0@128", "control_lb@128", "control@256"]
+INTERIOR_ANCHORS = ("control@256", "control_lb@128", "cache0@128", "hot16@128")
+INTERIOR = {
+    "lanes": set(INTERIOR_AXIS) | set(INTERIOR_BASES),
+    "rounds": 96,
+    "warmup": 12,
+    "threshold": 87,
+}
+
+# THE TRACE PIN (amendment A5). The trace size appears in no log line, but the grid does: at
+# `--log-trace 24` it is the trace's row count over each lane's row tile, a fact of the build
+# and the trace and of nothing else. A whole session recorded at another trace is internally
+# consistent, so this pin is the only thing that can see it.
+INTERIOR_TRACE = 24
+INTERIOR_GRID = {"control@256": 32768}
+INTERIOR_GRID.update({lane: 65536 for lane in INTERIOR_AXIS + ["cache0@128",
+                                                              "control_lb@128"]})
+
+# The interior lanes' K, alongside R5's above: a lane whose label and plan disagree is caught
+# in both paths by the same identity.
+LANE_K.update({f"k{k}@128": k for k in range(17, 24)})
+
+# The R5 PRIMARY session's own `eval + finalize` medians per order, from that rung's emitter
+# output (`.agents/sdd/2026-08-10-v3-r5/task3-frontier.md`), as (control@256, hot16@128).
+# REPORT-ONLY context (amendment A6) — the HARD band stays the R4-frozen `ANCHORS` above.
+R5_SESSION = {"census": (16.666, 15.120), "locality": (16.567, 14.717)}
+
+# The flank rule (amendment A6), computed here rather than by hand: block medians of an anchor
+# lane's FIRST and LAST full cycle against max(0.05 ms, 0.5 % of that lane's session median).
+FLANK_MS = 0.05
+FLANK_REL = 0.005
+
+VERDICT = {"win": "WIN", "lose": "LOSS", "wash": "WASH"}
+
+# Every rotation keyword this emitter knows. A schedule or trailer line is bound to a section
+# only for these, so a foreign grammar cannot be summarized under one of these rules.
+KNOWN = {R4} | set(FRONTIER) | {R8}
+
 
 def parse(paths, where):
     runs = defaultdict(lambda: defaultdict(dict))
@@ -116,7 +175,7 @@ def parse(paths, where):
         for n, line in enumerate(open(path), 1):
             line = line.strip()
             m = SCHED.match(line)
-            if m and (m.group(1) == R4 or m.group(1) in FRONTIER):
+            if m and m.group(1) in KNOWN:
                 key = (m.group(1), m.group(2))
                 if key in sched:
                     sys.exit(f"{path}:{n}: order={m.group(2)} starts twice — the log mixes runs")
@@ -162,7 +221,7 @@ def parse(paths, where):
                 bucket[lane] = (float(ev), float(fin), kernel)
                 continue
             m = DONE.match(line)
-            if m and (m.group(1) == R4 or m.group(1) in FRONTIER):
+            if m and m.group(1) in KNOWN:
                 key = (m.group(1), m.group(2))
                 if key in done:
                     sys.exit(f"{path}:{n}: order={m.group(2)} completes twice — mixed log")
@@ -954,6 +1013,372 @@ def decide(sessions, orders):
     print("```")
 
 
+# --- v3 R8 interior emitter -------------------------------------------------------
+#
+# DEDICATED (amendment A2). Everything above this line is written around the two R5
+# rotations: their lane sets, their per-rotation thresholds, C\*, the extension trigger, the
+# broad knee, the both-orders headline selector. R8 sweeps ONE contiguous axis and asks a
+# different question — where the loss begins, whether it is monotone, and what each step costs
+# per removed production — so it carries its own validator, its own decision rows and its own
+# manifest, and the R5 path is left byte-identical.
+
+
+def ipaired(s, a, b):
+    """The paired per-round contrast `a - b` on `eval + finalize`, under R8's signed rule
+    (amendment A1): a WIN or a LOSS needs sign-stability >= 87/96; anything below that, either
+    sign, is a WASH."""
+    d = [x - y for x, y in zip(s["tot"][a], s["tot"][b])]
+    verdict, med, on = signed(d, INTERIOR["threshold"])
+    lo, hi = iqr(d)
+    return {"med": med, "lo": lo, "hi": hi, "on": on, "n": len(d), "verdict": verdict}
+
+
+def interior_session(key, rounds, arms, trailer, sched):
+    """The R8 log contract, fail-closed (amendment A5): exactly this rotation, recorded at
+    `--log-trace 24`, at 96 rounds / 12 warmup, with ordered admitted prefixes and the
+    one-BF-per-step axis the counts oracle derives. A gate that cannot be evaluated is an
+    error, never a skipped section."""
+    order = key[1]
+    if order not in ANCHORS or order not in R5_SESSION:
+        sys.exit(f"{R8}/{order}: unknown term order — the R4-frozen anchor band is "
+                 f"preregistered for {sorted(ANCHORS)} only, so a `{order}` section cannot be "
+                 f"adjudicated")
+    if not arms:
+        sys.exit(f"{R8}/{order}: no ARM lines for this order — old-format or truncated log")
+    if trailer is None:
+        sys.exit(f"{R8}/{order}: no `{R8} done order={order} …` trailer — the run did not "
+                 f"finish, or the log is truncated")
+    if sched is None:
+        sys.exit(f"{R8}/{order}: ARM or SAMPLE rows with no `{R8} schedule` line")
+    if not rounds:
+        sys.exit(f"{R8}/{order}: the log declares this order ({sched[1]} rounds x {sched[0]} "
+                 f"lanes) but carries no SAMPLE rows — a declared order is emitted or it is an "
+                 f"error, never silently skipped")
+    lanes = list(arms)
+    if set(lanes) != INTERIOR["lanes"]:
+        missing = sorted(INTERIOR["lanes"] - set(lanes))
+        extra = sorted(set(lanes) - INTERIOR["lanes"])
+        sys.exit(f"{R8}/{order}: lane set is not the interior rotation — missing {missing}, "
+                 f"unexpected {extra}")
+    if len(lanes) != trailer[2] or len(lanes) != sched[0]:
+        sys.exit(f"{R8}/{order}: {len(lanes)} ARM lines but the trailer declares {trailer[2]} "
+                 f"lanes — the log is truncated or mixes builds")
+    for lane in lanes:
+        want = INTERIOR_GRID[lane]
+        if arms[lane]["grid"] != want:
+            sys.exit(f"{R8}/{order}: lane {lane} declares grid={arms[lane]['grid']}, and this "
+                     f"rung's lanes are preregistered at `--log-trace {INTERIOR_TRACE}`, where "
+                     f"it is {want} — a session recorded at another trace is internally "
+                     f"consistent, so nothing else would see it")
+    if (sched[1], sched[2]) != (trailer[1], trailer[0]):
+        sys.exit(f"{R8}/{order}: the schedule line declares rounds={sched[1]} "
+                 f"warmup={sched[2]} but the trailer declares rounds={trailer[1]} "
+                 f"warmup={trailer[0]} — the log mixes two runs, or the header does not "
+                 f"describe what ran")
+    # THE PREREGISTERED SHAPE. The signed threshold is a literal keyed to 96 rounds, and the
+    # flank rule reads the first and last full 12-round cycle, so neither a different round
+    # count nor a partial-cycle warmup has a preregistered rule to be decided under.
+    if (trailer[1], trailer[0]) != (INTERIOR["rounds"], INTERIOR["warmup"]):
+        sys.exit(f"{R8}/{order}: the log declares rounds={trailer[1]} warmup={trailer[0]}, "
+                 f"and the interior rotation is preregistered at {INTERIOR['rounds']} rounds / "
+                 f"{INTERIOR['warmup']} warmup with the signed threshold "
+                 f"{INTERIOR['threshold']}/{INTERIOR['rounds']} (A1/A5) — no other shape has a "
+                 f"preregistered threshold, so this log cannot be decided")
+    for r in sorted(rounds):
+        if set(rounds[r]) != set(lanes):
+            sys.exit(f"{R8}/{order}: round {r} carries {sorted(rounds[r])}, expected {lanes} — "
+                     f"incomplete rounds are not droppable, the contrasts are paired")
+        for lane, (_, _, kernel) in rounds[r].items():
+            if kernel != arms[lane]["kernel"]:
+                sys.exit(f"{R8}/{order}: round {r} lane {lane} ran `{kernel}` but its ARM line "
+                         f"declares `{arms[lane]['kernel']}` — the log describes a kernel the "
+                         f"run did not use")
+    if len(rounds) != trailer[1]:
+        sys.exit(f"{R8}/{order}: {len(rounds)} rounds in the log, trailer claims rounds="
+                 f"{trailer[1]} — truncated log")
+    if len(rounds) % len(lanes) != 0:
+        sys.exit(f"{R8}/{order}: {len(rounds)} rounds over {len(lanes)} lanes is not balanced — "
+                 f"every lane must start equally often")
+    want_ids = list(range(trailer[0], trailer[0] + trailer[1]))
+    if sorted(rounds) != want_ids:
+        got = sorted(rounds)
+        sys.exit(f"{R8}/{order}: round ids are {got[:4]}…{got[-1]}, expected the consecutive "
+                 f"run {want_ids[0]}…{want_ids[-1]} (warmup {trailer[0]}, rounds {trailer[1]}) "
+                 f"— gaps, duplicates or a renumbered log, none of which is a paired rotation")
+    per = len(rounds) // len(lanes)
+    slots = defaultdict(int)
+    for r in sorted(rounds):
+        for slot, lane in enumerate(rounds[r]):
+            slots[(lane, slot)] += 1
+    for lane in lanes:
+        for slot in range(len(lanes)):
+            if slots[(lane, slot)] != per:
+                sys.exit(f"{R8}/{order}: lane {lane} runs at rotation position {slot} in "
+                         f"{slots[(lane, slot)]} rounds, expected {per} — the rotation is not "
+                         f"balanced, so a lane keeps a position and its median carries that "
+                         f"position's clock state")
+    keys = sorted(rounds)
+    # ADMITTED-ID GATE, ordered against the controller-derived oracle prefix. The interior
+    # points differ from one another by ONE source, so a reversal among equal-ref sources moves
+    # no count at all; only the list sees it.
+    for lane in lanes:
+        f = arms[lane]
+        ids, k = f["ids"], f["admitted"]
+        if len(ids) != k:
+            sys.exit(f"{R8}/{order}: lane {lane} declares {k} admitted sources but lists "
+                     f"{len(ids)} ids")
+        if LANE_K[lane] != k:
+            sys.exit(f"{R8}/{order}: lane {lane} admits {k} sources but its name claims K = "
+                     f"{LANE_K[lane]} — the label and the plan disagree")
+        want = ORACLE_ORDER[:k]
+        if ids != want:
+            at = next(i for i, (g, w) in enumerate(zip(ids, want)) if g != w)
+            sys.exit(f"{R8}/{order}: lane {lane} admits source {ids[at]} at admission position "
+                     f"{at}, the oracle ordering has {want[at]} — the admitted prefix is not "
+                     f"the canonical one (counts cannot see this)")
+    for i, a in enumerate(lanes):
+        for b in lanes[i + 1:]:
+            if arms[a]["ids"] == arms[b]["ids"] and arms[a]["threads"] == arms[b]["threads"] \
+               and arms[a]["removals"]:
+                sys.exit(f"{R8}/{order}: lanes {a} and {b} declare the SAME plan at the same "
+                         f"block size — one experiment under two labels")
+            if all(rounds[r][a][:2] == rounds[r][b][:2] for r in keys):
+                sys.exit(f"{R8}/{order}: lanes {a} and {b} carry BIT-IDENTICAL samples in every "
+                         f"round — the log aliases one lane's data onto another")
+    # THE AXIS, checked rather than trusted. Every step from hot16 through k24 admits exactly
+    # one more source at refs 3, which is one more slab unit and two more removals. The
+    # per-removal columns divide by these DELTAS off the ARM lines, so a log whose axis is not
+    # this one would be priced in a currency the rung never preregistered.
+    for below, above in zip(INTERIOR_AXIS, INTERIOR_AXIS[1:]):
+        step = tuple(arms[above][f] - arms[below][f] for f in ("admitted", "c", "removals"))
+        if step != (1, 1, 2):
+            sys.exit(f"{R8}/{order}: the step {above} − {below} moves (admitted, C, removals) "
+                     f"by {step}; the interior axis is one BF source at refs 3 per step = "
+                     f"(1, 1, 2), and the per-removal columns divide by those deltas")
+    tot = {a: [rounds[r][a][0] + rounds[r][a][1] for r in keys] for a in lanes}
+    return {
+        "order": order, "lanes": lanes, "arms": arms, "rounds": rounds, "keys": keys,
+        "tot": tot,
+        "med": {a: median(tot[a]) for a in lanes},
+        "med_ev": {a: median(rounds[r][a][0] for r in keys) for a in lanes},
+        "med_fin": {a: median(rounds[r][a][1] for r in keys) for a in lanes},
+    }
+
+
+def interior_shape(s):
+    """One order's frontier shape (amendment A1): the eight adjacent steps in axis order, the
+    eight cumulative contrasts against the incumbent, the winner (most negative cumulative
+    median among the signed WINs, ties toward smaller K) and the first loser (the smallest n
+    whose cumulative contrast is a signed LOSS)."""
+    steps = [(above, below, ipaired(s, above, below))
+             for below, above in zip(INTERIOR_AXIS, INTERIOR_AXIS[1:])]
+    cum = {lane: ipaired(s, lane, INTERIOR_AXIS[0]) for lane in INTERIOR_AXIS[1:]}
+    wins = [lane for lane in INTERIOR_AXIS[1:] if cum[lane]["verdict"] == "win"]
+    winner = min(wins, key=lambda lane: (cum[lane]["med"], LANE_K[lane])) if wins else None
+    loser = next((lane for lane in INTERIOR_AXIS[1:] if cum[lane]["verdict"] == "lose"), None)
+    return steps, cum, winner, loser
+
+
+def interior_flank(s, lane):
+    """The first and last full cycle's block medians for one anchor lane, with the scaled
+    threshold that goes with it (amendment A6)."""
+    cycle = len(s["lanes"])
+    first = median(s["tot"][lane][:cycle])
+    last = median(s["tot"][lane][-cycle:])
+    return first, last, abs(last - first), max(FLANK_MS, FLANK_REL * s["med"][lane])
+
+
+def interior_emit(s):
+    order = s["order"]
+    steps, cum, winner, loser = interior_shape(s)
+    print(f"\n### `{R8}` — `--term-order {order}`, {len(s['keys'])} paired rounds, "
+          f"{len(s['lanes'])} lanes\n")
+    print("| lane | kernel | regs | blocks/SM | threads | grid | C | removals | admitted | "
+          "median `eval` | median `finalize` | median `eval+fin` |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for a in s["lanes"]:
+        f = s["arms"][a]
+        print(f"| `{a}` | `{f['kernel']}` | {f['regs']} | {f['blocks_sm']} | {f['threads']} | "
+              f"{f['grid']} | {f['c']} | {f['removals']} | {f['admitted']} | "
+              f"{s['med_ev'][a]:.3f} | {s['med_fin'][a]:.3f} | **{s['med'][a]:.3f}** |")
+    print(f"\nAdmitted-id lists gated ORDERED against the controller oracle "
+          f"(`expected-counts-r8.md` / `oracle-derivation.txt`), all {len(s['lanes'])} lanes; "
+          f"grids gated against `--log-trace {INTERIOR_TRACE}`. Signed rule at this rotation: "
+          f"{INTERIOR['threshold']}/{INTERIOR['rounds']} (amendment A1, preregistered "
+          f"literal).")
+
+    print(f"\n**Adjacent steps ({order})** — each step admits ONE more BF source at refs 3, so "
+          f"it removes two productions; paired per round on `eval + finalize`.\n")
+    print("| step | K | C step | removals step | median (ms) | IQR | on-sign | verdict | "
+          "µs / removal |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for above, below, c in steps:
+        f, g = s["arms"][above], s["arms"][below]
+        # The divisor is the removals DELTA off the two ARM lines, which Rust fills from each
+        # lane's own planned counts — this emitter holds no removal constant.
+        rm = f["removals"] - g["removals"]
+        print(f"| `{above}` − `{below}` | {f['admitted']} | +{f['c'] - g['c']} | +{rm} | "
+              f"**{c['med']:+.3f}** | {c['lo']:+.3f} … {c['hi']:+.3f} | {c['on']}/{c['n']} | "
+              f"**{VERDICT[c['verdict']]}** | {1000.0 * c['med'] / rm:+.2f} |")
+
+    base = INTERIOR_AXIS[0]
+    print(f"\n**Cumulative vs `{base}` ({order})** — the same axis read from the incumbent, "
+          f"which is what locates the winner and the first loser.\n")
+    print(f"| lane | K | C | removals over `{base}` | median (ms) | IQR | on-sign | verdict | "
+          f"µs / removal |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for lane in INTERIOR_AXIS[1:]:
+        f, c = s["arms"][lane], cum[lane]
+        rm = f["removals"] - s["arms"][base]["removals"]
+        print(f"| `{lane}` | {f['admitted']} | {f['c']} | {rm} | **{c['med']:+.3f}** | "
+              f"{c['lo']:+.3f} … {c['hi']:+.3f} | {c['on']}/{c['n']} | "
+              f"**{VERDICT[c['verdict']]}** | {1000.0 * c['med'] / rm:+.2f} |")
+
+    # THE HARD GATE (amendment A6). R5-session context follows it, and is context only.
+    print(f"\n**Anchor band ({order})** — the R4-frozen ±2 % band, the HARD gate: a session "
+          f"with an OUT anchor is INVALID, is repeated soaked, and emits no conclusion.\n")
+    print("| anchor | this session | R4 frozen | delta | verdict |")
+    print("| --- | --- | --- | --- | --- |")
+    s["sanity"] = True
+    for lane, target in zip(("control@256", "hot16@128"), ANCHORS[order]):
+        got = s["med"][lane]
+        rel = (got - target) / target
+        ok = abs(rel) <= SANITY_TOL
+        s["sanity"] = s["sanity"] and ok
+        print(f"| `{lane}` | {got:.3f} | {target:.3f} | {100.0 * rel:+.2f} % | "
+              f"**{'IN' if ok else 'OUT'}** |")
+    print(f"\nR5-session context (REPORT-ONLY, amendment A6) — the R5 primary rotation's own "
+          f"medians, for reading this session against the rung the interior extends; nothing "
+          f"below gates on them.\n")
+    print("| anchor | this session | R5 session | delta |")
+    print("| --- | --- | --- | --- |")
+    for lane, target in zip(("control@256", "hot16@128"), R5_SESSION[order]):
+        got = s["med"][lane]
+        print(f"| `{lane}` | {got:.3f} | {target:.3f} | {100.0 * (got - target) / target:+.2f} "
+              f"% |")
+
+    print(f"\n**Flank ({order})** — block medians of each anchor lane's FIRST and LAST full "
+          f"cycle ({len(s['lanes'])} rounds each) against max({FLANK_MS:.2f} ms, "
+          f"{100.0 * FLANK_REL:.1f} % of that lane's session median), amendment A6.\n")
+    print("| anchor lane | first cycle | last cycle | drift | threshold | verdict |")
+    print("| --- | --- | --- | --- | --- | --- |")
+    s["flank"] = True
+    for lane in INTERIOR_ANCHORS:
+        first, last, drift, tol = interior_flank(s, lane)
+        ok = drift <= tol
+        s["flank"] = s["flank"] and ok
+        print(f"| `{lane}` | {first:.3f} | {last:.3f} | {drift:.3f} | {tol:.3f} | "
+              f"**{'PASS' if ok else 'TRIP'}** |")
+
+
+def interior_decisions(s, selecting):
+    """A1's decision bullets for one order. `selecting` is the LOCALITY session; the census
+    one prints the same shape as DIAGNOSTIC context and alters nothing."""
+    steps, cum, winner, loser = interior_shape(s)
+    role = "SELECTION" if selecting else "diagnostic only — alters nothing (A1)"
+    print(f"\n**`{s['order']}` — {role}**\n")
+    pattern = " ".join("−" if c["med"] < 0 else "+" if c["med"] > 0 else "0"
+                       for _, _, c in steps)
+    verdicts = " ".join(VERDICT[c["verdict"]] for _, _, c in steps)
+    print(f"- adjacent-step sign pattern, `{steps[0][0]} − {steps[0][1]}` first: `{pattern}` "
+          f"({verdicts}) — reported verbatim; this is the monotonicity evidence.")
+    if winner is None:
+        print(f"- winner: **none** — no interior point wins over `{INTERIOR_AXIS[0]}` under "
+              f"the signed rule, so the incumbent stands.")
+    else:
+        c, f = cum[winner], s["arms"][winner]
+        print(f"- winner: **`{winner}`** (K = {f['admitted']}, C = {f['c']}) at "
+              f"{c['med']:+.3f} ms vs `{INTERIOR_AXIS[0]}`, {c['on']}/{c['n']} on-sign — the "
+              f"most negative cumulative median among the signed WINs, ties toward smaller K.")
+    if loser is None:
+        print(f"- first loser: **none** — no cumulative contrast is a signed LOSS through "
+              f"`{INTERIOR_AXIS[-1]}`.")
+    else:
+        c, f = cum[loser], s["arms"][loser]
+        print(f"- first loser: **`{loser}`** (K = {f['admitted']}, C = {f['c']}) at "
+              f"{c['med']:+.3f} ms, {c['on']}/{c['n']} on-sign — the smallest K whose "
+              f"cumulative contrast is a signed LOSS.")
+    print(f"- the axis is RIGHT-CENSORED at `{INTERIOR_AXIS[-1]}`: K = "
+          f"{s['arms'][INTERIOR_AXIS[-1]]['admitted']} is the largest measured point and no "
+          f"claim is made past it.")
+    return winner, loser
+
+
+def interior_report(sessions):
+    print("## v3 R8 — the admission-frontier interior (K17–23)\n")
+    print(f"Every figure below is EMITTED, not transcribed: this script is the single "
+          f"authority for the derived decisions, and each names the preregistered rule (plan "
+          f"amendments A1/A5/A6/A7) it implements. The rung sweeps ONE contiguous admission "
+          f"axis — `{INTERIOR_AXIS[0]}` through `{INTERIOR_AXIS[-1]}`, one BF source at refs 3 "
+          f"per step — so it is decided by the eight adjacent steps and the eight cumulative "
+          f"contrasts, paired per round on `eval + finalize`, under one signed rule "
+          f"({INTERIOR['threshold']}/{INTERIOR['rounds']}). Curves are NEVER pooled across "
+          f"term orders: the SELECTION runs on `locality` and census is diagnostic only.\n")
+    for order in ("locality", "census"):
+        interior_emit(sessions[order])
+
+    print("\n### Preregistered decisions (A1)")
+    invalid =[order for order in ("locality", "census") if not sessions[order]["sanity"]]
+    tripped = [order for order in ("locality", "census") if not sessions[order]["flank"]]
+    if invalid:
+        print(f"> **SESSION INVALID (A6)** — an anchor outside the R4-frozen ±2 % band in: "
+              f"{', '.join(invalid)}. The rule is a soaked repeat, and NO conclusion is emitted "
+              f"from this session; the rows above and below are printed for diagnosis only and "
+              f"DO NOT STAND.\n")
+    if tripped:
+        print(f"> **FLANK TRIPPED (A6)** — an anchor lane whose first and last full cycle "
+              f"disagree past the scaled threshold in: {', '.join(tripped)}. That session is a "
+              f"soaked-repeat candidate; the flank table above names the lane that drifted.\n")
+    winner, loser = interior_decisions(sessions["locality"], True)
+    interior_decisions(sessions["census"], False)
+
+    print("\n### ncu capture manifest (A7)\n")
+    print(f"Deduplicated {{`{INTERIOR_AXIS[0]}`, the locality winner, the locality first "
+          f"loser, `{INTERIOR_AXIS[-1]}`}}, or {{`{INTERIOR_AXIS[0]}`, `k20@128`, "
+          f"`{INTERIOR_AXIS[-1]}`}} when no first loser exists — each under BOTH term orders "
+          f"(amendment A7). Task 3 consumes this block as AUTHORITATIVE and does not "
+          f"reconstruct it.\n")
+    roles = defaultdict(set)
+    roles[INTERIOR_AXIS[0]].add("incumbent")
+    roles[INTERIOR_AXIS[-1]].add("censoring-endpoint")
+    if loser is None:
+        # A7's fallback set names the axis midpoint INSTEAD of the winner: with no loser the
+        # frontier is right-censored, and the mechanism question is then about the middle of
+        # the axis, not about a boundary the sweep never found.
+        roles["k20@128"].add("axis-midpoint")
+    else:
+        roles[loser].add("first-loser")
+        if winner is not None:
+            roles[winner].add("winner")
+    if invalid:
+        print(f"**NOT AUTHORITATIVE**: {', '.join(invalid)} is invalid under A6, so this "
+              f"session selects no capture set. Repeat the session soaked and re-emit.")
+        sys.exit(f"{R8}: session invalid — {', '.join(invalid)} carries an anchor outside the "
+                 f"R4-frozen ±2 % band (A6); repeat it soaked, and do not record conclusions "
+                 f"from this log set")
+    print("```")
+    for lane in sorted(roles, key=lambda x: LANE_K[x]):
+        print(f"NCU-CAPTURE lane={lane} orders=census,locality "
+              f"roles={','.join(sorted(roles[lane]))}")
+    print("```")
+
+
+def interior(orders, runs, arms, done, sched, where, narrowed):
+    if narrowed:
+        sys.exit(f"{where}: the {R8} path is preregistered on BOTH term orders (A5), so "
+                 f"`--order` cannot narrow it — emit the two session logs together")
+    if set(orders) != {"census", "locality"}:
+        sys.exit(f"{where}: the {R8} rung is preregistered on EXACTLY both term orders (census "
+                 f"and locality); this log set carries {', '.join(orders) or 'none'} — a "
+                 f"one-order log set decides nothing (A5)")
+    sessions = {}
+    for order in ("locality", "census"):
+        key = (R8, order)
+        sessions[order] = interior_session(key, runs[key], arms.get(key, {}), done.get(key),
+                                          sched.get(key))
+    interior_report(sessions)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("log", nargs="+")
@@ -970,8 +1395,12 @@ def main():
     if R4 in tags and tags & set(FRONTIER):
         sys.exit(f"{where}: carries both {R4} and frontier sections — they are summarized "
                  f"under different preregistered rules; emit them separately")
-    if tags - {R4} - set(FRONTIER):
-        sys.exit(f"{where}: unknown rotation keyword(s) {sorted(tags - {R4} - set(FRONTIER))}")
+    if tags - KNOWN:
+        sys.exit(f"{where}: unknown rotation keyword(s) {sorted(tags - KNOWN)}")
+    # The interior rung is decided under its own rules (amendment A2), so it is emitted alone.
+    if R8 in tags and tags - {R8}:
+        sys.exit(f"{where}: carries {R8} and {sorted(tags - {R8})} — the interior rung is "
+                 f"decided under its own preregistered rules; emit it separately")
 
     # A DECLARED order is emitted or it is an error. Iterating the orders that happen to
     # carry SAMPLE rows silently drops a section whose samples were truncated away, and
@@ -983,6 +1412,9 @@ def main():
                      f"{', '.join(orders)}")
         orders = [args.order]
 
+    if R8 in tags:
+        interior(orders, runs, arms, done, sched, where, args.order)
+        return
     if R4 in tags:
         for order in orders:
             key = (R4, order)
