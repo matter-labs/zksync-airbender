@@ -4837,9 +4837,11 @@ bandwidth price at any interior point.**
   instructions and runs *slower*, and the counter that moves is DRAM SOL. So the only route that
   could re-open this axis is a carrier that captures more without buying more traffic — a
   traffic-free *shared* cache, which is the slotted-slab direction. That is **unmeasured** here, and
-  R7b's lesson applies to it unchanged: the slotted allocator removed ~98 % of a scratch stream's
-  DRAM writes and bought nothing, because this kernel family is SM-bound, and its own machinery cost
-  +0.178 ms. A shared-cache attempt has to clear both bars, and neither is priced by this rung.
+  R7b's lesson applies to it unchanged (both figures below are R7b-sourced, from that rung's
+  record, not from this rung's two authorities): the slotted allocator removed ~98 % of a scratch
+  stream's DRAM writes and bought nothing, because this kernel family is SM-bound, and its own
+  machinery cost +0.178 ms. A shared-cache attempt has to clear both bars, and neither is priced
+  by this rung.
 - **The per-removal price on this stretch is now a number a future carrier must beat**: between
   C = 28 and C = 36 a removal is *paid for* at **+3.67…+6.45 µs** (locality) / **+7.75…+11.12 µs**
   (census), cumulative against the incumbent.
@@ -4850,9 +4852,10 @@ bandwidth price at any interior point.**
   `control@256` and `hot16@128`; a session with an OUT anchor is invalid and is repeated soaked. On
   `census` it tripped twice: `control@256` came in at **16.894 (+2.11 %)** and **16.882 (+2.04 %)**
   against the frozen 16.545, and the third, coldest-started session landed **16.866 (+1.94 %)** —
-  inside the 16.876 band edge by **0.010 ms**. The three attempts agree within 0.17 %, so the offset
-  is **systematic (≈ +1.4 % above the R4-frozen census literals), not drift**; a fourth attempt could
-  as easily land OUT. Nothing decision-bearing rides on it — census is diagnostic-only and the
+  inside the 16.876 band edge by **0.010 ms**. The three attempts agree within 0.17 % and each
+  passed its within-session flank test, so the offset is **systematic (+1.35–1.94 % above the
+  R4-frozen census literals across the valid anchors, stable across attempts) rather than
+  within-session drift**; a fourth attempt could as easily land OUT. Nothing decision-bearing rides on it — census is diagnostic-only and the
   selection order is comfortably in band at **+0.68 % / −0.16 %** — but **any future rung that wants
   census to GATE anything must re-freeze the census anchor literals first.** Flanks (first vs last
   full rotation cycle of each anchor lane) are **8/8 PASS** across the two recorded sessions, the
