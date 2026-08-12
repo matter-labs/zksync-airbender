@@ -772,6 +772,33 @@ fn trace_holder_queries_match_across_tree_cache_modes() {
         .materialize_and_commit_from_hypercube_evals(&source_device, &context)
         .unwrap();
 
+    let cosets_count = 1usize << log_lde_factor;
+    let leaves_per_coset = domain_size >> log_rows_per_leaf;
+    let full_tree_stride = leaves_per_coset * 2;
+    let partial_tree_stride = full_tree_stride >> PARTIAL_TREE_REDUCTION_LAYERS;
+    let cap_per_coset = (1usize << log_tree_cap_size) / cosets_count;
+    let initialized_partial_len = partial_tree_stride - cap_per_coset;
+    let full_tree = full_holder.get_consolidated_tree().unwrap();
+    let partial_tree = partial_holder.get_consolidated_tree().unwrap();
+    let mut full_tree_host = vec![Digest::default(); full_tree.len()];
+    let mut partial_tree_host = vec![Digest::default(); partial_tree.len()];
+    memory_copy_async(&mut full_tree_host, full_tree, context.get_exec_stream()).unwrap();
+    memory_copy_async(
+        &mut partial_tree_host,
+        partial_tree,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    for coset in 0..cosets_count {
+        let full_start = coset * full_tree_stride + full_tree_stride - partial_tree_stride;
+        let partial_start = coset * partial_tree_stride;
+        assert_eq!(
+            &partial_tree_host[partial_start..partial_start + initialized_partial_len],
+            &full_tree_host[full_start..full_start + initialized_partial_len],
+        );
+    }
+
     let query_indexes = vec![0u32, 1, 7, 13, 42];
     let mut indexes_device = context
         .alloc(query_indexes.len(), AllocationPlacement::BestFit)

@@ -15,8 +15,8 @@ use gpu_core::primitives::device_structures::{
 use gpu_core::primitives::field::BF;
 use gpu_hash::blake2s::build_merkle_tree;
 use gpu_hash::blake2s::{
-    build_merkle_tree_multi_coset, build_merkle_tree_nodes_multi_coset_from_external_src,
-    gather_tree_caps_inline, Digest,
+    build_merkle_tree_multi_coset, build_partial_merkle_tree_multi_coset, gather_tree_caps_inline,
+    Digest,
 };
 use gpu_hash::blake2s::{
     gather_leaf_rows, gather_merkle_paths_device, gather_merkle_paths_from_rows,
@@ -496,21 +496,12 @@ impl TraceHolder<BF> {
             }
         };
 
-        // Multi-coset commit: every coset's Merkle tree is built layer-by-layer
-        // across all cosets in one launch per layer. For `Partial`/`None` modes we
-        // allocate one transient `tree_tops` slab covering all cosets;
-        // `lde_factor * tree_top_per_coset` is bounded by ~`2^(OMEGA_LOG_ORDER
-        // + 1) * sizeof(Digest)` ≈ 8 GB since `log_n + log_lde_factor <=
-        // OMEGA_LOG_ORDER` constrains the worst case across all schedules.
         let evals_total_len = lde_factor * evals_stride;
         // SAFETY: cosets backing remains alive for `&self`; evals range is
         // disjoint from the trees backing.
         let evals_backing: &DeviceSlice<BF> =
             unsafe { DeviceSlice::from_raw_parts(evals_ptr, evals_total_len) };
 
-        // Holds a transient tree_tops slab for Partial/None modes through the
-        // cap gather. Full mode commits directly into the consolidated trees
-        // backing and leaves this `None`.
         let mut transient_tree_tops: Option<DeviceAllocation<Digest>> = None;
 
         match &mut self.trees {
@@ -528,11 +519,8 @@ impl TraceHolder<BF> {
                 )?;
             }
             TreesHolder::Partial(backing) => {
-                let mut tree_tops =
-                    allocate_trees(lde_factor, log_domain_size, log_rows_per_leaf, context)?;
                 commit_trace_with_partial_tree_multi_coset(
                     evals_backing,
-                    &mut tree_tops,
                     backing,
                     log_domain_size,
                     log_lde_factor,
@@ -542,9 +530,6 @@ impl TraceHolder<BF> {
                     lde_factor,
                     stream,
                 )?;
-                // tree_tops is dropped after the cap gather completes; the
-                // bottom (in `backing`) is what queries read.
-                let _ = tree_tops;
             }
             TreesHolder::None => {
                 let mut tree_tops =
@@ -595,9 +580,6 @@ impl TraceHolder<BF> {
                 )?;
             }
             TreesHolder::None => {
-                // None mode now also uses one consolidated tree_tops slab
-                // (same layout as Full/Partial backing), so gather_tree_caps
-                // works directly across it.
                 let backing = transient_tree_tops
                     .as_ref()
                     .expect("None mode allocates transient_tree_tops above");
@@ -683,15 +665,12 @@ impl TraceHolder<BF> {
         let evals_total_len = instances_count * evals_stride;
         let evals_backing: &DeviceSlice<BF> =
             unsafe { DeviceSlice::from_raw_parts(evals_ptr, evals_total_len) };
-        let mut tree_tops =
-            allocate_trees(instances_count, log_domain_size, log_rows_per_leaf, context)?;
         let trees_backing = match &mut self.trees {
             TreesHolder::Partial(backing) => backing,
             _ => panic!("build_and_cache_partial_trees requires TreesHolder::Partial"),
         };
         commit_trace_with_partial_tree_multi_coset(
             evals_backing,
-            &mut tree_tops,
             trees_backing,
             log_domain_size,
             log_lde_factor,
@@ -701,8 +680,6 @@ impl TraceHolder<BF> {
             instances_count,
             stream,
         )?;
-        // tree_tops drops here — frees the transient full-tree allocation.
-        drop(tree_tops);
         Ok(())
     }
 
@@ -1041,16 +1018,9 @@ pub(crate) fn commit_trace_multi_coset(
     )
 }
 
-/// Takes one big
-/// `tree_tops_backing` slab sized for all cosets' tops, plus the existing
-/// shared `tree_bottoms_backing`. Builds top layers (leaves +
-/// PARTIAL_TREE_REDUCTION_LAYERS-1 layers of nodes) into every coset's top
-/// slab in one launch per layer, then runs the bottom layers across all
-/// cosets in one launch per layer.
 pub(crate) fn commit_trace_with_partial_tree_multi_coset(
     evals_backing: &DeviceSlice<BF>,
-    tree_tops_backing: &mut DeviceSlice<Digest>,
-    tree_bottoms_backing: &mut DeviceSlice<Digest>,
+    tree_backing: &mut DeviceSlice<Digest>,
     log_domain_size: u32,
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
@@ -1066,55 +1036,20 @@ pub(crate) fn commit_trace_with_partial_tree_multi_coset(
             > log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
     );
     let per_coset_evals_stride = columns_count << log_domain_size;
-    let per_coset_top_stride = 1usize << (log_domain_size + 1 - log_rows_per_leaf);
-    let per_coset_top_leaves_count = per_coset_top_stride >> 1;
-    let per_coset_bottom_stride = per_coset_top_stride >> PARTIAL_TREE_REDUCTION_LAYERS;
+    let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
+    let per_coset_tree_stride = (per_coset_leaves_count << 1) >> PARTIAL_TREE_REDUCTION_LAYERS;
     assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
-    assert_eq!(
-        tree_tops_backing.len(),
-        per_coset_top_stride * cosets_in_tile
-    );
-    assert_eq!(
-        tree_bottoms_backing.len(),
-        per_coset_bottom_stride * cosets_in_tile
-    );
-    // Top: leaves + (PARTIAL_TREE_REDUCTION_LAYERS - 1) node layers, all
-    // built inside each coset's tree_top slab.
-    build_merkle_tree_multi_coset(
-        evals_backing,
-        tree_tops_backing,
-        log_rows_per_leaf,
-        PARTIAL_TREE_REDUCTION_LAYERS,
-        cosets_in_tile,
-        per_coset_top_leaves_count,
-        per_coset_evals_stride,
-        per_coset_top_stride,
-        columns_count,
-        stream,
-    )?;
-    // Bottom: each coset's "top layer" within tree_tops has
-    // `per_coset_bottom_stride` digests sitting at offset
-    // `per_coset_top_stride - 2 * per_coset_bottom_stride` (mirroring
-    // `tree_top[tree_top_len - 2 * tree_bottom_len..][..tree_bottom_len]` in
-    // the single-coset path). The first bottom layer hashes pairs of those
-    // top-layer digests into tree_bottoms_backing[0..bottom_stride/2] across
-    // every coset; subsequent layers hash up in-place inside the bottoms
-    // slab. tree_bottoms is sized for OUTPUTS only, not for re-storing the
-    // input, so we never copy the top layer into the bottoms slab.
-    let top_layer_src_offset = per_coset_top_stride - 2 * per_coset_bottom_stride;
-    let bottom_layers_count = log_domain_size + 1
+    assert_eq!(tree_backing.len(), per_coset_tree_stride * cosets_in_tile);
+    let layers_count = log_domain_size + 1
         - log_rows_per_leaf
         - PARTIAL_TREE_REDUCTION_LAYERS
         - log_coset_tree_cap_size;
-    build_merkle_tree_nodes_multi_coset_from_external_src(
-        tree_tops_backing,
-        tree_bottoms_backing,
-        bottom_layers_count,
+    build_partial_merkle_tree_multi_coset(
+        evals_backing,
+        tree_backing,
+        log_rows_per_leaf,
+        layers_count,
         cosets_in_tile,
-        per_coset_top_stride,
-        per_coset_bottom_stride,
-        top_layer_src_offset,
-        per_coset_bottom_stride,
         stream,
     )
 }
