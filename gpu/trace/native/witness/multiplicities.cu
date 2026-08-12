@@ -8,25 +8,28 @@ using namespace ::airbender::trace::witness::memory;
 
 namespace airbender::trace::witness::multiplicities {
 
-EXTERN __global__ void ab_generate_multiplicities_kernel(const u32 *const __restrict__ unique_indexes, const u32 *const __restrict__ counts,
-                                                         const u32 *const __restrict__ num_runs, u32 *const __restrict__ lookup_mapping,
-                                                         const unsigned lookup_mapping_size, const matrix_setter<bf, st_modifier::cs> multiplicities,
-                                                         const unsigned multiplicities_size) {
+EXTERN __global__ void ab_count_multiplicities_kernel(u32 *const __restrict__ lookup_mapping, const unsigned lookup_mapping_size,
+                                                      bf *const __restrict__ multiplicities, const unsigned active_counts_len) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid < lookup_mapping_size && lookup_mapping[gid] == 0xffffffffu)
-    lookup_mapping[gid] = 0;
-  if (gid >= multiplicities_size)
+  if (gid >= lookup_mapping_size)
     return;
-  if (gid >= num_runs[0])
+  const u32 index = load<u32, ld_modifier::cs>(lookup_mapping + gid);
+  if (index == 0xffffffffu) {
+    store<u32, st_modifier::cs>(lookup_mapping + gid, 0);
     return;
-  const unsigned stride = multiplicities.stride;
-  const u32 index = unique_indexes[gid];
-  if (index == 0xffffffffu)
+  }
+  if (index >= active_counts_len)
+    __trap();
+  auto *raw_counts = reinterpret_cast<u32 *>(multiplicities);
+  (void)atomicAdd(raw_counts + index, 1u);
+}
+
+EXTERN __global__ void ab_convert_multiplicities_kernel(bf *const __restrict__ multiplicities, const unsigned active_counts_len) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= active_counts_len)
     return;
-  const unsigned row = index % stride;
-  const unsigned col = index / stride;
-  const bf value = bf::from_u32_unchecked(counts[gid]);
-  multiplicities.set(row, col, value);
+  auto *raw_counts = reinterpret_cast<u32 *>(multiplicities);
+  multiplicities[gid] = bf::from_u32_unchecked(raw_counts[gid]);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__

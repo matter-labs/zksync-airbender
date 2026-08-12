@@ -28,7 +28,7 @@ use gpu_trace::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_unified,
 };
 use gpu_trace::witness::multiplicities::{
-    allocate_range_check_lookup_mappings, generate_generic_lookup_multiplicities,
+    allocate_range_check_lookup_mappings, generate_lookup_multiplicities,
     generate_range_check_lookup_mappings,
 };
 use gpu_trace::witness::trace_unrolled::{
@@ -262,10 +262,11 @@ impl GpuGKRStage1Output {
         let use_fused_delegation = strategy == WitnessGenerationStrategy::Fused
             && matches!(circuit_type, CircuitType::Delegation(_));
         let produces_all_mappings_early = use_fused_unrolled || use_fused_delegation;
-        let mut generic_family = context.alloc(
-            num_generic_family_cols * trace_len,
-            AllocationPlacement::Top,
-        )?;
+        let generic_family_len = num_generic_family_cols
+            .checked_mul(trace_len)
+            .expect("generic lookup mapping length overflow");
+        let mut generic_family = context.alloc(generic_family_len, AllocationPlacement::Top)?;
+        assert_eq!(generic_family.len(), generic_family_len);
         let (mut early_range_check_16, mut early_timestamp) = if produces_all_mappings_early {
             let (range_check_16, timestamp) =
                 allocate_range_check_lookup_mappings(compiled_circuit, context)?;
@@ -659,10 +660,10 @@ impl GpuGKRStage1Output {
             let generic_lookup_multiplicities = &mut witness_matrix.slice_mut()
                 [generic_lookup_multiplicities_range.start * trace_len
                     ..generic_lookup_multiplicities_range.end * trace_len];
-            generate_generic_lookup_multiplicities(
+            generate_lookup_multiplicities(
                 &mut DeviceMatrixMut::new(&mut generic_family, trace_len),
                 &mut DeviceMatrixMut::new(generic_lookup_multiplicities, trace_len),
-                u32::BITS as i32, // generic lookups: full 32-bit sort
+                compiled_circuit.total_tables_size,
                 context,
             )?;
             multiplicities_range.end(stream)?;

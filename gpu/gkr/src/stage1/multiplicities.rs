@@ -3,7 +3,9 @@ use era_cudart::result::CudaResult;
 use gpu_core::primitives::device_structures::{DeviceMatrixMut, DeviceMatrixMutImpl};
 use gpu_core::primitives::field::BF;
 use gpu_prover_context::ProverContext;
-use gpu_trace::witness::multiplicities::generate_generic_lookup_multiplicities;
+use gpu_trace::witness::multiplicities::{
+    generate_lookup_multiplicities, RANGE_CHECK_16_DOMAIN_SIZE, TIMESTAMP_RANGE_CHECK_DOMAIN_SIZE,
+};
 
 pub(crate) fn generate_range_check_multiplicities_from_mappings(
     circuit: &GKRCircuitArtifact<BF>,
@@ -27,10 +29,10 @@ pub(crate) fn generate_range_check_multiplicities_from_mappings(
     let range_check_16_lookup_multiplicities = &mut witness.slice_mut()
         [range_check_16_lookup_multiplicities_range.start * trace_len
             ..range_check_16_lookup_multiplicities_range.end * trace_len];
-    generate_generic_lookup_multiplicities(
+    generate_lookup_multiplicities(
         range_check_16_lookup_mapping,
         &mut DeviceMatrixMut::new(range_check_16_lookup_multiplicities, trace_len),
-        17, // 16-bit values + 1 sentinel bit
+        RANGE_CHECK_16_DOMAIN_SIZE,
         context,
     )?;
     let range_check_timestamp_lookup_multiplicities_range = circuit
@@ -40,10 +42,10 @@ pub(crate) fn generate_range_check_multiplicities_from_mappings(
     let range_check_timestamp_lookup_multiplicities = &mut witness.slice_mut()
         [range_check_timestamp_lookup_multiplicities_range.start * trace_len
             ..range_check_timestamp_lookup_multiplicities_range.end * trace_len];
-    generate_generic_lookup_multiplicities(
+    generate_lookup_multiplicities(
         range_check_timestamp_lookup_mapping,
         &mut DeviceMatrixMut::new(range_check_timestamp_lookup_multiplicities, trace_len),
-        20, // 19-bit values (TIMESTAMP_COLUMNS_NUM_BITS) + 1 sentinel bit
+        TIMESTAMP_RANGE_CHECK_DOMAIN_SIZE,
         context,
     )?;
     Ok(())
