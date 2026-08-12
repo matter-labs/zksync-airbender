@@ -2369,6 +2369,8 @@ pub enum LaneKernel {
     Cached,
     Cached128,
     Cached128Lb,
+    Reorder128,
+    Reorder128Lb,
     SegSCv64,
     SegSCv100,
     SegSAcc,
@@ -2390,6 +2392,8 @@ impl LaneKernel {
             Self::Cached => "eval_lsb_pair_cached",
             Self::Cached128 => "eval_lsb_pair_cached_128",
             Self::Cached128Lb => "eval_lsb_pair_cached_128_lb",
+            Self::Reorder128 => "eval_lsb_pair_cached_reorder_128",
+            Self::Reorder128Lb => "eval_lsb_pair_cached_reorder_128_lb",
             Self::SegSCv64 => "eval_lsb_seg_s_cv64",
             Self::SegSCv100 => "eval_lsb_seg_s_cv100",
             Self::SegSAcc => "eval_lsb_seg_s_acc",
@@ -2404,7 +2408,14 @@ impl LaneKernel {
     /// Whether the body reads the R4 per-thread coset frame. A seg body reads a block-wide
     /// slab instead, so it is not one of these however its arm is planned.
     pub fn is_cached(self) -> bool {
-        matches!(self, Self::Cached | Self::Cached128 | Self::Cached128Lb)
+        matches!(
+            self,
+            Self::Cached
+                | Self::Cached128
+                | Self::Cached128Lb
+                | Self::Reorder128
+                | Self::Reorder128Lb
+        )
     }
 }
 

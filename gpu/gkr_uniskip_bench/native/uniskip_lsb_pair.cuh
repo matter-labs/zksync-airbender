@@ -346,6 +346,98 @@ DEVICE_FORCEINLINE void uniskip_pair_resolve_second_cached(const uniskip_vm_desc
 }
 
 // ---------------------------------------------------------------------------------------
+// v3 R9 GATE-FIRST REORDER. The cached resolve above fills `h[2]` AND `c[2]` before the
+// gate, so both domains of both operands are live at every multiply. These helpers split
+// that into two halves of one program walk: load H, gate on H, then turn THAT storage into
+// C (chain in place, or a cache load for an admitted source) and gate on C. Nothing about
+// what an accumulator sees changes - only the interleaving between `acc_h` and `acc_c`.
+// ---------------------------------------------------------------------------------------
+
+// The chain, run destructively over the operand's own storage: `v` enters as H and leaves
+// as C. Identical text to the control resolve's transform, so the produced `c` is bit-equal.
+DEVICE_FORCEINLINE void uniskip_pair_chain_reorder(const uniskip_pair_lane &lane, bf v[2]) {
+  uniskip_pair_regs x{v[0], v[1]};
+  uniskip_pair_chain(x, lane.lane, lane.tw);
+  v[0] = x.lo;
+  v[1] = x.hi;
+}
+
+// The `e4` counterpart: all eight limbs are read into the chain before either output is
+// written back, so the in-place form cannot clobber a limb it still needs.
+DEVICE_FORCEINLINE void uniskip_pair_chain_reorder(const uniskip_pair_lane &lane, e4 v[2]) {
+  bf limbs[2][4];
+#pragma unroll
+  for (u32 l = 0; l < 4; ++l) {
+    uniskip_pair_regs x{v[0].base_coefficient_from_flat_idx(l), v[1].base_coefficient_from_flat_idx(l)};
+    uniskip_pair_chain(x, lane.lane, lane.tw);
+    limbs[0][l] = x.lo;
+    limbs[1][l] = x.hi;
+  }
+  v[0] = e4(limbs[0]);
+  v[1] = e4(limbs[1]);
+}
+
+// H -> C for one factor. An admitted source replaces the chain with its frame load; an
+// uncached one chains in place. Same disposition byte the cached resolve reads.
+template <typename T>
+DEVICE_FORCEINLINE void uniskip_pair_coset_reorder(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const u16 source_id,
+                                                   const uniskip_coset_cache &cache, T v[2]) {
+  const u32 base = desc.source[source_id].cache_slot;
+  if (base == UNISKIP_CACHE_SLOT_NONE) {
+    uniskip_pair_chain_reorder(lane, v);
+    return;
+  }
+  uniskip_coset_load(cache, base, v);
+}
+
+// Operand B's H. The W = 0 duplicate rule transfers: a self-product copies A's H and
+// performs no second load.
+template <typename T>
+DEVICE_FORCEINLINE void uniskip_pair_load_h_second_reorder(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const uniskip_term term, const T a[2],
+                                                           T b[2]) {
+  if (term.source_b == term.source_a) {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      b[k] = a[k];
+    return;
+  }
+  uniskip_pair_load_h(desc, lane, term.source_b, b);
+}
+
+// Operand B's H -> C, taking A's ALREADY promoted storage: a self-product copies A's `c`
+// and performs no second chain, which is the duplicate rule's other half.
+template <typename T>
+DEVICE_FORCEINLINE void uniskip_pair_coset_second_reorder(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const uniskip_term term,
+                                                          const uniskip_coset_cache &cache, const T a[2], T b[2]) {
+  if (term.source_b == term.source_a) {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      b[k] = a[k];
+    return;
+  }
+  uniskip_pair_coset_reorder(desc, lane, term.source_b, cache, b);
+}
+
+// One group member's contribution to ONE sum. Extracted rather than duplicated per domain
+// so the immediate / add / sub / FMA order is the control's by construction, twice.
+DEVICE_FORCEINLINE void uniskip_pair_group_sum_reorder(const uniskip_vm_desc &desc, const uniskip_term member, const bf v[2], bf sum[2]) {
+  if (member.coeff == UNISKIP_IMMEDIATE_ONE) {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      sum[k] = bf::add(sum[k], v[k]);
+  } else if (member.coeff == UNISKIP_IMMEDIATE_NEG_ONE) {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      sum[k] = bf::sub(sum[k], v[k]);
+  } else {
+    const bf immediate = desc.immediates[member.coeff - UNISKIP_IMMEDIATE_RESERVED];
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      sum[k] = bf::fma(immediate, v[k], sum[k]);
+  }
+}
+
+// ---------------------------------------------------------------------------------------
 // v3 R3 WINDOW. Coset-only: a slot retains one BF source's produced `c[2]` (2 regs/lane);
 // `h[2]` is still loaded on reuse. A reuse therefore skips exactly the shuffle-NTT chain
 // and its twist for that operand resolution, which is the whole saving.

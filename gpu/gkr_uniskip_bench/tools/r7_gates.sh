@@ -5,8 +5,10 @@
 #               one place) plus the eight seg symbols: symbol set, per-symbol normalized
 #               instruction counts AND body digests, `_cv64` normalized-IDENTICAL to `_cv100`,
 #               and the shipped resource usage (72 regs, no stack, no local) — SHIPPED build
-#               only, and it says so instead of comparing the wrong binary. `all` runs this lane
-#               FIRST and again LAST, so the binary the tree ends on is the gated one.
+#               only, and it says so instead of comparing the wrong binary. It also pins the two
+#               v3 R9 gate-first symbols in the pair TU (counts, digests, their OWN register
+#               counts). `all` runs this lane FIRST and again LAST, so the binary the tree ends
+#               on is the gated one.
 #   matrix      Task 5's validation matrix, scripted: q parity over the 12 pinned carrier x arm
 #               pairs against the LOCAL control128 and over R7b's five segb pairs, the
 #               self-product cells (also against the local reference), the CPU-oracle cells,
@@ -105,6 +107,15 @@ ab_gkr_uniskip_eval_lsb_segb_recompute_kernel|8368|0|8d0c0350ba2c
 ab_gkr_uniskip_eval_lsb_segb_g_kernel|9696|0|cb905a5c1a37
 ab_gkr_uniskip_eval_lsb_segb_g_slotted_kernel|9768|8|d716d4052268"
 SEG_TU=uniskip_lsb_seg.cu.o
+
+# The two v3 R9 gate-first symbols, which live in the PAIR TU beside the nine frozen bodies:
+# fn|normalized instruction count|registers|shared bytes|12-hex sha256 of the NORMALIZED body.
+# Their own table rather than rows in `SEG_SYMBOLS`: that one pins REG:72 for every row, and
+# the reorder's whole claim is that its register count is NOT the incumbent's. The nine frozen
+# bodies of this TU stay r5_gates.sh's, artifact-compared there and untouched here.
+REORDER_SYMBOLS="ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_lb_kernel|5984|70|2048|10ee133c66ec
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_kernel|5888|64|2048|0b9ed0dcf3dc"
+PAIR_TU=uniskip_lsb_pair.cu.o
 
 build_bench() { # build_bench <diag-env-value-or-empty>
   if [ -n "$1" ]; then
@@ -682,6 +693,49 @@ seg_sass() {
   fi
 }
 
+reorder_sass() {
+  note "### the two R9 gate-first symbols: instruction counts, digests, registers"
+  local ar=$ARCHIVE work="$TMP/sass-reorder" ar_abs
+  ar_abs=$(readlink -f "$ar")
+  mkdir -p "$work"
+  ( cd "$work" && ar x "$ar_abs" "$PAIR_TU" ) 2>/dev/null
+  if [ ! -f "$work/$PAIR_TU" ]; then bad "could not extract $PAIR_TU from $ar"; return; fi
+  if ! cuobjdump -sass "$work/$PAIR_TU" >"$work/dump.txt" 2>"$work/dump.err"; then
+    bad "cuobjdump -sass failed on the pair TU"; tail -3 "$work/dump.err"; return
+  fi
+  if ! cuobjdump -res-usage "$work/$PAIR_TU" >"$work/res.txt" 2>&1; then
+    bad "cuobjdump -res-usage failed on the pair TU"; tail -3 "$work/res.txt"; return
+  fi
+  norm_dump "$work/dump.txt" "$work/live"
+  local rows=0 ok=0 fn want reg shared digest got dig res
+  while IFS='|' read -r fn want reg shared digest; do
+    [ -n "$fn" ] || continue
+    rows=$((rows + 1))
+    if [ ! -f "$work/live/$fn" ]; then bad "$fn is missing from the built archive"; continue; fi
+    got=$(wc -l <"$work/live/$fn")
+    dig=$(body_digest "$work/live/$fn")
+    res=$(awk -v fn="$fn:" '$2 == fn {getline; print $0}' "$work/res.txt" \
+          | tr -s ' ' | sed 's/^ //')
+    if [ "$got" != "$want" ]; then
+      bad "$fn has $got normalized instructions, the record pins $want"
+      continue
+    fi
+    if [ "$dig" != "$digest" ]; then
+      bad "$fn body digest is $dig, the record pins $digest — the body changed at a constant instruction count"
+      continue
+    fi
+    case "$res" in
+      "REG:$reg STACK:0 SHARED:$shared LOCAL:0 CONSTANT[0]:"*) ;;
+      *) bad "$fn resource usage is [$res]; want REG:$reg STACK:0 SHARED:$shared LOCAL:0"; continue ;;
+    esac
+    ok=$((ok + 1))
+    note "  $fn: $got instrs, digest $dig, $res"
+  done <<< "$REORDER_SYMBOLS"
+  note "  reorder bodies $ok/$rows pinned"
+  [ "$rows" = 2 ] || bad "expected 2 reorder symbols, checked $rows"
+  [ "$ok" = 2 ] || bad "the reorder symbol table is not 2/2"
+}
+
 sass() {
   note "### frozen SASS: r5_gates.sh sass, the nine R3/R4 bodies (one table, one owner)"
   require_shipped "the SASS lane" || return
@@ -693,6 +747,7 @@ sass() {
   printf '%s\n' "$out" | grep -q '^  frozen bodies 9/9 identical' \
     || bad "r5_gates.sh sass did not report 9/9 identical frozen bodies"
   seg_sass
+  reorder_sass
 }
 
 # ---------------------------------------------------------------- cpu / fixtures / regression

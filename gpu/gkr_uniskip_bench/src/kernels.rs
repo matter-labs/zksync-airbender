@@ -145,6 +145,22 @@ cuda_kernel!(
     EvalLsbPairCached128Lb,
     ab_gkr_uniskip_eval_lsb_pair_cached_128_lb_kernel(desc: UniskipVmDesc, plan: UniskipCacheDesc)
 );
+// The v3 R9 gate-first reordered cached bodies: same wire and same signature as the R4
+// cached kernels, so the reorder contrast is taken body-to-body at one ABI.
+cuda_kernel!(
+    EvalLsbPairCachedReorder128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorder128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
 // The v3 R4 128-thread no-cache baselines: same wire, same signature, 4 warps. The `_lb`
 // sibling is the bounded baseline, so the 128 cache contrast can be taken bound-to-bound.
 cuda_kernel!(
@@ -631,6 +647,33 @@ pub fn eval_lsb_pair_cached_128_lb(
     EvalLsbPairCached128LbFunction::default().launch(&config, &args)
 }
 
+/// The v3 R9 gate-first reordered cached kernel at 128 threads under
+/// `__launch_bounds__(128, 7)` — the incumbent's bound, so the reorder contrast is taken at
+/// one block count.
+pub fn eval_lsb_pair_cached_reorder_128_lb(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbPairCachedReorder128LbArguments::new(*desc, *plan);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbPairCachedReorder128LbFunction::default().launch(&config, &args)
+}
+
+/// The UNBOUNDED R9 sibling: the register-attribution comparator against the unbounded
+/// cached body, and what prices the bound on the reordered walk.
+pub fn eval_lsb_pair_cached_reorder_128(
+    desc: &UniskipVmDesc,
+    plan: &UniskipCacheDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbPairCachedReorder128Arguments::new(*desc, *plan);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbPairCachedReorder128Function::default().launch(&config, &args)
+}
+
 /// Blocks per SM the driver's own occupancy calculator gives one of the lane kernels at
 /// `block_threads` and `dynamic_smem_bytes`. It reads the SAME function attributes a launch
 /// will — the register count, the static shared plane and whatever
@@ -658,6 +701,16 @@ pub fn max_blocks_per_sm(
         LaneKernel::Cached128Lb => {
             occupancy(&EvalLsbPairCached128LbFunction::default(), threads, dynamic)
         }
+        LaneKernel::Reorder128Lb => occupancy(
+            &EvalLsbPairCachedReorder128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::Reorder128 => occupancy(
+            &EvalLsbPairCachedReorder128Function::default(),
+            threads,
+            dynamic,
+        ),
         LaneKernel::SegSCv64 => occupancy(&EvalLsbSegSCv64Function::default(), threads, dynamic),
         LaneKernel::SegSCv100 => occupancy(&EvalLsbSegSCv100Function::default(), threads, dynamic),
         LaneKernel::SegSAcc => occupancy(&EvalLsbSegSAccFunction::default(), threads, dynamic),

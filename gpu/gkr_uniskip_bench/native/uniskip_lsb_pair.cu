@@ -571,6 +571,172 @@ EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
   uniskip_eval_pair_cached<UNISKIP_PAIR_WARPS_128>(desc, plan, plane);
 }
 
+// v3 R9 GATE-FIRST TERM BODY. Same program, same classes, same coefficient bank as the R4
+// cached body; what moves is WHEN each domain is live. Per factor: load H, gate on H, turn
+// that storage into C, gate on C - so a term's peak liveness is one domain of its operands
+// instead of both.
+//
+// THE INVARIANT, and the reason `q` must stay bit-identical: each accumulator sees its own
+// factors and terms in exactly the cached body's order. Only the interleaving between
+// `acc_h` and `acc_c` changes. The group member's product therefore goes to a temporary
+// rather than back into the operand - the control overwrites `ah[k]`, which here would
+// destroy the H the chain still needs.
+DEVICE_FORCEINLINE void uniskip_eval_pair_cached_reorder_body(const uniskip_pair_desc &desc, const uniskip_pair_lane &lane, const uniskip_coset_cache &cache,
+                                                              e4 acc_h[2], e4 acc_c[2]) {
+#pragma unroll
+  for (u32 k = 0; k < 2; ++k) {
+    acc_h[k] = e4::ZERO();
+    acc_c[k] = e4::ZERO();
+  }
+
+  for (u32 pc = 0; pc < desc.record_count;) {
+    const uniskip_term term = desc.program[pc];
+    const e4 coeff = ab_gkr_uniskip_coeff_bank[term.coeff];
+    if (term.term_class == UNISKIP_CLASS_GROUP_BF) {
+      const u32 arity = term.source_a;
+      bf sum_h[2], sum_c[2];
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        sum_h[k] = bf::ZERO();
+        sum_c[k] = bf::ZERO();
+      }
+      for (u32 m = 1; m <= arity; ++m) {
+        const uniskip_term member = desc.program[pc + m];
+        const bool product = member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF;
+        bf a[2], b[2];
+        uniskip_pair_load_h(desc, lane, member.source_a, a);
+        if (product) {
+          uniskip_pair_load_h_second_reorder(desc, lane, member, a, b);
+          bf p[2];
+#pragma unroll
+          for (u32 k = 0; k < 2; ++k)
+            p[k] = bf::mul(a[k], b[k]);
+          uniskip_pair_group_sum_reorder(desc, member, p, sum_h);
+        } else {
+          uniskip_pair_group_sum_reorder(desc, member, a, sum_h);
+        }
+        uniskip_pair_coset_reorder(desc, lane, member.source_a, cache, a);
+        if (product) {
+          uniskip_pair_coset_second_reorder(desc, lane, member, cache, a, b);
+          bf p[2];
+#pragma unroll
+          for (u32 k = 0; k < 2; ++k)
+            p[k] = bf::mul(a[k], b[k]);
+          uniskip_pair_group_sum_reorder(desc, member, p, sum_c);
+        } else {
+          uniskip_pair_group_sum_reorder(desc, member, a, sum_c);
+        }
+      }
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, sum_h[k], acc_h[k]);
+        acc_c[k] = e4::fma(coeff, sum_c[k], acc_c[k]);
+      }
+      pc += arity + 1;
+      continue;
+    }
+    switch (term.term_class) {
+    case UNISKIP_CLASS_LINEAR_BF: {
+      bf a[2];
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, a[k], acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, a[k], acc_c[k]);
+      break;
+    }
+    case UNISKIP_CLASS_LINEAR_E4: {
+      e4 a[2];
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, a[k], acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, a[k], acc_c[k]);
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_BF_BF: {
+      bf a[2], b[2];
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+      uniskip_pair_load_h_second_reorder(desc, lane, term, a, b);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, bf::mul(a[k], b[k]), acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+      uniskip_pair_coset_second_reorder(desc, lane, term, cache, a, b);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, bf::mul(a[k], b[k]), acc_c[k]);
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_BF_E4: {
+      // B (the `e4`) first: the classes differ, so no duplicate rule applies here, and the
+      // gate keeps the control's `e4 x bf` operand order.
+      bf a[2];
+      e4 b[2];
+      uniskip_pair_load_h(desc, lane, term.source_b, b);
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, e4::mul(b[k], a[k]), acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_b, cache, b);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, e4::mul(b[k], a[k]), acc_c[k]);
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_E4_E4: {
+      e4 a[2], b[2];
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+      uniskip_pair_load_h_second_reorder(desc, lane, term, a, b);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, e4::mul(a[k], b[k]), acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+      uniskip_pair_coset_second_reorder(desc, lane, term, cache, a, b);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, e4::mul(a[k], b[k]), acc_c[k]);
+      break;
+    }
+    }
+    ++pc;
+  }
+}
+
+// The R9 kernels. The prologue is the R4 one unchanged - production still happens once per
+// admitted source before the walk - so the reorder is the walk's alone.
+template <u32 WARPS> DEVICE_FORCEINLINE void uniskip_eval_pair_cached_reorder(const uniskip_pair_desc &desc, const uniskip_cache_desc &plan, e4 *plane) {
+  const uniskip_pair_lane lane = uniskip_pair_lane_of<WARPS>(threadIdx.x);
+  uniskip_coset_cache cache;
+  uniskip_coset_prologue(desc, plan, lane, cache);
+  e4 acc_h[2], acc_c[2];
+  uniskip_eval_pair_cached_reorder_body(desc, lane, cache, acc_h, acc_c);
+  uniskip_pair_epilogue<WARPS>(desc, lane, acc_h, acc_c, plane);
+}
+
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    7) void ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_lb_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                                      const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_reorder<UNISKIP_PAIR_WARPS_128>(desc, plan, plane);
+}
+
+// The UNBOUNDED sibling, on the incumbent's precedent: the bounded body is the measurement
+// arm at the incumbent's block count, and this one prices what the bound costs - and is the
+// register-attribution comparator against the unbounded cached body.
+EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                              const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_reorder<UNISKIP_PAIR_WARPS_128>(desc, plan, plane);
+}
+
 // The BOUNDED no-cache baseline at 128. R3's `t` arm is the precedent that forces this to
 // exist: pricing a launch bound on the cached side alone would assume the bound's cost is
 // additive across bodies, and `t` measured +3.43 % on a body whose registers the bound did

@@ -1327,6 +1327,12 @@ impl Harness {
                         LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128_lb)
                     }
                     LaneKernel::Cached128 => LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128),
+                    LaneKernel::Reorder128Lb => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_128_lb)
+                    }
+                    LaneKernel::Reorder128 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_128)
+                    }
                     LaneKernel::Cached => LaneLaunch::Cached(kernels::eval_lsb_pair_cached),
                     LaneKernel::Pair128Lb => LaneLaunch::Plain(kernels::eval_lsb_pair_128_lb),
                     LaneKernel::Pair128 => LaneLaunch::Plain(kernels::eval_lsb_pair_128),
