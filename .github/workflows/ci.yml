@@ -12,7 +12,7 @@ permissions: read-all
 jobs:
   tests:
     name: tests
-    runs-on: [matterlabs-ci-runner-highmem]
+    runs-on: [matterlabs-ci-runner-high-performance]
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -30,7 +30,7 @@ jobs:
       - name: Unit tests (CI)
         env:
           CI: "true"
-        run: cargo test --profile cli -- --nocapture
+        run: cargo test --profile cli -- --nocapture --test-threads 1
       - name: GPU test serialization drift guard
         run: cargo test -p gpu_core --profile cli cpu_nextest_config_covers_all_gpu_crates
       - name: GKR compiler feature tests
