@@ -10,13 +10,16 @@ use gpu_core::primitives::device_structures::{
 };
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
-use gpu_ops::simple::{set_to_ones, set_to_zero};
+use gpu_ops::simple::set_to_zero;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
-use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType, UnrolledCircuitType};
+use gpu_trace::witness::circuit_type::{
+    CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
+    UnrolledNonMemoryCircuitType,
+};
 use gpu_trace::witness::memory_delegation::generate_memory_and_witness_values_delegation;
 use gpu_trace::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_inits_and_teardowns,
@@ -25,15 +28,19 @@ use gpu_trace::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_unified,
 };
 use gpu_trace::witness::multiplicities::{
-    generate_generic_lookup_multiplicities, generate_range_check_lookup_mappings,
+    allocate_range_check_lookup_mappings, generate_generic_lookup_multiplicities,
+    generate_range_check_lookup_mappings,
 };
 use gpu_trace::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, PAGE_SIZE_LOG2,
 };
-use gpu_trace::witness::witness_delegation::generate_witness_values_delegation;
+use gpu_trace::witness::witness_delegation::{
+    generate_fused_values_delegation, generate_witness_values_delegation,
+};
 use gpu_trace::witness::witness_unrolled::{
-    generate_witness_values_unrolled_memory, generate_witness_values_unrolled_non_memory,
-    generate_witness_values_unrolled_unified,
+    generate_fused_values_unrolled_memory, generate_fused_values_unrolled_non_memory,
+    generate_fused_values_unrolled_unified, generate_witness_values_unrolled_memory,
+    generate_witness_values_unrolled_non_memory, generate_witness_values_unrolled_unified,
 };
 
 use crate::upstream::GKRCircuitArtifact;
@@ -107,7 +114,46 @@ pub struct GpuGKRStage1Output {
     pub lookup_mappings: GpuGKRLookupMappings,
 }
 
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WitnessGenerationStrategy {
+    Fused,
+    Split,
+}
+
+const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenerationStrategy {
+    match circuit_type {
+        CircuitType::Delegation(circuit_type) => match circuit_type {
+            DelegationCircuitType::BigIntWithControl => WitnessGenerationStrategy::Split,
+            DelegationCircuitType::Blake2WithCompression => WitnessGenerationStrategy::Fused,
+            DelegationCircuitType::Blake2GFunction => WitnessGenerationStrategy::Fused,
+            DelegationCircuitType::KeccakSpecial5 => WitnessGenerationStrategy::Split,
+        },
+        CircuitType::Unrolled(circuit_type) => match circuit_type {
+            UnrolledCircuitType::InitsAndTeardowns => WitnessGenerationStrategy::Split,
+            UnrolledCircuitType::Memory(circuit_type) => match circuit_type {
+                UnrolledMemoryCircuitType::LoadStoreSubwordOnly => WitnessGenerationStrategy::Fused,
+                UnrolledMemoryCircuitType::LoadStoreWordOnly => WitnessGenerationStrategy::Fused,
+            },
+            UnrolledCircuitType::NonMemory(circuit_type) => match circuit_type {
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop => WitnessGenerationStrategy::Fused,
+                UnrolledNonMemoryCircuitType::JumpBranchSlt => WitnessGenerationStrategy::Fused,
+                UnrolledNonMemoryCircuitType::MulDivUnsigned => WitnessGenerationStrategy::Fused,
+                UnrolledNonMemoryCircuitType::ShiftBinary => WitnessGenerationStrategy::Fused,
+            },
+            UnrolledCircuitType::Unified => WitnessGenerationStrategy::Fused,
+        },
+    }
+}
+
 impl GpuGKRStage1Output {
+    #[doc(hidden)]
+    pub fn scratch_space_for_test(&self) -> Option<&DeviceSlice<BF>> {
+        self.scratch_space_trace
+            .as_deref()
+            .map(|allocation| &allocation[..])
+    }
+
     pub fn into_keepalive(self) -> GpuGKRStage1Keepalive {
         let Self { tracing_ranges, .. } = self;
         // memory_trace_holder, witness_trace_holder, lookup_mappings drop here —
@@ -141,6 +187,34 @@ impl GpuGKRStage1Output {
         tracing_data: Option<&TracingDataDevice>,
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let strategy = production_witness_strategy(circuit_type);
+        Self::generate_with_strategy_impl(
+            circuit_type,
+            compiled_circuit,
+            geometry,
+            setup_hypercube_evals,
+            decoder_table,
+            inits_and_teardowns,
+            tracing_data,
+            witness_cap_dst,
+            context,
+            strategy,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn generate_with_strategy_impl(
+        circuit_type: CircuitType,
+        compiled_circuit: &GKRCircuitArtifact<BF>,
+        geometry: GpuGKRTraceGeometry,
+        setup_hypercube_evals: Option<&DeviceSlice<BF>>,
+        decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
+        inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
+        tracing_data: Option<&TracingDataDevice>,
+        witness_cap_dst: Option<&mut DeviceSlice<u32>>,
+        context: &ProverContext,
+        strategy: WitnessGenerationStrategy,
     ) -> CudaResult<Self> {
         let trace_len = compiled_circuit.trace_len;
         assert_eq!(trace_len, 1usize << geometry.log_domain_size);
@@ -178,13 +252,27 @@ impl GpuGKRStage1Output {
         let num_generic_sets = compiled_circuit.generic_lookups.len();
         let has_decoder = compiled_circuit.has_decoder_lookup;
         let num_generic_family_cols = num_generic_sets + usize::from(has_decoder);
+        let use_fused_unrolled = strategy == WitnessGenerationStrategy::Fused
+            && matches!(
+                circuit_type,
+                CircuitType::Unrolled(UnrolledCircuitType::Memory(_))
+                    | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_))
+                    | CircuitType::Unrolled(UnrolledCircuitType::Unified)
+            );
+        let use_fused_delegation = strategy == WitnessGenerationStrategy::Fused
+            && matches!(circuit_type, CircuitType::Delegation(_));
+        let produces_all_mappings_early = use_fused_unrolled || use_fused_delegation;
         let mut generic_family = context.alloc(
             num_generic_family_cols * trace_len,
             AllocationPlacement::Top,
         )?;
-        if !generic_family.is_empty() {
-            set_to_ones(generic_family.deref_mut(), context.get_exec_stream())?;
-        }
+        let (mut early_range_check_16, mut early_timestamp) = if produces_all_mappings_early {
+            let (range_check_16, timestamp) =
+                allocate_range_check_lookup_mappings(compiled_circuit, context)?;
+            (Some(range_check_16), Some(timestamp))
+        } else {
+            (None, None)
+        };
 
         let generic_lookup_tables: &DeviceSlice<BF> =
             setup_hypercube_evals.unwrap_or_else(DeviceSlice::empty);
@@ -213,6 +301,54 @@ impl GpuGKRStage1Output {
                 DeviceSlice::empty_mut()
             };
 
+            macro_rules! generate_delegation_row_data {
+                ($trace:expr) => {
+                    if use_fused_delegation {
+                        let mut range16_mapping = DeviceMatrixMut::new(
+                            early_range_check_16
+                                .as_mut()
+                                .expect("fused delegation path allocated range-16 mappings"),
+                            trace_len,
+                        );
+                        let mut timestamp_mapping = DeviceMatrixMut::new(
+                            early_timestamp
+                                .as_mut()
+                                .expect("fused delegation path allocated timestamp mappings"),
+                            trace_len,
+                        );
+                        generate_fused_values_delegation(
+                            compiled_circuit,
+                            $trace,
+                            &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                            &mut memory_matrix,
+                            &mut witness_matrix,
+                            &mut scratch_matrix,
+                            &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                            &mut range16_mapping,
+                            &mut timestamp_mapping,
+                            context.get_exec_stream(),
+                        )?;
+                    } else {
+                        generate_memory_and_witness_values_delegation(
+                            compiled_circuit,
+                            $trace,
+                            &mut memory_matrix,
+                            &mut witness_matrix,
+                            context.get_exec_stream(),
+                        )?;
+                        generate_witness_values_delegation(
+                            $trace,
+                            &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                            &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                            &mut witness_matrix,
+                            &mut scratch_matrix,
+                            &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                            context.get_exec_stream(),
+                        )?;
+                    }
+                };
+            }
+
             match (circuit_type, tracing_data) {
                 (
                     CircuitType::Delegation(circuit_type),
@@ -224,22 +360,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_memory_and_witness_values_delegation(
-                        compiled_circuit,
-                        trace,
-                        &mut memory_matrix,
-                        &mut witness_matrix,
-                        context.get_exec_stream(),
-                    )?;
-                    generate_witness_values_delegation(
-                        trace,
-                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
-                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
-                        &mut witness_matrix,
-                        &mut scratch_matrix,
-                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
-                        context.get_exec_stream(),
-                    )?;
+                    generate_delegation_row_data!(trace);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -253,22 +374,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_memory_and_witness_values_delegation(
-                        compiled_circuit,
-                        trace,
-                        &mut memory_matrix,
-                        &mut witness_matrix,
-                        context.get_exec_stream(),
-                    )?;
-                    generate_witness_values_delegation(
-                        trace,
-                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
-                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
-                        &mut witness_matrix,
-                        &mut scratch_matrix,
-                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
-                        context.get_exec_stream(),
-                    )?;
+                    generate_delegation_row_data!(trace);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -282,22 +388,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_memory_and_witness_values_delegation(
-                        compiled_circuit,
-                        trace,
-                        &mut memory_matrix,
-                        &mut witness_matrix,
-                        context.get_exec_stream(),
-                    )?;
-                    generate_witness_values_delegation(
-                        trace,
-                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
-                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
-                        &mut witness_matrix,
-                        &mut scratch_matrix,
-                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
-                        context.get_exec_stream(),
-                    )?;
+                    generate_delegation_row_data!(trace);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -311,22 +402,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_memory_and_witness_values_delegation(
-                        compiled_circuit,
-                        trace,
-                        &mut memory_matrix,
-                        &mut witness_matrix,
-                        context.get_exec_stream(),
-                    )?;
-                    generate_witness_values_delegation(
-                        trace,
-                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
-                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
-                        &mut witness_matrix,
-                        &mut scratch_matrix,
-                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
-                        context.get_exec_stream(),
-                    )?;
+                    generate_delegation_row_data!(trace);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -342,28 +418,58 @@ impl GpuGKRStage1Output {
                     } else {
                         DeviceSlice::empty()
                     };
-                    generate_memory_and_witness_values_unrolled_memory(
-                        circuit_type,
-                        &compiled_circuit.memory_layout,
-                        &compiled_circuit.aux_layout_data,
-                        decoder_table,
-                        compiled_circuit.offset_for_decoder_table as u32,
-                        trace,
-                        &mut memory_matrix,
-                        &mut witness_matrix,
-                        decoder_lookup_mapping,
-                        context.get_exec_stream(),
-                    )?;
-                    generate_witness_values_unrolled_memory(
-                        circuit_type,
-                        trace,
-                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
-                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
-                        &mut witness_matrix,
-                        &mut scratch_matrix,
-                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
-                        context.get_exec_stream(),
-                    )?;
+                    if use_fused_unrolled {
+                        let mut range16_mapping = DeviceMatrixMut::new(
+                            early_range_check_16
+                                .as_mut()
+                                .expect("fused unrolled path allocated range-16 mappings"),
+                            trace_len,
+                        );
+                        let mut timestamp_mapping = DeviceMatrixMut::new(
+                            early_timestamp
+                                .as_mut()
+                                .expect("fused unrolled path allocated timestamp mappings"),
+                            trace_len,
+                        );
+                        generate_fused_values_unrolled_memory(
+                            circuit_type,
+                            compiled_circuit,
+                            decoder_table,
+                            trace,
+                            &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                            &mut memory_matrix,
+                            &mut witness_matrix,
+                            &mut scratch_matrix,
+                            &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                            decoder_lookup_mapping,
+                            &mut range16_mapping,
+                            &mut timestamp_mapping,
+                            context.get_exec_stream(),
+                        )?;
+                    } else {
+                        generate_memory_and_witness_values_unrolled_memory(
+                            circuit_type,
+                            &compiled_circuit.memory_layout,
+                            &compiled_circuit.aux_layout_data,
+                            decoder_table,
+                            compiled_circuit.offset_for_decoder_table as u32,
+                            trace,
+                            &mut memory_matrix,
+                            &mut witness_matrix,
+                            decoder_lookup_mapping,
+                            context.get_exec_stream(),
+                        )?;
+                        generate_witness_values_unrolled_memory(
+                            circuit_type,
+                            trace,
+                            &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                            &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                            &mut witness_matrix,
+                            &mut scratch_matrix,
+                            &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                            context.get_exec_stream(),
+                        )?;
+                    }
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -379,28 +485,58 @@ impl GpuGKRStage1Output {
                     } else {
                         DeviceSlice::empty()
                     };
-                    generate_memory_and_witness_values_unrolled_non_memory(
-                        circuit_type,
-                        &compiled_circuit.memory_layout,
-                        &compiled_circuit.aux_layout_data,
-                        decoder_table,
-                        compiled_circuit.offset_for_decoder_table as u32,
-                        trace,
-                        &mut memory_matrix,
-                        &mut witness_matrix,
-                        decoder_lookup_mapping,
-                        context.get_exec_stream(),
-                    )?;
-                    generate_witness_values_unrolled_non_memory(
-                        circuit_type,
-                        trace,
-                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
-                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
-                        &mut witness_matrix,
-                        &mut scratch_matrix,
-                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
-                        context.get_exec_stream(),
-                    )?;
+                    if use_fused_unrolled {
+                        let mut range16_mapping = DeviceMatrixMut::new(
+                            early_range_check_16
+                                .as_mut()
+                                .expect("fused unrolled path allocated range-16 mappings"),
+                            trace_len,
+                        );
+                        let mut timestamp_mapping = DeviceMatrixMut::new(
+                            early_timestamp
+                                .as_mut()
+                                .expect("fused unrolled path allocated timestamp mappings"),
+                            trace_len,
+                        );
+                        generate_fused_values_unrolled_non_memory(
+                            circuit_type,
+                            compiled_circuit,
+                            decoder_table,
+                            trace,
+                            &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                            &mut memory_matrix,
+                            &mut witness_matrix,
+                            &mut scratch_matrix,
+                            &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                            decoder_lookup_mapping,
+                            &mut range16_mapping,
+                            &mut timestamp_mapping,
+                            context.get_exec_stream(),
+                        )?;
+                    } else {
+                        generate_memory_and_witness_values_unrolled_non_memory(
+                            circuit_type,
+                            &compiled_circuit.memory_layout,
+                            &compiled_circuit.aux_layout_data,
+                            decoder_table,
+                            compiled_circuit.offset_for_decoder_table as u32,
+                            trace,
+                            &mut memory_matrix,
+                            &mut witness_matrix,
+                            decoder_lookup_mapping,
+                            context.get_exec_stream(),
+                        )?;
+                        generate_witness_values_unrolled_non_memory(
+                            circuit_type,
+                            trace,
+                            &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                            &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                            &mut witness_matrix,
+                            &mut scratch_matrix,
+                            &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                            context.get_exec_stream(),
+                        )?;
+                    }
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -429,15 +565,9 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    // Inline inits/teardowns: a paged RAM-word sweep into the SAME memory matrix
-                    // (page-based-reuse, per Global Constraints). MUST run BEFORE the per-row launch:
-                    // generate_memory_and_witness_values_unrolled_inits_and_teardowns zeroes the whole
-                    // matrix before writing the teardown columns, and derives pages_per_set_log2
-                    // itself. Mirrors the standalone inits-and-teardowns arm above.
-                    // `None` = a TRIVIAL (dummy) unified init/teardown chunk (CPU reference
-                    // commits all-zero i&t columns): the i/t launcher only zeroes the whole
-                    // matrix and writes teardown timestamp/value columns at page-covered rows,
-                    // so the all-zero case is exactly "zero the matrix, skip the page sweep".
+                    // The sweep clears the memory matrix before writing teardown columns,
+                    // so it must precede per-row generation. A missing transfer means that
+                    // the init/teardown columns are all zero.
                     match inits_and_teardowns {
                         Some(inits_and_teardowns) => {
                             generate_memory_and_witness_values_unrolled_inits_and_teardowns(
@@ -461,26 +591,55 @@ impl GpuGKRStage1Output {
                     } else {
                         DeviceSlice::empty()
                     };
-                    generate_memory_and_witness_values_unrolled_unified(
-                        &compiled_circuit.memory_layout,
-                        &compiled_circuit.aux_layout_data,
-                        decoder_table,
-                        compiled_circuit.offset_for_decoder_table as u32,
-                        trace,
-                        &mut memory_matrix,
-                        &mut witness_matrix,
-                        decoder_lookup_mapping,
-                        context.get_exec_stream(),
-                    )?;
-                    generate_witness_values_unrolled_unified(
-                        trace,
-                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
-                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
-                        &mut witness_matrix,
-                        &mut scratch_matrix,
-                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
-                        context.get_exec_stream(),
-                    )?;
+                    if use_fused_unrolled {
+                        let mut range16_mapping = DeviceMatrixMut::new(
+                            early_range_check_16
+                                .as_mut()
+                                .expect("fused unrolled path allocated range-16 mappings"),
+                            trace_len,
+                        );
+                        let mut timestamp_mapping = DeviceMatrixMut::new(
+                            early_timestamp
+                                .as_mut()
+                                .expect("fused unrolled path allocated timestamp mappings"),
+                            trace_len,
+                        );
+                        generate_fused_values_unrolled_unified(
+                            compiled_circuit,
+                            decoder_table,
+                            trace,
+                            &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                            &mut memory_matrix,
+                            &mut witness_matrix,
+                            &mut scratch_matrix,
+                            &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                            decoder_lookup_mapping,
+                            &mut range16_mapping,
+                            &mut timestamp_mapping,
+                            context.get_exec_stream(),
+                        )?;
+                    } else {
+                        generate_memory_and_witness_values_unrolled_unified(
+                            &compiled_circuit.memory_layout,
+                            &compiled_circuit.aux_layout_data,
+                            decoder_table,
+                            compiled_circuit.offset_for_decoder_table as u32,
+                            trace,
+                            &mut memory_matrix,
+                            &mut witness_matrix,
+                            decoder_lookup_mapping,
+                            context.get_exec_stream(),
+                        )?;
+                        generate_witness_values_unrolled_unified(
+                            trace,
+                            &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                            &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                            &mut witness_matrix,
+                            &mut scratch_matrix,
+                            &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                            context.get_exec_stream(),
+                        )?;
+                    }
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -510,17 +669,30 @@ impl GpuGKRStage1Output {
             tracing_ranges.push(multiplicities_range);
         }
 
-        let range_mapping_range = Range::new("gkr.stage1.generate.range_check_lookup_mappings")?;
-        range_mapping_range.start(stream)?;
-        let (mut range_check_16, mut timestamp) = generate_range_check_lookup_mappings(
-            compiled_circuit,
-            &DeviceMatrix::new(memory_matrix.slice(), trace_len),
-            &DeviceMatrix::new(scratch_matrix.slice(), trace_len),
-            &DeviceMatrix::new(witness_matrix.slice(), trace_len),
-            context,
-        )?;
-        range_mapping_range.end(stream)?;
-        tracing_ranges.push(range_mapping_range);
+        let (mut range_check_16, mut timestamp) = if produces_all_mappings_early {
+            (
+                early_range_check_16
+                    .take()
+                    .expect("fused path retained range-16 mappings"),
+                early_timestamp
+                    .take()
+                    .expect("fused path retained timestamp mappings"),
+            )
+        } else {
+            let range_mapping_range =
+                Range::new("gkr.stage1.generate.range_check_lookup_mappings")?;
+            range_mapping_range.start(stream)?;
+            let mappings = generate_range_check_lookup_mappings(
+                compiled_circuit,
+                &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                &DeviceMatrix::new(scratch_matrix.slice(), trace_len),
+                &DeviceMatrix::new(witness_matrix.slice(), trace_len),
+                context,
+            )?;
+            range_mapping_range.end(stream)?;
+            tracing_ranges.push(range_mapping_range);
+            mappings
+        };
 
         let range_multiplicities_range =
             Range::new("gkr.stage1.generate.range_check_multiplicities")?;
@@ -565,4 +737,32 @@ impl GpuGKRStage1Output {
             lookup_mappings,
         })
     }
+}
+
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn generate_with_witness_strategy(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    geometry: GpuGKRTraceGeometry,
+    setup_hypercube_evals: Option<&DeviceSlice<BF>>,
+    decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
+    inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
+    tracing_data: Option<&TracingDataDevice>,
+    witness_cap_dst: Option<&mut DeviceSlice<u32>>,
+    context: &ProverContext,
+    strategy: WitnessGenerationStrategy,
+) -> CudaResult<GpuGKRStage1Output> {
+    GpuGKRStage1Output::generate_with_strategy_impl(
+        circuit_type,
+        compiled_circuit,
+        geometry,
+        setup_hypercube_evals,
+        decoder_table,
+        inits_and_teardowns,
+        tracing_data,
+        witness_cap_dst,
+        context,
+        strategy,
+    )
 }

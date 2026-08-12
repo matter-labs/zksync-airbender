@@ -37,8 +37,8 @@ struct NoFieldLinearRelation {
   u32 constant;
 };
 
-DEVICE_FORCEINLINE bf evaluate_linear_relation(const matrix_getter<bf, ld_modifier::cg> memory, const matrix_getter<bf, ld_modifier::cg> witness,
-                                               const matrix_getter<bf, ld_modifier::cg> scratch, const NoFieldLinearRelation relation) {
+template <typename Memory, typename Witness, typename Scratch>
+DEVICE_FORCEINLINE bf evaluate_linear_relation(const Memory &memory, const Witness &witness, const Scratch &scratch, const NoFieldLinearRelation relation) {
   bf result = relation.constant == 0 ? bf::ZERO() : bf::from_u32_unchecked(relation.constant);
 #pragma unroll
   for (int i = 0; i < MAX_LINEAR_TERMS_COUNT; ++i) {

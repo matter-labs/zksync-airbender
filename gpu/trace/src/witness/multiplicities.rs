@@ -1,5 +1,3 @@
-use std::ops::DerefMut;
-
 use crate::upstream::{GKRCircuitArtifact, NoFieldSingleColumnLookupRelation};
 use crate::witness::NoFieldLinearRelation;
 use era_cudart::cuda_kernel;
@@ -183,24 +181,12 @@ pub fn generate_range_check_lookup_mappings(
     assert_eq!(scratch.stride(), trace_len);
     assert_eq!(witness.stride(), trace_len);
     assert_eq!(witness.cols(), num_witness_cols);
-    let mut range_check_16_lookup_mapping_allocation = context.alloc(
-        circuit.range_check_16_lookup_expressions.len() * trace_len,
-        AllocationPlacement::BestFit,
-    )?;
-    set_to_zero(
-        range_check_16_lookup_mapping_allocation.deref_mut(),
-        context.get_exec_stream(),
-    )?;
+    let (
+        mut range_check_16_lookup_mapping_allocation,
+        mut range_check_timestamp_lookup_mapping_allocation,
+    ) = allocate_range_check_lookup_mappings(circuit, context)?;
     let mut range_check_16_lookup_mapping =
         DeviceMatrixMut::new(&mut range_check_16_lookup_mapping_allocation, trace_len);
-    let mut range_check_timestamp_lookup_mapping_allocation = context.alloc(
-        circuit.timestamp_range_check_lookup_expressions.len() * trace_len,
-        AllocationPlacement::BestFit,
-    )?;
-    set_to_zero(
-        range_check_timestamp_lookup_mapping_allocation.deref_mut(),
-        context.get_exec_stream(),
-    )?;
     let mut range_check_timestamp_lookup_mapping = DeviceMatrixMut::new(
         &mut range_check_timestamp_lookup_mapping_allocation,
         trace_len,
@@ -228,6 +214,26 @@ pub fn generate_range_check_lookup_mappings(
         );
         GenerateRangeCheckLookupMappingsFunction::default().launch(&config, &args)?;
     }
+    Ok((
+        range_check_16_lookup_mapping_allocation,
+        range_check_timestamp_lookup_mapping_allocation,
+    ))
+}
+
+pub fn allocate_range_check_lookup_mappings(
+    circuit: &GKRCircuitArtifact<BF>,
+    context: &ProverContext,
+) -> CudaResult<(DeviceAllocation<u32>, DeviceAllocation<u32>)> {
+    let trace_len = circuit.trace_len;
+    assert!(trace_len.is_power_of_two());
+    let range_check_16_lookup_mapping_allocation = context.alloc(
+        circuit.range_check_16_lookup_expressions.len() * trace_len,
+        AllocationPlacement::BestFit,
+    )?;
+    let range_check_timestamp_lookup_mapping_allocation = context.alloc(
+        circuit.timestamp_range_check_lookup_expressions.len() * trace_len,
+        AllocationPlacement::BestFit,
+    )?;
     Ok((
         range_check_16_lookup_mapping_allocation,
         range_check_timestamp_lookup_mapping_allocation,

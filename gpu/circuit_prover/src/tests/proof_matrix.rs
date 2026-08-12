@@ -64,9 +64,165 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     assert_eq!(fixture.context.get_used_mem_current(), baseline);
 }
 
-// ---------------------------------------------------------------------------
-// add_sub hand-written per-circuit test functions
-// ---------------------------------------------------------------------------
+fn assert_device_slices_equal_chunked<T>(
+    label: &str,
+    lhs: &era_cudart::slice::DeviceSlice<T>,
+    rhs: &era_cudart::slice::DeviceSlice<T>,
+    context: &ProverContext,
+) where
+    T: Copy + Default + PartialEq + std::fmt::Debug,
+{
+    assert_eq!(lhs.len(), rhs.len(), "{label} length mismatch");
+    const CHUNK_BYTES: usize = 64 << 20;
+    let chunk_len = (CHUNK_BYTES / std::mem::size_of::<T>()).max(1);
+    let mut lhs_host = vec![T::default(); chunk_len.min(lhs.len())];
+    let mut rhs_host = vec![T::default(); chunk_len.min(rhs.len())];
+    for offset in (0..lhs.len()).step_by(chunk_len) {
+        let len = chunk_len.min(lhs.len() - offset);
+        memory_copy_async(
+            &mut lhs_host[..len],
+            &lhs[offset..offset + len],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        memory_copy_async(
+            &mut rhs_host[..len],
+            &rhs[offset..offset + len],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        if lhs_host[..len] != rhs_host[..len] {
+            let local = lhs_host[..len]
+                .iter()
+                .zip(&rhs_host[..len])
+                .position(|(lhs, rhs)| lhs != rhs)
+                .unwrap();
+            assert_eq!(
+                lhs_host[local],
+                rhs_host[local],
+                "{label} mismatch at element {}",
+                offset + local
+            );
+        }
+    }
+}
+
+fn run_stage1_buffer_parity(fixture: BasicUnrolledFixture) {
+    use gpu_gkr::proof_layout::GpuGKRTraceGeometry;
+    use gpu_gkr::stage1::{
+        generate_with_witness_strategy, GpuGKRStage1Output, WitnessGenerationStrategy,
+    };
+
+    let transfers = fixture.schedule_transfers().unwrap();
+    transfers
+        .transfer
+        .ensure_transferred(&fixture.context)
+        .unwrap();
+    let setup = transfers
+        .setup
+        .as_ref()
+        .expect("stage-1 parity fixture requires a setup transfer");
+    let geometry = GpuGKRTraceGeometry {
+        log_domain_size: setup.trace_holder.log_domain_size,
+        log_lde_factor: setup.trace_holder.log_lde_factor,
+        log_rows_per_leaf: setup.trace_holder.log_rows_per_leaf,
+        log_tree_cap_size: setup.trace_holder.log_tree_cap_size,
+    };
+    let generate = |strategy| -> GpuGKRStage1Output {
+        generate_with_witness_strategy(
+            fixture.circuit_type,
+            &fixture.compiled_circuit,
+            geometry,
+            Some(setup.trace_holder.get_hypercube_evals()),
+            transfers
+                .decoder
+                .as_ref()
+                .map(|decoder| &decoder.data_device[..]),
+            transfers
+                .inits_and_teardowns
+                .as_ref()
+                .map(|transfer| &transfer.data_device),
+            transfers
+                .tracing_data
+                .as_ref()
+                .map(|transfer| &transfer.data_device),
+            None,
+            &fixture.context,
+            strategy,
+        )
+        .unwrap()
+    };
+
+    let split = generate(WitnessGenerationStrategy::Split);
+    fixture.context.get_exec_stream().synchronize().unwrap();
+    let fused = generate(WitnessGenerationStrategy::Fused);
+    fixture.context.get_exec_stream().synchronize().unwrap();
+    assert_device_slices_equal_chunked(
+        "memory hypercube",
+        split.memory_trace_holder.get_hypercube_evals(),
+        fused.memory_trace_holder.get_hypercube_evals(),
+        &fixture.context,
+    );
+    assert_device_slices_equal_chunked(
+        "witness hypercube",
+        split.witness_trace_holder.get_hypercube_evals(),
+        fused.witness_trace_holder.get_hypercube_evals(),
+        &fixture.context,
+    );
+    match (
+        split.scratch_space_for_test(),
+        fused.scratch_space_for_test(),
+    ) {
+        (Some(split), Some(fused)) => {
+            assert_device_slices_equal_chunked("scratch", split, fused, &fixture.context)
+        }
+        (None, None) => {}
+        _ => panic!("scratch allocation presence differs"),
+    }
+    assert_device_slices_equal_chunked(
+        "generic/decoder mappings",
+        split.lookup_mappings.generic_family(),
+        fused.lookup_mappings.generic_family(),
+        &fixture.context,
+    );
+    assert_device_slices_equal_chunked(
+        "range-16 mappings",
+        split.lookup_mappings.range_check_16(),
+        fused.lookup_mappings.range_check_16(),
+        &fixture.context,
+    );
+    assert_device_slices_equal_chunked(
+        "timestamp mappings",
+        split.lookup_mappings.timestamp(),
+        fused.lookup_mappings.timestamp(),
+        &fixture.context,
+    );
+}
+
+#[test]
+#[ignore]
+fn run_add_sub_stage1_buffer_parity_test() {
+    run_stage1_buffer_parity(prepare_basic_unrolled_profiling_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_load_store_subword_stage1_buffer_parity_test() {
+    run_stage1_buffer_parity(prepare_load_store_subword_only_profiling_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_unified_stage1_buffer_parity_test() {
+    run_stage1_buffer_parity(prepare_unified_profiling_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_blake2_compression_delegation_stage1_buffer_parity_test() {
+    run_stage1_buffer_parity(prepare_blake2_with_compression_profiling_fixture());
+}
 
 /// Full-proof parity at Sec100, where the lookup-challenge and WHIR-batching
 /// PoWs are non-zero — exercises the on-device grinding + nonce path.
