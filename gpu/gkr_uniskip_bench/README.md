@@ -408,9 +408,9 @@ over the 16-byte-aligned E4 span. At 128 threads the cached body needs
 be taken bound-to-bound. `--prologue-order bffirst` reorders the uploaded table on the
 capacity arms — a different upload, not a different kernel.
 
-Every `--mode lsb-pair` run builds and validates the plan for all **seventeen** arms —
-`CacheArm::ALL`, i.e. these eight plus v3 R5's nine `kN` prefix lanes — and prints a
-`coset cache (v3 R4)` block plus the exact `eval kernel` it will launch; arms a census
+Every `--mode lsb-pair` run builds and validates the plan for all **twenty-four** arms —
+`CacheArm::ALL`, i.e. these eight plus the sixteen `kN` prefix lanes of v3 R5 and R8 — and
+prints a `coset cache (v3 R4)` block plus the exact `eval kernel` it will launch; arms a census
 pushes past the frame are reported `unavailable` rather than failing runs that never select
 them. Admission is recomputed from the live resolver stream, so unlike the shared-memory
 cache plan it does **not** go stale under `--self-products`.

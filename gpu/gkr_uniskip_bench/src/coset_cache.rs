@@ -66,6 +66,13 @@ pub enum CacheArm {
     All59,
     E4Rich,
     E4Top2,
+    K17,
+    K18,
+    K19,
+    K20,
+    K21,
+    K22,
+    K23,
     K24,
     K32,
     K40,
@@ -78,7 +85,7 @@ pub enum CacheArm {
 }
 
 impl CacheArm {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 24] = [
         Self::Control,
         Self::Cache0,
         Self::Hot4,
@@ -87,6 +94,13 @@ impl CacheArm {
         Self::All59,
         Self::E4Rich,
         Self::E4Top2,
+        Self::K17,
+        Self::K18,
+        Self::K19,
+        Self::K20,
+        Self::K21,
+        Self::K22,
+        Self::K23,
         Self::K24,
         Self::K32,
         Self::K40,
@@ -108,6 +122,13 @@ impl CacheArm {
             Self::All59 => "all59",
             Self::E4Rich => "e4rich",
             Self::E4Top2 => "e4top2",
+            Self::K17 => "k17",
+            Self::K18 => "k18",
+            Self::K19 => "k19",
+            Self::K20 => "k20",
+            Self::K21 => "k21",
+            Self::K22 => "k22",
+            Self::K23 => "k23",
             Self::K24 => "k24",
             Self::K32 => "k32",
             Self::K40 => "k40",
@@ -133,6 +154,13 @@ impl CacheArm {
             Self::Control | Self::Cache0 => 0,
             Self::Hot4 => 4,
             Self::Hot16 => 16,
+            Self::K17 => 17,
+            Self::K18 => 18,
+            Self::K19 => 19,
+            Self::K20 => 20,
+            Self::K21 => 21,
+            Self::K22 => 22,
+            Self::K23 => 23,
             Self::K24 => 24,
             Self::K32 => 32,
             Self::K40 => 40,
@@ -414,6 +442,13 @@ pub fn admitted_for(program: &SynthProgram, arm: CacheArm) -> Vec<AdmissionEntry
         | CacheArm::Cache0
         | CacheArm::Hot4
         | CacheArm::Hot16
+        | CacheArm::K17
+        | CacheArm::K18
+        | CacheArm::K19
+        | CacheArm::K20
+        | CacheArm::K21
+        | CacheArm::K22
+        | CacheArm::K23
         | CacheArm::K24
         | CacheArm::K32
         | CacheArm::K40
@@ -785,6 +820,35 @@ mod cpu_tests {
         (CacheArm::K51,   [51, 41, 10, 81, 308, 180, 32,  99, 61, 244, 227, 648]),
     ];
 
+    /// The literals of `.agents/sdd/2026-08-12-v3-r8/expected-counts-r8.md` — the seven
+    /// interior admission points R5 derived but never measured, in [`EXPECTED_R5`]'s column
+    /// order. The whole band is one BF source at refs 3 per step, which is why every row's
+    /// E and R_E hold at the K16 values.
+    #[rustfmt::skip]
+    const EXPECTED_R8: [(CacheArm, [u32; 12]); 7] = [
+        (CacheArm::K17, [17, 13, 4, 29, 176,  96, 20, 179, 21, 136, 147, 232]),
+        (CacheArm::K18, [18, 14, 4, 30, 179,  99, 20, 177, 22, 139, 149, 240]),
+        (CacheArm::K19, [19, 15, 4, 31, 182, 102, 20, 175, 23, 142, 151, 248]),
+        (CacheArm::K20, [20, 16, 4, 32, 185, 105, 20, 173, 24, 145, 153, 256]),
+        (CacheArm::K21, [21, 17, 4, 33, 188, 108, 20, 171, 25, 148, 155, 264]),
+        (CacheArm::K22, [22, 18, 4, 34, 191, 111, 20, 169, 26, 151, 157, 272]),
+        (CacheArm::K23, [23, 19, 4, 35, 194, 114, 20, 167, 27, 154, 159, 280]),
+    ];
+
+    /// Each interior lane paired with the LAST id its admitted list ends on — the artifact's
+    /// `k18 = k17 + [13]` chain, stated as data. The [`ADMISSION_ORDER`] cross-check keeps
+    /// the two statements of the same ordering from drifting apart.
+    #[rustfmt::skip]
+    const INTERIOR_IDS: [(CacheArm, u16); 7] = [
+        (CacheArm::K17, 12),
+        (CacheArm::K18, 13),
+        (CacheArm::K19, 14),
+        (CacheArm::K20, 15),
+        (CacheArm::K21, 16),
+        (CacheArm::K22, 17),
+        (CacheArm::K23, 18),
+    ];
+
     /// The FULL 55-entry ordering printed on `oracle-derivation.txt`'s
     /// `admission head (id,refs,w)` line, identical under both term orders. Every lane's
     /// admitted-id list is a PREFIX of this, in this order: counts alone cannot detect a
@@ -874,6 +938,91 @@ mod cpu_tests {
                 let expect: Vec<u16> = ADMISSION_ORDER[..k].iter().map(|&(id, ..)| id).collect();
                 assert_eq!(got, expect, "arm {} under {order:?}", arm.as_str());
             }
+        }
+    }
+
+    /// All twelve oracle fields of the seven interior points, both orders, plus the K they
+    /// claim: the R8 arms must REPRODUCE the R5 derivation's rows, not redefine them.
+    #[test]
+    fn cpu_frontier_interior_counts_match_the_r8_oracle() {
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            for (arm, want) in EXPECTED_R8 {
+                assert_eq!(arm.prefix_k(), Some(want[0] as usize), "{}", arm.as_str());
+                let state = plan_arm(&p, arm).unwrap();
+                assert_eq!(
+                    actual_r5(&state),
+                    want,
+                    "arm {} under {order:?}",
+                    arm.as_str()
+                );
+                assert!(
+                    state.counts.c <= UNISKIP_COSET_FRAME_UNITS,
+                    "arm {} needs {} units of the {UNISKIP_COSET_FRAME_UNITS}-unit frame",
+                    arm.as_str(),
+                    state.counts.c
+                );
+            }
+        }
+    }
+
+    /// The reversal gate over the interior: `k17`'s admitted-id list VERBATIM from the
+    /// artifact, then one appended id per lane through `k23`, and `k24` closing the walk.
+    #[test]
+    fn cpu_frontier_interior_admitted_ids_are_the_oracle_prefixes() {
+        let ids = |p: &SynthProgram, arm: CacheArm| -> Vec<u16> {
+            plan_arm(p, arm)
+                .unwrap()
+                .admitted
+                .iter()
+                .map(|e| e.source)
+                .collect()
+        };
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            let p = program(order);
+            let mut want: Vec<u16> = vec![0, 1, 2, 3, 4, 5, 48, 49, 50, 51, 6, 7, 8, 9, 10, 11, 12];
+            for (i, (arm, next)) in INTERIOR_IDS.into_iter().enumerate() {
+                if i > 0 {
+                    want.push(next);
+                }
+                assert_eq!(ids(&p, arm), want, "arm {} under {order:?}", arm.as_str());
+                let k = arm.prefix_k().unwrap();
+                let sliced: Vec<u16> = ADMISSION_ORDER[..k].iter().map(|&(id, ..)| id).collect();
+                assert_eq!(want, sliced, "arm {} under {order:?}", arm.as_str());
+            }
+            want.push(19);
+            assert_eq!(ids(&p, CacheArm::K24), want, "k24 under {order:?}");
+        }
+    }
+
+    /// The band is refs-3 BF throughout: every interior step adds one BF source at refs 3,
+    /// and the eight steps close `hot16` -> `k24` exactly (the artifact's own closure check).
+    #[test]
+    fn cpu_frontier_interior_is_one_refs3_bf_step_per_lane() {
+        let p = program(TermOrder::Locality);
+        let walk = [
+            CacheArm::Hot16,
+            CacheArm::K17,
+            CacheArm::K18,
+            CacheArm::K19,
+            CacheArm::K20,
+            CacheArm::K21,
+            CacheArm::K22,
+            CacheArm::K23,
+            CacheArm::K24,
+        ];
+        for pair in walk.windows(2) {
+            let lo = plan_arm(&p, pair[0]).unwrap();
+            let hi = plan_arm(&p, pair[1]).unwrap();
+            let added = hi.admitted[lo.admitted.len()];
+            assert!(!added.is_e4(), "{} adds an e4", pair[1].as_str());
+            assert_eq!(added.refs, 3, "{}", pair[1].as_str());
+            let (lo, hi) = (lo.counts, hi.counts);
+            assert_eq!((hi.b - lo.b, hi.e - lo.e), (1, 0), "{}", pair[1].as_str());
+            assert_eq!(hi.c - lo.c, 1, "{}", pair[1].as_str());
+            assert_eq!(hi.rc - lo.rc, 3, "{}", pair[1].as_str());
+            assert_eq!(lo.chains - hi.chains, 2, "{}", pair[1].as_str());
+            assert_eq!(hi.removals - lo.removals, 2, "{}", pair[1].as_str());
         }
     }
 
@@ -1080,7 +1229,10 @@ mod cpu_tests {
             .collect();
         assert_eq!(
             cached,
-            vec![0, 0, 4, 16, 55, 59, 11, 2, 24, 32, 40, 45, 46, 48, 49, 50, 51]
+            vec![
+                0, 0, 4, 16, 55, 59, 11, 2, 17, 18, 19, 20, 21, 22, 23, 24, 32, 40, 45, 46, 48, 49,
+                50, 51
+            ]
         );
         for (_, state) in &all {
             validate(&p, state.as_ref().unwrap()).unwrap();
@@ -1784,6 +1936,26 @@ pub const FRONTIER_EXTENSION: [CacheLane; 8] = [
     FRONTIER_CONTROL_256,
 ];
 
+/// The v3 R8 frontier-interior rotation (spec R8): the seven admission points R5 left
+/// unmeasured between the `hot16` optimum and the first loser, with `k24` riding along so
+/// the whole `hot16 -> ... -> k24` walk is PAIRED in-session — the extension's `k48`
+/// precedent — plus the four anchor lanes every frontier session shares. 12 lanes => rounds
+/// a multiple of 12.
+pub const FRONTIER_INTERIOR: [CacheLane; 12] = [
+    frontier_128("k17@128", CacheArm::K17),
+    frontier_128("k18@128", CacheArm::K18),
+    frontier_128("k19@128", CacheArm::K19),
+    frontier_128("k20@128", CacheArm::K20),
+    frontier_128("k21@128", CacheArm::K21),
+    frontier_128("k22@128", CacheArm::K22),
+    frontier_128("k23@128", CacheArm::K23),
+    frontier_128("k24@128", CacheArm::K24),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    frontier_128("cache0@128", CacheArm::Cache0),
+    frontier_128("control_lb@128", CacheArm::Control),
+    FRONTIER_CONTROL_256,
+];
+
 /// The v3 R6 carveout-probe rotation (spec R6): the three lanes past the R5 knee (`k40`
 /// sizes a moved frontier so a `k32` win needs no second probe), the incumbent, and the
 /// shipping anchor. The cached lanes all launch the frozen `eval_lsb_pair_cached_128_lb`
@@ -1999,6 +2171,8 @@ pub enum LaneSet {
     FrontierFactorial,
     /// R5's conditional eight-lane extension over the refs-2 E4 tail (spec R5 2.3).
     FrontierExtension,
+    /// R8's twelve-lane sweep of the frontier interior K17..K23 (spec R8).
+    FrontierInterior,
     /// R6's five-lane carveout probe (spec R6): the R5 knee neighborhood re-measured under
     /// a steered shared-memory carveout.
     CarveoutProbe,
@@ -2018,6 +2192,7 @@ impl LaneSet {
             Self::CacheFactorial => &CACHE_FACTORIAL,
             Self::FrontierFactorial => &FRONTIER_FACTORIAL,
             Self::FrontierExtension => &FRONTIER_EXTENSION,
+            Self::FrontierInterior => &FRONTIER_INTERIOR,
             Self::CarveoutProbe => &CARVEOUT_PROBE,
             Self::SegSmem => &SEG_SMEM,
             Self::SegGmem => &SEG_GMEM,
@@ -2038,6 +2213,7 @@ impl LaneSet {
             Self::CacheFactorial => "--cache-factorial",
             Self::FrontierFactorial => "--frontier-factorial",
             Self::FrontierExtension => "--frontier-extension",
+            Self::FrontierInterior => "--frontier-interior",
             Self::CarveoutProbe => "--carveout-probe",
             Self::SegSmem => "--seg-smem-factorial",
             Self::SegGmem => "--seg-gmem-factorial",
@@ -2054,6 +2230,7 @@ impl LaneSet {
             Self::CacheFactorial => "CACHE-FACTORIAL",
             Self::FrontierFactorial => "FRONTIER-FACTORIAL",
             Self::FrontierExtension => "FRONTIER-EXTENSION",
+            Self::FrontierInterior => "FRONTIER-INTERIOR",
             Self::CarveoutProbe => "CARVEOUT-PROBE",
             Self::SegSmem => "SEG-SMEM",
             Self::SegGmem => "SEG-GMEM",
@@ -2063,14 +2240,16 @@ impl LaneSet {
     }
 
     /// Preregistered `(rounds, warmup)` per term order — spec R5 2.2/2.3, R7 for the seg
-    /// sets. 100/10 over ten lanes, 104/16 over eight, 99/9 over the nine gmem lanes; the
-    /// warmup is a whole number of rotations in every case. R4's own defaults are not
-    /// preregistered here (its record used 110 explicitly).
+    /// sets, R8 for the interior. 100/10 over ten lanes, 104/16 over eight, 99/9 over the
+    /// nine gmem lanes, 96/12 over the twelve interior lanes; the warmup is a whole number
+    /// of rotations in every case. R4's own defaults are not preregistered here (its record
+    /// used 110 explicitly).
     pub fn rounds_and_warmup(self) -> Option<(u32, u32)> {
         match self {
             Self::CacheFactorial => None,
             Self::FrontierFactorial => Some((100, 10)),
             Self::FrontierExtension => Some((104, 16)),
+            Self::FrontierInterior => Some((96, 12)),
             Self::CarveoutProbe => Some((100, 10)),
             Self::SegSmem => Some((100, 10)),
             Self::SegGmem => Some((99, 9)),
@@ -2089,7 +2268,9 @@ impl LaneSet {
     pub fn arms_noun(self) -> &'static str {
         match self {
             Self::CacheFactorial => "R4 arms",
-            Self::FrontierFactorial | Self::FrontierExtension => "R5 frontier lanes",
+            Self::FrontierFactorial | Self::FrontierExtension | Self::FrontierInterior => {
+                "R5 frontier lanes"
+            }
             Self::CarveoutProbe => "R6 probe lanes",
             Self::SegSmem | Self::SegGmem => "R7 seg lanes",
             Self::SegAnchor => "R7 anchor lanes",
@@ -2101,7 +2282,9 @@ impl LaneSet {
     pub fn gates(self) -> &'static str {
         match self {
             Self::CacheFactorial => "tools/r4_gates.sh",
-            Self::FrontierFactorial | Self::FrontierExtension => "tools/r5_gates.sh",
+            Self::FrontierFactorial | Self::FrontierExtension | Self::FrontierInterior => {
+                "tools/r5_gates.sh"
+            }
             Self::CarveoutProbe => "tools/r6_gates.sh",
             Self::SegSmem | Self::SegGmem | Self::SegAnchor | Self::Segb => "tools/r7_gates.sh",
         }
@@ -2113,6 +2296,7 @@ impl LaneSet {
             Self::CacheFactorial => "factorial",
             Self::FrontierFactorial => "frontier factorial",
             Self::FrontierExtension => "frontier extension",
+            Self::FrontierInterior => "frontier interior",
             Self::CarveoutProbe => "carveout probe",
             Self::SegSmem => "seg smem factorial",
             Self::SegGmem => "seg gmem factorial",
@@ -2322,6 +2506,91 @@ mod lane_tests {
         );
     }
 
+    /// The R8 interior rotation's shape, pinned as spec R8 names it: the seven sweep lanes in
+    /// ascending K, the `k24` boundary, then the four anchors every frontier session shares.
+    #[test]
+    fn cpu_frontier_interior_lane_set() {
+        assert_eq!(FRONTIER_INTERIOR.len(), 12);
+        let labels: Vec<&str> = FRONTIER_INTERIOR.iter().map(|l| l.label).collect();
+        assert_eq!(
+            labels,
+            vec![
+                "k17@128",
+                "k18@128",
+                "k19@128",
+                "k20@128",
+                "k21@128",
+                "k22@128",
+                "k23@128",
+                "k24@128",
+                "hot16@128",
+                "cache0@128",
+                "control_lb@128",
+                "control@256",
+            ]
+        );
+        let arms: Vec<CacheArm> = FRONTIER_INTERIOR.iter().map(|l| l.arm).collect();
+        assert_eq!(
+            arms,
+            vec![
+                CacheArm::K17,
+                CacheArm::K18,
+                CacheArm::K19,
+                CacheArm::K20,
+                CacheArm::K21,
+                CacheArm::K22,
+                CacheArm::K23,
+                CacheArm::K24,
+                CacheArm::Hot16,
+                CacheArm::Cache0,
+                CacheArm::Control,
+                CacheArm::Control,
+            ]
+        );
+        assert_eq!(
+            LaneSet::FrontierInterior.rounds_and_warmup(),
+            Some((96, 12))
+        );
+        for lane in &FRONTIER_INTERIOR {
+            assert_eq!(lane.regs, 72, "{}", lane.label);
+            assert_eq!(lane.carrier, LaneCarrier::Local, "{}", lane.label);
+            if lane.block_threads == 128 {
+                assert!(lane.launch_bounds, "{} must be bounded", lane.label);
+                assert_eq!(lane.blocks_per_sm, 7, "{}", lane.label);
+                assert_eq!(lane.rows_per_block(), 16, "{}", lane.label);
+                let want = if lane.arm.uses_cache() {
+                    LaneKernel::Cached128Lb
+                } else {
+                    LaneKernel::Pair128Lb
+                };
+                assert_eq!(lane.kernel(), want, "{}", lane.label);
+            } else {
+                assert_eq!(lane.label, "control@256");
+                assert_eq!(lane.kernel(), LaneKernel::Pair, "{}", lane.label);
+            }
+        }
+        // The seam a cross-session comparison goes through — the same four anchors the
+        // extension shares, plus the `k24` boundary this rotation brings inside the session.
+        let shared: Vec<&str> = FRONTIER_FACTORIAL
+            .iter()
+            .map(|l| l.label)
+            .filter(|l| FRONTIER_INTERIOR.iter().any(|e| e.label == *l))
+            .collect();
+        assert_eq!(
+            shared,
+            vec![
+                "k24@128",
+                "hot16@128",
+                "cache0@128",
+                "control_lb@128",
+                "control@256"
+            ]
+        );
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            validate_lane_set(&program(order), &FRONTIER_INTERIOR).unwrap();
+        }
+    }
+
     /// The preregistered round and warmup counts divide their rotations, so every lane
     /// occupies every rotation position the same number of times.
     #[test]
@@ -2331,6 +2600,9 @@ mod lane_tests {
         }
         for n in [104u32, 16] {
             assert!(n.is_multiple_of(FRONTIER_EXTENSION.len() as u32), "{n}");
+        }
+        for n in [96u32, 12] {
+            assert!(n.is_multiple_of(FRONTIER_INTERIOR.len() as u32), "{n}");
         }
         for n in [100u32, 10] {
             assert!(n.is_multiple_of(CARVEOUT_PROBE.len() as u32), "{n}");
@@ -2872,6 +3144,7 @@ mod lane_tests {
             for set in [
                 &FRONTIER_FACTORIAL[..],
                 &FRONTIER_EXTENSION[..],
+                &FRONTIER_INTERIOR[..],
                 &CACHE_FACTORIAL[..],
             ] {
                 validate_lane_set(&p, set).unwrap();
@@ -2942,6 +3215,7 @@ mod lane_tests {
             for lane in FRONTIER_FACTORIAL
                 .iter()
                 .chain(&FRONTIER_EXTENSION)
+                .chain(&FRONTIER_INTERIOR)
                 .chain(&CACHE_FACTORIAL)
             {
                 let counts = plan_arm(&p, lane.arm).unwrap().counts;
@@ -2988,10 +3262,15 @@ mod lane_tests {
         assert_eq!(LaneSet::CacheFactorial.lanes().len(), 11);
         assert_eq!(LaneSet::FrontierFactorial.lanes(), &FRONTIER_FACTORIAL);
         assert_eq!(LaneSet::FrontierExtension.lanes(), &FRONTIER_EXTENSION);
+        assert_eq!(LaneSet::FrontierInterior.lanes(), &FRONTIER_INTERIOR);
         assert_eq!(LaneSet::CacheFactorial.tag(), "CACHE-FACTORIAL");
         assert_eq!(LaneSet::CacheFactorial.rounds_and_warmup(), None);
         assert!(!LaneSet::CacheFactorial.is_frontier());
-        for set in [LaneSet::FrontierFactorial, LaneSet::FrontierExtension] {
+        for set in [
+            LaneSet::FrontierFactorial,
+            LaneSet::FrontierExtension,
+            LaneSet::FrontierInterior,
+        ] {
             assert!(set.is_frontier());
             assert!(set.tag().starts_with("FRONTIER-"));
             let (rounds, warmup) = set.rounds_and_warmup().unwrap();
@@ -3008,6 +3287,10 @@ mod lane_tests {
         assert_eq!(
             LaneSet::FrontierExtension.rounds_and_warmup(),
             Some((104, 16))
+        );
+        assert_eq!(
+            LaneSet::FrontierInterior.rounds_and_warmup(),
+            Some((96, 12))
         );
     }
 

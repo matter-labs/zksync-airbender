@@ -152,6 +152,14 @@ struct Cli {
     #[arg(long)]
     frontier_extension: bool,
 
+    /// Run the v3 R8 frontier-interior sweep: 12 lanes — the seven unmeasured admission
+    /// points `k17 k18 k19 k20 k21 k22 k23` with `k24` riding along so the whole
+    /// `hot16 -> k24` walk is PAIRED in-session, plus the anchors every frontier session
+    /// shares. 96 rounds / 12 warmup per term order unless overridden; an override must
+    /// still be a multiple of 12.
+    #[arg(long)]
+    frontier_interior: bool,
+
     /// Run the v3 R6 carveout probe: 5 lanes — the R5 knee neighborhood `k24 k32 k40
     /// hot16` at 128 threads plus the shipping `control@256` anchor — in ONE process, one
     /// carveout state (the R7 default 16, or `--carveout-hint none` for the driver
@@ -308,6 +316,7 @@ impl Cli {
             (self.cache_factorial, LaneSet::CacheFactorial),
             (self.frontier_factorial, LaneSet::FrontierFactorial),
             (self.frontier_extension, LaneSet::FrontierExtension),
+            (self.frontier_interior, LaneSet::FrontierInterior),
             (self.carveout_probe, LaneSet::CarveoutProbe),
             (self.seg_smem_factorial, LaneSet::SegSmem),
             (self.seg_gmem_factorial, LaneSet::SegGmem),
