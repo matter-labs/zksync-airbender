@@ -183,10 +183,11 @@ ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bk_128_kernel|5984|64|2048|648ea71c7
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_lb_kernel|6928|72|2048|98d40c54f396
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_lb6_kernel|6832|79|2048|dee91b732ac0
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_kernel|6872|59|2048|d4126598930c"
-# The v3 R10 lazy BF accumulator grid: two accumulator states (`w96` / `a64`) x two parent walks
+# The v3 R10 lazy accumulator grid: two accumulator states (`w96` / `a64`) x two LEVELS (`w96` =
+# the grouped member sums, `ow96` = the walk's four outer `e4` accumulators) x two parent walks
 # (no tag = the incumbent, `reorder_cd` = R9b's `C+D`) x three register budgets. Its own table for
-# R9B_SYMBOLS' reason: that one pins the parents these twelve are measured against, and a parent
-# row must stay untouched and separately readable.
+# R9B_SYMBOLS' reason: that one pins the parents these are measured against, and a parent row must
+# stay untouched and separately readable.
 R10_SYMBOLS="ab_gkr_uniskip_eval_lsb_pair_cached_w96_128_lb_kernel|6128|72|2048|59cb8068db42
 ab_gkr_uniskip_eval_lsb_pair_cached_w96_128_lb6_kernel|6104|80|2048|12a838edcb5d
 ab_gkr_uniskip_eval_lsb_pair_cached_w96_128_kernel|6048|75|2048|ded6128e0ef3
@@ -198,7 +199,19 @@ ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_w96_128_lb6_kernel|6512|77|2048|3
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_w96_128_kernel|6480|64|2048|8e3ed784cc5a
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_lb_kernel|6544|70|2048|d1c9d3337684
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_lb6_kernel|6432|80|2048|ca970ed4e17d
-ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_kernel|6480|65|2048|c16a07733d8a"
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_kernel|6480|65|2048|c16a07733d8a
+ab_gkr_uniskip_eval_lsb_pair_cached_ow96_128_lb_kernel|6456|72|2048|fee6c5565742
+ab_gkr_uniskip_eval_lsb_pair_cached_ow96_128_lb6_kernel|6344|80|2048|fe864a75f9d8
+ab_gkr_uniskip_eval_lsb_pair_cached_ow96_128_kernel|5784|128|2048|f9be3f38c552
+ab_gkr_uniskip_eval_lsb_pair_cached_oa64_128_lb_kernel|5984|72|2048|866c7034fbb0
+ab_gkr_uniskip_eval_lsb_pair_cached_oa64_128_lb6_kernel|5864|80|2048|74b9fd94efdf
+ab_gkr_uniskip_eval_lsb_pair_cached_oa64_128_kernel|5824|96|2048|de9255ef34fe
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_ow96_128_lb_kernel|6840|72|2048|d2caa5bb7267
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_ow96_128_lb6_kernel|6576|80|2048|77fb8861b480
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_ow96_128_kernel|6272|94|2048|d52a14756e59
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_oa64_128_lb_kernel|6360|72|2048|6a2ca919d222
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_oa64_128_lb6_kernel|6392|80|2048|f2bedb40e09f
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_oa64_128_kernel|6400|76|2048|08ce2533db72"
 PAIR_TU=uniskip_lsb_pair.cu.o
 
 build_bench() { # build_bench <diag-env-value-or-empty>
@@ -1802,7 +1815,7 @@ r9b_sass() {
 }
 
 r10_sass() {
-  note "### the R10 grid: accumulator state x parent walk, instruction counts, digests, registers"
+  note "### the R10 grid: state x level x parent walk, instruction counts, digests, registers"
   local ar=$ARCHIVE work="$TMP/sass-r10" ar_abs
   ar_abs=$(readlink -f "$ar")
   mkdir -p "$work"
@@ -1841,8 +1854,8 @@ r10_sass() {
     note "  $fn: $got instrs, digest $dig, $res"
   done <<< "$R10_SYMBOLS"
   note "  R10 grid bodies $ok/$rows pinned"
-  cellrow "the R10 grid (accumulator state x parent)" "$rows" "$ok"
-  [ "$rows" = 12 ] || bad "R10 grid symbols read — a symbol that never got read is not a verdict either way" "12" "$rows"
+  cellrow "the R10 grid (state x level x parent)" "$rows" "$ok"
+  [ "$rows" = 24 ] || bad "R10 grid symbols read — a symbol that never got read is not a verdict either way" "24" "$rows"
 }
 
 sass() {

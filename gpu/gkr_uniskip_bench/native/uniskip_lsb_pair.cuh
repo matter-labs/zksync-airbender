@@ -756,6 +756,54 @@ DEVICE_FORCEINLINE void uniskip_pair_group_member_lazy(const uniskip_vm_desc &de
 }
 
 // ---------------------------------------------------------------------------------------
+// v3 R10 OUTER-LEVEL WIDE ACCUMULATION. The states above defer a group's ~3 products; this holds
+// the WALK's four `e4` accumulators wide instead, so a term's `coeff x value` is never reduced -
+// one fold per pass, at green's level (`gpu_gkr_windowed_bench/native/windowed_vm.cu`'s
+// `window_u96_fold`, which is `window_u96 values[3][4]` = cells x limbs and the same
+// `mad_lo_cc`/`madc_hi_cc`/`addc` step). Our accumulator states are reused verbatim.
+//
+// E4 ARITHMETIC STAYS CANONICAL, which is green's winning division: an extension-valued term still
+// forms `e4::mul(coeff, value)` exactly as the parent does and its four canonical residues enter
+// through the mid word. Only the base-field accumulate goes wide.
+// ---------------------------------------------------------------------------------------
+
+template <typename ACC> struct uniskip_acc_e4 {
+  ACC limb[4];
+};
+
+template <typename ACC> DEVICE_FORCEINLINE void uniskip_acc_e4_zero(uniskip_acc_e4<ACC> &acc) {
+#pragma unroll
+  for (u32 i = 0; i < 4; ++i)
+    uniskip_acc_zero(acc.limb[i]);
+}
+
+// A BASE-valued term: the coefficient's four limbs against one base value, no reduction anywhere.
+// Flat limb order is `e4`'s own (`base_coefficient_from_flat_idx`, i.e. [0][0] [0][1] [1][0]
+// [1][1]), which is what the `e4(bf[4])` constructor in the fold reads back.
+template <typename ACC> DEVICE_FORCEINLINE void uniskip_acc_e4_bf(uniskip_acc_e4<ACC> &acc, const e4 coeff, const bf v) {
+#pragma unroll
+  for (u32 i = 0; i < 4; ++i)
+    uniskip_acc_product(acc.limb[i], coeff.base_coefficient_from_flat_idx(i), v);
+}
+
+// An EXTENSION-valued term: the `e4 x e4` product is the parent's canonical one, so this accumulate
+// costs no reduction of its own - the residues ride in at the mid word.
+template <typename ACC> DEVICE_FORCEINLINE void uniskip_acc_e4_e4(uniskip_acc_e4<ACC> &acc, const e4 coeff, const e4 v) {
+  const e4 t = e4::mul(coeff, v);
+#pragma unroll
+  for (u32 i = 0; i < 4; ++i)
+    uniskip_acc_inject(acc.limb[i], t.base_coefficient_from_flat_idx(i).limb);
+}
+
+template <typename ACC> DEVICE_FORCEINLINE e4 uniskip_acc_e4_fold(const uniskip_acc_e4<ACC> &acc) {
+  bf limbs[4];
+#pragma unroll
+  for (u32 i = 0; i < 4; ++i)
+    limbs[i] = uniskip_acc_fold(acc.limb[i]);
+  return e4(limbs);
+}
+
+// ---------------------------------------------------------------------------------------
 // v3 R3 WINDOW. Coset-only: a slot retains one BF source's produced `c[2]` (2 regs/lane);
 // `h[2]` is still loaded on reuse. A reuse therefore skips exactly the shuffle-NTT chain
 // and its twist for that operand resolution, which is the whole saving.

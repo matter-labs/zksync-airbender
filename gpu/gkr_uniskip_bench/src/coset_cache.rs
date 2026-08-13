@@ -2900,6 +2900,20 @@ pub enum LaneKernel {
     ReorderCdA64128,
     ReorderCdA64128Lb,
     ReorderCdA64128Lb6,
+    // The OUTER level of the same two states: the walk's four `e4` accumulators held wide for
+    // the whole pass rather than a group's member sums. `Ow96`/`Oa64` = outer.
+    CachedOw96128,
+    CachedOw96128Lb,
+    CachedOw96128Lb6,
+    CachedOa64128,
+    CachedOa64128Lb,
+    CachedOa64128Lb6,
+    ReorderCdOw96128,
+    ReorderCdOw96128Lb,
+    ReorderCdOw96128Lb6,
+    ReorderCdOa64128,
+    ReorderCdOa64128Lb,
+    ReorderCdOa64128Lb6,
     SegSCv64,
     SegSCv100,
     SegSAcc,
@@ -2915,7 +2929,7 @@ impl LaneKernel {
     /// them. The table itself is just a literal — what keeps it COMPLETE is the exhaustive
     /// match in `cpu_lane_kernel_names_match_the_exported_symbols`, where a new variant fails
     /// to compile until it has an entry here.
-    pub const ALL: [LaneKernel; 48] = [
+    pub const ALL: [LaneKernel; 60] = [
         Self::Pair,
         Self::Pair128,
         Self::Pair128Lb,
@@ -2956,6 +2970,18 @@ impl LaneKernel {
         Self::ReorderCdA64128,
         Self::ReorderCdA64128Lb,
         Self::ReorderCdA64128Lb6,
+        Self::CachedOw96128,
+        Self::CachedOw96128Lb,
+        Self::CachedOw96128Lb6,
+        Self::CachedOa64128,
+        Self::CachedOa64128Lb,
+        Self::CachedOa64128Lb6,
+        Self::ReorderCdOw96128,
+        Self::ReorderCdOw96128Lb,
+        Self::ReorderCdOw96128Lb6,
+        Self::ReorderCdOa64128,
+        Self::ReorderCdOa64128Lb,
+        Self::ReorderCdOa64128Lb6,
         Self::SegSCv64,
         Self::SegSCv100,
         Self::SegSAcc,
@@ -3048,6 +3074,18 @@ impl LaneKernel {
             Self::ReorderCdA64128 => "eval_lsb_pair_cached_reorder_cd_a64_128",
             Self::ReorderCdA64128Lb => "eval_lsb_pair_cached_reorder_cd_a64_128_lb",
             Self::ReorderCdA64128Lb6 => "eval_lsb_pair_cached_reorder_cd_a64_128_lb6",
+            Self::CachedOw96128 => "eval_lsb_pair_cached_ow96_128",
+            Self::CachedOw96128Lb => "eval_lsb_pair_cached_ow96_128_lb",
+            Self::CachedOw96128Lb6 => "eval_lsb_pair_cached_ow96_128_lb6",
+            Self::CachedOa64128 => "eval_lsb_pair_cached_oa64_128",
+            Self::CachedOa64128Lb => "eval_lsb_pair_cached_oa64_128_lb",
+            Self::CachedOa64128Lb6 => "eval_lsb_pair_cached_oa64_128_lb6",
+            Self::ReorderCdOw96128 => "eval_lsb_pair_cached_reorder_cd_ow96_128",
+            Self::ReorderCdOw96128Lb => "eval_lsb_pair_cached_reorder_cd_ow96_128_lb",
+            Self::ReorderCdOw96128Lb6 => "eval_lsb_pair_cached_reorder_cd_ow96_128_lb6",
+            Self::ReorderCdOa64128 => "eval_lsb_pair_cached_reorder_cd_oa64_128",
+            Self::ReorderCdOa64128Lb => "eval_lsb_pair_cached_reorder_cd_oa64_128_lb",
+            Self::ReorderCdOa64128Lb6 => "eval_lsb_pair_cached_reorder_cd_oa64_128_lb6",
             Self::SegSCv64 => "eval_lsb_seg_s_cv64",
             Self::SegSCv100 => "eval_lsb_seg_s_cv100",
             Self::SegSAcc => "eval_lsb_seg_s_acc",
@@ -3101,6 +3139,18 @@ impl LaneKernel {
                 | Self::ReorderCdA64128
                 | Self::ReorderCdA64128Lb
                 | Self::ReorderCdA64128Lb6
+                | Self::CachedOw96128
+                | Self::CachedOw96128Lb
+                | Self::CachedOw96128Lb6
+                | Self::CachedOa64128
+                | Self::CachedOa64128Lb
+                | Self::CachedOa64128Lb6
+                | Self::ReorderCdOw96128
+                | Self::ReorderCdOw96128Lb
+                | Self::ReorderCdOw96128Lb6
+                | Self::ReorderCdOa64128
+                | Self::ReorderCdOa64128Lb
+                | Self::ReorderCdOa64128Lb6
         )
     }
 }
@@ -4182,8 +4232,8 @@ mod lane_tests {
     /// (M4). A typo on either side would otherwise surface only at the first launch.
     #[test]
     fn cpu_lane_kernel_names_match_the_exported_symbols() {
-        // WHAT MAKES `ALL` COMPLETE — the type `[LaneKernel; 48]` does not: it only reacts to
-        // edits of the literal, so a 49th variant would compile with an unpinned symbol. This
+        // WHAT MAKES `ALL` COMPLETE — the type `[LaneKernel; 60]` does not: it only reacts to
+        // edits of the literal, so a 61st variant would compile with an unpinned symbol. This
         // match is total over the enum, and every arm names that variant's OWN slot: a new
         // variant fails to compile until it appears here, and its arm then fails to compile
         // until the table has a slot to point at (an out-of-range index on a const array is
@@ -4229,14 +4279,26 @@ mod lane_tests {
             LaneKernel::ReorderCdA64128 => LaneKernel::ALL[37],
             LaneKernel::ReorderCdA64128Lb => LaneKernel::ALL[38],
             LaneKernel::ReorderCdA64128Lb6 => LaneKernel::ALL[39],
-            LaneKernel::SegSCv64 => LaneKernel::ALL[40],
-            LaneKernel::SegSCv100 => LaneKernel::ALL[41],
-            LaneKernel::SegSAcc => LaneKernel::ALL[42],
-            LaneKernel::SegG => LaneKernel::ALL[43],
-            LaneKernel::SegRecompute => LaneKernel::ALL[44],
-            LaneKernel::SegbG => LaneKernel::ALL[45],
-            LaneKernel::SegbRecompute => LaneKernel::ALL[46],
-            LaneKernel::SegbGSlotted => LaneKernel::ALL[47],
+            LaneKernel::CachedOw96128 => LaneKernel::ALL[40],
+            LaneKernel::CachedOw96128Lb => LaneKernel::ALL[41],
+            LaneKernel::CachedOw96128Lb6 => LaneKernel::ALL[42],
+            LaneKernel::CachedOa64128 => LaneKernel::ALL[43],
+            LaneKernel::CachedOa64128Lb => LaneKernel::ALL[44],
+            LaneKernel::CachedOa64128Lb6 => LaneKernel::ALL[45],
+            LaneKernel::ReorderCdOw96128 => LaneKernel::ALL[46],
+            LaneKernel::ReorderCdOw96128Lb => LaneKernel::ALL[47],
+            LaneKernel::ReorderCdOw96128Lb6 => LaneKernel::ALL[48],
+            LaneKernel::ReorderCdOa64128 => LaneKernel::ALL[49],
+            LaneKernel::ReorderCdOa64128Lb => LaneKernel::ALL[50],
+            LaneKernel::ReorderCdOa64128Lb6 => LaneKernel::ALL[51],
+            LaneKernel::SegSCv64 => LaneKernel::ALL[52],
+            LaneKernel::SegSCv100 => LaneKernel::ALL[53],
+            LaneKernel::SegSAcc => LaneKernel::ALL[54],
+            LaneKernel::SegG => LaneKernel::ALL[55],
+            LaneKernel::SegRecompute => LaneKernel::ALL[56],
+            LaneKernel::SegbG => LaneKernel::ALL[57],
+            LaneKernel::SegbRecompute => LaneKernel::ALL[58],
+            LaneKernel::SegbGSlotted => LaneKernel::ALL[59],
         };
         for (i, kernel) in LaneKernel::ALL.into_iter().enumerate() {
             assert_eq!(

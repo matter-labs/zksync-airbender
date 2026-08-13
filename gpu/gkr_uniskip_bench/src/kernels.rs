@@ -394,6 +394,93 @@ cuda_kernel!(
         plan: UniskipCacheDesc
     )
 );
+// The v3 R10 OUTER-level grid: the walk's four `e4` accumulators held wide for the whole pass
+// (`o` = outer), so a term's coefficient-times-value is never reduced and the fold happens once.
+// Same two states, same two parents, same three budgets as the group-level twelve above.
+cuda_kernel!(
+    EvalLsbPairCachedOw96128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_ow96_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedOw96128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_ow96_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedOw96128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_ow96_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedOa64128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_oa64_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedOa64128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_oa64_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedOa64128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_oa64_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCdOw96128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_ow96_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCdOw96128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_ow96_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCdOw96128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_ow96_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCdOa64128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_oa64_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCdOa64128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_oa64_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCdOa64128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_oa64_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
 // The v3 R4 128-thread no-cache baselines: same wire, same signature, 4 warps. The `_lb`
 // sibling is the bounded baseline, so the 128 cache contrast can be taken bound-to-bound.
 cuda_kernel!(
@@ -1086,6 +1173,66 @@ regroup_launcher!(
     EvalLsbPairCachedReorderCdA64128Arguments,
     EvalLsbPairCachedReorderCdA64128Function
 );
+regroup_launcher!(
+    eval_lsb_pair_cached_ow96_128_lb,
+    EvalLsbPairCachedOw96128LbArguments,
+    EvalLsbPairCachedOw96128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_ow96_128_lb6,
+    EvalLsbPairCachedOw96128Lb6Arguments,
+    EvalLsbPairCachedOw96128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_ow96_128,
+    EvalLsbPairCachedOw96128Arguments,
+    EvalLsbPairCachedOw96128Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_oa64_128_lb,
+    EvalLsbPairCachedOa64128LbArguments,
+    EvalLsbPairCachedOa64128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_oa64_128_lb6,
+    EvalLsbPairCachedOa64128Lb6Arguments,
+    EvalLsbPairCachedOa64128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_oa64_128,
+    EvalLsbPairCachedOa64128Arguments,
+    EvalLsbPairCachedOa64128Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_cd_ow96_128_lb,
+    EvalLsbPairCachedReorderCdOw96128LbArguments,
+    EvalLsbPairCachedReorderCdOw96128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_cd_ow96_128_lb6,
+    EvalLsbPairCachedReorderCdOw96128Lb6Arguments,
+    EvalLsbPairCachedReorderCdOw96128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_cd_ow96_128,
+    EvalLsbPairCachedReorderCdOw96128Arguments,
+    EvalLsbPairCachedReorderCdOw96128Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_cd_oa64_128_lb,
+    EvalLsbPairCachedReorderCdOa64128LbArguments,
+    EvalLsbPairCachedReorderCdOa64128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_cd_oa64_128_lb6,
+    EvalLsbPairCachedReorderCdOa64128Lb6Arguments,
+    EvalLsbPairCachedReorderCdOa64128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_cd_oa64_128,
+    EvalLsbPairCachedReorderCdOa64128Arguments,
+    EvalLsbPairCachedReorderCdOa64128Function
+);
 
 /// Blocks per SM the driver's own occupancy calculator gives one of the lane kernels at
 /// `block_threads` and `dynamic_smem_bytes`. It reads the SAME function attributes a launch
@@ -1284,6 +1431,66 @@ pub fn max_blocks_per_sm(
             threads,
             dynamic,
         ),
+        LaneKernel::CachedOw96128Lb => occupancy(
+            &EvalLsbPairCachedOw96128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::CachedOw96128Lb6 => occupancy(
+            &EvalLsbPairCachedOw96128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::CachedOw96128 => occupancy(
+            &EvalLsbPairCachedOw96128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::CachedOa64128Lb => occupancy(
+            &EvalLsbPairCachedOa64128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::CachedOa64128Lb6 => occupancy(
+            &EvalLsbPairCachedOa64128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::CachedOa64128 => occupancy(
+            &EvalLsbPairCachedOa64128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCdOw96128Lb => occupancy(
+            &EvalLsbPairCachedReorderCdOw96128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCdOw96128Lb6 => occupancy(
+            &EvalLsbPairCachedReorderCdOw96128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCdOw96128 => occupancy(
+            &EvalLsbPairCachedReorderCdOw96128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCdOa64128Lb => occupancy(
+            &EvalLsbPairCachedReorderCdOa64128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCdOa64128Lb6 => occupancy(
+            &EvalLsbPairCachedReorderCdOa64128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCdOa64128 => occupancy(
+            &EvalLsbPairCachedReorderCdOa64128Function::default(),
+            threads,
+            dynamic,
+        ),
         LaneKernel::SegSCv64 => occupancy(&EvalLsbSegSCv64Function::default(), threads, dynamic),
         LaneKernel::SegSCv100 => occupancy(&EvalLsbSegSCv100Function::default(), threads, dynamic),
         LaneKernel::SegSAcc => occupancy(&EvalLsbSegSAccFunction::default(), threads, dynamic),
@@ -1410,6 +1617,18 @@ pub fn set_local_carveout(kernel: LaneKernel, percent: u32) -> CudaResult<()> {
         | LaneKernel::ReorderCdA64128
         | LaneKernel::ReorderCdA64128Lb
         | LaneKernel::ReorderCdA64128Lb6
+        | LaneKernel::CachedOw96128Lb
+        | LaneKernel::CachedOw96128Lb6
+        | LaneKernel::CachedOw96128
+        | LaneKernel::CachedOa64128Lb
+        | LaneKernel::CachedOa64128Lb6
+        | LaneKernel::CachedOa64128
+        | LaneKernel::ReorderCdOw96128Lb
+        | LaneKernel::ReorderCdOw96128Lb6
+        | LaneKernel::ReorderCdOw96128
+        | LaneKernel::ReorderCdOa64128Lb
+        | LaneKernel::ReorderCdOa64128Lb6
+        | LaneKernel::ReorderCdOa64128
         | LaneKernel::SegSCv64
         | LaneKernel::SegSCv100
         | LaneKernel::SegSAcc
