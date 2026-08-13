@@ -7,8 +7,10 @@ using namespace ::airbender::primitives::field;
 
 namespace airbender::gkr_windowed_bench {
 
-constexpr u32 WINDOW_WARPS_PER_BLOCK = 9;
-constexpr u32 WINDOW_THREADS_PER_BLOCK = 288;
+constexpr u32 WINDOW_WARPS_PER_BLOCK = 3;
+constexpr u32 WINDOW_SELECTORS = 9;
+constexpr u32 WINDOW_SELECTOR_BLOCKS_PER_ROW_TILE = WINDOW_SELECTORS / WINDOW_WARPS_PER_BLOCK;
+constexpr u32 WINDOW_THREADS_PER_BLOCK = 32 * WINDOW_WARPS_PER_BLOCK;
 constexpr u32 WINDOW_CELLS = 27;
 constexpr u32 WINDOW_PROGRAM_CAPACITY = 175;
 constexpr u32 WINDOW_SLOT_CAPACITY = 6;
@@ -47,6 +49,7 @@ struct alignas(16) window_vm_desc {
   u32 c_init_coeff;
   u32 log_rows;
   window_eq_sizes eq_sizes;
+  u32 bf_record_count;
 };
 
 static_assert(sizeof(window_eq_sizes) == 12);
@@ -59,7 +62,7 @@ static_assert(__builtin_offsetof(window_instruction, term_class) == 0);
 static_assert(__builtin_offsetof(window_instruction, factor) == 2);
 static_assert(__builtin_offsetof(window_instruction, source_a) == 4);
 static_assert(__builtin_offsetof(window_instruction, source_b) == 6);
-static_assert(sizeof(window_vm_desc) == 1536);
+static_assert(sizeof(window_vm_desc) == 1552);
 static_assert(sizeof(window_vm_desc) <= WINDOW_KERNEL_ARGUMENT_CEILING_BYTES);
 static_assert(alignof(window_vm_desc) == 16);
 static_assert(__builtin_offsetof(window_vm_desc, program) == 0);
@@ -75,8 +78,13 @@ static_assert(__builtin_offsetof(window_vm_desc, num_coefficients) == 1512);
 static_assert(__builtin_offsetof(window_vm_desc, c_init_coeff) == 1516);
 static_assert(__builtin_offsetof(window_vm_desc, log_rows) == 1520);
 static_assert(__builtin_offsetof(window_vm_desc, eq_sizes) == 1524);
+static_assert(__builtin_offsetof(window_vm_desc, bf_record_count) == 1536);
+static_assert(WINDOW_WARPS_PER_BLOCK != 0);
+static_assert(WINDOW_SELECTORS == 9);
+static_assert(WINDOW_SELECTORS % WINDOW_WARPS_PER_BLOCK == 0);
+static_assert(WINDOW_SELECTOR_BLOCKS_PER_ROW_TILE * WINDOW_WARPS_PER_BLOCK == WINDOW_SELECTORS);
 static_assert(WINDOW_THREADS_PER_BLOCK == 32 * WINDOW_WARPS_PER_BLOCK);
-static_assert(WINDOW_CELLS == 3 * WINDOW_WARPS_PER_BLOCK);
+static_assert(WINDOW_CELLS == 3 * WINDOW_SELECTORS);
 static_assert((WINDOW_GROUP_HAS_PRODUCT & WINDOW_GROUP_PRODUCT_PREFIX_COUNT_MASK) == 0);
 
 } // namespace airbender::gkr_windowed_bench

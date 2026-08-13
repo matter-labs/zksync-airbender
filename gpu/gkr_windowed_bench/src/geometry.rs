@@ -10,6 +10,33 @@ use crate::artifact::{
 pub const MAX_LOG_TRACE: u32 = 27;
 const EQ_GROUP_BITS: u32 = 8;
 
+#[cfg(test)]
+pub(crate) fn selector_id(block_within_tile: u32, warp: u32, warps_per_block: u32) -> u32 {
+    block_within_tile * warps_per_block + warp
+}
+
+pub(crate) fn vm_grid_blocks(row_tiles: u32, warps_per_block: u32) -> u32 {
+    assert!(warps_per_block != 0 && 9 % warps_per_block == 0);
+    row_tiles.checked_mul(9 / warps_per_block).unwrap()
+}
+
+#[cfg(test)]
+pub(crate) fn row_tile(block: u32, warps_per_block: u32) -> u32 {
+    assert!(warps_per_block != 0 && 9 % warps_per_block == 0);
+    block / (9 / warps_per_block)
+}
+
+#[cfg(test)]
+pub(crate) fn block_within_row_tile(block: u32, warps_per_block: u32) -> u32 {
+    assert!(warps_per_block != 0 && 9 % warps_per_block == 0);
+    block % (9 / warps_per_block)
+}
+
+#[cfg(test)]
+pub(crate) fn partial_index(row_tile: u32, selector: u32, cell: u32) -> usize {
+    (row_tile * WINDOW_CELLS + 3 * selector + cell) as usize
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackingPlan {
     pub family: FrozenWindowFamily,
@@ -304,6 +331,34 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn selector_partition_is_bijective_for_nine_and_three_warp_blocks() {
+        for warps in [9, 3] {
+            let blocks_per_tile = 9 / warps;
+            let mut ids = Vec::new();
+            for block in 0..blocks_per_tile {
+                for warp in 0..warps {
+                    ids.push(selector_id(block, warp, warps));
+                }
+            }
+            ids.sort_unstable();
+            assert_eq!(ids, (0..9).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn partitioned_grid_triples_vm_blocks_but_not_partial_rows() {
+        assert_eq!(vm_grid_blocks(17, 9), 17);
+        assert_eq!(vm_grid_blocks(17, 3), 51);
+        assert_eq!(partial_index(4, 8, 2), 4 * 27 + 8 * 3 + 2);
+    }
+
+    #[test]
+    fn partitioned_tail_row_uses_the_original_row_tile() {
+        assert_eq!(row_tile(50, 3), 16);
+        assert_eq!(block_within_row_tile(50, 3), 2);
+    }
+
+    #[test]
     fn trace_geometry_uses_three_bound_bits() {
         let plan = build_allocation_plan(&geometry_fixture(), 8).unwrap();
         assert_eq!(plan.trace_len, 256);
@@ -312,6 +367,18 @@ pub(crate) mod tests {
         assert_eq!(plan.num_blocks, 1);
         assert_eq!(plan.partial_elements, 27);
         assert_eq!(plan.final_elements, 27);
+    }
+
+    #[test]
+    fn direct_window_offsets_support_packed_load_alignment_at_minimum_trace() {
+        let plan = build_allocation_plan(&geometry_fixture(), 3).unwrap();
+        for window in plan
+            .windows
+            .iter()
+            .filter(|window| window.backing.is_some())
+        {
+            assert_eq!(window.base_offset_bytes % 32, 0);
+        }
     }
 
     #[test]

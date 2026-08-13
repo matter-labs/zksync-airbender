@@ -15,7 +15,7 @@ pub const COEFFICIENT_CAPACITY: usize = 80;
 pub const EQ_HIGH_SLOTS: usize = 2;
 pub const EQ_GROUP_TABLE_LEN: usize = 256;
 pub const EQ_HIGH_ELEMENTS: usize = EQ_HIGH_SLOTS * EQ_GROUP_TABLE_LEN;
-pub const WINDOW_VM_SHARED_CARVEOUT_PERCENT: i32 = 60;
+pub const WINDOW_VM_SHARED_CARVEOUT_PERCENT: i32 = 0;
 
 cuda_struct_and_stub! {
     static ab_gkr_windowed_coeff_bank: [E4; COEFFICIENT_CAPACITY];
@@ -96,10 +96,10 @@ pub fn launch_init_e4(
 
 pub fn launch_window_vm(
     desc: WindowVmDesc,
-    num_blocks: u32,
+    grid_blocks: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let config = CudaLaunchConfig::basic(num_blocks, THREADS_PER_BLOCK, stream);
+    let config = CudaLaunchConfig::basic(grid_blocks, THREADS_PER_BLOCK, stream);
     let args = WindowVmArguments::new(desc);
     WindowVmFunction(ab_gkr_windowed_vm_kernel).launch(&config, &args)
 }

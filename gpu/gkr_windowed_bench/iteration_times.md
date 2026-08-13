@@ -1279,3 +1279,177 @@ The limiting resource is therefore still the shared FMA-heavy/ALU-lite math
 pipe, not memory bandwidth, occupancy, or instruction delivery. The remaining
 obvious field fusions are either outside `red_wide`'s overflow domain or were
 measured as regressions in this ledger.
+
+## LSB-contiguous window layout switch
+
+On 2026-08-12, branch `rr/gpu_windowed_gkr` permanently replaced the MSB
+split-half mapping `row | (corner << log_rows)` with the LSB-contiguous mapping
+`(row << 3) | corner`. Warp geometry, equality factoring, the artifact and
+descriptor ABI, and the final 27-cell order are unchanged.
+
+Two locked log-8 runs reproduced checksum `0xcfeca7094d6c4b25` exactly. Two
+locked log-24 runs reproduced checksum `0xae1bdb657d25b249` exactly, with
+median timings of 14.581088 ms and 14.554560 ms. The pre-switch checksums
+(`0xbb2eb9da3c8c062b` at log-8 and `0x8820ab14cacc9ff7` at log-24) and these
+post-switch checksums are intentionally not value-comparable because the
+deterministic direct and procedural inputs are functions of physical index.
+
+A contemporaneous locked comparison used separate clean MSB and LSB binaries
+with the same ignored lockfile, `CUDAARCHS=native`, toolchain, artifact,
+allocation report, and resource envelope. Three interleaved log-24 pairs
+measured MSB medians of 13.644608, 13.656879, and 13.657904 ms versus LSB
+medians of 14.564049, 14.553392, and 14.650880 ms. The paired regressions were
+6.7385%, 6.5646%, and 7.2703%; first-to-last drift was only 0.0974% for MSB and
+0.5962% for LSB. Paired log-8 and log-20 medians regressed by 2.8915% and
+6.6242%, respectively. Per-layout log-8 and log-24 checksums reproduced; the
+log-20 checksums are single-run observations. LSB log-8 Compute Sanitizer
+reported zero errors.
+
+Matched log-24 NCU reports identify warp request splitting as the cause.
+Global-load sectors per request rise from 4.678556616 to 31.980091248 and L1
+LSU wavefront utilization from 32.008274% to 91.088309%. L2 read sectors rise
+50.340489%, LG-throttle stalls per issue rise from 0.001706 to 0.574214, and
+long-scoreboard stalls rise 64.622583%. DRAM read bytes are flat within
+0.003288% because L1/L2 hit rates improve, so this is request splitting plus
+L1-to-L2 traffic amplification, not DRAM overfetch. The 6.44% profiled net
+slowdown occurs despite 2.092124% fewer dynamic instructions; the
+memory-system cost is therefore at least as large as the net wall-time
+regression, and plausibly larger given the removed ALU work.
+
+### LSB packed-load register-envelope A/B
+
+The follow-up compared two candidates derived from the same frozen scalar-LSB
+source. Arm A packs BF and E4 direct-source pairs/cubes and changes only the VM
+launch bound to three blocks; ptxas reports 71 registers, zero stack/local
+memory, and 14,848 reported shared bytes. Its VM contains 47 64-bit, 26
+128-bit, and 71 modifier-bearing 256-bit global-load sites. Arm B keeps E4
+scalar at the original four-block/56-register envelope, but ptxas still emits
+an 8-byte stack frame with one `STL.64` and one `LDL.LU.64`; it therefore failed
+the static gate and was never executed.
+
+The scalar control and Arm A passed literal same-layout checksums at all three
+sizes: `0xcfeca7094d6c4b25` at log-8, `0x57f0a731d658ac7c` at log-20, and
+`0xae1bdb657d25b249` at log-24. Arm A's log-8 Compute Sanitizer run reported
+zero errors. The size-control medians were 0.073152 versus 0.072288 ms at
+log-8 and 0.954112 versus 0.755584 ms at log-20 for scalar versus Arm A.
+
+The locked log-24 session alternated scalar/Arm A over four rounds. Scalar
+medians were 14.676080, 14.760368, 14.784800, and 14.807505 ms; Arm A medians
+were 11.446096, 11.453552, 11.588720, and 11.541744 ms. The corresponding
+paired deltas were -22.008493%, -22.403344%, -21.617337%, and -22.054769%.
+Median-of-medians was 14.772584 versus 11.497648 ms (-22.169013%), with
+0.895505% scalar and 0.835639% Arm A first-to-last drift. Relative to the
+inferred MSB-equivalent denominator, Arm A recovers 23.662871 percentage points
+(351.159330% of the original 6.7385-point regression) and clears the 13.93 ms
+target.
+
+Matched 17-section NCU profiles measured 15.060832 versus 11.898560 ms
+(-20.996662%). Global-load requests fell from 474,021,888 to 170,459,136
+(-64.039818%), sectors/request stayed essentially flat at 31.980091248 versus
+31.944636678, L1 LSU wavefront utilization fell from 91.058949% to 51.133728%,
+and LG-throttle stalls/issue fell from 0.577271 to 0.000006. L2 read sectors
+fell 24.673706% while DRAM read bytes remained within +0.048067%. Dynamic
+instructions fell 29.720003%. Theoretical/achieved occupancy fell from
+75%/70.584599% to 56.25%/52.781090%; issue activity fell from 70.883795% to
+63.255375%, FMA-heavy utilization from 76.994461% to 69.129629%, and
+FMA-heavy active time from 11.596006 to 8.225430 ms. Long-scoreboard and wait
+stalls rose, but math-pipe throttle and not-selected stalls fell enough that
+the lower-occupancy arm remained decisively faster. Arm A is retained as a
+target-success repair.
+
+## LSB accumulator and geometry campaign
+
+The 2026-08-12 follow-up kept the LSB-contiguous artifact/layout fixed and
+measured only phase splitting, selector partitioning, accumulator placement,
+and exact wide-arithmetic representations. Every functional-valid arm below
+passed log-8 Compute Sanitizer with `ERROR SUMMARY: 0 errors` and reproduced
+all three literal checksums: `0xcfeca7094d6c4b25` (log 8),
+`0x57f0a731d658ac7c` (log 20), and `0xae1bdb657d25b249`
+(log 24).
+
+| Executed arm | VM resources (`REG/STACK/SHARED/LOCAL`) | Result |
+| --- | --- | --- |
+| `control` | `71/0/14848/0` | functional-valid |
+| `relaxed-288x2` | `96/0/14848/0` | functional-valid |
+| `phase-split-shared-288x3` | `72/0/14848/0` | functional-valid |
+| `phase-split-shared-288x2` | `85/0/14848/0` | functional-valid |
+| `phase-split-shared-96x9` | `71/0/5632/0` | functional-valid |
+| `canonical-reg-288x2` | `91/0/0/0` | functional-valid |
+| `canonical-reg-96x9` | `72/0/0/0` | functional-valid |
+| `canonical-reg-96x8` | `80/0/0/0` | functional-valid |
+| `bf-u96-reg-96x8` | `79/0/0/0` | functional-valid; selected |
+| `bf-u96-reg-288x2` | `94/0/0/0` | functional-valid |
+| `bf-u64-reg-288x2` | `96/0/0/0` | functional-valid |
+| `bf-u64-reg-96x9` | `72/0/0/0` | functional-valid |
+| `bf-u96-reg-96x6` | `93/0/0/0` | functional-valid |
+| `full-u96-reg-96x6` | `96/0/0/0` | functional-valid |
+| `prefix-u96-bf-u96-reg-96x8` | `78/0/0/0` | functional-valid; rejected by timing |
+
+Static-only/rejected arms were never executed. `bf-u96-reg-96x9` spilled 24
+stack bytes; full-u96 x8/x7 spilled 40 bytes; and the dual-u64 prefix rider
+spilled 48 bytes. The static-valid provenance-only canonical x7/x6 and BF-u96
+x7 arms were not run.
+
+Balanced locked sessions used separate processes, immutable binary bindings,
+10 warmups, 100 samples per log-24 position, and log-8/log-20 size controls.
+Positive deltas mean the candidate is faster.
+
+| Session comparison | Reference / candidate median (ms) | Paired delta | Classification |
+| --- | ---: | ---: | --- |
+| control → relaxed x2 | 11.503712 / 13.832080 | -20.438812% | material regression |
+| control → phase-split shared x3 | 11.666776 / 11.040199 | +5.365195% | material win |
+| control → partitioned shared x9 | 11.711728 / 14.086872 | -20.326719% | material regression |
+| shared x2 → canonical-register x2 | 13.551344 / 12.967984 | +4.303640% | material win |
+| control → canonical-register x2 | 11.483120 / 12.967984 | -12.932226% | material regression |
+| shared x9 → canonical-register x9 | 13.968128 / 11.263216 | +19.290829% | material win |
+| control → canonical-register x9 | 11.628464 / 11.263216 | +2.829636% | material win |
+| canonical x2 → BF-u96 x2 | 12.940416 / 11.778112 | +9.028657% | material win |
+| control → BF-u96 x2 | 11.605951 / 11.778112 | -1.390192% | material regression |
+| canonical x2 → BF-u64 x2 | 12.977232 / 12.363696 | +4.835916% | material win |
+| control → BF-u64 x2 | 11.669985 / 12.363696 | -5.987134% | material regression |
+| canonical x8 → BF-u96 x8 | 11.286079 / 10.454048 | +7.394038% | material win |
+| control → BF-u96 x8 | 11.635808 / 10.454048 | +9.863896% | material win |
+| canonical x9 → BF-u64 x9 | 11.382896 / 10.881984 | +4.400567% | material win |
+| control → BF-u64 x9 | 11.717520 / 10.881984 | +7.130656% | material win |
+| BF-u96 x6 → full-u96 x6 (repeat) | 11.465088 / 11.542560 | -0.649903% | material regression |
+| control → full-u96 x6 (repeat) | 11.631920 / 11.542560 | +0.793678% | unstable (`-,+,+`) |
+| BF-u96 x8 → straight-u96 prefix | 10.384231 / 10.661345 | -2.596362% | material regression |
+
+The original full-u96 session was kept separate: its exact-parent delta was
+-0.581290% with unanimous negative signs, while the control-relative row was
+classified `repeat`. The prescribed repeat above confirmed the parent-relative
+regression; samples from the processes were not pooled.
+
+Eleven mandatory full NCU profiles used each arm's immutable lineinfo binary,
+log 24, one warmup, one profiled iteration, and base-unit CSV export. All
+requested metrics except shared load/store request counts were supported. This
+NCU/GPU exposes shared load/store instruction counts, wavefronts, and bank
+conflicts but no shared-request counter; both request metrics are explicitly
+reported as unsupported. Raw reports, imports, bindings, commands, and hashes are under
+`target/profiling/ncu/20260812_windowed_lsb_accumulator_campaign/`.
+
+| Matched NCU boundary | Duration delta | Dynamic instructions | Active blocks/SM | Issue activity | Shared load wavefronts | Duration × FMA-heavy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| control → relaxed x2 | +19.475359% | -6.787203% | 3 → 2 | -22.405324% | -0.013886% | -4.960027% |
+| shared x2 → canonical x2 | -4.549244% | -1.614205% | 2 → 2 | +2.727462% | 387,222,356 → 0 | +0.898579% |
+| shared x9 → canonical x9 | -19.642922% | +2.031234% | 9 → 9 | +25.764015% | 387,325,982 → 0 | -2.246314% |
+| canonical x8 → BF-u96 x8 | -7.334484% | -10.231989% | 8 → 8 | -2.947617% | 0 → 0 | -16.136486% |
+| BF-u96 x6 → full-u96 x6 | +0.686191% | +4.267986% | 6 → 6 | +2.850507% | 0 → 0 | +1.539957% |
+| BF-u96 x8 → straight-u96 prefix | +1.132550% | +1.284207% | 8 → 8 | -0.347102% | 0 → 0 | -1.930584% |
+
+The mechanism evidence agrees with the balanced timing. Registerization removes
+the private shared accumulator traffic without sacrificing matched residency;
+the 96-thread form gains strongly from issue activity. BF-only u96 then removes
+10.23% of dynamic instructions and 16.14% of duration-weighted FMA-heavy work
+relative to its exact canonical x8 parent. Extending u96 through E4 adds 4.27%
+dynamic instructions and 1.54% duration-weighted FMA-heavy work, consistent
+with its repeatable regression. The within-2% prefix rider also adds 1.28%
+instructions and 4.10% duration-weighted ALU-heavy work; its NCU duration rises
+1.13% even though duration-weighted FMA-heavy work falls 1.93%. All eleven
+reports show zero local and shared spill requests.
+
+The selected arm is `bf-u96-reg-96x8`: 96 threads, three CTAs per row tile,
+launch bound eight, 79 registers, and zero stack/local/shared memory. It is the
+fastest repeatable complete arm and materially beats both its contemporaneous
+retained control and its exact canonical parent. The E4 suffix stays canonical;
+the optional inner-prefix riders were not retained.
