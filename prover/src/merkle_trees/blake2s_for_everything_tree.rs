@@ -119,7 +119,7 @@ impl<A: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
     }
 }
 
-impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
+impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
     ColumnMajorMerkleTreeConstructor<BabyBearField>
     for Blake2sU32MerkleTreeWithCap<B, USE_REDUCED_BLAKE2_ROUNDS>
 {
@@ -133,50 +133,58 @@ impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         }
     }
 
-    fn get_cap(&self) -> MerkleTreeCapVarLength {
-        let output = if let Some(cap) = self.node_hashes_enumerated_from_leafs.last() {
-            let mut result = Vec::new();
-            result.extend_from_slice(cap);
-
-            result
-        } else {
-            let mut result = Vec::new();
-            result.extend_from_slice(&self.leaf_hashes);
-
-            result
-        };
-
-        MerkleTreeCapVarLength { cap: output }
+    fn write_disk_artifacts<'a, E: FieldExtension<BabyBearField> + 'a>(
+        base_path: &str,
+        layout: crate::merkle_trees::on_disk::OnDiskTreeLayout,
+        num_cosets: usize,
+        producer: CosetColumnsProducer<'a, E>,
+        combine_by: usize,
+        cap_size: usize,
+        bitreverse_evaluations: bool,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> std::io::Result<()>
+    where
+        [(); E::DEGREE]: Sized,
+    {
+        crate::merkle_trees::on_disk::write_disk_artifacts::<BabyBearField, Self, E, _>(
+            base_path,
+            layout,
+            num_cosets,
+            producer,
+            combine_by,
+            cap_size,
+            bitreverse_evaluations,
+            bitreverse_cosets,
+            bitreverse_leaf_hashes,
+            worker,
+            |tree: &Self| {
+                let node_layers: Vec<&[_]> = tree
+                    .node_hashes_enumerated_from_leafs
+                    .iter()
+                    .map(|l| &l[..])
+                    .collect();
+                crate::merkle_trees::on_disk::tree_layers(
+                    tree.cap_size,
+                    &tree.leaf_hashes[..],
+                    &node_layers,
+                )
+            },
+        )
     }
 
-    fn get_proof<C: GoodAllocator>(
-        &self,
-        idx: usize,
-    ) -> (
-        [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
-    ) {
-        let depth = self.node_hashes_enumerated_from_leafs.len(); // we do not need the element of the cap
-        let mut result = Vec::with_capacity_in(depth, C::default());
-        let mut idx = idx;
-        let this_el_leaf_hash = self.leaf_hashes[idx];
-        for i in 0..depth {
-            let pair_idx = idx ^ 1;
-            let proof_element = if i == 0 {
-                self.leaf_hashes[pair_idx]
-            } else {
-                self.node_hashes_enumerated_from_leafs[i - 1][pair_idx]
-            };
-
-            result.push(proof_element);
-            idx >>= 1;
-        }
-
-        (this_el_leaf_hash, result)
+    fn open_disk_artifacts(
+        base_path: &str,
+        layout: crate::merkle_trees::on_disk::OnDiskTreeLayout,
+        num_cosets: usize,
+    ) -> crate::merkle_trees::on_disk::OnDiskTree<Self> {
+        crate::merkle_trees::on_disk::open_disk_artifacts::<Self>(base_path, layout, num_cosets)
     }
 
-    fn construct_from_cosets<E: FieldExtension<BabyBearField>, A: GoodAllocator>(
-        trace: &[&[&[E]]], // slice of cosets, each coset - is a slice of column evaluations
+    fn construct_from_coset_producer<'a, E: FieldExtension<BabyBearField> + 'a>(
+        num_cosets: usize,
+        mut producer: CosetColumnsProducer<'a, E>,
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,
@@ -188,9 +196,15 @@ impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         [(); E::DEGREE]: Sized,
     {
         use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_cosets;
+        let cosets: Vec<Vec<Cow<'a, [E]>>> = (0..num_cosets).map(|c| producer(c)).collect();
+        let trace: Vec<Vec<&[E]>> = cosets
+            .iter()
+            .map(|coset| coset.iter().map(|c| c.as_ref()).collect())
+            .collect();
+        let trace_refs: Vec<&[&[E]]> = trace.iter().map(|c| &c[..]).collect();
         let leaf_hashes =
-            blake2s_leaf_hashes_from_cosets::<BabyBearField, E, A, B, USE_REDUCED_BLAKE2_ROUNDS>(
-                trace,
+            blake2s_leaf_hashes_from_cosets::<BabyBearField, E, B, USE_REDUCED_BLAKE2_ROUNDS>(
+                &trace_refs,
                 combine_by,
                 bitreverse_evaluations,
                 bitreverse_cosets,
@@ -210,5 +224,51 @@ impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
             Vec::with_capacity_in(leaf_hashes.len(), B::default());
         v.extend(leaf_hashes);
         Self::continue_from_leaf_hashes(v, cap_size, worker)
+    }
+}
+
+impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool> PathQueriable
+    for Blake2sU32MerkleTreeWithCap<B, USE_REDUCED_BLAKE2_ROUNDS>
+{
+    fn get_cap(&self) -> MerkleTreeCapVarLength {
+        let output = if let Some(cap) = self.node_hashes_enumerated_from_leafs.last() {
+            let mut result = Vec::new();
+            result.extend_from_slice(cap);
+
+            result
+        } else {
+            let mut result = Vec::new();
+            result.extend_from_slice(&self.leaf_hashes);
+
+            result
+        };
+
+        MerkleTreeCapVarLength { cap: output }
+    }
+
+    fn get_proof(
+        &self,
+        idx: usize,
+    ) -> (
+        [u32; DIGEST_SIZE_U32_WORDS],
+        Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+    ) {
+        let depth = self.node_hashes_enumerated_from_leafs.len(); // we do not need the element of the cap
+        let mut result = Vec::with_capacity(depth);
+        let mut idx = idx;
+        let this_el_leaf_hash = self.leaf_hashes[idx];
+        for i in 0..depth {
+            let pair_idx = idx ^ 1;
+            let proof_element = if i == 0 {
+                self.leaf_hashes[pair_idx]
+            } else {
+                self.node_hashes_enumerated_from_leafs[i - 1][pair_idx]
+            };
+
+            result.push(proof_element);
+            idx >>= 1;
+        }
+
+        (this_el_leaf_hash, result)
     }
 }

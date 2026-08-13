@@ -1,31 +1,3 @@
-// Backward sumcheck fused-tail kernels.
-//
-// The unfused tail emits 5 launches per round:
-//   round_kernel
-//     -> 2x CUB device-reduce  (one per accumulator half)
-//     -> fold_factored_eq_one_round
-//     -> ab_backward_sumcheck_round_update_kernel
-//
-// These kernels collapse the trailing 4 into 1 or 2 launches:
-//
-//   - Two-launch path (acc_size > BLOCK_THREADS):
-//       stage 1 = ab_gkr_backward_dual_reduce_blockwise_e4_kernel
-//                 (multi-block dual block-reduce; writes num_blocks pairs).
-//       stage 2 = ab_gkr_backward_dual_finalize_from_partials_e4_kernel
-//                 (single block; final reduce of partials + round-update
-//                 algebra + parallel fold-eq via `mega_finalize_block`).
-//
-//   - Single-launch path (acc_size <= BLOCK_THREADS):
-//       combined = ab_gkr_backward_dual_finalize_from_acc_e4_kernel
-//                 (one block reads `acc[i]` / `acc[acc_size + i]` directly
-//                 as the partials source, then runs mega_finalize_block).
-//
-// All three kernels share the finalize tail (`mega_finalize_block` in
-// `mega_finalize.cuh`), which calls the round-update algebra in
-// `ops/gkr_ops_helpers.cuh` — the same algebra used by the standalone
-// `ab_backward_sumcheck_round_update_kernel`, so the per-round outputs are
-// byte-identical to the unfused path.
-//
 // `partials` layout: 2 * num_blocks E4 elements, interleaved as
 // `[c0_block_0, c1_block_0, c0_block_1, c1_block_1, ...]`.
 
@@ -33,9 +5,6 @@
 
 namespace airbender::gkr {
 
-// Block-wide dual reduction. Each block i handles the i-th
-// `BLOCK_THREADS`-aligned slice of the accumulator and writes one (c0, c1)
-// pair to `partials[2*i .. 2*i+2)`.
 EXTERN __global__ void ab_gkr_backward_dual_reduce_blockwise_e4_kernel(const e4 *__restrict__ contributions, const unsigned acc_size,
                                                                        e4 *__restrict__ partials) {
   constexpr unsigned BLOCK = MEGA_FINALIZE_BLOCK_THREADS;

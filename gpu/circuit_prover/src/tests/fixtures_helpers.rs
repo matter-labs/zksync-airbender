@@ -172,9 +172,7 @@ pub(super) fn finish_proof_fixture(
 ) {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    // Match the production-sized arena. Every consumer either runs a full
-    // GPU prove on this context or hands the context off into a downstream
-    // fixture (`build_basic_unrolled_async_backward_fixture_from_base`).
+    // Match the production-sized arena used by full GPU proofs.
     let device_allocator_arena_bytes: usize = 64usize << 30;
 
     let trace_len: usize = compiled_circuit.trace_len;
@@ -270,18 +268,20 @@ pub(super) fn finish_proof_fixture(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
-            &compiled_circuit,
-            &external_challenges,
-            full_trace,
-            &setup,
-            &setup_commitment,
-            &twiddles,
-            &prover_config,
-            vec![],
-            trace_len,
-            &worker,
-        );
+        let expected_cpu_proof =
+            prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
+                &compiled_circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                vec![],
+                trace_len,
+                &worker,
+            );
         eprintln!("fixture: cpu proof ready");
         Some(expected_cpu_proof)
     } else {
@@ -358,6 +358,10 @@ pub(super) fn finish_proof_fixture(
         BasicUnrolledFixture {
             context,
             circuit_type: fixture_circuit_type,
+            gkr_programs: Arc::new(
+                GkrPrograms::compile(fixture_circuit_type, Arc::new(compiled_circuit.clone()))
+                    .expect("fixture must compile its committed GKR programs"),
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,
@@ -369,6 +373,7 @@ pub(super) fn finish_proof_fixture(
             // Per-family fixtures have no inits-and-teardowns layer and no
             // unified-closure metadata; the unified fixture populates these.
             inits_and_teardowns_host: None,
+            inits_and_teardowns_top_bits: None,
             unified_register_final_state: [(0u32, (0u32, 0u32)); 32],
             unified_final_pc: 0,
             unified_final_timestamp: 0,
@@ -675,18 +680,20 @@ pub(super) fn finish_proof_fixture_memory(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
-            &compiled_circuit,
-            &external_challenges,
-            full_trace,
-            &setup,
-            &setup_commitment,
-            &twiddles,
-            &prover_config,
-            vec![],
-            trace_len,
-            &worker,
-        );
+        let expected_cpu_proof =
+            prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
+                &compiled_circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                vec![],
+                trace_len,
+                &worker,
+            );
         eprintln!("fixture(memory): cpu proof ready");
         Some(expected_cpu_proof)
     } else {
@@ -759,6 +766,10 @@ pub(super) fn finish_proof_fixture_memory(
         BasicUnrolledFixture {
             context,
             circuit_type: fixture_circuit_type,
+            gkr_programs: Arc::new(
+                GkrPrograms::compile(fixture_circuit_type, Arc::new(compiled_circuit.clone()))
+                    .expect("fixture must compile its committed GKR programs"),
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,
@@ -768,6 +779,7 @@ pub(super) fn finish_proof_fixture_memory(
             tracing_data_host,
             memory_tree_caps,
             inits_and_teardowns_host: None,
+            inits_and_teardowns_top_bits: None,
             unified_register_final_state: [(0u32, (0u32, 0u32)); 32],
             unified_final_pc: 0,
             unified_final_timestamp: 0,
@@ -923,271 +935,4 @@ pub(super) fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture
         "profiling fixture must not compute the CPU reference proof",
     );
     fixture
-}
-
-pub(crate) struct BasicUnrolledAsyncBackwardFixture {
-    pub(crate) context: ProverContext,
-    pub(crate) compiled_circuit: GKRCircuitArtifact<BF>,
-    pub(crate) external_challenges: GKRExternalChallenges<BF, E4>,
-    pub(crate) gpu_backward_state: GpuGKRDimensionReducingBackwardState<BF, E4>,
-    pub(crate) initial_output_layer_idx: usize,
-    pub(crate) top_layer_claims: BTreeMap<GKRAddress, E4>,
-    pub(crate) evaluation_point: Vec<E4>,
-    pub(crate) seed: Seed,
-    pub(crate) batching_challenge: E4,
-    pub(crate) lookup_multiplicative_part: E4,
-    pub(crate) lookup_additive_part: E4,
-    pub(crate) expected_proof_layers: usize,
-    pub(crate) proof_layout: gpu_gkr::proof_layout::ProofLayout,
-    pub(crate) proof_slab: gpu_core::primitives::context::DeviceAllocation<E4>,
-}
-
-pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
-    base: BasicUnrolledFixture,
-) -> BasicUnrolledAsyncBackwardFixture {
-    let worker = Worker::new_with_num_threads(8);
-    // Reuse `base.context` rather than spinning up a second 64 GB device
-    // arena. `compute_memory_tree_caps_for_fixture` already released its
-    // intermediates back to the pool inside `prepare_basic_unrolled_fixture`,
-    // so the arena is back at baseline for the forward/backward work below.
-    let mut transfers = base.create_transfers_for_context(&base.context).unwrap();
-    transfers.schedule(&base.context).unwrap();
-    base.context.get_h2d_stream().synchronize().unwrap();
-    eprintln!("async-backward-from-base: transfers ready");
-
-    let setup_ref = transfers
-        .setup
-        .as_ref()
-        .expect("fixture transfers always include setup");
-    let mut stage1_output = generate_stage1_output_for_test(
-        base.circuit_type,
-        &base.compiled_circuit,
-        setup_ref,
-        transfers
-            .decoder
-            .as_ref()
-            .map(|transfer| &transfer.data_device[..]),
-        None,
-        &transfers
-            .tracing_data
-            .as_ref()
-            .expect("fixture transfers always include tracing_data")
-            .data_device,
-        &base.context,
-    )
-    .unwrap();
-    base.context.get_exec_stream().synchronize().unwrap();
-    eprintln!("async-backward-from-base: stage1 ready");
-
-    let mut lookup_challenges_host = unsafe { base.context.alloc_host_uninit_slice(3) };
-    let mut transcript_input = vec![];
-    base.external_challenges
-        .flatten_into_buffer(&mut transcript_input);
-    flatten_merkle_caps_iter_into(
-        setup_ref
-            .trace_holder
-            .read_per_coset_caps_synchronously(&base.context)
-            .unwrap()
-            .into_iter(),
-        &mut transcript_input,
-    );
-    flatten_merkle_caps_iter_into(
-        base.memory_tree_caps.clone().into_iter(),
-        &mut transcript_input,
-    );
-    flatten_merkle_caps_iter_into(
-        stage1_output
-            .witness_trace_holder
-            .read_per_coset_caps_synchronously(&base.context)
-            .unwrap()
-            .into_iter(),
-        &mut transcript_input,
-    );
-    let mut seed = Transcript::commit_initial(&transcript_input);
-    let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
-        challenges.try_into().unwrap();
-    unsafe {
-        lookup_challenges_host
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(&[
-                lookup_alpha,
-                lookup_additive_part,
-                constraints_batch_challenge,
-            ]);
-    }
-    let mut gpu_forward_setup = setup_ref
-        .schedule_forward_setup(
-            &base.compiled_circuit,
-            upload_lookup_challenges_for_test(&lookup_challenges_host, &base.context),
-            &base.context,
-        )
-        .unwrap();
-    base.context.get_exec_stream().synchronize().unwrap();
-    eprintln!("async-backward-from-base: forward setup ready");
-
-    let gpu_forward_output = schedule_forward_pass(
-        setup_ref,
-        &mut stage1_output,
-        &mut gpu_forward_setup,
-        &base.compiled_circuit,
-        &base.external_challenges,
-        base.final_trace_size_log_2,
-        &base.context,
-    )
-    .unwrap();
-    eprintln!("async-backward-from-base: forward pass scheduled");
-    let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(true, &base.context)
-        .unwrap();
-    base.context.get_exec_stream().synchronize().unwrap();
-    eprintln!("async-backward-from-base: transcript handoff ready");
-    let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
-    let gpu_evals_flattened = gpu_transcript_handoff.flattened_transcript_evaluations();
-
-    commit_field_els::<BF, E4>(&mut seed, &gpu_evals_flattened);
-    let mut challenges =
-        draw_random_field_els::<BF, E4>(&mut seed, (base.final_trace_size_log_2 + 1) as usize);
-    let batching_challenge = challenges.pop().unwrap();
-    let evaluation_point = challenges;
-
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-        compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
-            &gpu_final_explicit_evaluations,
-            &evaluation_point,
-            &worker,
-        );
-
-    let output_layer_for_sumcheck = gpu_forward_output
-        .dimension_reducing_inputs
-        .get(&gpu_forward_output.initial_layer_for_sumcheck)
-        .unwrap();
-    let mut top_layer_claims = BTreeMap::new();
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::PermutationProduct].output[0],
-        claim_readset,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::PermutationProduct].output[1],
-        claim_writeset,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::Lookup16Bits].output[0],
-        claim_rangechecknum,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::Lookup16Bits].output[1],
-        claim_rangecheckden,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::LookupTimestamps].output[0],
-        claim_timechecknum,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::LookupTimestamps].output[1],
-        claim_timecheckden,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::GenericLookup].output[0],
-        claim_lookupnum,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::GenericLookup].output[1],
-        claim_lookupden,
-    );
-
-    let expected_proof_layers =
-        gpu_forward_output.dimension_reducing_inputs.len() + base.compiled_circuit.layers.len();
-    let initial_output_layer_idx = gpu_forward_output.initial_layer_for_sumcheck + 1;
-
-    // Build the device-resident proof slab + its layout while the trace
-    // holders are still alive — the layout sizing depends on memory/witness
-    // geometry and `setup_ref` (about to drop with `transfers`). The
-    // backward scheduler indexes `proof_layout.backward[layer_slot]`
-    // unconditionally.
-    let proof_layout_inputs = crate::proof::layout::build_proof_layout_inputs::<E4>(
-        &base.compiled_circuit,
-        &base.external_challenges,
-        &base.prover_config.whir_schedule,
-        base.final_trace_size_log_2,
-        gpu_gkr::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            gpu_gkr::proof_layout::GpuGKRTraceGeometry {
-                log_domain_size: stage1_output.memory_trace_holder.log_domain_size,
-                log_lde_factor: stage1_output.memory_trace_holder.log_lde_factor,
-                log_rows_per_leaf: stage1_output.memory_trace_holder.log_rows_per_leaf,
-                log_tree_cap_size: stage1_output.memory_trace_holder.log_tree_cap_size,
-            },
-            stage1_output.memory_trace_holder.columns_count,
-        ),
-        gpu_gkr::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            gpu_gkr::proof_layout::GpuGKRTraceGeometry {
-                log_domain_size: stage1_output.witness_trace_holder.log_domain_size,
-                log_lde_factor: stage1_output.witness_trace_holder.log_lde_factor,
-                log_rows_per_leaf: stage1_output.witness_trace_holder.log_rows_per_leaf,
-                log_tree_cap_size: stage1_output.witness_trace_holder.log_tree_cap_size,
-            },
-            stage1_output.witness_trace_holder.columns_count,
-        ),
-        gpu_gkr::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            gpu_gkr::proof_layout::GpuGKRTraceGeometry {
-                log_domain_size: setup_ref.trace_holder.log_domain_size,
-                log_lde_factor: setup_ref.trace_holder.log_lde_factor,
-                log_rows_per_leaf: setup_ref.trace_holder.log_rows_per_leaf,
-                log_tree_cap_size: setup_ref.trace_holder.log_tree_cap_size,
-            },
-            setup_ref.trace_holder.columns_count,
-        ),
-    );
-    let proof_layout = gpu_gkr::proof_layout::ProofLayout::new(&proof_layout_inputs);
-    let proof_slab: gpu_core::primitives::context::DeviceAllocation<E4> = base
-        .context
-        .alloc_with_extra_alignment::<E4, 4>(
-            proof_layout.total_bytes / std::mem::size_of::<E4>(),
-            gpu_core::allocator::tracker::AllocationPlacement::Bottom,
-        )
-        .unwrap();
-
-    drop(gpu_transcript_handoff);
-    drop(gpu_forward_setup);
-    drop(transfers);
-    drop(stage1_output);
-
-    BasicUnrolledAsyncBackwardFixture {
-        context: base.context,
-        compiled_circuit: base.compiled_circuit,
-        external_challenges: base.external_challenges,
-        gpu_backward_state: gpu_forward_output.into_dimension_reducing_backward_state(),
-        initial_output_layer_idx,
-        top_layer_claims,
-        evaluation_point,
-        seed,
-        batching_challenge,
-        lookup_multiplicative_part: lookup_alpha,
-        lookup_additive_part,
-        expected_proof_layers,
-        proof_layout,
-        proof_slab,
-    }
-}
-
-pub(crate) fn prepare_basic_unrolled_async_backward_fixture() -> BasicUnrolledAsyncBackwardFixture {
-    let (base, expected_cpu_proof) =
-        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
-            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
-            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
-            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
-            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-            )),
-            non_determinism_reads: &[15, 1],
-            compute_cpu_reference: false,
-            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
-            security_level: crate::upstream::SecurityLevel::Sec80,
-        });
-    assert!(
-        expected_cpu_proof.is_none(),
-        "async backward fixture must not compute the CPU reference proof",
-    );
-    build_basic_unrolled_async_backward_fixture_from_base(base)
 }

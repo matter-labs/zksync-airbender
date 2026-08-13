@@ -350,6 +350,8 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
     //     timestamp_range_check_preprocessing.into_boxed_slice()
     // }
 
+    /// Commit the setup polynomials in memory (RS codewords + Merkle tree) and wrap
+    /// the resulting base oracle in an owned [`SetupCommitment::InMemory`].
     pub fn commit<T: ColumnMajorMerkleTreeConstructor<F>>(
         &self,
         twiddles: &Twiddles<F, Global>,
@@ -358,14 +360,15 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         tree_cap_size: usize,
         trace_len_log2: usize,
         worker: &Worker,
-    ) -> ColumnMajorBaseOracleForLDE<F, T>
+    ) -> SetupCommitment<F, T>
     where
         [(); F::DEGREE]: Sized,
     {
         let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
         use crate::gkr::prover::commitment_utils::commit_trace_part;
 
-        commit_trace_part(
+        SetupCommitment::InMemory(commit_trace_part::<F, F, T>(
+            &crate::gkr::prover::backend::NaiveBackend,
             &inputs,
             twiddles,
             lde_factor,
@@ -373,7 +376,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             tree_cap_size,
             trace_len_log2,
             worker,
-        )
+        ))
     }
 
     /// Logical equivalent of [`Self::commit`], but commits the setup polynomials
@@ -405,7 +408,8 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
         use crate::gkr::prover::commitment_utils::commit_trace_part_packed;
 
-        commit_trace_part_packed(
+        commit_trace_part_packed::<F, F, T>(
+            &crate::gkr::prover::backend::NaiveBackend,
             &inputs,
             twiddles,
             lde_factor,

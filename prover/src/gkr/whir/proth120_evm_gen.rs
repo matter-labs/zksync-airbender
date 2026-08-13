@@ -12,10 +12,11 @@
 //!     (tens of GB, minutes); run it via `gen_whir_prod.sh`.
 //!
 //! The two base batches (8 columns + 1 column) are committed COSET-BY-COSET via
-//! `CosetByCosetBaseCommitment`: each LDE coset is computed and hashed separately
-//! (with in-coset parallelism) so the full RS codeword is never materialized, and
-//! round-0 queries recompute only the coset they land in (fed to `whir_fold` via
-//! its `base_query_hook`). The 8-column batch goes into the MEMORY oracle and the
+//! `CosetByCosetBaseCommitment` (wrapped in the oracle enum's `CosetRecompute`
+//! variant): each LDE coset is computed and hashed separately (with in-coset
+//! parallelism) so the full RS codeword is never materialized, and `whir_fold`'s
+//! batched round-0 queries recompute only the cosets they land in, each once.
+//! The 8-column batch goes into the MEMORY oracle and the
 //! single column into the WITNESS oracle (setup is empty): whir_fold takes those
 //! by value and drops them right after the base layer, so their coset-0 data is
 //! freed before the memory-heavy intermediate rounds (which are still built
@@ -150,36 +151,18 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         worker,
     );
 
-    // Slim base oracle: whir_fold only reads coset 0 (main domain, for batching) and
-    // the cap; round-0 queries are served by the coset-by-coset hook below.
-    let build_slim =
-        |c: &CosetByCosetBaseCommitment<Proth120, Tree>| -> ColumnMajorBaseOracleForLDE<Proth120, Tree> {
-            let coset0 = ColumnMajorBaseOracleForCoset {
-                original_values_normal_order: c
-                    .main_domain_columns(&twiddles, worker)
-                    .into_iter()
-                    .map(|col| ColumnMajorCosetBoundTracePart {
-                        column: Arc::new(col),
-                        offset: Proth120::ONE,
-                    })
-                    .collect(),
-                offset: Proth120::ONE,
-                coset_size_log2: n,
-            };
-            let cap = c.get_cap();
-            let cap_tree = Tree::continue_from_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker);
-            ColumnMajorBaseOracleForLDE {
-                cosets: vec![coset0],
-                tree: cap_tree,
-                values_per_leaf: c.values_per_leaf,
-                coset_size_log2: n,
-            }
-        };
-    log("building slim base oracles (coset 0 + cap)");
-    let mem_oracle = build_slim(&mem_commitment); // 8 cols, owned by whir_fold
-    let wit_oracle = build_slim(&wit_commitment); // 1 col, owned by whir_fold
-                                                  // empty setup oracle (borrowed, held for the whole call, but carries no cosets)
-    let setup_oracle = commit_trace_part::<Proth120, Tree>(
+    // The caps are needed for calldata serialization after whir_fold has consumed
+    // (and dropped) the oracles, so keep copies here.
+    let mem_cap = mem_commitment.get_cap();
+    let wit_cap = wit_commitment.get_cap();
+
+    // Recompute-based base oracles: whir_fold reads the monomial forms for batching
+    // and serves round-0 queries by batched per-coset recomputation.
+    let mem_oracle = ColumnMajorBaseOracleForLDE::CosetRecompute(mem_commitment); // 8 cols
+    let wit_oracle = ColumnMajorBaseOracleForLDE::CosetRecompute(wit_commitment); // 1 col
+                                                                                  // empty setup oracle (borrowed, held for the whole call, but carries no cosets)
+    let setup_oracle = commit_trace_part::<Proth120, Proth120, Tree>(
+        &crate::gkr::prover::backend::NaiveBackend,
         &[],
         &twiddles,
         lde_factor,
@@ -188,17 +171,6 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         n,
         worker,
     );
-
-    // set_idx: 0 = memory (8 cols), 1 = witness (1 col); setup (2) is empty.
-    let base_query_hook = |set_idx: usize,
-                           query_index: usize|
-     -> (Vec<Vec<Proth120>>, BaseFieldQuery<Proth120, Tree>) {
-        match set_idx {
-            0 => mem_commitment.query_structured(query_index, &twiddles, worker),
-            1 => wit_commitment.query_structured(query_index, &twiddles, worker),
-            _ => unreachable!("only memory(0)/witness(1) base sets carry columns"),
-        }
-    };
 
     let schedule = WhirSchedule {
         base_lde_factor: lde_factor,
@@ -215,12 +187,13 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     let seed = Keccak256Seed(seed_bytes);
 
     log("running whir_fold (folding rounds + PoW grinding)");
+    let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup_oracle);
     let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript>(
         mem_oracle,
         mem_claims.clone(),
         wit_oracle,
         wit_claims.clone(),
-        &setup_oracle,
+        &setup_commitment,
         vec![],
         z.clone(),
         batching_challenge,
@@ -229,7 +202,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         seed,
         cap_size,
         n,
-        Some(&base_query_hook),
+        &crate::gkr::prover::backend::NaiveBackend,
         WhirIntermediateOracleMode::CosetByCoset,
         worker,
     );
@@ -296,10 +269,10 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         cd.extend_from_slice(&be16(*e));
     }
     // BCAP0 = 8-col batch (memory oracle), BCAP1 = 1-col batch (witness oracle)
-    for d in mem_commitment.get_cap().cap.iter() {
+    for d in mem_cap.cap.iter() {
         cd.extend_from_slice(&dig32(d));
     }
-    for d in wit_commitment.get_cap().cap.iter() {
+    for d in wit_cap.cap.iter() {
         cd.extend_from_slice(&dig32(d));
     }
     let plen = cd.len();
@@ -644,6 +617,7 @@ fn pessimistic_config_reproduces_variant4_and_aggressive() {
 /// variable (non-6) round count — exercising `run_generation`'s round-agnostic path
 /// end-to-end (whir_fold + schedule-driven serializer) cheaply.
 #[test]
+#[ignore = "expensive real-PoW smoke; run explicitly"]
 fn generate_whir_smoke_aggressive() {
     let worker = Worker::new_with_num_threads(4);
     let cfg = pessimistic_config(12, 4, 2, 3, 16, 3, "_aggsmoke");

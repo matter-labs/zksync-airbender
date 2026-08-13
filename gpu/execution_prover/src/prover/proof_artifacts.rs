@@ -67,7 +67,8 @@ impl ExecutionProver {
                 // self-consistent.
                 let compiled_circuit = self.binary_holders[&binary_key].precomputations
                     [&UnrolledCircuitType::Unified]
-                    .compiled_circuit
+                    .gkr_programs
+                    .compiled_circuit()
                     .as_ref();
                 let canonical_top_bits = canonical_inits_and_teardowns_top_bits(compiled_circuit);
                 fs_transform_unified(
@@ -87,14 +88,14 @@ impl ExecutionProver {
         let pow_challenge = if MEMORY_DELEGATION_POW_BITS == 0 {
             0
         } else {
-            Transcript::search_pow(
+            Blake2sTranscript::search_pow(
                 &all_challenges_seed,
                 MEMORY_DELEGATION_POW_BITS as u32,
                 &self.worker,
             )
             .1
         };
-        let external_challenges = GKRExternalChallenges::<BF, E4>::draw_from_transcript_seed(
+        let external_challenges = GKRExternalChallenges::<BF, E4>::draw_from_blake_transcript_seed(
             all_challenges_seed,
             MEMORY_DELEGATION_POW_BITS,
             pow_challenge,

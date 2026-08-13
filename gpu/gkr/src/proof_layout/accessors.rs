@@ -4,6 +4,7 @@ use std::mem::size_of;
 use std::ops::Range;
 
 use super::*;
+use crate::upstream::Field;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WhirBaseLayerKind {
@@ -69,8 +70,8 @@ impl ProofLayout {
     }
 
     /// Per-layer-slot `extra_evaluations` range. Returns `(ptr, addresses_len)`
-    /// — one `E4` per orphan address. Length is 0 for dim-reducing slots and
-    /// for main layers without orphan outputs.
+    /// — one `E4` per missing cached dependency. Length is 0 for
+    /// dim-reducing slots and main layers without extras.
     ///
     /// # Safety
     /// `slab_base` must point into a live device allocation big enough for
@@ -94,6 +95,28 @@ impl ProofLayout {
     ) -> Option<(*mut E4, usize)> {
         let block = self.output_evaluations_block()?;
         Some(Self::device_typed::<E4>(slab_base, &block))
+    }
+
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
+    pub unsafe fn whir_original_evaluation_point_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut E4, usize) {
+        Self::device_typed::<E4>(slab_base, &self.whir.original_evaluation_point)
+    }
+
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
+    pub unsafe fn whir_batching_challenge_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut E4, usize) {
+        Self::device_typed::<E4>(slab_base, &self.whir.batching_challenge)
     }
 
     /// # Safety
@@ -377,14 +400,7 @@ impl ProofLayout {
         slab: &[u8],
     ) -> WhirPolyCommitProof<BF, E4, DefaultTreeConstructor> {
         let digest_bytes_of = |bytes: &[u32]| -> Vec<[u32; DIGEST_U32_WORDS]> {
-            bytes
-                .chunks_exact(DIGEST_U32_WORDS)
-                .map(|c| {
-                    let mut d = [0u32; DIGEST_U32_WORDS];
-                    d.copy_from_slice(c);
-                    d
-                })
-                .collect()
+            bytes.as_chunks::<DIGEST_U32_WORDS>().0.to_vec()
         };
         // Shared across all three base oracles — the setup/memory/witness
         // oracles sample the same tree-space indices, so the slab stores one
@@ -394,14 +410,6 @@ impl ProofLayout {
                     indices: &[u32]|
          -> WhirBaseLayerCommitmentAndQueries<BF, E4, DefaultTreeConstructor> {
             let base_layout = self.whir_base(which);
-            // Zero-width base layers (e.g. the width-0 witness layer of the
-            // standalone inits-and-teardowns circuit, or an absent setup) commit
-            // to a dummy tree on the CPU (`commit_trace_part` short-circuits to
-            // `T::dummy()`, whose `get_cap()` is empty). The slab still reserves a
-            // cap region sized by the base geometry and stage 1 fills it with a
-            // degenerate hash, but the proof must present an EMPTY cap to match
-            // the CPU reference. This mirrors the `num_columns == 0` gate already
-            // applied to `queries` below.
             let cap = if base_layout.num_columns == 0 {
                 Vec::new()
             } else {
@@ -488,9 +496,17 @@ impl ProofLayout {
         let ood_samples = self.whir_ood_samples_host(slab).to_vec();
         let sumcheck_polys: Vec<[E4; 3]> = self
             .whir_sumcheck_polys_host(slab)
-            .chunks_exact(3)
-            .map(|c| [c[0], c[1], c[2]])
-            .collect();
+            .as_chunks::<3>()
+            .0
+            .to_vec();
+        let original_evaluation_point = self.whir_original_evaluation_point_host(slab).to_vec();
+        let batching_challenge = self.whir_batching_challenge_host(slab)[0];
+        let [c0, c1, c2] = sumcheck_polys[0];
+        let mut p_at_one = c0;
+        p_at_one.add_assign(&c1);
+        p_at_one.add_assign(&c2);
+        let mut batched_opening = c0;
+        batched_opening.add_assign(&p_at_one);
         let pow_nonces = self.whir_pow_nonces_host(slab).to_vec();
         let final_monomials = self.whir_final_monomials_host(slab).to_vec();
         WhirPolyCommitProof {
@@ -503,24 +519,23 @@ impl ProofLayout {
             pow_nonces,
             final_monomials,
             whir_schedule: WhirSchedule::default(),
-            // EVM GKR->WHIR handoff values are not reconstructed by the GPU proof-layout path.
-            batching_challenge: None,
-            original_evaluation_point: None,
-            batched_opening: None,
+            batching_challenge: Some(batching_challenge),
+            original_evaluation_point: Some(original_evaluation_point),
+            batched_opening: Some(batched_opening),
         }
     }
 
     /// Parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
     /// from the D2H'd slab.
     ///
-    /// `extra_evaluations_by_layer` is the caller-provided sparse map for
-    /// layer 0 only — its values are sparse references into the slab-resident
-    /// WHIR base eval ranges (`DenseSource::read_from_slab`). For every other
-    /// layer-slot we read the dedicated `extra_evaluations` slab range
-    /// directly: each entry is one `E4` per orphan address, in
-    /// `extra_evaluations_addresses` order. Both sources are merged into the
-    /// same `extra_evaluations_from_caching_relations` BTreeMap on the
-    /// resulting `SumcheckIntermediateProofValues`.
+    /// `extra_evaluations_by_layer` is a sparse source whose
+    /// values may come from slab-resident WHIR base-evaluation ranges
+    /// (`DenseSource::read_from_slab`). For every layer-slot, the dedicated
+    /// `extra_evaluations` slab range is also read when present: each entry is
+    /// one `E4` per address, in `extra_evaluations_addresses` order. Both
+    /// sources are merged into the same
+    /// `extra_evaluations_from_caching_relations` BTreeMap on the resulting
+    /// `SumcheckIntermediateProofValues`.
     pub fn parse_sumcheck_intermediate_values(
         &self,
         slab: &[u8],
@@ -531,10 +546,7 @@ impl ProofLayout {
             let coeffs_flat = self.backward_internal_coeffs_host(slab, layer_slot);
             // `sumcheck_num_rounds` monomials.
             debug_assert_eq!(coeffs_flat.len(), bw.sumcheck_num_rounds * 4);
-            let internal_round_coefficients: Vec<[E4; 4]> = coeffs_flat
-                .chunks_exact(4)
-                .map(|c| [c[0], c[1], c[2], c[3]])
-                .collect();
+            let internal_round_coefficients: Vec<[E4; 4]> = coeffs_flat.as_chunks::<4>().0.to_vec();
             let finals_flat = self.backward_final_step_evals_host(slab, layer_slot);
             debug_assert_eq!(
                 finals_flat.len(),
@@ -584,6 +596,14 @@ impl ProofLayout {
             );
         }
         result
+    }
+
+    pub fn whir_original_evaluation_point_host<'a>(&self, slab: &'a [u8]) -> &'a [E4] {
+        Self::host_typed::<E4>(slab, &self.whir.original_evaluation_point)
+    }
+
+    pub fn whir_batching_challenge_host<'a>(&self, slab: &'a [u8]) -> &'a [E4] {
+        Self::host_typed::<E4>(slab, &self.whir.batching_challenge)
     }
 
     pub fn whir_base_cap_host<'a>(&self, slab: &'a [u8], which: WhirBaseLayerKind) -> &'a [u32] {

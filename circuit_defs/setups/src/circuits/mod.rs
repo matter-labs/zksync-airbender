@@ -99,9 +99,7 @@ fn produce_verifier_setup_for_circuit(
         worker,
     );
 
-    let cap = <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
-        &setup_commitment.tree,
-    );
+    let cap = setup_commitment.get_cap();
     let mut num_permutation_terms_per_cycle = 1; // delegation itself
     num_permutation_terms_per_cycle += circuit.compiled_circuit.memory_layout.ram_access_sets.len();
 

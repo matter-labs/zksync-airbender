@@ -15,7 +15,7 @@ gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash, gpu_cub }  <  gpu_prover_context  <
 gpu_trace  <  gpu_gkr  <  gpu_whir  <  circuit_prover  <  execution_prover  <  program_prover
 ```
 
-Plus three off-DAG crates: **`gpu_witness_eval_generator`** (`witness_eval_generator/`:
+Plus four off-DAG crates: **`gpu_witness_eval_generator`** (`witness_eval_generator/`:
 pure-CPU codegen producing the committed `circuit_defs/**/generated/witness_generation_fn.cuh`
 CUDA witness bodies that `gpu_trace`'s native templates `#include`; run manually via its
 `generate` bin; the committed artifacts are drift-guarded by the
@@ -25,9 +25,12 @@ runs in CI) and refreshed by the `regenerate_committed` bin after an intentional
 codegen change; has its own `AGENTS.md`),
 **`gpu_gkr_model`** (pure-CPU GKR layout model — address
 audit, storage layout, circuit transform; deps `cs` + `field`, no CUDA; consumed
-by `gpu_gkr` via `gkr::{gkr_address_audit, storage_layout,
-transform}` facade re-exports) and **`gpu_native_build`** (the shared build-script
-helper, a build-dependency only).
+internally by `gpu_gkr`), **`gpu_gkr_compiler`** (CPU-only checked compiler
+for committed forward schedules and the separate backward R0/continuation
+programs; offline search and its manual artifact tool are behind the `search`
+feature), and **`gpu_native_build`** (the shared build-script helper, a
+build-dependency only). The GPU-independent evaluation DAG lives at the workspace
+root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
 
 - **`gpu_core`** = `allocator` + `primitives` (pure GPU substrate: static
   allocators, device_structures/DeviceMatrix, accessors, field, callbacks, nvtx,
@@ -56,8 +59,9 @@ helper, a build-dependency only).
   `gpu_ntt_native`; `circuit_prover` drops `gpu_prover_ntt` and links gpu_ntt's
   archive via build-script propagation. Co-locating the `cuda_struct_and_stub!`
   twiddle stubs with their `native/ntt __constant__` defs fixes the NTT
-  cross-wall pitfall. Its tests are self-contained (raw era_cudart allocations +
-  `DeviceContext::create`, no `ProverContext`).
+  cross-wall pitfall. Its build exports `native/` so gpu_whir can include the
+  reusable `whir_leaf_transform.cuh` device helper. Its tests are self-contained
+  (raw era_cudart allocations + `DeviceContext::create`, no `ProverContext`).
 - **`gpu_ops`** = the generic math/transform kernels (`simple`, `powers`,
   `squaring`, `transpose`, `bit_reverse`) with its own
   `gpu_ops_native`. `bit_reverse` is **size-generic**: `bit_reverse_in_place<T>`
@@ -105,15 +109,15 @@ helper, a build-dependency only).
   archive's kernels, so no header export / `DEP_*` is needed (unlike gpu_hash).
   Dep: `gpu_core`.
 - **`gpu_prover_context`** = `ProverContext` + `ProverContextConfig` (the
-  device/host allocators, the four CUDA streams — `exec_stream`, `h2d_stream`,
-  `d2h_stream`, `side_stream` — and the NTT twiddle `DeviceContext`) plus the
-  H2D/D2H `Transfer` fork/join machinery (`transfer.rs`). No native of its
+  device/host allocators, the three CUDA streams — `exec_stream`, `h2d_stream`,
+  `side_stream` — and the NTT twiddle `DeviceContext`) plus the H2D `Transfer`
+  machinery (`transfer.rs`). No native of its
   own — pure Rust over `gpu_core` + `gpu_ntt`. Every crate from `gpu_trace`
   upward threads a `&ProverContext` through its scheduling functions. See
   [`prover_context/AGENTS.md`](prover_context/AGENTS.md).
 - **`gpu_trace`** = witness generation (`witness/**`) + trace commit/holder
-  (`trace/**`), with its own `gpu_trace_native` (28 kernels: 17 literal + 11
-  token-pasted via the `KERNEL_NAME(NAME)` macro, one per circuit under
+  (`trace/**`), with its own `gpu_trace_native` (40 kernels: 18 literal + 22
+  token-pasted witness and fused stage-1 kernels, two per circuit under
   `witness/circuits/`), namespace `airbender::trace::witness::*`.
   Self-contained (only `gpu_core`'s base headers; no `export_include`, no
   PoW kernel). Owns the upstream-constant drift guards (compile-time asserts
@@ -121,30 +125,26 @@ helper, a build-dependency only).
   / `common_constants`. See [`trace/AGENTS.md`](trace/AGENTS.md).
 - **`gpu_gkr`** = the GKR engine (forward pass, backward/sumcheck rounds,
   setup, base-layer claims, proof layout) plus the GKR/WHIR protocol kernels
-  (`gkr_ops/`), with its own `gpu_gkr_native` (62 kernels + **all 8** of the
-  cluster's `__device__ __constant__` symbols), namespaces
+  (`gkr_ops/`), with its own `gpu_gkr_native` (25 kernels and 8 `__constant__`
+  symbols), namespaces
   `airbender::gkr::{backward, forward, ops, setup}`. `build.rs` sets
   `export_include(true)`: exports its `native/` dir as
   `DEP_GPU_GKR_NATIVE_INCLUDE` so `gpu_whir` can include its
   `gkr/support/{eq_inline,kernel_helpers}.cuh`; reads `gpu_hash`'s `hash.cuh`
-  for its own blake2s-dependent protocol kernels. Re-exports `gpu_gkr_model`
-  as `gkr::{gkr_address_audit, storage_layout, transform}`; owns
-  `configure_kernel_attributes()`. See [`gkr/AGENTS.md`](gkr/AGENTS.md).
+  for its own blake2s-dependent protocol kernels. See [`gkr/AGENTS.md`](gkr/AGENTS.md).
 - **`gpu_whir`** = WHIR folds (`fold/`) + PoW/query scheduling (`pow.rs`) +
-  the recursive WHIR extension oracle, with its own `gpu_whir_native` (17
-  kernels, no `__constant__` symbols), namespace `airbender::whir`. Reads
+  the recursive WHIR extension oracle and its side-stream LDE/Merkle commit
+  scheduler, with its own `gpu_whir_native` (24 kernels, no `__constant__`
+  symbols), namespace `airbender::whir`. Reads
   `gpu_gkr`'s exported headers (`accumulate_eq.cu`) and `gpu_hash`'s
-  `hash.cuh` (`leaves.cu`). Features `deterministic_pow =
+  `hash.cuh` plus gpu_ntt's exported `whir_leaf_transform.cuh` (`leaves.cu`).
+  Features `deterministic_pow =
   ["prover/deterministic_pow","gpu_hash/deterministic_pow"]` (owns both
   determinism legs; `prover` is a normal, not dev-only, dependency here only
-  for that forward), `eval_leaves`, and `test-utils` (non-default; gates the
-  WHIR-oracle parity/query + `fold::debug` test-support surface out of
-  production, `#[cfg(any(test, feature = "test-utils"))]`, enabled by
-  `gpu_circuit_prover`'s dev-deps — prover-crate precedent). See
-  [`whir/AGENTS.md`](whir/AGENTS.md).
+  for that forward), and `eval_leaves`. See [`whir/AGENTS.md`](whir/AGENTS.md).
 
 `circuit_prover` now consumes `gpu_prover_context`/`gpu_trace`/`gpu_gkr`/
-`gpu_whir` (and `gpu_core`/`gpu_hash`/`gpu_gkr_model`) as ordinary Cargo
+`gpu_whir` (and `gpu_core`/`gpu_hash`) as ordinary Cargo
 dependencies — there are no more in-crate facade re-exports for the kernel
 crates, and **no `native/` tree at all**: its `build.rs` only emits the
 `no_cuda` cfg its test sites key off. `execution_prover` holds `ExecutionProver` + the 9-symbol facade.
@@ -203,7 +203,8 @@ from upstream library code (`full_statement_verifier::host_utils` /
   - A new GPU crate must be added to the `gpu-serial` filter AND invoke the
     guard — enforced by the
     `gpu_core::serial_guard::tests::cpu_nextest_config_covers_all_gpu_crates`
-    drift guard.
+    drift guard. CPU-only tooling under `gpu/`, including `gpu_gkr_compiler`
+    and `gpu_native_build`, is explicitly exempted by that guard.
 
 ## Native code (CUDA/C++)
 
@@ -236,7 +237,7 @@ which test/bench and NVTX range to profile — live with the crate (e.g.
   upstream imports, the upstream-constant drift guards, native build): see
   [`trace/AGENTS.md`](trace/AGENTS.md).
 - **`gpu_gkr`** (GKR engine + protocol kernels, GPU scheduling contract,
-  upstream imports, native build, `gpu_gkr_model` re-export facade): see
+  upstream imports, native build): see
   [`gkr/AGENTS.md`](gkr/AGENTS.md).
 - **`gpu_whir`** (WHIR folds + PoW, GPU scheduling contract, upstream
   imports, native build): see [`whir/AGENTS.md`](whir/AGENTS.md).

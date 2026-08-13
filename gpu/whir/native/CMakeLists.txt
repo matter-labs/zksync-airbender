@@ -12,10 +12,11 @@ endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 # WHIR protocol + PoW kernels. `accumulate_eq.cu` resolves gpu_gkr's eq/kernel
 # headers via ${GPU_GKR_NATIVE_INCLUDE}; `leaves.cu` resolves gpu_hash's
-# `hash.cuh` via ${GPU_HASH_NATIVE_INCLUDE}. Both dirs arrive as DEP_* env vars
-# that gpu_native_build forwards as CMake -D defines.
+# `hash.cuh` and gpu_ntt's reusable WHIR transform through their exported
+# include directories. These dirs arrive as DEP_* env vars that
+# gpu_native_build forwards as CMake -D defines.
 add_library(gpu_whir_native STATIC)
 add_subdirectory(whir)
 ab_cuda_configure_target(gpu_whir_native
         PREFIX GPU_WHIR
-        INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE} ${GPU_GKR_NATIVE_INCLUDE})
+        INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE} ${GPU_GKR_NATIVE_INCLUDE} ${GPU_NTT_NATIVE_INCLUDE})

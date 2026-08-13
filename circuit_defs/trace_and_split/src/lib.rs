@@ -87,7 +87,8 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, T>(
+    let mem = commit_trace_part::<F, F, T>(
+        &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,
@@ -97,7 +98,7 @@ where
         worker,
     );
 
-    let cap = mem.tree.get_cap();
+    let cap = mem.get_cap();
 
     println!("Memory commitment took {:?}", now.elapsed());
 
@@ -153,7 +154,8 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, T>(
+    let mem = commit_trace_part::<F, F, T>(
+        &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,
@@ -163,7 +165,7 @@ where
         worker,
     );
 
-    let cap = mem.tree.get_cap();
+    let cap = mem.get_cap();
 
     println!("Memory commitment took {:?}", now.elapsed());
 
@@ -203,7 +205,8 @@ where
         evaluate_init_and_teardown_memory_witness(inits_and_teardowns, circuit, Global, Global);
 
     let mem_inputs: Vec<_> = witness_inner.iter().map(|el| &el[..]).collect();
-    let mem = commit_trace_part::<F, T>(
+    let mem = commit_trace_part::<F, F, T>(
+        &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,
@@ -213,7 +216,7 @@ where
         worker,
     );
 
-    let cap = mem.tree.get_cap();
+    let cap = mem.get_cap();
 
     println!(
         "Inits and teardowns memory commitment took {:?}",
@@ -222,95 +225,6 @@ where
 
     cap
 }
-
-// pub fn commit_memory_tree_for_unified_circuits<A: GoodAllocator>(
-//     circuit: &setups::prover::cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
-//     witness_chunk: &[UnifiedOpcodeTracingDataWithTimestamp],
-//     lazy_init_data: &[LazyInitAndTeardown],
-//     twiddles: &Twiddles<Mersenne31Complex, A>,
-//     lde_precomputations: &LdePrecomputations<A>,
-//     decoder_data: &[ExecutorFamilyDecoderData],
-//     worker: &Worker,
-// ) -> Vec<MerkleTreeCapVarLength> {
-//     use prover::unrolled::evaluate_memory_witness_for_unified_executor;
-//     use prover::unrolled::UnifiedRiscvCircuitOracle;
-//     let lde_factor = lde_precomputations.lde_factor;
-//     assert_eq!(twiddles.domain_size, lde_precomputations.domain_size);
-//     use setups::prover::prover_stages::stage1::compute_wide_ldes;
-//     let trace_len = twiddles.domain_size;
-
-//     let optimal_folding = OPTIMAL_FOLDING_PROPERTIES[trace_len.trailing_zeros() as usize];
-
-//     let num_cycles_in_chunk = trace_len - 1;
-//     assert!(witness_chunk.len() <= num_cycles_in_chunk);
-//     let now = std::time::Instant::now();
-
-//     let oracle = UnifiedRiscvCircuitOracle {
-//         inner: witness_chunk,
-//         decoder_table: decoder_data,
-//     };
-
-//     let memory_trace = evaluate_memory_witness_for_unified_executor::<_, A>(
-//         &circuit,
-//         num_cycles_in_chunk,
-//         lazy_init_data,
-//         &oracle,
-//         &worker,
-//         A::default(),
-//     );
-
-//     println!(
-//         "Materializing memory trace for {} cycles took {:?}",
-//         num_cycles_in_chunk,
-//         now.elapsed()
-//     );
-
-//     let MemoryOnlyWitnessEvaluationDataForExecutionFamily { memory_trace } = memory_trace;
-//     // now we should commit to it
-//     let width = memory_trace.width();
-//     let mut memory_trace = memory_trace;
-//     adjust_to_zero_c0_var_length(&mut memory_trace, 0..width, worker);
-
-//     let memory_ldes = compute_wide_ldes(
-//         memory_trace,
-//         twiddles,
-//         lde_precomputations,
-//         0,
-//         lde_factor,
-//         worker,
-//     );
-//     assert_eq!(memory_ldes.len(), lde_factor);
-
-//     // now form a tree
-//     let subtree_cap_size = (1 << optimal_folding.total_caps_size_log2) / lde_factor;
-//     assert!(subtree_cap_size > 0);
-
-//     let mut memory_subtrees = Vec::with_capacity(lde_factor);
-//     let now = std::time::Instant::now();
-//     for domain in memory_ldes.iter() {
-//         let memory_tree = DefaultTreeConstructor::construct_for_coset(
-//             &domain.trace,
-//             subtree_cap_size,
-//             true,
-//             worker,
-//         );
-//         memory_subtrees.push(memory_tree);
-//     }
-
-//     let dump_fn = |caps: &[DefaultTreeConstructor]| {
-//         let mut result = Vec::with_capacity(caps.len());
-//         for el in caps.iter() {
-//             result.push(el.get_cap());
-//         }
-
-//         result
-//     };
-
-//     let caps = dump_fn(&memory_subtrees);
-//     println!("Memory witness commitment took {:?}", now.elapsed());
-
-//     caps
-// }
 
 /// Commit to the memory part of a unified-circuit chunk. The unified circuit
 /// folds every executor family plus its inline inits-and-teardowns into one GKR
@@ -376,7 +290,8 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, T>(
+    let mem = commit_trace_part::<F, F, T>(
+        &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,
@@ -386,7 +301,7 @@ where
         worker,
     );
 
-    let cap = mem.tree.get_cap();
+    let cap = mem.get_cap();
 
     println!("Unified memory commitment took {:?}", now.elapsed());
 
@@ -448,7 +363,8 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, T>(
+    let mem = commit_trace_part::<F, F, T>(
+        &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,
@@ -458,7 +374,7 @@ where
         worker,
     );
 
-    let cap = mem.tree.get_cap();
+    let cap = mem.get_cap();
 
     println!("Memory commitment took {:?}", now.elapsed());
 

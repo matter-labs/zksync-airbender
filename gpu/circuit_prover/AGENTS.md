@@ -14,7 +14,7 @@ of its own** — the split-out kernel crates below it (`gpu_trace`, `gpu_gkr`,
 gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
 gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. This crate depends on `gpu_core`, `gpu_hash`, `gpu_prover_context`,
-`gpu_trace`, `gpu_gkr`, `gpu_whir`, and `gpu_gkr_model`, plus the upstream
+`gpu_trace`, `gpu_gkr`, and `gpu_whir`, plus the upstream
 crates below; `gpu_execution_prover` depends on it, never the reverse.
 
 ## GPU Scheduling Contract
@@ -45,8 +45,8 @@ summary — the contract document is the source of truth.
   operation thereafter only reads.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`,
-  `d2h_stream`, or `side_stream`) against `exec_stream` with explicit CUDA
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or
+  `side_stream`) against `exec_stream` with explicit CUDA
   events. The driver gives independent streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
   secondary stream touched the allocation, the `exec_stream` join wait must be
@@ -63,9 +63,8 @@ summary — the contract document is the source of truth.
 - **MUST** keep `prove()` enqueue-only. No `stream.synchronize()`, no host
   blocking for `exec_stream` progress — not even for profiling or logging.
   Host blocking belongs in `GpuGKRProofJob::finish()`.
-- **Default to `exec_stream`** for H2D/D2H copies. Use `h2d_stream` /
-  `d2h_stream` only when meaningful copy/compute overlap justifies the
-  fork/join machinery.
+- **Default to `exec_stream`** for copies. Use `h2d_stream` only when meaningful
+  H2D overlap justifies the fork/join machinery.
 
 ## Key Files and Structure
 
@@ -81,13 +80,6 @@ summary — the contract document is the source of truth.
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)
     for every pre-prove H2D piece.
-  - `layout/` (`pub(crate)`): `build_proof_layout_inputs` — the
-    gkr-**dependent** BUILDER that derives the proof-image layout inputs from
-    a compiled circuit + WHIR schedule + base-layer geometries. The layout
-    TYPES themselves (slab byte ranges + typed accessors) live one layer down
-    in `gpu_gkr::proof_layout`; this builder calls into `gpu_gkr::transform`
-    and `gpu_gkr::backward`, so it must sit above `gpu_gkr` and cannot live in
-    that crate's cycle-free `proof_layout` leaf.
   - `orchestration/` (private, selectively re-exported): `backward.rs`,
     `stage1_forward.rs`, `terminal.rs`, `whir.rs` — the phases of the
     `prove()` pipeline. `proof::prove()` (in `proof/mod.rs`) is the sole
@@ -101,8 +93,8 @@ summary — the contract document is the source of truth.
   `prove()` while reaching into `gpu_trace`/`gpu_gkr`/`gpu_whir`/
   `gpu_prover_context`/`gpu_ops` test-reference seams
   (`#[doc(hidden)] pub` items in those crates) across crate boundaries.
-- No `native/` tree, no `src/prover/`, no `src/witness/` — those moved to
-  `gpu_gkr`/`gpu_whir` and `gpu_trace` respectively (Tasks 7–11 of the split).
+- No `native/` tree, no `src/prover/`, no `src/witness/`; those live in
+  `gpu_gkr`/`gpu_whir` and `gpu_trace`.
 
 ## Upstream imports
 
@@ -121,12 +113,10 @@ clearly-marked `#[cfg(test)]` section of the same manifest file.
 
 ## Layer contract
 
-This crate's own module DAG is now small: `config` and `proof::inputs` are
-leaves (upstream + the split crates' public APIs only); `proof::layout`
-depends on `gpu_gkr` to build layout inputs; `proof::orchestration` is the
-top — it depends on `config`, `proof::inputs`, `proof::layout`, and drives
-`gpu_trace`/`gpu_gkr`/`gpu_whir` directly. `proof::prove()` is the only
-production entry point exposed upward (to `gpu_execution_prover`).
+This crate's own module DAG is small: `config` and `proof::inputs` are leaves;
+`proof::orchestration` drives `gpu_trace`/`gpu_gkr`/`gpu_whir` directly.
+`proof::prove()` is the only production entry point exposed upward to
+`gpu_execution_prover`.
 
 The crate stack itself — which modules became `gpu_core` / `gpu_ntt` /
 `gpu_ops` / `gpu_hash` / `gpu_cub` / `gpu_prover_context` / `gpu_trace` /
@@ -175,10 +165,6 @@ apply here directly.
   test / NVTX range / test-binary build. The generic per-kernel `ncu`/`nsys`
   methodology is cluster-level in [`../docs/`](../docs/)
   (`gpu/docs/profiling{,_ncu,_nsys}.md`).
-- The backward-pass immediate-factor encoding design note moved with its
-  implementation to
-  [`../gkr/docs/backward_immediate_factor_encoding.md`](../gkr/docs/backward_immediate_factor_encoding.md).
-
 ## Code Notes
 
 - Use `log` for diagnostic output rather than `println!`.

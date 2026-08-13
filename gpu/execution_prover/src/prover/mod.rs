@@ -60,7 +60,7 @@ use itertools::Itertools;
 use log::{debug, info, trace, warn};
 
 use crate::upstream::{
-    FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength, Transcript,
+    Blake2sTranscript, FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength,
 };
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;

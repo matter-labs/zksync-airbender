@@ -12,65 +12,6 @@ use gpu_hash::blake2s::STATE_SIZE;
 mod tests;
 
 cuda_kernel!(
-    BackwardSumcheckRoundUpdate,
-    ab_backward_sumcheck_round_update_kernel(
-        reduction_output: *const E4,
-        prev_claim_coord: *const E4,
-        seed_io: *mut u32,
-        claim_io: *mut E4,
-        eq_prefactor_io: *mut E4,
-        coeffs_out: *mut E4,
-        challenge_out: *mut E4,
-    )
-);
-
-/// Fused device-side per-round backward sumcheck state update.
-///
-/// Replaces the host callback that runs after each CUB reduction in the
-/// backward sumcheck loop. Consumes device-resident state and writes back
-/// updated state plus the new folding challenge — no host round-trip.
-///
-/// Buffer contracts:
-/// - `reduction_output`: 2 E4 values `[e_partial, c_partial]` (constant and
-///   quadratic coefficients from the CUB reduction over round accumulators).
-/// - `prev_claim_coord`: 1 E4, the previous-round claim point coordinate.
-/// - `seed`: `STATE_SIZE` u32 words, updated in place with the new Blake2s seed.
-/// - `claim`: 1 E4, updated in place to `poly(challenge)`.
-/// - `eq_prefactor`: 1 E4, updated in place to `eq(challenge, prev_coord)`.
-/// - `coeffs_out`: 4 E4 values `[c0, c1, c2, c3]`, the round's univariate
-///   coefficients, written for later bulk readback.
-/// - `challenge_out`: 1 E4, the next round's folding challenge.
-pub(crate) fn backward_sumcheck_round_update(
-    reduction_output: &DeviceSlice<E4>,
-    prev_claim_coord: &DeviceSlice<E4>,
-    seed: &mut DeviceSlice<u32>,
-    claim: &mut DeviceSlice<E4>,
-    eq_prefactor: &mut DeviceSlice<E4>,
-    coeffs_out: &mut DeviceSlice<E4>,
-    challenge_out: &mut DeviceSlice<E4>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert_eq!(reduction_output.len(), 2);
-    assert_eq!(prev_claim_coord.len(), 1);
-    assert_eq!(seed.len(), STATE_SIZE);
-    assert_eq!(claim.len(), 1);
-    assert_eq!(eq_prefactor.len(), 1);
-    assert_eq!(coeffs_out.len(), 4);
-    assert_eq!(challenge_out.len(), 1);
-    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
-    let args = BackwardSumcheckRoundUpdateArguments::new(
-        reduction_output.as_ptr(),
-        prev_claim_coord.as_ptr(),
-        seed.as_mut_ptr(),
-        claim.as_mut_ptr(),
-        eq_prefactor.as_mut_ptr(),
-        coeffs_out.as_mut_ptr(),
-        challenge_out.as_mut_ptr(),
-    );
-    BackwardSumcheckRoundUpdateFunction::default().launch(&config, &args)
-}
-
-cuda_kernel!(
     WhirFoldRoundUpdate,
     ab_whir_fold_round_update_kernel(
         reduction_output: *const E4,
@@ -240,8 +181,6 @@ pub(crate) fn backward_dim_reducing_lsb_lines(
 
 /// Maximum `(batch_challenge_offset, claim_idx)` pairs the
 /// `build_combined_claim` kernel-arg descriptor can hold.
-/// See [`crate::gkr_address_audit_helpers::GKR_COMBINED_CLAIM_MAX_PAIRS`]
-/// for the rationale; the audit panics if any future circuit exceeds this.
 pub(crate) const GKR_COMBINED_CLAIM_MAX_PAIRS: usize = 1024;
 
 /// Kernel-arg descriptor for `build_combined_claim`. Inline form: passed
@@ -288,7 +227,7 @@ cuda_kernel!(
 /// Builds the per-layer combined claim on device. `desc_pairs` is a host slice
 /// of `(exp, claim_idx)` u32 pairs (flattened: `[exp_0, idx_0, exp_1, idx_1, ...]`).
 /// Panics if `desc_pairs.len() / 2 > GKR_COMBINED_CLAIM_MAX_PAIRS` — production
-/// callers must respect the audit-locked ceiling.
+/// callers must respect the descriptor ceiling.
 pub(crate) fn build_combined_claim(
     claims: &DeviceSlice<E4>,
     batching: &DeviceSlice<E4>,
@@ -308,8 +247,7 @@ pub(crate) fn build_combined_claim(
     let num_pairs = desc_pairs.len() / 2;
     assert!(
         num_pairs <= GKR_COMBINED_CLAIM_MAX_PAIRS,
-        "combined-claim descriptor has {} pairs; exceeds GKR_COMBINED_CLAIM_MAX_PAIRS = {}. \
-         Raise the constant in gkr_address_audit.rs after re-running the audit.",
+        "combined-claim descriptor has {} pairs; exceeds GKR_COMBINED_CLAIM_MAX_PAIRS = {}",
         num_pairs,
         GKR_COMBINED_CLAIM_MAX_PAIRS,
     );

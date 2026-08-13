@@ -1,5 +1,7 @@
 use super::*;
-use crate::gkr::whir::{hypercube_to_monomial, ColumnMajorBaseOracleForLDE};
+use crate::gkr::whir::{
+    hypercube_to_monomial, ColumnMajorBaseOracleForLDE, InMemoryBaseOracle, MaterializedCosets,
+};
 use fft::Twiddles;
 use fft::{
     bitreverse_enumeration_inplace, distribute_powers_parallel, distribute_powers_serial,
@@ -351,7 +353,75 @@ pub(crate) fn compute_column_major_monomial_form_from_main_domain_owned<
     ifft
 }
 
-fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdicField>(
+/// LDE a batch of already-packed monomial forms (all `2^coset_size_log2` long)
+/// into all `lde_factor` cosets, CONSUMING the monomial forms. For each coset:
+/// scale by the coset offset's powers, bit-reverse, forward NTT — one column at
+/// a time, each step worker-parallel; cosets run sequentially. Shared by the
+/// packed in-memory committers ([`commit_trace_part_packed`] and
+/// `initial_commit::commit_packed_merged_memory_and_witness_subtrees`).
+pub(crate) fn lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
+    mut monomials: Vec<Vec<F>>,
+    twiddles: &Twiddles<F, Global>,
+    lde_factor: usize,
+    worker: &Worker,
+) -> Vec<crate::gkr::whir::ColumnMajorBaseOracleForCoset<F>> {
+    use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
+
+    assert!(!monomials.is_empty());
+    assert!(lde_factor.is_power_of_two());
+    let coset_size_log2 = monomials[0].len().trailing_zeros() as usize;
+    for m in monomials.iter() {
+        assert_eq!(m.len(), 1usize << coset_size_log2);
+    }
+    assert!(twiddles.forward_twiddles.len() >= (1usize << (coset_size_log2 - 1)));
+
+    let next_root =
+        domain_generator_for_size::<F>(((1usize << coset_size_log2) * lde_factor) as u64);
+    let root_powers =
+        materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
+    assert_eq!(root_powers[0], F::ONE);
+
+    let mut cosets = Vec::with_capacity(lde_factor);
+    for i in 0..lde_factor {
+        let mut sources = if i == lde_factor - 1 {
+            core::mem::replace(&mut monomials, vec![])
+        } else {
+            monomials.clone()
+        };
+        let offset = root_powers[i];
+        for src in sources.iter_mut() {
+            if i != 0 {
+                distribute_powers_parallel(src, F::ONE, offset, worker);
+            }
+            bitreverse_enumeration_inplace(src);
+            fft::naive::parallel_ct_ntt_bitreversed_to_natural(
+                src,
+                coset_size_log2 as u32,
+                &twiddles.forward_twiddles[..(1usize << (coset_size_log2 - 1))],
+                worker,
+            );
+        }
+
+        let original_values_normal_order: Vec<_> = sources
+            .into_iter()
+            .map(|el| ColumnMajorCosetBoundTracePart {
+                column: Arc::new(el.into_boxed_slice()),
+                offset,
+            })
+            .collect();
+
+        cosets.push(ColumnMajorBaseOracleForCoset {
+            original_values_normal_order,
+            offset,
+            coset_size_log2,
+        });
+    }
+    assert_eq!(cosets.len(), lde_factor);
+
+    cosets
+}
+
+pub(crate) fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdicField>(
     evals: &[&[F]],
     twiddles: &Twiddles<F, Global>,
     lde_factor: usize,
@@ -411,7 +481,12 @@ fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdicField>(
     cosets
 }
 
-pub fn commit_trace_part<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>(
+pub fn commit_trace_part<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    backend: &impl crate::gkr::prover::backend::Backend<F, E>,
     input_on_hypercube: &[&[F]],
     twiddles: &Twiddles<F, Global>,
     lde_factor: usize,
@@ -442,22 +517,24 @@ where
             };
             cosets.push(trace_part);
         }
-        return ColumnMajorBaseOracleForLDE {
-            cosets,
+        return ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
+            cosets: MaterializedCosets { cosets },
             tree: T::dummy(),
             values_per_leaf: 1 << whir_first_fold_step_log2,
             coset_size_log2: trace_len_log2,
-        };
+        });
     }
 
     let values_per_leaf = 1 << whir_first_fold_step_log2;
     use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
-    let evals = lde_multiple_polys_parallel_from_hypercubes(
+    let t_lde = std::time::Instant::now();
+    let evals = backend.lde_multiple_polys_from_hypercubes(
         input_on_hypercube,
         twiddles,
         lde_factor,
         worker,
     );
+    let t_lde = t_lde.elapsed();
     let mut cosets = Vec::with_capacity(lde_factor);
     for coset in evals.into_iter() {
         assert!(!coset.is_empty());
@@ -486,7 +563,8 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<F, Global>(
+    let t_tree = std::time::Instant::now();
+    let tree = T::construct_from_cosets::<F>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -495,13 +573,22 @@ where
         false,
         worker,
     );
+    println!(
+        "[timing] base commit part: {} cols 2^{}, lde {}, {} values/leaf -> LDE {:.3?}, tree {:.3?}",
+        input_on_hypercube.len(),
+        trace_len_log2,
+        lde_factor,
+        values_per_leaf,
+        t_lde,
+        t_tree.elapsed(),
+    );
 
-    ColumnMajorBaseOracleForLDE {
-        cosets,
+    ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
+        cosets: MaterializedCosets { cosets },
         tree,
         values_per_leaf,
         coset_size_log2: trace_len_log2,
-    }
+    })
 }
 
 /// Packed analogue of [`commit_trace_part`]: instead of committing each input
@@ -520,8 +607,10 @@ where
 )]
 pub fn commit_trace_part_packed<
     F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
 >(
+    backend: &impl crate::gkr::prover::backend::Backend<F, E>,
     input_on_hypercube: &[&[F]],
     twiddles: &Twiddles<F, Global>,
     lde_factor: usize,
@@ -558,17 +647,17 @@ where
                 coset_size_log2: packed_trace_len_log2,
             });
         }
-        return ColumnMajorBaseOracleForLDE {
-            cosets,
+        return ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
+            cosets: MaterializedCosets { cosets },
             tree: T::dummy(),
             values_per_leaf,
             coset_size_log2: packed_trace_len_log2,
-        };
+        });
     }
 
     // Pack `2^pack_log2` polys into each packed multilinear (monomial form).
-    let mut monomials =
-        pack_polys_parallel_from_hypercubes_to_monomials(input_on_hypercube, pack_log2, worker);
+    let monomials =
+        backend.pack_polys_from_hypercubes_to_monomials(input_on_hypercube, pack_log2, worker);
     for m in monomials.iter() {
         assert_eq!(
             m.len(),
@@ -578,46 +667,7 @@ where
     }
 
     // Same coset-by-coset LDE as `commit_packed_merged_memory_and_witness_subtrees`.
-    let mut cosets = Vec::with_capacity(lde_factor);
-    #[expect(
-        clippy::needless_range_loop,
-        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
-    )]
-    for i in 0..lde_factor {
-        let mut sources = if i == lde_factor - 1 {
-            std::mem::take(&mut monomials)
-        } else {
-            monomials.clone()
-        };
-        let offset = root_powers[i];
-        for src in sources.iter_mut() {
-            if i != 0 {
-                distribute_powers_parallel(src, F::ONE, offset, worker);
-            }
-            bitreverse_enumeration_inplace(src);
-            fft::naive::parallel_ct_ntt_bitreversed_to_natural(
-                src,
-                packed_trace_len_log2 as u32,
-                &twiddles.forward_twiddles,
-                worker,
-            );
-        }
-
-        let original_values_normal_order: Vec<_> = sources
-            .into_iter()
-            .map(|el| ColumnMajorCosetBoundTracePart {
-                column: Arc::new(el.into_boxed_slice()),
-                offset,
-            })
-            .collect();
-
-        cosets.push(ColumnMajorBaseOracleForCoset {
-            original_values_normal_order,
-            offset,
-            coset_size_log2: packed_trace_len_log2,
-        });
-    }
-    assert_eq!(cosets.len(), lde_factor);
+    let cosets = backend.lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, worker);
 
     let source: Vec<_> = cosets
         .iter()
@@ -630,7 +680,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<F, Global>(
+    let tree = T::construct_from_cosets::<F>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -640,12 +690,12 @@ where
         worker,
     );
 
-    ColumnMajorBaseOracleForLDE {
-        cosets,
+    ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
+        cosets: MaterializedCosets { cosets },
         tree,
         values_per_leaf,
         coset_size_log2: packed_trace_len_log2,
-    }
+    })
 }
 
 pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + TwoAdicField>(

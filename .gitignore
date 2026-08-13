@@ -11,3 +11,7 @@ rustc-ice-*.*
 verifier_evm/private/*_gist.sh
 __pycache__/
 *.pyc
+# Generated on-disk dumps of RS codewords and merkle trees
+# (prover `gkr::whir::rs_on_disk` coset files and `merkle_trees::on_disk` tree files).
+*.rscw
+*.tree

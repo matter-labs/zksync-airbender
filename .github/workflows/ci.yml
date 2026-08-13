@@ -12,7 +12,8 @@ permissions: read-all
 jobs:
   tests:
     name: tests
-    runs-on: [matterlabs-ci-runner-highmem]
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -31,6 +32,12 @@ jobs:
         env:
           CI: "true"
         run: cargo test --profile cli -- --nocapture
+      - name: GPU test serialization drift guard
+        run: cargo test -p gpu_core --profile cli cpu_nextest_config_covers_all_gpu_crates
+      - name: GKR compiler feature tests
+        env:
+          RUST_MIN_STACK: 16777216
+        run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_search --bin gkr-forward-artifact
 
   formatting:
     name: cargo fmt

@@ -1,5 +1,6 @@
 use crate::upstream::{
-    assemble_query_index, draw_query_bits, BitSource, GKRExternalChallenges, Seed, Transcript,
+    assemble_query_index, draw_query_bits, BitSource, Blake2sTranscript, GKRExternalChallenges,
+    Seed, Transcript,
 };
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use gpu_core::primitives::field::{BF, E4};
@@ -17,7 +18,7 @@ fn draw_query_bits_with_external_nonce(
             "pow_bits=0 expects the external nonce to be zero",
         );
     }
-    Transcript::verify_pow(seed, external_nonce, pow_bits);
+    <Blake2sTranscript as Transcript<BF, E4>>::verify_pow(seed, external_nonce, pow_bits);
 
     (
         external_nonce,
@@ -30,7 +31,7 @@ fn draw_query_bits_after_verified_pow(seed: &mut Seed, num_bits_for_queries: usi
     let num_required_words_padded =
         (num_required_words + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
     let mut source = vec![0u32; num_required_words_padded];
-    Transcript::draw_randomness(seed, &mut source);
+    <Blake2sTranscript as Transcript<BF, E4>>::draw_randomness(seed, &mut source);
 
     BitSource::new(source[1..].to_vec())
 }
@@ -87,8 +88,12 @@ fn external_nonce_query_bits_match_cpu_draw_query_bits() {
         let num_bits_for_queries = num_queries * query_index_bits;
         let mut cpu_seed = seed;
         let mut external_seed = seed;
-        let (cpu_nonce, mut cpu_bits) =
-            draw_query_bits(&mut cpu_seed, num_bits_for_queries, pow_bits, &worker);
+        let (cpu_nonce, mut cpu_bits) = draw_query_bits::<BF, E4, Blake2sTranscript>(
+            &mut cpu_seed,
+            num_bits_for_queries,
+            pow_bits,
+            &worker,
+        );
         let (external_nonce, mut external_bits) = draw_query_bits_with_external_nonce(
             &mut external_seed,
             num_bits_for_queries,
@@ -164,7 +169,8 @@ fn initial_transcript_input_matches_cpu_order_with_and_without_setup_caps() {
     expected_without_setup.extend_from_slice(&witness_caps);
     assert_eq!(without_setup, expected_without_setup);
 
-    let with_setup_seed = Transcript::commit_initial(&with_setup);
+    let with_setup_seed =
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&with_setup);
     let mut expected_with_setup_seed = canonical_top_bits.clone();
     external_challenges.flatten_into_buffer(&mut expected_with_setup_seed);
     expected_with_setup_seed.extend_from_slice(&setup_caps);
@@ -172,16 +178,17 @@ fn initial_transcript_input_matches_cpu_order_with_and_without_setup_caps() {
     expected_with_setup_seed.extend_from_slice(&witness_caps);
     assert_eq!(
         with_setup_seed,
-        Transcript::commit_initial(&expected_with_setup_seed)
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&expected_with_setup_seed)
     );
 
-    let without_setup_seed = Transcript::commit_initial(&without_setup);
+    let without_setup_seed =
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&without_setup);
     let mut expected_without_setup_seed = canonical_top_bits;
     external_challenges.flatten_into_buffer(&mut expected_without_setup_seed);
     expected_without_setup_seed.extend_from_slice(&memory_caps);
     expected_without_setup_seed.extend_from_slice(&witness_caps);
     assert_eq!(
         without_setup_seed,
-        Transcript::commit_initial(&expected_without_setup_seed)
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&expected_without_setup_seed)
     );
 }

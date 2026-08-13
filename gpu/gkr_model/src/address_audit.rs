@@ -1,14 +1,12 @@
 //! Address classification and relation/cache dependency-collection primitives
-//! for the GKR backward path, shared by the storage layout (`storage_layout`)
-//! and the diagnostic audit pass in `gpu_circuit_prover`. Pure structural walks
-//! of `cs::gkr_compiler::GKRCircuitArtifact` — no GPU allocations, challenges,
-//! or kernel launches.
+//! for the GKR backward path and storage layout. Pure structural walks of
+//! `cs::gkr_compiler::GKRCircuitArtifact` — no GPU work.
 //!
 //! Storage-partition taxonomy used as the backing-buffer key by
 //! `base_class_backings` / `ext_class_backings` and as the per-launch slot
 //! key by the dim-reducing kernel's dynamic `bases[16]` pointer table.
 //! Slot assignment within a launch is now dynamic and deduplicated by
-//! backing pointer (see `SlotTableBuilder` in `backward::compact::encoder`),
+//! backing pointer (see `gpu_gkr::backward::dim_reducing_encoder`),
 //! so the per-layer ceiling is the kernel's `bases[]` width.
 //!
 //! | class                       | role                                      |
@@ -26,10 +24,11 @@
 
 use crate::upstream::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp, GKRAddress,
-    NoFieldGKRCacheRelation, NoFieldGKRRelation, NoFieldLinearRelation,
-    NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation,
-    NoFieldSingleColumnLookupRelation, NoFieldSpecialMemoryContributionRelation,
-    NoFieldVectorLookupRelation, RamWordRepresentation,
+    InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation, NoFieldGKRRelation,
+    NoFieldLinearRelation, NoFieldMaxQuadraticConstraintsGKRRelation,
+    NoFieldMaxQuadraticGKRRelation, NoFieldSingleColumnLookupRelation,
+    NoFieldSpecialMemoryContributionRelation, NoFieldVectorLookupRelation, PrimeField,
+    RamWordRepresentation,
 };
 
 /// Per-launch hard cap on distinct backings. Matches the dim-reducing
@@ -166,30 +165,31 @@ fn collect_memory_dependencies(
 
 /// Walk a `NoFieldGKRRelation` and collect every `GKRAddress` it touches,
 /// classified as "read" (input/source) or "write" (output/sink).
-pub fn collect_addresses_from_relation(
-    rel: &NoFieldGKRRelation,
+pub fn collect_addresses_from_relation<F: PrimeField>(
+    rel: &NoFieldGKRRelation<F>,
     reads: &mut Vec<GKRAddress>,
     writes: &mut Vec<GKRAddress>,
 ) {
     use NoFieldGKRRelation::*;
 
-    let push_linear = |r: &NoFieldLinearRelation, reads: &mut Vec<GKRAddress>| {
+    let push_linear = |r: &NoFieldLinearRelation<F>, reads: &mut Vec<GKRAddress>| {
         for (_, a) in r.linear_terms.iter() {
             reads.push(*a);
         }
     };
-    let push_vector = |v: &NoFieldVectorLookupRelation, reads: &mut Vec<GKRAddress>| {
+    let push_vector = |v: &NoFieldVectorLookupRelation<F>, reads: &mut Vec<GKRAddress>| {
         for col in v.columns.iter() {
             for (_, a) in col.linear_terms.iter() {
                 reads.push(*a);
             }
         }
     };
-    let push_single_lookup = |s: &NoFieldSingleColumnLookupRelation,
+    let push_single_lookup = |s: &NoFieldSingleColumnLookupRelation<F>,
                               reads: &mut Vec<GKRAddress>| {
         push_linear(&s.input, reads)
     };
-    let push_max_quadratic = |q: &NoFieldMaxQuadraticGKRRelation, reads: &mut Vec<GKRAddress>| {
+    let push_max_quadratic = |q: &NoFieldMaxQuadraticGKRRelation<F>,
+                              reads: &mut Vec<GKRAddress>| {
         for (a, b) in q.quadratic_terms.iter() {
             reads.push(*a);
             for (_, c) in b.iter() {
@@ -201,7 +201,7 @@ pub fn collect_addresses_from_relation(
         }
     };
     let push_max_quadratic_constraints =
-        |q: &NoFieldMaxQuadraticConstraintsGKRRelation, reads: &mut Vec<GKRAddress>| {
+        |q: &NoFieldMaxQuadraticConstraintsGKRRelation<F>, reads: &mut Vec<GKRAddress>| {
             for ((a, b), _) in q.quadratic_terms.iter() {
                 reads.push(*a);
                 reads.push(*b);
@@ -217,11 +217,11 @@ pub fn collect_addresses_from_relation(
             push_linear(input, reads);
             writes.push(*output);
         }
-        MaxQuadratic { input, output } => {
+        MaxQuadratic { input, output, .. } => {
             push_max_quadratic(input, reads);
             writes.push(*output);
         }
-        EnforceSingleMaxQuadraticConstraint { input } => {
+        EnforceSingleMaxQuadraticConstraint { input, .. } => {
             push_max_quadratic(input, reads);
         }
         EnforceConstraintsMaxQuadratic { input } => {
@@ -392,7 +392,7 @@ pub fn collect_addresses_from_relation(
             set_idxes: _,
         } => {
             reads.extend_from_slice(setup);
-            if let cs::gkr_compiler::InitsOrTeardownsTimestampAndValue::Teardown {
+            if let InitsOrTeardownsTimestampAndValue::Teardown {
                 lhs_timestamp,
                 lhs_value,
                 rhs_timestamp,
@@ -411,11 +411,9 @@ pub fn collect_addresses_from_relation(
     }
 }
 
-/// Walk a cache relation (these are the prepare-cache kernels for the layer)
-/// and collect every `GKRAddress` it reads. The output is the cache's own
-/// address (the BTreeMap key in `cached_relations`).
-pub fn collect_addresses_from_cache_relation(
-    rel: &NoFieldGKRCacheRelation,
+/// Collect every address read by a cache relation.
+pub fn collect_addresses_from_cache_relation<F: PrimeField>(
+    rel: &NoFieldGKRCacheRelation<F>,
     reads: &mut Vec<GKRAddress>,
 ) {
     for a in rel.dependencies() {

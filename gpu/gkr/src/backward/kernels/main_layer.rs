@@ -1,416 +1,57 @@
 use std::collections::VecDeque;
 
-use super::super::super::{
-    GpuGKRStorage, GpuSumcheckRound0LaunchDescriptors, GpuSumcheckRound1PreparedStorage,
-    GpuSumcheckRound1ScheduledLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
-    GpuSumcheckRound3AndBeyondPreparedStorage,
-};
+use super::super::super::GpuGKRStorage;
 use super::launchers::GkrEqSizes;
-use super::shared::{
-    ClaimBufferLayout, DeviceClaimPointAndBatching, ScheduledChallengeStorage,
-    ScheduledDimensionReducingFinalReadback,
-};
-use crate::immediate_factors::ImmediateFactorRecipeStructural;
-use crate::upstream::{
-    Field, FieldExtension, GKRExternalChallenges, GKRInputs, GKRLayerDescription, Seed,
-};
-use era_cudart::result::CudaResult;
-use gpu_core::primitives::callbacks::Callbacks;
+use super::shared::{ClaimBufferLayout, DeviceClaimPointAndBatching};
+use crate::upstream::GKRAddress;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
-use gpu_core::primitives::field::BF;
-use gpu_prover_context::ProverContext;
+use gpu_core::primitives::field::{BF, E4};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-#[doc(hidden)]
-pub enum GpuGKRMainLayerKernelKind {
-    BaseCopy = 0,
-    ExtCopy = 1,
-    Product = 2,
-    MaskIdentity = 3,
-    LookupPair = 4,
-    LookupBasePair = 5,
-    LookupBaseMinusMultiplicityByBase = 6,
-    LookupExtMinusMultiplicityByExt = 7,
-    LookupUnbalanced = 8,
-    LookupWithCachedDensAndSetup = 9,
-    EnforceConstraintsMaxQuadratic = 10,
-    LinearBaseOutput = 11,
-    InitsAndTeardownsInitialPair = 12,
-    InitialGrandProductWithoutCaches = 13,
-    MaterializeGrandProductTermExpression = 14,
-    LookupPairFromBaseInputs = 15,
-    LookupWithDensAndSetupExpressions = 16,
-    LookupPairFromVectorInputs = 17,
-    LookupFromVectorInputWithSetup = 18,
-    LookupUnbalancedPairWithVectorInputs = 19,
-    LookupExtPair = 20,
-    LookupUnbalancedExtension = 21,
-    MaxQuadraticBaseOutput = 22,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
-#[doc(hidden)]
-pub struct GpuGKRMainLayerConstraintQuadraticTerm<E> {
-    pub lhs: u32,
-    pub rhs: u32,
-    pub challenge: E,
-    pub immediate_recipe: ImmediateFactorRecipeStructural,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
-#[doc(hidden)]
-pub struct GpuGKRMainLayerConstraintLinearTerm<E> {
-    pub input: u32,
-    pub challenge: E,
-    pub immediate_recipe: ImmediateFactorRecipeStructural,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[doc(hidden)]
-pub struct GpuGKRMainLayerConstraintHostMetadata<E> {
-    pub quadratic_terms: Vec<GpuGKRMainLayerConstraintQuadraticTerm<E>>,
-    pub linear_terms: Vec<GpuGKRMainLayerConstraintLinearTerm<E>>,
-    pub constant_offset: E,
-    pub(crate) constant_offset_recipe: ImmediateFactorRecipeStructural,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GpuGKRMainLayerConstraintChallengeTerm {
-    pub(crate) coeff: BF,
-    pub(crate) source: GpuGKRMainLayerDeferredChallengeSource,
-    pub(crate) power: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GpuGKRMainLayerDeferredChallengeSource {
-    LookupMultiplicative,
-    LookupAdditive,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GpuGKRMainLayerConstraintQuadraticTemplate {
-    pub(crate) lhs: u32,
-    pub(crate) rhs: u32,
-    pub(crate) challenge_terms: Vec<GpuGKRMainLayerConstraintChallengeTerm>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GpuGKRMainLayerConstraintLinearTemplate {
-    pub(crate) input: u32,
-    pub(crate) challenge_terms: Vec<GpuGKRMainLayerConstraintChallengeTerm>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GpuGKRMainLayerConstraintTemplate {
-    pub(crate) quadratic_terms: Vec<GpuGKRMainLayerConstraintQuadraticTemplate>,
-    pub(crate) linear_terms: Vec<GpuGKRMainLayerConstraintLinearTemplate>,
-    pub(crate) constant_terms: Vec<GpuGKRMainLayerConstraintChallengeTerm>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GpuGKRMainLayerAuxiliaryChallengeSource<E> {
-    Immediate(E),
-    LookupAdditive,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum GpuGKRMainLayerConstraintMetadataSource<E> {
-    Immediate(GpuGKRMainLayerConstraintHostMetadata<E>),
-    Deferred(GpuGKRMainLayerConstraintTemplate),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GpuGKRMainLayerKernelBlueprint<E> {
-    pub kind: GpuGKRMainLayerKernelKind,
-    pub inputs: GKRInputs,
-    pub batch_challenge_offset: usize,
-    pub batch_challenge_count: usize,
-    pub batch_challenges: Vec<E>,
-    pub(crate) auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource<E>,
-    pub(crate) constraint_metadata_source: Option<GpuGKRMainLayerConstraintMetadataSource<E>>,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct GpuGKRMainLayerRound3Prepared<E> {
-    pub(crate) step: usize,
-    pub(crate) prepared: GpuSumcheckRound3AndBeyondPreparedStorage<E>,
-}
-
-#[allow(dead_code)]
-pub(crate) struct GpuGKRMainLayerRoundScratch<E> {
-    pub(crate) claim_point: DeviceAllocation<E>,
-    pub(crate) eq_low_group: DeviceAllocation<E>,
-    pub(crate) accumulator: DeviceAllocation<E>,
-    pub(crate) reduction_output: DeviceAllocation<E>,
-    pub(crate) reduction_temp_storage: DeviceAllocation<u8>,
-    /// Per-block partials buffer holding warp-partial output from the round
-    /// kernels — consumed by the fused-tail mega-finalize.
-    pub(crate) partials: DeviceAllocation<E>,
+pub(crate) struct GpuGKRMainLayerRoundScratch {
+    pub(crate) eq_low_group: DeviceAllocation<E4>,
+    pub(crate) partials: DeviceAllocation<E4>,
 }
 
 #[doc(hidden)]
-pub struct GpuGKRMainLayerKernelPlan<E> {
-    pub kind: GpuGKRMainLayerKernelKind,
-    pub inputs: GKRInputs,
-    pub batch_challenge_offset: usize,
-    pub batch_challenge_count: usize,
-    pub batch_challenges: Vec<E>,
-    #[allow(dead_code)]
-    pub(crate) auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource<E>,
-    pub(crate) constraint_metadata_source: Option<GpuGKRMainLayerConstraintMetadataSource<E>>,
-    #[allow(dead_code)]
-    pub(crate) constraint_metadata_summary: Option<(usize, usize, E)>,
-    pub(crate) round1_prepared: GpuSumcheckRound1PreparedStorage<BF, E>,
-    pub(crate) round2_prepared: GpuSumcheckRound2PreparedStorage<BF, E>,
-    pub(crate) round3_and_beyond_prepared: Vec<GpuGKRMainLayerRound3Prepared<E>>,
-}
-
-/// Device-resident term/tile tables for one unified descriptor whose term/tile
-/// count overflows the inline `__grid_constant__` cap. The three
-/// `DeviceAllocation`s are plan-owned (stream-ordered drop, like the coeff
-/// device buffer); `tables` holds raw device pointers into them, passed by value
-/// to the `_devptr_terms_` kernels. The pinned host H2D sources are kept alive
-/// separately via a keepalive callback on `recipe_upload_callbacks` (their drop
-/// is not stream-ordered).
-pub(crate) struct FlatTermDeviceBuffers {
-    #[allow(dead_code)]
-    pub(crate) terms: DeviceAllocation<super::super::flat::GpuFlatUnifiedTerm>,
-    #[allow(dead_code)]
-    pub(crate) tile_term_offsets: DeviceAllocation<u16>,
-    #[allow(dead_code)]
-    pub(crate) tile_fold_offsets: DeviceAllocation<u16>,
-    pub(crate) tables: super::super::compact::GpuFlatTermTables,
-}
-
-// SAFETY: `tables` holds raw device pointers into the sibling `DeviceAllocation`
-// fields; they are never dereferenced from Rust, only forwarded to kernel args.
-unsafe impl Send for FlatTermDeviceBuffers {}
-unsafe impl Sync for FlatTermDeviceBuffers {}
-
-/// Device buffers backing the device-pointer eval-recipes descriptor
-/// (`GpuFlatRecipeEvalDescDevptr`), used when a layer's recipe/term/immediate
-/// tables overflow the inline `GpuFlatRecipeEvalDesc` caps. The four
-/// `DeviceAllocation`s are plan-owned (stream-ordered drop, like the coeff device
-/// buffer); `desc` holds raw device pointers into them, passed by value to the
-/// `_devptr` eval-recipes kernels. The pinned host H2D sources are kept alive
-/// separately via a keepalive callback on `recipe_upload_callbacks` (their drop
-/// is not stream-ordered).
-pub(crate) struct RecipeEvalDeviceBuffers {
-    #[allow(dead_code)]
-    pub(crate) headers: DeviceAllocation<crate::eval_recipes::GpuRecipeHeader>,
-    #[allow(dead_code)]
-    pub(crate) terms: DeviceAllocation<crate::eval_recipes::GpuPrefactorTerm>,
-    #[allow(dead_code)]
-    pub(crate) immediate_recipes:
-        DeviceAllocation<crate::immediate_factors::ImmediateFactorRecipeHeader>,
-    #[allow(dead_code)]
-    pub(crate) immediate_monomials:
-        DeviceAllocation<crate::immediate_factors::ImmediateFactorMonomial>,
-    pub(crate) desc: crate::eval_recipes::GpuFlatRecipeEvalDescDevptr,
-}
-
-// SAFETY: `desc` holds raw device pointers into the sibling `DeviceAllocation`
-// fields; they are never dereferenced from Rust, only forwarded to kernel args.
-unsafe impl Send for RecipeEvalDeviceBuffers {}
-unsafe impl Sync for RecipeEvalDeviceBuffers {}
-
-#[doc(hidden)]
-pub struct GpuGKRMainLayerSumcheckLayerPlan<E> {
+pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan {
     pub layer_idx: usize,
-    #[allow(dead_code)]
-    pub(crate) trace_len: usize,
     pub(crate) folding_steps: usize,
-    #[allow(dead_code)]
-    pub(crate) batch_challenge_base: Option<E>,
-    #[allow(dead_code)]
-    pub(crate) lookup_multiplicative_challenge: E,
-    #[allow(dead_code)]
-    pub(crate) lookup_additive_challenge: E,
-    #[allow(dead_code)]
-    pub(crate) external_challenges_flat: Vec<E>,
-    pub(crate) kernel_plans: Vec<GpuGKRMainLayerKernelPlan<E>>,
-    #[allow(dead_code)]
-    pub(crate) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
-    /// Compact flat round-0 descriptor. Consumed by
-    /// `launch_main_round0_constant`.
-    pub(crate) flat_round0_template_compact: Option<super::super::compact::FlatRound0BuildPlan>,
-    /// Inline eval-recipes descriptor passed by value to each round-0 launch.
-    /// Mutually exclusive with `flat_recipe_desc_device`: exactly one is `Some`
-    /// when `flat_recipe_count > 0` (or both `None` when there are no recipes).
-    pub(crate) flat_recipe_desc: Option<Box<crate::eval_recipes::GpuFlatRecipeEvalDesc>>,
-    /// Device-recipes path for round 0. `Some` iff the recipe/term/
-    /// immediate tables overflow the inline caps; carries the device buffers +
-    /// the device-pointer companion desc read by the `_devptr` eval-recipes
-    /// kernel. Independent of the coefficient `__constant__` decision.
-    pub(crate) flat_recipe_desc_device: Option<RecipeEvalDeviceBuffers>,
-    pub(crate) flat_recipe_count: usize,
-    /// Device buffer for eval_recipes output (delegation L0 round 0 only; others write to __constant__).
-    pub(crate) flat_coeff_device_buf: Option<DeviceAllocation<E>>,
-    /// Whether round 0 uses __constant__ for coefficients (false only for delegation L0).
-    pub(crate) flat_use_constant: bool,
-    /// Device buffer for the continuation eval_recipes output. `None` when the
-    /// continuation coefficient count fits `FLAT_CONST_MAX` and the
-    /// `__constant__` symbol path is used; `Some` when it overflows and the
-    /// device-pointer continuation kernels read from here instead. Mirrors
-    /// `flat_coeff_device_buf` for the round-0 phase. Owned by the plan and
-    /// dropped only after every continuation launch reading it is scheduled.
-    pub(crate) flat_cont_coeff_device_buf: Option<DeviceAllocation<E>>,
-    /// Whether the continuation phase uses `__constant__` for coefficients
-    /// (true when the count fits `FLAT_CONST_MAX`).
-    pub(crate) flat_cont_use_constant: bool,
-    /// Flat continuation plan for rounds 1+ (shared term arrays + per-step source tables).
-    pub(crate) flat_continuation_plan: Option<super::super::flat::FlatContinuationBuildPlan>,
-    /// Inline eval-recipes descriptor passed by value to each continuation launch.
-    /// Mutually exclusive with `flat_cont_recipe_desc_device` (see round-0 pair).
-    pub(crate) flat_cont_recipe_desc: Option<Box<crate::eval_recipes::GpuFlatRecipeEvalDesc>>,
-    /// Device-recipes path for the continuation phase. Mirror of
-    /// `flat_recipe_desc_device` for rounds 3+.
-    pub(crate) flat_cont_recipe_desc_device: Option<RecipeEvalDeviceBuffers>,
-    pub(crate) flat_cont_recipe_count: usize,
-    /// Continuation compact descriptors (per step). Consumed by
-    /// `launch_main_round3_unified`.
-    pub(crate) flat_continuation_unified_descs_compact: Vec<(
-        usize,
-        Box<super::super::compact::GpuFlatContinuationUnifiedDesc>,
-    )>,
-    /// Round 1 compact descriptor. Consumed by
-    /// `launch_main_round1_unified`.
-    pub(crate) flat_round1_unified_desc_compact:
-        Option<Box<super::super::compact::GpuFlatRound1UnifiedDesc>>,
-    /// Round 2 compact descriptor.
-    pub(crate) flat_round2_unified_desc_compact:
-        Option<Box<super::super::compact::GpuFlatRound2UnifiedDesc>>,
-    /// Device-terms path. `Some` iff the descriptor's term/tile count
-    /// overflows the inline cap; carries the device-pointer companion desc +
-    /// the device term/tile buffers. When present the `_devptr_terms_` kernel is
-    /// dispatched (which reads coefficients from the device buffer too, so
-    /// `flat_cont_use_constant` is forced `false` whenever any of these is set).
-    pub(crate) flat_round1_terms_device: Option<(
-        Box<super::super::compact::GpuFlatRound1UnifiedDescDevptr>,
-        FlatTermDeviceBuffers,
-    )>,
-    pub(crate) flat_round2_terms_device: Option<(
-        Box<super::super::compact::GpuFlatRound2UnifiedDescDevptr>,
-        FlatTermDeviceBuffers,
-    )>,
-    /// Per-step device-terms companions for continuation rounds (≥3). Only
-    /// overflowing steps are present; keyed by step to match
-    /// `flat_continuation_unified_descs_compact`.
-    pub(crate) flat_continuation_terms_device: Vec<(
-        usize,
-        Box<super::super::compact::GpuFlatContinuationUnifiedDescDevptr>,
-        FlatTermDeviceBuffers,
-    )>,
-    pub(crate) round_scratch: GpuGKRMainLayerRoundScratch<E>,
-    /// Keepalive slot for scheduling callbacks unrelated to inline recipe descriptors.
-    pub(crate) recipe_upload_callbacks: Callbacks<'static>,
-    /// When set, `batch_challenge_base_ptr()` returns this raw pointer instead
-    /// of `round_scratch.claim_point.as_ptr().add(folding_steps)`. The
-    /// workflow_state path uses this to point at the orchestrator-owned
-    /// `device_claim_point_in[folding_steps]` so the per-layer
-    /// `round_scratch.claim_point` D2D is no longer needed.
-    #[allow(dead_code)]
-    pub(crate) batch_challenge_base_override_ptr: Option<*const E>,
-    /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
-    /// `make_eq_sizes(folding_steps - 1)`, mutated in place by
-    /// `fold_eq_values_for_next_round` between sumcheck rounds, and passed by
-    /// value into each main-layer flat compact kernel-arg struct.
+    pub(crate) claim_terms: Vec<(usize, GKRAddress)>,
+    pub(crate) folding_evaluation_sources: Vec<crate::upstream::GKRAddress>,
+    pub(crate) round_scratch: GpuGKRMainLayerRoundScratch,
+    pub(crate) bwd_vm_round0: super::super::vm::production_bind::BwdVmRound0Launch,
+    pub(crate) bwd_vm_ext: super::super::vm::production_bind::BwdVmExtLaunch,
     pub(crate) eq_sizes: GkrEqSizes,
 }
 
-// SAFETY: `batch_challenge_base_override_ptr` only stores a raw pointer into a
-// device allocation that the caller keeps alive for the full duration of any
-// scheduled stream op consuming this layer plan. The pointer is never
-// dereferenced from Rust — it is only forwarded to kernel arguments.
-unsafe impl<E> Send for GpuGKRMainLayerSumcheckLayerPlan<E> where E: Send {}
-unsafe impl<E> Sync for GpuGKRMainLayerSumcheckLayerPlan<E> where E: Sync {}
+// SAFETY: descriptor raw pointers are only forwarded to stream-ordered kernels.
+unsafe impl Send for GpuGKRMainLayerSumcheckLayerPlan {}
+unsafe impl Sync for GpuGKRMainLayerSumcheckLayerPlan {}
 
 #[doc(hidden)]
-pub struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
-    #[allow(dead_code)]
+pub(crate) struct GpuGKRMainLayerBackwardState {
+    #[allow(dead_code)] // Keeps queued forward ranges alive through backward scheduling.
     pub(crate) forward_tracing_ranges: Vec<Range>,
-    pub(crate) storage: GpuGKRStorage<BF, E>,
-    pub(crate) pending_layers: VecDeque<(usize, GKRLayerDescription)>,
+    pub(crate) storage: GpuGKRStorage<BF, E4>,
+    pub(crate) pending_layers: VecDeque<usize>,
     pub(crate) trace_len: usize,
-    pub(crate) external_challenges: GKRExternalChallenges<BF, E>,
     pub(crate) inits_and_teardowns_top_bits: Vec<u32>,
-    pub(crate) inits_and_teardowns_address_high_bits_shift: u32,
-    pub(crate) lookup_multiplicative_challenge: E,
-    pub(crate) lookup_additive_challenge: E,
-    pub(crate) is_delegation: bool,
-}
-
-pub(crate) struct ScheduledMainLayerExecutionState<E: FieldExtension<BF> + Field> {
-    pub(crate) seed: Seed,
-    pub(crate) folding_challenges: Vec<E>,
+    pub(crate) programs: std::sync::Arc<crate::GkrPrograms>,
 }
 
 #[doc(hidden)]
-pub struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> + Field> {
+pub(crate) struct GpuGKRMainLayerScheduledLayerExecution {
     #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
     pub(crate) tracing_ranges: Vec<Range>,
-    #[allow(dead_code)]
-    pub(crate) start_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    pub(crate) batch_challenge_storage: ScheduledChallengeStorage<E>,
-    #[allow(dead_code)]
-    pub(crate) final_readback: ScheduledDimensionReducingFinalReadback,
-    #[allow(dead_code)]
-    pub(crate) flat_coeff_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    pub(crate) recipe_upload_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    // keepalive: shared state is referenced by stream-scheduled callbacks via shared_state_handle.
-    pub(crate) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
     /// Device-resident Fiat-Shamir seed (see dim-reducing twin). Taken by the
     /// orchestrator to thread into the next backward layer.
     pub(crate) device_seed: Option<DeviceAllocation<u32>>,
     /// Device-resident `[claim_point || batching_challenge]` for the NEXT
     /// backward layer (see dim-reducing twin). Taken by the orchestrator.
-    pub(crate) device_claim_point_for_next_layer: Option<DeviceClaimPointAndBatching<E>>,
+    pub(crate) device_claim_point_for_next_layer: Option<DeviceClaimPointAndBatching>,
     /// Device-resident `current_claims` buffer for the NEXT backward layer.
-    pub(crate) device_claims_for_next_layer: Option<DeviceAllocation<E>>,
+    pub(crate) device_claims_for_next_layer: Option<DeviceAllocation<E4>>,
     /// Explicit address order of `device_claims_for_next_layer`.
     pub(crate) claim_layout_for_next_layer: Option<ClaimBufferLayout>,
-}
-
-// Relocated from `#[cfg(test)] mod tests` (row 31): apex `expected_specs`
-// reads these summaries. `#[doc(hidden)] pub` per the test-reference policy.
-impl<E: Copy + Field> GpuGKRMainLayerKernelPlan<E> {
-    #[doc(hidden)]
-    pub fn auxiliary_challenge_summary(&self) -> Option<E> {
-        match self.auxiliary_challenge_source {
-            GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(value) => Some(value),
-            GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive => None,
-        }
-    }
-
-    #[doc(hidden)]
-    pub fn constraint_metadata_summary(&self) -> Option<(usize, usize, E)> {
-        self.constraint_metadata_summary
-    }
-}
-
-// Relocated from `#[cfg(test)] mod tests` (row 23): apex `smoke` drives
-// round-1 descriptor upload through this. `#[doc(hidden)] pub`.
-impl<E: Field + 'static> GpuGKRMainLayerSumcheckLayerPlan<E> {
-    #[doc(hidden)]
-    pub fn schedule_round_1(
-        &self,
-        callbacks: &mut Callbacks<'static>,
-        context: &ProverContext,
-    ) -> CudaResult<Vec<GpuSumcheckRound1ScheduledLaunchDescriptors<BF, E>>> {
-        self.kernel_plans
-            .iter()
-            .map(|kernel| {
-                kernel
-                    .round1_prepared
-                    .schedule_upload_launch_descriptors(context, callbacks)
-            })
-            .collect()
-    }
 }

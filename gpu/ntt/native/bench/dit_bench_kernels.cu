@@ -19,7 +19,7 @@ DEVICE_FORCEINLINE void ntt_two_pass_fixed(const bf *__restrict__ monomials_bitr
   constexpr unsigned P1C = coupled_triangle_count<LOG_N, LOG_VPT, G::LOG_N1>();
   constexpr unsigned P2C = clean_triangle_count<G::LOG_N2, LOG_VPT>();
   constexpr unsigned P2C_PAD = (P2C + 3u) & ~3u; // keep d_smem/slab 16B-aligned
-  extern __shared__ bf smem[];
+  extern __shared__ __align__(16) bf smem[];
 
   bf *const couple = smem;            // P1C (mult of 4)
   bf *const tw_p2 = couple + P1C;     // P2C entries, P2C_PAD reserved

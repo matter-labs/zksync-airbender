@@ -23,7 +23,9 @@ use crate::gkr::witness_gen::family_circuits::{
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use crate::merkle_trees::DefaultTreeConstructor;
-use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength};
+use crate::merkle_trees::{
+    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueriable,
+};
 use crate::tests::gkr::GKRFullWitnessTrace;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -404,7 +406,8 @@ fn commit_memory_cap(
         level,
     );
     let twiddles: Twiddles<BabyBearField, Global> = Twiddles::new(trace_len, worker);
-    let mem = commit_trace_part::<BabyBearField, DefaultTreeConstructor>(
+    let mem = commit_trace_part::<BabyBearField, BabyBearField, DefaultTreeConstructor>(
+        &crate::gkr::prover::backend::NaiveBackend,
         columns,
         &twiddles,
         prover_config.lde_factor,
@@ -413,7 +416,7 @@ fn commit_memory_cap(
         trace_len_log2,
         worker,
     );
-    <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(&mem.tree)
+    mem.get_cap()
 }
 
 fn unified_register_final_values<C>(vm: &VmRunOutput<C>) -> Vec<FinalRegisterValue>
@@ -885,10 +888,8 @@ pub fn prove_built_unified_trace(
 
     // The setup-tree cap is the FSV's prepended verification key (matched against every
     // proof's embedded setup cap). cap_size == DEFAULT_CAP_SIZE, so `into_fixed_holder` fits.
-    let setup_cap =
-        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
-            &unified_setup_commitment.tree,
-        )
+    let setup_cap = unified_setup_commitment
+        .get_cap()
         .into_fixed_holder::<DEFAULT_CAP_SIZE>();
 
     (proof, setup_cap)

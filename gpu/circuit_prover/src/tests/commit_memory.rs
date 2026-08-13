@@ -1,5 +1,37 @@
 use super::*;
 
+fn compile_mem_word_only_circuit_for_test(binary: &[u32]) -> GKRCircuitArtifact<BF> {
+    let tables = create_mem_word_only_special_tables::<_, { ROM_SECOND_WORD_BITS }>(binary);
+    compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| {
+            mem_word_only_table_addition_fn(cs);
+            for (table_type, table) in tables.clone() {
+                cs.add_table_with_content(table_type, table);
+            }
+        },
+        &|cs| mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        UnrolledMemoryCircuitType::LoadStoreWordOnly.get_domain_size_log2() as usize,
+        0,
+    )
+}
+
+fn compile_mem_subword_only_circuit_for_test(binary: &[u32]) -> GKRCircuitArtifact<BF> {
+    let tables = create_mem_subword_only_special_tables::<_, { ROM_SECOND_WORD_BITS }>(binary);
+    compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| {
+            mem_subword_only_table_addition_fn(cs);
+            for (table_type, table) in tables.clone() {
+                cs.add_table_with_content(table_type, table);
+            }
+        },
+        &|cs| mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        UnrolledMemoryCircuitType::LoadStoreSubwordOnly.get_domain_size_log2() as usize,
+        0,
+    )
+}
+
 #[test]
 #[ignore]
 fn test_commit_memory_matches_cpu() {
@@ -8,6 +40,7 @@ fn test_commit_memory_matches_cpu() {
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2() as usize,
+        0,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
         "examples/basic_fibonacci/app.bin",
@@ -27,6 +60,7 @@ fn test_jump_branch_slt_commit_memory_matches_cpu() {
         &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2() as usize,
+        0,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
@@ -46,6 +80,7 @@ fn test_shift_binop_commit_memory_matches_cpu() {
         &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         UnrolledNonMemoryCircuitType::ShiftBinary.get_domain_size_log2() as usize,
+        0,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
@@ -127,9 +162,8 @@ fn test_blake2_delegation_zero_call_commit_memory_matches_cpu() {
 /// Close that gap: run the production GPU `commit_memory` over the unified trace
 /// (the same call the no-CPU fixture path uses) and assert its per-coset caps
 /// equal the CPU-derived caps (`fixture.base.memory_tree_caps`, split from the
-/// CPU proof's `memory_commitment.commitment.cap`). GATE 1 already proves the
-/// memory *column values* bit-exact; this isolates the LDE/Merkle tree build at
-/// the unified width.
+/// CPU proof's `memory_commitment.commitment.cap`). This isolates the LDE/Merkle
+/// tree build at the unified width.
 #[test]
 #[ignore]
 fn run_unified_commit_memory_matches_cpu_test() {
@@ -196,8 +230,8 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     circuit_type: UnrolledNonMemoryCircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
 ) {
+    use crate::upstream::commit_trace_part;
     use gpu_trace::trace::memory::commit_memory;
-    use prover::gkr::prover::stages::stage1::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
     const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
@@ -318,7 +352,8 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, DefaultTreeConstructor>(
+    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor>(
+        &NaiveBackend,
         &mem_inputs,
         &twiddles,
         whir_schedule.base_lde_factor,
@@ -328,8 +363,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         &worker,
     );
     let mut cpu_transcript = vec![];
-    let cpu_cap: MerkleTreeCapVarLength =
-        ColumnMajorMerkleTreeConstructor::<BF>::get_cap(&cpu_mem_oracle.tree);
+    let cpu_cap: MerkleTreeCapVarLength = cpu_mem_oracle.get_cap();
     flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
     let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
@@ -390,8 +424,8 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     circuit_type: UnrolledMemoryCircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
 ) {
+    use crate::upstream::commit_trace_part;
     use gpu_trace::trace::memory::commit_memory;
-    use prover::gkr::prover::stages::stage1::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
     const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
@@ -512,7 +546,8 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, DefaultTreeConstructor>(
+    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor>(
+        &NaiveBackend,
         &mem_inputs,
         &twiddles,
         whir_schedule.base_lde_factor,
@@ -522,8 +557,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         &worker,
     );
     let mut cpu_transcript = vec![];
-    let cpu_cap: MerkleTreeCapVarLength =
-        ColumnMajorMerkleTreeConstructor::<BF>::get_cap(&cpu_mem_oracle.tree);
+    let cpu_cap: MerkleTreeCapVarLength = cpu_mem_oracle.get_cap();
     flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
     let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
@@ -612,7 +646,8 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, DefaultTreeConstructor>(
+    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor>(
+        &NaiveBackend,
         &mem_inputs,
         &twiddles,
         whir_schedule.base_lde_factor,
@@ -622,8 +657,7 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
         &worker,
     );
     let mut cpu_transcript = vec![];
-    let cpu_cap: MerkleTreeCapVarLength =
-        ColumnMajorMerkleTreeConstructor::<BF>::get_cap(&cpu_mem_oracle.tree);
+    let cpu_cap: MerkleTreeCapVarLength = cpu_mem_oracle.get_cap();
     flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
 
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;

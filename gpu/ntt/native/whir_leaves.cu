@@ -4,12 +4,30 @@
 #include <primitives/vectorized.cuh>
 
 #include "context.cuh"
+#include "whir_leaf_transform.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 using namespace ::airbender::primitives::vectorized;
 
 namespace airbender::ntt {
+
+struct constant_inverse_power_source {
+  struct {
+    unsigned omega_log_order;
+  } params;
+
+  DEVICE_FORCEINLINE bf get(const unsigned idx) const { return get_inverse_twiddle_power(idx); }
+};
+
+struct matrix_leaf_destination {
+  static constexpr bool ALIASES_VALUES_SMEM = false;
+
+  vectorized_e4_matrix_setter<st_modifier::cs> dst;
+  unsigned leaves_per_coset;
+
+  DEVICE_FORCEINLINE void set_at_slot(const unsigned slot, const e4 value) { dst.set_at_row(leaves_per_coset * slot, value); }
+};
 
 // Implements "Improving running time via alternate domain evaluation" from page 15 of
 // https://eprint.iacr.org/2024/1586.pdf.
@@ -35,90 +53,15 @@ EXTERN __launch_bounds__(512, 2) __global__
   src.add_row(base_lane_in_coset);
   dst.add_row(base_lane_in_coset);
 
-  extern __shared__ uint8_t smem[];
+  extern __shared__ __align__(16) uint8_t smem[];
 
   const unsigned leaves_per_coset = 1 << log_leaves_per_coset;
-  const unsigned initial_slot_in_leaf = threadIdx.y;
-  const unsigned initial_exchg_stride = leaves_per_coset << (log_values_per_leaf - 1);
-  // Grabbing inputs by jumping around in bitreversed order is convenient for the NTT-like transform.
-  const unsigned src_row_a = leaves_per_coset * initial_slot_in_leaf;
-  const unsigned src_row_b = src_row_a + initial_exchg_stride;
-
-  const e4 a = src.get_at_row(src_row_a);
-  const e4 b = src.get_at_row(src_row_b);
-
-  const unsigned coset_offset = coset << (OMEGA_LOG_ORDER - log_trace_len - log_lde_factor);
-  bf x_inv = get_inverse_twiddle_power(((base_lane_in_coset + src_row_a) << (OMEGA_LOG_ORDER - log_trace_len)) + coset_offset);
-
-  const bf two_inv_power = ab_inv_sizes[log_values_per_leaf];
-
-  if (log_values_per_leaf == 1) {
-    // We need to multiply by two_inv_power at some point. Might as well be here.
-    const e4 c = e4::mul(two_inv_power, e4::add(a, b));
-    const e4 d = e4::mul(bf::mul(x_inv, two_inv_power), e4::sub(a, b));
-
-    dst.set(c);
-    dst.set_at_row(initial_exchg_stride, d);
-  } else {
-    e4 *smem_thread = reinterpret_cast<e4 *>(smem) + threadIdx.x;
-    bf *x_invs = reinterpret_cast<bf *>(smem + 2 * blockDim.x * blockDim.y * sizeof(e4)) + threadIdx.x;
-
-    // We need to multiply by two_inv_power at some point. Might as well be here.
-    smem_thread[blockDim.x * initial_slot_in_leaf] = e4::mul(two_inv_power, e4::add(a, b));
-    smem_thread[blockDim.x * (initial_slot_in_leaf + blockDim.y)] = e4::mul(bf::mul(x_inv, two_inv_power), e4::sub(a, b));
-
-    // Middle stages (stage enumeration runs from 0 to log_values_per_leaf - 1)
-    for (unsigned stage = 1; stage < log_values_per_leaf - 1; stage++) {
-      const unsigned log_exchg_stride = log_values_per_leaf - 1 - stage;
-      const unsigned exchg_stride = 1 << log_exchg_stride;
-      const unsigned exchg_region = threadIdx.y >> log_exchg_stride;
-      const unsigned exchg_lane = threadIdx.y & (exchg_stride - 1);
-      const unsigned mid_stage_slot_in_leaf = 2 * exchg_stride * exchg_region + exchg_lane;
-
-      // Publish squared x_invs reusable across exchange regions
-      if (exchg_region == 0) {
-        x_inv = bf::sqr(x_inv);
-        x_invs[blockDim.x * exchg_lane] = x_inv;
-      }
-      // TODO: Evaluate performance impact of full syncthreads().
-      // If it's bad, remap threads so exchanges happen within warps, with a swizzled access pattern to avoid bank conflicts.
-      __syncthreads();
-      const e4 a = smem_thread[blockDim.x * mid_stage_slot_in_leaf];
-      const e4 b = smem_thread[blockDim.x * (mid_stage_slot_in_leaf + exchg_stride)];
-      if (exchg_region != 0)
-        x_inv = x_invs[blockDim.x * exchg_lane];
-      // not needed because
-      //  - in each stage, each thread acts on its touched smem in place,
-      //  - we use fresh smem to share x_invs each iteration
-      // __syncthreads();
-
-      const e4 c = e4::add(a, b);
-      const e4 d = e4::mul(x_inv, e4::sub(a, b));
-      smem_thread[blockDim.x * mid_stage_slot_in_leaf] = c;
-      smem_thread[blockDim.x * (mid_stage_slot_in_leaf + exchg_stride)] = d;
-
-      x_invs += blockDim.x * (blockDim.y >> stage);
-    }
-
-    // Last stage (special cased to elide a bit of work)
-    const unsigned final_slot_in_leaf = 2 * threadIdx.y;
-
-    // Leader publishes final squared x_inv
-    if (threadIdx.y == 0) {
-      x_inv = bf::sqr(x_inv);
-      x_invs[0] = x_inv;
-    }
-    __syncthreads();
-    if (threadIdx.y != 0)
-      x_inv = x_invs[0];
-    const e4 a = smem_thread[blockDim.x * final_slot_in_leaf];
-    const e4 b = smem_thread[blockDim.x * (final_slot_in_leaf + 1)];
-
-    const e4 c = e4::add(a, b);
-    const e4 d = e4::mul(x_inv, e4::sub(a, b));
-    dst.set_at_row(leaves_per_coset * final_slot_in_leaf, c);
-    dst.set_at_row(leaves_per_coset * (final_slot_in_leaf + 1), d);
-  }
+  e4 *values_smem = reinterpret_cast<e4 *>(smem);
+  bf *x_invs_smem = reinterpret_cast<bf *>(smem + 2 * blockDim.x * blockDim.y * sizeof(e4));
+  matrix_leaf_destination destination{dst, leaves_per_coset};
+  constant_inverse_power_source inverse_power_source{{OMEGA_LOG_ORDER}};
+  transform_whir_leaf_from_ntt(src, destination, log_trace_len, log_lde_factor, log_values_per_leaf, coset, base_lane_in_coset, values_smem, x_invs_smem,
+                               ab_inv_sizes[log_values_per_leaf], inverse_power_source);
 }
 
 } // namespace airbender::ntt

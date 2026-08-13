@@ -31,7 +31,7 @@ pub(super) fn append_tower_layers<F: PrimeField>(
         return;
     }
     // Tower starts one storage layer past the artifact's last input layer.
-    // `schedule_dimension_reduction_forward` is called with
+    // `prepare_dimension_reduction_forward` is called with
     // `initial_layer_idx = compiled_circuit.layers.len()` and writes round 0's
     // outputs at `output_layer = initial_layer_idx + 1`. The artifact-driven
     // layout already covers up to `compiled_circuit.layers.len()`, so the

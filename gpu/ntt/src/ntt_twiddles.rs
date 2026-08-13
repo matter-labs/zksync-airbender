@@ -8,11 +8,13 @@ use crate::ntt::dit::DitTriangles;
 
 use crate::upstream::{
     bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,
+    TwoAdicField,
 };
 use gpu_core::primitives::field::BF;
-use gpu_core::primitives::utils::memcpy_to_symbol;
+use gpu_core::primitives::utils::{memcpy_to_symbol, ConstPtrSymbol};
 
-pub const OMEGA_LOG_ORDER: u32 = 27;
+pub const OMEGA_LOG_ORDER: u32 = <BF as TwoAdicField>::TWO_ADICITY as u32;
+const _: () = assert!(OMEGA_LOG_ORDER == 27); // native/context.cuh literal
 pub(crate) const LOG_MAX_NTT_SIZE: usize = 24;
 pub(crate) const CMEM_LOG_ORDER: usize = 19;
 pub(crate) const CMEM_COARSE_LOG_COUNT: usize = 10;
@@ -101,9 +103,9 @@ cuda_struct_and_stub! { static ab_fwd_cmem_twiddles_finest_10: [BF; 1 << 10]; }
 cuda_struct_and_stub! { static ab_inv_cmem_twiddles_finest_10: [BF; 1 << 10]; }
 cuda_struct_and_stub! { static ab_fwd_cmem_twiddles_finest_11: [BF; 1 << 11]; }
 cuda_struct_and_stub! { static ab_inv_cmem_twiddles_finest_11: [BF; 1 << 11]; }
-cuda_struct_and_stub! { static ab_fwd_gmem_twiddles_coarse: *const BF; }
-cuda_struct_and_stub! { static ab_inv_gmem_twiddles_coarse: *const BF; }
-cuda_struct_and_stub! { static ab_fully_precomputed_bitrev_twiddles: *const BF; }
+cuda_struct_and_stub! { static ab_fwd_gmem_twiddles_coarse: ConstPtrSymbol<BF>; }
+cuda_struct_and_stub! { static ab_inv_gmem_twiddles_coarse: ConstPtrSymbol<BF>; }
+cuda_struct_and_stub! { static ab_fully_precomputed_bitrev_twiddles: ConstPtrSymbol<BF>; }
 
 unsafe fn copy_to_symbols(
     powers_of_w_fine: *const BF,
@@ -144,11 +146,17 @@ unsafe fn copy_to_symbols(
         ),
     )?;
     memcpy_to_symbol(&ab_inv_sizes, &inv_sizes_host)?;
-    memcpy_to_symbol(&ab_fwd_gmem_twiddles_coarse, &fwd_gmem_twiddles_coarse)?;
-    memcpy_to_symbol(&ab_inv_gmem_twiddles_coarse, &inv_gmem_twiddles_coarse)?;
+    memcpy_to_symbol(
+        &ab_fwd_gmem_twiddles_coarse,
+        &ConstPtrSymbol(fwd_gmem_twiddles_coarse),
+    )?;
+    memcpy_to_symbol(
+        &ab_inv_gmem_twiddles_coarse,
+        &ConstPtrSymbol(inv_gmem_twiddles_coarse),
+    )?;
     memcpy_to_symbol(
         &ab_fully_precomputed_bitrev_twiddles,
-        &fully_precomputed_bitrev_twiddles,
+        &ConstPtrSymbol(fully_precomputed_bitrev_twiddles),
     )?;
     memcpy_to_symbol(&ab_fwd_cmem_twiddles_coarse, &fwd_cmem_twiddles_coarse)?;
     memcpy_to_symbol(&ab_inv_cmem_twiddles_coarse, &inv_cmem_twiddles_coarse)?;
@@ -203,11 +211,40 @@ fn generate_powers_dev<F: Field>(
     memory_copy(powers_dev, &powers_host)
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct WhirLeafTransformParams {
+    pub inverse_fine_values: *const BF,
+    pub inverse_fine_mask: u32,
+    pub inverse_fine_log_count: u32,
+    pub inverse_coarse_values: *const BF,
+    pub inverse_coarse_mask: u32,
+    pub two_inv_power: BF,
+    pub omega_log_order: u32,
+}
+
+// Cross-language layout drift guard. Keep these literal offsets synchronized
+// with `native/whir_leaf_transform.cuh`.
+const _: () = {
+    assert!(core::mem::size_of::<WhirLeafTransformParams>() == 40);
+    assert!(core::mem::align_of::<WhirLeafTransformParams>() == 8);
+    assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_fine_values) == 0);
+    assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_fine_mask) == 8);
+    assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_fine_log_count) == 12);
+    assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_coarse_values) == 16);
+    assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_coarse_mask) == 24);
+    assert!(core::mem::offset_of!(WhirLeafTransformParams, two_inv_power) == 28);
+    assert!(core::mem::offset_of!(WhirLeafTransformParams, omega_log_order) == 32);
+};
+
 pub struct DeviceContext {
     _powers_of_w_fine_for_ntt: DeviceAllocation<BF>,
     _powers_of_w_coarse_for_ntt: DeviceAllocation<BF>,
-    _powers_of_w_inv_fine_for_ntt: DeviceAllocation<BF>,
-    _powers_of_w_inv_coarse_for_ntt: DeviceAllocation<BF>,
+    powers_of_w_inv_fine_for_ntt: DeviceAllocation<BF>,
+    powers_of_w_inv_coarse_for_ntt: DeviceAllocation<BF>,
+    powers_of_w_fine_log_count: u32,
+    powers_of_w_coarse_log_count: u32,
+    inv_sizes_host: [BF; OMEGA_LOG_ORDER as usize + 1],
     _fwd_gmem_twiddles_coarse: DeviceAllocation<BF>,
     _inv_gmem_twiddles_coarse: DeviceAllocation<BF>,
     _fully_precomputed_bitrev_twiddles: DeviceAllocation<BF>,
@@ -368,8 +405,11 @@ impl DeviceContext {
         Ok(Self {
             _powers_of_w_fine_for_ntt: powers_of_w_fine_for_ntt,
             _powers_of_w_coarse_for_ntt: powers_of_w_coarse_for_ntt,
-            _powers_of_w_inv_fine_for_ntt: powers_of_w_inv_fine_for_ntt,
-            _powers_of_w_inv_coarse_for_ntt: powers_of_w_inv_coarse_for_ntt,
+            powers_of_w_inv_fine_for_ntt,
+            powers_of_w_inv_coarse_for_ntt,
+            powers_of_w_fine_log_count,
+            powers_of_w_coarse_log_count,
+            inv_sizes_host,
             _fwd_gmem_twiddles_coarse: fwd_gmem_twiddles_coarse,
             _inv_gmem_twiddles_coarse: inv_gmem_twiddles_coarse,
             _fully_precomputed_bitrev_twiddles: fully_precomputed_bitrev_twiddles,
@@ -387,5 +427,44 @@ impl DeviceContext {
     /// Panics if the config is not in the fixed set built at `create`.
     pub fn coupled_triangle(&self, log_n: u32, log_vpt: u32) -> &DeviceSlice<BF> {
         self.dit_triangles.coupled(log_n, log_vpt)
+    }
+
+    pub fn whir_leaf_transform_params(&self, log_values_per_leaf: u32) -> WhirLeafTransformParams {
+        assert!((1..=5).contains(&log_values_per_leaf));
+        WhirLeafTransformParams {
+            inverse_fine_values: self.powers_of_w_inv_fine_for_ntt.as_ptr(),
+            inverse_fine_mask: (1 << self.powers_of_w_fine_log_count) - 1,
+            inverse_fine_log_count: self.powers_of_w_fine_log_count,
+            inverse_coarse_values: self.powers_of_w_inv_coarse_for_ntt.as_ptr(),
+            inverse_coarse_mask: (1 << self.powers_of_w_coarse_log_count) - 1,
+            two_inv_power: self.inv_sizes_host[log_values_per_leaf as usize],
+            omega_log_order: OMEGA_LOG_ORDER,
+        }
+    }
+}
+
+#[cfg(all(test, not(no_cuda)))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn whir_leaf_transform_params_cover_all_leaf_widths() {
+        let context = DeviceContext::create(13).unwrap();
+        let two_inv = BF::new(2).inverse().unwrap();
+        let mut expected_two_inv_power = BF::ONE;
+
+        for log_values_per_leaf in 1..=5 {
+            expected_two_inv_power.mul_assign(&two_inv);
+            let params = context.whir_leaf_transform_params(log_values_per_leaf);
+
+            assert_eq!(params.inverse_fine_log_count, OMEGA_LOG_ORDER - 13);
+            assert_eq!(
+                params.inverse_fine_mask,
+                (1 << params.inverse_fine_log_count) - 1
+            );
+            assert_eq!(params.inverse_coarse_mask, (1 << 13) - 1);
+            assert_eq!(params.omega_log_order, OMEGA_LOG_ORDER);
+            assert_eq!(params.two_inv_power, expected_two_inv_power);
+        }
     }
 }

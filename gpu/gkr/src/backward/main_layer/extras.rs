@@ -7,12 +7,9 @@ use era_cudart::slice::{CudaSlice, DeviceSlice};
 use crate::proof_layout::ProofLayout;
 use crate::{GpuBaseFieldPoly, GpuGKRStorage};
 use gpu_core::primitives::field::E4;
-use gpu_cub::cub::device_reduce::Reduce;
 
 use super::super::kernels::*;
-use crate::upstream::{
-    DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, OutputType,
-};
+use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_structures::DeviceMatrix;
@@ -28,24 +25,24 @@ use gpu_prover_context::ProverContext;
 /// `exec_stream` op scheduled by `schedule_main_layer_extras_eval`; the
 /// pool defers underlying free until exec_stream has progressed past the
 /// last write that uses these buffers.
-pub(crate) struct MainLayerExtrasKeepalive<B, E> {
-    _eq_group_tables: DeviceAllocation<E>,
-    _eq_values: DeviceAllocation<E>,
-    _block_partials: DeviceAllocation<E>,
+pub(crate) struct MainLayerExtrasKeepalive {
+    _eq_group_tables: DeviceAllocation<E4>,
+    _eq_values: DeviceAllocation<E4>,
+    _block_partials: DeviceAllocation<E4>,
     _reduction_temp: DeviceAllocation<u8>,
-    /// Per-orphan resolved views over the consolidated
+    /// Per-extra resolved views over the consolidated
     /// `base_class_backings`. Holding the views keeps the underlying
     /// `Arc<DeviceAllocation<B>>` backings alive until kernels reading
     /// from them have been scheduled and the pool drop is safe.
-    _orphan_views: Vec<GpuBaseFieldPoly<B>>,
+    _extra_views: Vec<GpuBaseFieldPoly<BF>>,
 }
 
-/// Schedules the on-device evaluation of `orphan_addresses` at the
+/// Schedules the on-device evaluation of `extra_addresses` at the
 /// folding point `[r_0..r_{folding_steps - 1}]` of length
-/// `folding_steps`. For each orphan, computes
-/// `inner_product(orphan_poly, eq_values)` and writes one `E` value into:
+/// `folding_steps`. For each missing cached-relation dependency, computes
+/// `inner_product(extra_poly, eq_values)` and writes one `E` value into:
 /// (a) `extras_dst_ptr[i]`, the tail of the caller's `device_new_claims`
-///     buffer (so the next layer's IN claim buffer carries the orphan
+///     buffer (so the next layer's IN claim buffer carries the extra
 ///     claim), and
 /// (b) `proof_layout.backward[layer_slot].extra_evaluations`, the slab
 ///     range (so the verifier can read the explicit at-point evals).
@@ -55,35 +52,28 @@ pub(crate) struct MainLayerExtrasKeepalive<B, E> {
 /// [`prover/src/gkr/prover/sumcheck_loop/mod.rs:293-395`]). Returns a
 /// keepalive that the caller drops at the end of the scheduler — the
 /// keepalive owns the temporaries (`eq_values`, `block_partials`,
-/// `reduction_temp`) and the orphan view Arc-clones.
+/// `reduction_temp`) and the extra-polynomial view Arc-clones.
 ///
 /// Operates entirely on `exec_stream`. No host blocking. Compatible
 /// with the GPU scheduling contract (`gpu/docs/gpu_scheduling_contract.md`).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn schedule_main_layer_extras_eval<E>(
+pub(crate) fn schedule_main_layer_extras_eval(
     layer_idx: usize,
-    orphan_addresses: &[GKRAddress],
-    storage: &GpuGKRStorage<BF, E>,
-    folding_point_ptr: *const E,
+    extra_addresses: &[GKRAddress],
+    storage: &GpuGKRStorage<BF, E4>,
+    folding_point_ptr: *const E4,
     folding_steps: usize,
     trace_len: usize,
-    extras_dst_ptr: *mut E,
+    extras_dst_ptr: *mut E4,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     layer_slot: usize,
     context: &ProverContext,
-) -> CudaResult<MainLayerExtrasKeepalive<BF, E>>
-where
-    // `GpuKernels` (not the sealed `BackwardKernels`): this pub(crate) fn
-    // calls into `launch_build_eq_values_from_point`, which is bound on the
-    // umbrella (see ../gpu_kernels.rs) — the bound has to be at least that
-    // wide here too, and widening a `pub(crate)` fn's bound leaks nothing.
-    E: crate::GpuKernels + Field + FieldExtension<BF> + Reduce + 'static,
-{
-    let orphan_count = orphan_addresses.len();
+) -> CudaResult<MainLayerExtrasKeepalive> {
+    let extra_count = extra_addresses.len();
     assert!(
-        orphan_count > 0,
-        "schedule_main_layer_extras_eval should only be called with at least one orphan"
+        extra_count > 0,
+        "schedule_main_layer_extras_eval should only be called with at least one extra"
     );
     assert_eq!(
         trace_len,
@@ -98,11 +88,11 @@ where
     //    The dim-reducing eq builder is reused: it derives `eq_values`
     //    over the entire hypercube of size `2^challenge_count` from a
     //    single contiguous challenge slab — exactly what we need here.
-    let mut eq_group_tables: DeviceAllocation<E> = context.alloc(
+    let mut eq_group_tables: DeviceAllocation<E4> = context.alloc(
         eq_group_tables_len(folding_steps).max(1),
         AllocationPlacement::Top,
     )?;
-    let mut eq_values: DeviceAllocation<E> = context.alloc(trace_len, AllocationPlacement::Top)?;
+    let mut eq_values: DeviceAllocation<E4> = context.alloc(trace_len, AllocationPlacement::Top)?;
     launch_build_eq_values_from_point(
         folding_point_ptr,
         0,
@@ -113,34 +103,37 @@ where
         context,
     )?;
 
-    // 2. Resolve each orphan to its `(backing, offset, len)` view via
-    //    the storage layout. Non-mutating — no fresh allocations
-    //    triggered. The Arc clones held in `orphan_views` are the
-    //    keepalive that ties this scheduler's lifetime to the backings.
-    let orphan_views: Vec<GpuBaseFieldPoly<BF>> = orphan_addresses
+    // 2. Resolve each extra to its `(backing, offset, len)` view via
+    //    the storage layout. Compiler cache-relation dependencies are
+    //    base-field polynomials; `resolve_base_view_or_panic` deliberately
+    //    fails fast if a future relation variant violates that invariant.
+    //    Resolution is non-mutating and triggers no fresh allocations. The
+    //    Arc clones held in `extra_views` tie this scheduler's lifetime to
+    //    the backings.
+    let extra_views: Vec<GpuBaseFieldPoly<BF>> = extra_addresses
         .iter()
         .map(|addr| {
             let view = storage.resolve_base_view_or_panic(layer_idx, *addr);
             assert_eq!(
                 view.len(),
                 trace_len,
-                "orphan poly length must match trace_len (address {addr:?})"
+                "extra poly length must match trace_len (address {addr:?})"
             );
             view
         })
         .collect();
 
-    // 3. Per-orphan partial-sum reduction → `block_partials[orphan_count, blocks_count]`
-    //    matrix, then `batch_reduce` over rows to produce `[orphan_count]`
+    // 3. Per-extra partial-sum reduction → `block_partials[extra_count, blocks_count]`
+    //    matrix, then `batch_reduce` over rows to produce `[extra_count]`
     //    scalar inner products written straight into `extras_dst_ptr`.
     let blocks_count = context.get_device_properties().sm_count;
     assert!(blocks_count > 0, "device must expose at least one SM");
     assert!(blocks_count <= u32::MAX as usize);
-    let mut block_partials: DeviceAllocation<E> =
-        context.alloc(orphan_count * blocks_count, AllocationPlacement::Top)?;
-    let reduction_temp_bytes = get_batch_reduce_temp_storage_bytes::<E>(
+    let mut block_partials: DeviceAllocation<E4> =
+        context.alloc(extra_count * blocks_count, AllocationPlacement::Top)?;
+    let reduction_temp_bytes = get_batch_reduce_temp_storage_bytes::<E4>(
         ReduceOperation::Sum,
-        orphan_count as i32,
+        extra_count as i32,
         blocks_count as i32,
     )?;
     let mut reduction_temp = context
@@ -149,13 +142,13 @@ where
             AllocationPlacement::Top,
         )?;
 
-    for (orphan_i, view) in orphan_views.iter().enumerate() {
-        // SAFETY: block_partials buffer is sized [orphan_count *
+    for (extra_i, view) in extra_views.iter().enumerate() {
+        // SAFETY: block_partials buffer is sized [extra_count *
         // blocks_count]; the kernel writes exactly `blocks_count`
         // contiguous slots starting at this pointer (since we pass
         // `column_start = 0`, `chunk_cols = 1`).
-        let row_partials_ptr = unsafe { block_partials.as_mut_ptr().add(orphan_i * blocks_count) };
-        launch_trace_holder_block_partials::<E>(
+        let row_partials_ptr = unsafe { block_partials.as_mut_ptr().add(extra_i * blocks_count) };
+        launch_trace_holder_block_partials(
             view.as_ptr(),
             eq_values.as_ptr(),
             row_partials_ptr,
@@ -169,8 +162,8 @@ where
 
     let block_partials_matrix = DeviceMatrix::new(&block_partials, blocks_count);
     // SAFETY: `extras_dst_ptr` is a tail slot in `device_new_claims`,
-    // sized to fit `orphan_count` `E` values by the caller.
-    let extras_dst_slice = unsafe { DeviceSlice::from_raw_parts_mut(extras_dst_ptr, orphan_count) };
+    // sized to fit `extra_count` `E` values by the caller.
+    let extras_dst_slice = unsafe { DeviceSlice::from_raw_parts_mut(extras_dst_ptr, extra_count) };
     let reduction_temp_slice = unsafe {
         DeviceSlice::from_raw_parts_mut(reduction_temp.as_mut_ptr(), reduction_temp.len())
     };
@@ -182,7 +175,7 @@ where
         stream,
     )?;
 
-    // 4. Copy the orphan claim values from the `device_new_claims` tail into
+    // 4. Copy the extra claim values from the `device_new_claims` tail into
     //    the slab's per-layer-slot `extra_evaluations` range so the verifier
     //    can parse them alongside `final_step_evaluations`.
     {
@@ -193,14 +186,14 @@ where
             proof_layout
                 .backward_extra_evaluations_device_mut(proof_slab.as_ptr() as *mut u8, layer_slot)
         };
-        debug_assert_eq!(
-            slab_dst_len, orphan_count,
-            "slab extra_evaluations range must match orphan_count for layer {layer_slot}",
+        assert_eq!(
+            slab_dst_len, extra_count,
+            "slab extra_evaluations range must match extra_count for layer {layer_slot}",
         );
         let slab_dst_slice =
-            unsafe { DeviceSlice::from_raw_parts_mut(slab_dst_ptr as *mut E, orphan_count) };
+            unsafe { DeviceSlice::from_raw_parts_mut(slab_dst_ptr as *mut E4, extra_count) };
         let extras_src_slice =
-            unsafe { DeviceSlice::from_raw_parts(extras_dst_ptr as *const E, orphan_count) };
+            unsafe { DeviceSlice::from_raw_parts(extras_dst_ptr as *const E4, extra_count) };
         memory_copy_async(slab_dst_slice, extras_src_slice, stream)?;
     }
 
@@ -209,11 +202,11 @@ where
         _eq_values: eq_values,
         _block_partials: block_partials,
         _reduction_temp: reduction_temp,
-        _orphan_views: orphan_views,
+        _extra_views: extra_views,
     })
 }
 
-/// Structural variant of [`schedule_dimension_reduction_forward`]'s
+/// Structural variant of `prepare_dimension_reduction_forward`'s
 /// `dimension_reduction_description` output: replicates the address-only
 /// portion of the per-round lowering in
 /// `gpu/gkr/src/forward/dimension_reducing.rs`'s
@@ -227,9 +220,8 @@ where
 /// - Round 0's `layer_inputs` is `compiled_circuit.global_output_map`; subsequent
 ///   rounds chain from the previous round's `output`.
 ///
-/// Used by `build_proof_layout_inputs` in the apex proof layer.
-/// to size the proof slab before forward runs.
-pub fn derive_dimension_reducing_inputs(
+/// Used to size the proof slab before forward runs.
+pub(crate) fn derive_dimension_reducing_inputs(
     initial_layer_idx: usize,
     initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
     initial_trace_log_2: u32,
@@ -241,10 +233,10 @@ pub fn derive_dimension_reducing_inputs(
     if total_rounds == 0 {
         return result;
     }
-    let mut current_layer_idx = initial_layer_idx;
     let mut layer_inputs: BTreeMap<OutputType, Vec<GKRAddress>> = initial_output_map.clone();
 
-    for _round in 0..total_rounds {
+    for (layer_offset, _) in (0..total_rounds).enumerate() {
+        let current_layer_idx = initial_layer_idx + layer_offset;
         let output_layer = current_layer_idx + 1;
         let mut output_idx = 0usize;
         let mut layer_description: BTreeMap<OutputType, DimensionReducingInputOutput> =
@@ -282,7 +274,6 @@ pub fn derive_dimension_reducing_inputs(
             .collect();
 
         result.insert(current_layer_idx, layer_description);
-        current_layer_idx += 1;
     }
     result
 }

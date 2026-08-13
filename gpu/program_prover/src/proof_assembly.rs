@@ -18,9 +18,8 @@ use worker::Worker;
 
 use crate::upstream::{compute_end_params, Setups};
 use crate::upstream::{
-    config_for_security_level_under_pessimistic_conjecture, ColumnMajorMerkleTreeConstructor,
-    DefaultTreeConstructor, MerkleTreeCap, ProgramProof, SecurityLevel, Twiddles,
-    UnrolledCircuitSetupParams,
+    config_for_security_level_under_pessimistic_conjecture, DefaultTreeConstructor, MerkleTreeCap,
+    ProgramProof, SecurityLevel, Twiddles, UnrolledCircuitSetupParams,
 };
 
 /// Assemble a `ProgramProof` + its `Setups` map from a GPU prove result.
@@ -65,12 +64,7 @@ pub fn assemble_program_proof(
                 family_idx: *family_idx,
                 capacity: trace_len as u32,
                 setup_caps: MerkleTreeCap {
-                    cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                        &setup_commitment.tree,
-                    )
-                    .cap
-                    .try_into()
-                    .unwrap(),
+                    cap: setup_commitment.get_cap().cap.try_into().unwrap(),
                 },
             },
         );

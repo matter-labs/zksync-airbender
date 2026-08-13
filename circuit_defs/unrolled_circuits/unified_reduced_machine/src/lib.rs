@@ -64,6 +64,10 @@ impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for UnifiedReduce
     }
 }
 
+pub const TRACE_LEN_LOG2: u32 = <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<
+    BabyBearField,
+    true,
+>>::DOMAIN_SIZE_LOG2;
 pub const MAX_ROM_SIZE: usize = common_constants::rom::ROM_BYTE_SIZE;
 pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM_SECOND_WORD_BITS;
 

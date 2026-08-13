@@ -5,6 +5,7 @@ members = [
     "blake2s_u32",
     "common_constants",
     "field",
+    "experiments_runner",
     "cs",
     "prover",
     "fft",
@@ -40,6 +41,8 @@ members = [
     "gpu/execution_prover",
     "gpu/program_prover",
     "gpu/gkr_model",
+    "gpu/gkr_compiler",
+    "gkr_eval_ir",
 
     "tools/cli",
 
@@ -96,8 +99,10 @@ default-members = [
     "verifier_generator",
     "worker",
     "witness_eval_generator",
-    # The only pure-CPU gpu crates; the CUDA ones are omitted so the default build needs no CUDA.
+    # GPU-adjacent pure-CPU crates; CUDA crates are omitted from the default build.
     "gpu/gkr_model",
+    "gpu/gkr_compiler",
+    "gkr_eval_ir",
     "gpu/witness_eval_generator",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
     "circuit_defs/unrolled_circuits/jump_branch_slt",
@@ -175,8 +180,10 @@ gpu_whir = { path = "./gpu/whir" }
 gpu_circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
 gpu_execution_prover = { path = "./gpu/execution_prover", default-features = false }
 gpu_program_prover = { path = "./gpu/program_prover", default-features = false }
-prover_examples = { path = "./circuit_defs/prover_examples" }
+prover_examples = { path = "./circuit_defs/prover_examples", default-features = false }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
+gpu_gkr_compiler = { path = "./gpu/gkr_compiler" }
+gkr_eval_ir = { path = "./gkr_eval_ir" }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 clap = { version = "4.5.21", features = ["derive"] }
@@ -193,6 +200,7 @@ log = "0.4"
 sha3 = { version = "*", default-features = false }
 insta = "1.47.2"
 tempfile = "3.27.0"
+mmap-io = "1.0"
 
 [profile.dev]
 debug-assertions = true

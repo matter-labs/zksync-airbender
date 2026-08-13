@@ -2,6 +2,7 @@ use super::construct::relation_outputs;
 use super::*;
 use crate::address_audit::{collect_addresses_from_relation, AddressClass};
 use crate::upstream::{GKRAddress, GKRCircuitArtifact};
+use field::Field;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -238,10 +239,7 @@ fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
                     | R::AggregateLookupRationalPair { .. }
                     | R::InitsOrTeardownsInitialPair { .. } => {}
                     R::MaxQuadratic { output, .. } => {
-                        // Backward dispatch (build_main_layer_kernel_blueprints_static)
-                        // supports MaxQuadratic unconditionally. The forward path still
-                        // expects the output to be pre-materialized via scratch_space_mapping;
-                        // without it the unimplemented! arm in forward.rs fires.
+                        // Forward requires MaxQuadratic outputs to be scratch-backed.
                         assert!(
                                 artifact.scratch_space_mapping.contains_key(output),
                                 "{basename} layer {layer_idx}: non-scratch-backed MaxQuadratic output {output:?} requires direct GPU forward support"
@@ -261,16 +259,7 @@ fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
     assert!(covered > 0, "expected at least one no-cache artifact");
 }
 
-/// After `normalize_compiled_circuit_for_gpu`, no surviving gate may reference
-/// a scratch-mapped `InnerLayer` address. The normalize pass rewrites every
-/// such address's *producer* (e.g. the `MaxQuadratic` writer) to its
-/// `ScratchSpace` alias, which removes the `InnerLayer` slot from the storage
-/// layout. Any consumer that still reads the `InnerLayer` address would then
-/// fail the layout lookup in `register_flat_base_folding_for_layer`
-/// (`storage/ops.rs`). This guards the full rewrite coverage of
-/// `rewrite_relation_scratch_addresses` against new relation variants that
-/// carry materialized base reads (regression: the unified circuit's
-/// `LookupUnbalancedPairWithMaterializedBaseInputs.remainder`).
+/// Normalization must rewrite every read of a scratch-mapped inner-layer address.
 #[test]
 fn normalize_leaves_no_scratch_mapped_inner_layer_reads() {
     let dir = compiled_circuit_dir();
@@ -330,8 +319,8 @@ fn relation_outputs_classifies_known_variants() {
         layer: 1,
         offset: 0,
     };
-    let dummy_input = NoFieldLinearRelation {
-        constant: 0,
+    let dummy_input = NoFieldLinearRelation::<field::Mersenne31Field> {
+        constant: field::Mersenne31Field::ZERO,
         linear_terms: vec![].into_boxed_slice(),
     };
 
@@ -341,9 +330,94 @@ fn relation_outputs_classifies_known_variants() {
     };
     assert_eq!(relation_outputs(&base), vec![(dummy_addr, FieldType::Base)]);
 
-    let ext = CopyInExtensionField {
+    let ext: cs::gkr_compiler::NoFieldGKRRelation<field::Mersenne31Field> = CopyInExtensionField {
         input: dummy_addr,
         output: dummy_addr,
     };
     assert_eq!(relation_outputs(&ext), vec![(dummy_addr, FieldType::Ext)]);
+}
+
+#[test]
+fn normalize_max_quadratic_rewrites_scratch_addresses_and_preserves_expression() {
+    use cs::gkr_compiler::{
+        NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression,
+    };
+    use field::{baby_bear::base::BabyBearField, PrimeField};
+
+    type F = BabyBearField;
+
+    let fixture = compiled_circuit_dir().join("mem_subword_only_layout_gkr.json");
+    let bytes = std::fs::read(&fixture).expect("committed GKR fixture must be readable");
+    let mut artifact: GKRCircuitArtifact<F> =
+        serde_json::from_slice(&bytes).expect("fixture must deserialize for BabyBear");
+
+    let input_address = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 17,
+    };
+    let output_address = GKRAddress::InnerLayer {
+        layer: 2,
+        offset: 19,
+    };
+    let expression = NoFieldStructuredExpression::Product(vec![
+        NoFieldStructuredExpression::Place(input_address),
+        NoFieldStructuredExpression::Sum(vec![
+            NoFieldStructuredExpression::Constant(F::from_u32(7).unwrap()),
+            NoFieldStructuredExpression::Place(output_address),
+        ]),
+    ]);
+    let relation = NoFieldGKRRelation::MaxQuadratic {
+        input: NoFieldMaxQuadraticGKRRelation {
+            quadratic_terms: vec![(
+                input_address,
+                vec![(F::ONE, output_address)].into_boxed_slice(),
+            )]
+            .into_boxed_slice(),
+            linear_terms: vec![(F::ONE, input_address)].into_boxed_slice(),
+            constant: F::ZERO,
+        },
+        expression: expression.clone(),
+        output: output_address,
+    };
+
+    let gate = artifact
+        .layers
+        .iter_mut()
+        .find_map(|layer| {
+            layer
+                .gates
+                .iter_mut()
+                .chain(layer.gates_with_external_connections.iter_mut())
+                .next()
+        })
+        .expect("fixture must include a gate");
+    gate.enforced_relation = relation;
+    artifact.scratch_space_mapping = BTreeMap::from([(input_address, 3), (output_address, 5)]);
+
+    let normalized = crate::transform::normalize_compiled_circuit_for_gpu(artifact);
+    let normalized_relation = normalized
+        .layers
+        .iter()
+        .flat_map(|layer| {
+            layer
+                .gates
+                .iter()
+                .chain(layer.gates_with_external_connections.iter())
+        })
+        .next()
+        .expect("normalized fixture must retain its gate");
+
+    let NoFieldGKRRelation::MaxQuadratic {
+        input,
+        expression: normalized_expression,
+        output,
+    } = &normalized_relation.enforced_relation
+    else {
+        panic!("normalization must retain the max-quadratic relation");
+    };
+    assert_eq!(*output, GKRAddress::ScratchSpace(5));
+    assert_eq!(input.quadratic_terms[0].0, GKRAddress::ScratchSpace(3));
+    assert_eq!(input.quadratic_terms[0].1[0].1, GKRAddress::ScratchSpace(5));
+    assert_eq!(input.linear_terms[0].1, GKRAddress::ScratchSpace(3));
+    assert_eq!(normalized_expression, &expression);
 }

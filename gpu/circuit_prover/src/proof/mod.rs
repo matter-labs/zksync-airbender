@@ -1,5 +1,4 @@
 pub mod inputs;
-pub(crate) mod layout;
 mod orchestration;
 
 use std::sync::Arc;
@@ -10,18 +9,16 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
-use crate::upstream::{GKRCircuitArtifact, ProverConfig};
+use crate::upstream::ProverConfig;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
-use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::backward::make_deferred_backward_workflow_state;
+use gpu_core::primitives::field::E4;
+use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
+use gpu_gkr::GkrPrograms;
 use gpu_prover_context::ProverContext;
-use gpu_trace::witness::circuit_type::CircuitType;
 
-#[cfg(test)]
-pub(crate) use orchestration::grand_product_accumulator_from_explicit_evaluations;
 pub use orchestration::{canonical_inits_and_teardowns_top_bits, GpuGKRProofJob};
 use orchestration::{
     prepare_backward_handoff, prepare_stage1_and_forward_setup, schedule_backward_phase,
@@ -30,31 +27,50 @@ use orchestration::{
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
-/// `prove` is circuit-type-driven: it dispatches purely on `circuit_type` and
-/// the `GpuGKRProofTransfer` shape, with no per-family whitelist. The Unified
-/// path is therefore *selected*, not special-cased here — feed
-/// `CircuitType::Unrolled(UnrolledCircuitType::Unified)`, the unified compiled
-/// circuit, and the `UnrolledTracingDataDevice::Unified` transfer. All
-/// Unified-specific handling lives in the inner stages: stage1 dispatch
-/// (`gkr/stage1/mod.rs`), commit-memory (`prover/trace/memory.rs`), setup
-/// (`gpu_execution_prover::precomputations`), and the claim-layout/accumulator
-/// arms.
-///
-/// `compiled_circuit` is by-value (not `&GKRCircuitArtifact<BF>`): this is
-/// the crate's top-level production entry point, called from
-/// `gpu_execution_prover`'s worker (`workers/gpu.rs`), which already clones
-/// its own `Arc<GKRCircuitArtifact<BF>>` to produce the owned value passed
-/// in. Switching to a reference would let that caller drop its clone, but
-/// `gpu_execution_prover` is a downstream crate outside this task's scope.
-#[allow(clippy::needless_pass_by_value)]
 pub fn prove<'a, A: GoodAllocator + 'a>(
-    circuit_type: CircuitType,
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    prove_inner(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        None,
+        context,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    prove_inner(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        Some(Box::default()),
+        context,
+    )
+}
+
+fn prove_inner<'a, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -111,9 +127,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         mut forward_setup,
         d_seed,
     } = prepare_stage1_and_forward_setup::<A>(
-        circuit_type,
-        &compiled_circuit,
-        &external_challenges.value,
+        gkr_programs,
         prover_config,
         final_trace_size_log_2,
         whir_schedule,
@@ -148,11 +162,11 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         synthetic_setup_trace_holder.as_ref(),
         &mut stage1_output,
         &mut forward_setup,
-        &compiled_circuit,
         &external_challenges.value,
         &top_bits_host,
         final_trace_size_log_2,
         output_evaluations_slab,
+        gkr_programs,
         context,
     )?;
     let ForwardToBackwardHandoff {
@@ -173,24 +187,15 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         context,
     )?;
 
-    // No host mirror of the initial claims / evaluation_point / batching / seed / lookup
-    // challenges is needed on the hot path: backward consumes them as device buffers, and
-    // post-backward overwrites the layer-0 host fields that downstream base-layer / WHIR
-    // setup reads. `backward_shared_state` is created empty and populated by the
-    // post-backward handoff for layer 0.
-    let backward_shared_state = make_deferred_backward_workflow_state();
     ranges.push(post_forward_handoff_range);
 
     let BackwardPhaseResult {
         mut backward_scheduled,
-        backward_shared_state,
     } = schedule_backward_phase(
         backward_state,
-        compiled_circuit.clone(),
-        external_challenges.value,
         top_bits_host.clone(),
+        Arc::clone(gkr_programs),
         external_challenges.device.as_ptr(),
-        backward_shared_state,
         d_seed,
         d_evaluation_point_and_batching,
         initial_d_claims,
@@ -198,32 +203,30 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         d_lookup_challenges_for_backward,
         &proof_slab,
         &proof_layout,
+        stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
+        &mut callbacks,
         context,
     )?;
     let batching_pow_bits =
-        crate::config::batched_proximity_check_pow_bits(prover_config, &compiled_circuit);
+        crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
     let WhirPhaseResult {
         transition_ranges,
-        post_backward_callbacks,
         mut base_layer_claims_scheduled,
         base_layer_claims_shared_state,
         mut whir_scheduled,
-        batching_challenge_device: _batching_challenge_device,
     } = schedule_whir_phase(
-        &compiled_circuit,
+        compiled_circuit,
         whir_schedule,
         &mut setup,
         &mut synthetic_setup_trace_holder,
         &mut stage1_output,
         &mut backward_scheduled,
-        backward_shared_state,
         &proof_slab,
         &proof_layout,
         batching_pow_bits,
         context,
     )?;
     ranges.extend(transition_ranges);
-    callbacks.extend(post_backward_callbacks);
 
     // `backward_scheduled` itself is the keepalive — the per-layer device
     // handles were already taken by the orchestrator (or remain as `Some`
@@ -231,14 +234,12 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     // callbacks/tracing/host-staging buffers all ride on this struct.
     let mut backward_keepalive = backward_scheduled;
 
-    let pending_aggregation = base_layer_claims_scheduled.take_pending_aggregation();
     let proof_host_mirror = Some(schedule_terminal_proof_assembly(
         &proof_slab,
         &proof_layout,
         proof_handle,
         whir_schedule.clone(),
         base_layer_claims_shared_state,
-        pending_aggregation,
         external_challenges.value,
         // The ACTUAL per-circuit top bits (all-zero for trivial unified
         // chunks): they land in `GKRProof::inits_and_teardowns_top_bits`,
@@ -268,9 +269,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     // tracker (immediate bookkeeping release); physical safety is exec-stream
     // ordering, so the next proof's exec-stream work serializes after this
     // proof's and can reuse these regions. Only host bits — pending callbacks,
-    // the (empty in production) backward shared_state, base-layer claim
-    // metadata, and the pinned proof host mirror read by the terminal callback
-    // — ride on to finish(). Each release is a single statement so an
+    // base-layer claim metadata, and the pinned proof host mirror read by the
+    // terminal callback — ride on to finish(). Each release is a single statement so an
     // individual buffer class can be re-retained when bisecting a
     // multi-schedule regression.
     //
@@ -290,8 +290,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     backward_keepalive.release_device_buffers();
     base_layer_claims_scheduled.release_device_buffers();
     whir_scheduled.release_device_buffers();
-    // WHIR base batching-challenge buffer: consumed on-device by WHIR fold.
-    drop(_batching_challenge_device);
     // Proof slab: last scheduled use is the terminal D2H on exec_stream.
     drop(proof_slab);
 
@@ -318,6 +316,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         callbacks,
         proof,
         ranges,
+        stage_snapshots,
         keepalive: GpuGKRProofJobKeepalive {
             _stage1: stage1_output.into_keepalive(),
             _inputs: inputs_keepalive,

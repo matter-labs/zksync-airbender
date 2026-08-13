@@ -1,31 +1,6 @@
 #pragma once
 
-// Single-block "mega-finalize" template used by the backward sumcheck
-// fused-tail kernels. The block:
-//  * Cooperatively reduces a partials buffer to `(e_partial, c_partial)` in
-//    shared memory (each thread accumulates a strided slice of the partials,
-//    then a standard tree reduction collapses to slot 0).
-//  * Thread 0 runs the round-update algebra (`run_round_update_single_thread`):
-//    normalize claim, derive 4 univariate coefficients, Blake2s-commit them,
-//    extract the next folding challenge, fold claim/eq_prefactor.
-//  * Threads with `tid < new_g_len` fold the active eq slot
-//    (eq_low or eq_high[k]) in parallel with thread 0's update. The two
-//    sub-tasks touch disjoint memory, so no inter-task barrier is required
-//    inside the block.
-//
-// PartialsSource: callable `(unsigned i, e4 &c0, e4 &c1)` that returns the
-// per-index partial pair. Two adapters in `tail_fused.cu`:
-//  * `PartialsFromGlobal`: reads per-block partials from a global scratch
-//    buffer (used by the two-stage path, and by the warp-partial round
-//    kernels in `round{0,1,2,3}_flat_warp_partial.cu`).
-//  * `PartialsFromAcc`: reads directly from the accumulator (combined
-//    single-launch path when `acc_size <= BLOCK_THREADS`).
-//
-// The template lives in a header so each finalize kernel can instantiate
-// it next to its entry point, keeping the round-update + fold-eq algebra
-// in exactly one place. The shared algebra used inside
-// `run_round_update_single_thread` is defined in
-// `gpu/gkr/native/ops/gkr_ops_helpers.cuh`.
+// Shared reduction and transcript finalization for fused-tail kernels.
 
 #include "../../ops/gkr_ops_helpers.cuh"
 #include "../support/descriptors.cuh"
@@ -86,8 +61,8 @@ DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, cons
   }
 
   // Parallel fold of the active eq slot. `active_eq_size_before_fold` is the
-  // bit count (matches `g_size_before` in `fold_factored_eq_one_round`). The
-  // largest fold (eq_low / GKR_EQ_GROUP_TABLE_LEN / 2 = 128) fits in any
+  // bit count before the fold. The largest fold
+  // (eq_low / GKR_EQ_GROUP_TABLE_LEN / 2 = 128) fits in any
   // block with BLOCK_THREADS >= 128.
   if (active_eq_size_before_fold >= 1) {
     const unsigned new_g_len = 1u << (active_eq_size_before_fold - 1);

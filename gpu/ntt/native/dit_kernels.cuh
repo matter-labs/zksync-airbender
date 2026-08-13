@@ -34,7 +34,7 @@ DEVICE_FORCEINLINE void ntt_single(const bf *__restrict__ monomials_bitrev,
   constexpr unsigned BLOCK_THREADS = NUM_WARPS * 32u;
   constexpr unsigned TRI = clean_triangle_count<LOG_N, LOG_VPT>();
 
-  extern __shared__ bf smem[];
+  extern __shared__ __align__(16) bf smem[];
   bf *const tw = smem;
 
   const unsigned tid = threadIdx.x;
@@ -94,7 +94,7 @@ DEVICE_FORCEINLINE void ntt_single_stream(const bf *__restrict__ monomials_bitre
   constexpr unsigned BLOCK_THREADS = NUM_WARPS * 32u;
   constexpr unsigned TRI = clean_triangle_count<LOG_N, LOG_VPT>();
   constexpr unsigned SLOTS_PER_BLOCK = NUM_WARPS * NTTS_PER_WARP;
-  extern __shared__ bf smem[];
+  extern __shared__ __align__(16) bf smem[];
   bf *const tw = smem;
   const unsigned tid = threadIdx.x;
   const unsigned warp_id = tid >> 5;
@@ -154,7 +154,7 @@ DEVICE_FORCEINLINE void ntt_two_pass(const bf *__restrict__ monomials_bitrev,
   constexpr unsigned P1C = coupled_triangle_count<LOG_N, LOG_VPT, G::LOG_N1>();
   constexpr unsigned P2C = clean_triangle_count<G::LOG_N2, LOG_VPT>();
   constexpr unsigned P2C_PAD = (P2C + 3u) & ~3u; // keep d_smem/slab 16B-aligned
-  extern __shared__ bf smem[];
+  extern __shared__ __align__(16) bf smem[];
 
   bf *const couple = smem;            // P1C (mult of 4)
   bf *const tw_p2 = couple + P1C;     // P2C entries, P2C_PAD reserved

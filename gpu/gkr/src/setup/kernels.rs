@@ -1,11 +1,11 @@
 use std::ffi::c_void;
-use std::ptr::{self, null, null_mut};
+use std::ptr::{null, null_mut};
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::{CudaSlice, DeviceSlice, DeviceVariable};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use era_cudart_sys::cudaGetSymbolAddress;
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::{GpuBaseFieldPoly, GpuGKRStorage};
 use super::{flatten_setup_columns_into_pinned_buffer, precompute_partial_tree_cache};
@@ -19,32 +19,26 @@ use gpu_hash::blake2s::Digest;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
 
-pub(super) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
+pub(crate) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
 pub(super) const GKR_FORWARD_SETUP_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 
-extern "C" {
+cuda_struct_and_stub! {
     static ab_gkr_lookup_alpha_powers: [E4; GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
 }
 
 fn get_lookup_alpha_powers_device_ptr() -> *mut E4 {
-    use std::sync::OnceLock;
-
-    static PTR: OnceLock<usize> = OnceLock::new();
-    let ptr = *PTR.get_or_init(|| {
-        let mut p: *mut c_void = ptr::null_mut();
-        // SAFETY: ab_gkr_lookup_alpha_powers is a valid __constant__ e4 array
-        // defined in native/prover/gkr/setup/kernels.cu.
-        unsafe {
-            cudaGetSymbolAddress(
-                &mut p,
-                &ab_gkr_lookup_alpha_powers as *const _ as *const c_void,
-            )
-        }
-        .wrap()
-        .expect("cudaGetSymbolAddress failed for ab_gkr_lookup_alpha_powers");
-        p as usize
-    });
-    ptr as *mut E4
+    let mut ptr: *mut c_void = null_mut();
+    // SAFETY: ab_gkr_lookup_alpha_powers is a valid __constant__ e4 array
+    // defined in native/gkr/setup/kernels.cu.
+    unsafe {
+        cudaGetSymbolAddress(
+            &mut ptr,
+            &ab_gkr_lookup_alpha_powers as *const _ as *const c_void,
+        )
+    }
+    .wrap()
+    .expect("cudaGetSymbolAddress failed for ab_gkr_lookup_alpha_powers");
+    ptr.cast()
 }
 
 pub(super) fn schedule_lookup_alpha_powers_prelude(
@@ -79,7 +73,6 @@ pub(super) fn schedule_lookup_alpha_powers_prelude(
     )
 }
 
-#[allow(dead_code)]
 pub struct GpuGKRSetupHost {
     pub(crate) raw_hypercube_evals: StaticPinnedBox<BF>,
     pub(crate) partial_trees: Vec<StaticPinnedBox<Digest>>,
@@ -87,7 +80,6 @@ pub struct GpuGKRSetupHost {
     /// in canonical bit-reversed coset order so a single H2D fills the device
     /// unified cap directly.
     pub(crate) unified_tree_cap: StaticPinnedBox<Digest>,
-    pub(crate) trace_len: usize,
     pub log_domain_size: u32,
     pub columns_count: usize,
     pub log_lde_factor: u32,
@@ -131,7 +123,6 @@ impl GpuGKRSetupHost {
             raw_hypercube_evals,
             partial_trees,
             unified_tree_cap,
-            trace_len,
             log_domain_size,
             columns_count,
             log_lde_factor,
@@ -143,7 +134,7 @@ impl GpuGKRSetupHost {
     #[cfg(test)]
     pub(crate) fn column_offset(&self, column: usize) -> usize {
         assert!(column < self.columns_count);
-        column * self.trace_len
+        column * (self.raw_hypercube_evals.len() / self.columns_count)
     }
 }
 
@@ -313,27 +304,14 @@ pub(super) fn gkr_forward_setup_generic_lookup_launch_config(
     CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream())
 }
 
-pub(super) fn launch_forward_setup_generic_lookup<E: crate::SetupKernels>(
-    batch: &GpuGKRForwardSetupGenericLookupBatch<E>,
+pub(super) fn launch_forward_setup_generic_lookup(
+    batch: &GpuGKRForwardSetupGenericLookupBatch<E4>,
     row_count: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(row_count <= u32::MAX as usize);
     let config = gkr_forward_setup_generic_lookup_launch_config(row_count as u32, context);
     let args = GpuGKRForwardSetupGenericLookupArguments::new(*batch, row_count as u32);
-    GpuGKRForwardSetupGenericLookupFunction(E::FORWARD_SETUP_GENERIC_LOOKUP).launch(&config, &args)
-}
-
-/// Setup-phase GPU kernels. Defined and implemented in the leaf module that
-/// owns the underlying `ab_*_e4_kernel` symbols; the combined
-/// `crate::SetupKernels` supertrait aggregates this with the
-/// forward/backward sub-traits.
-#[allow(dead_code)] // several constants are referenced only from #[cfg(test)] launchers
-pub(crate) trait SetupKernels: Copy + Sized {
-    const FORWARD_SETUP_GENERIC_LOOKUP: GpuGKRForwardSetupGenericLookupSignature<Self>;
-}
-
-impl SetupKernels for gpu_core::primitives::field::E4 {
-    const FORWARD_SETUP_GENERIC_LOOKUP: GpuGKRForwardSetupGenericLookupSignature<Self> =
-        ab_gkr_forward_setup_generic_lookup_e4_kernel;
+    GpuGKRForwardSetupGenericLookupFunction(ab_gkr_forward_setup_generic_lookup_e4_kernel)
+        .launch(&config, &args)
 }

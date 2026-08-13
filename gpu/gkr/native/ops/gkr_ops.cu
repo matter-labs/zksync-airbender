@@ -5,24 +5,6 @@ namespace airbender::gkr::ops {
 using namespace ::airbender::hash;
 
 // ---------------------------------------------------------------------------
-// Backward sumcheck per-round state update (device-side).
-//
-// Standalone entry point used by the small-`acc_size` fallback in the
-// backward main-layer scheduler. Wraps the shared
-// `run_round_update_single_thread` helper (see `gkr_ops_helpers.cuh`); the
-// fused-tail kernels in `prover/gkr/backward/` reuse the same helper inside
-// their mega-finalize blocks so the two paths produce byte-identical
-// per-round outputs.
-// ---------------------------------------------------------------------------
-EXTERN __global__ void ab_backward_sumcheck_round_update_kernel(const e4 *reduction_output, const e4 *prev_claim_coord, u32 *seed_io, e4 *claim_io,
-                                                                e4 *eq_prefactor_io, e4 *coeffs_out, e4 *challenge_out) {
-  const e4 e_partial = reduction_output[0];
-  const e4 c_partial = reduction_output[1];
-  const e4 prev_coord = *prev_claim_coord;
-  run_round_update_single_thread(e_partial, c_partial, prev_coord, seed_io, claim_io, eq_prefactor_io, coeffs_out, challenge_out);
-}
-
-// ---------------------------------------------------------------------------
 // WHIR fold per-round state update (device-side).
 //
 // Replaces the host callback that runs after each special 3-point evaluation.

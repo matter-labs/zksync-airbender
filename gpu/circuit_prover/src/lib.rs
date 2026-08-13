@@ -1,13 +1,12 @@
 #![allow(incomplete_features)]
-#![feature(allocator_api)]
+#![cfg_attr(test, feature(allocator_api))]
 // The e2e test suite normalizes prover's const-generic merkle/permutation types
 // (e.g. `produce_initial_permutation_product_contribution`); without this the
-// test build hits an E0391 predicate-normalization cycle (cf. gpu_whir, Task 10).
+// test build hits an E0391 predicate-normalization cycle.
 #![feature(generic_const_exprs)]
 #![warn(clippy::manual_div_ceil)]
 #![warn(clippy::needless_pass_by_value)]
-// `UnsafeMutAccessor::get_mut(&self) -> &mut T` is the documented contract
-// scaffolding for stream-scheduled callbacks — see gpu_core primitives/context.
+// Required by the stream-scheduled callback accessors.
 #![allow(clippy::mut_from_ref)]
 // The proof-orchestration/e2e-fixture functions here take one argument per
 // distinct device buffer / layout / stream input; splitting them into config
