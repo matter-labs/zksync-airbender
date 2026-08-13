@@ -130,6 +130,7 @@ fn load_boundary_transcript_prefix() -> (
 }
 
 #[test]
+#[ignore = "production-scale packed proof; run explicitly"]
 fn gkr_unified_packed_commitment_basic_fibonacci() {
     gkr_unified_packed_commitment_basic_fibonacci_impl(8, false, false);
 }

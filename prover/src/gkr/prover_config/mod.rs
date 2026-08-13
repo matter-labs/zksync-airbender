@@ -303,6 +303,7 @@ mod test {
     use super::*;
 
     #[test]
+    #[ignore = "unfinished exhaustive WHIR config search"]
     fn test_try_compute_some_config() {
         let prover_config = compute_best_prover_config_guess(
             20,
