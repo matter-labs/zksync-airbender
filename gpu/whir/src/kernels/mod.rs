@@ -607,6 +607,35 @@ cuda_kernel_declaration!(
     )
 );
 
+cuda_kernel_signature_arguments_and_function!(
+    TransformAndHashWhirLeavesFromNttMultiCosetToStagingRegisterV32,
+    src: PtrAndStride<BF>,
+    staging: *mut u32,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    coset_index_base: u32,
+    leaves_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_register_v32_kernel(
+        src: PtrAndStride<BF>,
+        staging: *mut u32,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        coset_index_base: u32,
+        leaves_count: u32,
+    )
+);
+
+const NATURAL_REGISTER_RESIDENT_V32_MIN_LEAVES_COUNT: usize = 1 << 16;
+
+fn use_register_resident_natural_v32(log_values_per_leaf: u32, leaves_count: usize) -> bool {
+    log_values_per_leaf == 5 && leaves_count >= NATURAL_REGISTER_RESIDENT_V32_MIN_LEAVES_COUNT
+}
+
 pub(crate) fn transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging(
     ntt_output: &DeviceSlice<BF>,
     staging: &mut DeviceSlice<Digest>,
@@ -631,6 +660,27 @@ pub(crate) fn transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging(
     assert_eq!(staging.len(), leaves_count);
     assert!(leaves_count <= u32::MAX as usize);
     assert!(ntt_output.len() >= trace_len * 4 * cosets_in_tile as usize);
+
+    if use_register_resident_natural_v32(log_values_per_leaf, leaves_count) {
+        let config = CudaLaunchConfig::basic(
+            (leaves_count as u32).div_ceil(WARP_SIZE),
+            (WARP_SIZE, 2u32),
+            stream,
+        );
+        let args = TransformAndHashWhirLeavesFromNttMultiCosetToStagingRegisterV32Arguments::new(
+            PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+            staging.as_mut_ptr() as *mut u32,
+            transform_params,
+            log_trace_len,
+            log_lde_factor,
+            coset_index_base,
+            leaves_count as u32,
+        );
+        return TransformAndHashWhirLeavesFromNttMultiCosetToStagingRegisterV32Function(
+            ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_register_v32_kernel,
+        )
+        .launch(&config, &args);
+    }
 
     let values_per_leaf = 1usize << log_values_per_leaf;
     let block_dim_x = if values_per_leaf == 2 {

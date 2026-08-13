@@ -1,5 +1,12 @@
 use super::*;
 
+#[test]
+fn cpu_natural_register_resident_v32_respects_threshold_and_width() {
+    assert!(!use_register_resident_natural_v32(5, (1 << 16) - 1));
+    assert!(use_register_resident_natural_v32(5, 1 << 16));
+    assert!(!use_register_resident_natural_v32(4, 1 << 20));
+}
+
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use field::{Field, Rand};
 use gpu_core::primitives::device_structures::DeviceMatrix;

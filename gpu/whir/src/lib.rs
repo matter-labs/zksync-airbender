@@ -1061,6 +1061,119 @@ pub(crate) mod tests {
         assert_coefficient_query_kernels_from_evaluation_backing_match_cpu(6, 32, 32, 1, true);
     }
 
+    fn bitreverse_low_bits_for_test(value: usize, bits: u32) -> usize {
+        value.reverse_bits() >> (usize::BITS - bits)
+    }
+
+    fn assert_coefficient_leaf_hash_natural_staging_matches_materialized_reference(
+        log_trace_len: u32,
+        lde_factor: usize,
+        coset_index_base: u32,
+        cosets_in_tile: u32,
+    ) {
+        const TREE_CAP_SIZE: usize = 16;
+        const VALUES_PER_LEAF: usize = 32;
+
+        let context = make_test_context(256, 64);
+        let trace_len = 1usize << log_trace_len;
+        let log_lde_factor = lde_factor.trailing_zeros();
+        let log_values_per_leaf = VALUES_PER_LEAF.trailing_zeros();
+        let packed_leaf_count = trace_len / VALUES_PER_LEAF;
+        let total_leaves = packed_leaf_count * lde_factor;
+        let tile_leaves = packed_leaf_count * cosets_in_tile as usize;
+        let monomial_coeffs = sample_monomial_coeffs(trace_len);
+        let evaluation = GpuWhirExtensionOracle::from_monomial_coeffs(
+            &monomial_coeffs,
+            lde_factor,
+            VALUES_PER_LEAF,
+            TREE_CAP_SIZE,
+            false,
+            &context,
+        )
+        .unwrap();
+        let evaluations = evaluation.trace_holder.get_consolidated_cosets();
+        let stream = context.get_exec_stream();
+        let mut materialized = context
+            .alloc::<BF>(evaluations.len(), AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy_async(&mut materialized, evaluations, stream).unwrap();
+        {
+            let mut materialized_matrix = DeviceMatrixMut::new(&mut materialized, trace_len);
+            gpu_ntt::ntt::transform_whir_leaves_from_ntt_in_place_multi_coset(
+                &mut materialized_matrix,
+                log_trace_len,
+                log_lde_factor,
+                log_values_per_leaf,
+                0,
+                lde_factor as u32,
+                stream,
+            )
+            .unwrap();
+        }
+
+        let tile_bf_offset = coset_index_base as usize * trace_len * EXT4_DEGREE;
+        let mut reference_digests = context
+            .alloc::<Digest>(total_leaves, AllocationPlacement::BestFit)
+            .unwrap();
+        gpu_hash::blake2s::hash_leaves_from_ntt_multi_coset(
+            &materialized[tile_bf_offset..],
+            &mut reference_digests,
+            log_values_per_leaf,
+            EXT4_DEGREE as u32,
+            log_lde_factor,
+            coset_index_base,
+            cosets_in_tile as usize,
+            packed_leaf_count,
+            trace_len as u32,
+            stream,
+        )
+        .unwrap();
+
+        let mut staging = context
+            .alloc::<Digest>(tile_leaves, AllocationPlacement::BestFit)
+            .unwrap();
+        kernels::transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging(
+            &evaluations[tile_bf_offset..],
+            &mut staging,
+            log_trace_len,
+            log_lde_factor,
+            log_values_per_leaf,
+            coset_index_base,
+            cosets_in_tile,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params(log_values_per_leaf),
+            stream,
+        )
+        .unwrap();
+
+        let mut reference_host = vec![Digest::default(); total_leaves];
+        let mut staging_host = vec![Digest::default(); tile_leaves];
+        memory_copy_async(&mut reference_host, &reference_digests, stream).unwrap();
+        memory_copy_async(&mut staging_host, &staging, stream).unwrap();
+        stream.synchronize().unwrap();
+
+        for (gid, actual) in staging_host.iter().enumerate() {
+            let coset_in_tile = gid / packed_leaf_count;
+            let leaf_in_coset = gid % packed_leaf_count;
+            let natural_coset = coset_index_base as usize + coset_in_tile;
+            let bitrev_coset = bitreverse_low_bits_for_test(natural_coset, log_lde_factor);
+            let reference_idx = bitrev_coset * packed_leaf_count + leaf_in_coset;
+            assert_eq!(
+                actual, &reference_host[reference_idx],
+                "natural staging mismatch for coset_index_base={coset_index_base}, gid={gid}",
+            );
+        }
+    }
+
+    #[test]
+    fn coefficient_leaf_hash_natural_staging_matches_materialized_reference() {
+        assert_coefficient_leaf_hash_natural_staging_matches_materialized_reference(17, 32, 0, 16);
+        assert_coefficient_leaf_hash_natural_staging_matches_materialized_reference(
+            9, 8192, 17, 4097,
+        );
+    }
+
     #[test]
     fn fused_coefficient_leaf_hash_matches_materialized_reference() {
         let context = make_test_context(256, 32);
