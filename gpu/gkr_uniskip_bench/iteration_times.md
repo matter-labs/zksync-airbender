@@ -5526,17 +5526,23 @@ the implementation they were built to replace. On RR's budget axis the unmodifie
 at both larger budgets, and the one winner is `C@unbounded` at **−4.84 % / −4.68 %**, which drops
 to 64 registers and takes an 8th block.
 
-Provenance, stated once. Every **timing** figure below is copied verbatim from the emitter records
-`.agents/sdd/2026-08-13-v3-r9b/emitter-output.md` and `emitter-output-repeat.md`
-(`tools/r4_table.py`'s `R9B` path, all four logs of a set read in one invocation — the only
-invocation that prints the bridge); every **profiler** figure from the named extractors' own
-output — `ncu-tables.md` (`task4-extract.py`), `g0-table.md` (`task4-g0extract.py`) and
-`sass-census.md` (`task4-sass.py`); and the **static build** facts from Task 1's
-`cuobjdump -res-usage` grid (`task-1-report.md` §2), whose incumbent and drop-in rows reproduce R9's
-static table exactly, which
-is what validates that extractor against R9's. The three are never mixed and nothing here was
-assembled by hand — and in this rung the separation earns itself twice over, because the profiler's
-own wall-clock column contradicts the emitter on one arm (see *the clock excursion*). Eight timed
+Provenance, stated once, and in three categories that this record keeps apart. **Copied verbatim:**
+every **timing** figure from the emitter records `.agents/sdd/2026-08-13-v3-r9b/emitter-output.md`
+and `emitter-output-repeat.md` (`tools/r4_table.py`'s `R9B` path, all four logs of a set read in one
+invocation — the only invocation that prints the bridge); every **profiler** figure from the named
+extractors' own output — `ncu-tables.md` (`task4-extract.py`), `g0-table.md`
+(`task4-g0extract.py`) and `sass-census.md` (`task4-sass.py`); and the **static build** facts from
+Task 1's `cuobjdump -res-usage` grid (`task-1-report.md` §2), whose incumbent and drop-in rows
+reproduce R9's static table exactly, which is what validates that extractor against R9's. **Derived
+here:** the recovered-fraction arithmetic (0.194 / 0.802 = 24 %, 0.128 / 0.778 = 16 %) is a ratio of
+two emitter rows, computed in this record and in the measurement report, not printed by any tool.
+**Historical context from another session, never a row:** R9's own +5.43 % / +5.02 % (that rung's
+emitter), R9's lineinfo re-attribution of the +444 `MOV R, UR`/warp to the term decode
+(`.agents/sdd/2026-08-12-v3-r9/lineinfo-report.md`, the fourth authority — a different rung's
+post-freeze rebuild, which is why nothing here is re-attributed to source constructs), and the four
+pre-provenance anchor references. The four authorities are never mixed, and in this rung the
+separation earns itself twice over, because the profiler's own wall-clock column contradicts the
+emitter on one arm (see *the clock excursion*). Eight timed
 processes — two complete session sets of (CLASS, BUDGET) × (locality, census), one process each,
 **96 × 8 = 768 timed launches** per process, every one preceded by 80 s of discarded work on the
 same rotation inside the same lock hold — plus **10 G0 captures and 12 Full Pictures**. The repeat
@@ -5625,13 +5631,14 @@ unchanged — four dispatch call sites became two and no production site moved).
 price: **+608** instrs on C and +824 on B, because the three arms duplicate the member's whole
 sequence (`LDG` 25 → 33, `SHFL` 194 → 218 / 236, `LDL` 14 → 18 / 21) — and unbounded it lands at
 **59 registers, the lowest cell in the grid**. B trades size for dynamic branches exactly as
-intended (+120 instrs, one extra static copy of the in-place coset chain), and its static `BRA` is
-*unchanged*, because what B removes is one class test per member *visit*, which no static count
-shows. K against C is **±0 instructions at all three budgets** while being 100 % different code —
-the cell that says hoisting the decode is not what the dispatch costs. And one finding corrects R9:
-`(128,6)` **collapses the bank-3 twiddle remat for every reordered body** (39/40 → 20–24) while the
-incumbent's barely moves (40 → 38), so the collapse is not unbounded-only, it belongs to the
-reordered family at any relaxed budget.
+intended (+120 instrs, one extra static copy of the in-place coset chain), and its static `BRA`
+moves by one — 66 → **65** — because what B removes is one class test per member *visit*: a
+source-structural count, and B was not on the capture manifest, so it was never confirmed
+dynamically. K against C is **±0 instructions at all three budgets** while being 100 % different
+code — the cell that says hoisting the decode is not what the dispatch costs. And one finding
+corrects R9: `(128,6)` **collapses the bank-3 twiddle remat for every reordered body** (39/40 →
+20–24) while the incumbent's barely moves (40 → 38), so the collapse is not unbounded-only, it
+belongs to the reordered family at any relaxed budget.
 
 ### The arms — per-lane medians, both rotations, both orders
 
@@ -5727,10 +5734,12 @@ is dropped here for width; everything else is verbatim.
 
 Three readings, stated without ruling on them.
 
-**R9's number reproduces inside this session** — row 9, +5.42 % locality / +5.07 % census against
-R9's own +5.43 % / +5.02 %, on a different rotation (8 lanes against 6) with the machine identity
-recorded. The reference point did not move, so the recovery rows are measured against a baseline
-this rung re-established rather than imported.
+**R9's drop-in PENALTY reproduces inside this session** — row 9, +5.42 % locality / +5.07 % census
+against R9's own +5.43 % / +5.02 %, on a different rotation (8 lanes against 6) with the machine
+identity recorded. What reproduced is the **paired percentage**, which is the quantity the recovery
+rows are read against; the absolute reference did **not** stay put — census `hot16@128` reads 15.352
+here against R9's 15.458 — and those two facts must not be conflated, least of all now that the
+anchor re-base exists precisely because absolute references are not portable across sessions.
 
 **Only one of the four corrected bodies beats the implementation it was built to repair.** C — the
 lever the plan called the size win, and the one whose convergence copy the plan asserted ptxas would
@@ -5741,10 +5750,15 @@ free-rename claim on faith and required it be measured; the machine says the cla
 That the same D lever helps on C and hurts on B (+0.038 / +0.155 against the drop-in) is
 unexplained here.
 
-**The recovered fraction is 0.194 / 0.802 = 24 % on locality and 0.128 / 0.778 = 16 % on census**,
-best body, best case. The remaining **+4.11 % / +4.24 %** is not duplicated decode. So the "sloppy
-implementation" premise is supported at about a quarter of the loss, and gate-first dataflow still
-costs ~4 % implemented properly at this bound.
+**The recovered fraction is 0.194 / 0.802 = 24 % on locality and 0.128 / 0.778 = 16 % on census**
+(derived here, not printed by the emitter), best body, best case. The remaining **+4.11 % /
++4.24 %** is not duplicated decode. So the "sloppy implementation" premise is supported at about a
+quarter of the loss — and what the grid establishes about the rest is narrower than it is tempting
+to say: **the best TESTED repair, C+D at this bound, remains +4.11 % / +4.24 % slower than the
+incumbent.** Three of the four repairs are worse than that, the class axis was tried at one register
+budget only, and the remaining loss is unattributed (see *what this rung leaves open*) — so this is
+not a measurement of what gate-first dataflow costs "implemented properly", a claim no arm here
+supports.
 
 ### The budget axis — RR's question, answered NO on the unmodified body
 
@@ -5873,10 +5887,14 @@ The work readings: the bounded reorder family genuinely does more math-pipe work
 +3.98 % of FMA-heavy active cycles, C+D +2.80 % / +2.68 %, C at `(128,6)` +2.72 % / +2.60 %) — C+D
 removes about a third of the drop-in's extra pipe work and does not remove it. C unbounded is the
 only arm cheaper in pipe work than the incumbent (−1.66 % / −1.91 %) while winning far more on wall
-cycles (−6.18 % / −6.64 %), so most of its advantage is latency hiding from the 8th block, the same
-shape R9 found for its own free body. The incumbent compiled unbounded is a near-null on work
-(+0.66 % / +0.88 %) that loses 3.0–3.2 % of wall cycles — a body doing the same work at 6 blocks
-instead of 7.
+cycles (−6.18 % / −6.64 %), which is a **latency-hiding signature** — the same shape R9 recorded for
+its own free body, and with the same limit: that body is simultaneously the only 8-block cell and a
+cell whose twiddle remat has collapsed, so **which of the two produces the signature is undetermined
+here**. Either does: more resident warps give the scheduler more to choose from, and the collapse
+takes pressure off the constant path (`mio_throttle` 0.435 → 0.040). Nothing in this rung apportions
+it — see *neither budget separator is clean*. The incumbent compiled unbounded is a near-null on
+work (+0.66 % / +0.88 %) that loses 3.0–3.2 % of wall cycles — a body doing the same work at
+6 blocks instead of 7.
 
 ### The instruction census
 
@@ -5938,12 +5956,24 @@ and 0.69 % of R9 — the two nearest in time — while the R4/R5 gap is the same
 described as a four-rung creep. The anomaly is now **four rungs deep**, and it has acquired a second
 dimension: none of those four references records which machine produced it.
 
-A **paste-ready fresh reference set with device identity attached** is proposed in the measurement
-report (§6.3) and is deliberately **not committed** — RR decides whether the campaign re-bases. Two
-things a re-base would weigh, stated rather than decided: both R9b rotations carry 8 lanes, so
-re-basing on them re-bases onto an 8-lane composition rather than R4's 11 or R8's 12; and the
-CLASS/census session is the one that raised FLANK, so if a single canonical pair is wanted, the
-BUDGET rotation's census is the flank-clean one (0.011–0.023 ms against CLASS's 0.088–0.099).
+**RR re-based.** The measurement report proposed a fresh identity-carrying reference set (§6.3) and
+left the decision open; RR's answer was *"rebase"*, and commit **`a9e9f4d8`** carried it out. The
+campaign's anchor reference is now this rung's session: **three anchors** (`control@256`,
+`control_lb@128`, `hot16@128`), **both rotations kept and keyed separately** so the ≈0.3 % spread
+between two 8-lane compositions stays visible instead of being averaged away, **device identity as a
+required field** of the reference, each baseline session's flank status recorded in-code, and the
+`ANCHOR` flag re-keyed to that baseline alone — a session is compared to its *own* rotation's row,
+which is what dissolves the 0.22 %-wide window. The four historical references are **demoted to a
+pre-provenance block**: printed as context, every row labelled `machine identity: unrecorded`, and
+never a flag basis again. Two properties of the new baseline are worth carrying: it is the reference
+**R10 and later** are read against, not R9b's own — a session cannot be its own reference, which is
+why R9b's rows above keep the historical set beside them — and the legacy `REORDER` / `FRONTIER-*` /
+`CACHE-FACTORIAL` paths were deliberately **not** re-pointed, since their archived logs and their
+byte-identity are load-bearing.
+
+**The flag readings above are kept as they fired, and they are the evidence for that decision.** Six
+census flags across two session sets, on a reference set 2.8 % wide, is what a re-base is for; a
+record that quietly re-scored them against the new baseline would have deleted the argument.
 
 ### Reproduction — two complete session sets
 
@@ -5973,11 +6003,13 @@ agree on every row.
 
 ### Instrument notes
 
-- **The bridge is the only cross-session statement this rung makes.** `c-hot16@128` is the one cell
-  both rotations carry, and it reads 15.763 (CLASS) against 15.809 (BUDGET) on locality, +0.29 %,
-  and 16.348 against 16.344 on census, −0.02 %. Both are below the emitter's 1.5 % reporting
-  threshold and no `BRIDGE` flag was raised, so the two rotations are comparable at that size —
-  but a paired per-round contrast is valid only inside one session, and every row above stays
+- **The bridge is this rung's only cross-ROTATION comparability check** — not its only cross-session
+  statement, since the comparison against R9's percentage, the two session sets and the historical
+  anchors are all cross-session and each is labelled as such where it appears. `c-hot16@128` is the
+  one cell both rotations carry, and it reads 15.763 (CLASS) against 15.809 (BUDGET) on locality,
+  +0.29 %, and 16.348 against 16.344 on census, −0.02 %. Both are below the emitter's 1.5 %
+  reporting threshold and no `BRIDGE` flag was raised, so the two rotations are comparable at that
+  size — but a paired per-round contrast is valid only inside one session, and every row above stays
   inside its own.
 - **Two timed cells were never profiled**, both because the Full-Picture manifest is a fixed five
   plus one conditional slot. `hot16-lb6@128` — the largest single loss in the rung, and the only
@@ -6026,15 +6058,19 @@ agree on every row.
   wins when it is allowed registers" is not answered here, and both D bodies sit at 59 static
   registers unbounded, the lowest cells in the grid, untimed.
 - **Why D helps on C and hurts on B is unexplained.**
-- **The 64-thread axis (amendment A2) has nothing here to open it.** A9's trigger is a
-  relaxed-budget cell of the same body showing *work* reduction that the 128-thread occupancy step
-  is hiding. Both relaxed-budget cells that were profiled land at 80 allocated registers and show no
-  work reduction at all — C at `(128,6)` burns +2.7 % FMA-active cycles and the unbounded incumbent
-  +0.66 / +0.88 % — so on this evidence the trigger does not fire. (That is a reading of A9 against
-  this rung's captures; the measurement report does not address A2.)
-- **The census reference set is self-contradictory at the reporting threshold**, and the fresh
-  identity-recorded replacement is proposed but not committed. Until RR re-bases, every census
-  `ANCHOR` flag in this campaign is reporting that disagreement.
+- **The 64-thread axis (amendment A2) has nothing here to open it.** A2 buys an intermediate
+  occupancy point only above 80 registers, and A9's trigger is a relaxed-budget cell showing *work*
+  reduction that the 128-thread occupancy step is hiding. **No measured cell realizes more than 80
+  registers** — the three relaxed-budget cells allocate 80 (C at `(128,6)`), 80 (the unbounded
+  incumbent) and 64 (C unbounded) — and the two 80-register cells show no work reduction at all
+  (+2.7 % and +0.66 / +0.88 % FMA-active cycles). So nothing here fires the trigger. (That is a
+  reading of A9 against this rung's captures; the measurement report does not address A2.)
+- **The old census reference set was self-contradictory at the reporting threshold, and that is now
+  closed rather than open**: RR re-based on this rung's identity-carrying session (`a9e9f4d8`), the
+  four historical references are a pre-provenance context block, and the flag keys to the new
+  baseline. What remains open is the underlying question the flags never answered — *why* census
+  absolutes drifted ~2 % across R4→R9 — which no rung has explained and which the re-base does not
+  explain either; it only stops the reference set from disagreeing with itself.
 
 ### Artifacts
 

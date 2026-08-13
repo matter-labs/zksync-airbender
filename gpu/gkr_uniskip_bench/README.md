@@ -621,26 +621,33 @@ branch twice, is the attribution control and is not timed), each built at
 amendment A1 that 4-warp blocks make registers cheap here (a ladder step costs four warps, against
 nine in the windowed bench that won 22 % relaxing a cap). Two 8-lane rotations, `--r9b-class` and
 `--r9b-budget`, 96 paired rounds / warmup 8 per term order, one plan on every cached lane;
-`tools/r4_table.py`'s `R9B` path reports and `tools/r7_gates.sh`'s `r9b` / `r9bdiag` lanes gate.
-**Outcome: the repair is real, small, and mostly not where it was expected.** Best corrected body
-C+D recovers **−0.194 ms / −1.25 %** (census −0.128 / −0.79 %, 96/96) against the drop-in and is
-still **+4.11 % / +4.24 %** slower than the incumbent — **24 % / 16 % of R9's loss**, with R9's own
-+5.42 % / +5.07 % reproduced in-session. **Three of the four corrected bodies do not beat the
-implementation they replace**: C alone is +1.06 % / +1.31 % *worse* (the convergence copy was
-asserted to be a free register rename; RR required it be measured and it is not free), B is a wash
-(61/96, 52/96) and B+D is worse. **On the budget axis the unmodified body says no in both
-directions** — incumbent at `(128,6)` +6.39 % / +5.52 %, incumbent unbounded (R9's never-built
-separating arm) +1.20 % / +0.70 %, all 96/96 — and the only cell beating the incumbent is
-`C@unbounded` at **−4.84 % / −4.68 %**, which *lowers* registers to 64 and takes an 8th block: the
-winning direction is fewer registers, more occupancy. Four things travel: the static REG line lies
-a **second** way (75 allocates as 80, putting three cells with static lines 75/75/80 in one
-occupancy class); **neither budget separator is clean** (`C@6−C@7` moves a block tier too,
-`C@unb−C@6` holds the remat exactly at 836 = 836 dynamic twiddle loads but moves two tiers), so
-R9's separator debt stays open; the two C+D captures ran at a **5 % lower in-capture clock**, which
-inverts that comparison's sign on `ncu ms` while the GPC-cycle columns reproduce the emitter's
-ordering; and **device identity is now recorded** — 71 byte-identical readings, one RTX PRO 6000
-Blackwell Server Edition (`GPU-cbaba4fd…`), driver 610.57.04, MIG off — which no earlier reference
-in this campaign carries. Full record: `iteration_times.md`'s *v3 R9b* section.
+`tools/r4_table.py`'s `R9B` path reports the rows and `tools/r7_gates.sh`'s `r9b` / `r9bdiag` lanes
+report their cell matrix (all five gate scripts now compute every check and print the whole board —
+`a494a2f3`, `a008077b` — so a mismatch is recorded, never an early rejection). **Outcome: the repair
+is real, small, and mostly not where it was expected.** Best corrected body C+D recovers **−0.194 ms
+/ −1.25 %** (census −0.128 / −0.79 %, 96/96) against the drop-in and is still **+4.11 % / +4.24 %**
+slower than the incumbent — **24 % / 16 % of R9's loss**, with R9's drop-in *penalty* reproduced
+in-session at +5.42 % / +5.07 % (the paired percentage; the absolute census anchor moved, 15.458 →
+15.352). **Three of the four corrected bodies do not beat the implementation they replace**: C alone
+is +1.06 % / +1.31 % *worse* (the convergence copy was asserted to be a free register rename; RR
+required it be measured and it is not free), B is a wash (61/96, 52/96) and B+D is worse. **On the
+budget axis the unmodified body says no in both directions** — incumbent at `(128,6)` +6.39 % /
++5.52 %, incumbent unbounded (R9's never-built separating arm) +1.20 % / +0.70 %, all 96/96 — and
+the only cell beating the incumbent is `C@unbounded` at **−4.84 % / −4.68 %**, which *lowers*
+registers to 64 and takes an 8th block: the winning direction is fewer registers, more occupancy —
+though that cell's advantage is a latency-hiding signature whose two bundled causes (the block, the
+remat collapse) this rung does not separate. Five things travel: the static REG line lies a
+**second** way (75 allocates as 80, putting three cells with static lines 75/75/80 in one occupancy
+class); **neither budget separator is clean** (`C@6−C@7` moves a block tier too, `C@unb−C@6` holds
+the remat exactly at 836 = 836 dynamic twiddle loads but moves two tiers), so R9's separator debt
+stays open; the two C+D captures ran at a **5 % lower in-capture clock**, which inverts that
+comparison's sign on `ncu ms` while the GPC-cycle columns reproduce the emitter's ordering; **device
+identity is now recorded** — 71 byte-identical readings, one RTX PRO 6000 Blackwell Server Edition
+(`GPU-cbaba4fd…`), driver 610.57.04, MIG off — which no earlier reference in this campaign carried;
+and on that basis **RR re-based the campaign's anchor reference** onto this session (`a9e9f4d8`):
+three anchors, both rotations keyed separately, device identity a required field, the four
+historical references demoted to a labelled pre-provenance block. Full record:
+`iteration_times.md`'s *v3 R9b* section.
 
 ### Geometry
 
