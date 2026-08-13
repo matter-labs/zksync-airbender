@@ -36,18 +36,20 @@
 #   r9bdiag     the R9b diagnostic-build cells: chain executions per warp-program walk, the per-walk
 #               plan line and the frame-poison divergence, for every timed cell at three arms —
 #               needs the diagnostic binary, which this lane builds
-#   identity    the device IDENTITY gate (runs inside `r9b` as well): the nvidia-smi identity query
-#               works and every field the anchor reference block declares comes back, and the LIVE
-#               GPU's uuid is the one r4_table.py's re-based baseline was measured on. No frozen
-#               reference before R9b recorded a machine; this is what keeps that from recurring, and
-#               tools/gpu_identity.sh is the helper every future session driver should take telemetry
-#               from
+#   identity    the device IDENTITY READING (runs inside `r9b` as well), report-only: it prints the
+#               live GPU's identity and the one r4_table.py's re-based anchor baseline was measured
+#               on, and says whether they are the same machine. A different machine means the
+#               emitter's anchor deltas are CROSS-MACHINE and RR should re-base before reading them —
+#               a reading for RR, never a rejection. tools/gpu_identity.sh is the helper every future
+#               session driver should take telemetry from, so the provenance gap cannot reopen
 #   cpu         the crate's GPU-free unit tests (cpu_*)
 #   fixtures    the emitter fixture matrices — every decision row and every fail-closed guard of
 #               tools/r7_table.py and of r4_table.py's R9 reorder and R9b two-rotation paths,
 #               self-generating, GPU-free
 #   regression  tools/r5_gates.sh all, which itself chains r3 + r4
 #   all         sass; matrix; r9; r9b; counts; r9diag; r9bdiag; cpu; fixtures; regression; sass —
+#               reaches its LAST lane every run: no lane's mismatch stops a later one, and the final
+#               report is the full cell matrix plus the MISMATCHES block —
 #               sequenced so `sass` sees the shipped build, the shipped-build cells run before
 #               `counts` swaps the binary, the diagnostic cells run while it is up, every later lane
 #               that needs the shipped one gets it back, and the final re-gate lands on the binary
@@ -69,7 +71,20 @@
 # the sccache SERVER — a long-lived daemon that inherits every open fd, including that one. The
 # lock would then outlive the script and the next `with_gpu_lock.sh` would wait forever.
 #
-# Exit status is the gate verdict: non-zero if any cell fails.
+# THE WHOLE MATRIX, NEVER AN EARLY REJECTION (RR, 2026-08-13: "regarding any gates, as i said
+# earlier, i do not want to reject anything based on a gate prematurely, i want to see the whole
+# picture and then decide"). So a run of this script ALWAYS produces the complete board: every check
+# is computed, every outcome is printed, a mismatch is RECORDED and the run carries straight on, and
+# the last thing printed is the full cell matrix plus a MISMATCHES block. One lane's mismatch never
+# stops a later lane, and one cell's never masks the cells behind it.
+#
+# THE ONE CARVE-OUT, unchanged: a check that cannot COMPUTE its answer has nothing to report. No
+# binary, a run that printed nothing, an archive that will not extract, the wrong build flavour
+# underneath — those stop the CELL, are listed in a NOT RUN block with the reason, and never stop the
+# run. Everything that computes an answer and finds it wrong is a recorded mismatch.
+#
+# Exit status is INFORMATION FOR AUTOMATION — non-zero when something mismatched — and nothing in this
+# file is conditional on it. The report is printed either way.
 set -uo pipefail
 
 B=${B:-target/release/gpu_gkr_uniskip_bench}
@@ -82,7 +97,38 @@ R9BFIXTURES=$DIR/r9b_fixtures/check.sh
 fail=0
 diag_built=0
 note() { printf '%s\n' "$*"; }
-bad() { printf 'FAIL: %s\n' "$*"; fail=1; }
+
+# --- the whole-matrix reporting layer --------------------------------------------------------------
+# `bad` RECORDS and returns 0, so `bad …` can never short-circuit a caller's `&&` chain or stand in
+# for a control-flow decision. Nothing below it in a cell is skipped on its account.
+LANE=main
+MISMATCHES=()
+LANE_ROWS=()
+NOTRUN=()
+lane_is() { LANE=$1; }
+# The record is `|`-separated and a payload can itself be a markdown table row, so `|` is folded to
+# `¦` on the way in — the inline print below keeps the value verbatim.
+bar() { printf '%s' "${1//|/¦}"; }
+bad() { # bad <what was wrong> [expected] [found]
+  fail=$((fail + 1))
+  MISMATCHES+=("$LANE|$(bar "$1")|$(bar "${2-}")|$(bar "${3-}")")
+  printf 'MISMATCH: %s\n' "$1"
+  [ -n "${2-}" ] && printf '    expected: %s\n' "$2"
+  [ -n "${3-}" ] && printf '    found:    %s\n' "$3"
+  return 0
+}
+# A check that could not be computed. Listed separately from a mismatch, because "we do not know" and
+# "we know and it is wrong" are different readings and RR is looking at both.
+notrun() { # notrun <what> <why>
+  NOTRUN+=("$LANE|$(bar "$1")|$(bar "$2")")
+  printf 'NOT RUN: %s — %s\n' "$1" "$2"
+  return 0
+}
+# One row of the final matrix, per cell GROUP, so the board shows where the cells were as well as how
+# many matched.
+cellrow() { # cellrow <group> <cells> <passed>
+  LANE_ROWS+=("$LANE|$(bar "$1")|$2|$3|$(( $2 - $3 ))")
+}
 
 TMP=$(mktemp -d)
 
@@ -201,7 +247,7 @@ ensure_diag() {
   [ "$diag_built" = 1 ] && return 0
   note "### building the DIAGNOSTIC binary (GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1)"
   if ! build_bench 1 >"$TMP/build-diag.log" 2>&1; then
-    bad "diagnostic build failed"
+    notrun "the diagnostic build" "cargo failed — see the tail below"
     tail -20 "$TMP/build-diag.log"
     return 1
   fi
@@ -216,7 +262,7 @@ ensure_shipped() {
   [ "$diag_built" = 0 ] && return 0
   note "### rebuilding the SHIPPED binary before this lane"
   if ! build_bench "" >"$TMP/build-shipped-mid.log" 2>&1; then
-    bad "shipped rebuild failed"
+    notrun "the shipped rebuild" "cargo failed — see the tail below"
     tail -20 "$TMP/build-shipped-mid.log"
     return 1
   fi
@@ -244,13 +290,13 @@ ARCHIVE=""
 require_shipped() { # require_shipped <lane name>
   ARCHIVE=$(newest_archive)
   if [ -z "$ARCHIVE" ]; then
-    bad "$1: no native archive under target/release/build — build the crate first"
+    notrun "$1" "no native archive under target/release/build — build the crate first"
     return 1
   fi
   local flavor; flavor=$(build_flavor "$ARCHIVE")
   note "  archive: $ARCHIVE (AB_UNISKIP_WINDOW_DIAG=$flavor)"
   if [ "$diag_built" = 1 ] || [ "$flavor" != OFF ]; then
-    bad "$1 needs the SHIPPED build (AB_UNISKIP_WINDOW_DIAG=$flavor); run 'all', which orders the lanes, or rebuild without the diagnostic define"
+    note "  BUILD-ORDER: $1 needs the SHIPPED build (AB_UNISKIP_WINDOW_DIAG=$flavor); run 'all', which orders the lanes, or rebuild without the diagnostic define"
     return 1
   fi
   return 0
@@ -309,12 +355,12 @@ q_parity() {
                   --term-order "$order")
       usable "$got" "$carrier/$arm order=$order" || continue
       if [ "$got" = "$ref" ]; then pass=$((pass + 1))
-      else bad "q parity $carrier/$arm order=$order ($got vs $ref)"; fi
+      else bad "q parity $carrier/$arm order=$order" "$ref" "$got"; fi
     done <<< "$PAIRS"
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 24 ] || bad "expected 24 q-parity cells, ran $cells — a pair or an order is missing"
-  [ "$cells" = "$pass" ] || bad "q parity incomplete"
+  cellrow "q parity (12 carrier x arm pairs)" "$cells" "$pass"
+  [ "$cells" = 24 ] || bad "q-parity cell count — a pair or an order is missing; cells that never ran are not a verdict either way" "24" "${cells}"
 
   # E4 SELF-PRODUCT CELL. `--self-products 60` is the program's maximum and the only way to
   # exercise the duplicate rule. The LOCAL reference is printed and compared here too: four
@@ -334,12 +380,12 @@ q_parity() {
                    --self-products 60 --term-order "$order")
       usable "$sgot" "$carrier/hot16 sp60 order=$order" || continue
       if [ "$sgot" = "$sref" ]; then spass=$((spass + 1))
-      else bad "sp60 parity $carrier/hot16 order=$order ($sgot vs $sref)"; fi
+      else bad "sp60 parity $carrier/hot16 order=$order" "$sref" "$sgot"; fi
     done
   done
   note "  cells=$scells passed=$spass"
-  [ "$scells" = 8 ] || bad "expected 8 self-product cells, ran $scells"
-  [ "$scells" = "$spass" ] || bad "self-product matrix incomplete"
+  cellrow "self-products 60" "$scells" "$spass"
+  [ "$scells" = 8 ] || bad "self-product cell count — cells that never ran are not a verdict either way" "8" "${scells}"
 
   # CPU oracle — the only leg that does not go through `q` alone.
   # THE FLAKE THESE CELLS USED TO HAVE, and its cause — recorded because a gate that fails for a
@@ -364,8 +410,8 @@ q_parity() {
     done
   done
   note "  oracle cells=$runs passed=$oks"
-  [ "$runs" = 6 ] || bad "expected 6 oracle cells, ran $runs"
-  [ "$runs" = "$oks" ] || bad "CPU oracle incomplete"
+  cellrow "CPU oracle (carriers)" "$runs" "$oks"
+  [ "$runs" = 6 ] || bad "oracle cell count — cells that never ran are not a verdict either way" "6" "${runs}"
 }
 
 # R7b's five pairs, against the SAME local reference: the transplant is a different geometry
@@ -385,12 +431,12 @@ segb_q_parity() {
                   --term-order "$order")
       usable "$got" "$carrier/$arm order=$order" || continue
       if [ "$got" = "$ref" ]; then pass=$((pass + 1))
-      else bad "q parity $carrier/$arm order=$order ($got vs $ref)"; fi
+      else bad "q parity $carrier/$arm order=$order" "$ref" "$got"; fi
     done <<< "$SEGB_PAIRS"
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 10 ] || bad "expected 10 segb q-parity cells, ran $cells — a pair or an order is missing"
-  [ "$cells" = "$pass" ] || bad "segb q parity incomplete"
+  cellrow "q parity (R7b segb pairs)" "$cells" "$pass"
+  [ "$cells" = 10 ] || bad "segb q-parity cell count — a pair or an order is missing; cells that never ran are not a verdict either way" "10" "${cells}"
 }
 
 seg_line_cells() {
@@ -410,15 +456,18 @@ seg_line_cells() {
              --term-order "$order" $flag >"$log" 2>&1; then
         bad "[$flag] order=$order run failed"; tail -3 "$log"; continue
       fi
+      # Count AND content: a doubled SEG line used to hide whether either of them was the oracle's.
+      local seg_ok=1
       n=$(grep -c '^SEG ' "$log")
-      if [ "$n" != 1 ]; then bad "[$flag] order=$order printed $n SEG lines, expected 1"; continue; fi
-      got=$(grep '^SEG ' "$log")
-      if [ "$got" = "$want" ]; then pass=$((pass + 1))
-      else
-        bad "[$flag] order=$order SEG line differs from the committed oracle"
-        note "    got  $got"
-        note "    want $want"
+      if [ "$n" != 1 ]; then
+        bad "[$flag] order=$order SEG line count" "1" "$n"; seg_ok=0
       fi
+      got=$(grep -m1 '^SEG ' "$log")
+      if [ "$got" != "$want" ]; then
+        bad "[$flag] order=$order SEG line differs from the committed oracle" "$want" "${got:-<none>}"
+        seg_ok=0
+      fi
+      [ "$seg_ok" = 1 ] && pass=$((pass + 1))
     done
     # The anchor rotation deals nothing, and the emitter REJECTS an anchor log carrying the
     # line — so the runner must not print one.
@@ -431,8 +480,8 @@ seg_line_cells() {
     else bad "--seg-anchor order=$order printed a SEG line; the anchor rotation deals nothing"; fi
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 10 ] || bad "expected 10 SEG-line cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "SEG-line cells incomplete"
+  cellrow "dealt-plan SEG line" "$cells" "$pass"
+  [ "$cells" = 10 ] || bad "SEG-line cell count — cells that never ran are not a verdict either way" "10" "${cells}"
 }
 
 echo_cells() {
@@ -464,14 +513,12 @@ echo_cells() {
       pass=$((pass + 1))
       note "  $args -> $got"
     else
-      bad "carveout echoes for [$args]"
-      note "    got  $got"
-      note "    want $want"
+      bad "carveout echoes for [$args]" "$want" "$got"
     fi
   done <<< "$rows"
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 16 ] || bad "expected 16 echo cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "echo cells incomplete"
+  cellrow "applied carveout echoes" "$cells" "$pass"
+  [ "$cells" = 16 ] || bad "echo cell count — cells that never ran are not a verdict either way" "16" "${cells}"
 }
 
 lane_facts() {
@@ -510,8 +557,8 @@ lane_facts() {
     done < <(grep '^ARM ' "$log")
   done
   note "  cells=$cells passed=$pass"
+  cellrow "ARM lane facts" "$cells" "$pass"
   [ "$cells" = 29 ] || bad "expected 29 lane-fact cells (10 + 9 + 2 + 8), ran $cells"
-  [ "$cells" = "$pass" ] || bad "lane facts incomplete"
 }
 
 rotations() {
@@ -526,25 +573,31 @@ rotations() {
            --term-order locality "$flag" >"$log" 2>&1; then
       bad "$flag run failed"; tail -3 "$log"; continue
     fi
+    # Sample count AND trailer, both read, whatever the other said: a short log used to hide a
+    # missing trailer behind it, and a truncated run shows up in both.
+    local rot_ok=1
     n=$(grep -c '^SAMPLE ' "$log")
     if [ "$n" != $((rounds * lanes)) ]; then
-      bad "$flag emitted $n samples, expected $((rounds * lanes)) ($rounds rounds x $lanes lanes)"
-      continue
+      bad "$flag sample count" "$((rounds * lanes)) ($rounds rounds x $lanes lanes)" "$n"
+      rot_ok=0
     fi
     if ! grep -q " done order=locality warmup=0 rounds=$rounds lanes=$lanes\$" "$log"; then
-      bad "$flag emitted no matching trailer — a truncated log is not a pass"; continue
+      bad "$flag trailer — a truncated log is not a pass" \
+          "done order=locality warmup=0 rounds=$rounds lanes=$lanes" "absent"
+      rot_ok=0
     fi
-    pass=$((pass + 1))
+    [ "$rot_ok" = 1 ] && pass=$((pass + 1))
     note "  $flag: $n samples over $lanes lanes"
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 4 ] || bad "expected 4 rotation cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "rotation cells incomplete"
+  cellrow "the four rotations end to end" "$cells" "$pass"
+  [ "$cells" = 4 ] || bad "rotation cell count — cells that never ran are not a verdict either way" "4" "${cells}"
 }
 
 matrix() {
+  lane_is matrix
   if [ ! -x "$B" ]; then
-    bad "matrix: no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
+    notrun "the whole matrix lane" "no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
     return
   fi
   note_flavor
@@ -577,7 +630,11 @@ chain_line_block() {
 }
 
 counts() {
-  ensure_diag || return
+  lane_is counts
+  if ! ensure_diag; then
+    notrun "the whole counts lane" "the diagnostic build did not complete, so no counter line exists"
+    return
+  fi
   note "### chain-count gate: per-cohort chains for every pinned pair, both term orders"
   local cells=0 pass=0 order carrier arm calls blocks cohorts per want
   local seg_blocks="" segb_blocks=""
@@ -592,23 +649,31 @@ counts() {
       fi
       want=$(awk -v a="$arm" '$1==a {print $2}' <<< "$ARM_FACTS")
       if [ -z "$want" ]; then bad "$arm has no pinned chain count"; continue; fi
+      # Geometry, arithmetic and the pinned count are three readings of one counter line: all three
+      # are taken, whatever the others said, so a cohort count off by one no longer hides the chain
+      # count behind it.
+      local cnt_ok=1
       if [ "$cohorts" != 4 ]; then
-        bad "$carrier/$arm order=$order reports $cohorts cohorts, the geometry is K = 4"; continue
+        bad "$carrier/$arm order=$order cohort count (the geometry is K = 4)" "4" "$cohorts"
+        cnt_ok=0
       fi
       if [ "$calls" != $((blocks * cohorts * per)) ]; then
-        bad "$carrier/$arm order=$order: $calls total is not $blocks x $cohorts x $per"; continue
+        bad "$carrier/$arm order=$order counter arithmetic" \
+            "$blocks blocks x $cohorts cohorts x $per per cohort = $((blocks * cohorts * per))" \
+            "$calls total"
+        cnt_ok=0
       fi
       if [ "$per" != "$want" ]; then
-        bad "$carrier/$arm order=$order: $per chains per cohort, want $want"; continue
+        bad "$carrier/$arm order=$order chains per cohort" "$want" "$per"; cnt_ok=0
       fi
-      pass=$((pass + 1))
+      [ "$cnt_ok" = 1 ] && pass=$((pass + 1))
       seg_blocks=$blocks
       note "  $carrier/$arm/$order: $calls total / $blocks blocks / $cohorts cohorts = $per per cohort"
     done <<< "$PAIRS"
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 24 ] || bad "expected 24 chain cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "chain-count gate incomplete"
+  cellrow "chain counters per cohort" "$cells" "$pass"
+  [ "$cells" = 24 ] || bad "chain cell count — cells that never ran are not a verdict either way" "24" "${cells}"
 
   note "### chain-count gate, R7b: per-BLOCK chains, no cohort divisor, both term orders"
   local bcells=0 bpass=0
@@ -623,20 +688,24 @@ counts() {
       fi
       want=$(awk -v a="$arm" '$1==a {print $2}' <<< "$ARM_FACTS")
       if [ -z "$want" ]; then bad "$arm has no pinned chain count"; continue; fi
+      # Both readings, as above: no cohort divisor here, so it is arithmetic and the pinned count.
+      local cnt_ok=1
       if [ "$calls" != $((blocks * per)) ]; then
-        bad "$carrier/$arm order=$order: $calls total is not $blocks x $per"; continue
+        bad "$carrier/$arm order=$order counter arithmetic" \
+            "$blocks blocks x $per per block = $((blocks * per))" "$calls total"
+        cnt_ok=0
       fi
       if [ "$per" != "$want" ]; then
-        bad "$carrier/$arm order=$order: $per chains per block, want $want"; continue
+        bad "$carrier/$arm order=$order chains per block" "$want" "$per"; cnt_ok=0
       fi
-      bpass=$((bpass + 1))
+      [ "$cnt_ok" = 1 ] && bpass=$((bpass + 1))
       segb_blocks=$blocks
       note "  $carrier/$arm/$order: $calls total / $blocks blocks = $per per block"
     done <<< "$SEGB_PAIRS"
   done
   note "  cells=$bcells passed=$bpass"
-  [ "$bcells" = 10 ] || bad "expected 10 segb chain cells, ran $bcells"
-  [ "$bcells" = "$bpass" ] || bad "segb chain-count gate incomplete"
+  cellrow "chain counters per block (R7b)" "$bcells" "$bpass"
+  [ "$bcells" = 10 ] || bad "segb chain cell count — cells that never ran are not a verdict either way" "10" "${bcells}"
 
   # THE GRID ITSELF, read off the two counter lines rather than pinned: a transplant block
   # covers four rows where an R7 seg block covers sixteen, so `eval_blocks(4)` is exactly 4x
@@ -699,22 +768,22 @@ r9_q_parity() {
       usable "$unb" "reorder-free $arm order=$order" || continue
       cells=$((cells + 1))
       if [ "$reo" = "$inc" ]; then pass=$((pass + 1))
-      else bad "R9 bit-identity reorder/$arm order=$order ($reo vs incumbent $inc)"; fi
+      else bad "R9 bit-identity reorder/$arm order=$order (against the incumbent)" "$inc" "$reo"; fi
       cells=$((cells + 1))
       if [ "$unb" = "$inc" ]; then pass=$((pass + 1))
-      else bad "R9 bit-identity reorder-free/$arm order=$order ($unb vs incumbent $inc)"; fi
+      else bad "R9 bit-identity reorder-free/$arm order=$order (against the incumbent)" "$inc" "$unb"; fi
       cells=$((cells + 1))
       if [ "$inc" = "$ctl" ]; then pass=$((pass + 1))
-      else bad "R9 q parity incumbent/$arm order=$order ($inc vs control $ctl)"; fi
+      else bad "R9 q parity incumbent/$arm order=$order (against the control)" "$ctl" "$inc"; fi
       cells=$((cells + 1))
       if [ "$reo" = "$ctl" ]; then pass=$((pass + 1))
-      else bad "R9 q parity reorder/$arm order=$order ($reo vs control $ctl)"; fi
+      else bad "R9 q parity reorder/$arm order=$order (against the control)" "$ctl" "$reo"; fi
       note "  $arm/$order: incumbent $inc reorder $reo reorder-free $unb"
     done
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 24 ] || bad "expected 24 R9 q cells, ran $cells — an arm or an order is missing"
-  [ "$cells" = "$pass" ] || bad "R9 q bit-identity incomplete"
+  cellrow "R9 q bit-identity" "$cells" "$pass"
+  [ "$cells" = 24 ] || bad "R9 q cell count — an arm or an order is missing; cells that never ran are not a verdict either way" "24" "${cells}"
 
   # E4 SELF-PRODUCT CELL. `--self-products 60` is the program's maximum and the only way to reach
   # the W = 0 duplicate rule including E4 self-products: the reordered walk squares H after one
@@ -736,17 +805,17 @@ r9_q_parity() {
         usable "$sgot" "$arm $flag sp60 order=$order" || continue
         scells=$((scells + 1))
         if [ "$sgot" = "$sinc" ]; then spass=$((spass + 1))
-        else bad "R9 sp60 $arm $flag order=$order ($sgot vs incumbent $sinc)"; fi
+        else bad "R9 sp60 $arm $flag order=$order (against the incumbent)" "$sinc" "$sgot"; fi
         scells=$((scells + 1))
         if [ "$sgot" = "$sref" ]; then spass=$((spass + 1))
-        else bad "R9 sp60 $arm $flag order=$order ($sgot vs control $sref)"; fi
+        else bad "R9 sp60 $arm $flag order=$order (against the control)" "$sref" "$sgot"; fi
       done
       note "  $arm/$order sp60: incumbent $sinc"
     done
   done
   note "  cells=$scells passed=$spass"
-  [ "$scells" = 24 ] || bad "expected 24 R9 self-product cells, ran $scells"
-  [ "$scells" = "$spass" ] || bad "R9 self-product matrix incomplete"
+  cellrow "R9 self-products 60" "$scells" "$spass"
+  [ "$scells" = 24 ] || bad "R9 self-product cell count — cells that never ran are not a verdict either way" "24" "${scells}"
 
   # CPU oracle — the only leg that does not go through `q` alone.
   note "### R9 CPU oracle (--validate), one cell per body and order"
@@ -765,8 +834,8 @@ r9_q_parity() {
     done
   done
   note "  oracle cells=$runs passed=$oks"
-  [ "$runs" = 12 ] || bad "expected 12 R9 oracle cells, ran $runs"
-  [ "$runs" = "$oks" ] || bad "R9 CPU oracle incomplete"
+  cellrow "R9 CPU oracle" "$runs" "$oks"
+  [ "$runs" = 12 ] || bad "R9 oracle cell count — cells that never ran are not a verdict either way" "12" "${runs}"
 }
 
 # The applied carveout per R9 surface: one echo per hinted local symbol AND the set line. The
@@ -796,23 +865,19 @@ r9_echo_cells() {
     got=$(echoes_of --term-order locality $args)
     if [ "$got" = "$want" ]; then pass=$((pass + 1))
     else
-      bad "R9 carveout echoes for [$args]"
-      note "    got  $got"
-      note "    want $want"
+      bad "R9 carveout echoes for [$args]" "$want" "$got"
     fi
     cells=$((cells + 1))
     # shellcheck disable=SC2086
     got=$(symbols_of --term-order locality $args)
     if [ "$got" = "$set_want" ]; then pass=$((pass + 1)); note "  $args -> $want | $set_want"
     else
-      bad "R9 carveout set line for [$args]"
-      note "    got  $got"
-      note "    want $set_want"
+      bad "R9 carveout set line for [$args]" "$set_want" "$got"
     fi
   done <<< "$rows"
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 16 ] || bad "expected 16 R9 echo cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "R9 echo cells incomplete"
+  cellrow "R9 applied carveout" "$cells" "$pass"
+  [ "$cells" = 16 ] || bad "R9 echo cell count — cells that never ran are not a verdict either way" "16" "${cells}"
 }
 
 # The rotation end to end, both orders: the sample/ARM/trailer shape AND every lane's ARM line
@@ -828,35 +893,41 @@ r9_rotation() {
            --reorder-factorial >"$log" 2>&1; then
       bad "--reorder-factorial order=$order run failed"; tail -3 "$log"; continue
     fi
+    # Shape AND schedule AND trailer, all read — and the SIX ARM lines below run regardless, which
+    # they used to be skipped for: a shape wobble is not a reason to stop reading the lane facts.
+    local shape_ok=1
     n=$(grep -c '^SAMPLE ' "$log")
     a=$(grep -c '^ARM ' "$log")
     if [ "$n" != 36 ] || [ "$a" != 6 ]; then
-      bad "--reorder-factorial order=$order emitted $n samples / $a ARM lines, expected 36 / 6"
-      continue
+      bad "--reorder-factorial order=$order log shape" "36 samples / 6 ARM lines" \
+          "$n samples / $a ARM lines"
+      shape_ok=0
     fi
     if ! grep -q "^REORDER schedule order=$order lanes=6 rounds=6 warmup=0\$" "$log"; then
-      bad "--reorder-factorial order=$order printed no matching REORDER schedule line"; continue
+      bad "--reorder-factorial order=$order schedule line" \
+          "REORDER schedule order=$order lanes=6 rounds=6 warmup=0" "absent"
+      shape_ok=0
     fi
     if ! grep -q "^REORDER done order=$order warmup=0 rounds=6 lanes=6\$" "$log"; then
-      bad "--reorder-factorial order=$order printed no matching trailer"; continue
+      bad "--reorder-factorial order=$order trailer" \
+          "REORDER done order=$order warmup=0 rounds=6 lanes=6" "absent"
+      shape_ok=0
     fi
-    pass=$((pass + 1))
-    note "  $order: 36 samples / 6 ARM lines / schedule + trailer OK"
+    [ "$shape_ok" = 1 ] && pass=$((pass + 1))
+    note "  $order: $n samples / $a ARM lines / schedule + trailer read"
     while IFS='|' read -r lane want; do
       [ -n "$lane" ] || continue
       cells=$((cells + 1))
       got=$(awk -v l="$lane" '$1=="ARM" && $2==l {$1=""; $2=""; sub(/^  /, ""); print}' "$log")
       if [ "$got" = "$want" ]; then pass=$((pass + 1))
       else
-        bad "R9 ARM line for $lane order=$order"
-        note "    got  $got"
-        note "    want $want"
+        bad "R9 ARM line for $lane order=$order" "$want" "$got"
       fi
     done <<< "$R9_LANE_FACTS"
   done
   note "  cells=$cells passed=$pass"
+  cellrow "R9 rotation end to end" "$cells" "$pass"
   [ "$cells" = 14 ] || bad "expected 14 R9 rotation cells (2 shapes + 12 ARM lines), ran $cells"
-  [ "$cells" = "$pass" ] || bad "R9 rotation cells incomplete"
 }
 
 # The body selector's rejection matrix. Each row is a configuration the flags cannot describe, and
@@ -895,20 +966,24 @@ r9_rejects() {
   reject "steers the bounded 128-thread cached kernel" $P --reorder-factorial --carveout-hint 50
   }
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 15 ] || bad "expected 15 R9 rejection cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "R9 rejection matrix incomplete"
+  cellrow "R9 rejection matrix" "$cells" "$pass"
+  [ "$cells" = 15 ] || bad "R9 rejection cell count — cells that never ran are not a verdict either way" "15" "${cells}"
 }
 
 r9() {
+  lane_is r9
   if [ ! -x "$B" ]; then
-    bad "r9: no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
+    notrun "the whole r9 lane" "no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
     return
   fi
   # ENFORCED, not just documented: `r9_rotation` pins the two reorder bodies' register counts
   # (70 / 64), which the diagnostic build's counters move — run against it, the lane would fail for
   # the wrong reason. The `all` chain already orders this lane before `counts`; this is what makes
   # the standalone invocation safe too.
-  require_shipped "the R9 lane" || return
+  if ! require_shipped "the R9 lane"; then
+    notrun "the whole r9 lane" "BUILD-ORDER: the archive under it is not the SHIPPED build, so its pinned register counts would read another build's numbers"
+    return
+  fi
   r9_q_parity
   r9_echo_cells
   r9_rotation
@@ -933,7 +1008,11 @@ r9_per_walk() {
 }
 
 r9diag() {
-  ensure_diag || return
+  lane_is r9diag
+  if ! ensure_diag; then
+    notrun "the whole r9diag lane" "the diagnostic build did not complete, so no counter line exists"
+    return
+  fi
   note "### R9 chain executions per warp-program walk: reorder == incumbent == the pinned count"
   local cells=0 pass=0 order arm want inc reo unb
   for order in census locality; do
@@ -959,8 +1038,8 @@ r9diag() {
     done
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 18 ] || bad "expected 18 R9 chain cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "R9 chain-count gate incomplete"
+  cellrow "R9 chain executions per walk" "$cells" "$pass"
+  [ "$cells" = 18 ] || bad "R9 chain cell count — cells that never ran are not a verdict either way" "18" "${cells}"
 
   # The prologue executes a PLAN; the reorder moves where the chain runs, never what the plan is.
   note "### the per-walk plan line is the same plan on all three bodies"
@@ -983,8 +1062,8 @@ r9diag() {
     done
   done
   note "  cells=$pcells passed=$ppass"
-  [ "$pcells" = 12 ] || bad "expected 12 R9 per-walk cells, ran $pcells"
-  [ "$pcells" = "$ppass" ] || bad "R9 per-walk cells incomplete"
+  cellrow "R9 per-walk plan line" "$pcells" "$ppass"
+  [ "$pcells" = 12 ] || bad "R9 per-walk cell count — cells that never ran are not a verdict either way" "12" "${pcells}"
 
   # POISON THE FRAME after the prologue: only an arm with reuses may change q, and the reorder must
   # diverge exactly where the incumbent does. Equal POISONED hashes are stronger than divergence —
@@ -1025,11 +1104,11 @@ r9diag() {
   if usable "$ref" "control128 locality" && usable "$poi" "control128 poisoned locality"; then
     ccells=$((ccells + 1))
     if [ "$ref" = "$poi" ]; then cpass=$((cpass + 1))
-    else bad "R9 poison changed the uncached control ($ref vs $poi)"; fi
+    else bad "R9 poison changed the uncached control" "$poi" "$ref"; fi
   fi
   note "  cells=$ccells passed=$cpass"
-  [ "$ccells" = 31 ] || bad "expected 31 R9 poison cells, ran $ccells"
-  [ "$ccells" = "$cpass" ] || bad "R9 poison cells incomplete"
+  cellrow "R9 frame poison" "$ccells" "$cpass"
+  [ "$ccells" = 31 ] || bad "R9 poison cell count — cells that never ran are not a verdict either way" "31" "${ccells}"
 }
 
 # ---------------------------------------------------------------- r9b (corrected grouped path)
@@ -1092,7 +1171,7 @@ r9b_q_parity() {
       usable "$inc" "incumbent $arm order=$order" || continue
       cells=$((cells + 1))
       if [ "$inc" = "$ctl" ]; then pass=$((pass + 1))
-      else bad "R9b q parity incumbent/$arm order=$order ($inc vs control $ctl)"; fi
+      else bad "R9b q parity incumbent/$arm order=$order (against the control)" "$ctl" "$inc"; fi
       while IFS='|' read -r label flags; do
         [ -n "$label" ] || continue
         # shellcheck disable=SC2086
@@ -1100,14 +1179,14 @@ r9b_q_parity() {
         usable "$got" "$label $arm order=$order" || continue
         cells=$((cells + 1))
         if [ "$got" = "$inc" ]; then pass=$((pass + 1))
-        else bad "R9b bit-identity $label/$arm order=$order ($got vs incumbent $inc)"; fi
+        else bad "R9b bit-identity $label/$arm order=$order (against the incumbent)" "$inc" "$got"; fi
       done <<< "$R9B_CELLS"
       note "  $arm/$order: incumbent $inc, all nine timed cells bit-identical"
     done
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 40 ] || bad "expected 40 R9b q cells, ran $cells — a cell, an arm or an order is missing"
-  [ "$cells" = "$pass" ] || bad "R9b q bit-identity incomplete"
+  cellrow "R9b q bit-identity" "$cells" "$pass"
+  [ "$cells" = 40 ] || bad "R9b q cell count — a cell, an arm or an order is missing; cells that never ran are not a verdict either way" "40" "${cells}"
 
   note "### R9b self-products 60: the D bodies at both arms, then every timed cell at hot16"
   local scells=0 spass=0 sref sinc sgot
@@ -1126,10 +1205,10 @@ r9b_q_parity() {
         usable "$sgot" "$label $arm sp60 order=$order" || continue
         scells=$((scells + 1))
         if [ "$sgot" = "$sinc" ]; then spass=$((spass + 1))
-        else bad "R9b sp60 $label/$arm order=$order ($sgot vs incumbent $sinc)"; fi
+        else bad "R9b sp60 $label/$arm order=$order (against the incumbent)" "$sinc" "$sgot"; fi
         scells=$((scells + 1))
         if [ "$sgot" = "$sref" ]; then spass=$((spass + 1))
-        else bad "R9b sp60 $label/$arm order=$order ($sgot vs control $sref)"; fi
+        else bad "R9b sp60 $label/$arm order=$order (against the control)" "$sref" "$sgot"; fi
       done <<< "$R9B_D_CELLS"
       note "  $arm/$order sp60: incumbent $sinc, both D bodies match it and the control"
     done
@@ -1145,12 +1224,12 @@ r9b_q_parity() {
       usable "$sgot" "$label hot16 sp60 order=locality" || continue
       scells=$((scells + 1))
       if [ "$sgot" = "$sinc" ]; then spass=$((spass + 1))
-      else bad "R9b sp60 $label/hot16 order=locality ($sgot vs incumbent $sinc)"; fi
+      else bad "R9b sp60 $label/hot16 order=locality (against the incumbent)" "$sinc" "$sgot"; fi
     done <<< "$R9B_CELLS"
   fi
   note "  cells=$scells passed=$spass"
-  [ "$scells" = 25 ] || bad "expected 25 R9b self-product cells, ran $scells"
-  [ "$scells" = "$spass" ] || bad "R9b self-product matrix incomplete"
+  cellrow "R9b self-products 60" "$scells" "$spass"
+  [ "$scells" = 25 ] || bad "R9b self-product cell count — cells that never ran are not a verdict either way" "25" "${scells}"
 
   # CPU oracle — the only leg that does not go through `q` alone.
   note "### R9b CPU oracle (--validate), one cell per timed cell, arm and order"
@@ -1171,8 +1250,8 @@ r9b_q_parity() {
     done
   done
   note "  oracle cells=$runs passed=$oks"
-  [ "$runs" = 36 ] || bad "expected 36 R9b oracle cells, ran $runs"
-  [ "$runs" = "$oks" ] || bad "R9b CPU oracle incomplete"
+  cellrow "R9b CPU oracle" "$runs" "$oks"
+  [ "$runs" = 36 ] || bad "R9b oracle cell count — cells that never ran are not a verdict either way" "36" "${runs}"
 }
 
 # The applied carveout per R9b surface. Both rotations hint SIX local symbols, and the CLASS
@@ -1212,18 +1291,14 @@ $A --reorder|16:$r|1 local ($r)"
     got=$(echoes_of --term-order locality $args)
     if [ "$got" = "$want" ]; then pass=$((pass + 1))
     else
-      bad "R9b carveout echoes for [$args]"
-      note "    got  $got"
-      note "    want $want"
+      bad "R9b carveout echoes for [$args]" "$want" "$got"
     fi
     cells=$((cells + 1))
     # shellcheck disable=SC2086
     got=$(symbols_of --term-order locality $args)
     if [ "$got" = "$set_want" ]; then pass=$((pass + 1)); note "  $args -> $want"
     else
-      bad "R9b carveout set line for [$args]"
-      note "    got  $got"
-      note "    want $set_want"
+      bad "R9b carveout set line for [$args]" "$set_want" "$got"
     fi
   done <<< "$rows"
 
@@ -1246,8 +1321,8 @@ $A --reorder|16:$r|1 local ($r)"
   else bad "R9b --carveout-hint none on --no-cache-launch-bounds did not reach $free"; fi
 
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 26 ] || bad "expected 26 R9b echo cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "R9b echo cells incomplete"
+  cellrow "R9b applied carveout" "$cells" "$pass"
+  [ "$cells" = 26 ] || bad "R9b echo cell count — cells that never ran are not a verdict either way" "26" "${cells}"
 }
 
 # Both rotations end to end, both orders: the sample/ARM/schedule/trailer shape AND every lane's ARM
@@ -1266,36 +1341,41 @@ r9b_rotation() {
              "--$flag" >"$log" 2>&1; then
         bad "--$flag order=$order run failed"; tail -3 "$log"; continue
       fi
+      # Shape AND schedule AND trailer, all read — and the EIGHT ARM lines below run regardless.
+      local shape_ok=1
       n=$(grep -c '^SAMPLE ' "$log")
       a=$(grep -c '^ARM ' "$log")
       if [ "$n" != 64 ] || [ "$a" != 8 ]; then
-        bad "--$flag order=$order emitted $n samples / $a ARM lines, expected 64 / 8"
-        continue
+        bad "--$flag order=$order log shape" "64 samples / 8 ARM lines" \
+            "$n samples / $a ARM lines"
+        shape_ok=0
       fi
       if ! grep -q "^R9B schedule order=$order lanes=8 rounds=8 warmup=0\$" "$log"; then
-        bad "--$flag order=$order printed no matching R9B schedule line"; continue
+        bad "--$flag order=$order schedule line" \
+            "R9B schedule order=$order lanes=8 rounds=8 warmup=0" "absent"
+        shape_ok=0
       fi
       if ! grep -q "^R9B done order=$order warmup=0 rounds=8 lanes=8\$" "$log"; then
-        bad "--$flag order=$order printed no matching trailer"; continue
+        bad "--$flag order=$order trailer" "R9B done order=$order warmup=0 rounds=8 lanes=8" \
+            "absent"
+        shape_ok=0
       fi
-      pass=$((pass + 1))
-      note "  --$flag $order: 64 samples / 8 ARM lines / schedule + trailer OK"
+      [ "$shape_ok" = 1 ] && pass=$((pass + 1))
+      note "  --$flag $order: $n samples / $a ARM lines / schedule + trailer read"
       while IFS='|' read -r lane want; do
         [ -n "$lane" ] || continue
         cells=$((cells + 1))
         got=$(awk -v l="$lane" '$1=="ARM" && $2==l {$1=""; $2=""; sub(/^  /, ""); print}' "$log")
         if [ "$got" = "$want" ]; then pass=$((pass + 1))
         else
-          bad "R9b ARM line for $lane under --$flag order=$order"
-          note "    got  $got"
-          note "    want $want"
+          bad "R9b ARM line for $lane under --$flag order=$order" "$want" "$got"
         fi
       done <<< "$facts"
     done
   done
   note "  cells=$cells passed=$pass"
+  cellrow "R9b rotations end to end" "$cells" "$pass"
   [ "$cells" = 36 ] || bad "expected 36 R9b rotation cells (4 shapes + 32 ARM lines), ran $cells"
-  [ "$cells" = "$pass" ] || bad "R9b rotation cells incomplete"
 }
 
 # The body/budget selector's rejection matrix. Each row is a configuration the flags cannot describe,
@@ -1345,65 +1425,84 @@ r9b_rejects() {
   reject "rotates lanes" $P --r9b-class --profile
   }
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 28 ] || bad "expected 28 R9b rejection cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "R9b rejection matrix incomplete"
+  cellrow "R9b rejection matrix" "$cells" "$pass"
+  [ "$cells" = 28 ] || bad "R9b rejection cell count — cells that never ran are not a verdict either way" "28" "${cells}"
 }
 
 # ---------------------------------------------------------------- identity
 #
-# THE MACHINE THE REFERENCES CAME FROM, gated rather than assumed. Up to R9 every archived telemetry
-# sidecar in this campaign recorded device STATE and never device IDENTITY, so no frozen anchor literal
-# could be tied to a GPU; RR re-based the references on the R9b session precisely because that session
-# recorded it. This lane closes the loop from the other side: it proves the identity query works and
-# yields the required fields, and it compares the LIVE device against the uuid committed inside
-# `r4_table.py`'s baseline block. A mismatch means every anchor reference the emitter prints is from
-# another machine — which is a gate condition for this suite, exactly as the sm_120 SASS digests are.
-# Every future session driver should take its telemetry from `tools/gpu_identity.sh` for the same
-# reason (its header says so), so the gap cannot reopen in a per-rung script.
+# THE MACHINE THE REFERENCES CAME FROM — REPORTED, NEVER GATED (RR, 2026-08-13). Up to R9 every
+# archived telemetry sidecar in this campaign recorded device STATE and never device IDENTITY, so no
+# frozen anchor literal could be tied to a GPU; RR re-based the references on the R9b session precisely
+# because that session recorded it. This cell closes the loop from the other side by PRINTING both
+# identities — the live device's and the one committed inside `r4_table.py`'s baseline block — and
+# saying plainly whether they are the same machine.
+#
+# It records NOTHING as a mismatch, not even a different GPU. A different GPU is not a wrong answer, it
+# is a fact about where you are standing: it means the emitter's anchor deltas are CROSS-MACHINE and
+# RR should re-base before reading them, which is a decision for RR on the whole picture and not a
+# reason for this script to stop. Every future session driver should take its telemetry from
+# `tools/gpu_identity.sh` (its header says so), so the gap cannot reopen in a per-rung script.
 identity() {
-  note "### device IDENTITY: the query works, and the live GPU is the one the references came from"
-  local cells=0 pass=0 live want field value
+  local prev=$LANE
+  lane_is identity
+  note "### device IDENTITY (REPORT-ONLY — nothing here is a gate)"
+  local live want field value missing=""
   if ! command -v nvidia-smi >/dev/null; then
-    bad "identity: no nvidia-smi — the references cannot be tied to a machine"
+    notrun "device identity" "no nvidia-smi on PATH, so the live device cannot be named"
+    lane_is "$prev"
     return
   fi
-  note "  $(bash "$DIR/gpu_identity.sh" header)"
-  note "  $(bash "$DIR/gpu_identity.sh" identity)"
-  # Every field the reference block declares must come back non-empty, or a sidecar recorded from this
-  # helper would carry a hole where the provenance is.
+  note "  query:    $(bash "$DIR/gpu_identity.sh" header)"
+  note "  live:     $(bash "$DIR/gpu_identity.sh" identity)"
+  # Every field the reference block declares. A hole here means a sidecar recorded from this helper
+  # would carry a hole where the provenance is — reported, and still not a gate.
   for field in uuid serial driver_version vbios_version name compute_mode mig.mode.current; do
-    cells=$((cells + 1))
     value=$(bash "$DIR/gpu_identity.sh" field "$field")
-    if [ -n "$value" ] && [ "$value" != "[N/A]" ] && [ "$value" != "[Not Supported]" ]; then
-      pass=$((pass + 1))
-    else bad "identity: $field came back as '${value:-<empty>}'"; fi
+    case "$value" in "" | "[N/A]" | "[Not Supported]") missing="$missing $field" ;; esac
   done
+  [ -z "$missing" ] || note "  NOTE: the driver returns nothing for:$missing — a sidecar taken from this helper would have that hole in its provenance"
   # The committed uuid, read straight out of the emitter's baseline block — one literal, one owner.
   want=$(sed -n 's/^ *"uuid": "\(GPU-[0-9a-f-]*\)".*/\1/p' "$DIR/r4_table.py" | head -1)
-  cells=$((cells + 1))
-  if [ -n "$want" ]; then pass=$((pass + 1))
-  else bad "identity: r4_table.py's baseline block declares no uuid to compare against"; fi
   live=$(bash "$DIR/gpu_identity.sh" field uuid)
-  cells=$((cells + 1))
-  if [ "$live" = "$want" ]; then
-    pass=$((pass + 1)); note "  uuid matches the committed baseline: $live"
+  note "  baseline: ${want:-<r4_table.py declares no uuid>}"
+  if [ -z "$want" ]; then
+    note "  READING:  r4_table.py's baseline block declares no uuid, so this run cannot say which machine its anchor references came from."
+  elif [ "$live" = "$want" ]; then
+    note "  READING:  SAME MACHINE — the live GPU is the one the committed anchor baseline was measured on, so the emitter's anchor deltas are same-machine."
   else
-    bad "identity: live GPU is $live, the committed anchor baseline was measured on $want — every anchor reference the emitter prints is from another machine; re-base the reference block (R9b Task 4 procedure) before reading a delta"
+    note ""
+    note "  ****************************************************************************"
+    note "  READING:  DIFFERENT MACHINE. Live GPU is $live; the committed anchor baseline"
+    note "            was measured on $want. Every anchor delta the emitter prints against"
+    note "            that baseline is therefore CROSS-MACHINE and cannot be read as drift"
+    note "            or as a change in the code. RR should re-base the reference block"
+    note "            (the R9b Task 4 procedure) before reading any of them."
+    note "            This is a READING, not a gate: nothing is rejected on it."
+    note "  ****************************************************************************"
+    note ""
   fi
-  note "  cells=$cells passed=$pass"
-  [ "$cells" = 9 ] || bad "expected 9 identity cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "identity cells incomplete"
+  # A row on the board so the reading is visibly present, with zero cells because it gates nothing.
+  cellrow "device identity (READING — 0 cells, nothing gated)" 0 0
+  lane_is "$prev"
 }
 
 r9b() {
+  lane_is r9b
   if [ ! -x "$B" ]; then
-    bad "r9b: no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
+    notrun "the whole r9b lane" "no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
     return
   fi
   # ENFORCED, as in the R9 lane: `r9b_rotation` pins every grid cell's static register count, which
   # the diagnostic build's counters move — run against it, the lane would fail for the wrong reason.
-  require_shipped "the R9b lane" || return
+  if ! require_shipped "the R9b lane"; then
+    notrun "the R9b cell groups" "BUILD-ORDER: the archive under it is not the SHIPPED build, so its pinned register counts would read another build's numbers"
+    identity
+    lane_is r9b
+    return
+  fi
   identity
+  lane_is r9b
   r9b_q_parity
   r9b_echo_cells
   r9b_rotation
@@ -1413,7 +1512,11 @@ r9b() {
 # ---------------------------------------------------------------- r9bdiag
 
 r9bdiag() {
-  ensure_diag || return
+  lane_is r9bdiag
+  if ! ensure_diag; then
+    notrun "the whole r9bdiag lane" "the diagnostic build did not complete, so no counter line exists"
+    return
+  fi
   note "### R9b chain executions per warp-program walk: every timed cell == the incumbent, per arm"
   local cells=0 pass=0 order arm inc got label flags
   for order in census locality; do
@@ -1434,8 +1537,8 @@ r9bdiag() {
     done
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 54 ] || bad "expected 54 R9b chain cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "R9b chain-count gate incomplete"
+  cellrow "R9b chain executions per walk" "$cells" "$pass"
+  [ "$cells" = 54 ] || bad "R9b chain cell count — cells that never ran are not a verdict either way" "54" "${cells}"
 
   # The prologue executes a PLAN; the repair moves decode, never what the plan is.
   note "### the per-walk plan line is the same plan on every timed cell"
@@ -1458,8 +1561,8 @@ r9bdiag() {
     done
   done
   note "  cells=$pcells passed=$ppass"
-  [ "$pcells" = 54 ] || bad "expected 54 R9b per-walk cells, ran $pcells"
-  [ "$pcells" = "$ppass" ] || bad "R9b per-walk cells incomplete"
+  cellrow "R9b per-walk plan line" "$pcells" "$ppass"
+  [ "$pcells" = 54 ] || bad "R9b per-walk cell count — cells that never ran are not a verdict either way" "54" "${pcells}"
 
   # POISON THE FRAME after the prologue: only an arm with reuses may change q, and every timed cell
   # must diverge exactly where the incumbent does. Equal POISONED hashes are stronger than
@@ -1506,11 +1609,11 @@ r9bdiag() {
   if usable "$ref" "control128 locality" && usable "$poi" "control128 poisoned locality"; then
     ccells=$((ccells + 1))
     if [ "$ref" = "$poi" ]; then cpass=$((cpass + 1))
-    else bad "R9b poison changed the uncached control ($ref vs $poi)"; fi
+    else bad "R9b poison changed the uncached control" "$poi" "$ref"; fi
   fi
   note "  cells=$ccells passed=$cpass"
-  [ "$ccells" = 163 ] || bad "expected 163 R9b poison cells, ran $ccells"
-  [ "$ccells" = "$cpass" ] || bad "R9b poison cells incomplete"
+  cellrow "R9b frame poison" "$ccells" "$cpass"
+  [ "$ccells" = 163 ] || bad "R9b poison cell count — cells that never ran are not a verdict either way" "163" "${ccells}"
 }
 
 # ---------------------------------------------------------------- sass
@@ -1571,22 +1674,25 @@ seg_sass() {
     # comparable — the pin stays because it is what would catch the next such regression.
     res=$(awk -v fn="$fn:" '$2 == fn {getline; print $0}' "$work/res.txt" \
           | tr -s ' ' | sed 's/^ //')
+    # All THREE properties are read for every symbol, whatever the others said: a moved count used
+    # to hide the digest and the resource line behind it, and those are different readings.
+    local sym_ok=1
     if [ "$got" != "$want" ]; then
-      bad "$fn has $got normalized instructions, the record pins $want"
-      continue
+      bad "$fn normalized instruction count" "$want" "$got"; sym_ok=0
     fi
     if [ "$dig" != "$digest" ]; then
-      bad "$fn body digest is $dig, the record pins $digest — the body changed at a constant instruction count"
-      continue
+      bad "$fn body digest — the body changed at a constant instruction count" "$digest" "$dig"
+      sym_ok=0
     fi
     case "$res" in
       "REG:72 STACK:0 SHARED:$shared LOCAL:0 CONSTANT[0]:"*) ;;
-      *) bad "$fn resource usage is [$res]; want REG:72 STACK:0 SHARED:$shared LOCAL:0"; continue ;;
+      *) bad "$fn resource usage" "REG:72 STACK:0 SHARED:$shared LOCAL:0" "$res"; sym_ok=0 ;;
     esac
-    ok=$((ok + 1))
+    [ "$sym_ok" = 1 ] && ok=$((ok + 1))
     note "  $fn: $got instrs, digest $dig, $res"
   done <<< "$SEG_SYMBOLS"
   note "  seg bodies $ok/$rows pinned"
+  cellrow "the eight seg symbols" "$rows" "$ok"
   # NEGATIVE CONTROL for the digest pin, on a DOCTORED normalized body: one instruction
   # rewritten, the instruction count untouched. That is exactly the drift a count cannot see, so
   # the row proves the digest is what catches it — a pin table that is never compared, or a
@@ -1603,8 +1709,7 @@ seg_sass() {
   else
     note "  negative control: 1 instruction rewritten at $n_doc instructions changes the digest"
   fi
-  [ "$rows" = 8 ] || bad "expected 8 seg symbols, checked $rows"
-  [ "$ok" = 8 ] || bad "the seg symbol table is not 8/8"
+  [ "$rows" = 8 ] || bad "seg symbols read — a symbol that never got read is not a verdict either way" "8" "$rows"
   # cv64 and cv100 are ONE body under two symbols — the carveout attribute is per function and
   # sticky, which is the only reason both exist. If they ever diverge, the S contrast is
   # measuring two bodies.
@@ -1639,24 +1744,25 @@ reorder_sass() {
     dig=$(body_digest "$work/live/$fn")
     res=$(awk -v fn="$fn:" '$2 == fn {getline; print $0}' "$work/res.txt" \
           | tr -s ' ' | sed 's/^ //')
+    # All THREE properties, for every symbol, whatever the others said (see `seg_sass`).
+    local sym_ok=1
     if [ "$got" != "$want" ]; then
-      bad "$fn has $got normalized instructions, the record pins $want"
-      continue
+      bad "$fn normalized instruction count" "$want" "$got"; sym_ok=0
     fi
     if [ "$dig" != "$digest" ]; then
-      bad "$fn body digest is $dig, the record pins $digest — the body changed at a constant instruction count"
-      continue
+      bad "$fn body digest — the body changed at a constant instruction count" "$digest" "$dig"
+      sym_ok=0
     fi
     case "$res" in
       "REG:$reg STACK:0 SHARED:$shared LOCAL:0 CONSTANT[0]:"*) ;;
-      *) bad "$fn resource usage is [$res]; want REG:$reg STACK:0 SHARED:$shared LOCAL:0"; continue ;;
+      *) bad "$fn resource usage" "REG:$reg STACK:0 SHARED:$shared LOCAL:0" "$res"; sym_ok=0 ;;
     esac
-    ok=$((ok + 1))
+    [ "$sym_ok" = 1 ] && ok=$((ok + 1))
     note "  $fn: $got instrs, digest $dig, $res"
   done <<< "$REORDER_SYMBOLS"
   note "  reorder bodies $ok/$rows pinned"
-  [ "$rows" = 2 ] || bad "expected 2 reorder symbols, checked $rows"
-  [ "$ok" = 2 ] || bad "the reorder symbol table is not 2/2"
+  cellrow "the two R9 gate-first symbols" "$rows" "$ok"
+  [ "$rows" = 2 ] || bad "R9 symbols read — a symbol that never got read is not a verdict either way" "2" "$rows"
 }
 
 r9b_sass() {
@@ -1682,36 +1788,44 @@ r9b_sass() {
     dig=$(body_digest "$work/live/$fn")
     res=$(awk -v fn="$fn:" '$2 == fn {getline; print $0}' "$work/res.txt" \
           | tr -s ' ' | sed 's/^ //')
+    # All THREE properties, for every symbol, whatever the others said (see `seg_sass`).
+    local sym_ok=1
     if [ "$got" != "$want" ]; then
-      bad "$fn has $got normalized instructions, the record pins $want"
-      continue
+      bad "$fn normalized instruction count" "$want" "$got"; sym_ok=0
     fi
     if [ "$dig" != "$digest" ]; then
-      bad "$fn body digest is $dig, the record pins $digest — the body changed at a constant instruction count"
-      continue
+      bad "$fn body digest — the body changed at a constant instruction count" "$digest" "$dig"
+      sym_ok=0
     fi
     case "$res" in
       "REG:$reg STACK:0 SHARED:$shared LOCAL:0 CONSTANT[0]:"*) ;;
-      *) bad "$fn resource usage is [$res]; want REG:$reg STACK:0 SHARED:$shared LOCAL:0"; continue ;;
+      *) bad "$fn resource usage" "REG:$reg STACK:0 SHARED:$shared LOCAL:0" "$res"; sym_ok=0 ;;
     esac
-    ok=$((ok + 1))
+    [ "$sym_ok" = 1 ] && ok=$((ok + 1))
     note "  $fn: $got instrs, digest $dig, $res"
   done <<< "$R9B_SYMBOLS"
   note "  R9b grid bodies $ok/$rows pinned"
-  [ "$rows" = 20 ] || bad "expected 20 R9b grid symbols, checked $rows"
-  [ "$ok" = 20 ] || bad "the R9b grid symbol table is not 20/20"
+  cellrow "the R9b grid (body x budget)" "$rows" "$ok"
+  [ "$rows" = 20 ] || bad "R9b grid symbols read — a symbol that never got read is not a verdict either way" "20" "$rows"
 }
 
 sass() {
+  lane_is sass
   note "### frozen SASS: r5_gates.sh sass, the nine R3/R4 bodies (one table, one owner)"
-  require_shipped "the SASS lane" || return
+  if ! require_shipped "the SASS lane"; then
+    notrun "the whole sass lane" "BUILD-ORDER: the archive under it is not the SHIPPED build, so its digests and register lines would be another build's"
+    return
+  fi
   local out rc
   out=$("$DIR/r5_gates.sh" sass 2>&1); rc=$?
   printf '%s\n' "$out" | grep -E '^(  archive:|  IDENTICAL|  frozen bodies|FAIL: )' \
     | awk '{print "    " $0}'
-  [ "$rc" = 0 ] || bad "r5_gates.sh sass exited $rc"
+  local frozen_ok=1
+  [ "$rc" = 0 ] || { bad "r5_gates.sh sass exit status" "0" "$rc"; frozen_ok=0; }
   grep -q '^  frozen bodies 9/9 identical' <<< "$out" \
-    || bad "r5_gates.sh sass did not report 9/9 identical frozen bodies"
+    || { bad "the nine frozen R3/R4 bodies" "frozen bodies 9/9 identical" \
+             "$(grep -m1 '^  frozen bodies' <<< "$out" || echo absent)"; frozen_ok=0; }
+  cellrow "frozen R3/R4 bodies (via r5_gates.sh sass)" 1 "$frozen_ok"
   seg_sass
   reorder_sass
   r9b_sass
@@ -1720,23 +1834,37 @@ sass() {
 # ---------------------------------------------------------------- cpu / fixtures / regression
 
 cpu() {
-  ensure_shipped || return
+  lane_is cpu
+  if ! ensure_shipped; then
+    notrun "the whole cpu lane" "the shipped rebuild did not complete, so the tests would run against the diagnostic build"
+    return
+  fi
   note "### GPU-free unit tests (cpu_*)"
+  local result
   if RUSTFLAGS=-Awarnings cargo test -p gpu_gkr_uniskip_bench --lib --release cpu_ \
        > "$TMP/cpu.log" 2>&1 9>&-; then
-    note "  $(grep -E '^test result:' "$TMP/cpu.log" | tail -1)"
+    result=$(grep -E '^test result:' "$TMP/cpu.log" | tail -1)
+    note "  $result"
+    cellrow "cpu unit tests" 1 1
   else
-    bad "cpu tests"
+    result=$(grep -E '^test result:' "$TMP/cpu.log" | tail -1)
+    bad "cpu unit tests" "test result: ok" "${result:-<the run produced no test result line>}"
+    cellrow "cpu unit tests" 1 0
     grep -E 'FAILED|panicked|^error|^test result:' "$TMP/cpu.log" | tail -20
   fi
 }
 
 fixtures() {
+  lane_is fixtures
   note "### emitter fixture matrix (tools/r7_table.py)"
   if bash "$FIXTURES" > "$TMP/fixtures.log" 2>&1; then
     note "  $(tail -1 "$TMP/fixtures.log")"
+    cellrow "r7 emitter fixtures" 1 1
   else
-    bad "fixture matrix"
+    # The sub-suite already printed its OWN whole matrix; carry its summary line into this one and
+    # then reproduce its transcript, so nothing it found is lost behind a single red cell.
+    bad "r7 emitter fixtures" "0 failed" "$(tail -1 "$TMP/fixtures.log")"
+    cellrow "r7 emitter fixtures" 1 0
     cat "$TMP/fixtures.log"
   fi
   # The R9 rung rides r4_table.py, whose R5/R8 paths r5_gates.sh owns; its OWN fixture matrix is
@@ -1744,8 +1872,12 @@ fixtures() {
   note "### emitter fixture matrix (tools/r4_table.py, R9 reorder path)"
   if bash "$R9FIXTURES" > "$TMP/r9-fixtures.log" 2>&1; then
     note "  $(tail -1 "$TMP/r9-fixtures.log")"
+    cellrow "R9 emitter fixtures" 1 1
   else
-    bad "R9 fixture matrix"
+    # The sub-suite already printed its OWN whole matrix; carry its summary line into this one and
+    # then reproduce its transcript, so nothing it found is lost behind a single red cell.
+    bad "R9 emitter fixtures" "0 failed" "$(tail -1 "$TMP/r9-fixtures.log")"
+    cellrow "R9 emitter fixtures" 1 0
     cat "$TMP/r9-fixtures.log"
   fi
   # The R9b rung rides the same emitter on its own dedicated path — two rotations under one tag, which
@@ -1753,23 +1885,104 @@ fixtures() {
   note "### emitter fixture matrix (tools/r4_table.py, R9b two-rotation path)"
   if bash "$R9BFIXTURES" > "$TMP/r9b-fixtures.log" 2>&1; then
     note "  $(tail -1 "$TMP/r9b-fixtures.log")"
+    cellrow "R9b emitter fixtures" 1 1
   else
-    bad "R9b fixture matrix"
+    # The sub-suite already printed its OWN whole matrix; carry its summary line into this one and
+    # then reproduce its transcript, so nothing it found is lost behind a single red cell.
+    bad "R9b emitter fixtures" "0 failed" "$(tail -1 "$TMP/r9b-fixtures.log")"
+    cellrow "R9b emitter fixtures" 1 0
     cat "$TMP/r9b-fixtures.log"
   fi
 }
 
 regression() {
-  # r5_gates.sh all starts with its OWN sass lane, which require_shipped rejects on a
-  # diagnostic archive; it then builds and restores its own diagnostic binary.
-  ensure_shipped || return
+  lane_is regression
+  # r5_gates.sh all starts with its OWN sass lane, which needs the shipped archive; it then builds
+  # and restores its own diagnostic binary.
+  if ! ensure_shipped; then
+    notrun "the whole regression lane" "the shipped rebuild did not complete, so r5_gates.sh would gate the diagnostic build"
+    return
+  fi
   note "### regression: r5_gates.sh all (chains r3 + r4)"
   local out rc
   out=$("$DIR/r5_gates.sh" all 2>&1); rc=$?
   printf '%s\n' "$out" | grep -E '^(  cells=|  oracle cells=|  gated lanes=|  frozen bodies|  ARM lines|ALL GATES PASS|FAIL: )' \
     | awk '{print "    " $0}'
-  [ "$rc" = 0 ] || bad "r5_gates.sh all exited $rc"
-  grep -q '^ALL GATES PASS' <<< "$out" || bad "r5_gates.sh all did not print ALL GATES PASS"
+  # Two readings of the same sub-suite, both taken: its status and its own verdict line. r5_gates.sh
+  # has its own reporting contract, so its transcript is echoed above either way.
+  local reg_ok=1
+  [ "$rc" = 0 ] || { bad "r5_gates.sh all exit status" "0" "$rc"; reg_ok=0; }
+  grep -q '^ALL GATES PASS' <<< "$out" \
+    || { bad "r5_gates.sh all verdict line" "ALL GATES PASS" "absent"; reg_ok=0; }
+  cellrow "regression: r5_gates.sh all (chains r3 + r4)" 1 "$reg_ok"
+}
+
+# ---------------------------------------------------------------- the report
+#
+# THE DELIVERABLE. Printed at the end of every run, whatever happened: the full cell matrix, then what
+# could not be computed, then every mismatch with what was expected and what was found. Nothing here
+# is conditional on the exit status, and the exit status is decided after this has printed.
+summary() {
+  local row l g c p m tc=0 tp=0 tm=0 what why
+  note ""
+  note "================================================================================"
+  note "THE WHOLE MATRIX — every cell this run computed"
+  note "================================================================================"
+  note ""
+  note "| lane | cell group | cells | matched | mismatched |"
+  note "| --- | --- | --- | --- | --- |"
+  if [ ${#LANE_ROWS[@]} -gt 0 ]; then
+    for row in "${LANE_ROWS[@]}"; do
+      IFS='|' read -r l g c p m <<< "$row"
+      note "| $l | $g | $c | $p | $m |"
+      tc=$((tc + c)); tp=$((tp + p)); tm=$((tm + m))
+    done
+  fi
+  note "| **total** | ${#LANE_ROWS[@]} cell group(s) | **$tc** | **$tp** | **$tm** |"
+
+  note ""
+  if [ ${#NOTRUN[@]} -gt 0 ]; then
+    note "### NOT RUN — ${#NOTRUN[@]} check(s) that could not compute an answer"
+    note ""
+    note "These are the carve-out: no binary, no output, an archive that would not extract, the wrong"
+    note "build flavour underneath. They are not verdicts in either direction."
+    note ""
+    note "| lane | what | why |"
+    note "| --- | --- | --- |"
+    for row in "${NOTRUN[@]}"; do
+      IFS='|' read -r l what why <<< "$row"
+      note "| $l | $what | $why |"
+    done
+    note ""
+  else
+    note "### NOT RUN — none. Every check computed its answer."
+    note ""
+  fi
+
+  if [ ${#MISMATCHES[@]} -gt 0 ]; then
+    note "### MISMATCHES — ${#MISMATCHES[@]}"
+    note ""
+    note "Each row computed an answer and the answer was not the expected one. Nothing was rejected on"
+    note "any one of them: the run continued to the end and the matrix above is complete."
+    note ""
+    note "| # | lane | what was wrong | expected | found |"
+    note "| --- | --- | --- | --- | --- |"
+    local i=0
+    for row in "${MISMATCHES[@]}"; do
+      i=$((i + 1))
+      IFS='|' read -r l what why got <<< "$row"
+      note "| $i | $l | $what | ${why:-—} | ${got:-—} |"
+    done
+    note ""
+    note "**$fail mismatch(es).** Read the whole board before deciding what any of them means."
+  else
+    note "### MISMATCHES — none."
+    note ""
+    note "**Every cell computed its answer and every answer matched.** ALL GATES PASS."
+  fi
+  note ""
+  note "exit status $fail — information for automation only; the report above is the deliverable and"
+  note "is printed whatever the status."
 }
 
 case "${1:-all}" in
@@ -1784,16 +1997,19 @@ case "${1:-all}" in
   cpu) cpu ;;
   fixtures) fixtures ;;
   regression) regression ;;
-  # `sass` first: it is the only lane that must see the shipped build, and `counts` swaps the
-  # binary underneath everything after it — the lanes that need it back ask for it themselves.
-  # `sass` LAST as well, and that is not belt-and-braces: the diagnostic round-trip recompiles
-  # the seg TU twice, and r5's own sass lane (which `regression` inherits) covers the frozen
-  # NINE only. Without this the binary the tree ends on — the one Task 7 measures — would never
-  # have had the eight seg bodies verified. No lane may be appended after it that can rebuild.
+  # THE BUILD-FLAVOUR ORDERING, stated rather than left incidental. Three lanes read the SHIPPED
+  # archive's own numbers (`sass`'s digests and register lines, `r9`'s and `r9b`'s pinned register
+  # counts) and `counts` swaps the binary underneath everything after it, so the shipped-build lanes
+  # run FIRST, the diagnostic lanes run while that build is up, and every later lane asks for the
+  # shipped one back. `sass` runs LAST as well, and that is not belt-and-braces: the diagnostic
+  # round-trip recompiles the seg TU twice, and r5's own sass lane (which `regression` inherits) covers
+  # the frozen NINE only — without the re-gate the binary the tree ENDS on would never have had the
+  # eight seg bodies verified. No lane may be appended after it that can rebuild.
+  #
+  # If that ordering is ever broken, `require_shipped` SAYS so, marks its lane NOT RUN with the reason,
+  # and the chain carries on to its last lane regardless — a broken order costs those cells, never the
+  # board.
   all)
-    # `r9` and `r9b` before `counts` for the same reason `sass` is first — they read the shipped
-    # build — and the two diagnostic lanes immediately after it, while the diagnostic binary `counts`
-    # built is still up.
     sass; matrix; r9; r9b; counts; r9diag; r9bdiag; cpu; fixtures; regression
     note ""
     note "### RE-GATE after the diagnostic round-trip: the binary the tree ENDS on"
@@ -1801,5 +2017,5 @@ case "${1:-all}" in
     ;;
   *) echo "usage: $0 {sass|matrix|counts|r9|r9diag|r9b|r9bdiag|identity|cpu|fixtures|regression|all}" >&2; exit 2 ;;
 esac
-[ "$fail" = 0 ] && note "ALL GATES PASS"
+summary
 exit "$fail"

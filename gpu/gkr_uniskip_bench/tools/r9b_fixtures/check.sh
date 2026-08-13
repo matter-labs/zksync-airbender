@@ -39,6 +39,28 @@ R8SESSION=${R8SESSION:-$ROOT/.agents/sdd/2026-08-12-v3-r8}
 pass=0
 fail=0
 skip=0
+# --- the whole-matrix reporting layer (RR, 2026-08-13: never reject on a gate prematurely) ---------
+# Every row runs, every outcome prints, and the run ends with the full section matrix plus a
+# MISMATCHES block naming what each row expected and what it found. The exit status is information
+# for automation and nothing here is conditional on it.
+MISMATCHES=()
+SECTIONS=()
+SECTION=""
+sect_p=0
+sect_f=0
+section() { # section <name>
+  [ -z "$SECTION" ] || SECTIONS+=("$SECTION|$((pass - sect_p + fail - sect_f))|$((pass - sect_p))|$((fail - sect_f))")
+  SECTION=$1; sect_p=$pass; sect_f=$fail
+  echo "### $1"
+}
+# The record is `|`-separated and an expectation can itself be a markdown table row, so `|` is folded
+# to `¦` on the way in; the inline print below keeps the value verbatim.
+bar() { printf '%s' "${1//|/¦}"; }
+miss() { # miss <kind> <row name> <expected> <found>
+  fail=$((fail+1))
+  MISMATCHES+=("$(bar "$2")|$(bar "$3")|$(bar "$4")")
+  printf 'MISMATCH(%s) %s\n  expected: %s\n  found:    %s\n' "$1" "$2" "$3" "$4"
+}
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -52,9 +74,11 @@ emits() {
   local name=$1 want=$2; shift 3
   local out rc
   out=$($E "$@" 2>&1); rc=$?
-  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n  %s\n' "$name" "$(printf '%s' "$out" | tail -1)"; fail=$((fail+1)); return; fi
+  if [ "$rc" != 0 ]; then
+    miss rejected "$name" "exit 0 and the substring below" "exit $rc: $(tail -1 <<< "$out")"; return
+  fi
   if grep -qF -- "$want" <<< "$out"; then pass=$((pass+1));
-  else printf 'FAIL(outcome) %s\n  want: %s\n' "$name" "$want"; fail=$((fail+1)); fi
+  else miss outcome "$name" "$want" "not in the emitter's output"; fi
 }
 
 # flagged <name> <flag-row-substring> -- <args...>
@@ -65,9 +89,12 @@ flagged() {
   local name=$1 want=$2; shift 3
   local out rc
   out=$($E "$@" 2>/dev/null); rc=$?
-  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s — a policy observation must not stop the emitter\n' "$name"; fail=$((fail+1)); return; fi
+  if [ "$rc" != 0 ]; then
+    miss rejected "$name" "exit 0 — a policy observation must not stop the emitter" "exit $rc"
+    return
+  fi
   if ! grep -qF -- "$want" <<< "$out"; then
-    printf 'FAIL(flag) %s\n  want in the flags block: %s\n' "$name" "$want"; fail=$((fail+1)); return
+    miss flag "$name" "$want" "not in the flags block"; return
   fi
   # The whole picture is still printed: the G0 manifest is the last block, so its presence proves the
   # run went all the way through rather than stopping politely at the flag.
@@ -84,10 +111,10 @@ flagged_once() {
   local name=$1 want=$2 want_n=$3; shift 4
   local out rc n
   out=$($E "$@" 2>/dev/null); rc=$?
-  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n' "$name"; fail=$((fail+1)); return; fi
+  if [ "$rc" != 0 ]; then miss rejected "$name" "exit 0" "exit $rc"; return; fi
   n=$(grep -cF -- "$want" <<< "$out")
   if [ "$n" = "$want_n" ]; then pass=$((pass+1));
-  else printf 'FAIL(count) %s\n  want %s row(s) matching: %s\n  got:  %s\n' "$name" "$want_n" "$want" "$n"; fail=$((fail+1)); fi
+  else miss count "$name" "$want_n row(s) matching: $want" "$n row(s)"; fi
 }
 
 # rejects <name> <expected-substring> -- <args...>
@@ -95,9 +122,11 @@ rejects() {
   local name=$1 want=$2; shift 3
   local out rc
   out=$($E "$@" 2>&1 >/dev/null); rc=$?
-  if [ "$rc" = 0 ]; then printf 'FAIL(accepted) %s\n' "$name"; fail=$((fail+1)); return; fi
+  if [ "$rc" = 0 ]; then
+    miss accepted "$name" "a non-zero exit — no number can be computed here" "exit 0"; return
+  fi
   if grep -qF -- "$want" <<< "$out"; then pass=$((pass+1));
-  else printf 'FAIL(message) %s\n  want: %s\n  got:  %s\n' "$name" "$want" "$out"; fail=$((fail+1)); fi
+  else miss message "$name" "$want" "${out:-<nothing on stderr>}"; fi
 }
 
 # absent <name> <forbidden-extended-regex> -- <args...>
@@ -107,9 +136,9 @@ absent() {
   local name=$1 nope=$2; shift 3
   local out rc
   out=$($E "$@" 2>/dev/null); rc=$?
-  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n' "$name"; fail=$((fail+1)); return; fi
+  if [ "$rc" != 0 ]; then miss rejected "$name" "exit 0" "exit $rc"; return; fi
   if grep -qE -- "$nope" <<< "$out"; then
-    printf 'FAIL(outcome) %s\n  must NOT emit: %s\n' "$name" "$nope"; fail=$((fail+1))
+    miss outcome "$name" "the output must NOT match: $nope" "it matched"
   else pass=$((pass+1)); fi
 }
 
@@ -126,7 +155,7 @@ half() { printf '%s %s ' "$TMP/$1-class-locality.log" "$TMP/good-class-census.lo
 bridge() { printf '%s %s %s %s ' "$TMP/good-class-locality.log" "$TMP/good-class-census.log" \
                                  "$TMP/$1-budget-locality.log" "$TMP/$1-budget-census.log"; }
 
-echo "### the real grammar"
+section "the real grammar"
 # None of these rows decides anything: they prove the emitter accepts what the runner really writes,
 # and that the paths this one rides beside still emit.
 if [ -r "$SESSION/r9b-class-locality.log" ] && [ -r "$SESSION/r9b-class-census.log" ]; then
@@ -175,7 +204,7 @@ else
   skip=$((skip+1))
 fi
 
-echo "### the reporting contract"
+section "the reporting contract"
 emits "the emitter says what it is: it reports, it does not decide" \
   "This emitter REPORTS: it computes the whole picture, flags what disagrees with the rung's own description of itself, and issues NO verdict." \
   -- $(both good)
@@ -194,7 +223,7 @@ emits "and the build-facts line says budget order is not register order" \
   "The register budget is NOT monotone — \`(128,6)\` is the maximum-register cell — so budget order is not register order." \
   -- $(both good)
 
-echo "### the printed surface — CLASS"
+section "the printed surface — CLASS"
 emits "the CLASS rotation is identified with its flag and its lane count" \
   "| CLASS (\`--r9b-class\`) | 8 | \`locality\` | \`good-class-locality.log\` | **16 %** |" -- $(both good)
 emits "every lane carries its body AND its budget beside the kernel" \
@@ -217,7 +246,7 @@ emits "the recovery rows are restated for BOTH orders side by side" \
   "| \`c-hot16@128\` − \`reorder-hot16@128\` | **-0.949** (-6.09 %) | 96/96 | **WIN** | **-0.969** (-6.01 %) | 96/96 | **WIN** |" \
   -- $(cls good)
 
-echo "### the printed surface — BUDGET, and the two separator rows"
+section "the printed surface — BUDGET, and the two separator rows"
 emits "the BUDGET rotation is identified with its own flag" \
   "| BUDGET (\`--r9b-budget\`) | 8 | \`locality\` | \`good-budget-locality.log\` | **16 %** |" -- $(both good)
 emits "the incumbent's own three budgets are on lanes, non-monotone registers and all" \
@@ -238,7 +267,7 @@ emits "the second is labelled the extra block at constant collapse" \
 emits "and C unbounded against the incumbent closes the axis" \
   "| 6 | \`c-hot16-free@128\` − \`hot16@128\` | \`hot16@128\` | **-0.398**" -- $(bud good)
 
-echo "### the bridge"
+section "the bridge"
 emits "the bridge is marked CONTEXT and not a decision" \
   "**CONTEXT, NOT A DECISION.** \`c-hot16@128\` is the one cell both rotations carry." -- $(both good)
 emits "and it says a paired contrast is only valid inside one session" \
@@ -262,7 +291,7 @@ emits "and that flag says what a cross-session comparison then carries" \
   "the two rotations put different neighbours around it, so a cross-session comparison of any other row carries at least this much" \
   -- $(bridge bridge-medians)
 
-echo "### the CAMPAIGN BASELINE — the re-base, and the only thing the ANCHOR flag keys to"
+section "the CAMPAIGN BASELINE — the re-base, and the only thing the ANCHOR flag keys to"
 emits "the baseline says what it is and what keys to it" \
   "**This is the only thing the \`ANCHOR\` flag keys to**, at 1.5 %, and it is compared rotation to its own rotation." \
   -- $(cls good)
@@ -283,6 +312,11 @@ emits "control_lb@128 is an anchor now — the third of the three" \
 emits "and the incumbent" \
   "| \`hot16@128\` | 14.788 | 14.793 | -0.03 % | 14.823 | -0.24 % | +0.20 % | clean (0.004–0.015 ms drift) |" \
   -- $(cls good)
+# THE RETENTION RULE, in the output (RR 2026-08-13): two baselines live, older ones archived, the
+# pre-provenance block frozen at four.
+emits "the retention rule is stated where a future rung will read it" \
+  "Baselines keep TWO live — the current one and the immediately previous one — and \`R9b session, 2026-08-13\` is the first this campaign has held, so there is no previous row to print. The four references below are not baselines: none records a machine." \
+  -- $(cls good)
 emits "the spread is kept, not averaged away, and the other rotation's flank is named" \
   "The two rotations both carry 8 lanes and still differ: that column is composition INSIDE a fixed lane count, kept rather than averaged away. \`BUDGET\`'s own flank at capture: clean (0.010–0.055 ms drift)." \
   -- $(cls good)
@@ -295,7 +329,7 @@ emits "and BUDGET/census is named the flank-clean census reference" \
 emits "the BUDGET rotation reads against its OWN baseline row" \
   "| \`control@256\` | 16.650 | 16.778 | -0.76 % | 16.725 | -0.45 % | -0.32 % |" -- $(bud good)
 
-echo "### the pre-provenance block — reported, labelled, and never a flag basis"
+section "the pre-provenance block — reported, labelled, and never a flag basis"
 emits "it says what it is and why it cannot flag" \
   "Reported as context and **never a flag basis**: none records the machine it was measured on, and they disagree with each other by more than the 1.5 % reporting threshold, so a flag keyed to them would report their disagreement rather than this session. Two anchors, not three." \
   -- $(cls good)
@@ -320,7 +354,7 @@ emits "the R9 census pair is pinned too" \
 absent "control_lb@128 has no pre-provenance row — the old references carry two anchors" \
   "^\| .control_lb@128. \| 16\..* \| (R4 frozen|R5 session|R8 session|R9 session) \|" -- $(cls good)
 
-echo "### THE RE-BASE, proved in one fixture: on the baseline, far from the history, no flag"
+section "THE RE-BASE, proved in one fixture: on the baseline, far from the history, no flag"
 emits "a session sitting exactly on the baseline reads 0.00 % against it" \
   "| \`control@256\` | 16.903 | 16.903 | +0.00 % | 16.893 | +0.06 % | -0.06 % |" \
   -- $(cls baseline-exact)
@@ -337,13 +371,13 @@ emits "so that session is flag-free, which is the whole point of the re-base" \
 emits "and both rotations of it are flag-free together" \
   "**0 flag(s) above; this table is not a verdict.**" -- $(both baseline-exact)
 
-echo "### the flank reading"
+section "the flank reading"
 emits "the flank is a reading with its threshold beside it, not a mandate" \
   "| \`hot16@128\` | 14.789 | 14.791 | 0.002 | 0.074 | no |" -- $(cls good)
 absent "no cell under test is a flank sentinel — the incumbent's other budgets included" \
   "^\| .(hot16-lb6@128|hot16-free@128|c-hot16). \| 1[45]\..* \| (yes|no) \|" -- $(bud good)
 
-echo "### the ncu manifest — G0 for every timed cell, Full Picture for six"
+section "the ncu manifest — G0 for every timed cell, Full Picture for six"
 emits "G0 names all ten timed cells and what each capture reads" \
   "**G0 — every timed cell, one launch each** (amendment A7): allocated-registers, register-limit, shared-limit, warps-limit, blocks-limit, blocks-per-sm, achieved-occupancy." \
   -- $(both good)
@@ -386,7 +420,7 @@ emits "and says so in prose" \
   -- $(cls best-split)
 absent "the controls are not in either manifest" "NCU-(G0 cell|FULL lane)=control" -- $(both good)
 
-echo "### the sign LABEL, at its threshold and one below it"
+section "the sign LABEL, at its threshold and one below it"
 emits "87/96 on one side is labelled WIN" \
   "| \`c-hot16@128\` − \`reorder-hot16@128\` | **-0.100** (-0.64 %) | 87/96 | **WIN** |" \
   -- $(cls sign-at-threshold)
@@ -401,7 +435,7 @@ emits "every corrected body slower than the drop-in is four LOSS labels, printed
 emits "and that session still gets its whole capture manifest" \
   "NCU-G0 cell=bd-hot16@128 session=CLASS" -- $(cls recovery-loss)
 
-echo "### policy observations reach the flags block, and stop nothing"
+section "policy observations reach the flags block, and stop nothing"
 flagged "a session recorded at another --log-trace" \
   "lane \`control@256\` declares grid=16384; at \`--log-trace 24\` it is 32768" -- $(cls wrong-trace)
 flagged "a session at another warmup" \
@@ -454,7 +488,7 @@ flagged "a drifting anchor lane" \
   "\`hot16@128\`'s first and last full cycle differ by 0.302 ms against the 0.074 ms scaled reading" \
   -- $(cls flank-tripped)
 
-echo "### the carveout grammar — per ROTATION, in HINTED order"
+section "the carveout grammar — per ROTATION, in HINTED order"
 flagged "a missing per-symbol echo" \
   "a missing, spurious, duplicated or reordered echo means the cells were not steered as these rows assume" \
   -- $(cls echo-missing)
@@ -498,7 +532,7 @@ emits "a non-uniform carveout is reported as such in the header, not resolved to
   -- $(cls echo-wrong-pct)
 emits "and in the capture manifest" "carveout=non-uniform" -- $(cls echo-wrong-pct)
 
-echo "### the flag count travels with the block a record quotes"
+section "the flag count travels with the block a record quotes"
 emits "a clean session set says so where the headline table is" \
   "**0 flag(s) above; this table is not a verdict.** Nothing disagreed with the rung's own description of itself." \
   -- $(both good)
@@ -508,7 +542,7 @@ emits "session- and bridge-level flags are restated at the foot" \
   "**Session- and bridge-level flags** (restated from the flags block — they are what makes reading two orders, or two sessions, together a question):" \
   -- $(half regs-cross-order)
 
-echo "### the errors that remain: no meaningful number can be computed"
+section "the errors that remain: no meaningful number can be computed"
 rejects "one order alone" "read over EXACTLY both term orders" -- "$TMP/good-class-locality.log"
 rejects "one rotation's locality beside the other's census: each is then a half" \
   "read over EXACTLY both term orders" \
@@ -537,5 +571,42 @@ rejects "both logs relabelled: they are then read under the interior rules, whic
 rejects "an R4 factorial log in the set" \
   "declares ['CACHE-FACTORIAL'] beside R9B" -- $(cls good) "$TMP/not-r9b.log"
 
+section ""   # close the last section
+
+echo
+echo "================================================================================"
+echo "THE WHOLE MATRIX — every R9b fixture row this run computed"
+echo "================================================================================"
+echo
+echo "| section | rows | matched | mismatched |"
+echo "| --- | --- | --- | --- |"
+for row in ${SECTIONS[@]+"${SECTIONS[@]}"}; do
+  IFS='|' read -r sname srows sok sbad <<< "$row"
+  printf '| %s | %s | %s | %s |\n' "$sname" "$srows" "$sok" "$sbad"
+done
+printf '| **total** | **%d** | **%d** | **%d** |\n' "$((pass + fail))" "$pass" "$fail"
+[ "$skip" = 0 ] || printf '\n%d row(s) SKIPPED — a log this suite replays is not on disk yet; not a verdict either way.\n' "$skip"
+echo
+if [ "$fail" = 0 ]; then
+  echo "### MISMATCHES — none."
+  echo
+  echo "**Every row computed its answer and every answer matched.**"
+else
+  echo "### MISMATCHES — $fail"
+  echo
+  echo "Each row computed an answer and the answer was not the expected one. Nothing was rejected on"
+  echo "any one of them: every row above ran and the matrix is complete."
+  echo
+  echo "| # | row | expected | found |"
+  echo "| --- | --- | --- | --- |"
+  i=0
+  for row in ${MISMATCHES[@]+"${MISMATCHES[@]}"}; do
+    i=$((i+1))
+    IFS='|' read -r mname mwant mgot <<< "$row"
+    printf '| %s | %s | %s | %s |\n' "$i" "$mname" "$mwant" "$mgot"
+  done
+fi
+echo
 printf 'fixture matrix: %d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
+echo "exit status $(( fail > 0 )) — information for automation only; the report above is printed either way."
 exit $(( fail > 0 ))

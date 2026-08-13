@@ -519,6 +519,32 @@ R9_SESSION = {"locality": (16.725, 14.794), "census": (17.011, 15.458)}
 R9B_PRE_PROVENANCE = REORDER_REFERENCES + (("R9 session", 6, R9_SESSION),)
 R9B_PRE_PROVENANCE_LANES = (R9B_CTL, R9B_INC)
 R9B_UNRECORDED = "machine identity: unrecorded"
+
+# THE RETENTION RULE (RR, 2026-08-13), encoded here so a future rung does not have to re-decide it:
+#
+#   * The PRE-PROVENANCE block is FROZEN AT ITS CURRENT FOUR. Identity capture is mandatory from R9b
+#     onward — `tools/gpu_identity.sh` is where a session driver takes telemetry from, and
+#     `r7_gates.sh`'s `identity` reading prints the live machine beside the committed one every run —
+#     so a FIFTH reference with no recorded machine cannot come into existence. Nothing is ever
+#     appended to this block; the guard below is what says so out loud.
+#
+#   * BASELINES keep TWO LIVE: the current one and the immediately previous one, both in the table.
+#     The `ANCHOR` flag keys to the CURRENT one (`R9B_BASELINES[0]`); the previous one is printed
+#     beside it as the campaign's own step. When a third arrives, the oldest moves into the ARCHIVED
+#     BASELINES comment below — kept for the record, out of the table, and out of the flag.
+#
+# Newest first. Each entry is (label, {rotation: {order: (ctl, ctl_lb, hot16)}}).
+R9B_BASELINES = [("R9b session, 2026-08-13", R9B_BASELINE)]
+# ARCHIVED BASELINES, retired from the table by the rule above and kept for the record:
+#   (none — R9b is the first baseline this campaign has held. R4/R5/R8/R9 are not baselines; they are
+#   the four pre-provenance references, which is a different thing: none of them records a machine.)
+assert len(R9B_PRE_PROVENANCE) == 4, (
+    "the pre-provenance block is frozen at four (RR 2026-08-13): identity capture is mandatory now, "
+    "so a fifth reference without a recorded machine cannot exist. A new reference is a BASELINE — "
+    "put it at the head of R9B_BASELINES.")
+assert len(R9B_BASELINES) <= 2, (
+    "baselines keep two live, the current and the immediately previous one (RR 2026-08-13); move the "
+    "oldest into the ARCHIVED BASELINES comment above.")
 # The flank sentinels: the three INCUMBENT-body anchor lanes at the incumbent's own budget, which
 # both rotations carry. A cell under test — body or budget — is not its own drift sentinel, so every
 # grid lane is excluded by construction, the incumbent's two extra budgets included.
@@ -2648,6 +2674,21 @@ def r9b_emit(s):
     print(f"\nThe two rotations both carry {len(s['lanes'])} lanes and still differ: that column is "
           f"composition INSIDE a fixed lane count, kept rather than averaged away. `{alt_name}`'s "
           f"own flank at capture: {R9B_BASELINE_FLANK[(alt_name, order)]}.")
+    # THE RETENTION RULE, in the output: two baselines live, the flag on the current one only.
+    if len(R9B_BASELINES) > 1:
+        prev_label, prev = R9B_BASELINES[1]
+        print(f"\n**The previous baseline ({prev_label})**, kept live beside the current one so the "
+              f"campaign's own step is visible. The `ANCHOR` flag does NOT key to it.\n")
+        print("| anchor lane | this session | previous baseline | delta |")
+        print("| --- | --- | --- | --- |")
+        for i, lane in enumerate(R9B_ANCHOR_LANES):
+            ref = prev[name][order][i]
+            print(f"| `{lane}` | {s['med'][lane]:.3f} | {ref:.3f} | "
+                  f"{100.0 * (s['med'][lane] - ref) / ref:+.2f} % |")
+    else:
+        print(f"\nBaselines keep TWO live — the current one and the immediately previous one — and "
+              f"`{R9B_BASELINES[0][0]}` is the first this campaign has held, so there is no previous "
+              f"row to print. The four references below are not baselines: none records a machine.")
 
     print(f"\n**Pre-provenance references ({name}, {order})** — every reference the campaign held "
           f"before the re-base. Reported as context and **never a flag basis**: none records the "

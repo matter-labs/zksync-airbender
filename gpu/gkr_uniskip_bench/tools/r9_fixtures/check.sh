@@ -29,6 +29,28 @@ R5SESSION=${R5SESSION:-$ROOT/.agents/sdd/2026-08-10-v3-r5}
 pass=0
 fail=0
 skip=0
+# --- the whole-matrix reporting layer (RR, 2026-08-13: never reject on a gate prematurely) ---------
+# Every row runs, every outcome prints, and the run ends with the full section matrix plus a
+# MISMATCHES block naming what each row expected and what it found. The exit status is information
+# for automation and nothing here is conditional on it.
+MISMATCHES=()
+SECTIONS=()
+SECTION=""
+sect_p=0
+sect_f=0
+section() { # section <name>
+  [ -z "$SECTION" ] || SECTIONS+=("$SECTION|$((pass - sect_p + fail - sect_f))|$((pass - sect_p))|$((fail - sect_f))")
+  SECTION=$1; sect_p=$pass; sect_f=$fail
+  echo "### $1"
+}
+# The record is `|`-separated and an expectation can itself be a markdown table row, so `|` is folded
+# to `¦` on the way in; the inline print below keeps the value verbatim.
+bar() { printf '%s' "${1//|/¦}"; }
+miss() { # miss <kind> <row name> <expected> <found>
+  fail=$((fail+1))
+  MISMATCHES+=("$(bar "$2")|$(bar "$3")|$(bar "$4")")
+  printf 'MISMATCH(%s) %s\n  expected: %s\n  found:    %s\n' "$1" "$2" "$3" "$4"
+}
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -42,9 +64,11 @@ emits() {
   local name=$1 want=$2; shift 3
   local out rc
   out=$($E "$@" 2>&1); rc=$?
-  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n  %s\n' "$name" "$(printf '%s' "$out" | tail -1)"; fail=$((fail+1)); return; fi
-  if printf '%s' "$out" | grep -qF -- "$want"; then pass=$((pass+1));
-  else printf 'FAIL(outcome) %s\n  want: %s\n' "$name" "$want"; fail=$((fail+1)); fi
+  if [ "$rc" != 0 ]; then
+    miss rejected "$name" "exit 0 and the substring below" "exit $rc: $(tail -1 <<< "$out")"; return
+  fi
+  if grep -qF -- "$want" <<< "$out"; then pass=$((pass+1));
+  else miss outcome "$name" "$want" "not in the emitter's output"; fi
 }
 
 # flagged <name> <flag-row-substring> -- <args...>
@@ -55,13 +79,16 @@ flagged() {
   local name=$1 want=$2; shift 3
   local out rc
   out=$($E "$@" 2>/dev/null); rc=$?
-  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s — a policy observation must not stop the emitter\n' "$name"; fail=$((fail+1)); return; fi
-  if ! printf '%s' "$out" | grep -qF -- "$want"; then
-    printf 'FAIL(flag) %s\n  want in the flags block: %s\n' "$name" "$want"; fail=$((fail+1)); return
+  if [ "$rc" != 0 ]; then
+    miss rejected "$name" "exit 0 — a policy observation must not stop the emitter" "exit $rc"
+    return
+  fi
+  if ! grep -qF -- "$want" <<< "$out"; then
+    miss flag "$name" "$want" "not in the flags block"; return
   fi
   # The whole picture is still printed: the capture set is the last block, so its presence proves
   # the run went all the way through rather than stopping politely at the flag.
-  if ! printf '%s' "$out" | grep -qF -- "NCU-CAPTURE lane=hot16@128"; then
+  if ! grep -qF -- "NCU-CAPTURE lane=hot16@128" <<< "$out"; then
     printf 'FAIL(truncated) %s — flagged but the report stops before the capture set\n' "$name"; fail=$((fail+1)); return
   fi
   pass=$((pass+1))
@@ -74,10 +101,10 @@ flagged_once() {
   local name=$1 want=$2 want_n=$3; shift 4
   local out rc n
   out=$($E "$@" 2>/dev/null); rc=$?
-  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n' "$name"; fail=$((fail+1)); return; fi
-  n=$(printf '%s' "$out" | grep -cF -- "$want")
+  if [ "$rc" != 0 ]; then miss rejected "$name" "exit 0" "exit $rc"; return; fi
+  n=$(grep -cF -- "$want" <<< "$out")
   if [ "$n" = "$want_n" ]; then pass=$((pass+1));
-  else printf 'FAIL(count) %s\n  want %s row(s) matching: %s\n  got:  %s\n' "$name" "$want_n" "$want" "$n"; fail=$((fail+1)); fi
+  else miss count "$name" "$want_n row(s) matching: $want" "$n row(s)"; fi
 }
 
 # rejects <name> <expected-substring> -- <args...>
@@ -85,9 +112,11 @@ rejects() {
   local name=$1 want=$2; shift 3
   local out rc
   out=$($E "$@" 2>&1 >/dev/null); rc=$?
-  if [ "$rc" = 0 ]; then printf 'FAIL(accepted) %s\n' "$name"; fail=$((fail+1)); return; fi
-  if printf '%s' "$out" | grep -qF -- "$want"; then pass=$((pass+1));
-  else printf 'FAIL(message) %s\n  want: %s\n  got:  %s\n' "$name" "$want" "$out"; fail=$((fail+1)); fi
+  if [ "$rc" = 0 ]; then
+    miss accepted "$name" "a non-zero exit — no number can be computed here" "exit 0"; return
+  fi
+  if grep -qF -- "$want" <<< "$out"; then pass=$((pass+1));
+  else miss message "$name" "$want" "${out:-<nothing on stderr>}"; fi
 }
 
 # absent <name> <forbidden-extended-regex> -- <args...>
@@ -97,9 +126,9 @@ absent() {
   local name=$1 nope=$2; shift 3
   local out rc
   out=$($E "$@" 2>/dev/null); rc=$?
-  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n' "$name"; fail=$((fail+1)); return; fi
-  if printf '%s' "$out" | grep -qE -- "$nope"; then
-    printf 'FAIL(outcome) %s\n  must NOT emit: %s\n' "$name" "$nope"; fail=$((fail+1))
+  if [ "$rc" != 0 ]; then miss rejected "$name" "exit 0" "exit $rc"; return; fi
+  if grep -qE -- "$nope" <<< "$out"; then
+    miss outcome "$name" "the output must NOT match: $nope" "it matched"
   else pass=$((pass+1)); fi
 }
 
@@ -108,7 +137,7 @@ sess() { printf '%s %s ' "$TMP/$1-locality.log" "$TMP/$1-census.log"; }
 # A one-log mutant rides the conforming census log, so only the mutated half is under test.
 half() { printf '%s %s ' "$TMP/$1-locality.log" "$TMP/good-census.log"; }
 
-echo "### the real grammar"
+section "the real grammar"
 # None of these rows decides anything: they prove the emitter accepts what the runner really
 # writes, and that the two paths this file rides beside still emit.
 if [ -r "$SESSION/reorder-locality.log" ] && [ -r "$SESSION/reorder-census.log" ]; then
@@ -136,7 +165,7 @@ else
   skip=$((skip+1))
 fi
 
-echo "### the reporting contract"
+section "the reporting contract"
 emits "the emitter says what it is: it reports, it does not decide" \
   "This emitter REPORTS: it computes the whole picture, flags what disagrees with the rung's own description of itself, and issues NO verdict." \
   -- $(sess good)
@@ -155,7 +184,7 @@ emits "and its register axis is stated as a fact rather than resolved into a cel
 emits "the other side of the register axis is stated the same way" \
   "\`reorder-hot16@128\` is NOT below \`hot16@128\` (72 vs 72 registers)" -- $(sess regs-unchanged)
 
-echo "### the printed surface"
+section "the printed surface"
 emits "the carveout percent is READ off the log and printed in the header" \
   "| \`locality\` | \`good-locality.log\` | **16 %** | \`eval_lsb_pair_cached_128_lb\`, \`eval_lsb_pair_cached_reorder_128_lb\`, \`eval_lsb_pair_cached_reorder_128\` |" \
   -- $(sess good)
@@ -186,7 +215,7 @@ emits "the build facts and the carveout are stated in one line" \
   "**Build facts** (off the ARM lines): \`hot16@128\` 72 regs / 7 blocks/SM, \`reorder-hot16@128\` 70 / 7, \`reorder-hot16-free@128\` 64 / 8. Carveout 16 % on all three hinted symbols." \
   -- $(sess good)
 
-echo "### the anchor reference table — every reference, with its lane count"
+section "the anchor reference table — every reference, with its lane count"
 emits "the R4-frozen literal, labelled 11 lanes" \
   "| \`control@256\` | 16.650 | R4 frozen | 11 | 16.624 | +0.15 % |" -- $(sess good)
 emits "the archived R5 session, labelled 10 lanes — that rotation's own \`lanes=\` field" \
@@ -203,7 +232,7 @@ emits "the flank is a reading with its threshold beside it, not a mandate" \
 absent "the bodies under test are not flank sentinels" \
   "^\| .reorder-hot16@128. \| 14\.5" -- $(sess good)
 
-echo "### the capture set"
+section "the capture set"
 emits "the incumbent is captured, with its body, registers and carveout" \
   "NCU-CAPTURE lane=hot16@128 orders=census,locality roles=incumbent body=eval_lsb_pair_cached_128_lb regs=72 carveout=16" \
   -- $(sess good)
@@ -218,7 +247,7 @@ absent "the machinery floor and the controls are not in the capture set" \
 emits "a session where row 1 is slower captures the same three lanes" \
   "NCU-CAPTURE lane=reorder-hot16@128 orders=census,locality roles=bounded-reorder" -- $(sess row1-loss)
 
-echo "### the sign LABEL, at its threshold and one below it"
+section "the sign LABEL, at its threshold and one below it"
 emits "87/96 on one side is labelled WIN" \
   "| \`locality\` | **-0.100** | -0.100 … -0.100 | -0.100 … +0.100 | 87/96 | **WIN** | 16 % |" \
   -- $(sess sign-at-threshold)
@@ -234,7 +263,7 @@ emits "faster in one order and slower in the other: both rows print" \
 emits "and the disagreement is left standing, not resolved" "| \`census\` | **+0.252** |" \
   -- $(sess row1-split)
 
-echo "### policy observations reach the flags block, and stop nothing"
+section "policy observations reach the flags block, and stop nothing"
 flagged "a session recorded at another --log-trace" \
   "lane \`control@256\` declares grid=16384; at \`--log-trace 24\` it is 32768" -- $(sess wrong-trace)
 flagged "a session at another warmup" \
@@ -312,7 +341,7 @@ flagged "the two orders recorded at different tiers, one of them non-uniform" \
   "the two orders were recorded at non-uniform and 16 % — the rung's premise is one L1 configuration" \
   -- "$TMP/echo-wrong-pct-locality.log" "$TMP/good-census.log"
 
-echo "### the flag count travels with the block a record quotes"
+section "the flag count travels with the block a record quotes"
 emits "a clean session says so where the headline table is" \
   "**0 flag(s) above; this table is not a verdict.** Nothing disagreed with the rung's own description of itself." \
   -- $(sess good)
@@ -329,7 +358,7 @@ emits "a non-uniform tier prints without a stray percent sign in the headline ta
 emits "and in the build-facts line" \
   "Carveout non-uniform on all three hinted symbols." -- $(sess echo-wrong-pct)
 
-echo "### the errors that remain: no meaningful number can be computed"
+section "the errors that remain: no meaningful number can be computed"
 rejects "one order alone" "read over EXACTLY both term orders" -- "$TMP/good-locality.log"
 rejects "--order cannot narrow the reorder path" "\`--order\` cannot narrow it" \
   -- --order locality $(sess good)
@@ -352,5 +381,42 @@ rejects "both logs relabelled: they are then read under the interior rules, whic
 rejects "an R4 factorial log in the set" \
   "carries REORDER and ['CACHE-FACTORIAL']" -- $(sess good) "$TMP/not-r9.log"
 
+section ""   # close the last section
+
+echo
+echo "================================================================================"
+echo "THE WHOLE MATRIX — every R9 fixture row this run computed"
+echo "================================================================================"
+echo
+echo "| section | rows | matched | mismatched |"
+echo "| --- | --- | --- | --- |"
+for row in ${SECTIONS[@]+"${SECTIONS[@]}"}; do
+  IFS='|' read -r sname srows sok sbad <<< "$row"
+  printf '| %s | %s | %s | %s |\n' "$sname" "$srows" "$sok" "$sbad"
+done
+printf '| **total** | **%d** | **%d** | **%d** |\n' "$((pass + fail))" "$pass" "$fail"
+[ "$skip" = 0 ] || printf '\n%d row(s) SKIPPED — a log this suite replays is not on disk yet; not a verdict either way.\n' "$skip"
+echo
+if [ "$fail" = 0 ]; then
+  echo "### MISMATCHES — none."
+  echo
+  echo "**Every row computed its answer and every answer matched.**"
+else
+  echo "### MISMATCHES — $fail"
+  echo
+  echo "Each row computed an answer and the answer was not the expected one. Nothing was rejected on"
+  echo "any one of them: every row above ran and the matrix is complete."
+  echo
+  echo "| # | row | expected | found |"
+  echo "| --- | --- | --- | --- |"
+  i=0
+  for row in ${MISMATCHES[@]+"${MISMATCHES[@]}"}; do
+    i=$((i+1))
+    IFS='|' read -r mname mwant mgot <<< "$row"
+    printf '| %s | %s | %s | %s |\n' "$i" "$mname" "$mwant" "$mgot"
+  done
+fi
+echo
 printf 'fixture matrix: %d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
+echo "exit status $(( fail > 0 )) — information for automation only; the report above is printed either way."
 exit $(( fail > 0 ))
