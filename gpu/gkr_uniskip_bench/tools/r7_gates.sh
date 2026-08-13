@@ -342,20 +342,23 @@ q_parity() {
   [ "$scells" = "$spass" ] || bad "self-product matrix incomplete"
 
   # CPU oracle — the only leg that does not go through `q` alone.
-  # OBSERVED FLAKE, recorded here rather than left in a report: on 2026-08-13 one `all` run failed
-  # exactly two of these six cells — `seg-s/hot16 order=census` and `segb-g/hot16 order=census` —
-  # and nothing else in the chain. Both passed standalone immediately after, this lane passed
-  # standalone 6/6, and the next full `all` run reproduced neither. One occurrence is a transient;
-  # a SECOND occurrence is a different problem (a census-order carrier oracle that intermittently
-  # disagrees with the CPU) and should be investigated rather than re-run.
+  # THE FLAKE THESE CELLS USED TO HAVE, and its cause — recorded because a gate that fails for a
+  # HARNESS reason is worse than one that fails loudly. On 2026-08-13 one `all` run failed exactly two
+  # of these six (`seg-s/hot16 order=census`, `segb-g/hot16 order=census`) and nothing else, then
+  # passed standalone and did not reproduce. It was not the oracle: it was `"$B" … | grep -q` under
+  # `set -o pipefail`. `grep -q` exits on the first match, the still-running CUDA process takes
+  # SIGPIPE, and the PIPELINE's status becomes its 141 even though the match succeeded — reproduced
+  # 200/200 with a writer that keeps writing past the match line, and measured at 4 % of runs on the
+  # R9b fixture suite's 39 KB output. Every match in this file now CAPTURES first and reads a
+  # here-string, so only grep's own status reaches the `if`. A failure here now means the oracle.
   note "### CPU oracle (--validate), one cell per carrier family and order"
-  local oks=0 runs=0
+  local oks=0 runs=0 out
   for order in census locality; do
     for carrier in seg-s seg-g segb-g; do
       runs=$((runs + 1))
-      if "$B" --log-trace 12 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
-           --cache-arm hot16 --carrier "$carrier" --term-order "$order" --validate 2>/dev/null \
-           | grep -q '^q validate: OK (32/32)'; then
+      out=$("$B" --log-trace 12 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
+                 --cache-arm hot16 --carrier "$carrier" --term-order "$order" --validate 2>/dev/null)
+      if grep -q '^q validate: OK (32/32)' <<< "$out"; then
         oks=$((oks + 1))
       else bad "CPU oracle $carrier/hot16 order=$order"; fi
     done
@@ -747,14 +750,15 @@ r9_q_parity() {
 
   # CPU oracle — the only leg that does not go through `q` alone.
   note "### R9 CPU oracle (--validate), one cell per body and order"
-  local oks=0 runs=0
+  local oks=0 runs=0 out
   for order in census locality; do
     for arm in $R9_ARMS; do
       for flag in --reorder --reorder-free; do
         runs=$((runs + 1))
-        if "$B" --log-trace 12 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
-             --cache-arm "$arm" "$flag" --term-order "$order" --validate 2>/dev/null \
-             | grep -q '^q validate: OK (32/32)'; then
+        out=$("$B" --log-trace 12 --warmup 0 --iterations 1 --mode lsb-pair \
+                   --block-threads 128 --cache-arm "$arm" "$flag" --term-order "$order" \
+                   --validate 2>/dev/null)
+        if grep -q '^q validate: OK (32/32)' <<< "$out"; then
           oks=$((oks + 1))
         else bad "R9 CPU oracle $arm $flag order=$order"; fi
       done
@@ -865,7 +869,7 @@ r9_rejects() {
     cells=$((cells + 1))
     out=$("$B" --log-trace 12 "$@" 2>&1); rc=$?
     if [ "$rc" = 0 ]; then bad "R9 accepted [$*]"; return; fi
-    if printf '%s' "$out" | grep -q -- "$want"; then pass=$((pass + 1))
+    if grep -q -- "$want" <<< "$out"; then pass=$((pass + 1))
     else bad "R9 wrong rejection for [$*]: $(printf '%s' "$out" | head -3 | tr '\n' ' ')"; fi
   }
   local P="--mode lsb-pair --iterations 0"
@@ -1150,16 +1154,17 @@ r9b_q_parity() {
 
   # CPU oracle — the only leg that does not go through `q` alone.
   note "### R9b CPU oracle (--validate), one cell per timed cell, arm and order"
-  local runs=0 oks=0
+  local runs=0 oks=0 out
   for order in census locality; do
     for arm in $R9B_ARMS; do
       while IFS='|' read -r label flags; do
         [ -n "$label" ] || continue
         runs=$((runs + 1))
         # shellcheck disable=SC2086
-        if "$B" --log-trace 12 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
-             --cache-arm "$arm" $flags --term-order "$order" --validate 2>/dev/null \
-             | grep -q '^q validate: OK (32/32)'; then
+        out=$("$B" --log-trace 12 --warmup 0 --iterations 1 --mode lsb-pair \
+                   --block-threads 128 --cache-arm "$arm" $flags --term-order "$order" \
+                   --validate 2>/dev/null)
+        if grep -q '^q validate: OK (32/32)' <<< "$out"; then
           oks=$((oks + 1))
         else bad "R9b CPU oracle $label $arm order=$order"; fi
       done <<< "$R9B_CELLS"
@@ -1233,10 +1238,10 @@ $A --reorder|16:$r|1 local ($r)"
              --cache-arm hot16 --no-cache-launch-bounds --carveout-hint none \
              --term-order locality 2>/dev/null)
   cells=$((cells + 1))
-  if [ -n "$out" ] && ! printf '%s\n' "$out" | grep -q '^  carveout '; then pass=$((pass + 1))
+  if [ -n "$out" ] && ! grep -q '^  carveout ' <<< "$out"; then pass=$((pass + 1))
   else bad "R9b --carveout-hint none on --no-cache-launch-bounds still echoed a carveout line"; fi
   cells=$((cells + 1))
-  if printf '%s\n' "$out" | grep -q "^  occupancy .*($free,"; then
+  if grep -q "^  occupancy .*($free," <<< "$out"; then
     pass=$((pass + 1)); note "  --no-cache-launch-bounds --carveout-hint none -> unhinted, $free launched"
   else bad "R9b --carveout-hint none on --no-cache-launch-bounds did not reach $free"; fi
 
@@ -1303,7 +1308,7 @@ r9b_rejects() {
     cells=$((cells + 1))
     out=$("$B" --log-trace 12 "$@" 2>&1); rc=$?
     if [ "$rc" = 0 ]; then bad "R9b accepted [$*]"; return; fi
-    if printf '%s' "$out" | grep -q -- "$want"; then pass=$((pass + 1))
+    if grep -q -- "$want" <<< "$out"; then pass=$((pass + 1))
     else bad "R9b wrong rejection for [$*]: $(printf '%s' "$out" | head -3 | tr '\n' ' ')"; fi
   }
   local P="--mode lsb-pair --iterations 0"
@@ -1705,7 +1710,7 @@ sass() {
   printf '%s\n' "$out" | grep -E '^(  archive:|  IDENTICAL|  frozen bodies|FAIL: )' \
     | awk '{print "    " $0}'
   [ "$rc" = 0 ] || bad "r5_gates.sh sass exited $rc"
-  printf '%s\n' "$out" | grep -q '^  frozen bodies 9/9 identical' \
+  grep -q '^  frozen bodies 9/9 identical' <<< "$out" \
     || bad "r5_gates.sh sass did not report 9/9 identical frozen bodies"
   seg_sass
   reorder_sass
@@ -1764,7 +1769,7 @@ regression() {
   printf '%s\n' "$out" | grep -E '^(  cells=|  oracle cells=|  gated lanes=|  frozen bodies|  ARM lines|ALL GATES PASS|FAIL: )' \
     | awk '{print "    " $0}'
   [ "$rc" = 0 ] || bad "r5_gates.sh all exited $rc"
-  printf '%s\n' "$out" | grep -q '^ALL GATES PASS' || bad "r5_gates.sh all did not print ALL GATES PASS"
+  grep -q '^ALL GATES PASS' <<< "$out" || bad "r5_gates.sh all did not print ALL GATES PASS"
 }
 
 case "${1:-all}" in

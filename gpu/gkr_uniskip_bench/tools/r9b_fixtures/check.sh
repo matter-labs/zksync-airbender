@@ -19,6 +19,13 @@
 # Task 4's to measure). Those rows are the only ones in the suite that can be skipped, and none of
 # them can fail the lane.
 #
+# EVERY match below reads its captured output through a HERE-STRING, never `printf … | grep -q`.
+# Under `pipefail` that pipeline is a race: `grep -q` exits on the first match, the writer takes
+# SIGPIPE, and the pipeline's status becomes the writer's 141 even though the match succeeded. It is
+# invisible while the output fits one pipe write and fires once the report grows — measured at 4 % of
+# runs on this suite's 39 KB four-log invocation, in a different row each time. A here-string is fed
+# by the shell itself, so only grep's own status reaches the `if`.
+#
 # Run from anywhere:  bash gpu/gkr_uniskip_bench/tools/r9b_fixtures/check.sh
 set -uo pipefail
 
@@ -46,7 +53,7 @@ emits() {
   local out rc
   out=$($E "$@" 2>&1); rc=$?
   if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n  %s\n' "$name" "$(printf '%s' "$out" | tail -1)"; fail=$((fail+1)); return; fi
-  if printf '%s' "$out" | grep -qF -- "$want"; then pass=$((pass+1));
+  if grep -qF -- "$want" <<< "$out"; then pass=$((pass+1));
   else printf 'FAIL(outcome) %s\n  want: %s\n' "$name" "$want"; fail=$((fail+1)); fi
 }
 
@@ -59,12 +66,12 @@ flagged() {
   local out rc
   out=$($E "$@" 2>/dev/null); rc=$?
   if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s — a policy observation must not stop the emitter\n' "$name"; fail=$((fail+1)); return; fi
-  if ! printf '%s' "$out" | grep -qF -- "$want"; then
+  if ! grep -qF -- "$want" <<< "$out"; then
     printf 'FAIL(flag) %s\n  want in the flags block: %s\n' "$name" "$want"; fail=$((fail+1)); return
   fi
   # The whole picture is still printed: the G0 manifest is the last block, so its presence proves the
   # run went all the way through rather than stopping politely at the flag.
-  if ! printf '%s' "$out" | grep -qF -- "NCU-G0 cell=hot16@128"; then
+  if ! grep -qF -- "NCU-G0 cell=hot16@128" <<< "$out"; then
     printf 'FAIL(truncated) %s — flagged but the report stops before the ncu manifest\n' "$name"; fail=$((fail+1)); return
   fi
   pass=$((pass+1))
@@ -78,7 +85,7 @@ flagged_once() {
   local out rc n
   out=$($E "$@" 2>/dev/null); rc=$?
   if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n' "$name"; fail=$((fail+1)); return; fi
-  n=$(printf '%s' "$out" | grep -cF -- "$want")
+  n=$(grep -cF -- "$want" <<< "$out")
   if [ "$n" = "$want_n" ]; then pass=$((pass+1));
   else printf 'FAIL(count) %s\n  want %s row(s) matching: %s\n  got:  %s\n' "$name" "$want_n" "$want" "$n"; fail=$((fail+1)); fi
 }
@@ -89,7 +96,7 @@ rejects() {
   local out rc
   out=$($E "$@" 2>&1 >/dev/null); rc=$?
   if [ "$rc" = 0 ]; then printf 'FAIL(accepted) %s\n' "$name"; fail=$((fail+1)); return; fi
-  if printf '%s' "$out" | grep -qF -- "$want"; then pass=$((pass+1));
+  if grep -qF -- "$want" <<< "$out"; then pass=$((pass+1));
   else printf 'FAIL(message) %s\n  want: %s\n  got:  %s\n' "$name" "$want" "$out"; fail=$((fail+1)); fi
 }
 
@@ -101,7 +108,7 @@ absent() {
   local out rc
   out=$($E "$@" 2>/dev/null); rc=$?
   if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n' "$name"; fail=$((fail+1)); return; fi
-  if printf '%s' "$out" | grep -qE -- "$nope"; then
+  if grep -qE -- "$nope" <<< "$out"; then
     printf 'FAIL(outcome) %s\n  must NOT emit: %s\n' "$name" "$nope"; fail=$((fail+1))
   else pass=$((pass+1)); fi
 }
