@@ -1376,6 +1376,66 @@ impl Harness {
                     LaneKernel::Reorder128 => {
                         LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_128)
                     }
+                    LaneKernel::Cached128Lb6 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128_lb6)
+                    }
+                    LaneKernel::Reorder128Lb6 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_128_lb6)
+                    }
+                    LaneKernel::ReorderC128 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_c_128)
+                    }
+                    LaneKernel::ReorderC128Lb => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_c_128_lb)
+                    }
+                    LaneKernel::ReorderC128Lb6 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_c_128_lb6)
+                    }
+                    LaneKernel::ReorderCk128 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_ck_128)
+                    }
+                    LaneKernel::ReorderCk128Lb => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_ck_128_lb)
+                    }
+                    LaneKernel::ReorderCk128Lb6 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_ck_128_lb6)
+                    }
+                    LaneKernel::ReorderCd128 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_cd_128)
+                    }
+                    LaneKernel::ReorderCd128Lb => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_cd_128_lb)
+                    }
+                    LaneKernel::ReorderCd128Lb6 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_cd_128_lb6)
+                    }
+                    LaneKernel::ReorderB128 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_b_128)
+                    }
+                    LaneKernel::ReorderB128Lb => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_b_128_lb)
+                    }
+                    LaneKernel::ReorderB128Lb6 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_b_128_lb6)
+                    }
+                    LaneKernel::ReorderBk128 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bk_128)
+                    }
+                    LaneKernel::ReorderBk128Lb => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bk_128_lb)
+                    }
+                    LaneKernel::ReorderBk128Lb6 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bk_128_lb6)
+                    }
+                    LaneKernel::ReorderBd128 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bd_128)
+                    }
+                    LaneKernel::ReorderBd128Lb => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bd_128_lb)
+                    }
+                    LaneKernel::ReorderBd128Lb6 => {
+                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bd_128_lb6)
+                    }
                     LaneKernel::Cached => LaneLaunch::Cached(kernels::eval_lsb_pair_cached),
                     LaneKernel::Pair128Lb => LaneLaunch::Plain(kernels::eval_lsb_pair_128_lb),
                     LaneKernel::Pair128 => LaneLaunch::Plain(kernels::eval_lsb_pair_128),

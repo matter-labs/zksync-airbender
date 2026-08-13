@@ -161,6 +161,151 @@ cuda_kernel!(
         plan: UniskipCacheDesc
     )
 );
+// The v3 R9b grid: the four corrected grouped-path bodies (`c` = converged accumuland, `cd`
+// = the same with the coefficient decode hoisted, `b` = hoisted class branch, `bd` = both)
+// at three register budgets each — `_lb` = `(128, 7)`, `_lb6` = `(128, 6)`, bare = unbounded
+// — plus the two reference bodies at the relaxed floor. Same wire and signature as every
+// other cached kernel, so a grid cell is a body-to-body contrast at one ABI.
+cuda_kernel!(
+    EvalLsbPairCached128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorder128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderC128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_c_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderC128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_c_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderC128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_c_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCk128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_ck_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCk128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_ck_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCk128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_ck_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCd128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCd128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderCd128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderB128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_b_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderB128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_b_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderB128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_b_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderBk128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bk_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderBk128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bk_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderBk128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bk_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderBd128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_lb_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderBd128Lb6,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_lb6_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
+cuda_kernel!(
+    EvalLsbPairCachedReorderBd128,
+    ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_kernel(
+        desc: UniskipVmDesc,
+        plan: UniskipCacheDesc
+    )
+);
 // The v3 R4 128-thread no-cache baselines: same wire, same signature, 4 warps. The `_lb`
 // sibling is the bounded baseline, so the 128 cache contrast can be taken bound-to-bound.
 cuda_kernel!(
@@ -674,6 +819,126 @@ pub fn eval_lsb_pair_cached_reorder_128(
     EvalLsbPairCachedReorder128Function::default().launch(&config, &args)
 }
 
+/// One launcher per v3 R9b grid cell. Every cell takes the incumbent's `(desc, plan)` ABI at
+/// 128 threads and differs only in which body and which register budget the symbol carries, so
+/// the launchers are identical up to their three names; the cell is named at the call rather
+/// than in fourteen copies of the same four lines.
+macro_rules! regroup_launcher {
+    ($launcher:ident, $arguments:ident, $function:ident) => {
+        pub fn $launcher(
+            desc: &UniskipVmDesc,
+            plan: &UniskipCacheDesc,
+            blocks: u32,
+            stream: &CudaStream,
+        ) -> CudaResult<()> {
+            let args = $arguments::new(*desc, *plan);
+            let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+            $function::default().launch(&config, &args)
+        }
+    };
+}
+
+regroup_launcher!(
+    eval_lsb_pair_cached_128_lb6,
+    EvalLsbPairCached128Lb6Arguments,
+    EvalLsbPairCached128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_128_lb6,
+    EvalLsbPairCachedReorder128Lb6Arguments,
+    EvalLsbPairCachedReorder128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_c_128_lb,
+    EvalLsbPairCachedReorderC128LbArguments,
+    EvalLsbPairCachedReorderC128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_c_128_lb6,
+    EvalLsbPairCachedReorderC128Lb6Arguments,
+    EvalLsbPairCachedReorderC128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_c_128,
+    EvalLsbPairCachedReorderC128Arguments,
+    EvalLsbPairCachedReorderC128Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_ck_128_lb,
+    EvalLsbPairCachedReorderCk128LbArguments,
+    EvalLsbPairCachedReorderCk128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_ck_128_lb6,
+    EvalLsbPairCachedReorderCk128Lb6Arguments,
+    EvalLsbPairCachedReorderCk128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_ck_128,
+    EvalLsbPairCachedReorderCk128Arguments,
+    EvalLsbPairCachedReorderCk128Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_cd_128_lb,
+    EvalLsbPairCachedReorderCd128LbArguments,
+    EvalLsbPairCachedReorderCd128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_cd_128_lb6,
+    EvalLsbPairCachedReorderCd128Lb6Arguments,
+    EvalLsbPairCachedReorderCd128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_cd_128,
+    EvalLsbPairCachedReorderCd128Arguments,
+    EvalLsbPairCachedReorderCd128Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_b_128_lb,
+    EvalLsbPairCachedReorderB128LbArguments,
+    EvalLsbPairCachedReorderB128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_b_128_lb6,
+    EvalLsbPairCachedReorderB128Lb6Arguments,
+    EvalLsbPairCachedReorderB128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_b_128,
+    EvalLsbPairCachedReorderB128Arguments,
+    EvalLsbPairCachedReorderB128Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_bk_128_lb,
+    EvalLsbPairCachedReorderBk128LbArguments,
+    EvalLsbPairCachedReorderBk128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_bk_128_lb6,
+    EvalLsbPairCachedReorderBk128Lb6Arguments,
+    EvalLsbPairCachedReorderBk128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_bk_128,
+    EvalLsbPairCachedReorderBk128Arguments,
+    EvalLsbPairCachedReorderBk128Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_bd_128_lb,
+    EvalLsbPairCachedReorderBd128LbArguments,
+    EvalLsbPairCachedReorderBd128LbFunction
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_bd_128_lb6,
+    EvalLsbPairCachedReorderBd128Lb6Arguments,
+    EvalLsbPairCachedReorderBd128Lb6Function
+);
+regroup_launcher!(
+    eval_lsb_pair_cached_reorder_bd_128,
+    EvalLsbPairCachedReorderBd128Arguments,
+    EvalLsbPairCachedReorderBd128Function
+);
+
 /// Blocks per SM the driver's own occupancy calculator gives one of the lane kernels at
 /// `block_threads` and `dynamic_smem_bytes`. It reads the SAME function attributes a launch
 /// will — the register count, the static shared plane and whatever
@@ -708,6 +973,106 @@ pub fn max_blocks_per_sm(
         ),
         LaneKernel::Reorder128 => occupancy(
             &EvalLsbPairCachedReorder128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::Cached128Lb6 => occupancy(
+            &EvalLsbPairCached128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::Reorder128Lb6 => occupancy(
+            &EvalLsbPairCachedReorder128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderC128 => occupancy(
+            &EvalLsbPairCachedReorderC128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderC128Lb => occupancy(
+            &EvalLsbPairCachedReorderC128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderC128Lb6 => occupancy(
+            &EvalLsbPairCachedReorderC128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCk128 => occupancy(
+            &EvalLsbPairCachedReorderCk128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCk128Lb => occupancy(
+            &EvalLsbPairCachedReorderCk128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCk128Lb6 => occupancy(
+            &EvalLsbPairCachedReorderCk128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCd128 => occupancy(
+            &EvalLsbPairCachedReorderCd128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCd128Lb => occupancy(
+            &EvalLsbPairCachedReorderCd128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderCd128Lb6 => occupancy(
+            &EvalLsbPairCachedReorderCd128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderB128 => occupancy(
+            &EvalLsbPairCachedReorderB128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderB128Lb => occupancy(
+            &EvalLsbPairCachedReorderB128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderB128Lb6 => occupancy(
+            &EvalLsbPairCachedReorderB128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderBk128 => occupancy(
+            &EvalLsbPairCachedReorderBk128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderBk128Lb => occupancy(
+            &EvalLsbPairCachedReorderBk128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderBk128Lb6 => occupancy(
+            &EvalLsbPairCachedReorderBk128Lb6Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderBd128 => occupancy(
+            &EvalLsbPairCachedReorderBd128Function::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderBd128Lb => occupancy(
+            &EvalLsbPairCachedReorderBd128LbFunction::default(),
+            threads,
+            dynamic,
+        ),
+        LaneKernel::ReorderBd128Lb6 => occupancy(
+            &EvalLsbPairCachedReorderBd128Lb6Function::default(),
             threads,
             dynamic,
         ),

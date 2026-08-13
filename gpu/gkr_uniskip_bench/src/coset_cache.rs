@@ -2559,6 +2559,28 @@ pub enum LaneKernel {
     Cached128Lb,
     Reorder128,
     Reorder128Lb,
+    // The v3 R9b grid: body shape x register budget. `Lb` = `(128, 7)`, `Lb6` = `(128, 6)`, the
+    // bare name = unbounded; `C`/`Cd`/`B`/`Bd` are the corrected grouped-path bodies.
+    Cached128Lb6,
+    Reorder128Lb6,
+    ReorderC128,
+    ReorderC128Lb,
+    ReorderC128Lb6,
+    ReorderCk128,
+    ReorderCk128Lb,
+    ReorderCk128Lb6,
+    ReorderCd128,
+    ReorderCd128Lb,
+    ReorderCd128Lb6,
+    ReorderB128,
+    ReorderB128Lb,
+    ReorderB128Lb6,
+    ReorderBk128,
+    ReorderBk128Lb,
+    ReorderBk128Lb6,
+    ReorderBd128,
+    ReorderBd128Lb,
+    ReorderBd128Lb6,
     SegSCv64,
     SegSCv100,
     SegSAcc,
@@ -2574,7 +2596,7 @@ impl LaneKernel {
     /// them. The table itself is just a literal — what keeps it COMPLETE is the exhaustive
     /// match in `cpu_lane_kernel_names_match_the_exported_symbols`, where a new variant fails
     /// to compile until it has an entry here.
-    pub const ALL: [LaneKernel; 16] = [
+    pub const ALL: [LaneKernel; 36] = [
         Self::Pair,
         Self::Pair128,
         Self::Pair128Lb,
@@ -2583,6 +2605,26 @@ impl LaneKernel {
         Self::Cached128Lb,
         Self::Reorder128,
         Self::Reorder128Lb,
+        Self::Cached128Lb6,
+        Self::Reorder128Lb6,
+        Self::ReorderC128,
+        Self::ReorderC128Lb,
+        Self::ReorderC128Lb6,
+        Self::ReorderCk128,
+        Self::ReorderCk128Lb,
+        Self::ReorderCk128Lb6,
+        Self::ReorderCd128,
+        Self::ReorderCd128Lb,
+        Self::ReorderCd128Lb6,
+        Self::ReorderB128,
+        Self::ReorderB128Lb,
+        Self::ReorderB128Lb6,
+        Self::ReorderBk128,
+        Self::ReorderBk128Lb,
+        Self::ReorderBk128Lb6,
+        Self::ReorderBd128,
+        Self::ReorderBd128Lb,
+        Self::ReorderBd128Lb6,
         Self::SegSCv64,
         Self::SegSCv100,
         Self::SegSAcc,
@@ -2613,6 +2655,26 @@ impl LaneKernel {
             Self::Cached128Lb => "eval_lsb_pair_cached_128_lb",
             Self::Reorder128 => "eval_lsb_pair_cached_reorder_128",
             Self::Reorder128Lb => "eval_lsb_pair_cached_reorder_128_lb",
+            Self::Cached128Lb6 => "eval_lsb_pair_cached_128_lb6",
+            Self::Reorder128Lb6 => "eval_lsb_pair_cached_reorder_128_lb6",
+            Self::ReorderC128 => "eval_lsb_pair_cached_reorder_c_128",
+            Self::ReorderC128Lb => "eval_lsb_pair_cached_reorder_c_128_lb",
+            Self::ReorderC128Lb6 => "eval_lsb_pair_cached_reorder_c_128_lb6",
+            Self::ReorderCk128 => "eval_lsb_pair_cached_reorder_ck_128",
+            Self::ReorderCk128Lb => "eval_lsb_pair_cached_reorder_ck_128_lb",
+            Self::ReorderCk128Lb6 => "eval_lsb_pair_cached_reorder_ck_128_lb6",
+            Self::ReorderCd128 => "eval_lsb_pair_cached_reorder_cd_128",
+            Self::ReorderCd128Lb => "eval_lsb_pair_cached_reorder_cd_128_lb",
+            Self::ReorderCd128Lb6 => "eval_lsb_pair_cached_reorder_cd_128_lb6",
+            Self::ReorderB128 => "eval_lsb_pair_cached_reorder_b_128",
+            Self::ReorderB128Lb => "eval_lsb_pair_cached_reorder_b_128_lb",
+            Self::ReorderB128Lb6 => "eval_lsb_pair_cached_reorder_b_128_lb6",
+            Self::ReorderBk128 => "eval_lsb_pair_cached_reorder_bk_128",
+            Self::ReorderBk128Lb => "eval_lsb_pair_cached_reorder_bk_128_lb",
+            Self::ReorderBk128Lb6 => "eval_lsb_pair_cached_reorder_bk_128_lb6",
+            Self::ReorderBd128 => "eval_lsb_pair_cached_reorder_bd_128",
+            Self::ReorderBd128Lb => "eval_lsb_pair_cached_reorder_bd_128_lb",
+            Self::ReorderBd128Lb6 => "eval_lsb_pair_cached_reorder_bd_128_lb6",
             Self::SegSCv64 => "eval_lsb_seg_s_cv64",
             Self::SegSCv100 => "eval_lsb_seg_s_cv100",
             Self::SegSAcc => "eval_lsb_seg_s_acc",
@@ -2634,6 +2696,26 @@ impl LaneKernel {
                 | Self::Cached128Lb
                 | Self::Reorder128
                 | Self::Reorder128Lb
+                | Self::Cached128Lb6
+                | Self::Reorder128Lb6
+                | Self::ReorderC128
+                | Self::ReorderC128Lb
+                | Self::ReorderC128Lb6
+                | Self::ReorderCk128
+                | Self::ReorderCk128Lb
+                | Self::ReorderCk128Lb6
+                | Self::ReorderCd128
+                | Self::ReorderCd128Lb
+                | Self::ReorderCd128Lb6
+                | Self::ReorderB128
+                | Self::ReorderB128Lb
+                | Self::ReorderB128Lb6
+                | Self::ReorderBk128
+                | Self::ReorderBk128Lb
+                | Self::ReorderBk128Lb6
+                | Self::ReorderBd128
+                | Self::ReorderBd128Lb
+                | Self::ReorderBd128Lb6
         )
     }
 }
@@ -3063,8 +3145,8 @@ mod lane_tests {
     /// (M4). A typo on either side would otherwise surface only at the first launch.
     #[test]
     fn cpu_lane_kernel_names_match_the_exported_symbols() {
-        // WHAT MAKES `ALL` COMPLETE — the type `[LaneKernel; 16]` does not: it only reacts to
-        // edits of the literal, so a 17th variant would compile with an unpinned symbol. This
+        // WHAT MAKES `ALL` COMPLETE — the type `[LaneKernel; 36]` does not: it only reacts to
+        // edits of the literal, so a 37th variant would compile with an unpinned symbol. This
         // match is total over the enum, and every arm names that variant's OWN slot: a new
         // variant fails to compile until it appears here, and its arm then fails to compile
         // until the table has a slot to point at (an out-of-range index on a const array is
@@ -3078,14 +3160,34 @@ mod lane_tests {
             LaneKernel::Cached128Lb => LaneKernel::ALL[5],
             LaneKernel::Reorder128 => LaneKernel::ALL[6],
             LaneKernel::Reorder128Lb => LaneKernel::ALL[7],
-            LaneKernel::SegSCv64 => LaneKernel::ALL[8],
-            LaneKernel::SegSCv100 => LaneKernel::ALL[9],
-            LaneKernel::SegSAcc => LaneKernel::ALL[10],
-            LaneKernel::SegG => LaneKernel::ALL[11],
-            LaneKernel::SegRecompute => LaneKernel::ALL[12],
-            LaneKernel::SegbG => LaneKernel::ALL[13],
-            LaneKernel::SegbRecompute => LaneKernel::ALL[14],
-            LaneKernel::SegbGSlotted => LaneKernel::ALL[15],
+            LaneKernel::Cached128Lb6 => LaneKernel::ALL[8],
+            LaneKernel::Reorder128Lb6 => LaneKernel::ALL[9],
+            LaneKernel::ReorderC128 => LaneKernel::ALL[10],
+            LaneKernel::ReorderC128Lb => LaneKernel::ALL[11],
+            LaneKernel::ReorderC128Lb6 => LaneKernel::ALL[12],
+            LaneKernel::ReorderCk128 => LaneKernel::ALL[13],
+            LaneKernel::ReorderCk128Lb => LaneKernel::ALL[14],
+            LaneKernel::ReorderCk128Lb6 => LaneKernel::ALL[15],
+            LaneKernel::ReorderCd128 => LaneKernel::ALL[16],
+            LaneKernel::ReorderCd128Lb => LaneKernel::ALL[17],
+            LaneKernel::ReorderCd128Lb6 => LaneKernel::ALL[18],
+            LaneKernel::ReorderB128 => LaneKernel::ALL[19],
+            LaneKernel::ReorderB128Lb => LaneKernel::ALL[20],
+            LaneKernel::ReorderB128Lb6 => LaneKernel::ALL[21],
+            LaneKernel::ReorderBk128 => LaneKernel::ALL[22],
+            LaneKernel::ReorderBk128Lb => LaneKernel::ALL[23],
+            LaneKernel::ReorderBk128Lb6 => LaneKernel::ALL[24],
+            LaneKernel::ReorderBd128 => LaneKernel::ALL[25],
+            LaneKernel::ReorderBd128Lb => LaneKernel::ALL[26],
+            LaneKernel::ReorderBd128Lb6 => LaneKernel::ALL[27],
+            LaneKernel::SegSCv64 => LaneKernel::ALL[28],
+            LaneKernel::SegSCv100 => LaneKernel::ALL[29],
+            LaneKernel::SegSAcc => LaneKernel::ALL[30],
+            LaneKernel::SegG => LaneKernel::ALL[31],
+            LaneKernel::SegRecompute => LaneKernel::ALL[32],
+            LaneKernel::SegbG => LaneKernel::ALL[33],
+            LaneKernel::SegbRecompute => LaneKernel::ALL[34],
+            LaneKernel::SegbGSlotted => LaneKernel::ALL[35],
         };
         for (i, kernel) in LaneKernel::ALL.into_iter().enumerate() {
             assert_eq!(

@@ -438,6 +438,151 @@ DEVICE_FORCEINLINE void uniskip_pair_group_sum_reorder(const uniskip_vm_desc &de
 }
 
 // ---------------------------------------------------------------------------------------
+// v3 R9b GROUPED-PATH DECODE. The R9 dispatch above runs once per accumulator, so a member's
+// coefficient is re-tested and its immediate re-loaded on the second visit. These helpers
+// resolve it ONCE per member into a kind plus the immediate; the apply then selects the same
+// add / sub / FMA in the same order, twice. The `uniskip_term` form is R9's dispatch, kept so
+// the same body can be built with the hoist off.
+// ---------------------------------------------------------------------------------------
+
+constexpr u32 UNISKIP_PAIR_COEFF_ONE = 0;
+constexpr u32 UNISKIP_PAIR_COEFF_NEG_ONE = 1;
+constexpr u32 UNISKIP_PAIR_COEFF_IMMEDIATE = 2;
+
+struct uniskip_pair_coeff_reorder {
+  bf immediate;
+  u32 kind;
+};
+
+// The immediate is read only on the leg that has one: `member.coeff - RESERVED` underflows
+// for the one / minus-one cases.
+DEVICE_FORCEINLINE uniskip_pair_coeff_reorder uniskip_pair_coeff_decode_reorder(const uniskip_vm_desc &desc, const uniskip_term member) {
+  uniskip_pair_coeff_reorder out;
+  if (member.coeff == UNISKIP_IMMEDIATE_ONE) {
+    out.kind = UNISKIP_PAIR_COEFF_ONE;
+    out.immediate = bf::ZERO();
+  } else if (member.coeff == UNISKIP_IMMEDIATE_NEG_ONE) {
+    out.kind = UNISKIP_PAIR_COEFF_NEG_ONE;
+    out.immediate = bf::ZERO();
+  } else {
+    out.kind = UNISKIP_PAIR_COEFF_IMMEDIATE;
+    out.immediate = desc.immediates[member.coeff - UNISKIP_IMMEDIATE_RESERVED];
+  }
+  return out;
+}
+
+DEVICE_FORCEINLINE void uniskip_pair_group_sum_decoded_reorder(const uniskip_pair_coeff_reorder coeff, const bf v[2], bf sum[2]) {
+  if (coeff.kind == UNISKIP_PAIR_COEFF_ONE) {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      sum[k] = bf::add(sum[k], v[k]);
+  } else if (coeff.kind == UNISKIP_PAIR_COEFF_NEG_ONE) {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      sum[k] = bf::sub(sum[k], v[k]);
+  } else {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      sum[k] = bf::fma(coeff.immediate, v[k], sum[k]);
+  }
+}
+
+// The apply with its case chosen at COMPILE time, and its value taken BY VALUE so a product can
+// be multiplied straight into the accumulate. This is what lets ONE runtime three-way test
+// enclose a whole member sequence - H accumulate, in-place transform, C accumulate - instead of
+// being re-run per accumulate.
+template <u32 KIND> DEVICE_FORCEINLINE void uniskip_pair_coeff_apply_reorder(const bf immediate, const bf v0, const bf v1, bf sum[2]) {
+  if constexpr (KIND == UNISKIP_PAIR_COEFF_ONE) {
+    sum[0] = bf::add(sum[0], v0);
+    sum[1] = bf::add(sum[1], v1);
+  } else if constexpr (KIND == UNISKIP_PAIR_COEFF_NEG_ONE) {
+    sum[0] = bf::sub(sum[0], v0);
+    sum[1] = bf::sub(sum[1], v1);
+  } else {
+    sum[0] = bf::fma(immediate, v0, sum[0]);
+    sum[1] = bf::fma(immediate, v1, sum[1]);
+  }
+}
+
+// The two RUNTIME coefficient forms behind one call shape, so the decode hoist is a template
+// argument of the body rather than a second copy of its member loop. Both still test per
+// accumulate; the compile-time form above is the one that does not.
+template <bool DECODE_ONCE> struct uniskip_pair_coeff_form_reorder;
+
+template <> struct uniskip_pair_coeff_form_reorder<false> {
+  using coeff = uniskip_term;
+  static DEVICE_FORCEINLINE coeff resolve(const uniskip_vm_desc &, const uniskip_term member) { return member; }
+  static DEVICE_FORCEINLINE void sum(const uniskip_vm_desc &desc, const coeff c, const bf v[2], bf s[2]) { uniskip_pair_group_sum_reorder(desc, c, v, s); }
+};
+
+template <> struct uniskip_pair_coeff_form_reorder<true> {
+  using coeff = uniskip_pair_coeff_reorder;
+  static DEVICE_FORCEINLINE coeff resolve(const uniskip_vm_desc &desc, const uniskip_term member) { return uniskip_pair_coeff_decode_reorder(desc, member); }
+  static DEVICE_FORCEINLINE void sum(const uniskip_vm_desc &, const coeff c, const bf v[2], bf s[2]) { uniskip_pair_group_sum_decoded_reorder(c, v, s); }
+};
+
+// How a body treats a member's coefficient: `R9` re-tests `member.coeff` at each accumulate (the
+// R9 dispatch, unchanged), `KIND` resolves it once into a kind and still branches on that kind at
+// each accumulate, `BRANCH` runs ONE runtime three-way test per member enclosing the member's
+// whole sequence, so no coefficient test happens between the two accumulates at all.
+constexpr u32 UNISKIP_PAIR_COEFF_FORM_R9 = 0;
+constexpr u32 UNISKIP_PAIR_COEFF_FORM_KIND = 1;
+constexpr u32 UNISKIP_PAIR_COEFF_FORM_BRANCH = 2;
+
+// One group member's WHOLE sequence under a COMPILE-TIME coefficient kind: gate on H, turn the
+// operands into their coset in place, gate on C. `HOIST_CLASS` = true is lever B - one class
+// branch covering both phases, and no convergence slot, since each leg multiplies its product
+// straight into the accumulate. false is lever C: the accumuland converges on `p` so both class
+// branches stay. Either way the product is ephemeral because the transform overwrites its
+// operands' storage.
+template <u32 KIND, bool HOIST_CLASS>
+DEVICE_FORCEINLINE void uniskip_pair_group_member_reorder(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const uniskip_coset_cache &cache,
+                                                          const uniskip_term member, const bf immediate, bf sum_h[2], bf sum_c[2]) {
+  bf a[2];
+  uniskip_pair_load_h(desc, lane, member.source_a, a);
+  if constexpr (HOIST_CLASS) {
+    if (member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF) {
+      bf b[2];
+      uniskip_pair_load_h_second_reorder(desc, lane, member, a, b);
+      uniskip_pair_coeff_apply_reorder<KIND>(immediate, bf::mul(a[0], b[0]), bf::mul(a[1], b[1]), sum_h);
+      uniskip_pair_coset_reorder(desc, lane, member.source_a, cache, a);
+      uniskip_pair_coset_second_reorder(desc, lane, member, cache, a, b);
+      uniskip_pair_coeff_apply_reorder<KIND>(immediate, bf::mul(a[0], b[0]), bf::mul(a[1], b[1]), sum_c);
+    } else {
+      uniskip_pair_coeff_apply_reorder<KIND>(immediate, a[0], a[1], sum_h);
+      uniskip_pair_coset_reorder(desc, lane, member.source_a, cache, a);
+      uniskip_pair_coeff_apply_reorder<KIND>(immediate, a[0], a[1], sum_c);
+    }
+    return;
+  }
+  const bool product = member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF;
+  bf b[2], p[2];
+  if (product) {
+    uniskip_pair_load_h_second_reorder(desc, lane, member, a, b);
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      p[k] = bf::mul(a[k], b[k]);
+  } else {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      p[k] = a[k];
+  }
+  uniskip_pair_coeff_apply_reorder<KIND>(immediate, p[0], p[1], sum_h);
+  uniskip_pair_coset_reorder(desc, lane, member.source_a, cache, a);
+  if (product) {
+    uniskip_pair_coset_second_reorder(desc, lane, member, cache, a, b);
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      p[k] = bf::mul(a[k], b[k]);
+  } else {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k)
+      p[k] = a[k];
+  }
+  uniskip_pair_coeff_apply_reorder<KIND>(immediate, p[0], p[1], sum_c);
+}
+
+// ---------------------------------------------------------------------------------------
 // v3 R3 WINDOW. Coset-only: a slot retains one BF source's produced `c[2]` (2 regs/lane);
 // `h[2]` is still loaded on reuse. A reuse therefore skips exactly the shuffle-NTT chain
 // and its twist for that operand resolution, which is the whole saving.

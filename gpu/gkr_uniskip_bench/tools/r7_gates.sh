@@ -126,6 +126,30 @@ SEG_TU=uniskip_lsb_seg.cu.o
 # bodies of this TU stay r5_gates.sh's, artifact-compared there and untouched here.
 REORDER_SYMBOLS="ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_lb_kernel|5984|70|2048|10ee133c66ec
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_kernel|5888|64|2048|0b9ed0dcf3dc"
+# The v3 R9b grid: the four corrected grouped-path bodies at three register budgets each, plus
+# the two reference bodies at the relaxed floor. Its own table rather than rows in
+# REORDER_SYMBOLS, which pins the two R9 bodies this grid is measured against — those two must
+# stay untouched and separately readable.
+R9B_SYMBOLS="ab_gkr_uniskip_eval_lsb_pair_cached_128_lb6_kernel|5968|80|2048|d7cc6a60a4d8
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_128_lb6_kernel|5880|75|2048|5cf874cc4d33
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_c_128_lb_kernel|5904|70|2048|facb5cc6a62a
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_c_128_lb6_kernel|5800|75|2048|670930476c80
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_c_128_kernel|5808|64|2048|d586579fe2fb
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_ck_128_lb_kernel|5904|70|2048|7f5e403a6ec8
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_ck_128_lb6_kernel|5800|75|2048|b11657068c04
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_ck_128_kernel|5808|64|2048|9e2e45ad729d
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_128_lb_kernel|6512|72|2048|d6ab3cc52e0c
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_128_lb6_kernel|6424|79|2048|b77a01644bba
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_128_kernel|6472|59|2048|d41856bfc6eb
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_b_128_lb_kernel|6104|70|2048|16cbe71a87f7
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_b_128_lb6_kernel|5968|78|2048|6d56cc8556db
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_b_128_kernel|5992|64|2048|8f841984d5a1
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bk_128_lb_kernel|6088|72|2048|412b90a6e41f
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bk_128_lb6_kernel|5960|78|2048|adcb0acffd55
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bk_128_kernel|5984|64|2048|648ea71c706d
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_lb_kernel|6928|72|2048|98d40c54f396
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_lb6_kernel|6832|79|2048|dee91b732ac0
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_kernel|6872|59|2048|d4126598930c"
 PAIR_TU=uniskip_lsb_pair.cu.o
 
 build_bench() { # build_bench <diag-env-value-or-empty>
@@ -1126,6 +1150,49 @@ reorder_sass() {
   [ "$ok" = 2 ] || bad "the reorder symbol table is not 2/2"
 }
 
+r9b_sass() {
+  note "### the R9b grid: body shape x register budget, instruction counts, digests, registers"
+  local ar=$ARCHIVE work="$TMP/sass-r9b" ar_abs
+  ar_abs=$(readlink -f "$ar")
+  mkdir -p "$work"
+  ( cd "$work" && ar x "$ar_abs" "$PAIR_TU" ) 2>/dev/null
+  if [ ! -f "$work/$PAIR_TU" ]; then bad "could not extract $PAIR_TU from $ar"; return; fi
+  if ! cuobjdump -sass "$work/$PAIR_TU" >"$work/dump.txt" 2>"$work/dump.err"; then
+    bad "cuobjdump -sass failed on the pair TU"; tail -3 "$work/dump.err"; return
+  fi
+  if ! cuobjdump -res-usage "$work/$PAIR_TU" >"$work/res.txt" 2>&1; then
+    bad "cuobjdump -res-usage failed on the pair TU"; tail -3 "$work/res.txt"; return
+  fi
+  norm_dump "$work/dump.txt" "$work/live"
+  local rows=0 ok=0 fn want reg shared digest got dig res
+  while IFS='|' read -r fn want reg shared digest; do
+    [ -n "$fn" ] || continue
+    rows=$((rows + 1))
+    if [ ! -f "$work/live/$fn" ]; then bad "$fn is missing from the built archive"; continue; fi
+    got=$(wc -l <"$work/live/$fn")
+    dig=$(body_digest "$work/live/$fn")
+    res=$(awk -v fn="$fn:" '$2 == fn {getline; print $0}' "$work/res.txt" \
+          | tr -s ' ' | sed 's/^ //')
+    if [ "$got" != "$want" ]; then
+      bad "$fn has $got normalized instructions, the record pins $want"
+      continue
+    fi
+    if [ "$dig" != "$digest" ]; then
+      bad "$fn body digest is $dig, the record pins $digest — the body changed at a constant instruction count"
+      continue
+    fi
+    case "$res" in
+      "REG:$reg STACK:0 SHARED:$shared LOCAL:0 CONSTANT[0]:"*) ;;
+      *) bad "$fn resource usage is [$res]; want REG:$reg STACK:0 SHARED:$shared LOCAL:0"; continue ;;
+    esac
+    ok=$((ok + 1))
+    note "  $fn: $got instrs, digest $dig, $res"
+  done <<< "$R9B_SYMBOLS"
+  note "  R9b grid bodies $ok/$rows pinned"
+  [ "$rows" = 20 ] || bad "expected 20 R9b grid symbols, checked $rows"
+  [ "$ok" = 20 ] || bad "the R9b grid symbol table is not 20/20"
+}
+
 sass() {
   note "### frozen SASS: r5_gates.sh sass, the nine R3/R4 bodies (one table, one owner)"
   require_shipped "the SASS lane" || return
@@ -1138,6 +1205,7 @@ sass() {
     || bad "r5_gates.sh sass did not report 9/9 identical frozen bodies"
   seg_sass
   reorder_sass
+  r9b_sass
 }
 
 # ---------------------------------------------------------------- cpu / fixtures / regression
