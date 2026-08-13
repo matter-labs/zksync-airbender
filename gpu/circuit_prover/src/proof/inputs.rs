@@ -1,6 +1,6 @@
 // Consolidated H2D bundle for prove() and commit_memory_from_transfers():
 // one shared Transfer for every pre-prove H2D piece (setup, decoder,
-// inits_and_teardowns, tracing_data, memory caps, canonical_top_bits,
+// inits_and_teardowns, tracing_data, memory caps, top_bits,
 // external_challenges), so prove() does a single ensure_transferred.
 
 use std::marker::PhantomData;
@@ -28,31 +28,31 @@ pub(crate) const EXTERNAL_CHALLENGES_E4_LEN: usize =
     NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1;
 
 // ---------------------------------------------------------------------------
-// CanonicalTopBitsTransfer
+// TopBitsTransfer
 // ---------------------------------------------------------------------------
 
-/// H2D wrapper for the canonical inits-and-teardowns top-bits transcript
+/// H2D wrapper for the inits-and-teardowns top-bits transcript
 /// prefix. The host source is `SchedulerHostAllocator`-backed and filled
 /// once on the scheduling thread at construction; the bundle's shared
 /// `Transfer` H2Ds it to device on `h2d_stream`.
 ///
 /// Only constructed when the compiled circuit has at least one teardown set
-/// (i.e. `canonical_top_bits.len() > 0`).
-pub(crate) struct CanonicalTopBitsTransfer<'a> {
+/// (i.e. `top_bits.len() > 0`).
+pub(crate) struct TopBitsTransfer<'a> {
     pub(crate) host: Arc<StaticPinnedBox<u32>>,
     pub(crate) device: DeviceAllocation<u32>,
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a> CanonicalTopBitsTransfer<'a> {
-    pub(crate) fn new(canonical_top_bits: &[u32], context: &ProverContext) -> CudaResult<Self> {
+impl<'a> TopBitsTransfer<'a> {
+    pub(crate) fn new(top_bits: &[u32], context: &ProverContext) -> CudaResult<Self> {
         assert!(
-            !canonical_top_bits.is_empty(),
-            "CanonicalTopBitsTransfer requires at least one top-bit entry",
+            !top_bits.is_empty(),
+            "TopBitsTransfer requires at least one top-bit entry",
         );
-        let len = canonical_top_bits.len();
+        let len = top_bits.len();
         let mut host = alloc_static_pinned_box_uninit::<u32>(len)?;
-        host.copy_from_slice(canonical_top_bits);
+        host.copy_from_slice(top_bits);
         let device = context.alloc::<u32>(len, AllocationPlacement::BestFit)?;
         Ok(Self {
             host: Arc::new(host),
@@ -133,14 +133,12 @@ pub struct GpuGKRProofTransfer<'a, A: GoodAllocator> {
     pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
     pub(crate) memory: GpuGKRMemoryTransfer<'a>,
-    pub(crate) canonical_top_bits: Option<CanonicalTopBitsTransfer<'a>>,
+    pub(crate) top_bits: Option<TopBitsTransfer<'a>>,
     /// Host copy of the SAME per-circuit inits-and-teardowns top bits staged
-    /// in `canonical_top_bits` (empty when the circuit has no teardown sets).
-    /// For unified circuits these are the ACTUAL top bits: canonical
-    /// (`0..teardown_sets.len()`) for circuits carrying real i&t data, all
-    /// zeros for TRIVIAL (dummy) chunks — mirroring the CPU reference
-    /// (`prover_examples::unified`). Consumed at scheduling time by the
-    /// forward plan, backward blueprints, and terminal proof assembly.
+    /// in `top_bits` (empty when the circuit has no teardown sets): the global
+    /// address window each set holds, or all zeros for TRIVIAL (dummy) unified
+    /// chunks. Consumed at scheduling time by the forward plan, backward
+    /// blueprints, and terminal proof assembly.
     pub(crate) top_bits_host: Vec<u32>,
     pub(crate) external_challenges: ExternalChallengesTransfer<'a>,
 }
@@ -154,7 +152,7 @@ pub(crate) struct GpuGKRProofTransferKeepalive<'a, A: GoodAllocator> {
     _inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
     _tracing_data: Option<TracingDataTransfer<'a, A>>,
     _memory: GpuGKRMemoryTransfer<'a>,
-    _canonical_top_bits: Option<CanonicalTopBitsTransfer<'a>>,
+    _top_bits: Option<TopBitsTransfer<'a>>,
     _external_challenges: ExternalChallengesTransfer<'a>,
     _callbacks: Callbacks<'a>,
 }
@@ -166,17 +164,14 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
         inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
         tracing_data: Option<TracingDataTransfer<'a, A>>,
         memory: GpuGKRMemoryTransfer<'a>,
-        canonical_top_bits_source: &[u32],
+        top_bits_source: &[u32],
         external_challenges_value: GKRExternalChallenges<BF, E4>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let canonical_top_bits = if canonical_top_bits_source.is_empty() {
+        let top_bits = if top_bits_source.is_empty() {
             None
         } else {
-            Some(CanonicalTopBitsTransfer::new(
-                canonical_top_bits_source,
-                context,
-            )?)
+            Some(TopBitsTransfer::new(top_bits_source, context)?)
         };
         let external_challenges =
             ExternalChallengesTransfer::new(external_challenges_value, context)?;
@@ -193,8 +188,8 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
             inits_and_teardowns,
             tracing_data,
             memory,
-            canonical_top_bits,
-            top_bits_host: canonical_top_bits_source.to_vec(),
+            top_bits,
+            top_bits_host: top_bits_source.to_vec(),
             external_challenges,
         })
     }
@@ -215,8 +210,8 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
             td.schedule_transfer(&mut self.transfer, context)?;
         }
         self.memory.schedule_transfer(&mut self.transfer, context)?;
-        if let Some(ctb) = self.canonical_top_bits.as_mut() {
-            ctb.schedule_transfer(&mut self.transfer, context)?;
+        if let Some(top_bits) = self.top_bits.as_mut() {
+            top_bits.schedule_transfer(&mut self.transfer, context)?;
         }
         self.external_challenges
             .schedule_transfer(&mut self.transfer, context)?;
@@ -231,7 +226,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
             inits_and_teardowns,
             tracing_data,
             memory,
-            canonical_top_bits,
+            top_bits,
             top_bits_host: _,
             external_challenges,
         } = self;
@@ -241,7 +236,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
             _inits_and_teardowns: inits_and_teardowns,
             _tracing_data: tracing_data,
             _memory: memory,
-            _canonical_top_bits: canonical_top_bits,
+            _top_bits: top_bits,
             _external_challenges: external_challenges,
             _callbacks: transfer.into_callbacks(),
         }
