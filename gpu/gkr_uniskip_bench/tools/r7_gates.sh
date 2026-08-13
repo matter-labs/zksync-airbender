@@ -94,41 +94,10 @@ EMITTER="python3 $DIR/r7_table.py"
 FIXTURES=$DIR/r7_fixtures/check.sh
 R9FIXTURES=$DIR/r9_fixtures/check.sh
 R9BFIXTURES=$DIR/r9b_fixtures/check.sh
-fail=0
+# The whole-matrix reporting layer is shared by every gate script here — one definition, one contract.
+# shellcheck source=gate_report.sh
+. "$DIR/gate_report.sh"
 diag_built=0
-note() { printf '%s\n' "$*"; }
-
-# --- the whole-matrix reporting layer --------------------------------------------------------------
-# `bad` RECORDS and returns 0, so `bad …` can never short-circuit a caller's `&&` chain or stand in
-# for a control-flow decision. Nothing below it in a cell is skipped on its account.
-LANE=main
-MISMATCHES=()
-LANE_ROWS=()
-NOTRUN=()
-lane_is() { LANE=$1; }
-# The record is `|`-separated and a payload can itself be a markdown table row, so `|` is folded to
-# `¦` on the way in — the inline print below keeps the value verbatim.
-bar() { printf '%s' "${1//|/¦}"; }
-bad() { # bad <what was wrong> [expected] [found]
-  fail=$((fail + 1))
-  MISMATCHES+=("$LANE|$(bar "$1")|$(bar "${2-}")|$(bar "${3-}")")
-  printf 'MISMATCH: %s\n' "$1"
-  [ -n "${2-}" ] && printf '    expected: %s\n' "$2"
-  [ -n "${3-}" ] && printf '    found:    %s\n' "$3"
-  return 0
-}
-# A check that could not be computed. Listed separately from a mismatch, because "we do not know" and
-# "we know and it is wrong" are different readings and RR is looking at both.
-notrun() { # notrun <what> <why>
-  NOTRUN+=("$LANE|$(bar "$1")|$(bar "$2")")
-  printf 'NOT RUN: %s — %s\n' "$1" "$2"
-  return 0
-}
-# One row of the final matrix, per cell GROUP, so the board shows where the cells were as well as how
-# many matched.
-cellrow() { # cellrow <group> <cells> <passed>
-  LANE_ROWS+=("$LANE|$(bar "$1")|$2|$3|$(( $2 - $3 ))")
-}
 
 TMP=$(mktemp -d)
 
@@ -558,7 +527,7 @@ lane_facts() {
   done
   note "  cells=$cells passed=$pass"
   cellrow "ARM lane facts" "$cells" "$pass"
-  [ "$cells" = 29 ] || bad "expected 29 lane-fact cells (10 + 9 + 2 + 8), ran $cells"
+  [ "$cells" = 29 ] || bad "lane-fact cell count (10 + 9 + 2 + 8) — a cell that never ran is not a verdict either way" "29" "$cells"
 }
 
 rotations() {
@@ -927,7 +896,7 @@ r9_rotation() {
   done
   note "  cells=$cells passed=$pass"
   cellrow "R9 rotation end to end" "$cells" "$pass"
-  [ "$cells" = 14 ] || bad "expected 14 R9 rotation cells (2 shapes + 12 ARM lines), ran $cells"
+  [ "$cells" = 14 ] || bad "R9 rotation cell count (2 shapes + 12 ARM lines) — a cell that never ran is not a verdict either way" "14" "$cells"
 }
 
 # The body selector's rejection matrix. Each row is a configuration the flags cannot describe, and
@@ -1375,7 +1344,7 @@ r9b_rotation() {
   done
   note "  cells=$cells passed=$pass"
   cellrow "R9b rotations end to end" "$cells" "$pass"
-  [ "$cells" = 36 ] || bad "expected 36 R9b rotation cells (4 shapes + 32 ARM lines), ran $cells"
+  [ "$cells" = 36 ] || bad "R9b rotation cell count (4 shapes + 32 ARM lines) — a cell that never ran is not a verdict either way" "36" "$cells"
 }
 
 # The body/budget selector's rejection matrix. Each row is a configuration the flags cannot describe,
@@ -1443,6 +1412,13 @@ r9b_rejects() {
 # RR should re-base before reading them, which is a decision for RR on the whole picture and not a
 # reason for this script to stop. Every future session driver should take its telemetry from
 # `tools/gpu_identity.sh` (its header says so), so the gap cannot reopen in a per-rung script.
+# THE ACCEPTED TRADE, recorded here so the next reader sees a choice and not an oversight: because this
+# cell reports and never fails, a run on the WRONG MACHINE exits 0. The READING below is boxed and the
+# matrix carries its row, but automation keying on the exit status alone will not see it. That is the
+# direct consequence of RR's ruling that no gate rejects prematurely, and it is deliberate: a different
+# GPU is not a wrong answer, it is a fact about where you are standing, and what to do about it is RR's
+# call on the whole picture. If a machine check ever has to be enforceable, it belongs in the session
+# driver that records the sidecar, not here.
 identity() {
   local prev=$LANE
   lane_is identity
@@ -1906,83 +1882,27 @@ regression() {
   note "### regression: r5_gates.sh all (chains r3 + r4)"
   local out rc
   out=$("$DIR/r5_gates.sh" all 2>&1); rc=$?
-  printf '%s\n' "$out" | grep -E '^(  cells=|  oracle cells=|  gated lanes=|  frozen bodies|  ARM lines|ALL GATES PASS|FAIL: )' \
+  # r5_gates.sh reports the whole matrix too (and chains r3 + r4, which do as well), so what is echoed
+  # here is its BOARD — every cell-group row, its totals, its NOT RUN and MISMATCHES blocks — not a
+  # verdict line. A nested gate's matrix is part of this matrix.
+  printf '%s\n' "$out" \
+    | grep -E '^(  cells=|  oracle cells=|  gated lanes=|  gated arms=|  frozen bodies|  ARM lines|MISMATCH|NOT RUN|\| |### (NOT RUN|MISMATCHES)|\*\*)' \
     | awk '{print "    " $0}'
-  # Two readings of the same sub-suite, both taken: its status and its own verdict line. r5_gates.sh
-  # has its own reporting contract, so its transcript is echoed above either way.
-  local reg_ok=1
-  [ "$rc" = 0 ] || { bad "r5_gates.sh all exit status" "0" "$rc"; reg_ok=0; }
-  grep -q '^ALL GATES PASS' <<< "$out" \
-    || { bad "r5_gates.sh all verdict line" "ALL GATES PASS" "absent"; reg_ok=0; }
-  cellrow "regression: r5_gates.sh all (chains r3 + r4)" 1 "$reg_ok"
-}
-
-# ---------------------------------------------------------------- the report
-#
-# THE DELIVERABLE. Printed at the end of every run, whatever happened: the full cell matrix, then what
-# could not be computed, then every mismatch with what was expected and what was found. Nothing here
-# is conditional on the exit status, and the exit status is decided after this has printed.
-summary() {
-  local row l g c p m tc=0 tp=0 tm=0 what why
-  note ""
-  note "================================================================================"
-  note "THE WHOLE MATRIX — every cell this run computed"
-  note "================================================================================"
-  note ""
-  note "| lane | cell group | cells | matched | mismatched |"
-  note "| --- | --- | --- | --- | --- |"
-  if [ ${#LANE_ROWS[@]} -gt 0 ]; then
-    for row in "${LANE_ROWS[@]}"; do
-      IFS='|' read -r l g c p m <<< "$row"
-      note "| $l | $g | $c | $p | $m |"
-      tc=$((tc + c)); tp=$((tp + p)); tm=$((tm + m))
-    done
-  fi
-  note "| **total** | ${#LANE_ROWS[@]} cell group(s) | **$tc** | **$tp** | **$tm** |"
-
-  note ""
-  if [ ${#NOTRUN[@]} -gt 0 ]; then
-    note "### NOT RUN — ${#NOTRUN[@]} check(s) that could not compute an answer"
-    note ""
-    note "These are the carve-out: no binary, no output, an archive that would not extract, the wrong"
-    note "build flavour underneath. They are not verdicts in either direction."
-    note ""
-    note "| lane | what | why |"
-    note "| --- | --- | --- |"
-    for row in "${NOTRUN[@]}"; do
-      IFS='|' read -r l what why <<< "$row"
-      note "| $l | $what | $why |"
-    done
-    note ""
+  local nested ncells nok nbad
+  nested=$(grep -m1 '^| \*\*total\*\* |' <<< "$out")
+  [ "$rc" = 0 ] || bad "r5_gates.sh all exit status" "0" "$rc"
+  if [ -z "$nested" ]; then
+    notrun "regression: r5_gates.sh all" "it printed no totals row, so its matrix cannot be carried into this one"
+    cellrow "regression: r5_gates.sh all (chains r3 + r4)" 1 0
   else
-    note "### NOT RUN — none. Every check computed its answer."
-    note ""
+    # THE NESTED RESULT, carried into this script's own matrix rather than collapsed to pass/fail.
+    ncells=$(sed -E 's/.*\| \*\*([0-9]+)\*\* \| \*\*[0-9]+\*\* \| \*\*[0-9]+\*\* \|.*/\1/' <<< "$nested")
+    nok=$(sed -E 's/.*\| \*\*[0-9]+\*\* \| \*\*([0-9]+)\*\* \| \*\*[0-9]+\*\* \|.*/\1/' <<< "$nested")
+    nbad=$(sed -E 's/.*\| \*\*[0-9]+\*\* \| \*\*[0-9]+\*\* \| \*\*([0-9]+)\*\* \|.*/\1/' <<< "$nested")
+    note "  nested board: ${ncells:-?} cells, ${nok:-?} matched, ${nbad:-?} mismatched"
+    cellrow "regression: r5_gates.sh all (nested board, chains r3 + r4)" "${ncells:-1}" "${nok:-0}"
+    [ "${nbad:-0}" = 0 ] || bad "r5_gates.sh all nested mismatches" "0" "$nbad"
   fi
-
-  if [ ${#MISMATCHES[@]} -gt 0 ]; then
-    note "### MISMATCHES — ${#MISMATCHES[@]}"
-    note ""
-    note "Each row computed an answer and the answer was not the expected one. Nothing was rejected on"
-    note "any one of them: the run continued to the end and the matrix above is complete."
-    note ""
-    note "| # | lane | what was wrong | expected | found |"
-    note "| --- | --- | --- | --- | --- |"
-    local i=0
-    for row in "${MISMATCHES[@]}"; do
-      i=$((i + 1))
-      IFS='|' read -r l what why got <<< "$row"
-      note "| $i | $l | $what | ${why:-—} | ${got:-—} |"
-    done
-    note ""
-    note "**$fail mismatch(es).** Read the whole board before deciding what any of them means."
-  else
-    note "### MISMATCHES — none."
-    note ""
-    note "**Every cell computed its answer and every answer matched.** ALL GATES PASS."
-  fi
-  note ""
-  note "exit status $fail — information for automation only; the report above is the deliverable and"
-  note "is printed whatever the status."
 }
 
 case "${1:-all}" in
@@ -2017,5 +1937,5 @@ case "${1:-all}" in
     ;;
   *) echo "usage: $0 {sass|matrix|counts|r9|r9diag|r9b|r9bdiag|identity|cpu|fixtures|regression|all}" >&2; exit 2 ;;
 esac
-summary
+gate_summary
 exit "$fail"

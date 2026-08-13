@@ -32,9 +32,10 @@ set -uo pipefail
 B=${B:-target/release/gpu_gkr_uniskip_bench}
 DIR=$(cd "$(dirname "$0")" && pwd)
 FIXTURES=$DIR/r6_fixtures/check.sh
-fail=0
-note() { printf '%s\n' "$*"; }
-bad() { printf 'FAIL: %s\n' "$*"; fail=1; }
+# The whole-matrix reporting layer, shared by every gate script here: nothing is rejected on a gate
+# prematurely, the run always ends with the full board (RR, 2026-08-13).
+# shellcheck source=gate_report.sh
+. "$DIR/gate_report.sh"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -54,19 +55,29 @@ reject() {
   local out rc
   rows=$((rows + 1))
   out=$("$B" --mode lsb-pair --log-trace 12 "$@" 2>"$TMP/err"); rc=$?
-  if [ "$rc" = 0 ]; then bad "accepted: $*"; return; fi
-  if [ -n "$out" ]; then
-    bad "row reached the config echo (CUDA would already be initialized): $*"; return
+  local row_ok=1
+  if [ "$rc" = 0 ]; then
+    # Accepted, so there is no rejection message to compare against: nothing further computes.
+    notrun "reject [$*]" "the CLI accepted the flags, so there is no rejection message to read"
+    bad "the flags [$*] were accepted" "a non-zero exit" "exit 0"
+    return
   fi
-  if grep -qF -- "$want" "$TMP/err"; then ok=$((ok + 1)); return; fi
-  bad "wrong message for: $*"
-  note "  want: $want"
-  note "  got:  $(head -1 "$TMP/err")"
+  if [ -n "$out" ]; then
+    bad "reject [$*] printed on stdout — it reached the config echo, so CUDA was already initialized" \
+        "nothing on stdout" "$(head -1 <<< "$out")"
+    row_ok=0
+  fi
+  if ! grep -qF -- "$want" "$TMP/err"; then
+    bad "reject [$*] message" "$want" "$(head -1 "$TMP/err")"
+    row_ok=0
+  fi
+  [ "$row_ok" = 1 ] && ok=$((ok + 1))
 }
 
 matrix() {
+  lane_is matrix
   if [ ! -x "$B" ]; then
-    bad "matrix: no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
+    notrun "the whole matrix lane" "no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
     return
   fi
   note "### --carveout-hint composes with the probe and with ONE cached 128 arm, nothing else"
@@ -134,18 +145,24 @@ matrix() {
          --carveout-hint 25 --cache-arm hot16 --block-threads 128 --profile --pair-arm control
 
   note "  rows=$rows passed=$ok"
-  [ "$rows" = 25 ] || bad "expected 25 matrix rows, ran $rows — a row is missing"
+  cellrow "the --carveout-hint rejection matrix" "$rows" "$ok"
+  [ "$rows" = 25 ] || bad "matrix rows count; a row is missing; a check that never ran is not a verdict either way" "25" "${rows}"
   [ "$rows" = "$ok" ] || bad "rejection matrix incomplete"
 }
 
 # ---------------------------------------------------------------- fixtures
 
 fixtures() {
+  lane_is fixtures
   note "### emitter fixture matrix (tools/r6_probe_table.py)"
   if bash "$FIXTURES" > "$TMP/fixtures.log" 2>&1; then
     note "  $(tail -1 "$TMP/fixtures.log")"
+    cellrow "r6 emitter fixtures" 1 1
   else
-    bad "fixture matrix"
+    # The sub-suite printed its own summary; carry it into this one and reproduce its transcript, so
+    # nothing it found is lost behind a single red cell.
+    bad "r6 emitter fixtures" "0 failed" "$(tail -1 "$TMP/fixtures.log")"
+    cellrow "r6 emitter fixtures" 1 0
     cat "$TMP/fixtures.log"
   fi
 }
@@ -153,13 +170,19 @@ fixtures() {
 # ---------------------------------------------------------------- cpu
 
 cpu() {
+  lane_is cpu
   note "### GPU-free unit tests (cpu_*)"
   # `9>&-`: see the header. This is the one lane here that invokes cargo.
+  local result
   if RUSTFLAGS=-Awarnings cargo test -p gpu_gkr_uniskip_bench --lib --release cpu_ \
        > "$TMP/cpu.log" 2>&1 9>&-; then
-    note "  $(grep -E '^test result:' "$TMP/cpu.log" | tail -1)"
+    result=$(grep -E '^test result:' "$TMP/cpu.log" | tail -1)
+    note "  $result"
+    cellrow "cpu unit tests" 1 1
   else
-    bad "cpu tests"
+    result=$(grep -E '^test result:' "$TMP/cpu.log" | tail -1)
+    bad "cpu unit tests" "test result: ok" "${result:-<the run produced no test result line>}"
+    cellrow "cpu unit tests" 1 0
     grep -E 'FAILED|panicked|^error|^test result:' "$TMP/cpu.log" | tail -20
   fi
 }
@@ -178,5 +201,5 @@ case "${1:-all}" in
     ;;
   *) echo "usage: $0 {matrix|fixtures|cpu|all}" >&2; exit 2 ;;
 esac
-[ "$fail" = 0 ] && note "ALL GATES PASS"
+gate_summary
 exit "$fail"

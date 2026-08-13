@@ -41,10 +41,11 @@ KN="k24 k32 k40 k45 k46 k48 k49 k50 k51"
 KN8="k17 k18 k19 k20 k21 k22 k23"
 ARMS="$KN $KN8"
 FIXTURES=$DIR/r8_fixtures/check.sh
-fail=0
 diag_built=0
-note() { printf '%s\n' "$*"; }
-bad() { printf 'FAIL: %s\n' "$*"; fail=1; }
+# The whole-matrix reporting layer, shared by every gate script here: nothing is rejected on a gate
+# prematurely, the run always ends with the full board (RR, 2026-08-13).
+# shellcheck source=gate_report.sh
+. "$DIR/gate_report.sh"
 
 TMP=$(mktemp -d)
 
@@ -213,13 +214,13 @@ ARCHIVE=""
 require_shipped() { # require_shipped <lane name>
   ARCHIVE=$(newest_archive)
   if [ -z "$ARCHIVE" ]; then
-    bad "$1: no native archive under target/release/build — build the crate first"
+    notrun "$1" "no native archive under target/release/build — build the crate first"
     return 1
   fi
   local flavor; flavor=$(build_flavor "$ARCHIVE")
   note "  archive: $ARCHIVE (AB_UNISKIP_WINDOW_DIAG=$flavor)"
   if [ "$diag_built" = 1 ] || [ "$flavor" != OFF ]; then
-    bad "$1 needs the SHIPPED build (AB_UNISKIP_WINDOW_DIAG=$flavor); run 'all', which orders the lanes, or rebuild without the diagnostic define"
+    note "  BUILD-ORDER: $1 needs the SHIPPED build (AB_UNISKIP_WINDOW_DIAG=$flavor); run 'all', which orders the lanes, or rebuild without the diagnostic define"
     return 1
   fi
   return 0
@@ -228,6 +229,7 @@ require_shipped() { # require_shipped <lane name>
 # ---------------------------------------------------------------- matrix
 
 matrix() {
+  lane_is matrix
   note "### q parity: 16 kN arms @128 x 2 orders x 2 eq forms x 2 censuses"
   local cells=0 pass=0
   for order in census locality; do
@@ -250,9 +252,9 @@ matrix() {
     done
   done
   note "  cells=$cells passed=$pass"
+  cellrow "q parity (frontier lanes x order x eq x census)" "$cells" "$pass"
   # A dropped loop dimension would otherwise pass silently with fewer cells.
-  [ "$cells" = 128 ] || bad "expected 128 parity cells, ran $cells — a loop dimension is missing"
-  [ "$cells" = "$pass" ] || bad "parity matrix incomplete"
+  [ "$cells" = 128 ] || bad "parity cells count; a loop dimension is missing; a check that never ran is not a verdict either way" "128" "${cells}"
 
   # E4 SELF-PRODUCT CELL, R4's lesson carried to the new arms: `--self-products 12` takes
   # the first 12 binary products in program order and the six E4xE4 records sit after the 54
@@ -273,22 +275,26 @@ matrix() {
     done
   done
   note "  cells=$scells passed=$spass"
-  [ "$scells" = 32 ] || bad "expected 32 self-product cells, ran $scells"
-  [ "$scells" = "$spass" ] || bad "self-product matrix incomplete"
+  cellrow "self-products 60" "$scells" "$spass"
+  [ "$scells" = 32 ] || bad "self-product cells count; a check that never ran is not a verdict either way" "32" "${scells}"
 
   # CPU oracle once per arm — the only leg that does not go through `q` alone.
   note "### CPU oracle (--validate), one cell per kN arm"
-  local oks=0 runs=0
+  local oks=0 runs=0 out
   for arm in $ARMS; do
     runs=$((runs + 1))
-    if "$B" --log-trace 10 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
-         --cache-arm "$arm" --validate 2>/dev/null | grep -q '^q validate: OK (32/32)'; then
+    # Captured first, then matched: `"$B" … | grep -q` under `pipefail` races the binary's teardown
+    # and reports a SUCCESSFUL match as a failure (r7's diagnosis, reproduced 200/200).
+    out=$("$B" --log-trace 10 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
+               --cache-arm "$arm" --validate 2>/dev/null)
+    if grep -q '^q validate: OK (32/32)' <<< "$out"; then
       oks=$((oks + 1))
-    else bad "CPU oracle arm=$arm"; fi
+    else bad "CPU oracle arm=$arm" "q validate: OK (32/32)" \
+             "$(grep -m1 '^q validate' <<< "$out" || echo absent)"; fi
   done
   note "  oracle cells=$runs passed=$oks"
-  [ "$runs" = 16 ] || bad "expected 16 oracle cells, ran $runs"
-  [ "$runs" = "$oks" ] || bad "CPU oracle incomplete"
+  cellrow "CPU oracle (one cell per kN arm)" "$runs" "$oks"
+  [ "$runs" = 16 ] || bad "oracle cell count — cells that never ran are not a verdict either way" "16" "$runs"
 }
 
 # ---------------------------------------------------------------- counts
@@ -316,16 +322,23 @@ metric() { # metric() <arm> -> "name value" lines for one small-geometry capture
 }
 
 ncu_counts() {
+  lane_is counts
   note "### local instruction / sector / prologue-H gates (ncu, 1 block x 8 warps)"
-  require_shipped "the ncu counter lane" || return
+  if ! require_shipped "the ncu counter lane"; then
+    notrun "the ncu counter lane" "BUILD-ORDER: the archive under it is not the SHIPPED build, so its counters would be another build's"
+    return
+  fi
   note "  metrics: $NCU_LOCAL_METRICS"
   # cache0 is the H baseline: its prologue loads nothing, so the global-load byte delta
   # against it is the prologue's own traffic.
   local base out
   out=$(metric cache0)
-  if [ -z "$out" ]; then bad "no ncu output for the cache0 H baseline"; return; fi
+  if [ -z "$out" ]; then
+    notrun "the ncu counter lane" "no ncu output for the cache0 H baseline, so every row's H delta is unmeasurable"
+    return
+  fi
   base=$(printf '%s\n' "$out" | awk '$1=="l1tex__t_bytes_pipe_lsu_mem_global_op_ld.sum" {print $2}')
-  [ -n "$base" ] || { bad "cache0 capture carries no global-load bytes"; return; }
+  [ -n "$base" ] || { notrun "the ncu counter lane" "the cache0 capture carries no global-load bytes, so no H delta can be taken"; return; }
   note "  cache0 H baseline = $base B"
 
   # A row that never ran (an ncu failure, a `continue` taken) must not reach ALL GATES PASS
@@ -334,7 +347,7 @@ ncu_counts() {
   while read -r lane K Bc E C Rc RB RE chains stores loads; do
     [ -n "$lane" ] || continue
     out=$(metric "$lane")
-    if [ -z "$out" ]; then bad "no ncu output for $lane"; continue; fi
+    if [ -z "$out" ]; then notrun "ncu row $lane" "the capture produced no output"; continue; fi
     get() { printf '%s\n' "$out" | awk -v k="$1" '$1==k {print $2}'; }
     local st ld po se le gb
     st=$(( $(get smsp__inst_executed_op_local_st.sum) / 8 ))
@@ -358,11 +371,12 @@ ncu_counts() {
   for lane in $ARMS; do
     case "$gated" in
       *" $lane "*) ran=$((ran + 1)) ;;
-      *) bad "count gate never ran for $lane — a missing row is a failure, not a pass" ;;
+      *) bad "the count gate never ran for $lane" "a gated row" "no row — a missing row is not a pass" ;;
     esac
   done
   note "  gated lanes=$ran/16"
-  [ "$ran" = 16 ] || bad "expected 16 gated count rows, completed $ran"
+  cellrow "ncu local-traffic gates (16 lanes x 6 readings)" "$ran" "$ran"
+  [ "$ran" = 16 ] || bad "gated count rows count; a check that never ran is not a verdict either way" "16" "${ran}"
 }
 
 # Chain executions per warp-program walk, against the spec 4 formula C + (326 - Rc).
@@ -370,6 +384,7 @@ count() { "$B" --log-trace 9 --warmup 0 --iterations 1 --mode lsb-pair "$@" --wi
   | sed -n 's/^chain executions .*= \([0-9]*\) per warp-program walk$/\1/p'; }
 
 chain_counts() {
+  lane_is counts
   note "### chain-count gate (exact, vs expected-counts-r5.md + expected-counts-r8.md)"
   local cells=0 pass=0 lane K Bc E C Rc RB RE chains stores loads
   for order in census locality; do
@@ -382,15 +397,17 @@ chain_counts() {
       got128=$(count --block-threads 128 --cache-arm "$lane" --term-order "$order")
       cells=$((cells + 2))
       for got in "$got256" "$got128"; do
-        if [ "$got" = "$chains" ]; then pass=$((pass + 1))
-        else bad "chains lane=$lane order=$order got=${got:-<none>} want=$chains"; fi
+        if [ -z "$got" ]; then
+          notrun "chain count $lane/$order" "the run printed no chain-count line (diagnostic build?)"
+        elif [ "$got" = "$chains" ]; then pass=$((pass + 1))
+        else bad "chain count $lane/$order (C+(326-Rc))" "$chains" "$got"; fi
       done
       note "  $lane/$order = ${got256:-<none>} @256, ${got128:-<none>} @128 (want $chains = C+(326-Rc))"
     done <<< "$(count_rows)"
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = 64 ] || bad "expected 64 chain cells, ran $cells"
-  [ "$cells" = "$pass" ] || bad "chain-count gate incomplete"
+  cellrow "chain counts per walk, @256 and @128" "$cells" "$pass"
+  [ "$cells" = 64 ] || bad "chain cells count; a check that never ran is not a verdict either way" "64" "${cells}"
 }
 
 counts() {
@@ -402,6 +419,7 @@ counts() {
 # ---------------------------------------------------------------- admitted
 
 admitted() {
+  lane_is admitted
   oracle_identities
   note "### admitted_ids: live rotations, ORDERED, vs the canonical admission prefixes"
   local checked=" " arms=0
@@ -418,11 +436,14 @@ admitted() {
              --term-order "$order" >"$log" 2>&1; then
         bad "$flag order=$order run failed"; tail -3 "$log"; continue
       fi
+      # A missing trailer is recorded and the ARM walk below still runs: a truncated log can still
+      # answer every question about the lines it does carry.
       if ! grep -q "^$tag done order=$order warmup=0 rounds=$lanes lanes=$lanes\$" "$log"; then
-        bad "$flag order=$order emitted no trailer — a truncated log is not a pass"; continue
+        bad "$flag order=$order trailer — a truncated log is not a pass" \
+            "$tag done order=$order warmup=0 rounds=$lanes lanes=$lanes" "absent"
       fi
       local n; n=$(grep -c '^ARM ' "$log")
-      [ "$n" = "$lanes" ] || bad "$flag order=$order has $n ARM lines, the rotation names $lanes"
+      [ "$n" = "$lanes" ] || bad "$flag order=$order ARM line count" "$lanes" "$n"
       local label c removals nadm ids want K
       while read -r _ label _ _ _ _ _ c removals nadm ids; do
         arms=$((arms + 1))
@@ -432,7 +453,7 @@ admitted() {
           cache0@128 | control_lb@128 | control@256)
             [ "$ids" = "-" ] && [ "$nadm" = 0 ] || bad "$label admits '$ids' ($nadm); it has no admitted set"
             continue ;;
-          *) bad "$flag order=$order: unknown lane label $label"; continue ;;
+          *) notrun "$flag order=$order lane $label" "the rotation names a label this oracle has no row for"; continue ;;
         esac
         want=$(printf '%s' "$ADMISSION_ORDER" | cut -d, -f"1-$K")
         # The ARM line's C and removals are what Task 3's slope pricing divides by, so they
@@ -440,19 +461,30 @@ admitted() {
         # as Rc - C.
         local row want_c want_rem
         row=$(oracle_rows | awk -v k="${label%@128}" '$1==k {print $5, $6 - $5}')
-        if [ -z "$row" ]; then bad "$label has no oracle row"; continue; fi
+        if [ -z "$row" ]; then
+          notrun "$label" "the committed oracle has no row for it, so C and removals cannot be checked"
+          continue
+        fi
         want_c=${row%% *}; want_rem=${row##* }
+        # FOUR readings of one ARM line — the ordered prefix, the admitted count, C, and removals.
+        # This was an `if/elif/elif/elif` chain, so the first mismatch hid the other three; they are
+        # independent facts about the dealt plan and all four are taken now.
+        local arm_ok=1
         if [ "$ids" != "$want" ]; then
-          bad "$label order=$order admitted_ids is not the canonical prefix at K=$K"
-          note "    got  $ids"
-          note "    want $want"
-        elif [ "$nadm" != "$K" ]; then
-          bad "$label order=$order declares $nadm admitted ids at K=$K"
-        elif [ "$c" != "$want_c" ]; then
-          bad "$label order=$order ARM C=$c, the oracle says $want_c"
-        elif [ "$removals" != "$want_rem" ]; then
-          bad "$label order=$order ARM removals=$removals, the oracle says $want_rem = Rc-C"
-        else
+          bad "$label order=$order admitted_ids is not the canonical prefix at K=$K" "$want" "$ids"
+          arm_ok=0
+        fi
+        if [ "$nadm" != "$K" ]; then
+          bad "$label order=$order admitted-id count" "$K" "$nadm"; arm_ok=0
+        fi
+        if [ "$c" != "$want_c" ]; then
+          bad "$label order=$order ARM C against the oracle" "$want_c" "$c"; arm_ok=0
+        fi
+        if [ "$removals" != "$want_rem" ]; then
+          bad "$label order=$order ARM removals against the oracle (Rc-C)" "$want_rem" "$removals"
+          arm_ok=0
+        fi
+        if [ "$arm_ok" = 1 ]; then
           checked="$checked$order/$label "
           note "  $label/$order: K=$K C=$c/$want_c removals=$removals/$want_rem, prefix exact"
         fi
@@ -465,13 +497,14 @@ admitted() {
     for arm in $ARMS hot16; do
       case "$checked" in
         *" $order/$arm@128 "*) ran=$((ran + 1)) ;;
-        *) bad "no admitted_ids check ran for $arm under $order" ;;
+        *) bad "no admitted_ids check ran for $arm under $order" "a checked ARM line" "none" ;;
       esac
     done
   done
   note "  ARM lines parsed=$arms, lane/order checks=$ran/34"
-  [ "$arms" = 60 ] || bad "expected 60 ARM lines over the six runs, parsed $arms"
-  [ "$ran" = 34 ] || bad "expected 34 lane/order admission checks, ran $ran"
+  cellrow "admitted_ids / C / removals against the oracle" "$ran" "$ran"
+  [ "$arms" = 60 ] || bad "ARM lines over the six runs count; a check that never ran is not a verdict either way" "60" "${arms}"
+  [ "$ran" = 34 ] || bad "lane/order admission checks count; a check that never ran is not a verdict either way" "34" "${ran}"
 }
 
 # ---------------------------------------------------------------- sass
@@ -525,42 +558,59 @@ artifact_body() { # artifact_body <kind> <file> <fn> <out>
 }
 
 sass() {
+  lane_is sass
   note "### frozen SASS: the nine bodies, byte-identical to the R3/R4 freeze artifacts"
-  require_shipped "the frozen-SASS lane" || return
+  if ! require_shipped "the frozen-SASS lane"; then
+    notrun "the frozen-SASS lane" "BUILD-ORDER: the archive under it is not the SHIPPED build, so its bodies would be another build's"
+    return
+  fi
   local ar=$ARCHIVE work="$TMP/sass" ar_abs
   ar_abs=$(readlink -f "$ar")
   mkdir -p "$work"
   # The freeze artifacts scope themselves to the pair TU's OWN fatbin; the device-linked
   # copy differs in relocated MOV/UMOV immediates and would report a false DIFFERS.
   ( cd "$work" && ar x "$ar_abs" uniskip_lsb_pair.cu.o ) 2>/dev/null
-  if [ ! -f "$work/uniskip_lsb_pair.cu.o" ]; then bad "could not extract uniskip_lsb_pair.cu.o from $ar"; return; fi
+  if [ ! -f "$work/uniskip_lsb_pair.cu.o" ]; then
+    notrun "the frozen-SASS lane" "could not extract uniskip_lsb_pair.cu.o from $ar"
+    return
+  fi
   if ! cuobjdump -sass "$work/uniskip_lsb_pair.cu.o" >"$work/dump.txt" 2>"$work/dump.err"; then
-    bad "cuobjdump failed on the pair TU"; tail -3 "$work/dump.err"; return
+    notrun "the frozen-SASS lane" "cuobjdump failed on the pair TU — see the tail below"
+    tail -3 "$work/dump.err"; return
   fi
   norm_dump "$work/dump.txt" "$work/live"
   local ok=0 rows=0 fn art kind want
   while IFS='|' read -r fn art kind want; do
     [ -n "$fn" ] || continue
     rows=$((rows + 1))
-    if [ ! -f "$work/live/$fn" ]; then bad "$fn is missing from the built archive"; continue; fi
+    if [ ! -f "$work/live/$fn" ]; then
+      notrun "$fn" "the symbol is missing from the built archive, so there is nothing to compare"
+      continue
+    fi
     artifact_body "$kind" "$SDD/$art" "$fn" "$work/want-$fn"
     local have_n want_n
     have_n=$(wc -l <"$work/live/$fn")
     want_n=$(wc -l <"$work/want-$fn")
+    # BOTH readings, whatever the other said: the artifact's own instruction count against the record,
+    # and the live body against the artifact. A moved count used to hide the body comparison behind it,
+    # and "the record drifted" and "the body changed" are different findings.
+    local body_ok=1
     if [ "$want_n" != "$want" ]; then
-      bad "$fn: artifact $art carries $want_n instructions, the record declares $want"
-      continue
+      bad "$fn: artifact $art instruction count against the record" "$want" "$want_n"
+      body_ok=0
     fi
     if cmp -s "$work/live/$fn" "$work/want-$fn"; then
-      ok=$((ok + 1))
       note "  IDENTICAL $fn ($have_n instrs)"
     else
-      bad "$fn DIFFERS from $art ($have_n vs $want_n instrs)"
+      bad "$fn body against $art" "$want_n instrs, byte-identical" "$have_n instrs, differing"
       diff "$work/want-$fn" "$work/live/$fn" | head -6
+      body_ok=0
     fi
+    [ "$body_ok" = 1 ] && ok=$((ok + 1))
   done <<< "$SASS_EXPECT"
   note "  frozen bodies $ok/$rows identical"
-  [ "$rows" = 9 ] || bad "expected 9 frozen bodies, checked $rows"
+  cellrow "the nine frozen R3/R4 pair bodies" "$rows" "$ok"
+  [ "$rows" = 9 ] || bad "frozen bodies count; a check that never ran is not a verdict either way" "9" "${rows}"
   [ "$ok" = 9 ] || bad "frozen SASS is not 9/9"
 }
 
@@ -570,7 +620,7 @@ ensure_diag() {
   [ "$diag_built" = 1 ] && return 0
   note "### building the DIAGNOSTIC binary (GPU_GKR_UNISKIP_BENCH_WINDOW_DIAG=1)"
   if ! build_bench 1 >"$TMP/build-diag.log" 2>&1; then
-    bad "diagnostic build failed"
+    notrun "the diagnostic build" "cargo failed — see the tail below"
     tail -20 "$TMP/build-diag.log"
     return 1
   fi
@@ -584,25 +634,49 @@ ensure_diag() {
 # gates the R8 interior decision path (and, by replaying the archived R5 logs when they are
 # there, that the R5 path this file's rung owns still emits).
 fixtures() {
+  lane_is fixtures
   note "### emitter fixture matrix (tools/r4_table.py, R8 interior + R5 replay)"
   if bash "$FIXTURES" > "$TMP/fixtures.log" 2>&1; then
     note "  $(tail -1 "$TMP/fixtures.log")"
+    cellrow "r5 emitter fixtures" 1 1
   else
-    bad "fixture matrix"
+    # The sub-suite printed its own summary; carry it into this one and reproduce its transcript.
+    bad "r5 emitter fixtures" "0 failed" "$(tail -1 "$TMP/fixtures.log")"
+    cellrow "r5 emitter fixtures" 1 0
     cat "$TMP/fixtures.log"
   fi
 }
 
 regression() {
-  ensure_diag || return
-  local g out rc
+  lane_is regression
+  if ! ensure_diag; then
+    notrun "the whole regression lane" "the diagnostic build did not complete, so r3/r4 would gate the wrong binary"
+    return
+  fi
+  local g out rc nested
   for g in r3_gates.sh r4_gates.sh; do
     note "### regression: $g all"
     out=$("$DIR/$g" all 2>&1); rc=$?
-    printf '%s\n' "$out" | grep -E '^(  cells=|  oracle cells=|  gated arms=|ALL GATES PASS|FAIL: )' \
+    # Echo the sub-script's OWN whole-matrix report — its totals row, its NOT RUN and MISMATCHES
+    # blocks — not just a pass/fail. A nested gate's board is part of this board.
+    printf '%s\n' "$out" \
+      | grep -E '^(  cells=|  oracle cells=|  gated arms=|MISMATCH|NOT RUN|\| |### (NOT RUN|MISMATCHES)|\*\*)' \
       | awk '{print "    " $0}'
-    [ "$rc" = 0 ] || bad "$g all exited $rc"
-    printf '%s\n' "$out" | grep -q '^ALL GATES PASS' || bad "$g all did not print ALL GATES PASS"
+    # Two readings, both taken: the status, and the nested totals row.
+    nested=$(grep -m1 '^| \*\*total\*\* |' <<< "$out")
+    [ "$rc" = 0 ] || bad "$g all exit status" "0" "$rc"
+    if [ -z "$nested" ]; then
+      notrun "$g all" "it printed no totals row, so its matrix cannot be carried into this one"
+      cellrow "regression: $g all" 1 0
+    else
+      # Carry the nested cell counts into this script's matrix, so the totals here include them.
+      local ncells nok nbad
+      ncells=$(sed -E 's/.*\| \*\*([0-9]+)\*\* \| \*\*[0-9]+\*\* \| \*\*[0-9]+\*\* \|.*/\1/' <<< "$nested")
+      nok=$(sed -E 's/.*\| \*\*[0-9]+\*\* \| \*\*([0-9]+)\*\* \| \*\*[0-9]+\*\* \|.*/\1/' <<< "$nested")
+      nbad=$(sed -E 's/.*\| \*\*[0-9]+\*\* \| \*\*[0-9]+\*\* \| \*\*([0-9]+)\*\* \|.*/\1/' <<< "$nested")
+      cellrow "regression: $g all (nested)" "${ncells:-1}" "${nok:-0}"
+      [ "${nbad:-0}" = 0 ] || bad "$g all nested mismatches" "0" "$nbad"
+    fi
   done
 }
 
@@ -619,5 +693,5 @@ case "${1:-all}" in
   all) sass; matrix; admitted; fixtures; counts; regression ;;
   *) echo "usage: $0 {matrix|counts|admitted|sass|fixtures|regression|all}" >&2; exit 2 ;;
 esac
-[ "$fail" = 0 ] && note "ALL GATES PASS"
+gate_summary
 exit "$fail"

@@ -19,9 +19,11 @@ set -uo pipefail
 
 B=${B:-target/release/gpu_gkr_uniskip_bench}
 ARMS="cache0 hot4 hot16 allrepeat all59 e4rich e4top2"
-fail=0
-note() { printf '%s\n' "$*"; }
-bad() { printf 'FAIL: %s\n' "$*"; fail=1; }
+DIR=$(cd "$(dirname "$0")" && pwd)
+# The whole-matrix reporting layer, shared by every gate script here: nothing is rejected on a gate
+# prematurely, the run always ends with the full board (RR, 2026-08-13).
+# shellcheck source=gate_report.sh
+. "$DIR/gate_report.sh"
 
 # qhash runs inside a command substitution, so it must never call bad() — the assignment
 # would be made in the subshell and lost. Diagnostics go to stderr, INVALID comes back on
@@ -48,6 +50,7 @@ usable() {
 }
 
 matrix() {
+  lane_is matrix
   note "### q parity: 7 cached arms x 2 sizes x 2 orders x 2 eq forms x 2 censuses"
   local cells=0 pass=0
   for size in "" "--block-threads 128"; do
@@ -70,9 +73,9 @@ matrix() {
     done
   done
   note "  cells=$cells passed=$pass"
+  cellrow "q parity (7 arms x size x order x eq x census)" "$cells" "$pass"
   # A dropped loop dimension would otherwise pass silently with fewer cells.
-  [ "$cells" = 112 ] || bad "expected 112 parity cells, ran $cells — a loop dimension is missing"
-  [ "$cells" = "$pass" ] || bad "parity matrix incomplete"
+  [ "$cells" = 112 ] || bad "parity cells count; a loop dimension is missing; a check that never ran is not a verdict either way" "112" "${cells}"
 
   # E4 SELF-PRODUCT CELL. `force_self_products` rewrites both PRODUCT_BF_BF and
   # PRODUCT_E4_E4, but it takes the first `count` in program order and the six E4xE4 records
@@ -99,36 +102,43 @@ matrix() {
     done
   done
   note "  cells=$scells passed=$spass"
-  [ "$scells" = 28 ] || bad "expected 28 self-product cells, ran $scells"
-  [ "$scells" = "$spass" ] || bad "self-product matrix incomplete"
+  cellrow "self-products 60" "$scells" "$spass"
+  [ "$scells" = 28 ] || bad "self-product cells count; a check that never ran is not a verdict either way" "28" "${scells}"
 
   # The two launch-bounds siblings at 128 must agree with the unbounded bodies they mirror.
   note "### 128 launch-bounds siblings"
-  local a b
+  local a b lbcells=0 lbpass=0
   a=$(qhash --block-threads 128 --cache-arm allrepeat)
   b=$(qhash --block-threads 128 --cache-arm allrepeat --no-cache-launch-bounds)
+  lbcells=$((lbcells + 1))
   usable "$a" "cached_128_lb" && usable "$b" "cached_128" && {
-    [ "$a" = "$b" ] && note "  cached: bounded == unbounded ($a)" || bad "cached bounded/unbounded differ"; }
+    if [ "$a" = "$b" ]; then lbpass=$((lbpass + 1)); note "  cached: bounded == unbounded ($a)"
+    else bad "cached@128 bounded vs unbounded q" "$a" "$b"; fi; }
   a=$(qhash --block-threads 128)
   b=$(qhash --block-threads 128 --control-launch-bounds)
+  lbcells=$((lbcells + 1))
   usable "$a" "control128" && usable "$b" "control128_lb" && {
-    [ "$a" = "$b" ] && note "  control: control128 == control128_lb ($a)" || bad "control128/lb differ"; }
+    if [ "$a" = "$b" ]; then lbpass=$((lbpass + 1)); note "  control: control128 == control128_lb ($a)"
+    else bad "control128 vs control128_lb q" "$a" "$b"; fi; }
+  cellrow "128 launch-bounds siblings" "$lbcells" "$lbpass"
 
   # CPU oracle once per arm per size — the only leg that does not go through `q` alone.
   note "### CPU oracle (--validate), one cell per arm per size"
-  local oks=0 runs=0
+  local oks=0 runs=0 out
   for size in "" "--block-threads 128"; do
     for arm in $ARMS; do
       runs=$((runs + 1))
       # shellcheck disable=SC2086
-      if "$B" --log-trace 10 --warmup 0 --iterations 1 --mode lsb-pair $size --cache-arm "$arm" \
-           --validate 2>/dev/null | grep -q '^q validate: OK (32/32)'; then oks=$((oks + 1));
-      else bad "CPU oracle arm=$arm size=[$size]"; fi
+      out=$("$B" --log-trace 10 --warmup 0 --iterations 1 --mode lsb-pair $size \
+                 --cache-arm "$arm" --validate 2>/dev/null)
+      if grep -q '^q validate: OK (32/32)' <<< "$out"; then oks=$((oks + 1));
+      else bad "CPU oracle arm=$arm size=[$size]" "q validate: OK (32/32)" \
+               "$(grep -m1 '^q validate' <<< "$out" || echo absent)"; fi
     done
   done
   note "  oracle cells=$runs passed=$oks"
-  [ "$runs" = 14 ] || bad "expected 14 oracle cells, ran $runs"
-  [ "$runs" = "$oks" ] || bad "CPU oracle incomplete"
+  cellrow "CPU oracle (7 arms x 2 sizes)" "$runs" "$oks"
+  [ "$runs" = 14 ] || bad "oracle cell count — cells that never ran are not a verdict either way" "14" "$runs"
 }
 
 # spec 4's local-traffic table, measured directly. `--log-trace 9` is one 256-thread block =
@@ -167,6 +177,7 @@ e4top2 8 0 2 0 14
 all59 92 48 11 190 34"
 
 counts() {
+  lane_is counts
   note "### local instruction / sector / prologue-H gates (ncu, 1 block x 8 warps)"
   note "  metrics: $NCU_LOCAL_METRICS"
   local base="" gated=" "
@@ -199,11 +210,12 @@ counts() {
   for arm in $COUNT_ARMS; do
     case "$gated" in
       *" $arm "*) ran=$((ran + 1)) ;;
-      *) bad "count gate never ran for $arm — a missing row is a failure, not a pass" ;;
+      *) bad "the count gate never ran for $arm" "a gated row" "no row — a missing row is not a pass" ;;
     esac
   done
   note "  gated arms=$ran/7"
-  [ "$ran" = 7 ] || bad "expected 7 gated count rows, completed $ran"
+  cellrow "ncu local-traffic gates (7 arms x 6 readings)" "$ran" "$ran"
+  [ "$ran" = 7 ] || bad "gated count rows — a row that never ran is not a verdict either way" "7" "$ran"
 }
 
 # Chain executions per warp-program walk, against the spec 4 formula C + (326 - Rc).
@@ -211,21 +223,34 @@ count() { "$B" --log-trace 9 --warmup 0 --iterations 1 --mode lsb-pair "$@" --wi
   | sed -n 's/^chain executions .*= \([0-9]*\) per warp-program walk$/\1/p'; }
 
 production() {
+  lane_is production
+  local cells=0 pass=0
   note "### chain-count gate (exact, vs .agents/sdd/2026-08-09-v3-r4/expected-counts.md)"
   for order in census locality; do
     for spec in "cache0:326" "hot4:279" "hot16:181" "allrepeat:92" "all59:92" "e4rich:234" "e4top2:278"; do
       local arm=${spec%%:*} want=${spec##*:} got
       got=$(count --cache-arm "$arm" --term-order "$order")
-      if [ "$got" = "$want" ]; then note "  $arm/$order = $got"
-      else bad "chains arm=$arm order=$order got=${got:-<none>} want=$want"; fi
+      cells=$((cells + 1))
+      if [ -z "$got" ]; then
+        notrun "chain count $arm/$order" "the run printed no chain-count line (diagnostic build?)"
+      elif [ "$got" = "$want" ]; then pass=$((pass + 1)); note "  $arm/$order = $got"
+      else bad "chain count $arm/$order" "$want" "$got"; fi
     done
   done
   # The 128 body runs the same program on a 4-warp block: same per-walk figure.
   local got; got=$(count --block-threads 128 --cache-arm allrepeat --term-order locality)
-  [ "$got" = 92 ] && note "  allrepeat/locality @128 = $got" || bad "chains @128 got=${got:-<none>} want=92"
+  cells=$((cells + 1))
+  if [ -z "$got" ]; then
+    notrun "chain count allrepeat/locality @128" "the run printed no chain-count line"
+  elif [ "$got" = 92 ]; then pass=$((pass + 1)); note "  allrepeat/locality @128 = $got"
+  else bad "chain count allrepeat/locality @128" "92" "$got"; fi
+  note "  cells=$cells passed=$pass"
+  cellrow "chain counts (7 arms x 2 orders, plus @128)" "$cells" "$pass"
 }
 
 mutations() {
+  lane_is mutations
+  local rcells=0 rpass=0 pcells=0 ppass=0
   note "### mutation (a) retarget a cached reference to a live same-width slot -> q diverges"
   for arm in hot4 allrepeat e4top2; do
     local ref mut
@@ -233,9 +258,12 @@ mutations() {
     mut=$(qhash --cache-arm "$arm" --cache-mutate retarget)
     usable "$ref" "retarget ref $arm" || continue
     usable "$mut" "retarget mut $arm" || continue
-    if [ "$ref" != "$mut" ]; then note "  $arm diverges ($ref -> $mut)"
-    else bad "retarget arm=$arm did not change q"; fi
+    rcells=$((rcells + 1))
+    if [ "$ref" != "$mut" ]; then rpass=$((rpass + 1)); note "  $arm diverges ($ref -> $mut)"
+    else bad "retarget arm=$arm q" "a digest different from $ref" "$mut"; fi
   done
+  note "  cells=$rcells passed=$rpass"
+  cellrow "mutation (a) retarget diverges" "$rcells" "$rpass"
   note "### mutation (b) poison the frame after the prologue -> only arms with reuses change"
   for spec in "cache0:same" "hot4:diff" "allrepeat:diff" "e4top2:diff"; do
     local arm=${spec%%:*} want=${spec##*:} ref poi got
@@ -244,14 +272,19 @@ mutations() {
     usable "$ref" "poison ref $arm" || continue
     usable "$poi" "poison $arm" || continue
     if [ "$ref" = "$poi" ]; then got=same; else got=diff; fi
-    if [ "$got" = "$want" ]; then note "  $arm: $got ($ref -> $poi)"
-    else bad "poison arm=$arm got=$got want=$want"; fi
+    pcells=$((pcells + 1))
+    if [ "$got" = "$want" ]; then ppass=$((ppass + 1)); note "  $arm: $got ($ref -> $poi)"
+    else bad "poison arm=$arm" "$want" "$got"; fi
   done
   # The controls have no frame to poison, so they must be untouched by the hook.
   local ref poi
   ref=$(qhash); poi=$(qhash --window-poison)
+  pcells=$((pcells + 1))
   usable "$ref" "poison ref control" && usable "$poi" "poison control" && {
-    [ "$ref" = "$poi" ] && note "  control: same ($ref)" || bad "poison changed the control"; }
+    if [ "$ref" = "$poi" ]; then ppass=$((ppass + 1)); note "  control: same ($ref)"
+    else bad "poison changed the uncached control" "$ref" "$poi"; fi; }
+  note "  cells=$pcells passed=$ppass"
+  cellrow "mutation (b) poison behaviour" "$pcells" "$ppass"
 }
 
 case "${1:-all}" in
@@ -261,5 +294,5 @@ case "${1:-all}" in
   all) matrix; counts; production; mutations ;;
   *) echo "usage: $0 {matrix|counts|diag|all}" >&2; exit 2 ;;
 esac
-[ "$fail" = 0 ] && note "ALL GATES PASS"
+gate_summary
 exit "$fail"

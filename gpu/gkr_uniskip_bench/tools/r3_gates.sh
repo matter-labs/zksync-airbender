@@ -27,9 +27,11 @@ set -uo pipefail
 
 B=${B:-target/release/gpu_gkr_uniskip_bench}
 ARMS="t w wt wnone wtnone"
-fail=0
-note() { printf '%s\n' "$*"; }
-bad() { printf 'FAIL: %s\n' "$*"; fail=1; }
+DIR=$(cd "$(dirname "$0")" && pwd)
+# The whole-matrix reporting layer, shared by every gate script here: nothing is rejected on a gate
+# prematurely, the run always ends with the full board (RR, 2026-08-13).
+# shellcheck source=gate_report.sh
+. "$DIR/gate_report.sh"
 
 # Empty input hashes to a fixed digest, so a missing binary or a failed run would make
 # BOTH sides of a comparison equal and every parity cell pass vacuously. Reject that.
@@ -58,6 +60,7 @@ usable() {
 }
 
 matrix() {
+  lane_is matrix
   note "### q parity: 5 arms x 2 orders x 2 eq forms x 2 censuses"
   local cells=0 pass=0
   for order in census locality; do
@@ -78,13 +81,14 @@ matrix() {
     done
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = "$pass" ] || bad "parity matrix incomplete"
+  cellrow "q parity (5 arms x order x eq x census)" "$cells" "$pass"
 }
 
 # v3 R4 control128: the 128-thread no-cache baseline must agree with the 256 control on `q`
 # across the full validate set. Its own kernel, its own grid and its own epilogue reduction,
 # so this is a real re-derivation of every cell, not a launch-parameter change.
 blocks() {
+  lane_is blocks
   note "### block-size parity: control128 vs the 256 control, 2 orders x 2 eq forms x 2 censuses"
   local cells=0 pass=0
   for order in census locality; do
@@ -103,7 +107,7 @@ blocks() {
     done
   done
   note "  cells=$cells passed=$pass"
-  [ "$cells" = "$pass" ] || bad "block-size parity matrix incomplete"
+  cellrow "block-size parity (control128 vs 256)" "$cells" "$pass"
 }
 
 # Chain executions per warp-program walk. The tiny geometry keeps the counter's atomic off
@@ -112,20 +116,29 @@ count() { "$B" --log-trace 9 --warmup 0 --iterations 1 --mode lsb-pair "$@" --wi
   | sed -n 's/^chain executions .*= \([0-9]*\) per warp-program walk$/\1/p'; }
 
 production() {
+  lane_is production
   note "### production-count gate (exact)"
+  local cells=0 pass=0
   for order in census locality; do
     for spec in "control:326" "wnone:326" "wtnone:326" "w:279" "wt:279"; do
       local arm=${spec%%:*} want=${spec##*:} got
       local -a a=()
       [ "$arm" != control ] && a=(--pair-arm "$arm")
       got=$(count "${a[@]}" --term-order "$order")
-      if [ "$got" = "$want" ]; then note "  $arm/$order = $got"
-      else bad "count arm=$arm order=$order got=${got:-<none>} want=$want"; fi
+      cells=$((cells + 1))
+      if [ -z "$got" ]; then
+        notrun "production count $arm/$order" "the run printed no chain-count line (diagnostic build?)"
+      elif [ "$got" = "$want" ]; then pass=$((pass + 1)); note "  $arm/$order = $got"
+      else bad "production chain count $arm/$order" "$want" "$got"; fi
     done
   done
+  note "  cells=$cells passed=$pass"
+  cellrow "production chain counts" "$cells" "$pass"
 }
 
 mutations() {
+  lane_is mutations
+  local rcells=0 rpass=0 pcells=0 ppass=0
   note "### mutation (a) retarget a live slot holding another source -> q must diverge"
   for arm in w wt; do
     for order in census locality; do
@@ -134,10 +147,13 @@ mutations() {
       mut=$(qhash --pair-arm "$arm" --term-order "$order" --window-mutate retarget)
       usable "$ref" "retarget ref $arm/$order" || continue
       usable "$mut" "retarget mut $arm/$order" || continue
-      if [ "$ref" != "$mut" ]; then note "  $arm/$order diverges ($ref -> $mut)"
-      else bad "retarget arm=$arm order=$order did not change q"; fi
+      rcells=$((rcells + 1))
+      if [ "$ref" != "$mut" ]; then rpass=$((rpass + 1)); note "  $arm/$order diverges ($ref -> $mut)"
+      else bad "retarget arm=$arm order=$order q" "a digest different from $ref" "$mut"; fi
     done
   done
+  note "  cells=$rcells passed=$rpass"
+  cellrow "mutation (a) retarget diverges" "$rcells" "$rpass"
   note "### mutation (b) poison a slot after its fill -> only arms with reuses may change"
   for spec in "control:same" "wnone:same" "wtnone:same" "w:diff" "wt:diff"; do
     local arm=${spec%%:*} want=${spec##*:} ref poi got
@@ -149,9 +165,12 @@ mutations() {
     usable "$ref" "poison ref $arm" || continue
     usable "$poi" "poison $arm" || continue
     if [ "$ref" = "$poi" ]; then got=same; else got=diff; fi
-    if [ "$got" = "$want" ]; then note "  $arm: $got ($ref -> $poi)"
-    else bad "poison arm=$arm got=$got want=$want"; fi
+    pcells=$((pcells + 1))
+    if [ "$got" = "$want" ]; then ppass=$((ppass + 1)); note "  $arm: $got ($ref -> $poi)"
+    else bad "poison arm=$arm" "$want" "$got"; fi
   done
+  note "  cells=$pcells passed=$ppass"
+  cellrow "mutation (b) poison behaviour" "$pcells" "$ppass"
 }
 
 case "${1:-all}" in
@@ -161,5 +180,5 @@ case "${1:-all}" in
   all) matrix; blocks; production; mutations ;;
   *) echo "usage: $0 {matrix|blocks|diag|all}" >&2; exit 2 ;;
 esac
-[ "$fail" = 0 ] && note "ALL GATES PASS"
+gate_summary
 exit "$fail"
