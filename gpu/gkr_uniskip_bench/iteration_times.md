@@ -5150,13 +5150,36 @@ dynamic instructions per warp** (57,637 → 59,238), attributed by SASS address 
 | `USHF` | 428 | 289 | **-139** |
 | `UVIMNMX` | 48 | 168 | **+120** |
 
-**The signature is address arithmetic and data movement, not field math.** `MOV` +471, `BRA` +304,
-`LEA` / `UIMAD` / `ISETP` all up, and uniform-datapath work migrating back to the vector datapath
-(`LDCU` −409 while `LDC` +563); `IMAD` moves +157 on a base of 15,086. That mix is *consistent
-with* the allocator failing, at 70 registers under `__launch_bounds__(128, 7)`, to keep the
-reorder's in-place promotion in the uniform datapath and paying for it in per-thread copies and
-re-derived addresses — but the census is attributed by SASS address on a lineinfo-free capture, so
-that reading is an inference from the opcode mix, not a source-level cause it can establish. The
+**The signature is a DATAPATH MIGRATION, not more addressing.** Nothing fetches more data: total
+constant traffic is 3,007 → 3,161 per warp (+5.1 %) and the twiddle bank *falls* (1,196 → 1,153);
+the whole rise sits in bank 0 (1,811 → 2,008, +197), the program/descriptor/immediate bank. What
+moves is *which datapath issues the same loads* — `LDCU` (one warp-uniform load serving all 32
+lanes) −409 against `LDC` (per-thread) +563 — plus `MOV` +471, `HFMA2` +244, `BRA` +304, and
+`LEA`/`UIMAD`/`ISETP` up; `IMAD` moves +157 on a base of 15,086. (`HFMA2` is not half-precision
+field math here; ptxas commonly emits the zero-operand form to materialize an immediate, but this
+census records the opcode only, not the operand form, so the +244 stays unattributed.)
+
+**The same source without the bound migrates the OTHER way**, which is what pins the cause on the
+register budget rather than on gate-first dataflow:
+
+| per warp | `hot16@128` | `reorder-hot16@128` | `reorder-hot16-free@128` |
+| --- | --- | --- | --- |
+| `LDC` (per-thread const) | 1,994 | 2,557 (+563) | 1,018 (−976) |
+| `LDCU` (warp-uniform const) | 1,013 | 604 (−409) | 1,644 (+631) |
+| constant traffic, total | 3,007 | 3,161 (+154) | 2,662 (−345) |
+| total instructions | 57,637 | 59,238 (**+1,601**) | 57,656 (**+19**) |
+
+Unbounded, the reorder puts *more* of the same constants on the uniform path and lands within 19
+instructions/warp of the incumbent. Bounded at 70 registers under `__launch_bounds__(128, 7)`, it
+puts them on the vector path and pays 1,601. The mix is therefore *consistent with* the allocator
+failing, under that bound, to keep the reorder's in-place promotion in the uniform datapath — but
+the census is attributed by SASS address on a lineinfo-free capture, so that reading is an
+inference from the opcode mix, not a source-level cause it can establish. `MOV` +471 and `BRA`
++304 in particular are NOT accounted for by any counted source-level construct: the reorder does
+force copies (a self-product duplicates operand A in both phases; a grouped member's product needs
+a temporary), but nothing in this rung counts them, and 471 is not derived from anything here.
+**A lineinfo rebuild re-attributing this census to source lines is the cheap experiment that would
+close it, and it is not blocked by anything except the freeze that has now ended.** The
 stall
 breakdown agrees — `short_scoreboard` 1.748 → 2.107 (census) and 1.799 → 2.207 (locality),
 `mio_throttle` 0.436 → 0.630 and 0.485 → 0.745 — the same +563 LDC/warp showing up as a queue on
