@@ -4902,14 +4902,16 @@ change the incumbent pair body's own per-term dataflow while holding its plan, i
 L1 configuration fixed**, and the change is RR's: inside the pair walk each term is evaluated
 twice, once on the original-domain taps and once on the coset, so **evaluate the gate on the
 original-domain taps first, then transform those same registers in place to the coset and evaluate
-the gate again**. No tap is loaded twice and no chain is run twice, but copies remain: a
-self-product still duplicates operand A in both phases, and the reorder *forces* a grouped
-member's product into a temporary rather than writing it back over the H value the chain still
-needs. The target is register *liveness* — the rung's premise being that the incumbent holds both
-domains' values live across the gate while the reorder lets the first die before the second is
-born, and registers are exactly what pins this family at 7 blocks/SM. Three bodies were built and
-timed at 128 threads, all three on `hot16`'s
-admitted set (16 sources, C = 28 units, 145 removals) and all three hinted to the same carveout:
+the gate again**. No tap is loaded twice and no chain is run twice. The shape does force one
+*source-level* temporary — a grouped member's product cannot be written back over the H value the
+chain still needs — but no machine copy materialized for it (that construct measures **−11 `MOV`**);
+and the duplicate-rule copy for self-products exists in the source while the dealt program contains
+no self-products at all, so that path never executes (see *Why the drop-in loses*). The
+target is register *liveness* — the rung's premise being that the incumbent holds both domains'
+values live across the gate while the reorder lets the first die before the second is born, and
+registers are exactly what pins this family at 7 blocks/SM. Three bodies were built and timed at
+128 threads, all three on `hot16`'s admitted set (16 sources, C = 28 units, 145 removals) and all
+three hinted to the same carveout:
 the frozen incumbent `eval_lsb_pair_cached_128_lb`; the **drop-in**
 `eval_lsb_pair_cached_reorder_128_lb`, the reordered body under the incumbent's own
 `__launch_bounds__(128, 7)`; and a **sibling with no launch bound at all**,
@@ -4934,9 +4936,12 @@ Provenance, stated once. Every **timing** figure below is copied verbatim from t
 `.agents/sdd/2026-08-12-v3-r9/emitter-output{,-repeat,-reversed}.md` (`tools/r4_table.py`, run
 once per session pair); every **profiler** figure from the named extractors' own machine-generated
 output — `ncu-tables.md` (`task4-extract.py`), `g0-table.md` (`task4-g0extract.py`) and
-`sass-census.md` (`task4-sass.py`); and the **static build** facts from Task 1's
+`sass-census.md` (`task4-sass.py`); the **static build** facts from Task 1's
 `cuobjdump -res-usage` table (`task-1-report.md` §3), which this rung's SASS census reproduces row
-for row. The three are never mixed and nothing here was assembled by hand — in particular the
+for row; and every **source-attributed** figure — construct, line, and the `MOV`/`BRA` class splits
+— from the post-freeze lineinfo re-attribution `lineinfo-report.md` and its named tooling, whose
+rebuild is instruction-identical to the frozen binary (see that subsection). The four are never
+mixed and nothing here was assembled by hand — in particular the
 profiler's own wall times are not the emitter's (ncu serializes a single launch under clock
 control) and appear only inside profiler-internal ratios. Six timed processes, three session pairs
 of one process per term order, **96 × 6 = 576 timed launches** each, every one preceded by 80 s of
@@ -5113,7 +5118,7 @@ transferable
 lesson — a static REG line of 70 predicts an occupancy tier that does not exist, and Task 1
 flagged exactly this from the static side before anything was timed.
 
-### Why the drop-in loses — a launch-bound-dependent codegen migration, not field math
+### Why the drop-in loses — decode duplication and a datapath migration, not field math
 
 The discriminator amendment A9 added for this rung is **absolute FMA-heavy pipe active time**:
 `fma-active ms = ncu ms × sm__pipe_fmaheavy_cycles_active.avg.pct_of_peak_sustained_active`,
@@ -5150,22 +5155,25 @@ dynamic instructions per warp** (57,637 → 59,238), attributed by SASS address 
 | `USHF` | 428 | 289 | **-139** |
 | `UVIMNMX` | 48 | 168 | **+120** |
 
-**The signature is a REGISTER-DATAPATH MIGRATION, not more addressing.** Read the census for what
-it is: a count of executed INSTRUCTIONS, not of bytes, sectors or requests. Executed constant-load
-instructions rise only +154/warp (3,007 → 3,161, +5.1 %), and all of that net growth is bank 0
-(1,811 → 2,008, +197) — the program/descriptor/immediate bank — while the twiddle bank *falls*
-(1,196 → 1,153). Underneath that near-flat total, the split moves hard: `LDCU`, which writes
-uniform registers, −409, against `LDC`, which writes vector registers, +563. In the raw SASS the
-migration is literal for the pairs inspected — the same constant offsets (e.g. `c[0][0xd38]`)
-appear as `LDCU UR…` in the incumbent and `LDC R…` in the drop-in — though the aggregate census
-cannot establish that for the whole stream. On top of it, `MOV` +471, `HFMA2` +244, `BRA` +304,
-and `LEA`/`UIMAD`/`ISETP` up; `IMAD` moves +157 on a base of 15,086. (`HFMA2` is not
-half-precision field math: every row inspected in the raw capture carries the
-immediate-materialization form `HFMA2 R*, -RZ, RZ, imm`. That is raw-SASS inspection —
-`sass-census.md` records opcodes only, so the +244 has no machine-table provenance.)
+**The signature is a REGISTER-DATAPATH MIGRATION plus duplicated control flow, not more field
+math.** Read the census for what it is: a count of executed INSTRUCTIONS, not of bytes, sectors or
+requests. Executed constant-load instructions rise only +154/warp (3,007 → 3,161, +5.1 %), and all
+of that net growth is bank 0 (1,811 → 2,008, +197) — the program/descriptor/immediate bank — while
+the twiddle bank *falls* (1,196 → 1,153). Underneath that near-flat total, the split moves hard:
+`LDCU`, which writes uniform registers, −409, against `LDC`, which writes vector registers, +563.
+**That net is the sum of opposite moves, not one migration** (lineinfo, below): the walk's loop head
+and term decode move TOWARD the uniform path (`LDCU` +256, `LDC` −270 there) while the whole
+GROUP_BF member path moves toward the vector path (`LDC` +864, `LDCU` −665). Those two named moves
+account for +594 of the whole-body `LDC` +563; the remaining −31 sits in `lane_of` and the class
+cases, so they are the bulk of it rather than all of it. On top of it, `MOV`
++471, `HFMA2` +244, `BRA` +304, and `LEA`/`UIMAD`/`ISETP` up; `IMAD` moves +157 on a base of
+15,086. (`HFMA2` is not half-precision field math and this is now exhaustive rather than a spot
+check: **100 % of executed `HFMA2` in both bodies is the immediate-materialization form
+`HFMA2 R*, -RZ, RZ, imm`** — 392 of 392 in the incumbent, 636 of 636 in the drop-in — and the +244
+sits in the group-member path.)
 
-**The same source without the bound migrates the OTHER way**, which makes the inflation
-launch-bound-DEPENDENT — it does not identify what causes it:
+**The same source without the bound migrates the OTHER way** on the constant-load split, which is
+what first suggested the datapath reading:
 
 | per warp | `hot16@128` | `reorder-hot16@128` | `reorder-hot16-free@128` |
 | --- | --- | --- | --- |
@@ -5176,31 +5184,109 @@ launch-bound-DEPENDENT — it does not identify what causes it:
 
 Unbounded, the reorder puts *more* of its constant loads on the uniform path and lands within 19
 instructions/warp of the incumbent. Bounded at 70 registers under `__launch_bounds__(128, 7)`, it
-puts them on the vector path and pays 1,601. **What that licenses is narrow**: the inflation is a
-function of the bound, so it is not an intrinsic cost of gate-first dataflow. It does NOT identify
-a mechanism, for three reasons the record states rather than argues past. First, uniform registers
-are a separate file that does not draw on the per-thread budget, so "the 72-register cap pushed
-work off the uniform path" is not a resource explanation — if anything a tight per-thread budget
-argues the other way, and the observed direction is unexplained by it. Second, the unbounded arm
-carries its own confound: it also sheds 360 bank-3 loads and moves several opcodes in opposing
-directions, so its net +19 can conceal gate-first overhead rather than prove its absence — the
-same two-change bundling named below. Third, the census is attributed by SASS address on a
-lineinfo-free capture, so every reading here is an inference from the opcode mix, not a
-source-level cause it can establish. `MOV` +471 and `BRA`
-+304 in particular are NOT accounted for by any counted source-level construct: the reorder does
-force copies (a self-product duplicates operand A in both phases; a grouped member's product needs
-a temporary), but nothing in this rung counts them, and 471 is not derived from anything here.
-**A lineinfo rebuild re-attributing this census to source lines is the cheap next experiment, and
-nothing blocks it but the freeze that has now ended** — though it would localize the extra
-instructions to source regions, not explain why ptxas chose one register datapath over the other.
-The stall breakdown is consistent with the added vector-path pressure — `short_scoreboard` 1.748 →
-2.107 (census) and 1.799 → 2.207 (locality), `mio_throttle` 0.436 → 0.630 and 0.485 → 0.745 — but
-an aggregate stall percentage cannot show that the +563 `LDC`/warp are what entered that queue. Two things this does *not* mean. It is not a verdict on gate-first dataflow
-as a design: it is a ptxas allocation outcome at one register budget under one bound, and whether
-a different bound or a small source change moves it is unmeasured. And it is not the
-rematerialization lever: the drop-in's twiddle bank-3 loads are essentially the incumbent's,
-statically (39 vs 40 rows) and dynamically (1,153 vs 1,196 per warp, −3.6 %), so nothing in this
-arm may be attributed to remat.
+puts them on the vector path and pays 1,601. The stall breakdown is consistent with the added
+vector-path pressure — `short_scoreboard` 1.748 → 2.107 (census) and 1.799 → 2.207 (locality),
+`mio_throttle` 0.436 → 0.630 and 0.485 → 0.745 — though an aggregate stall percentage cannot show
+that the +563 `LDC`/warp are what entered that queue.
+
+#### The lineinfo re-attribution — where the +1,601 actually is
+
+The census above is attributed by SASS address, which located nothing at source level, and the two
+biggest movers (`MOV` +471, `BRA` +304) were left unexplained by any counted construct. A follow-up
+run after the freeze ended closed that: a lineinfo rebuild, three fresh Full Pictures with
+`--import-source yes` (census order only — `sass-census.md` shows the instruction stream is
+identical in both orders), and a per-PC join of ncu's `Instructions Executed` against
+`nvdisasm -c -gi`'s inline stacks. **The identity gate passed at the strongest available level**:
+the lineinfo build's three bodies are identical to the frozen ones instruction-for-instruction
+*including control words* (0 diff lines, RAW dump), all three digests sit at their pins
+(5,992 / `8d4e69931bf9`; 5,984 / `10ee133c66ec` / REG:70; 5,888 / `0b9ed0dcf3dc` / REG:64), all 11
+pair-TU bodies match, and the captures reproduce the frozen census's per-warp totals exactly
+(57,637 / 59,238 / 57,656). So this attribution transfers to the measured binary unconditionally —
+it is not a different-binary caveat. Numbers below come from `lineinfo-report.md` and its named
+tooling — the fourth authority named in the provenance paragraph, beside the emitter, the R9
+extractors and Task 1's static table.
+
+| per warp | entry | `lane_of` (remat'd twiddle index math) | prologue | **walk** | epilogue | total |
+| --- | --- | --- | --- | --- | --- | --- |
+| `hot16@128` (incumbent) | 1 | 2,484 | 3,643 | **50,953** | 556 | 57,637 |
+| `reorder-hot16@128` | 1 | 2,170 | 3,658 | **52,853** | 556 | 59,238 |
+| `reorder-hot16-free@128` | 1 | 1,335 | 3,674 | **52,090** | 556 | 57,656 |
+| drop-in − incumbent | +0 | **−314** | +15 | **+1,900** | +0 | **+1,601** |
+| unbounded − incumbent | +0 | **−1,149** | +31 | **+1,137** | +0 | **+19** |
+
+**Both totals close as three-term sums, so the walk is not the whole delta.** The drop-in's +1,601
+is **+1,900 walk − 314 `lane_of` + 15 prologue**; the unbounded body's +19 is **+1,137 − 1,149 +
+31**. Prologue and epilogue are untouched in *source shape*, as Task 1 claimed, but they are not
+zero-count regions: the prologue carries 3,643 attributed instructions/warp in the incumbent
+against 3,658 and 3,674, and the epilogue is the only exactly-flat region at 556 in all three.
+Inside the walk the growth sits in the loop head / term decode **+256** and the GROUP_BF member path
+**+1,012**. The five per-class term bodies move +632 between them, which is **consistent with**
+uniform address arithmetic re-attributed *out of* the loop head (`IMAD` −359 there against
+`UIMAD` / `USHF` / `UVIMNMX` +216 / +108 / +108 in the cases) rather than new work in a class body,
+and no `MOV`, `BRA`, `LDC` or `LDCU` of consequence moves there — but that reading rests on the
+cross-text construct mapping whose limits are stated below, and the construct table cannot by itself
+separate re-attribution from real change.
+
+**`MOV` +471 is uniform→vector transfer of the decoded term record.** It *is* register data
+movement — what it is not is the duplication of field operands that was hypothesised. 94 % of it
+(+444) is the `MOV R, UR` form, 45 → 489 per warp, and all 489 sit in four lines of the walk:
+
+| site | source | per warp |
+| --- | --- | --- |
+| `uniskip_lsb_pair.cu:593` | `const uniskip_term term = desc.program[pc];` | 257 |
+| `uniskip_lsb_pair.cu:592` | `for (u32 pc = 0; pc < desc.record_count;)` | 104 |
+| `uniskip_lsb_pair.cu:595` | `if (term.term_class == UNISKIP_CLASS_GROUP_BF)` | 103 |
+| `uniskip_lsb_pair.cu:603` | `for (u32 m = 1; m <= arity; ++m)` | 25 |
+
+At that loop head the drop-in puts the term record and the class test on the *uniform* path
+(`LDCU` +256, `LDC` −270 there) and then pays a vector copy per use. Genuine register-to-register
+copies **fall**, 376 → 342.
+
+**`BRA` +304 is 100 % the GROUP_BF member path, and it is decode duplication — a nameable,
+source-level cost of the gate-first split.** Every branch outside that path is unchanged
+to the instruction: loop head 434, all five class cases, prologue, epilogue. Inside it the group
+path runs **852 branches/warp against 548**, because splitting each member into an H visit and a C
+visit re-runs the member's *tests* per phase — the coefficient dispatch
+(`uniskip_pair_group_sum_reorder`, `.cuh:423–438`) is called twice per member, **204 → 360** (with
+`ISETP` +208 and `HFMA2` +168), where the incumbent dispatches once and updates both sums inside
+it; `if (product)` is written twice (`.cu:608`, `.cu:619`), **72 → 144**, exactly one extra branch
+per member visit at 72 group-member visits/warp; and operand A's disposition branch goes 110 → 138
+(not doubled — the reorder hoists the H load above that branch).
+
+**The copy hypothesis is struck, not left open.** The dealt program contains **zero
+self-products** — `Synth::self_products()` is 0 by construction (`src/synth.rs:236-243`) and the
+captures pass no `--self-products` — so the duplicate rule's copy path never executes in any
+measured arm, and a mechanism that runs zero times cannot contribute instructions. (The gate
+suite's `self-products 60` validation cell exercises a flag the measured rotation does not set; an
+easy trap for a later reader.) The copies that *are* attributed to the duplicate-rule helpers are a
+**wash — 312 vs 312/warp**, real `MOV R, R` for operand-B placement around a branch that is never
+taken. And the grouped member's forced temporary costs **+15 instructions and −11 `MOV`**.
+
+**Most of the walk overhead survives removing the bound.** The unbounded body carries **the same
++304 `BRA`, to the instruction**, the same 852-vs-548 group-path total, and **+398 of the +444**
+`MOV R, UR`; its walk is **+1,137/warp** over the incumbent's, in the same regions. So the
+uniform→vector transfer is largely bound-independent too — what is demonstrably bound-sensitive is
+its exact placement and the aggregate `LDC`/`LDCU` mix (the drop-in's +563 / −409 against the
+unbounded body's −976 / +631). Stated as narrowly as the evidence allows: **this specific two-phase
+implementation** carries a walk overhead that does not go away when the launch bound does, which is
+a fact about how the split is written rather than about gate-first dataflow in general. The
+unbounded body's headline net of +19 is a numerical *offset*: +1,137 of walk overhead against
+**−1,149** of collapsed `lane_of` twiddle remat. Two limits on all of it: this decomposes
+**instructions per warp, not the +5 % wall time** — nothing here apportions the wall loss — and
+**why ptxas chose the uniform path in one body and the vector path in the other is unmeasured**;
+lineinfo locates instructions, it does not explain allocation.
+
+One caveat on every construct-level number here: lineinfo attributes an instruction to the source
+construct it was *generated from*, not to where it executes, and ptxas hoists and sinks freely (it
+is why `lane_of` carries 2,484 instructions/warp for a function called once per thread). Construct
+deltas therefore *locate* instructions; they do not by themselves prove which construct's semantics
+changed. The two headline findings do not rest on that — they are whole-body class totals.
+
+Finally, the remat reading for this arm survives with one correction: the drop-in's bank-3 twiddle
+loads are essentially the incumbent's, statically (39 vs 40 rows) and dynamically (1,153 vs 1,196
+per warp, −3.6 %), so **no bank-3 remat effect may be attributed to it** — but its `lane_of` code
+is −314/warp (`LOP3` −344 inside `uniskip_pair_element`), so a little rematerialized index math did
+go away. Against a +1,900 walk it does not move the conclusion.
 
 Frame and tap traffic are **byte-for-byte identical on all three bodies** — local load sectors
 362,807,296, local store sectors 58,720,256 and LDG sectors 742,916,096 everywhere — so the
@@ -5248,6 +5334,14 @@ bound would itself have to be measured.
 both carry both changes; the emitter labels row 3 `occupancy + twiddle remat BUNDLED` for exactly
 this reason, and that label is machine-emitted, not prose. The profiler describes the *shape* of
 each contribution but assigns no share of the 0.78–0.86 ms to the block versus to the remat.
+
+**The lineinfo run adds a numerical relation, not a direction.** That body's near-zero instruction
+delta (+19/warp) is an offset: **+1,137** of walk overhead — the same structural overhead the
+drop-in shows — against **−1,149** of collapsed `lane_of` twiddle remat. So in the accounting the
+two changes are not independent bonuses. But nothing here shows the remat saving *caused* the
+register reduction that opened the 8-block tier: the arrow may run the other way, with the reorder's
+shortened liveness enabling both the lower register count and the collapse. The direction is
+unmeasured, and the arm stays bundled.
 
 **Two arms would separate them, and this rung has neither**: the reordered body at
 `__launch_bounds__(128, 8)` — eight blocks with a cap that may re-introduce the remat — and the
@@ -5316,13 +5410,19 @@ that the census anchor literals must be re-frozen before census gates anything.
   a signal at all, and a gate chain has to be run as **one detached invocation** to complete
   cleanly (background-task retries otherwise restart it from the top). Recorded by Task 3 and
   carried here because it shapes how these suites must be driven, not what they measure.
-- **The Full Pictures are lineinfo-free**, unavoidable under the build freeze — the recipe's
-  lineinfo step needs a rebuild and no build may run in the window. The consequence is specific to
-  this rung: the opcode census above is attributed **by SASS address, not by source line**, so
-  "+563 LDC/warp" cannot be pointed at a line of the body without an unfrozen lineinfo build.
-  Identification of the bodies is nonetheless sound — the static row counts reproduce Task 1's
-  table exactly (bank-3 40 / 39 / 20, LDC+LDCU 137 / 114 / 89, LDG 45 / 25 / 25, IMAD 1596 / 1564
-  / 1536). Same deviation R7, R7b and R8 recorded.
+- **The six timed-rung Full Pictures are lineinfo-free**, unavoidable under the build freeze — the
+  recipe's lineinfo step needs a rebuild and no build may run in the window — so the opcode census
+  in those captures is attributed **by SASS address, not by source line**. Identification of the
+  bodies is nonetheless sound: the static row counts reproduce Task 1's table exactly (bank-3
+  40 / 39 / 20, LDC+LDCU 137 / 114 / 89, LDG 45 / 25 / 25, IMAD 1596 / 1564 / 1536). Same deviation
+  R7, R7b and R8 recorded. **The source attribution was recovered afterwards** by three separate
+  lineinfo captures once the freeze ended, on a rebuild whose instruction stream is byte-identical
+  to the frozen one (identity gate above), with one deliberate recipe deviation — `--source-folders`
+  also covers `gpu/core/native_headers`, because the field ops inline from there and that run is
+  about source correlation — and census order only, since the instruction stream does not depend on
+  the term order. The tree was restored to the frozen artifacts afterwards (archive and binary sha
+  back at their
+  pins, `r7_gates.sh sass` ALL GATES PASS).
 - **The six Full Pictures are single-arm surfaces, not the rotation** — `--cache-arm hot16` ±
   `--reorder` / `--reorder-free` with `--profile`, because the rotation rejects `--profile` (it
   would wrap whichever lane the rotation put first). Same disclosure G0 carries. Each capture ran
@@ -5354,9 +5454,16 @@ that the census anchor literals must be re-frozen before census gates anything.
 - **L1-capacity sensitivity.** Blocks/SM is flat at hints 16 / 33 / 100 because shared memory
   never binds, but the realized carveout is not flat and **no lane was timed at 33 or 100**. A
   rung that wants to price the shared/L1 split has to time it, not read block counts.
-- **The drop-in's loss is bound-scoped.** +5 % is what gate-first dataflow costs at 70 registers
-  under `__launch_bounds__(128, 7)`. A different bound, a different register budget or a small
-  source change is unmeasured in either direction.
+- **The drop-in's instruction inflation is only partly bound-scoped.** What a different bound
+  demonstrably moves is the aggregate `LDC`/`LDCU` mix and the placement of the uniform→vector
+  transfer; the walk's decode duplication (+304 `BRA`, the doubled coefficient dispatch, the
+  twice-written `if (product)`) and most of the transfer itself are carried by the unbounded body
+  too, so they are source changes rather than flag changes. Whether rewriting the split — one
+  dispatch serving both phases, one product test — recovers any of it is unmeasured, and it is the
+  concrete follow-on this rung hands over. Note the currency: that decomposition is instructions
+  per warp, and no part of the +5 % wall loss is apportioned by it.
+- **Why ptxas chose one register datapath over the other is still unmeasured.** Lineinfo located
+  the instructions; it does not explain the allocator's choice.
 - **The window and compact bodies were not touched.** Porting the reorder to them, if any
   reordered body ever ships, is separate work, one body at a time.
 
@@ -5372,7 +5479,11 @@ machine-generated profiler tables `ncu-tables.md`, `g0-table.md`, `sass-census.m
 drivers `task4-{run,session,g0,capture}.sh` and the named extractors
 `task4-{extract,g0extract,sass}.py`; the per-capture ncu stdout and clock telemetry under `ncu/`
 (`capture-*.txt`, `capture-telemetry.tsv`); the ledger `progress.md`, the measurement report
-`task-4-report.md` and its independent verification `task-4-review.md`. Profiler captures under
-`target/profiling/ncu/` as `20260812_1910*_v3r9_g0_*` (9 G0 reports) and
-`20260812_1911*_v3r9_*_full` (6 Full Pictures). The frozen session binary is `05e29ffe…42135a` at
-tip `8bc5410f`.
+`task-4-report.md` and its independent verification `task-4-review.md`. The post-freeze source
+attribution is `lineinfo-report.md` — the fourth authority, for every construct-, line- and
+`MOV`/`BRA`-class number — with its tooling beside it: `lineinfo-capture.sh` (ncu),
+`lineinfo-dump-sass.sh` (the identity gate's normalized dump), `lineinfo-attrib.py` (the
+PC↔inline-stack join) and `lineinfo-constructs.py` (the construct tables). Profiler captures under
+`target/profiling/ncu/` as `20260812_1910*_v3r9_g0_*` (9 G0 reports), `20260812_1911*_v3r9_*_full`
+(6 Full Pictures) and `20260813_0644*_v3r9li_*_full` (3 lineinfo Full Pictures). The frozen session
+binary is `05e29ffe…42135a` at tip `8bc5410f`.

@@ -585,16 +585,26 @@ medians, sign counts and spreads, former gates become a FLAGS block at the top o
 the anchor band is replaced by a reference table labelled with each historical rotation's lane
 count. **Outcome: one clean loss and one soft win.** The drop-in cuts registers 72 → 70 and is
 **+5.0 to +5.4 % slower** (96/96, both orders, three sessions) — 70 rounds back up to 72
-*allocated*, so it buys no block, and it executes **+1,601 instructions per warp** of address
-arithmetic and copies (`LDC` +563, `MOV` +471, `BRA` +304) for +0.32/+0.42 ms more FMA-heavy pipe
-active time. The unbounded sibling reaches **64 registers and a measured 8 blocks/SM** at the
-shipped carveout (66.1 % achieved occupancy against a 7-block ceiling of 58.3 %) and is
-**5.0–5.2 % faster** than the incumbent — but its margin is a latency-hiding signature, not less
-work (fma-active moves only −0.6/−1.4 % against −5.5/−6.3 % of wall time), it costs +11–13 pp DRAM
+*allocated*, so it buys no block, and it executes **+1,601 instructions per warp** (+1,900 walk
+− 314 `lane_of` + 15 prologue) for +0.32/+0.42 ms more FMA-heavy pipe active time. A post-freeze
+lineinfo rebuild — instruction-identical to the frozen binary, gates back at their pins — located
+them: uniform→vector transfer of the decoded term record (`MOV R, UR` 45 → 489/warp in four source
+lines) and **duplicated GROUP_BF member control flow** (+304 `BRA`; the coefficient dispatch and the
+`if (product)` test re-run once per phase, 852 branches/warp against 548). Most of that survives
+removing the bound — the unbounded sibling carries the same +304 to the instruction and +398 of the
++444 transfers, and its own near-zero net (+19/warp = +1,137 − 1,149 + 31) is a numerical offset of
+walk overhead against collapsed twiddle remat — so this **specific two-phase implementation** pays a
+bound-independent walk cost; the decomposition is instructions per warp and apportions none of the
+wall loss. The unbounded sibling reaches **64 registers and a measured
+8 blocks/SM** at the shipped carveout (66.1 % achieved occupancy against a 7-block ceiling of
+58.3 %) and is **5.0–5.2 % faster** than the incumbent — but its margin is a latency-hiding
+signature, not less work (fma-active moves −0.6/−1.4 % against −5.5/−6.3 % of wall), +11–13 pp DRAM
 SOL and −5.4 pp L2 hit, and the tier is razor-thin (64 × 128 × 8 = exactly 65,536). Two scoped
 notes: that margin **bundles** the 8th block with a twiddle-remat collapse (bank-3 dynamic loads
 1,196 → 836/warp) and no arm here separates them — either change hides latency, so which one
-produced the win is undetermined — and the census anchors read **+2.0–3.1 % slow against the
+produced the win is undetermined, and the lineinfo offset shows the two are not independent in the
+accounting without fixing which enables which — and the
+census anchors read **+2.0–3.1 % slow against the
 R4-frozen literals** in all three sessions (smaller against R5 and R8) — reproduced, with the
 simple run-position explanation killed by a reversed-order session, and harmless to the paired
 rows. Full record:
