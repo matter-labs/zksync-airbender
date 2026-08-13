@@ -53,6 +53,80 @@ jobs:
           rustup set profile minimal
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
+      # `tools/gkr_verifier` is a SEPARATE workspace: it is in neither `members`
+      # nor `exclude` of the root manifest and declares its own `[workspace]`,
+      # because profiles and `cargo-features` are honored only from a workspace
+      # ROOT -- and it needs `panic = "immediate-abort"` to keep unwinding
+      # machinery out of the in-VM verifier. So the action above, which only
+      # sees the root workspace, never formats it. Check it explicitly.
+      # (fmt does no target resolution, so --manifest-path is safe here; the
+      # clippy job below must cd instead -- see the comment there.)
+      - name: Rustfmt Check (gkr_verifier sub-workspace)
+        run: cargo fmt --all --manifest-path tools/gkr_verifier/Cargo.toml -- --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+          rustflags: ""
+      - name: Setup
+        run: rustup set profile minimal
+      # Scope notes:
+      #   * GPU packages are excluded -- this runner has no CUDA toolkit, and
+      #     the GPU stack is gated by test-gpu.yaml instead.
+      #   * `--bins` is REQUIRED, not cosmetic: `experiments_runner` is
+      #     bin-only, so `--lib --tests` silently skips it entirely.
+      #   * Benches are excluded: `prover`'s pow_bench does not build upstream.
+      #   * RUST_MIN_STACK mirrors the prover's rustc monomorphization needs.
+      - name: Clippy (CPU workspace)
+        env:
+          RUST_MIN_STACK: "100000000"
+        run: |
+          cargo clippy --workspace \
+            --exclude gpu_circuit_prover \
+            --exclude gpu_core \
+            --exclude gpu_cub \
+            --exclude gpu_execution_prover \
+            --exclude gpu_gkr \
+            --exclude gpu_gkr_compiler \
+            --exclude gpu_gkr_model \
+            --exclude gpu_hash \
+            --exclude gpu_native_build \
+            --exclude gpu_ntt \
+            --exclude gpu_ops \
+            --exclude gpu_program_prover \
+            --exclude gpu_prover_context \
+            --exclude gpu_trace \
+            --exclude gpu_whir \
+            --exclude gpu_witness_eval_generator \
+            --lib --tests --bins \
+            -- -D warnings
+      # Three things here are load-bearing, all verified by running them:
+      #   * MUST `cd` rather than use --manifest-path: cargo discovers
+      #     `.cargo/config.toml` from the CURRENT DIRECTORY, not from the
+      #     manifest. That config supplies `target = riscv32i-unknown-none-elf`,
+      #     the `+zimop` / linker-script rustflags and `[unstable]
+      #     panic-immediate-abort`. From the repo root this no_std RISC-V crate
+      #     would be built for the host and fail.
+      #   * RUSTC_BOOTSTRAP=1 is REQUIRED, not belt-and-braces: this directory
+      #     pins stable 1.97.1 via rust-toolchain.toml, and without it cargo
+      #     cannot even parse the manifest (`cargo-features =
+      #     ["panic-immediate-abort"]` is nightly-only). Same trick as dump_bin.sh.
+      #   * `--bins`, NOT `--all-targets`: the latter adds test targets, and
+      #     there is no `test` crate for riscv32i-unknown-none-elf (E0463).
+      # Note `-- -D warnings` applies to this package only, so the dead-code
+      # warnings that `field`/`prover` emit under this no_std riscv config do
+      # not fail the job.
+      - name: Clippy (gkr_verifier sub-workspace)
+        working-directory: tools/gkr_verifier
+        env:
+          RUSTC_BOOTSTRAP: "1"
+        run: cargo clippy --bins -- -D warnings
 
   check_verifiers:
     name: check_verifiers
@@ -142,6 +216,7 @@ jobs:
     needs:
       - tests
       - formatting
+      - clippy
       - check_verifiers
       - build_cli
       - cli_smoke_verify
