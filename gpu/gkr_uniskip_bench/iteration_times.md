@@ -5487,3 +5487,569 @@ PC↔inline-stack join) and `lineinfo-constructs.py` (the construct tables). Pro
 `target/profiling/ncu/` as `20260812_1910*_v3r9_g0_*` (9 G0 reports), `20260812_1911*_v3r9_*_full`
 (6 Full Pictures) and `20260813_0644*_v3r9li_*_full` (3 lineinfo Full Pictures). The frozen session
 binary is `05e29ffe…42135a` at tip `8bc5410f`.
+
+## v3 R9b — the grouped-path decode repair and the register-budget axis
+
+RR read R9's lineinfo attribution — the drop-in's walk overhead concentrated in the GROUP_BF member
+path, and the mechanism duplicated *decode* rather than duplicated math — and ruled on it:
+**"that is a sloppy implementation that ruined the experiment"**. R9b is that ruling tested. The
+grouped path was rewritten four ways and re-measured against both the incumbent and R9's own
+drop-in, in one session, on one machine. Three levers, factored so a win can be split: **C**
+converges the accumuland so each phase reaches one dispatch call site instead of two; **D** is a
+single runtime three-way coefficient test per member, each arm carrying that member's whole
+sequence (H accumulate → in-place transform → C accumulate) with its coefficient case fixed at
+compile time, so **no coefficient test runs between the two accumulates**; **B** hoists the class
+branch so a member takes one class test instead of two. A fourth shape, **K** — decode once, branch
+twice — was built as the control that separates hoisting the *decode* from hoisting the *branch*,
+measured at ±0 static instructions against C at all three budgets, and deliberately not timed.
+
+The rung also carries a second axis that RR opened mid-plan (amendment A1): **spend registers**.
+His argument is about block shape — this kernel runs 4-warp blocks, where each register-ladder step
+costs four warps (64 → 8 blocks, 72 → 7, 80 → 6), against the nine warps a step costs in the
+sibling windowed bench that won 22 % by relaxing a register cap. If registers are that cheap here,
+the interesting move is the opposite of R9's: let the body keep both domains live instead of
+contorting the dataflow to avoid it. So every body was built at three budgets —
+`__launch_bounds__(128, 7)`, `(128, 6)` (the *maximum*-register cell, not "no bound") and unbounded
+— and two rotations were timed: **CLASS**, four corrected shapes at one fixed bound beside the
+incumbent and the drop-in, and **BUDGET**, the incumbent and C each at all three budgets. Eight
+lanes each, 96 paired rounds, warmup 8, per term order, one plan (`hot16`, C = 28, 145 removals)
+across every cached lane. The A10 posture is unchanged and carried from R9: **the tooling reports
+and RR decides, so this section issues no verdict** — WIN / LOSS / WASH are the emitter's
+descriptive labels at 87/96 and drive nothing.
+
+**Result: the repair is real, small, and mostly not where it was expected; and the only cell in the
+rung that beats the incumbent gets there by spending FEWER registers.** The best corrected body
+(C+D) recovers **−0.194 ms / −1.25 %** of R9's loss on locality (**−0.128 / −0.79 %** census,
+96/96 both) and is still **+0.608 ms / +4.11 %** slower than the shipped incumbent — about a
+quarter of the loss on locality, a sixth on census. Three of the four corrected bodies do not beat
+the implementation they were built to replace. On RR's budget axis the unmodified incumbent loses
+at both larger budgets, and the one winner is `C@unbounded` at **−4.84 % / −4.68 %**, which drops
+to 64 registers and takes an 8th block.
+
+Provenance, stated once. Every **timing** figure below is copied verbatim from the emitter records
+`.agents/sdd/2026-08-13-v3-r9b/emitter-output.md` and `emitter-output-repeat.md`
+(`tools/r4_table.py`'s `R9B` path, all four logs of a set read in one invocation — the only
+invocation that prints the bridge); every **profiler** figure from the named extractors' own
+output — `ncu-tables.md` (`task4-extract.py`), `g0-table.md` (`task4-g0extract.py`) and
+`sass-census.md` (`task4-sass.py`); and the **static build** facts from Task 1's
+`cuobjdump -res-usage` grid (`task-1-report.md` §2), whose incumbent and drop-in rows reproduce R9's
+static table exactly, which
+is what validates that extractor against R9's. The three are never mixed and nothing here was
+assembled by hand — and in this rung the separation earns itself twice over, because the profiler's
+own wall-clock column contradicts the emitter on one arm (see *the clock excursion*). Eight timed
+processes — two complete session sets of (CLASS, BUDGET) × (locality, census), one process each,
+**96 × 8 = 768 timed launches** per process, every one preceded by 80 s of discarded work on the
+same rotation inside the same lock hold — plus **10 G0 captures and 12 Full Pictures**. The repeat
+set ran **before any profiler**, deliberately, because R9's record had to disclose the opposite. All
+on one frozen binary (`88159404…62b96cd` at tip `1e808073`, sha re-checked at both ends of every
+session and of the whole chain, which ran as a single detached invocation), all under
+`.agents/bin/with_gpu_lock.sh`, with the pre-freeze `r7_gates.sh all` suite **rc=0, ALL GATES
+PASS**, zero digest churn, the R9 bodies still at their pins and the R9b grid 20/20 pinned, and no
+cargo of any kind inside the window.
+
+### The device, recorded for the first time
+
+RR, opening the rung: *"we are hopping machines… it is virtualized, other sessions on a neighbour
+GPU can affect us thermally."* Every archived telemetry sidecar in this campaign records device
+STATE and never device IDENTITY, so **no historical anchor literal in this file can be shown to have
+come from this machine.** This rung records identity on every sidecar — before and after each
+session and each capture — and **71 identity readings came back byte-identical on every identity
+field**:
+
+| field | value, constant across all 71 readings |
+| --- | --- |
+| name | `NVIDIA RTX PRO 6000 Blackwell Server Edition` |
+| **uuid** | **`GPU-cbaba4fd-068d-d035-1c18-1d9c16f1648b`** |
+| serial | `1794525048975` |
+| driver_version | `610.57.04` |
+| vbios_version | `98.02.8D.00.08` |
+| power.limit | 600.00 W |
+| mig.mode.current | Disabled / compute_mode Default |
+
+Toolchain recorded for the same reason: ncu `2026.2.1.0 (build 38283040)`, CUDA `13.3, V13.3.73`.
+No other compute process was resident at any point (`compute-apps` empty on all 16 session sidecars
+and all 44 capture rows). **So this rung is internally clean, and every earlier rung's cross-session
+anchor comparison in this file has no machine provenance at all** — a limit on the past, not on
+these numbers.
+
+### The flags — quoted first
+
+> | # | scope | flag | what was observed |
+> | --- | --- | --- | --- |
+> | 1 | `CLASS/census` | **ANCHOR** | `control@256` reads 16.903 ms, more than 1.5 % off R4 frozen (11 lanes) +2.16 % — this rotation carries 8 lanes against their 6–12, so read the reference table, and the rotation's composition, before calling it machine drift |
+> | 2 | `CLASS/census` | **ANCHOR** | `hot16@128` reads 15.352 ms, more than 1.5 % off R5 session (10 lanes) +1.54 % — this rotation carries 8 lanes against their 6–12, so read the reference table, and the rotation's composition, before calling it machine drift |
+> | 3 | `CLASS/census` | **FLANK** | `control@256`'s first and last full cycle differ by 0.088 ms against the 0.085 ms scaled reading — the session moved under itself |
+> | 4 | `CLASS/census` | **FLANK** | `control_lb@128`'s first and last full cycle differ by 0.097 ms against the 0.083 ms scaled reading — the session moved under itself |
+> | 5 | `CLASS/census` | **FLANK** | `hot16@128`'s first and last full cycle differ by 0.099 ms against the 0.077 ms scaled reading — the session moved under itself |
+> | 6 | `BUDGET/census` | **ANCHOR** | `control@256` reads 16.893 ms, more than 1.5 % off R4 frozen (11 lanes) +2.10 % — this rotation carries 8 lanes against their 6–12, so read the reference table, and the rotation's composition, before calling it machine drift |
+
+| session set | rotation / order | flags | which |
+| --- | --- | --- | --- |
+| **A — primary** (the four canonical logs) | CLASS locality | **0** | — |
+| | CLASS census | **5** | ANCHOR ×2, FLANK ×3 |
+| | BUDGET locality | **0** | — |
+| | BUDGET census | **1** | ANCHOR ×1 |
+| **B — repeat** (run BEFORE any profiler) | CLASS locality | **0** | — |
+| | CLASS census | **5** | ANCHOR ×2, FLANK ×3 |
+| | BUDGET locality | **0** | — |
+| | BUDGET census | **5** | ANCHOR ×2, FLANK ×3 |
+
+**Every flag in both sets is census-scoped; no locality session raised a flag of any kind.** No flag
+anywhere concerns body identity, budget identity, plan identity, trace, round shape, rotation
+balance, carveout tier or uniformity, admission order, aliasing, cross-order build facts, or the
+bridge — every structural property the emitter checks came back clean in all eight sessions. The
+census `ANCHOR` flags were **predicted before the sessions ran** (Task 3's concern 2) and are read
+in the anchor section below: they are reporting the reference set's own disagreement, not this
+session's. Nothing was tuned to silence them. Carveout ran at **16 %**, uniform across all six
+hinted symbols of each rotation, in both orders, in all eight sessions.
+
+### The static grid — six shapes at three budgets
+
+From Task 1's `cuobjdump -res-usage` table. `instrs` is static code size (distinct PCs, the number
+the gate pins), never executed instructions; the block column is **arithmetic off the static
+register line**, which this rung then measures (and finds wrong twice).
+
+| body | `(128,7)` REG / instrs | `(128,6)` REG / instrs | unbounded REG / instrs |
+| --- | --- | --- | --- |
+| incumbent | 72 / 5992 | **80** / 5968 | 75 / 5976 |
+| R9 drop-in | 70 / 5984 | 75 / 5880 | 64 / 5888 |
+| **C** | 70 / 5904 | 75 / 5800 | 64 / 5808 |
+| **C+K** | 70 / 5904 | 75 / 5800 | 64 / 5808 |
+| **C+D** | 72 / 6512 | 79 / 6424 | **59** / 6472 |
+| **B** | 70 / 6104 | 78 / 5968 | 64 / 5992 |
+| **B+K** | 72 / 6088 | 78 / 5960 | 64 / 5984 |
+| **B+D** | 72 / 6928 | 79 / 6832 | **59** / 6872 |
+
+C is the size win (−80 instrs against the drop-in, `BRA` −10, with `LDG` / `SHFL` / `LDL` / `STL`
+unchanged — four dispatch call sites became two and no production site moved). D is the static
+price: **+608** instrs on C and +824 on B, because the three arms duplicate the member's whole
+sequence (`LDG` 25 → 33, `SHFL` 194 → 218 / 236, `LDL` 14 → 18 / 21) — and unbounded it lands at
+**59 registers, the lowest cell in the grid**. B trades size for dynamic branches exactly as
+intended (+120 instrs, one extra static copy of the in-place coset chain), and its static `BRA` is
+*unchanged*, because what B removes is one class test per member *visit*, which no static count
+shows. K against C is **±0 instructions at all three budgets** while being 100 % different code —
+the cell that says hoisting the decode is not what the dispatch costs. And one finding corrects R9:
+`(128,6)` **collapses the bank-3 twiddle remat for every reordered body** (39/40 → 20–24) while the
+incumbent's barely moves (40 → 38), so the collapse is not unbounded-only, it belongs to the
+reordered family at any relaxed budget.
+
+### The arms — per-lane medians, both rotations, both orders
+
+**`R9B` CLASS — `--term-order locality`, 96 paired rounds, 8 lanes**
+
+| lane | body | budget | static regs | arith blocks/SM | threads | grid | C | removals | admitted | median `eval` | median `finalize` | median `eval+fin` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `control@256` | incumbent | n/a | 72 | 3 | 256 | 32768 | 0 | 0 | 0 | 16.692 | 0.033 | **16.725** |
+| `control_lb@128` | incumbent | (128,7) | 72 | 7 | 128 | 65536 | 0 | 0 | 0 | 16.394 | 0.061 | **16.455** |
+| `hot16@128` | incumbent | (128,7) | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 14.729 | 0.063 | **14.793** |
+| `reorder-hot16@128` | R9-drop-in | (128,7) | 70 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.531 | 0.063 | **15.594** |
+| `c-hot16@128` | C | (128,7) | 70 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.700 | 0.063 | **15.763** |
+| `b-hot16@128` | B | (128,7) | 70 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.526 | 0.063 | **15.590** |
+| `cd-hot16@128` | C+D | (128,7) | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.339 | 0.063 | **15.402** |
+| `bd-hot16@128` | B+D | (128,7) | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.568 | 0.063 | **15.632** |
+
+**`R9B` CLASS — `--term-order census`**
+
+| lane | body | budget | static regs | arith blocks/SM | threads | grid | C | removals | admitted | median `eval` | median `finalize` | median `eval+fin` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `control@256` | incumbent | n/a | 72 | 3 | 256 | 32768 | 0 | 0 | 0 | 16.870 | 0.033 | **16.903** |
+| `control_lb@128` | incumbent | (128,7) | 72 | 7 | 128 | 65536 | 0 | 0 | 0 | 16.558 | 0.061 | **16.620** |
+| `hot16@128` | incumbent | (128,7) | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.288 | 0.063 | **15.352** |
+| `reorder-hot16@128` | R9-drop-in | (128,7) | 70 | 7 | 128 | 65536 | 28 | 145 | 16 | 16.074 | 0.063 | **16.136** |
+| `c-hot16@128` | C | (128,7) | 70 | 7 | 128 | 65536 | 28 | 145 | 16 | 16.284 | 0.063 | **16.348** |
+| `b-hot16@128` | B | (128,7) | 70 | 7 | 128 | 65536 | 28 | 145 | 16 | 16.071 | 0.063 | **16.133** |
+| `cd-hot16@128` | C+D | (128,7) | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.942 | 0.063 | **16.006** |
+| `bd-hot16@128` | B+D | (128,7) | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 16.226 | 0.063 | **16.290** |
+
+**`R9B` BUDGET — `--term-order locality`**
+
+| lane | body | budget | static regs | arith blocks/SM | threads | grid | C | removals | admitted | median `eval` | median `finalize` | median `eval+fin` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `control@256` | incumbent | n/a | 72 | 3 | 256 | 32768 | 0 | 0 | 0 | 16.746 | 0.033 | **16.778** |
+| `control_lb@128` | incumbent | (128,7) | 72 | 7 | 128 | 65536 | 0 | 0 | 0 | 16.431 | 0.061 | **16.493** |
+| `hot16@128` | incumbent | (128,7) | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 14.760 | 0.063 | **14.823** |
+| `hot16-lb6@128` | incumbent | (128,6) | 80 | 6 | 128 | 65536 | 28 | 145 | 16 | 15.709 | 0.063 | **15.773** |
+| `hot16-free@128` | incumbent | unbounded | 75 | 6 | 128 | 65536 | 28 | 145 | 16 | 14.941 | 0.063 | **15.005** |
+| `c-hot16@128` | C | (128,7) | 70 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.745 | 0.063 | **15.809** |
+| `c-hot16-lb6@128` | C | (128,6) | 75 | 6 | 128 | 65536 | 28 | 145 | 16 | 14.924 | 0.063 | **14.988** |
+| `c-hot16-free@128` | C | unbounded | 64 | 8 | 128 | 65536 | 28 | 145 | 16 | 14.046 | 0.063 | **14.110** |
+
+**`R9B` BUDGET — `--term-order census`**
+
+| lane | body | budget | static regs | arith blocks/SM | threads | grid | C | removals | admitted | median `eval` | median `finalize` | median `eval+fin` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `control@256` | incumbent | n/a | 72 | 3 | 256 | 32768 | 0 | 0 | 0 | 16.859 | 0.033 | **16.893** |
+| `control_lb@128` | incumbent | (128,7) | 72 | 7 | 128 | 65536 | 0 | 0 | 0 | 16.546 | 0.061 | **16.607** |
+| `hot16@128` | incumbent | (128,7) | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.284 | 0.063 | **15.347** |
+| `hot16-lb6@128` | incumbent | (128,6) | 80 | 6 | 128 | 65536 | 28 | 145 | 16 | 16.132 | 0.063 | **16.195** |
+| `hot16-free@128` | incumbent | unbounded | 75 | 6 | 128 | 65536 | 28 | 145 | 16 | 15.393 | 0.063 | **15.456** |
+| `c-hot16@128` | C | (128,7) | 70 | 7 | 128 | 65536 | 28 | 145 | 16 | 16.281 | 0.063 | **16.344** |
+| `c-hot16-lb6@128` | C | (128,6) | 75 | 6 | 128 | 65536 | 28 | 145 | 16 | 15.419 | 0.063 | **15.483** |
+| `c-hot16-free@128` | C | unbounded | 64 | 8 | 128 | 65536 | 28 | 145 | 16 | 14.566 | 0.063 | **14.630** |
+
+Every cached lane of a rotation declares identical C / removals / admitted ids by construction —
+one plan, many cells — so the kernel name is the only field that says which cell ran, and the
+emitter pins `lane → (body, budget, kernel)` per lane and per SAMPLE row. Rows are never pooled
+across term orders or across the two rotations.
+
+### The class axis — how much of R9's loss was the implementation
+
+Paired per round on `eval + finalize`, inside one process. The emitter's `what it isolates` column
+is dropped here for width; everything else is verbatim.
+
+**Rows (CLASS, locality)**
+
+| # | contrast | baseline | median (ms) | IQR | min … max | % of baseline | on-sign | label | arith block tier |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `c-hot16@128` − `hot16@128` | `hot16@128` | **+0.968** | +0.959 … +0.978 | +0.938 … +1.004 | +6.55 % | 96/96 | **LOSS** | same tier (7) |
+| 2 | `b-hot16@128` − `hot16@128` | `hot16@128` | **+0.797** | +0.787 … +0.806 | +0.768 … +0.842 | +5.39 % | 96/96 | **LOSS** | same tier (7) |
+| 3 | `cd-hot16@128` − `hot16@128` | `hot16@128` | **+0.608** | +0.601 … +0.616 | +0.580 … +0.639 | +4.11 % | 96/96 | **LOSS** | same tier (7) |
+| 4 | `bd-hot16@128` − `hot16@128` | `hot16@128` | **+0.839** | +0.829 … +0.851 | +0.807 … +0.875 | +5.67 % | 96/96 | **LOSS** | same tier (7) |
+| 5 | `c-hot16@128` − `reorder-hot16@128` | `reorder-hot16@128` | **+0.166** | +0.158 … +0.179 | +0.141 … +0.196 | +1.06 % | 96/96 | **LOSS** | same tier (7) |
+| 6 | `b-hot16@128` − `reorder-hot16@128` | `reorder-hot16@128` | **-0.004** | -0.013 … +0.008 | -0.034 … +0.034 | -0.03 % | 61/96 | **WASH** | same tier (7) |
+| 7 | `cd-hot16@128` − `reorder-hot16@128` | `reorder-hot16@128` | **-0.194** | -0.203 … -0.184 | -0.226 … -0.162 | -1.25 % | 96/96 | **WIN** | same tier (7) |
+| 8 | `bd-hot16@128` − `reorder-hot16@128` | `reorder-hot16@128` | **+0.038** | +0.026 … +0.051 | +0.007 … +0.092 | +0.25 % | 96/96 | **LOSS** | same tier (7) |
+| 9 | `reorder-hot16@128` − `hot16@128` | `hot16@128` | **+0.802** | +0.794 … +0.811 | +0.767 … +0.830 | +5.42 % | 96/96 | **LOSS** | same tier (7) |
+
+**Rows (CLASS, census)**
+
+| # | contrast | baseline | median (ms) | IQR | min … max | % of baseline | on-sign | label | arith block tier |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `c-hot16@128` − `hot16@128` | `hot16@128` | **+0.988** | +0.975 … +1.002 | +0.906 … +1.103 | +6.43 % | 96/96 | **LOSS** | same tier (7) |
+| 2 | `b-hot16@128` − `hot16@128` | `hot16@128` | **+0.777** | +0.760 … +0.793 | +0.710 … +0.848 | +5.06 % | 96/96 | **LOSS** | same tier (7) |
+| 3 | `cd-hot16@128` − `hot16@128` | `hot16@128` | **+0.651** | +0.632 … +0.671 | +0.557 … +0.707 | +4.24 % | 96/96 | **LOSS** | same tier (7) |
+| 4 | `bd-hot16@128` − `hot16@128` | `hot16@128` | **+0.934** | +0.920 … +0.950 | +0.864 … +0.981 | +6.08 % | 96/96 | **LOSS** | same tier (7) |
+| 5 | `c-hot16@128` − `reorder-hot16@128` | `reorder-hot16@128` | **+0.211** | +0.199 … +0.220 | +0.129 … +0.267 | +1.31 % | 96/96 | **LOSS** | same tier (7) |
+| 6 | `b-hot16@128` − `reorder-hot16@128` | `reorder-hot16@128` | **-0.003** | -0.014 … +0.013 | -0.051 … +0.047 | -0.02 % | 52/96 | **WASH** | same tier (7) |
+| 7 | `cd-hot16@128` − `reorder-hot16@128` | `reorder-hot16@128` | **-0.128** | -0.143 … -0.114 | -0.198 … -0.026 | -0.79 % | 96/96 | **WIN** | same tier (7) |
+| 8 | `bd-hot16@128` − `reorder-hot16@128` | `reorder-hot16@128` | **+0.155** | +0.137 … +0.176 | +0.095 … +0.224 | +0.96 % | 96/96 | **LOSS** | same tier (7) |
+| 9 | `reorder-hot16@128` − `hot16@128` | `hot16@128` | **+0.778** | +0.767 … +0.789 | +0.730 … +0.838 | +5.07 % | 96/96 | **LOSS** | same tier (7) |
+
+Three readings, stated without ruling on them.
+
+**R9's number reproduces inside this session** — row 9, +5.42 % locality / +5.07 % census against
+R9's own +5.43 % / +5.02 %, on a different rotation (8 lanes against 6) with the machine identity
+recorded. The reference point did not move, so the recovery rows are measured against a baseline
+this rung re-established rather than imported.
+
+**Only one of the four corrected bodies beats the implementation it was built to repair.** C — the
+lever the plan called the size win, and the one whose convergence copy the plan asserted ptxas would
+fold into a free register rename — is **1.06 % / 1.31 % WORSE** than the drop-in, 96/96 in both
+orders and in both session sets. B is a **wash** whose sign count says so directly (61/96 and
+52/96). B+D is worse than the drop-in on both orders. Only C+D helps. **RR declined to take the
+free-rename claim on faith and required it be measured; the machine says the claim was wrong.**
+That the same D lever helps on C and hurts on B (+0.038 / +0.155 against the drop-in) is
+unexplained here.
+
+**The recovered fraction is 0.194 / 0.802 = 24 % on locality and 0.128 / 0.778 = 16 % on census**,
+best body, best case. The remaining **+4.11 % / +4.24 %** is not duplicated decode. So the "sloppy
+implementation" premise is supported at about a quarter of the loss, and gate-first dataflow still
+costs ~4 % implemented properly at this bound.
+
+### The budget axis — RR's question, answered NO on the unmodified body
+
+**Rows (BUDGET, locality)**
+
+| # | contrast | baseline | median (ms) | IQR | min … max | % of baseline | on-sign | label | arith block tier |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `hot16-lb6@128` − `hot16@128` | `hot16@128` | **+0.948** | +0.941 … +0.956 | +0.918 … +1.059 | +6.39 % | 96/96 | **LOSS** | **6 v 7 — NOT tier-neutral** |
+| 2 | `hot16-free@128` − `hot16@128` | `hot16@128` | **+0.178** | +0.167 … +0.190 | +0.126 … +0.278 | +1.20 % | 96/96 | **LOSS** | **6 v 7 — NOT tier-neutral** |
+| 3 | `c-hot16@128` − `hot16@128` | `hot16@128` | **+0.983** | +0.969 … +0.995 | +0.883 … +1.064 | +6.63 % | 96/96 | **LOSS** | same tier (7) |
+| 4 | `c-hot16-lb6@128` − `c-hot16@128` | `c-hot16@128` | **-0.818** | -0.828 … -0.808 | -0.877 … -0.766 | -5.17 % | 96/96 | **WIN** | **6 v 7 — NOT tier-neutral** |
+| 5 | `c-hot16-free@128` − `c-hot16-lb6@128` | `c-hot16-lb6@128` | **-0.881** | -0.890 … -0.869 | -0.926 … -0.785 | -5.88 % | 96/96 | **WIN** | **8 v 6 — NOT tier-neutral** |
+| 6 | `c-hot16-free@128` − `hot16@128` | `hot16@128` | **-0.717** | -0.727 … -0.703 | -0.775 … -0.630 | -4.84 % | 96/96 | **WIN** | **8 v 7 — NOT tier-neutral** |
+
+**Rows (BUDGET, census)**
+
+| # | contrast | baseline | median (ms) | IQR | min … max | % of baseline | on-sign | label | arith block tier |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `hot16-lb6@128` − `hot16@128` | `hot16@128` | **+0.847** | +0.842 … +0.855 | +0.823 … +0.876 | +5.52 % | 96/96 | **LOSS** | **6 v 7 — NOT tier-neutral** |
+| 2 | `hot16-free@128` − `hot16@128` | `hot16@128` | **+0.107** | +0.100 … +0.119 | +0.061 … +0.143 | +0.70 % | 96/96 | **LOSS** | **6 v 7 — NOT tier-neutral** |
+| 3 | `c-hot16@128` − `hot16@128` | `hot16@128` | **+0.997** | +0.985 … +1.011 | +0.944 … +1.031 | +6.50 % | 96/96 | **LOSS** | same tier (7) |
+| 4 | `c-hot16-lb6@128` − `c-hot16@128` | `c-hot16@128` | **-0.860** | -0.867 … -0.851 | -0.894 … -0.827 | -5.26 % | 96/96 | **WIN** | **6 v 7 — NOT tier-neutral** |
+| 5 | `c-hot16-free@128` − `c-hot16-lb6@128` | `c-hot16-lb6@128` | **-0.857** | -0.864 … -0.847 | -0.888 … -0.822 | -5.53 % | 96/96 | **WIN** | **8 v 6 — NOT tier-neutral** |
+| 6 | `c-hot16-free@128` − `hot16@128` | `hot16@128` | **-0.719** | -0.729 … -0.707 | -0.760 … -0.683 | -4.68 % | 96/96 | **WIN** | **8 v 7 — NOT tier-neutral** |
+
+**On the unmodified body the answer is no, in both directions.** The incumbent at `(128,6)` — the
+grid's maximum-register cell, 80 allocated — loses **+6.39 % / +5.52 %**, and the incumbent
+compiled unbounded, which is exactly the separating arm R9's record could only state as static
+arithmetic (amendment A8), loses **+1.20 % / +0.70 %**. Both 96/96, both session sets. Spending
+registers on this body costs time at every budget measured.
+
+**The one cell that beats the incumbent goes the other way.** `c-hot16-free@128` is **−4.84 % /
+−4.68 %**, and it gets there by dropping to 64 allocated registers and taking an **8th block**. The
+winning direction on this axis is fewer registers and more occupancy, not more registers — which is
+the opposite of the windowed bench's lesson that motivated the axis, and the axis was still worth
+opening: it is worth more than the class axis on this evidence (−4.84 % against +4.11 %).
+
+### G0 — ten cells, and the static register line lies a second way
+
+Every timed cell got its own configuration capture (amendment A7), because R9 had shown a static
+register line does not predict occupancy. Columns trimmed for width from `g0-table.md`; the
+`finalize` kernel appears in every capture and is identical in all ten (32 regs, 6 blocks/SM,
+16.38 KB), and is listed there so nothing is silently dropped.
+
+| cell | body | budget | static regs | arith tier | **regs/thr ALLOCATED** | realized carveout | Blk-Lim SMEM | Blk-Lim Reg | **blocks/SM** | achieved occ % |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `hot16@128` | incumbent | (128,7) | 72 | 7 | **72** | 32.77 KB | 10 | 7 | **7** | 57.92 |
+| `reorder-hot16@128` | R9 drop-in | (128,7) | 70 | 7 | **72** | 32.77 KB | 10 | 7 | **7** | 57.93 |
+| `c-hot16@128` | C | (128,7) | 70 | 7 | **72** | 32.77 KB | 10 | 7 | **7** | 57.93 |
+| `b-hot16@128` | B | (128,7) | 70 | 7 | **72** | 32.77 KB | 10 | 7 | **7** | 57.93 |
+| `cd-hot16@128` | C+D | (128,7) | 72 | 7 | **72** | 32.77 KB | 10 | 7 | **7** | 57.93 |
+| `bd-hot16@128` | B+D | (128,7) | 72 | 7 | **72** | 32.77 KB | 10 | 7 | **7** | 57.93 |
+| `hot16-lb6@128` | incumbent | (128,6) | 80 | 6 | **80** | 32.77 KB | 10 | 6 | **6** | 49.70 |
+| `hot16-free@128` | incumbent | unbounded | 75 | 6 | **80** | 32.77 KB | 10 | 6 | **6** | 49.69 |
+| `c-hot16-lb6@128` | C | (128,6) | 75 | 6 | **80** | 32.77 KB | 10 | 6 | **6** | 49.69 |
+| `c-hot16-free@128` | C | unbounded | 64 | 8 | **64** | 32.77 KB | 10 | 8 | **8** | 66.12 |
+
+**Every arithmetic tier materialized — and the register numbers under them did not.** Three
+roundings happened. **70 → 72** on the drop-in, C and B: R9 found this once, it reproduces on all
+three 70-register bodies, and the bounded reorder family buys no block from its register cut.
+**75 → 80 on two different cells** — the unbounded incumbent and C at `(128,6)` — which is new, and
+it puts **three cells whose static lines read 75 / 75 / 80 into one and the same occupancy class**
+(80 allocated, 6 blocks/SM, 49.69–49.70 % achieved). 72 and 64 allocate exactly. So the campaign now
+has two independent demonstrations that a static REG line is not the allocated truth, in two
+different places, and anything reasoning from one — including the arithmetic `blocks_per_sm` the
+harness derives and prints — is reasoning from a number the allocator does not honour. That the
+tiers came out right in all ten cells here is not the same claim.
+
+One consequence worth having: **the whole CLASS rotation is occupancy-flat** — six bodies, all 72
+allocated, all 7 blocks/SM, 57.92–57.93 % achieved. Every class row above is therefore a pure
+work/scheduling contrast with occupancy held constant *by measurement*, not by assumption. Shared
+memory never limits anything (10 blocks at hint 16 against register limits of 6–8).
+
+### Neither budget separator is clean
+
+The two separator rows were designed to split "the extra block" from "the rematerialization
+collapse". G0 settles Task 3's concern 4: neither does.
+
+| row | its label | realized tiers | allocated regs | dynamic bank-3 loads/warp | clean? |
+| --- | --- | --- | --- | --- | --- |
+| `C@6 − C@7` | *the remat collapse at constant block tier* | **6 vs 7** | **80 vs 72** | 836 vs *not captured* | **No** — the block tier moves too |
+| `C@unb − C@6` | *the extra block at constant collapse* | **8 vs 6** | **64 vs 80** | **836 vs 836 — identical** | **No** on occupancy: a TWO-tier move. **Yes** on rematerialization |
+
+`C@6 − C@7` moves a block tier as well as the collapse. `C@unb − C@6` holds the collapse in the
+strongest available form — an identical dynamic twiddle count, 836 = 836 — but pays for it by
+moving two block tiers at once. **So no comparison in this rung assigns a share of
+`c-hot16-free@128`'s −4.84 % / −4.68 % to the extra block versus to the collapse, and R9's named
+separator debt is still open, not discharged.** What would build a clean one is an arm that does not
+exist in this grid: a reordered body pinned at `__launch_bounds__(128, 7)` that has *already*
+collapsed its remat, or one pinned at `(128, 8)`.
+
+### The profiler — pipe work, and a clock excursion that inverts a sign
+
+Twelve Full Pictures, six lanes × both orders: five fixed lanes plus one conditional slot that the
+emitter awards to the CLASS session's lowest-median corrected body — both orders agreed and named
+`cd-hot16@128`. **Read the `gpc GHz` column before the ms columns.** Ten captures ran at
+2.38–2.43 GHz and the two C+D captures ran at **2.309 and 2.294 GHz, 4.9 % and 5.5 % low**; `ncu ms`
+and everything derived from it carries that, and the GPC-cycle columns are the clock-invariant form
+printed beside it.
+
+| lane | order | ncu ms | **gpc GHz** | fma util % | fma-active ms | vs inc ms | **vs inc cycles** | **vs inc fma-active cycles** | SM SOL % |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `hot16@128` | census | 14.240 | 2.4038 | 75.60 | 10.765 | — | — | — | 75.44 |
+| `reorder-hot16@128` | census | 15.026 | 2.4269 | 73.80 | 11.089 | +0.786 (+5.52 %) | +2,235,875 (**+6.53 %**) | **+1.0M (+3.99 %)** | 73.66 |
+| `cd-hot16@128` | census | 15.594 | **2.3091** | 73.88 | 11.521 | +1.354 (+9.51 %) | +1,777,918 (**+5.19 %**) | **+0.7M (+2.80 %)** | 73.83 |
+| `c-hot16-lb6@128` | census | 14.579 | 2.4275 | 75.11 | 10.950 | +0.339 (+2.38 %) | +1,159,530 (+3.39 %) | **+0.7M (+2.72 %)** | 74.98 |
+| `c-hot16-free@128` | census | 13.502 | 2.3784 | 79.24 | 10.700 | -0.737 (-5.18 %) | -2,116,045 (-6.18 %) | **-0.4M (-1.66 %)** | 78.99 |
+| `hot16-free@128` | census | 14.531 | 2.4275 | 73.84 | 10.730 | +0.291 (+2.05 %) | +1,044,974 (+3.05 %) | **+0.2M (+0.66 %)** | 73.72 |
+| `hot16@128` | locality | 13.749 | 2.4270 | 77.17 | 10.611 | — | — | — | 77.06 |
+| `reorder-hot16@128` | locality | 14.676 | 2.4278 | 75.15 | 11.029 | +0.926 (+6.74 %) | +2,260,274 (**+6.77 %**) | **+1.0M (+3.98 %)** | 75.03 |
+| `cd-hot16@128` | locality | 15.243 | **2.2937** | 75.63 | 11.529 | +1.494 (+10.87 %) | +1,594,504 (**+4.78 %**) | **+0.7M (+2.68 %)** | 75.60 |
+| `c-hot16-lb6@128` | locality | 14.140 | 2.4277 | 76.97 | 10.883 | +0.391 (+2.84 %) | +959,183 (+2.87 %) | **+0.7M (+2.60 %)** | 76.83 |
+| `c-hot16-free@128` | locality | 12.913 | 2.4127 | 81.08 | 10.470 | -0.837 (-6.08 %) | -2,214,222 (-6.64 %) | **-0.5M (-1.91 %)** | 80.92 |
+| `hot16-free@128` | locality | 14.184 | 2.4276 | 75.45 | 10.702 | +0.435 (+3.16 %) | +1,065,309 (+3.19 %) | **+0.2M (+0.88 %)** | 75.21 |
+
+**The clock caveat is load-bearing, not cosmetic.** On `ncu ms`, C+D looks *slower* than the drop-in
+(+9.51 % against +5.52 % vs the incumbent) — the opposite sign from the emitter's rotation, which
+puts C+D 1.25 % / 0.79 % faster than the drop-in. On GPC cycles the same captures put C+D at
++5.19 % / +4.78 % against the drop-in's +6.53 % / +6.77 %, i.e. **below it by 1.3 pp / 2.0 pp — the
+emitter's ordering, reproduced.** The wall-clock column was measuring the clock; the cycle column
+was measuring the code. **A report that read milliseconds here would have drawn the opposite
+conclusion about the rung's best body.** Timing for the record still comes only from the emitter;
+this is a consistency check, and it passes on cycles and fails on ms.
+
+The work readings: the bounded reorder family genuinely does more math-pipe work (drop-in +3.99 % /
++3.98 % of FMA-heavy active cycles, C+D +2.80 % / +2.68 %, C at `(128,6)` +2.72 % / +2.60 %) — C+D
+removes about a third of the drop-in's extra pipe work and does not remove it. C unbounded is the
+only arm cheaper in pipe work than the incumbent (−1.66 % / −1.91 %) while winning far more on wall
+cycles (−6.18 % / −6.64 %), so most of its advantage is latency hiding from the 8th block, the same
+shape R9 found for its own free body. The incumbent compiled unbounded is a near-null on work
+(+0.66 % / +0.88 %) that loses 3.0–3.2 % of wall cycles — a body doing the same work at 6 blocks
+instead of 7.
+
+### The instruction census
+
+Per-warp SourceCounters; static rows reproduce Task 1's grid exactly, which is the cross-check that
+this census reads the same bodies.
+
+| lane | total/warp | LDC | LDCU | MOV | **MOV←UR** | ISETP | BRA | HFMA2 | IMAD | **c[0x3]/warp (twiddle)** |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `hot16@128` | 57,637 | 1,994 | 1,013 | 674 | **45** | 913 | 1,333 | 392 | 15,086 | **1,196** |
+| `reorder-hot16@128` | 59,238 | 2,557 | 604 | 1,145 | **489** | 1,098 | 1,637 | 636 | 15,242 | **1,153** (−3.6 %) |
+| `cd-hot16@128` | 58,751 | 2,380 | 604 | 1,388 | **547** | 1,229 | 1,429 | 428 | 15,066 | **1,153** (−3.6 %) |
+| `c-hot16-lb6@128` | 57,684 | 2,136 | 520 | 1,395 | **463** | 1,098 | 1,637 | 403 | 15,014 | **836** (−30.1 %) |
+| `c-hot16-free@128` | 57,824 | 1,018 | 1,644 | 967 | **443** | 519 | 1,637 | 358 | 14,314 | **836** (−30.1 %) |
+| `hot16-free@128` | 57,303 | 1,901 | 1,013 | 605 | **45** | 1,066 | 1,333 | 392 | 15,048 | **1,132** (−5.4 %) |
+
+- **The twiddle-remat collapse is a property of the BODY, not of the budget alone.** Static 39/40 →
+  20 becomes dynamic 1,153/1,196 → **836** on both reordered cells that collapsed statically, and
+  the two are **identical to the load** despite one being `(128,6)` and the other unbounded. The
+  incumbent's own unbounded cell moves only −5.4 %. Task 1's static finding reproduces dynamically.
+- **The `MOV R, UR` uniform→vector signature does not go away.** 45/warp on both incumbent cells,
+  **443–547 on every reordered cell including the corrected ones** — C+D, the best corrected body,
+  carries the most of any lane at 547. R9 attributed +444/warp of these to the term decode; the
+  decode repair does not remove them.
+- **C+D's recovery is visible where the duplicate dispatch was**: +1,114 instructions/warp against
+  the incumbent (the drop-in's +1,601), with `HFMA2` 636 → 428 and `LDC` 2,557 → 2,380 against the
+  drop-in, paid back partly in `MOV` (1,145 → 1,388) and `ISETP` (1,098 → 1,229).
+- `c-hot16-lb6@128` executes 57,684 instructions/warp — **+47 against the incumbent**, essentially
+  the same instruction count, at 6 blocks instead of 7 and 2.6–2.7 % more FMA-active cycles.
+
+Frame and tap traffic is byte-for-byte identical on all six profiled bodies (local load sectors
+362,807,296, local store 58,720,256, LDG 742,916,096), so no body moves how much frame or tap work
+happens. Occupancy buys and sells DRAM as it did in R9: the two 6-block cells cut DRAM SOL by
+13.0–13.4 pp (census) and lift L2 hit 4–7 pp, the 8-block cell does the reverse (+13.5 / +11.5 pp
+DRAM SOL, −5.5 / −5.9 pp L2 hit), and the family wins at the 8-block end anyway because it is
+SM-bound at this working set.
+
+### The census anchors — the references now contradict each other
+
+| anchor lane | this session (8 lanes) | reference | lanes | reference median | delta | **provenance** |
+| --- | --- | --- | --- | --- | --- | --- |
+| `control@256` | 16.903 | R4 frozen | 11 | 16.545 | +2.16 % | **machine identity: unrecorded** |
+| `control@256` | 16.903 | R5 session | 10 | 16.666 | +1.42 % | **machine identity: unrecorded** |
+| `control@256` | 16.903 | R8 session | 12 | 16.866 | +0.22 % | **machine identity: unrecorded** |
+| `control@256` | 16.903 | R9 session | 6 | 17.011 | −0.63 % | **machine identity: unrecorded** |
+| `hot16@128` | 15.352 | R4 frozen | 11 | 15.129 | +1.47 % | **machine identity: unrecorded** |
+| `hot16@128` | 15.352 | R5 session | 10 | 15.120 | +1.54 % | **machine identity: unrecorded** |
+| `hot16@128` | 15.352 | R8 session | 12 | 15.334 | +0.12 % | **machine identity: unrecorded** |
+| `hot16@128` | 15.352 | R9 session | 6 | 15.458 | −0.69 % | **machine identity: unrecorded** |
+
+Locality raised no flag at all: `control@256` 16.725 sits +0.61 / +0.96 / −0.08 / +0.00 % against
+the same four references and `hot16@128` 14.793 sits −0.29 / +0.52 / −0.13 / −0.01 %.
+
+**The census flags are reporting the references, not the session.** The four references span
+16.545–17.011 on census `control@256` — **2.8 % apart** — so a flag-free census anchor is a
+**0.22 %-wide target** and no single session can be within 1.5 % of all four whatever it reads.
+Task 3 predicted this before the sessions ran and it arrived exactly as predicted. What can be said,
+and is only a reading: this session's census anchors sit *between* R8 and R9, within 0.22 % of R8
+and 0.69 % of R9 — the two nearest in time — while the R4/R5 gap is the same ~2 % offset R9's record
+described as a four-rung creep. The anomaly is now **four rungs deep**, and it has acquired a second
+dimension: none of those four references records which machine produced it.
+
+A **paste-ready fresh reference set with device identity attached** is proposed in the measurement
+report (§6.3) and is deliberately **not committed** — RR decides whether the campaign re-bases. Two
+things a re-base would weigh, stated rather than decided: both R9b rotations carry 8 lanes, so
+re-basing on them re-bases onto an 8-lane composition rather than R4's 11 or R8's 12; and the
+CLASS/census session is the one that raised FLANK, so if a single canonical pair is wanted, the
+BUDGET rotation's census is the flank-clean one (0.011–0.023 ms against CLASS's 0.088–0.099).
+
+### Reproduction — two complete session sets
+
+The repeat set ran the identical protocol **before any profiler touched the machine**. Each cell is
+that set's own emitter row.
+
+| row | A locality | B locality | A census | B census |
+| --- | --- | --- | --- | --- |
+| `c-hot16@128` − `reorder-hot16@128` | +0.166 (96/96) | +0.193 (96/96) | +0.211 (96/96) | +0.204 (96/96) |
+| `b-hot16@128` − `reorder-hot16@128` | −0.004 (61/96) | −0.002 (57/96) | −0.003 (52/96) | −0.001 (50/96) |
+| `cd-hot16@128` − `reorder-hot16@128` | **−0.194 (96/96)** | **−0.164 (96/96)** | **−0.128 (96/96)** | **−0.128 (96/96)** |
+| `bd-hot16@128` − `reorder-hot16@128` | +0.038 (96/96) | +0.037 (96/96) | +0.155 (96/96) | +0.151 (96/96) |
+| `reorder-hot16@128` − `hot16@128` | +0.802 (96/96) | +0.756 (96/96) | +0.778 (96/96) | +0.778 (96/96) |
+| `hot16-lb6@128` − `hot16@128` | +0.948 (96/96) | +0.946 (96/96) | +0.847 (96/96) | +0.841 (96/96) |
+| `hot16-free@128` − `hot16@128` | +0.178 (96/96) | +0.164 (96/96) | +0.107 (96/96) | +0.086 (96/96) |
+| `c-hot16@128` − `hot16@128` | +0.983 (96/96) | +0.950 (96/96) | +0.997 (96/96) | +0.979 (96/96) |
+| `c-hot16-lb6@128` − `c-hot16@128` | −0.818 (96/96) | −0.805 (96/96) | −0.860 (96/96) | −0.864 (96/96) |
+| `c-hot16-free@128` − `c-hot16-lb6@128` | −0.881 (96/96) | −0.884 (96/96) | −0.857 (96/96) | −0.862 (96/96) |
+| `c-hot16-free@128` − `hot16@128` | −0.717 (96/96) | −0.737 (96/96) | −0.719 (96/96) | −0.749 (96/96) |
+
+**Every row in both sets is 96/96 signed except the two `B − drop-in` cells, which are 50–61/96 in
+both sets — the wash reproduces as a wash.** The widest movement between sets on any row is
+**0.030 ms**; no sign flipped anywhere. The repeat set ran hotter throughout (its first session
+started at 62 °C where A's started cold at 33 °C), its locality anchors came in ~0.4 % faster and
+its census anchors ~0.5 % slower, and its census flanks moved further — all small, and both sets
+agree on every row.
+
+### Instrument notes
+
+- **The bridge is the only cross-session statement this rung makes.** `c-hot16@128` is the one cell
+  both rotations carry, and it reads 15.763 (CLASS) against 15.809 (BUDGET) on locality, +0.29 %,
+  and 16.348 against 16.344 on census, −0.02 %. Both are below the emitter's 1.5 % reporting
+  threshold and no `BRIDGE` flag was raised, so the two rotations are comparable at that size —
+  but a paired per-round contrast is valid only inside one session, and every row above stays
+  inside its own.
+- **Two timed cells were never profiled**, both because the Full-Picture manifest is a fixed five
+  plus one conditional slot. `hot16-lb6@128` — the largest single loss in the rung, and the only
+  body whose *static* `MOV R, UR` count goes to zero — has no instruction census, twiddle count or
+  stall profile. And `c-hot16@128` is the **baseline arm of the remat-collapse row**, so that row's
+  baseline has no dynamic bank-3 count; the collapse is shown against the drop-in and the incumbent
+  instead. Both gaps are properties of the manifest, not of the run, and a rung that wants the
+  budget axis attributed has to widen it.
+- **The Full Pictures are lineinfo-free**, unavoidable under the build freeze, same deviation R7,
+  R7b, R8 and R9 recorded — so the +1,114 instructions/warp that C+D still carries is attributed by
+  opcode, not to source constructs. R9's own lineinfo re-attribution was possible only because it
+  ran after that rung's freeze ended.
+- **The profiler's two clock witnesses disagree with each other.** The nvidia-smi sidecars around
+  the captures report a monotone 2,422 → 2,347 MHz decline across the twelve captures at 94–164 W,
+  while ncu's in-capture `gpc__cycles_elapsed.avg.per_second` reports 2.29–2.43 GHz with only the
+  two C+D captures low. They do not agree about which captures were slow; the tables above use
+  ncu's figure, which is the one measured inside the profiled launch, and print both.
+- **The GPU is SW-power-capped (600 W) in every timed session**, `clocks_event_reasons.active`
+  exactly `{0x0, 0x4}` in all eight, sustained ~2.25–2.42 GHz. Only the first session started cold
+  (33 °C); the 80 s soak carries it into steady state and the other seven started at 60–62 °C.
+- **A committed gate had been red and nobody noticed.** `r6_gates.sh all` broke when R9's Task 2
+  extended a runner rejection message that r6's pin quoted verbatim; three rows of its rejection
+  matrix had been failing since `824c53ff`, unnoticed because r6 is in no chain. It was repaired in
+  one line during this rung's tooling task. Worth carrying: a gate outside every chain is a gate
+  nobody runs.
+- The profiler tables above are column-trimmed views of the machine-generated ones; `ncu-tables.md`,
+  `g0-table.md` and `sass-census.md` carry every column and win any disagreement.
+- `q` is **bit-identical** to the in-session incumbent in every timed cell — nine cells × two arms ×
+  two orders, 36 cells, all `ed3bead0bce8`, the uncached control's digest — with chain-call
+  equality, poison behaviour and the duplicate-rule coverage extended to every budget cell
+  (amendment A11).
+
+### What this rung leaves open
+
+- **R9's separator debt is still open.** Neither budget separator holds its intended constant, and
+  the −4.84 % of `c-hot16-free@128` is not decomposed into "the block" versus "the collapse". The
+  arms that would do it — a reordered body at `(128, 7)` with its remat already collapsed, or one
+  at `(128, 8)` — do not exist.
+- **The corrected bodies' remaining +4.11 % is unattributed.** At 72 allocated registers, 7 blocks
+  and identical frame traffic, this measurement cannot say whether it is intrinsic to gate-first
+  dataflow or another ptxas allocation outcome, and without lineinfo it cannot even be assigned to
+  source constructs.
+- **The class axis was measured at ONE budget.** Every corrected body was timed only at `(128,7)`.
+  Task 1 built all six shapes at three budgets and the budget axis is worth more on this evidence,
+  but no corrected body other than C was timed at `(128,6)` or unbounded — so "which corrected body
+  wins when it is allowed registers" is not answered here, and both D bodies sit at 59 static
+  registers unbounded, the lowest cells in the grid, untimed.
+- **Why D helps on C and hurts on B is unexplained.**
+- **The 64-thread axis (amendment A2) has nothing here to open it.** A9's trigger is a
+  relaxed-budget cell of the same body showing *work* reduction that the 128-thread occupancy step
+  is hiding. Both relaxed-budget cells that were profiled land at 80 allocated registers and show no
+  work reduction at all — C at `(128,6)` burns +2.7 % FMA-active cycles and the unbounded incumbent
+  +0.66 / +0.88 % — so on this evidence the trigger does not fire. (That is a reading of A9 against
+  this rung's captures; the measurement report does not address A2.)
+- **The census reference set is self-contradictory at the reporting threshold**, and the fresh
+  identity-recorded replacement is proposed but not committed. Until RR re-bases, every census
+  `ANCHOR` flag in this campaign is reporting that disagreement.
+
+### Artifacts
+
+`.agents/sdd/2026-08-13-v3-r9b/`: the emitter records `emitter-output.md` (the four canonical logs,
+one invocation) and `emitter-output-repeat.md` — the only timing authority — and the
+machine-generated `ncu-tables.md`, `g0-table.md`, `sass-census.md`; the sessions
+`r9b-{class,budget}-{locality,census}.log` (the names Task 3's fixture rows pin) and their
+`-repeat` counterparts, each with `.warm` / `.soak` / `.mark` and three telemetry sidecars **all
+carrying device identity**; `ncu/capture-identity.tsv` (identity before and after all 22 captures),
+`ncu/capture-telemetry.tsv`, `ncu/g0-*.log`, `ncu/capture-*.txt`; `prefreeze-r7-gates-all.log` and
+`frozen-binary.sha` (which records the device and the toolchain as well as the sha); the drivers
+`task4-{run,session,g0,capture,cells}.sh`, the named extractors
+`task4-{extract,g0extract,sass}.py`, and `task4-chain.log`; the reports `task-1-report.md` (the
+static grid), `task-2-report.md` (lanes and validation), `task-3-report.md` (tooling) and
+`task-4-report.md` (the measurement), plus the ledger `progress.md`. Profiler captures under
+`target/profiling/ncu/` as `20260813_112*_v3r9b_*` — 10 G0 reports and 12 Full Pictures. The frozen
+session binary is `88159404…62b96cd` at tip `1e808073`, on GPU
+`GPU-cbaba4fd-068d-d035-1c18-1d9c16f1648b`.
