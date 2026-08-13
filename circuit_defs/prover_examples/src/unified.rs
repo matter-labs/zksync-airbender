@@ -21,7 +21,6 @@ use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::{prove_configured_with_gkr, CommitmentMode};
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
-use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::transcript::Blake2sTranscript;
@@ -39,14 +38,6 @@ use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDes
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 use setups::UnrolledCircuitSetupParams;
 
-// Upstream #368 moved the unified trace size to the circuit's `DOMAIN_SIZE_LOG2`
-// associated constant; the old `UNIFIED_TRACE_LEN_LOG2`
-// no longer exists. Single source of truth, mirrored from setups' own usage.
-const UNIFIED_TRACE_LEN_LOG2: usize =
-    <setups::unrolled_circuits::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<
-        BabyBearField,
-        true,
-    >>::DOMAIN_SIZE_LOG2 as usize;
 use setups::UnrolledCircuitWitnessEvalFn;
 use std::alloc::Global;
 use std::collections::BTreeMap;
@@ -336,7 +327,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
 
     // for unified circuits we have non-trivial splitting of inits and teardowns - only last N circuits out of all
     // `num_circuits_to_prove` will contribute to the grand product, and so we need to compute N. In general it would
-    // require us to scan all continuous `UNIFIED_TRACE_LEN_LOG2` * core::mem::size_of::<u32>() byte chunks
+    // require us to scan all continuous `trace_len_log2` * core::mem::size_of::<u32>() byte chunks
     // of RAM to check if any address in those is touched, but we assume to fully control the recursion program
     // (and it's the only one + may be few test ones that will run in such mode), so we know that we will not touch anything above
     // quite low upper bound (and we can update linker script to make this bound even lower)

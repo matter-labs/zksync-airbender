@@ -102,7 +102,7 @@ pub fn multivariate_hypercube_evals_into_coeffs_radix4<F: Field>(input: &mut [F]
     }
     if remaining == 1 {
         for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
-            b.sub_assign(&a);
+            b.sub_assign(a);
         }
     }
 }

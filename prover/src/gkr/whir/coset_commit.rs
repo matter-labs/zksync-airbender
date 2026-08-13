@@ -28,11 +28,10 @@ use crate::gkr::prover::stages::commitment_utils::{
     compute_column_major_lde_single_coset_with_offset_serial,
     pack_polys_parallel_from_hypercubes_to_monomials,
 };
-use crate::merkle_trees::keccak256_for_everything_tree::{Digest32, Keccak256MerkleTreeWithCap};
-use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_cosets;
-use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueriable,
-};
+use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
+#[cfg(test)]
+use crate::merkle_trees::PathQueriable;
+use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength};
 use core::marker::PhantomData;
 use fft::{
     bitreverse_enumeration_inplace, bitreverse_index, domain_generator_for_size,
@@ -408,6 +407,10 @@ where
     /// values reshaped into offset-major `[offset][column]` form (matching
     /// `ColumnMajorBaseOracleForLDE::query_for_folded_index`), as consumed by
     /// `whir_fold`'s round-0 batching. Results are in input order.
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     pub fn query_many_structured(
         &self,
         query_indices: &[usize],
@@ -466,6 +469,10 @@ where
 /// [`OnDiskCosetTree`](crate::merkle_trees::on_disk::OnDiskCosetTree); the
 /// resulting commitment is byte-identical to the monolithic packed commitment
 /// (`commit_packed`), so proofs are unchanged.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn serialize_packed_base_commitment_split_to_disk<F, T>(
     input_on_hypercube: &[&[F]],
     twiddles: &Twiddles<F, Global>,
@@ -905,6 +912,10 @@ where
     /// they land in and recompute each touched group's LDE columns + subtree
     /// exactly once for all its queries. Per query the result tuple is identical
     /// to [`query`](Self::query); results are in input order.
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     pub fn query_many(
         &self,
         query_indices: &[usize],
@@ -937,6 +948,10 @@ where
         let offsets =
             offsets_vec_for_leaf_construction(1usize << self.trace_len_log2, self.values_per_leaf);
 
+        #[expect(
+            clippy::type_complexity,
+            reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+        )]
         let mut out: Vec<Option<(usize, Vec<E>, ExtensionFieldQuery<F, E, T>)>> =
             (0..query_indices.len()).map(|_| None).collect();
 

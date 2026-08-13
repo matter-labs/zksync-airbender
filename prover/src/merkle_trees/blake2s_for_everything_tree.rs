@@ -184,7 +184,7 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
 
     fn construct_from_coset_producer<'a, E: FieldExtension<BabyBearField> + 'a>(
         num_cosets: usize,
-        mut producer: CosetColumnsProducer<'a, E>,
+        producer: CosetColumnsProducer<'a, E>,
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,
@@ -196,7 +196,7 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         [(); E::DEGREE]: Sized,
     {
         use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_cosets;
-        let cosets: Vec<Vec<Cow<'a, [E]>>> = (0..num_cosets).map(|c| producer(c)).collect();
+        let cosets: Vec<Vec<Cow<'a, [E]>>> = (0..num_cosets).map(producer).collect();
         let trace: Vec<Vec<&[E]>> = cosets
             .iter()
             .map(|coset| coset.iter().map(|c| c.as_ref()).collect())

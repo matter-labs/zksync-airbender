@@ -19,7 +19,7 @@
 
 #![allow(dead_code)]
 
-use field::{Field, PrimeField, Proth120, Rand};
+use field::{Field, Proth120, Rand};
 
 pub const MASK52: u64 = (1u64 << 52) - 1;
 /// `p` in base-2^52 limbs: `7·2^120 + 1 = [1, 0, 7·2^16]`.
@@ -541,6 +541,10 @@ pub fn scalar52_ntt_bitreversed_to_natural(p: &mut Planes, log_n: u32, tw52: &[F
     let mut ppg = 1usize;
     let mut num_groups = n / 2;
     while num_groups > 1 {
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for k in 0..num_groups {
             let s = tw52[k];
             let base = k * ppg * 2;
@@ -625,6 +629,10 @@ pub trait Kernel8 {
     /// kernels override with an in-register permute/shift sequence.
     unsafe fn load8_split(ptr: *const u128) -> Self::V {
         let mut xb = [[0u64; 8]; 3];
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for l in 0..8 {
             let raw = ptr.add(l).read_unaligned();
             xb[0][l] = (raw as u64) & MASK52;
@@ -644,6 +652,10 @@ pub trait Kernel8 {
             yb[1].as_mut_ptr(),
             yb[2].as_mut_ptr(),
         );
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for l in 0..8 {
             let val = (yb[0][l] as u128) | ((yb[1][l] as u128) << 52) | ((yb[2][l] as u128) << 104);
             ptr.add(l).write_unaligned(val);
@@ -739,6 +751,10 @@ impl Kernel8 for ScalarK {
         core::array::from_fn(|l| [*l0.add(l), *l1.add(l), *l2.add(l)])
     }
     unsafe fn store(v: Self::V, l0: *mut u64, l1: *mut u64, l2: *mut u64) {
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for l in 0..8 {
             *l0.add(l) = v[l][0];
             *l1.add(l) = v[l][1];
@@ -860,6 +876,10 @@ unsafe fn ntt_block8<K: Kernel8>(
     let mut ppg = 1usize;
     let mut num_groups = len / 2;
     while num_groups > 1 {
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for k in 0..num_groups {
             let s = &tw52[k];
             let base = k * ppg * 2;
@@ -1167,6 +1187,10 @@ impl Kernel8 for ScalarLazyK {
         core::array::from_fn(|l| [*l0.add(l), *l1.add(l), *l2.add(l)])
     }
     unsafe fn store(v: Self::V, l0: *mut u64, l1: *mut u64, l2: *mut u64) {
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for l in 0..8 {
             *l0.add(l) = v[l][0];
             *l1.add(l) = v[l][1];
@@ -1592,7 +1616,7 @@ pub fn lde_coset_six_step<K: Canonicalize>(
             }
         }
     }
-    if let Some(s) = stages.as_deref_mut() {
+    if let Some(s) = stages {
         s.scatter_out = t0.elapsed().as_secs_f64();
     }
 

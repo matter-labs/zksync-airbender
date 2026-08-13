@@ -80,13 +80,13 @@ pub fn scaled_bitreverse_gather<F: Field, E: Field + FieldExtension<F>>(
 
     // Small inputs: direct loop.
     if n <= MEDIUM_BITREVERSE_LOOKUP_TABLE.len() {
-        for j in 0..n {
+        for (j, dst_el) in dst.iter_mut().enumerate() {
             let src_idx = bitreverse_index(j, log_n);
             let mut v = src[src_idx];
             if let Some(p) = powers {
                 v.mul_assign_by_base(&p.get(src_idx));
             }
-            dst[j] = v;
+            *dst_el = v;
         }
         return;
     }

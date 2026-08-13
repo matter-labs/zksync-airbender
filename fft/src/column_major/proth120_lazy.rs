@@ -10,7 +10,7 @@
 //!
 //! Validated element-exact against `fft::lde_coset_natural_seq_fused`.
 
-use field::{Field, PrimeField, Proth120};
+use field::{Field, Proth120};
 use worker::Worker;
 
 pub const ORDER: u128 = (7u128 << 120) + 1;
@@ -109,6 +109,10 @@ pub fn ntt_lazy_bitreversed_to_natural(a: &mut [u128], log_n: u32, twiddles: &[P
     let mut ppg = 1usize;
     let mut num_groups = n / 2;
     while num_groups > 1 {
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for k in 0..num_groups {
             let s = twiddles[k].raw_u128_value();
             let base = k * ppg * 2;
@@ -443,7 +447,8 @@ pub fn parallel_ntt_lazy_bitreversed_to_natural_r8(
                 });
             }
         });
-        ppg <<= 2;
+        // `ppg` is not read past this point -- the tail below is driven by
+        // `num_groups` and `n` alone -- so it is deliberately not advanced here.
         num_groups >>= 2;
     }
 
@@ -648,7 +653,7 @@ fn lde_coset_lazy_with_kernel(
 mod tests {
     use super::*;
     use crate::twiddles::precompute_all_twiddles_for_fft_serial;
-    use field::{Rand, TwoAdicField};
+    use field::Rand;
     use std::alloc::Global;
 
     /// The lazy pipeline must equal `lde_coset_natural_seq_fused` exactly.

@@ -200,6 +200,10 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     /// then dropped, so a recomputing producer keeps only one coset in memory. Each
     /// concrete tree implements this (the per-field leaf hashing lives here);
     /// [`Self::construct_from_cosets`] is a materialized-input wrapper over it.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+    )]
     fn construct_from_coset_producer<'a, E: FieldExtension<F> + 'a>(
         num_cosets: usize,
         producer: CosetColumnsProducer<'a, E>,
@@ -224,6 +228,10 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     /// Implementations delegate to [`on_disk::write_disk_artifacts`], supplying an
     /// accessor for their concrete [`SerializableTreeLayers`](on_disk::SerializableTreeLayers);
     /// that free function holds the shared layout orchestration.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+    )]
     fn write_disk_artifacts<'a, E: FieldExtension<F> + 'a>(
         base_path: &str,
         layout: on_disk::OnDiskTreeLayout,

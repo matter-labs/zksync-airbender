@@ -61,8 +61,15 @@
 // - then we draw a challenge and evaluate p(alpha) = \sum_{X'} eq(r1, ...., alpha, X') f(alpha, X') =
 // = \sum_{X''} eq(r1, ...., alpha, 0, X'') f(alpha, 0, X'') + eq(r1, ...., alpha, 1, X'') f(alpha, 1, X'')
 
+// `allow`, not `expect`: under the default feature set both of these names also
+// reach this module through the `crate::gkr::sumcheck::*` glob below, so rustc
+// reports the explicit imports as unused -- but under other feature
+// combinations (e.g. `--all-features`) that glob path is gone and the explicit
+// imports are the only thing that resolves the call sites in `whir_fold`.
+// Removing either one is a build break; an `expect` would go unfulfilled in the
+// configurations where the lint does not fire.
+#[allow(unused_imports, reason = "required under non-default feature sets")]
 use crate::gkr::prover::stages::commitment_utils::{
-    compute_column_major_lde_from_monomial_form,
     compute_column_major_monomial_form_from_main_domain_owned, ColumnMajorCosetBoundTracePart,
 };
 use crate::gkr::prover::transcript_utils::{
@@ -74,16 +81,15 @@ use crate::gkr::sumcheck::eq_poly::make_domain_eq_poly_in_full;
 use crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
-use crate::gkr::whir::hypercube_to_monomial::{
-    multivariate_coeffs_into_hypercube_evals, parallel_multivariate_coeffs_into_hypercube_evals,
-};
+#[allow(unused_imports, reason = "required under non-default feature sets")]
+use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 use crate::gkr::PAR_THRESHOLD;
 use crate::query_utils::assemble_query_index;
 use crate::{
     gkr::prover::apply_row_wise,
     merkle_trees::{
-        ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueriable,
-        RSQueriable, SingleCosetRSQueriable,
+        ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, RSQueriable,
+        SingleCosetRSQueriable,
     },
 };
 use fft::{
@@ -262,8 +268,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
             lde_factor,
         );
         let mut cosets = Vec::with_capacity(lde_factor);
-        for i in 0..lde_factor {
-            let offset = generators[i];
+        for &offset in generators.iter() {
             let coset = ColumnMajorBaseOracleForCoset {
                 original_values_normal_order: Vec::new(),
                 offset,
@@ -358,6 +363,13 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         let num_columns = values_offset_major[0].len();
 
         let mut buffer = Vec::new();
+        // Transposing read: the outer index walks the INNER dimension of
+        // `values_offset_major` (offset-major in, column-major out), so neither
+        // loop can be turned into a straight iterator over that slice.
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for c in 0..num_columns {
             for o in 0..values_per_leaf {
                 buffer.push(values_offset_major[o][c].as_u32_raw_repr_reduced());
@@ -483,6 +495,10 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
     /// groups the indices by the LDE coset they land in and recomputes each
     /// touched coset's RS codeword + subtree once for all its queries (`twiddles`
     /// and `worker` exist for that recomputation).
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     pub fn query_many(
         &self,
         query_indices: &[usize],
@@ -720,6 +736,10 @@ where
     /// Serve a batch of this round's queries at once (per query the same tuple as
     /// [`ColumnMajorExtensionOracleForLDE::query_for_folded_index`]), results in
     /// input order. `twiddles`/`worker` are used by the recompute variant only.
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     fn query_many(
         &self,
         query_indices: &[usize],
@@ -738,6 +758,10 @@ where
 
 /// Build the intermediate oracle for a folded monomial form, returning its Merkle
 /// cap (to commit) and the oracle.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 fn build_intermediate_oracle<F, E, T>(
     backend: &impl crate::gkr::prover::backend::Backend<F, E>,
     monomial_form: &[E],
@@ -4057,7 +4081,7 @@ mod test {
         };
 
         let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup);
-        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript>(
+        let _proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript>(
             mem,
             a,
             wit,

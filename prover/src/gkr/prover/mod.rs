@@ -190,6 +190,10 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     }
 
     /// log2 of a single LDE coset (per-coset polynomial length).
+    #[expect(
+        dead_code,
+        reason = "accessor kept alongside the other SetupCommitment getters; no caller yet"
+    )]
     pub(crate) fn coset_size_log2(&self) -> usize {
         match self {
             SetupCommitment::InMemory(oracle) => oracle.coset_size_log2(),
@@ -204,6 +208,10 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     /// oracle enum (which batches over cosets when it recomputes); `OnDisk` reads
     /// each query's leaf values from the on-disk RS source and its Merkle path from
     /// the mmap'd on-disk tree (both cheap, so per-query serving is fine).
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     pub(crate) fn query_many(
         &self,
         query_indices: &[usize],
@@ -415,10 +423,6 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
 #[expect(
     clippy::too_many_arguments,
     reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
-)]
-#[expect(
-    clippy::type_complexity,
-    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
 )]
 pub fn prove_configured_with_gkr<
     F: PrimeField + TwoAdicField,

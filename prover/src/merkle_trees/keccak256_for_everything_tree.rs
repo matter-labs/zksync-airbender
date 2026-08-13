@@ -177,7 +177,7 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
 
     fn construct_from_coset_producer<'a, E: FieldExtension<Proth120> + 'a>(
         num_cosets: usize,
-        mut producer: CosetColumnsProducer<'a, E>,
+        producer: CosetColumnsProducer<'a, E>,
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,
@@ -188,7 +188,7 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
     where
         [(); E::DEGREE]: Sized,
     {
-        let cosets: Vec<Vec<Cow<'a, [E]>>> = (0..num_cosets).map(|c| producer(c)).collect();
+        let cosets: Vec<Vec<Cow<'a, [E]>>> = (0..num_cosets).map(producer).collect();
         let trace: Vec<Vec<&[E]>> = cosets
             .iter()
             .map(|coset| coset.iter().map(|c| c.as_ref()).collect())

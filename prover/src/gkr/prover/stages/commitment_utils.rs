@@ -382,9 +382,13 @@ pub(crate) fn lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
     assert_eq!(root_powers[0], F::ONE);
 
     let mut cosets = Vec::with_capacity(lde_factor);
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+    )]
     for i in 0..lde_factor {
         let mut sources = if i == lde_factor - 1 {
-            core::mem::replace(&mut monomials, vec![])
+            core::mem::take(&mut monomials)
         } else {
             monomials.clone()
         };
@@ -481,6 +485,10 @@ pub(crate) fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdi
     cosets
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn commit_trace_part<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,

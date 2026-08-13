@@ -13,7 +13,7 @@
 //! Values and layout are identical to the reference (`canonical < p`,
 //! Montgomery radix `R = 2^128`), verified by [`self_check`].
 
-use field::{Field, PrimeField, Proth120, Rand};
+use field::{Field, Proth120, Rand};
 
 const P_LO: u64 = 1;
 const P_HI: u64 = 7u64 << 56;

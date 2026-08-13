@@ -208,7 +208,8 @@ pub fn prove_built_family_trace_on_disk_setup(
     let tree_path = crate::merkle_trees::on_disk::monolithic_tree_file_path(disk_prefix);
 
     // Drop the in-memory setup oracle: from here the setup lives only on disk.
-    drop(materialized);
+    // (`materialized` is just a borrow into `setup_oracle`, so dropping the owner
+    // is what actually releases the memory.)
     drop(setup_oracle);
 
     // 3) Read them back: RS codewords + (monolithic) tree both served lazily via mmap.
