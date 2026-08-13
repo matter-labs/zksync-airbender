@@ -273,6 +273,7 @@ where
             folding_steps,
             worker,
             seed,
+            crate::gkr::prover_config::SameSizeSchedules::naive(),
         );
 
     assert_eq!(folding_challenges.len(), folding_steps);
@@ -398,20 +399,22 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     E: FieldExtension<F> + Field,
     TR: Transcript<F, E>,
     CK: Fn(
-            &[usize],
-            &[usize],
-            &[[usize; 2]],
-            &[crate::gkr::prover::dimension_reduction::lsb_backward::LsbDimReducingRelation<E>],
-            Option<E>,
-            usize,
-            usize,
-            usize,
-        ) -> [E; 2]
+        &[crate::gkr::prover::SendConstPtr<E>],
+        &[crate::gkr::prover::SendPtr<E>],
+        &[[crate::gkr::prover::SendConstPtr<E>; 2]],
+        &[crate::gkr::prover::dimension_reduction::lsb_backward::LsbDimReducingRelation<E>],
+        Option<E>,
+        crate::gkr::prover::SendConstPtr<E>,
+        usize,
+        usize,
+        crate::gkr::prover::SendPtr<[u128; 2]>,
+    ) -> [E; 2]
         + Send
         + Sync
         + Copy,
 >(
     chunk_kernel: CK,
+    schedule: &[crate::gkr::prover_config::SumcheckStep],
     layer_idx: usize,
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
     claim_points: &mut BTreeMap<usize, Vec<E>>,
@@ -421,6 +424,7 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     seed: &mut TR::Seed,
     trace_len_after_reduction: usize,
     worker: &Worker,
+    scratch: &mut crate::gkr::prover::gkr_backend::DimReducingSumcheckScratch<E>,
 ) -> SumcheckIntermediateProofValues<F, E>
 where
     [(); E::DEGREE]: Sized,
@@ -503,7 +507,10 @@ where
 
     // materialize raw pointers up front (no storage borrows held during the
     // sumcheck -- the round-0 purge callback needs `&mut gkr_storage`)
-    let (poly_raw, output_ptr_table): (Vec<(usize, usize)>, Vec<[usize; 2]>) = {
+    let (poly_raw, output_ptr_table): (
+        Vec<(*const E, usize)>,
+        Vec<[crate::gkr::prover::SendConstPtr<E>; 2]>,
+    ) = {
         let out_addrs: Vec<GKRAddress> = relation_outputs
             .iter()
             .flat_map(|p| p.iter().copied())
@@ -515,12 +522,12 @@ where
             outputs_in_extension: Vec::new(),
         };
         let sources = unsafe { gkr_storage.get_for_sumcheck_round_0(&lsb_inputs) };
-        let poly_raw: Vec<(usize, usize)> = sources
+        let poly_raw: Vec<(*const E, usize)> = sources
             .extension_field_inputs
             .iter()
             .map(|src| {
                 let v = src.current_values();
-                (v.as_ptr() as usize, v.len())
+                (v.as_ptr(), v.len())
             })
             .collect();
         drop(sources);
@@ -531,23 +538,35 @@ where
             outputs_in_extension: Vec::new(),
         };
         let out_sources = unsafe { gkr_storage.get_for_sumcheck_round_0(&out_inputs) };
-        let flat: Vec<usize> = out_sources
-            .extension_field_inputs
-            .iter()
-            .map(|src| src.current_values().as_ptr() as usize)
-            .collect();
-        let table: Vec<[usize; 2]> = flat.chunks(2).map(|c| [c[0], c[1]]).collect();
+        let flat: Vec<crate::gkr::prover::SendConstPtr<E>> =
+            out_sources
+                .extension_field_inputs
+                .iter()
+                .map(|src| {
+                    crate::gkr::prover::SendConstPtr(
+                        src.current_values().as_ptr(),
+                    )
+                })
+                .collect();
+        let table: Vec<[crate::gkr::prover::SendConstPtr<E>; 2]> =
+            flat.chunks(2).map(|c| [c[0], c[1]]).collect();
         (poly_raw, table)
     };
     let polys: Vec<&[E]> = poly_raw
         .iter()
-        .map(|&(p, l)| unsafe { core::slice::from_raw_parts(p as *const E, l) })
+        .map(|&(p, l)| unsafe { core::slice::from_raw_parts(p, l) })
         .collect();
 
     // incoming claim points are stored high-variable-first; the LSB rounds
     // consume them low-variable-first
     let tau: Vec<E> = prev_challenges.iter().rev().copied().collect();
 
+    // fold + tri scratch shared across ALL dimension-reducing layers,
+    // max-sized and owned by the backward-pass driver loop
+    assert!(scratch.fold.len() >= polys.len());
+    let num_polys = polys.len();
+    let (fold_scratch, tri_scratch) =
+        (&mut scratch.fold[..num_polys], &mut scratch.tri[..]);
     let gkr_storage_cell = core::cell::RefCell::new(&mut *gkr_storage);
     let (out, lsb_challenges) = lsb_dim_reducing_sumcheck_prove_fused::<F, E, CK>(
         &polys,
@@ -556,6 +575,9 @@ where
         &tau,
         claim,
         worker,
+        schedule,
+        fold_scratch,
+        tri_scratch,
         chunk_kernel,
         |coeffs| {
             commit_field_els::<F, E, TR>(seed, coeffs);
@@ -660,6 +682,7 @@ pub fn evaluate_sumcheck_for_layer<
     external_challenges: &GKRExternalChallenges<F, E>,
     seed: &mut TR::Seed,
     worker: &Worker,
+    same_size_schedules: crate::gkr::prover_config::SameSizeSchedules<'_>,
 ) -> SumcheckIntermediateProofValues<F, E>
 where
     [(); E::DEGREE]: Sized,
@@ -704,6 +727,136 @@ where
         _marker: core::marker::PhantomData,
     };
 
+    // Bring-up: GKR_SS_LSB=<layer_idx> runs the UNFUSED LSB uniskip chain
+    // for that layer. The engine only computes; THIS caller drives the
+    // transcript, chains claims, collects SumcheckRoundCoefficients and runs
+    // every self-check. The claim point has no per-coordinate form yet, so
+    // the run stops after the layer (prover/mod.rs panics under the gate).
+    let lsb_env_layer: Option<usize> = std::env::var("GKR_SS_LSB")
+        .ok()
+        .and_then(|v| v.parse().ok());
+    if lsb_env_layer == Some(layer_idx) {
+        let n = folding_steps;
+        assert_eq!(n % 3, 0, "LSB chain bring-up expects 3 | folding_steps");
+        let num_passes = n / 3;
+        // pass k sums over the HIGH variables: eq table over prev[0..n-3(k+1)]
+        // (legacy point order is high-variable-first)
+        let eq_suffixes: Vec<Box<[E]>> = (0..num_passes)
+            .map(|k| {
+                let m = n - 3 * (k + 1);
+                if m == 0 {
+                    vec![E::ONE].into_boxed_slice()
+                } else {
+                    make_eq_poly_in_full::<E>(&prev_challenges[..m], worker)
+                        .pop()
+                        .unwrap()
+                }
+            })
+            .collect();
+
+        // fold arena provided by THIS caller through the batch-allocation
+        // API (LSB ping-pong sizing), keyed off the same description-derived
+        // poly order the engine uses
+        let lsb_description =
+            collector.make_batched_description(&challenge_constants, collector.layer);
+        let (_lsb_compact, lsb_base_addrs, lsb_ext_addrs) =
+            windowed_mode::full_size_scratch::produce_descriptions_from_batched_description(
+                &lsb_description,
+            );
+        let mut lsb_fold_map = crate::gkr::prover::gkr_backend::allocate_same_size_fold_buffers::<
+            F,
+            E,
+        >(
+            &[crate::gkr::prover_config::SumcheckStep::UniskipInitial { window: 3 }],
+            crate::gkr::prover::gkr_backend::SumcheckBindingOrder::Lsb,
+            1usize << n,
+            &lsb_base_addrs,
+            &lsb_ext_addrs,
+        );
+        let mut lsb_fold_arena: Vec<Box<[core::mem::MaybeUninit<E>]>> = lsb_base_addrs
+            .iter()
+            .chain(lsb_ext_addrs.iter())
+            .map(|a| lsb_fold_map.remove(a).expect("allocated"))
+            .collect();
+
+        let mut running_claim = claim;
+        let mut lsb_rounds: Vec<crate::gkr::prover::SumcheckRoundCoefficients<E>> = Vec::new();
+        let mut lsb_challenges: Vec<E> = Vec::new();
+        let chain_timer = std::time::Instant::now();
+        let finals = {
+            let seed_ref = &mut *seed;
+            let rc = &mut running_claim;
+            let rounds = &mut lsb_rounds;
+            let chs = &mut lsb_challenges;
+            windowed_mode::lsb_chain::run_lsb_uniskip_chain::<F, E, _>(
+                &collector,
+                &challenge_constants,
+                gkr_storage,
+                n,
+                &eq_suffixes,
+                &mut lsb_fold_arena,
+                worker,
+                |g, q16| {
+                    use crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::*;
+                    let omega16_bb = ::fft::domain_generator_for_size::<
+                        ::field::baby_bear::base::BabyBearField,
+                    >(16);
+                    let omega16_f: F = unsafe { *(&omega16_bb as *const _ as *const F) };
+                    let coeffs = uniskip16_to_monomial::<F, E>(q16, omega16_f);
+                    #[cfg(feature = "gkr_self_checks")]
+                    {
+                        // pass g binds x_{3g}..x_{3g+2}; their legacy coords
+                        // are prev[n-3(g+1)..n-3g], slice order matching the
+                        // in-group memory offset
+                        let lo = n - 3 * (g + 1);
+                        let eq8: [E; 8] =
+                            make_eq_poly_in_full::<E>(&prev_challenges[lo..lo + 3], worker)
+                                .pop()
+                                .unwrap()
+                                .to_vec()
+                                .try_into()
+                                .unwrap();
+                        assert_eq!(
+                            uniskip16_claim_from_monomial::<F, E>(&coeffs, &eq8, omega16_f),
+                            *rc,
+                            "LSB uniskip chain: claim identity over H at pass {g}"
+                        );
+                    }
+                    commit_field_els::<F, E, TR>(seed_ref, &coeffs);
+                    rounds.push(crate::gkr::prover::SumcheckRoundCoefficients::Uniskip(
+                        coeffs.to_vec(),
+                    ));
+                    let r = draw_random_field_els::<F, E, TR>(seed_ref, 1)[0];
+                    *rc = uniskip16_horner(&coeffs, &r);
+                    chs.push(r);
+                    r
+                },
+            )
+        };
+        let finals = finals.expect("LSB chain fast path must apply on this platform");
+        println!(
+            "LSB uniskip chain for same-size layer {layer_idx}: {} passes, {} round messages, took {:?}",
+            num_passes,
+            lsb_rounds.len(),
+            chain_timer.elapsed()
+        );
+        #[cfg(feature = "gkr_self_checks")]
+        {
+            // final G identity: the batched relation at the chain's final
+            // per-poly values must reproduce the running claim
+            let augmented: BTreeMap<_, [E; 2]> =
+                finals.iter().map(|(addr, v)| (*addr, [*v, E::ZERO])).collect();
+            let recomputed = collector
+                .compute_last_step_accumulator_from_evals(&challenge_constants, &augmented);
+            assert_eq!(
+                recomputed[0], running_claim,
+                "LSB uniskip chain: final G identity"
+            );
+            println!("LSB uniskip chain: all in-layer self-checks passed");
+        }
+        let _ = finals;
+    }
+
     let (folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
         run_sumcheck_loop::<F, E, TR, 2, true>(
             &collector,
@@ -715,10 +868,24 @@ where
             folding_steps,
             worker,
             seed,
+            same_size_schedules,
         );
 
     assert_eq!(folding_challenges.len(), folding_steps);
-    assert_eq!(internal_round_coefficients.len(), folding_steps);
+    // bring-up: a uniskip head emits one round for its three variables
+    let uniskip_head_active = std::env::var("GKR_SS_UNISKIP")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        == Some(layer_idx);
+    if uniskip_head_active {
+        // each uniskip message (head or ext pass) covers 3 rounds; the 16
+        // monomial coefficients are committed but not yet carried in the
+        // [E; 4] proof vector (follow-up: Uniskip variant)
+        let missing = folding_steps - internal_round_coefficients.len();
+        assert!(missing >= 3 && missing % 3 == 0);
+    } else {
+        assert_eq!(internal_round_coefficients.len(), folding_steps);
+    }
 
     // After sumcheck completes, the last folding challenge (drawn inside the loop together
     // with the final univariate monomial) fixes the final coordinate. We reduce each input
@@ -762,9 +929,11 @@ where
 
     let mut transcript_inputs: Vec<E> = new_claims.values().copied().collect();
 
-    // self-check
+    // self-check (needs the claim point in per-coordinate form, which a
+    // uniskip head does not produce -- its in-layer validation is the
+    // accumulator identity above)
     #[cfg(feature = "gkr_self_checks")]
-    {
+    if !uniskip_head_active {
         println!("Self-checking explicit at-point evaluations");
         let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
         for (k, v) in new_claims.iter() {
@@ -793,7 +962,7 @@ where
             );
 
             #[cfg(feature = "gkr_self_checks")]
-            {
+            if !uniskip_head_active {
                 println!("Self-checking explicit at-point evaluations for cache relations");
                 let claim = new_claims[cached_addr];
                 if eq_poly.is_none() {
@@ -881,13 +1050,17 @@ where
             transcript_inputs.extend(extra_evaluations_from_caching_relations.values().copied());
         }
 
+        // (needs consistent at-point claims, which the uniskip bring-up's
+        // placeholder point cannot provide)
         #[cfg(feature = "gkr_self_checks")]
-        assert!(crate::gkr::prover::debug_utils::verify_cache_relations(
-            layer,
-            &new_claims,
-            external_challenges,
-            lookup_challenges_multiplicative_part,
-        ));
+        if !uniskip_head_active {
+            assert!(crate::gkr::prover::debug_utils::verify_cache_relations(
+                layer,
+                &new_claims,
+                external_challenges,
+                lookup_challenges_multiplicative_part,
+            ));
+        }
     }
 
     // after all claims for the next layer are ready - draw the next batching challenge
@@ -930,11 +1103,14 @@ fn run_sumcheck_loop<
     folding_steps: usize,
     worker: &Worker,
     seed: &mut TR::Seed,
+    same_size_schedules: crate::gkr::prover_config::SameSizeSchedules<'_>,
 ) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, E)
 where
     [(); E::DEGREE]: Sized,
 {
-    if USE_BATCHING {
+    // measurement toggle: GKR_SS_NAIVE=1 bypasses the windowed engine so the
+    // naive per-round loop can be benchmarked against it
+    if USE_BATCHING && std::env::var("GKR_SS_NAIVE").is_err() {
         use crate::gkr::prover::sumcheck_loop::windowed_mode::sumcheck_loop::windowed_sumcheck_loop;
         if let Some(result) = windowed_sumcheck_loop::<F, E, TR, N>(
             collector,
@@ -943,6 +1119,7 @@ where
             eq_poly,
             gkr_storage,
             challenge_constants,
+            same_size_schedules,
             folding_steps,
             worker,
             seed,

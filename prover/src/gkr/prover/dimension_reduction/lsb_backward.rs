@@ -1353,42 +1353,8 @@ pub fn lsb_dim_reducing_sumcheck_prove_columns<
         }
 
         let (h0, hinf) = (h2[0], h2[1]);
-        // derive h(1) from the round claim:
-        //   claim = eq_prefix * ((1 - tau)*h(0) + tau*h(1))
-        let mut e0 = E::ONE;
-        e0.sub_assign(&tau[s]);
-        let h1v = {
-            let mut v = claim;
-            v.mul_assign(&eq_prefix.inverse().expect("eq prefix nonzero"));
-            let mut t = e0;
-            t.mul_assign(&h0);
-            v.sub_assign(&t);
-            v.mul_assign(&tau[s].inverse().expect("tau nonzero"));
-            v
-        };
-        let mut h1x = h1v;
-        h1x.sub_assign(&h0);
-        h1x.sub_assign(&hinf);
-        let mut e1 = tau[s];
-        e1.sub_assign(&e0);
-        let mut c0 = e0;
-        c0.mul_assign(&h0);
-        let mut c1 = e0;
-        c1.mul_assign(&h1x);
-        let mut t = e1;
-        t.mul_assign(&h0);
-        c1.add_assign(&t);
-        let mut c2 = e0;
-        c2.mul_assign(&hinf);
-        let mut t = e1;
-        t.mul_assign(&h1x);
-        c2.add_assign(&t);
-        let mut c3 = e1;
-        c3.mul_assign(&hinf);
-        let mut coeffs = [c0, c1, c2, c3];
-        for c in coeffs.iter_mut() {
-            c.mul_assign(&eq_prefix);
-        }
+        let h1v = derive_h1_from_claim(&claim, &eq_prefix, &h0, &tau[s]);
+        let coeffs = cubic_round_message(&h0, &h1v, &hinf, &tau[s], &eq_prefix);
         #[cfg(feature = "gkr_self_checks")]
         {
             let [c0, c1, c2, c3] = coeffs;
@@ -1402,19 +1368,8 @@ pub fn lsb_dim_reducing_sumcheck_prove_columns<
         let r = draw_challenge(&coeffs);
         challenges.push(r);
         round_coefficients.push(coeffs);
-        let [c0, c1, c2, c3] = coeffs;
-        let mut nc = c3;
-        nc.mul_assign(&r);
-        nc.add_assign(&c2);
-        nc.mul_assign(&r);
-        nc.add_assign(&c1);
-        nc.mul_assign(&r);
-        nc.add_assign(&c0);
-        claim = nc;
-        let mut ew = e1;
-        ew.mul_assign(&r);
-        ew.add_assign(&e0);
-        eq_prefix.mul_assign(&ew);
+        claim = horner4(&coeffs, &r);
+        eq_prefix.mul_assign(&eq_weight(&tau[s], &r));
 
         // column-wise fold: src (round 0) or scratch live region -> next region
         {
@@ -1510,67 +1465,166 @@ pub fn lsb_dim_reducing_sumcheck_prove_columns<
 /// Portable scalar chunk kernel of the fused sweep (the naive backend's
 /// choice). Platform-specialized kernels live in the platform backends.
 #[allow(clippy::too_many_arguments)]
+use crate::gkr::prover::{SendConstPtr, SendPtr};
+
+/// h(1) from the round claim: `claim = eq_prefix * ((1 - tau)*h(0) + tau*h(1))`.
+#[inline]
+fn derive_h1_from_claim<E: Field>(claim: &E, eq_prefix: &E, h0: &E, tau_s: &E) -> E {
+    let mut e0 = E::ONE;
+    e0.sub_assign(tau_s);
+    let mut v = *claim;
+    v.mul_assign(&eq_prefix.inverse().expect("eq prefix nonzero"));
+    let mut t = e0;
+    t.mul_assign(h0);
+    v.sub_assign(&t);
+    v.mul_assign(&tau_s.inverse().expect("tau nonzero"));
+    v
+}
+
+/// Monomial coefficients of the cubic round message
+/// `q(X) = eq_prefix * eqw(X) * h(X)` from the `(h0, h1, hinf)` triple, with
+/// `eqw(X) = (1 - tau) + (2*tau - 1)*X` and
+/// `h(X) = h0 + (h1 - h0 - hinf)*X + hinf*X^2`.
+#[inline]
+fn cubic_round_message<E: Field>(h0: &E, h1: &E, hinf: &E, tau_s: &E, eq_prefix: &E) -> [E; 4] {
+    let mut h1x = *h1;
+    h1x.sub_assign(h0);
+    h1x.sub_assign(hinf);
+    let mut e0 = E::ONE;
+    e0.sub_assign(tau_s);
+    let mut e1 = *tau_s;
+    e1.sub_assign(&e0);
+    let mut c0 = e0;
+    c0.mul_assign(h0);
+    let mut c1 = e0;
+    c1.mul_assign(&h1x);
+    let mut t = e1;
+    t.mul_assign(h0);
+    c1.add_assign(&t);
+    let mut c2 = e0;
+    c2.mul_assign(hinf);
+    let mut t = e1;
+    t.mul_assign(&h1x);
+    c2.add_assign(&t);
+    let mut c3 = e1;
+    c3.mul_assign(hinf);
+    let mut coeffs = [c0, c1, c2, c3];
+    for c in coeffs.iter_mut() {
+        c.mul_assign(eq_prefix);
+    }
+    coeffs
+}
+
+/// Horner evaluation of the 4-coefficient round message at `r`.
+#[inline]
+fn horner4<E: Field>(c: &[E; 4], r: &E) -> E {
+    let mut nc = c[3];
+    nc.mul_assign(r);
+    nc.add_assign(&c[2]);
+    nc.mul_assign(r);
+    nc.add_assign(&c[1]);
+    nc.mul_assign(r);
+    nc.add_assign(&c[0]);
+    nc
+}
+
+/// The bound round's eq weight `(1 - tau) + (2*tau - 1)*r = eq(r, tau)`.
+#[inline]
+fn eq_weight<E: Field>(tau_s: &E, r: &E) -> E {
+    let mut e0 = E::ONE;
+    e0.sub_assign(tau_s);
+    let mut e1 = *tau_s;
+    e1.sub_assign(&e0);
+    let mut ew = e1;
+    ew.mul_assign(r);
+    ew.add_assign(&e0);
+    ew
+}
+
+/// Per-poly fetch of the CURRENT 4 pair values, folding + storing on the fly
+/// when a challenge is pending. Ancestor layout: value (Y', b) at index
+/// 2*Y' + b; the pending fold combines Y' = 2q, 2q+1 -> q, so the current
+/// pair j covers folded Y in {2j, 2j+1}, i.e. ancestors Y' in {4j..4j+4}.
+#[inline(always)]
+fn scalar_fetch_pair4<E: Field>(
+    cur_ptrs: &[SendConstPtr<E>],
+    dst_ptrs: &[SendPtr<E>],
+    rp: &Option<E>,
+    p: usize,
+    j: usize,
+) -> [E; 4] {
+    let src = cur_ptrs[p].0;
+    match rp {
+        None => unsafe {
+            [
+                *src.add(4 * j),
+                *src.add(4 * j + 1),
+                *src.add(4 * j + 2),
+                *src.add(4 * j + 3),
+            ]
+        },
+        Some(r) => unsafe {
+            let d = dst_ptrs[p].0;
+            let mut out = [E::ZERO; 4];
+            for yy in 0..2 {
+                for b in 0..2 {
+                    let lo = *src.add(2 * (4 * j + 2 * yy) + b);
+                    let hi = *src.add(2 * (4 * j + 2 * yy + 1) + b);
+                    let mut v = hi;
+                    v.sub_assign(&lo);
+                    v.mul_assign(r);
+                    v.add_assign(&lo);
+                    *d.add(2 * (2 * j + yy) + b) = v;
+                    out[2 * yy + b] = v;
+                }
+            }
+            out
+        },
+    }
+}
+
+/// num = na*db + nb*da, den = da*db.
+#[inline(always)]
+fn scalar_logup_quad<E: Field>(na: E, nb: E, da: E, db: E) -> (E, E) {
+    let mut num_v = na;
+    num_v.mul_assign(&db);
+    let mut t2 = nb;
+    t2.mul_assign(&da);
+    num_v.add_assign(&t2);
+    let mut den_v = da;
+    den_v.mul_assign(&db);
+    (num_v, den_v)
+}
+
 pub(crate) fn scalar_fused_chunk<E: Field>(
-    cur_ptrs: &[usize],
-    dst_ptrs: &[usize],
-    out_ptrs: &[[usize; 2]],
+    cur_ptrs: &[SendConstPtr<E>],
+    dst_ptrs: &[SendPtr<E>],
+    out_ptrs: &[[SendConstPtr<E>; 2]],
     relations: &[LsbDimReducingRelation<E>],
     rp: Option<E>,
-    t_ptr: usize,
+    t_ptr: SendConstPtr<E>,
     chunk_start: usize,
     chunk_size: usize,
+    scratch: SendPtr<[u128; 2]>,
 ) -> [E; 2] {
-    let mut tri = vec![[E::ZERO; 2]; chunk_size];
-    // per-poly fetch of the CURRENT 4 pair values,
-    // folding + storing on the fly when pending
-    let fetch = |p: usize, j: usize| -> [E; 4] {
-        let src = cur_ptrs[p] as *const E;
-        match rp {
-            None => unsafe {
-                [
-                    *src.add(4 * j),
-                    *src.add(4 * j + 1),
-                    *src.add(4 * j + 2),
-                    *src.add(4 * j + 3),
-                ]
-            },
-            Some(r) => unsafe {
-                let d = dst_ptrs[p] as *mut E;
-                let mut out = [E::ZERO; 4];
-                // ancestor layout: value (Y', b) at
-                // index 2*Y' + b; the pending fold
-                // combines Y' = 2q, 2q+1 -> q. The
-                // current pair j covers folded
-                // Y in {2j, 2j+1}, i.e. ancestors
-                // Y' in {4j..4j+4}.
-                for yy in 0..2 {
-                    for b in 0..2 {
-                        let lo = *src.add(2 * (4 * j + 2 * yy) + b);
-                        let hi =
-                            *src.add(2 * (4 * j + 2 * yy + 1) + b);
-                        let mut v = hi;
-                        v.sub_assign(&lo);
-                        v.mul_assign(&r);
-                        v.add_assign(&lo);
-                        *d.add(2 * (2 * j + yy) + b) = v;
-                        out[2 * yy + b] = v;
-                    }
-                }
-                out
-            },
-        }
-    };
+    // caller-provided tri scratch: [v0, vinf] per row
+    let tri =
+        unsafe { core::slice::from_raw_parts_mut(scratch.0 as *mut [E; 2], chunk_size) };
+    for t in tri.iter_mut() {
+        *t = [E::ZERO; 2];
+    }
     let mut first = true;
     for (rel_idx, rel) in relations.iter().enumerate() {
         match rel {
             LsbDimReducingRelation::PairwiseProduct { input, alpha } => {
                 for (jj, t) in tri.iter_mut().enumerate() {
                     let j = chunk_start + jj;
-                    let [a0, b0, a1, b1] = fetch(*input, j);
+                    let [a0, b0, a1, b1] =
+                        scalar_fetch_pair4(cur_ptrs, dst_ptrs, &rp, *input, j);
                     // round 0: the output layer already holds the gate value
                     // at X = 0 -- read it instead of re-evaluating
-                    let mut v0 = if rp.is_none() {
-                        unsafe { *(out_ptrs[rel_idx][0] as *const E).add(2 * j) }
+                    let mut v0 = if rp.is_none() && !out_ptrs.is_empty() {
+                        unsafe { *out_ptrs[rel_idx][0].0.add(2 * j) }
                     } else {
                         let mut v = a0;
                         v.mul_assign(&b0);
@@ -1600,27 +1654,19 @@ pub(crate) fn scalar_fused_chunk<E: Field>(
             } => {
                 for (jj, t) in tri.iter_mut().enumerate() {
                     let j = chunk_start + jj;
-                    let [n0, n1, n2, n3] = fetch(*num, j);
-                    let [d0, d1, d2, d3] = fetch(*den, j);
-                    let quad = |na: E, nb: E, da_: E, db_: E| -> (E, E) {
-                        let mut num_v = na;
-                        num_v.mul_assign(&db_);
-                        let mut t2 = nb;
-                        t2.mul_assign(&da_);
-                        num_v.add_assign(&t2);
-                        let mut den_v = da_;
-                        den_v.mul_assign(&db_);
-                        (num_v, den_v)
-                    };
-                    let (num0, den0) = if rp.is_none() {
+                    let [n0, n1, n2, n3] =
+                        scalar_fetch_pair4(cur_ptrs, dst_ptrs, &rp, *num, j);
+                    let [d0, d1, d2, d3] =
+                        scalar_fetch_pair4(cur_ptrs, dst_ptrs, &rp, *den, j);
+                    let (num0, den0) = if rp.is_none() && !out_ptrs.is_empty() {
                         unsafe {
                             (
-                                *(out_ptrs[rel_idx][0] as *const E).add(2 * j),
-                                *(out_ptrs[rel_idx][1] as *const E).add(2 * j),
+                                *out_ptrs[rel_idx][0].0.add(2 * j),
+                                *out_ptrs[rel_idx][1].0.add(2 * j),
                             )
                         }
                     } else {
-                        quad(n0, n1, d0, d1)
+                        scalar_logup_quad(n0, n1, d0, d1)
                     };
                     let mut dn0 = n2;
                     dn0.sub_assign(&n0);
@@ -1630,7 +1676,7 @@ pub(crate) fn scalar_fused_chunk<E: Field>(
                     dd0.sub_assign(&d0);
                     let mut dd1 = d3;
                     dd1.sub_assign(&d1);
-                    let (numi, deni) = quad(dn0, dn1, dd0, dd1);
+                    let (numi, deni) = scalar_logup_quad(dn0, dn1, dd0, dd1);
                     let mut vals = [E::ZERO; 2];
                     for (k, (nv, dv)) in
                         [(num0, den0), (numi, deni)].into_iter().enumerate()
@@ -1653,7 +1699,7 @@ pub(crate) fn scalar_fused_chunk<E: Field>(
         }
         first = false;
     }
-    let t_tab = t_ptr as *const E;
+    let t_tab = t_ptr.0;
     let mut acc = [E::ZERO; 2];
     for (jj, t) in tri.iter().enumerate() {
         let w = unsafe { *t_tab.add(chunk_start + jj) };
@@ -1679,14 +1725,15 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     CK: Fn(
-            &[usize],
-            &[usize],
-            &[[usize; 2]],
+            &[SendConstPtr<E>],
+            &[SendPtr<E>],
+            &[[SendConstPtr<E>; 2]],
             &[LsbDimReducingRelation<E>],
             Option<E>,
+            SendConstPtr<E>,
             usize,
             usize,
-            usize,
+            SendPtr<[u128; 2]>,
         ) -> [E; 2]
         + Send
         + Sync
@@ -1694,10 +1741,13 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
 >(
     polys: &[&[E]],
     relations: &[LsbDimReducingRelation<E>],
-    output_ptrs: &[[usize; 2]],
+    output_ptrs: &[[SendConstPtr<E>; 2]],
     tau: &[E],
     claim: E,
     worker: &worker::Worker,
+    schedule: &[crate::gkr::prover_config::SumcheckStep],
+    fold_scratch: &mut [Box<[core::mem::MaybeUninit<E>]>],
+    tri_scratch: &mut [Box<[core::mem::MaybeUninit<[u128; 2]>]>],
     chunk_kernel: CK,
     mut draw_challenge: impl FnMut(&[E; 4]) -> E,
     mut on_round0_done: impl FnMut(),
@@ -1710,30 +1760,25 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
         assert_eq!(p.len(), 2 * m);
     }
 
-    let mut t_table = vec![E::ONE; m / 2];
-    for b in 0..rounds.saturating_sub(1) {
-        let half = 1usize << b;
-        let c = tau[1 + b];
-        let mut om = E::ONE;
-        om.sub_assign(&c);
-        for i in 0..half {
-            let mut hi = t_table[i];
-            hi.mul_assign(&c);
-            t_table[i + half] = hi;
-            t_table[i].mul_assign(&om);
-        }
-    }
+    // suffix eq table over tau[1..], LSB-first orientation (index bit b <->
+    // tau[1 + b]); built by the shared parallel-or-inline helper
+    let mut t_table =
+        crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first(&tau[1..], worker);
 
-    // Uninitialized fold scratch: writes are tracked by construction (each
-    // round writes exactly the region the next round reads), raw pointers
-    // only. Probe-verified: on macOS `vec![ZERO]` neither pre-faults fresh
-    // pages nor avoids the memset on allocator-REUSED pages, while uninit is
-    // free in both cases -- and this scratch frequently lands on pages just
-    // freed by `purge_up_to_layer`, where reuse makes faults free too.
-    let mut scratch: Vec<Box<[core::mem::MaybeUninit<E>]>> = polys
-        .iter()
-        .map(|_| Box::new_uninit_slice(m + m / 2))
-        .collect();
+    // Caller-provided uninitialized fold scratch: writes are tracked by
+    // construction (each round writes exactly the region the next round
+    // reads), raw pointers only.
+    assert_eq!(fold_scratch.len(), polys.len());
+    for b in fold_scratch.iter() {
+        assert!(b.len() >= m + m / 2);
+    }
+    let scratch = fold_scratch;
+    // caller-provided per-worker-slot tri scratch (max-sized across layers)
+    assert!(tri_scratch.len() >= worker.num_cores);
+    let tri_need = (m / 2).div_ceil(worker.num_cores).max(PAR_THRESHOLD);
+    for b in tri_scratch.iter() {
+        assert!(b.len() >= tri_need);
+    }
     // state: data folded through challenges[..s-1] lives at (src flag, at, len);
     // pending = challenge whose fold has not been materialized yet
     let mut live_src = true;
@@ -1745,8 +1790,387 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
     let mut challenges = Vec::with_capacity(rounds);
     let mut claim = claim;
     let mut eq_prefix = E::ONE;
+    let mut done = 0usize;
 
-    for s in 0..rounds {
+    // ---- windowed head: leading WindowedOp steps of the schedule ----
+    // Each head window computes the T-weighted {0,1,inf}^w accumulator in one
+    // pass over the CURRENT live data, runs the bind chain (w rounds of
+    // transcript interaction), and folds all polys by the window's
+    // challenges in one 2^w-tap pass into the uninit scratch. Sizes are
+    // tiered: worker-parallel rows, then thread-per-relation, then serial.
+    {
+        use crate::gkr::prover_config::SumcheckStep;
+        let mut t_full: Option<Vec<E>> = None;
+        for step in schedule {
+            let w = match step {
+                SumcheckStep::WindowedOp(op) => match op {
+                    crate::gkr::prover_config::WindowedOp::Initial { window }
+                    | crate::gkr::prover_config::WindowedOp::Transition { window }
+                    | crate::gkr::prover_config::WindowedOp::Interior { window } => *window,
+                },
+                _ => break, // naive tail handled by the per-round loop below
+            };
+            assert!(w >= 1 && w <= 3);
+            assert!(done + w <= rounds);
+            let pow3 = 3usize.pow(w as u32);
+            // current data length is live_len (2 * remaining Y-space);
+            // each window row covers 2^w Y values = 2^(w+1) data values
+            let win_rows = live_len >> (w + 1);
+            // suffix table over tau[done + w ..]
+            let t_win = {
+                let len_log2 = rounds - done - w;
+                let mut t = vec![E::ONE; 1 << len_log2];
+                for b in 0..len_log2 {
+                    let half = 1usize << b;
+                    let c = tau[done + w + b];
+                    let mut om = E::ONE;
+                    om.sub_assign(&c);
+                    for i in 0..half {
+                        let mut hi = t[i];
+                        hi.mul_assign(&c);
+                        t[i + half] = hi;
+                        t[i].mul_assign(&om);
+                    }
+                }
+                t
+            };
+            let _ = &mut t_full;
+            let cur_ptrs: Vec<usize> = if live_src {
+                polys.iter().map(|p| p.as_ptr() as usize).collect()
+            } else {
+                scratch
+                    .iter()
+                    .map(|b| unsafe { (b.as_ptr() as *const E).add(live_at) } as usize)
+                    .collect()
+            };
+            // ---- accumulator pass, size-tiered ----
+            let acc_pass = |chunk_start: usize, chunk_size: usize| -> Vec<E> {
+                let mut local = vec![E::ZERO; pow3];
+                let mut taps = [E::ZERO; 8];
+                let npolys = cur_ptrs.len();
+                let mut grids = vec![E::ZERO; npolys * 2 * 27];
+                for j in chunk_start..(chunk_start + chunk_size) {
+                    let base_idx = (2usize << w) * j;
+                    for p in 0..npolys {
+                        let src = cur_ptrs[p] as *const E;
+                        for b in 0..2 {
+                            for y in 0..(1usize << w) {
+                                taps[y] = unsafe { *src.add(base_idx + 2 * y + b) };
+                            }
+                            let g = &mut grids[(p * 2 + b) * 27..(p * 2 + b) * 27 + 27];
+                            match w {
+                                3 => window_cells::<E, 3>(&taps[..8], g),
+                                2 => window_cells::<E, 2>(&taps[..4], g),
+                                1 => window_cells::<E, 1>(&taps[..2], g),
+                                _ => unreachable!(),
+                            }
+                        }
+                    }
+                    let tw = t_win[j];
+                    for c in 0..pow3 {
+                        let v = gate_batch(relations, |p, b| grids[(p * 2 + b) * 27 + c]);
+                        let mut t = v;
+                        t.mul_assign(&tw);
+                        local[c].add_assign(&t);
+                    }
+                }
+                local
+            };
+            const SERIAL_ROWS: usize = 1 << 8;
+            let mut acc = vec![E::ZERO; pow3];
+            if win_rows <= SERIAL_ROWS {
+                // fully serial
+                acc = acc_pass(0, win_rows);
+            } else if win_rows <= crate::gkr::PAR_THRESHOLD {
+                // thread-per-relation band: each relation streams all rows
+                let n_rel = relations.len().max(1);
+                let mut partials = vec![vec![E::ZERO; pow3]; n_rel];
+                std::thread::scope(|sc| {
+                    for (ri, dst) in partials.iter_mut().enumerate() {
+                        let cur_ptrs = cur_ptrs.clone();
+                        let t_win = &t_win;
+                        let rel = relations[ri];
+                        sc.spawn(move || {
+                            let one_rel = [rel];
+                            let mut local = vec![E::ZERO; pow3];
+                            let mut taps = [E::ZERO; 8];
+                            let mut grids = vec![E::ZERO; 2 * 2 * 27];
+                            for j in 0..win_rows {
+                                let base_idx = (2usize << w) * j;
+                                // load only this relation's polys
+                                let mut load = |slot: usize, p: usize| {
+                                    let src = cur_ptrs[p] as *const E;
+                                    for b in 0..2 {
+                                        for y in 0..(1usize << w) {
+                                            taps[y] =
+                                                unsafe { *src.add(base_idx + 2 * y + b) };
+                                        }
+                                        let g = &mut grids
+                                            [(slot * 2 + b) * 27..(slot * 2 + b) * 27 + 27];
+                                        match w {
+                                            3 => window_cells::<E, 3>(&taps[..8], g),
+                                            2 => window_cells::<E, 2>(&taps[..4], g),
+                                            1 => window_cells::<E, 1>(&taps[..2], g),
+                                            _ => unreachable!(),
+                                        }
+                                    }
+                                };
+                                let remap = match rel {
+                                    LsbDimReducingRelation::PairwiseProduct { input, alpha } => {
+                                        load(0, input);
+                                        [LsbDimReducingRelation::PairwiseProduct {
+                                            input: 0,
+                                            alpha,
+                                        }; 1]
+                                    }
+                                    LsbDimReducingRelation::LogupPair {
+                                        num,
+                                        den,
+                                        alpha_num,
+                                        alpha_den,
+                                    } => {
+                                        load(0, num);
+                                        load(1, den);
+                                        [LsbDimReducingRelation::LogupPair {
+                                            num: 0,
+                                            den: 1,
+                                            alpha_num,
+                                            alpha_den,
+                                        }; 1]
+                                    }
+                                };
+                                let _ = &one_rel;
+                                let tw = t_win[j];
+                                for c in 0..pow3 {
+                                    let v = gate_batch(&remap, |p, b| {
+                                        grids[(p * 2 + b) * 27 + c]
+                                    });
+                                    let mut t = v;
+                                    t.mul_assign(&tw);
+                                    local[c].add_assign(&t);
+                                }
+                            }
+                            *dst = local;
+                        });
+                    }
+                });
+                for p in partials {
+                    for (a, v) in acc.iter_mut().zip(p.into_iter()) {
+                        a.add_assign(&v);
+                    }
+                }
+            } else {
+                // worker-parallel rows
+                let geometry = worker
+                    .get_geometry_with_threshold(win_rows, (crate::gkr::PAR_THRESHOLD >> w).max(1));
+                let mut partials = vec![vec![E::ZERO; pow3]; geometry.num_chunks];
+                worker.scope_with_threshold(
+                    win_rows,
+                    (crate::gkr::PAR_THRESHOLD >> w).max(1),
+                    |scope, geometry| {
+                        let mut it = partials.iter_mut();
+                        for thread_idx in 0..geometry.num_chunks {
+                            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                            let chunk_size = geometry.get_chunk_size(thread_idx);
+                            let dst = it.next().unwrap();
+                            let acc_pass = &acc_pass;
+                            worker::Worker::smart_spawn(
+                                scope,
+                                thread_idx == geometry.len() - 1,
+                                move |_| {
+                                    *dst = acc_pass(chunk_start, chunk_size);
+                                },
+                            )
+                        }
+                    },
+                );
+                for p in partials {
+                    for (a, v) in acc.iter_mut().zip(p.into_iter()) {
+                        a.add_assign(&v);
+                    }
+                }
+            }
+            // ---- bind chain over the window ----
+            let mut win_rs = [E::ZERO; 3];
+            for si in 0..w {
+                let rem = w - si - 1;
+                let pow3_rem = 3usize.pow(rem as u32);
+                let mut h = [E::ZERO; 3];
+                for x in 0..3usize {
+                    let mut v = E::ZERO;
+                    for rest in 0..pow3_rem {
+                        let mut wgt = E::ONE;
+                        let mut rr = rest;
+                        let mut ok = true;
+                        for tvar in 0..rem {
+                            let d = rr % 3;
+                            rr /= 3;
+                            if d == 2 {
+                                ok = false;
+                                break;
+                            }
+                            let c = tau[done + si + 1 + tvar];
+                            if d == 1 {
+                                wgt.mul_assign(&c);
+                            } else {
+                                let mut om = E::ONE;
+                                om.sub_assign(&c);
+                                wgt.mul_assign(&om);
+                            }
+                        }
+                        if !ok {
+                            continue;
+                        }
+                        let mut t = acc[x + 3 * rest];
+                        t.mul_assign(&wgt);
+                        v.add_assign(&t);
+                    }
+                    h[x] = v;
+                }
+                let (h0, h1v, hinf) = (h[0], h[1], h[2]);
+                let coeffs =
+                    cubic_round_message(&h0, &h1v, &hinf, &tau[done + si], &eq_prefix);
+                #[cfg(feature = "gkr_self_checks")]
+                {
+                    let [c0, c1, c2, c3] = coeffs;
+                    let mut q01 = c0;
+                    q01.add_assign(&c0);
+                    q01.add_assign(&c1);
+                    q01.add_assign(&c2);
+                    q01.add_assign(&c3);
+                    assert_eq!(q01, claim, "LSB head round {} claim mismatch", done + si);
+                }
+                let r = draw_challenge(&coeffs);
+                challenges.push(r);
+                round_coefficients.push(coeffs);
+                win_rs[si] = r;
+                claim = horner4(&coeffs, &r);
+                eq_prefix.mul_assign(&eq_weight(&tau[done + si], &r));
+                // bind the accumulator
+                let mut r2mr = r;
+                r2mr.mul_assign(&r);
+                r2mr.sub_assign(&r);
+                for rest in 0..pow3_rem {
+                    let f0 = acc[3 * rest];
+                    let f1 = acc[3 * rest + 1];
+                    let finf = acc[3 * rest + 2];
+                    let mut v = f1;
+                    v.sub_assign(&f0);
+                    v.mul_assign(&r);
+                    v.add_assign(&f0);
+                    let mut t = finf;
+                    t.mul_assign(&r2mr);
+                    v.add_assign(&t);
+                    acc[rest] = v;
+                }
+                acc.truncate(pow3_rem.max(1));
+            }
+            // ---- one 2^w-tap fold into the scratch ----
+            {
+                let nw = 1usize << w;
+                let mut wts = [E::ZERO; 8];
+                for y in 0..nw {
+                    let mut v = E::ONE;
+                    for si in 0..w {
+                        let r = win_rs[si];
+                        if (y >> si) & 1 == 1 {
+                            v.mul_assign(&r);
+                        } else {
+                            let mut om = E::ONE;
+                            om.sub_assign(&r);
+                            v.mul_assign(&om);
+                        }
+                    }
+                    wts[y] = v;
+                }
+                let new_len = live_len >> w;
+                let dst_at = if live_src {
+                    0
+                } else if live_at == 0 {
+                    m
+                } else {
+                    0
+                };
+                let out_pairs = (new_len / 2).max(1);
+                let dst_ptrs2: Vec<usize> = scratch
+                    .iter_mut()
+                    .map(|b| unsafe { (b.as_mut_ptr() as *mut E).add(dst_at) } as usize)
+                    .collect();
+                worker.scope_with_threshold(
+                    out_pairs,
+                    (crate::gkr::PAR_THRESHOLD >> w).max(1),
+                    |scope, geometry| {
+                        for thread_idx in 0..geometry.num_chunks {
+                            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                            let chunk_size = geometry.get_chunk_size(thread_idx);
+                            let cur_ptrs = cur_ptrs.clone();
+                            let dst_ptrs2 = dst_ptrs2.clone();
+                            worker::Worker::smart_spawn(
+                                scope,
+                                thread_idx == geometry.len() - 1,
+                                move |_| {
+                                    for (src_a, dst_a) in
+                                        cur_ptrs.iter().zip(dst_ptrs2.iter())
+                                    {
+                                        let src = *src_a as *const E;
+                                        let dst = *dst_a as *mut E;
+                                        for jj in chunk_start..(chunk_start + chunk_size) {
+                                            for b in 0..2 {
+                                                let mut v = E::ZERO;
+                                                for y in 0..nw {
+                                                    let mut t = wts[y];
+                                                    t.mul_assign(unsafe {
+                                                        &*src.add((2 << w) * jj + 2 * y + b)
+                                                    });
+                                                    v.add_assign(&t);
+                                                }
+                                                unsafe {
+                                                    *dst.add(2 * jj + b) = v;
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    },
+                );
+                live_src = false;
+                live_at = dst_at;
+                live_len = new_len;
+            }
+            done += w;
+            if done == w {
+                // outputs (never read by the windowed head) are dead
+                on_round0_done();
+            }
+        }
+    }
+
+    // after a windowed head the data is already folded (and the output layer
+    // possibly purged): the tail must never take the round-0 output-read path
+    let tail_output_ptrs: &[[SendConstPtr<E>; 2]] = if done == 0 { output_ptrs } else { &[] };
+    // the head consumed `done` variables: rebuild the tail's suffix eq table
+    // over tau[done + 1 ..] (the per-round contraction takes over from there)
+    if done > 0 && done < rounds {
+        let len_log2 = rounds - done - 1;
+        for v in t_table.iter_mut().take(1 << len_log2) {
+            *v = E::ONE;
+        }
+        for b in 0..len_log2 {
+            let half = 1usize << b;
+            let c = tau[done + 1 + b];
+            let mut om = E::ONE;
+            om.sub_assign(&c);
+            for i in 0..half {
+                let mut hi = t_table[i];
+                hi.mul_assign(&c);
+                t_table[i + half] = hi;
+                t_table[i].mul_assign(&om);
+            }
+        }
+    }
+    for s in done..rounds {
         // pairs of the CURRENT round (after the pending fold is applied)
         let cur_len = if pending_r.is_some() {
             live_len / 2
@@ -1754,12 +2178,12 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
             live_len
         };
         let pairs = cur_len / 4;
-        let cur_ptrs: Vec<usize> = if live_src {
-            polys.iter().map(|p| p.as_ptr() as usize).collect()
+        let cur_ptrs: Vec<SendConstPtr<E>> = if live_src {
+            polys.iter().map(|p| SendConstPtr(p.as_ptr())).collect()
         } else {
             scratch
                 .iter()
-                .map(|b| unsafe { (b.as_ptr() as *const E).add(live_at) } as usize)
+                .map(|b| SendConstPtr(unsafe { (b.as_ptr() as *const E).add(live_at) }))
                 .collect()
         };
         // fold destination (only used when a fold is pending)
@@ -1770,11 +2194,11 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
         } else {
             0
         };
-        let dst_ptrs: Vec<usize> = scratch
+        let dst_ptrs: Vec<SendPtr<E>> = scratch
             .iter_mut()
-            .map(|b| unsafe { (b.as_mut_ptr() as *mut E).add(dst_at) } as usize)
+            .map(|b| SendPtr(unsafe { (b.as_mut_ptr() as *mut E).add(dst_at) }))
             .collect();
-        let t_ptr = t_table.as_ptr() as usize;
+        let t_ptr = SendConstPtr(t_table.as_ptr());
         let rp = pending_r;
 
         let mut h2 = [E::ZERO; 2];
@@ -1783,12 +2207,16 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
             let mut partials = vec![[E::ZERO; 2]; geometry.num_chunks];
             worker.scope_with_threshold(pairs, PAR_THRESHOLD, |scope, geometry| {
                 let mut it = partials.iter_mut();
+                let mut sit = tri_scratch.iter_mut();
                 for thread_idx in 0..geometry.num_chunks {
                     let chunk_start = geometry.get_chunk_start_pos(thread_idx);
                     let chunk_size = geometry.get_chunk_size(thread_idx);
                     let cur_ptrs = cur_ptrs.clone();
                     let dst_ptrs = dst_ptrs.clone();
                     let dst = it.next().unwrap();
+                    let sc = sit.next().expect("chunks never exceed worker slots");
+                    debug_assert!(chunk_size <= sc.len());
+                    let scratch_ptr = SendPtr(sc.as_mut_ptr() as *mut [u128; 2]);
                     worker::Worker::smart_spawn(
                         scope,
                         thread_idx == geometry.len() - 1,
@@ -1796,12 +2224,13 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
                             *dst = chunk_kernel(
                                 &cur_ptrs,
                                 &dst_ptrs,
-                                output_ptrs,
+                                tail_output_ptrs,
                                 relations,
                                 rp,
                                 t_ptr,
                                 chunk_start,
                                 chunk_size,
+                                scratch_ptr,
                             );
                         },
                     )
@@ -1827,56 +2256,13 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
         }
 
         let (h0, hinf) = (h2[0], h2[1]);
-        let mut e0 = E::ONE;
-        e0.sub_assign(&tau[s]);
-        let h1v = {
-            let mut v = claim;
-            v.mul_assign(&eq_prefix.inverse().expect("eq prefix nonzero"));
-            let mut t = e0;
-            t.mul_assign(&h0);
-            v.sub_assign(&t);
-            v.mul_assign(&tau[s].inverse().expect("tau nonzero"));
-            v
-        };
-        let mut h1x = h1v;
-        h1x.sub_assign(&h0);
-        h1x.sub_assign(&hinf);
-        let mut e1 = tau[s];
-        e1.sub_assign(&e0);
-        let mut c0 = e0;
-        c0.mul_assign(&h0);
-        let mut c1 = e0;
-        c1.mul_assign(&h1x);
-        let mut t = e1;
-        t.mul_assign(&h0);
-        c1.add_assign(&t);
-        let mut c2 = e0;
-        c2.mul_assign(&hinf);
-        let mut t = e1;
-        t.mul_assign(&h1x);
-        c2.add_assign(&t);
-        let mut c3 = e1;
-        c3.mul_assign(&hinf);
-        let mut coeffs = [c0, c1, c2, c3];
-        for c in coeffs.iter_mut() {
-            c.mul_assign(&eq_prefix);
-        }
+        let h1v = derive_h1_from_claim(&claim, &eq_prefix, &h0, &tau[s]);
+        let coeffs = cubic_round_message(&h0, &h1v, &hinf, &tau[s], &eq_prefix);
         let r = draw_challenge(&coeffs);
         challenges.push(r);
         round_coefficients.push(coeffs);
-        let [c0, c1, c2, c3] = coeffs;
-        let mut nc = c3;
-        nc.mul_assign(&r);
-        nc.add_assign(&c2);
-        nc.mul_assign(&r);
-        nc.add_assign(&c1);
-        nc.mul_assign(&r);
-        nc.add_assign(&c0);
-        claim = nc;
-        let mut ew = e1;
-        ew.mul_assign(&r);
-        ew.add_assign(&e0);
-        eq_prefix.mul_assign(&ew);
+        claim = horner4(&coeffs, &r);
+        eq_prefix.mul_assign(&eq_weight(&tau[s], &r));
         pending_r = Some(r);
 
         if s + 1 < rounds {
@@ -1889,8 +2275,9 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
         }
     }
 
-    // epilogue: materialize the last fold (4 -> 2 values per poly)
-    let r = pending_r.expect("at least one round");
+    // epilogue: materialize the last fold (4 -> 2 values per poly) when a
+    // naive round left one pending; an all-window schedule folds eagerly and
+    // arrives here with the live region already at its final 2 values
     let mut final_values = Vec::new();
     for (p, _) in polys.iter().enumerate() {
         // the live region is fully initialized by the last materialized fold
@@ -1904,17 +2291,26 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
                 )
             }
         };
-        assert_eq!(src.len(), 4);
-        let mut fv = [E::ZERO; 2];
-        for b in 0..2 {
-            let lo = src[b];
-            let hi = src[2 + b];
-            let mut v = hi;
-            v.sub_assign(&lo);
-            v.mul_assign(&r);
-            v.add_assign(&lo);
-            fv[b] = v;
-        }
+        let fv = match pending_r {
+            Some(r) => {
+                assert_eq!(src.len(), 4);
+                let mut fv = [E::ZERO; 2];
+                for b in 0..2 {
+                    let lo = src[b];
+                    let hi = src[2 + b];
+                    let mut v = hi;
+                    v.sub_assign(&lo);
+                    v.mul_assign(&r);
+                    v.add_assign(&lo);
+                    fv[b] = v;
+                }
+                fv
+            }
+            None => {
+                assert_eq!(src.len(), 2, "all-window schedule must end at 2 values");
+                [src[0], src[1]]
+            }
+        };
         final_values.push(fv);
     }
     #[cfg(feature = "gkr_self_checks")]

@@ -188,15 +188,15 @@ pub(crate) fn forward_pairwise_specialized<F: PrimeField, E: FieldExtension<F> +
         let src: &[E] = sources.extension_field_inputs[0].current_values();
         debug_assert_eq!(src.len(), input_trace_len);
         let mut destination = Box::<[E]>::new_uninit_slice(output_trace_len);
-        let src_addr = src.as_ptr() as usize;
-        let dst_addr = destination.as_mut_ptr() as usize;
+        let src_addr = crate::gkr::prover::SendConstPtr(src.as_ptr());
+        let dst_addr = crate::gkr::prover::SendPtr(destination.as_mut_ptr());
         worker.scope_with_threshold(output_trace_len, PAR_THRESHOLD, |scope, geometry| {
             for thread_idx in 0..geometry.num_chunks {
                 let chunk_start = geometry.get_chunk_start_pos(thread_idx);
                 let chunk_size = geometry.get_chunk_size(thread_idx);
                 Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                    let sp = src_addr as *const E;
-                    let dp = dst_addr as *mut E;
+                    let sp = src_addr.get();
+                    let dp = dst_addr.get() as *mut E;
                     for i in chunk_start..(chunk_start + chunk_size) {
                         let mut v = *sp.add(2 * i);
                         v.mul_assign(&*sp.add(2 * i + 1));
@@ -241,19 +241,19 @@ pub(crate) fn forward_logup_specialized<F: PrimeField, E: FieldExtension<F> + Fi
         debug_assert_eq!(d_src.len(), input_trace_len);
         let mut num_dst = Box::<[E]>::new_uninit_slice(output_trace_len);
         let mut den_dst = Box::<[E]>::new_uninit_slice(output_trace_len);
-        let n_addr = n_src.as_ptr() as usize;
-        let d_addr = d_src.as_ptr() as usize;
-        let nd_addr = num_dst.as_mut_ptr() as usize;
-        let dd_addr = den_dst.as_mut_ptr() as usize;
+        let n_addr = crate::gkr::prover::SendConstPtr(n_src.as_ptr());
+        let d_addr = crate::gkr::prover::SendConstPtr(d_src.as_ptr());
+        let nd_addr = crate::gkr::prover::SendPtr(num_dst.as_mut_ptr());
+        let dd_addr = crate::gkr::prover::SendPtr(den_dst.as_mut_ptr());
         worker.scope_with_threshold(output_trace_len, PAR_THRESHOLD, |scope, geometry| {
             for thread_idx in 0..geometry.num_chunks {
                 let chunk_start = geometry.get_chunk_start_pos(thread_idx);
                 let chunk_size = geometry.get_chunk_size(thread_idx);
                 Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                    let np = n_addr as *const E;
-                    let dp = d_addr as *const E;
-                    let ndp = nd_addr as *mut E;
-                    let ddp = dd_addr as *mut E;
+                    let np = n_addr.get();
+                    let dp = d_addr.get();
+                    let ndp = nd_addr.get() as *mut E;
+                    let ddp = dd_addr.get() as *mut E;
                     for i in chunk_start..(chunk_start + chunk_size) {
                         let (n0, n1) = (*np.add(2 * i), *np.add(2 * i + 1));
                         let (d0, d1) = (*dp.add(2 * i), *dp.add(2 * i + 1));

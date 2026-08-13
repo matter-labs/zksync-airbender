@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use crate::gkr::prover_config;
 use std::mem::MaybeUninit;
 
 use cs::definitions::GKRAddress;
@@ -163,6 +164,7 @@ fn test_sumcheck_loop_product() {
         &GKRExternalChallenges::default(),
         &mut seed,
         &worker,
+        prover_config::SameSizeSchedules::windowed_default(),
     );
 
     assert!(
@@ -319,6 +321,7 @@ fn test_sumcheck_loop_multiple_gates() {
         &GKRExternalChallenges::default(),
         &mut seed,
         &worker,
+        prover_config::SameSizeSchedules::windowed_default(),
     );
 
     assert!(claims_storage.contains_key(&0));

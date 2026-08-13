@@ -2364,6 +2364,89 @@ pub unsafe fn lsb_lde8_base_mat(h: [uint32x4_t; 2], t: &LsbLde8MatTables) -> [ui
     [lazy_redc_pair(a0, a1), lazy_redc_pair(a2, a3)]
 }
 
+// ---- Lagrange-matrix variant of the SoA size-8 LDE ----
+//
+// Same 8x8 matrix M[i][j] = L_j(gamma * omega^i) as [`LsbLde8MatTables`],
+// pre-broadcast per entry for the SoA cell layout (one vector = one H cell
+// across 4 rows): each coset point is a dot product of the 8 cell vectors,
+// widening lazy u64 MACs with the [`lsb_lde8_base_mat`] cond-subtract
+// discipline (after products 4 and 6) and one REDC per output vector.
+// Replaces [`soa_lde8`]'s iNTT + coset-scale + NTT pipeline.
+
+#[derive(Clone, Copy)]
+pub struct SoaLde8MatTables {
+    /// m[i][j] = broadcast of M[i][j], canonical Montgomery form
+    m: [[uint32x4_t; 8]; 8],
+}
+
+impl SoaLde8MatTables {
+    pub fn new(omega8: BabyBearField, gamma: BabyBearField) -> Self {
+        assert!(omega8.pow(8).is_one());
+        assert!(!omega8.pow(4).is_one());
+        let winv = omega8.inverse().expect("invertible");
+        let eighth = BabyBearField::from_u32_with_reduction(8)
+            .inverse()
+            .expect("8 invertible");
+        let mut m = [[BabyBearField::ZERO; 8]; 8];
+        for i in 0..8usize {
+            let mut x = gamma;
+            x.mul_assign(&omega8.pow(i as u32));
+            for j in 0..8usize {
+                let mut acc = BabyBearField::ZERO;
+                let mut xm = BabyBearField::ONE;
+                for mm in 0..8usize {
+                    let mut t = winv.pow((j * mm % 8) as u32);
+                    t.mul_assign(&xm);
+                    acc.add_assign(&t);
+                    xm.mul_assign(&x);
+                }
+                acc.mul_assign(&eighth);
+                m[i][j] = acc;
+            }
+        }
+        SoaLde8MatTables {
+            m: core::array::from_fn(|i| {
+                core::array::from_fn(|j| unsafe { vdupq_n_u32(m[i][j].raw_u32_value()) })
+            }),
+        }
+    }
+}
+
+/// SoA Lagrange-matrix size-8 coset LDE: canonical input and output cells.
+#[inline(always)]
+pub unsafe fn soa_lde8_mat(cells: &[uint32x4_t; 8], t: &SoaLde8MatTables) -> [uint32x4_t; 8] {
+    let rp = vdupq_n_u64(RP);
+    core::array::from_fn(|i| {
+        let mut lo = vdupq_n_u64(0);
+        let mut hi = vdupq_n_u64(0);
+        macro_rules! mac {
+            ($j:literal) => {
+                let c = t.m[i][$j];
+                lo = vmlal_u32(lo, vget_low_u32(cells[$j]), vget_low_u32(c));
+                hi = vmlal_high_u32(hi, cells[$j], c);
+            };
+        }
+        macro_rules! condsub {
+            () => {
+                lo = vsubq_u64(lo, vandq_u64(vcgeq_u64(lo, rp), rp));
+                hi = vsubq_u64(hi, vandq_u64(vcgeq_u64(hi, rp), rp));
+            };
+        }
+        mac!(0);
+        mac!(1);
+        mac!(2);
+        mac!(3);
+        condsub!();
+        mac!(4);
+        mac!(5);
+        condsub!();
+        mac!(6);
+        mac!(7);
+        condsub!();
+        lazy_redc_pair(lo, hi)
+    })
+}
+
 #[derive(Clone, Copy)]
 pub struct LsbLde64Tables {
     inv_d32: [uint32x4_t; 8], // lanes wi^(4m+lane)

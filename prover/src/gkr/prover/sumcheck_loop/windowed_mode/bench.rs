@@ -1904,6 +1904,561 @@ pub(crate) fn evaluate_ext_window3_soa_parallel<F: PrimeField, E: FieldExtension
     acc
 }
 
+/// Challenge-validated transition entry: the fold prefix is derived from the
+/// pending challenges INSIDE the evaluator -- exactly 1 challenge means a
+/// uniskip stage is pending (Lagrange L(r) weights on H), exactly 3 mean a
+/// windowed initial is pending (eq tensor). Any other count is a schedule
+/// bug and panics.
+#[cfg(target_arch = "aarch64")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn evaluate_transition_from_challenges_soa_parallel<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    base_field_inputs: &[DisjointAccessQuasiSlice<F, false>],
+    ext_field_inputs: &[DisjointAccessQuasiSlice<E, false>],
+    base_buffer_ptrs: &[usize],
+    ext_buffer_ptrs: &[usize],
+    forms: &[Vec<(FormOp<F>, u16)>],
+    products: &[(u16, u16, E)],
+    folded_quad: &[(u16, u16, E)],
+    folded_lin: &[(u16, E)],
+    additive_constant: &E,
+    challenges: &[E],
+    precomputed_eq_suffix: &[E],
+    input_size_log2: usize,
+    worker: &Worker,
+) -> [E; 2] {
+    let prefix = transition_prefix_from_challenges::<F, E>(challenges, worker);
+    evaluate_transition_soa_parallel(
+        base_field_inputs,
+        ext_field_inputs,
+        base_buffer_ptrs,
+        ext_buffer_ptrs,
+        forms,
+        products,
+        folded_quad,
+        folded_lin,
+        additive_constant,
+        &prefix,
+        precomputed_eq_suffix,
+        input_size_log2,
+        worker,
+    )
+}
+
+/// 1 challenge -> uniskip L(r) fold weights; 3 challenges -> windowed eq
+/// tensor; anything else is a schedule bug.
+fn transition_prefix_from_challenges<F: PrimeField, E: FieldExtension<F> + Field>(
+    challenges: &[E],
+    worker: &Worker,
+) -> [E; 8] {
+    match challenges.len() {
+        1 => {
+            let omega16_bb =
+                ::fft::domain_generator_for_size::<::field::baby_bear::base::BabyBearField>(16);
+            let omega16_f: F = unsafe { *(&omega16_bb as *const _ as *const F) };
+            super::uniskip::uniskip8_fold_weights::<F, E>(&challenges[0], omega16_f)
+        }
+        3 => crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full::<E>(challenges, worker)
+            .pop()
+            .unwrap()
+            .to_vec()
+            .try_into()
+            .unwrap(),
+        n => panic!("transition fold: expected 1 (uniskip) or 3 (windowed) pending challenges, got {n}"),
+    }
+}
+
+/// Fused fold+uniskip transition (`FoldUniskipAndComputeUniskip {3, 3}`): one
+/// pass over the SOURCES folds every poly's 8-tap groups with the pending
+/// head challenge's L(r) weights (materializing the ext fold buffers), then
+/// Lagrange-matrix-LDEs the folded taps to the 16-point domain and evaluates
+/// the folded bracket program (packed linear terms, needs-LDE mask), yielding
+/// the next 3 rounds' univariate without a separate transition pass.
+/// Requires EXACTLY 1 pending challenge, validated here.
+#[cfg(target_arch = "aarch64")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn evaluate_uniskip_transition_soa_parallel<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    base_field_inputs: &[DisjointAccessQuasiSlice<F, false>],
+    ext_field_inputs: &[DisjointAccessQuasiSlice<E, false>],
+    base_buffer_ptrs: &[usize],
+    ext_buffer_ptrs: &[usize],
+    forms: &[Vec<(FormOp<F>, u16)>],
+    products: &[(u16, u16, E)],
+    folded_quad: &[(u16, u16, E)],
+    folded_lin: &[(u16, E)],
+    additive_constant: &E,
+    challenges: &[E],
+    lde_tables: &neon::SoaLde8MatTables,
+    precomputed_eq_suffix: &[E],
+    input_size_log2: usize,
+    worker: &Worker,
+) -> [E; 16] {
+    use crate::gkr::PAR_THRESHOLD;
+    use ::field::baby_bear::ext4::BabyBearExt4;
+    use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
+
+    if const { !neon::is_bb_pair::<F, E>() } {
+        unreachable!("SoA variant is BabyBear/Ext4-specific");
+    }
+    assert_eq!(
+        challenges.len(),
+        1,
+        "FoldUniskipAndComputeUniskip: exactly 1 pending uniskip challenge required, got {}",
+        challenges.len()
+    );
+    let prefix = transition_prefix_from_challenges::<F, E>(challenges, worker);
+
+    let input_size = 1usize << input_size_log2;
+    let tap_stride = input_size / 8; // pending L(r) fold groups
+    let folded_size = input_size / 8;
+    let corner_strides = [folded_size / 2, folded_size / 4, folded_size / 8];
+    let work_size = folded_size / 8;
+    assert_eq!(precomputed_eq_suffix.len(), work_size);
+    assert!(work_size >= 4);
+    assert_eq!(work_size % 4, 0);
+    let num_base = base_field_inputs.len();
+
+    let num_blocks = work_size / 4;
+    let geometry = worker.get_geometry_with_threshold(num_blocks, PAR_THRESHOLD / 4);
+    let mut acc_chunks = vec![[E::ZERO; 16]; geometry.num_chunks];
+
+    worker.scope_with_threshold(num_blocks, PAR_THRESHOLD / 4, |scope, geometry| {
+        let mut it = acc_chunks.iter_mut();
+        for thread_idx in 0..geometry.num_chunks {
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx) * 4;
+            let chunk_size = geometry.get_chunk_size(thread_idx) * 4;
+            let base_field_inputs = base_field_inputs.to_vec();
+            let ext_field_inputs = ext_field_inputs.to_vec();
+            let base_buffer_ptrs = base_buffer_ptrs.to_vec();
+            let ext_buffer_ptrs = ext_buffer_ptrs.to_vec();
+            let lde_tables = *lde_tables;
+            let prefix = prefix;
+            let acc_dst = it.next().unwrap();
+
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let ec = |c: &E| -> &BabyBearExt4 { unsafe { &*(c as *const E as *const _) } };
+                let r11v = neon::soa_r11v();
+                let prefix_bb: &[BabyBearExt4; 8] =
+                    unsafe { &*(&prefix as *const [E; 8] as *const _) };
+                let prefix_limbs = neon::soa_prefix_limbs(prefix_bb);
+                let tables: [neon::SoaExtTable; 8] =
+                    core::array::from_fn(|i| neon::SoaExtTable::new(&prefix_bb[i]));
+                let const_bcast = unsafe { neon::soa_broadcast_ext(ec(additive_constant)) };
+                let has_const = !additive_constant.is_zero();
+                let quad_terms: Vec<(u16, u16, [uint32x4_t; 4])> = folded_quad
+                    .iter()
+                    .map(|(a, b, c)| (*a, *b, unsafe { neon::soa_broadcast_ext(ec(c)) }))
+                    .collect();
+                let lin_terms: Vec<(u16, [uint32x4_t; 4])> = folded_lin
+                    .iter()
+                    .map(|(i, c)| (*i, unsafe { neon::soa_broadcast_ext(ec(c)) }))
+                    .collect();
+                let product_terms: Vec<(u16, u16, [uint32x4_t; 4])> = products
+                    .iter()
+                    .map(|(a, f, c)| (*a, *f, unsafe { neon::soa_broadcast_ext(ec(c)) }))
+                    .collect();
+
+                let num_slots = num_base + ext_field_inputs.len();
+                let mut needs_lde = vec![false; num_slots];
+                for (a, b, _) in folded_quad.iter() {
+                    needs_lde[*a as usize] = true;
+                    needs_lde[*b as usize] = true;
+                }
+                for (a, _, _) in products.iter() {
+                    needs_lde[*a as usize] = true;
+                }
+                for members in forms.iter() {
+                    for (_, idx) in members.iter() {
+                        needs_lde[*idx as usize] = true;
+                    }
+                }
+
+                let mut grids = vec![[0u32; 16 * 16]; num_slots];
+                let mut form_grids = vec![[0u32; 16 * 16]; forms.len()];
+                let mut lin_grid = [0u32; 16 * 16];
+                let mut eval16 = [0u32; 16 * 16];
+                let mut acc16 = [0u32; 16 * 16];
+
+                unsafe {
+                    for row in (chunk_start..(chunk_start + chunk_size)).step_by(4) {
+                        for slot in 0..num_slots {
+                            let grid = grids[slot].as_mut_ptr();
+                            let mut cells8 = [[neon::soa_r11v(); 4]; 8];
+                            for j in 0..8usize {
+                                let idx = row
+                                    + (j >> 2) * corner_strides[0]
+                                    + ((j >> 1) & 1) * corner_strides[1]
+                                    + (j & 1) * corner_strides[2];
+                                let f = if slot < num_base {
+                                    let v = neon::soa_fold8_base(
+                                        base_field_inputs[slot].ptr as *const _,
+                                        &prefix_limbs,
+                                        tap_stride,
+                                        idx,
+                                    );
+                                    let dst = base_buffer_ptrs[slot] as *mut BabyBearExt4;
+                                    neon::soa_store_ext4(&v, dst.add(idx));
+                                    v
+                                } else {
+                                    let v = neon::soa_fold8_ext(
+                                        ext_field_inputs[slot - num_base].ptr as *const _,
+                                        &tables,
+                                        tap_stride,
+                                        idx,
+                                    );
+                                    let dst = ext_buffer_ptrs[slot - num_base] as *mut BabyBearExt4;
+                                    neon::soa_store_ext4(&v, dst.add(idx));
+                                    v
+                                };
+                                cells8[j] = f;
+                                neon::soa_store_cell(grid.add(16 * j), &f);
+                            }
+                            if !needs_lde[slot] {
+                                continue;
+                            }
+                            for l in 0..4usize {
+                                let lane8: [uint32x4_t; 8] =
+                                    core::array::from_fn(|j| cells8[j][l]);
+                                let coset = neon::soa_lde8_mat(&lane8, &lde_tables);
+                                for i in 0..8usize {
+                                    vst1q_u32(grid.add(16 * (8 + i) + 4 * l), coset[i]);
+                                }
+                            }
+                        }
+
+                        for (grid, members) in form_grids.iter_mut().zip(forms.iter()) {
+                            grid.fill(0);
+                            for (op, idx) in members.iter() {
+                                let src = grids[*idx as usize].as_ptr();
+                                match op {
+                                    FormOp::Add => {
+                                        neon::soa_ext_form_add_n::<16>(grid.as_mut_ptr(), src)
+                                    }
+                                    FormOp::Sub => {
+                                        neon::soa_ext_form_sub_n::<16>(grid.as_mut_ptr(), src)
+                                    }
+                                    FormOp::Mul(c) => neon::soa_ext_form_muladd_n::<16>(
+                                        grid.as_mut_ptr(),
+                                        src,
+                                        *(c as *const F as *const _),
+                                    ),
+                                }
+                            }
+                        }
+                        for (a, f, cb) in product_terms.iter() {
+                            neon::soa_quad_ee_n::<16>(
+                                eval16.as_mut_ptr(),
+                                grids[*a as usize].as_ptr(),
+                                form_grids[*f as usize].as_ptr(),
+                                cb,
+                                r11v,
+                            );
+                        }
+                        for (a, b, cb) in quad_terms.iter() {
+                            neon::soa_quad_ee_n::<16>(
+                                eval16.as_mut_ptr(),
+                                grids[*a as usize].as_ptr(),
+                                grids[*b as usize].as_ptr(),
+                                cb,
+                                r11v,
+                            );
+                        }
+                        if !lin_terms.is_empty() {
+                            lin_grid[..16 * 8].fill(0);
+                            for (i, cb) in lin_terms.iter() {
+                                neon::soa_lin_ext_all_n::<8>(
+                                    lin_grid.as_mut_ptr(),
+                                    grids[*i as usize].as_ptr(),
+                                    cb,
+                                    r11v,
+                                );
+                            }
+                            for l in 0..4usize {
+                                let lane8: [uint32x4_t; 8] = core::array::from_fn(|j| {
+                                    vld1q_u32(lin_grid.as_ptr().add(16 * j + 4 * l))
+                                });
+                                let coset = neon::soa_lde8_mat(&lane8, &lde_tables);
+                                for i in 0..8usize {
+                                    vst1q_u32(
+                                        lin_grid.as_mut_ptr().add(16 * (8 + i) + 4 * l),
+                                        coset[i],
+                                    );
+                                }
+                            }
+                            neon::soa_ext_form_add_n::<16>(
+                                eval16.as_mut_ptr(),
+                                lin_grid.as_ptr(),
+                            );
+                        }
+                        if has_const {
+                            neon::soa_add_const_all_n::<16>(eval16.as_mut_ptr(), &const_bcast);
+                        }
+
+                        let eq_soa = neon::soa_transpose_ext4(
+                            precomputed_eq_suffix.as_ptr().add(row) as *const _,
+                        );
+                        neon::soa_apply_eq_and_accumulate_n::<16>(
+                            acc16.as_mut_ptr(),
+                            eval16.as_mut_ptr(),
+                            &eq_soa,
+                            r11v,
+                        );
+                    }
+
+                    let mut out = [BabyBearExt4::ZERO; 16];
+                    neon::soa_final_reduce_to_ext_n::<16>(acc16.as_ptr(), out.as_mut_ptr());
+                    *acc_dst = *(&out as *const _ as *const [E; 16]);
+                }
+            })
+        }
+    });
+
+    let mut acc = acc_chunks.pop().unwrap();
+    for el in acc_chunks.into_iter() {
+        for i in 0..16 {
+            acc[i].add_assign(&el[i]);
+        }
+    }
+
+    acc
+}
+
+/// Univariate-skip ext pass: gathers each poly's 8 top-strided taps (with an
+/// optional pending 8-weight fold materialized on read, mirroring
+/// [`evaluate_ext_window3_soa_parallel`]'s fold8 path), extends them to the
+/// 16-point domain H u gH with the Lagrange-matrix LDE per limb, evaluates
+/// the folded bracket program densely on all 16 points, eq-weights per 4-row
+/// block and reduces to the `[E; 16]` evaluations of the skipped-round
+/// univariate covering three rounds.
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn evaluate_ext_uniskip_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+    buffer_ptrs: &[usize], // combined slot order: base-origin polys then ext
+    fold8_prefix: Option<&[E; 8]>,
+    forms: &[Vec<(FormOp<F>, u16)>],
+    products: &[(u16, u16, E)],
+    folded_quad: &[(u16, u16, E)],
+    folded_lin: &[(u16, E)],
+    additive_constant: &E,
+    lde_tables: &neon::SoaLde8MatTables,
+    precomputed_eq_suffix: &[E],
+    unfolded_input_size_log2: usize,
+    worker: &Worker,
+) -> [E; 16] {
+    use crate::gkr::PAR_THRESHOLD;
+    use ::field::baby_bear::ext4::BabyBearExt4;
+    use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
+
+    if const { !neon::is_bb_pair::<F, E>() } {
+        unreachable!("SoA variant is BabyBear/Ext4-specific");
+    }
+
+    let input_size = 1usize << unfolded_input_size_log2;
+    // fold8: taps at stride input/8, univariate over the folded input/8 domain;
+    // no pending fold: the buffers already hold the live data
+    let (pair_stride, folded_size) = if fold8_prefix.is_some() {
+        (input_size / 8, input_size / 8)
+    } else {
+        (0, input_size)
+    };
+    let corner_strides = [folded_size / 2, folded_size / 4, folded_size / 8];
+    let work_size = folded_size / 8;
+    assert_eq!(precomputed_eq_suffix.len(), work_size);
+    assert!(work_size >= 4);
+
+    assert_eq!(work_size % 4, 0);
+    let num_blocks = work_size / 4;
+    let geometry = worker.get_geometry_with_threshold(num_blocks, PAR_THRESHOLD / 4);
+    let mut acc_chunks = vec![[E::ZERO; 16]; geometry.num_chunks];
+
+    worker.scope_with_threshold(num_blocks, PAR_THRESHOLD / 4, |scope, geometry| {
+        let mut it = acc_chunks.iter_mut();
+        for thread_idx in 0..geometry.num_chunks {
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx) * 4;
+            let chunk_size = geometry.get_chunk_size(thread_idx) * 4;
+            let buffer_ptrs = buffer_ptrs.to_vec();
+            let lde_tables = *lde_tables;
+            let acc_dst = it.next().unwrap();
+
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let ec = |c: &E| -> &BabyBearExt4 { unsafe { &*(c as *const E as *const _) } };
+                let r11v = neon::soa_r11v();
+                let fold8_tables: Option<[neon::SoaExtTable; 8]> = fold8_prefix.map(|p| {
+                    let p: &[BabyBearExt4; 8] = unsafe { &*(p as *const [E; 8] as *const _) };
+                    core::array::from_fn(|i| neon::SoaExtTable::new(&p[i]))
+                });
+                let const_bcast = unsafe { neon::soa_broadcast_ext(ec(additive_constant)) };
+                let has_const = !additive_constant.is_zero();
+                let quad_terms: Vec<(u16, u16, [uint32x4_t; 4])> = folded_quad
+                    .iter()
+                    .map(|(a, b, c)| (*a, *b, unsafe { neon::soa_broadcast_ext(ec(c)) }))
+                    .collect();
+                let lin_terms: Vec<(u16, [uint32x4_t; 4])> = folded_lin
+                    .iter()
+                    .map(|(i, c)| (*i, unsafe { neon::soa_broadcast_ext(ec(c)) }))
+                    .collect();
+                let product_terms: Vec<(u16, u16, [uint32x4_t; 4])> = products
+                    .iter()
+                    .map(|(a, f, c)| (*a, *f, unsafe { neon::soa_broadcast_ext(ec(c)) }))
+                    .collect();
+
+                // research recipe: only quad/form-involved polys need the
+                // 16-point extension; linear-only polys are packed (coeff-
+                // combined on H) and extended once, saving their per-poly LDE
+                let mut needs_lde = vec![false; buffer_ptrs.len()];
+                for (a, b, _) in folded_quad.iter() {
+                    needs_lde[*a as usize] = true;
+                    needs_lde[*b as usize] = true;
+                }
+                for (a, _, _) in products.iter() {
+                    needs_lde[*a as usize] = true;
+                }
+                for members in forms.iter() {
+                    for (_, idx) in members.iter() {
+                        needs_lde[*idx as usize] = true;
+                    }
+                }
+
+                let mut grids = vec![[0u32; 16 * 16]; buffer_ptrs.len()];
+                let mut form_grids = vec![[0u32; 16 * 16]; forms.len()];
+                let mut lin_grid = [0u32; 16 * 16];
+                let mut eval16 = [0u32; 16 * 16];
+                let mut acc16 = [0u32; 16 * 16];
+
+                unsafe {
+                    for row in (chunk_start..(chunk_start + chunk_size)).step_by(4) {
+                        for (slot, ptr) in buffer_ptrs.iter().enumerate() {
+                            let buf = *ptr as *mut BabyBearExt4;
+                            let grid = grids[slot].as_mut_ptr();
+                            let mut cells8 = [[neon::soa_r11v(); 4]; 8];
+                            for j in 0..8usize {
+                                let idx = row
+                                    + (j >> 2) * corner_strides[0]
+                                    + ((j >> 1) & 1) * corner_strides[1]
+                                    + (j & 1) * corner_strides[2];
+                                let f = if let Some(t) = fold8_tables.as_ref() {
+                                    let f =
+                                        neon::soa_fold8_ext(buf as *const _, t, pair_stride, idx);
+                                    neon::soa_store_ext4(&f, buf.add(idx));
+                                    f
+                                } else {
+                                    neon::soa_transpose_ext4(buf.add(idx))
+                                };
+                                cells8[j] = f;
+                                neon::soa_store_cell(grid.add(16 * j), &f);
+                            }
+                            if !needs_lde[slot] {
+                                continue;
+                            }
+                            // per-limb Lagrange-matrix LDE to the coset half
+                            for l in 0..4usize {
+                                let lane8: [uint32x4_t; 8] =
+                                    core::array::from_fn(|j| cells8[j][l]);
+                                let coset = neon::soa_lde8_mat(&lane8, &lde_tables);
+                                for i in 0..8usize {
+                                    vst1q_u32(grid.add(16 * (8 + i) + 4 * l), coset[i]);
+                                }
+                            }
+                        }
+
+                        for (grid, members) in form_grids.iter_mut().zip(forms.iter()) {
+                            grid.fill(0);
+                            for (op, idx) in members.iter() {
+                                let src = grids[*idx as usize].as_ptr();
+                                match op {
+                                    FormOp::Add => {
+                                        neon::soa_ext_form_add_n::<16>(grid.as_mut_ptr(), src)
+                                    }
+                                    FormOp::Sub => {
+                                        neon::soa_ext_form_sub_n::<16>(grid.as_mut_ptr(), src)
+                                    }
+                                    FormOp::Mul(c) => neon::soa_ext_form_muladd_n::<16>(
+                                        grid.as_mut_ptr(),
+                                        src,
+                                        *(c as *const F as *const _),
+                                    ),
+                                }
+                            }
+                        }
+                        for (a, f, cb) in product_terms.iter() {
+                            neon::soa_quad_ee_n::<16>(
+                                eval16.as_mut_ptr(),
+                                grids[*a as usize].as_ptr(),
+                                form_grids[*f as usize].as_ptr(),
+                                cb,
+                                r11v,
+                            );
+                        }
+                        for (a, b, cb) in quad_terms.iter() {
+                            neon::soa_quad_ee_n::<16>(
+                                eval16.as_mut_ptr(),
+                                grids[*a as usize].as_ptr(),
+                                grids[*b as usize].as_ptr(),
+                                cb,
+                                r11v,
+                            );
+                        }
+                        if !lin_terms.is_empty() {
+                            lin_grid[..16 * 8].fill(0);
+                            for (i, cb) in lin_terms.iter() {
+                                neon::soa_lin_ext_all_n::<8>(
+                                    lin_grid.as_mut_ptr(),
+                                    grids[*i as usize].as_ptr(),
+                                    cb,
+                                    r11v,
+                                );
+                            }
+                            for l in 0..4usize {
+                                let lane8: [uint32x4_t; 8] = core::array::from_fn(|j| {
+                                    vld1q_u32(lin_grid.as_ptr().add(16 * j + 4 * l))
+                                });
+                                let coset = neon::soa_lde8_mat(&lane8, &lde_tables);
+                                for i in 0..8usize {
+                                    vst1q_u32(lin_grid.as_mut_ptr().add(16 * (8 + i) + 4 * l), coset[i]);
+                                }
+                            }
+                            neon::soa_ext_form_add_n::<16>(
+                                eval16.as_mut_ptr(),
+                                lin_grid.as_ptr(),
+                            );
+                        }
+                        if has_const {
+                            neon::soa_add_const_all_n::<16>(eval16.as_mut_ptr(), &const_bcast);
+                        }
+
+                        let eq_soa = neon::soa_transpose_ext4(
+                            precomputed_eq_suffix.as_ptr().add(row) as *const _,
+                        );
+                        neon::soa_apply_eq_and_accumulate_n::<16>(
+                            acc16.as_mut_ptr(),
+                            eval16.as_mut_ptr(),
+                            &eq_soa,
+                            r11v,
+                        );
+                    }
+
+                    let mut out = [BabyBearExt4::ZERO; 16];
+                    neon::soa_final_reduce_to_ext_n::<16>(acc16.as_ptr(), out.as_mut_ptr());
+                    *acc_dst = *(&out as *const _ as *const [E; 16]);
+                }
+            })
+        }
+    });
+
+    let mut acc = acc_chunks.pop().unwrap();
+    for el in acc_chunks.into_iter() {
+        for i in 0..16 {
+            acc[i].add_assign(&el[i]);
+        }
+    }
+
+    acc
+}
+
 /// Owned SoA + bracket program for one layer, consumed by the production
 /// windowed sumcheck loop (mirrors the program the bench driver builds inline).
 pub(crate) struct OwnedSoaProgram<F: PrimeField, E: Field> {
@@ -2089,14 +2644,14 @@ pub(crate) fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
 /// eq-weighted per 4-row block, and reduced to the `[E; 16]` evaluations of
 /// the skipped-round univariate q on H u w16*H.
 #[cfg(target_arch = "aarch64")]
-fn evaluate_initial_uniskip_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+pub(crate) fn evaluate_initial_uniskip_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
     base_field_inputs: &[DisjointAccessQuasiSlice<F, false>],
     ext_field_inputs: &[DisjointAccessQuasiSlice<E, false>],
     forms: &[Vec<(FormOp<F>, u16)>],
     products: &[(u16, u16, E)],
     rest_steps: &[BenchStep<E>],
     additive_constant: &E,
-    lde_tables: &neon::SoaLde8Tables,
+    lde_tables: &neon::SoaLde8MatTables,
     precomputed_eq_suffix: &[E],
     input_size_log2: usize,
     worker: &Worker,
@@ -2150,7 +2705,7 @@ fn evaluate_initial_uniskip_soa_parallel<F: PrimeField, E: FieldExtension<F> + F
                                 input_size,
                                 row,
                             );
-                            let coset = neon::soa_lde8(&h, &lde_tables);
+                            let coset = neon::soa_lde8_mat(&h, &lde_tables);
                             for j in 0..8 {
                                 vst1q_u32(grid.as_mut_ptr().add(4 * j), h[j]);
                                 vst1q_u32(grid.as_mut_ptr().add(4 * (8 + j)), coset[j]);
@@ -2171,7 +2726,7 @@ fn evaluate_initial_uniskip_soa_parallel<F: PrimeField, E: FieldExtension<F> + F
                                 let h: [uint32x4_t; 8] = core::array::from_fn(|j| {
                                     vld1q_u32(grid.as_ptr().add(16 * j + 4 * l))
                                 });
-                                let coset = neon::soa_lde8(&h, &lde_tables);
+                                let coset = neon::soa_lde8_mat(&h, &lde_tables);
                                 for j in 0..8 {
                                     vst1q_u32(
                                         grid.as_mut_ptr().add(16 * (8 + j) + 4 * l),
@@ -2202,7 +2757,7 @@ fn evaluate_initial_uniskip_soa_parallel<F: PrimeField, E: FieldExtension<F> + F
                             let h: [uint32x4_t; 8] = core::array::from_fn(|j| {
                                 vld1q_u32(grid.as_ptr().add(4 * j))
                             });
-                            let coset = neon::soa_lde8(&h, &lde_tables);
+                            let coset = neon::soa_lde8_mat(&h, &lde_tables);
                             for j in 0..8 {
                                 vst1q_u32(grid.as_mut_ptr().add(4 * (8 + j)), coset[j]);
                             }
@@ -3711,7 +4266,7 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
                 let omega16_bb = ::fft::domain_generator_for_size::<BabyBearField>(16);
                 let mut omega8_bb = omega16_bb;
                 omega8_bb.square();
-                let lde_tables = neon::SoaLde8Tables::new(omega8_bb, omega16_bb);
+                let lde_tables = neon::SoaLde8MatTables::new(omega8_bb, omega16_bb);
 
                 let mut acc_u = [E::ZERO; 16];
                 let mut best_u = std::time::Duration::MAX;
@@ -6407,7 +6962,7 @@ mod synthetic_tests {
         let omega16 = ::fft::domain_generator_for_size::<BabyBearField>(16);
         let mut omega8 = omega16;
         omega8.square();
-        let lde_tables = super::super::neon::SoaLde8Tables::new(omega8, omega16);
+        let lde_tables = super::super::neon::SoaLde8MatTables::new(omega8, omega16);
 
         // all-expanded steps over the instance description
         let bidx = |a: &GKRAddress| match a {

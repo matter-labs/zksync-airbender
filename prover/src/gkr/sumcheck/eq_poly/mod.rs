@@ -88,6 +88,45 @@ pub fn make_eq_poly_in_full<E: Field>(challenges: &[E], worker: &Worker) -> Vec<
     make_eq_poly_impl::<E, true>(challenges, worker)
 }
 
+/// Single eq table with the LSB-first index orientation used by the
+/// LSB-binding engines: index bit `b` pairs with `challenges[b]`, so
+/// `table[i] = prod_b (i_b ? challenges[b] : 1 - challenges[b])`. Built
+/// level by level in ONE allocation (no intermediate tables); each doubling
+/// is data-parallel over the existing half, so large levels fan out across
+/// the worker pool and levels below the threshold run inline.
+pub fn make_eq_table_lsb_first<E: Field>(challenges: &[E], worker: &Worker) -> Vec<E> {
+    use crate::gkr::PAR_THRESHOLD;
+    let mut table = vec![E::ONE; 1usize << challenges.len()];
+    for (b, c) in challenges.iter().enumerate() {
+        let half = 1usize << b;
+        let mut om = E::ONE;
+        om.sub_assign(c);
+        let c = *c;
+        let (lo_all, hi_all) = table.split_at_mut(half);
+        let hi_all = &mut hi_all[..half];
+        worker.scope_with_threshold(half, PAR_THRESHOLD, |scope, geometry| {
+            let mut lo_rest: &mut [E] = lo_all;
+            let mut hi_rest: &mut [E] = hi_all;
+            for thread_idx in 0..geometry.num_chunks {
+                let chunk = geometry.get_chunk_size(thread_idx);
+                let (lo, lo_tail) = core::mem::take(&mut lo_rest).split_at_mut(chunk);
+                let (hi, hi_tail) = core::mem::take(&mut hi_rest).split_at_mut(chunk);
+                lo_rest = lo_tail;
+                hi_rest = hi_tail;
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    for (l, h) in lo.iter_mut().zip(hi.iter_mut()) {
+                        let mut v = *l;
+                        v.mul_assign(&c);
+                        *h = v;
+                        l.mul_assign(&om);
+                    }
+                });
+            }
+        });
+    }
+    table
+}
+
 // Domain equality polys
 fn make_domain_eq_poly_impl<
     F: PrimeField + TwoAdicField,

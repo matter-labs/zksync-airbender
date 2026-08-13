@@ -27,6 +27,16 @@ pub enum SumcheckStep {
     /// `< 2^{window + 1}`), then bound by a single challenge via the Lagrange
     /// fold. Only `window == 3` is implemented initially.
     Uniskip { window: usize },
+    /// Uniskip head over the layer inputs: binds `window` variables with one
+    /// univariate message; leaves its own challenge's L-fold pending.
+    UniskipInitial { window: usize },
+    /// Fused stage: materializes the PREVIOUS uniskip stage's pending fold
+    /// (`fold_window` variables, exactly 1 pending challenge) while computing
+    /// the next uniskip univariate over `compute_window` variables.
+    FoldUniskipAndComputeUniskip {
+        fold_window: usize,
+        compute_window: usize,
+    },
 }
 
 /// Flavors of a windowed step; the flavor must be consistent with the step's
@@ -56,6 +66,8 @@ impl SumcheckStep {
                 | WindowedOp::Interior { window } => *window,
             },
             SumcheckStep::Uniskip { window } => *window,
+            SumcheckStep::UniskipInitial { window } => *window,
+            SumcheckStep::FoldUniskipAndComputeUniskip { compute_window, .. } => *compute_window,
         }
     }
 }
@@ -90,6 +102,27 @@ pub fn validate_sumcheck_schedule(
             SumcheckStep::Uniskip { window } => {
                 if *window != 3 {
                     return Err(format!("uniskip window {} unsupported (only 3)", window));
+                }
+            }
+            SumcheckStep::UniskipInitial { window } => {
+                if *window != 3 {
+                    return Err(format!("uniskip window {} unsupported (only 3)", window));
+                }
+                if i != 0 {
+                    return Err(format!("UniskipInitial at position {i} (must open the schedule)"));
+                }
+            }
+            SumcheckStep::FoldUniskipAndComputeUniskip {
+                fold_window,
+                compute_window,
+            } => {
+                if *fold_window != 3 || *compute_window != 3 {
+                    return Err(format!(
+                        "FoldUniskipAndComputeUniskip {fold_window}/{compute_window} unsupported (only 3/3)"
+                    ));
+                }
+                if i == 0 {
+                    return Err("FoldUniskipAndComputeUniskip needs a preceding uniskip stage".into());
                 }
             }
             SumcheckStep::WindowedOp(op) => match op {
@@ -135,13 +168,83 @@ pub struct ProverConfig {
     // per-circuit from `security_level` via `pow_bits`, so neither is stored here.
     pub security_level: SecurityLevel,
     pub whir_schedule: WhirSchedule,
-    /// Step schedule for the SAME-SIZE (per-circuit batched relation)
-    /// sumchecks; empty = NaiveSumcheck for every round.
-    pub same_size_sumcheck_schedule: Vec<SumcheckStep>,
-    /// Step schedule for the DIMENSION-REDUCING layer sumchecks (pairwise
-    /// products + logup reduction gates only); empty = NaiveSumcheck for
-    /// every round.
-    pub dimension_reducing_sumcheck_schedule: Vec<SumcheckStep>,
+    /// Step schedule for WIDE same-size (per-circuit batched relation)
+    /// sumchecks -- layers whose batched relation reads at least
+    /// [`SAME_SIZE_SCHEDULE_POLY_CUTOFF`] input polys. Interpreted as a head
+    /// descriptor: empty (or NaiveSumcheck-first) selects the per-round
+    /// naive loop; a WindowedOp head selects the self-adapting windowed
+    /// chain (see the `[ss-schedule]` prints for the realized stages).
+    pub wide_same_size_sumcheck_schedule: Vec<SumcheckStep>,
+    /// Step schedule for NARROW same-size sumchecks (fewer than
+    /// [`SAME_SIZE_SCHEDULE_POLY_CUTOFF`] input polys); same head-descriptor
+    /// interpretation as the wide schedule.
+    pub narrow_same_size_sumcheck_schedule: Vec<SumcheckStep>,
+    /// Step schedules for the DIMENSION-REDUCING layer sumchecks (pairwise
+    /// products + logup reduction gates only), keyed by the layer's number
+    /// of sumcheck rounds: a layer with `n` rounds uses
+    /// `dimension_reducing_sumcheck_schedule[&n]` if present, and
+    /// NaiveSumcheck for every round otherwise. Each entry must satisfy
+    /// [`validate_sumcheck_schedule`] for its key.
+    pub dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
+}
+
+/// Provisional wide/narrow cutoff for the same-size schedule choice: a
+/// layer whose batched relation reads fewer than this many input polys
+/// (base + ext together) is "narrow", otherwise "wide". First guess pending
+/// cross-circuit measurements; the heuristic is expected to grow beyond a
+/// plain poly count (e.g. weighing the base/ext split, since base polys are
+/// 4x cheaper to read and LDE than ext polys).
+pub const SAME_SIZE_SCHEDULE_POLY_CUTOFF: usize = 24;
+
+/// The default same-size head descriptor: the windowed chain.
+pub const WINDOWED_SAME_SIZE_SCHEDULE: [SumcheckStep; 1] =
+    [SumcheckStep::WindowedOp(WindowedOp::Initial { window: 3 })];
+
+/// Returns the default (windowed-chain) same-size schedule as an owned vec,
+/// for ProverConfig literals.
+pub fn windowed_same_size_schedule() -> Vec<SumcheckStep> {
+    WINDOWED_SAME_SIZE_SCHEDULE.to_vec()
+}
+
+/// Borrowed view of the two same-size schedules, threaded down to the layer
+/// evaluation: the width that picks between them (input poly count of the
+/// batched description) is only known once the layer's description is
+/// built, deep in the sumcheck engine.
+#[derive(Clone, Copy, Debug)]
+pub struct SameSizeSchedules<'a> {
+    pub wide: &'a [SumcheckStep],
+    pub narrow: &'a [SumcheckStep],
+}
+
+impl<'a> SameSizeSchedules<'a> {
+    pub fn from_config(config: &'a ProverConfig) -> Self {
+        Self {
+            wide: &config.wide_same_size_sumcheck_schedule,
+            narrow: &config.narrow_same_size_sumcheck_schedule,
+        }
+    }
+
+    /// Naive-everywhere selector (both classes empty).
+    pub fn naive() -> Self {
+        Self { wide: &[], narrow: &[] }
+    }
+
+    /// Windowed-chain selector for both classes.
+    pub fn windowed_default() -> SameSizeSchedules<'static> {
+        SameSizeSchedules {
+            wide: &WINDOWED_SAME_SIZE_SCHEDULE,
+            narrow: &WINDOWED_SAME_SIZE_SCHEDULE,
+        }
+    }
+
+    /// Schedule choice by layer width, with the class name for logging.
+    pub fn for_width(&self, total_input_polys: usize) -> (&'a [SumcheckStep], &'static str) {
+        if total_input_polys < SAME_SIZE_SCHEDULE_POLY_CUTOFF {
+            (self.narrow, "narrow")
+        } else {
+            (self.wide, "wide")
+        }
+    }
 }
 
 impl WhirSchedule {

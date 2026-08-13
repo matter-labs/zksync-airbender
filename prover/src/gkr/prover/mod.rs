@@ -243,8 +243,42 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     }
 }
 
-pub(crate) struct SendPtr<T: Sized>(*mut T);
+pub(crate) struct SendPtr<T: Sized>(pub(crate) *mut T);
 unsafe impl<T: Send + Sync> Send for SendPtr<T> {}
+unsafe impl<T: Send + Sync> Sync for SendPtr<T> {}
+impl<T> Clone for SendPtr<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for SendPtr<T> {}
+impl<T> SendPtr<T> {
+    /// Whole-struct accessor: use inside `move` closures so the WRAPPER is
+    /// captured (a bare `.0` field access disjointly captures the raw
+    /// pointer, which is not `Send`).
+    #[inline(always)]
+    pub(crate) fn get(self) -> *mut T {
+        self.0
+    }
+}
+
+/// `*const` sibling of [`SendPtr`] for shared-input pointer tables.
+pub(crate) struct SendConstPtr<T: Sized>(pub(crate) *const T);
+unsafe impl<T: Send + Sync> Send for SendConstPtr<T> {}
+unsafe impl<T: Send + Sync> Sync for SendConstPtr<T> {}
+impl<T> Clone for SendConstPtr<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for SendConstPtr<T> {}
+impl<T> SendConstPtr<T> {
+    /// Whole-struct accessor (see [`SendPtr::get`]).
+    #[inline(always)]
+    pub(crate) fn get(self) -> *const T {
+        self.0
+    }
+}
 
 #[serde_with::serde_as]
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
@@ -991,7 +1025,9 @@ where
     // now we should perform "forward" evaluation, and fill the GKR storage
     let mut witness_eval_data = witness_eval_data;
     // Go from layer 0 to the end, and produce intermediate polynomials. We do not need to commit to them
+    let forward_layers_total = std::time::Instant::now();
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+        let fl_timer = std::time::Instant::now();
         forward_loop::evaluate_layer(
             layer_idx,
             layer,
@@ -1007,7 +1043,15 @@ where
             decoder_lookup_fill_value,
             worker,
         );
+        println!(
+            "Forward layer {layer_idx} evaluation took {:?}",
+            fl_timer.elapsed()
+        );
     }
+    println!(
+        "Forward layers total: {:?}",
+        forward_layers_total.elapsed()
+    );
 
     #[cfg(feature = "gkr_self_checks")]
     assert!(debug_utils::check_logup_identity(
@@ -1025,20 +1069,28 @@ where
     // accepted -- this keeps a misconfigured schedule from silently proving
     // with the wrong transcript shape.
     for (name, schedule) in [
-        (
-            "same_size_sumcheck_schedule",
-            &prover_config.same_size_sumcheck_schedule,
-        ),
-        (
-            "dimension_reducing_sumcheck_schedule",
-            &prover_config.dimension_reducing_sumcheck_schedule,
-        ),
+        ("wide", &prover_config.wide_same_size_sumcheck_schedule),
+        ("narrow", &prover_config.narrow_same_size_sumcheck_schedule),
     ] {
         assert!(
-            schedule
-                .iter()
-                .all(|s| matches!(s, crate::gkr::prover_config::SumcheckStep::NaiveSumcheck)),
-            "{name}: only NaiveSumcheck steps are wired at this integration stage"
+            schedule.iter().all(|s| matches!(
+                s,
+                crate::gkr::prover_config::SumcheckStep::NaiveSumcheck
+                    | crate::gkr::prover_config::SumcheckStep::WindowedOp(_)
+            )),
+            "{name}_same_size_sumcheck_schedule: a uniskip head needs the block-eq claim plumbing (bring-up env path only)"
+        );
+    }
+    for (rounds, schedule) in prover_config.dimension_reducing_sumcheck_schedule.iter() {
+        crate::gkr::prover_config::validate_sumcheck_schedule(schedule, *rounds)
+            .unwrap_or_else(|e| panic!("dimension_reducing_sumcheck_schedule[{rounds}]: {e}"));
+        assert!(
+            schedule.iter().all(|s| matches!(
+                s,
+                crate::gkr::prover_config::SumcheckStep::NaiveSumcheck
+                    | crate::gkr::prover_config::SumcheckStep::WindowedOp(_)
+            )),
+            "dimension_reducing_sumcheck_schedule[{rounds}]: uniskip is not used for dimension-reducing layers"
         );
     }
 
@@ -1157,9 +1209,54 @@ where
 
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
+    // ONE pass-wide buffer set for the whole dimension-reducing backward
+    // pass, built by the backend's constructor from the largest layer's
+    // shape and reused by every layer below
+    let dr_max_rounds =
+        final_trace_size_log_2 + dimension_reducing_inputs.len().saturating_sub(1);
+    let dr_max_polys = dimension_reducing_inputs
+        .values()
+        .map(|layer| {
+            let mut addrs: Vec<_> = layer.values().flat_map(|v| v.inputs.iter()).collect();
+            addrs.sort();
+            addrs.dedup();
+            addrs.len()
+        })
+        .max()
+        .unwrap_or(0);
+    let mut dr_work_buffers = gkr_backend::run_make_dim_reducing_work_buffers::<F, E>(
+        dr_max_rounds,
+        dr_max_polys,
+        worker,
+    );
     let dim_reducing_total = std::time::Instant::now();
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
+        let dr_schedule_owned;
+        let dr_schedule: &[crate::gkr::prover_config::SumcheckStep] = {
+            let rounds = reduced_trace_size_log_2;
+            if let Some(s) = prover_config
+                .dimension_reducing_sumcheck_schedule
+                .get(&rounds)
+            {
+                &s[..]
+            } else if std::env::var("GKR_DR_WINDOWED").is_ok() && rounds >= 3 {
+                // bench knob: window-3 head (2 windows where they fit), naive tail
+                use crate::gkr::prover_config::{SumcheckStep, WindowedOp};
+                let mut v = vec![SumcheckStep::WindowedOp(WindowedOp::Initial { window: 3 })];
+                let mut left = rounds - 3;
+                if left >= 3 {
+                    v.push(SumcheckStep::WindowedOp(WindowedOp::Interior { window: 3 }));
+                    left -= 3;
+                }
+                v.extend(std::iter::repeat(SumcheckStep::NaiveSumcheck).take(left));
+                dr_schedule_owned = v;
+                &dr_schedule_owned[..]
+            } else {
+                &[]
+            }
+        };
         let proof = gkr_backend::run_dimension_reducing_sumcheck_for_layer::<F, E, TR>(
+            dr_schedule,
             layer_idx,
             &layer,
             &mut points_for_claims_at_layer,
@@ -1169,6 +1266,7 @@ where
             &mut seed,
             1 << reduced_trace_size_log_2,
             worker,
+            &mut dr_work_buffers,
         );
         sumcheck_intermediate_values.insert(layer_idx, proof);
         reduced_trace_size_log_2 += 1;
@@ -1192,7 +1290,9 @@ where
     };
 
     // Backward loop: standard layer-by-layer sumcheck
+    let same_size_total = std::time::Instant::now();
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
+        let layer_timer = std::time::Instant::now();
         let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<F, E, TR>(
             layer_idx,
             layer,
@@ -1209,9 +1309,33 @@ where
             &external_challenges,
             &mut seed,
             worker,
+            crate::gkr::prover_config::SameSizeSchedules::from_config(prover_config),
         );
+        println!(
+            "Same-size layer {layer_idx} sumcheck took {:?}",
+            layer_timer.elapsed()
+        );
+        // bring-up: the uniskip head binds its three variables on the
+        // interpolation curve, so the claim point has no per-coordinate form
+        // and downstream layers cannot consume it yet
+        let uniskip_env_layer: Option<usize> = std::env::var("GKR_SS_UNISKIP")
+            .ok()
+            .and_then(|v| v.parse().ok());
+        let lsb_env_layer: Option<usize> = std::env::var("GKR_SS_LSB")
+            .ok()
+            .and_then(|v| v.parse().ok());
+        if uniskip_env_layer == Some(layer_idx)
+            || lsb_env_layer == Some(layer_idx)
+            || (layer_idx == 3 && std::env::var("GKR_SS_STOP3").is_ok())
+        {
+            panic!("GKR_SS bench stop after same-size layer {layer_idx}");
+        }
         sumcheck_intermediate_values.insert(layer_idx, proof);
     }
+    println!(
+        "Same-size sumcheck layers total: {:?}",
+        same_size_total.elapsed()
+    );
 
     drop(preprocessed_generic_lookup);
 
@@ -1446,6 +1570,11 @@ where
         t_gkr_phase.elapsed()
     );
     let t_whir = std::time::Instant::now();
+    // bench/consistency stop: everything up to and including the GKR layers
+    // (with their per-layer at-point self-checks) has run; WHIR is skipped
+    if std::env::var("GKR_STOP_BEFORE_WHIR").is_ok() {
+        panic!("GKR_STOP_BEFORE_WHIR: stopping before whir_fold");
+    }
     let whir_proof = whir_fold::<F, E, T, TR>(
         mem_oracle,
         mem_polys_claims,
