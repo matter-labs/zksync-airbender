@@ -1757,14 +1757,35 @@ impl LaneCarrier {
 }
 
 /// Which LOCAL pair body a lane launches. `Incumbent` is every pre-R9 lane — the frozen
-/// R2/R4 bodies, cached or not. `Reorder` is the v3 R9 gate-first walk, which exists only as
-/// a 128-thread cached kernel; it is a different BODY at the same ABI and the same plan, so
-/// it is not a carrier and not an arm.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// R2/R4 bodies, cached or not. `Reorder` is the v3 R9 gate-first walk. The six `Regroup*`
+/// bodies are v3 R9b's corrected grouped path on two axes: the CLASS lever (`C` converges
+/// the accumuland and keeps both `if (product)` branches, `B` hoists one class branch over
+/// both phases) crossed with the COEFFICIENT form (bare = R9's per-accumulate dispatch,
+/// `K` = decode once and branch twice, `D` = one runtime three-way test per member). Every
+/// body but the incumbent's exists only as a 128-thread cached kernel — same ABI, same plan,
+/// so none of them is a carrier and none is an arm.
+///
+/// The six R9b spellings are the `--regroup` values; `Incumbent` and `Reorder` are skipped
+/// because they already have their own flags, which keeps ONE spelling per grid cell.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
 pub enum PairBody {
     #[default]
+    #[value(skip)]
     Incumbent,
+    #[value(skip)]
     Reorder,
+    #[value(name = "c")]
+    RegroupC,
+    #[value(name = "ck")]
+    RegroupCk,
+    #[value(name = "cd")]
+    RegroupCd,
+    #[value(name = "b")]
+    RegroupB,
+    #[value(name = "bk")]
+    RegroupBk,
+    #[value(name = "bd")]
+    RegroupBd,
 }
 
 impl PairBody {
@@ -1772,26 +1793,128 @@ impl PairBody {
         match self {
             Self::Incumbent => "incumbent",
             Self::Reorder => "reorder",
+            Self::RegroupC => "c",
+            Self::RegroupCk => "ck",
+            Self::RegroupCd => "cd",
+            Self::RegroupB => "b",
+            Self::RegroupBk => "bk",
+            Self::RegroupBd => "bd",
         }
     }
 }
 
-/// The single-arm body/bound matrix as a VALUE: `Ok((body, bounded))` or the message the CLI
+/// The register budget a cached 128-thread body is compiled at — v3 R9b's second axis.
+/// `Lb` is the shipped `__launch_bounds__(128, 7)`, `Lb6` the `(128, 6)` floor and
+/// `Unbounded` no bound at all. The axis is NOT monotone in registers: Task 1 measured
+/// `Lb6` as the maximum-register cell (75–80) and `Unbounded` as the minimum (59–64) for
+/// every reordered body. Only cached 128-thread bodies have an `Lb6` sibling.
+///
+/// `Lb` is skipped as a `--pair-budget` value: it is what a run gets by naming no budget.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum PairBudget {
+    #[default]
+    #[value(skip)]
+    Lb,
+    #[value(name = "lb6")]
+    Lb6,
+    #[value(name = "free")]
+    Unbounded,
+}
+
+impl PairBudget {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Lb => "lb",
+            Self::Lb6 => "lb6",
+            Self::Unbounded => "free",
+        }
+    }
+
+    pub fn is_bounded(self) -> bool {
+        self != Self::Unbounded
+    }
+}
+
+/// The cached 128-thread symbol a `(body, budget)` cell names — the whole R9b grid as ONE
+/// table, so the lane path and the single-arm path cannot disagree about which symbol a cell
+/// is. Total: all 8 x 3 cells are exported symbols.
+pub const fn cached_128_kernel(body: PairBody, budget: PairBudget) -> LaneKernel {
+    use PairBudget::{Lb, Lb6, Unbounded};
+    match (body, budget) {
+        (PairBody::Incumbent, Lb) => LaneKernel::Cached128Lb,
+        (PairBody::Incumbent, Lb6) => LaneKernel::Cached128Lb6,
+        (PairBody::Incumbent, Unbounded) => LaneKernel::Cached128,
+        (PairBody::Reorder, Lb) => LaneKernel::Reorder128Lb,
+        (PairBody::Reorder, Lb6) => LaneKernel::Reorder128Lb6,
+        (PairBody::Reorder, Unbounded) => LaneKernel::Reorder128,
+        (PairBody::RegroupC, Lb) => LaneKernel::ReorderC128Lb,
+        (PairBody::RegroupC, Lb6) => LaneKernel::ReorderC128Lb6,
+        (PairBody::RegroupC, Unbounded) => LaneKernel::ReorderC128,
+        (PairBody::RegroupCk, Lb) => LaneKernel::ReorderCk128Lb,
+        (PairBody::RegroupCk, Lb6) => LaneKernel::ReorderCk128Lb6,
+        (PairBody::RegroupCk, Unbounded) => LaneKernel::ReorderCk128,
+        (PairBody::RegroupCd, Lb) => LaneKernel::ReorderCd128Lb,
+        (PairBody::RegroupCd, Lb6) => LaneKernel::ReorderCd128Lb6,
+        (PairBody::RegroupCd, Unbounded) => LaneKernel::ReorderCd128,
+        (PairBody::RegroupB, Lb) => LaneKernel::ReorderB128Lb,
+        (PairBody::RegroupB, Lb6) => LaneKernel::ReorderB128Lb6,
+        (PairBody::RegroupB, Unbounded) => LaneKernel::ReorderB128,
+        (PairBody::RegroupBk, Lb) => LaneKernel::ReorderBk128Lb,
+        (PairBody::RegroupBk, Lb6) => LaneKernel::ReorderBk128Lb6,
+        (PairBody::RegroupBk, Unbounded) => LaneKernel::ReorderBk128,
+        (PairBody::RegroupBd, Lb) => LaneKernel::ReorderBd128Lb,
+        (PairBody::RegroupBd, Lb6) => LaneKernel::ReorderBd128Lb6,
+        (PairBody::RegroupBd, Unbounded) => LaneKernel::ReorderBd128,
+    }
+}
+
+/// Device facts, from this campaign's own ncu captures (amendment A7). They exist so the
+/// block figure a lane publishes is DERIVED rather than copied per lane.
+pub const SM_REGISTERS: u32 = 65_536;
+pub const SM_MAX_THREADS: u32 = 1_536;
+pub const SM_MAX_BLOCKS: u32 = 24;
+pub const SM_REGISTER_GRANULARITY: u32 = 8;
+
+/// Blocks per SM the register line ALONE implies — ARITHMETIC, never an occupancy claim.
+/// R9 proved the static line is not the allocated truth (static 70 allocated as 72), so this
+/// is a hint for a profiler and nothing more; the driver's calculator and ncu are the two
+/// things that can measure it.
+pub const fn arith_blocks_per_sm(regs: u32, block_threads: u32) -> u32 {
+    let per_thread = regs.next_multiple_of(SM_REGISTER_GRANULARITY);
+    let by_regs = SM_REGISTERS / (per_thread * block_threads);
+    let by_threads = SM_MAX_THREADS / block_threads;
+    let limit = if by_regs < by_threads {
+        by_regs
+    } else {
+        by_threads
+    };
+    if limit < SM_MAX_BLOCKS {
+        limit
+    } else {
+        SM_MAX_BLOCKS
+    }
+}
+
+/// The single-arm body/budget matrix as a VALUE: `Ok((body, budget))` or the message the CLI
 /// exits with. It lives here rather than in `main` so the whole rejection matrix is a cpu test
-/// instead of a process spawn, and so the shape the reorder body exists at is stated once —
+/// instead of a process spawn, and so the shape a non-incumbent body exists at is stated once —
 /// [`validate_lane_set`] enforces the same one on a rotation's lanes.
 ///
-/// `reorder` / `reorder_free` are the two body flags, `no_bounds` is
-/// `--no-cache-launch-bounds` (which prices the bound on the INCUMBENT), and the last three
-/// describe the shape the run selected. ONE spelling per body: three flags, three bodies.
+/// ONE spelling per grid cell, over 8 bodies x 3 budgets: `--reorder` / `--reorder-free` name
+/// the R9 drop-in at its two budgets, `--no-cache-launch-bounds` names the unbounded
+/// INCUMBENT, `--regroup` names an R9b body, and `--pair-budget` moves whichever body the run
+/// named off `Lb` — so it is rejected beside a flag that already carries a budget, and
+/// `--pair-budget free` is rejected without `--regroup` because that cell has a flag already.
 pub fn select_pair_body(
     reorder: bool,
     reorder_free: bool,
+    regroup: Option<PairBody>,
+    pair_budget: Option<PairBudget>,
     no_bounds: bool,
     lsb_pair: bool,
     block_threads: u32,
     cached_arm: bool,
-) -> Result<(PairBody, bool), String> {
+) -> Result<(PairBody, PairBudget), String> {
     if reorder && reorder_free {
         return Err(
             "--reorder is the bounded gate-first body and --reorder-free the \
@@ -1799,33 +1922,64 @@ pub fn select_pair_body(
                 .into(),
         );
     }
-    if (reorder || reorder_free) && no_bounds {
+    if regroup.is_some() && (reorder || reorder_free) {
         return Err(
-            "--no-cache-launch-bounds prices the bound on the INCUMBENT body; the \
-                    unbounded gate-first arm is spelled --reorder-free"
+            "--regroup names a v3 R9b corrected grouped body and --reorder / \
+                    --reorder-free the R9 drop-in; pick one"
                 .into(),
         );
     }
-    if (reorder || reorder_free)
+    if (reorder || reorder_free || regroup.is_some()) && no_bounds {
+        return Err(
+            "--no-cache-launch-bounds prices the bound on the INCUMBENT body; the \
+                    unbounded gate-first arm is spelled --reorder-free and an unbounded \
+                    R9b body --regroup <body> --pair-budget free"
+                .into(),
+        );
+    }
+    if pair_budget.is_some() && (reorder_free || no_bounds) {
+        return Err(
+            "--reorder-free and --no-cache-launch-bounds already name the unbounded \
+                    budget of their body; --pair-budget would name a second one"
+                .into(),
+        );
+    }
+    if pair_budget == Some(PairBudget::Unbounded) && regroup.is_none() {
+        return Err(
+            "the unbounded INCUMBENT is spelled --no-cache-launch-bounds and the \
+                    unbounded R9 drop-in --reorder-free; --pair-budget free names an R9b \
+                    body's, so it needs --regroup"
+                .into(),
+        );
+    }
+    let body = regroup.unwrap_or(if reorder || reorder_free {
+        PairBody::Reorder
+    } else {
+        PairBody::Incumbent
+    });
+    let budget = match pair_budget {
+        Some(budget) => budget,
+        None if reorder_free || no_bounds => PairBudget::Unbounded,
+        None => PairBudget::Lb,
+    };
+    // Every cell but the incumbent's `Lb` / `Unbounded` pair is a cached 128-thread symbol
+    // and nothing else — including the incumbent's own `Lb6`, which has no uncached sibling.
+    if (body != PairBody::Incumbent || budget == PairBudget::Lb6)
         && !(lsb_pair && block_threads as usize == UNISKIP_PAIR_THREADS_128 && cached_arm)
     {
-        let flag = if reorder_free {
-            "--reorder-free"
-        } else {
-            "--reorder"
+        let flag = match (regroup, pair_budget, reorder_free) {
+            (Some(_), ..) => "--regroup",
+            (None, Some(_), _) if !reorder => "--pair-budget",
+            (None, _, true) => "--reorder-free",
+            (None, ..) => "--reorder",
         };
         return Err(format!(
-            "{flag} runs the v3 R9 gate-first body, which exists only as a \
+            "{flag} runs a v3 R9/R9b cached body, which exists only as a \
              {UNISKIP_PAIR_THREADS_128}-thread cached kernel: it needs --mode lsb-pair \
              --block-threads {UNISKIP_PAIR_THREADS_128} and a cached --cache-arm"
         ));
     }
-    let body = if reorder || reorder_free {
-        PairBody::Reorder
-    } else {
-        PairBody::Incumbent
-    };
-    Ok((body, !(no_bounds || reorder_free)))
+    Ok((body, budget))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1838,12 +1992,15 @@ pub struct CacheLane {
     /// Which local body runs the walk. `Incumbent` on every lane a seg carrier owns, since
     /// the carrier names its symbol outright.
     pub body: PairBody,
-    /// Bounded body. At 256 there is no sibling and this is always false; at 128 the
-    /// cached arms are bounded (the occupancy gate) and `control128_lb` is the bounded
-    /// no-cache baseline that makes the contrast bound-to-bound.
-    pub launch_bounds: bool,
-    /// Compiled registers and blocks/SM, MEASURED (Task 1A/1B freeze artifacts). They live
-    /// here so the emitter reads occupancy off the log instead of carrying constants.
+    /// The register budget this lane's body is compiled at. At 256 there is no bounded
+    /// sibling and this is always `Unbounded`; at 128 the cached arms take the shipped `Lb`
+    /// (the occupancy gate) and `control128_lb` is the bounded no-cache baseline that makes
+    /// the contrast bound-to-bound. `Lb6` exists on cached 128-thread bodies only.
+    pub budget: PairBudget,
+    /// Compiled registers, MEASURED (Task 1A/1B/R9b freeze artifacts), and the blocks/SM
+    /// that register line implies. They live here so the emitter reads occupancy off the log
+    /// instead of carrying constants. `blocks_per_sm` is ARITHMETIC — see
+    /// [`arith_blocks_per_sm`], which every lane's figure reproduces.
     pub regs: u32,
     pub blocks_per_sm: u32,
 }
@@ -1857,7 +2014,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::Control,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: false,
+        budget: PairBudget::Unbounded,
         regs: 72,
         blocks_per_sm: 3,
     },
@@ -1867,7 +2024,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::Cache0,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: false,
+        budget: PairBudget::Unbounded,
         regs: 75,
         blocks_per_sm: 3,
     },
@@ -1877,7 +2034,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::Hot4,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: false,
+        budget: PairBudget::Unbounded,
         regs: 75,
         blocks_per_sm: 3,
     },
@@ -1887,7 +2044,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::Hot16,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: false,
+        budget: PairBudget::Unbounded,
         regs: 75,
         blocks_per_sm: 3,
     },
@@ -1897,7 +2054,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::AllRepeat,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: false,
+        budget: PairBudget::Unbounded,
         regs: 75,
         blocks_per_sm: 3,
     },
@@ -1907,7 +2064,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::Control,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: false,
+        budget: PairBudget::Unbounded,
         regs: 72,
         blocks_per_sm: 7,
     },
@@ -1917,7 +2074,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::Control,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: true,
+        budget: PairBudget::Lb,
         regs: 72,
         blocks_per_sm: 7,
     },
@@ -1927,7 +2084,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::Cache0,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: true,
+        budget: PairBudget::Lb,
         regs: 72,
         blocks_per_sm: 7,
     },
@@ -1937,7 +2094,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::Hot4,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: true,
+        budget: PairBudget::Lb,
         regs: 72,
         blocks_per_sm: 7,
     },
@@ -1947,7 +2104,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::Hot16,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: true,
+        budget: PairBudget::Lb,
         regs: 72,
         blocks_per_sm: 7,
     },
@@ -1957,7 +2114,7 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
         arm: CacheArm::AllRepeat,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: true,
+        budget: PairBudget::Lb,
         regs: 72,
         blocks_per_sm: 7,
     },
@@ -1974,7 +2131,7 @@ const fn frontier_128(label: &'static str, arm: CacheArm) -> CacheLane {
         arm,
         carrier: LaneCarrier::Local,
         body: PairBody::Incumbent,
-        launch_bounds: true,
+        budget: PairBudget::Lb,
         regs: 72,
         blocks_per_sm: 7,
     }
@@ -1987,7 +2144,7 @@ const FRONTIER_CONTROL_256: CacheLane = CacheLane {
     arm: CacheArm::Control,
     carrier: LaneCarrier::Local,
     body: PairBody::Incumbent,
-    launch_bounds: false,
+    budget: PairBudget::Unbounded,
     regs: 72,
     blocks_per_sm: 3,
 };
@@ -2058,22 +2215,60 @@ pub const CARVEOUT_PROBE: [CacheLane; 5] = [
     FRONTIER_CONTROL_256,
 ];
 
-/// A v3 R9 gate-first reordered lane. The body exists at 128 threads on a cached arm only,
-/// on the incumbent's ABI and at the incumbent's plan, so a lane differs from its incumbent
-/// twin in the BODY alone. Registers and blocks per SM are Task 1's measured figures: the
-/// bounded body's 70 registers still round to the incumbent's 7 blocks, and the unbounded
-/// one's 64 clear the 8-block tier — which is the whole reason the free arm rides along
-/// (amendment A8). The driver's calculator, not this pin, is what the harness reports.
-const fn reorder_128(label: &'static str, arm: CacheArm, launch_bounds: bool) -> CacheLane {
+/// The STATIC register line of a cached 128-thread grid cell, read off the shipped release
+/// build by `tools/r7_gates.sh`'s R9b table (Task 1 §2). Not an occupancy claim and not an
+/// allocated count: R9 measured static 70 allocated as 72.
+pub const fn cached_128_regs(body: PairBody, budget: PairBudget) -> u32 {
+    use PairBudget::{Lb, Lb6, Unbounded};
+    match (body, budget) {
+        (PairBody::Incumbent, Lb) => 72,
+        (PairBody::Incumbent, Lb6) => 80,
+        (PairBody::Incumbent, Unbounded) => 75,
+        (PairBody::Reorder, Lb) => 70,
+        (PairBody::Reorder, Lb6) => 75,
+        (PairBody::Reorder, Unbounded) => 64,
+        (PairBody::RegroupC, Lb) => 70,
+        (PairBody::RegroupC, Lb6) => 75,
+        (PairBody::RegroupC, Unbounded) => 64,
+        (PairBody::RegroupCk, Lb) => 70,
+        (PairBody::RegroupCk, Lb6) => 75,
+        (PairBody::RegroupCk, Unbounded) => 64,
+        (PairBody::RegroupCd, Lb) => 72,
+        (PairBody::RegroupCd, Lb6) => 79,
+        (PairBody::RegroupCd, Unbounded) => 59,
+        (PairBody::RegroupB, Lb) => 70,
+        (PairBody::RegroupB, Lb6) => 78,
+        (PairBody::RegroupB, Unbounded) => 64,
+        (PairBody::RegroupBk, Lb) => 72,
+        (PairBody::RegroupBk, Lb6) => 78,
+        (PairBody::RegroupBk, Unbounded) => 64,
+        (PairBody::RegroupBd, Lb) => 72,
+        (PairBody::RegroupBd, Lb6) => 79,
+        (PairBody::RegroupBd, Unbounded) => 59,
+    }
+}
+
+/// A cached 128-thread GRID lane: any body of the R9/R9b matrix at any of its three register
+/// budgets, on the incumbent's ABI and at the incumbent's plan, so a lane differs from its
+/// incumbent twin in the body and the budget alone. The register line is Task 1's static
+/// figure and the block count is derived from it by [`arith_blocks_per_sm`] — arithmetic, not
+/// occupancy; the driver's calculator and ncu are what the harness and Task 4 report.
+const fn grid_128(
+    label: &'static str,
+    arm: CacheArm,
+    body: PairBody,
+    budget: PairBudget,
+) -> CacheLane {
+    let regs = cached_128_regs(body, budget);
     CacheLane {
         label,
         block_threads: 128,
         arm,
         carrier: LaneCarrier::Local,
-        body: PairBody::Reorder,
-        launch_bounds,
-        regs: if launch_bounds { 70 } else { 64 },
-        blocks_per_sm: if launch_bounds { 7 } else { 8 },
+        body,
+        budget,
+        regs,
+        blocks_per_sm: arith_blocks_per_sm(regs, 128),
     }
 }
 
@@ -2088,9 +2283,99 @@ pub const REORDER: [CacheLane; 6] = [
     FRONTIER_CONTROL_256,
     frontier_128("control_lb@128", CacheArm::Control),
     frontier_128("hot16@128", CacheArm::Hot16),
-    reorder_128("reorder-hot16@128", CacheArm::Hot16, true),
-    reorder_128("reorder-cache0@128", CacheArm::Cache0, true),
-    reorder_128("reorder-hot16-free@128", CacheArm::Hot16, false),
+    grid_128(
+        "reorder-hot16@128",
+        CacheArm::Hot16,
+        PairBody::Reorder,
+        PairBudget::Lb,
+    ),
+    grid_128(
+        "reorder-cache0@128",
+        CacheArm::Cache0,
+        PairBody::Reorder,
+        PairBudget::Lb,
+    ),
+    grid_128(
+        "reorder-hot16-free@128",
+        CacheArm::Hot16,
+        PairBody::Reorder,
+        PairBudget::Unbounded,
+    ),
+];
+
+/// A v3 R9b CLASS lane: one hinted `hot16` cell of the class axis at the fixed `(128, 7)`
+/// bound.
+const fn r9b_class(label: &'static str, body: PairBody) -> CacheLane {
+    grid_128(label, CacheArm::Hot16, body, PairBudget::Lb)
+}
+
+/// The v3 R9b CLASS rotation: the three anchors every local session shares, R9's drop-in
+/// reorder — the +5.43 % reference point the fix is measured against — and the four corrected
+/// grouped bodies at ONE register budget, so the class axis is read with the budget held
+/// fixed. `K` is deliberately absent: Task 1 measured C -> C+K at ±0 static instructions at
+/// all three budgets, so it is an attribution cell rather than a timed one. 8 lanes, so a
+/// round count must be a multiple of 8.
+pub const R9B_CLASS: [CacheLane; 8] = [
+    FRONTIER_CONTROL_256,
+    frontier_128("control_lb@128", CacheArm::Control),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    grid_128(
+        "reorder-hot16@128",
+        CacheArm::Hot16,
+        PairBody::Reorder,
+        PairBudget::Lb,
+    ),
+    r9b_class("c-hot16@128", PairBody::RegroupC),
+    r9b_class("b-hot16@128", PairBody::RegroupB),
+    r9b_class("cd-hot16@128", PairBody::RegroupCd),
+    r9b_class("bd-hot16@128", PairBody::RegroupBd),
+];
+
+/// The v3 R9b BUDGET rotation: the same three anchors, then a 2 x 3 grid — body C and the
+/// INCUMBENT, each at all three register budgets — fully paired inside one rotation.
+/// `hot16@128` is the incumbent's `(128, 7)` cell, so only its other two need lanes, and
+/// `c-hot16@128` is the bridge lane the CLASS session also carries.
+///
+/// The pairing is what R9 lacked. Task 1 found the bank-3 twiddle rematerialization collapse
+/// arriving at `(128, 6)` for every reordered body and never for the incumbent, so
+/// `c-hot16-lb6` vs `c-hot16-free` isolates occupancy at constant collapse while `c-hot16` vs
+/// `c-hot16-lb6` isolates the collapse at constant block tier — and the incumbent's own three
+/// budgets discharge R9's never-timed unbounded debt (amendment A8). 8 lanes, so a round
+/// count must be a multiple of 8.
+pub const R9B_BUDGET: [CacheLane; 8] = [
+    FRONTIER_CONTROL_256,
+    frontier_128("control_lb@128", CacheArm::Control),
+    frontier_128("hot16@128", CacheArm::Hot16),
+    grid_128(
+        "hot16-lb6@128",
+        CacheArm::Hot16,
+        PairBody::Incumbent,
+        PairBudget::Lb6,
+    ),
+    grid_128(
+        "hot16-free@128",
+        CacheArm::Hot16,
+        PairBody::Incumbent,
+        PairBudget::Unbounded,
+    ),
+    grid_128(
+        "c-hot16@128",
+        CacheArm::Hot16,
+        PairBody::RegroupC,
+        PairBudget::Lb,
+    ),
+    grid_128(
+        "c-hot16-lb6@128",
+        CacheArm::Hot16,
+        PairBody::RegroupC,
+        PairBudget::Lb6,
+    ),
+    grid_128(
+        "c-hot16-free@128",
+        CacheArm::Hot16,
+        PairBody::RegroupC,
+        PairBudget::Unbounded,
+    ),
 ];
 
 /// Blocks per SM every seg symbol is built for: `__launch_bounds__(128, 7)` at 72
@@ -2108,7 +2393,7 @@ const fn seg_128(label: &'static str, arm: CacheArm, carrier: LaneCarrier) -> Ca
         arm,
         carrier,
         body: PairBody::Incumbent,
-        launch_bounds: true,
+        budget: PairBudget::Lb,
         regs: 72,
         blocks_per_sm: SEG_BLOCKS_PER_SM,
     }
@@ -2225,14 +2510,15 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
         return Err(format!("lane label {} appears twice", dup[0]));
     }
 
-    // (admitted ids, block size, bounded, carrier, body, label) — flat, so the tuple stays
+    // (admitted ids, block size, budget, carrier, body, label) — flat, so the tuple stays
     // readable.
-    let mut seen: Vec<(Vec<u16>, u32, bool, LaneCarrier, PairBody, &str)> = Vec::new();
+    let mut seen: Vec<(Vec<u16>, u32, PairBudget, LaneCarrier, PairBody, &str)> = Vec::new();
     for lane in lanes {
-        // The v3 R9 body is a 128-thread CACHED kernel and nothing else. Rejected here so
-        // the CLI pre-flight says which lane is malformed, rather than `kernel()` asserting
-        // inside device setup.
-        if lane.body == PairBody::Reorder
+        // Every cell of the v3 R9/R9b grid is a 128-thread CACHED kernel and nothing else —
+        // the reordered bodies at any budget, and the incumbent's own `Lb6`, which has no
+        // uncached sibling. Rejected here so the CLI pre-flight says which lane is malformed,
+        // rather than `kernel()` asserting inside device setup.
+        if (lane.body != PairBody::Incumbent || lane.budget == PairBudget::Lb6)
             && (lane.block_threads as usize != UNISKIP_PAIR_THREADS_128
                 || !lane.arm.uses_cache()
                 || lane.carrier.is_seg())
@@ -2246,7 +2532,9 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
         if lane.carrier.is_seg() {
             // Every seg symbol is `__launch_bounds__(128, 7)`: a lane naming another shape
             // would launch a grid the body's row map does not cover.
-            if lane.block_threads as usize != UNISKIP_PAIR_THREADS_128 || !lane.launch_bounds {
+            if lane.block_threads as usize != UNISKIP_PAIR_THREADS_128
+                || lane.budget != PairBudget::Lb
+            {
                 return Err(format!(
                     "seg lane {} must be the bounded {UNISKIP_PAIR_THREADS_128}-thread shape",
                     lane.label
@@ -2288,17 +2576,17 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
             continue;
         }
         let ids: Vec<u16> = state.admitted.iter().map(|e| e.source).collect();
-        // The key is the whole EXPERIMENT, not the admitted set alone: the same set on the
-        // bounded and unbounded bodies is a legitimate contrast (that is what prices the
-        // bound), so `launch_bounds` belongs in it or the pair would false-alias. The
-        // CARRIER belongs in it for the same reason — one admitted set on two carriers, or
+        // The key is the whole EXPERIMENT, not the admitted set alone: the same set at two
+        // register budgets is a legitimate contrast (that is what prices the bound — and the
+        // whole R9b budget axis), so the BUDGET belongs in it or the pair would false-alias.
+        // The CARRIER belongs in it for the same reason — one admitted set on two carriers, or
         // on two carveout requests of one carrier, is the R7 contrast itself. So does the
-        // BODY: one admitted set on the incumbent and on the R9 gate-first walk is the R9
+        // BODY: one admitted set on the incumbent and on a gate-first walk is the R9/R9b
         // contrast itself.
-        if let Some((.., other)) = seen.iter().find(|(set, size, bounded, carrier, body, _)| {
+        if let Some((.., other)) = seen.iter().find(|(set, size, budget, carrier, body, _)| {
             *set == ids
                 && *size == lane.block_threads
-                && *bounded == lane.launch_bounds
+                && *budget == lane.budget
                 && *carrier == lane.carrier
                 && *body == lane.body
         }) {
@@ -2310,7 +2598,7 @@ pub fn validate_lane_set(program: &SynthProgram, lanes: &[CacheLane]) -> Result<
         seen.push((
             ids,
             lane.block_threads,
-            lane.launch_bounds,
+            lane.budget,
             lane.carrier,
             lane.body,
             lane.label,
@@ -2346,6 +2634,12 @@ pub enum LaneSet {
     /// R9's six-lane reorder rotation (spec R9): the gate-first body against the incumbent
     /// at one plan, plus the unbounded 8-block arm.
     Reorder,
+    /// R9b's eight-lane CLASS rotation (spec R9b): the corrected grouped bodies against R9's
+    /// drop-in at one fixed register budget.
+    R9bClass,
+    /// R9b's eight-lane BUDGET rotation (spec R9b): body C and the incumbent, each at all
+    /// three register budgets, paired in one rotation.
+    R9bBudget,
 }
 
 impl LaneSet {
@@ -2361,6 +2655,8 @@ impl LaneSet {
             Self::SegAnchor => &SEG_ANCHOR,
             Self::Segb => &SEGB,
             Self::Reorder => &REORDER,
+            Self::R9bClass => &R9B_CLASS,
+            Self::R9bBudget => &R9B_BUDGET,
         }
     }
 
@@ -2383,6 +2679,8 @@ impl LaneSet {
             Self::SegAnchor => "--seg-anchor",
             Self::Segb => "--segb-factorial",
             Self::Reorder => "--reorder-factorial",
+            Self::R9bClass => "--r9b-class",
+            Self::R9bBudget => "--r9b-budget",
         }
     }
 
@@ -2401,13 +2699,17 @@ impl LaneSet {
             Self::SegAnchor => "SEG-ANCHOR",
             Self::Segb => "SEGB",
             Self::Reorder => "REORDER",
+            // ONE tag over both R9b rotations: they are one rung read on two axes, and a log
+            // states which by its lane labels and lane count.
+            Self::R9bClass | Self::R9bBudget => "R9B",
         }
     }
 
     /// Preregistered `(rounds, warmup)` per term order — spec R5 2.2/2.3, R7 for the seg
     /// sets, R8 for the interior, R9 for the reorder set. 100/10 over ten lanes, 104/16 over
     /// eight, 99/9 over the nine gmem lanes, 96/12 over the twelve interior lanes, 96/6 over
-    /// the six reorder lanes (16 cycles, one cycle of warmup); the warmup is a whole number of
+    /// the six reorder lanes (16 cycles, one cycle of warmup) and 96/8 over either eight-lane
+    /// R9b rotation (12 cycles, one cycle of warmup); the warmup is a whole number of
     /// rotations in every case. R4's own defaults are not preregistered here (its record used
     /// 110 explicitly).
     pub fn rounds_and_warmup(self) -> Option<(u32, u32)> {
@@ -2422,6 +2724,7 @@ impl LaneSet {
             Self::SegAnchor => Some((100, 10)),
             Self::Segb => Some((96, 8)),
             Self::Reorder => Some((96, 6)),
+            Self::R9bClass | Self::R9bBudget => Some((96, 8)),
         }
     }
 
@@ -2443,6 +2746,8 @@ impl LaneSet {
             Self::SegAnchor => "R7 anchor lanes",
             Self::Segb => "R7b segb lanes",
             Self::Reorder => "R9 reorder lanes",
+            Self::R9bClass => "R9b class lanes",
+            Self::R9bBudget => "R9b budget lanes",
         }
     }
 
@@ -2454,9 +2759,13 @@ impl LaneSet {
                 "tools/r5_gates.sh"
             }
             Self::CarveoutProbe => "tools/r6_gates.sh",
-            Self::SegSmem | Self::SegGmem | Self::SegAnchor | Self::Segb | Self::Reorder => {
-                "tools/r7_gates.sh"
-            }
+            Self::SegSmem
+            | Self::SegGmem
+            | Self::SegAnchor
+            | Self::Segb
+            | Self::Reorder
+            | Self::R9bClass
+            | Self::R9bBudget => "tools/r7_gates.sh",
         }
     }
 
@@ -2473,6 +2782,8 @@ impl LaneSet {
             Self::SegAnchor => "seg anchor",
             Self::Segb => "segb factorial",
             Self::Reorder => "reorder factorial",
+            Self::R9bClass => "r9b class",
+            Self::R9bBudget => "r9b budget",
         }
     }
 }
@@ -2486,34 +2797,26 @@ impl CacheLane {
         if let Some(kernel) = self.carrier.kernel() {
             return kernel;
         }
-        // Then the BODY, before the shape: the v3 R9 walk is built at one shape only, so a
-        // lane naming it at any other is a malformed lane rather than a silent fallback to
-        // the incumbent. `validate_lane_set` rejects it first with a lane-named message; this
-        // is the backstop for a hand-built lane that never went through the pre-flight.
-        if self.body == PairBody::Reorder {
+        // Then the BODY and the BUDGET, before the shape: every cell of the R9/R9b grid is
+        // built at one shape only, so a lane naming one at any other is a malformed lane
+        // rather than a silent fallback to the incumbent. `validate_lane_set` rejects it first
+        // with a lane-named message; this is the backstop for a hand-built lane that never
+        // went through the pre-flight.
+        if self.body != PairBody::Incumbent || self.budget == PairBudget::Lb6 {
             assert!(
                 self.block_threads as usize == UNISKIP_PAIR_THREADS_128 && self.arm.uses_cache(),
                 "lane {} names the R9 gate-first body, which exists only as a \
                  {UNISKIP_PAIR_THREADS_128}-thread cached kernel",
                 self.label
             );
-            return if self.launch_bounds {
-                LaneKernel::Reorder128Lb
-            } else {
-                LaneKernel::Reorder128
-            };
+            return cached_128_kernel(self.body, self.budget);
         }
-        match (
-            self.block_threads,
-            self.arm.uses_cache(),
-            self.launch_bounds,
-        ) {
-            (128, true, true) => LaneKernel::Cached128Lb,
-            (128, true, false) => LaneKernel::Cached128,
-            (128, false, true) => LaneKernel::Pair128Lb,
-            (128, false, false) => LaneKernel::Pair128,
-            (_, true, _) => LaneKernel::Cached,
-            (_, false, _) => LaneKernel::Pair,
+        match (self.block_threads as usize, self.arm.uses_cache()) {
+            (UNISKIP_PAIR_THREADS_128, true) => cached_128_kernel(self.body, self.budget),
+            (UNISKIP_PAIR_THREADS_128, false) if self.budget.is_bounded() => LaneKernel::Pair128Lb,
+            (UNISKIP_PAIR_THREADS_128, false) => LaneKernel::Pair128,
+            (_, true) => LaneKernel::Cached,
+            (_, false) => LaneKernel::Pair,
         }
     }
 
@@ -2635,13 +2938,43 @@ impl LaneKernel {
         Self::SegbGSlotted,
     ];
 
-    /// The LOCAL symbols that run HINTED (amendment A3): the incumbent's bounded cached body
-    /// and both v3 R9 gate-first bodies. The carveout attribute is per FUNCTION and sticky, so
-    /// a process running two of these bodies has to set every one of them or its headline
-    /// contrast spans two L1 configurations. The unbounded incumbent is not on the list — no
-    /// timed arm launches it — and the uncached `control@256` is never hinted, which is what
-    /// makes it the cross-process anchor.
-    pub const HINTED: [LaneKernel; 3] = [Self::Cached128Lb, Self::Reorder128Lb, Self::Reorder128];
+    /// The LOCAL symbols that run HINTED (amendment A3): every cell of the v3 R9b grid — all
+    /// eight bodies at all three register budgets. The carveout attribute is per FUNCTION and
+    /// sticky, so a process running several of these bodies has to set every one of them or its
+    /// headline contrast spans two L1 configurations; and a cell OFF this list is not timeable,
+    /// because the run would leave it at the driver's own sizing while the incumbent beside it
+    /// sits at 16 (Task 1 concern 4). The 256-thread cached body is not on the list (no R9/R9b
+    /// arm launches it) and the uncached `control@256` is never hinted, which is what makes it
+    /// the cross-process anchor.
+    ///
+    /// ORDER is the echo order and therefore log grammar: grid order, and within a body
+    /// `Lb` -> `Lb6` -> unbounded. The R9 rotation's echo set is unchanged by construction.
+    pub const HINTED: [LaneKernel; 24] = [
+        Self::Cached128Lb,
+        Self::Cached128Lb6,
+        Self::Cached128,
+        Self::Reorder128Lb,
+        Self::Reorder128Lb6,
+        Self::Reorder128,
+        Self::ReorderC128Lb,
+        Self::ReorderC128Lb6,
+        Self::ReorderC128,
+        Self::ReorderCk128Lb,
+        Self::ReorderCk128Lb6,
+        Self::ReorderCk128,
+        Self::ReorderCd128Lb,
+        Self::ReorderCd128Lb6,
+        Self::ReorderCd128,
+        Self::ReorderB128Lb,
+        Self::ReorderB128Lb6,
+        Self::ReorderB128,
+        Self::ReorderBk128Lb,
+        Self::ReorderBk128Lb6,
+        Self::ReorderBk128,
+        Self::ReorderBd128Lb,
+        Self::ReorderBd128Lb6,
+        Self::ReorderBd128,
+    ];
 
     /// The exported symbol minus the `ab_gkr_uniskip_` / `_kernel` affixes — what the ARM
     /// lines, the config block and the carveout echoes all print.
@@ -2783,7 +3116,7 @@ mod lane_tests {
             if lane.block_threads == 128 {
                 // The occupancy gate: an unbounded cached lane at 128 would carry a
                 // block-count step against the control it is contrasted with.
-                assert!(lane.launch_bounds, "{} must be bounded", lane.label);
+                assert!(lane.budget.is_bounded(), "{} must be bounded", lane.label);
                 assert_eq!(lane.blocks_per_sm, 7, "{}", lane.label);
                 assert_eq!(lane.rows_per_block(), 16, "{}", lane.label);
                 let want = if lane.arm.uses_cache() {
@@ -2867,7 +3200,7 @@ mod lane_tests {
             assert_eq!(lane.regs, 72, "{}", lane.label);
             assert_eq!(lane.carrier, LaneCarrier::Local, "{}", lane.label);
             if lane.block_threads == 128 {
-                assert!(lane.launch_bounds, "{} must be bounded", lane.label);
+                assert!(lane.budget.is_bounded(), "{} must be bounded", lane.label);
                 assert_eq!(lane.blocks_per_sm, 7, "{}", lane.label);
                 assert_eq!(lane.rows_per_block(), 16, "{}", lane.label);
                 let want = if lane.arm.uses_cache() {
@@ -2963,16 +3296,22 @@ mod lane_tests {
         // the incumbent's block count, and dropping it is what buys the eighth block.
         for lane in &REORDER {
             assert_eq!(lane.carrier, LaneCarrier::Local, "{}", lane.label);
-            match (lane.body, lane.launch_bounds) {
-                (PairBody::Reorder, true) => {
+            match (lane.body, lane.budget) {
+                (PairBody::Reorder, PairBudget::Lb) => {
                     assert_eq!((lane.regs, lane.blocks_per_sm), (70, 7), "{}", lane.label);
                 }
-                (PairBody::Reorder, false) => {
+                (PairBody::Reorder, PairBudget::Unbounded) => {
                     assert_eq!((lane.regs, lane.blocks_per_sm), (64, 8), "{}", lane.label);
                 }
                 (PairBody::Incumbent, _) => {
                     assert_eq!(lane.regs, 72, "{}", lane.label);
                 }
+                (body, budget) => panic!(
+                    "{} runs {} at {} — not an R9 cell",
+                    lane.label,
+                    body.as_str(),
+                    budget.as_str()
+                ),
             }
             let rows = if lane.block_threads == 128 { 16 } else { 32 };
             assert_eq!(lane.rows_per_block(), rows, "{}", lane.label);
@@ -3008,17 +3347,452 @@ mod lane_tests {
         assert!(!LaneSet::Reorder.is_seg());
     }
 
+    /// The R9b CLASS rotation's shape, pinned exactly as the rung names it: three local
+    /// anchors, R9's drop-in reorder as the reference point, and the four corrected grouped
+    /// bodies at one fixed register budget. `K` is absent on purpose (±0 static instructions in
+    /// the C family), and every lane's static register line and derived block tier is pinned
+    /// with it, because a lane reporting the wrong tier would mislabel a timed log.
+    #[test]
+    fn cpu_r9b_class_lane_set() {
+        assert_eq!(R9B_CLASS.len(), 8);
+        let facts: Vec<(&str, CacheArm, PairBody, PairBudget, LaneKernel, u32, u32)> = R9B_CLASS
+            .iter()
+            .map(|l| {
+                (
+                    l.label,
+                    l.arm,
+                    l.body,
+                    l.budget,
+                    l.kernel(),
+                    l.regs,
+                    l.blocks_per_sm,
+                )
+            })
+            .collect();
+        assert_eq!(
+            facts,
+            vec![
+                (
+                    "control@256",
+                    CacheArm::Control,
+                    PairBody::Incumbent,
+                    PairBudget::Unbounded,
+                    LaneKernel::Pair,
+                    72,
+                    3,
+                ),
+                (
+                    "control_lb@128",
+                    CacheArm::Control,
+                    PairBody::Incumbent,
+                    PairBudget::Lb,
+                    LaneKernel::Pair128Lb,
+                    72,
+                    7,
+                ),
+                (
+                    "hot16@128",
+                    CacheArm::Hot16,
+                    PairBody::Incumbent,
+                    PairBudget::Lb,
+                    LaneKernel::Cached128Lb,
+                    72,
+                    7,
+                ),
+                (
+                    "reorder-hot16@128",
+                    CacheArm::Hot16,
+                    PairBody::Reorder,
+                    PairBudget::Lb,
+                    LaneKernel::Reorder128Lb,
+                    70,
+                    7,
+                ),
+                (
+                    "c-hot16@128",
+                    CacheArm::Hot16,
+                    PairBody::RegroupC,
+                    PairBudget::Lb,
+                    LaneKernel::ReorderC128Lb,
+                    70,
+                    7,
+                ),
+                (
+                    "b-hot16@128",
+                    CacheArm::Hot16,
+                    PairBody::RegroupB,
+                    PairBudget::Lb,
+                    LaneKernel::ReorderB128Lb,
+                    70,
+                    7,
+                ),
+                (
+                    "cd-hot16@128",
+                    CacheArm::Hot16,
+                    PairBody::RegroupCd,
+                    PairBudget::Lb,
+                    LaneKernel::ReorderCd128Lb,
+                    72,
+                    7,
+                ),
+                (
+                    "bd-hot16@128",
+                    CacheArm::Hot16,
+                    PairBody::RegroupBd,
+                    PairBudget::Lb,
+                    LaneKernel::ReorderBd128Lb,
+                    72,
+                    7,
+                ),
+            ]
+        );
+        // ONE budget across the whole class axis — that is what makes it a class reading.
+        for lane in R9B_CLASS.iter().skip(1) {
+            assert_eq!(lane.budget, PairBudget::Lb, "{}", lane.label);
+        }
+        assert!(!R9B_CLASS
+            .iter()
+            .any(|l| matches!(l.body, PairBody::RegroupCk | PairBody::RegroupBk)));
+        for lane in &R9B_CLASS {
+            assert_eq!(lane.carrier, LaneCarrier::Local, "{}", lane.label);
+            let rows = if lane.block_threads == 128 { 16 } else { 32 };
+            assert_eq!(lane.rows_per_block(), rows, "{}", lane.label);
+        }
+        assert_eq!(LaneSet::R9bClass.rounds_and_warmup(), Some((96, 8)));
+        for n in [96u32, 8] {
+            assert!(n.is_multiple_of(R9B_CLASS.len() as u32), "{n}");
+        }
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            validate_lane_set(&program(order), &R9B_CLASS).unwrap();
+        }
+    }
+
+    /// The R9b BUDGET rotation's shape: the same three anchors, then body C and the INCUMBENT at
+    /// all three register budgets each, fully paired. The register lines are Task 1's, and they
+    /// are why the session is laid out this way — `Lb6` is the MAXIMUM-register cell (80 / 75)
+    /// and unbounded the minimum (75 / 64), so the axis is not monotone and both pairings have
+    /// to be in one rotation.
+    #[test]
+    fn cpu_r9b_budget_lane_set() {
+        assert_eq!(R9B_BUDGET.len(), 8);
+        let facts: Vec<(&str, PairBody, PairBudget, LaneKernel, u32, u32)> = R9B_BUDGET
+            .iter()
+            .map(|l| {
+                (
+                    l.label,
+                    l.body,
+                    l.budget,
+                    l.kernel(),
+                    l.regs,
+                    l.blocks_per_sm,
+                )
+            })
+            .collect();
+        assert_eq!(
+            facts,
+            vec![
+                (
+                    "control@256",
+                    PairBody::Incumbent,
+                    PairBudget::Unbounded,
+                    LaneKernel::Pair,
+                    72,
+                    3,
+                ),
+                (
+                    "control_lb@128",
+                    PairBody::Incumbent,
+                    PairBudget::Lb,
+                    LaneKernel::Pair128Lb,
+                    72,
+                    7,
+                ),
+                (
+                    "hot16@128",
+                    PairBody::Incumbent,
+                    PairBudget::Lb,
+                    LaneKernel::Cached128Lb,
+                    72,
+                    7,
+                ),
+                (
+                    "hot16-lb6@128",
+                    PairBody::Incumbent,
+                    PairBudget::Lb6,
+                    LaneKernel::Cached128Lb6,
+                    80,
+                    6,
+                ),
+                (
+                    "hot16-free@128",
+                    PairBody::Incumbent,
+                    PairBudget::Unbounded,
+                    LaneKernel::Cached128,
+                    75,
+                    6,
+                ),
+                (
+                    "c-hot16@128",
+                    PairBody::RegroupC,
+                    PairBudget::Lb,
+                    LaneKernel::ReorderC128Lb,
+                    70,
+                    7,
+                ),
+                (
+                    "c-hot16-lb6@128",
+                    PairBody::RegroupC,
+                    PairBudget::Lb6,
+                    LaneKernel::ReorderC128Lb6,
+                    75,
+                    6,
+                ),
+                (
+                    "c-hot16-free@128",
+                    PairBody::RegroupC,
+                    PairBudget::Unbounded,
+                    LaneKernel::ReorderC128,
+                    64,
+                    8,
+                ),
+            ]
+        );
+        // The 2 x 3 grid is COMPLETE and every cell is on the `hot16` plan, so both budget
+        // ladders are paired per round inside one rotation.
+        for body in [PairBody::Incumbent, PairBody::RegroupC] {
+            for budget in [PairBudget::Lb, PairBudget::Lb6, PairBudget::Unbounded] {
+                let want = cached_128_kernel(body, budget);
+                assert!(
+                    R9B_BUDGET
+                        .iter()
+                        .any(|l| l.arm == CacheArm::Hot16 && l.kernel() == want),
+                    "{} is missing from the budget grid",
+                    want.name()
+                );
+            }
+        }
+        assert_eq!(LaneSet::R9bBudget.rounds_and_warmup(), Some((96, 8)));
+        for n in [96u32, 8] {
+            assert!(n.is_multiple_of(R9B_BUDGET.len() as u32), "{n}");
+        }
+        for order in [TermOrder::Census, TermOrder::Locality] {
+            validate_lane_set(&program(order), &R9B_BUDGET).unwrap();
+        }
+    }
+
+    /// Both R9b rotations' preregistered facts come from ONE value each, and they share the log
+    /// keyword: they are one rung read on two axes, so a log says which by its lane labels.
+    #[test]
+    fn cpu_r9b_lane_set_selectors() {
+        assert_eq!(LaneSet::R9bClass.lanes(), &R9B_CLASS);
+        assert_eq!(LaneSet::R9bBudget.lanes(), &R9B_BUDGET);
+        assert_eq!(LaneSet::R9bClass.flag(), "--r9b-class");
+        assert_eq!(LaneSet::R9bBudget.flag(), "--r9b-budget");
+        assert_eq!(LaneSet::R9bClass.noun(), "r9b class");
+        assert_eq!(LaneSet::R9bBudget.noun(), "r9b budget");
+        assert_eq!(LaneSet::R9bClass.arms_noun(), "R9b class lanes");
+        assert_eq!(LaneSet::R9bBudget.arms_noun(), "R9b budget lanes");
+        for set in [LaneSet::R9bClass, LaneSet::R9bBudget] {
+            assert_eq!(set.tag(), "R9B");
+            assert_eq!(set.gates(), "tools/r7_gates.sh");
+            assert!(set.is_frontier());
+            assert!(!set.is_seg());
+            let (rounds, warmup) = set.rounds_and_warmup().unwrap();
+            let n = set.lanes().len() as u32;
+            assert!(rounds.is_multiple_of(n), "{} rounds over {n}", set.flag());
+            assert!(warmup.is_multiple_of(n), "{} warmup over {n}", set.flag());
+        }
+    }
+
+    /// THE SESSION SEAM. Both rotations carry the same three anchors AND the `C@(128, 7)` bridge
+    /// lane, so a cross-session read has a shared reference; and every cell either session times
+    /// is on [`LaneKernel::HINTED`], because a cell whose carveout was never applied is not
+    /// comparable with the incumbent beside it.
+    #[test]
+    fn cpu_r9b_sessions_share_anchors_and_hint_every_timed_cell() {
+        let shared: Vec<&str> = R9B_CLASS
+            .iter()
+            .map(|l| l.label)
+            .filter(|l| R9B_BUDGET.iter().any(|e| e.label == *l))
+            .collect();
+        assert_eq!(
+            shared,
+            vec!["control@256", "control_lb@128", "hot16@128", "c-hot16@128"]
+        );
+        // The anchors every local session shares, R9's rotation included.
+        for label in ["control@256", "control_lb@128", "hot16@128"] {
+            for set in [&REORDER[..], &R9B_CLASS[..], &R9B_BUDGET[..]] {
+                assert!(set.iter().any(|l| l.label == label), "{label}");
+            }
+        }
+        // Every timed cell of the rung, by symbol: the CLASS axis, the BUDGET grid, and R9's
+        // drop-in reference point.
+        let timed = [
+            LaneKernel::Cached128Lb,
+            LaneKernel::Cached128Lb6,
+            LaneKernel::Cached128,
+            LaneKernel::Reorder128Lb,
+            LaneKernel::ReorderC128Lb,
+            LaneKernel::ReorderC128Lb6,
+            LaneKernel::ReorderC128,
+            LaneKernel::ReorderB128Lb,
+            LaneKernel::ReorderCd128Lb,
+            LaneKernel::ReorderBd128Lb,
+        ];
+        for kernel in timed {
+            assert!(
+                LaneKernel::HINTED.contains(&kernel),
+                "{} is timed but never hinted",
+                kernel.name()
+            );
+            assert!(
+                R9B_CLASS
+                    .iter()
+                    .chain(R9B_BUDGET.iter())
+                    .any(|l| l.kernel() == kernel),
+                "{} is timed by no lane",
+                kernel.name()
+            );
+        }
+        // And the cells NO lane times are still hinted, so a single-arm run of one is taken at
+        // the same L1 configuration as the rotations' incumbent.
+        for kernel in LaneKernel::HINTED {
+            assert!(kernel.is_cached(), "{}", kernel.name());
+        }
+    }
+
+    /// The R9b kernel derivation, BOTH directions: a grid lane reaches its own symbol, and no
+    /// lane of any pre-R9b rotation reaches any grid symbol beyond the two the incumbent has
+    /// always had. The body and the budget are the only things that moved, so a derivation
+    /// keying on the shape alone would silently re-point 60 shipped lanes.
+    #[test]
+    fn cpu_r9b_kernel_derivation_leaves_every_other_lane_alone() {
+        for body in [
+            PairBody::Incumbent,
+            PairBody::Reorder,
+            PairBody::RegroupC,
+            PairBody::RegroupCk,
+            PairBody::RegroupCd,
+            PairBody::RegroupB,
+            PairBody::RegroupBk,
+            PairBody::RegroupBd,
+        ] {
+            for budget in [PairBudget::Lb, PairBudget::Lb6, PairBudget::Unbounded] {
+                let lane = grid_128("cell@128", CacheArm::Hot16, body, budget);
+                assert_eq!(lane.kernel(), cached_128_kernel(body, budget));
+                assert_eq!(
+                    lane.blocks_per_sm,
+                    arith_blocks_per_sm(lane.regs, 128),
+                    "{} {}",
+                    body.as_str(),
+                    budget.as_str()
+                );
+            }
+        }
+        let grid: Vec<LaneKernel> = LaneKernel::HINTED.into_iter().collect();
+        for set in [
+            &CACHE_FACTORIAL[..],
+            &FRONTIER_FACTORIAL[..],
+            &FRONTIER_EXTENSION[..],
+            &FRONTIER_INTERIOR[..],
+            &CARVEOUT_PROBE[..],
+            &SEG_SMEM[..],
+            &SEG_GMEM[..],
+            &SEG_ANCHOR[..],
+            &SEGB[..],
+        ] {
+            for lane in set {
+                assert_eq!(lane.body, PairBody::Incumbent, "{}", lane.label);
+                assert_ne!(lane.budget, PairBudget::Lb6, "{}", lane.label);
+                let kernel = lane.kernel();
+                assert!(
+                    !grid.contains(&kernel) || kernel == LaneKernel::Cached128Lb,
+                    "{} reaches {}",
+                    lane.label,
+                    kernel.name()
+                );
+            }
+        }
+    }
+
+    /// `blocks_per_sm` is ARITHMETIC off the static register line — every shipped lane's pinned
+    /// figure is exactly what [`arith_blocks_per_sm`] derives, so the two cannot drift and the
+    /// number never reads as a measurement. R9 proved the static line is not the allocated
+    /// truth (static 70 allocated as 72); ncu is the authority (amendment A7).
+    #[test]
+    fn cpu_arith_blocks_per_sm_reproduces_every_lane_pin() {
+        for set in [
+            &CACHE_FACTORIAL[..],
+            &FRONTIER_FACTORIAL[..],
+            &FRONTIER_EXTENSION[..],
+            &FRONTIER_INTERIOR[..],
+            &CARVEOUT_PROBE[..],
+            &SEG_SMEM[..],
+            &SEG_GMEM[..],
+            &SEG_ANCHOR[..],
+            &SEGB[..],
+            &REORDER[..],
+            &R9B_CLASS[..],
+            &R9B_BUDGET[..],
+        ] {
+            for lane in set {
+                assert_eq!(
+                    lane.blocks_per_sm,
+                    arith_blocks_per_sm(lane.regs, lane.block_threads),
+                    "{}",
+                    lane.label
+                );
+            }
+        }
+        // The ladder amendment A1 states, at 128 threads (4-warp blocks) and at 256.
+        for (regs, want) in [
+            (59u32, 8u32),
+            (64, 8),
+            (70, 7),
+            (72, 7),
+            (75, 6),
+            (78, 6),
+            (80, 6),
+            (88, 5),
+            (96, 5),
+            (104, 4),
+            (128, 4),
+        ] {
+            assert_eq!(arith_blocks_per_sm(regs, 128), want, "{regs} at 128");
+        }
+        assert_eq!(arith_blocks_per_sm(72, 256), 3);
+        assert_eq!(arith_blocks_per_sm(75, 256), 3);
+        // Below 44 registers the thread limit binds, not the register file: 1,536 / 128 = 12.
+        assert_eq!(arith_blocks_per_sm(32, 128), 12);
+        assert_eq!(SM_MAX_THREADS / 128, 12);
+        // `frontier_128`'s own pins are the grid's incumbent `Lb` cell, so the two tables agree.
+        let incumbent = frontier_128("hot16@128", CacheArm::Hot16);
+        assert_eq!(
+            (incumbent.regs, incumbent.blocks_per_sm),
+            (
+                cached_128_regs(PairBody::Incumbent, PairBudget::Lb),
+                arith_blocks_per_sm(72, 128)
+            )
+        );
+    }
+
     /// The kernel derivation, BOTH directions. A reorder lane must reach the R9 symbols, and
     /// no lane of any pre-R9 rotation may: the body field is the only thing that moved, so a
     /// derivation that keyed on the shape alone would silently re-point 60 shipped lanes.
     #[test]
     fn cpu_reorder_kernel_derivation_leaves_every_other_lane_alone() {
         assert_eq!(
-            reorder_128("r@128", CacheArm::Hot16, true).kernel(),
+            grid_128("r@128", CacheArm::Hot16, PairBody::Reorder, PairBudget::Lb).kernel(),
             LaneKernel::Reorder128Lb
         );
         assert_eq!(
-            reorder_128("r@128", CacheArm::Hot16, false).kernel(),
+            grid_128(
+                "r@128",
+                CacheArm::Hot16,
+                PairBody::Reorder,
+                PairBudget::Unbounded
+            )
+            .kernel(),
             LaneKernel::Reorder128
         );
         // The incumbent twin of each: same arm, same shape, the body alone differs.
@@ -3059,7 +3833,12 @@ mod lane_tests {
         let p = program(TermOrder::Locality);
         let at_256 = [CacheLane {
             block_threads: 256,
-            ..reorder_128("reorder-hot16@256", CacheArm::Hot16, false)
+            ..grid_128(
+                "reorder-hot16@256",
+                CacheArm::Hot16,
+                PairBody::Reorder,
+                PairBudget::Unbounded,
+            )
         }];
         let err = validate_lane_set(&p, &at_256).unwrap_err();
         assert!(
@@ -3067,7 +3846,12 @@ mod lane_tests {
             "{err}"
         );
 
-        let uncached = [reorder_128("reorder-control@128", CacheArm::Control, true)];
+        let uncached = [grid_128(
+            "reorder-control@128",
+            CacheArm::Control,
+            PairBody::Reorder,
+            PairBudget::Lb,
+        )];
         let err = validate_lane_set(&p, &uncached).unwrap_err();
         assert!(
             err.contains("must be a 128-thread cached local lane"),
@@ -3076,7 +3860,12 @@ mod lane_tests {
 
         let on_a_carrier = [CacheLane {
             carrier: LaneCarrier::SegG,
-            ..reorder_128("reorder-seg@128", CacheArm::Hot16, true)
+            ..grid_128(
+                "reorder-seg@128",
+                CacheArm::Hot16,
+                PairBody::Reorder,
+                PairBudget::Lb,
+            )
         }];
         let err = validate_lane_set(&p, &on_a_carrier).unwrap_err();
         assert!(
@@ -3084,12 +3873,43 @@ mod lane_tests {
             "{err}"
         );
 
-        // THE COUNTER-CASE, and the reason the alias key carries the body: one admitted set on
-        // the incumbent and on the gate-first walk is the R9 contrast itself, so it must PASS.
+        // The INCUMBENT at `(128, 6)` is subject to the same rule: `Lb6` exists on cached
+        // 128-thread bodies only, so an uncached one is malformed even on the incumbent.
+        let incumbent_lb6 = [grid_128(
+            "control-lb6@128",
+            CacheArm::Control,
+            PairBody::Incumbent,
+            PairBudget::Lb6,
+        )];
+        let err = validate_lane_set(&p, &incumbent_lb6).unwrap_err();
+        assert!(
+            err.contains("must be a 128-thread cached local lane"),
+            "{err}"
+        );
+
+        // THE COUNTER-CASE, and the reason the alias key carries the body AND the budget: one
+        // admitted set on the incumbent and on a gate-first walk is the R9/R9b contrast itself,
+        // and so is the same body at two budgets — both must PASS.
         let body_contrast = [
             frontier_128("hot16@128", CacheArm::Hot16),
-            reorder_128("reorder-hot16@128", CacheArm::Hot16, true),
-            reorder_128("reorder-hot16-free@128", CacheArm::Hot16, false),
+            grid_128(
+                "reorder-hot16@128",
+                CacheArm::Hot16,
+                PairBody::Reorder,
+                PairBudget::Lb,
+            ),
+            grid_128(
+                "reorder-hot16-free@128",
+                CacheArm::Hot16,
+                PairBody::Reorder,
+                PairBudget::Unbounded,
+            ),
+            grid_128(
+                "reorder-hot16-lb6@128",
+                CacheArm::Hot16,
+                PairBody::Reorder,
+                PairBudget::Lb6,
+            ),
         ];
         validate_lane_set(&p, &body_contrast).unwrap();
     }
@@ -3099,44 +3919,209 @@ mod lane_tests {
     fn cpu_reorder_lane_at_a_shape_the_body_lacks_panics() {
         let _ = CacheLane {
             block_threads: 256,
-            ..reorder_128("reorder-hot16@256", CacheArm::Hot16, false)
+            ..grid_128(
+                "reorder-hot16@256",
+                CacheArm::Hot16,
+                PairBody::Reorder,
+                PairBudget::Unbounded,
+            )
         }
         .kernel();
     }
 
-    /// The v3 R9 body-selector matrix, accept and reject cells. Fail-closed: three flags, three
-    /// bodies, and nothing names a body at a shape it was not built at.
+    /// The v3 R9/R9b body-and-budget selector matrix, accept and reject cells. Fail-closed, and
+    /// EXHAUSTIVE over the grid: one spelling per cell, no cell unreachable, no cell with two
+    /// spellings, and nothing names a cell at a shape it was not built at.
     #[test]
     fn cpu_pair_body_selector_matrix() {
-        let at =
-            |reorder, free, no_bounds| select_pair_body(reorder, free, no_bounds, true, 128, true);
-        // The three legal spellings, one per body.
-        assert_eq!(at(false, false, false), Ok((PairBody::Incumbent, true)));
-        assert_eq!(at(false, false, true), Ok((PairBody::Incumbent, false)));
-        assert_eq!(at(true, false, false), Ok((PairBody::Reorder, true)));
-        assert_eq!(at(false, true, false), Ok((PairBody::Reorder, false)));
-        // Two bodies at once, and the two spellings of the unbounded reorder.
-        assert!(at(true, true, false).unwrap_err().contains("pick one"));
-        for cell in [at(true, false, true), at(false, true, true)] {
+        let at = |reorder, free, regroup, budget, no_bounds| {
+            select_pair_body(reorder, free, regroup, budget, no_bounds, true, 128, true)
+        };
+        // EVERY cell of the 8 x 3 grid, by its one spelling. The table is the CLI surface Task
+        // 3 addresses, so it is written out rather than derived.
+        let cells: [(bool, bool, Option<PairBody>, Option<PairBudget>, bool); 24] = [
+            (false, false, None, None, false),
+            (false, false, None, Some(PairBudget::Lb6), false),
+            (false, false, None, None, true),
+            (true, false, None, None, false),
+            (true, false, None, Some(PairBudget::Lb6), false),
+            (false, true, None, None, false),
+            (false, false, Some(PairBody::RegroupC), None, false),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupC),
+                Some(PairBudget::Lb6),
+                false,
+            ),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupC),
+                Some(PairBudget::Unbounded),
+                false,
+            ),
+            (false, false, Some(PairBody::RegroupCk), None, false),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupCk),
+                Some(PairBudget::Lb6),
+                false,
+            ),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupCk),
+                Some(PairBudget::Unbounded),
+                false,
+            ),
+            (false, false, Some(PairBody::RegroupCd), None, false),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupCd),
+                Some(PairBudget::Lb6),
+                false,
+            ),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupCd),
+                Some(PairBudget::Unbounded),
+                false,
+            ),
+            (false, false, Some(PairBody::RegroupB), None, false),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupB),
+                Some(PairBudget::Lb6),
+                false,
+            ),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupB),
+                Some(PairBudget::Unbounded),
+                false,
+            ),
+            (false, false, Some(PairBody::RegroupBk), None, false),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupBk),
+                Some(PairBudget::Lb6),
+                false,
+            ),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupBk),
+                Some(PairBudget::Unbounded),
+                false,
+            ),
+            (false, false, Some(PairBody::RegroupBd), None, false),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupBd),
+                Some(PairBudget::Lb6),
+                false,
+            ),
+            (
+                false,
+                false,
+                Some(PairBody::RegroupBd),
+                Some(PairBudget::Unbounded),
+                false,
+            ),
+        ];
+        let mut reached: Vec<LaneKernel> = Vec::new();
+        for (reorder, free, regroup, budget, no_bounds) in cells {
+            let (body, budget) = at(reorder, free, regroup, budget, no_bounds)
+                .unwrap_or_else(|e| panic!("legal cell rejected: {e}"));
+            reached.push(cached_128_kernel(body, budget));
+        }
+        // The 24 spellings reach the 24 symbols, one each — no cell aliased, none missing.
+        let mut sorted: Vec<&str> = reached.iter().map(|k| k.name()).collect();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 24, "{reached:?}");
+        for kernel in LaneKernel::HINTED {
+            assert!(
+                reached.contains(&kernel),
+                "{} has no spelling",
+                kernel.name()
+            );
+        }
+        // Two bodies at once; the two spellings of an unbounded body; a budget flag beside a
+        // flag that already names one; and `free` without a body that needs it.
+        assert!(at(true, true, None, None, false)
+            .unwrap_err()
+            .contains("pick one"));
+        assert!(at(true, false, Some(PairBody::RegroupC), None, false)
+            .unwrap_err()
+            .contains("pick one"));
+        for cell in [
+            at(true, false, None, None, true),
+            at(false, true, None, None, true),
+            at(false, false, Some(PairBody::RegroupC), None, true),
+        ] {
             let err = cell.unwrap_err();
             assert!(err.contains("spelled --reorder-free"), "{err}");
         }
-        // The shape: the body is a 128-thread CACHED kernel and nothing else.
         for cell in [
-            select_pair_body(true, false, false, false, 128, true),
-            select_pair_body(true, false, false, true, 256, true),
-            select_pair_body(true, false, false, true, 128, false),
-            select_pair_body(false, true, false, true, 256, true),
-            select_pair_body(false, true, false, true, 128, false),
+            at(false, true, None, Some(PairBudget::Lb6), false),
+            at(false, false, None, Some(PairBudget::Lb6), true),
+        ] {
+            let err = cell.unwrap_err();
+            assert!(err.contains("already name the unbounded budget"), "{err}");
+        }
+        for cell in [
+            at(false, false, None, Some(PairBudget::Unbounded), false),
+            at(true, false, None, Some(PairBudget::Unbounded), false),
+        ] {
+            let err = cell.unwrap_err();
+            assert!(err.contains("it needs --regroup"), "{err}");
+        }
+        // The shape: every cell but the incumbent's `Lb` / unbounded pair is a 128-thread
+        // CACHED kernel and nothing else — the incumbent's own `Lb6` included.
+        for cell in [
+            select_pair_body(true, false, None, None, false, false, 128, true),
+            select_pair_body(true, false, None, None, false, true, 256, true),
+            select_pair_body(true, false, None, None, false, true, 128, false),
+            select_pair_body(false, true, None, None, false, true, 256, true),
+            select_pair_body(false, true, None, None, false, true, 128, false),
+            select_pair_body(
+                false,
+                false,
+                Some(PairBody::RegroupCd),
+                None,
+                false,
+                true,
+                256,
+                true,
+            ),
+            select_pair_body(
+                false,
+                false,
+                None,
+                Some(PairBudget::Lb6),
+                false,
+                true,
+                128,
+                false,
+            ),
         ] {
             let err = cell.unwrap_err();
             assert!(err.contains("needs --mode lsb-pair"), "{err}");
         }
-        // The incumbent's own shape rules are unchanged by the R9 flags: an unbounded
+        // The incumbent's own shape rules are unchanged by the R9/R9b flags: an unbounded
         // incumbent at 256 is not this matrix's business.
         assert_eq!(
-            select_pair_body(false, false, true, true, 256, true),
-            Ok((PairBody::Incumbent, false))
+            select_pair_body(false, false, None, None, true, true, 256, true),
+            Ok((PairBody::Incumbent, PairBudget::Unbounded))
         );
     }
 
@@ -3216,37 +4201,62 @@ mod lane_tests {
         }
     }
 
-    /// The hinted set (amendment A3): the incumbent's bounded body and both gate-first bodies,
-    /// every one of them a LOCAL cached kernel. The uncached anchor and the unbounded incumbent
-    /// are not on it, which is what makes a hinted process's contrast one-configuration.
+    /// The hinted set (amendment A3, extended by R9b): EVERY cell of the grid — all eight
+    /// bodies at all three register budgets — each a LOCAL cached 128-thread kernel. The
+    /// uncached anchors and the 256-thread cached body are not on it, which is what makes a
+    /// hinted process's contrast one-configuration. And the set is exactly the grid: a timeable
+    /// cell off the list would run at the driver's own sizing beside a hinted incumbent.
     #[test]
     fn cpu_hinted_local_symbols_cover_every_reorder_lane() {
-        assert_eq!(
-            LaneKernel::HINTED,
-            [
-                LaneKernel::Cached128Lb,
-                LaneKernel::Reorder128Lb,
-                LaneKernel::Reorder128
-            ]
-        );
+        let grid: Vec<LaneKernel> = [
+            PairBody::Incumbent,
+            PairBody::Reorder,
+            PairBody::RegroupC,
+            PairBody::RegroupCk,
+            PairBody::RegroupCd,
+            PairBody::RegroupB,
+            PairBody::RegroupBk,
+            PairBody::RegroupBd,
+        ]
+        .into_iter()
+        .flat_map(|body| {
+            [PairBudget::Lb, PairBudget::Lb6, PairBudget::Unbounded]
+                .into_iter()
+                .map(move |budget| cached_128_kernel(body, budget))
+        })
+        .collect();
+        assert_eq!(LaneKernel::HINTED.to_vec(), grid);
         for kernel in LaneKernel::HINTED {
             assert!(kernel.is_cached(), "{}", kernel.name());
             assert!(!LaneCarrier::SEG.iter().any(|c| c.kernel() == Some(kernel)));
         }
-        assert!(!LaneKernel::HINTED.contains(&LaneKernel::Cached128));
-        assert!(!LaneKernel::HINTED.contains(&LaneKernel::Pair));
-        // Every cached lane of the reorder rotation is steerable, so the whole rotation runs at
-        // one carveout; the two controls are the never-hinted anchors.
-        for lane in &REORDER {
-            let hinted = LaneKernel::HINTED.contains(&lane.kernel());
-            assert_eq!(hinted, lane.arm.uses_cache(), "{}", lane.label);
+        // The three R9-era members keep their places, so the R9 rotation's echo ORDER — pinned
+        // in `tools/r7_gates.sh` — cannot move.
+        assert_eq!(LaneKernel::HINTED[0], LaneKernel::Cached128Lb);
+        assert_eq!(LaneKernel::HINTED[3], LaneKernel::Reorder128Lb);
+        assert_eq!(LaneKernel::HINTED[5], LaneKernel::Reorder128);
+        // The 256-thread cached body and every uncached body stay off the list.
+        for kernel in [
+            LaneKernel::Cached,
+            LaneKernel::Pair,
+            LaneKernel::Pair128,
+            LaneKernel::Pair128Lb,
+        ] {
+            assert!(!LaneKernel::HINTED.contains(&kernel), "{}", kernel.name());
+        }
+        // Every cached lane of every R9/R9b rotation is steerable, so the whole rotation runs
+        // at one carveout; the controls are the never-hinted anchors.
+        for set in [&REORDER[..], &R9B_CLASS[..], &R9B_BUDGET[..]] {
+            for lane in set {
+                let hinted = LaneKernel::HINTED.contains(&lane.kernel());
+                assert_eq!(hinted, lane.arm.uses_cache(), "{}", lane.label);
+            }
         }
     }
 
-    /// THE ECHO SET, per surface: what a process applies its carveout to and echoes. The R9
-    /// rotation's three bodies must all appear — that is what makes its headline contrast
-    /// one-configuration — and the unbounded INCUMBENT must not, since no arm launches it
-    /// hinted.
+    /// THE ECHO SET, per surface: what a process applies its carveout to and echoes. Every
+    /// cached body a rotation launches must appear — that is what makes its headline contrast
+    /// one-configuration — in HINTED order.
     #[test]
     fn cpu_hinted_echo_set_per_surface() {
         assert_eq!(
@@ -3257,11 +4267,33 @@ mod lane_tests {
                 LaneKernel::Reorder128
             ]
         );
-        // The single-arm surface: one body, one echo.
+        assert_eq!(
+            hinted_local_symbols(None, &R9B_CLASS),
+            vec![
+                LaneKernel::Cached128Lb,
+                LaneKernel::Reorder128Lb,
+                LaneKernel::ReorderC128Lb,
+                LaneKernel::ReorderCd128Lb,
+                LaneKernel::ReorderB128Lb,
+                LaneKernel::ReorderBd128Lb,
+            ]
+        );
+        assert_eq!(
+            hinted_local_symbols(None, &R9B_BUDGET),
+            vec![
+                LaneKernel::Cached128Lb,
+                LaneKernel::Cached128Lb6,
+                LaneKernel::Cached128,
+                LaneKernel::ReorderC128Lb,
+                LaneKernel::ReorderC128Lb6,
+                LaneKernel::ReorderC128,
+            ]
+        );
+        // The single-arm surface: one body, one echo — for every cell of the grid, which is
+        // what makes each of them timeable at the incumbent's L1 configuration.
         for kernel in LaneKernel::HINTED {
             assert_eq!(hinted_local_symbols(Some(kernel), &[]), vec![kernel]);
         }
-        assert!(hinted_local_symbols(Some(LaneKernel::Cached128), &[]).is_empty());
         assert!(hinted_local_symbols(Some(LaneKernel::Cached), &[]).is_empty());
         assert!(hinted_local_symbols(None, &[]).is_empty());
         // Every pre-R9 rotation keeps its one local echo, the incumbent's — the grammar the
@@ -3527,7 +4559,7 @@ mod lane_tests {
     fn seg_lane_facts(set: &[CacheLane]) {
         for lane in set.iter().filter(|l| l.carrier.is_seg()) {
             assert_eq!(lane.block_threads as usize, UNISKIP_PAIR_THREADS_128);
-            assert!(lane.launch_bounds, "{}", lane.label);
+            assert!(lane.budget.is_bounded(), "{}", lane.label);
             assert_eq!(lane.regs, 72, "{}", lane.label);
             assert_eq!(lane.blocks_per_sm, 7, "{}", lane.label);
             // An R7 block walks four cohorts of four rows; a transplant block covers ONE.
@@ -3803,7 +4835,7 @@ mod lane_tests {
         assert!(err.contains("carrier seg-s runs cache0 | hot16"), "{err}");
 
         let unbounded = [CacheLane {
-            launch_bounds: false,
+            budget: PairBudget::Unbounded,
             ..seg_128("seg-hot16-s64@128", CacheArm::Hot16, LaneCarrier::SegS64)
         }];
         let err = validate_lane_set(&p, &unbounded).unwrap_err();
@@ -3875,7 +4907,7 @@ mod lane_tests {
         let bound_contrast = [
             frontier_128("k48@128", CacheArm::K48),
             CacheLane {
-                launch_bounds: false,
+                budget: PairBudget::Unbounded,
                 label: "k48_nolb@128",
                 ..frontier_128("k48@128", CacheArm::K48)
             },
@@ -4048,7 +5080,7 @@ mod lane_tests {
     fn cpu_cache_factorial_128_cached_lanes_are_bounded() {
         for lane in CACHE_FACTORIAL {
             if lane.block_threads == 128 && lane.arm.uses_cache() {
-                assert!(lane.launch_bounds, "{} must be bounded", lane.label);
+                assert!(lane.budget.is_bounded(), "{} must be bounded", lane.label);
                 assert_eq!(lane.kernel(), LaneKernel::Cached128Lb, "{}", lane.label);
                 assert_eq!(lane.blocks_per_sm, 7, "{}", lane.label);
             }

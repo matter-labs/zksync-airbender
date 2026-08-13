@@ -1101,42 +1101,110 @@ fn occupancy(
     max_active_blocks_per_multiprocessor(function, block_threads, dynamic_smem_bytes)
 }
 
-/// v3 R6: steer the shared-memory carveout of the bounded 128-thread cached kernel — the
-/// one body every cached probe lane launches. A host-side function attribute (percent of
-/// the maximum shared memory, rounded by the driver to a supported config), sticky for the
-/// process; the SASS is untouched.
-pub fn set_cached_128_lb_carveout(percent: u32) -> CudaResult<()> {
-    unsafe {
-        cudaFuncSetAttribute(
-            EvalLsbPairCached128LbFunction::default().as_ptr(),
-            CudaFuncAttribute::PreferredSharedMemoryCarveout,
-            percent as std::os::raw::c_int,
-        )
+/// v3 R6/R9/R9b: steer the shared-memory carveout of one LOCAL cached body. A host-side
+/// function attribute (percent of the maximum shared memory, rounded by the driver to a
+/// supported config), sticky for the process; the SASS is untouched.
+///
+/// The attribute is per FUNCTION, so every symbol a process launches needs its own call or a
+/// body contrast spans two L1 configurations. One function over [`LaneKernel`] rather than one
+/// per symbol, for [`max_blocks_per_sm`]'s reason: the enum is already the single source of
+/// truth for which body a lane launches, and the match is exhaustive, so a new variant fails
+/// to compile until it is classed as steerable or not.
+pub fn set_local_carveout(kernel: LaneKernel, percent: u32) -> CudaResult<()> {
+    match kernel {
+        LaneKernel::Cached128Lb => carveout(&EvalLsbPairCached128LbFunction::default(), percent),
+        LaneKernel::Cached128Lb6 => carveout(&EvalLsbPairCached128Lb6Function::default(), percent),
+        LaneKernel::Cached128 => carveout(&EvalLsbPairCached128Function::default(), percent),
+        LaneKernel::Reorder128Lb => {
+            carveout(&EvalLsbPairCachedReorder128LbFunction::default(), percent)
+        }
+        LaneKernel::Reorder128Lb6 => {
+            carveout(&EvalLsbPairCachedReorder128Lb6Function::default(), percent)
+        }
+        LaneKernel::Reorder128 => {
+            carveout(&EvalLsbPairCachedReorder128Function::default(), percent)
+        }
+        LaneKernel::ReorderC128Lb => {
+            carveout(&EvalLsbPairCachedReorderC128LbFunction::default(), percent)
+        }
+        LaneKernel::ReorderC128Lb6 => {
+            carveout(&EvalLsbPairCachedReorderC128Lb6Function::default(), percent)
+        }
+        LaneKernel::ReorderC128 => {
+            carveout(&EvalLsbPairCachedReorderC128Function::default(), percent)
+        }
+        LaneKernel::ReorderCk128Lb => {
+            carveout(&EvalLsbPairCachedReorderCk128LbFunction::default(), percent)
+        }
+        LaneKernel::ReorderCk128Lb6 => carveout(
+            &EvalLsbPairCachedReorderCk128Lb6Function::default(),
+            percent,
+        ),
+        LaneKernel::ReorderCk128 => {
+            carveout(&EvalLsbPairCachedReorderCk128Function::default(), percent)
+        }
+        LaneKernel::ReorderCd128Lb => {
+            carveout(&EvalLsbPairCachedReorderCd128LbFunction::default(), percent)
+        }
+        LaneKernel::ReorderCd128Lb6 => carveout(
+            &EvalLsbPairCachedReorderCd128Lb6Function::default(),
+            percent,
+        ),
+        LaneKernel::ReorderCd128 => {
+            carveout(&EvalLsbPairCachedReorderCd128Function::default(), percent)
+        }
+        LaneKernel::ReorderB128Lb => {
+            carveout(&EvalLsbPairCachedReorderB128LbFunction::default(), percent)
+        }
+        LaneKernel::ReorderB128Lb6 => {
+            carveout(&EvalLsbPairCachedReorderB128Lb6Function::default(), percent)
+        }
+        LaneKernel::ReorderB128 => {
+            carveout(&EvalLsbPairCachedReorderB128Function::default(), percent)
+        }
+        LaneKernel::ReorderBk128Lb => {
+            carveout(&EvalLsbPairCachedReorderBk128LbFunction::default(), percent)
+        }
+        LaneKernel::ReorderBk128Lb6 => carveout(
+            &EvalLsbPairCachedReorderBk128Lb6Function::default(),
+            percent,
+        ),
+        LaneKernel::ReorderBk128 => {
+            carveout(&EvalLsbPairCachedReorderBk128Function::default(), percent)
+        }
+        LaneKernel::ReorderBd128Lb => {
+            carveout(&EvalLsbPairCachedReorderBd128LbFunction::default(), percent)
+        }
+        LaneKernel::ReorderBd128Lb6 => carveout(
+            &EvalLsbPairCachedReorderBd128Lb6Function::default(),
+            percent,
+        ),
+        LaneKernel::ReorderBd128 => {
+            carveout(&EvalLsbPairCachedReorderBd128Function::default(), percent)
+        }
+        LaneKernel::Pair
+        | LaneKernel::Pair128
+        | LaneKernel::Pair128Lb
+        | LaneKernel::Cached
+        | LaneKernel::SegSCv64
+        | LaneKernel::SegSCv100
+        | LaneKernel::SegSAcc
+        | LaneKernel::SegG
+        | LaneKernel::SegRecompute
+        | LaneKernel::SegbG
+        | LaneKernel::SegbRecompute
+        | LaneKernel::SegbGSlotted => panic!(
+            "{} is not a hinted local symbol — LaneKernel::HINTED and this dispatch are one \
+             list",
+            kernel.name()
+        ),
     }
-    .wrap()
 }
 
-/// [`set_cached_128_lb_carveout`] for the v3 R9 bounded gate-first body. A separate symbol
-/// needs its own call: the attribute is per function, so a rotation running the incumbent and
-/// the reorder bodies together would otherwise take its headline contrast across two L1
-/// configurations.
-pub fn set_cached_reorder_128_lb_carveout(percent: u32) -> CudaResult<()> {
+fn carveout(function: &impl KernelFunction, percent: u32) -> CudaResult<()> {
     unsafe {
         cudaFuncSetAttribute(
-            EvalLsbPairCachedReorder128LbFunction::default().as_ptr(),
-            CudaFuncAttribute::PreferredSharedMemoryCarveout,
-            percent as std::os::raw::c_int,
-        )
-    }
-    .wrap()
-}
-
-/// [`set_cached_128_lb_carveout`] for the UNBOUNDED gate-first body — hinted like the other
-/// two, because it is a timed arm of this rung rather than a bound-pricing sibling.
-pub fn set_cached_reorder_128_carveout(percent: u32) -> CudaResult<()> {
-    unsafe {
-        cudaFuncSetAttribute(
-            EvalLsbPairCachedReorder128Function::default().as_ptr(),
+            function.as_ptr(),
             CudaFuncAttribute::PreferredSharedMemoryCarveout,
             percent as std::os::raw::c_int,
         )

@@ -12,7 +12,7 @@ use crate::cache::CachePlan;
 use crate::compact::{self, BankPerm};
 use crate::coset_cache::{
     self, CacheArm, CacheArmState, CacheLane, CacheMutation, LaneCarrier, LaneKernel, LaneSet,
-    PairBody, PrologueOrder,
+    PairBody, PairBudget, PrologueOrder,
 };
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
@@ -432,9 +432,10 @@ pub struct PassConfig {
     /// v3 R7 carrier of a single-arm [`EvalMode::LsbPair`] run; ignored elsewhere.
     /// `Local` is the R4 per-thread frame — the absence of `--carrier`.
     pub carrier: LaneCarrier,
-    /// v3 R9 local BODY of a single-arm [`EvalMode::LsbPair`] run; ignored elsewhere and on
-    /// a carrier, which names its own symbol. `Reorder` needs a cached arm at 128 threads —
-    /// `main` rejects every other combination rather than silently ignoring the selector.
+    /// v3 R9/R9b local BODY of a single-arm [`EvalMode::LsbPair`] run; ignored elsewhere and
+    /// on a carrier, which names its own symbol. Every body but `Incumbent` needs a cached arm
+    /// at 128 threads — `main` rejects every other combination rather than silently ignoring
+    /// the selector.
     pub body: PairBody,
     /// Class the v3 R4 prologue produces first. A table-emission order only — the kernel
     /// walks what the host uploaded, so this costs no SASS.
@@ -449,12 +450,13 @@ pub struct PassConfig {
     /// sibling. FALSE is the default and is the frozen control128; TRUE selects the bounded
     /// baseline, which is what makes the 128 cache contrast bound-to-bound.
     pub control_launch_bounds: bool,
-    /// Whether the 128-thread cached arm runs the `__launch_bounds__(128, 7)` sibling.
-    /// TRUE is the measurement arm: unbounded it takes 75 registers = 6 blocks/SM against
-    /// control128's 7, and the contrast would carry an occupancy step. Ignored at 256,
-    /// where the cached body already holds the control's 3 blocks. The v3 R9 body has the
-    /// same pair of siblings on the same axis — `--reorder-free` is its unbounded one.
-    pub cache_launch_bounds: bool,
+    /// The register budget the 128-thread cached arm's body is compiled at. `Lb` is the
+    /// shipped measurement arm: unbounded the incumbent takes 75 registers = 6 blocks/SM
+    /// against control128's 7, and the contrast would carry an occupancy step. Ignored at 256,
+    /// where the cached body has no bounded sibling. Every R9/R9b body has all three siblings
+    /// on this axis, and [`coset_cache::cached_128_kernel`] is the one table from a
+    /// `(body, budget)` cell to its symbol.
+    pub cache_budget: PairBudget,
     /// Threads per eval block in [`EvalMode::LsbPair`]; ignored elsewhere. 256 is the R2
     /// shape, 128 is v3 R4's second block size — a distinct kernel, not a launch
     /// parameter, because the shared plane and the epilogue reduction are static.
@@ -532,6 +534,53 @@ type SegSlottedLaunch = fn(
     u32,
     &CudaStream,
 ) -> CudaResult<()>;
+
+/// The cached launch of one LOCAL body. ONE dispatch, shared by the factorial lanes and the
+/// single-arm path, so a `(body, budget)` cell cannot be wired two different ways — and
+/// exhaustive over [`LaneKernel`], so a new symbol fails to compile until it is classed as a
+/// cached local body or not.
+fn cached_launch(kernel: LaneKernel) -> CachedLaunch {
+    match kernel {
+        LaneKernel::Cached => kernels::eval_lsb_pair_cached,
+        LaneKernel::Cached128Lb => kernels::eval_lsb_pair_cached_128_lb,
+        LaneKernel::Cached128Lb6 => kernels::eval_lsb_pair_cached_128_lb6,
+        LaneKernel::Cached128 => kernels::eval_lsb_pair_cached_128,
+        LaneKernel::Reorder128Lb => kernels::eval_lsb_pair_cached_reorder_128_lb,
+        LaneKernel::Reorder128Lb6 => kernels::eval_lsb_pair_cached_reorder_128_lb6,
+        LaneKernel::Reorder128 => kernels::eval_lsb_pair_cached_reorder_128,
+        LaneKernel::ReorderC128Lb => kernels::eval_lsb_pair_cached_reorder_c_128_lb,
+        LaneKernel::ReorderC128Lb6 => kernels::eval_lsb_pair_cached_reorder_c_128_lb6,
+        LaneKernel::ReorderC128 => kernels::eval_lsb_pair_cached_reorder_c_128,
+        LaneKernel::ReorderCk128Lb => kernels::eval_lsb_pair_cached_reorder_ck_128_lb,
+        LaneKernel::ReorderCk128Lb6 => kernels::eval_lsb_pair_cached_reorder_ck_128_lb6,
+        LaneKernel::ReorderCk128 => kernels::eval_lsb_pair_cached_reorder_ck_128,
+        LaneKernel::ReorderCd128Lb => kernels::eval_lsb_pair_cached_reorder_cd_128_lb,
+        LaneKernel::ReorderCd128Lb6 => kernels::eval_lsb_pair_cached_reorder_cd_128_lb6,
+        LaneKernel::ReorderCd128 => kernels::eval_lsb_pair_cached_reorder_cd_128,
+        LaneKernel::ReorderB128Lb => kernels::eval_lsb_pair_cached_reorder_b_128_lb,
+        LaneKernel::ReorderB128Lb6 => kernels::eval_lsb_pair_cached_reorder_b_128_lb6,
+        LaneKernel::ReorderB128 => kernels::eval_lsb_pair_cached_reorder_b_128,
+        LaneKernel::ReorderBk128Lb => kernels::eval_lsb_pair_cached_reorder_bk_128_lb,
+        LaneKernel::ReorderBk128Lb6 => kernels::eval_lsb_pair_cached_reorder_bk_128_lb6,
+        LaneKernel::ReorderBk128 => kernels::eval_lsb_pair_cached_reorder_bk_128,
+        LaneKernel::ReorderBd128Lb => kernels::eval_lsb_pair_cached_reorder_bd_128_lb,
+        LaneKernel::ReorderBd128Lb6 => kernels::eval_lsb_pair_cached_reorder_bd_128_lb6,
+        LaneKernel::ReorderBd128 => kernels::eval_lsb_pair_cached_reorder_bd_128,
+        LaneKernel::Pair
+        | LaneKernel::Pair128
+        | LaneKernel::Pair128Lb
+        | LaneKernel::SegSCv64
+        | LaneKernel::SegSCv100
+        | LaneKernel::SegSAcc
+        | LaneKernel::SegG
+        | LaneKernel::SegRecompute
+        | LaneKernel::SegbG
+        | LaneKernel::SegbRecompute
+        | LaneKernel::SegbGSlotted => {
+            panic!("{} is not a cached local body", kernel.name())
+        }
+    }
+}
 
 /// Slab bytes and words one accounting unit occupies: a `bf` source's produced pair per
 /// lane identity, 32 identities to a warp row.
@@ -802,19 +851,6 @@ fn print_slot_pool_facts(units: u32) {
 /// Set one LOCAL symbol's preferred shared-memory carveout. Keyed on the kernel rather than
 /// on a body flag, so the applied set and the echoed set are the same list
 /// ([`LaneKernel::HINTED`]) and no hinted symbol can be added without a setter to reach it.
-fn set_local_carveout(kernel: LaneKernel, percent: u32) -> CudaResult<()> {
-    match kernel {
-        LaneKernel::Cached128Lb => kernels::set_cached_128_lb_carveout(percent),
-        LaneKernel::Reorder128Lb => kernels::set_cached_reorder_128_lb_carveout(percent),
-        LaneKernel::Reorder128 => kernels::set_cached_reorder_128_carveout(percent),
-        other => panic!(
-            "{} is not a hinted local symbol — LaneKernel::HINTED and this dispatch are one \
-             list",
-            other.name()
-        ),
-    }
-}
-
 /// Set one seg symbol's preferred shared-memory carveout. Per function and sticky for the
 /// process, which is why `_cv64` and `_cv100` are two symbols over one body.
 fn set_seg_carveout(carrier: LaneCarrier, percent: u32) -> CudaResult<()> {
@@ -1261,40 +1297,28 @@ impl Harness {
                     .find(|(a, _)| *a == config.cache_arm)
                     .and_then(|(_, s)| s.as_ref().ok())
                     .expect("main rejects an unplannable selected arm before device setup");
-                // The BOUNDED 128 kernel is the default: unbounded it takes 75 registers
-                // = 6 blocks/SM against control128's 7, which the occupancy gate forbids
-                // accepting silently. `cache_launch_bounds = false` selects the stepped one
-                // deliberately, to price what the bound costs.
-                // The v3 R9 body selector sits on the same axis as the bound: one spelling per
-                // body, and `main` rejects the reorder body at any shape it was not built for.
-                let (launch, kernel): (CachedLaunch, LaneKernel) = match (
-                    config.body,
-                    config.block_threads as usize,
-                    config.cache_launch_bounds,
-                ) {
-                    (PairBody::Reorder, UNISKIP_PAIR_THREADS_128, true) => (
-                        kernels::eval_lsb_pair_cached_reorder_128_lb,
-                        LaneKernel::Reorder128Lb,
-                    ),
-                    (PairBody::Reorder, UNISKIP_PAIR_THREADS_128, false) => (
-                        kernels::eval_lsb_pair_cached_reorder_128,
-                        LaneKernel::Reorder128,
-                    ),
-                    (PairBody::Reorder, threads, _) => panic!(
-                        "the R9 gate-first body exists at {UNISKIP_PAIR_THREADS_128} threads \
-                         only, not {threads}"
-                    ),
-                    (PairBody::Incumbent, UNISKIP_PAIR_THREADS_128, true) => (
-                        kernels::eval_lsb_pair_cached_128_lb,
-                        LaneKernel::Cached128Lb,
-                    ),
-                    (PairBody::Incumbent, UNISKIP_PAIR_THREADS_128, false) => {
-                        (kernels::eval_lsb_pair_cached_128, LaneKernel::Cached128)
+                // The `(body, budget)` cell IS the symbol — ONE table, shared with the lane
+                // path (`coset_cache::cached_128_kernel`), so a single-arm run and a rotation
+                // lane naming the same cell cannot launch two different kernels. `Lb` is the
+                // shipped default: unbounded the incumbent takes 75 registers = 6 blocks/SM
+                // against control128's 7, and the other budgets are selected deliberately to
+                // price that. At 256 the cached body has no sibling and no grid cell; `main`
+                // rejects every non-incumbent body and every `Lb6` there.
+                let kernel = match config.block_threads as usize {
+                    UNISKIP_PAIR_THREADS_128 => {
+                        coset_cache::cached_128_kernel(config.body, config.cache_budget)
                     }
-                    (PairBody::Incumbent, ..) => {
-                        (kernels::eval_lsb_pair_cached, LaneKernel::Cached)
+                    threads => {
+                        assert!(
+                            config.body == PairBody::Incumbent
+                                && config.cache_budget != PairBudget::Lb6,
+                            "the R9/R9b cached bodies exist at {UNISKIP_PAIR_THREADS_128} \
+                             threads only, not {threads}"
+                        );
+                        LaneKernel::Cached
                     }
                 };
+                let launch = cached_launch(kernel);
                 local_kernel = Some(kernel);
                 eval_kernel = kernel.name();
                 Some((launch, state.descriptor(config.prologue_order)))
@@ -1366,77 +1390,6 @@ impl Harness {
                 // additionally takes the DEALT program — the same records permuted, so
                 // `q` is unchanged — while every local lane keeps the ordered one.
                 let launch = match lane.kernel() {
-                    LaneKernel::Cached128Lb => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128_lb)
-                    }
-                    LaneKernel::Cached128 => LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128),
-                    LaneKernel::Reorder128Lb => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_128_lb)
-                    }
-                    LaneKernel::Reorder128 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_128)
-                    }
-                    LaneKernel::Cached128Lb6 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128_lb6)
-                    }
-                    LaneKernel::Reorder128Lb6 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_128_lb6)
-                    }
-                    LaneKernel::ReorderC128 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_c_128)
-                    }
-                    LaneKernel::ReorderC128Lb => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_c_128_lb)
-                    }
-                    LaneKernel::ReorderC128Lb6 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_c_128_lb6)
-                    }
-                    LaneKernel::ReorderCk128 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_ck_128)
-                    }
-                    LaneKernel::ReorderCk128Lb => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_ck_128_lb)
-                    }
-                    LaneKernel::ReorderCk128Lb6 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_ck_128_lb6)
-                    }
-                    LaneKernel::ReorderCd128 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_cd_128)
-                    }
-                    LaneKernel::ReorderCd128Lb => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_cd_128_lb)
-                    }
-                    LaneKernel::ReorderCd128Lb6 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_cd_128_lb6)
-                    }
-                    LaneKernel::ReorderB128 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_b_128)
-                    }
-                    LaneKernel::ReorderB128Lb => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_b_128_lb)
-                    }
-                    LaneKernel::ReorderB128Lb6 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_b_128_lb6)
-                    }
-                    LaneKernel::ReorderBk128 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bk_128)
-                    }
-                    LaneKernel::ReorderBk128Lb => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bk_128_lb)
-                    }
-                    LaneKernel::ReorderBk128Lb6 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bk_128_lb6)
-                    }
-                    LaneKernel::ReorderBd128 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bd_128)
-                    }
-                    LaneKernel::ReorderBd128Lb => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bd_128_lb)
-                    }
-                    LaneKernel::ReorderBd128Lb6 => {
-                        LaneLaunch::Cached(kernels::eval_lsb_pair_cached_reorder_bd_128_lb6)
-                    }
-                    LaneKernel::Cached => LaneLaunch::Cached(kernels::eval_lsb_pair_cached),
                     LaneKernel::Pair128Lb => LaneLaunch::Plain(kernels::eval_lsb_pair_128_lb),
                     LaneKernel::Pair128 => LaneLaunch::Plain(kernels::eval_lsb_pair_128),
                     LaneKernel::Pair => LaneLaunch::Plain(kernels::eval_lsb_pair),
@@ -1453,6 +1406,7 @@ impl Harness {
                         upload_dealt_program(&mut lane_desc, deal);
                         LaneLaunch::Seg(Box::new(prepare_seg(lane.carrier, state, deal, blocks)?))
                     }
+                    cached => LaneLaunch::Cached(cached_launch(cached)),
                 };
                 // FULL-TRACE INVARIANT. The row map is fixed, not grid-stride, so a
                 // short grid evaluates a PREFIX of the trace and finalize reduces the
@@ -1543,7 +1497,7 @@ impl Harness {
         };
         if let Some(pct) = carveout {
             for kernel in &hinted {
-                set_local_carveout(*kernel, pct)?;
+                kernels::set_local_carveout(*kernel, pct)?;
                 println!("  carveout hint       {pct}% ({})", kernel.name());
             }
             // The ECHO SET, one line, in the order the echoes were emitted: what a process's
@@ -1645,8 +1599,23 @@ impl Harness {
         // count is ncu's.
         if let Some(kernel) = local_kernel {
             let realized = kernels::max_blocks_per_sm(kernel, config.block_threads, 0)?;
+            // The ARITHMETIC tier beside it, off the cell's static register line, and LABELLED as
+            // arithmetic: at 0 B dynamic shared neither figure is authoritative (A7 — Task 4's ncu
+            // is), and the static line is not the allocated count either (R9: static 70 allocated
+            // as 72). Printed only where the grid states a register line, i.e. at 128 threads.
+            let tier = if config.block_threads as usize == UNISKIP_PAIR_THREADS_128 {
+                format!(
+                    "arith {}",
+                    coset_cache::arith_blocks_per_sm(
+                        coset_cache::cached_128_regs(config.body, config.cache_budget),
+                        config.block_threads,
+                    )
+                )
+            } else {
+                "no pin".to_string()
+            };
             println!(
-                "  occupancy           {realized} blocks/SM ({}, 0 B dynamic, no pin, floor)",
+                "  occupancy           {realized} blocks/SM ({}, 0 B dynamic, {tier}, floor)",
                 kernel.name()
             );
         }

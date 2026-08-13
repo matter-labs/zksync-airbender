@@ -9,7 +9,7 @@ use gpu_gkr_uniskip_bench::abi::{
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::compact::BankPerm;
 use gpu_gkr_uniskip_bench::coset_cache::{
-    self, CacheArm, CacheMutation, LaneCarrier, LaneSet, PrologueOrder,
+    self, CacheArm, CacheMutation, LaneCarrier, LaneSet, PairBody, PairBudget, PrologueOrder,
 };
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::PairArm;
@@ -146,6 +146,25 @@ struct Cli {
     #[arg(long)]
     reorder_free: bool,
 
+    /// Run a v3 R9b CORRECTED grouped body instead of the R4 cached body: `c` (converge the
+    /// accumuland, two dispatch call sites), `ck` (C plus decode-once-branch-twice), `cd` (C
+    /// plus ONE runtime coefficient test per member), `b` (hoist the class branch over both
+    /// phases), `bk`, `bd`. Same ABI, same uploaded plan and same `--cache-arm` as the
+    /// incumbent — only the grouped path's decode and branch structure moves, so `q` must be
+    /// bit-identical. 128-thread cached arms only; mutually exclusive with `--reorder` /
+    /// `--reorder-free`, which name the R9 drop-in.
+    #[arg(long, value_enum)]
+    regroup: Option<PairBody>,
+
+    /// Compile-time register budget of the cached body this run selected: `lb6` =
+    /// `__launch_bounds__(128, 6)` (the MAXIMUM-register cell, 75-80 registers), `free` = no
+    /// bound at all (the MINIMUM, 59-64 on the reordered bodies). Absent = the shipped
+    /// `__launch_bounds__(128, 7)`. One spelling per grid cell, so it is rejected beside
+    /// `--reorder-free` / `--no-cache-launch-bounds` (each already names its body's unbounded
+    /// cell) and `free` needs `--regroup`. 128-thread cached arms only.
+    #[arg(long, value_enum)]
+    pair_budget: Option<PairBudget>,
+
     /// Run the v3 R4 primary factorial: 11 lanes (5 arms at 256, 6 at 128 including both
     /// no-cache baselines) in ONE process against shared allocations, in a generated cyclic
     /// rotation. Use `--iterations` a multiple of 11 (the record uses 110 per term order).
@@ -224,6 +243,25 @@ struct Cli {
     /// must still be a multiple of 6.
     #[arg(long)]
     reorder_factorial: bool,
+
+    /// Run the v3 R9b CLASS rotation: 8 lanes — the three local anchors, R9's drop-in reorder
+    /// (the reference point the decode fix is measured against), and the four corrected grouped
+    /// bodies `c b cd bd` at the fixed `__launch_bounds__(128, 7)`, all on the `hot16` plan.
+    /// Every hinted local symbol carries the same carveout, so the class contrast is taken at
+    /// one L1 configuration. 96 rounds / 8 warmup per term order unless overridden; an override
+    /// must still be a multiple of 8.
+    #[arg(long)]
+    r9b_class: bool,
+
+    /// Run the v3 R9b BUDGET rotation: 8 lanes — the three local anchors, then body `c` and the
+    /// INCUMBENT each at all three register budgets, fully paired in one rotation (`hot16@128`
+    /// is the incumbent's own `(128, 7)` cell). It discharges R9's never-timed
+    /// incumbent-unbounded arm and separates occupancy from the bank-3 rematerialization
+    /// collapse, which Task 1 measured arriving at `(128, 6)` for every reordered body and never
+    /// for the incumbent. 96 rounds / 8 warmup per term order unless overridden; an override
+    /// must still be a multiple of 8.
+    #[arg(long)]
+    r9b_budget: bool,
 
     /// v3 R7 carrier of a single segmented arm: `seg-s` (carrier S at the 64 KiB carveout
     /// request), `seg-s100` (the same body at 100 KiB), `seg-s-acc` (the accumulator-first
@@ -349,6 +387,8 @@ impl Cli {
             (self.seg_anchor, LaneSet::SegAnchor),
             (self.segb_factorial, LaneSet::Segb),
             (self.reorder_factorial, LaneSet::Reorder),
+            (self.r9b_class, LaneSet::R9bClass),
+            (self.r9b_budget, LaneSet::R9bBudget),
         ]
         .into_iter()
         .filter_map(|(on, set)| on.then_some(set))
@@ -647,6 +687,8 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ("--no-cache-launch-bounds", cli.no_cache_launch_bounds),
             ("--reorder", cli.reorder),
             ("--reorder-free", cli.reorder_free),
+            ("--regroup", cli.regroup.is_some()),
+            ("--pair-budget", cli.pair_budget.is_some()),
         ] {
             if on {
                 fail(format!(
@@ -749,6 +791,8 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ("--no-cache-launch-bounds", cli.no_cache_launch_bounds),
             ("--reorder", cli.reorder),
             ("--reorder-free", cli.reorder_free),
+            ("--regroup", cli.regroup.is_some()),
+            ("--pair-budget", cli.pair_budget.is_some()),
         ] {
             if on {
                 fail(format!(
@@ -795,13 +839,15 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                 .into(),
         );
     }
-    // The v3 R9 body selectors, through the ONE matrix the lib states: the reorder body takes
-    // the incumbent's ABI and plan, so every other knob composes with it unchanged — but a
-    // spelling naming two bounds, or a shape the body was not built at, would describe a
-    // kernel the run cannot launch.
-    let (body, cache_launch_bounds) = coset_cache::select_pair_body(
+    // The v3 R9/R9b body and budget selectors, through the ONE matrix the lib states: a
+    // reordered body takes the incumbent's ABI and plan, so every other knob composes with it
+    // unchanged — but a spelling naming two budgets of one body, or a shape a cell was not
+    // built at, would describe a kernel the run cannot launch.
+    let (body, cache_budget) = coset_cache::select_pair_body(
         cli.reorder,
         cli.reorder_free,
+        cli.regroup,
+        cli.pair_budget,
         cli.no_cache_launch_bounds,
         cli.mode.uses_pair_arm(),
         block_threads,
@@ -974,7 +1020,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         cache_arm: cli.cache_arm.unwrap_or_default(),
         carrier: cli.carrier.unwrap_or_default(),
         prologue_order: cli.prologue_order.unwrap_or_default(),
-        cache_launch_bounds,
+        cache_budget,
         body,
         control_launch_bounds: cli.control_launch_bounds,
         cache_mutate: cli.cache_mutate,
