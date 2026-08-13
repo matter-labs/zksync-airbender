@@ -255,22 +255,82 @@ emits "and that flag says what a cross-session comparison then carries" \
   "the two rotations put different neighbours around it, so a cross-session comparison of any other row carries at least this much" \
   -- $(bridge bridge-medians)
 
-echo "### the anchor reference table — every reference, with its lane count"
-emits "the R4-frozen literal, labelled 11 lanes" \
-  "| \`control@256\` | 16.650 | R4 frozen | 11 | 16.624 | +0.15 % |" -- $(cls good)
-emits "the archived R5 session, labelled 10 lanes" \
-  "| \`control@256\` | 16.650 | R5 session | 10 | 16.567 | +0.50 % |" -- $(cls good)
-emits "the archived R8 session, labelled 12 lanes" \
-  "| \`control@256\` | 16.650 | R8 session | 12 | 16.738 | -0.53 % |" -- $(cls good)
-emits "the R9 session, labelled 6 lanes — the rung this one corrects" \
-  "| \`control@256\` | 16.650 | R9 session | 6 | 16.725 | -0.45 % |" -- $(cls good)
-emits "the incumbent anchor gets the same four references" \
-  "| \`hot16@128\` | 14.788 | R9 session | 6 | 14.794 | -0.04 % |" -- $(cls good)
-emits "the R9 census pair is pinned too" \
-  "| \`hot16@128\` | 15.288 | R9 session | 6 | 15.458 | -1.10 % |" -- $(cls good)
-emits "the table says why the lane count is on it" \
-  "absolute medians are rotation-composition dependent, so each reference carries the LANE COUNT of the rotation that produced it against this rung's 8" \
+echo "### the CAMPAIGN BASELINE — the re-base, and the only thing the ANCHOR flag keys to"
+emits "the baseline says what it is and what keys to it" \
+  "**This is the only thing the \`ANCHOR\` flag keys to**, at 1.5 %, and it is compared rotation to its own rotation." \
   -- $(cls good)
+emits "the device identity travels with the numbers, uuid and all" \
+  "Device: name \`NVIDIA RTX PRO 6000 Blackwell Server Edition\`; uuid \`GPU-cbaba4fd-068d-d035-1c18-1d9c16f1648b\`; serial \`1794525048975\`; driver \`610.57.04\`; vbios \`98.02.8D.00.08\`; power cap \`600.00 W\`; MIG mode \`Disabled\`; compute mode \`Default\`; ncu \`2026.2.1.0 (build 38283040)\`; CUDA \`13.3, V13.3.73\`." \
+  -- $(cls good)
+emits "so does the run shape the medians were taken at" \
+  "Run shape: 8 lanes, 96 paired rounds / 8 warmup, \`--log-trace 24\`, carveout 16 % uniform, one process per (rotation, order), 80 s discarded soak each, binary sha256 \`881594043a89\`." \
+  -- $(cls good)
+# THREE anchors since the re-base, and BOTH rotations on every row: the spread between two 8-lane
+# rotations is a fact a future rung needs, so it is a column rather than an average.
+emits "the CLASS baseline row for control@256, with the BUDGET row and the spread beside it" \
+  "| \`control@256\` | 16.650 | 16.725 | -0.45 % | 16.778 | -0.76 % | +0.32 % | clean (0.004–0.015 ms drift) |" \
+  -- $(cls good)
+emits "control_lb@128 is an anchor now — the third of the three" \
+  "| \`control_lb@128\` | 16.473 | 16.455 | +0.11 % | 16.493 | -0.12 % | +0.23 % | clean (0.004–0.015 ms drift) |" \
+  -- $(cls good)
+emits "and the incumbent" \
+  "| \`hot16@128\` | 14.788 | 14.793 | -0.03 % | 14.823 | -0.24 % | +0.20 % | clean (0.004–0.015 ms drift) |" \
+  -- $(cls good)
+emits "the spread is kept, not averaged away, and the other rotation's flank is named" \
+  "The two rotations both carry 8 lanes and still differ: that column is composition INSIDE a fixed lane count, kept rather than averaged away. \`BUDGET\`'s own flank at capture: clean (0.010–0.055 ms drift)." \
+  -- $(cls good)
+# The flank status of the baseline session itself, in-code, so a future rung choosing a canonical pair
+# sees which census reference moved under itself without re-reading the measurement report.
+emits "the CLASS/census baseline row is marked FLANK at capture" \
+  "| **FLANK: 0.088–0.099 ms drift, past its 0.077–0.085 ms readings** |" -- $(cls good)
+emits "and BUDGET/census is named the flank-clean census reference" \
+  "clean (0.011–0.023 ms drift) — the flank-clean census reference" -- $(bud good)
+emits "the BUDGET rotation reads against its OWN baseline row" \
+  "| \`control@256\` | 16.650 | 16.778 | -0.76 % | 16.725 | -0.45 % | -0.32 % |" -- $(bud good)
+
+echo "### the pre-provenance block — reported, labelled, and never a flag basis"
+emits "it says what it is and why it cannot flag" \
+  "Reported as context and **never a flag basis**: none records the machine it was measured on, and they disagree with each other by more than the 1.5 % reporting threshold, so a flag keyed to them would report their disagreement rather than this session. Two anchors, not three." \
+  -- $(cls good)
+emits "the R4-frozen literal, labelled 11 lanes and unrecorded" \
+  "| \`control@256\` | 16.650 | R4 frozen | 11 | 16.624 | +0.15 % | **machine identity: unrecorded** |" \
+  -- $(cls good)
+emits "the archived R5 session, labelled 10 lanes" \
+  "| \`control@256\` | 16.650 | R5 session | 10 | 16.567 | +0.50 % | **machine identity: unrecorded** |" \
+  -- $(cls good)
+emits "the archived R8 session, labelled 12 lanes" \
+  "| \`control@256\` | 16.650 | R8 session | 12 | 16.738 | -0.53 % | **machine identity: unrecorded** |" \
+  -- $(cls good)
+emits "the R9 session, labelled 6 lanes — the rung this one corrects" \
+  "| \`control@256\` | 16.650 | R9 session | 6 | 16.725 | -0.45 % | **machine identity: unrecorded** |" \
+  -- $(cls good)
+emits "the incumbent anchor gets the same four references" \
+  "| \`hot16@128\` | 14.788 | R9 session | 6 | 14.794 | -0.04 % | **machine identity: unrecorded** |" \
+  -- $(cls good)
+emits "the R9 census pair is pinned too" \
+  "| \`hot16@128\` | 15.288 | R9 session | 6 | 15.458 | -1.10 % | **machine identity: unrecorded** |" \
+  -- $(cls good)
+absent "control_lb@128 has no pre-provenance row — the old references carry two anchors" \
+  "^\| .control_lb@128. \| 16\..* \| (R4 frozen|R5 session|R8 session|R9 session) \|" -- $(cls good)
+
+echo "### THE RE-BASE, proved in one fixture: on the baseline, far from the history, no flag"
+emits "a session sitting exactly on the baseline reads 0.00 % against it" \
+  "| \`control@256\` | 16.903 | 16.903 | +0.00 % | 16.893 | +0.06 % | -0.06 % |" \
+  -- $(cls baseline-exact)
+emits "and +2.16 % against R4-frozen at the same time" \
+  "| \`control@256\` | 16.903 | R4 frozen | 11 | 16.545 | +2.16 % | **machine identity: unrecorded** |" \
+  -- $(cls baseline-exact)
+emits "and +1.53 % against R5, also past the threshold" \
+  "| \`hot16@128\` | 15.352 | R5 session | 10 | 15.120 | +1.53 % | **machine identity: unrecorded** |" \
+  -- $(cls baseline-exact)
+absent "yet NO ANCHOR flag fires — the historical block cannot raise one" \
+  "\*\*ANCHOR\*\*" -- $(cls baseline-exact)
+emits "so that session is flag-free, which is the whole point of the re-base" \
+  "**None.** Every observation below matched the rung's own description of itself" -- $(cls baseline-exact)
+emits "and both rotations of it are flag-free together" \
+  "**0 flag(s) above; this table is not a verdict.**" -- $(both baseline-exact)
+
+echo "### the flank reading"
 emits "the flank is a reading with its threshold beside it, not a mandate" \
   "| \`hot16@128\` | 14.789 | 14.791 | 0.002 | 0.074 | no |" -- $(cls good)
 absent "no cell under test is a flank sentinel — the incumbent's other budgets included" \
@@ -377,11 +437,11 @@ flagged "one lane's register count moving between the two orders' logs" \
 flagged "the header's own lane count disagreeing with the ARM lines" \
   "the log carries 8 ARM lines while the schedule declares lanes=7 and the trailer lanes=7" \
   -- $(cls header-lanes)
-flagged "an anchor lane off every reference, with all four deltas named" \
-  "reads 17.149 ms, more than 1.5 % off R4 frozen (11 lanes) +3.16 %; R5 session (10 lanes) +3.51 %; R8 session (12 lanes) +2.46 %; R9 session (6 lanes) +2.54 %" \
+flagged "an anchor lane off the campaign baseline, with the device it was measured on named" \
+  "\`control@256\` reads 17.149 ms against the campaign baseline's 16.725 (+2.54 %, past 1.5 %) for this rotation on GPU-cbaba4fd-068d-d035-1c18-1d9c16f1648b" \
   -- $(cls anchor-offset)
-flagged "and the flag says a thin rotation and its composition come first" \
-  "this rotation carries 8 lanes against their 6–12, so read the reference table, and the rotation's composition, before calling it machine drift" \
+flagged "and the flag hands over the composition spread and the historical block's standing" \
+  "The other R9b rotation's row is 16.778 at the same 8 lanes (+0.32 % of composition spread), so read that spread, and the rotation's composition, before calling it machine drift. The pre-provenance references below raise nothing and never can" \
   -- $(cls anchor-offset)
 flagged "a drifting anchor lane" \
   "\`hot16@128\`'s first and last full cycle differ by 0.302 ms against the 0.074 ms scaled reading" \

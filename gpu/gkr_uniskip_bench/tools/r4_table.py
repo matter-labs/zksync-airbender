@@ -59,6 +59,14 @@ set can carry TWO sessions (four logs), which is how the bridge lane's two media
 by side, so it is routed BEFORE the shared parser: that parser keys a section by (tag, order) and
 would read the pair as one mixed run. Reporting-only, on the same terms as R9.
 
+THE ANCHOR RE-BASE lives on that path too (RR, 2026-08-13). The campaign's anchor reference is now the
+R9b session — three anchors, both rotations, with the DEVICE IDENTITY every earlier reference lacked —
+and it is the only thing the `ANCHOR` flag keys to. The four historical references are kept as a
+separate PRE-PROVENANCE block: printed, labelled `machine identity: unrecorded`, and never a flag
+basis, because they disagree with each other by more than the reporting threshold. The R4/R5/R8/R9
+paths are NOT re-pointed — their archived logs are what they are, and their byte-identity is
+load-bearing; future rungs inherit the new model by building on the R9B path.
+
 Usage:
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py /tmp/cache.log [--order locality]
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py primary.log [extension.log ...]
@@ -438,15 +446,79 @@ R9B_ONE_PLAN = {name: [l for l in s["lanes"] if l not in (R9B_CTL, R9B_CTL_LB)]
 # inside a session.
 R9B_BRIDGE = R9B_C
 
-# The anchor lanes the reference comparison is read on, and the R9 session added to the references
-# R9 already held. The R9 medians are this file's own `reorder_emit` output over the archived
-# `.agents/sdd/2026-08-12-v3-r9/reorder-{locality,census}.log` (`control@256` / `hot16@128`, median
-# `eval+fin`), whose `REORDER schedule … lanes=6` field is where the 6 comes from. `.agents/**` is
-# gitignored, so `r9b_fixtures/check.sh` pins both pairs verbatim — that pin is what protects them in
+# --- THE RE-BASE (RR, 2026-08-13: "rebase") ---------------------------------------
+#
+# WHAT THIS IS. The campaign's anchor reference, re-based on the v3 R9b session, and the FIRST
+# reference in this campaign that records the machine it was measured on. Every earlier reference
+# recorded device STATE (clocks, power, temperature) and never device IDENTITY, so none of them can be
+# shown to have come from this GPU — which is why they could disagree by 2.8 % on one lane and leave a
+# 0.22 %-wide window in which a session could clear all of them at once (R9b Task 3 concern 2; it
+# fired in Task 4 exactly as predicted, on census, in both session sets).
+#
+# WHOSE BASELINE IT IS. **This is the baseline R10 and later are read against, not R9b's own.** A
+# session cannot be its own reference without circularity, so R9b's rows also keep the historical set
+# beside it as CONTEXT. Future rungs inherit the model by building on this path.
+#
+# BOTH ROTATIONS, KEYED BY ROTATION, WITH THE SPREAD KEPT. CLASS and BUDGET both carry 8 lanes and
+# still differ — locality `control@256` 16.725 v 16.778, `hot16@128` 14.793 v 14.823 (≈0.3 %). That is
+# composition INSIDE a fixed lane count, a fact a future rung needs, so neither rotation is averaged
+# away nor dropped; the emitter compares a session to its OWN rotation's row and prints the other
+# rotation's beside it as the spread.
+#
+# PROVENANCE. Medians are the PRIMARY session set's, from this file's own R9B output over
+# `.agents/sdd/2026-08-13-v3-r9b/r9b-{class,budget}-{locality,census}.log` (`median eval+fin`); the
+# repeat set is in that rung's Task 4 report §6.1 if a mid-point is ever wanted. `.agents/**` is
+# gitignored, so `r9b_fixtures/check.sh` pins every value verbatim — that pin is what protects them in
 # a clean checkout where the logs cannot be re-read.
-R9B_ANCHOR_LANES = (R9B_CTL, R9B_INC)
+R9B_ANCHOR_LANES = (R9B_CTL, R9B_CTL_LB, R9B_INC)
+# DEVICE IDENTITY, a REQUIRED field of the reference and the whole point of the re-base. Constant
+# across all 71 identity readings of the measuring rung (8 session pre-sidecars + 8 post + 8 soak
+# marks, 20 G0 capture rows, 24 Full Picture capture rows, the chain's start and end, the freeze
+# record), with no other compute process resident at any point. `r7_gates.sh`'s `identity` cell reads
+# the uuid below straight out of this file and compares it to the live device, so the pairing of
+# numbers to machine cannot silently come apart again.
+R9B_BASELINE_DEVICE = {
+    "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "uuid": "GPU-cbaba4fd-068d-d035-1c18-1d9c16f1648b",
+    "serial": "1794525048975",
+    "driver": "610.57.04",
+    "vbios": "98.02.8D.00.08",
+    "power cap": "600.00 W",
+    "MIG mode": "Disabled",
+    "compute mode": "Default",
+    "ncu": "2026.2.1.0 (build 38283040)",
+    "CUDA": "13.3, V13.3.73",
+}
+# The run shape the medians were taken at. A future session that differs here is comparing across
+# shapes, which is what this line exists to make visible.
+R9B_BASELINE_RUN = ("8 lanes, 96 paired rounds / 8 warmup, `--log-trace 24`, carveout 16 % uniform, "
+                    "one process per (rotation, order), 80 s discarded soak each, binary sha256 "
+                    "`881594043a89`")
+# (control@256, control_lb@128, hot16@128) median eval+fin, ms — a THREE-anchor reference.
+R9B_BASELINE = {
+    "CLASS": {"locality": (16.725, 16.455, 14.793), "census": (16.903, 16.620, 15.352)},
+    "BUDGET": {"locality": (16.778, 16.493, 14.823), "census": (16.893, 16.607, 15.347)},
+}
+# THE FLANK STATUS AT CAPTURE, per baseline session, so a future rung choosing a single canonical pair
+# can see it here instead of re-reading the report: the CLASS/census session is the one that moved
+# under itself, and BUDGET/census is the flank-clean census reference.
+R9B_BASELINE_FLANK = {
+    ("CLASS", "locality"): "clean (0.004–0.015 ms drift)",
+    ("CLASS", "census"): "**FLANK: 0.088–0.099 ms drift, past its 0.077–0.085 ms readings**",
+    ("BUDGET", "locality"): "clean (0.010–0.055 ms drift)",
+    ("BUDGET", "census"): "clean (0.011–0.023 ms drift) — the flank-clean census reference",
+}
+# THE PRE-PROVENANCE BLOCK: every reference the campaign held before the re-base. Reported as context
+# and NEVER a flag basis — none of them records the machine it was measured on, and they disagree with
+# each other by more than the reporting threshold, so a flag keyed to them would report their mutual
+# disagreement rather than the session. The R9 medians are this file's own `reorder_emit` output over
+# the archived `.agents/sdd/2026-08-12-v3-r9/reorder-{locality,census}.log`, whose
+# `REORDER schedule … lanes=6` field is where the 6 comes from; R4/R5/R8 trace to `ANCHORS`,
+# `R5_SESSION` and `R8_SESSION` above. They carry two anchors, not three.
 R9_SESSION = {"locality": (16.725, 14.794), "census": (17.011, 15.458)}
-R9B_REFERENCES = REORDER_REFERENCES + (("R9 session", 6, R9_SESSION),)
+R9B_PRE_PROVENANCE = REORDER_REFERENCES + (("R9 session", 6, R9_SESSION),)
+R9B_PRE_PROVENANCE_LANES = (R9B_CTL, R9B_INC)
+R9B_UNRECORDED = "machine identity: unrecorded"
 # The flank sentinels: the three INCUMBENT-body anchor lanes at the incumbent's own budget, which
 # both rotations carry. A cell under test — body or budget — is not its own drift sentinel, so every
 # grid lane is excluded by construction, the incumbent's two extra budgets included.
@@ -2469,27 +2541,38 @@ def r9b_session(name, key, rounds, arms, trailer, sched, flags):
 
 def r9b_readings(s, flags):
     """The anchor-reference deltas and the flank readings, computed before anything prints so the
-    flags block can lead the output."""
-    scope, order = s["scope"], s["order"]
-    s["refs"] = {}
+    flags block can lead the output.
+
+    THE FLAG KEYS TO THE CAMPAIGN BASELINE AND TO NOTHING ELSE — to this session's OWN rotation's row
+    of it, on a device whose identity is recorded. The pre-provenance references are computed and
+    printed beside it and can never raise a flag: they disagree with each other by more than the
+    reporting threshold, so a flag keyed to them reports their disagreement rather than the
+    session."""
+    scope, order, name = s["scope"], s["order"], s["shape"]
+    s["base"], s["spread"], s["pre"] = {}, {}, {}
+    other = next(n for n in R9B_SHAPES if n != name)
     for i, lane in enumerate(R9B_ANCHOR_LANES):
-        got, tells = s["med"][lane], []
-        for ref_name, lanes_n, table in R9B_REFERENCES:
+        got = s["med"][lane]
+        ref = R9B_BASELINE[name][order][i]
+        rel = (got - ref) / ref
+        s["base"][lane] = (ref, rel)
+        alt = R9B_BASELINE[other][order][i]
+        s["spread"][lane] = (other, alt, (got - alt) / alt, (alt - ref) / ref)
+        if abs(rel) > R9_OFFSET_TELL:
+            rflag(flags, scope, "ANCHOR",
+                  f"`{lane}` reads {got:.3f} ms against the campaign baseline's {ref:.3f} "
+                  f"({100.0 * rel:+.2f} %, past {100.0 * R9_OFFSET_TELL:.1f} %) for this rotation on "
+                  f"{R9B_BASELINE_DEVICE['uuid']}. The other R9b rotation's row is {alt:.3f} at the "
+                  f"same 8 lanes ({100.0 * (alt - ref) / ref:+.2f} % of composition spread), so read "
+                  f"that spread, and the rotation's composition, before calling it machine drift. "
+                  f"The pre-provenance references below raise nothing and never can")
+    for i, lane in enumerate(R9B_PRE_PROVENANCE_LANES):
+        for ref_name, lanes_n, table in R9B_PRE_PROVENANCE:
             if order not in table:
                 continue
             ref = table[order][i]
-            rel = (got - ref) / ref
-            s["refs"].setdefault(lane, []).append((ref_name, lanes_n, ref, rel))
-            if abs(rel) > R9_OFFSET_TELL:
-                tells.append(f"{ref_name} ({lanes_n} lanes) {100.0 * rel:+.2f} %")
-        if tells:
-            span = sorted({n for _, n, _ in R9B_REFERENCES})
-            rflag(flags, scope, "ANCHOR",
-                  f"`{lane}` reads {got:.3f} ms, more than {100.0 * R9_OFFSET_TELL:.1f} % off "
-                  + "; ".join(tells)
-                  + f" — this rotation carries {len(s['lanes'])} lanes against their "
-                    f"{span[0]}–{span[-1]}, so read the reference table, and the rotation's "
-                    f"composition, before calling it machine drift")
+            s["pre"].setdefault(lane, []).append(
+                (ref_name, lanes_n, ref, (s["med"][lane] - ref) / ref))
     s["flank"] = {}
     for lane in R9B_FLANK_LANES:
         cycle = len(s["lanes"])
@@ -2545,17 +2628,39 @@ def r9b_emit(s):
               f"{100.0 * c['med'] / s['med'][b]:+.2f} % | {c['on']}/{c['n']} | "
               f"**{VERDICT[c['verdict']]}** | {r9b_tier(s, a, b)} | {what} |")
 
-    print(f"\n**Anchor lanes against every reference we hold ({name}, {order})** — absolute medians "
-          f"are rotation-composition dependent, so each reference carries the LANE COUNT of the "
-          f"rotation that produced it against this rung's {len(s['lanes'])}. Nothing here gates; the "
-          f"flags block calls out a delta past {100.0 * R9_OFFSET_TELL:.1f} %.\n")
-    print(f"| anchor lane | this session ({len(s['lanes'])} lanes) | reference | lanes | "
-          f"reference median | delta |")
-    print("| --- | --- | --- | --- | --- | --- |")
+    print(f"\n**Anchor lanes against the CAMPAIGN BASELINE ({name}, {order})** — the v3 R9b session, "
+          f"re-based per RR 2026-08-13, and the first reference this campaign holds that records the "
+          f"machine it was measured on. **This is the only thing the `ANCHOR` flag keys to**, at "
+          f"{100.0 * R9_OFFSET_TELL:.1f} %, and it is compared rotation to its own rotation. Run "
+          f"shape: {R9B_BASELINE_RUN}. Device: "
+          + "; ".join(f"{k} `{v}`" for k, v in R9B_BASELINE_DEVICE.items()) + ".\n")
+    alt_name = s["spread"][R9B_CTL][0]
+    print(f"| anchor lane | this session ({name}, {len(s['lanes'])} lanes) | baseline ({name}) | "
+          f"delta | baseline ({alt_name}, same {len(s['lanes'])} lanes) | delta | composition "
+          f"spread | flank at capture |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- |")
     for lane in R9B_ANCHOR_LANES:
-        for ref_name, lanes_n, ref, rel in s["refs"].get(lane, []):
+        ref, rel = s["base"][lane]
+        _, alt, alt_rel, spread = s["spread"][lane]
+        print(f"| `{lane}` | {s['med'][lane]:.3f} | {ref:.3f} | {100.0 * rel:+.2f} % | {alt:.3f} | "
+              f"{100.0 * alt_rel:+.2f} % | {100.0 * spread:+.2f} % | "
+              f"{R9B_BASELINE_FLANK[(name, order)]} |")
+    print(f"\nThe two rotations both carry {len(s['lanes'])} lanes and still differ: that column is "
+          f"composition INSIDE a fixed lane count, kept rather than averaged away. `{alt_name}`'s "
+          f"own flank at capture: {R9B_BASELINE_FLANK[(alt_name, order)]}.")
+
+    print(f"\n**Pre-provenance references ({name}, {order})** — every reference the campaign held "
+          f"before the re-base. Reported as context and **never a flag basis**: none records the "
+          f"machine it was measured on, and they disagree with each other by more than the "
+          f"{100.0 * R9_OFFSET_TELL:.1f} % reporting threshold, so a flag keyed to them would report "
+          f"their disagreement rather than this session. Two anchors, not three.\n")
+    print(f"| anchor lane | this session ({len(s['lanes'])} lanes) | reference | lanes | "
+          f"reference median | delta | provenance |")
+    print("| --- | --- | --- | --- | --- | --- | --- |")
+    for lane in R9B_PRE_PROVENANCE_LANES:
+        for ref_name, lanes_n, ref, rel in s["pre"].get(lane, []):
             print(f"| `{lane}` | {s['med'][lane]:.3f} | {ref_name} | {lanes_n} | {ref:.3f} | "
-                  f"{100.0 * rel:+.2f} % |")
+                  f"{100.0 * rel:+.2f} % | **{R9B_UNRECORDED}** |")
 
     print(f"\n**Flank ({name}, {order})** — block medians of each INCUMBENT-body anchor lane's FIRST "
           f"and LAST full cycle ({len(s['lanes'])} rounds each), against max({FLANK_MS:.2f} ms, "

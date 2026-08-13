@@ -97,14 +97,23 @@ HINT = 16
 ORACLE = ([0, 1, 2, 3, 4, 5] + [48, 49, 50, 51] + list(range(6, 41))
           + [52, 53, 54, 55, 56, 57, 58] + [41, 42, 43])
 
-# The anchor lanes' `eval + finalize` targets. The emitter compares them against EVERY reference the
-# repo holds — R4-frozen (11 lanes), the R5 session (10), the R8 session (12) and now the R9 session
-# (6) — and FLAGS a delta past 1.5 %, so a conforming session is placed inside 1.5 % of ALL FOUR.
-# That is what makes "no flags" a meaningful fixture state; `anchor-offset` trips it on purpose. The
-# census window is the narrow one: R4's 16.545 and R9's 17.011 leave only [16.756, 16.793].
+# The anchor lanes' `eval + finalize` targets, THREE of them since the re-base. The emitter FLAGS a
+# delta past 1.5 % against the CAMPAIGN BASELINE — this rung's own session, keyed by rotation — and
+# against nothing else, so a conforming session need only sit inside 1.5 % of both rotations' rows.
+# It does, on all three anchors in both orders, which is what makes "no flags" a meaningful fixture
+# state; `anchor-offset` trips it on purpose. The PRE-PROVENANCE references are computed and printed
+# but can never flag: `baseline-exact` is the fixture that proves it, sitting +2.16 % off R4-frozen
+# with no ANCHOR flag raised.
 BASE = {
-    "locality": {CTL: 16.650, CTL_LB: 16.406, HOT: 14.790},
-    "census": {CTL: 16.775, CTL_LB: 16.219, HOT: 15.290},
+    "locality": {CTL: 16.650, CTL_LB: 16.474, HOT: 14.790},
+    "census": {CTL: 16.775, CTL_LB: 16.613, HOT: 15.290},
+}
+# The committed baseline itself, per rotation and order, as (control@256, control_lb@128, hot16@128).
+# `baseline-exact` places a session ON it: every baseline delta is then 0.00 % while the historical
+# rows still read +2.16 % — the two-tier model in one fixture.
+BASELINE = {
+    "class": {"locality": (16.725, 16.455, 14.793), "census": (16.903, 16.620, 15.352)},
+    "budget": {"locality": (16.778, 16.493, 14.823), "census": (16.893, 16.607, 15.347)},
 }
 # The finalize stage, held per block size: the 128 lanes reduce twice the partials.
 FIN = {lane: (0.033 if FACTS[lane][2] == 256 else 0.063) for lane in FACTS}
@@ -249,11 +258,24 @@ def main():
         "class": {"locality": dict(OFF["class"]["locality"]),
                   "census": dict(OFF["class"]["census"], **{C: 0.400, B: -0.500})}})
 
-    # EDGE: an anchor lane 3 % off every reference — the ANCHOR flag's own session. The rotation
-    # composition question this rung has to answer is exactly this reading.
+    # EDGE: an anchor lane 3 % off the campaign baseline — the ANCHOR flag's own session. The
+    # rotation composition question this rung has to answer is exactly this reading.
     over = {f"override_{sh}_{o}": {CTL: flat(CTL, BASE[o][CTL] * 1.03)}
             for sh in ("class", "budget") for o in ORDERS}
     session(outdir, "anchor-offset", **over)
+
+    # THE RE-BASE, in one fixture: a session sitting EXACTLY on the campaign baseline, every anchor,
+    # both rotations, both orders. Its baseline deltas are 0.00 % so NO ANCHOR flag fires — while its
+    # pre-provenance rows read as much as +2.16 % off R4-frozen and raise nothing, because the
+    # historical block is context and never a flag basis. That pairing is the whole re-base.
+    over = {}
+    for sh in ("class", "budget"):
+        for o in ORDERS:
+            ctl, ctl_lb, hot = BASELINE[sh][o]
+            over[f"override_{sh}_{o}"] = {
+                CTL: [ctl] * ROUNDS, CTL_LB: [ctl_lb] * ROUNDS, HOT: [hot] * ROUNDS,
+            }
+    session(outdir, "baseline-exact", **over)
 
     # EDGE: the sign label's threshold, at it and one below it, on the C recovery row. The drop-in is
     # held CONSTANT so the corrected body can carry an exact count of negative paired differences.

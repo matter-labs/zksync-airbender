@@ -36,6 +36,12 @@
 #   r9bdiag     the R9b diagnostic-build cells: chain executions per warp-program walk, the per-walk
 #               plan line and the frame-poison divergence, for every timed cell at three arms —
 #               needs the diagnostic binary, which this lane builds
+#   identity    the device IDENTITY gate (runs inside `r9b` as well): the nvidia-smi identity query
+#               works and every field the anchor reference block declares comes back, and the LIVE
+#               GPU's uuid is the one r4_table.py's re-based baseline was measured on. No frozen
+#               reference before R9b recorded a machine; this is what keeps that from recurring, and
+#               tools/gpu_identity.sh is the helper every future session driver should take telemetry
+#               from
 #   cpu         the crate's GPU-free unit tests (cpu_*)
 #   fixtures    the emitter fixture matrices — every decision row and every fail-closed guard of
 #               tools/r7_table.py and of r4_table.py's R9 reorder and R9b two-rotation paths,
@@ -336,6 +342,12 @@ q_parity() {
   [ "$scells" = "$spass" ] || bad "self-product matrix incomplete"
 
   # CPU oracle — the only leg that does not go through `q` alone.
+  # OBSERVED FLAKE, recorded here rather than left in a report: on 2026-08-13 one `all` run failed
+  # exactly two of these six cells — `seg-s/hot16 order=census` and `segb-g/hot16 order=census` —
+  # and nothing else in the chain. Both passed standalone immediately after, this lane passed
+  # standalone 6/6, and the next full `all` run reproduced neither. One occurrence is a transient;
+  # a SECOND occurrence is a different problem (a census-order carrier oracle that intermittently
+  # disagrees with the CPU) and should be investigated rather than re-run.
   note "### CPU oracle (--validate), one cell per carrier family and order"
   local oks=0 runs=0
   for order in census locality; do
@@ -1332,6 +1344,52 @@ r9b_rejects() {
   [ "$cells" = "$pass" ] || bad "R9b rejection matrix incomplete"
 }
 
+# ---------------------------------------------------------------- identity
+#
+# THE MACHINE THE REFERENCES CAME FROM, gated rather than assumed. Up to R9 every archived telemetry
+# sidecar in this campaign recorded device STATE and never device IDENTITY, so no frozen anchor literal
+# could be tied to a GPU; RR re-based the references on the R9b session precisely because that session
+# recorded it. This lane closes the loop from the other side: it proves the identity query works and
+# yields the required fields, and it compares the LIVE device against the uuid committed inside
+# `r4_table.py`'s baseline block. A mismatch means every anchor reference the emitter prints is from
+# another machine — which is a gate condition for this suite, exactly as the sm_120 SASS digests are.
+# Every future session driver should take its telemetry from `tools/gpu_identity.sh` for the same
+# reason (its header says so), so the gap cannot reopen in a per-rung script.
+identity() {
+  note "### device IDENTITY: the query works, and the live GPU is the one the references came from"
+  local cells=0 pass=0 live want field value
+  if ! command -v nvidia-smi >/dev/null; then
+    bad "identity: no nvidia-smi — the references cannot be tied to a machine"
+    return
+  fi
+  note "  $(bash "$DIR/gpu_identity.sh" header)"
+  note "  $(bash "$DIR/gpu_identity.sh" identity)"
+  # Every field the reference block declares must come back non-empty, or a sidecar recorded from this
+  # helper would carry a hole where the provenance is.
+  for field in uuid serial driver_version vbios_version name compute_mode mig.mode.current; do
+    cells=$((cells + 1))
+    value=$(bash "$DIR/gpu_identity.sh" field "$field")
+    if [ -n "$value" ] && [ "$value" != "[N/A]" ] && [ "$value" != "[Not Supported]" ]; then
+      pass=$((pass + 1))
+    else bad "identity: $field came back as '${value:-<empty>}'"; fi
+  done
+  # The committed uuid, read straight out of the emitter's baseline block — one literal, one owner.
+  want=$(sed -n 's/^ *"uuid": "\(GPU-[0-9a-f-]*\)".*/\1/p' "$DIR/r4_table.py" | head -1)
+  cells=$((cells + 1))
+  if [ -n "$want" ]; then pass=$((pass + 1))
+  else bad "identity: r4_table.py's baseline block declares no uuid to compare against"; fi
+  live=$(bash "$DIR/gpu_identity.sh" field uuid)
+  cells=$((cells + 1))
+  if [ "$live" = "$want" ]; then
+    pass=$((pass + 1)); note "  uuid matches the committed baseline: $live"
+  else
+    bad "identity: live GPU is $live, the committed anchor baseline was measured on $want — every anchor reference the emitter prints is from another machine; re-base the reference block (R9b Task 4 procedure) before reading a delta"
+  fi
+  note "  cells=$cells passed=$pass"
+  [ "$cells" = 9 ] || bad "expected 9 identity cells, ran $cells"
+  [ "$cells" = "$pass" ] || bad "identity cells incomplete"
+}
+
 r9b() {
   if [ ! -x "$B" ]; then
     bad "r9b: no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
@@ -1340,6 +1398,7 @@ r9b() {
   # ENFORCED, as in the R9 lane: `r9b_rotation` pins every grid cell's static register count, which
   # the diagnostic build's counters move — run against it, the lane would fail for the wrong reason.
   require_shipped "the R9b lane" || return
+  identity
   r9b_q_parity
   r9b_echo_cells
   r9b_rotation
@@ -1715,6 +1774,7 @@ case "${1:-all}" in
   r9diag) r9diag ;;
   r9b) r9b ;;
   r9bdiag) r9bdiag ;;
+  identity) identity ;;
   sass) sass ;;
   cpu) cpu ;;
   fixtures) fixtures ;;
@@ -1734,7 +1794,7 @@ case "${1:-all}" in
     note "### RE-GATE after the diagnostic round-trip: the binary the tree ENDS on"
     sass
     ;;
-  *) echo "usage: $0 {sass|matrix|counts|r9|r9diag|r9b|r9bdiag|cpu|fixtures|regression|all}" >&2; exit 2 ;;
+  *) echo "usage: $0 {sass|matrix|counts|r9|r9diag|r9b|r9bdiag|identity|cpu|fixtures|regression|all}" >&2; exit 2 ;;
 esac
 [ "$fail" = 0 ] && note "ALL GATES PASS"
 exit "$fail"
