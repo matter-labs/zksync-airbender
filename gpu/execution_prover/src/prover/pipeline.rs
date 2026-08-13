@@ -412,6 +412,7 @@ fn assemble_result(
 ) -> ExecutionProverResult {
     let ResultAccumulator {
         trivial_unified_inits_and_teardowns_count,
+        unified_inits_and_teardowns_top_bits,
         simulation_result,
         circuit_families_memory_caps,
         inits_and_teardowns_memory_caps,
@@ -485,6 +486,7 @@ fn assemble_result(
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
             num_trivial_unified_circuits: trivial_unified_inits_and_teardowns_count,
+            unified_inits_and_teardowns_top_bits,
             binary_handle: BinaryHandle(binary_key),
         };
         ExecutionProverResult::CommitMemory(result)

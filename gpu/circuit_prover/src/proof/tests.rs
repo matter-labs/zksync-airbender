@@ -37,14 +37,14 @@ fn draw_query_bits_after_verified_pow(seed: &mut Seed, num_bits_for_queries: usi
 }
 
 fn build_initial_transcript_input(
-    canonical_top_bits: &[u32],
+    top_bits: &[u32],
     external_challenges: &GKRExternalChallenges<BF, E4>,
     flattened_setup_tree_caps: &[u32],
     flattened_memory_tree_caps: &[u32],
     flattened_witness_tree_caps: &[u32],
 ) -> Vec<u32> {
     let mut transcript_input = Vec::new();
-    transcript_input.extend_from_slice(canonical_top_bits);
+    transcript_input.extend_from_slice(top_bits);
     external_challenges.flatten_into_buffer(&mut transcript_input);
     if !flattened_setup_tree_caps.is_empty() {
         transcript_input.extend_from_slice(flattened_setup_tree_caps);
@@ -136,34 +136,34 @@ fn initial_transcript_input_matches_cpu_order_with_and_without_setup_caps() {
         ]),
         _marker: std::marker::PhantomData,
     };
-    let canonical_top_bits = vec![0u32, 1, 2, 3];
+    let top_bits = vec![0u32, 1, 2, 3];
     let setup_caps = vec![11u32, 12, 13, 14];
     let memory_caps = vec![21u32, 22, 23, 24];
     let witness_caps = vec![31u32, 32, 33, 34];
 
     let with_setup = build_initial_transcript_input(
-        &canonical_top_bits,
+        &top_bits,
         &external_challenges,
         &setup_caps,
         &memory_caps,
         &witness_caps,
     );
     let without_setup = build_initial_transcript_input(
-        &canonical_top_bits,
+        &top_bits,
         &external_challenges,
         &[],
         &memory_caps,
         &witness_caps,
     );
 
-    let mut expected_with_setup = canonical_top_bits.clone();
+    let mut expected_with_setup = top_bits.clone();
     external_challenges.flatten_into_buffer(&mut expected_with_setup);
     expected_with_setup.extend_from_slice(&setup_caps);
     expected_with_setup.extend_from_slice(&memory_caps);
     expected_with_setup.extend_from_slice(&witness_caps);
     assert_eq!(with_setup, expected_with_setup);
 
-    let mut expected_without_setup = canonical_top_bits.clone();
+    let mut expected_without_setup = top_bits.clone();
     external_challenges.flatten_into_buffer(&mut expected_without_setup);
     expected_without_setup.extend_from_slice(&memory_caps);
     expected_without_setup.extend_from_slice(&witness_caps);
@@ -171,7 +171,7 @@ fn initial_transcript_input_matches_cpu_order_with_and_without_setup_caps() {
 
     let with_setup_seed =
         <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&with_setup);
-    let mut expected_with_setup_seed = canonical_top_bits.clone();
+    let mut expected_with_setup_seed = top_bits.clone();
     external_challenges.flatten_into_buffer(&mut expected_with_setup_seed);
     expected_with_setup_seed.extend_from_slice(&setup_caps);
     expected_with_setup_seed.extend_from_slice(&memory_caps);
@@ -183,7 +183,7 @@ fn initial_transcript_input_matches_cpu_order_with_and_without_setup_caps() {
 
     let without_setup_seed =
         <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&without_setup);
-    let mut expected_without_setup_seed = canonical_top_bits;
+    let mut expected_without_setup_seed = top_bits;
     external_challenges.flatten_into_buffer(&mut expected_without_setup_seed);
     expected_without_setup_seed.extend_from_slice(&memory_caps);
     expected_without_setup_seed.extend_from_slice(&witness_caps);

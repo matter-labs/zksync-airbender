@@ -150,6 +150,9 @@ pub(super) struct ResultAccumulator {
         BTreeMap<usize, BTreeSet<(CircuitType, usize)>>,
     pub(super) unpaired_unified_inits_and_teardowns: BTreeMap<usize, InitsAndTeardownsData>,
     pub(super) unpaired_unified_tracing_data: BTreeMap<usize, TracingData<A>>,
+    /// Unified mode: the i&t address windows each real i&t-carrying instance was
+    /// assigned. Trivial (leading) instances are absent.
+    pub(super) unified_inits_and_teardowns_top_bits: BTreeMap<usize, Vec<u32>>,
     pub(super) simulation_result: Option<SimulationResult>,
     pub(super) circuit_families_memory_caps:
         BTreeMap<u8, BTreeMap<usize, Vec<MerkleTreeCapVarLength>>>,
@@ -191,6 +194,10 @@ impl ResultAccumulator {
                     let sequence_id = data.sequence_id;
                     if sequence_id < self.trivial_unified_inits_and_teardowns_count {
                         assert!(data.inits_and_teardowns.is_none());
+                    }
+                    if let Some(host) = data.inits_and_teardowns.as_ref() {
+                        self.unified_inits_and_teardowns_top_bits
+                            .insert(sequence_id, host.top_bits.clone());
                     }
                     if !request_context.proving
                         || cache.is_none()
