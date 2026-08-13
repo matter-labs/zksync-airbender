@@ -11,8 +11,14 @@ use riscv_transpiler::vm::{Counters, RamWithRomRegion, SimpleSnapshotter, Simple
 use std::alloc::Global;
 use worker::Worker;
 
-/// log2 of the trace length used by every executor-family circuit (per-family,
-/// unified, i/t). Must match the cs-side compile constant.
+/// log2 of the trace length used by the PER-FAMILY executor circuits (and i/t).
+/// Must match the cs-side compile constant for those circuits.
+///
+/// NOT the unified circuit: since upstream #368 that domain is 2^23
+/// (`UnifiedReducedMachineCircuit::DOMAIN_SIZE_LOG2`). Unified code paths must
+/// derive their bound from the loaded artifact (`circuit.trace_len`) rather than
+/// from this constant -- assuming otherwise is what left `build_unified_full_trace`
+/// guarded against 2^24 while writing into a 2^23-row layout.
 pub const TRACE_LEN_LOG2: usize = 24;
 #[expect(
     dead_code,

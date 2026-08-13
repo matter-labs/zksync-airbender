@@ -54,8 +54,13 @@ impl BabyBearExt4 {
 
     /// # Safety
     ///
-    /// TODO: document the exact contract. `base_ptr` must be valid for reads of 4
-    /// consecutive `BabyBearField`s; alignment is not required.
+    /// `base_ptr` must be valid for reads of 4 consecutive `BabyBearField`s and
+    /// must be aligned to `align_of::<BabyBearField>()` (4). The body performs an
+    /// aligned `ptr::read`, so a misaligned pointer is UB.
+    ///
+    /// "unaligned" in the name refers to `Self`, not to the base field: `Self` is
+    /// `repr(C, align(16))` off riscv32, and this constructor deliberately does
+    /// NOT require the source to meet that stronger alignment.
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub unsafe fn read_unaligned(base_ptr: *const BabyBearField) -> Self {
         let [c0, c1, c2, c3] = base_ptr.cast::<[BabyBearField; 4]>().read();

@@ -77,8 +77,15 @@ jobs:
       - name: Setup
         run: rustup set profile minimal
       # Scope notes:
-      #   * GPU packages are excluded -- this runner has no CUDA toolkit, and
-      #     the GPU stack is gated by test-gpu.yaml instead.
+      #   * GPU packages are excluded because this runner has no CUDA toolkit.
+      #     Be clear about what that costs: test-gpu.yaml BUILDS and TESTS the GPU
+      #     stack but runs NO clippy and NO rustfmt, so these 16 packages are not
+      #     lint-gated anywhere. The root `formatting` job does cover gpu/** (they
+      #     are root workspace members); clippy does not. Three of the excluded
+      #     packages -- gpu_gkr_model, gpu_gkr_compiler, gpu_witness_eval_generator
+      #     -- are pure CPU, off the CUDA build DAG, and already built and tested
+      #     by the `tests` job above, so they could be linted here; they are
+      #     excluded only because the standing decision was "exclude gpu/**".
       #   * `--bins` is REQUIRED, not cosmetic: `experiments_runner` is
       #     bin-only, so `--lib --tests` silently skips it entirely.
       #   * Benches are excluded: `prover`'s pow_bench does not build upstream.
@@ -127,6 +134,40 @@ jobs:
         env:
           RUSTC_BOOTSTRAP: "1"
         run: cargo clippy --bins -- -D warnings
+
+  # Restored after a pre-push review found all four critic seats flagging its
+  # absence. This is the ONLY automated link between cs/src/** +
+  # verifier_generator/src/** and the committed cs/compiled_circuits/*.json +
+  # circuit_defs/**/generated/layout.json + verifier/src/generated/**.
+  # check_verifiers does NOT cover it: that job rebuilds the fsv_* binaries FROM
+  # the already-committed generated sources, so stale generated source reproduces
+  # bit-for-bit and reports green. The two guarded properties are disjoint.
+  # Note the compiled layouts embed #[track_caller] source LINE NUMBERS, so any
+  # edit under cs/src/gkr_circuits/** -- including a pure lint edit -- invalidates
+  # them; that is precisely the drift this job catches.
+  circuits_generated:
+    name: circuits_generated
+    runs-on: [matterlabs-ci-runner-c3d]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+      - name: Setup
+        run: |
+          rustup set profile default
+      - name: Regenerate verifiers
+        run: ./recreate_verifiers.sh
+      - name: Check if anything has changed
+        run: |
+          MODIFIED_FILES=$(git status --porcelain)
+          if [ -n "$MODIFIED_FILES" ]; then
+            echo "The following files were modified - did you run ./recreate_verifiers.sh? "
+            echo "$MODIFIED_FILES"
+            exit 1
+          else
+            echo "No files were modified."
+          fi
 
   check_verifiers:
     name: check_verifiers
@@ -217,6 +258,7 @@ jobs:
       - tests
       - formatting
       - clippy
+      - circuits_generated
       - check_verifiers
       - build_cli
       - cli_smoke_verify

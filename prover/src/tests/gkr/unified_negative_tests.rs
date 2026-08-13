@@ -17,8 +17,12 @@ use riscv_transpiler::vm::*;
 use std::alloc::Global;
 use worker::Worker;
 
-const TRACE_LEN_LOG2: usize = 24;
-const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
+// NOTE: there is deliberately no local TRACE_LEN_LOG2 here. The unified circuit's
+// domain is 2^23 (`UnifiedReducedMachineCircuit::DOMAIN_SIZE_LOG2`), not the 2^24
+// the per-family circuits use, and a hardcoded copy of it here guarded
+// `build_unified_full_trace` against the WRONG bound: every `num_calls` in
+// [2^23, 2^24) passed the assert and was then written into a 2^23-row layout.
+// Bound against the loaded artifact (`circuit.trace_len`) instead.
 
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
 
@@ -80,7 +84,7 @@ fn build_satisfying_trace_with_mutation(
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    assert!(num_calls < NUM_CYCLES_PER_CHUNK);
+    assert!(num_calls < circuit.trace_len);
 
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
     let (mut full_trace, _table_driver, _decoder_table, _top_bits) =
@@ -1085,6 +1089,7 @@ fn baseline_trace_is_memory_consistent() {
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+    assert!(num_calls < circuit.trace_len);
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
 
     // The `true` flag makes build_unified_full_trace run ensure_memory_trace_consistency on
@@ -1143,6 +1148,7 @@ fn generate_malicious_unified_proof(
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+    assert!(num_calls < circuit.trace_len);
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
 
     let (mut full_trace, table_driver, decoder_table, top_bits) = build_unified_full_trace(
