@@ -2,7 +2,8 @@
 
 ## Classification
 
-- Confirmed historical compiler relation bug; soundness-critical and also capable of breaking completeness
+- Historical latent compiler defect; unreachable in proof-producing circuits before its fix
+- Evaluation status: non-scored latent
 - Component: GKR compiler, cached memory-permutation expressions
 - Bug class: Boolean polarity disagreed with enum encoding
 - Fixed by: [`b5021bc`](https://github.com/matter-labs/zksync-airbender/commit/b5021bcd4c68d4c691a7df1ce11ce49b9222e272)
@@ -38,11 +39,20 @@ The resulting truth table was exactly reversed:
 | register | 1 | 0 | 1 |
 | RAM | 0 | 1 | 0 |
 
-This affected the cached GKR grand-product relation, so the erroneous values were part of the proved tuple rather than a witness-generation-only mistake.
+Had this branch been reached, the erroneous value would have become part of the
+cached GKR grand-product tuple. At the cited vulnerable revision, however, all
+four `MemoryAccess::RegisterOrRam` lowering arms terminated in `todo!()`, no GKR
+circuit requested that access type, and the tracked proof-producing layouts
+contained only constant address-space variants. The first word/subword memory
+circuits that exercised dynamic register/RAM selection were added after this
+polarity correction.
 
-## Security impact
+## Security assessment
 
-The permutation argument authenticates tuple equality, not the semantic meaning of a mislabeled tag. Swapping tags breaks register/RAM domain separation and can make a local access authenticate against the wrong global memory domain. Depending on the surrounding initialization and teardown tuples, the result is an invalid accepted state relation, an honest-proof failure, or both.
+The truth-table defect was security-critical in principle: a reachable use would
+have swapped register and RAM domains inside the authenticated tuple. No
+historical accepted statement in this repository used it before the fix, so it
+is a latent compiler/API defect rather than a demonstrated circuit bug.
 
 ## Fix
 
@@ -62,6 +72,8 @@ For every tagged permutation or lookup tuple, write the producer's complete trut
 - Add a table-driven compiler test for all four cases: `Is(false)`, `Is(true)`, `Not(false)`, and `Not(true)`. Assert the resulting numeric tags against `Register = 0` and `RAM = 1`.
 - Compile the same valid memory trace with caches enabled and disabled and assert identical evaluated memory tuples and grand-product contributions.
 - Include at least one register and one RAM access at the same numeric address to ensure the test observes the address-space field rather than only address/value fields.
+- Assert that every compiler enum branch either has a proof-producing fixture or
+  fails closed until such a fixture is added.
 
 ## Reproduction evidence
 

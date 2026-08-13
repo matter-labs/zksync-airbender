@@ -23,6 +23,40 @@ When the global RAM/permutation mechanism is outside the named-circuit scope, as
 
 For every read or write, trace the tuple fields back to constrained local semantics. A globally consistent wrong tuple remains a local soundness bug.
 
+Apply range inheritance by exact variable provenance, not by tuple participation:
+
+- A read-tuple field may inherit a range guarantee only when it is the same
+  authenticated variable supplied by deterministic initialization or an earlier
+  range-valid write. Recomposition, arithmetic derivation, copying through an
+  unconstrained witness, or changing the tuple field breaks that inheritance.
+- Every write/output tuple is an induction step. Range-check each newly
+  introduced or derived address, value, timestamp, tag, limb, and offset before
+  it enters the tuple. The only exception is an unchanged exact variable whose
+  range provenance from the corresponding authenticated read tuple has been
+  traced and preserved.
+- Initialization and teardown establish the base and closure of the induction;
+  they cannot repair a missing step invariant on a write tuple.
+
+An access that emits read and write tuples with the same exact address variable
+preserves address provenance even when its value changes. Do not misclassify
+that address as a newly derived write field merely because local arithmetic also
+selects or names it. Conversely, algebraic equality to an authenticated address
+must actually be enforced; witness-generation equality is insufficient.
+
+When execution masking replaces both tuple contributions with the product
+identity, inactive-row tuple witnesses are excluded from that memory product.
+That says nothing by itself about the rest of the circuit: ordinary constraints,
+range checks, helper lookups, and other accumulators may still consume the same
+variables. Trace every such sink and distinguish participation in a valid
+proof-internal relation from an escape into authenticated machine state, another
+semantic argument, or a public claim before treating inactive values as
+harmless.
+
+For any derived tuple field, identify its intended domain and enforce the
+corresponding local representation invariant. Do not infer canonicality,
+alignment, or range from an authenticated source field when arithmetic or
+decomposition created a new variable.
+
 ## Airbender uses of the argument
 
 The current Airbender architecture reuses one memory-like tuple format for several logically different relations. The semantic tuple is
@@ -76,15 +110,15 @@ During a per-circuit audit, list initialization/teardown correctness as a global
 
 Current code intentionally omits some checks that a standalone tuple implementation might perform:
 
-- Some register/RAM read values are not directly range checked. The stated induction is that initialized values are in range and every write value is range checked, so a globally consistent later read must also be in range.
-- Some witness-supplied memory address limbs in word/subword circuits are not directly range checked. The stated induction relies on range-valid initialization and teardown addresses, enforced timestamp inequalities, and the absence of unmatched intermediate read/write pairs outside those histories.
+- Some register/RAM read values are not directly range checked. The stated induction is that initialized values are in range and every write value is range checked, so the same authenticated variable in a globally consistent later read must also be in range.
+- Some witness-supplied memory address limbs in word/subword circuits are not directly range checked. This is justified only for unchanged read-tuple variables with exact range-valid provenance. A derived address or any field entering a write/output tuple must satisfy the write-step rule above.
 - PC and timestamp limbs may inherit validity from a valid initial state plus range-checked transitions rather than receiving a fresh check on every read tuple.
 - Delegation intentionally omits initialization/teardown and uses zero-valued mirrored tuples because it is a permutation bus, not stateful RAM.
 
 Do not report an omitted direct range check merely because it is absent. First prove or refute the full induction:
 
 1. **Base:** every initialized/public starting value and address satisfies the claimed range and representation.
-2. **Step:** every possible write or state update, under every selector, produces a range-valid value/address/timestamp.
+2. **Step:** every possible write or state update, under every selector, locally produces a range-valid value/address/timestamp, except for unchanged exact variables whose authenticated read provenance is preserved.
 3. **Order:** timestamps and local offsets force reads to match an earlier allowed write rather than an uninitialized or cyclic source.
 4. **Closure:** teardown/finalization prevents unmatched out-of-range pairs and binds the intended terminal state.
 5. **Separation:** address-space tags, ROM selection, and delegation virtual addresses cannot cross-match unintended histories.

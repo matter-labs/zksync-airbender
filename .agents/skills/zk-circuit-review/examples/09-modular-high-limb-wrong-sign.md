@@ -2,7 +2,7 @@
 
 ## Classification
 
-- Confirmed historical soundness bug
+- Confirmed historical soundness and completeness bug
 - Component: GKR add/sub/LUI/AUIPC/modular-operations family
 - Bug class: wrong sign in a multi-limb reduction constraint
 - Fixed by: [`a16b6ec`](https://github.com/matter-labs/zksync-airbender/commit/a16b6ec1196f700798f7c3d802a9c07c8500e9ea), PR [#309](https://github.com/matter-labs/zksync-airbender/pull/309)
@@ -35,7 +35,7 @@ The high-limb equation used `+ out_high` instead of `- out_high`. The low-limb e
 
 ## Security impact
 
-The two limb equations no longer recombined to `tmp + p = out + 2^32`. Consequently the canonicality gadget did not establish `out < p`; a range-valid temporary could satisfy an unrelated high-limb identity while the field equation supplied only congruence modulo `p`. The affected modular instructions could therefore prove noncanonical machine outputs.
+The two limb equations no longer recombined to `tmp + p = out + 2^32`. Consequently the canonicality gadget did not establish `out < p`; a range-valid temporary could satisfy an unrelated high-limb identity while the field equation supplied only congruence modulo `p`. The affected modular instructions could therefore prove noncanonical machine outputs. The unrelated recurrence also rejected valid canonical results for many inputs, so the defect had material completeness consequences as well.
 
 ## Fix
 

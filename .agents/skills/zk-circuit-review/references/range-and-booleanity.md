@@ -58,3 +58,14 @@ Soundness additionally requires appropriate domain constraints such as:
 - carry variables are boolean or otherwise restricted correctly
 
 Arithmetic identities alone do not imply those ranges over a field.
+
+## Normalized Multi-Limb Check
+
+Range checks also do not establish that the limb recurrence is the intended
+one. Recombine intended and enforced limb equations into a common radix
+identity. Compare, for every activated operation, the coefficient and sign of
+each input/output limb, carry or borrow input/output, operation-specific term,
+and constant. Treat the first, recurrent, and final limbs separately; shared code
+can implement different recurrence boundaries. Exercise both values of Boolean
+auxiliaries with a nonzero boundary case rather than relying only on all-zero
+witnesses.

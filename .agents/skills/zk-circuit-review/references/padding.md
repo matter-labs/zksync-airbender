@@ -15,7 +15,7 @@ Padding rows must not introduce new valid computation, erase required computatio
 - whether the first padding row is constrained consistently with the last real row
 - whether all remaining padding rows are constrained
 
-## Adversarial Questions
+## Skeptical Questions
 
 - can the prover mark an invalid real row as padding?
 - can padding suppress a required lookup or state update?

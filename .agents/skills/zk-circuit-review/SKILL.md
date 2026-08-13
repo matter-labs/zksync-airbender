@@ -1,20 +1,41 @@
 ---
 name: zk-circuit-review
-description: Deeply audit one named AIR, PLONK-style, or GKR algebraic circuit, or an explicitly requested small group of closely related circuits, for exploitable underconstraints and material completeness failures. Use when asked to audit, review, or security-check ZKP circuits, including when the user has not yet supplied the circuit name or path.
+description: Defensively review one named AIR, PLONK-style, or GKR algebraic circuit, or an explicitly requested small group of closely related circuits, for constraint-soundness and material completeness failures. Use for authorized, read-only ZKP circuit audits and correctness reviews, including when the user has not yet supplied the circuit name or path.
 ---
 
-# ZK Circuit Security Review
+# Defensive ZK Circuit Review
 
-Audit one user-supplied circuit target by default. Accept a small group only when the user explicitly requests the circuits together. Default to a deep, read-only review. Return a high-precision security report, not a general code review.
+Audit one user-supplied circuit target by default. Accept a small group only when the user explicitly requests the circuits together. Default to a deep, read-only defensive review. Return a high-precision relation-correctness report, not a general code review.
 
-## Security objective
+## Defensive objective
 
 Establish whether the enforced algebraic relation matches the circuit's intended relation.
 
-- Treat witness generation as an implementation of the honest case, never as a security guarantee.
+- Treat witness generation as an implementation of the honest case, never as a constraint guarantee.
 - Treat a **soundness bug** as an invalid statement, witness, operation, or transition that satisfies every applicable constraint under the stated assumptions.
 - Treat a **material completeness bug** as a valid intended case that cannot satisfy the circuit or cannot be represented. Do not confuse this with redundant constraints or inefficiency.
-- Exclude style, performance, maintainability, ordinary Rust safety, panic, and denial-of-service observations from security findings unless they change the accepted relation.
+- Exclude style, performance, maintainability, ordinary Rust safety, panic, and denial-of-service observations from soundness findings unless they change the accepted relation.
+
+## Safety and authorization boundary
+
+Treat the task as authorized defensive source review whose outcomes are
+identification, prevention, and remediation of local constraint defects. Keep
+all analysis inside the supplied repository snapshot and normative public
+specifications.
+
+- Do not generate or execute proof-generation exploits, attack scripts,
+  deployment-specific payloads, network probes, credential or access steps, or
+  procedures for targeting a live system.
+- Do not provide an operational reproduction recipe. Establish a soundness
+  finding with source-local algebraic evidence: a bounded symbolic assignment
+  or finite abstract trace that fixes every relevant selector, tuple field, and
+  witness degree of freedom and shows why every applicable relation is
+  satisfied while the intended relation is violated.
+- Do not include concrete secrets, real user data, production endpoints, or
+  instructions for abusing a deployed prover or verifier.
+- Keep remediation defensive: state the missing invariant and the regression
+  property to test. Implementation guidance may describe constraints and tests,
+  but not an offensive workflow.
 
 Read [algebraic-circuit-model.md](references/algebraic-circuit-model.md) and [review-methodology.md](references/review-methodology.md) before analyzing the target.
 
@@ -31,13 +52,20 @@ One circuit is preferred because it permits deeper constraint tracing and more r
 
 ## Resolve and bound each target
 
-Resolve every supplied target to one exact circuit entrypoint before judging constraints. Use repository evidence to resolve aliases and paths. If a supplied name matches multiple materially different entrypoints, ask the user when choosing among them would change the security statement and the request does not clearly include all of them.
+Resolve every supplied target to one exact circuit entrypoint before judging constraints. Use repository evidence to resolve aliases and paths. If a supplied name matches multiple materially different entrypoints, ask the user when choosing among them would change the reviewed statement and the request does not clearly include all of them.
+
+After resolving the entrypoint, enumerate every semantically matching internal
+implementation, generated variant, fixed table, and profile-selected path that
+can contribute to that statement. Do not silently choose the first name match.
+Exclude a candidate implementation as historical, unused, or unreachable only
+after a repository-wide call-site and configuration search establishes that
+status; record the evidence so later discoveries can overturn the exclusion.
 
 Build a scope manifest for each target containing:
 
 - the resolved circuit and intended statement;
 - constraint construction and generated/lowered constraint files;
-- witness-generation files, used only to recover intent and attack surfaces;
+- witness-generation files, used only to recover intent and constraint surfaces;
 - layouts, columns, gates, tables, selectors, challenges, and configurations;
 - call sites, proving profiles, tests, and specification or architecture documents;
 - local verifier or completion logic needed to enforce outputs of this circuit;
@@ -84,6 +112,16 @@ Do not use these assumptions to skip the circuit's local obligations. Verify tha
 - initializes, updates, exposes, or completes local accumulators as required;
 - cannot create a malformed contribution that remains valid even if the global argument is otherwise consistent.
 
+An assumption bounds what you audit for defects. It never bounds what you may
+read. Assuming a dependency is correct is what obliges this circuit to match the
+contract that dependency actually implements, so when a candidate turns on what
+a dependency really does, go read it and answer the question. Follow it into the
+field/backend, tables, decoder, generated code, simulator, or callers until the
+snapshot settles it. Only record a concern as unresolved after confirming the
+answer is genuinely absent from the snapshot rather than merely unread. A hard
+circuit is one whose correctness depends on context outside its own file; search
+harder before demoting a candidate.
+
 Record every assumed global invariant and the locally checked interface in the report. Treat an unreviewed global invariant as a coverage dependency, not a vulnerability. Read [global-arguments-scope.md](references/global-arguments-scope.md).
 
 ## Review workflow
@@ -96,15 +134,47 @@ Record every assumed global invariant and the locally checked interface in the r
    - witnesses, equalities, arithmetic relations, ranges, and state/data flow;
    - selectors, transitions, boundaries, padding, exceptional values, and preprocessing;
    - lookups/LogUp, challenges, degree, GKR wiring, aggregation, and local/global interfaces.
-5. For every candidate, search for direct and indirect constraints that may close the gap. Construct a concrete malicious satisfying assignment or a concrete valid rejected case.
-6. Apply the evidence gate below. Discard or demote every candidate that fails it.
-7. Return the report in [finding-format.md](references/finding-format.md).
+   Weight these passes across defect classes, not toward whichever class is
+   easiest to enumerate. Missing bounds are only one family: a relation can also
+   carry the wrong sign, the wrong constant, the wrong operand, the wrong table,
+   a wrong bit position or limb order, or omit a branch from a shared aggregate.
+   An equation whose every term is range-checked can still enforce the wrong
+   relation. When a pass reports only range-check concerns, treat that as a
+   signal the other classes were not searched.
+   Compare intended semantics with the relation actually enforced for every
+   supported operation form. Follow values across representation changes and
+   shared helpers instead of assuming that locally plausible pieces compose to
+   the intended result.
+   Maintain a relation worksheet for each operation form with the intended
+   expression, honest witness/reference expression, exact enforced expression,
+   and activation condition. Compare lookup and argument fields after selector
+   choice and packing. Normalize multi-limb arithmetic into one radix identity
+   and compare every operand, constant, operation-specific term, carry, and borrow
+   coefficient separately for initial, recurrent, and final limbs. At each
+   representation boundary, record the source encoding, destination encoding,
+   and conversion equation. A later relation closes a discrepancy only when it
+   binds the same expressions on the same activation domain.
+   Finding one defect does not clear neighboring operations or shared branches;
+   finish each worksheet or mark it explicitly unreviewed.
+5. For every candidate, search for direct and indirect constraints that may close the gap. Construct the smallest complete bounded symbolic invalid assignment or finite abstract trace, enumerate every applicable relation and global-interface condition, and show why each is satisfied while the intended relation is violated. For completeness, provide a concrete valid rejected case. Never turn this evidence into executable proof-generation or operational attack instructions.
+6. Maintain the candidate disposition ledger defined in
+   [review-methodology.md](references/review-methodology.md). Before finalizing,
+   reconcile scope decisions, closed leads, and coverage claims with everything
+   learned later in the review. Reopen a conclusion when call sites,
+   configuration, or relation evidence contradicts it.
+7. Apply the evidence gate below. Discard or demote every candidate that fails it.
+8. Return the report in [finding-format.md](references/finding-format.md).
 
 Continue until the coverage ledger is complete or remaining areas are explicitly listed as unreviewed. Finding nothing is acceptable; never lower the evidence threshold to fill the report.
 
 ## Independent validation
 
-When the host supports delegation, run up to four discovery roles independently. Then give each candidate to a fresh skeptical validator using the relevant source, intended invariant, observed equations, and proposed counterexample. Ask the validator to search for overlooked constraints and disprove exploitability rather than endorse the candidate.
+When the host supports delegation, run up to four discovery roles independently. Then give each candidate to a fresh skeptical validator using the relevant source, intended invariant, observed equations, and proposed symbolic mismatch. Ask the validator to search for overlooked constraints and disprove the claimed relation gap rather than endorse the candidate.
+
+Propagate the safety and authorization boundary to every delegated prompt. A
+discovery or validation role must remain source-local and defensive and must not
+be asked for executable proof generation, an operational reproduction, or
+live-system targeting.
 
 Use a second validation round only when the first validator identifies a specific unresolved dependency. Prefer a different model or provider when the host exposes one, but never claim cross-model validation unless it actually occurred.
 
@@ -116,7 +186,7 @@ Include a candidate under confirmed findings only when all conditions hold:
 
 1. Establish the intended invariant from repository evidence and cite it.
 2. Enumerate all applicable direct and indirect constraints, lookups, wiring, and activation conditions.
-3. Show an explicit invalid satisfying assignment/trace or valid rejected case; use symbolic values only when they are sufficient to prove the claim.
+3. Show a complete bounded symbolic invalid assignment or finite abstract trace, or a valid rejected case. Fix every relevant selector, tuple field, and witness degree of freedom; enumerate the applicable direct and indirect relations; and show why each relation is satisfied. Include only evidence needed to prove the mismatch, and do not provide executable exploit or live-system reproduction steps.
 4. Check reachability under selectors, preprocessing, table setup, padding, boundaries, and stated global assumptions.
 5. Trace the impact to the proved statement, state transition, output, or supported operation set.
 6. Survive a skeptical verification pass with no unidentified constraint that could invalidate the claim.

@@ -2,7 +2,7 @@
 
 ## Relation being proved
 
-A circuit defines an algebraic relation over a field. The prover controls private witness values and may choose any assignment accepted by every enforced relation. Witness-generation code describes one honest assignment; it does not restrict a malicious prover unless the same semantics are enforced algebraically.
+A circuit defines an algebraic relation over a field. Private witness values may take any assignment accepted by every enforced relation. Witness-generation code describes one honest assignment; it does not restrict other accepted assignments unless the same semantics are enforced algebraically.
 
 The central review chain is:
 

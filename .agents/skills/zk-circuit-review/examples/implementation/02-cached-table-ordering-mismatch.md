@@ -2,7 +2,8 @@
 
 ## Classification
 
-- Confirmed historical lookup-relation bug
+- Historical prover multiplicity-placement defect; the lookup relation itself remained sound and satisfiable
+- Evaluation status: non-scored witness-generation bug
 - Components: Keccak Iota XOR, AND-NOT, and 16-bit rotate-left tables
 - Bug class: physical table order inconsistent with custom index encoding
 - Fixed by: [`b6142cd`](https://github.com/matter-labs/zksync-airbender/commit/b6142cd19dcad77dfc4993ce83c4825229610773)
@@ -16,9 +17,16 @@ Cached multiplicity updates address a fixed-table row by a dense key encoding. F
 
 The key vectors used the opposite loop nesting: `b` varied fastest for the byte tables, and `rotation` varied fastest for the rotate table. Thus physical row `a | (b << 8)` held the key pair `(b, a)` rather than `(a, b)`; the rotation table had the analogous transposition. The byte-key orderings coincide only on the `a = b` diagonal, so symmetric or diagonal smoke inputs could conceal the mismatch.
 
-## Security impact
+## Effect
 
-Lookup queries and cached multiplicity counters referred to different table rows. For non-symmetric operations such as AND-NOT, Iota-controlled XOR, and rotation, this breaks the relation between inputs and outputs. Honest executions can fail, and any proof path that relies on the inconsistent cached index no longer establishes membership in the intended tuple table.
+Lookup queries and the honest prover's cached multiplicity updates referred to
+different physical rows. The physical table nevertheless contained the complete
+intended tuple set, and the lookup argument authenticated membership in that
+set. A correct multiplicity witness existed, but the shipped witness generator
+placed counts at transposed indices and could make honest proof generation fail.
+No invalid tuple became a table member, so this did not weaken the proved
+relation and is not material completeness under this skill's existential
+definition.
 
 ## Fix
 
@@ -26,7 +34,7 @@ The nested loops were reversed so their fastest-varying key component matches th
 
 ## Audit lesson
 
-Review table contents, dense index functions, physical row order, and multiplicity updates as one invariant. Test `row[index(key)] == key || output(key)`; checking that every key appears somewhere in the table is insufficient.
+Review table contents, dense index functions, physical row order, and multiplicity updates as one invariant. Test `row[index(key)] == key || output(key)`; checking that every key appears somewhere in the table is insufficient for prover availability. Separately determine whether the tuple set or only honest witness construction is affected before assigning security impact.
 
 ## Regression test
 

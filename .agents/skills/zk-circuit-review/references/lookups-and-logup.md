@@ -45,8 +45,27 @@ Inspect:
 - dummy rows, padding rows, and empty tables;
 - GKR wiring from the originating row through compression to the verifier-visible claim.
 
+Check key composition separately from table identity, gating, and multiplicity.
+A query can be routed to the right table, correctly gated, and correctly counted
+while still being keyed on the wrong value. For each lookup, enumerate the key's
+component fields and, for every opcode or branch that activates it, confirm each
+field carries the operand that branch's semantics require. Where one shared key
+serves several branches, check every branch: a field that is right for the
+register-register form is often wrong for the immediate form, and a field that
+never appears in the key at all is the easiest omission to miss. Confirming that
+a lookup is correctly gated says nothing about what it is asking.
+
+For each activating branch, write the honest query-field expressions and the
+exact enforced key-field expressions side by side after selection, conversion,
+and packing, then compare them field by field. Witness construction is evidence
+of intent, not enforcement. A downstream lookup against the expected table does
+not close an earlier disagreement unless every semantic key field is the same
+expression on that branch.
+
 Ask:
 
+- Is every key field the intended operand for every branch that activates this lookup?
+- Does an operand the semantics require reach the key at all?
 - Can an enabled query disappear or be routed into the wrong lookup argument?
 - Can a fake table row, forged multiplicity, or wrong table size be accepted?
 - Can distinct semantic tuples collide before a random challenge is applied?

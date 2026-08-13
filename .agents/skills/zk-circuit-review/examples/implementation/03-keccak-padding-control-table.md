@@ -2,7 +2,8 @@
 
 ## Classification
 
-- Confirmed historical completeness and state-isolation bug
+- Historical padding-witness and multiplicity-generation defect; no proved-state escape
+- Evaluation status: non-scored witness-generation bug
 - Components: Keccak-special delegation circuit and permutation-index fixed tables
 - Bug class: disabled-row/padding key mapped to nonzero table outputs
 - Fixed by: [`9ae55e6`](https://github.com/matter-labs/zksync-airbender/commit/9ae55e6839e53bde06ef52d642397491a75bb959)
@@ -16,9 +17,18 @@ When all Keccak precompile and iteration flags are disabled, the packed control 
 
 For `control = 0`, both bitmask `trailing_zeros` results are `64`. The table had no explicit padding case and fell through to its junk default `[0,1,2,3,4,5]`. These outputs were assigned to state-index variables that feed the circuit's indirect memory-access construction.
 
-## Security impact
+## Effect
 
-Disabled rows were not isolated from live state. Padding could create nonzero state selections and memory tuples, contaminating the RAM argument or making an otherwise valid padded trace unsatisfiable. Any masking assumption downstream had to compensate for a table that already violated the zero-row convention.
+The shipped padding oracle supplied zero offsets, which disagreed with the old
+table's `[0,1,2,3,4,5]` outputs; the lookup-only resolver also skipped required
+multiplicity generation. This broke honest padded witness construction.
+
+It did not create a state-isolation soundness gap. On inactive delegation rows,
+ABI fields, timestamps, and indirect read/write values are forced to zero. A
+satisfying assignment using the table's nonzero indices exists, and each read
+and write uses the same derived address with identical zero data and timestamp,
+so its memory factors cancel. The indices do not reach authenticated machine
+state or a public claim.
 
 ## Fix
 
@@ -26,7 +36,7 @@ The permutation-index table now has an explicit zero-control case and returns si
 
 ## Audit lesson
 
-Evaluate every lookup and memory-query constructor on its disabled selector, especially when zero is decoded with bit operations such as `trailing_zeros`. A zero flag does not make computed lookup outputs disappear unless every downstream relation is explicitly gated.
+Evaluate every lookup and memory-query constructor on its disabled selector, especially when zero is decoded with bit operations such as `trailing_zeros`. Trace all downstream relations before deciding whether a bad padding value changes the accepted relation or only the honest witness convention.
 
 ## Regression test
 

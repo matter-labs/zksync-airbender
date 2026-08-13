@@ -7,7 +7,7 @@ Preserve these requirements when revising the skill:
 - Prefer one circuit. Permit an explicitly requested small group of tightly related circuits without silently expanding scope; keep resolution, coverage, evidence, and findings attributable to each target.
 - Support AIR-like, PLONK-style, GKR, and hybrid row/layered algebraic circuits.
 - Include enough self-contained context for a reviewer unfamiliar with the repository to begin a deep audit.
-- Prefer high precision over report volume. Main findings must be reproducible soundness failures or material completeness failures.
+- Prefer high precision over report volume. Main findings must be source-verifiable soundness failures or material completeness failures, proven with bounded symbolic evidence rather than operational reproduction instructions.
 - Put unresolved hypotheses, global dependencies, and non-security observations outside the main findings.
 - Assume explicitly identified global/inter-circuit/inter-chunk mechanisms are sound, while fully auditing the named circuit's local interface to them.
 - Use independent, skeptical validation when agent delegation is available and an equivalent sequential fallback otherwise.

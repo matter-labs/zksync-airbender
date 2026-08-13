@@ -4,7 +4,7 @@ Use concise language and exact source locations. Do not call an unresolved conce
 
 ## 1. Executive summary
 
-State the target or explicitly requested target group, overall result, number of confirmed security findings, number of confirmed material completeness failures, and important coverage limits.
+State the target or explicitly requested target group, overall result, number of confirmed soundness findings, number of confirmed material completeness failures, and important coverage limits.
 
 ## 2. Scope and assumption ledger
 
@@ -17,7 +17,7 @@ List:
 - local interfaces checked under each assumption;
 - components not reviewed.
 
-## 3. Confirmed security findings
+## 3. Confirmed soundness findings
 
 Include only soundness failures that pass every evidence gate.
 
@@ -33,17 +33,23 @@ The exact relation that must hold and its specification evidence.
 Observed enforcement:
 All applicable equations, lookups, wiring, selectors, and assumptions.
 
-Counterexample:
-A concrete invalid assignment or trace satisfying the observed enforcement.
+Symbolic relation mismatch:
+The minimum complete bounded symbolic invalid assignment or finite abstract
+trace that satisfies the observed enforcement. Fix every relevant selector,
+tuple field, and witness degree of freedom, then show why every applicable
+direct and indirect relation is satisfied. Do not include executable
+proof-generation code, operational reproduction steps, or live-system targeting
+instructions.
 
 Reachability and impact:
-Why the counterexample is reachable and how it changes the proved statement.
+Why the symbolic mismatch is admitted and how it changes the proved statement.
 
 Validation performed:
 Indirect constraints searched, assumptions checked, and independent/sequential validation actually performed.
 
-Recommended missing invariant:
-Describe the required relation without prescribing an implementation unless useful.
+Recommended missing invariant and regression property:
+Describe the required defensive relation and the property a local regression
+test must assert, without providing an offensive workflow.
 ```
 
 Use severity according to effect on the accepted computation, not code quality.
@@ -56,7 +62,9 @@ Use the same structure, replacing the counterexample with a concrete valid inten
 
 ## 5. Unverified leads and specification questions
 
-List plausible concerns that did not pass the evidence gate. State exactly what evidence is missing. Keep these separate from findings and assign no security severity.
+List plausible concerns that did not pass the evidence gate. State exactly what evidence is missing and where you searched for it. Before filing here, confirm the missing evidence is genuinely absent from the snapshot rather than merely unread; if the snapshot answers it, resolve the concern and place the result in section 3 or 4 instead.
+
+Never drop a concern for being unresolved. Where the circuit demonstrably disagrees with the reference implementation or another in-repo contract but you cannot establish which side is normative, record it here as an uncertain, specification-undefined finding: state both relations, their exact difference, the affected operations, and the evidence that would settle it. Keep these separate from confirmed findings and assign no security severity.
 
 ## 6. Global and system-level dependencies
 
@@ -73,6 +81,11 @@ Do not repeat a standard, correctly wired dependency as a vulnerability.
 
 Optionally list concise non-security observations such as inefficiency, redundant constraints, maintainability, or implementation quality. Keep this section last and clearly label it non-security.
 
-## 8. Coverage appendix
+## 8. Coverage and candidate-disposition appendix
 
-Summarize the semantic coverage ledger and identify any incomplete review area. If no confirmed issue exists, say `No confirmed findings` without inventing lower-confidence findings.
+Summarize the semantic coverage ledger and relation worksheets, and identify any
+incomplete review area. Include a concise report view of the canonical candidate
+disposition ledger defined in [review-methodology.md](review-methodology.md),
+covering each material lead and its exact closure or remaining gap. This is an
+auditability record, not a place to inflate findings. If no confirmed issue
+exists, say `No confirmed findings` without inventing lower-confidence findings.

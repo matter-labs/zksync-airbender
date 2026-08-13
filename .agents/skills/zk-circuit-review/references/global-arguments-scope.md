@@ -30,7 +30,13 @@ can this circuit still contribute a locally wrong but globally consistent value?
 
 If yes, the missing local derivation or binding may be a circuit finding. Global consistency preserves agreement; it does not establish that the agreed value has the correct local semantics.
 
-If exploitation requires breaking the assumed global mechanism, it is not a per-circuit finding.
+If the relation mismatch requires breaking the assumed global mechanism, it is not a per-circuit finding.
+
+Do not let this assumption replace a local write-step obligation. Deterministic
+initialization and teardown may justify range inheritance for the same exact
+variable in a read tuple. They do not range-check a newly derived field placed
+in a write/output tuple. Global tuple consistency preserves provenance; it does
+not create missing provenance.
 
 For memory-like arguments, use [memory-and-ram.md](memory-and-ram.md) to distinguish ordinary RAM histories from ROM lookup authentication, PC/timestamp state, and delegation/permutation traffic. The global assumption covers the argument's stated consistency property only; it does not prove that the circuit chose the correct relation or tuple fields.
 

@@ -20,6 +20,11 @@ The prover populated and used these polynomials, but generated verifiers did not
 
 A lookup or initialization relation could be proved relative to arbitrary claimed setup evaluations rather than the protocol's fixed range and address tables. The sumcheck could remain internally consistent while failing to establish the circuit relation against the intended deterministic setup.
 
+At the exact vulnerable revision this was reachable through the standalone
+generated GKR circuit verifiers. The later GKR full-statement integration had
+not yet landed, so the claim is an end-to-end single-circuit verifier bug, not a
+demonstrated full-machine-statement bug in that same snapshot.
+
 ## Fix
 
 Verifier generation now identifies every virtual-setup address in the canonical layer-zero layout, emits closed-form evaluation helpers for all supported variants, and compares them with `prev_claims`. A mismatch returns `GkrVirtualSetupEvalMismatch`; inconsistent low/high initialization variants fail during generation.

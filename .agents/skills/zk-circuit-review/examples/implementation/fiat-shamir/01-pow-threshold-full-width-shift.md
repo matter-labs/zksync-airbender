@@ -2,7 +2,8 @@
 
 ## Classification
 
-- Confirmed historical boundary bug, latent in shipped configurations
+- Confirmed historical native-transcript boundary bug, latent in shipped configurations and outside circuit-relation scope
+- Evaluation status: non-scored out-of-scope latent
 - Component: native Blake2s transcript prover/verifier, not an algebraic circuit
 - Bug class: prover/verifier disagreement at an allowed exceptional value
 - Fixed by: [`bbf919d`](https://github.com/matter-labs/zksync-airbender/commit/bbf919d517e693827c81d0f579c74e754399292f), PR [#322](https://github.com/matter-labs/zksync-airbender/pull/322)
@@ -26,6 +27,11 @@ The prover already used `u32::MAX.checked_shr(pow_bits).unwrap_or(0)`. The verif
 ## Security impact
 
 If a future configuration selected 32 PoW bits, the prover would search using the intended zero threshold while an optimized verifier would enforce no grinding. Debug verification would abort instead. The repository's shipped security configurations were not affected: their largest configured phase was 28 bits, so this was a real but latent verifier foot-gun rather than an active deployed break.
+
+This defect is in native Fiat-Shamir transcript code, not an AIR/GKR algebraic
+circuit relation. The circuit-review skill assumes transcript/proof machinery
+unless the user explicitly targets it, so this example is retained as adjacent
+review guidance but excluded from blind circuit-audit scoring.
 
 ## Fix
 
