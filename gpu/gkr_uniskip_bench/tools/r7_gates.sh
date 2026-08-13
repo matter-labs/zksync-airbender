@@ -26,15 +26,26 @@
 #   r9diag      the R9 diagnostic-build cells: chain executions per warp-program walk (reorder ==
 #               incumbent == the pinned count), the per-walk plan line, and the frame-poison
 #               divergence — needs the diagnostic binary, which this lane builds
+#   r9b         the v3 R9b corrected-grouped-path validation, promoted from the rung's working
+#               cells: q bit-identity of all NINE timed grid cells against the IN-SESSION incumbent
+#               at two arms and both orders, the self-product duplicate rule on the two D bodies and
+#               once over the whole set, the CPU oracle, the per-symbol carveout echoes and set line
+#               per surface (including the concern-1 pin that --no-cache-launch-bounds is HINTED now,
+#               and its --carveout-hint none route), BOTH rotations end to end against their pinned
+#               ARM lines, and the body/budget rejection matrix
+#   r9bdiag     the R9b diagnostic-build cells: chain executions per warp-program walk, the per-walk
+#               plan line and the frame-poison divergence, for every timed cell at three arms —
+#               needs the diagnostic binary, which this lane builds
 #   cpu         the crate's GPU-free unit tests (cpu_*)
 #   fixtures    the emitter fixture matrices — every decision row and every fail-closed guard of
-#               tools/r7_table.py and of r4_table.py's R9 reorder path, self-generating, GPU-free
+#               tools/r7_table.py and of r4_table.py's R9 reorder and R9b two-rotation paths,
+#               self-generating, GPU-free
 #   regression  tools/r5_gates.sh all, which itself chains r3 + r4
-#   all         sass; matrix; r9; counts; r9diag; cpu; fixtures; regression; sass — sequenced so
-#               `sass` sees the shipped build, the shipped-build cells run before `counts` swaps
-#               the binary, the diagnostic cells run while it is up, every later lane that needs
-#               the shipped one gets it back, and the final re-gate lands on the binary the run
-#               leaves behind
+#   all         sass; matrix; r9; r9b; counts; r9diag; r9bdiag; cpu; fixtures; regression; sass —
+#               sequenced so `sass` sees the shipped build, the shipped-build cells run before
+#               `counts` swaps the binary, the diagnostic cells run while it is up, every later lane
+#               that needs the shipped one gets it back, and the final re-gate lands on the binary
+#               the run leaves behind
 #
 # Usage, from the repo root:
 #   cargo build --release -p gpu_gkr_uniskip_bench
@@ -61,6 +72,7 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 EMITTER="python3 $DIR/r7_table.py"
 FIXTURES=$DIR/r7_fixtures/check.sh
 R9FIXTURES=$DIR/r9_fixtures/check.sh
+R9BFIXTURES=$DIR/r9b_fixtures/check.sh
 fail=0
 diag_built=0
 note() { printf '%s\n' "$*"; }
@@ -1004,6 +1016,439 @@ r9diag() {
   [ "$ccells" = "$cpass" ] || bad "R9 poison cells incomplete"
 }
 
+# ---------------------------------------------------------------- r9b (corrected grouped path)
+
+# The nine TIMED cells of the v3 R9b grid as `<label>|<flags>`, promoted from the rung's working
+# validation scripts. Every one is compared against the IN-SESSION incumbent at the same arm and the
+# same term order: the repair moves DECODE and interleaving, never a factor and never a term order, so
+# `q` must be BIT-IDENTICAL rather than merely parity-equal (`ed3bead0bce8` is a cross-check, not the
+# reference). The grid is 6 bodies x 3 budgets and these nine are the cells that can enter a timing.
+R9B_CELLS="C@7|--regroup c
+C@6|--regroup c --pair-budget lb6
+C@unb|--regroup c --pair-budget free
+B@7|--regroup b
+C+D@7|--regroup cd
+B+D@7|--regroup bd
+inc@6|--pair-budget lb6
+inc@unb|--no-cache-launch-bounds
+R9@7|--reorder"
+# The two D bodies. `--self-products 60` is the program's maximum and the only way to reach the W = 0
+# duplicate rule including E4 self-products; the D bodies carry the member's whole sequence in each of
+# three runtime arms, so the rule appears three times per class shape (Task 1 concern 5).
+R9B_D_CELLS="C+D@7|--regroup cd
+B+D@7|--regroup bd"
+# The arms every timed cell is validated at. The diagnostic lane adds one deeper plan.
+R9B_ARMS="hot16 cache0"
+R9B_DIAG_ARMS="hot16 cache0 k40"
+
+# The two rotations' lanes at `--log-trace 12`, same grammar as `R9_LANE_FACTS`:
+#   label|regs blocks/SM threads grid kernel C removals admitted ids
+# The blocks/SM figure is ARITHMETIC, derived in Rust from the static register line — R9 measured a
+# body whose static 70 was ALLOCATED as 72, so the realized tier is Task 4's ncu G0 and appears
+# nowhere here. NOTE the register column is NOT monotone in the budget: `(128,6)` is the
+# maximum-register cell (incumbent 72 / 80 / 75, C 70 / 75 / 64).
+R9B_CLASS_FACTS="control@256|72 3 256 8 eval_lsb_pair 0 0 0 -
+control_lb@128|72 7 128 16 eval_lsb_pair_128_lb 0 0 0 -
+hot16@128|72 7 128 16 eval_lsb_pair_cached_128_lb 28 145 16 $R9_IDS
+reorder-hot16@128|70 7 128 16 eval_lsb_pair_cached_reorder_128_lb 28 145 16 $R9_IDS
+c-hot16@128|70 7 128 16 eval_lsb_pair_cached_reorder_c_128_lb 28 145 16 $R9_IDS
+b-hot16@128|70 7 128 16 eval_lsb_pair_cached_reorder_b_128_lb 28 145 16 $R9_IDS
+cd-hot16@128|72 7 128 16 eval_lsb_pair_cached_reorder_cd_128_lb 28 145 16 $R9_IDS
+bd-hot16@128|72 7 128 16 eval_lsb_pair_cached_reorder_bd_128_lb 28 145 16 $R9_IDS"
+R9B_BUDGET_FACTS="control@256|72 3 256 8 eval_lsb_pair 0 0 0 -
+control_lb@128|72 7 128 16 eval_lsb_pair_128_lb 0 0 0 -
+hot16@128|72 7 128 16 eval_lsb_pair_cached_128_lb 28 145 16 $R9_IDS
+hot16-lb6@128|80 6 128 16 eval_lsb_pair_cached_128_lb6 28 145 16 $R9_IDS
+hot16-free@128|75 6 128 16 eval_lsb_pair_cached_128 28 145 16 $R9_IDS
+c-hot16@128|70 7 128 16 eval_lsb_pair_cached_reorder_c_128_lb 28 145 16 $R9_IDS
+c-hot16-lb6@128|75 6 128 16 eval_lsb_pair_cached_reorder_c_128_lb6 28 145 16 $R9_IDS
+c-hot16-free@128|64 8 128 16 eval_lsb_pair_cached_reorder_c_128 28 145 16 $R9_IDS"
+
+r9b_q_parity() {
+  note "### R9b q bit-identity: all nine timed cells vs the IN-SESSION incumbent, 2 arms x 2 orders"
+  local cells=0 pass=0 order arm ctl inc got label flags
+  for order in census locality; do
+    ctl=$(qhash --block-threads 128 --term-order "$order")
+    usable "$ctl" "local control128 order=$order" || continue
+    note "  reference control128 $order = $ctl"
+    for arm in $R9B_ARMS; do
+      inc=$(qhash --block-threads 128 --cache-arm "$arm" --term-order "$order")
+      usable "$inc" "incumbent $arm order=$order" || continue
+      cells=$((cells + 1))
+      if [ "$inc" = "$ctl" ]; then pass=$((pass + 1))
+      else bad "R9b q parity incumbent/$arm order=$order ($inc vs control $ctl)"; fi
+      while IFS='|' read -r label flags; do
+        [ -n "$label" ] || continue
+        # shellcheck disable=SC2086
+        got=$(qhash --block-threads 128 --cache-arm "$arm" $flags --term-order "$order")
+        usable "$got" "$label $arm order=$order" || continue
+        cells=$((cells + 1))
+        if [ "$got" = "$inc" ]; then pass=$((pass + 1))
+        else bad "R9b bit-identity $label/$arm order=$order ($got vs incumbent $inc)"; fi
+      done <<< "$R9B_CELLS"
+      note "  $arm/$order: incumbent $inc, all nine timed cells bit-identical"
+    done
+  done
+  note "  cells=$cells passed=$pass"
+  [ "$cells" = 40 ] || bad "expected 40 R9b q cells, ran $cells — a cell, an arm or an order is missing"
+  [ "$cells" = "$pass" ] || bad "R9b q bit-identity incomplete"
+
+  note "### R9b self-products 60: the D bodies at both arms, then every timed cell at hot16"
+  local scells=0 spass=0 sref sinc sgot
+  for order in census locality; do
+    sref=$(qhash --block-threads 128 --self-products 60 --term-order "$order")
+    usable "$sref" "local control128 sp60 order=$order" || continue
+    note "  reference control128 sp60 $order = $sref"
+    for arm in $R9B_ARMS; do
+      sinc=$(qhash --block-threads 128 --cache-arm "$arm" --self-products 60 --term-order "$order")
+      usable "$sinc" "incumbent $arm sp60 order=$order" || continue
+      while IFS='|' read -r label flags; do
+        [ -n "$label" ] || continue
+        # shellcheck disable=SC2086
+        sgot=$(qhash --block-threads 128 --cache-arm "$arm" $flags --self-products 60 \
+                     --term-order "$order")
+        usable "$sgot" "$label $arm sp60 order=$order" || continue
+        scells=$((scells + 1))
+        if [ "$sgot" = "$sinc" ]; then spass=$((spass + 1))
+        else bad "R9b sp60 $label/$arm order=$order ($sgot vs incumbent $sinc)"; fi
+        scells=$((scells + 1))
+        if [ "$sgot" = "$sref" ]; then spass=$((spass + 1))
+        else bad "R9b sp60 $label/$arm order=$order ($sgot vs control $sref)"; fi
+      done <<< "$R9B_D_CELLS"
+      note "  $arm/$order sp60: incumbent $sinc, both D bodies match it and the control"
+    done
+  done
+  # And the whole timed set once, so no cell is left unexercised under the duplicate rule.
+  sinc=$(qhash --block-threads 128 --cache-arm hot16 --self-products 60 --term-order locality)
+  if usable "$sinc" "incumbent hot16 sp60 order=locality"; then
+    while IFS='|' read -r label flags; do
+      [ -n "$label" ] || continue
+      # shellcheck disable=SC2086
+      sgot=$(qhash --block-threads 128 --cache-arm hot16 $flags --self-products 60 \
+                   --term-order locality)
+      usable "$sgot" "$label hot16 sp60 order=locality" || continue
+      scells=$((scells + 1))
+      if [ "$sgot" = "$sinc" ]; then spass=$((spass + 1))
+      else bad "R9b sp60 $label/hot16 order=locality ($sgot vs incumbent $sinc)"; fi
+    done <<< "$R9B_CELLS"
+  fi
+  note "  cells=$scells passed=$spass"
+  [ "$scells" = 25 ] || bad "expected 25 R9b self-product cells, ran $scells"
+  [ "$scells" = "$spass" ] || bad "R9b self-product matrix incomplete"
+
+  # CPU oracle — the only leg that does not go through `q` alone.
+  note "### R9b CPU oracle (--validate), one cell per timed cell, arm and order"
+  local runs=0 oks=0
+  for order in census locality; do
+    for arm in $R9B_ARMS; do
+      while IFS='|' read -r label flags; do
+        [ -n "$label" ] || continue
+        runs=$((runs + 1))
+        # shellcheck disable=SC2086
+        if "$B" --log-trace 12 --warmup 0 --iterations 1 --mode lsb-pair --block-threads 128 \
+             --cache-arm "$arm" $flags --term-order "$order" --validate 2>/dev/null \
+             | grep -q '^q validate: OK (32/32)'; then
+          oks=$((oks + 1))
+        else bad "R9b CPU oracle $label $arm order=$order"; fi
+      done <<< "$R9B_CELLS"
+    done
+  done
+  note "  oracle cells=$runs passed=$oks"
+  [ "$runs" = 36 ] || bad "expected 36 R9b oracle cells, ran $runs"
+  [ "$runs" = "$oks" ] || bad "R9b CPU oracle incomplete"
+}
+
+# The applied carveout per R9b surface. Both rotations hint SIX local symbols, and the CLASS
+# rotation's echo ORDER is `LaneKernel::HINTED`'s — `cd` BEFORE `b` — not its lane order, which is why
+# these rows pin the set as a SEQUENCE. The `16:` literals are THIS script's own, as in the R9 lane:
+# they gate what the SHIPPED binary applies today, which is a different claim from the emitter's.
+r9b_echo_cells() {
+  note '### R9b applied carveout: the per-symbol echoes and the "carveout symbols" set line'
+  local lb=eval_lsb_pair_cached_128_lb
+  local lb6=eval_lsb_pair_cached_128_lb6
+  local free=eval_lsb_pair_cached_128
+  local c=eval_lsb_pair_cached_reorder_c_128_lb
+  local c6=eval_lsb_pair_cached_reorder_c_128_lb6
+  local cf=eval_lsb_pair_cached_reorder_c_128
+  local r=eval_lsb_pair_cached_reorder_128_lb
+  local bb=eval_lsb_pair_cached_reorder_b_128_lb
+  local cdk=eval_lsb_pair_cached_reorder_cd_128_lb
+  local bdk=eval_lsb_pair_cached_reorder_bd_128_lb
+  local A="--block-threads 128 --cache-arm hot16"
+  local rows="--r9b-class|16:$lb 16:$r 16:$c 16:$cdk 16:$bb 16:$bdk|6 local ($lb, $r, $c, $cdk, $bb, $bdk)
+--r9b-budget|16:$lb 16:$lb6 16:$free 16:$c 16:$c6 16:$cf|6 local ($lb, $lb6, $free, $c, $c6, $cf)
+$A|16:$lb|1 local ($lb)
+$A --regroup c|16:$c|1 local ($c)
+$A --regroup c --pair-budget lb6|16:$c6|1 local ($c6)
+$A --regroup c --pair-budget free|16:$cf|1 local ($cf)
+$A --regroup b|16:$bb|1 local ($bb)
+$A --regroup cd|16:$cdk|1 local ($cdk)
+$A --regroup bd|16:$bdk|1 local ($bdk)
+$A --pair-budget lb6|16:$lb6|1 local ($lb6)
+$A --no-cache-launch-bounds|16:$free|1 local ($free)
+$A --reorder|16:$r|1 local ($r)"
+  local cells=0 pass=0 args want set_want got
+  while IFS='|' read -r args want set_want; do
+    [ -n "$args" ] || continue
+    cells=$((cells + 1))
+    # shellcheck disable=SC2086
+    got=$(echoes_of --term-order locality $args)
+    if [ "$got" = "$want" ]; then pass=$((pass + 1))
+    else
+      bad "R9b carveout echoes for [$args]"
+      note "    got  $got"
+      note "    want $want"
+    fi
+    cells=$((cells + 1))
+    # shellcheck disable=SC2086
+    got=$(symbols_of --term-order locality $args)
+    if [ "$got" = "$set_want" ]; then pass=$((pass + 1)); note "  $args -> $want"
+    else
+      bad "R9b carveout set line for [$args]"
+      note "    got  $got"
+      note "    want $set_want"
+    fi
+  done <<< "$rows"
+
+  # TASK 2 CONCERN 1, pinned. `--no-cache-launch-bounds` is HINTED now where it used to run at the
+  # driver's own sizing — it had to be, because R9b times that cell — and the row above is what keeps
+  # that behaviour change from drifting back silently. `--carveout-hint none` is its only other-tier
+  # route (an explicit percent is rejected on this surface by a pinned r6 cell), and there the run
+  # must print NO carveout line at all. The occupancy line is checked in the same breath: without it,
+  # an empty echo set would also be what a failed run produces.
+  local out
+  out=$("$B" --log-trace 12 --mode lsb-pair --warmup 0 --iterations 0 --block-threads 128 \
+             --cache-arm hot16 --no-cache-launch-bounds --carveout-hint none \
+             --term-order locality 2>/dev/null)
+  cells=$((cells + 1))
+  if [ -n "$out" ] && ! printf '%s\n' "$out" | grep -q '^  carveout '; then pass=$((pass + 1))
+  else bad "R9b --carveout-hint none on --no-cache-launch-bounds still echoed a carveout line"; fi
+  cells=$((cells + 1))
+  if printf '%s\n' "$out" | grep -q "^  occupancy .*($free,"; then
+    pass=$((pass + 1)); note "  --no-cache-launch-bounds --carveout-hint none -> unhinted, $free launched"
+  else bad "R9b --carveout-hint none on --no-cache-launch-bounds did not reach $free"; fi
+
+  note "  cells=$cells passed=$pass"
+  [ "$cells" = 26 ] || bad "expected 26 R9b echo cells, ran $cells"
+  [ "$cells" = "$pass" ] || bad "R9b echo cells incomplete"
+}
+
+# Both rotations end to end, both orders: the sample/ARM/schedule/trailer shape AND every lane's ARM
+# line against the pinned table. The two rotations share the tag `R9B`, so the LANE SET is the only
+# thing that says which one ran — which is exactly what the emitter keys on, and these rows are where
+# the runner's side of it is pinned.
+r9b_rotation() {
+  note "### the two R9b rotations end to end, both orders, against the pinned ARM lines"
+  local cells=0 pass=0 flag order log n a lane want got facts
+  for flag in r9b-class r9b-budget; do
+    if [ "$flag" = r9b-class ]; then facts=$R9B_CLASS_FACTS; else facts=$R9B_BUDGET_FACTS; fi
+    for order in census locality; do
+      log="$TMP/$flag-$order.log"
+      cells=$((cells + 1))
+      if ! "$B" --log-trace 12 --mode lsb-pair --warmup 0 --iterations 8 --term-order "$order" \
+             "--$flag" >"$log" 2>&1; then
+        bad "--$flag order=$order run failed"; tail -3 "$log"; continue
+      fi
+      n=$(grep -c '^SAMPLE ' "$log")
+      a=$(grep -c '^ARM ' "$log")
+      if [ "$n" != 64 ] || [ "$a" != 8 ]; then
+        bad "--$flag order=$order emitted $n samples / $a ARM lines, expected 64 / 8"
+        continue
+      fi
+      if ! grep -q "^R9B schedule order=$order lanes=8 rounds=8 warmup=0\$" "$log"; then
+        bad "--$flag order=$order printed no matching R9B schedule line"; continue
+      fi
+      if ! grep -q "^R9B done order=$order warmup=0 rounds=8 lanes=8\$" "$log"; then
+        bad "--$flag order=$order printed no matching trailer"; continue
+      fi
+      pass=$((pass + 1))
+      note "  --$flag $order: 64 samples / 8 ARM lines / schedule + trailer OK"
+      while IFS='|' read -r lane want; do
+        [ -n "$lane" ] || continue
+        cells=$((cells + 1))
+        got=$(awk -v l="$lane" '$1=="ARM" && $2==l {$1=""; $2=""; sub(/^  /, ""); print}' "$log")
+        if [ "$got" = "$want" ]; then pass=$((pass + 1))
+        else
+          bad "R9b ARM line for $lane under --$flag order=$order"
+          note "    got  $got"
+          note "    want $want"
+        fi
+      done <<< "$facts"
+    done
+  done
+  note "  cells=$cells passed=$pass"
+  [ "$cells" = 36 ] || bad "expected 36 R9b rotation cells (4 shapes + 32 ARM lines), ran $cells"
+  [ "$cells" = "$pass" ] || bad "R9b rotation cells incomplete"
+}
+
+# The body/budget selector's rejection matrix. Each row is a configuration the flags cannot describe,
+# and the CLI must say so rather than silently launch another cell of the grid.
+r9b_rejects() {
+  note "### the R9b body/budget selector rejection matrix (fail closed)"
+  local cells=0 pass=0 want out rc
+  reject() { # reject <expected substring> <args...>
+    want=$1; shift
+    cells=$((cells + 1))
+    out=$("$B" --log-trace 12 "$@" 2>&1); rc=$?
+    if [ "$rc" = 0 ]; then bad "R9b accepted [$*]"; return; fi
+    if printf '%s' "$out" | grep -q -- "$want"; then pass=$((pass + 1))
+    else bad "R9b wrong rejection for [$*]: $(printf '%s' "$out" | head -3 | tr '\n' ' ')"; fi
+  }
+  local P="--mode lsb-pair --iterations 0"
+  local A="--block-threads 128 --cache-arm hot16"
+  # shellcheck disable=SC2086
+  {
+  reject "pick one" $P $A --regroup c --reorder
+  reject "pick one" $P $A --regroup c --reorder-free
+  reject "spelled --reorder-free" $P $A --regroup c --no-cache-launch-bounds
+  reject "already name the unbounded budget" $P $A --reorder-free --pair-budget lb6
+  reject "already name the unbounded budget" $P $A --no-cache-launch-bounds --pair-budget lb6
+  reject "it needs --regroup" $P $A --pair-budget free
+  reject "it needs --regroup" $P $A --reorder --pair-budget free
+  reject "needs --mode lsb-pair" $P --block-threads 128 --regroup c
+  reject "needs --mode lsb-pair" $P --block-threads 128 --cache-arm control --regroup c
+  reject "needs --mode lsb-pair" $P --cache-arm hot16 --regroup c
+  reject "needs --mode lsb-pair" $P --block-threads 256 --cache-arm hot16 --regroup c
+  reject "needs --mode lsb-pair" $P --block-threads 256 --cache-arm hot16 --pair-budget lb6
+  reject "needs --mode lsb-pair" --mode lsb-recompute --iterations 0 --regroup c
+  reject "needs --mode lsb-pair" $P --block-threads 128 --pair-budget lb6
+  reject "needs --mode lsb-pair" $P --block-threads 128 --cache-arm control --pair-budget lb6
+  reject "would change what the rotation runs" $P --r9b-class --regroup c
+  reject "would change what the rotation runs" $P --r9b-budget --pair-budget lb6
+  reject "would change what the rotation runs" $P --reorder-factorial --regroup c
+  reject "would change what the rotation runs" $P --frontier-interior --pair-budget lb6
+  reject "describe a configuration the run does not have" $P $A --carrier seg-g --regroup c
+  reject "describe a configuration the run does not have" $P $A --carrier seg-g --pair-budget lb6
+  reject "each own the whole rotation" $P --r9b-class --r9b-budget
+  reject "each own the whole rotation" $P --r9b-class --reorder-factorial
+  reject "multiple of 8" --mode lsb-pair --r9b-class --iterations 7
+  reject "multiple of 8" --mode lsb-pair --r9b-budget --iterations 9
+  reject "use --cache-arm" $P --r9b-class --validate
+  reject "steers the bounded 128-thread cached kernel" $P --r9b-budget --carveout-hint 50
+  reject "rotates lanes" $P --r9b-class --profile
+  }
+  note "  cells=$cells passed=$pass"
+  [ "$cells" = 28 ] || bad "expected 28 R9b rejection cells, ran $cells"
+  [ "$cells" = "$pass" ] || bad "R9b rejection matrix incomplete"
+}
+
+r9b() {
+  if [ ! -x "$B" ]; then
+    bad "r9b: no binary at $B — cargo build --release -p gpu_gkr_uniskip_bench"
+    return
+  fi
+  # ENFORCED, as in the R9 lane: `r9b_rotation` pins every grid cell's static register count, which
+  # the diagnostic build's counters move — run against it, the lane would fail for the wrong reason.
+  require_shipped "the R9b lane" || return
+  r9b_q_parity
+  r9b_echo_cells
+  r9b_rotation
+  r9b_rejects
+}
+
+# ---------------------------------------------------------------- r9bdiag
+
+r9bdiag() {
+  ensure_diag || return
+  note "### R9b chain executions per warp-program walk: every timed cell == the incumbent, per arm"
+  local cells=0 pass=0 order arm inc got label flags
+  for order in census locality; do
+    for arm in $R9B_DIAG_ARMS; do
+      inc=$(r9_walk_chains --cache-arm "$arm" --term-order "$order")
+      if [ -z "$inc" ]; then
+        bad "$arm order=$order printed no per-walk chain-count line (diagnostic build?)"; continue
+      fi
+      while IFS='|' read -r label flags; do
+        [ -n "$label" ] || continue
+        # shellcheck disable=SC2086
+        got=$(r9_walk_chains --cache-arm "$arm" $flags --term-order "$order")
+        cells=$((cells + 1))
+        if [ "$got" = "$inc" ]; then pass=$((pass + 1))
+        else bad "R9b chains $label/$arm order=$order: $got vs incumbent $inc"; fi
+      done <<< "$R9B_CELLS"
+      note "  $arm/$order: incumbent=$inc, all nine timed cells equal"
+    done
+  done
+  note "  cells=$cells passed=$pass"
+  [ "$cells" = 54 ] || bad "expected 54 R9b chain cells, ran $cells"
+  [ "$cells" = "$pass" ] || bad "R9b chain-count gate incomplete"
+
+  # The prologue executes a PLAN; the repair moves decode, never what the plan is.
+  note "### the per-walk plan line is the same plan on every timed cell"
+  local pcells=0 ppass=0
+  for order in census locality; do
+    for arm in $R9B_DIAG_ARMS; do
+      inc=$(r9_per_walk --cache-arm "$arm" --term-order "$order")
+      if [ -z "$inc" ]; then
+        bad "$arm order=$order printed no per-walk plan line (diagnostic build?)"; continue
+      fi
+      while IFS='|' read -r label flags; do
+        [ -n "$label" ] || continue
+        # shellcheck disable=SC2086
+        got=$(r9_per_walk --cache-arm "$arm" $flags --term-order "$order")
+        pcells=$((pcells + 1))
+        if [ "$got" = "$inc" ]; then ppass=$((ppass + 1))
+        else bad "R9b per-walk $label/$arm order=$order: '$got' vs '$inc'"; fi
+      done <<< "$R9B_CELLS"
+      note "  $arm/$order per walk: $inc"
+    done
+  done
+  note "  cells=$pcells passed=$ppass"
+  [ "$pcells" = 54 ] || bad "expected 54 R9b per-walk cells, ran $pcells"
+  [ "$pcells" = "$ppass" ] || bad "R9b per-walk cells incomplete"
+
+  # POISON THE FRAME after the prologue: only an arm with reuses may change q, and every timed cell
+  # must diverge exactly where the incumbent does. Equal POISONED hashes are stronger than
+  # divergence — every cell reads one corrupted frame in one order.
+  note "### frame poison after the prologue: every timed cell diverges where the incumbent does"
+  local ccells=0 cpass=0 want igot iref ipoi ref poi
+  for order in census locality; do
+    for arm in $R9B_DIAG_ARMS; do
+      iref=$(qhash --block-threads 128 --cache-arm "$arm" --term-order "$order")
+      ipoi=$(qhash --block-threads 128 --cache-arm "$arm" --window-poison --term-order "$order")
+      usable "$iref" "incumbent $arm order=$order" || continue
+      usable "$ipoi" "incumbent poisoned $arm order=$order" || continue
+      if [ "$arm" = cache0 ]; then want=same; else want=differ; fi
+      igot=same; [ "$iref" != "$ipoi" ] && igot=differ
+      if [ "$igot" != "$want" ]; then
+        bad "R9b poison incumbent/$arm order=$order: $igot, want $want"
+      fi
+      while IFS='|' read -r label flags; do
+        [ -n "$label" ] || continue
+        # shellcheck disable=SC2086
+        ref=$(qhash --block-threads 128 --cache-arm "$arm" $flags --term-order "$order")
+        # shellcheck disable=SC2086
+        poi=$(qhash --block-threads 128 --cache-arm "$arm" $flags --window-poison \
+                    --term-order "$order")
+        usable "$ref" "$label $arm order=$order" || continue
+        usable "$poi" "$label $arm poisoned order=$order" || continue
+        got=same; [ "$ref" != "$poi" ] && got=differ
+        ccells=$((ccells + 1))
+        if [ "$got" = "$want" ]; then cpass=$((cpass + 1))
+        else bad "R9b poison $label/$arm order=$order: $got, want $want"; fi
+        ccells=$((ccells + 1))
+        if [ "$got" = "$igot" ]; then cpass=$((cpass + 1))
+        else bad "R9b poison $label/$arm order=$order: cell $got but incumbent $igot"; fi
+        ccells=$((ccells + 1))
+        if [ "$poi" = "$ipoi" ]; then cpass=$((cpass + 1))
+        else bad "R9b poisoned q $label/$arm order=$order: $poi vs incumbent $ipoi"; fi
+      done <<< "$R9B_CELLS"
+      note "  poison $arm/$order: incumbent=$igot (want $want), all nine cells match cell for cell"
+    done
+  done
+  # The uncached control has no frame to poison.
+  ref=$(qhash --block-threads 128 --term-order locality)
+  poi=$(qhash --block-threads 128 --window-poison --term-order locality)
+  if usable "$ref" "control128 locality" && usable "$poi" "control128 poisoned locality"; then
+    ccells=$((ccells + 1))
+    if [ "$ref" = "$poi" ]; then cpass=$((cpass + 1))
+    else bad "R9b poison changed the uncached control ($ref vs $poi)"; fi
+  fi
+  note "  cells=$ccells passed=$cpass"
+  [ "$ccells" = 163 ] || bad "expected 163 R9b poison cells, ran $ccells"
+  [ "$ccells" = "$cpass" ] || bad "R9b poison cells incomplete"
+}
+
 # ---------------------------------------------------------------- sass
 
 # One normalizer for the live dump, the same one r5_gates.sh uses. TRAP: the address comment is
@@ -1239,6 +1684,15 @@ fixtures() {
     bad "R9 fixture matrix"
     cat "$TMP/r9-fixtures.log"
   fi
+  # The R9b rung rides the same emitter on its own dedicated path — two rotations under one tag, which
+  # is what its fixture corpus is mostly about.
+  note "### emitter fixture matrix (tools/r4_table.py, R9b two-rotation path)"
+  if bash "$R9BFIXTURES" > "$TMP/r9b-fixtures.log" 2>&1; then
+    note "  $(tail -1 "$TMP/r9b-fixtures.log")"
+  else
+    bad "R9b fixture matrix"
+    cat "$TMP/r9b-fixtures.log"
+  fi
 }
 
 regression() {
@@ -1259,6 +1713,8 @@ case "${1:-all}" in
   counts) counts ;;
   r9) r9 ;;
   r9diag) r9diag ;;
+  r9b) r9b ;;
+  r9bdiag) r9bdiag ;;
   sass) sass ;;
   cpu) cpu ;;
   fixtures) fixtures ;;
@@ -1270,14 +1726,15 @@ case "${1:-all}" in
   # NINE only. Without this the binary the tree ends on — the one Task 7 measures — would never
   # have had the eight seg bodies verified. No lane may be appended after it that can rebuild.
   all)
-    # `r9` before `counts` for the same reason `sass` is first — it reads the shipped build — and
-    # `r9diag` immediately after it, while the diagnostic binary `counts` built is still up.
-    sass; matrix; r9; counts; r9diag; cpu; fixtures; regression
+    # `r9` and `r9b` before `counts` for the same reason `sass` is first — they read the shipped
+    # build — and the two diagnostic lanes immediately after it, while the diagnostic binary `counts`
+    # built is still up.
+    sass; matrix; r9; r9b; counts; r9diag; r9bdiag; cpu; fixtures; regression
     note ""
     note "### RE-GATE after the diagnostic round-trip: the binary the tree ENDS on"
     sass
     ;;
-  *) echo "usage: $0 {sass|matrix|counts|r9|r9diag|cpu|fixtures|regression|all}" >&2; exit 2 ;;
+  *) echo "usage: $0 {sass|matrix|counts|r9|r9diag|r9b|r9bdiag|cpu|fixtures|regression|all}" >&2; exit 2 ;;
 esac
 [ "$fail" = 0 ] && note "ALL GATES PASS"
 exit "$fail"

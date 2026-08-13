@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Emit the v3 R4 factorial table from a `--cache-factorial` run log, the v3 R5
 admission-frontier tables from `--frontier-factorial` / `--frontier-extension` logs, the
-v3 R8 admission-interior tables from a `--frontier-interior` session pair, and the v3 R9
-gate-first-reorder tables from a `--reorder-factorial` session pair.
+v3 R8 admission-interior tables from a `--frontier-interior` session pair, the v3 R9
+gate-first-reorder tables from a `--reorder-factorial` session pair, and the v3 R9b
+corrected-grouped-path tables from a `--r9b-class` and/or `--r9b-budget` session pair.
 
 R5 NOTE. For a frontier log this script is THE SINGLE AUTHORITY for every derived
 decision — the three named curves, the signed per-lane statuses, C*, the extension
@@ -51,11 +52,20 @@ anchor lanes against every reference this repo holds, the flank readings, the bu
 issues no verdict. It errors only where a number cannot be computed; every policy observation is a
 FLAG at the top of the output. The R4/R5/R8 paths keep their own preregistered gates untouched.
 
+R9b NOTE. R9b repairs the implementation R9 measured and re-measures it on TWO axes, which run as
+two rotations under ONE tag (`R9B`) — so it gets its own path again, and that path identifies a
+session by its LANE LABEL SET and its count, never by the tag. It is also the only rung whose log
+set can carry TWO sessions (four logs), which is how the bridge lane's two medians are printed side
+by side, so it is routed BEFORE the shared parser: that parser keys a section by (tag, order) and
+would read the pair as one mixed run. Reporting-only, on the same terms as R9.
+
 Usage:
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py /tmp/cache.log [--order locality]
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py primary.log [extension.log ...]
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py interior-locality.log interior-census.log
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py reorder-locality.log reorder-census.log
+    python3 gpu/gkr_uniskip_bench/tools/r4_table.py r9b-class-{locality,census}.log \\
+                                                    r9b-budget-{locality,census}.log
 """
 
 import argparse
@@ -285,9 +295,182 @@ REORDER_ROWS = [
 REORDER_CAPTURE = [(R9_INCUMBENT, "incumbent"), (R9_BOUNDED, "bounded-reorder"),
                    (R9_FREE, "unbounded-reorder")]
 
+# --- v3 R9b the corrected grouped path, over a register-budget grid ---------------
+#
+# R9b repairs the implementation R9 measured (the grouped-term path duplicated its coefficient
+# DECODE) and re-measures it. It runs TWO rotations under ONE tag, because it is one rung on two
+# axes: a CLASS axis (four corrected body shapes at a fixed register budget) and a BUDGET axis
+# (body C and the INCUMBENT, each at three budgets). Both print `R9B schedule … lanes=8`, so
+# **THE TAG CANNOT TELL THEM APART** — this path identifies a session by its LANE LABEL SET and
+# its count, and by nothing else. Two sessions may be emitted in one invocation (four logs); that
+# is how the bridge lane's two medians are printed side by side.
+#
+# THE BUDGET AXIS IS NOT MONOTONE IN REGISTERS. `(128, 6)` is the MAXIMUM-register cell, not "no
+# bound": the incumbent runs 72 → 80 → 75 and C runs 70 → 75 → 64 across `(128,7)` → `(128,6)` →
+# unbounded (Task 1 §3). Nothing below reads the budget's declaration order as a register ordering;
+# every register line is read off the log's own ARM lines and printed as read.
+#
+# REPORTING, NOT ADJUDICATION (RR's amendment A10, campaign-wide): the path prints the whole
+# picture and decides nothing. It errors only where no meaningful number can be computed — a log it
+# cannot parse, a missing term order, missing / renumbered / incomplete rounds, an unknown lane. Every
+# POLICY observation is a FLAG in a block printed FIRST, above every table. WIN / LOSS / WASH are
+# LABELS that drive no control flow.
+R9B = "R9B"
+R9B_CTL, R9B_CTL_LB, R9B_INC = "control@256", "control_lb@128", "hot16@128"
+R9B_DROPIN = "reorder-hot16@128"
+R9B_C, R9B_B, R9B_CD, R9B_BD = "c-hot16@128", "b-hot16@128", "cd-hot16@128", "bd-hot16@128"
+R9B_INC_LB6, R9B_INC_FREE = "hot16-lb6@128", "hot16-free@128"
+R9B_C_LB6, R9B_C_FREE = "c-hot16-lb6@128", "c-hot16-free@128"
+
+# The three budget spellings, in the order Task 1 built them. NOT a register ordering (see above).
+R9B_LB, R9B_LB6, R9B_UNB = "(128,7)", "(128,6)", "unbounded"
+
+# THE CELL PIN: lane -> (body, budget, kernel). With several bodies AND several budgets on ONE plan,
+# the kernel symbol is the only field in the log that says which cell ran — the counts are identical
+# by construction. The body and the budget are the kernel's decomposition, printed as columns, and a
+# kernel that names another cell is reported as a body swap or a budget swap accordingly.
+R9B_CELL = {
+    R9B_CTL: ("incumbent", "n/a", "eval_lsb_pair"),
+    R9B_CTL_LB: ("incumbent", R9B_LB, "eval_lsb_pair_128_lb"),
+    R9B_INC: ("incumbent", R9B_LB, "eval_lsb_pair_cached_128_lb"),
+    R9B_INC_LB6: ("incumbent", R9B_LB6, "eval_lsb_pair_cached_128_lb6"),
+    R9B_INC_FREE: ("incumbent", R9B_UNB, "eval_lsb_pair_cached_128"),
+    R9B_DROPIN: ("R9-drop-in", R9B_LB, "eval_lsb_pair_cached_reorder_128_lb"),
+    R9B_C: ("C", R9B_LB, "eval_lsb_pair_cached_reorder_c_128_lb"),
+    R9B_C_LB6: ("C", R9B_LB6, "eval_lsb_pair_cached_reorder_c_128_lb6"),
+    R9B_C_FREE: ("C", R9B_UNB, "eval_lsb_pair_cached_reorder_c_128"),
+    R9B_B: ("B", R9B_LB, "eval_lsb_pair_cached_reorder_b_128_lb"),
+    R9B_CD: ("C+D", R9B_LB, "eval_lsb_pair_cached_reorder_cd_128_lb"),
+    R9B_BD: ("B+D", R9B_LB, "eval_lsb_pair_cached_reorder_bd_128_lb"),
+}
+# The reverse map, so an observed kernel can be named as a CELL rather than as a string: that is
+# what separates "this lane ran another body" from "this lane ran the same body at another budget".
+R9B_BY_KERNEL = {k: (lane, b, g) for lane, (b, g, k) in R9B_CELL.items()}
+
+R9B_CLASS_LANES = [R9B_CTL, R9B_CTL_LB, R9B_INC, R9B_DROPIN, R9B_C, R9B_B, R9B_CD, R9B_BD]
+R9B_BUDGET_LANES = [R9B_CTL, R9B_CTL_LB, R9B_INC, R9B_INC_LB6, R9B_INC_FREE,
+                    R9B_C, R9B_C_LB6, R9B_C_FREE]
+
+R9B_ROUNDS, R9B_WARMUP, R9B_THRESHOLD = 96, 8, 87
+# THE TRACE PIN, R8's and R9's verbatim: the trace size appears in no log line, but the grid does —
+# at `--log-trace 24` it is the trace's row count over each lane's row tile.
+R9B_TRACE = 24
+R9B_GRID = {lane: (32768 if lane == R9B_CTL else 65536) for lane in R9B_CELL}
+# The K a lane claims, cross-checked against its admitted-id list: every cached cell of both
+# rotations sits at hot16's admitted set, and the two controls admit nothing.
+R9B_K = {lane: (0 if lane in (R9B_CTL, R9B_CTL_LB) else 16) for lane in R9B_CELL}
+
+# The CLASS rows. Four corrected bodies against the incumbent, the same four against R9's drop-in
+# (the RECOVERY set — the rung's headline), and the drop-in against the incumbent, which
+# re-measures R9's +5.43 % inside this session rather than across two.
+R9B_CLASS_ROWS = [
+    (R9B_C, R9B_INC, "C against the incumbent, at its plan, bound and L1 configuration"),
+    (R9B_B, R9B_INC, "B against the incumbent"),
+    (R9B_CD, R9B_INC, "C+D against the incumbent"),
+    (R9B_BD, R9B_INC, "B+D against the incumbent"),
+    (R9B_C, R9B_DROPIN, "THE RECOVERY ROW, C — what the decode repair gives back against the "
+                        "implementation R9 measured"),
+    (R9B_B, R9B_DROPIN, "THE RECOVERY ROW, B"),
+    (R9B_CD, R9B_DROPIN, "THE RECOVERY ROW, C+D"),
+    (R9B_BD, R9B_DROPIN, "THE RECOVERY ROW, B+D"),
+    (R9B_DROPIN, R9B_INC, "R9's drop-in re-measured INSIDE this session — the +5.43 % reference "
+                          "point, on this rotation and this machine"),
+]
+# The BUDGET rows. The two separator rows carry the labels the rung pins them with: Task 1 found the
+# bank-3 twiddle rematerialization collapsing at `(128, 6)` for every reordered body and never for
+# the incumbent, which is what lets the pair be separated at all — the thing R9's record says it
+# could not do.
+R9B_BUDGET_ROWS = [
+    (R9B_INC_LB6, R9B_INC, "the budget axis on an UNMODIFIED body (RR's question) — the incumbent "
+                           "at (128, 6), the grid's maximum-register cell"),
+    (R9B_INC_FREE, R9B_INC, "the budget axis on an UNMODIFIED body (RR's question) — the incumbent "
+                            "unbounded, the arm R9's record left as static arithmetic (A8)"),
+    (R9B_C, R9B_INC, "C at the fixed bound against the incumbent — also the BRIDGE lane, the one "
+                     "cell both sessions carry"),
+    (R9B_C_LB6, R9B_C, "the remat collapse at constant block tier"),
+    (R9B_C_FREE, R9B_C_LB6, "the extra block at constant collapse"),
+    (R9B_C_FREE, R9B_INC, "C unbounded against the incumbent — the whole budget move on the "
+                          "corrected body, bundled"),
+]
+
+# The hinted LOCAL symbols per rotation, IN THE ORDER THE HARNESS ECHOES THEM (`LaneKernel::HINTED`).
+# That order is the HINTED table's, NOT the lane order: the CLASS rotation echoes `cd` BEFORE `b`
+# while its lanes run `c, b, cd, bd` (Task 2 concern 3). The percent is READ off the log's echoes and
+# printed; this path carries no expected tier, so a re-pin needs no emitter change.
+R9B_CLASS_HINTED = ["eval_lsb_pair_cached_128_lb", "eval_lsb_pair_cached_reorder_128_lb",
+                    "eval_lsb_pair_cached_reorder_c_128_lb",
+                    "eval_lsb_pair_cached_reorder_cd_128_lb",
+                    "eval_lsb_pair_cached_reorder_b_128_lb",
+                    "eval_lsb_pair_cached_reorder_bd_128_lb"]
+R9B_BUDGET_HINTED = ["eval_lsb_pair_cached_128_lb", "eval_lsb_pair_cached_128_lb6",
+                     "eval_lsb_pair_cached_128", "eval_lsb_pair_cached_reorder_c_128_lb",
+                     "eval_lsb_pair_cached_reorder_c_128_lb6",
+                     "eval_lsb_pair_cached_reorder_c_128"]
+
+# The two session shapes. `lanes` is what identifies one — the label SET and its count — and
+# everything else is that session's own row set, hinted set and prose.
+R9B_SHAPES = {
+    "CLASS": {
+        "lanes": R9B_CLASS_LANES,
+        "rows": R9B_CLASS_ROWS,
+        "hinted": R9B_CLASS_HINTED,
+        "flag": "--r9b-class",
+        "what": "The class axis — four corrected body shapes at ONE register budget, beside the "
+                "incumbent and R9's drop-in",
+    },
+    "BUDGET": {
+        "lanes": R9B_BUDGET_LANES,
+        "rows": R9B_BUDGET_ROWS,
+        "hinted": R9B_BUDGET_HINTED,
+        "flag": "--r9b-budget",
+        "what": "The budget axis — body C and the INCUMBENT, each at all three register budgets, "
+                "fully paired in one rotation",
+    },
+}
+# The cached lanes of each shape declare ONE plan: same C, same removals, the same ordered admitted
+# prefix, the same block size. That premise is what makes every row a CELL contrast; it is reported,
+# never enforced.
+R9B_ONE_PLAN = {name: [l for l in s["lanes"] if l not in (R9B_CTL, R9B_CTL_LB)]
+                for name, s in R9B_SHAPES.items()}
+
+# THE BRIDGE. `c-hot16@128` runs in BOTH rotations, so its two medians are the session-
+# comparability reading — and the only one available, because a paired contrast is valid only
+# inside a session.
+R9B_BRIDGE = R9B_C
+
+# The anchor lanes the reference comparison is read on, and the R9 session added to the references
+# R9 already held. The R9 medians are this file's own `reorder_emit` output over the archived
+# `.agents/sdd/2026-08-12-v3-r9/reorder-{locality,census}.log` (`control@256` / `hot16@128`, median
+# `eval+fin`), whose `REORDER schedule … lanes=6` field is where the 6 comes from. `.agents/**` is
+# gitignored, so `r9b_fixtures/check.sh` pins both pairs verbatim — that pin is what protects them in
+# a clean checkout where the logs cannot be re-read.
+R9B_ANCHOR_LANES = (R9B_CTL, R9B_INC)
+R9_SESSION = {"locality": (16.725, 14.794), "census": (17.011, 15.458)}
+R9B_REFERENCES = REORDER_REFERENCES + (("R9 session", 6, R9_SESSION),)
+# The flank sentinels: the three INCUMBENT-body anchor lanes at the incumbent's own budget, which
+# both rotations carry. A cell under test — body or budget — is not its own drift sentinel, so every
+# grid lane is excluded by construction, the incumbent's two extra budgets included.
+R9B_FLANK_LANES = (R9B_CTL, R9B_CTL_LB, R9B_INC)
+
+# THE G0 MANIFEST (amendment A7): every TIMED cell gets its own capture, one launch each, because
+# profiling only a chosen few leaves the rest of the register curve resting on static REG lines —
+# the exact error R9 documented. Ten cells: the incumbent and the nine the two rotations put on a
+# lane beside it.
+R9B_G0 = [R9B_INC, R9B_DROPIN, R9B_C, R9B_B, R9B_CD, R9B_BD,
+          R9B_INC_LB6, R9B_INC_FREE, R9B_C_LB6, R9B_C_FREE]
+R9B_G0_READS = ("allocated-registers", "register-limit", "shared-limit", "warps-limit",
+                "blocks-limit", "blocks-per-sm", "achieved-occupancy")
+# THE FULL-PICTURE manifest: five FIXED lanes plus ONE conditional slot, the CLASS session's
+# lowest-median corrected body. The slot is a capture-set choice and nothing else; it is named as
+# PENDING when the CLASS session is not in this invocation.
+R9B_FULL = [(R9B_INC, "incumbent"), (R9B_DROPIN, "r9-dropin"),
+            (R9B_C_LB6, "c-at-128-6"), (R9B_C_FREE, "c-unbounded"),
+            (R9B_INC_FREE, "incumbent-unbounded")]
+R9B_FULL_CANDIDATES = (R9B_C, R9B_B, R9B_CD, R9B_BD)
+
 # Every rotation keyword this emitter knows. A schedule or trailer line is bound to a section
 # only for these, so a foreign grammar cannot be summarized under one of these rules.
-KNOWN = {R4} | set(FRONTIER) | {R8, R9}
+KNOWN = {R4} | set(FRONTIER) | {R8, R9, R9B}
 
 
 def parse(paths, where):
@@ -1993,6 +2176,683 @@ def reorder(orders, runs, arms, done, sched, files, where, narrowed):
     reorder_report(sessions, paths, flags)
 
 
+def r9b_paired(s, a, b):
+    """The paired per-round contrast `a - b` on `eval + finalize`, with this rung's signed LABEL: at
+    least 87 of 96 rounds on one side and the median agreeing is called WIN or LOSS, anything else
+    WASH. A label, not a gate — nothing branches on it."""
+    d = [x - y for x, y in zip(s["tot"][a], s["tot"][b])]
+    verdict, med, on = signed(d, R9B_THRESHOLD)
+    lo, hi = iqr(d)
+    return {"med": med, "lo": lo, "hi": hi, "on": on, "n": len(d), "verdict": verdict,
+            "min": min(d), "max": max(d)}
+
+
+def r9b_scan(path):
+    """The pre-scan that routes a log set here, and the ONLY thing that can tell the two R9b
+    rotations apart: the rotation keywords a file declares and the lane labels its ARM lines name.
+    An unreadable file returns nothing, so the shared parser raises on it exactly as it always
+    has."""
+    tags, labels = set(), set()
+    try:
+        with open(path) as fh:
+            for raw in fh:
+                line = raw.strip()
+                m = SCHED.match(line) or DONE.match(line)
+                if m and m.group(1) in KNOWN:
+                    tags.add(m.group(1))
+                    continue
+                m = ARM_IDS.match(line) or ARM.match(line)
+                if m:
+                    labels.add(m.group(1))
+    except OSError:
+        return set(), set()
+    return tags, labels
+
+
+def r9b_shape_of(labels):
+    for name, shape in R9B_SHAPES.items():
+        if labels == set(shape["lanes"]):
+            return name
+    return None
+
+
+def r9b_split(paths, where):
+    """Group a log set into SESSIONS by lane label set. The tag cannot do it — both rotations print
+    `R9B schedule … lanes=8` — so a file that names neither rotation's lanes, or that declares an
+    R9b section without ARM lines, has no session to be read in and no row to be printed in."""
+    groups = defaultdict(list)
+    for path in paths:
+        tags, labels = r9b_scan(path)
+        base = os.path.basename(path)
+        if tags - {R9B}:
+            sys.exit(f"{where}: `{base}` declares {sorted(tags - {R9B})} beside {R9B} — each "
+                     f"rotation is summarized under its own rules; emit them separately")
+        if R9B not in tags:
+            sys.exit(f"{where}: `{base}` declares no {R9B} section while the rest of the set does — "
+                     f"emit one rung at a time")
+        name = r9b_shape_of(labels)
+        if name is None:
+            detail = "; ".join(
+                f"{s} is missing {sorted(set(R9B_SHAPES[s]['lanes']) - labels)} and does not name "
+                f"{sorted(labels - set(R9B_SHAPES[s]['lanes']))}" for s in R9B_SHAPES)
+            sys.exit(f"{where}: `{base}` names lanes {sorted(labels) or 'none'}, which is neither "
+                     f"R9b rotation ({detail}) — the two rotations share the tag {R9B}, so the lane "
+                     f"SET is the only thing that says which one a log is")
+        groups[name].append(path)
+    return groups
+
+
+def r9b_carveout(files, name, order, flags, where):
+    """The carveout block as OBSERVATION, per SHAPE: one log is one process, so the hinted set is a
+    property of the FILE (the echoes precede every schedule line). Returns `(path, percent)`. The
+    expected set is this rotation's own HINTED order, which is NOT its lane order — the CLASS
+    rotation echoes `cd` before `b`."""
+    scope, want = f"{name}/{order}", R9B_SHAPES[name]["hinted"]
+    hits = sorted(p for p, e in files.items() if (R9B, order) in e["sections"])
+    if not hits:
+        rflag(flags, scope, "CARVEOUT-ATTRIBUTION",
+              f"no log file declares a {R9B} order={order} section for this rotation, so there is "
+              f"no carveout block to read — the L1 configuration these rows were taken at is "
+              f"unknown")
+        return None, None
+    if len(hits) > 1:
+        rflag(flags, scope, "CARVEOUT-ATTRIBUTION",
+              f"{len(hits)} log files declare this section "
+              f"({', '.join(os.path.basename(p) for p in hits)}) — one session is one process per "
+              f"term order, so the carveout block read below is one of several and may not describe "
+              f"these rows")
+    path, env = hits[0], files[hits[0]]
+    if len(env["sections"]) != 1:
+        rflag(flags, scope, "CARVEOUT-ATTRIBUTION",
+              f"`{os.path.basename(path)}` declares "
+              f"{sorted(f'{t}/{o}' for t, o in env['sections'])} — one log is one process, so the "
+              f"carveout block below is shared between two term orders rather than attributable "
+              f"to one")
+    for n, line in env["loose"]:
+        rflag(flags, scope, "CARVEOUT-GRAMMAR",
+              f"`{os.path.basename(path)}`:{n}: `{line}` is not the harness's carveout literal "
+              f"(`  carveout hint       <pct>% (<symbol>)` / `  carveout symbols    <n> local "
+              f"(<symbols>)`) — the L1 configuration this line describes is unread")
+    got = [s for _, s in env["echoes"]]
+    if got != want:
+        rflag(flags, scope, "CARVEOUT-SET",
+              f"the applied echoes are {[f'{p}%:{s}' for p, s in env['echoes']]}; the "
+              f"`{R9B_SHAPES[name]['flag']}` rotation's hinted set is {want} IN THAT ORDER, which is "
+              f"the harness's HINTED order and not its lane order — a missing, spurious, duplicated "
+              f"or reordered echo means the cells were not steered as these rows assume")
+    pcts = sorted({p for p, _ in env["echoes"]})
+    if len(pcts) > 1:
+        rflag(flags, scope, "CARVEOUT-UNIFORMITY",
+              f"the hinted symbols are steered to {pcts} % — every row below contrasts cells at ONE "
+              f"L1 configuration, so these rows span two configurations")
+    if len(env["symbols"]) != 1:
+        rflag(flags, scope, "CARVEOUT-SETLINE",
+              f"`{os.path.basename(path)}` carries {len(env['symbols'])} `carveout symbols` lines, "
+              f"one expected — that line states the whole hinted set, and without exactly one a "
+              f"MISSING symbol is indistinguishable from an unhinted one")
+    else:
+        count, names = env["symbols"][0]
+        if names != want or count != len(want):
+            rflag(flags, scope, "CARVEOUT-SETLINE",
+                  f"the set line says `{count} local ({', '.join(names)})` and the per-symbol "
+                  f"echoes say {[s for _, s in env['echoes']]} — the two must describe one "
+                  f"configuration")
+    return path, (pcts[0] if len(pcts) == 1 else None)
+
+
+def r9b_session(name, key, rounds, arms, trailer, sched, flags):
+    """One term order of one rotation. ERRORS only where no meaningful number can be computed: no
+    ARM lines, no schedule, no trailer, no samples, a lane the rotation does not name, an incomplete
+    round, a round set that is not the declared run, or rounds that do not form complete cycles.
+    Everything else — the trace, the round shape, the header's own consistency, the rotation balance,
+    the bodies, the budgets, the plan, the admission order, the aliasing shape — is computed and
+    FLAGGED."""
+    order, lanes_want = key[1], R9B_SHAPES[name]["lanes"]
+    scope = f"{name}/{order}"
+    if not arms:
+        sys.exit(f"{R9B}/{name}/{order}: no ARM lines for this order — old-format or truncated log")
+    if trailer is None:
+        sys.exit(f"{R9B}/{name}/{order}: no `{R9B} done order={order} …` trailer — the run did not "
+                 f"finish, or the log is truncated")
+    if sched is None:
+        sys.exit(f"{R9B}/{name}/{order}: ARM or SAMPLE rows with no `{R9B} schedule` line")
+    if not rounds:
+        sys.exit(f"{R9B}/{name}/{order}: the log declares this order ({sched[1]} rounds x "
+                 f"{sched[0]} lanes) but carries no SAMPLE rows — there is nothing to summarize")
+    lanes = list(arms)
+    if set(lanes) != set(lanes_want):
+        missing = sorted(set(lanes_want) - set(lanes))
+        extra = sorted(set(lanes) - set(lanes_want))
+        sys.exit(f"{R9B}/{name}/{order}: lane set is not the {R9B_SHAPES[name]['flag']} rotation — "
+                 f"missing {missing}, unexpected {extra}; an unknown lane has no row to be printed "
+                 f"in")
+    for r in sorted(rounds):
+        if set(rounds[r]) != set(lanes):
+            sys.exit(f"{R9B}/{name}/{order}: round {r} carries {sorted(rounds[r])}, expected "
+                     f"{lanes} — the contrasts are paired per round, so an incomplete round has no "
+                     f"contrast")
+    if len(rounds) != trailer[1]:
+        sys.exit(f"{R9B}/{name}/{order}: {len(rounds)} rounds in the log, trailer claims rounds="
+                 f"{trailer[1]} — truncated log")
+    if len(rounds) % len(lanes) != 0:
+        sys.exit(f"{R9B}/{name}/{order}: {len(rounds)} rounds over {len(lanes)} lanes is not a whole "
+                 f"number of cycles — the rotation's own arithmetic does not close")
+    want_ids = list(range(trailer[0], trailer[0] + trailer[1]))
+    if sorted(rounds) != want_ids:
+        got = sorted(rounds)
+        sys.exit(f"{R9B}/{name}/{order}: round ids are {got[:4]}…{got[-1]}, expected the "
+                 f"consecutive run {want_ids[0]}…{want_ids[-1]} (warmup {trailer[0]}, rounds "
+                 f"{trailer[1]}) — rounds are missing or renumbered, so the log does not describe "
+                 f"the run it declares")
+
+    # From here on: observations. Everything below computes.
+    if len(lanes) != trailer[2] or len(lanes) != sched[0]:
+        rflag(flags, scope, "HEADER",
+              f"the log carries {len(lanes)} ARM lines while the schedule declares "
+              f"lanes={sched[0]} and the trailer lanes={trailer[2]} — the lane set is this "
+              f"rotation's, so what disagrees is the header's own count")
+    if (sched[1], sched[2]) != (trailer[1], trailer[0]):
+        rflag(flags, scope, "HEADER",
+              f"the schedule line declares rounds={sched[1]} warmup={sched[2]} and the trailer "
+              f"declares rounds={trailer[1]} warmup={trailer[0]} — the header does not describe "
+              f"what ran")
+    if (trailer[1], trailer[0]) != (R9B_ROUNDS, R9B_WARMUP):
+        rflag(flags, scope, "ROUND-SHAPE",
+              f"the session ran {trailer[1]} rounds / {trailer[0]} warmup; the rung's shape is "
+              f"{R9B_ROUNDS} / {R9B_WARMUP}, which is what the {R9B_THRESHOLD}/{R9B_ROUNDS} sign "
+              f"label and the {len(lanes)}-round flank cycle are written for")
+    for lane in lanes:
+        body, budget, kernel = R9B_CELL[lane]
+        if arms[lane]["grid"] != R9B_GRID[lane]:
+            rflag(flags, scope, "TRACE",
+                  f"lane `{lane}` declares grid={arms[lane]['grid']}; at `--log-trace "
+                  f"{R9B_TRACE}` it is {R9B_GRID[lane]} — this session was recorded at another "
+                  f"trace, which no other line in the log shows")
+        got = arms[lane]["kernel"]
+        if got == kernel:
+            continue
+        # A cell is a (body, budget) pair and the kernel is the only field that carries it, so an
+        # observed symbol is named as the CELL it is: same body at another budget is a budget swap,
+        # anything else a body swap.
+        seen = R9B_BY_KERNEL.get(got)
+        if seen and seen[1] == body:
+            rflag(flags, scope, "BUDGET",
+                  f"lane `{lane}` runs body {body} at budget {budget} in this rotation but declares "
+                  f"`{got}`, which is {body} at {seen[2]} — the register budget is not monotone "
+                  f"(`(128,6)` is the maximum-register cell), so a swapped budget cannot be read "
+                  f"off any other field")
+        else:
+            named = f"{seen[1]} at {seen[2]} (`{seen[0]}`'s cell)" if seen else "no cell of this grid"
+            rflag(flags, scope, "BODY",
+                  f"lane `{lane}` declares body `{got}` = {named}; the rotation runs it on "
+                  f"`{kernel}` = {body} at {budget} — every cached lane shares one plan, so the "
+                  f"kernel field is the only thing that says which cell ran")
+    # ONE flag per lane, not per round: a lane whose every sample named another cell would otherwise
+    # print 96 identical rows and drown the block, which is the only protection this rung has.
+    forged = {}
+    for r in sorted(rounds):
+        for lane, (_, _, kernel) in rounds[r].items():
+            if kernel != arms[lane]["kernel"]:
+                first, k, n = forged.get(lane, (r, kernel, 0))
+                forged[lane] = (first, k, n + 1)
+    for lane, (first, kernel, n) in forged.items():
+        rflag(flags, scope, "SAMPLE-BODY",
+              f"lane `{lane}` names `{kernel}` in {n} of {len(rounds)} rounds (first at round "
+              f"{first}) but its ARM line declares `{arms[lane]['kernel']}`")
+    per = len(rounds) // len(lanes)
+    slots = defaultdict(int)
+    for r in sorted(rounds):
+        for slot, lane in enumerate(rounds[r]):
+            slots[(lane, slot)] += 1
+    for lane in lanes:
+        off = [slot for slot in range(len(lanes)) if slots[(lane, slot)] != per]
+        if off:
+            rflag(flags, scope, "ROTATION-BALANCE",
+                  f"lane `{lane}` does not take rotation positions {off} exactly {per} times — a "
+                  f"lane that keeps a position carries that position's clock state into its median")
+            break
+    keys = sorted(rounds)
+    for lane in lanes:
+        f = arms[lane]
+        ids, k = f["ids"], f["admitted"]
+        if len(ids) != k:
+            rflag(flags, scope, "ADMISSION",
+                  f"lane `{lane}` declares {k} admitted sources but lists {len(ids)} ids")
+        if R9B_K[lane] != k:
+            rflag(flags, scope, "LANE-LABEL",
+                  f"lane `{lane}` admits {k} sources and its name claims K = {R9B_K[lane]}")
+        want = ORACLE_ORDER[:k]
+        if ids != want:
+            at = next((i for i, (g, w) in enumerate(zip(ids, want)) if g != w), None)
+            where_at = (f"at admission position {at}: {ids[at]} where the oracle has {want[at]}"
+                        if at is not None else "in its length")
+            rflag(flags, scope, "ADMISSION",
+                  f"lane `{lane}`'s admitted prefix is not the canonical one — {where_at} (no "
+                  f"count can see this)")
+    base = arms[R9B_INC]
+    for lane in R9B_ONE_PLAN[name]:
+        if lane == R9B_INC:
+            continue
+        keyed = ("c", "removals", "admitted", "ids", "threads")
+        if tuple(arms[lane][k] for k in keyed) != tuple(base[k] for k in keyed):
+            rflag(flags, scope, "PLAN",
+                  f"lane `{lane}` declares C={arms[lane]['c']} removals={arms[lane]['removals']} "
+                  f"admitted={arms[lane]['admitted']} at {arms[lane]['threads']} threads and "
+                  f"`{R9B_INC}` declares {base['c']} / {base['removals']} / {base['admitted']} at "
+                  f"{base['threads']} — every row reads as a CELL contrast only while the plan is "
+                  f"one plan")
+    # The aliasing key carries the BUDGET as well as the body: this rotation puts one body on three
+    # budgets, so `(plan, block size, body)` alone would call three legitimate cells one experiment.
+    # The budget rides the kernel name, so the extra field states the axis rather than adding
+    # information — and it is the axis a future cell could collide on.
+    for i, a in enumerate(lanes):
+        for b in lanes[i + 1:]:
+            keyed = [(arms[x]["ids"], arms[x]["threads"], arms[x]["kernel"], R9B_CELL[x][1])
+                     for x in (a, b)]
+            if keyed[0] == keyed[1] and arms[a]["removals"]:
+                rflag(flags, scope, "ALIAS",
+                      f"lanes `{a}` and `{b}` declare the same plan on the same body at the same "
+                      f"budget and block size — one experiment under two labels")
+            if all(rounds[r][a][:2] == rounds[r][b][:2] for r in keys):
+                rflag(flags, scope, "ALIAS",
+                      f"lanes `{a}` and `{b}` carry BIT-IDENTICAL samples in every round — one "
+                      f"lane's data appears under two labels")
+    tot = {a: [rounds[r][a][0] + rounds[r][a][1] for r in keys] for a in lanes}
+    return {
+        "shape": name, "order": order, "lanes": lanes, "arms": arms, "rounds": rounds, "keys": keys,
+        "tot": tot, "scope": scope,
+        "med": {a: median(tot[a]) for a in lanes},
+        "med_ev": {a: median(rounds[r][a][0] for r in keys) for a in lanes},
+        "med_fin": {a: median(rounds[r][a][1] for r in keys) for a in lanes},
+    }
+
+
+def r9b_readings(s, flags):
+    """The anchor-reference deltas and the flank readings, computed before anything prints so the
+    flags block can lead the output."""
+    scope, order = s["scope"], s["order"]
+    s["refs"] = {}
+    for i, lane in enumerate(R9B_ANCHOR_LANES):
+        got, tells = s["med"][lane], []
+        for ref_name, lanes_n, table in R9B_REFERENCES:
+            if order not in table:
+                continue
+            ref = table[order][i]
+            rel = (got - ref) / ref
+            s["refs"].setdefault(lane, []).append((ref_name, lanes_n, ref, rel))
+            if abs(rel) > R9_OFFSET_TELL:
+                tells.append(f"{ref_name} ({lanes_n} lanes) {100.0 * rel:+.2f} %")
+        if tells:
+            span = sorted({n for _, n, _ in R9B_REFERENCES})
+            rflag(flags, scope, "ANCHOR",
+                  f"`{lane}` reads {got:.3f} ms, more than {100.0 * R9_OFFSET_TELL:.1f} % off "
+                  + "; ".join(tells)
+                  + f" — this rotation carries {len(s['lanes'])} lanes against their "
+                    f"{span[0]}–{span[-1]}, so read the reference table, and the rotation's "
+                    f"composition, before calling it machine drift")
+    s["flank"] = {}
+    for lane in R9B_FLANK_LANES:
+        cycle = len(s["lanes"])
+        first = median(s["tot"][lane][:cycle])
+        last = median(s["tot"][lane][-cycle:])
+        drift, tol = abs(last - first), max(FLANK_MS, FLANK_REL * s["med"][lane])
+        s["flank"][lane] = (first, last, drift, tol)
+        if drift > tol:
+            rflag(flags, scope, "FLANK",
+                  f"`{lane}`'s first and last full cycle differ by {drift:.3f} ms against the "
+                  f"{tol:.3f} ms scaled reading — the session moved under itself")
+
+
+def r9b_tier(s, a, b):
+    """The two lanes' ARITHMETIC block tier, off the static register line the ARM lines carry. It is
+    arithmetic and says so: R9 measured a body whose static 70 was ALLOCATED as 72, so the realized
+    figure belongs to the G0 captures and to nothing here."""
+    ta, tb = s["arms"][a]["blocks_sm"], s["arms"][b]["blocks_sm"]
+    return f"same tier ({ta})" if ta == tb else f"**{ta} v {tb} — NOT tier-neutral**"
+
+
+def r9b_emit(s):
+    name, order = s["shape"], s["order"]
+    shape = R9B_SHAPES[name]
+    print(f"\n### `{R9B}` {name} (`{shape['flag']}`) — `--term-order {order}`, "
+          f"{len(s['keys'])} paired rounds, {len(s['lanes'])} lanes\n")
+    print(f"{shape['what']}.\n")
+    print("| lane | body | budget | kernel | static regs | arith blocks/SM | threads | grid | C | "
+          "removals | admitted | median `eval` | median `finalize` | median `eval+fin` |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for a in s["lanes"]:
+        f, cell = s["arms"][a], R9B_CELL[a]
+        print(f"| `{a}` | {cell[0]} | {cell[1]} | `{f['kernel']}` | {f['regs']} | {f['blocks_sm']} "
+              f"| {f['threads']} | {f['grid']} | {f['c']} | {f['removals']} | {f['admitted']} | "
+              f"{s['med_ev'][a]:.3f} | {s['med_fin'][a]:.3f} | **{s['med'][a]:.3f}** |")
+    print(f"\nStatic registers and the block tier derived from them are ARITHMETIC, off the ARM "
+          f"lines — the realized register allocation and occupancy are the G0 captures' (amendment "
+          f"A7), and the budget axis is NOT monotone in registers. Bodies, budgets, admitted "
+          f"prefixes, grids and the one-plan premise are all checked and reported in the flags block "
+          f"above; nothing here is filtered out on their account. Sign label at this rotation: "
+          f"{R9B_THRESHOLD}/{R9B_ROUNDS}.")
+
+    print(f"\n**Rows ({name}, {order})** — paired per round on `eval + finalize`, each naming its "
+          f"baseline. WIN / LOSS / WASH are LABELS at {R9B_THRESHOLD}/{R9B_ROUNDS}; the reading is "
+          f"the median, the sign count and the spread.\n")
+    print("| # | contrast | baseline | median (ms) | IQR | min … max | % of baseline | on-sign | "
+          "label | arith block tier | what it isolates |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for i, (a, b, what) in enumerate(shape["rows"], 1):
+        c = r9b_paired(s, a, b)
+        print(f"| {i} | `{a}` − `{b}` | `{b}` | **{c['med']:+.3f}** | {c['lo']:+.3f} … "
+              f"{c['hi']:+.3f} | {c['min']:+.3f} … {c['max']:+.3f} | "
+              f"{100.0 * c['med'] / s['med'][b]:+.2f} % | {c['on']}/{c['n']} | "
+              f"**{VERDICT[c['verdict']]}** | {r9b_tier(s, a, b)} | {what} |")
+
+    print(f"\n**Anchor lanes against every reference we hold ({name}, {order})** — absolute medians "
+          f"are rotation-composition dependent, so each reference carries the LANE COUNT of the "
+          f"rotation that produced it against this rung's {len(s['lanes'])}. Nothing here gates; the "
+          f"flags block calls out a delta past {100.0 * R9_OFFSET_TELL:.1f} %.\n")
+    print(f"| anchor lane | this session ({len(s['lanes'])} lanes) | reference | lanes | "
+          f"reference median | delta |")
+    print("| --- | --- | --- | --- | --- | --- |")
+    for lane in R9B_ANCHOR_LANES:
+        for ref_name, lanes_n, ref, rel in s["refs"].get(lane, []):
+            print(f"| `{lane}` | {s['med'][lane]:.3f} | {ref_name} | {lanes_n} | {ref:.3f} | "
+                  f"{100.0 * rel:+.2f} % |")
+
+    print(f"\n**Flank ({name}, {order})** — block medians of each INCUMBENT-body anchor lane's FIRST "
+          f"and LAST full cycle ({len(s['lanes'])} rounds each), against max({FLANK_MS:.2f} ms, "
+          f"{100.0 * FLANK_REL:.1f} % of that lane's session median). Every cell under test — body "
+          f"or budget — is excluded: a cell is not its own drift sentinel. A reading, not a "
+          f"mandate.\n")
+    print("| anchor lane | first cycle | last cycle | drift | scaled reading | over? |")
+    print("| --- | --- | --- | --- | --- | --- |")
+    for lane in R9B_FLANK_LANES:
+        first, last, drift, tol = s["flank"][lane]
+        print(f"| `{lane}` | {first:.3f} | {last:.3f} | {drift:.3f} | {tol:.3f} | "
+              f"{'**yes**' if drift > tol else 'no'} |")
+
+
+def r9b_bridge(sessions, flags):
+    """`c-hot16@128`'s reading in each session. A paired contrast is valid only INSIDE a session, so
+    this is the session-comparability CONTEXT and not a decision. Build facts that disagree between
+    the two sessions are flagged: the bridge lane is one cell of one build, so a register count or a
+    kernel that moves means the two sessions are two builds."""
+    rows, keyed = [], ("regs", "blocks_sm", "threads", "grid", "kernel", "c", "removals",
+                       "admitted", "ids")
+    names = [n for n in R9B_SHAPES if n in sessions]
+    for order in ("locality", "census"):
+        got = {n: sessions[n][order] for n in names if order in sessions[n]}
+        meds = {n: s["med"][R9B_BRIDGE] for n, s in got.items()}
+        rows.append((order, meds))
+        if len(got) < 2:
+            continue
+        a, b = (got[n] for n in names)
+        fa, fb = a["arms"][R9B_BRIDGE], b["arms"][R9B_BRIDGE]
+        if tuple(fa[k] for k in keyed) != tuple(fb[k] for k in keyed):
+            rflag(flags, "bridge", "BRIDGE",
+                  f"`{R9B_BRIDGE}` declares different facts in the two sessions' `{order}` logs "
+                  f"({fa['regs']} regs / {fa['kernel']} against {fb['regs']} regs / "
+                  f"{fb['kernel']}) — "
+                  f"those are facts of the BUILD, so the bridge lane does not bridge two sessions "
+                  f"of one build")
+        lo, hi = meds[names[0]], meds[names[1]]
+        rel = (hi - lo) / lo
+        if abs(rel) > R9_OFFSET_TELL:
+            rflag(flags, "bridge", "BRIDGE",
+                  f"`{R9B_BRIDGE}` reads {lo:.3f} ms in {names[0]} and {hi:.3f} ms in {names[1]} "
+                  f"under `{order}` ({100.0 * rel:+.2f} %, past the "
+                  f"{100.0 * R9_OFFSET_TELL:.1f} % reporting threshold) — the two rotations put "
+                  f"different neighbours around it, so a cross-session comparison of any other row "
+                  f"carries at least this much")
+    return rows
+
+
+def r9b_pct(pct):
+    """The carveout tier as a manifest FIELD: no space, so an `NCU-*` line stays one grep."""
+    return pct if pct is not None else "non-uniform"
+
+
+def r9b_manifest(sessions, hints):
+    """The ncu manifest, printed and authoritative, in two parts. The G0 list is EVERY timed cell,
+    one launch each (amendment A7) — without it most of the register curve would rest on static REG
+    lines, which is the error R9 documented. The Full-Picture list is five fixed lanes plus one
+    conditional slot; the slot is filled from the CLASS session's own rows and is a capture-set
+    choice, not a verdict."""
+    where = {}
+    for name in R9B_SHAPES:
+        if name not in sessions:
+            continue
+        for order, s in sessions[name].items():
+            for lane in s["lanes"]:
+                where.setdefault(lane, (name, s))
+    print("\n### ncu manifest\n")
+    print("**G0 — every timed cell, one launch each** (amendment A7): "
+          + ", ".join(R9B_G0_READS) + ". A configuration reading, so one launch per cell and no "
+          "term order; the `static_regs` field is the ARM line's figure and is exactly what the "
+          "capture is there to replace.\n")
+    print("```")
+    for lane in R9B_G0:
+        body, budget, kernel = R9B_CELL[lane]
+        if lane in where:
+            name, s = where[lane]
+            pct = hints[name].get("locality")
+            print(f"NCU-G0 cell={lane} session={name} body={body} budget={budget} kernel={kernel} "
+                  f"static_regs={s['arms'][lane]['regs']} carveout={r9b_pct(pct)}")
+        else:
+            print(f"NCU-G0 cell={lane} session=ABSENT body={body} budget={budget} kernel={kernel} "
+                  f"static_regs=unread carveout=unread")
+    print("```")
+    best = {}
+    if "CLASS" in sessions:
+        for order, s in sessions["CLASS"].items():
+            ranked = sorted(R9B_FULL_CANDIDATES,
+                            key=lambda lane: r9b_paired(s, lane, R9B_INC)["med"])
+            best[order] = (ranked[0], r9b_paired(s, ranked[0], R9B_INC)["med"])
+    print(f"\n**Full Picture** — five FIXED lanes plus ONE conditional slot, both term orders. The "
+          f"slot is the CLASS session's lowest-median corrected body against `{R9B_INC}`, chosen "
+          f"from {{" + ", ".join(f'`{c}`' for c in R9B_FULL_CANDIDATES) + "}: a capture-set choice "
+          f"and nothing else.\n")
+    print("```")
+    for lane, role in R9B_FULL:
+        body, budget, kernel = R9B_CELL[lane]
+        if lane in where:
+            name, s = where[lane]
+            pct = hints[name].get("locality")
+            print(f"NCU-FULL lane={lane} orders=census,locality role={role} session={name} "
+                  f"body={body} budget={budget} kernel={kernel} "
+                  f"static_regs={s['arms'][lane]['regs']} carveout={r9b_pct(pct)}")
+        else:
+            print(f"NCU-FULL lane={lane} orders=census,locality role={role} session=ABSENT "
+                  f"body={body} budget={budget} kernel={kernel} static_regs=unread carveout=unread")
+    if not best:
+        print("NCU-FULL lane=PENDING orders=census,locality role=class-best session=ABSENT — the "
+              "CLASS session is not in this invocation, so no row selects it")
+    elif len({lane for lane, _ in best.values()}) == 1:
+        lane = best["locality"][0]
+        body, budget, kernel = R9B_CELL[lane]
+        reading = ", ".join(f"{o} {best[o][1]:+.3f} ms" for o in ("locality", "census") if o in best)
+        print(f"NCU-FULL lane={lane} orders=census,locality role=class-best session=CLASS "
+              f"body={body} budget={budget} kernel={kernel} vs_incumbent=[{reading}]")
+    else:
+        for order in ("locality", "census"):
+            lane, med = best[order]
+            body, budget, kernel = R9B_CELL[lane]
+            print(f"NCU-FULL lane={lane} orders={order} role=class-best session=CLASS body={body} "
+                  f"budget={budget} kernel={kernel} vs_incumbent=[{order} {med:+.3f} ms]")
+    print("```")
+    if len({lane for lane, _ in best.values()}) > 1:
+        print("\nThe two term orders name DIFFERENT lowest-median corrected bodies — "
+              + "; ".join(f"{o}: `{best[o][0]}`" for o in ("locality", "census"))
+              + " — so BOTH are listed above and neither is reconciled.")
+
+
+def r9b_report(sessions, paths, hints, bridge, flags):
+    print("## v3 R9b — the corrected grouped-path bodies, over a register-budget grid\n")
+    print(f"Every figure below is EMITTED, not transcribed. R9 measured a grouped-term path that "
+          f"duplicated its coefficient DECODE; R9b repairs it and re-measures on two axes, which run "
+          f"as TWO rotations under ONE tag — so a session is identified here by its LANE SET, never "
+          f"by the tag. This emitter REPORTS: it computes the whole picture, flags what disagrees "
+          f"with the rung's own description of itself, and issues NO verdict. Rows are never pooled "
+          f"across term orders, and a paired contrast is only valid INSIDE one session.\n")
+    reorder_flags_block(flags)
+    print("\n### Sessions in this report\n")
+    print("| rotation | lanes | term order | log | carveout applied (read off the log) | "
+          "hinted symbols, in HINTED order |")
+    print("| --- | --- | --- | --- | --- | --- |")
+    for name in R9B_SHAPES:
+        if name not in sessions:
+            continue
+        for order in ("locality", "census"):
+            s = sessions[name].get(order)
+            if s is None:
+                continue
+            # `None` reaches here only when no file declares this section's carveout block, which the
+            # flags block has already said; the row still prints the session it summarizes.
+            where = paths[name][order]
+            print(f"| {name} (`{R9B_SHAPES[name]['flag']}`) | {len(s['lanes'])} | `{order}` | "
+                  f"`{os.path.basename(where) if where else 'unattributed'}` | "
+                  f"**{rtier(hints[name][order])}** | "
+                  + ", ".join(f"`{sym}`" for sym in R9B_SHAPES[name]["hinted"]) + " |")
+    missing = [n for n in R9B_SHAPES if n not in sessions]
+    if missing:
+        print(f"\n**{', '.join(missing)} not in this invocation.** Its rows, its anchor readings and "
+              f"its half of the bridge are absent; pass both rotations' four logs together to get "
+              f"them.")
+    for name in R9B_SHAPES:
+        if name in sessions:
+            for order in ("locality", "census"):
+                if order in sessions[name]:
+                    r9b_emit(sessions[name][order])
+
+    print(f"\n### The bridge — `{R9B_BRIDGE}` in both sessions\n")
+    print(f"**CONTEXT, NOT A DECISION.** `{R9B_BRIDGE}` is the one cell both rotations carry. A "
+          f"paired per-round contrast is only valid inside one session, so this row cannot be used "
+          f"as one: it is the session-comparability reading, and how much of any cross-session "
+          f"difference it explains is RR's call.\n")
+    names = [n for n in R9B_SHAPES if n in sessions]
+    print("| term order | " + " | ".join(f"{n} median" for n in names)
+          + (" | delta | % |" if len(names) == 2 else " |"))
+    print("| --- | " + " | ".join("---" for _ in names) + (" | --- | --- |" if len(names) == 2
+                                                           else " |"))
+    for order, meds in bridge:
+        cells = " | ".join(f"{meds[n]:.3f}" if n in meds else "—" for n in names)
+        if len(names) == 2 and len(meds) == 2:
+            lo, hi = meds[names[0]], meds[names[1]]
+            print(f"| `{order}` | {cells} | {hi - lo:+.3f} | {100.0 * (hi - lo) / lo:+.2f} % |")
+        else:
+            print(f"| `{order}` | {cells} |")
+
+    print("\n### The whole picture, in one place\n")
+    # This is the block a record is most likely to quote, so it restates the flag COUNT: the flags
+    # block above is unmissable top-to-bottom and invisible to an excerpt.
+    print(f"**{len(flags)} flag(s) above; this table is not a verdict.**"
+          + ("" if flags else " Nothing disagreed with the rung's own description of itself.")
+          + "\n")
+    if "CLASS" in sessions:
+        print(f"**The recovery rows** (`<corrected body>` − `{R9B_DROPIN}`) and **R9's drop-in "
+              f"re-measured** (`{R9B_DROPIN}` − `{R9B_INC}`), both orders side by side. No gate: "
+              f"the medians, the sign counts and the spreads are the reading.\n")
+        print("| row | " + " | ".join(f"{o} median | {o} on-sign | {o} label" for o in
+                                      ("locality", "census")) + " |")
+        print("| --- | " + " | ".join("---" for _ in range(6)) + " |")
+        for a, b in [(lane, R9B_DROPIN) for lane in R9B_FULL_CANDIDATES] + [(R9B_DROPIN, R9B_INC)]:
+            cells = []
+            for order in ("locality", "census"):
+                s = sessions["CLASS"].get(order)
+                if s is None:
+                    cells += ["—", "—", "—"]
+                    continue
+                c = r9b_paired(s, a, b)
+                cells += [f"**{c['med']:+.3f}** ({100.0 * c['med'] / s['med'][b]:+.2f} %)",
+                          f"{c['on']}/{c['n']}", f"**{VERDICT[c['verdict']]}**"]
+            print(f"| `{a}` − `{b}` | " + " | ".join(cells) + " |")
+    if "BUDGET" in sessions:
+        print(f"\n**The budget axis**, both orders side by side — the two separator rows and the "
+              f"unmodified body's own two budgets.\n")
+        print("| row | what it isolates | " + " | ".join(f"{o} median | {o} label" for o in
+                                                        ("locality", "census")) + " |")
+        print("| --- | --- | " + " | ".join("---" for _ in range(4)) + " |")
+        for a, b, what in R9B_BUDGET_ROWS:
+            cells = []
+            for order in ("locality", "census"):
+                s = sessions["BUDGET"].get(order)
+                if s is None:
+                    cells += ["—", "—"]
+                    continue
+                c = r9b_paired(s, a, b)
+                cells += [f"**{c['med']:+.3f}** ({100.0 * c['med'] / s['med'][b]:+.2f} %)",
+                          f"**{VERDICT[c['verdict']]}**"]
+            print(f"| `{a}` − `{b}` | {what} | " + " | ".join(cells) + " |")
+
+    facts = {}
+    for name in R9B_SHAPES:
+        s = sessions.get(name, {}).get("locality")
+        if s is None:
+            continue
+        for lane in s["lanes"]:
+            if lane in R9B_G0:
+                facts.setdefault(lane, s["arms"][lane])
+    print(f"\n**Build facts** (off the ARM lines, STATIC — the realized figures are the G0 "
+          f"captures'): "
+          + "; ".join(f"`{lane}` {facts[lane]['regs']} regs / {facts[lane]['blocks_sm']} arith "
+                      f"blocks/SM" for lane in R9B_G0 if lane in facts)
+          + ". The register budget is NOT monotone — `(128,6)` is the maximum-register cell — so "
+            "budget order is not register order. Any disagreement between the two orders' logs, or "
+            "between the two sessions, is in the flags block.")
+    r9b_manifest(sessions, hints)
+    late = [f for f in flags if f[0] in ("session", "bridge")]
+    if late:
+        print("\n**Session- and bridge-level flags** (restated from the flags block — they are what "
+              "makes reading two orders, or two sessions, together a question):\n")
+        for scope, tag, text in late:
+            print(f"- **{tag}** (`{scope}`) — {text}")
+
+
+def r9b(paths, where, narrowed):
+    """The R9b entry point. It parses the log set ITSELF, one session at a time: the two rotations
+    carry one tag and one lane count, so the shared parser — which keys a section by (tag, order) —
+    would read two sessions as one mixed run."""
+    if narrowed:
+        sys.exit(f"{where}: the {R9B} rung is read over BOTH term orders, so `--order` cannot narrow "
+                 f"it — emit the session logs together")
+    groups = r9b_split(paths, where)
+    sessions, paths_by, hints, flags = {}, {}, {}, []
+    for name in R9B_SHAPES:
+        if name not in groups:
+            continue
+        runs, arms, done, sched, files = parse(groups[name], where)
+        orders = sorted({o for _, o in set(runs) | set(sched) | set(done)})
+        if set(orders) != {"census", "locality"}:
+            sys.exit(f"{where}: the {R9B} {name} rotation is read over EXACTLY both term orders "
+                     f"(census and locality); its logs carry {', '.join(orders) or 'none'} — the "
+                     f"missing order's rows cannot be computed")
+        sessions[name], paths_by[name], hints[name] = {}, {}, {}
+        for order in ("locality", "census"):
+            key = (R9B, order)
+            paths_by[name][order], hint = r9b_carveout(files, name, order, flags, where)
+            sessions[name][order] = r9b_session(name, key, runs[key], arms.get(key, {}),
+                                                done.get(key), sched.get(key), flags)
+            hints[name][order] = hint
+            r9b_readings(sessions[name][order], flags)
+    if not sessions:
+        sys.exit(f"{where}: no {R9B} session in this log set")
+    # The cross-order and cross-session observations, appended before the block prints so nothing
+    # lands after the fact unseen.
+    keyed = ("regs", "blocks_sm", "threads", "grid", "kernel", "c", "removals", "admitted", "ids")
+    for name, per_order in sessions.items():
+        a_loc, a_cen = (per_order[o]["arms"] for o in ("locality", "census"))
+        for lane in R9B_SHAPES[name]["lanes"]:
+            if tuple(a_loc[lane][k] for k in keyed) != tuple(a_cen[lane][k] for k in keyed):
+                rflag(flags, "session", "BUILD-FACTS",
+                      f"{name}: lane `{lane}` declares different facts in the two orders' logs "
+                      f"(registers, block tier, cell or plan) — those are facts of the BUILD, so "
+                      f"these two logs describe two builds and their rows are not one session")
+        if hints[name]["locality"] != hints[name]["census"]:
+            rflag(flags, "session", "CARVEOUT-TIER",
+                  f"{name}: the two orders were recorded at {rtier(hints[name]['locality'])} and "
+                  f"{rtier(hints[name]['census'])} — every row contrasts cells at one L1 "
+                  f"configuration, so these are two experiments")
+    bridge = r9b_bridge(sessions, flags)
+    r9b_report(sessions, paths_by, hints, bridge, flags)
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -2000,6 +2860,13 @@ def main():
     ap.add_argument("--order", help="emit only this term order")
     args = ap.parse_args()
     where = ", ".join(args.log)
+    # R9b is routed BEFORE the shared parser, because it is the one rung whose log set can carry TWO
+    # sessions: the shared parser keys a section by (tag, order) and the two R9b rotations share the
+    # tag, so it would read the pair as one mixed run. An unreadable path scans as nothing and falls
+    # through to the parser, which raises on it exactly as it always has.
+    if any(R9B in r9b_scan(p)[0] for p in args.log):
+        r9b(args.log, where, args.order)
+        return
     runs, arms, done, sched, files = parse(args.log, where)
     keys = set(runs) | set(sched)
     tags = {tag for tag, _ in keys}

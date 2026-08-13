@@ -1,0 +1,474 @@
+#!/usr/bin/env bash
+# v3 R9b fixture matrix. Every row states the OBSERVATION or the GUARD it exercises; a fixture that
+# stops behaving the way it does here means the emitter's reporting surface moved.
+#
+# The R9b emitter REPORTS rather than adjudicates (RR's amendment A10), so the suite is split the same
+# way: `flagged` rows prove a policy observation reaches the flags block with the right text, and
+# `rejects` rows are reserved for the cases where no meaningful number can be computed — a missing
+# order, missing rounds, an incomplete round, an unknown lane, a truncated log, a foreign rotation in
+# the set. Nothing else exits non-zero, and `no-flags` pins the clean state.
+#
+# THE TWO ROTATIONS SHARE ONE TAG, so a whole class of rows here is about the emitter recovering the
+# SHAPE from the lane label set alone, and about the four-log invocation that is the only way the
+# bridge lane's two medians can be printed.
+#
+# SELF-GENERATING: the logs are derived data, so `make_fixtures.py` writes them into a mktemp dir at
+# run time and they are removed on exit. Nothing here needs a file that is not in the tracked tree —
+# except the ACCEPTED-GRAMMAR rows, which replay real session logs when they are present and print a
+# SKIP note when they are not (a clean checkout has no `.agents/` tree, and R9b's own session is
+# Task 4's to measure). Those rows are the only ones in the suite that can be skipped, and none of
+# them can fail the lane.
+#
+# Run from anywhere:  bash gpu/gkr_uniskip_bench/tools/r9b_fixtures/check.sh
+set -uo pipefail
+
+DIR=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$DIR/../../../.." && pwd)
+E=${E:-"python3 $ROOT/gpu/gkr_uniskip_bench/tools/r4_table.py"}
+# Overridable so the clean-checkout SKIP paths are themselves testable.
+SESSION=${SESSION:-$ROOT/.agents/sdd/2026-08-13-v3-r9b}
+R9SESSION=${R9SESSION:-$ROOT/.agents/sdd/2026-08-12-v3-r9}
+R8SESSION=${R8SESSION:-$ROOT/.agents/sdd/2026-08-12-v3-r8}
+pass=0
+fail=0
+skip=0
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+python3 "$DIR/make_fixtures.py" "$TMP" >/dev/null || { echo "FAIL: fixture generation"; exit 1; }
+
+# emits <name> <expected-substring> -- <args...>
+# The emitter must succeed and print the substring. Every printed-surface row is one of these: under
+# the reporting contract a policy observation never changes the exit status, so "emits" is also what
+# proves a flagged session still reports everything.
+emits() {
+  local name=$1 want=$2; shift 3
+  local out rc
+  out=$($E "$@" 2>&1); rc=$?
+  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n  %s\n' "$name" "$(printf '%s' "$out" | tail -1)"; fail=$((fail+1)); return; fi
+  if printf '%s' "$out" | grep -qF -- "$want"; then pass=$((pass+1));
+  else printf 'FAIL(outcome) %s\n  want: %s\n' "$name" "$want"; fail=$((fail+1)); fi
+}
+
+# flagged <name> <flag-row-substring> -- <args...>
+# A POLICY observation: the emitter exits 0, prints everything, and carries the flag row. Both legs
+# are checked — a row that only grepped for the text would pass on an emitter that had gone back to
+# rejecting, and a row that only checked the status would pass on one that had gone silent.
+flagged() {
+  local name=$1 want=$2; shift 3
+  local out rc
+  out=$($E "$@" 2>/dev/null); rc=$?
+  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s — a policy observation must not stop the emitter\n' "$name"; fail=$((fail+1)); return; fi
+  if ! printf '%s' "$out" | grep -qF -- "$want"; then
+    printf 'FAIL(flag) %s\n  want in the flags block: %s\n' "$name" "$want"; fail=$((fail+1)); return
+  fi
+  # The whole picture is still printed: the G0 manifest is the last block, so its presence proves the
+  # run went all the way through rather than stopping politely at the flag.
+  if ! printf '%s' "$out" | grep -qF -- "NCU-G0 cell=hot16@128"; then
+    printf 'FAIL(truncated) %s — flagged but the report stops before the ncu manifest\n' "$name"; fail=$((fail+1)); return
+  fi
+  pass=$((pass+1))
+}
+
+# flagged_once <name> <flag-substring> <expected-count> -- <args...>
+# Some observations are true in every round; the block is the rung's only protection, so they must
+# collapse to one row per lane rather than repeat.
+flagged_once() {
+  local name=$1 want=$2 want_n=$3; shift 4
+  local out rc n
+  out=$($E "$@" 2>/dev/null); rc=$?
+  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n' "$name"; fail=$((fail+1)); return; fi
+  n=$(printf '%s' "$out" | grep -cF -- "$want")
+  if [ "$n" = "$want_n" ]; then pass=$((pass+1));
+  else printf 'FAIL(count) %s\n  want %s row(s) matching: %s\n  got:  %s\n' "$name" "$want_n" "$want" "$n"; fail=$((fail+1)); fi
+}
+
+# rejects <name> <expected-substring> -- <args...>
+rejects() {
+  local name=$1 want=$2; shift 3
+  local out rc
+  out=$($E "$@" 2>&1 >/dev/null); rc=$?
+  if [ "$rc" = 0 ]; then printf 'FAIL(accepted) %s\n' "$name"; fail=$((fail+1)); return; fi
+  if printf '%s' "$out" | grep -qF -- "$want"; then pass=$((pass+1));
+  else printf 'FAIL(message) %s\n  want: %s\n  got:  %s\n' "$name" "$want" "$out"; fail=$((fail+1)); fi
+}
+
+# absent <name> <forbidden-extended-regex> -- <args...>
+# A rejected run emits nothing, so the exit status is checked FIRST: otherwise a crashing emitter
+# would pass every one of these rows for the wrong reason.
+absent() {
+  local name=$1 nope=$2; shift 3
+  local out rc
+  out=$($E "$@" 2>/dev/null); rc=$?
+  if [ "$rc" != 0 ]; then printf 'FAIL(rejected) %s\n' "$name"; fail=$((fail+1)); return; fi
+  if printf '%s' "$out" | grep -qE -- "$nope"; then
+    printf 'FAIL(outcome) %s\n  must NOT emit: %s\n' "$name" "$nope"; fail=$((fail+1))
+  else pass=$((pass+1)); fi
+}
+
+# One CLASS session = the two logs that rotation requires, locality first; likewise BUDGET; `both` is
+# the four-log invocation that the bridge row needs.
+cls() { printf '%s %s ' "$TMP/$1-class-locality.log" "$TMP/$1-class-census.log"; }
+bud() { printf '%s %s ' "$TMP/$1-budget-locality.log" "$TMP/$1-budget-census.log"; }
+both() { printf '%s %s %s %s ' "$TMP/$1-class-locality.log" "$TMP/$1-class-census.log" \
+                               "$TMP/$1-budget-locality.log" "$TMP/$1-budget-census.log"; }
+# A one-log mutant rides the conforming half, so only the mutated log is under test.
+half() { printf '%s %s ' "$TMP/$1-class-locality.log" "$TMP/good-class-census.log"; }
+# A mutated BUDGET session beside the conforming CLASS one: that is how a cross-SESSION observation
+# (the bridge) is reached at all.
+bridge() { printf '%s %s %s %s ' "$TMP/good-class-locality.log" "$TMP/good-class-census.log" \
+                                 "$TMP/$1-budget-locality.log" "$TMP/$1-budget-census.log"; }
+
+echo "### the real grammar"
+# None of these rows decides anything: they prove the emitter accepts what the runner really writes,
+# and that the paths this one rides beside still emit.
+if [ -r "$SESSION/r9b-class-locality.log" ] && [ -r "$SESSION/r9b-class-census.log" ]; then
+  emits "the real R9b CLASS session logs are read end to end" \
+    "### The whole picture, in one place" \
+    -- "$SESSION/r9b-class-locality.log" "$SESSION/r9b-class-census.log"
+else
+  echo "  SKIP accepted-grammar row: no R9b CLASS session logs at $SESSION (not measured yet)"
+  skip=$((skip+1))
+fi
+if [ -r "$SESSION/r9b-budget-locality.log" ] && [ -r "$SESSION/r9b-budget-census.log" ]; then
+  emits "the real R9b BUDGET session logs are read end to end" \
+    "### The bridge — \`c-hot16@128\` in both sessions" \
+    -- "$SESSION/r9b-budget-locality.log" "$SESSION/r9b-budget-census.log"
+  emits "and all four real logs together print the bridge with both medians" \
+    "**CONTEXT, NOT A DECISION.**" \
+    -- "$SESSION/r9b-class-locality.log" "$SESSION/r9b-class-census.log" \
+       "$SESSION/r9b-budget-locality.log" "$SESSION/r9b-budget-census.log"
+else
+  echo "  SKIP accepted-grammar rows: no R9b BUDGET session logs at $SESSION (not measured yet)"
+  skip=$((skip+2))
+fi
+if [ -r "$R9SESSION/reorder-locality.log" ] && [ -r "$R9SESSION/reorder-census.log" ]; then
+  emits "the archived R9 session logs still emit under the REORDER path (now legacy)" \
+    "## v3 R9 — the gate-first reordered pair body" \
+    -- "$R9SESSION/reorder-locality.log" "$R9SESSION/reorder-census.log"
+  # THE PROVENANCE OF THE R9 REFERENCE ROW: the two medians this file's reference table carries are
+  # that path's own output over those logs, and this row is what re-derives them rather than trusting
+  # the literal.
+  emits "and the R9 reference medians this rung quotes are that path's own output, locality" \
+    "| \`control@256\` | \`eval_lsb_pair\` | 72 | 3 | 256 | 32768 | 0 | 0 | 0 | 16.692 | 0.033 | **16.725** |" \
+    -- "$R9SESSION/reorder-locality.log" "$R9SESSION/reorder-census.log"
+  emits "and its incumbent anchor, census" \
+    "| \`hot16@128\` | \`eval_lsb_pair_cached_128_lb\` | 72 | 7 | 128 | 65536 | 28 | 145 | 16 | 15.394 | 0.063 | **15.458** |" \
+    -- "$R9SESSION/reorder-locality.log" "$R9SESSION/reorder-census.log"
+else
+  echo "  SKIP R9-regression rows: no R9 session logs at $R9SESSION"
+  skip=$((skip+3))
+fi
+if [ -r "$R8SESSION/interior-locality.log" ] && [ -r "$R8SESSION/interior-census.log" ]; then
+  emits "the archived R8 session logs still emit under the interior path" \
+    "## v3 R8 — the admission-frontier interior (K17–23)" \
+    -- "$R8SESSION/interior-locality.log" "$R8SESSION/interior-census.log"
+else
+  echo "  SKIP R8-regression row: no R8 session logs at $R8SESSION"
+  skip=$((skip+1))
+fi
+
+echo "### the reporting contract"
+emits "the emitter says what it is: it reports, it does not decide" \
+  "This emitter REPORTS: it computes the whole picture, flags what disagrees with the rung's own description of itself, and issues NO verdict." \
+  -- $(both good)
+emits "a conforming session set raises NO flag at all" \
+  "**None.** Every observation below matched the rung's own description of itself" -- $(both good)
+absent "no pass/fail gate line anywhere in the output" \
+  "gate is \*\*(MET|NOT met)\*\*|clears wash-or-better" -- $(both good)
+absent "no selected cell" "SELECTED" -- $(both good)
+emits "the two rotations are named by their lane sets, not by the tag" \
+  "which run as TWO rotations under ONE tag — so a session is identified here by its LANE SET, never by the tag" \
+  -- $(both good)
+emits "the block tier is labelled ARITHMETIC and handed to the G0 captures" \
+  "the realized register allocation and occupancy are the G0 captures' (amendment A7), and the budget axis is NOT monotone in registers" \
+  -- $(both good)
+emits "and the build-facts line says budget order is not register order" \
+  "The register budget is NOT monotone — \`(128,6)\` is the maximum-register cell — so budget order is not register order." \
+  -- $(both good)
+
+echo "### the printed surface — CLASS"
+emits "the CLASS rotation is identified with its flag and its lane count" \
+  "| CLASS (\`--r9b-class\`) | 8 | \`locality\` | \`good-class-locality.log\` | **16 %** |" -- $(both good)
+emits "every lane carries its body AND its budget beside the kernel" \
+  "| \`c-hot16@128\` | C | (128,7) | \`eval_lsb_pair_cached_reorder_c_128_lb\` | 70 | 7 | 128 | 65536 | 28 | 145 | 16 | 14.577 | 0.063 | **14.640** |" \
+  -- $(cls good)
+emits "row 1 is C against the incumbent" \
+  "| 1 | \`c-hot16@128\` − \`hot16@128\` | \`hot16@128\` | **-0.150** | -0.155 … -0.143 | -0.171 … -0.126 | -1.01 % | 96/96 | **WIN** | same tier (7) |" \
+  -- $(cls good)
+emits "rows 2-4 carry the other three corrected bodies against the incumbent" \
+  "| 4 | \`bd-hot16@128\` − \`hot16@128\` | \`hot16@128\` | **+0.251**" -- $(cls good)
+emits "row 5 is THE RECOVERY ROW, C" \
+  "| 5 | \`c-hot16@128\` − \`reorder-hot16@128\` | \`reorder-hot16@128\` | **-0.949** | -0.951 … -0.948 | -0.979 … -0.918 | -6.09 % | 96/96 | **WIN** | same tier (7) | THE RECOVERY ROW, C — what the decode repair gives back against the implementation R9 measured |" \
+  -- $(cls good)
+emits "rows 6-8 are the recovery rows for B, C+D and B+D" \
+  "| 8 | \`bd-hot16@128\` − \`reorder-hot16@128\` | \`reorder-hot16@128\` | **-0.546**" -- $(cls good)
+emits "row 9 re-measures R9's drop-in INSIDE this session" \
+  "| 9 | \`reorder-hot16@128\` − \`hot16@128\` | \`hot16@128\` | **+0.802** | +0.793 … +0.807 | +0.787 … +0.813 | +5.42 % | 96/96 | **LOSS** | same tier (7) | R9's drop-in re-measured INSIDE this session — the +5.43 % reference point, on this rotation and this machine |" \
+  -- $(cls good)
+emits "the recovery rows are restated for BOTH orders side by side" \
+  "| \`c-hot16@128\` − \`reorder-hot16@128\` | **-0.949** (-6.09 %) | 96/96 | **WIN** | **-0.969** (-6.01 %) | 96/96 | **WIN** |" \
+  -- $(cls good)
+
+echo "### the printed surface — BUDGET, and the two separator rows"
+emits "the BUDGET rotation is identified with its own flag" \
+  "| BUDGET (\`--r9b-budget\`) | 8 | \`locality\` | \`good-budget-locality.log\` | **16 %** |" -- $(both good)
+emits "the incumbent's own three budgets are on lanes, non-monotone registers and all" \
+  "| \`hot16-lb6@128\` | incumbent | (128,6) | \`eval_lsb_pair_cached_128_lb6\` | 80 | 6 |" -- $(bud good)
+emits "and the unbounded incumbent, the arm R9 never timed" \
+  "| \`hot16-free@128\` | incumbent | unbounded | \`eval_lsb_pair_cached_128\` | 75 | 6 |" -- $(bud good)
+emits "rows 1-2 are labelled the budget axis on an UNMODIFIED body — RR's question" \
+  "the budget axis on an UNMODIFIED body (RR's question) — the incumbent at (128, 6), the grid's maximum-register cell" \
+  -- $(bud good)
+emits "and row 2 names the debt it discharges" \
+  "the incumbent unbounded, the arm R9's record left as static arithmetic (A8)" -- $(bud good)
+emits "the first separator row is labelled the remat collapse at constant block tier" \
+  "| 4 | \`c-hot16-lb6@128\` − \`c-hot16@128\` | \`c-hot16@128\` | **-0.100** | -0.119 … -0.081 | -0.129 … -0.071 | -0.68 % | 96/96 | **WIN** | **6 v 7 — NOT tier-neutral** | the remat collapse at constant block tier |" \
+  -- $(bud good)
+emits "the second is labelled the extra block at constant collapse" \
+  "| 5 | \`c-hot16-free@128\` − \`c-hot16-lb6@128\` | \`c-hot16-lb6@128\` | **-0.150** | -0.162 … -0.138 | -0.170 … -0.130 | -1.03 % | 96/96 | **WIN** | **8 v 6 — NOT tier-neutral** | the extra block at constant collapse |" \
+  -- $(bud good)
+emits "and C unbounded against the incumbent closes the axis" \
+  "| 6 | \`c-hot16-free@128\` − \`hot16@128\` | \`hot16@128\` | **-0.398**" -- $(bud good)
+
+echo "### the bridge"
+emits "the bridge is marked CONTEXT and not a decision" \
+  "**CONTEXT, NOT A DECISION.** \`c-hot16@128\` is the one cell both rotations carry." -- $(both good)
+emits "and it says a paired contrast is only valid inside one session" \
+  "A paired per-round contrast is only valid inside one session, so this row cannot be used as one" \
+  -- $(both good)
+emits "both medians and their delta, locality" "| \`locality\` | 14.640 | 14.640 | +0.000 | +0.00 % |" \
+  -- $(both good)
+emits "both medians and their delta, census" "| \`census\` | 15.170 | 15.170 | +0.000 | +0.00 % |" \
+  -- $(both good)
+emits "a CLASS-only invocation says the other rotation is absent" \
+  "**BUDGET not in this invocation.** Its rows, its anchor readings and its half of the bridge are absent" \
+  -- $(cls good)
+emits "and prints the half of the bridge it has" "| \`locality\` | 14.640 |" -- $(cls good)
+flagged "a bridge lane whose BUILD facts move between the two sessions" \
+  "\`c-hot16@128\` declares different facts in the two sessions' \`locality\` logs (70 regs / eval_lsb_pair_cached_reorder_c_128_lb against 71 regs / eval_lsb_pair_cached_reorder_c_128_lb)" \
+  -- $(bridge bridge-facts)
+flagged "a bridge lane 7 % apart in the two sessions" \
+  "reads 14.640 ms in CLASS and 15.690 ms in BUDGET under \`locality\` (+7.17 %, past the 1.5 % reporting threshold)" \
+  -- $(bridge bridge-medians)
+emits "and that flag says what a cross-session comparison then carries" \
+  "the two rotations put different neighbours around it, so a cross-session comparison of any other row carries at least this much" \
+  -- $(bridge bridge-medians)
+
+echo "### the anchor reference table — every reference, with its lane count"
+emits "the R4-frozen literal, labelled 11 lanes" \
+  "| \`control@256\` | 16.650 | R4 frozen | 11 | 16.624 | +0.15 % |" -- $(cls good)
+emits "the archived R5 session, labelled 10 lanes" \
+  "| \`control@256\` | 16.650 | R5 session | 10 | 16.567 | +0.50 % |" -- $(cls good)
+emits "the archived R8 session, labelled 12 lanes" \
+  "| \`control@256\` | 16.650 | R8 session | 12 | 16.738 | -0.53 % |" -- $(cls good)
+emits "the R9 session, labelled 6 lanes — the rung this one corrects" \
+  "| \`control@256\` | 16.650 | R9 session | 6 | 16.725 | -0.45 % |" -- $(cls good)
+emits "the incumbent anchor gets the same four references" \
+  "| \`hot16@128\` | 14.788 | R9 session | 6 | 14.794 | -0.04 % |" -- $(cls good)
+emits "the R9 census pair is pinned too" \
+  "| \`hot16@128\` | 15.288 | R9 session | 6 | 15.458 | -1.10 % |" -- $(cls good)
+emits "the table says why the lane count is on it" \
+  "absolute medians are rotation-composition dependent, so each reference carries the LANE COUNT of the rotation that produced it against this rung's 8" \
+  -- $(cls good)
+emits "the flank is a reading with its threshold beside it, not a mandate" \
+  "| \`hot16@128\` | 14.789 | 14.791 | 0.002 | 0.074 | no |" -- $(cls good)
+absent "no cell under test is a flank sentinel — the incumbent's other budgets included" \
+  "^\| .(hot16-lb6@128|hot16-free@128|c-hot16). \| 1[45]\..* \| (yes|no) \|" -- $(bud good)
+
+echo "### the ncu manifest — G0 for every timed cell, Full Picture for six"
+emits "G0 names all ten timed cells and what each capture reads" \
+  "**G0 — every timed cell, one launch each** (amendment A7): allocated-registers, register-limit, shared-limit, warps-limit, blocks-limit, blocks-per-sm, achieved-occupancy." \
+  -- $(both good)
+emits "the incumbent's G0 line" \
+  "NCU-G0 cell=hot16@128 session=CLASS body=incumbent budget=(128,7) kernel=eval_lsb_pair_cached_128_lb static_regs=72 carveout=16" \
+  -- $(both good)
+emits "the lowest-register cell's G0 line, off the BUDGET session" \
+  "NCU-G0 cell=c-hot16-free@128 session=BUDGET body=C budget=unbounded kernel=eval_lsb_pair_cached_reorder_c_128 static_regs=64 carveout=16" \
+  -- $(both good)
+emits "the maximum-register cell's G0 line" \
+  "NCU-G0 cell=hot16-lb6@128 session=BUDGET body=incumbent budget=(128,6) kernel=eval_lsb_pair_cached_128_lb6 static_regs=80 carveout=16" \
+  -- $(both good)
+emits "the static register field says it is what the capture replaces" \
+  "the \`static_regs\` field is the ARM line's figure and is exactly what the capture is there to replace" \
+  -- $(both good)
+emits "a G0 cell whose session was not passed is named ABSENT rather than dropped" \
+  "NCU-G0 cell=c-hot16-free@128 session=ABSENT body=C budget=unbounded kernel=eval_lsb_pair_cached_reorder_c_128 static_regs=unread carveout=unread" \
+  -- $(cls good)
+emits "the Full Picture is five fixed lanes plus one conditional slot" \
+  "**Full Picture** — five FIXED lanes plus ONE conditional slot, both term orders." -- $(both good)
+emits "R9's drop-in is a FIXED member" \
+  "NCU-FULL lane=reorder-hot16@128 orders=census,locality role=r9-dropin session=CLASS" -- $(both good)
+emits "so are C at (128,6), C unbounded and the unbounded incumbent" \
+  "NCU-FULL lane=hot16-free@128 orders=census,locality role=incumbent-unbounded session=BUDGET" \
+  -- $(both good)
+emits "the conditional slot is the CLASS session's lowest-median corrected body" \
+  "NCU-FULL lane=c-hot16@128 orders=census,locality role=class-best session=CLASS body=C budget=(128,7) kernel=eval_lsb_pair_cached_reorder_c_128_lb vs_incumbent=[locality -0.150 ms, census -0.120 ms]" \
+  -- $(both good)
+emits "and it says the choice is a capture-set choice and nothing else" \
+  "a capture-set choice and nothing else" -- $(both good)
+emits "with no CLASS session there is no best row, and the slot says so" \
+  "NCU-FULL lane=PENDING orders=census,locality role=class-best session=ABSENT — the CLASS session is not in this invocation, so no row selects it" \
+  -- $(bud good)
+absent "and no 'best' is computed from the rotation that cannot select one" \
+  "role=class-best session=CLASS" -- $(bud good)
+emits "the two orders disagreeing on the best body lists BOTH" \
+  "NCU-FULL lane=b-hot16@128 orders=census role=class-best session=CLASS" -- $(cls best-split)
+emits "and says so in prose" \
+  "The two term orders name DIFFERENT lowest-median corrected bodies — locality: \`c-hot16@128\`; census: \`b-hot16@128\` — so BOTH are listed above and neither is reconciled." \
+  -- $(cls best-split)
+absent "the controls are not in either manifest" "NCU-(G0 cell|FULL lane)=control" -- $(both good)
+
+echo "### the sign LABEL, at its threshold and one below it"
+emits "87/96 on one side is labelled WIN" \
+  "| \`c-hot16@128\` − \`reorder-hot16@128\` | **-0.100** (-0.64 %) | 87/96 | **WIN** |" \
+  -- $(cls sign-at-threshold)
+emits "86/96 at the same median is labelled WASH" \
+  "| \`c-hot16@128\` − \`reorder-hot16@128\` | **-0.100** (-0.64 %) | 86/96 | **WASH** |" \
+  -- $(cls sign-below-threshold)
+emits "a wobbling recovery row is labelled WASH and still prints its median" \
+  "| \`c-hot16@128\` − \`reorder-hot16@128\` | **+0.011** (+0.07 %) | 48/96 | **WASH** |" -- $(cls recovery-wash)
+emits "every corrected body slower than the drop-in is four LOSS labels, printed" \
+  "| \`bd-hot16@128\` − \`reorder-hot16@128\` | **+0.604** (+3.87 %) | 96/96 | **LOSS** |" \
+  -- $(cls recovery-loss)
+emits "and that session still gets its whole capture manifest" \
+  "NCU-G0 cell=bd-hot16@128 session=CLASS" -- $(cls recovery-loss)
+
+echo "### policy observations reach the flags block, and stop nothing"
+flagged "a session recorded at another --log-trace" \
+  "lane \`control@256\` declares grid=16384; at \`--log-trace 24\` it is 32768" -- $(cls wrong-trace)
+flagged "a session at another warmup" \
+  "the session ran 96 rounds / 12 warmup; the rung's shape is 96 / 8" -- $(cls wrong-warmup)
+flagged "a session at another round count that still closes into cycles" \
+  "the session ran 104 rounds / 8 warmup; the rung's shape is 96 / 8" -- $(cls wrong-rounds)
+flagged "the lanes ran in a fixed order every round" \
+  "lane \`control@256\` does not take rotation positions [0, 1, 2, 3, 4, 5, 6, 7] exactly 12 times" \
+  -- $(cls rotation-fixed)
+# A SWAPPED BODY and a SWAPPED BUDGET are different observations, and the emitter names the cell it
+# actually saw rather than quoting a symbol at the reader.
+flagged "a lane declaring another BODY's cell" \
+  "lane \`c-hot16@128\` declares body \`eval_lsb_pair_cached_reorder_b_128_lb\` = B at (128,7) (\`b-hot16@128\`'s cell); the rotation runs it on \`eval_lsb_pair_cached_reorder_c_128_lb\` = C at (128,7)" \
+  -- $(cls body-swapped)
+flagged "a lane declaring the same body at another BUDGET" \
+  "lane \`c-hot16@128\` runs body C at budget (128,7) in this rotation but declares \`eval_lsb_pair_cached_reorder_c_128_lb6\`, which is C at (128,6)" \
+  -- $(cls budget-swapped)
+emits "and that flag says why no other field could see it" \
+  "the register budget is not monotone (\`(128,6)\` is the maximum-register cell), so a swapped budget cannot be read off any other field" \
+  -- $(cls budget-swapped)
+flagged "the unmodified body's own budget swapped, in the BUDGET rotation" \
+  "lane \`hot16-free@128\` runs body incumbent at budget unbounded in this rotation but declares \`eval_lsb_pair_cached_128_lb6\`, which is incumbent at (128,6)" \
+  -- $(bud budget-swapped-inc)
+flagged "a lane pricing a different plan from the incumbent every row is read against" \
+  "every row reads as a CELL contrast only while the plan is one plan" -- $(cls plan-mismatch)
+flagged "a reversal among two equal-ref sources" \
+  "admitted prefix is not the canonical one — at admission position 12: 9 where the oracle has 8" \
+  -- $(cls ids-reversed)
+flagged "two lanes carrying one lane's data" \
+  "carry BIT-IDENTICAL samples in every round" -- $(half lane-aliased)
+flagged "a lane whose samples name another cell in one round" \
+  "lane \`bd-hot16@128\` names \`eval_lsb_pair_cached_reorder_cd_128_lb\` in 1 of 96 rounds (first at round 20)" \
+  -- $(half kernel-forged)
+flagged_once "a lane whose EVERY sample names another cell is ONE observation" \
+  "**SAMPLE-BODY** | lane \`bd-hot16@128\` names \`eval_lsb_pair_cached_reorder_cd_128_lb\` in 96 of 96 rounds (first at round 8)" \
+  1 -- $(half body-drift)
+flagged "one lane's register count moving between the two orders' logs" \
+  "CLASS: lane \`c-hot16@128\` declares different facts in the two orders' logs (registers, block tier, cell or plan)" \
+  -- $(half regs-cross-order)
+flagged "the header's own lane count disagreeing with the ARM lines" \
+  "the log carries 8 ARM lines while the schedule declares lanes=7 and the trailer lanes=7" \
+  -- $(cls header-lanes)
+flagged "an anchor lane off every reference, with all four deltas named" \
+  "reads 17.149 ms, more than 1.5 % off R4 frozen (11 lanes) +3.16 %; R5 session (10 lanes) +3.51 %; R8 session (12 lanes) +2.46 %; R9 session (6 lanes) +2.54 %" \
+  -- $(cls anchor-offset)
+flagged "and the flag says a thin rotation and its composition come first" \
+  "this rotation carries 8 lanes against their 6–12, so read the reference table, and the rotation's composition, before calling it machine drift" \
+  -- $(cls anchor-offset)
+flagged "a drifting anchor lane" \
+  "\`hot16@128\`'s first and last full cycle differ by 0.302 ms against the 0.074 ms scaled reading" \
+  -- $(cls flank-tripped)
+
+echo "### the carveout grammar — per ROTATION, in HINTED order"
+flagged "a missing per-symbol echo" \
+  "a missing, spurious, duplicated or reordered echo means the cells were not steered as these rows assume" \
+  -- $(cls echo-missing)
+flagged "and the CLASS rotation's own hinted set is quoted, cd BEFORE b" \
+  "the \`--r9b-class\` rotation's hinted set is ['eval_lsb_pair_cached_128_lb', 'eval_lsb_pair_cached_reorder_128_lb', 'eval_lsb_pair_cached_reorder_c_128_lb', 'eval_lsb_pair_cached_reorder_cd_128_lb', 'eval_lsb_pair_cached_reorder_b_128_lb', 'eval_lsb_pair_cached_reorder_bd_128_lb'] IN THAT ORDER" \
+  -- $(cls echo-missing)
+# CONCERN 3, pinned: the echo order is the HINTED table's, not the lane order. A fixture echoing the
+# LANE order must be flagged, or a real echo-order change would pass unremarked.
+flagged "the echoes in LANE order (b before cd) rather than HINTED order" \
+  "which is the harness's HINTED order and not its lane order" -- $(cls echo-lane-order)
+flagged "an echo for a symbol the rotation does not hint" \
+  "'16%:eval_lsb_seg_g'" -- $(cls echo-extra)
+flagged "one symbol echoed twice" \
+  "'16%:eval_lsb_pair_cached_reorder_bd_128_lb', '16%:eval_lsb_pair_cached_128_lb'" \
+  -- $(cls echo-duplicated)
+flagged "the hinted symbols steered to two different percents" \
+  "the hinted symbols are steered to [16, 33] % — every row below contrasts cells at ONE L1 configuration" \
+  -- $(cls echo-wrong-pct)
+flagged "no carveout-symbols line at all" \
+  "carries 0 \`carveout symbols\` lines, one expected" -- $(cls symbols-missing)
+flagged "two carveout-symbols lines" \
+  "carries 2 \`carveout symbols\` lines, one expected" -- $(cls symbols-twice)
+flagged "the set line's count disagreeing with its own list" \
+  "the set line says \`5 local (eval_lsb_pair_cached_128_lb," -- $(cls symbols-count-wrong)
+flagged "the set line's list disagreeing with the per-symbol echoes" \
+  "the two must describe one configuration" -- $(cls symbols-disagree)
+flagged "a carveout line that is neither grammar" \
+  "is not the harness's carveout literal" -- $(cls echo-malformed)
+# The BUDGET rotation hints a DIFFERENT set, so the check has to be shape-keyed.
+flagged "the BUDGET rotation's own hinted set, one symbol short" \
+  "the \`--r9b-budget\` rotation's hinted set is ['eval_lsb_pair_cached_128_lb', 'eval_lsb_pair_cached_128_lb6', 'eval_lsb_pair_cached_128', 'eval_lsb_pair_cached_reorder_c_128_lb', 'eval_lsb_pair_cached_reorder_c_128_lb6', 'eval_lsb_pair_cached_reorder_c_128'] IN THAT ORDER" \
+  -- $(bud echo-missing-budget)
+flagged "both term orders in one log: the carveout block is not attributable" \
+  "one log is one process, so the carveout block below is shared between two term orders" \
+  -- "$TMP/two-orders-class-locality.log"
+flagged "the two orders recorded at different tiers, one of them non-uniform" \
+  "CLASS: the two orders were recorded at non-uniform and 16 % — every row contrasts cells at one L1 configuration" \
+  -- "$TMP/echo-wrong-pct-class-locality.log" "$TMP/good-class-census.log"
+emits "a non-uniform carveout is reported as such in the header, not resolved to a number" \
+  "| CLASS (\`--r9b-class\`) | 8 | \`locality\` | \`echo-wrong-pct-class-locality.log\` | **non-uniform** |" \
+  -- $(cls echo-wrong-pct)
+emits "and in the capture manifest" "carveout=non-uniform" -- $(cls echo-wrong-pct)
+
+echo "### the flag count travels with the block a record quotes"
+emits "a clean session set says so where the headline table is" \
+  "**0 flag(s) above; this table is not a verdict.** Nothing disagreed with the rung's own description of itself." \
+  -- $(both good)
+emits "and a flagged session carries its count into the same place" \
+  "**16 flag(s) above; this table is not a verdict.**" -- $(cls wrong-trace)
+emits "session- and bridge-level flags are restated at the foot" \
+  "**Session- and bridge-level flags** (restated from the flags block — they are what makes reading two orders, or two sessions, together a question):" \
+  -- $(half regs-cross-order)
+
+echo "### the errors that remain: no meaningful number can be computed"
+rejects "one order alone" "read over EXACTLY both term orders" -- "$TMP/good-class-locality.log"
+rejects "one rotation's locality beside the other's census: each is then a half" \
+  "read over EXACTLY both term orders" \
+  -- "$TMP/good-class-locality.log" "$TMP/good-budget-census.log"
+rejects "--order cannot narrow the R9b path" "\`--order\` cannot narrow it" \
+  -- --order locality $(cls good)
+rejects "an order nobody measured" "its logs carry census, reverse" -- $(half unknown-order)
+rejects "a lane neither rotation names" \
+  "which is neither R9b rotation (CLASS is missing ['c-hot16@128'] and does not name ['c-hot17@128']" \
+  -- $(half lane-unknown)
+rejects "and the message names the BUDGET rotation's own miss too" \
+  "BUDGET is missing ['c-hot16-free@128', 'c-hot16-lb6@128', 'c-hot16@128', 'hot16-free@128', 'hot16-lb6@128']" \
+  -- $(half lane-unknown)
+rejects "an ARM line without its admitted-id list" \
+  "the two grammars are not interchangeable" -- $(half arm-without-ids)
+rejects "no done trailer" "the run did not finish, or the log is truncated" -- $(half no-trailer)
+rejects "renumbered rounds" "rounds are missing or renumbered" -- $(half renumbered)
+rejects "one lane is one sample short" \
+  "the contrasts are paired per round, so an incomplete round has no contrast" -- $(half sample-dropped)
+rejects "a duplicated (round, lane) sample" \
+  "duplicate sample for order=locality round=20 lane=c-hot16@128" -- $(half sample-duplicated)
+rejects "one log relabelled as another rotation" \
+  "declares ['FRONTIER-INTERIOR'] beside R9B" -- $(half wrong-tag)
+rejects "both logs relabelled: they are then read under the interior rules, which reject them" \
+  "lane set is not the interior rotation" -- $(cls wrong-tag)
+rejects "an R4 factorial log in the set" \
+  "declares ['CACHE-FACTORIAL'] beside R9B" -- $(cls good) "$TMP/not-r9b.log"
+
+printf 'fixture matrix: %d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
+exit $(( fail > 0 ))

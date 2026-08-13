@@ -105,7 +105,9 @@ matrix() {
          --carveout-hint 16 --cache-arm hot16 --block-threads 128 --profile --validate
 
   note "### --carveout-probe owns its rotation"
-  local owns="--carveout-probe owns the arm set and both block sizes"
+  # The runner's literal gained "and every lane's body" in 824c53ff, when the pair-body selector
+  # arrived and joined this rejection list; this pin was not moved with it and had been red since.
+  local owns="--carveout-probe owns the arm set, both block sizes and every lane's body"
   reject "$owns; --cache-arm would change what the rotation runs" \
          --carveout-probe --cache-arm hot16
   reject "$owns; --block-threads would change what the rotation runs" \
