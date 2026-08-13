@@ -5113,7 +5113,7 @@ transferable
 lesson — a static REG line of 70 predicts an occupancy tier that does not exist, and Task 1
 flagged exactly this from the static side before anything was timed.
 
-### Why the drop-in loses — address arithmetic, not field math
+### Why the drop-in loses — a launch-bound-dependent codegen migration, not field math
 
 The discriminator amendment A9 added for this rung is **absolute FMA-heavy pipe active time**:
 `fma-active ms = ncu ms × sm__pipe_fmaheavy_cycles_active.avg.pct_of_peak_sustained_active`,
@@ -5150,40 +5150,52 @@ dynamic instructions per warp** (57,637 → 59,238), attributed by SASS address 
 | `USHF` | 428 | 289 | **-139** |
 | `UVIMNMX` | 48 | 168 | **+120** |
 
-**The signature is a DATAPATH MIGRATION, not more addressing.** Nothing fetches more data: total
-constant traffic is 3,007 → 3,161 per warp (+5.1 %) and the twiddle bank *falls* (1,196 → 1,153);
-the whole rise sits in bank 0 (1,811 → 2,008, +197), the program/descriptor/immediate bank. What
-moves is *which datapath issues the same loads* — `LDCU` (one warp-uniform load serving all 32
-lanes) −409 against `LDC` (per-thread) +563 — plus `MOV` +471, `HFMA2` +244, `BRA` +304, and
-`LEA`/`UIMAD`/`ISETP` up; `IMAD` moves +157 on a base of 15,086. (`HFMA2` is not half-precision
-field math here; ptxas commonly emits the zero-operand form to materialize an immediate, but this
-census records the opcode only, not the operand form, so the +244 stays unattributed.)
+**The signature is a REGISTER-DATAPATH MIGRATION, not more addressing.** Read the census for what
+it is: a count of executed INSTRUCTIONS, not of bytes, sectors or requests. Executed constant-load
+instructions rise only +154/warp (3,007 → 3,161, +5.1 %), and all of that net growth is bank 0
+(1,811 → 2,008, +197) — the program/descriptor/immediate bank — while the twiddle bank *falls*
+(1,196 → 1,153). Underneath that near-flat total, the split moves hard: `LDCU`, which writes
+uniform registers, −409, against `LDC`, which writes vector registers, +563. In the raw SASS the
+migration is literal for the pairs inspected — the same constant offsets (e.g. `c[0][0xd38]`)
+appear as `LDCU UR…` in the incumbent and `LDC R…` in the drop-in — though the aggregate census
+cannot establish that for the whole stream. On top of it, `MOV` +471, `HFMA2` +244, `BRA` +304,
+and `LEA`/`UIMAD`/`ISETP` up; `IMAD` moves +157 on a base of 15,086. (`HFMA2` is not
+half-precision field math: every row inspected in the raw capture carries the
+immediate-materialization form `HFMA2 R*, -RZ, RZ, imm`. That is raw-SASS inspection —
+`sass-census.md` records opcodes only, so the +244 has no machine-table provenance.)
 
-**The same source without the bound migrates the OTHER way**, which is what pins the cause on the
-register budget rather than on gate-first dataflow:
+**The same source without the bound migrates the OTHER way**, which makes the inflation
+launch-bound-DEPENDENT — it does not identify what causes it:
 
 | per warp | `hot16@128` | `reorder-hot16@128` | `reorder-hot16-free@128` |
 | --- | --- | --- | --- |
-| `LDC` (per-thread const) | 1,994 | 2,557 (+563) | 1,018 (−976) |
-| `LDCU` (warp-uniform const) | 1,013 | 604 (−409) | 1,644 (+631) |
-| constant traffic, total | 3,007 | 3,161 (+154) | 2,662 (−345) |
+| `LDC` (writes vector regs) | 1,994 | 2,557 (+563) | 1,018 (−976) |
+| `LDCU` (writes uniform regs) | 1,013 | 604 (−409) | 1,644 (+631) |
+| constant-load instructions, total | 3,007 | 3,161 (+154) | 2,662 (−345) |
 | total instructions | 57,637 | 59,238 (**+1,601**) | 57,656 (**+19**) |
 
-Unbounded, the reorder puts *more* of the same constants on the uniform path and lands within 19
+Unbounded, the reorder puts *more* of its constant loads on the uniform path and lands within 19
 instructions/warp of the incumbent. Bounded at 70 registers under `__launch_bounds__(128, 7)`, it
-puts them on the vector path and pays 1,601. The mix is therefore *consistent with* the allocator
-failing, under that bound, to keep the reorder's in-place promotion in the uniform datapath — but
-the census is attributed by SASS address on a lineinfo-free capture, so that reading is an
-inference from the opcode mix, not a source-level cause it can establish. `MOV` +471 and `BRA`
+puts them on the vector path and pays 1,601. **What that licenses is narrow**: the inflation is a
+function of the bound, so it is not an intrinsic cost of gate-first dataflow. It does NOT identify
+a mechanism, for three reasons the record states rather than argues past. First, uniform registers
+are a separate file that does not draw on the per-thread budget, so "the 72-register cap pushed
+work off the uniform path" is not a resource explanation — if anything a tight per-thread budget
+argues the other way, and the observed direction is unexplained by it. Second, the unbounded arm
+carries its own confound: it also sheds 360 bank-3 loads and moves several opcodes in opposing
+directions, so its net +19 can conceal gate-first overhead rather than prove its absence — the
+same two-change bundling named below. Third, the census is attributed by SASS address on a
+lineinfo-free capture, so every reading here is an inference from the opcode mix, not a
+source-level cause it can establish. `MOV` +471 and `BRA`
 +304 in particular are NOT accounted for by any counted source-level construct: the reorder does
 force copies (a self-product duplicates operand A in both phases; a grouped member's product needs
 a temporary), but nothing in this rung counts them, and 471 is not derived from anything here.
-**A lineinfo rebuild re-attributing this census to source lines is the cheap experiment that would
-close it, and it is not blocked by anything except the freeze that has now ended.** The
-stall
-breakdown agrees — `short_scoreboard` 1.748 → 2.107 (census) and 1.799 → 2.207 (locality),
-`mio_throttle` 0.436 → 0.630 and 0.485 → 0.745 — the same +563 LDC/warp showing up as a queue on
-the constant/MIO path. Two things this does *not* mean. It is not a verdict on gate-first dataflow
+**A lineinfo rebuild re-attributing this census to source lines is the cheap next experiment, and
+nothing blocks it but the freeze that has now ended** — though it would localize the extra
+instructions to source regions, not explain why ptxas chose one register datapath over the other.
+The stall breakdown is consistent with the added vector-path pressure — `short_scoreboard` 1.748 →
+2.107 (census) and 1.799 → 2.207 (locality), `mio_throttle` 0.436 → 0.630 and 0.485 → 0.745 — but
+an aggregate stall percentage cannot show that the +563 `LDC`/warp are what entered that queue. Two things this does *not* mean. It is not a verdict on gate-first dataflow
 as a design: it is a ptxas allocation outcome at one register budget under one bound, and whether
 a different bound or a small source change moves it is unmeasured. And it is not the
 rematerialization lever: the drop-in's twiddle bank-3 loads are essentially the incumbent's,
