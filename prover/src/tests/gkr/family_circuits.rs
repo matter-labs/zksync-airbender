@@ -35,11 +35,13 @@ const PROVE_EMPTY: bool = true;
 pub use crate::definitions::SecurityLevel;
 
 #[test]
+#[ignore = "production-scale 2^24 proof; run explicitly"]
 fn gkr_run_basic_unrolled_test_sec_80() {
     gkr_run_basic_unrolled_test_impl(SecurityLevel::Sec80, None, None);
 }
 
 #[test]
+#[ignore = "production-scale 2^24 proof; run explicitly"]
 fn gkr_run_basic_unrolled_test_sec_100() {
     gkr_run_basic_unrolled_test_impl(SecurityLevel::Sec100, None, None);
 }
@@ -920,6 +922,7 @@ fn add_sub_family_bench_in_memory() {
 /// The storage policy is orthogonal to the (fixed) `CommitmentMode`, so it must not
 /// change the proof.
 #[test]
+#[ignore = "production-scale 2^24 RS storage parity; run explicitly"]
 fn add_sub_family_rs_codeword_source_parity() {
     use crate::gkr::prover::WhirOracleStorage;
     use riscv_transpiler::vm::DelegationsAndFamiliesCounters;
@@ -1029,6 +1032,7 @@ fn add_sub_family_rs_codeword_source_parity() {
 /// NOTE: this writes the full setup RS codewords to disk (~all LDE cosets of the
 /// setup columns) and runs two 2^24 proofs; keep it a deliberately-run test.
 #[test]
+#[ignore = "production-scale 2^24 on-disk setup parity; run explicitly"]
 fn add_sub_family_on_disk_setup() {
     use riscv_transpiler::vm::DelegationsAndFamiliesCounters;
 
