@@ -183,6 +183,22 @@ ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bk_128_kernel|5984|64|2048|648ea71c7
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_lb_kernel|6928|72|2048|98d40c54f396
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_lb6_kernel|6832|79|2048|dee91b732ac0
 ab_gkr_uniskip_eval_lsb_pair_cached_reorder_bd_128_kernel|6872|59|2048|d4126598930c"
+# The v3 R10 lazy BF accumulator grid: two accumulator states (`w96` / `a64`) x two parent walks
+# (no tag = the incumbent, `reorder_cd` = R9b's `C+D`) x three register budgets. Its own table for
+# R9B_SYMBOLS' reason: that one pins the parents these twelve are measured against, and a parent
+# row must stay untouched and separately readable.
+R10_SYMBOLS="ab_gkr_uniskip_eval_lsb_pair_cached_w96_128_lb_kernel|6128|72|2048|59cb8068db42
+ab_gkr_uniskip_eval_lsb_pair_cached_w96_128_lb6_kernel|6104|80|2048|12a838edcb5d
+ab_gkr_uniskip_eval_lsb_pair_cached_w96_128_kernel|6048|75|2048|ded6128e0ef3
+ab_gkr_uniskip_eval_lsb_pair_cached_a64_128_lb_kernel|6056|72|2048|d14f93ffb9b8
+ab_gkr_uniskip_eval_lsb_pair_cached_a64_128_lb6_kernel|6040|80|2048|999dc403bc40
+ab_gkr_uniskip_eval_lsb_pair_cached_a64_128_kernel|6040|75|2048|27617ae137cc
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_w96_128_lb_kernel|6600|70|2048|5509a3f2b66c
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_w96_128_lb6_kernel|6512|77|2048|3c8cc9b45590
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_w96_128_kernel|6480|64|2048|8e3ed784cc5a
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_lb_kernel|6544|70|2048|d1c9d3337684
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_lb6_kernel|6432|80|2048|ca970ed4e17d
+ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_kernel|6480|65|2048|c16a07733d8a"
 PAIR_TU=uniskip_lsb_pair.cu.o
 
 build_bench() { # build_bench <diag-env-value-or-empty>
@@ -1785,6 +1801,50 @@ r9b_sass() {
   [ "$rows" = 20 ] || bad "R9b grid symbols read — a symbol that never got read is not a verdict either way" "20" "$rows"
 }
 
+r10_sass() {
+  note "### the R10 grid: accumulator state x parent walk, instruction counts, digests, registers"
+  local ar=$ARCHIVE work="$TMP/sass-r10" ar_abs
+  ar_abs=$(readlink -f "$ar")
+  mkdir -p "$work"
+  ( cd "$work" && ar x "$ar_abs" "$PAIR_TU" ) 2>/dev/null
+  if [ ! -f "$work/$PAIR_TU" ]; then bad "could not extract $PAIR_TU from $ar"; return; fi
+  if ! cuobjdump -sass "$work/$PAIR_TU" >"$work/dump.txt" 2>"$work/dump.err"; then
+    bad "cuobjdump -sass failed on the pair TU"; tail -3 "$work/dump.err"; return
+  fi
+  if ! cuobjdump -res-usage "$work/$PAIR_TU" >"$work/res.txt" 2>&1; then
+    bad "cuobjdump -res-usage failed on the pair TU"; tail -3 "$work/res.txt"; return
+  fi
+  norm_dump "$work/dump.txt" "$work/live"
+  local rows=0 ok=0 fn want reg shared digest got dig res
+  while IFS='|' read -r fn want reg shared digest; do
+    [ -n "$fn" ] || continue
+    rows=$((rows + 1))
+    if [ ! -f "$work/live/$fn" ]; then bad "$fn is missing from the built archive"; continue; fi
+    got=$(wc -l <"$work/live/$fn")
+    dig=$(body_digest "$work/live/$fn")
+    res=$(awk -v fn="$fn:" '$2 == fn {getline; print $0}' "$work/res.txt" \
+          | tr -s ' ' | sed 's/^ //')
+    # All THREE properties, for every symbol, whatever the others said (see `seg_sass`).
+    local sym_ok=1
+    if [ "$got" != "$want" ]; then
+      bad "$fn normalized instruction count" "$want" "$got"; sym_ok=0
+    fi
+    if [ "$dig" != "$digest" ]; then
+      bad "$fn body digest — the body changed at a constant instruction count" "$digest" "$dig"
+      sym_ok=0
+    fi
+    case "$res" in
+      "REG:$reg STACK:0 SHARED:$shared LOCAL:0 CONSTANT[0]:"*) ;;
+      *) bad "$fn resource usage" "REG:$reg STACK:0 SHARED:$shared LOCAL:0" "$res"; sym_ok=0 ;;
+    esac
+    [ "$sym_ok" = 1 ] && ok=$((ok + 1))
+    note "  $fn: $got instrs, digest $dig, $res"
+  done <<< "$R10_SYMBOLS"
+  note "  R10 grid bodies $ok/$rows pinned"
+  cellrow "the R10 grid (accumulator state x parent)" "$rows" "$ok"
+  [ "$rows" = 12 ] || bad "R10 grid symbols read — a symbol that never got read is not a verdict either way" "12" "$rows"
+}
+
 sass() {
   lane_is sass
   note "### frozen SASS: r5_gates.sh sass, the nine R3/R4 bodies (one table, one owner)"
@@ -1805,6 +1865,7 @@ sass() {
   seg_sass
   reorder_sass
   r9b_sass
+  r10_sass
 }
 
 # ---------------------------------------------------------------- cpu / fixtures / regression

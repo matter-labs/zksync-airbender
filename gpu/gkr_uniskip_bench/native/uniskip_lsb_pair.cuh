@@ -583,6 +583,179 @@ DEVICE_FORCEINLINE void uniskip_pair_group_member_reorder(const uniskip_vm_desc 
 }
 
 // ---------------------------------------------------------------------------------------
+// v3 R10 LAZY BF ACCUMULATORS. The grouped path above reduces after every product; these two
+// accumulator states defer that to ONE fold per member sum. Both hold their value at Montgomery
+// level R^2 - one reduction pending - so a raw wide product enters as itself while an existing
+// residue `s` enters through the HIGH word (`s * 2^32 == s * R`, the trick `bf::fma` already
+// uses). Design record: `2026-08-05-lazy-fma-accumulation-design.md`, §4 = A64, §5 = W96.
+//
+// Deferring is EXACT, so bit-identity of `q` is simultaneously the correctness gate and the
+// overflow tripwire. Integer addition is associative, so unlike R9b's levers these states put no
+// ordering constraint on the accumulate at all.
+// ---------------------------------------------------------------------------------------
+
+// W96 (design B): u64 plus a u32 carry word, one IADD per product over raw accumulation. No
+// invariant and no comparison, so the term count is unbounded for any realistic arity.
+struct uniskip_acc_w96 {
+  u32 lo;
+  u32 hi;
+  u32 carry;
+};
+
+// A64 (design A): u64 under the invariant `acc < ORDER * 2^32`, restored by subtracting that
+// same bound after every accumulate. It is a multiple of ORDER, so the subtraction is exact at
+// any Montgomery level and costs no multiply, and the invariant IS `bf::red`'s domain - so the
+// fold is the cheap reduce rather than `bf::red_wide`. Holds at any arity because the cadence is
+// per accumulate; requires canonical operands, which every source here is.
+struct uniskip_acc_a64 {
+  u64 v;
+};
+
+constexpr u64 UNISKIP_ACC_P32 = static_cast<u64>(bf::ORDER) << 32;
+
+DEVICE_FORCEINLINE void uniskip_acc_zero(uniskip_acc_w96 &acc) {
+  acc.lo = 0;
+  acc.hi = 0;
+  acc.carry = 0;
+}
+
+DEVICE_FORCEINLINE void uniskip_acc_zero(uniskip_acc_a64 &acc) { acc.v = 0; }
+
+DEVICE_FORCEINLINE void uniskip_acc_product(uniskip_acc_w96 &acc, const bf x, const bf y) {
+  acc.lo = mad_lo_cc(x.limb, y.limb, acc.lo);
+  acc.hi = madc_hi_cc(x.limb, y.limb, acc.hi);
+  acc.carry = addc(acc.carry, 0u);
+}
+
+DEVICE_FORCEINLINE void uniskip_acc_product(uniskip_acc_a64 &acc, const bf x, const bf y) {
+  acc.v += mul_wide(x.limb, y.limb);
+  if (acc.v >= UNISKIP_ACC_P32)
+    acc.v -= UNISKIP_ACC_P32;
+}
+
+// `word` is added at the HIGH word, i.e. times 2^32, which lifts a level-R residue to the
+// accumulator's level. `word <= ORDER` is the widest admitted value (the negated case below), so
+// the step adds at most UNISKIP_ACC_P32 and A64's one subtraction still restores the invariant.
+DEVICE_FORCEINLINE void uniskip_acc_inject(uniskip_acc_w96 &acc, const u32 word) {
+  acc.hi = add_cc(acc.hi, word);
+  acc.carry = addc(acc.carry, 0u);
+}
+
+DEVICE_FORCEINLINE void uniskip_acc_inject(uniskip_acc_a64 &acc, const u32 word) {
+  acc.v += static_cast<u64>(word) << 32;
+  if (acc.v >= UNISKIP_ACC_P32)
+    acc.v -= UNISKIP_ACC_P32;
+}
+
+// The carry word sits at 2^64, and 2^64 * R^-1 == 2^32 == R, so it folds in as `into_mont`.
+DEVICE_FORCEINLINE bf uniskip_acc_fold(const uniskip_acc_w96 acc) {
+  u64 w;
+  reinterpret_cast<u32 *>(&w)[0] = acc.lo;
+  reinterpret_cast<u32 *>(&w)[1] = acc.hi;
+  return bf::add(bf::red_wide(w), bf::into_mont(bf(acc.carry)));
+}
+
+DEVICE_FORCEINLINE bf uniskip_acc_fold(const uniskip_acc_a64 acc) { return bf::red(acc.v); }
+
+// A subtracting member negates one factor instead of the accumulator, so no borrow can reach the
+// carry word or the invariant. `ORDER - x.limb` is at most ORDER, so a product against a
+// canonical operand still stays under p^2 and §2's budgets hold unchanged.
+DEVICE_FORCEINLINE bf uniskip_acc_negate(const bf x) { return bf(bf::ORDER - x.limb); }
+
+// One member's contribution under a COMPILE-TIME coefficient kind. The three cases are where the
+// reductions go: a plus / minus product accumulates raw (the reduce disappears), an immediate
+// product keeps ONE reduce because three factors do not fit two, and a non-product member either
+// injects its residue or becomes a bare `immediate * value` product with no reduce at all.
+template <u32 KIND, typename ACC> DEVICE_FORCEINLINE void uniskip_acc_apply_value(const bf immediate, const bf v0, const bf v1, ACC acc[2]) {
+  if constexpr (KIND == UNISKIP_PAIR_COEFF_ONE) {
+    uniskip_acc_inject(acc[0], v0.limb);
+    uniskip_acc_inject(acc[1], v1.limb);
+  } else if constexpr (KIND == UNISKIP_PAIR_COEFF_NEG_ONE) {
+    uniskip_acc_inject(acc[0], bf::ORDER - v0.limb);
+    uniskip_acc_inject(acc[1], bf::ORDER - v1.limb);
+  } else {
+    uniskip_acc_product(acc[0], immediate, v0);
+    uniskip_acc_product(acc[1], immediate, v1);
+  }
+}
+
+template <u32 KIND, typename ACC>
+DEVICE_FORCEINLINE void uniskip_acc_apply_product(const bf immediate, const bf a0, const bf b0, const bf a1, const bf b1, ACC acc[2]) {
+  if constexpr (KIND == UNISKIP_PAIR_COEFF_ONE) {
+    uniskip_acc_product(acc[0], a0, b0);
+    uniskip_acc_product(acc[1], a1, b1);
+  } else if constexpr (KIND == UNISKIP_PAIR_COEFF_NEG_ONE) {
+    uniskip_acc_product(acc[0], uniskip_acc_negate(a0), b0);
+    uniskip_acc_product(acc[1], uniskip_acc_negate(a1), b1);
+  } else {
+    uniskip_acc_product(acc[0], immediate, bf::mul(a0, b0));
+    uniskip_acc_product(acc[1], immediate, bf::mul(a1, b1));
+  }
+}
+
+// The INCUMBENT walk's grouped path runs ONE coefficient test per member covering both domains,
+// so these take both accumulands rather than being called twice - the lazy body keeps the
+// incumbent's branch count exactly, one class test and one coefficient test per member.
+template <typename ACC>
+DEVICE_FORCEINLINE void uniskip_acc_group_value(const uniskip_vm_desc &desc, const uniskip_term member, const bf h[2], const bf c[2], ACC acc_h[2],
+                                                ACC acc_c[2]) {
+  if (member.coeff == UNISKIP_IMMEDIATE_ONE) {
+    uniskip_acc_apply_value<UNISKIP_PAIR_COEFF_ONE>(bf::ZERO(), h[0], h[1], acc_h);
+    uniskip_acc_apply_value<UNISKIP_PAIR_COEFF_ONE>(bf::ZERO(), c[0], c[1], acc_c);
+  } else if (member.coeff == UNISKIP_IMMEDIATE_NEG_ONE) {
+    uniskip_acc_apply_value<UNISKIP_PAIR_COEFF_NEG_ONE>(bf::ZERO(), h[0], h[1], acc_h);
+    uniskip_acc_apply_value<UNISKIP_PAIR_COEFF_NEG_ONE>(bf::ZERO(), c[0], c[1], acc_c);
+  } else {
+    const bf immediate = desc.immediates[member.coeff - UNISKIP_IMMEDIATE_RESERVED];
+    uniskip_acc_apply_value<UNISKIP_PAIR_COEFF_IMMEDIATE>(immediate, h[0], h[1], acc_h);
+    uniskip_acc_apply_value<UNISKIP_PAIR_COEFF_IMMEDIATE>(immediate, c[0], c[1], acc_c);
+  }
+}
+
+template <typename ACC>
+DEVICE_FORCEINLINE void uniskip_acc_group_product(const uniskip_vm_desc &desc, const uniskip_term member, const bf ah[2], const bf ac[2], const bf bh[2],
+                                                  const bf bc[2], ACC acc_h[2], ACC acc_c[2]) {
+  if (member.coeff == UNISKIP_IMMEDIATE_ONE) {
+    uniskip_acc_apply_product<UNISKIP_PAIR_COEFF_ONE>(bf::ZERO(), ah[0], bh[0], ah[1], bh[1], acc_h);
+    uniskip_acc_apply_product<UNISKIP_PAIR_COEFF_ONE>(bf::ZERO(), ac[0], bc[0], ac[1], bc[1], acc_c);
+  } else if (member.coeff == UNISKIP_IMMEDIATE_NEG_ONE) {
+    uniskip_acc_apply_product<UNISKIP_PAIR_COEFF_NEG_ONE>(bf::ZERO(), ah[0], bh[0], ah[1], bh[1], acc_h);
+    uniskip_acc_apply_product<UNISKIP_PAIR_COEFF_NEG_ONE>(bf::ZERO(), ac[0], bc[0], ac[1], bc[1], acc_c);
+  } else {
+    const bf immediate = desc.immediates[member.coeff - UNISKIP_IMMEDIATE_RESERVED];
+    uniskip_acc_apply_product<UNISKIP_PAIR_COEFF_IMMEDIATE>(immediate, ah[0], bh[0], ah[1], bh[1], acc_h);
+    uniskip_acc_apply_product<UNISKIP_PAIR_COEFF_IMMEDIATE>(immediate, ac[0], bc[0], ac[1], bc[1], acc_c);
+  }
+}
+
+// The R9b `C+D` walk's member sequence with a lazy accumuland: gate on H, turn the operands into
+// their coset in place, gate on C, under ONE runtime coefficient test hoisted to the caller. The
+// two `if (product)` tests are lever C's, so the branch count is `C+D`'s exactly. What C's
+// convergence slot cannot survive is the accumulate ABSORBING the multiply: a plus / minus
+// product never becomes a value, so each phase reaches two call sites instead of one.
+template <u32 KIND, typename ACC>
+DEVICE_FORCEINLINE void uniskip_pair_group_member_lazy(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const uniskip_coset_cache &cache,
+                                                       const uniskip_term member, const bf immediate, ACC sum_h[2], ACC sum_c[2]) {
+  bf a[2];
+  uniskip_pair_load_h(desc, lane, member.source_a, a);
+  const bool product = member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF;
+  bf b[2];
+  if (product) {
+    uniskip_pair_load_h_second_reorder(desc, lane, member, a, b);
+    uniskip_acc_apply_product<KIND>(immediate, a[0], b[0], a[1], b[1], sum_h);
+  } else {
+    uniskip_acc_apply_value<KIND>(immediate, a[0], a[1], sum_h);
+  }
+  uniskip_pair_coset_reorder(desc, lane, member.source_a, cache, a);
+  if (product) {
+    uniskip_pair_coset_second_reorder(desc, lane, member, cache, a, b);
+    uniskip_acc_apply_product<KIND>(immediate, a[0], b[0], a[1], b[1], sum_c);
+  } else {
+    uniskip_acc_apply_value<KIND>(immediate, a[0], a[1], sum_c);
+  }
+}
+
+// ---------------------------------------------------------------------------------------
 // v3 R3 WINDOW. Coset-only: a slot retains one BF source's produced `c[2]` (2 regs/lane);
 // `h[2]` is still loaded on reuse. A reuse therefore skips exactly the shuffle-NTT chain
 // and its twist for that operand resolution, which is the whole saving.

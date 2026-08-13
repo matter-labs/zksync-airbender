@@ -1088,4 +1088,333 @@ EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
   uniskip_pair_epilogue<UNISKIP_PAIR_WARPS_128>(desc, lane, acc_h, acc_c, plane);
 }
 
+// v3 R10 LAZY BF ACCUMULATORS over the INCUMBENT walk. Everything outside the GROUP_BF member
+// loop is `uniskip_eval_pair_cached_body`'s text; inside it `sum_h` / `sum_c` are `ACC` instead of
+// `bf`, so no product is reduced on its way into the sum and the whole sum folds once. The class
+// test and the coefficient test are the incumbent's, one each per member. `ACC` is the accumulator
+// STATE - `uniskip_acc_w96` or `uniskip_acc_a64` - and nothing outside the group path changes
+// state: the sumcheck accumulators stay `e4` and canonical, which is the division of labour
+// green's 24-arm campaign settled.
+template <typename ACC>
+DEVICE_FORCEINLINE void uniskip_eval_pair_cached_lazy_body(const uniskip_pair_desc &desc, const uniskip_pair_lane &lane, const uniskip_coset_cache &cache,
+                                                           e4 acc_h[2], e4 acc_c[2]) {
+#pragma unroll
+  for (u32 k = 0; k < 2; ++k) {
+    acc_h[k] = e4::ZERO();
+    acc_c[k] = e4::ZERO();
+  }
+
+  for (u32 pc = 0; pc < desc.record_count;) {
+    const uniskip_term term = desc.program[pc];
+    const e4 coeff = ab_gkr_uniskip_coeff_bank[term.coeff];
+    if (term.term_class == UNISKIP_CLASS_GROUP_BF) {
+      const u32 arity = term.source_a;
+      ACC sum_h[2], sum_c[2];
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        uniskip_acc_zero(sum_h[k]);
+        uniskip_acc_zero(sum_c[k]);
+      }
+      for (u32 m = 1; m <= arity; ++m) {
+        const uniskip_term member = desc.program[pc + m];
+        bf ah[2], ac[2];
+        uniskip_pair_resolve_cached(desc, lane, member.source_a, cache, ah, ac);
+        if (member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF) {
+          bf bh[2], bc[2];
+          uniskip_pair_resolve_second_cached(desc, lane, member, cache, ah, ac, bh, bc);
+          uniskip_acc_group_product(desc, member, ah, ac, bh, bc, sum_h, sum_c);
+        } else {
+          uniskip_acc_group_value(desc, member, ah, ac, sum_h, sum_c);
+        }
+      }
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, uniskip_acc_fold(sum_h[k]), acc_h[k]);
+        acc_c[k] = e4::fma(coeff, uniskip_acc_fold(sum_c[k]), acc_c[k]);
+      }
+      pc += arity + 1;
+      continue;
+    }
+    switch (term.term_class) {
+    case UNISKIP_CLASS_LINEAR_BF: {
+      bf ah[2], ac[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, ah[k], acc_h[k]);
+        acc_c[k] = e4::fma(coeff, ac[k], acc_c[k]);
+      }
+      break;
+    }
+    case UNISKIP_CLASS_LINEAR_E4: {
+      e4 ah[2], ac[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, ah[k], acc_h[k]);
+        acc_c[k] = e4::fma(coeff, ac[k], acc_c[k]);
+      }
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_BF_BF: {
+      bf ah[2], ac[2], bh[2], bc[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+      uniskip_pair_resolve_second_cached(desc, lane, term, cache, ah, ac, bh, bc);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, bf::mul(ah[k], bh[k]), acc_h[k]);
+        acc_c[k] = e4::fma(coeff, bf::mul(ac[k], bc[k]), acc_c[k]);
+      }
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_BF_E4: {
+      bf ah[2], ac[2];
+      e4 bh[2], bc[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+      uniskip_pair_resolve_cached(desc, lane, term.source_b, cache, bh, bc);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, e4::mul(bh[k], ah[k]), acc_h[k]);
+        acc_c[k] = e4::fma(coeff, e4::mul(bc[k], ac[k]), acc_c[k]);
+      }
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_E4_E4: {
+      e4 ah[2], ac[2], bh[2], bc[2];
+      uniskip_pair_resolve_cached(desc, lane, term.source_a, cache, ah, ac);
+      uniskip_pair_resolve_second_cached(desc, lane, term, cache, ah, ac, bh, bc);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, e4::mul(ah[k], bh[k]), acc_h[k]);
+        acc_c[k] = e4::fma(coeff, e4::mul(ac[k], bc[k]), acc_c[k]);
+      }
+      break;
+    }
+    }
+    ++pc;
+  }
+}
+
+// The same two accumulator states over R9b's `C+D` walk - the one repair that beat the R9
+// drop-in - so the accumulator effect is separable from the repair. Everything outside the
+// GROUP_BF member loop is the R9 reordered body's text; inside, D's single runtime three-way
+// coefficient test per member dispatches the member's whole sequence at a compile-time kind.
+template <typename ACC>
+DEVICE_FORCEINLINE void uniskip_eval_pair_cached_regroup_lazy_body(const uniskip_pair_desc &desc, const uniskip_pair_lane &lane,
+                                                                   const uniskip_coset_cache &cache, e4 acc_h[2], e4 acc_c[2]) {
+#pragma unroll
+  for (u32 k = 0; k < 2; ++k) {
+    acc_h[k] = e4::ZERO();
+    acc_c[k] = e4::ZERO();
+  }
+
+  for (u32 pc = 0; pc < desc.record_count;) {
+    const uniskip_term term = desc.program[pc];
+    const e4 coeff = ab_gkr_uniskip_coeff_bank[term.coeff];
+    if (term.term_class == UNISKIP_CLASS_GROUP_BF) {
+      const u32 arity = term.source_a;
+      ACC sum_h[2], sum_c[2];
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        uniskip_acc_zero(sum_h[k]);
+        uniskip_acc_zero(sum_c[k]);
+      }
+      for (u32 m = 1; m <= arity; ++m) {
+        const uniskip_term member = desc.program[pc + m];
+        if (member.coeff == UNISKIP_IMMEDIATE_ONE) {
+          uniskip_pair_group_member_lazy<UNISKIP_PAIR_COEFF_ONE>(desc, lane, cache, member, bf::ZERO(), sum_h, sum_c);
+        } else if (member.coeff == UNISKIP_IMMEDIATE_NEG_ONE) {
+          uniskip_pair_group_member_lazy<UNISKIP_PAIR_COEFF_NEG_ONE>(desc, lane, cache, member, bf::ZERO(), sum_h, sum_c);
+        } else {
+          uniskip_pair_group_member_lazy<UNISKIP_PAIR_COEFF_IMMEDIATE>(desc, lane, cache, member, desc.immediates[member.coeff - UNISKIP_IMMEDIATE_RESERVED],
+                                                                       sum_h, sum_c);
+        }
+      }
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k) {
+        acc_h[k] = e4::fma(coeff, uniskip_acc_fold(sum_h[k]), acc_h[k]);
+        acc_c[k] = e4::fma(coeff, uniskip_acc_fold(sum_c[k]), acc_c[k]);
+      }
+      pc += arity + 1;
+      continue;
+    }
+    switch (term.term_class) {
+    case UNISKIP_CLASS_LINEAR_BF: {
+      bf a[2];
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, a[k], acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, a[k], acc_c[k]);
+      break;
+    }
+    case UNISKIP_CLASS_LINEAR_E4: {
+      e4 a[2];
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, a[k], acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, a[k], acc_c[k]);
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_BF_BF: {
+      bf a[2], b[2];
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+      uniskip_pair_load_h_second_reorder(desc, lane, term, a, b);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, bf::mul(a[k], b[k]), acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+      uniskip_pair_coset_second_reorder(desc, lane, term, cache, a, b);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, bf::mul(a[k], b[k]), acc_c[k]);
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_BF_E4: {
+      bf a[2];
+      e4 b[2];
+      uniskip_pair_load_h(desc, lane, term.source_b, b);
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, e4::mul(b[k], a[k]), acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_b, cache, b);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, e4::mul(b[k], a[k]), acc_c[k]);
+      break;
+    }
+    case UNISKIP_CLASS_PRODUCT_E4_E4: {
+      e4 a[2], b[2];
+      uniskip_pair_load_h(desc, lane, term.source_a, a);
+      uniskip_pair_load_h_second_reorder(desc, lane, term, a, b);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_h[k] = e4::fma(coeff, e4::mul(a[k], b[k]), acc_h[k]);
+      uniskip_pair_coset_reorder(desc, lane, term.source_a, cache, a);
+      uniskip_pair_coset_second_reorder(desc, lane, term, cache, a, b);
+#pragma unroll
+      for (u32 k = 0; k < 2; ++k)
+        acc_c[k] = e4::fma(coeff, e4::mul(a[k], b[k]), acc_c[k]);
+      break;
+    }
+    }
+    ++pc;
+  }
+}
+
+template <u32 WARPS, typename ACC>
+DEVICE_FORCEINLINE void uniskip_eval_pair_cached_lazy(const uniskip_pair_desc &desc, const uniskip_cache_desc &plan, e4 *plane) {
+  const uniskip_pair_lane lane = uniskip_pair_lane_of<WARPS>(threadIdx.x);
+  uniskip_coset_cache cache;
+  uniskip_coset_prologue(desc, plan, lane, cache);
+  e4 acc_h[2], acc_c[2];
+  uniskip_eval_pair_cached_lazy_body<ACC>(desc, lane, cache, acc_h, acc_c);
+  uniskip_pair_epilogue<WARPS>(desc, lane, acc_h, acc_c, plane);
+}
+
+template <u32 WARPS, typename ACC>
+DEVICE_FORCEINLINE void uniskip_eval_pair_cached_regroup_lazy(const uniskip_pair_desc &desc, const uniskip_cache_desc &plan, e4 *plane) {
+  const uniskip_pair_lane lane = uniskip_pair_lane_of<WARPS>(threadIdx.x);
+  uniskip_coset_cache cache;
+  uniskip_coset_prologue(desc, plan, lane, cache);
+  e4 acc_h[2], acc_c[2];
+  uniskip_eval_pair_cached_regroup_lazy_body<ACC>(desc, lane, cache, acc_h, acc_c);
+  uniskip_pair_epilogue<WARPS>(desc, lane, acc_h, acc_c, plane);
+}
+
+// The R10 GRID: two accumulator states x two parent walks x three register budgets. `w96` / `a64`
+// name the state, an absent parent tag is the incumbent walk and `reorder_cd` is R9b's `C+D`, and
+// the budget suffixes are R9b's - `_lb` = `(128, 7)`, `_lb6` = `(128, 6)`, bare = unbounded - so
+// the two rungs' static tables compose cell for cell. Written out per symbol rather than
+// macro-generated: the gate tables and the Rust launchers key on these exact names.
+
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    7) void ab_gkr_uniskip_eval_lsb_pair_cached_w96_128_lb_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                                  const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_w96>(desc, plan, plane);
+}
+
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    6) void ab_gkr_uniskip_eval_lsb_pair_cached_w96_128_lb6_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                                   const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_w96>(desc, plan, plane);
+}
+
+EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_cached_w96_128_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                          const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_w96>(desc, plan, plane);
+}
+
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    7) void ab_gkr_uniskip_eval_lsb_pair_cached_a64_128_lb_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                                  const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_a64>(desc, plan, plane);
+}
+
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    6) void ab_gkr_uniskip_eval_lsb_pair_cached_a64_128_lb6_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                                   const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_a64>(desc, plan, plane);
+}
+
+EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_cached_a64_128_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                          const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_a64>(desc, plan, plane);
+}
+
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    7) void ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_w96_128_lb_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                                             const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_regroup_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_w96>(desc, plan, plane);
+}
+
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    6) void ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_w96_128_lb6_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                                              const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_regroup_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_w96>(desc, plan, plane);
+}
+
+EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_w96_128_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                     const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_regroup_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_w96>(desc, plan, plane);
+}
+
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    7) void ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_lb_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                                             const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_regroup_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_a64>(desc, plan, plane);
+}
+
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    6) void ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_lb6_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                                              const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_regroup_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_a64>(desc, plan, plane);
+}
+
+EXTERN __global__ void ab_gkr_uniskip_eval_lsb_pair_cached_reorder_cd_a64_128_kernel(const __grid_constant__ uniskip_pair_desc desc,
+                                                                                     const __grid_constant__ uniskip_cache_desc plan) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  uniskip_eval_pair_cached_regroup_lazy<UNISKIP_PAIR_WARPS_128, uniskip_acc_a64>(desc, plan, plane);
+}
+
 } // namespace airbender::gkr_uniskip_bench

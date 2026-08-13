@@ -566,6 +566,18 @@ fn cached_launch(kernel: LaneKernel) -> CachedLaunch {
         LaneKernel::ReorderBd128Lb => kernels::eval_lsb_pair_cached_reorder_bd_128_lb,
         LaneKernel::ReorderBd128Lb6 => kernels::eval_lsb_pair_cached_reorder_bd_128_lb6,
         LaneKernel::ReorderBd128 => kernels::eval_lsb_pair_cached_reorder_bd_128,
+        LaneKernel::CachedW96128Lb => kernels::eval_lsb_pair_cached_w96_128_lb,
+        LaneKernel::CachedW96128Lb6 => kernels::eval_lsb_pair_cached_w96_128_lb6,
+        LaneKernel::CachedW96128 => kernels::eval_lsb_pair_cached_w96_128,
+        LaneKernel::CachedA64128Lb => kernels::eval_lsb_pair_cached_a64_128_lb,
+        LaneKernel::CachedA64128Lb6 => kernels::eval_lsb_pair_cached_a64_128_lb6,
+        LaneKernel::CachedA64128 => kernels::eval_lsb_pair_cached_a64_128,
+        LaneKernel::ReorderCdW96128Lb => kernels::eval_lsb_pair_cached_reorder_cd_w96_128_lb,
+        LaneKernel::ReorderCdW96128Lb6 => kernels::eval_lsb_pair_cached_reorder_cd_w96_128_lb6,
+        LaneKernel::ReorderCdW96128 => kernels::eval_lsb_pair_cached_reorder_cd_w96_128,
+        LaneKernel::ReorderCdA64128Lb => kernels::eval_lsb_pair_cached_reorder_cd_a64_128_lb,
+        LaneKernel::ReorderCdA64128Lb6 => kernels::eval_lsb_pair_cached_reorder_cd_a64_128_lb6,
+        LaneKernel::ReorderCdA64128 => kernels::eval_lsb_pair_cached_reorder_cd_a64_128,
         LaneKernel::Pair
         | LaneKernel::Pair128
         | LaneKernel::Pair128Lb
