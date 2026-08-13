@@ -12,18 +12,20 @@ cells with a CPU oracle.
 
 ## Execution shape
 
-- One CUDA block owns one 8-row Boolean cube.
-- The block has 9 warps (288 threads), one warp for each `(x0, x1)` output
-  pair.
+- Each compact row owns one contiguous eight-element Boolean cube in LSB
+  layout, and one CUDA block covers 32 compact rows.
+- The VM block has 3 warps (96 threads). Three CTAs cover each compact-row
+  tile, and each warp owns one of the nine `(x0, x1)` output pairs.
 - Each warp evaluates the same segmented layer-0 VM program and accumulates
-  its 3 `x2` values independently. There is no K split and no block barrier in
-  the VM kernel.
-- Each thread's three long-lived E4 accumulators use private cells in a
-  cell-major 13,824-byte block-shared allocation. The kernel uses 56 registers
-  per thread and requests a 60% shared-memory carveout, which selects the 64
-  KiB partition and permits four resident blocks on the benchmark's RTX PRO
-  6000 Blackwell Server Edition. The percentage is a device-tuned hint, not a
-  portable partition guarantee.
+  its 3 `x2` values independently. For fixed `(x0, x1)`, the `bit2` endpoint
+  pair occupies adjacent trace elements. There is no K split and no block
+  barrier in the VM kernel.
+- Each thread keeps twelve 96-bit BF-phase accumulators in registers, reduces
+  them once at the checked BF/E4 boundary, and executes the seven E4 atoms in
+  canonical E4 registers. The selected kernel uses 79 registers per thread,
+  zero stack/local/shared memory, a zero shared-memory carveout, and
+  `__launch_bounds__(96, 8)` on the benchmark's RTX PRO 6000 Blackwell Server
+  Edition.
 - The two infinity-selector predicates are formed once with full-warp votes
   and carried by value through the inlined VM evaluator. This preserves the
   nine-selector block and its shared L1 working set while avoiding repeated
@@ -54,7 +56,7 @@ two-member add/sub pairs. Mixed products are encoded in canonical BF-then-E4
 source order. The decoder rejects programs outside these compiler-derived
 invariants instead of falling back to a generic group path.
 
-The complete control descriptor is passed by value as a 1,536-byte
+The complete control descriptor is passed by value as a 1,552-byte
 `__grid_constant__` kernel argument. Its 175 aligned program records, 6
 host-resolved window bases, and 7 immediates are inline; only the
 input/equality/output data remains pointer-backed. Each ordinary source
@@ -62,15 +64,26 @@ operand directly packs a 7-bit relative column and a 6-bit window into its
 existing `u16` instruction field. Because all sources share the trace domain,
 the kernel computes `log_trace` once and uses typed pointer arithmetic for
 `window_base + (column << log_trace)`. There is no source-ID table or device
-source-metadata indirection.
+source-metadata indirection. With the LSB-contiguous layout, direct BF and E4
+sources load adjacent Boolean pairs and full eight-corner cubes through aligned
+packed loads; the host debug path asserts the required 32-byte base alignment.
+The host validates that 65 BF atoms occupy records `[0, 164)` and that the
+seven E4 atoms occupy records `[164, 175)`. The retained VM uses
+`__launch_bounds__(96, 8)`, 79 registers per thread, and zero stack, local, or
+shared memory. Three CTAs per compact-row tile preserve the nine-selector
+mapping, and eight CTAs can reside per SM under the selected register envelope.
 
 The two virtual-setup windows are addressless and allocate no storage. The
 four terms that consume them use two explicit cold BF classes: procedural
 linear-A and direct-BF-by-procedural-B. Their source field stores one of the
-four procedural kinds, and a small CUDA source synthesizes the requested row
-before reusing the common triplet interpolation. Ordinary BF classes are
+four procedural kinds, and a small CUDA source synthesizes the requested trace
+point before reusing the common triplet interpolation. Ordinary BF classes are
 rejected if they name a virtual window, so the hot direct resolver contains no
 procedural discriminator. Real input families remain independent allocations.
+
+Procedural values consume the same LSB-composed physical trace index as direct
+sources, so their implementation is unchanged while their logical
+`(row, corner)` association follows the new layout.
 
 ## Build and run
 

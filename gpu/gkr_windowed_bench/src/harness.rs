@@ -9,13 +9,13 @@ use era_cudart_sys::CudaError;
 
 use crate::abi::{
     WindowAddrSlot, WindowBaseRecord, WindowInstruction, WindowVmDesc, BF, C_INIT_NONE, E4,
-    IMMEDIATE_CAPACITY, PROGRAM_CAPACITY, SLOT_CAPACITY, WINDOW_CELLS,
+    IMMEDIATE_CAPACITY, PROGRAM_CAPACITY, SLOT_CAPACITY, WARPS_PER_BLOCK, WINDOW_CELLS,
 };
 use crate::artifact::{
     decode_artifact, decode_program, FrozenArtifact, FrozenField, WindowAtom, WindowClass,
-    WindowTerm, ADD_SUB_LAYER0_BYTES,
+    ADD_SUB_LAYER0_BYTES,
 };
-use crate::geometry::{build_allocation_plan, AllocationPlan, GeometryError};
+use crate::geometry::{build_allocation_plan, vm_grid_blocks, AllocationPlan, GeometryError};
 use crate::kernels::{
     coefficient_bank_device_ptr, configure_window_vm_shared_carveout, eq_high_device_ptr,
     launch_finalize, launch_init_bf, launch_init_e4, launch_window_vm, COEFFICIENT_CAPACITY,
@@ -130,11 +130,74 @@ impl From<GeometryError> for BenchError {
     }
 }
 
+fn atom_is_e4(atom: &WindowAtom) -> bool {
+    match atom {
+        WindowAtom::GroupBf { .. } => false,
+        WindowAtom::GroupE4 { .. } => true,
+        WindowAtom::Term(term) => (term.class as u8) & 1 == 1,
+    }
+}
+
+fn atom_record_count(atom: &WindowAtom) -> u32 {
+    match atom {
+        WindowAtom::Term(_) => 1,
+        WindowAtom::GroupBf { members, .. } | WindowAtom::GroupE4 { members, .. } => {
+            1 + members.len() as u32
+        }
+    }
+}
+
+fn checked_bf_record_count_from_atoms(
+    atoms: &[WindowAtom],
+    record_count: u32,
+) -> Result<u32, BenchError> {
+    let mut boundary = 0u32;
+    let mut bf_atoms = 0usize;
+    let mut e4_atoms = 0usize;
+    let mut saw_e4 = false;
+    for atom in atoms {
+        if atom_is_e4(atom) {
+            saw_e4 = true;
+            e4_atoms += 1;
+        } else {
+            if saw_e4 {
+                return Err(BenchError("BF atom follows E4 phase".to_owned()));
+            }
+            bf_atoms += 1;
+            boundary = boundary
+                .checked_add(atom_record_count(atom))
+                .ok_or_else(|| BenchError("BF record boundary overflow".to_owned()))?;
+        }
+    }
+    if (bf_atoms, e4_atoms, boundary, record_count) != (65, 7, 164, 175) {
+        return Err(BenchError(format!(
+            "unexpected phase census: bf_atoms={bf_atoms} e4_atoms={e4_atoms} \
+             bf_records={boundary} records={record_count}"
+        )));
+    }
+    Ok(boundary)
+}
+
+fn checked_bf_record_count(artifact: &FrozenArtifact) -> Result<u32, BenchError> {
+    let (atoms, stats) = decode_program(artifact)
+        .map_err(|error| BenchError(format!("decode program for phase boundary: {error}")))?;
+    checked_bf_record_count_from_atoms(&atoms, stats.records)
+}
+
 fn window_base_records(slots: &[WindowAddrSlot]) -> Vec<WindowBaseRecord> {
     slots
         .iter()
         .map(|slot| WindowBaseRecord { base: slot.base })
         .collect()
+}
+
+fn assert_window_base_alignment_for_packed_loads(slots: &[WindowAddrSlot]) {
+    debug_assert!(
+        slots
+            .iter()
+            .all(|slot| slot.base.is_null() || (slot.base as usize) % 32 == 0),
+        "non-null window base must be 32-byte aligned"
+    );
 }
 
 enum OwnedBacking {
@@ -167,6 +230,7 @@ impl WindowedHarness {
     pub fn new(log_trace: u32) -> Result<Self, BenchError> {
         let artifact = decode_artifact(ADD_SUB_LAYER0_BYTES)
             .map_err(|error| BenchError(format!("decode frozen artifact: {error}")))?;
+        let bf_record_count = checked_bf_record_count(&artifact)?;
         if artifact.coefficient_count as usize > COEFFICIENT_CAPACITY {
             return Err(BenchError(format!(
                 "artifact needs {} coefficients, compiled capacity is {COEFFICIENT_CAPACITY}",
@@ -224,6 +288,7 @@ impl WindowedHarness {
                 reserved: [0; 5],
             })
             .collect::<Vec<_>>();
+        assert_window_base_alignment_for_packed_loads(&host_slots);
         let window_bases = window_base_records(&host_slots);
         let inline_window_bases =
             inline_table::<WindowBaseRecord, SLOT_CAPACITY>(&window_bases, "window base table")?;
@@ -274,6 +339,7 @@ impl WindowedHarness {
             c_init_coeff: artifact.c_init_coeff.unwrap_or(C_INIT_NONE),
             log_rows: plan.log_rows,
             eq_sizes: plan.eq_sizes,
+            bf_record_count,
         };
         stream
             .synchronize()
@@ -297,8 +363,12 @@ impl WindowedHarness {
     }
 
     pub fn launch_pair(&mut self) -> Result<(), BenchError> {
-        launch_window_vm(self.descriptor, self.plan.num_blocks, &self.stream)
-            .map_err(|error| BenchError::cuda("launch window VM", error))?;
+        launch_window_vm(
+            self.descriptor,
+            vm_grid_blocks(self.plan.num_blocks, WARPS_PER_BLOCK),
+            &self.stream,
+        )
+        .map_err(|error| BenchError::cuda("launch window VM", error))?;
         launch_finalize(
             self.partials.as_ptr(),
             self.final_output.as_mut_ptr(),
@@ -426,7 +496,7 @@ pub fn estimated_source_bytes(
         .ok_or_else(|| BenchError("source byte estimate overflow".to_owned()))
 }
 
-fn estimated_term_source_bytes(term: &WindowTerm) -> Option<u64> {
+fn estimated_term_source_bytes(term: &crate::artifact::WindowTerm) -> Option<u64> {
     match term.class {
         WindowClass::LinearBf => Some(4 * 2 * size_of::<BF>() as u64),
         WindowClass::LinearBfProceduralA => Some(0),
@@ -441,9 +511,57 @@ fn estimated_term_source_bytes(term: &WindowTerm) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
+    use crate::abi::SOURCE_NONE;
+    use crate::artifact::WindowTerm;
     use crate::geometry::{build_allocation_plan, tests::geometry_fixture};
 
     use super::*;
+
+    #[test]
+    fn checked_in_artifact_has_one_bf_prefix_ending_at_record_164() {
+        let artifact = decode_artifact(ADD_SUB_LAYER0_BYTES).unwrap();
+        assert_eq!(checked_bf_record_count(&artifact).unwrap(), 164);
+    }
+
+    #[test]
+    fn bf_prefix_rejects_a_bf_atom_after_e4() {
+        let bf = WindowAtom::Term(WindowTerm {
+            class: WindowClass::LinearBf,
+            coefficient: 2,
+            source_a: 0,
+            source_b: SOURCE_NONE,
+        });
+        let e4 = WindowAtom::Term(WindowTerm {
+            class: WindowClass::LinearE4,
+            coefficient: 2,
+            source_a: 0,
+            source_b: SOURCE_NONE,
+        });
+        let error = checked_bf_record_count_from_atoms(&[bf.clone(), e4, bf], 3).unwrap_err();
+        assert!(error.0.contains("BF atom follows E4 phase"));
+    }
+
+    #[test]
+    fn packed_window_alignment_accepts_aligned_and_null_slots() {
+        let slots = [
+            WindowAddrSlot::default(),
+            WindowAddrSlot {
+                base: 0x20usize as *const u8,
+                ..WindowAddrSlot::default()
+            },
+        ];
+        assert_window_base_alignment_for_packed_loads(&slots);
+    }
+
+    #[test]
+    #[should_panic(expected = "non-null window base must be 32-byte aligned")]
+    fn packed_window_alignment_rejects_misaligned_slot() {
+        let slots = [WindowAddrSlot {
+            base: 0x24usize as *const u8,
+            ..WindowAddrSlot::default()
+        }];
+        assert_window_base_alignment_for_packed_loads(&slots);
+    }
 
     #[test]
     fn allocation_report_accounts_for_dynamic_and_constant_storage() {
@@ -458,7 +576,7 @@ mod tests {
         assert_eq!(report.slot_bytes, 32);
         assert_eq!(report.immediate_bytes, 0);
         assert_eq!(report.eq_low_bytes, 512);
-        assert_eq!(report.launch_parameter_bytes, 1_536);
+        assert_eq!(report.launch_parameter_bytes, 1_552);
         assert_eq!(report.partial_bytes, 432);
         assert_eq!(report.final_bytes, 432);
         assert_eq!(report.constant_bytes, 9_472);

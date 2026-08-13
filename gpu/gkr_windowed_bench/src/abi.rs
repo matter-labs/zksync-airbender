@@ -4,7 +4,9 @@ use field::baby_bear::ext4::BabyBearExt4;
 pub type BF = BabyBearField;
 pub type E4 = BabyBearExt4;
 
-pub const WARPS_PER_BLOCK: u32 = 9;
+pub const WARPS_PER_BLOCK: u32 = 3;
+pub const WINDOW_SELECTORS: u32 = 9;
+pub const SELECTOR_BLOCKS_PER_ROW_TILE: u32 = WINDOW_SELECTORS / WARPS_PER_BLOCK;
 pub const THREADS_PER_BLOCK: u32 = 32 * WARPS_PER_BLOCK;
 pub const WINDOW_CELLS: u32 = 27;
 pub const SOURCE_NONE: u16 = u16::MAX;
@@ -91,6 +93,7 @@ pub struct WindowVmDesc {
     pub c_init_coeff: u32,
     pub log_rows: u32,
     pub eq_sizes: WindowEqSizes,
+    pub bf_record_count: u32,
 }
 
 const _: () = {
@@ -118,7 +121,7 @@ const _: () = {
     assert!(PROGRAM_CAPACITY == 175);
     assert!(SLOT_CAPACITY == 6);
     assert!(IMMEDIATE_CAPACITY == 7);
-    assert!(size_of::<WindowVmDesc>() == 1_536);
+    assert!(size_of::<WindowVmDesc>() == 1_552);
     assert!(size_of::<WindowVmDesc>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(align_of::<WindowVmDesc>() == 16);
     assert!(offset_of!(WindowVmDesc, program) == 0);
@@ -134,8 +137,13 @@ const _: () = {
     assert!(offset_of!(WindowVmDesc, c_init_coeff) == 1_516);
     assert!(offset_of!(WindowVmDesc, log_rows) == 1_520);
     assert!(offset_of!(WindowVmDesc, eq_sizes) == 1_524);
-    assert!(THREADS_PER_BLOCK == 288);
-    assert!(WINDOW_CELLS == 3 * WARPS_PER_BLOCK);
+    assert!(offset_of!(WindowVmDesc, bf_record_count) == 1_536);
+    assert!(WARPS_PER_BLOCK != 0);
+    assert!(WINDOW_SELECTORS == 9);
+    assert!(WINDOW_SELECTORS % WARPS_PER_BLOCK == 0);
+    assert!(SELECTOR_BLOCKS_PER_ROW_TILE * WARPS_PER_BLOCK == WINDOW_SELECTORS);
+    assert!(THREADS_PER_BLOCK == 32 * WARPS_PER_BLOCK);
+    assert!(WINDOW_CELLS == 3 * WINDOW_SELECTORS);
 };
 
 #[cfg(test)]
@@ -179,7 +187,7 @@ mod tests {
         assert_eq!(PROGRAM_CAPACITY, 175);
         assert_eq!(SLOT_CAPACITY, 6);
         assert_eq!(IMMEDIATE_CAPACITY, 7);
-        assert_eq!(size_of::<WindowVmDesc>(), 1_536);
+        assert_eq!(size_of::<WindowVmDesc>(), 1_552);
         assert!(size_of::<WindowVmDesc>() <= KERNEL_ARGUMENT_CEILING_BYTES);
         assert_eq!(align_of::<WindowVmDesc>(), 16);
         assert_eq!(offset_of!(WindowVmDesc, program), 0);
@@ -195,12 +203,14 @@ mod tests {
         assert_eq!(offset_of!(WindowVmDesc, c_init_coeff), 1_516);
         assert_eq!(offset_of!(WindowVmDesc, log_rows), 1_520);
         assert_eq!(offset_of!(WindowVmDesc, eq_sizes), 1_524);
+        assert_eq!(offset_of!(WindowVmDesc, bf_record_count), 1_536);
     }
 
     #[test]
-    fn launch_geometry_is_one_warp_per_output_triplet() {
-        assert_eq!(WARPS_PER_BLOCK, 9);
-        assert_eq!(THREADS_PER_BLOCK, 288);
+    fn launch_geometry_partitions_all_selector_triplets() {
+        assert_eq!(WINDOW_SELECTORS, 9);
+        assert_eq!(SELECTOR_BLOCKS_PER_ROW_TILE * WARPS_PER_BLOCK, 9);
+        assert_eq!(THREADS_PER_BLOCK, 32 * WARPS_PER_BLOCK);
         assert_eq!(WINDOW_CELLS, 27);
     }
 }
