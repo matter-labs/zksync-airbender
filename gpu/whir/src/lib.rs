@@ -1061,10 +1061,6 @@ pub(crate) mod tests {
         assert_coefficient_query_kernels_from_evaluation_backing_match_cpu(6, 32, 32, 1, true);
     }
 
-    fn bitreverse_low_bits_for_test(value: usize, bits: u32) -> usize {
-        value.reverse_bits() >> (usize::BITS - bits)
-    }
-
     fn assert_coefficient_leaf_hash_natural_staging_matches_materialized_reference(
         log_trace_len: u32,
         lde_factor: usize,
@@ -1157,7 +1153,7 @@ pub(crate) mod tests {
             let coset_in_tile = gid / packed_leaf_count;
             let leaf_in_coset = gid % packed_leaf_count;
             let natural_coset = coset_index_base as usize + coset_in_tile;
-            let bitrev_coset = bitreverse_low_bits_for_test(natural_coset, log_lde_factor);
+            let bitrev_coset = super::bitreverse_index(natural_coset, log_lde_factor);
             let reference_idx = bitrev_coset * packed_leaf_count + leaf_in_coset;
             assert_eq!(
                 actual, &reference_host[reference_idx],
