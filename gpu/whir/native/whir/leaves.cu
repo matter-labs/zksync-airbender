@@ -168,6 +168,106 @@ EXTERN __launch_bounds__(512, 2) __global__ void ab_gather_coefficient_leaves_an
                                               layers_count, partial_tree);
 }
 
+template <unsigned BLOCK_INDEX, unsigned VALUE_IN_BLOCK = 0>
+DEVICE_FORCEINLINE void write_whir_leaf_two_limb_hash_block(const bf (&values)[2][32], u32 (&hash_block_smem)[16][32]) {
+  constexpr unsigned output_slot = 4 * BLOCK_INDEX + VALUE_IN_BLOCK;
+  constexpr unsigned transform_slot = bitreverse_low_bits_constant(output_slot, 5);
+  const unsigned word = 4 * VALUE_IN_BLOCK + 2 * threadIdx.y;
+  hash_block_smem[word][threadIdx.x] = bf::into_raw_u32(values[0][transform_slot]);
+  hash_block_smem[word + 1][threadIdx.x] = bf::into_raw_u32(values[1][transform_slot]);
+  if constexpr (VALUE_IN_BLOCK + 1 < 4)
+    write_whir_leaf_two_limb_hash_block<BLOCK_INDEX, VALUE_IN_BLOCK + 1>(values, hash_block_smem);
+}
+
+template <unsigned WORD = 0> DEVICE_FORCEINLINE void load_whir_leaf_hash_block(const u32 (&hash_block_smem)[16][32], u32 (&block)[16]) {
+  block[WORD] = hash_block_smem[WORD][threadIdx.x];
+  if constexpr (WORD + 1 < 16)
+    load_whir_leaf_hash_block<WORD + 1>(hash_block_smem, block);
+}
+
+DEVICE_FORCEINLINE void write_whir_leaf_two_limb_hash_block(const unsigned block_idx, const bf (&values)[2][32], u32 (&hash_block_smem)[16][32]) {
+  switch (block_idx) {
+  case 0:
+    write_whir_leaf_two_limb_hash_block<0>(values, hash_block_smem);
+    break;
+  case 1:
+    write_whir_leaf_two_limb_hash_block<1>(values, hash_block_smem);
+    break;
+  case 2:
+    write_whir_leaf_two_limb_hash_block<2>(values, hash_block_smem);
+    break;
+  case 3:
+    write_whir_leaf_two_limb_hash_block<3>(values, hash_block_smem);
+    break;
+  case 4:
+    write_whir_leaf_two_limb_hash_block<4>(values, hash_block_smem);
+    break;
+  case 5:
+    write_whir_leaf_two_limb_hash_block<5>(values, hash_block_smem);
+    break;
+  case 6:
+    write_whir_leaf_two_limb_hash_block<6>(values, hash_block_smem);
+    break;
+  case 7:
+    write_whir_leaf_two_limb_hash_block<7>(values, hash_block_smem);
+    break;
+  }
+}
+
+DEVICE_FORCEINLINE void transform_and_hash_whir_leaf_register_v32_two_limb(vectorized_e4_matrix_getter<ld_modifier::cs> ntt_output,
+                                                                           const ::airbender::ntt::whir_leaf_transform_params transform_params,
+                                                                           const unsigned log_trace_len, const unsigned log_lde_factor,
+                                                                           const unsigned natural_coset, const unsigned leaf_in_coset,
+                                                                           u32 (&hash_block_smem)[16][32], ::airbender::hash::digest &state) {
+  auto src0 = ntt_output.internal;
+  src0.add_col(2 * threadIdx.y);
+  auto src1 = src0;
+  src1.add_col(1);
+  bf values[2][32];
+  const ::airbender::ntt::params_inverse_power_source inverse_power_source{transform_params};
+  ::airbender::ntt::transform_whir_leaf_two_limbs_from_ntt_registers<5>(src0, src1, log_trace_len, log_lde_factor, natural_coset, leaf_in_coset, values,
+                                                                        transform_params.two_inv_power, inverse_power_source);
+
+  if (threadIdx.y == 0)
+    ::airbender::hash::initialize(state.words);
+  u32 t = 0;
+#pragma unroll 1
+  for (unsigned block_idx = 0; block_idx < 8; block_idx++) {
+    write_whir_leaf_two_limb_hash_block(block_idx, values, hash_block_smem);
+    __syncthreads();
+    if (threadIdx.y == 0) {
+      u32 block[16];
+      load_whir_leaf_hash_block(hash_block_smem, block);
+      if (block_idx + 1 == 8)
+        ::airbender::hash::compress<true>(state.words, t, block, 16);
+      else
+        ::airbender::hash::compress<false>(state.words, t, block, 16);
+    }
+    __syncthreads();
+  }
+}
+
+EXTERN __launch_bounds__(64) __global__ void ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_register_v32_kernel(
+    vectorized_e4_matrix_getter<ld_modifier::cs> ntt_output, u32 *staging, const ::airbender::ntt::whir_leaf_transform_params transform_params,
+    const unsigned log_trace_len, const unsigned log_lde_factor, const unsigned coset_index_base, const unsigned leaves_count) {
+  __shared__ u32 hash_block_smem[16][32];
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  const bool enabled = gid < leaves_count;
+  const unsigned safe_gid = enabled ? gid : leaves_count - 1;
+  const unsigned log_packed_leaf_count = log_trace_len - 5;
+  const unsigned packed_leaf_count = 1u << log_packed_leaf_count;
+  const unsigned coset_in_tile = safe_gid >> log_packed_leaf_count;
+  const unsigned leaf_in_coset = safe_gid & (packed_leaf_count - 1u);
+  const unsigned natural_coset = coset_index_base + coset_in_tile;
+  ntt_output.add_col(coset_in_tile);
+  ntt_output.add_row(leaf_in_coset);
+  ::airbender::hash::digest state;
+  transform_and_hash_whir_leaf_register_v32_two_limb(ntt_output, transform_params, log_trace_len, log_lde_factor, natural_coset, leaf_in_coset, hash_block_smem,
+                                                     state);
+  if (enabled && threadIdx.y == 0)
+    store_cs(reinterpret_cast<::airbender::hash::digest *>(staging) + gid, state);
+}
+
 // Source columns are tile-local; twiddles and tree placement use global cosets.
 EXTERN __launch_bounds__(512, 2) __global__
     void ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_kernel(vectorized_e4_matrix_getter<ld_modifier::cs> ntt_output, u32 *results,

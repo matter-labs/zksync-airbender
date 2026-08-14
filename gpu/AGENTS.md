@@ -134,7 +134,7 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   for its own blake2s-dependent protocol kernels. See [`gkr/AGENTS.md`](gkr/AGENTS.md).
 - **`gpu_whir`** = WHIR folds (`fold/`) + PoW/query scheduling (`pow.rs`) +
   the recursive WHIR extension oracle and its side-stream LDE/Merkle commit
-  scheduler, with its own `gpu_whir_native` (24 kernels, no `__constant__`
+  scheduler, with its own `gpu_whir_native` (25 kernels, no `__constant__`
   symbols), namespace `airbender::whir`. Reads
   `gpu_gkr`'s exported headers (`accumulate_eq.cu`) and `gpu_hash`'s
   `hash.cuh` plus gpu_ntt's exported `whir_leaf_transform.cuh` (`leaves.cu`).

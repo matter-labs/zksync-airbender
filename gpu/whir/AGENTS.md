@@ -58,7 +58,7 @@ rather than letting the duplicate drift by convention.
 - **Archive / `links` key**: `gpu_whir_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_whir_native", "GPU_WHIR").build()`
   — no `export_include`; nothing above this crate includes its headers).
-- **Kernel count**: 24 `__global__` kernels (verified by grep, across
+- **Kernel count**: 25 `__global__` kernels (verified by grep, across
   `whir/{accumulate_eq,columns,fold,leaves}.cu`). No `__constant__` symbols
   (all 8 cluster-wide ones live in `gpu_gkr`).
 - **Namespace**: `airbender::whir`.
