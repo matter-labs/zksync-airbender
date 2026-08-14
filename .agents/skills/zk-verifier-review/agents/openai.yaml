@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZK Verifier Review"
+  short_description: "Audit full ZK verifier-system soundness"
+  default_prompt: "Use $zk-verifier-review to defensively audit this full verifier system across transcripts, proof inputs, protocol rounds, PCS, aggregation, recursion, parity, and soundness parameters."
