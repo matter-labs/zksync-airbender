@@ -38,6 +38,15 @@ using u64 = uint64_t;
 using i32 = int32_t;
 using i64 = int64_t;
 
+constexpr unsigned bitreverse_low_bits_constant(unsigned value, const unsigned num_bits) {
+  unsigned result = 0;
+  for (unsigned i = 0; i < num_bits; i++) {
+    result = (result << 1) | (value & 1);
+    value >>= 1;
+  }
+  return result;
+}
+
 // Bit-reverse of the low `num_bits` bits of `value` (the high `32 - num_bits`
 // bits are dropped). Single source of truth for the NTT/hash/WHIR bit-reversal
 // helpers. Guarded: `num_bits == 0` returns 0, avoiding the undefined `>> 32`

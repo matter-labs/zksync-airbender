@@ -168,15 +168,6 @@ EXTERN __launch_bounds__(512, 2) __global__ void ab_gather_coefficient_leaves_an
                                               layers_count, partial_tree);
 }
 
-constexpr unsigned bitreverse_low_bits_constant(unsigned value, const unsigned bits) {
-  unsigned result = 0;
-  for (unsigned i = 0; i < bits; i++) {
-    result = (result << 1) | (value & 1);
-    value >>= 1;
-  }
-  return result;
-}
-
 template <unsigned BLOCK_INDEX, unsigned VALUE_IN_BLOCK = 0>
 DEVICE_FORCEINLINE void write_whir_leaf_two_limb_hash_block(const bf (&values)[2][32], u32 (&hash_block_smem)[16][32]) {
   constexpr unsigned output_slot = 4 * BLOCK_INDEX + VALUE_IN_BLOCK;
