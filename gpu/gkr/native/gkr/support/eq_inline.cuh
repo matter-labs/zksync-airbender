@@ -25,6 +25,12 @@ template <typename E> DEVICE_FORCEINLINE E gkr_compute_eq_inline(const E *__rest
   return acc;
 }
 
+template <typename E> struct gkr_eq_inline_reader {
+  const E *eq_low;
+  gkr_eq_sizes sizes;
+  DEVICE_FORCEINLINE E operator()(const unsigned row) const { return gkr_compute_eq_inline(eq_low, sizes, row); }
+};
+
 // `gkr_compute_eq_inline` variant that reads high slabs from caller-supplied
 // global pointers rather than the single `ab_gkr_eq_high` constant. Used by
 // WHIR's batched accumulator where every query needs its own factored-eq state.
