@@ -170,25 +170,30 @@ static_assert(__builtin_offsetof(gkr_dim_reducing_continuation_batch_compact<e4>
               "continuation descriptor offsets drift");
 static_assert(sizeof(gkr_dim_reducing_continuation_batch_compact<e4>) + 2 * sizeof(u32) <= 32764, "continuation kernel parameters exceed CUDA limit");
 
-// Tower batches: one per slot (no cross-slot batching). Each tower kernel consumes a single slot's
-// contiguous input row range (B = GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK elements per block) and
-// drives it down `round_count` halving levels through shared memory, writing each intermediate
-// level to DRAM for the backward pass.
-template <typename E> struct gkr_dim_reducing_forward_tower_pairwise_batch {
-  const E *input;
-  E *round_outputs[GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS];
-  u32 input_len;
-  u32 round_count;
+// Merged tower batch (blockIdx.y selects the pair). A pair's two streams are either two
+// independent product towers (PAIRWISE2) or one lookup tower's num/den (LOOKUP).
+static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_PAIR_CAP = 5;
+static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_PAIRWISE2 = 0;
+static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_LOOKUP = 1;
+
+template <typename E> struct gkr_dim_reducing_forward_tower_pair {
+  const E *input[2];
+  E *round_outputs[GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS][2];
+  u32 kind;
+  u32 reserved;
 };
 
-template <typename E> struct gkr_dim_reducing_forward_tower_lookup_batch {
-  const E *input_num;
-  const E *input_den;
-  E *round_outputs_num[GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS];
-  E *round_outputs_den[GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS];
+template <typename E> struct gkr_dim_reducing_forward_tower_batch {
+  gkr_dim_reducing_forward_tower_pair<E> pairs[GKR_DIM_REDUCING_FORWARD_TOWER_PAIR_CAP];
+  u32 pair_count;
   u32 input_len;
   u32 round_count;
+  u32 reserved;
 };
+
+static_assert(sizeof(gkr_dim_reducing_forward_tower_pair<e4>) == 152, "tower pair ABI size drift");
+static_assert(sizeof(gkr_dim_reducing_forward_tower_batch<e4>) == 776, "tower batch ABI size drift");
+static_assert(alignof(gkr_dim_reducing_forward_tower_batch<e4>) == 8, "tower batch ABI alignment drift");
 
 struct gkr_forward_setup_generic_lookup_descriptor {
   const bf *input;

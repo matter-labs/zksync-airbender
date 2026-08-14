@@ -97,19 +97,23 @@ template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_pair(const E a, co
   den = E::mul(b, d);
 }
 
-// Pairwise-product tower: each block consumes B = blockDim.x contiguous input rows (or fewer, in
-// the single-block tail) and fuses up to log2(B) halving rounds in shared memory. Every round's
-// output is also written to DRAM for backward consumption.
-template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower_pairwise(const gkr_dim_reducing_forward_tower_pairwise_batch<E> &batch) {
-  extern __shared__ E smem_pairwise[];
+// Each block consumes B = blockDim.x contiguous input rows of pair blockIdx.y and fuses up to
+// log2(B) halving rounds in shared memory. Every round's output is also written to DRAM for
+// backward consumption.
+template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower(const gkr_dim_reducing_forward_tower_batch<E> &batch) {
+  extern __shared__ E smem_tower[];
+  E *smem_a = smem_tower;
+  E *smem_b = smem_tower + blockDim.x;
 
+  const gkr_dim_reducing_forward_tower_pair<E> &pair = batch.pairs[blockIdx.y];
   const unsigned tid = threadIdx.x;
   const unsigned bid = blockIdx.x;
   const unsigned base = bid * blockDim.x;
 
-  // Round-0 load from DRAM to shmem. Threads outside the valid tail range idle.
-  if (base + tid < batch.input_len)
-    smem_pairwise[tid] = load<E, ld_modifier::cs>(batch.input, base + tid);
+  if (base + tid < batch.input_len) {
+    smem_a[tid] = load<E, ld_modifier::cs>(pair.input[0], base + tid);
+    smem_b[tid] = load<E, ld_modifier::cs>(pair.input[1], base + tid);
+  }
   __syncthreads();
 
   // For body launches, cur_len == blockDim.x == B. For the single-block tail where
@@ -117,59 +121,25 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower_pai
   unsigned cur_len = blockDim.x < batch.input_len ? blockDim.x : batch.input_len;
   for (unsigned r = 0; r < batch.round_count; ++r) {
     cur_len >>= 1;
-    E out;
+    E out_a;
+    E out_b;
     const bool active = tid < cur_len;
     if (active) {
-      const E lhs = smem_pairwise[2 * tid];
-      const E rhs = smem_pairwise[2 * tid + 1];
-      gkr_eval_product(lhs, rhs, out);
-      // Coalesced DRAM write — block b's slice of this level is [b*cur_len, (b+1)*cur_len).
-      store<E, st_modifier::cs>(batch.round_outputs[r], out, bid * cur_len + tid);
+      if (pair.kind == GKR_DIM_REDUCING_FORWARD_TOWER_PAIRWISE2) {
+        gkr_eval_product(smem_a[2 * tid], smem_a[2 * tid + 1], out_a);
+        gkr_eval_product(smem_b[2 * tid], smem_b[2 * tid + 1], out_b);
+      } else {
+        gkr_eval_lookup_pair(smem_a[2 * tid], smem_b[2 * tid], smem_a[2 * tid + 1], smem_b[2 * tid + 1], out_a, out_b);
+      }
+      store<E, st_modifier::cs>(pair.round_outputs[r][0], out_a, bid * cur_len + tid);
+      store<E, st_modifier::cs>(pair.round_outputs[r][1], out_b, bid * cur_len + tid);
     }
     __syncthreads(); // Read phase complete; safe to overwrite shmem.
-    if (active)
-      smem_pairwise[tid] = out;
+    if (active) {
+      smem_a[tid] = out_a;
+      smem_b[tid] = out_b;
+    }
     __syncthreads(); // Next round may read a wider slice; ensure all writes visible.
-  }
-}
-
-// Lookup-pair tower: same shape as pairwise but with num/den shmem buffers side by side.
-template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower_lookup(const gkr_dim_reducing_forward_tower_lookup_batch<E> &batch) {
-  extern __shared__ E smem_lookup[];
-  E *smem_num = smem_lookup;
-  E *smem_den = smem_lookup + blockDim.x;
-
-  const unsigned tid = threadIdx.x;
-  const unsigned bid = blockIdx.x;
-  const unsigned base = bid * blockDim.x;
-
-  if (base + tid < batch.input_len) {
-    smem_num[tid] = load<E, ld_modifier::cs>(batch.input_num, base + tid);
-    smem_den[tid] = load<E, ld_modifier::cs>(batch.input_den, base + tid);
-  }
-  __syncthreads();
-
-  unsigned cur_len = blockDim.x < batch.input_len ? blockDim.x : batch.input_len;
-  for (unsigned r = 0; r < batch.round_count; ++r) {
-    cur_len >>= 1;
-    E out_num;
-    E out_den;
-    const bool active = tid < cur_len;
-    if (active) {
-      const E a = smem_num[2 * tid];
-      const E b = smem_den[2 * tid];
-      const E c = smem_num[2 * tid + 1];
-      const E d = smem_den[2 * tid + 1];
-      gkr_eval_lookup_pair(a, b, c, d, out_num, out_den);
-      store<E, st_modifier::cs>(batch.round_outputs_num[r], out_num, bid * cur_len + tid);
-      store<E, st_modifier::cs>(batch.round_outputs_den[r], out_den, bid * cur_len + tid);
-    }
-    __syncthreads();
-    if (active) {
-      smem_num[tid] = out_num;
-      smem_den[tid] = out_den;
-    }
-    __syncthreads();
   }
 }
 

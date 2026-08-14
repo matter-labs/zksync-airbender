@@ -120,9 +120,7 @@ fn dimension_reducing_forward_tower_matches_reference() {
         &context,
     )
     .unwrap();
-    let mut tracing_ranges = Vec::new();
-    schedule_prepared_dimension_reduction_forward(&prepared, 0, &mut tracing_ranges, &context)
-        .unwrap();
+    schedule_prepared_dimension_reduction_forward(&prepared, 0, &context).unwrap();
 
     let stream = context.get_exec_stream();
     for (round_idx, outputs) in prepared.per_round_slot_outputs.iter().enumerate().skip(7) {
@@ -146,8 +144,7 @@ fn dimension_reducing_forward_tower_matches_reference() {
             }
         }
     }
-    schedule_prepared_dimension_reduction_forward(&prepared, 7, &mut tracing_ranges, &context)
-        .unwrap();
+    schedule_prepared_dimension_reduction_forward(&prepared, 7, &context).unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let final_layer_idx = prepared.final_layer_idx;
     let dim_reducing_inputs = prepared.dimension_reduction_description;
