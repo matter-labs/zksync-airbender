@@ -87,17 +87,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     }
     #[inline(always)]
     fn get_f0_and_f1(&self, index: usize) -> [ExtensionFieldRepresentation<F, E>; 2] {
-        // just read and do NOT cache f1 - f0
+        // LSB binding: adjacent pairs; do NOT cache f1 - f0
         assert!(
             index < self.next_layer_size,
             "tried to access index {} for poly of size {}",
             index,
             self.next_layer_size * 2
         );
-        [
-            self.get_at_index(index),
-            self.get_at_index(self.next_layer_size + index),
-        ]
+        [self.get_at_index(2 * index), self.get_at_index(2 * index + 1)]
     }
 }
 
@@ -130,28 +127,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 
     #[track_caller]
     pub fn pointer_for_sumcheck_continuation(&mut self, step: usize) -> (*mut E, *mut E) {
-        unsafe {
-            assert!(step >= 2);
-            let mut input_offset = self.continuous_buffer.as_mut_ptr();
-            let mut input_size = self.size_after_one_fold;
-            let mut next_step_offset = input_offset.add(input_size);
-            debug_assert!(input_offset >= self.continuous_buffer.as_mut_ptr_range().start);
-            debug_assert!(input_offset < self.continuous_buffer.as_mut_ptr_range().end);
-            debug_assert!(next_step_offset > self.continuous_buffer.as_mut_ptr_range().start);
-            debug_assert!(next_step_offset < self.continuous_buffer.as_mut_ptr_range().end);
-            for _ in 2..step {
-                input_offset = next_step_offset;
-                input_size /= 2;
-                debug_assert!(input_size > 0);
-                next_step_offset = next_step_offset.add(input_size);
-                debug_assert!(input_offset >= self.continuous_buffer.as_mut_ptr_range().start);
-                debug_assert!(input_offset < self.continuous_buffer.as_mut_ptr_range().end);
-                debug_assert!(next_step_offset > self.continuous_buffer.as_mut_ptr_range().start);
-                debug_assert!(next_step_offset < self.continuous_buffer.as_mut_ptr_range().end);
-            }
-
-            (input_offset.cast(), next_step_offset.cast())
-        }
+        // LSB folds run in place at the buffer FRONT: each round reads the
+        // previous layer's adjacent pairs (2i, 2i+1) and writes the halved
+        // layer at i, so every read stays ahead of every write (also across
+        // ascending parallel chunks) and one front region serves all rounds
+        assert!(step >= 2);
+        let start = self.continuous_buffer.as_mut_ptr().cast::<E>();
+        (start, start)
     }
 }
 
@@ -219,11 +201,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             if self.first_access {
                 // recompute corresponding input from the previous layer
 
-                let f00 = self.previous_layer_start.add(index).read();
-                let f01 = self
-                    .previous_layer_start
-                    .add(self.this_layer_size + index)
-                    .read();
+                // LSB binding: adjacent pair of the previous layer
+                let f00 = self.previous_layer_start.add(2 * index).read();
+                let f01 = self.previous_layer_start.add(2 * index + 1).read();
 
                 let f0_c0 = f00;
                 let mut f0_c1 = f01;
@@ -259,9 +239,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             self.next_layer_size * 2
         );
 
-        [
-            self.get_at_index(index),
-            self.get_at_index(self.next_layer_size + index),
-        ]
+        [self.get_at_index(2 * index), self.get_at_index(2 * index + 1)]
     }
 }

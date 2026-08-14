@@ -3,10 +3,6 @@ use std::collections::BTreeSet;
 use super::*;
 use crate::gkr::prover::sumcheck_loop::batch_evaluation::BatchedGKRDescription;
 
-pub mod extension_only_round;
-pub mod initial_round;
-pub(crate) mod merged_transition;
-pub mod transition_round;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EvaluationStep {

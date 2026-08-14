@@ -10,7 +10,7 @@
 //! and each input poly folds 8 -> 1 with the Lagrange weights L_j(r) on H
 //! (node w8^j corresponds to boolean corner j of the standard eq-table
 //! order). Mirrors the monomial-form verifier validated in
-//! `windowed_mode::bench` (coeff fold + DFT + Horner + product-form fold
+//! `windowed_mode::program` consumers (coeff fold + DFT + Horner + product-form fold
 //! weights agree with the barycentric reference on every pass).
 //!
 //! `omega16` is the size-16 domain generator of F, passed in by the caller

@@ -12,25 +12,20 @@ pub fn evaluate_virtual_inits_and_teardowns_base_address_setup_polys<
 ) -> (E, E) {
     assert_eq!(evaluation_point.len(), trace_len_log2 as usize);
     assert!(WORD_BITS <= 3);
-    // for poly P(x_1, x_2, ..., xN) x1 represents MSB in enumeration of hypercube values in our system
+    // the evaluation point is in VARIABLE order (LSB binding): coordinate b
+    // is index bit b.
 
     // for inits and teardowns base addresses we want one poly that is just wraps around 2^16,
     // and has values that are 0 mod 2^WORD_BITS, and another poly that has the same value
     // for every 2^(16 - WORD_BITS) values, and then increments by 1
 
-    // poly that cycles is easy - 2^WORD_BITS * (x_N + 2 * x_{N - 1} + 4 * x_{N - 2} + ... + 2^K * x_{N-K}),
-    // it just has no dependency on the coordinates that encode higher bits
-
-    // poyl that increments it also easy - it should just have no dependency on lower bits
-    // (x_(N - (16 - WORD_BITS)) + 2 * x_{N - 1 - (16 - WORD_BITS)} + ...)
+    // the cycling poly is 2^WORD_BITS * (x_0 + 2*x_1 + 4*x_2 + ...) over the
+    // LOW coordinates; the incrementing poly is the same weighted sum over
+    // the coordinates above them
 
     let mut low_eval = E::ZERO;
     let mut prefactor = F::from_u32_unchecked(1 << WORD_BITS);
-    for el in evaluation_point
-        .iter()
-        .rev()
-        .take((16 - WORD_BITS) as usize)
-    {
+    for el in evaluation_point.iter().take((16 - WORD_BITS) as usize) {
         let mut t = *el;
         t.mul_assign_by_base(&prefactor);
         low_eval.add_assign(&t);
@@ -39,11 +34,7 @@ pub fn evaluate_virtual_inits_and_teardowns_base_address_setup_polys<
 
     let mut high_eval = E::ZERO;
     let mut prefactor = F::ONE;
-    for el in evaluation_point
-        .iter()
-        .rev()
-        .skip((16 - WORD_BITS) as usize)
-    {
+    for el in evaluation_point.iter().skip((16 - WORD_BITS) as usize) {
         let mut t = *el;
         t.mul_assign_by_base(&prefactor);
         high_eval.add_assign(&t);
@@ -109,7 +100,7 @@ mod test {
             let eval_point: Vec<E> = (0..domain_size_log2)
                 .map(|_| E::random_element(&mut rng))
                 .collect();
-            let mut eq_polys = make_eq_poly_in_full::<E>(&eval_point[..], &worker);
+            let mut eq_polys = make_eq_poly_in_full_lsb::<E>(&eval_point[..], &worker);
             let eq_poly = eq_polys.pop().unwrap();
             let (naive_low, naive_high) =
                 materialize_virtual_inits_and_teardowns_base_address_setup_poly::<F, Global, 2>(

@@ -292,7 +292,7 @@ fn test_mask_into_identity_product() {
 
     let prev_challenges: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
     let folding_challenges_precomputed: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
-    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges, &worker);
+    let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&prev_challenges, &worker);
     let eq_last = eq_precomputed.last().unwrap();
 
     let claim = evaluate_with_precomputed_eq_ext::<E>(&output, eq_last);
@@ -300,7 +300,7 @@ fn test_mask_into_identity_product() {
     let batch_challenges =
         vec![E::from_base(F::ONE); BatchedGKRKernel::<F, E>::num_challenges(&kernel)];
     let mut folding_challenges = vec![];
-    let eq_reduced = make_eq_poly_reduced::<E>(&prev_challenges, &worker);
+    let eq_reduced = make_eq_poly_reduced_lsb::<E>(&prev_challenges, &worker);
     let mut last_evaluations = BTreeMap::new();
     let mut eq_prefactor = E::ONE;
     let mut current_claim = claim;
@@ -367,7 +367,7 @@ fn test_mask_into_identity_product() {
             assert_eq!(current_claim, recomputed, "Final claim verification failed");
 
             // Verify final evaluations
-            let eq_for_evals = make_eq_poly_in_full::<E>(
+            let eq_for_evals = make_eq_poly_in_full_lsb::<E>(
                 &[&folding_challenges[..], &[folding_challenge]].concat(),
                 &worker,
             );

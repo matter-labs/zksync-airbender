@@ -9,7 +9,8 @@ use crate::gkr::{
         access_and_fold::GKRStorage,
         eq_poly::{
             evaluate_constant_and_quadratic_coeffs_with_precomputed_eq,
-            evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext, make_eq_poly_in_full,
+            evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext,
+            make_eq_poly_in_full_lsb,
         },
         evaluate_eq_poly, evaluate_small_univariate_poly,
         output_univariate_monomial_form_max_quadratic,
@@ -29,183 +30,7 @@ mod distribution_analysis;
 mod kernel_collector;
 pub(crate) mod windowed_mode;
 
-/// # Panics
-/// Panics if claims or challenge points for the output layer are missing from storage.
-pub fn evaluate_dimension_reducing_sumcheck_for_layer<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
-    TR: Transcript<F, E>,
->(
-    layer_idx: usize,
-    layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
-    claim_points: &mut BTreeMap<usize, Vec<E>>,
-    claims_storage: &mut BTreeMap<usize, BTreeMap<GKRAddress, E>>,
-    gkr_storage: &mut GKRStorage<F, E>,
-    batching_challenge: &mut E,
-    seed: &mut TR::Seed,
-    trace_len_after_reduction: usize,
-    worker: &Worker,
-) -> SumcheckIntermediateProofValues<F, E>
-where
-    [(); E::DEGREE]: Sized,
-{
-    println!("Evaluating layer {layer_idx} (dimension reducing) in sumcheck direction");
-    let layer_timer = std::time::Instant::now();
-    println!("Trace length of reduced poly is {trace_len_after_reduction}");
-    let output_layer_idx = layer_idx + 1;
-
-    let output_claims = claims_storage
-        .get(&output_layer_idx)
-        .expect("claims for output layer must exist");
-    let prev_challenges = claim_points
-        .get(&output_layer_idx)
-        .expect("claim points for output layer must exist");
-
-    assert!(trace_len_after_reduction.is_power_of_two());
-    let folding_steps = trace_len_after_reduction.trailing_zeros() as usize;
-    assert!(folding_steps >= 2, "need at least 2 folding steps");
-
-    // Precompute eq polynomial evaluations over the boolean hypercube
-    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, &worker);
-
-    let batch_challenge_base = *batching_challenge;
-
-    let collector =
-        KernelCollector::from_dimension_reducing_relations(layer, layer_idx, batch_challenge_base);
-    debug_assert!(!collector.is_empty());
-
-    let claim = collector.compute_combined_claim(output_claims);
-
-
-    let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
-        run_sumcheck_loop::<F, E, TR, 4, false>(
-            &collector,
-            claim,
-            prev_challenges,
-            &eq_polys,
-            gkr_storage,
-            &BatchedGKRTermDescriptionConstants::<F, E>::default(),
-            folding_steps,
-            worker,
-            seed,
-            crate::gkr::prover_config::SameSizeSchedules::naive(),
-        );
-
-    assert_eq!(folding_challenges.len(), folding_steps);
-    assert_eq!(internal_round_coefficients.len(), folding_steps);
-
-    // The last folding challenge drawn inside the loop is the challenge for the last *output*
-    // coordinate (`r_before_last`). It fixes that coordinate of the `[E;4]` bilinear
-    // `last_evaluations` (over (last output coord) x (pairwise/LSB coord)), reducing it to a
-    // `[E;2]` line in the remaining LSB coordinate. That line is what we send in the proof and
-    // commit to the transcript; we then draw the LSB challenge `r_last` to fix it and obtain
-    // the next-layer at-point claims.
-    assert_eq!(
-        trace_len_after_reduction.trailing_zeros() as usize,
-        folding_challenges.len()
-    );
-    let r_before_last = *folding_challenges
-        .last()
-        .expect("at least one folding round");
-
-    // `[E;4]` layout: [v0, v1, v2, v3] split as (x_last=0: v0,v1 | x_last=1: v2,v3), so the
-    // LSB=0 component is (v0 @ x_last=0, v2 @ x_last=1) and LSB=1 is (v1, v3). Interpolating
-    // over x_last at `r_before_last` yields the `[E;2]` LSB line [lsb0, lsb1].
-    let lsb_lines: BTreeMap<GKRAddress, [E; 2]> = last_evaluations
-        .iter()
-        .map(|(addr, evals)| {
-            let lsb0 = interpolate_linear::<E>(evals[0], evals[2], &r_before_last);
-            let lsb1 = interpolate_linear::<E>(evals[1], evals[3], &r_before_last);
-            (*addr, [lsb0, lsb1])
-        })
-        .collect();
-
-    #[cfg(feature = "gkr_self_checks")]
-    {
-        // We use old evaluation function, but format the data to match the expectations
-        let augmented_claims: BTreeMap<_, [E; 4]> = lsb_lines
-            .iter()
-            .map(|(addr, v)| (*addr, [v[0], v[1], E::ZERO, E::ZERO]))
-            .collect();
-        let recomputed = collector.compute_last_step_accumulator_from_evals(
-            &BatchedGKRTermDescriptionConstants::<F, E>::default(),
-            &augmented_claims,
-        );
-        assert_eq!(
-            recomputed[0], final_claim,
-            "final_claim inconsistent with recomputed gate kernels"
-        );
-    }
-
-    // Send the LSB lines in the proof and commit them before drawing the LSB challenge.
-    let final_step_evaluations: BTreeMap<GKRAddress, Vec<E>> =
-        lsb_lines.iter().map(|(k, v)| (*k, v.to_vec())).collect();
-
-    let transcript_inputs: Vec<E> = lsb_lines.values().flatten().copied().collect();
-    commit_field_els::<F, E, TR>(seed, &transcript_inputs);
-
-    let challenges = draw_random_field_els::<F, E, TR>(seed, 2);
-    let [r_last, next_batching_challenge] = challenges.try_into().unwrap();
-    folding_challenges.push(r_last);
-
-    assert_eq!(
-        trace_len_after_reduction.trailing_zeros() as usize,
-        folding_challenges.len() - 1
-    );
-
-    // After sumcheck completes, extract claims for the input layer by fixing the LSB
-    // coordinate at `r_last`.
-    let new_claims: BTreeMap<_, _> = lsb_lines
-        .iter()
-        .map(|(addr, [lsb0, lsb1])| (*addr, interpolate_linear::<E>(*lsb0, *lsb1, &r_last)))
-        .collect();
-
-    #[cfg(feature = "gkr_self_checks")]
-    {
-        println!("Self-checking explicit at-point evaluations");
-        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
-        for (k, v) in new_claims.iter() {
-            if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
-                let eval = evaluate_with_precomputed_eq(poly, &eq_polys.last().unwrap()[..]);
-                assert_eq!(eval, *v, "claim diverged for poly {k:?}");
-            } else if let Some(poly) = gkr_storage.try_get_ext_poly(*k) {
-                let eval = evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
-                assert_eq!(eval, *v, "claim diverged for poly {k:?}");
-            } else {
-                unreachable!()
-            }
-        }
-    }
-
-    claims_storage.insert(layer_idx, new_claims);
-    // the claim/evaluation coordinate must ALWAYS have one entry per bound
-    // variable: the input layer has the output's rounds plus the gate bit
-    assert_eq!(folding_challenges.len(), folding_steps + 1);
-    claim_points.insert(layer_idx, folding_challenges);
-
-    // and we can purge the storage
-    gkr_storage.purge_up_to_layer(layer_idx);
-
-    *batching_challenge = next_batching_challenge;
-
-    println!(
-        "Dimension-reducing layer {layer_idx} sumcheck took {:?}",
-        layer_timer.elapsed()
-    );
-
-    SumcheckIntermediateProofValues {
-        sumcheck_num_rounds: folding_steps,
-        internal_round_coefficients: internal_round_coefficients
-            .into_iter()
-            .map(crate::gkr::prover::SumcheckRoundCoefficients::Multilinear)
-            .collect(),
-        final_step_evaluations,
-        extra_evaluations_from_caching_relations: BTreeMap::new(), // none are possible here
-        _marker: core::marker::PhantomData,
-    }
-}
-
-/// LSB-binding variant of [`evaluate_dimension_reducing_sumcheck_for_layer`]:
+/// LSB-binding dimension-reducing backward pass for one layer:
 /// the sumcheck binds the OUTPUT space's variables LSB-first through the raw
 /// slice engine (`dimension_reduction::lsb_backward`), reading contiguous
 /// 4-blocks per round and folding with dense ping-pong writes. The stored
@@ -536,17 +361,15 @@ where
         prev_flat_opt.is_some() || prev_entries_opt.is_some(),
         "claim point for output layer must exist"
     );
-    // the same-size scalar engines consume points high-variable-first (their
-    // own round order). A dimension-reducing producer emits [bits 1.., bit 0]
-    // (plain push; the gate bit is bound last), so adapt INTERNALLY here.
+    // the same-size engines consume points in VARIABLE order (LSB round
+    // order). A dimension-reducing producer emits [bits 1.., bit 0] (plain
+    // push; the gate bit is bound last), so rotate INTERNALLY here.
     let adapted_prev: Vec<E>;
     let prev_flat_opt: Option<&Vec<E>> = match prev_flat_opt {
         Some(pf) if prev_point_in_dim_reducing_layout => {
             let n = pf.len();
-            adapted_prev = pf[..n - 1]
-                .iter()
-                .rev()
-                .chain(core::iter::once(&pf[n - 1]))
+            adapted_prev = core::iter::once(&pf[n - 1])
+                .chain(pf[..n - 1].iter())
                 .copied()
                 .collect();
             Some(&adapted_prev)
@@ -586,9 +409,6 @@ where
     // `SumcheckRoundCoefficients::Uniskip` proof rounds and the mixed claim
     // point as `EvaluationPointEntry::Uniskip` entries, and runs every
     // self-check against the block-tensor eq tables.
-    let lsb_env_layer: Option<usize> = std::env::var("GKR_SS_LSB")
-        .ok()
-        .and_then(|v| v.parse().ok());
     let chain_description = collector.make_batched_description(&challenge_constants, collector.layer);
     let (_chain_compact, chain_base_addrs, chain_ext_addrs) =
         windowed_mode::full_size_scratch::produce_descriptions_from_batched_description(
@@ -597,38 +417,57 @@ where
     let (layer_schedule, _width_class) =
         same_size_schedules.for_width(chain_base_addrs.len() + chain_ext_addrs.len());
     // the chain engine needs at least one full uniskip pass plus a sane
-    // suffix; tiny layers fall back to the per-round scalar path
+    // suffix; tiny layers fall back to the per-round scalar path.
+    // GKR_SS_SCHEDULE=naive forces the scalar naive loop (A/B knob),
+    // GKR_SS_SCHEDULE=uniskip forces the full uniskip chain.
+    let ss_env = std::env::var("GKR_SS_SCHEDULE").ok();
     let use_chain = (matches!(
         layer_schedule.first(),
         Some(crate::gkr::prover_config::SumcheckStep::UniskipInitial { .. })
-    ) || lsb_env_layer == Some(layer_idx)
-        || std::env::var("GKR_SS_SCHEDULE").as_deref() == Ok("uniskip"))
-        && folding_steps >= 6;
+            | Some(crate::gkr::prover_config::SumcheckStep::WindowedOp(
+                crate::gkr::prover_config::WindowedOp::Initial { window: 3 }
+            ))
+    ) || matches!(ss_env.as_deref(), Some("uniskip") | Some("windowed")))
+        && folding_steps >= 6
+        && ss_env.as_deref() != Some("naive");
     if use_chain {
         use crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::*;
         use crate::gkr::prover::EvaluationPointEntry;
         use crate::gkr::sumcheck::eq_poly::make_eq_table_from_weight_blocks;
         let n = folding_steps;
-        // number of uniskip passes: the schedule's leading uniskip steps
-        // (head-descriptor semantics: the remaining rounds run as naive
-        // scalar tail rounds); the env override runs the full chain
-        let scheduled_passes = layer_schedule
-            .iter()
-            .take_while(|st| {
-                matches!(
-                    st,
-                    crate::gkr::prover_config::SumcheckStep::UniskipInitial { .. }
-                        | crate::gkr::prover_config::SumcheckStep::Uniskip { .. }
-                )
-            })
-            .count();
-        let num_passes = if std::env::var("GKR_SS_SCHEDULE").as_deref() == Ok("uniskip") {
-            n / 3
-        } else if scheduled_passes > 0 {
-            scheduled_passes.min(n / 3)
-        } else {
-            n / 3
+        // pass plan: the schedule's leading pass-steps (head-descriptor
+        // semantics: remaining rounds run as naive scalar tail rounds).
+        // Env overrides: "uniskip" = all-uniskip chain, "windowed" =
+        // all-window chain. A WindowedOp head is a head descriptor for the
+        // whole window chain.
+        use windowed_mode::lsb_chain::ChainPassKind;
+        let pass_kinds: Vec<ChainPassKind> = match ss_env.as_deref() {
+            Some("uniskip") => vec![ChainPassKind::Uniskip3; n / 3],
+            Some("windowed") => vec![ChainPassKind::Window3; n / 3],
+            _ => match layer_schedule.first() {
+                Some(crate::gkr::prover_config::SumcheckStep::WindowedOp(
+                    crate::gkr::prover_config::WindowedOp::Initial { window: 3 },
+                )) => vec![ChainPassKind::Window3; n / 3],
+                _ => {
+                    let scheduled: Vec<ChainPassKind> = layer_schedule
+                        .iter()
+                        .map_while(|st| match st {
+                            crate::gkr::prover_config::SumcheckStep::UniskipInitial { .. }
+                            | crate::gkr::prover_config::SumcheckStep::Uniskip { .. } => {
+                                Some(ChainPassKind::Uniskip3)
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    if scheduled.is_empty() {
+                        vec![ChainPassKind::Uniskip3; n / 3]
+                    } else {
+                        scheduled.into_iter().take(n / 3).collect()
+                    }
+                }
+            },
         };
+        let num_passes = pass_kinds.len();
         let tail_rounds = n - 3 * num_passes;
         let omega16_f: F = ::fft::domain_generator_for_size::<F>(16);
 
@@ -644,11 +483,11 @@ where
                 .map(|e| e.eq_weight_block::<F>(omega16_f))
                 .collect()
         } else {
-            // scalar high-variable-first storage: var b <-> prev[n - 1 - b]
+            // scalar storage in variable order: var b <-> prev[b]
             let pf = prev_flat_opt.expect("checked above");
             (0..n)
                 .map(|b| {
-                    let c = pf[n - 1 - b];
+                    let c = pf[b];
                     let mut om = E::ONE;
                     om.sub_assign(&c);
                     vec![om, c]
@@ -707,7 +546,6 @@ where
             E,
         >(
             &alloc_schedule,
-            crate::gkr::prover::gkr_backend::SumcheckBindingOrder::Lsb,
             1usize << n,
             &chain_base_addrs,
             &chain_ext_addrs,
@@ -724,43 +562,65 @@ where
         } else {
             vec![E::ONE]
         };
-        // per-variable scalar coordinates of the prev point for the tail
-        // rounds (each must be a width-1 block; a straddling uniskip block
-        // in the producer would make the tail rounds unschedulable)
-        let tail_prev_coords: Vec<E> = (0..tail_rounds)
-            .map(|t| {
-                let var = 3 * num_passes + t;
-                let (bi, _) = spans
-                    .iter()
-                    .enumerate()
-                    .find(|(_, (s0, w))| *s0 == var && *w == 1)
-                    .map(|(i, sp)| (i, *sp))
-                    .expect("tail rounds need width-1 prev blocks at their variables");
-                prev_blocks[bi][1]
+        // per-variable scalar coordinates of the prev point, for every
+        // variable a SCALAR round binds (window-pass rounds and tail
+        // rounds). Each must be a width-1 block: a straddling uniskip block
+        // in the producer would make scalar rounds unschedulable there.
+        let scalar_coord = |var: usize| -> E {
+            let (bi, _) = spans
+                .iter()
+                .enumerate()
+                .find(|(_, (s0, w))| *s0 == var && *w == 1)
+                .map(|(i, sp)| (i, *sp))
+                .expect("scalar rounds need width-1 prev blocks at their variables");
+            prev_blocks[bi][1]
+        };
+        let var_coords: Vec<Option<E>> = (0..n)
+            .map(|var| {
+                let in_uniskip_pass = pass_kinds
+                    .get(var / 3)
+                    .is_some_and(|k| *k == ChainPassKind::Uniskip3);
+                if in_uniskip_pass {
+                    None
+                } else {
+                    Some(scalar_coord(var))
+                }
+            })
+            .collect();
+        let window_taus: Vec<Option<[E; 2]>> = pass_kinds
+            .iter()
+            .enumerate()
+            .map(|(g, k)| match k {
+                ChainPassKind::Uniskip3 => None,
+                ChainPassKind::Window3 => Some([
+                    var_coords[3 * g + 1].expect("window var"),
+                    var_coords[3 * g + 2].expect("window var"),
+                ]),
             })
             .collect();
 
         let mut running_claim = claim;
         let mut chain_rounds: Vec<crate::gkr::prover::SumcheckRoundCoefficients<E>> = Vec::new();
-        let mut chain_challenges: Vec<E> = Vec::new();
-        let mut tail_challenges: Vec<E> = Vec::new();
-        let mut tail_eq_prefix = E::ONE;
+        // the emitted mixed claim point, built in emission (= variable)
+        // order by the round callbacks
+        let mut point_entries: Vec<EvaluationPointEntry<E>> = Vec::new();
+        let mut scalar_eq_prefactor = E::ONE;
         let chain_timer = std::time::Instant::now();
         let finals = {
             let seed_ref = &mut *seed;
             let rc = &mut running_claim;
             let rounds = &mut chain_rounds;
-            let chs = &mut chain_challenges;
+            let entries = &mut point_entries;
             let blocks_in_ref = &blocks_in;
-            let tail_prev_coords = &tail_prev_coords;
-            let tail_chs = &mut tail_challenges;
-            let tail_eqp = &mut tail_eq_prefix;
+            let var_coords = &var_coords;
+            let eq_pref = &mut scalar_eq_prefactor;
             windowed_mode::lsb_chain::run_lsb_uniskip_chain::<F, E, _>(
                 &collector,
                 &challenge_constants,
                 gkr_storage,
                 n,
-                num_passes,
+                &pass_kinds,
+                &window_taus,
                 &eq_suffixes,
                 &mut tail_t_table,
                 &mut chain_fold_arena,
@@ -768,73 +628,69 @@ where
                 |round| match round {
                     windowed_mode::lsb_chain::ChainRound::Pass { pass: g, q16 } => {
                         let q16 = &q16;
-                    let coeffs = uniskip16_to_monomial::<F, E>(q16, omega16_f);
-                    #[cfg(feature = "gkr_self_checks")]
-                    {
-                        // pass g binds vars 3g..3g+3: its claim identity uses
-                        // the prev point's blocks over exactly those vars
-                        let eq8: [E; 8] = make_eq_table_from_weight_blocks::<E>(
-                            &blocks_in_ref(3 * g, 3 * g + 3),
-                            worker,
-                        )
-                        .try_into()
-                        .unwrap();
-                        assert_eq!(
-                            uniskip16_claim_from_monomial::<F, E>(&coeffs, &eq8, omega16_f),
-                            *rc,
-                            "LSB uniskip chain: claim identity over H at pass {g}"
+                        let coeffs = uniskip16_to_monomial::<F, E>(q16, omega16_f);
+                        #[cfg(feature = "gkr_self_checks")]
+                        {
+                            // pass g binds vars 3g..3g+3: its claim identity
+                            // uses the prev point's blocks over those vars
+                            let eq8: [E; 8] = make_eq_table_from_weight_blocks::<E>(
+                                &blocks_in_ref(3 * g, 3 * g + 3),
+                                worker,
+                            )
+                            .try_into()
+                            .unwrap();
+                            assert_eq!(
+                                uniskip16_claim_from_monomial::<F, E>(&coeffs, &eq8, omega16_f),
+                                *rc,
+                                "LSB uniskip chain: claim identity over H at pass {g}"
+                            );
+                        }
+                        commit_field_els::<F, E, TR>(seed_ref, &coeffs);
+                        rounds.push(crate::gkr::prover::SumcheckRoundCoefficients::Uniskip(
+                            coeffs.to_vec(),
+                        ));
+                        let r = draw_random_field_els::<F, E, TR>(seed_ref, 1)[0];
+                        *rc = uniskip16_horner(&coeffs, &r);
+                        entries.push(EvaluationPointEntry::Uniskip { point: r, width: 3 });
+                        r
+                    }
+                    windowed_mode::lsb_chain::ChainRound::Tail { round: var, h0, hinf } => {
+                        // a scalar round binding variable `var`, in the SAME
+                        // single-eq-factor form as the naive per-round loop
+                        // (byte-identical message for identical inputs)
+                        let tau = var_coords[var].expect("scalar round needs a scalar prev coord");
+                        let mut normalized_claim = *rc;
+                        normalized_claim
+                            .mul_assign(&eq_pref.inverse().expect("eq prefactor non-zero"));
+                        let coeffs = output_univariate_monomial_form_max_quadratic::<F, E>(
+                            tau,
+                            normalized_claim,
+                            h0,
+                            hinf,
                         );
-                    }
-                    commit_field_els::<F, E, TR>(seed_ref, &coeffs);
-                    rounds.push(crate::gkr::prover::SumcheckRoundCoefficients::Uniskip(
-                        coeffs.to_vec(),
-                    ));
-                    let r = draw_random_field_els::<F, E, TR>(seed_ref, 1)[0];
-                    *rc = uniskip16_horner(&coeffs, &r);
-                    chs.push(r);
-                    r
-                    }
-                    windowed_mode::lsb_chain::ChainRound::Tail { round: t, h0, hinf } => {
-                    use crate::gkr::prover::dimension_reduction::lsb_backward::{
-                        cubic_round_message, derive_h1_from_claim, eq_weight, horner4,
-                    };
-                    let c_t = tail_prev_coords[t];
-                    let h1 = derive_h1_from_claim(rc, tail_eqp, &h0, &c_t);
-                    let coeffs = cubic_round_message(&h0, &h1, &hinf, &c_t, tail_eqp);
-                    commit_field_els::<F, E, TR>(seed_ref, &coeffs);
-                    rounds.push(crate::gkr::prover::SumcheckRoundCoefficients::Multilinear(
-                        coeffs,
-                    ));
-                    let r = draw_random_field_els::<F, E, TR>(seed_ref, 1)[0];
-                    *rc = horner4(&coeffs, &r);
-                    tail_eqp.mul_assign(&eq_weight(&c_t, &r));
-                    tail_chs.push(r);
-                    r
+                        if std::env::var("GKR_DBG_ROUNDS").is_ok() {
+                            println!("[dbg-round] var {var} coeffs {coeffs:?}");
+                        }
+                        commit_field_els::<F, E, TR>(seed_ref, &coeffs);
+                        rounds.push(crate::gkr::prover::SumcheckRoundCoefficients::Multilinear(
+                            coeffs,
+                        ));
+                        let r = draw_random_field_els::<F, E, TR>(seed_ref, 1)[0];
+                        *rc = evaluate_small_univariate_poly::<F, E, _>(&coeffs, &r);
+                        *eq_pref = evaluate_eq_poly::<F, E>(&r, &tau);
+                        entries.push(EvaluationPointEntry::Coordinate { point: r });
+                        r
                     }
                 },
             )
         };
         let finals = finals.expect("LSB chain fast path must apply on this platform");
         println!(
-            "LSB uniskip chain for same-size layer {layer_idx}: {} passes, took {:?}",
+            "LSB chain for same-size layer {layer_idx}: {} passes, took {:?}",
             num_passes,
             chain_timer.elapsed()
         );
 
-        // the emitted mixed claim point, in emission (= variable) order:
-        // uniskip pass entries then the tail's scalar coordinates
-        let point_entries: Vec<EvaluationPointEntry<E>> = chain_challenges
-            .iter()
-            .map(|r| EvaluationPointEntry::Uniskip {
-                point: *r,
-                width: 3,
-            })
-            .chain(
-                tail_challenges
-                    .iter()
-                    .map(|r| EvaluationPointEntry::Coordinate { point: *r }),
-            )
-            .collect();
         assert_eq!(
             point_entries.iter().map(|e| e.bound_vars()).sum::<usize>(),
             folding_steps,
@@ -927,7 +783,24 @@ where
         let next_batching_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
 
         claims_storage.insert(layer_idx, new_claims);
-        claim_point_entries.insert(layer_idx, point_entries);
+        // an all-scalar point (no uniskip blocks, e.g. the window chain) is
+        // stored as a PLAIN scalar point, indistinguishable from the naive
+        // loop's output for every consumer (incl. the WHIR proof fields)
+        let all_scalar = point_entries
+            .iter()
+            .all(|e| matches!(e, EvaluationPointEntry::Coordinate { .. }));
+        if all_scalar {
+            let flat: Vec<E> = point_entries
+                .iter()
+                .map(|e| match e {
+                    EvaluationPointEntry::Coordinate { point } => *point,
+                    _ => unreachable!(),
+                })
+                .collect();
+            claim_points.insert(layer_idx, flat);
+        } else {
+            claim_point_entries.insert(layer_idx, point_entries);
+        }
         gkr_storage.purge_up_to_layer(layer_idx);
         *batching_challenge = next_batching_challenge;
 
@@ -940,10 +813,10 @@ where
         };
     }
 
-    // ---- scalar (windowed / naive) path ----
+    // ---- scalar (naive) path: LSB binding, point in variable order ----
     let prev_challenges: &Vec<E> =
         prev_flat_opt.expect("a scalar-consuming schedule requires a scalar-point producer");
-    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, worker);
+    let eq_polys = make_eq_poly_in_full_lsb::<E>(prev_challenges, worker);
 
     let (folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
         run_sumcheck_loop::<F, E, TR, 2, true>(
@@ -960,20 +833,7 @@ where
         );
 
     assert_eq!(folding_challenges.len(), folding_steps);
-    // bring-up: a uniskip head emits one round for its three variables
-    let uniskip_head_active = std::env::var("GKR_SS_UNISKIP")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        == Some(layer_idx);
-    if uniskip_head_active {
-        // each uniskip message (head or ext pass) covers 3 rounds; the 16
-        // monomial coefficients are committed but not yet carried in the
-        // [E; 4] proof vector (follow-up: Uniskip variant)
-        let missing = folding_steps - internal_round_coefficients.len();
-        assert!(missing >= 3 && missing % 3 == 0);
-    } else {
-        assert_eq!(internal_round_coefficients.len(), folding_steps);
-    }
+    assert_eq!(internal_round_coefficients.len(), folding_steps);
 
     // After sumcheck completes, the last folding challenge (drawn inside the loop together
     // with the final univariate monomial) fixes the final coordinate. We reduce each input
@@ -1017,13 +877,10 @@ where
 
     let mut transcript_inputs: Vec<E> = new_claims.values().copied().collect();
 
-    // self-check (needs the claim point in per-coordinate form, which a
-    // uniskip head does not produce -- its in-layer validation is the
-    // accumulator identity above)
     #[cfg(feature = "gkr_self_checks")]
-    if !uniskip_head_active {
+    {
         println!("Self-checking explicit at-point evaluations");
-        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
+        let eq_polys = make_eq_poly_in_full_lsb::<E>(&folding_challenges, worker);
         for (k, v) in new_claims.iter() {
             if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
                 let eval = evaluate_with_precomputed_eq(poly, &eq_polys.last().unwrap()[..]);
@@ -1050,11 +907,11 @@ where
             );
 
             #[cfg(feature = "gkr_self_checks")]
-            if !uniskip_head_active {
+            {
                 println!("Self-checking explicit at-point evaluations for cache relations");
                 let claim = new_claims[cached_addr];
                 if eq_poly.is_none() {
-                    let mut eq_precomputed = make_eq_poly_in_full(&folding_challenges, worker);
+                    let mut eq_precomputed = make_eq_poly_in_full_lsb(&folding_challenges, worker);
                     let eq_at_z = eq_precomputed.pop().unwrap();
                     eq_poly = Some(eq_at_z);
                 }
@@ -1102,7 +959,7 @@ where
                         println!("Explicitly computing value for {:?}", dep);
                         if eq_poly.is_none() {
                             let mut eq_precomputed =
-                                make_eq_poly_in_full(&folding_challenges, worker);
+                                make_eq_poly_in_full_lsb(&folding_challenges, worker);
                             let eq_at_z = eq_precomputed.pop().unwrap();
                             eq_poly = Some(eq_at_z);
                         }
@@ -1138,10 +995,8 @@ where
             transcript_inputs.extend(extra_evaluations_from_caching_relations.values().copied());
         }
 
-        // (needs consistent at-point claims, which the uniskip bring-up's
-        // placeholder point cannot provide)
         #[cfg(feature = "gkr_self_checks")]
-        if !uniskip_head_active {
+        {
             assert!(crate::gkr::prover::debug_utils::verify_cache_relations(
                 layer,
                 &new_claims,
@@ -1156,8 +1011,7 @@ where
     let next_batching_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
 
     claims_storage.insert(layer_idx, new_claims);
-    // the claim/evaluation coordinate must ALWAYS have one entry per
-    // bound variable, whatever the schedule (incl. uniskip windows)
+    // one scalar coordinate per bound variable, in variable (round) order
     assert_eq!(folding_challenges.len(), folding_steps);
     claim_points.insert(layer_idx, folding_challenges);
 
@@ -1199,28 +1053,11 @@ fn run_sumcheck_loop<
 where
     [(); E::DEGREE]: Sized,
 {
-    // measurement toggle: GKR_SS_NAIVE=1 bypasses the windowed engine so the
-    // naive per-round loop can be benchmarked against it
-    if USE_BATCHING && std::env::var("GKR_SS_NAIVE").is_err() {
-        use crate::gkr::prover::sumcheck_loop::windowed_mode::sumcheck_loop::windowed_sumcheck_loop;
-        if let Some(result) = windowed_sumcheck_loop::<F, E, TR, N>(
-            collector,
-            initial_claim,
-            prev_challenges,
-            eq_poly,
-            gkr_storage,
-            challenge_constants,
-            same_size_schedules,
-            folding_steps,
-            worker,
-            seed,
-        ) {
-            return result;
-        }
-        println!("Running sumcheck loop in per-round batched mode");
+    if USE_BATCHING {
+        println!("Running sumcheck loop in batched naive (LSB) mode");
     } else {
         println!("Running sumcheck loop in individual kernel mode");
-    };
+    }
 
     let mut claim = initial_claim;
     let mut folding_challenges = Vec::with_capacity(folding_steps);
@@ -1308,6 +1145,9 @@ where
             );
         }
 
+        if std::env::var("GKR_DBG_ROUNDS").is_ok() {
+            println!("[dbg-round] var {step} coeffs {coeffs:?}");
+        }
         commit_field_els::<F, E, TR>(seed, &coeffs);
         intermediate_coeffs.push(coeffs);
         let folding_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];

@@ -69,7 +69,7 @@ use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
 use crate::gkr::prover::WhirSchedule;
-use crate::gkr::sumcheck::eq_poly::{make_domain_eq_poly_in_full, make_eq_poly_in_full};
+use crate::gkr::sumcheck::eq_poly::make_domain_eq_poly_in_full;
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use crate::gkr::whir::hypercube_to_monomial::{
@@ -838,11 +838,8 @@ where
     let set_caps = [mem_oracle.get_cap(), wit_oracle.get_cap(), setup.get_cap()];
 
     let t_eq_init = std::time::Instant::now();
-    // The point arrives in the producing (same-size) layer's plain push
-    // order: round order = high-variable-first for its MSB-binding rounds.
-    // The eq builder consumes the coordinates in reverse association
-    // INTERNALLY (index bit b <-> coordinate len-1-b); no reversed vector
-    // is materialized and the stored order is never touched (the proof's
+    // The point arrives in the producing layer's plain push order, which
+    // is VARIABLE order for the LSB-binding rounds (the proof's
     // `original_evaluation_point` copy exists only for the EVM verifier).
     let mut eq_poly_box = if let Some(entries) = &evaluation_point_entries {
         // mixed point: the claim must cover every variable, and the eq
@@ -866,7 +863,8 @@ where
             trace_len_log2,
             "claim coordinate must have one entry per variable"
         );
-        crate::gkr::sumcheck::eq_poly::make_eq_table_msb_first::<E>(
+        // scalar points are stored in VARIABLE order (LSB round order)
+        crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(
             &original_evaluation_point[..],
             worker,
         )

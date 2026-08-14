@@ -30,29 +30,15 @@ pub enum SumcheckStep {
     /// Uniskip head over the layer inputs: binds `window` variables with one
     /// univariate message; leaves its own challenge's L-fold pending.
     UniskipInitial { window: usize },
-    /// Fused stage: materializes the PREVIOUS uniskip stage's pending fold
-    /// (`fold_window` variables, exactly 1 pending challenge) while computing
-    /// the next uniskip univariate over `compute_window` variables.
-    FoldUniskipAndComputeUniskip {
-        fold_window: usize,
-        compute_window: usize,
-    },
 }
 
-/// Flavors of a windowed step; the flavor must be consistent with the step's
-/// position in the schedule (validated by
-/// [`validate_sumcheck_schedule`]): exactly one `Initial` at the front while
-/// inputs are unfolded, at most one `Transition` that performs the
-/// fold-to-extension, then `Interior` steps over extension buffers.
+/// Flavor of a windowed step (validated by
+/// [`validate_sumcheck_schedule`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum WindowedOp {
-    /// Window over the UNFOLDED inputs (mixed base/ext columns).
+    /// Head descriptor of the LSB window-3 chain: 27-cell window passes for
+    /// as long as three variables remain, then naive scalar tail rounds.
     Initial { window: usize },
-    /// Window whose final bind also folds every input into the extension
-    /// buffers (the in-`w`-out-1 transition pass).
-    Transition { window: usize },
-    /// Window over already-folded extension buffers.
-    Interior { window: usize },
 }
 
 impl SumcheckStep {
@@ -60,14 +46,9 @@ impl SumcheckStep {
     pub fn variables_bound(&self) -> usize {
         match self {
             SumcheckStep::NaiveSumcheck => 1,
-            SumcheckStep::WindowedOp(op) => match op {
-                WindowedOp::Initial { window }
-                | WindowedOp::Transition { window }
-                | WindowedOp::Interior { window } => *window,
-            },
+            SumcheckStep::WindowedOp(WindowedOp::Initial { window }) => *window,
             SumcheckStep::Uniskip { window } => *window,
             SumcheckStep::UniskipInitial { window } => *window,
-            SumcheckStep::FoldUniskipAndComputeUniskip { compute_window, .. } => *compute_window,
         }
     }
 }
@@ -112,19 +93,6 @@ pub fn validate_sumcheck_schedule(
                     return Err(format!("UniskipInitial at position {i} (must open the schedule)"));
                 }
             }
-            SumcheckStep::FoldUniskipAndComputeUniskip {
-                fold_window,
-                compute_window,
-            } => {
-                if *fold_window != 3 || *compute_window != 3 {
-                    return Err(format!(
-                        "FoldUniskipAndComputeUniskip {fold_window}/{compute_window} unsupported (only 3/3)"
-                    ));
-                }
-                if i == 0 {
-                    return Err("FoldUniskipAndComputeUniskip needs a preceding uniskip stage".into());
-                }
-            }
             SumcheckStep::WindowedOp(op) => match op {
                 WindowedOp::Initial { window } => {
                     if past_initial || seen_transition {
@@ -133,22 +101,6 @@ pub fn validate_sumcheck_schedule(
                     if *window == 0 || *window > 3 {
                         return Err(format!("window {} out of range 1..=3", window));
                     }
-                }
-                WindowedOp::Transition { window } => {
-                    if seen_transition {
-                        return Err("second Transition step".to_string());
-                    }
-                    if *window == 0 || *window > 3 {
-                        return Err(format!("window {} out of range 1..=3", window));
-                    }
-                    seen_transition = true;
-                    past_initial = true;
-                }
-                WindowedOp::Interior { window } => {
-                    if *window == 0 || *window > 3 {
-                        return Err(format!("window {} out of range 1..=3", window));
-                    }
-                    past_initial = true;
                 }
             },
         }
@@ -204,6 +156,13 @@ pub const WINDOWED_SAME_SIZE_SCHEDULE: [SumcheckStep; 1] =
 /// for ProverConfig literals.
 pub fn windowed_same_size_schedule() -> Vec<SumcheckStep> {
     WINDOWED_SAME_SIZE_SCHEDULE.to_vec()
+}
+
+/// The all-naive same-size schedule for ProverConfig literals: the EMPTY
+/// schedule, which means NaiveSumcheck for every round (see
+/// [`validate_sumcheck_schedule`]). No windows, no uniskip.
+pub fn naive_same_size_schedule() -> Vec<SumcheckStep> {
+    Vec::new()
 }
 
 /// The DEFAULT same-size head descriptor: three width-3 uniskip passes

@@ -64,7 +64,7 @@
 
 use super::*;
 
-use super::bench::{BenchStep, FormOp, TiledStep};
+use super::program::{FormOp, ProgramStep, TiledStep};
 use super::neon;
 use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
 
@@ -292,7 +292,7 @@ pub fn lsb_soa_full_parallel<
     tables: Option<&LsbLdeAny>,
     forms: &[Vec<(FormOp<F>, u16)>],
     products: &[(u16, u16, E)],
-    rest_steps: &[BenchStep<E>],
+    rest_steps: &[ProgramStep<E>],
     additive_constant: &E,
     t_suffix: &[E],
     rows: usize,
@@ -439,7 +439,7 @@ pub fn lsb_soa_full_parallel<
                     }
                     for step in rest_steps.iter() {
                         match step {
-                            BenchStep::QuadBB { a, b, c } => {
+                            ProgramStep::QuadBB { a, b, c } => {
                                 if mask & PH_LAZY != 0 {
                                     for u in 0..U {
                                         neon::soa_quad_bb_lazy::<NG>(
@@ -452,7 +452,7 @@ pub fn lsb_soa_full_parallel<
                                     lazy_tick!();
                                 }
                             }
-                            BenchStep::LinB { i, c } => {
+                            ProgramStep::LinB { i, c } => {
                                 if mask & PH_LAZY != 0 {
                                     for u in 0..U {
                                         neon::soa_lin_base_all_n::<NBIN>(
@@ -464,7 +464,7 @@ pub fn lsb_soa_full_parallel<
                                     lazy_tick!();
                                 }
                             }
-                            BenchStep::QuadBE { base, ext, c } => {
+                            ProgramStep::QuadBE { base, ext, c } => {
                                 if mask & PH_EXT != 0 {
                                     let cb = neon::soa_broadcast_ext(ec(c));
                                     for u in 0..U {
@@ -478,7 +478,7 @@ pub fn lsb_soa_full_parallel<
                                     }
                                 }
                             }
-                            BenchStep::QuadEE { a, b, c } => {
+                            ProgramStep::QuadEE { a, b, c } => {
                                 if mask & PH_EXT != 0 {
                                     let cb = neon::soa_broadcast_ext(ec(c));
                                     for u in 0..U {
@@ -492,7 +492,7 @@ pub fn lsb_soa_full_parallel<
                                     }
                                 }
                             }
-                            BenchStep::LinE { i, c } => {
+                            ProgramStep::LinE { i, c } => {
                                 if mask & PH_EXT != 0 {
                                     let cb = neon::soa_broadcast_ext(ec(c));
                                     for u in 0..U {

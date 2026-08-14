@@ -1817,11 +1817,9 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
         let mut t_full: Option<Vec<E>> = None;
         for step in schedule {
             let w = match step {
-                SumcheckStep::WindowedOp(op) => match op {
-                    crate::gkr::prover_config::WindowedOp::Initial { window }
-                    | crate::gkr::prover_config::WindowedOp::Transition { window }
-                    | crate::gkr::prover_config::WindowedOp::Interior { window } => *window,
-                },
+                SumcheckStep::WindowedOp(crate::gkr::prover_config::WindowedOp::Initial {
+                    window,
+                }) => *window,
                 _ => break, // naive tail handled by the per-round loop below
             };
             assert!(w >= 1 && w <= 3);

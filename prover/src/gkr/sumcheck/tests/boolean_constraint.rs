@@ -71,7 +71,7 @@ fn test_boolean_constraints() {
         .collect();
     // dbg!(&previous_round_challenges);
 
-    let eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges, &worker);
+    let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&previous_round_challenges, &worker);
     // dbg!(&eq_precomputed);
 
     let batching_challenges = vec![E::ONE];
@@ -82,7 +82,7 @@ fn test_boolean_constraints() {
 
     let mut folding_challenges = vec![];
 
-    let eq_reduced_precomputed = make_eq_poly_reduced::<E>(&previous_round_challenges, &worker);
+    let eq_reduced_precomputed = make_eq_poly_reduced_lsb::<E>(&previous_round_challenges, &worker);
     // dbg!(&eq_reduced_precomputed);
     let eq_reduced_len = eq_reduced_precomputed.len();
 
@@ -206,7 +206,7 @@ fn test_boolean_constraints() {
             folding_challenges.push(folding_challenge);
             // derive new claims
 
-            let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges, &worker);
+            let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&folding_challenges, &worker);
             for poly in [GKRAddress::BaseLayerMemory(0)] {
                 let evals = &storage.layers[0]
                     .base_field_inputs

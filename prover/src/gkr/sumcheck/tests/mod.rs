@@ -1,7 +1,6 @@
 use super::*;
 
 pub(crate) mod batched;
-pub(crate) mod bench_windowed_sumcheck;
 pub(crate) mod boolean_constraint;
 pub(crate) mod fixed_kernels;
 pub(crate) mod logup_variants;

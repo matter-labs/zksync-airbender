@@ -643,7 +643,7 @@ fn capture_gkr_dim_reduce_reference() {
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
     use crate::gkr::prover_config::pow_bits;
-    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq_ext, make_eq_poly_in_full};
+    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq_ext, make_eq_poly_in_full_lsb};
     use transcript::Transcript;
 
     let worker = Worker::new_with_num_threads(4);
@@ -718,7 +718,7 @@ fn capture_gkr_dim_reduce_reference() {
     println!("[dimreduce] batching = 0x{:032x}", batching.to_u128());
 
     // --- initial 10 claims: outputs evaluated at eval_point via eq ---
-    let eq_layers = make_eq_poly_in_full::<Proth120>(&eval_point, &worker);
+    let eq_layers = make_eq_poly_in_full_lsb::<Proth120>(&eval_point, &worker);
     let eq = eq_layers.last().unwrap();
     let mut claims: Vec<Proth120> = vec![];
     for (_out_ty, vals) in proof.final_explicit_evaluations.iter() {
@@ -1140,7 +1140,7 @@ fn verify_dim_reduce_layers() {
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
     use crate::gkr::prover_config::pow_bits;
-    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq_ext, make_eq_poly_in_full};
+    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq_ext, make_eq_poly_in_full_lsb};
     use ::field::Field;
     use transcript::Transcript;
 
@@ -1201,7 +1201,7 @@ fn verify_dim_reduce_layers() {
     );
     let mut batching = chs.pop().unwrap();
     let mut point = chs; // eval_point (final_trace_size_log_2 coords)
-    let eq = make_eq_poly_in_full::<E>(&point, &worker)
+    let eq = make_eq_poly_in_full_lsb::<E>(&point, &worker)
         .last()
         .unwrap()
         .clone();

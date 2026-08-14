@@ -78,10 +78,11 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     }
     #[inline(always)]
     fn get_f0_and_f1(&self, index: usize) -> [BaseFieldRepresentation<F>; 2] {
+        // LSB binding: adjacent pairs
         assert!(index < self.next_layer_size);
         [
-            EvaluationFormStorage::<F, E, _>::get_at_index(self, index),
-            EvaluationFormStorage::<F, E, _>::get_at_index(self, self.next_layer_size + index),
+            EvaluationFormStorage::<F, E, _>::get_at_index(self, 2 * index),
+            EvaluationFormStorage::<F, E, _>::get_at_index(self, 2 * index + 1),
         ]
     }
 }
@@ -100,8 +101,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterOneFol
         unsafe {
             let evals =
                 core::slice::from_raw_parts(self.base_input_start, self.base_layer_half_size * 2);
-            let (f0s, f1s) = evals.split_at(self.base_layer_half_size);
-            for (f0, f1) in f0s.iter().zip(f1s.iter()) {
+            // LSB binding: adjacent pairs
+            for pair in evals.chunks_exact(2) {
+                let (f0, f1) = (&pair[0], &pair[1]);
                 let mut diff = *f1;
                 diff.sub_assign(f0);
                 let mut result = self.first_folding_challenge_and_squared.0;
@@ -152,12 +154,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     fn get_at_index(&self, index: usize) -> BaseFieldFoldedOnceRepresentation<F> {
         assert!(index < self.base_layer_half_size);
         unsafe {
-            // we take computation
-            let f0 = self.base_input_start.add(index).read();
-            let f1 = self
-                .base_input_start
-                .add(self.base_layer_half_size + index)
-                .read();
+            // LSB binding: the bound-once value at `index` comes from the
+            // adjacent base pair (2*index, 2*index + 1)
+            let f0 = self.base_input_start.add(2 * index).read();
+            let f1 = self.base_input_start.add(2 * index + 1).read();
             let c0 = f0;
             let mut c1 = f1;
             c1.sub_assign(&f0);
@@ -169,8 +169,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     fn get_f0_and_f1(&self, index: usize) -> [BaseFieldFoldedOnceRepresentation<F>; 2] {
         assert!(index < self.next_layer_size);
         [
-            EvaluationFormStorage::<F, E, _>::get_at_index(self, index),
-            EvaluationFormStorage::<F, E, _>::get_at_index(self, self.next_layer_size + index),
+            EvaluationFormStorage::<F, E, _>::get_at_index(self, 2 * index),
+            EvaluationFormStorage::<F, E, _>::get_at_index(self, 2 * index + 1),
         ]
     }
 }
@@ -200,6 +200,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolyIntermediateFoldi
     }
 
     pub fn pointers_for_sumcheck_accessor_step(&mut self, step: usize) -> (*mut E, *mut E) {
+        // DISJOINT ping-pong regions ([0..q), [q..3q/2), ...): the input
+        // region is never written, so kernels may access an index more than
+        // once per round (recompute-stable), and LSB adjacent-pair reads
+        // need no extra care
         unsafe {
             assert!(step > 2);
             let mut input_offset = self.continuous_buffer.as_mut_ptr();
@@ -235,18 +239,20 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterTwoFol
         unsafe {
             let evals =
                 core::slice::from_raw_parts(self.base_input_start, self.base_layer_half_size * 2);
+            // LSB binding: 4 consecutive values per output, first challenge
+            // binds bit 0, second binds bit 1
             for i in 0..self.base_quarter_size {
-                let mut diff = evals[i + self.base_layer_half_size];
-                diff.sub_assign(&evals[i]);
+                let mut diff = evals[4 * i + 1];
+                diff.sub_assign(&evals[4 * i]);
                 let mut f0 = self.first_folding_challenge;
                 f0.mul_assign_by_base(&diff);
-                f0.add_assign_base(&evals[i]);
+                f0.add_assign_base(&evals[4 * i]);
 
-                let mut diff = evals[i + self.base_quarter_size + self.base_layer_half_size];
-                diff.sub_assign(&evals[i + self.base_quarter_size]);
+                let mut diff = evals[4 * i + 3];
+                diff.sub_assign(&evals[4 * i + 2]);
                 let mut f1 = self.first_folding_challenge;
                 f1.mul_assign_by_base(&diff);
-                f1.add_assign_base(&evals[i + self.base_quarter_size]);
+                f1.add_assign_base(&evals[4 * i + 2]);
 
                 let mut diff = f1;
                 diff.sub_assign(&f0);
@@ -313,19 +319,11 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
                 //   f(r1, r2) = f00 + r1*(f01-f00) + r2*(f10-f00) + r1*r2*(f00-f01-f10+f11)
                 // All four coefficients are base-field values, so all multiplications are E×F.
 
-                let f00 = self.base_input_start.add(index).read();
-                let f01 = self
-                    .base_input_start
-                    .add(self.base_layer_half_size + index)
-                    .read();
-                let f10 = self
-                    .base_input_start
-                    .add(self.base_quarter_size + index)
-                    .read();
-                let f11 = self
-                    .base_input_start
-                    .add(self.base_layer_half_size + self.base_quarter_size + index)
-                    .read();
+                // LSB binding: 4 consecutive values; r1 binds bit 0, r2 bit 1
+                let f00 = self.base_input_start.add(4 * index).read();
+                let f01 = self.base_input_start.add(4 * index + 1).read();
+                let f10 = self.base_input_start.add(4 * index + 2).read();
+                let f11 = self.base_input_start.add(4 * index + 3).read();
 
                 // c01 = f01 - f00
                 let mut c01 = f01;
@@ -374,11 +372,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 
     #[inline(always)]
     fn get_f0_and_f1(&self, index: usize) -> [ExtensionFieldRepresentation<F, E>; 2] {
-        // just read and do NOT cache f1 - f0
+        // LSB binding: adjacent pairs; do NOT cache f1 - f0
         assert!(index < self.next_layer_size);
-        [
-            self.get_at_index(index),
-            self.get_at_index(self.next_layer_size + index),
-        ]
+        [self.get_at_index(2 * index), self.get_at_index(2 * index + 1)]
     }
 }

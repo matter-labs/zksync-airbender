@@ -7,71 +7,79 @@ use crate::gkr::PAR_THRESHOLD;
 
 use super::*;
 
-#[inline(always)]
-fn compute_next_layer<E: Field>(
-    prev: &[E],
-    left: &mut [MaybeUninit<E>],
-    right: &mut [MaybeUninit<E>],
-    f1: &E,
-) {
-    for (p, (left_dst, right_dst)) in prev.iter().zip(left.iter_mut().zip(right.iter_mut())) {
-        let mut right = *p;
-        right.mul_assign(f1);
-        let mut left = *p;
-        left.sub_assign(&right);
 
-        left_dst.write(left);
-        right_dst.write(right);
+
+
+
+/// Interleaved-doubling layer step for the LSB nested tables: the newly
+/// consumed (lowest-variable) coordinate's two factors land ADJACENT in
+/// memory: out[2j] = (1 - c) * prev[j], out[2j + 1] = c * prev[j].
+fn compute_next_layer_interleaved<E: Field>(prev: &[E], out: &mut [MaybeUninit<E>], c: &E) {
+    debug_assert_eq!(out.len(), prev.len() * 2);
+    for (p, dst) in prev.iter().zip(out.chunks_exact_mut(2)) {
+        let mut one = *p;
+        one.mul_assign(c);
+        let mut zero = *p;
+        zero.sub_assign(&one);
+        dst[0].write(zero);
+        dst[1].write(one);
     }
 }
 
-pub fn make_eq_poly_impl<E: Field, const FULL: bool>(
+/// Nested eq tables for an LSB-binding round loop. `result[k]` has size
+/// 2^k and covers the LAST k coordinates of `challenges` in VARIABLE
+/// order: table index bit b <-> challenges[len - k + b]. The round loop at
+/// step t (binding variable t of n) uses `result[n - 1 - t]`, the suffix
+/// table over variables t+1..n.
+pub fn make_eq_poly_in_full_lsb<E: Field>(challenges: &[E], worker: &Worker) -> Vec<Box<[E]>> {
+    make_eq_poly_impl_lsb::<E, true>(challenges, worker)
+}
+
+/// Reduced variant of [`make_eq_poly_in_full_lsb`]: stops one table short
+/// (the largest table covers the last `len - 1` coordinates).
+pub fn make_eq_poly_reduced_lsb<E: Field>(challenges: &[E], worker: &Worker) -> Vec<Box<[E]>> {
+    make_eq_poly_impl_lsb::<E, false>(challenges, worker)
+}
+
+pub fn make_eq_poly_impl_lsb<E: Field, const FULL: bool>(
     challenges: &[E],
     worker: &Worker,
 ) -> Vec<Box<[E]>> {
-    assert!(challenges.len() > 0);
+    assert!(!challenges.is_empty());
 
-    let mut result = Vec::with_capacity(challenges.len() + 1);
+    let mut result: Vec<Box<[E]>> = Vec::with_capacity(challenges.len() + 1);
     result.push(vec![E::ONE].into_boxed_slice());
-
-    let mut size = 1;
-    let mut idx = challenges.len();
 
     let bound = if FULL {
         challenges.len() + 1
     } else {
         challenges.len()
     };
-
+    let mut size = 1usize;
+    let mut idx = challenges.len();
     for _ in 1..bound {
         let half_size = size;
         size *= 2;
         idx -= 1;
-
         let challenge = challenges[idx];
 
         let mut layer = Box::new_uninit_slice(size);
         let previous_layer = result.last().expect("is present");
-
-        let f1 = challenge;
-
         assert_eq!(previous_layer.len(), half_size);
 
-        let (left, right) = layer.split_at_mut(half_size);
-
         worker.scope_with_threshold(half_size, PAR_THRESHOLD, |scope, geometry| {
-            previous_layer
-                .chunks_for_geometry(geometry)
-                .enumerate()
-                .zip(
-                    left.chunks_for_geometry_mut(geometry)
-                        .zip(right.chunks_for_geometry_mut(geometry)),
-                )
-                .for_each(|((idx, prev), (left_chunk, right_chunk))| {
-                    Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
-                        compute_next_layer(prev, left_chunk, right_chunk, &f1)
-                    });
-                })
+            let mut prev_rest: &[E] = previous_layer;
+            let mut out_rest: &mut [MaybeUninit<E>] = &mut layer;
+            for thread_idx in 0..geometry.num_chunks {
+                let chunk = geometry.get_chunk_size(thread_idx);
+                let (prev, prev_tail) = prev_rest.split_at(chunk);
+                let (out, out_tail) = core::mem::take(&mut out_rest).split_at_mut(chunk * 2);
+                prev_rest = prev_tail;
+                out_rest = out_tail;
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    compute_next_layer_interleaved(prev, out, &challenge)
+                });
+            }
         });
 
         result.push(unsafe { layer.assume_init() });
@@ -80,52 +88,6 @@ pub fn make_eq_poly_impl<E: Field, const FULL: bool>(
     result
 }
 
-pub fn make_eq_poly_reduced<E: Field>(challenges: &[E], worker: &Worker) -> Vec<Box<[E]>> {
-    make_eq_poly_impl::<E, false>(challenges, worker)
-}
-
-pub fn make_eq_poly_in_full<E: Field>(challenges: &[E], worker: &Worker) -> Vec<Box<[E]>> {
-    make_eq_poly_impl::<E, true>(challenges, worker)
-}
-
-/// Single eq table pairing index bit `b` with `challenges[len - 1 - b]`:
-/// for point vectors stored in a producer's round order that is
-/// high-variable-first (e.g. the MSB-binding same-size layers), this
-/// consumes the coordinates in reverse association INTERNALLY -- callers
-/// never materialize a reversed vector.
-pub fn make_eq_table_msb_first<E: Field>(challenges: &[E], worker: &Worker) -> Vec<E> {
-    use crate::gkr::PAR_THRESHOLD;
-    let n = challenges.len();
-    let mut table = vec![E::ONE; 1usize << n];
-    for b in 0..n {
-        let c = challenges[n - 1 - b];
-        let mut om = E::ONE;
-        om.sub_assign(&c);
-        let half = 1usize << b;
-        let (lo_all, hi_all) = table.split_at_mut(half);
-        let hi_all = &mut hi_all[..half];
-        worker.scope_with_threshold(half, PAR_THRESHOLD, |scope, geometry| {
-            let mut lo_rest: &mut [E] = lo_all;
-            let mut hi_rest: &mut [E] = hi_all;
-            for thread_idx in 0..geometry.num_chunks {
-                let chunk = geometry.get_chunk_size(thread_idx);
-                let (lo, lo_tail) = core::mem::take(&mut lo_rest).split_at_mut(chunk);
-                let (hi, hi_tail) = core::mem::take(&mut hi_rest).split_at_mut(chunk);
-                lo_rest = lo_tail;
-                hi_rest = hi_tail;
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                    for (l, h) in lo.iter_mut().zip(hi.iter_mut()) {
-                        let mut v = *l;
-                        v.mul_assign(&c);
-                        *h = v;
-                        l.mul_assign(&om);
-                    }
-                });
-            }
-        });
-    }
-    table
-}
 
 /// Tensor eq table from per-entry WEIGHT BLOCKS: block `b` has length
 /// `2^{w_b}` and covers the next `w_b` variables (LSB-first in entry
@@ -503,61 +465,69 @@ pub(crate) fn evaluate_constant_and_quadratic_coeffs_with_precomputed_eq_serial<
     [result_0, result_1]
 }
 
-#[cfg(test)]
-pub fn make_eq_poly_impl_serial<E: Field, const FULL: bool>(challenges: &[E]) -> Vec<Box<[E]>> {
-    assert!(challenges.len() > 0);
-    // challenges[0] is the challenge used to fold a variable, that is encoded as MSB in the values enumeration,
-    // and we will produce the outputs in a same form. We also keep all intermediate forms for simplicity
-    let mut result = Vec::with_capacity(challenges.len() + 1);
+
+
+
+/// Serial variant of [`make_eq_poly_in_full_lsb`] (same table semantics:
+/// `result[k]` covers the LAST k coordinates in variable order).
+pub fn make_eq_poly_in_full_lsb_serial<E: Field>(challenges: &[E]) -> Vec<Box<[E]>> {
+    assert!(!challenges.is_empty());
+    let mut result: Vec<Box<[E]>> = Vec::with_capacity(challenges.len() + 1);
     result.push(vec![E::ONE].into_boxed_slice());
-
-    let mut size = 1;
     let mut idx = challenges.len();
-
-    let bound = if FULL {
-        challenges.len() + 1
-    } else {
-        challenges.len()
-    };
-
-    for _ in 1..bound {
-        size *= 2;
+    for _ in 1..challenges.len() + 1 {
         idx -= 1;
-
-        let challenge = challenges[idx];
-
-        let mut layer = Box::new_uninit_slice(size);
-        let previous_layer = result.last().expect("is present");
-
-        let f1 = challenge;
-
-        let half_size = size / 2;
-
-        assert_eq!(previous_layer.len(), half_size);
-
-        for index in 0..half_size {
-            let mut right = previous_layer[index];
-            right.mul_assign(&f1);
-            let mut left = previous_layer[index];
-            left.sub_assign(&right);
-            layer[index].write(left);
-            layer[index + half_size].write(right);
+        let c = challenges[idx];
+        let prev = result.last().expect("is present");
+        let mut layer = Box::new_uninit_slice(prev.len() * 2);
+        for (p, dst) in prev.iter().zip(layer.chunks_exact_mut(2)) {
+            let mut one = *p;
+            one.mul_assign(&c);
+            let mut zero = *p;
+            zero.sub_assign(&one);
+            dst[0].write(zero);
+            dst[1].write(one);
         }
-
         result.push(unsafe { layer.assume_init() });
     }
-
     result
 }
 
 #[cfg(test)]
-pub fn make_eq_poly_reduced_serial<E: Field>(challenges: &[E]) -> Vec<Box<[E]>> {
-    make_eq_poly_impl_serial::<E, false>(challenges)
-}
+mod eq_nested_lsb_tests {
+    use super::*;
+    use field::baby_bear::ext4::BabyBearExt4 as E;
+    use field::Field;
 
-#[cfg(test)]
-pub fn make_eq_poly_in_full_serial<E: Field>(challenges: &[E]) -> Vec<Box<[E]>> {
-    make_eq_poly_impl_serial::<E, true>(challenges)
+    #[test]
+    fn nested_lsb_tables_match_single_builder() {
+        let worker = crate::worker::Worker::new_with_num_threads(2);
+        let n = 5usize;
+        let challenges: Vec<E> = (0..n)
+            .map(|i| {
+                let base = field::baby_bear::base::BabyBearField::from_u32_with_reduction(
+                    77 + 31 * i as u32,
+                );
+                let mut v = E::from_base(base);
+                v.mul_assign(&E::from_base(
+                    field::baby_bear::base::BabyBearField::from_u32_with_reduction(1013),
+                ));
+                v
+            })
+            .collect();
+        let tables = make_eq_poly_in_full_lsb::<E>(&challenges, &worker);
+        assert_eq!(tables.len(), n + 1);
+        for k in 0..=n {
+            assert_eq!(tables[k].len(), 1 << k);
+            if k == 0 {
+                assert_eq!(tables[0][0], E::ONE);
+                continue;
+            }
+            // tables[k] covers the LAST k coordinates, bit b <-> challenges[n - k + b]
+            let expected = make_eq_table_lsb_first::<E>(&challenges[n - k..], &worker);
+            assert_eq!(&tables[k][..], &expected[..], "table {k}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -567,9 +537,8 @@ mod eq_lsb_orientation_tests {
     use field::baby_bear::base::BabyBearField as F;
     use field::{Field, PrimeField, FieldExtension};
 
-    /// `make_eq_table_lsb_first` (index bit b <-> challenges[b]) must agree
-    /// with the reference `make_eq_poly_in_full` (first challenge <-> TOP
-    /// bit) applied to the REVERSED challenge list, for every size.
+    /// `make_eq_table_lsb_first` (index bit b <-> challenges[b]) must match
+    /// the explicit product formula for every size.
     #[test]
     fn lsb_first_matches_reference() {
         let worker = crate::worker::Worker::new_with_num_threads(3);
@@ -578,17 +547,19 @@ mod eq_lsb_orientation_tests {
                 .map(|i| E::from_base(F::from_nonreduced_u32((i * i * 31 + i * 7 + 3) as u32)))
                 .collect();
             let lsb = make_eq_table_lsb_first::<E>(&challenges, &worker);
-            let rev: Vec<E> = challenges.iter().rev().copied().collect();
-            let reference = make_eq_poly_in_full::<E>(&rev, &worker)
-                .pop()
-                .unwrap();
-            assert_eq!(&lsb[..], &reference[..], "n = {n}");
-            // and the MSB-first variant == reference over the ORIGINAL order
-            let msb = make_eq_table_msb_first::<E>(&challenges, &worker);
-            let reference2 = make_eq_poly_in_full::<E>(&challenges, &worker)
-                .pop()
-                .unwrap();
-            assert_eq!(&msb[..], &reference2[..], "msb n = {n}");
+            for j in 0..(1usize << n) {
+                let mut expect = E::ONE;
+                for (b, c) in challenges.iter().enumerate() {
+                    let mut f = *c;
+                    if (j >> b) & 1 == 0 {
+                        let mut om = E::ONE;
+                        om.sub_assign(c);
+                        f = om;
+                    }
+                    expect.mul_assign(&f);
+                }
+                assert_eq!(lsb[j], expect, "n = {n}, j = {j}");
+            }
             // DR layout: bit 0 <-> last entry, bit b >= 1 <-> entry b-1
             let dr = make_eq_table_dim_reducing_point::<E>(&challenges, &worker);
             let var_order: Vec<E> = core::iter::once(challenges[n - 1])
@@ -682,30 +653,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_make_eq_poly_impl() {
-        let mut rng = rand::rng();
-        let size = 16;
-        let challenges: Vec<E> = (0..size).map(|_| random_in_ext(&mut rng)).collect();
-
-        let expected_full = make_eq_poly_in_full_serial(&challenges);
-        let expected_reduced = make_eq_poly_reduced_serial(&challenges);
-
-        for i in 1..=10 {
-            let worker = Worker::new_with_num_threads(i);
-            let res_full = make_eq_poly_in_full(&challenges, &worker);
-            let res_reduced = make_eq_poly_reduced(&challenges, &worker);
-            assert_eq!(res_full.len(), expected_full.len());
-            assert_eq!(res_reduced.len(), expected_reduced.len());
-
-            assert!(res_full
-                .iter()
-                .zip(expected_full.iter())
-                .all(|(r, e)| **r == **e));
-            assert!(res_reduced
-                .iter()
-                .zip(expected_reduced.iter())
-                .all(|(r, e)| **r == **e))
-        }
-    }
 }

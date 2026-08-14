@@ -1125,11 +1125,13 @@ where
             schedule.iter().all(|s| matches!(
                 s,
                 crate::gkr::prover_config::SumcheckStep::NaiveSumcheck
-                    | crate::gkr::prover_config::SumcheckStep::WindowedOp(_)
+                    | crate::gkr::prover_config::SumcheckStep::WindowedOp(
+                        crate::gkr::prover_config::WindowedOp::Initial { window: 3 }
+                    )
                     | crate::gkr::prover_config::SumcheckStep::UniskipInitial { window: 3 }
                     | crate::gkr::prover_config::SumcheckStep::Uniskip { window: 3 }
             )),
-            "{name}_same_size_sumcheck_schedule: unsupported step (naive, windowed, or the width-3 LSB uniskip chain)"
+            "{name}_same_size_sumcheck_schedule: unsupported step (naive, the width-3 LSB window chain head, or the width-3 LSB uniskip chain)"
         );
     }
     for (rounds, schedule) in prover_config.dimension_reducing_sumcheck_schedule.iter() {
@@ -1286,7 +1288,6 @@ where
     );
     let dim_reducing_total = std::time::Instant::now();
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
-        let dr_schedule_owned;
         let dr_schedule: &[crate::gkr::prover_config::SumcheckStep] = {
             let rounds = reduced_trace_size_log_2;
             if let Some(s) = prover_config
@@ -1294,18 +1295,6 @@ where
                 .get(&rounds)
             {
                 &s[..]
-            } else if std::env::var("GKR_DR_WINDOWED").is_ok() && rounds >= 3 {
-                // bench knob: window-3 head (2 windows where they fit), naive tail
-                use crate::gkr::prover_config::{SumcheckStep, WindowedOp};
-                let mut v = vec![SumcheckStep::WindowedOp(WindowedOp::Initial { window: 3 })];
-                let mut left = rounds - 3;
-                if left >= 3 {
-                    v.push(SumcheckStep::WindowedOp(WindowedOp::Interior { window: 3 }));
-                    left -= 3;
-                }
-                v.extend(std::iter::repeat(SumcheckStep::NaiveSumcheck).take(left));
-                dr_schedule_owned = v;
-                &dr_schedule_owned[..]
             } else {
                 &[]
             }
@@ -1368,21 +1357,6 @@ where
             "Same-size layer {layer_idx} sumcheck took {:?}",
             layer_timer.elapsed()
         );
-        // bring-up: the uniskip head binds its three variables on the
-        // interpolation curve, so the claim point has no per-coordinate form
-        // and downstream layers cannot consume it yet
-        let uniskip_env_layer: Option<usize> = std::env::var("GKR_SS_UNISKIP")
-            .ok()
-            .and_then(|v| v.parse().ok());
-        let lsb_env_layer: Option<usize> = std::env::var("GKR_SS_LSB")
-            .ok()
-            .and_then(|v| v.parse().ok());
-        if uniskip_env_layer == Some(layer_idx)
-            || lsb_env_layer == Some(layer_idx)
-            || (layer_idx == 3 && std::env::var("GKR_SS_STOP3").is_ok())
-        {
-            panic!("GKR_SS bench stop after same-size layer {layer_idx}");
-        }
         sumcheck_intermediate_values.insert(layer_idx, proof);
     }
     println!(
@@ -1419,7 +1393,9 @@ where
             )
             .into_boxed_slice();
         } else {
-            let mut eq_precomputed = make_eq_poly_in_full(&base_layer_z, worker);
+            // scalar base-layer points are in VARIABLE order (LSB rounds)
+            let mut eq_precomputed =
+                crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb(&base_layer_z, worker);
             _eq_at_z = eq_precomputed.pop().unwrap();
         }
     }
@@ -1576,7 +1552,8 @@ where
                     merged_claims.len(),
                     "one committed packed column per merged claim"
                 );
-                let eq_at_point = make_eq_poly_in_full::<E>(&base_layer_z, worker);
+                let eq_at_point =
+                    crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb::<E>(&base_layer_z, worker);
                 let eq_at_point = eq_at_point.last().expect("eq poly has a full layer");
                 for (column_index, expected_claim) in merged_claims.iter().enumerate() {
                     // Reduce the base-domain column to monomial coefficients: evals
@@ -1812,7 +1789,7 @@ fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
 mod packing_merge_tests {
     use super::merge_claims;
     use crate::gkr::prover::stages::commitment_utils::pack_polys_parallel_from_hypercubes_to_monomials;
-    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq, make_eq_poly_in_full};
+    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq, make_eq_table_lsb_first};
     use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
@@ -1864,11 +1841,14 @@ mod packing_merge_tests {
         // 1) a single random N-coordinate point, and the claims `a(r)`, `b(r)`
         //    obtained as a dot product with the equality poly of `r`.
         let r: Vec<E> = (0..N).map(|_| rand_e(&mut rng)).collect();
-        let eq_r_layers = make_eq_poly_in_full::<E>(&r, &worker);
-        let eq_r = eq_r_layers.last().unwrap();
+        // the packed layout's TOP index bit selects the sub-poly, so the eq
+        // table pairs index bit b with r[N - 1 - b]: build lsb-first over
+        // the reversed point
+        let r_rev: Vec<E> = r.iter().rev().copied().collect();
+        let eq_r = make_eq_table_lsb_first::<E>(&r_rev, &worker);
         assert_eq!(eq_r.len(), size);
-        let claim_a = evaluate_with_precomputed_eq::<F, E>(&a, eq_r);
-        let claim_b = evaluate_with_precomputed_eq::<F, E>(&b, eq_r);
+        let claim_a = evaluate_with_precomputed_eq::<F, E>(&a, &eq_r);
+        let claim_b = evaluate_with_precomputed_eq::<F, E>(&b, &eq_r);
 
         // 2) concatenate the two polys "as monomials" via the commitment helper.
         //    `pack_log2 = 1` merges the 2 sub-polys into one packed poly that is the
@@ -1900,13 +1880,11 @@ mod packing_merge_tests {
         //     treats `challenges[0]` as the MOST-significant index bit, so the block
         //     coordinate (the MSB of `P`) is listed first, followed by `r`. With the
         //     canonical interpolation the block challenge is exactly `r'`.
-        let mut ext_point = Vec::with_capacity(N + 1);
-        ext_point.push(r_prime);
-        ext_point.extend_from_slice(&r);
-        let eq_ext_layers = make_eq_poly_in_full::<E>(&ext_point, &worker);
-        let eq_ext = eq_ext_layers.last().unwrap();
+        let mut ext_point_rev: Vec<E> = r.iter().rev().copied().collect();
+        ext_point_rev.push(r_prime);
+        let eq_ext = make_eq_table_lsb_first::<E>(&ext_point_rev, &worker);
         assert_eq!(eq_ext.len(), 2 * size);
-        let naive = evaluate_with_precomputed_eq::<F, E>(&p_evals, eq_ext);
+        let naive = evaluate_with_precomputed_eq::<F, E>(&p_evals, &eq_ext);
 
         assert_eq!(
             merged, naive,

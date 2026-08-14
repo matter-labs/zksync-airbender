@@ -25,7 +25,6 @@
 use std::collections::BTreeMap;
 
 use super::dimension_reduction::forward::evaluate_dimension_reduction_forward;
-use super::sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer;
 use super::dimension_reduction::forward::DimensionReducingInputOutput;
 use super::{GKRStorage, SumcheckIntermediateProofValues};
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
@@ -74,7 +73,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     ) -> Self::DimReducingWorkBuffers;
 
     /// Backward (sumcheck) pass over ONE dimension-reducing layer,
-    /// mirroring [`evaluate_dimension_reducing_sumcheck_for_layer`]. The
+    /// (the LSB backward pass over one dimension-reducing layer). The
     /// dimension-reducing gate set is fixed (pairwise products and logup
     /// reduction gates only), so implementations may specialize far more
     /// aggressively than for the same-size layers.
@@ -96,32 +95,17 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         [(); E::DEGREE]: Sized;
 }
 
-/// Binding orientation of a same-size sumcheck engine, which decides the
-/// fold-buffer footprint: MSB engines fold strided pairs back in place, LSB
-/// engines fold on read and write densely to a fresh region, so successive
-/// outputs must stay contiguous next to the first-fold output.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SumcheckBindingOrder {
-    Msb,
-    Lsb,
-}
-
 /// Batch allocation of the SAME-SIZE layers' fold buffers: ONE call per
-/// layer, sized by the schedule's first step (a window/uniskip head folds by
-/// `2^w`, so its buffers are `2^(w-1)`x smaller than the naive `n/2`), with
-/// one uninitialized buffer per input poly keyed by address. Base-field
-/// polys also get an `E`-element buffer -- after the first fold every poly
-/// lives in the extension field. MSB engines fold in place after the first
-/// fold (footprint = first-fold output); LSB engines ping-pong dense writes,
-/// so the footprint is the first-fold output plus half again (for naive
-/// first_fold = 2 that is the 3/4-of-trace contiguous buffer). Buffers are
-/// `Box<[MaybeUninit<E>]>` (probe: uninit is free on fresh pages and skips
-/// the memset on allocator-reused ones); the step functions communicate
+/// layer, one uninitialized buffer per input poly keyed by address (after
+/// the first fold every poly lives in the extension field). The LSB chain
+/// writes each fold output into a fresh dense region, so the footprint is
+/// the sum of the pass regions plus one live-sized region for a scalar
+/// tail. Buffers are `Box<[MaybeUninit<E>]>` (uninit is free on fresh pages
+/// and skips the memset on allocator-reused ones); the engine communicates
 /// positions via pointer ranges, never reallocating, so the map also guards
 /// against accidental deallocation.
 pub fn allocate_same_size_fold_buffers<F: PrimeField, E: FieldExtension<F> + Field>(
     schedule: &[crate::gkr::prover_config::SumcheckStep],
-    binding: SumcheckBindingOrder,
     trace_len: usize,
     base_polys: &[super::GKRAddress],
     ext_polys: &[super::GKRAddress],
@@ -131,38 +115,35 @@ pub fn allocate_same_size_fold_buffers<F: PrimeField, E: FieldExtension<F> + Fie
         .map(|s| 1usize << s.variables_bound())
         .unwrap_or(2);
     let after_first = (trace_len / first_fold).max(2);
-    let per_poly = match binding {
-        SumcheckBindingOrder::Msb => after_first,
-        SumcheckBindingOrder::Lsb => {
-            // the LSB chain writes every fold output into a fresh dense
-            // region: one region per leading uniskip pass (m/8, m/64, ...),
-            // then -- if the schedule truncates into scalar tail rounds --
-            // the tail's halving folds, which sum to strictly less than one
-            // extra live-sized region
-            let n = trace_len.trailing_zeros() as usize;
-            let passes = schedule
-                .iter()
-                .take_while(|s| {
-                    matches!(
-                        s,
-                        crate::gkr::prover_config::SumcheckStep::UniskipInitial { .. }
-                            | crate::gkr::prover_config::SumcheckStep::Uniskip { .. }
-                    )
-                })
-                .count()
-                .max(1)
-                .min(n / 3);
-            let mut cap = 0usize;
-            let mut live = trace_len;
-            for _ in 0..passes {
-                live >>= 3;
-                cap += live;
-            }
-            if 3 * passes < n {
-                cap += live;
-            }
-            cap.max(2)
+    // the LSB chain writes every fold output into a fresh dense region:
+    // one region per leading pass (m/8, m/64, ...), then -- if the schedule
+    // truncates into scalar tail rounds -- the tail's halving folds, which
+    // sum to strictly less than one extra live-sized region
+    let per_poly = {
+        let n = trace_len.trailing_zeros() as usize;
+        let passes = schedule
+            .iter()
+            .take_while(|s| {
+                matches!(
+                    s,
+                    crate::gkr::prover_config::SumcheckStep::UniskipInitial { .. }
+                        | crate::gkr::prover_config::SumcheckStep::Uniskip { .. }
+                        | crate::gkr::prover_config::SumcheckStep::WindowedOp(_)
+                )
+            })
+            .count()
+            .max(1)
+            .min(n / 3);
+        let mut cap = 0usize;
+        let mut live = trace_len;
+        for _ in 0..passes {
+            live >>= 3;
+            cap += live;
         }
+        if 3 * passes < n {
+            cap += live;
+        }
+        cap.max(2)
     };
     base_polys
         .iter()
