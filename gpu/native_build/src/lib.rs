@@ -1,6 +1,6 @@
 //! Shared build-script helper for the GPU kernel crates.
 //!
-//! `gpu_ntt`, `gpu_ops`, `gpu_hash`, `gpu_cub` (and, under its `bench` feature,
+//! `gpu_ntt`, `gpu_ops`, `gpu_hash` (and, under its `bench` feature,
 //! `gpu_core`) each compile a CUDA static archive from their `native/`
 //! directory via CMake and emit the link directives. That logic is identical
 //! across crates except for the archive/target name, the `*_ENABLE_LINEINFO`

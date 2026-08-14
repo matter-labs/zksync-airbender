@@ -11,7 +11,7 @@ Dependency edges may only point DOWN this order; never up. Enforcement is doc-on
 (no mechanical check) — keep it true by review.
 
 ```text
-gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash, gpu_cub }  <  gpu_prover_context  <
+gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash }  <  gpu_prover_context  <
 gpu_trace  <  gpu_gkr  <  gpu_whir  <  circuit_prover  <  execution_prover  <  program_prover
 ```
 
@@ -100,14 +100,6 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   parity test verifies against the host `prover::transcript::Blake2sTranscript`,
   so `prover` is a **dev-only** dep of `gpu_hash` (production stays
   `gpu_core`-only).
-- **`gpu_cub`** = the CUB-library wrappers (`device_reduce`/segmented,
-  `device_radix_sort`, `device_run_length_encode` + `CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2`)
-  with its own `gpu_cub_native` (`native/`: the 4 `.cu` + cub-local `common.cuh`,
-  which include `<cub/device/…>` from the CUDA toolkit + gpu_core base headers).
-  The compile-heavy CCCL/CUB template instantiations are isolated to this crate
-  (a build-speed win). Fully **self-contained** — it launches only its own
-  archive's kernels, so no header export / `DEP_*` is needed (unlike gpu_hash).
-  Dep: `gpu_core`.
 - **`gpu_prover_context`** = `ProverContext` + `ProverContextConfig` (the
   device/host allocators, the three CUDA streams — `exec_stream`, `h2d_stream`,
   `side_stream` — and the NTT twiddle `DeviceContext`) plus the H2D `Transfer`
@@ -169,8 +161,8 @@ from upstream library code (`full_statement_verifier::host_utils` /
   includes for the common target configuration (properties, flags, and the
   gated `ENABLE_LINEINFO` / `ENABLE_BUILD_DIAG` diagnostics); edit it there for
   behavior that should apply to all kernel crates.
-- **C++ namespace = owning crate:** `airbender::hash` (gpu_hash), `airbender::cub`
-  (gpu_cub), `airbender::ntt` (gpu_ntt), `airbender::ops::*` (gpu_ops),
+- **C++ namespace = owning crate:** `airbender::hash` (gpu_hash),
+  `airbender::ntt` (gpu_ntt), `airbender::ops::*` (gpu_ops),
   `airbender::primitives::*` (gpu_core); `airbender::trace::witness::*`
   (gpu_trace); `airbender::gkr::{backward, forward, ops, setup}` (gpu_gkr);
   `airbender::whir` (gpu_whir). `circuit_prover` owns no kernels of its own
@@ -247,5 +239,5 @@ which test/bench and NVTX range to profile — live with the crate (e.g.
   has no native code of its own, so it has no `native/AGENTS.md` —
   the upstream-constant drift guards that used to live there are now owned
   by `gpu_trace` (see [`trace/AGENTS.md`](trace/AGENTS.md)).
-- The kernel crates (`core`/`ntt`/`ops`/`hash`/`cub`) and `gpu_gkr_model` carry
+- The kernel crates (`core`/`ntt`/`ops`/`hash`) and `gpu_gkr_model` carry
   no own `AGENTS.md` — this file is their contract.

@@ -1231,6 +1231,56 @@ pub(crate) fn launch_whir_three_point_partials(
         .launch(&stage2_config, &stage2_args)
 }
 
+const WHIR_SUM_BLOCK_THREADS: u32 = 256;
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirSum,
+    values: *const E4,
+    count: u32,
+    out: *mut E4,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_sum_e4_kernel(
+        values: *const E4,
+        count: u32,
+        out: *mut E4,
+    )
+);
+
+/// Sums `values` into `out`. Single-launch when `values` fits in one block,
+/// otherwise stage-1 block partials (into `partials`) + stage-2 single-block
+/// finish; `partials` must hold at least `values.len().div_ceil(256)` E4 on
+/// the two-launch path.
+pub(crate) fn whir_sum(
+    values: &DeviceSlice<E4>,
+    partials: &mut DeviceSlice<E4>,
+    out: &mut DeviceVariable<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = values.len();
+    assert!(count >= 1);
+    assert!(count <= u32::MAX as usize);
+
+    let block = WHIR_SUM_BLOCK_THREADS;
+    if count as u32 <= block {
+        let config = CudaLaunchConfig::basic(1, block, stream);
+        let args = WhirSumArguments::new(values.as_ptr(), count as u32, out.as_mut_ptr());
+        return WhirSumFunction(ab_whir_sum_e4_kernel).launch(&config, &args);
+    }
+
+    let num_blocks = count.div_ceil(block as usize) as u32;
+    assert!(partials.len() >= num_blocks as usize);
+    let partials_ptr = partials.as_mut_ptr();
+    let stage1_config = CudaLaunchConfig::basic(num_blocks, block, stream);
+    let stage1_args = WhirSumArguments::new(values.as_ptr(), count as u32, partials_ptr);
+    WhirSumFunction(ab_whir_sum_e4_kernel).launch(&stage1_config, &stage1_args)?;
+
+    let stage2_config = CudaLaunchConfig::basic(1, block, stream);
+    let stage2_args = WhirSumArguments::new(partials_ptr, num_blocks, out.as_mut_ptr());
+    WhirSumFunction(ab_whir_sum_e4_kernel).launch(&stage2_config, &stage2_args)
+}
+
 cuda_kernel_signature_arguments_and_function!(
     WhirBuildEqFactorTablesBatched,
     claim_points: *const E4,

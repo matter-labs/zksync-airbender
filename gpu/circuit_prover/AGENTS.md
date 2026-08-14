@@ -10,7 +10,7 @@ of its own** — the split-out kernel crates below it (`gpu_trace`, `gpu_gkr`,
 
 ## Layer position
 
-`gpu_core < { gpu_ntt, gpu_ops, gpu_hash, gpu_cub } < gpu_prover_context <
+`gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
 gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
 gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. This crate depends on `gpu_core`, `gpu_hash`, `gpu_prover_context`,
@@ -119,7 +119,7 @@ This crate's own module DAG is small: `config` and `proof::inputs` are leaves;
 `gpu_execution_prover`.
 
 The crate stack itself — which modules became `gpu_core` / `gpu_ntt` /
-`gpu_ops` / `gpu_hash` / `gpu_cub` / `gpu_prover_context` / `gpu_trace` /
+`gpu_ops` / `gpu_hash` / `gpu_prover_context` / `gpu_trace` /
 `gpu_gkr` / `gpu_whir` / `gpu_execution_prover`, the build +
 `_native`-naming + C++-namespace + bench conventions, and the native-code
 (clang-format / Rust↔CUDA interface-stability) rules — is documented once for
