@@ -94,7 +94,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             index,
             self.next_layer_size * 2
         );
-        [self.get_at_index(2 * index), self.get_at_index(2 * index + 1)]
+        [
+            self.get_at_index(2 * index),
+            self.get_at_index(2 * index + 1),
+        ]
     }
 }
 
@@ -239,6 +242,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             self.next_layer_size * 2
         );
 
-        [self.get_at_index(2 * index), self.get_at_index(2 * index + 1)]
+        [
+            self.get_at_index(2 * index),
+            self.get_at_index(2 * index + 1),
+        ]
     }
 }

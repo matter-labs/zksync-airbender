@@ -11,6 +11,8 @@ rustc-ice-*.*
 verifier_evm/private/*_gist.sh
 __pycache__/
 *.pyc
+# Iteration outputs of the experiments_runner add/sub proving test
+/experiments_runner/test_proofs/
 # Generated on-disk dumps of RS codewords and merkle trees
 # (prover `gkr::whir::rs_on_disk` coset files and `merkle_trees::on_disk` tree files).
 *.rscw

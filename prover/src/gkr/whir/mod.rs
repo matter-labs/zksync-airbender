@@ -803,7 +803,6 @@ pub fn whir_fold<
     setup: &crate::gkr::prover::SetupCommitment<F, T>,
     setup_polys_claims: Vec<E>,
     original_evaluation_point: Vec<E>,
-    evaluation_point_entries: Option<Vec<crate::gkr::prover::EvaluationPointEntry<E>>>,
     batching_challenge: E,
     whir_schedule: &WhirSchedule,
     twiddles: &Twiddles<F, Global>,
@@ -838,26 +837,7 @@ where
     let set_caps = [mem_oracle.get_cap(), wit_oracle.get_cap(), setup.get_cap()];
 
     let t_eq_init = std::time::Instant::now();
-    // The point arrives in the producing layer's plain push order, which
-    // is VARIABLE order for the LSB-binding rounds (the proof's
-    // `original_evaluation_point` copy exists only for the EVM verifier).
-    let mut eq_poly_box = if let Some(entries) = &evaluation_point_entries {
-        // mixed point: the claim must cover every variable, and the eq
-        // table is the block tensor over the entries (variable order)
-        assert_eq!(
-            entries.iter().map(|e| e.bound_vars()).sum::<usize>(),
-            trace_len_log2,
-            "claim point must cover every variable"
-        );
-        let omega16_f: F = ::fft::domain_generator_for_size::<F>(16);
-        let blocks: Vec<Vec<E>> = entries
-            .iter()
-            .map(|e| e.eq_weight_block::<F>(omega16_f))
-            .collect();
-        let refs: Vec<&[E]> = blocks.iter().map(|b| &b[..]).collect();
-        crate::gkr::sumcheck::eq_poly::make_eq_table_from_weight_blocks::<E>(&refs, worker)
-            .into_boxed_slice()
-    } else {
+    let mut eq_poly_box = {
         assert_eq!(
             original_evaluation_point.len(),
             trace_len_log2,
@@ -946,9 +926,7 @@ where
         // GKR->WHIR handoff values (see WhirPolyCommitProof). `batched_opening` is filled once
         // `batched_claim` is computed below.
         batching_challenge: Some(batching_challenge),
-        original_evaluation_point: evaluation_point_entries
-            .is_none()
-            .then(|| original_evaluation_point.clone()),
+        original_evaluation_point: Some(original_evaluation_point.clone()),
         batched_opening: None,
     };
 
@@ -4076,7 +4054,6 @@ mod test {
             &setup_commitment,
             c,
             original_evaluation_point,
-            None,
             E::from_base(F::from_u32_with_reduction(7)),
             &whir_schedule,
             &twiddles,

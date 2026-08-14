@@ -20,6 +20,7 @@ pub use crate::gkr::prover::backend::{
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils;
+use crate::gkr::prover::sumcheck_loop::flatten_claim_point;
 use crate::gkr::prover::transcript_utils::{
     commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
 };
@@ -44,8 +45,8 @@ use cs::definitions::{GKRAddress, VirtualSetupPoly};
 pub mod backend;
 mod debug_utils;
 pub mod dimension_reduction;
-pub mod gkr_backend;
 pub mod forward_loop;
+pub mod gkr_backend;
 pub mod setup;
 pub mod stages;
 pub mod sumcheck_loop;
@@ -1097,10 +1098,7 @@ where
             fl_timer.elapsed()
         );
     }
-    println!(
-        "Forward layers total: {:?}",
-        forward_layers_total.elapsed()
-    );
+    println!("Forward layers total: {:?}", forward_layers_total.elapsed());
 
     #[cfg(feature = "gkr_self_checks")]
     assert!(debug_utils::check_logup_identity(
@@ -1253,24 +1251,28 @@ where
 
     // then we go "backward", by taking random point evaluation claims from the previous layer, and producing claims for the next layer
     let mut claims_for_layers: BTreeMap<usize, BTreeMap<GKRAddress, E>> = BTreeMap::new();
-    let mut points_for_claims_at_layer = BTreeMap::new();
+    let mut claim_point_entries: BTreeMap<usize, Vec<EvaluationPointEntry<E>>> = BTreeMap::new();
 
     claims_for_layers.insert(initial_layer_for_sumcheck + 1, top_layer_claims);
     // the claim/evaluation coordinate must ALWAYS have one entry per variable
     assert_eq!(evaluation_point.len(), final_trace_size_log_2);
-    points_for_claims_at_layer.insert(initial_layer_for_sumcheck + 1, evaluation_point);
+    claim_point_entries.insert(
+        initial_layer_for_sumcheck + 1,
+        evaluation_point
+            .into_iter()
+            .map(|el| EvaluationPointEntry::Coordinate { point: el })
+            .collect::<Vec<_>>(),
+    );
 
     let mut sumcheck_intermediate_values = BTreeMap::new();
     // mixed claim points (uniskip entries) alongside the scalar map
-    let mut claim_point_entries: BTreeMap<usize, Vec<EvaluationPointEntry<E>>> = BTreeMap::new();
 
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
     // ONE pass-wide buffer set for the whole dimension-reducing backward
     // pass, built by the backend's constructor from the largest layer's
     // shape and reused by every layer below
-    let dr_max_rounds =
-        final_trace_size_log_2 + dimension_reducing_inputs.len().saturating_sub(1);
+    let dr_max_rounds = final_trace_size_log_2 + dimension_reducing_inputs.len().saturating_sub(1);
     let dr_max_polys = dimension_reducing_inputs
         .values()
         .map(|layer| {
@@ -1303,7 +1305,7 @@ where
             dr_schedule,
             layer_idx,
             &layer,
-            &mut points_for_claims_at_layer,
+            &mut claim_point_entries,
             &mut claims_for_layers,
             &mut gkr_storage,
             &mut sumcheck_batching_challenge,
@@ -1336,7 +1338,6 @@ where
         let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<F, E, TR>(
             layer_idx,
             layer,
-            &mut points_for_claims_at_layer,
             &mut claim_point_entries,
             &mut claims_for_layers,
             &mut gkr_storage,
@@ -1366,38 +1367,18 @@ where
 
     drop(preprocessed_generic_lookup);
 
-    // a uniskip-scheduled layer 0 emits a MIXED point (entries only); the
-    // scalar map then has no flat entry and WHIR consumes the entries
-    let base_layer_entries: Option<Vec<EvaluationPointEntry<E>>> = claim_point_entries.remove(&0);
-    let mut base_layer_z = if base_layer_entries.is_some() {
-        Vec::new()
-    } else {
-        points_for_claims_at_layer
-            .get(&0)
-            .expect("must have base layer point")
-            .clone()
+    let Some(base_layer_entries) = claim_point_entries.get(&0) else {
+        panic!("Missing claim point for committed polys");
     };
+    let mut base_layer_z = flatten_claim_point(base_layer_entries);
 
     let mut _eq_at_z: Box<[E]> = vec![].into_boxed_slice();
     #[cfg(feature = "gkr_self_checks")]
     {
-        if let Some(entries) = &base_layer_entries {
-            let omega16_f: F = ::fft::domain_generator_for_size::<F>(16);
-            let blocks: Vec<Vec<E>> = entries
-                .iter()
-                .map(|e| e.eq_weight_block::<F>(omega16_f))
-                .collect();
-            let refs: Vec<&[E]> = blocks.iter().map(|b| &b[..]).collect();
-            _eq_at_z = crate::gkr::sumcheck::eq_poly::make_eq_table_from_weight_blocks::<E>(
-                &refs, worker,
-            )
-            .into_boxed_slice();
-        } else {
-            // scalar base-layer points are in VARIABLE order (LSB rounds)
-            let mut eq_precomputed =
-                crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb(&base_layer_z, worker);
-            _eq_at_z = eq_precomputed.pop().unwrap();
-        }
+        // scalar base-layer points are in VARIABLE order (LSB rounds)
+        let mut eq_precomputed =
+            crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb(&base_layer_z, worker);
+        _eq_at_z = eq_precomputed.pop().unwrap();
     }
 
     let mut mem_polys_claims = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
@@ -1444,10 +1425,7 @@ where
     }
 
     #[cfg(feature = "gkr_self_checks")]
-    // TODO: block-aware analytic evaluation of the virtual setup polys for
-    // mixed (uniskip) points; the materialized-poly at-point checks above
-    // already cover the claims
-    if base_layer_entries.is_none() {
+    {
         if let Some(value) = claims_for_layers[&0]
             .get(&GKRAddress::VirtualSetup(
                 VirtualSetupPoly::RangeCheck16Bits,
@@ -1526,10 +1504,6 @@ where
                 .map(|input| merge_claims(&input, &extra_coordinates));
 
             // and we need to update claim point
-            assert!(
-                base_layer_entries.is_none(),
-                "packed commitment with a mixed (uniskip) layer-0 point is not wired yet"
-            );
             let mut new_claim_point = extra_coordinates;
             new_claim_point.extend_from_slice(&base_layer_z);
 
@@ -1552,8 +1526,10 @@ where
                     merged_claims.len(),
                     "one committed packed column per merged claim"
                 );
-                let eq_at_point =
-                    crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb::<E>(&base_layer_z, worker);
+                let eq_at_point = crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb::<E>(
+                    &base_layer_z,
+                    worker,
+                );
                 let eq_at_point = eq_at_point.last().expect("eq poly has a full layer");
                 for (column_index, expected_claim) in merged_claims.iter().enumerate() {
                     // Reduce the base-domain column to monomial coefficients: evals
@@ -1640,7 +1616,6 @@ where
         setup_commitment,
         setup_polys_claims,
         base_layer_z.clone(),
-        base_layer_entries.clone(),
         whir_batching_challenge,
         &prover_config.whir_schedule,
         twiddles,

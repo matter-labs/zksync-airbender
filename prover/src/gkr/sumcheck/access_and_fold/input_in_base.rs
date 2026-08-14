@@ -374,6 +374,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     fn get_f0_and_f1(&self, index: usize) -> [ExtensionFieldRepresentation<F, E>; 2] {
         // LSB binding: adjacent pairs; do NOT cache f1 - f0
         assert!(index < self.next_layer_size);
-        [self.get_at_index(2 * index), self.get_at_index(2 * index + 1)]
+        [
+            self.get_at_index(2 * index),
+            self.get_at_index(2 * index + 1),
+        ]
     }
 }

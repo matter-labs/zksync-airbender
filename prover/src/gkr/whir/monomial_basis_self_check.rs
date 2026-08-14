@@ -796,9 +796,7 @@ fn quick_lsb_consistency_chain() {
 #[test]
 fn quick_uniskip_point_equivalence() {
     use crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::uniskip8_fold_weights;
-    use crate::gkr::sumcheck::eq_poly::{
-        make_domain_eq_table_lsb_first, make_eq_table_lsb_first,
-    };
+    use crate::gkr::sumcheck::eq_poly::{make_domain_eq_table_lsb_first, make_eq_table_lsb_first};
     let worker = Worker::new_with_num_threads(1);
     let f: Vec<E> = (0..8u32)
         .map(|i| E::from_base(F::from_nonreduced_u32(i * i * 7 + i * 13 + 5)))
@@ -931,4 +929,3 @@ fn quick_uniskip_point_equivalence() {
     );
     println!("standard univariate skip binds (r, r^2, r^4): CONFIRMED");
 }
-

@@ -2,11 +2,11 @@ use super::*;
 
 use crate::gkr::prover::sumcheck::access_and_fold::*;
 
-pub(crate) mod program;
 pub(crate) mod full_size_scratch;
-pub(crate) mod uniskip;
 pub(crate) mod lsb_chain;
 pub(crate) mod lsb_generic;
+pub(crate) mod program;
+pub(crate) mod uniskip;
 
 #[cfg(target_arch = "aarch64")]
 pub(crate) mod neon;

@@ -1,12 +1,12 @@
-use std::collections::BTreeMap;
 use crate::gkr::prover_config;
+use std::collections::BTreeMap;
 use std::mem::MaybeUninit;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
-use field::{Field, FieldExtension, PrimeField};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
+use field::{Field, FieldExtension, PrimeField};
 use transcript::{
     commit_base_field_elements_impl, commit_extension_field_elements_impl,
     draw_random_field_elements_impl, Blake2sTranscript, Seed, Transcript,
@@ -142,7 +142,10 @@ fn test_sumcheck_loop_product() {
     claims_storage.insert(1, output_claims);
 
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
-    let mut claim_point_entries: std::collections::BTreeMap<usize, Vec<crate::gkr::prover::EvaluationPointEntry<E>>> = Default::default();
+    let mut claim_point_entries: std::collections::BTreeMap<
+        usize,
+        Vec<crate::gkr::prover::EvaluationPointEntry<E>>,
+    > = Default::default();
     claim_points.insert(1, prev_challenges.clone());
 
     let lookup_multiplicative_part = E::from_base(F::from_u32_with_reduction(0xff));
@@ -154,7 +157,6 @@ fn test_sumcheck_loop_product() {
     evaluate_sumcheck_for_layer::<F, E, TestTranscript>(
         0,
         &layer,
-        &mut claim_points,
         &mut claim_point_entries,
         &mut claims_storage,
         &mut storage,
@@ -302,7 +304,10 @@ fn test_sumcheck_loop_multiple_gates() {
     claims_storage.insert(1, output_claims);
 
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
-    let mut claim_point_entries: std::collections::BTreeMap<usize, Vec<crate::gkr::prover::EvaluationPointEntry<E>>> = Default::default();
+    let mut claim_point_entries: std::collections::BTreeMap<
+        usize,
+        Vec<crate::gkr::prover::EvaluationPointEntry<E>>,
+    > = Default::default();
     claim_points.insert(1, prev_challenges.clone());
 
     let lookup_multiplicative_part = E::from_base(F::from_u32_with_reduction(0xff));
@@ -314,7 +319,6 @@ fn test_sumcheck_loop_multiple_gates() {
     evaluate_sumcheck_for_layer::<F, E, TestTranscript>(
         0,
         &layer,
-        &mut claim_points,
         &mut claim_point_entries,
         &mut claims_storage,
         &mut storage,

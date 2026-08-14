@@ -256,7 +256,7 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
         e0.sub_assign(&tau[s]);
         let mut e1 = tau[s];
         e1.sub_assign(&e0); // 2*tau_s - 1
-        // q = eqw * h -> cubic coefficients
+                            // q = eqw * h -> cubic coefficients
         let mut c0 = e0;
         c0.mul_assign(&h0);
         let mut c1 = e0;
@@ -463,10 +463,7 @@ mod tests {
 /// absorbs the round coefficients into the transcript and returns the drawn
 /// challenge, exactly like the naive loop's `commit_field_els` +
 /// `draw_random_field_els` pair.
-pub fn lsb_dim_reducing_sumcheck_prove_parallel<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
->(
+pub fn lsb_dim_reducing_sumcheck_prove_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
     polys: &[&[E]],
     relations: &[LsbDimReducingRelation<E>],
     tau: &[E],
@@ -618,10 +615,10 @@ pub fn lsb_dim_reducing_sumcheck_prove_parallel<
                 .iter_mut()
                 .map(|b| {
                     let dst_at = if b.live_at == 0 { b.live_len } else { 0 };
-                    (
-                        unsafe { b.buf.as_ptr().add(b.live_at) } as usize,
-                        unsafe { b.buf.as_mut_ptr().add(dst_at) } as usize,
-                    )
+                    (unsafe { b.buf.as_ptr().add(b.live_at) } as usize, unsafe {
+                        b.buf.as_mut_ptr().add(dst_at)
+                    }
+                        as usize)
                 })
                 .collect();
             if out_pairs == 0 {
@@ -804,10 +801,7 @@ fn window_cells<E: Field, const W: usize>(taps: &[E], out: &mut [E]) {
 /// cubic `[E;4]`, absorb/draw via the callback, bind the accumulator with
 /// `f(r) = f0 + r*(f1-f0) + (r^2-r)*f_inf`), and finally folds every poly by
 /// all `w` challenges in ONE `2^w`-tap pass (dense ping-pong write).
-pub fn lsb_dim_reducing_windowed_prove_parallel<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
->(
+pub fn lsb_dim_reducing_windowed_prove_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
     polys: &[&[E]],
     relations: &[LsbDimReducingRelation<E>],
     tau: &[E],
@@ -888,11 +882,9 @@ pub fn lsb_dim_reducing_windowed_prove_parallel<
                                     let src = live_ptrs[p] as *const E;
                                     for b in 0..2 {
                                         for y in 0..(1usize << w) {
-                                            taps[y] =
-                                                unsafe { *src.add(base_idx + 2 * y + b) };
+                                            taps[y] = unsafe { *src.add(base_idx + 2 * y + b) };
                                         }
-                                        let g = &mut grids
-                                            [(p * 2 + b) * 27..(p * 2 + b) * 27 + 27];
+                                        let g = &mut grids[(p * 2 + b) * 27..(p * 2 + b) * 27 + 27];
                                         match w {
                                             3 => window_cells::<E, 3>(&taps[..8], g),
                                             2 => window_cells::<E, 2>(&taps[..4], g),
@@ -903,9 +895,8 @@ pub fn lsb_dim_reducing_windowed_prove_parallel<
                                 }
                                 let tw = unsafe { *t_tab.add(j) };
                                 for c in 0..local.len() {
-                                    let v = gate_batch(relations, |p, b| {
-                                        grids[(p * 2 + b) * 27 + c]
-                                    });
+                                    let v =
+                                        gate_batch(relations, |p, b| grids[(p * 2 + b) * 27 + c]);
                                     let mut t = v;
                                     t.mul_assign(&tw);
                                     local[c].add_assign(&t);
@@ -998,11 +989,7 @@ pub fn lsb_dim_reducing_windowed_prove_parallel<
                 q01.add_assign(&c1);
                 q01.add_assign(&c2);
                 q01.add_assign(&c3);
-                assert_eq!(
-                    q01, claim,
-                    "LSB windowed round {} claim mismatch",
-                    done + s
-                );
+                assert_eq!(q01, claim, "LSB windowed round {} claim mismatch", done + s);
             }
             let r = draw_challenge(&coeffs);
             challenges.push(r);
@@ -1066,10 +1053,10 @@ pub fn lsb_dim_reducing_windowed_prove_parallel<
                 .iter_mut()
                 .map(|b| {
                     let dst_at = if b.live_at == 0 { b.live_len } else { 0 };
-                    (
-                        unsafe { b.buf.as_ptr().add(b.live_at) } as usize,
-                        unsafe { b.buf.as_mut_ptr().add(dst_at) } as usize,
-                    )
+                    (unsafe { b.buf.as_ptr().add(b.live_at) } as usize, unsafe {
+                        b.buf.as_mut_ptr().add(dst_at)
+                    }
+                        as usize)
                 })
                 .collect();
             worker.scope_with_threshold(
@@ -1152,10 +1139,7 @@ pub fn lsb_dim_reducing_windowed_prove_parallel<
 ///   relation writes, later ones add) -- no per-index relation dispatch;
 /// * the eq weighting is ONE column-wise dot product of the triple buffer
 ///   with the T column, fused into the same chunk while the triples are hot.
-pub fn lsb_dim_reducing_sumcheck_prove_columns<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
->(
+pub fn lsb_dim_reducing_sumcheck_prove_columns<F: PrimeField, E: FieldExtension<F> + Field>(
     polys: &[&[E]],
     relations: &[LsbDimReducingRelation<E>],
     tau: &[E],
@@ -1389,40 +1373,36 @@ pub fn lsb_dim_reducing_sumcheck_prove_columns<
                     (src_p, dst_p)
                 })
                 .collect();
-            worker.scope_with_threshold(
-                out_pairs.max(1),
-                PAR_THRESHOLD,
-                |scope, geometry| {
-                    for thread_idx in 0..geometry.num_chunks {
-                        let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-                        let chunk_size = geometry.get_chunk_size(thread_idx);
-                        let fold_ptrs = fold_ptrs.clone();
-                        worker::Worker::smart_spawn(
-                            scope,
-                            thread_idx == geometry.len() - 1,
-                            move |_| {
-                                for (src_a, dst_a) in fold_ptrs.iter() {
-                                    let src = *src_a as *const E;
-                                    let dst = *dst_a as *mut E;
-                                    for j in chunk_start..(chunk_start + chunk_size) {
-                                        for b in 0..2 {
-                                            unsafe {
-                                                let lo = *src.add(4 * j + b);
-                                                let hi = *src.add(4 * j + 2 + b);
-                                                let mut v = hi;
-                                                v.sub_assign(&lo);
-                                                v.mul_assign(&r);
-                                                v.add_assign(&lo);
-                                                *dst.add(2 * j + b) = v;
-                                            }
+            worker.scope_with_threshold(out_pairs.max(1), PAR_THRESHOLD, |scope, geometry| {
+                for thread_idx in 0..geometry.num_chunks {
+                    let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                    let chunk_size = geometry.get_chunk_size(thread_idx);
+                    let fold_ptrs = fold_ptrs.clone();
+                    worker::Worker::smart_spawn(
+                        scope,
+                        thread_idx == geometry.len() - 1,
+                        move |_| {
+                            for (src_a, dst_a) in fold_ptrs.iter() {
+                                let src = *src_a as *const E;
+                                let dst = *dst_a as *mut E;
+                                for j in chunk_start..(chunk_start + chunk_size) {
+                                    for b in 0..2 {
+                                        unsafe {
+                                            let lo = *src.add(4 * j + b);
+                                            let hi = *src.add(4 * j + 2 + b);
+                                            let mut v = hi;
+                                            v.sub_assign(&lo);
+                                            v.mul_assign(&r);
+                                            v.add_assign(&lo);
+                                            *dst.add(2 * j + b) = v;
                                         }
                                     }
                                 }
-                            },
-                        )
-                    }
-                },
-            );
+                            }
+                        },
+                    )
+                }
+            });
             live_src = false;
             live_at = dst_at;
             live_len = new_len;
@@ -1461,7 +1441,6 @@ pub fn lsb_dim_reducing_sumcheck_prove_columns<
     )
 }
 
-
 /// Portable scalar chunk kernel of the fused sweep (the naive backend's
 /// choice). Platform-specialized kernels live in the platform backends.
 #[allow(clippy::too_many_arguments)]
@@ -1486,7 +1465,13 @@ pub(crate) fn derive_h1_from_claim<E: Field>(claim: &E, eq_prefix: &E, h0: &E, t
 /// `eqw(X) = (1 - tau) + (2*tau - 1)*X` and
 /// `h(X) = h0 + (h1 - h0 - hinf)*X + hinf*X^2`.
 #[inline]
-pub(crate) fn cubic_round_message<E: Field>(h0: &E, h1: &E, hinf: &E, tau_s: &E, eq_prefix: &E) -> [E; 4] {
+pub(crate) fn cubic_round_message<E: Field>(
+    h0: &E,
+    h1: &E,
+    hinf: &E,
+    tau_s: &E,
+    eq_prefix: &E,
+) -> [E; 4] {
     let mut h1x = *h1;
     h1x.sub_assign(h0);
     h1x.sub_assign(hinf);
@@ -1621,8 +1606,7 @@ pub(crate) fn scalar_fused_chunk<E: Field>(
     scratch: SendPtr<[u128; 2]>,
 ) -> [E; 2] {
     // caller-provided tri scratch: [v0, vinf] per row
-    let tri =
-        unsafe { core::slice::from_raw_parts_mut(scratch.0 as *mut [E; 2], chunk_size) };
+    let tri = unsafe { core::slice::from_raw_parts_mut(scratch.0 as *mut [E; 2], chunk_size) };
     for t in tri.iter_mut() {
         *t = [E::ZERO; 2];
     }
@@ -1632,8 +1616,7 @@ pub(crate) fn scalar_fused_chunk<E: Field>(
             LsbDimReducingRelation::PairwiseProduct { input, alpha } => {
                 for (jj, t) in tri.iter_mut().enumerate() {
                     let j = chunk_start + jj;
-                    let [a0, b0, a1, b1] =
-                        scalar_fetch_pair4(cur_ptrs, dst_ptrs, &rp, *input, j);
+                    let [a0, b0, a1, b1] = scalar_fetch_pair4(cur_ptrs, dst_ptrs, &rp, *input, j);
                     // round 0: the output layer already holds the gate value
                     // at X = 0 -- read it instead of re-evaluating
                     let mut v0 = if rp.is_none() && !out_ptrs.is_empty() {
@@ -1667,10 +1650,8 @@ pub(crate) fn scalar_fused_chunk<E: Field>(
             } => {
                 for (jj, t) in tri.iter_mut().enumerate() {
                     let j = chunk_start + jj;
-                    let [n0, n1, n2, n3] =
-                        scalar_fetch_pair4(cur_ptrs, dst_ptrs, &rp, *num, j);
-                    let [d0, d1, d2, d3] =
-                        scalar_fetch_pair4(cur_ptrs, dst_ptrs, &rp, *den, j);
+                    let [n0, n1, n2, n3] = scalar_fetch_pair4(cur_ptrs, dst_ptrs, &rp, *num, j);
+                    let [d0, d1, d2, d3] = scalar_fetch_pair4(cur_ptrs, dst_ptrs, &rp, *den, j);
                     let (num0, den0) = if rp.is_none() && !out_ptrs.is_empty() {
                         unsafe {
                             (
@@ -1691,9 +1672,7 @@ pub(crate) fn scalar_fused_chunk<E: Field>(
                     dd1.sub_assign(&d1);
                     let (numi, deni) = scalar_logup_quad(dn0, dn1, dd0, dd1);
                     let mut vals = [E::ZERO; 2];
-                    for (k, (nv, dv)) in
-                        [(num0, den0), (numi, deni)].into_iter().enumerate()
-                    {
+                    for (k, (nv, dv)) in [(num0, den0), (numi, deni)].into_iter().enumerate() {
                         let mut v = nv;
                         v.mul_assign(alpha_num);
                         let mut w = dv;
@@ -1723,7 +1702,6 @@ pub(crate) fn scalar_fused_chunk<E: Field>(
         }
     }
     acc
-
 }
 
 /// Fold-on-read variant of [`lsb_dim_reducing_sumcheck_prove_columns`]: the
@@ -1914,8 +1892,7 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
                                     let src = cur_ptrs[p] as *const E;
                                     for b in 0..2 {
                                         for y in 0..(1usize << w) {
-                                            taps[y] =
-                                                unsafe { *src.add(base_idx + 2 * y + b) };
+                                            taps[y] = unsafe { *src.add(base_idx + 2 * y + b) };
                                         }
                                         let g = &mut grids
                                             [(slot * 2 + b) * 27..(slot * 2 + b) * 27 + 27];
@@ -1954,9 +1931,7 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
                                 let _ = &one_rel;
                                 let tw = t_win[j];
                                 for c in 0..pow3 {
-                                    let v = gate_batch(&remap, |p, b| {
-                                        grids[(p * 2 + b) * 27 + c]
-                                    });
+                                    let v = gate_batch(&remap, |p, b| grids[(p * 2 + b) * 27 + c]);
                                     let mut t = v;
                                     t.mul_assign(&tw);
                                     local[c].add_assign(&t);
@@ -2121,9 +2096,7 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
                                 scope,
                                 thread_idx == geometry.len() - 1,
                                 move |_| {
-                                    for (src_a, dst_a) in
-                                        cur_ptrs.iter().zip(dst_ptrs2.iter())
-                                    {
+                                    for (src_a, dst_a) in cur_ptrs.iter().zip(dst_ptrs2.iter()) {
                                         let src = *src_a as *const E;
                                         let dst = *dst_a as *mut E;
                                         for jj in chunk_start..(chunk_start + chunk_size) {
@@ -2342,4 +2315,3 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
         challenges,
     )
 }
-

@@ -1865,7 +1865,10 @@ mod test {
             distinct_brackets.len(),
             brackets as f64 / distinct_brackets.len().max(1) as f64,
         );
-        println!("bracket size histogram (size -> count): {:?}", bracket_size_hist);
+        println!(
+            "bracket size histogram (size -> count): {:?}",
+            bracket_size_hist
+        );
         if n_enforce_list > 0 {
             println!(
                 "constraints-list gates: {} stored pairs, {} pair instances across constraints ({:.2}x internal duplication)",

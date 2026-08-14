@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
-use field::{Field, FieldExtension, Rand};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
+use field::{Field, FieldExtension, Rand};
 use rand::SeedableRng;
 use worker::Worker;
 

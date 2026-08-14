@@ -732,7 +732,10 @@ pub unsafe fn soa_read_ext_grid(
             let stride = stride + x1 * stride_step;
             let dst_offset = dst_offset + 3 * x1;
             let stride_step = stride_step / 2;
-            for (o, idx) in [(dst_offset, stride + row), (dst_offset + 1, stride + stride_step + row)] {
+            for (o, idx) in [
+                (dst_offset, stride + row),
+                (dst_offset + 1, stride + stride_step + row),
+            ] {
                 let p = src.add(4 * idx);
                 let t = transpose4x4(
                     vld1q_u32(p),
@@ -1437,10 +1440,7 @@ pub unsafe fn soa_apply_eq_and_accumulate_n<const N: usize>(
 
 /// Horizontal reduction of an N-cell SoA chunk accumulator to AoS ext values.
 #[inline(always)]
-pub unsafe fn soa_final_reduce_to_ext_n<const N: usize>(
-    acc: *const u32,
-    out: *mut BabyBearExt4,
-) {
+pub unsafe fn soa_final_reduce_to_ext_n<const N: usize>(acc: *const u32, out: *mut BabyBearExt4) {
     for c in 0..N {
         let mut limbs = [0u32; 4];
         for l in 0..4 {
@@ -1745,7 +1745,12 @@ pub struct SoaLde64Tables {
 }
 
 fn bitrev6(i: usize) -> usize {
-    ((i & 1) << 5) | ((i & 2) << 3) | ((i & 4) << 1) | ((i & 8) >> 1) | ((i & 16) >> 3) | ((i & 32) >> 5)
+    ((i & 1) << 5)
+        | ((i & 2) << 3)
+        | ((i & 4) << 1)
+        | ((i & 8) >> 1)
+        | ((i & 16) >> 3)
+        | ((i & 32) >> 5)
 }
 
 impl SoaLde64Tables {
@@ -2191,7 +2196,7 @@ unsafe fn lsb_dif_tail_lazy(v: uint32x4_t, tw2: uint32x4_t, p: uint32x4_t) -> ui
         vreinterpretq_u64_u32(d),
     ));
     let v = mont_mul4_lazy(packed, tw2); // < 2P
-    // distance 1
+                                         // distance 1
     let v = red2p(v, p);
     let r = vrev64q_u32(v);
     let s = vaddq_u32(v, r);
@@ -2646,19 +2651,13 @@ pub unsafe fn form_muladd_cells<const N: usize>(
     while i + 4 <= N {
         vst1q_u32(
             dst.add(i),
-            add4(
-                vld1q_u32(dst.add(i)),
-                mont_mul4(vld1q_u32(src.add(i)), cv),
-            ),
+            add4(vld1q_u32(dst.add(i)), mont_mul4(vld1q_u32(src.add(i)), cv)),
         );
         i += 4;
     }
     while i < N {
         let mut t = [0u32; 4];
-        vst1q_u32(
-            t.as_mut_ptr(),
-            mont_mul4(vdupq_n_u32(*src.add(i)), cv),
-        );
+        vst1q_u32(t.as_mut_ptr(), mont_mul4(vdupq_n_u32(*src.add(i)), cv));
         let mut a = *dst.add(i) + t[0];
         if a >= P {
             a -= P;
@@ -2829,10 +2828,7 @@ mod tests {
                 cells[j] = eval(&coeffs, omega8.pow(j as u32)).raw_u32_value();
             }
             let out = unsafe {
-                let h = [
-                    vld1q_u32(cells.as_ptr()),
-                    vld1q_u32(cells.as_ptr().add(4)),
-                ];
+                let h = [vld1q_u32(cells.as_ptr()), vld1q_u32(cells.as_ptr().add(4))];
                 let o = lsb_lde8_base(h, &t8);
                 // the partially-reduced variant canonicalizes its outputs, so
                 // it must agree bitwise with the canonical kernel

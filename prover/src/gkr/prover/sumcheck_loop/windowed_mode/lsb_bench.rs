@@ -64,8 +64,8 @@
 
 use super::*;
 
-use super::program::{FormOp, ProgramStep, TiledStep};
 use super::neon;
+use super::program::{FormOp, ProgramStep, TiledStep};
 use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
 
 use ::field::baby_bear::ext4::BabyBearExt4;
@@ -355,12 +355,7 @@ pub fn lsb_soa_full_parallel<
                             for u in 0..U {
                                 let g = bptr.add((i * U + u) * bs);
                                 match tables {
-                                    None => lsb_read_base_w3(
-                                        g,
-                                        src_ptr,
-                                        block + u,
-                                        base_interp[i],
-                                    ),
+                                    None => lsb_read_base_w3(g, src_ptr, block + u, base_interp[i]),
                                     Some(t) => fill_base_uniskip(g, src_ptr, block + u, t),
                                 }
                             }
@@ -656,11 +651,7 @@ pub fn lsb_soa_bounded_parallel<
                                     forms[*form as usize].iter().zip(member_slots.iter())
                                 {
                                     debug_assert_ne!(*ms, *slot);
-                                    apply_form_op::<F, NG>(
-                                        dst,
-                                        sptr.add(*ms as usize * bs),
-                                        op,
-                                    );
+                                    apply_form_op::<F, NG>(dst, sptr.add(*ms as usize * bs), op);
                                 }
                             }
                             TiledStep::QuadBB { sa, sb, c } => {
@@ -802,8 +793,7 @@ pub fn lsb_uniskip_ext_pass_parallel<
                     products.iter().map(|(_, _, c)| tab(c)).collect();
                 let tables_q: Vec<neon::SoaExtTable> =
                     quads.iter().map(|(_, _, c)| tab(c)).collect();
-                let tables_l: Vec<neon::SoaExtTable> =
-                    lins.iter().map(|(_, c)| tab(c)).collect();
+                let tables_l: Vec<neon::SoaExtTable> = lins.iter().map(|(_, c)| tab(c)).collect();
 
                 let mut block = chunk_start;
                 while block < chunk_start + chunk_size {
@@ -872,10 +862,7 @@ pub fn lsb_uniskip_ext_pass_parallel<
                         if has_const {
                             // add in canonical (Montgomery) domain AFTER the
                             // REDC -- the lazy accumulator holds R^2-scaled sums
-                            neon::soa_add_const_all_n::<NG>(
-                                lazy_out.as_mut_ptr(),
-                                &const_bcast,
-                            );
+                            neon::soa_add_const_all_n::<NG>(lazy_out.as_mut_ptr(), &const_bcast);
                         }
                         let eqb = neon::soa_broadcast_ext(ec(&t_suffix[block + u]));
                         neon::soa_apply_eq_and_accumulate_n::<NG>(
@@ -923,19 +910,15 @@ pub fn lsb_fold_base_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
             let chunk_start = geometry.get_chunk_start_pos(thread_idx);
             let chunk_size = geometry.get_chunk_size(thread_idx);
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
-                let w: [uint32x4_t; 8] = core::array::from_fn(|j| {
-                    vld1q_u32(&weights[j] as *const E as *const u32)
-                });
+                let w: [uint32x4_t; 8] =
+                    core::array::from_fn(|j| vld1q_u32(&weights[j] as *const E as *const u32));
                 let sp = src_addr as *const u32;
                 let dp = dst_addr as *mut BabyBearExt4;
                 for row in chunk_start..(chunk_start + chunk_size) {
                     let taps = sp.add(row * 8);
                     let mut acc = neon::mont_mul4(w[0], vdupq_n_u32(*taps));
                     for j in 1..8 {
-                        acc = neon::add4(
-                            acc,
-                            neon::mont_mul4(w[j], vdupq_n_u32(*taps.add(j))),
-                        );
+                        acc = neon::add4(acc, neon::mont_mul4(w[j], vdupq_n_u32(*taps.add(j))));
                     }
                     vst1q_u32(dp.add(row) as *mut u32, acc);
                 }
@@ -1130,8 +1113,7 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
                     products.iter().map(|(_, _, c)| tab(c)).collect();
                 let tables_q: Vec<neon::SoaExtTable> =
                     quads.iter().map(|(_, _, c)| tab(c)).collect();
-                let tables_l: Vec<neon::SoaExtTable> =
-                    lins.iter().map(|(_, c)| tab(c)).collect();
+                let tables_l: Vec<neon::SoaExtTable> = lins.iter().map(|(_, c)| tab(c)).collect();
 
                 let mut ext_flat = vec![0u32; (nb + ne) * es];
                 let mut form_flat = vec![0u32; forms.len() * es];
@@ -1148,10 +1130,8 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
                     match tables {
                         LsbLdeAny::K8Mat(bt) => {
                             for l in 0..4 {
-                                let h = [
-                                    vld1q_u32(grid.add(4 * l)),
-                                    vld1q_u32(grid.add(16 + 4 * l)),
-                                ];
+                                let h =
+                                    [vld1q_u32(grid.add(4 * l)), vld1q_u32(grid.add(16 + 4 * l))];
                                 let coset = neon::lsb_lde8_base_mat(h, bt);
                                 vst1q_u32(grid.add(32 + 4 * l), coset[0]);
                                 vst1q_u32(grid.add(48 + 4 * l), coset[1]);
@@ -1159,10 +1139,8 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
                         }
                         LsbLdeAny::K8(bt) => {
                             for l in 0..4 {
-                                let h = [
-                                    vld1q_u32(grid.add(4 * l)),
-                                    vld1q_u32(grid.add(16 + 4 * l)),
-                                ];
+                                let h =
+                                    [vld1q_u32(grid.add(4 * l)), vld1q_u32(grid.add(16 + 4 * l))];
                                 let coset = neon::lsb_lde8_base_lazy(h, bt);
                                 vst1q_u32(grid.add(32 + 4 * l), coset[0]);
                                 vst1q_u32(grid.add(48 + 4 * l), coset[1]);

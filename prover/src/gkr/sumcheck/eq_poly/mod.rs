@@ -7,10 +7,6 @@ use crate::gkr::PAR_THRESHOLD;
 
 use super::*;
 
-
-
-
-
 /// Interleaved-doubling layer step for the LSB nested tables: the newly
 /// consumed (lowest-variable) coordinate's two factors land ADJACENT in
 /// memory: out[2j] = (1 - c) * prev[j], out[2j + 1] = c * prev[j].
@@ -87,7 +83,6 @@ pub fn make_eq_poly_impl_lsb<E: Field, const FULL: bool>(
 
     result
 }
-
 
 /// Tensor eq table from per-entry WEIGHT BLOCKS: block `b` has length
 /// `2^{w_b}` and covers the next `w_b` variables (LSB-first in entry
@@ -318,7 +313,10 @@ pub fn make_domain_eq_poly_in_full<F: PrimeField + TwoAdicField, E: FieldExtensi
 /// `F::TWO_ADICITY_GENERATORS[b + 1]` (same weight pair as
 /// [`make_domain_eq_poly_impl`], different index orientation). Serial: the
 /// consumers are the per-round in-domain claim evaluations.
-pub fn make_domain_eq_table_lsb_first<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
+pub fn make_domain_eq_table_lsb_first<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+>(
     challenges: &[E],
 ) -> Vec<E> {
     let mut table = vec![E::ONE; 1usize << challenges.len()];
@@ -465,9 +463,6 @@ pub(crate) fn evaluate_constant_and_quadratic_coeffs_with_precomputed_eq_serial<
     [result_0, result_1]
 }
 
-
-
-
 /// Serial variant of [`make_eq_poly_in_full_lsb`] (same table semantics:
 /// `result[k]` covers the LAST k coordinates in variable order).
 pub fn make_eq_poly_in_full_lsb_serial<E: Field>(challenges: &[E]) -> Vec<Box<[E]>> {
@@ -533,9 +528,9 @@ mod eq_nested_lsb_tests {
 #[cfg(test)]
 mod eq_lsb_orientation_tests {
     use super::*;
-    use field::baby_bear::ext4::BabyBearExt4 as E;
     use field::baby_bear::base::BabyBearField as F;
-    use field::{Field, PrimeField, FieldExtension};
+    use field::baby_bear::ext4::BabyBearExt4 as E;
+    use field::{Field, FieldExtension, PrimeField};
 
     /// `make_eq_table_lsb_first` (index bit b <-> challenges[b]) must match
     /// the explicit product formula for every size.
@@ -652,5 +647,4 @@ mod tests {
             );
         }
     }
-
 }

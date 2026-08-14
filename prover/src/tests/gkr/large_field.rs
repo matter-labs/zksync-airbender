@@ -322,12 +322,13 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let prover_config = ProverConfig {
-            // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
-            // keep these tests on the windowed schedule (transcript-identical
-            // to naive), NOT the uniskip default
-            wide_same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(),
-            narrow_same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(),
-            dimension_reducing_sumcheck_schedule: Default::default(),
+        // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
+        // keep these tests on the windowed schedule (transcript-identical
+        // to naive), NOT the uniskip default
+        wide_same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(),
+        narrow_same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
+        ),
+        dimension_reducing_sumcheck_schedule: Default::default(),
         lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)
         cap_size: 8,
         // round-0 values-per-leaf = 2^whir_steps_schedule[0] = 2^2
@@ -643,7 +644,9 @@ fn capture_gkr_dim_reduce_reference() {
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
     use crate::gkr::prover_config::pow_bits;
-    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq_ext, make_eq_poly_in_full_lsb};
+    use crate::gkr::sumcheck::eq_poly::{
+        evaluate_with_precomputed_eq_ext, make_eq_poly_in_full_lsb,
+    };
     use transcript::Transcript;
 
     let worker = Worker::new_with_num_threads(4);
@@ -1140,7 +1143,9 @@ fn verify_dim_reduce_layers() {
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
     use crate::gkr::prover_config::pow_bits;
-    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq_ext, make_eq_poly_in_full_lsb};
+    use crate::gkr::sumcheck::eq_poly::{
+        evaluate_with_precomputed_eq_ext, make_eq_poly_in_full_lsb,
+    };
     use ::field::Field;
     use transcript::Transcript;
 

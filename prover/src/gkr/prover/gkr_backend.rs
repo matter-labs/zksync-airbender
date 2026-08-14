@@ -27,6 +27,7 @@ use std::collections::BTreeMap;
 use super::dimension_reduction::forward::evaluate_dimension_reduction_forward;
 use super::dimension_reduction::forward::DimensionReducingInputOutput;
 use super::{GKRStorage, SumcheckIntermediateProofValues};
+use crate::gkr::prover::EvaluationPointEntry;
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use field::{Field, FieldExtension, PrimeField};
 use transcript::Transcript;
@@ -82,7 +83,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         &self,
         layer_idx: usize,
         layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
-        claim_points: &mut BTreeMap<usize, Vec<E>>,
+        claim_points: &mut BTreeMap<usize, Vec<EvaluationPointEntry<E>>>,
         claims_storage: &mut BTreeMap<usize, BTreeMap<super::GKRAddress, E>>,
         gkr_storage: &mut GKRStorage<F, E>,
         batching_challenge: &mut E,
@@ -226,7 +227,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRBackend<F, E> for NaiveGKRB
         &self,
         layer_idx: usize,
         layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
-        claim_points: &mut BTreeMap<usize, Vec<E>>,
+        claim_points: &mut BTreeMap<usize, Vec<EvaluationPointEntry<E>>>,
         claims_storage: &mut BTreeMap<usize, BTreeMap<super::GKRAddress, E>>,
         gkr_storage: &mut GKRStorage<F, E>,
         batching_challenge: &mut E,
@@ -264,12 +265,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRBackend<F, E> for NaiveGKRB
 pub mod aarch64 {
     use super::super::dimension_reduction::forward::evaluate_dimension_reduction_forward_with;
     use super::super::dimension_reduction::lsb_backward::LsbDimReducingRelation;
+    use super::super::GKRAddress;
     use super::super::GKRStorage;
     use super::{BTreeMap, DimensionReducingInputOutput, GKRCircuitArtifact, OutputType};
     use crate::gkr::prover::sumcheck_loop::windowed_mode::neon::{add4, ext_mul_var, r11};
     use crate::gkr::sumcheck::evaluation_kernels::GKRInputs;
     use core::arch::aarch64::{vdupq_n_u32, vld1q_u32, vst1q_u32};
-    use super::super::GKRAddress;
     use field::{Field, FieldExtension, PrimeField};
     use worker::Worker;
 
@@ -364,8 +365,7 @@ pub mod aarch64 {
                             let n1 = vld1q_u32(np.add(8 * i + 4));
                             let d0 = vld1q_u32(dp.add(8 * i));
                             let d1 = vld1q_u32(dp.add(8 * i + 4));
-                            let num_v =
-                                add4(ext_mul_var(n0, d1, r11v), ext_mul_var(n1, d0, r11v));
+                            let num_v = add4(ext_mul_var(n0, d1, r11v), ext_mul_var(n1, d0, r11v));
                             vst1q_u32(ndp.add(4 * i), num_v);
                             vst1q_u32(ddp.add(4 * i), ext_mul_var(d0, d1, r11v));
                         }
@@ -408,185 +408,190 @@ pub mod aarch64 {
         )
     }
 
-/// aarch64 + BabyBear/Ext4 chunk kernel for the fused sweep: one Ext4 element
-/// per NEON vector, AoS throughout. Per output pair: 8 contiguous vector
-/// loads per poly, the pending fold applied in-register (`ExtMatrix` of the
-/// challenge), folded values stored + consumed hot by the gate products
-/// (`ext_mul_var`), alpha applied via each relation's precomputed
-/// `ExtMatrix`, and the T-dot fused over the chunk's tri vectors.
-#[allow(clippy::too_many_arguments)]
-/// `E -> BabyBearExt4` reference cast (callers are `is_bb_pair`-guarded).
-#[inline(always)]
-fn as_bb<E: Field>(c: &E) -> &::field::baby_bear::ext4::BabyBearExt4 {
-    unsafe { &*(c as *const E as *const _) }
-}
+    /// aarch64 + BabyBear/Ext4 chunk kernel for the fused sweep: one Ext4 element
+    /// per NEON vector, AoS throughout. Per output pair: 8 contiguous vector
+    /// loads per poly, the pending fold applied in-register (`ExtMatrix` of the
+    /// challenge), folded values stored + consumed hot by the gate products
+    /// (`ext_mul_var`), alpha applied via each relation's precomputed
+    /// `ExtMatrix`, and the T-dot fused over the chunk's tri vectors.
+    #[allow(clippy::too_many_arguments)]
+    /// `E -> BabyBearExt4` reference cast (callers are `is_bb_pair`-guarded).
+    #[inline(always)]
+    fn as_bb<E: Field>(c: &E) -> &::field::baby_bear::ext4::BabyBearExt4 {
+        unsafe { &*(c as *const E as *const _) }
+    }
 
-/// Fetch the 4 current pair values of poly `p` at row `j`, folding on read
-/// and storing when a challenge matrix is pending.
-#[inline(always)]
-unsafe fn neon_fetch_pair4<E: Field>(
-    cur_ptrs: &[crate::gkr::prover::SendConstPtr<E>],
-    dst_ptrs: &[crate::gkr::prover::SendPtr<E>],
-    fold_m: &Option<crate::gkr::prover::sumcheck_loop::windowed_mode::neon::ExtMatrix>,
-    p: usize,
-    j: usize,
-) -> [core::arch::aarch64::uint32x4_t; 4] {
-    use crate::gkr::prover::sumcheck_loop::windowed_mode::neon::{add4, mat_mul, sub4};
-    use core::arch::aarch64::{vdupq_n_u32, vld1q_u32, vst1q_u32};
-    let src = cur_ptrs[p].0 as *const u32;
-    match fold_m {
-        None => core::array::from_fn(|k| vld1q_u32(src.add((4 * j + k) * 4))),
-        Some(fm) => {
-            let d = dst_ptrs[p].0 as *mut u32;
-            let mut out = [vdupq_n_u32(0); 4];
-            for yy in 0..2 {
-                for b in 0..2 {
-                    let lo = vld1q_u32(src.add((2 * (4 * j + 2 * yy) + b) * 4));
-                    let hi = vld1q_u32(src.add((2 * (4 * j + 2 * yy + 1) + b) * 4));
-                    let v = add4(lo, mat_mul(fm, sub4(hi, lo)));
-                    vst1q_u32(d.add((2 * (2 * j + yy) + b) * 4), v);
-                    out[2 * yy + b] = v;
+    /// Fetch the 4 current pair values of poly `p` at row `j`, folding on read
+    /// and storing when a challenge matrix is pending.
+    #[inline(always)]
+    unsafe fn neon_fetch_pair4<E: Field>(
+        cur_ptrs: &[crate::gkr::prover::SendConstPtr<E>],
+        dst_ptrs: &[crate::gkr::prover::SendPtr<E>],
+        fold_m: &Option<crate::gkr::prover::sumcheck_loop::windowed_mode::neon::ExtMatrix>,
+        p: usize,
+        j: usize,
+    ) -> [core::arch::aarch64::uint32x4_t; 4] {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::neon::{add4, mat_mul, sub4};
+        use core::arch::aarch64::{vdupq_n_u32, vld1q_u32, vst1q_u32};
+        let src = cur_ptrs[p].0 as *const u32;
+        match fold_m {
+            None => core::array::from_fn(|k| vld1q_u32(src.add((4 * j + k) * 4))),
+            Some(fm) => {
+                let d = dst_ptrs[p].0 as *mut u32;
+                let mut out = [vdupq_n_u32(0); 4];
+                for yy in 0..2 {
+                    for b in 0..2 {
+                        let lo = vld1q_u32(src.add((2 * (4 * j + 2 * yy) + b) * 4));
+                        let hi = vld1q_u32(src.add((2 * (4 * j + 2 * yy + 1) + b) * 4));
+                        let v = add4(lo, mat_mul(fm, sub4(hi, lo)));
+                        vst1q_u32(d.add((2 * (2 * j + yy) + b) * 4), v);
+                        out[2 * yy + b] = v;
+                    }
                 }
+                out
             }
-            out
         }
     }
-}
 
-pub unsafe fn fused_chunk_neon<E: Field>(
-    cur_ptrs: &[crate::gkr::prover::SendConstPtr<E>],
-    dst_ptrs: &[crate::gkr::prover::SendPtr<E>],
-    out_ptrs: &[[crate::gkr::prover::SendConstPtr<E>; 2]],
-    relations: &[LsbDimReducingRelation<E>],
-    pending_r: Option<E>,
-    t_ptr: crate::gkr::prover::SendConstPtr<E>,
-    chunk_start: usize,
-    chunk_size: usize,
-    scratch: crate::gkr::prover::SendPtr<[u128; 2]>,
-) -> [E; 2] {
-    use crate::gkr::prover::sumcheck_loop::windowed_mode::neon::{
-        add4, ext_mul_var, mat_mul, r11, sub4, ExtMatrix,
-    };
-    use ::field::baby_bear::ext4::BabyBearExt4;
-    use core::arch::aarch64::{uint32x4_t, vdupq_n_u32, vld1q_u32};
-    let r11v = vdupq_n_u32(r11());
-    let fold_m = pending_r.as_ref().map(|r| ExtMatrix::new(as_bb(r)));
-    // per-relation alpha matrices
-    enum RelM {
-        Pair { input: usize, a: ExtMatrix },
-        Logup { num: usize, den: usize, an: ExtMatrix, ad: ExtMatrix },
-    }
-    let rels: Vec<RelM> = relations
-        .iter()
-        .map(|rel| match rel {
-            LsbDimReducingRelation::PairwiseProduct { input, alpha } => RelM::Pair {
-                input: *input,
-                a: ExtMatrix::new(as_bb(alpha)),
+    pub unsafe fn fused_chunk_neon<E: Field>(
+        cur_ptrs: &[crate::gkr::prover::SendConstPtr<E>],
+        dst_ptrs: &[crate::gkr::prover::SendPtr<E>],
+        out_ptrs: &[[crate::gkr::prover::SendConstPtr<E>; 2]],
+        relations: &[LsbDimReducingRelation<E>],
+        pending_r: Option<E>,
+        t_ptr: crate::gkr::prover::SendConstPtr<E>,
+        chunk_start: usize,
+        chunk_size: usize,
+        scratch: crate::gkr::prover::SendPtr<[u128; 2]>,
+    ) -> [E; 2] {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::neon::{
+            add4, ext_mul_var, mat_mul, r11, sub4, ExtMatrix,
+        };
+        use ::field::baby_bear::ext4::BabyBearExt4;
+        use core::arch::aarch64::{uint32x4_t, vdupq_n_u32, vld1q_u32};
+        let r11v = vdupq_n_u32(r11());
+        let fold_m = pending_r.as_ref().map(|r| ExtMatrix::new(as_bb(r)));
+        // per-relation alpha matrices
+        enum RelM {
+            Pair {
+                input: usize,
+                a: ExtMatrix,
             },
-            LsbDimReducingRelation::LogupPair {
-                num,
-                den,
-                alpha_num,
-                alpha_den,
-            } => RelM::Logup {
-                num: *num,
-                den: *den,
-                an: ExtMatrix::new(as_bb(alpha_num)),
-                ad: ExtMatrix::new(as_bb(alpha_den)),
+            Logup {
+                num: usize,
+                den: usize,
+                an: ExtMatrix,
+                ad: ExtMatrix,
             },
-        })
-        .collect();
+        }
+        let rels: Vec<RelM> = relations
+            .iter()
+            .map(|rel| match rel {
+                LsbDimReducingRelation::PairwiseProduct { input, alpha } => RelM::Pair {
+                    input: *input,
+                    a: ExtMatrix::new(as_bb(alpha)),
+                },
+                LsbDimReducingRelation::LogupPair {
+                    num,
+                    den,
+                    alpha_num,
+                    alpha_den,
+                } => RelM::Logup {
+                    num: *num,
+                    den: *den,
+                    an: ExtMatrix::new(as_bb(alpha_num)),
+                    ad: ExtMatrix::new(as_bb(alpha_den)),
+                },
+            })
+            .collect();
 
-    // caller-provided tri scratch as raw vectors: [v0, vinf] per row
-    // ([E; 2] slots are size/align-compatible with [uint32x4_t; 2])
-    let tri = core::slice::from_raw_parts_mut(scratch.0 as *mut [uint32x4_t; 2], chunk_size);
-    for t in tri.iter_mut() {
-        *t = [vdupq_n_u32(0); 2];
-    }
+        // caller-provided tri scratch as raw vectors: [v0, vinf] per row
+        // ([E; 2] slots are size/align-compatible with [uint32x4_t; 2])
+        let tri = core::slice::from_raw_parts_mut(scratch.0 as *mut [uint32x4_t; 2], chunk_size);
+        for t in tri.iter_mut() {
+            *t = [vdupq_n_u32(0); 2];
+        }
 
-    let mut first = true;
-    for (rel_idx, rel) in rels.iter().enumerate() {
-        match rel {
-            RelM::Pair { input, a } => {
-                for (jj, t) in tri.iter_mut().enumerate() {
-                    let j = chunk_start + jj;
-                    let [a0, b0, a1, b1] = neon_fetch_pair4(cur_ptrs, dst_ptrs, &fold_m, *input, j);
-                    // round 0: read the gate value from the output layer
-                    let v0raw = if pending_r.is_none() && !out_ptrs.is_empty() {
-                        vld1q_u32((out_ptrs[rel_idx][0].0 as *const u32).add(8 * j))
-                    } else {
-                        ext_mul_var(a0, b0, r11v)
-                    };
-                    let v0 = mat_mul(a, v0raw);
-                    let vinf = mat_mul(a, ext_mul_var(sub4(a1, a0), sub4(b1, b0), r11v));
-                    if first {
-                        *t = [v0, vinf];
-                    } else {
-                        t[0] = add4(t[0], v0);
-                        t[1] = add4(t[1], vinf);
+        let mut first = true;
+        for (rel_idx, rel) in rels.iter().enumerate() {
+            match rel {
+                RelM::Pair { input, a } => {
+                    for (jj, t) in tri.iter_mut().enumerate() {
+                        let j = chunk_start + jj;
+                        let [a0, b0, a1, b1] =
+                            neon_fetch_pair4(cur_ptrs, dst_ptrs, &fold_m, *input, j);
+                        // round 0: read the gate value from the output layer
+                        let v0raw = if pending_r.is_none() && !out_ptrs.is_empty() {
+                            vld1q_u32((out_ptrs[rel_idx][0].0 as *const u32).add(8 * j))
+                        } else {
+                            ext_mul_var(a0, b0, r11v)
+                        };
+                        let v0 = mat_mul(a, v0raw);
+                        let vinf = mat_mul(a, ext_mul_var(sub4(a1, a0), sub4(b1, b0), r11v));
+                        if first {
+                            *t = [v0, vinf];
+                        } else {
+                            t[0] = add4(t[0], v0);
+                            t[1] = add4(t[1], vinf);
+                        }
+                    }
+                }
+                RelM::Logup { num, den, an, ad } => {
+                    for (jj, t) in tri.iter_mut().enumerate() {
+                        let j = chunk_start + jj;
+                        let [n0, n1, n2, n3] =
+                            neon_fetch_pair4(cur_ptrs, dst_ptrs, &fold_m, *num, j);
+                        let [d0, d1, d2, d3] =
+                            neon_fetch_pair4(cur_ptrs, dst_ptrs, &fold_m, *den, j);
+                        // X = 0: read from the output layer at round 0, else
+                        // num = n0*d1 + n1*d0, den = d0*d1
+                        let (num0, den0) = if pending_r.is_none() && !out_ptrs.is_empty() {
+                            (
+                                vld1q_u32((out_ptrs[rel_idx][0].0 as *const u32).add(8 * j)),
+                                vld1q_u32((out_ptrs[rel_idx][1].0 as *const u32).add(8 * j)),
+                            )
+                        } else {
+                            (
+                                add4(ext_mul_var(n0, d1, r11v), ext_mul_var(n1, d0, r11v)),
+                                ext_mul_var(d0, d1, r11v),
+                            )
+                        };
+                        // X = inf: same on the differences
+                        let (dn0, dn1) = (sub4(n2, n0), sub4(n3, n1));
+                        let (dd0, dd1) = (sub4(d2, d0), sub4(d3, d1));
+                        let numi = add4(ext_mul_var(dn0, dd1, r11v), ext_mul_var(dn1, dd0, r11v));
+                        let deni = ext_mul_var(dd0, dd1, r11v);
+                        let v0 = add4(mat_mul(an, num0), mat_mul(ad, den0));
+                        let vinf = add4(mat_mul(an, numi), mat_mul(ad, deni));
+                        if first {
+                            *t = [v0, vinf];
+                        } else {
+                            t[0] = add4(t[0], v0);
+                            t[1] = add4(t[1], vinf);
+                        }
                     }
                 }
             }
-            RelM::Logup { num, den, an, ad } => {
-                for (jj, t) in tri.iter_mut().enumerate() {
-                    let j = chunk_start + jj;
-                    let [n0, n1, n2, n3] = neon_fetch_pair4(cur_ptrs, dst_ptrs, &fold_m, *num, j);
-                    let [d0, d1, d2, d3] = neon_fetch_pair4(cur_ptrs, dst_ptrs, &fold_m, *den, j);
-                    // X = 0: read from the output layer at round 0, else
-                    // num = n0*d1 + n1*d0, den = d0*d1
-                    let (num0, den0) = if pending_r.is_none() && !out_ptrs.is_empty() {
-                        (
-                            vld1q_u32((out_ptrs[rel_idx][0].0 as *const u32).add(8 * j)),
-                            vld1q_u32((out_ptrs[rel_idx][1].0 as *const u32).add(8 * j)),
-                        )
-                    } else {
-                        (
-                            add4(
-                                ext_mul_var(n0, d1, r11v),
-                                ext_mul_var(n1, d0, r11v),
-                            ),
-                            ext_mul_var(d0, d1, r11v),
-                        )
-                    };
-                    // X = inf: same on the differences
-                    let (dn0, dn1) = (sub4(n2, n0), sub4(n3, n1));
-                    let (dd0, dd1) = (sub4(d2, d0), sub4(d3, d1));
-                    let numi = add4(
-                        ext_mul_var(dn0, dd1, r11v),
-                        ext_mul_var(dn1, dd0, r11v),
-                    );
-                    let deni = ext_mul_var(dd0, dd1, r11v);
-                    let v0 = add4(mat_mul(an, num0), mat_mul(ad, den0));
-                    let vinf = add4(mat_mul(an, numi), mat_mul(ad, deni));
-                    if first {
-                        *t = [v0, vinf];
-                    } else {
-                        t[0] = add4(t[0], v0);
-                        t[1] = add4(t[1], vinf);
-                    }
-                }
+            first = false;
+        }
+
+        // fused T-dot over the hot tri vectors
+        let t_tab = t_ptr.0 as *const u32;
+        let mut acc = [vdupq_n_u32(0); 2];
+        for (jj, t) in tri.iter().enumerate() {
+            let w = vld1q_u32(t_tab.add((chunk_start + jj) * 4));
+            for k in 0..2 {
+                acc[k] = add4(acc[k], ext_mul_var(w, t[k], r11v));
             }
         }
-        first = false;
-    }
-
-    // fused T-dot over the hot tri vectors
-    let t_tab = t_ptr.0 as *const u32;
-    let mut acc = [vdupq_n_u32(0); 2];
-    for (jj, t) in tri.iter().enumerate() {
-        let w = vld1q_u32(t_tab.add((chunk_start + jj) * 4));
+        let mut out = [E::ZERO; 2];
         for k in 0..2 {
-            acc[k] = add4(acc[k], ext_mul_var(w, t[k], r11v));
+            let mut raw = [0u32; 4];
+            vst1q_u32(raw.as_mut_ptr(), acc[k]);
+            out[k] = *(raw.as_ptr() as *const E);
         }
+        out
     }
-    let mut out = [E::ZERO; 2];
-    for k in 0..2 {
-        let mut raw = [0u32; 4];
-        vst1q_u32(raw.as_mut_ptr(), acc[k]);
-        out[k] = *(raw.as_ptr() as *const E);
-    }
-    out
-}
 }
 
 /// Selection wrappers: the ONLY place platform / field-pair dispatch happens.
@@ -646,7 +651,7 @@ pub fn run_dimension_reducing_sumcheck_for_layer<
     schedule: &[crate::gkr::prover_config::SumcheckStep],
     layer_idx: usize,
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
-    claim_points: &mut BTreeMap<usize, Vec<E>>,
+    claim_points: &mut BTreeMap<usize, Vec<EvaluationPointEntry<E>>>,
     claims_storage: &mut BTreeMap<usize, BTreeMap<super::GKRAddress, E>>,
     gkr_storage: &mut GKRStorage<F, E>,
     batching_challenge: &mut E,

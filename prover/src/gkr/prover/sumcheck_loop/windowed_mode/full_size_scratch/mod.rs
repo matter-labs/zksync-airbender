@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use super::*;
 use crate::gkr::prover::sumcheck_loop::batch_evaluation::BatchedGKRDescription;
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EvaluationStep {
     QuadraticBaseByBase {

@@ -20,7 +20,11 @@ use ::field::{Field, FieldExtension, PrimeField};
 
 #[inline]
 fn exp_of(idx: usize) -> usize {
-    if idx < 8 { 2 * idx } else { 2 * (idx - 8) + 1 }
+    if idx < 8 {
+        2 * idx
+    } else {
+        2 * (idx - 8) + 1
+    }
 }
 
 #[inline]

@@ -6,8 +6,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelCollector;
 use crate::gkr::prover::sumcheck_loop::batch_evaluation::BatchedGKRDescription;
+use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelCollector;
 use cs::definitions::GKRAddress;
 use field::{Field, FieldExtension, PrimeField};
 
@@ -35,16 +35,44 @@ pub enum ProgramStep<E: Field> {
 /// from source taps on load, so forms do not pin their member grids).
 #[derive(Clone)]
 pub enum TiledStep<E: Field> {
-    LoadBase { slot: u16, idx: u16 },
-    LoadExt { slot: u16, idx: u16 },
+    LoadBase {
+        slot: u16,
+        idx: u16,
+    },
+    LoadExt {
+        slot: u16,
+        idx: u16,
+    },
     /// combine the form's members from their RESIDENT grids (all 128 cells --
     /// LDE is linear, so the coset half combines directly) into `slot`
-    BuildForm { slot: u16, form: u16, member_slots: Vec<u16> },
-    QuadBB { sa: u16, sb: u16, c: E },
-    QuadBE { sb: u16, se: u16, c: E },
-    QuadEE { sa: u16, sb: u16, c: E },
-    LinB { slot: u16, c: E },
-    LinE { slot: u16, c: E },
+    BuildForm {
+        slot: u16,
+        form: u16,
+        member_slots: Vec<u16>,
+    },
+    QuadBB {
+        sa: u16,
+        sb: u16,
+        c: E,
+    },
+    QuadBE {
+        sb: u16,
+        se: u16,
+        c: E,
+    },
+    QuadEE {
+        sa: u16,
+        sb: u16,
+        c: E,
+    },
+    LinB {
+        slot: u16,
+        c: E,
+    },
+    LinE {
+        slot: u16,
+        c: E,
+    },
 }
 
 /// Owned SoA + bracket program for one layer, consumed by the production

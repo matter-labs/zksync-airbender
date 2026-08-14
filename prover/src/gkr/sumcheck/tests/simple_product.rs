@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use cs::definitions::GKRAddress;
-use field::{Field, FieldExtension};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
+use field::{Field, FieldExtension};
 use worker::Worker;
 
 use crate::gkr::sumcheck::access_and_fold::DisjointAccessQuasiSlice;
@@ -362,4 +362,3 @@ fn test_simple_product() {
         }
     }
 }
-

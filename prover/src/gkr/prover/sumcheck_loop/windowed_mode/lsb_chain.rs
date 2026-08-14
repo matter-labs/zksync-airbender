@@ -13,11 +13,11 @@
 
 use std::collections::BTreeMap;
 
-use super::program::build_soa_program;
 use super::full_size_scratch::produce_descriptions_from_batched_description;
 #[cfg(target_arch = "aarch64")]
 use super::lsb_bench;
 use super::lsb_generic;
+use super::program::build_soa_program;
 use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelCollector;
 use crate::gkr::sumcheck::access_and_fold::{DisjointAccessQuasiSlice, GKRStorage};
 use crate::gkr::sumcheck::evaluation_kernels::BatchedGKRTermDescriptionConstants;
@@ -73,21 +73,23 @@ where
     if g == 0 {
         match kernels {
             #[cfg(target_arch = "aarch64")]
-            ChainKernels::Neon(lde_tables) => lsb_bench::lsb_soa_full_parallel::<F, E, 4, 4, 16, 2>(
-                base_sources,
-                ext_sources,
-                &prog.base_interp,
-                &prog.ext_interp,
-                Some(lde_tables),
-                &prog.forms,
-                &prog.products,
-                &prog.rest_steps,
-                &prog.additive_constant,
-                eq_suffix,
-                out_size,
-                worker,
-                lsb_bench::PH_ALL,
-            ),
+            ChainKernels::Neon(lde_tables) => {
+                lsb_bench::lsb_soa_full_parallel::<F, E, 4, 4, 16, 2>(
+                    base_sources,
+                    ext_sources,
+                    &prog.base_interp,
+                    &prog.ext_interp,
+                    Some(lde_tables),
+                    &prog.forms,
+                    &prog.products,
+                    &prog.rest_steps,
+                    &prog.additive_constant,
+                    eq_suffix,
+                    out_size,
+                    worker,
+                    lsb_bench::PH_ALL,
+                )
+            }
             ChainKernels::Generic(mat) => lsb_generic::head_pass::<F, E>(
                 base_sources,
                 ext_sources,
@@ -216,17 +218,18 @@ where
         // applies, for cross-validation of the two implementations
         let force_generic = std::env::var("GKR_FORCE_GENERIC_UNISKIP").is_ok();
         #[cfg(target_arch = "aarch64")]
-        let kernels: ChainKernels<F> = if const { super::neon::is_bb_pair::<F, E>() } && !force_generic {
-            let omega16_bb =
-                ::fft::domain_generator_for_size::<::field::baby_bear::base::BabyBearField>(16);
-            let mut omega8_bb = omega16_bb;
-            omega8_bb.square();
-            ChainKernels::Neon(lsb_bench::LsbLdeAny::K8Mat(super::neon::LsbLde8MatTables::new(
-                omega8_bb, omega16_bb,
-            )))
-        } else {
-            ChainKernels::Generic(lsb_generic::Lde8Matrix::new(omega16_f))
-        };
+        let kernels: ChainKernels<F> =
+            if const { super::neon::is_bb_pair::<F, E>() } && !force_generic {
+                let omega16_bb =
+                    ::fft::domain_generator_for_size::<::field::baby_bear::base::BabyBearField>(16);
+                let mut omega8_bb = omega16_bb;
+                omega8_bb.square();
+                ChainKernels::Neon(lsb_bench::LsbLdeAny::K8Mat(
+                    super::neon::LsbLde8MatTables::new(omega8_bb, omega16_bb),
+                ))
+            } else {
+                ChainKernels::Generic(lsb_generic::Lde8Matrix::new(omega16_f))
+            };
         #[cfg(not(target_arch = "aarch64"))]
         let kernels: ChainKernels<F> = {
             let _ = force_generic; // no NEON alternative off-arm
@@ -434,7 +437,9 @@ where
                         #[cfg(target_arch = "aarch64")]
                         {
                             if fold_out % 4 == 0 {
-                                lsb_bench::lsb_fold_ext_soa_parallel::<E>(src_ptr, dst, &lw, worker);
+                                lsb_bench::lsb_fold_ext_soa_parallel::<E>(
+                                    src_ptr, dst, &lw, worker,
+                                );
                             } else {
                                 lsb_bench::lsb_fold_ext_parallel::<E>(src_ptr, dst, &lw, worker);
                             }
@@ -459,8 +464,14 @@ where
         for t in 0..tail_rounds {
             let pairs = live_len / 2;
             assert_eq!(tail_t_table.len(), pairs);
-            let (h0, hinf) =
-                tail_round_message::<F, E>(&prog, fold_arena, live_off, pairs, tail_t_table, worker);
+            let (h0, hinf) = tail_round_message::<F, E>(
+                &prog,
+                fold_arena,
+                live_off,
+                pairs,
+                tail_t_table,
+                worker,
+            );
             let r = on_round(ChainRound::Tail {
                 round: 3 * num_passes + t,
                 h0,
@@ -522,14 +533,7 @@ fn tail_round_message<F: PrimeField, E: FieldExtension<F> + Field>(
                 let (h0, hinf) = dst;
                 for j in chunk_start..(chunk_start + chunk_size) {
                     let (g0, ginf) = tail_eval_pair::<F, E>(
-                        prog,
-                        slot_ptrs,
-                        live_off,
-                        j,
-                        &mut v0s,
-                        &mut dts,
-                        &mut form0,
-                        &mut formd,
+                        prog, slot_ptrs, live_off, j, &mut v0s, &mut dts, &mut form0, &mut formd,
                     );
                     let w = tail_t_table[j];
                     let mut t0 = g0;

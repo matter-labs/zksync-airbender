@@ -574,11 +574,9 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
     ) -> (Box<[T]>, Box<[T]>) {
         let pows = make_pows_local(point, log_n);
         // natural (LSB-first) layout: low index bits <-> FIRST pows entries
-        let lo = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<T>(
-            &pows[..log_c],
-            worker,
-        )
-        .into_boxed_slice();
+        let lo =
+            crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<T>(&pows[..log_c], worker)
+                .into_boxed_slice();
         let hi = if log_c == log_n {
             vec![T::ONE].into_boxed_slice()
         } else {

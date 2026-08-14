@@ -90,7 +90,9 @@ pub fn validate_sumcheck_schedule(
                     return Err(format!("uniskip window {} unsupported (only 3)", window));
                 }
                 if i != 0 {
-                    return Err(format!("UniskipInitial at position {i} (must open the schedule)"));
+                    return Err(format!(
+                        "UniskipInitial at position {i} (must open the schedule)"
+                    ));
                 }
             }
             SumcheckStep::WindowedOp(op) => match op {
@@ -204,7 +206,10 @@ impl<'a> SameSizeSchedules<'a> {
 
     /// Naive-everywhere selector (both classes empty).
     pub fn naive() -> Self {
-        Self { wide: &[], narrow: &[] }
+        Self {
+            wide: &[],
+            narrow: &[],
+        }
     }
 
     /// Windowed-chain selector for both classes.
