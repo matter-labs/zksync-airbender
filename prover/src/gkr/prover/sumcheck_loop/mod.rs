@@ -56,30 +56,56 @@ pub fn flatten_claim_point<E: Field>(point: &[EvaluationPointEntry<E>]) -> Vec<E
 /// LSB-binding dimension-reducing backward pass for one layer:
 /// the sumcheck binds the OUTPUT space's variables LSB-first through the raw
 /// slice engine (`dimension_reduction::lsb_backward`), reading contiguous
-/// 4-blocks per round and folding with dense ping-pong writes. The stored
-/// claim point is emitted in the legacy (high-variable-first) order --
-/// `reverse(lsb challenges) + [r_last]` -- so downstream layers, claims and
-/// verifiers keep their existing conventions.
+/// 4-blocks per round and folding with dense ping-pong writes. The claim
+/// point is emitted in plain variable order: `[r_last, lsb challenges..]`
+/// (`r_last` binds the gate bit = input bit 0).
+///
+/// The pass is split around round 0's transcript interaction: the initial
+/// round reads gate values straight from the OUTPUT layer polys; once its
+/// challenge is drawn the output pointer map is dropped and the output layer
+/// purged from storage, then the continuing rounds run as a plain cycle over
+/// the input polys and the fold scratch.
+///
+/// `S` is the chunk kernels' per-row tri-scratch slot type — an
+/// implementation detail of the kernels (typed `[E; 2]` rows for the scalar
+/// kernels, vector-compatible erased slots for SIMD kernels); this function
+/// only sizes and hands out the slots.
+#[allow(clippy::too_many_arguments)]
 pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     TR: Transcript<F, E>,
-    CK: Fn(
-            &[crate::gkr::prover::SendConstPtr<E>],
-            &[crate::gkr::prover::SendPtr<E>],
-            &[[crate::gkr::prover::SendConstPtr<E>; 2]],
+    S: Send + Sync,
+    CKI: Fn(
+            &BTreeMap<GKRAddress, &[E]>,
+            &BTreeMap<GKRAddress, &[E]>,
             &[crate::gkr::prover::dimension_reduction::lsb_backward::LsbDimReducingRelation<E>],
-            Option<E>,
             crate::gkr::prover::SendConstPtr<E>,
             usize,
             usize,
-            crate::gkr::prover::SendPtr<[u128; 2]>,
+            crate::gkr::prover::SendPtr<S>,
+        ) -> [E; 2]
+        + Send
+        + Sync
+        + Copy,
+    CK: Fn(
+            &BTreeMap<
+                GKRAddress,
+                crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker<E>,
+            >,
+            &[crate::gkr::prover::dimension_reduction::lsb_backward::LsbDimReducingRelation<E>],
+            E,
+            crate::gkr::prover::SendConstPtr<E>,
+            usize,
+            usize,
+            crate::gkr::prover::SendPtr<S>,
         ) -> [E; 2]
         + Send
         + Sync
         + Copy,
 >(
-    chunk_kernel: CK,
+    initial_chunk_kernel: CKI,
+    continuing_chunk_kernel: CK,
     schedule: &[crate::gkr::prover_config::SumcheckStep],
     layer_idx: usize,
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
@@ -90,14 +116,26 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     seed: &mut TR::Seed,
     trace_len_after_reduction: usize,
     worker: &Worker,
-    scratch: &mut crate::gkr::prover::gkr_backend::DimReducingSumcheckScratch<E>,
+    scratch: &mut crate::gkr::prover::gkr_backend::DimReducingSumcheckScratch<E, S>,
 ) -> SumcheckIntermediateProofValues<F, E>
 where
     [(); E::DEGREE]: Sized,
 {
     use crate::gkr::prover::dimension_reduction::lsb_backward::{
-        lsb_dim_reducing_sumcheck_prove_fused, LsbDimReducingRelation,
+        lsb_dim_reducing_sumcheck_continue, lsb_dim_reducing_sumcheck_initial_round,
+        FoldBufferTracker, LsbDimReducingRelation,
     };
+
+    // the production engines run naive (one variable per round) schedules
+    // only; windowed dimension-reducing passes were removed
+    assert!(
+        schedule.iter().all(|s| matches!(
+            s,
+            crate::gkr::prover_config::SumcheckStep::NaiveSumcheck
+        )),
+        "the dimension-reducing engines support only naive round schedules; got {:?}",
+        schedule
+    );
 
     println!("Evaluating layer {layer_idx} (dimension reducing, LSB) in sumcheck direction");
     let layer_timer = std::time::Instant::now();
@@ -121,27 +159,19 @@ where
     // KernelCollector::from_dimension_reducing_relations (challenge powers
     // start at ONE and multiply by the base per challenge)
     let mut cbc = E::ONE;
-    let mut poly_addrs: Vec<GKRAddress> = vec![];
     let mut relations: Vec<LsbDimReducingRelation<E>> = vec![];
-    let mut relation_outputs: Vec<[GKRAddress; 2]> = vec![];
     let mut claim = E::ZERO;
-    fn addr_idx(addrs: &mut Vec<GKRAddress>, a: GKRAddress) -> usize {
-        if let Some(i) = addrs.iter().position(|x| *x == a) {
-            i
-        } else {
-            addrs.push(a);
-            addrs.len() - 1
-        }
-    }
     for (k, v) in layer {
         match *k {
             OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                 for (inp, out) in v.inputs.iter().zip(v.output.iter()) {
                     let alpha = cbc;
                     cbc.mul_assign(&batch_challenge_base);
-                    let input = addr_idx(&mut poly_addrs, *inp);
-                    relations.push(LsbDimReducingRelation::PairwiseProduct { input, alpha });
-                    relation_outputs.push([*out, *out]);
+                    relations.push(LsbDimReducingRelation::PairwiseProduct {
+                        input: *inp,
+                        output: *out,
+                        alpha,
+                    });
                     let mut t = alpha;
                     t.mul_assign(&output_claims[out]);
                     claim.add_assign(&t);
@@ -152,15 +182,14 @@ where
                 cbc.mul_assign(&batch_challenge_base);
                 let alpha_den = cbc;
                 cbc.mul_assign(&batch_challenge_base);
-                let num = addr_idx(&mut poly_addrs, v.inputs[0]);
-                let den = addr_idx(&mut poly_addrs, v.inputs[1]);
                 relations.push(LsbDimReducingRelation::LogupPair {
-                    num,
-                    den,
+                    num: v.inputs[0],
+                    den: v.inputs[1],
+                    num_output: v.output[0],
+                    den_output: v.output[1],
                     alpha_num,
                     alpha_den,
                 });
-                relation_outputs.push([v.output[0], v.output[1]]);
                 let mut t = alpha_num;
                 t.mul_assign(&output_claims[&v.output[0]]);
                 claim.add_assign(&t);
@@ -172,95 +201,103 @@ where
         }
     }
 
-    // materialize raw pointers up front (no storage borrows held during the
-    // sumcheck -- the round-0 purge callback needs `&mut gkr_storage`)
-    let (poly_raw, output_ptr_table): (
-        Vec<(*const E, usize)>,
-        Vec<[crate::gkr::prover::SendConstPtr<E>; 2]>,
-    ) = {
-        let out_addrs: Vec<GKRAddress> = relation_outputs
-            .iter()
-            .flat_map(|p| p.iter().copied())
-            .collect();
-        let lsb_inputs = GKRInputs {
-            inputs_in_base: Vec::new(),
-            inputs_in_extension: poly_addrs.clone(),
-            outputs_in_base: Vec::new(),
-            outputs_in_extension: Vec::new(),
-        };
-        let sources = unsafe { gkr_storage.get_for_sumcheck_round_0(&lsb_inputs) };
-        let poly_raw: Vec<(*const E, usize)> = sources
-            .extension_field_inputs
-            .iter()
-            .map(|src| {
-                let v = src.current_values();
-                (v.as_ptr(), v.len())
-            })
-            .collect();
-        drop(sources);
-        let out_inputs = GKRInputs {
-            inputs_in_base: Vec::new(),
-            inputs_in_extension: out_addrs.clone(),
-            outputs_in_base: Vec::new(),
-            outputs_in_extension: Vec::new(),
-        };
-        let out_sources = unsafe { gkr_storage.get_for_sumcheck_round_0(&out_inputs) };
-        let flat: Vec<crate::gkr::prover::SendConstPtr<E>> = out_sources
-            .extension_field_inputs
-            .iter()
-            .map(|src| crate::gkr::prover::SendConstPtr(src.current_values().as_ptr()))
-            .collect();
-        let table: Vec<[crate::gkr::prover::SendConstPtr<E>; 2]> =
-            flat.chunks(2).map(|c| [c[0], c[1]]).collect();
-        (poly_raw, table)
-    };
-    let polys: Vec<&[E]> = poly_raw
+    let input_addrs: std::collections::BTreeSet<GKRAddress> = relations
         .iter()
-        .map(|&(p, l)| unsafe { core::slice::from_raw_parts(p, l) })
+        .flat_map(|rel| rel.input_addresses())
         .collect();
+    fn select_slices<'a, F: PrimeField, E: FieldExtension<F> + Field>(
+        gkr_storage: &'a GKRStorage<F, E>,
+        addrs: &std::collections::BTreeSet<GKRAddress>,
+    ) -> BTreeMap<GKRAddress, &'a [E]> {
+        addrs
+            .iter()
+            .map(|addr| {
+                let poly: &[E] = gkr_storage
+                    .try_get_ext_poly(*addr)
+                    .expect("dimension-reducing polys live in the extension field");
+                (*addr, poly)
+            })
+            .collect()
+    }
 
-    // incoming claim points are stored in the dimension-reducing emission
-    // layout [bits 1.., bit 0]; the engine consumes that layout NATIVELY
-    // (per-round accessor + contiguous suffix slice), so the point passes
-    // through untouched
+    // incoming claim points are stored in plain variable order (bit 0 first),
+    // exactly the low-variable-first order the engine binds in, so the point
+    // passes through untouched
     let tau: &[E] = &prev_challenges[..];
 
     // fold + tri scratch shared across ALL dimension-reducing layers,
-    // max-sized and owned by the backward-pass driver loop
-    assert!(scratch.fold.len() >= polys.len());
-    let num_polys = polys.len();
-    let (fold_scratch, tri_scratch) = (&mut scratch.fold[..num_polys], &mut scratch.tri[..]);
-    let gkr_storage_cell = core::cell::RefCell::new(&mut *gkr_storage);
-    let (out, lsb_challenges) = lsb_dim_reducing_sumcheck_prove_fused::<F, E, CK>(
-        &polys,
+    // max-sized and owned by the backward-pass driver loop; each input poly
+    // gets a ping-pong tracker over its (scratch-only) pool allocation
+    let crate::gkr::prover::gkr_backend::DimReducingSumcheckScratch { fold, tri } = scratch;
+    assert!(fold.len() >= input_addrs.len());
+    let input_poly_len = 2 * trace_len_after_reduction;
+    let mut fold_buffers: BTreeMap<GKRAddress, FoldBufferTracker<E>> = input_addrs
+        .iter()
+        .zip(fold.iter_mut())
+        .map(|(addr, pool)| {
+            (
+                *addr,
+                FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), input_poly_len),
+            )
+        })
+        .collect();
+
+    // ---- round 0 over plain BORROWED slices (nothing is written); the
+    // borrows end before the transcript interaction, and its suffix eq table
+    // is handed to the continuing rounds for contraction
+    let (round_0_coefficients, t_table) = {
+        let inputs = select_slices(gkr_storage, &input_addrs);
+        let outputs = select_slices(
+            gkr_storage,
+            &relations
+                .iter()
+                .flat_map(|rel| rel.output_addresses())
+                .collect(),
+        );
+        lsb_dim_reducing_sumcheck_initial_round::<F, E, S, CKI>(
+            &inputs,
+            &outputs,
+            &relations,
+            tau,
+            claim,
+            worker,
+            &mut tri[..],
+            initial_chunk_kernel,
+        )
+    };
+    commit_field_els::<F, E, TR>(seed, &round_0_coefficients);
+    let r_0 = draw_random_field_els::<F, E, TR>(seed, 1)[0];
+
+    // the output layer is fully consumed by round 0: free it now so the
+    // fold scratch reuses the pages fault-free
+    gkr_storage.purge_up_to_layer(layer_idx);
+
+    // ---- rounds 1..: the trivial fold-and-evaluate cycle; only the INPUT
+    // polys are re-selected after the purge — round 1 reads them as
+    // borrowed slices, every later round reads tracker-owned regions
+    let continue_inputs = select_slices(gkr_storage, &input_addrs);
+    let (out, continuing_challenges) = lsb_dim_reducing_sumcheck_continue::<F, E, S, CK>(
+        &continue_inputs,
+        &mut fold_buffers,
         &relations,
-        &output_ptr_table,
-        &tau,
-        claim,
+        tau,
+        &round_0_coefficients,
+        r_0,
+        t_table,
         worker,
-        schedule,
-        fold_scratch,
-        tri_scratch,
-        chunk_kernel,
+        &mut tri[..],
+        continuing_chunk_kernel,
         |coeffs| {
             commit_field_els::<F, E, TR>(seed, coeffs);
             draw_random_field_els::<F, E, TR>(seed, 1)[0]
         },
-        || {
-            // output layer fully consumed by round 0; free it now so the
-            // fold scratch reuses the pages fault-free
-            gkr_storage_cell.borrow_mut().purge_up_to_layer(layer_idx);
-        },
     );
-    drop(polys);
-    let gkr_storage: &mut GKRStorage<F, E> = gkr_storage_cell.into_inner();
+    let lsb_challenges: Vec<E> = core::iter::once(r_0)
+        .chain(continuing_challenges.into_iter())
+        .collect();
 
     // the engine's final values ARE the [E;2] LSB lines per input address
-    let lsb_lines: BTreeMap<GKRAddress, [E; 2]> = poly_addrs
-        .iter()
-        .zip(out.final_values.iter())
-        .map(|(addr, v)| (*addr, *v))
-        .collect();
+    let lsb_lines: BTreeMap<GKRAddress, [E; 2]> = out.final_values;
 
     let final_step_evaluations: BTreeMap<GKRAddress, Vec<E>> =
         lsb_lines.iter().map(|(k, v)| (*k, v.to_vec())).collect();
@@ -284,8 +321,9 @@ where
     #[cfg(feature = "gkr_self_checks")]
     {
         println!("Self-checking explicit at-point evaluations (LSB path)");
-        // the layout-aware builder consumes the emission order directly
-        let eq = crate::gkr::sumcheck::eq_poly::make_eq_table_dim_reducing_point::<E>(
+        // the emitted point is in plain variable order (bit 0 = r_last first),
+        // so the plain LSB-first builder consumes it directly
+        let eq = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(
             &folding_challenges,
             worker,
         );
@@ -326,9 +364,8 @@ where
 
     SumcheckIntermediateProofValues {
         sumcheck_num_rounds: folding_steps,
-        internal_round_coefficients: out
-            .round_coefficients
-            .into_iter()
+        internal_round_coefficients: core::iter::once(round_0_coefficients)
+            .chain(out.round_coefficients.into_iter())
             .map(crate::gkr::prover::SumcheckRoundCoefficients::Multilinear)
             .collect(),
         final_step_evaluations,
@@ -365,7 +402,7 @@ pub fn evaluate_sumcheck_for_layer<
 where
     [(); E::DEGREE]: Sized,
 {
-    todo!();
+    todo!("evaluate_sumcheck_for_layer to be cleaned next");
 
     //     println!("Evaluating layer {layer_idx} in sumcheck direction");
 

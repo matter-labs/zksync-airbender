@@ -190,8 +190,22 @@ pub fn make_eq_table_dim_reducing_point<E: Field>(point: &[E], worker: &Worker) 
 /// is data-parallel over the existing half, so large levels fan out across
 /// the worker pool and levels below the threshold run inline.
 pub fn make_eq_table_lsb_first<E: Field>(challenges: &[E], worker: &Worker) -> Vec<E> {
+    make_eq_table_lsb_first_with_capacity(challenges, 0, worker)
+}
+
+/// [`make_eq_table_lsb_first`] building into a `Vec` with at least
+/// `min_capacity` reserved up front — for callers that grow the table in
+/// place later (e.g. the dimension-reducing sumcheck's 3/4-sized ping-pong
+/// contraction buffer) and must not pay a reallocation then.
+pub fn make_eq_table_lsb_first_with_capacity<E: Field>(
+    challenges: &[E],
+    min_capacity: usize,
+    worker: &Worker,
+) -> Vec<E> {
     use crate::gkr::PAR_THRESHOLD;
-    let mut table = vec![E::ONE; 1usize << challenges.len()];
+    let size = 1usize << challenges.len();
+    let mut table = Vec::with_capacity(size.max(min_capacity));
+    table.resize(size, E::ONE);
     for (b, c) in challenges.iter().enumerate() {
         let half = 1usize << b;
         let mut om = E::ONE;

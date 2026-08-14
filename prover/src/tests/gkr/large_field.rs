@@ -483,6 +483,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         Keccak256MerkleTreeWithCap,
         Keccak256Transcript,
         _,
+        _,
     >(
         &unified_circuit,
         &external_challenges,
@@ -496,6 +497,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         top_bits,
         trace_len,
         &Proth120WorkStealingLazyBackend,
+        &crate::gkr::prover::NaiveGKRBackend,
         &worker,
     );
     println!("Packed unified proving time is {:?}", now.elapsed());

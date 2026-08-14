@@ -17,6 +17,9 @@ pub use crate::gkr::prover::backend::{
     Backend, DefaultBabyBearBackend, NaiveBackend, Proth120WorkStealingLazyBackend,
     WorkStealingBackend,
 };
+#[cfg(target_arch = "aarch64")]
+pub use crate::gkr::prover::gkr_backend::NeonGKRBackend;
+pub use crate::gkr::prover::gkr_backend::{DefaultBabyBearGKRBackend, GKRBackend, NaiveGKRBackend};
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils;
@@ -550,7 +553,7 @@ where
             WhirOracleStorage::fully_in_memory()
         }
     };
-    prove_configured_with_gkr_impl::<F, E, T, TR, _>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -563,6 +566,7 @@ where
         inits_and_teardowns_top_bits,
         trace_len,
         &WorkStealingBackend,
+        &NaiveGKRBackend,
         worker,
     )
 }
@@ -599,7 +603,7 @@ where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
 {
-    prove_configured_with_gkr_impl::<F, E, T, TR, _>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -612,15 +616,18 @@ where
         inits_and_teardowns_top_bits,
         trace_len,
         &WorkStealingBackend,
+        &NaiveGKRBackend,
         worker,
     )
 }
 
-/// [`prove_configured_with_gkr_with_storage`] with an explicit compute backend.
-/// Backends must (and do — see `backend::tests`) produce byte-identical proofs;
-/// only the execution strategy differs. Field-specific backends (like the
-/// Proth120 lazy-reduction [`Proth120WorkStealingLazyBackend`]) are selected HERE by
-/// callers that concretely know their field — there is no runtime dispatch.
+/// [`prove_configured_with_gkr_with_storage`] with explicit compute backends
+/// (the FFT/tree [`Backend`] and the [`GKRBackend`]). Backends must (and do —
+/// see `backend::tests`) produce byte-identical proofs; only the execution
+/// strategy differs. Field-specific backends (like the Proth120
+/// lazy-reduction [`Proth120WorkStealingLazyBackend`] or the aarch64-only
+/// BabyBear [`DefaultBabyBearGKRBackend`]) are selected HERE by callers that
+/// concretely know their field — there is no runtime dispatch.
 #[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage_and_backend<
     F: PrimeField + TwoAdicField,
@@ -628,6 +635,7 @@ pub fn prove_configured_with_gkr_with_storage_and_backend<
     T: ColumnMajorMerkleTreeConstructor<F>,
     TR: ::transcript::Transcript<F, E>,
     B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -641,13 +649,14 @@ pub fn prove_configured_with_gkr_with_storage_and_backend<
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     backend: &B,
+    gkr_backend: &GB,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
 {
-    prove_configured_with_gkr_impl::<F, E, T, TR, B>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -660,6 +669,7 @@ where
         inits_and_teardowns_top_bits,
         trace_len,
         backend,
+        gkr_backend,
         worker,
     )
 }
@@ -671,6 +681,7 @@ fn prove_configured_with_gkr_impl<
     T: ColumnMajorMerkleTreeConstructor<F>,
     TR: ::transcript::Transcript<F, E>,
     B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -684,6 +695,7 @@ fn prove_configured_with_gkr_impl<
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     backend: &B,
+    gkr_backend: &GB,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
@@ -1148,7 +1160,7 @@ where
     // GKRBackend seam: the dimension-reducing paths run through the backend
     // selection in `gkr_backend` (platform dispatch lives ONLY there)
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
-        gkr_backend::run_dimension_reduction_forward::<F, E>(
+        gkr_backend.dimension_reduction_forward(
             &mut gkr_storage,
             compiled_circuit,
             trace_len.trailing_zeros() as usize,
@@ -1283,7 +1295,7 @@ where
         })
         .max()
         .unwrap_or(0);
-    let mut dr_work_buffers = gkr_backend::run_make_dim_reducing_work_buffers::<F, E>(
+    let mut dr_work_buffers = gkr_backend.make_dim_reducing_work_buffers(
         dr_max_rounds,
         dr_max_polys,
         worker,
@@ -1301,7 +1313,7 @@ where
                 &[]
             }
         };
-        let proof = gkr_backend::run_dimension_reducing_sumcheck_for_layer::<F, E, TR>(
+        let proof = gkr_backend.dimension_reducing_sumcheck_for_layer::<TR>(
             dr_schedule,
             layer_idx,
             &layer,

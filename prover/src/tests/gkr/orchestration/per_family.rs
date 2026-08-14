@@ -104,6 +104,7 @@ pub fn prove_built_family_trace(
         DefaultTreeConstructor,
         Blake2sTranscript,
         _,
+        _,
     >(
         circuit,
         external_challenges,
@@ -117,6 +118,7 @@ pub fn prove_built_family_trace(
         Vec::new(),
         trace_len,
         &DefaultBabyBearBackend::default(),
+        &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
         worker,
     );
     println!("Proving time is {:?}", now.elapsed());
@@ -595,6 +597,7 @@ pub fn prove_inits_and_teardowns(
         DefaultTreeConstructor,
         Blake2sTranscript,
         _,
+        _,
     >(
         &circuit,
         external_challenges,
@@ -608,6 +611,7 @@ pub fn prove_inits_and_teardowns(
         inits_and_teardowns_top_bits,
         trace_len,
         &DefaultBabyBearBackend::default(),
+        &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
         worker,
     );
     println!("Proving time is {:?}", now.elapsed());

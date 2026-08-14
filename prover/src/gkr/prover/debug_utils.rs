@@ -108,11 +108,11 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
     output_layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
     worker: &Worker,
 ) -> (E, E, E, E, E, E, E, E, E, E) {
-    // the drawn point uses the dimension-reducing layout [bits 1.., bit 0]
-    // (its consumer is the first backward dimension-reducing layer); build
-    // the eq table over the variable-order view INTERNALLY
+    // the drawn point is in plain variable order (bit 0 first) — the same
+    // low-variable-first order its consumer (the first backward
+    // dimension-reducing layer) binds in
     let eq_owned =
-        crate::gkr::sumcheck::eq_poly::make_eq_table_dim_reducing_point::<E>(eval_point, worker);
+        crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(eval_point, worker);
     let eq = &eq_owned;
 
     let mut evals = vec![];
