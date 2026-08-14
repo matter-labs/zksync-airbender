@@ -206,7 +206,11 @@ struct __align__(16) gkr_trace_holder_bf4 {
 
 template <typename E> struct gkr_trace_holder_eq_dense {
   const E *eq_values;
-  DEVICE_FORCEINLINE E operator()(const unsigned row) const { return load<E, ld_modifier::cs>(eq_values, row); }
+  DEVICE_FORCEINLINE void load4(const unsigned row, E (&eq)[4]) const {
+#pragma unroll
+    for (unsigned i = 0; i < 4; ++i)
+      eq[i] = load<E, ld_modifier::cs>(eq_values, row + i);
+  }
 };
 
 template <typename E, typename EqFn>
@@ -230,10 +234,8 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
 
   for (unsigned packed_row = packed_gid; packed_row < packed_trace_len; packed_row += packed_stride) {
     const unsigned row = packed_row << 2;
-    const E eq0 = eq_fn(row);
-    const E eq1 = eq_fn(row + 1);
-    const E eq2 = eq_fn(row + 2);
-    const E eq3 = eq_fn(row + 3);
+    E eq[4];
+    eq_fn.load4(row, eq);
 #pragma unroll
     for (unsigned local_col = 0; local_col < GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK; ++local_col) {
       if (local_col >= chunk_cols)
@@ -241,10 +243,10 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
       const unsigned column = column_start + local_col;
       const size_t row_offset = static_cast<size_t>(column) * trace_len + row;
       const auto values = load<gkr_trace_holder_bf4, ld_modifier::cs>(reinterpret_cast<const gkr_trace_holder_bf4 *>(raw_values), row_offset >> 2);
-      E partial = E::mul(values.values[0], eq0);
-      partial = E::fma(eq1, values.values[1], partial);
-      partial = E::fma(eq2, values.values[2], partial);
-      partial = E::fma(eq3, values.values[3], partial);
+      E partial = E::mul(values.values[0], eq[0]);
+      partial = E::fma(eq[1], values.values[1], partial);
+      partial = E::fma(eq[2], values.values[2], partial);
+      partial = E::fma(eq[3], values.values[3], partial);
       accumulators[local_col] = E::add(accumulators[local_col], partial);
     }
   }
