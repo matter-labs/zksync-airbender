@@ -183,6 +183,34 @@ EXTERN __global__ void ab_whir_three_point_combined_e4_kernel(const e4 *__restri
   }
 }
 
+constexpr unsigned WHIR_SUM_BLOCK_THREADS = 256;
+
+// One partial per block: out[blockIdx.x] = sum of this block's grid-stride
+// slice. A second single-block launch over the partials completes the sum.
+EXTERN __global__ void ab_whir_sum_e4_kernel(const e4 *__restrict__ values, const unsigned count, e4 *__restrict__ out) {
+  __shared__ e4 smem[WHIR_SUM_BLOCK_THREADS];
+
+  const unsigned tid = threadIdx.x;
+  const unsigned stride = gridDim.x * blockDim.x;
+
+  e4 acc = e4::ZERO();
+  for (unsigned i = blockIdx.x * blockDim.x + tid; i < count; i += stride)
+    acc = e4::add(acc, load<e4, ld_modifier::cs>(values, i));
+
+  smem[tid] = acc;
+  __syncthreads();
+
+#pragma unroll
+  for (unsigned offset = WHIR_SUM_BLOCK_THREADS / 2; offset > 0; offset >>= 1) {
+    if (tid < offset)
+      smem[tid] = e4::add(smem[tid], smem[tid + offset]);
+    __syncthreads();
+  }
+
+  if (tid == 0)
+    out[blockIdx.x] = smem[0];
+}
+
 DEVICE_FORCEINLINE void partially_evaluate_monomial_form_small_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 z,
                                                                     const unsigned log_count) {
   const int count = 1 << log_count;
