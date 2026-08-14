@@ -33,3 +33,10 @@ base witness input
 ## Common false positive
 
 A base-layer equation may appear to have no direct `assert_zero` call because it is accumulated and checked by a later random linear combination or zerocheck. Follow the output through every layer before reporting it as unenforced.
+
+## Claim provenance
+
+Relations among derived or prover-supplied claims establish mutual consistency,
+not necessarily provenance. For each claim, identify its authoritative origin and
+trace the binding from the claim to that origin. Do not close a provenance
+question merely because the claim participates consistently in later relations.

@@ -154,6 +154,13 @@ Record every assumed global invariant and the locally checked interface in the r
    representation boundary, record the source encoding, destination encoding,
    and conversion equation. A later relation closes a discrepancy only when it
    binds the same expressions on the same activation domain.
+   When an obligation is deferred, merged, or selector-weighted, enumerate the
+   activation domains of every producer of the protected value and every term
+   that enforces the deferred obligation. Require the enforcement domains to
+   cover all producer domains; a comment or shared aggregate is not closure.
+   When the target itself aggregates or composes proofs, treat continuity as the
+   target's local obligation. Compare every field of every argument's challenge
+   tuple across all participating proof classes before claiming a common tuple.
    Finding one defect does not clear neighboring operations or shared branches;
    finish each worksheet or mark it explicitly unreviewed.
 5. For every candidate, search for direct and indirect constraints that may close the gap. Construct the smallest complete bounded symbolic invalid assignment or finite abstract trace, enumerate every applicable relation and global-interface condition, and show why each is satisfied while the intended relation is violated. For completeness, provide a concrete valid rejected case. Never turn this evidence into executable proof-generation or operational attack instructions.

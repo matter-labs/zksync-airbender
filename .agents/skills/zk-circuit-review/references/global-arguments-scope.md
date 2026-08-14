@@ -6,6 +6,21 @@ Do not attempt to prove whole-system RAM/permutation soundness, cross-circuit bu
 
 Instead, explicitly assume each identified global mechanism is consistent according to its documented contract. Then audit whether the named circuit contributes the right locally constrained data to that mechanism.
 
+This boundary applies only when another component completes the global
+obligation. If the named target is the aggregator, recursive wrapper, or
+full-statement verifier responsible for composition or continuity, that
+obligation is local to the target and must be audited. For every aggregated
+argument, enumerate every participating proof class and compare each challenge
+field independently; equality of part of a tuple does not establish equality of
+the tuple.
+
+Analyze the empty-domain behavior of every iterated aggregation. Determine how
+its references and accumulators are initialized, what downstream logic consumes
+them, and whether the statement permits zero contributors. Require nonemptiness
+only when the statement requires a contributor or later logic assumes a
+populated reference; otherwise verify that the neutral empty case is defined and
+handled consistently.
+
 ## Local obligations that remain in scope
 
 Verify that the circuit:

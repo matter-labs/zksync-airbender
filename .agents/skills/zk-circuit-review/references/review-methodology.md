@@ -104,6 +104,12 @@ coefficient. The existence of a later constraint, lookup, or aggregate is not
 closure unless it binds the same semantic inputs and outputs on the same active
 branch.
 
+For a deferred, merged, or selector-weighted obligation, record the activation
+domain of every producer or writer of the protected value and the activation
+domain of every enforcing term. Check set inclusion explicitly: every producer
+domain must be covered by an enforcing domain. Do not infer coverage from a
+comment, a shared destination, or the existence of an aggregate.
+
 For multi-limb relations, normalize intended and enforced equations to the same
 radix and side of equality. Record the coefficient and sign of each operand
 limb, output limb, carry/borrow input and output, operation-specific adjustment,
