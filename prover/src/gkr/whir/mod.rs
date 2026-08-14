@@ -803,6 +803,7 @@ pub fn whir_fold<
     setup: &crate::gkr::prover::SetupCommitment<F, T>,
     setup_polys_claims: Vec<E>,
     original_evaluation_point: Vec<E>,
+    evaluation_point_entries: Option<Vec<crate::gkr::prover::EvaluationPointEntry<E>>>,
     batching_challenge: E,
     whir_schedule: &WhirSchedule,
     twiddles: &Twiddles<F, Global>,
@@ -837,12 +838,44 @@ where
     let set_caps = [mem_oracle.get_cap(), wit_oracle.get_cap(), setup.get_cap()];
 
     let t_eq_init = std::time::Instant::now();
-    let mut eq_polys = make_eq_poly_in_full::<E>(&original_evaluation_point[..], worker);
+    // The point arrives in the producing (same-size) layer's plain push
+    // order: round order = high-variable-first for its MSB-binding rounds.
+    // The eq builder consumes the coordinates in reverse association
+    // INTERNALLY (index bit b <-> coordinate len-1-b); no reversed vector
+    // is materialized and the stored order is never touched (the proof's
+    // `original_evaluation_point` copy exists only for the EVM verifier).
+    let mut eq_poly_box = if let Some(entries) = &evaluation_point_entries {
+        // mixed point: the claim must cover every variable, and the eq
+        // table is the block tensor over the entries (variable order)
+        assert_eq!(
+            entries.iter().map(|e| e.bound_vars()).sum::<usize>(),
+            trace_len_log2,
+            "claim point must cover every variable"
+        );
+        let omega16_f: F = ::fft::domain_generator_for_size::<F>(16);
+        let blocks: Vec<Vec<E>> = entries
+            .iter()
+            .map(|e| e.eq_weight_block::<F>(omega16_f))
+            .collect();
+        let refs: Vec<&[E]> = blocks.iter().map(|b| &b[..]).collect();
+        crate::gkr::sumcheck::eq_poly::make_eq_table_from_weight_blocks::<E>(&refs, worker)
+            .into_boxed_slice()
+    } else {
+        assert_eq!(
+            original_evaluation_point.len(),
+            trace_len_log2,
+            "claim coordinate must have one entry per variable"
+        );
+        crate::gkr::sumcheck::eq_poly::make_eq_table_msb_first::<E>(
+            &original_evaluation_point[..],
+            worker,
+        )
+        .into_boxed_slice()
+    };
     println!(
         "  [timing] initial eq-poly build: {:.3?}",
         t_eq_init.elapsed()
     );
-    let mut eq_poly_box = eq_polys.pop().unwrap();
 
     #[cfg(feature = "gkr_self_checks")]
     {
@@ -874,7 +907,6 @@ where
                     &mut sumcheck_evals,
                     trace_len_log2 as u32,
                 );
-                bitreverse_enumeration_inplace(&mut sumcheck_evals);
                 use crate::gkr::whir::eq_poly::evaluate_with_precomputed_eq;
                 let recomputed_claim =
                     evaluate_with_precomputed_eq(&sumcheck_evals, &eq_poly_box[..]);
@@ -916,7 +948,9 @@ where
         // GKR->WHIR handoff values (see WhirPolyCommitProof). `batched_opening` is filled once
         // `batched_claim` is computed below.
         batching_challenge: Some(batching_challenge),
-        original_evaluation_point: Some(original_evaluation_point.clone()),
+        original_evaluation_point: evaluation_point_entries
+            .is_none()
+            .then(|| original_evaluation_point.clone()),
         batched_opening: None,
     };
 
@@ -1118,7 +1152,6 @@ where
     // So we make EQ poly explicitly, and then we will update it after every step, and use naively
 
     let mut eq_poly = &mut eq_poly_box[..];
-    drop(eq_polys);
 
     let mut sumchecked_poly_evaluation_form_vec = sumcheck_evals;
     let mut sumchecked_poly_evaluation_form = &mut sumchecked_poly_evaluation_form_vec[..];
@@ -1230,7 +1263,6 @@ where
                     &mut source,
                     sumchecked_poly_monomial_form.len().trailing_zeros(),
                 );
-                bitreverse_enumeration_inplace(&mut source);
                 assert_eq!(source, sumchecked_poly_evaluation_form);
             }
 
@@ -2032,7 +2064,6 @@ where
         let final_len = 1usize << final_poly_log2;
         let mut hypercube_evals = proof.final_monomials.clone();
         multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, final_poly_log2 as u32);
-        bitreverse_enumeration_inplace(&mut hypercube_evals);
         assert_eq!(
             &hypercube_evals[..],
             &sumchecked_poly_evaluation_form_vec[..final_len],
@@ -2742,15 +2773,19 @@ fn fold_evaluation_form_serial<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     let half_len = input.len() / 2;
     let f1_coeff = *challenge;
 
-    let (first_half, second_half) = input.split_at_mut(half_len);
-    for (a, b) in first_half.iter_mut().zip(second_half.iter()) {
-        let mut t = *b;
-        t.sub_assign(a);
+    // LSB binding: fold ADJACENT pairs (2i, 2i+1); serial in-place
+    // left-to-right is safe (writes trail reads)
+    for i in 0..half_len {
+        let a = input[2 * i];
+        let mut t = input[2 * i + 1];
+        t.sub_assign(&a);
         t.mul_assign(&f1_coeff);
-        a.add_assign(&t);
+        let mut v = a;
+        v.add_assign(&t);
+        input[i] = v;
     }
 
-    first_half
+    &mut input[..half_len]
 }
 
 fn fold_evaluation_form<'a, F: PrimeField, E: FieldExtension<F> + Field>(
@@ -2766,26 +2801,38 @@ fn fold_evaluation_form<'a, F: PrimeField, E: FieldExtension<F> + Field>(
 
     let f1_coeff = *challenge;
 
-    let (first_half, second_half) = input.split_at_mut(half_len);
-
+    // LSB binding folds ADJACENT pairs (2i, 2i+1). Phase 1 (parallel): each
+    // pair's result overwrites its own pair slots -- per-pair independent, so
+    // any chunking is race-free (pair chunks never split a pair). Phase 2
+    // (parallel): compact pair-heads to the front by disjoint chunk copies
+    // using a whole-struct pointer (each chunk writes [a, b) and reads
+    // [2a, 2b); write ranges are pairwise disjoint from OTHER chunks' reads
+    // only in phase-separated form, so phase 2 reads what phase 1 finished).
+    let pairs = input.as_chunks_mut::<2>().0;
     worker.scope_with_threshold(half_len, PAR_THRESHOLD, |scope, geometry| {
-        first_half
+        pairs
             .chunks_for_geometry_mut(geometry)
             .enumerate()
-            .zip(second_half.chunks_for_geometry(geometry))
-            .for_each(|((idx, dst), src)| {
+            .for_each(|(idx, chunk)| {
                 Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
-                    for (a, b) in dst.iter_mut().zip(src.iter()) {
-                        let mut t = *b;
-                        t.sub_assign(a);
+                    for pair in chunk.iter_mut() {
+                        let [a, b] = *pair;
+                        let mut t = b;
+                        t.sub_assign(&a);
                         t.mul_assign(&f1_coeff);
-                        a.add_assign(&t);
+                        let mut v = a;
+                        v.add_assign(&t);
+                        pair[0] = v;
                     }
                 });
             })
     });
+    // serial compaction: input[i] = input[2i]; writes trail reads
+    for i in 1..half_len {
+        input[i] = input[2 * i];
+    }
 
-    first_half
+    &mut input[..half_len]
 }
 
 #[cfg(test)]
@@ -2798,15 +2845,17 @@ fn fold_eq_poly_serial<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     let half_len = eq_poly.len() / 2;
     let f1_coeff = *challenge;
 
-    let (first_half, second_half) = eq_poly.split_at_mut(half_len);
-    for (a, b) in first_half.iter_mut().zip(second_half.iter()) {
-        let mut t = *b;
-        t.sub_assign(a);
+    for i in 0..half_len {
+        let a = eq_poly[2 * i];
+        let mut t = eq_poly[2 * i + 1];
+        t.sub_assign(&a);
         t.mul_assign(&f1_coeff);
-        a.add_assign(&t);
+        let mut v = a;
+        v.add_assign(&t);
+        eq_poly[i] = v;
     }
 
-    first_half
+    &mut eq_poly[..half_len]
 }
 
 fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
@@ -2820,26 +2869,32 @@ fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
 
     let f1_coeff = *challenge;
 
-    let (first_half, second_half) = eq_poly.split_at_mut(half_len);
-
+    // LSB binding: same two-phase adjacent-pair scheme as
+    // [`fold_evaluation_form`] (identical linear-interpolation formula)
+    let pairs = eq_poly.as_chunks_mut::<2>().0;
     worker.scope_with_threshold(half_len, PAR_THRESHOLD, |scope, geometry| {
-        first_half
+        pairs
             .chunks_for_geometry_mut(geometry)
             .enumerate()
-            .zip(second_half.chunks_for_geometry(geometry))
-            .for_each(|((idx, dst), src)| {
+            .for_each(|(idx, chunk)| {
                 Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
-                    for (a, b) in dst.iter_mut().zip(src.iter()) {
-                        let mut t = *b;
-                        t.sub_assign(a);
+                    for pair in chunk.iter_mut() {
+                        let [a, b] = *pair;
+                        let mut t = b;
+                        t.sub_assign(&a);
                         t.mul_assign(&f1_coeff);
-                        a.add_assign(&t);
+                        let mut v = a;
+                        v.add_assign(&t);
+                        pair[0] = v;
                     }
                 });
             })
     });
+    for i in 1..half_len {
+        eq_poly[i] = eq_poly[2 * i];
+    }
 
-    first_half
+    &mut eq_poly[..half_len]
 }
 
 #[cfg(test)]
@@ -2891,17 +2946,15 @@ fn dot_product<F: PrimeField, E: FieldExtension<F> + Field>(
 }
 
 // Accumulate partial [f0, f1, f_half] sums over aligned quadruples of slice elements.
-// a_low[i] = a[i], a_high[i] = a[i + half], same for b.  quart scaling is NOT applied here.
+// LSB pairing: the round binds variable 0, so a pair is the ADJACENT
+// (a[2i], a[2i+1]) (natural monomial/eval order).  quart scaling is NOT
+// applied here.
 #[inline(always)]
-fn three_point_partial<E: Field>(a_low: &[E], a_high: &[E], b_low: &[E], b_high: &[E]) -> [E; 3] {
+fn three_point_partial<E: Field>(a_pairs: &[[E; 2]], b_pairs: &[[E; 2]]) -> [E; 3] {
     let mut f0 = E::ZERO;
     let mut f1 = E::ZERO;
     let mut f_half = E::ZERO;
-    for ((a0, a1), (b0, b1)) in a_low
-        .iter()
-        .zip(a_high.iter())
-        .zip(b_low.iter().zip(b_high.iter()))
-    {
+    for ([a0, a1], [b0, b1]) in a_pairs.iter().zip(b_pairs.iter()) {
         let mut t0 = *a0;
         t0.mul_assign(b0);
         f0.add_assign(&t0);
@@ -2928,10 +2981,7 @@ fn special_three_point_eval_serial<F: PrimeField, E: FieldExtension<F> + Field>(
     assert!(a.len() > 0);
     assert_eq!(a.len(), b.len());
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
-    let half = a.len() / 2;
-    let (a_low, a_high) = a.split_at(half);
-    let (b_low, b_high) = b.split_at(half);
-    let [f0, f1, mut f_half] = three_point_partial(a_low, a_high, b_low, b_high);
+    let [f0, f1, mut f_half] = three_point_partial(a.as_chunks::<2>().0, b.as_chunks::<2>().0);
     f_half.mul_assign_by_base(&quart);
     (f0, f1, f_half)
 }
@@ -2946,12 +2996,13 @@ fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
 
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
     let half = a.len() / 2;
-    let (a_low, a_high) = a.split_at(half);
-    let (b_low, b_high) = b.split_at(half);
+    let a_pairs = a.as_chunks::<2>().0;
+    let b_pairs = b.as_chunks::<2>().0;
 
-    // Each thread accumulates partial [f0, f1, f_half] over its chunk of pairs,
-    // then we reduce across threads.  When half < PAR_THRESHOLD the geometry has
-    // one chunk and smart_spawn runs on the calling thread.
+    // Each thread accumulates partial [f0, f1, f_half] over its chunk of
+    // ADJACENT pairs (LSB binding), then we reduce across threads.  When half
+    // < PAR_THRESHOLD the geometry has one chunk and smart_spawn runs on the
+    // calling thread.
     let mut partial_results = vec![
         [E::ZERO; 3];
         worker
@@ -2961,19 +3012,14 @@ fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
 
     let [f0, f1, mut f_half] = {
         worker.scope_with_threshold(half, PAR_THRESHOLD, |scope, geometry| {
-            a_low
+            a_pairs
                 .chunks_for_geometry(geometry)
                 .enumerate()
-                .zip(
-                    a_high
-                        .chunks_for_geometry(geometry)
-                        .zip(b_low.chunks_for_geometry(geometry))
-                        .zip(b_high.chunks_for_geometry(geometry)),
-                )
+                .zip(b_pairs.chunks_for_geometry(geometry))
                 .zip(partial_results.iter_mut())
-                .for_each(|(((idx, al), ((ah, bl), bh)), partial)| {
+                .for_each(|(((idx, ap), bp), partial)| {
                     Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
-                        *partial = three_point_partial(al, ah, bl, bh);
+                        *partial = three_point_partial(ap, bp);
                     });
                 });
         });
@@ -3168,8 +3214,8 @@ pub(crate) fn update_eq_poly_reference<F: PrimeField, E: FieldExtension<F> + Fie
     assert_eq!(ood_samples.len(), 1);
     for (point, challenge) in ood_samples.iter() {
         let pows = make_pows(*point, eq_poly.len().trailing_zeros() as usize);
-        let eq_polys = make_eq_poly_in_full::<E>(&pows, worker);
-        for (dst, src) in eq_poly.iter_mut().zip(eq_polys.last().unwrap().iter()) {
+        let eq_table = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(&pows, worker);
+        for (dst, src) in eq_poly.iter_mut().zip(eq_table.iter()) {
             let mut t = *challenge;
             t.mul_assign(src);
             dst.add_assign(&t);
@@ -3177,8 +3223,8 @@ pub(crate) fn update_eq_poly_reference<F: PrimeField, E: FieldExtension<F> + Fie
     }
     for (point, challenge) in in_domain_samples.iter() {
         let pows = make_pows(*point, eq_poly.len().trailing_zeros() as usize);
-        let eq_polys = make_eq_poly_in_full::<F>(&pows, worker);
-        for (dst, src) in eq_poly.iter_mut().zip(eq_polys.last().unwrap().iter()) {
+        let eq_table = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<F>(&pows, worker);
+        for (dst, src) in eq_poly.iter_mut().zip(eq_table.iter()) {
             let mut t = *challenge;
             t.mul_assign_by_base(src);
             dst.add_assign(&t);
@@ -3191,8 +3237,7 @@ fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
     point: &[E],
     worker: &Worker,
 ) -> E {
-    let mut eqs = make_eq_poly_in_full::<E>(point, worker);
-    let eq = eqs.pop().unwrap();
+    let eq = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(point, worker);
     assert_eq!(eq.len(), evals.len());
     let mut result = E::ZERO;
     for (a, b) in eq.iter().zip(evals.iter()) {
@@ -3204,8 +3249,7 @@ fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
 }
 
 fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker) -> E {
-    let mut eqs = make_eq_poly_in_full::<E>(point, worker);
-    let eq = eqs.pop().unwrap();
+    let eq = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(point, worker);
     assert_eq!(eq.len(), evals.len());
     let mut result = E::ZERO;
     for (a, b) in eq.iter().zip(evals.iter()) {
@@ -3221,8 +3265,7 @@ fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     point: &[F],
     worker: &Worker,
 ) -> E {
-    let mut eqs = make_eq_poly_in_full::<F>(point, worker);
-    let eq = eqs.pop().unwrap();
+    let eq = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<F>(point, worker);
     assert_eq!(eq.len(), evals.len());
     let mut result = E::ZERO;
     for (a, b) in eq.iter().zip(evals.iter()) {
@@ -3240,8 +3283,7 @@ fn evaluate_multivariate_at_base_for_domain_hypercube<
     evals: &[E],
     point: &[F],
 ) -> E {
-    let mut eqs = make_domain_eq_poly_in_full::<F, F>(point);
-    let eq = eqs.pop().unwrap();
+    let eq = crate::gkr::sumcheck::eq_poly::make_domain_eq_table_lsb_first::<F, F>(point);
     assert_eq!(eq.len(), evals.len());
     let mut result = E::ZERO;
     for (a, b) in eq.iter().zip(evals.iter()) {
@@ -4036,6 +4078,7 @@ mod test {
             &setup_commitment,
             c,
             original_evaluation_point,
+            None,
             E::from_base(F::from_u32_with_reduction(7)),
             &whir_schedule,
             &twiddles,

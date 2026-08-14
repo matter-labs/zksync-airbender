@@ -89,7 +89,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_coeffs_into_hypercube_evals(
             &mut v, log_n, worker,
         );
-        fft::bitreverse_enumeration_inplace(&mut v);
+                // natural order out (LSB convention)
         v
     }
 

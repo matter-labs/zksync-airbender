@@ -206,6 +206,25 @@ pub fn windowed_same_size_schedule() -> Vec<SumcheckStep> {
     WINDOWED_SAME_SIZE_SCHEDULE.to_vec()
 }
 
+/// The DEFAULT same-size head descriptor: three width-3 uniskip passes
+/// (covering the large stages, down to 2^(n-9)) followed by naive scalar
+/// rounds for the tail. The tail stages are below the parallel threshold
+/// anyway, the scalar rounds emit ordinary per-coordinate entries, and the
+/// proof is slightly smaller than with uniskip-everywhere (measured: the
+/// abandoned tail passes cost < 1% of the layer).
+pub const UNISKIP_HEAD_SAME_SIZE_SCHEDULE: [SumcheckStep; 3] = [
+    SumcheckStep::UniskipInitial { window: 3 },
+    SumcheckStep::Uniskip { window: 3 },
+    SumcheckStep::Uniskip { window: 3 },
+];
+
+/// Owned copy of [`UNISKIP_HEAD_SAME_SIZE_SCHEDULE`] for ProverConfig
+/// literals (head-descriptor semantics: rounds beyond the listed steps run
+/// as naive scalar rounds).
+pub fn uniskip_head_same_size_schedule() -> Vec<SumcheckStep> {
+    UNISKIP_HEAD_SAME_SIZE_SCHEDULE.to_vec()
+}
+
 /// Borrowed view of the two same-size schedules, threaded down to the layer
 /// evaluation: the width that picks between them (input poly count of the
 /// batched description) is only known once the layer's description is

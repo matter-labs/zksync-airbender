@@ -6948,6 +6948,7 @@ mod synthetic_tests {
         )
     }
 
+    #[cfg(target_arch = "aarch64")]
     #[test]
     fn uniskip_initial_matches_reference() {
         use ::field::baby_bear::base::BabyBearField;

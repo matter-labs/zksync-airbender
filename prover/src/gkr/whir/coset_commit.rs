@@ -179,7 +179,10 @@ where
             let col = input_on_hypercube[i];
             assert_eq!(col.len(), 1usize << trace_len_log2);
             let mut v = col.to_vec();
-            bitreverse_enumeration_inplace(&mut v);
+            // LSB/natural convention: multilinear variable b <-> univariate
+            // exponent bit b, so the coefficients come straight from the
+            // transform (the old pre-bitreverse encoded the reversed
+            // variable labeling)
             multivariate_hypercube_evals_into_coeffs(&mut v, trace_len_log2 as u32);
             v
         });

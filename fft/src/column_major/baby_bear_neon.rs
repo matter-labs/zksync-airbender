@@ -1147,7 +1147,10 @@ pub mod ext4 {
                     add_single_items(p, s, 0..n / 2);
                 }
             }
-            crate::utils::bitreverse_enumeration_inplace(&mut v);
+            // natural (LSB) convention: the per-bit butterflies commute and
+            // run in increasing-stride order, so the output is already the
+            // natural-order hypercube evals (the old trailing bitreverse
+            // adapted to the retired MSB sumcheck layout)
             return v;
         }
 
@@ -1187,7 +1190,7 @@ pub mod ext4 {
                 }
             });
         }
-        crate::utils::parallel_bitreverse_enumeration_inplace(&mut v, worker);
+        // natural (LSB) convention: see the serial branch note
         v
     }
 }

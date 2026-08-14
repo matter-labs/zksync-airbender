@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, PrimeField};
+use field::{Field, FieldExtension, PrimeField};
+use field::baby_bear::base::BabyBearField;
+use field::baby_bear::ext4::BabyBearExt4;
 use worker::Worker;
 
 use crate::gkr::sumcheck::{
@@ -16,8 +18,8 @@ use crate::gkr::sumcheck::{
 
 use super::utils::*;
 
-type F = Mersenne31Field;
-type E = Mersenne31Quartic;
+type F = BabyBearField;
+type E = BabyBearExt4;
 
 #[test]
 fn test_same_size_product_basic() {

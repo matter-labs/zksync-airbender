@@ -133,7 +133,36 @@ pub fn allocate_same_size_fold_buffers<F: PrimeField, E: FieldExtension<F> + Fie
     let after_first = (trace_len / first_fold).max(2);
     let per_poly = match binding {
         SumcheckBindingOrder::Msb => after_first,
-        SumcheckBindingOrder::Lsb => after_first + after_first / 2,
+        SumcheckBindingOrder::Lsb => {
+            // the LSB chain writes every fold output into a fresh dense
+            // region: one region per leading uniskip pass (m/8, m/64, ...),
+            // then -- if the schedule truncates into scalar tail rounds --
+            // the tail's halving folds, which sum to strictly less than one
+            // extra live-sized region
+            let n = trace_len.trailing_zeros() as usize;
+            let passes = schedule
+                .iter()
+                .take_while(|s| {
+                    matches!(
+                        s,
+                        crate::gkr::prover_config::SumcheckStep::UniskipInitial { .. }
+                            | crate::gkr::prover_config::SumcheckStep::Uniskip { .. }
+                    )
+                })
+                .count()
+                .max(1)
+                .min(n / 3);
+            let mut cap = 0usize;
+            let mut live = trace_len;
+            for _ in 0..passes {
+                live >>= 3;
+                cap += live;
+            }
+            if 3 * passes < n {
+                cap += live;
+            }
+            cap.max(2)
+        }
     };
     base_polys
         .iter()

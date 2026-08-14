@@ -8,6 +8,7 @@ pub(crate) mod full_size_scratch;
 pub(crate) mod sumcheck_loop;
 pub(crate) mod uniskip;
 pub(crate) mod lsb_chain;
+pub(crate) mod lsb_generic;
 
 #[cfg(target_arch = "aarch64")]
 pub(crate) mod neon;

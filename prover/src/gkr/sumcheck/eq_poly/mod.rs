@@ -88,6 +88,144 @@ pub fn make_eq_poly_in_full<E: Field>(challenges: &[E], worker: &Worker) -> Vec<
     make_eq_poly_impl::<E, true>(challenges, worker)
 }
 
+/// Single eq table pairing index bit `b` with `challenges[len - 1 - b]`:
+/// for point vectors stored in a producer's round order that is
+/// high-variable-first (e.g. the MSB-binding same-size layers), this
+/// consumes the coordinates in reverse association INTERNALLY -- callers
+/// never materialize a reversed vector.
+pub fn make_eq_table_msb_first<E: Field>(challenges: &[E], worker: &Worker) -> Vec<E> {
+    use crate::gkr::PAR_THRESHOLD;
+    let n = challenges.len();
+    let mut table = vec![E::ONE; 1usize << n];
+    for b in 0..n {
+        let c = challenges[n - 1 - b];
+        let mut om = E::ONE;
+        om.sub_assign(&c);
+        let half = 1usize << b;
+        let (lo_all, hi_all) = table.split_at_mut(half);
+        let hi_all = &mut hi_all[..half];
+        worker.scope_with_threshold(half, PAR_THRESHOLD, |scope, geometry| {
+            let mut lo_rest: &mut [E] = lo_all;
+            let mut hi_rest: &mut [E] = hi_all;
+            for thread_idx in 0..geometry.num_chunks {
+                let chunk = geometry.get_chunk_size(thread_idx);
+                let (lo, lo_tail) = core::mem::take(&mut lo_rest).split_at_mut(chunk);
+                let (hi, hi_tail) = core::mem::take(&mut hi_rest).split_at_mut(chunk);
+                lo_rest = lo_tail;
+                hi_rest = hi_tail;
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    for (l, h) in lo.iter_mut().zip(hi.iter_mut()) {
+                        let mut v = *l;
+                        v.mul_assign(&c);
+                        *h = v;
+                        l.mul_assign(&om);
+                    }
+                });
+            }
+        });
+    }
+    table
+}
+
+/// Tensor eq table from per-entry WEIGHT BLOCKS: block `b` has length
+/// `2^{w_b}` and covers the next `w_b` variables (LSB-first in entry
+/// order), so `table[i0 + |B0|*(i1 + |B1|*(..))] = B0[i0]*B1[i1]*..`.
+/// A plain coordinate `p` contributes the 2-block `[1-p, p]`; a uniskip
+/// entry contributes its `2^w` fold weights. This is the flatten step of
+/// the mixed evaluation-point representation: downstream sumchecks consume
+/// the table exactly like a standard eq table.
+pub fn make_eq_table_from_weight_blocks<E: Field>(blocks: &[&[E]], worker: &Worker) -> Vec<E> {
+    use crate::gkr::PAR_THRESHOLD;
+    let total: usize = blocks.iter().map(|b| b.len()).product();
+    let mut table = vec![E::ONE; total.max(1)];
+    let mut live = 1usize;
+    for block in blocks.iter() {
+        assert!(block.len().is_power_of_two() && block.len() >= 2);
+        // scale copies of the live prefix by each block weight: the j-th
+        // copy lands at [j*live .. (j+1)*live)
+        let (lo_all, hi_all) = table.split_at_mut(live);
+        for (j, w) in block.iter().enumerate().skip(1) {
+            let dst = &mut hi_all[(j - 1) * live..j * live];
+            worker.scope_with_threshold(live, PAR_THRESHOLD, |scope, geometry| {
+                let mut lo_rest: &[E] = lo_all;
+                let mut dst_rest: &mut [E] = dst;
+                for thread_idx in 0..geometry.num_chunks {
+                    let chunk = geometry.get_chunk_size(thread_idx);
+                    let (lo, lo_tail) = lo_rest.split_at(chunk);
+                    let (d, d_tail) = core::mem::take(&mut dst_rest).split_at_mut(chunk);
+                    lo_rest = lo_tail;
+                    dst_rest = d_tail;
+                    let w = *w;
+                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                        for (dv, lv) in d.iter_mut().zip(lo.iter()) {
+                            let mut v = *lv;
+                            v.mul_assign(&w);
+                            *dv = v;
+                        }
+                    });
+                }
+            });
+        }
+        // scale the base copy (j = 0) in place LAST (it is the source above)
+        let w0 = block[0];
+        worker.scope_with_threshold(live, PAR_THRESHOLD, |scope, geometry| {
+            let mut lo_rest: &mut [E] = lo_all;
+            for thread_idx in 0..geometry.num_chunks {
+                let chunk = geometry.get_chunk_size(thread_idx);
+                let (lo, lo_tail) = core::mem::take(&mut lo_rest).split_at_mut(chunk);
+                lo_rest = lo_tail;
+                let w0 = w0;
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    for lv in lo.iter_mut() {
+                        lv.mul_assign(&w0);
+                    }
+                });
+            }
+        });
+        live *= block.len();
+    }
+    assert_eq!(live, total.max(1));
+    table
+}
+
+/// Eq table for a point in the DIMENSION-REDUCING emission layout
+/// `[bits 1.., bit 0]` (the gate coordinate is bound last and stored last):
+/// index bit 0 pairs with the LAST entry, index bit `b >= 1` with entry
+/// `b - 1`. The layout mapping is internal -- callers pass the stored point.
+pub fn make_eq_table_dim_reducing_point<E: Field>(point: &[E], worker: &Worker) -> Vec<E> {
+    use crate::gkr::PAR_THRESHOLD;
+    let n = point.len();
+    let mut table = vec![E::ONE; 1usize << n];
+    for b in 0..n {
+        let c = if b == 0 { point[n - 1] } else { point[b - 1] };
+        let mut om = E::ONE;
+        om.sub_assign(&c);
+        let half = 1usize << b;
+        let (lo_all, hi_all) = table.split_at_mut(half);
+        let hi_all = &mut hi_all[..half];
+        worker.scope_with_threshold(half, PAR_THRESHOLD, |scope, geometry| {
+            let mut lo_rest: &mut [E] = lo_all;
+            let mut hi_rest: &mut [E] = hi_all;
+            for thread_idx in 0..geometry.num_chunks {
+                let chunk = geometry.get_chunk_size(thread_idx);
+                let (lo, lo_tail) = core::mem::take(&mut lo_rest).split_at_mut(chunk);
+                let (hi, hi_tail) = core::mem::take(&mut hi_rest).split_at_mut(chunk);
+                lo_rest = lo_tail;
+                hi_rest = hi_tail;
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    for (l, h) in lo.iter_mut().zip(hi.iter_mut()) {
+                        let mut v = *l;
+                        v.mul_assign(&c);
+                        *h = v;
+                        l.mul_assign(&om);
+                    }
+                });
+            }
+        });
+    }
+    table
+}
+
 /// Single eq table with the LSB-first index orientation used by the
 /// LSB-binding engines: index bit `b` pairs with `challenges[b]`, so
 /// `table[i] = prod_b (i_b ? challenges[b] : 1 - challenges[b])`. Built
@@ -211,6 +349,44 @@ pub fn make_domain_eq_poly_in_full<F: PrimeField + TwoAdicField, E: FieldExtensi
     challenges: &[E],
 ) -> Vec<Box<[E]>> {
     make_domain_eq_poly_impl::<F, E, true>(challenges)
+}
+
+/// LSB-first single-table variant of the domain (1/omega hypercube) eq poly:
+/// index bit `b` pairs with `challenges[b]` and the per-variable generator
+/// `F::TWO_ADICITY_GENERATORS[b + 1]` (same weight pair as
+/// [`make_domain_eq_poly_impl`], different index orientation). Serial: the
+/// consumers are the per-round in-domain claim evaluations.
+pub fn make_domain_eq_table_lsb_first<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
+    challenges: &[E],
+) -> Vec<E> {
+    let mut table = vec![E::ONE; 1usize << challenges.len()];
+    for (b, challenge) in challenges.iter().enumerate() {
+        let omega = F::TWO_ADICITY_GENERATORS[b + 1];
+        let mut omega_minus_one = omega;
+        omega_minus_one.sub_assign(&F::ONE);
+        let omega_minus_one_inverse = omega_minus_one.inverse().expect("not 1-sized domain");
+
+        let mut eq_at_1 = E::ONE;
+        eq_at_1.sub_assign(challenge);
+        eq_at_1.mul_assign_by_base(&omega_minus_one_inverse);
+        eq_at_1.add_assign(&E::ONE);
+
+        let mut eq_at_omega = *challenge;
+        eq_at_omega.sub_assign(&E::ONE);
+        eq_at_omega.mul_assign_by_base(&omega_minus_one_inverse);
+
+        let half = 1usize << b;
+        for i in 0..half {
+            let prev = table[i];
+            let mut left = prev;
+            left.mul_assign(&eq_at_1);
+            let mut right = prev;
+            right.mul_assign(&eq_at_omega);
+            table[i] = left;
+            table[i + half] = right;
+        }
+    }
+    table
 }
 
 pub(crate) fn evaluate_with_precomputed_eq<F: PrimeField, E: FieldExtension<F> + Field>(
@@ -382,6 +558,86 @@ pub fn make_eq_poly_reduced_serial<E: Field>(challenges: &[E]) -> Vec<Box<[E]>> 
 #[cfg(test)]
 pub fn make_eq_poly_in_full_serial<E: Field>(challenges: &[E]) -> Vec<Box<[E]>> {
     make_eq_poly_impl_serial::<E, true>(challenges)
+}
+
+#[cfg(test)]
+mod eq_lsb_orientation_tests {
+    use super::*;
+    use field::baby_bear::ext4::BabyBearExt4 as E;
+    use field::baby_bear::base::BabyBearField as F;
+    use field::{Field, PrimeField, FieldExtension};
+
+    /// `make_eq_table_lsb_first` (index bit b <-> challenges[b]) must agree
+    /// with the reference `make_eq_poly_in_full` (first challenge <-> TOP
+    /// bit) applied to the REVERSED challenge list, for every size.
+    #[test]
+    fn lsb_first_matches_reference() {
+        let worker = crate::worker::Worker::new_with_num_threads(3);
+        for n in 1..=6usize {
+            let challenges: Vec<E> = (0..n)
+                .map(|i| E::from_base(F::from_nonreduced_u32((i * i * 31 + i * 7 + 3) as u32)))
+                .collect();
+            let lsb = make_eq_table_lsb_first::<E>(&challenges, &worker);
+            let rev: Vec<E> = challenges.iter().rev().copied().collect();
+            let reference = make_eq_poly_in_full::<E>(&rev, &worker)
+                .pop()
+                .unwrap();
+            assert_eq!(&lsb[..], &reference[..], "n = {n}");
+            // and the MSB-first variant == reference over the ORIGINAL order
+            let msb = make_eq_table_msb_first::<E>(&challenges, &worker);
+            let reference2 = make_eq_poly_in_full::<E>(&challenges, &worker)
+                .pop()
+                .unwrap();
+            assert_eq!(&msb[..], &reference2[..], "msb n = {n}");
+            // DR layout: bit 0 <-> last entry, bit b >= 1 <-> entry b-1
+            let dr = make_eq_table_dim_reducing_point::<E>(&challenges, &worker);
+            let var_order: Vec<E> = core::iter::once(challenges[n - 1])
+                .chain(challenges[..n - 1].iter().copied())
+                .collect();
+            let reference3 = make_eq_table_lsb_first::<E>(&var_order, &worker);
+            assert_eq!(&dr[..], &reference3[..], "dr n = {n}");
+        }
+    }
+
+    /// Block-tensor builder with 2-blocks must equal the LSB-first table;
+    /// with a mixed 8-block it must equal the manual tensor.
+    #[test]
+    fn weight_block_tensor_matches() {
+        let worker = crate::worker::Worker::new_with_num_threads(2);
+        let ch: Vec<E> = (0..4usize)
+            .map(|i| E::from_base(F::from_nonreduced_u32((i * 5 + 2) as u32)))
+            .collect();
+        let two_blocks: Vec<Vec<E>> = ch
+            .iter()
+            .map(|c| {
+                let mut om = E::ONE;
+                om.sub_assign(c);
+                vec![om, *c]
+            })
+            .collect();
+        let refs: Vec<&[E]> = two_blocks.iter().map(|b| &b[..]).collect();
+        let via_blocks = make_eq_table_from_weight_blocks::<E>(&refs, &worker);
+        let direct = make_eq_table_lsb_first::<E>(&ch, &worker);
+        assert_eq!(via_blocks, direct);
+
+        // mixed: an 8-weight block over vars 0..3, one coordinate at var 3
+        let block8: Vec<E> = (0..8u32)
+            .map(|j| E::from_base(F::from_nonreduced_u32(j * j + 1)))
+            .collect();
+        let coord = ch[0];
+        let mut om = E::ONE;
+        om.sub_assign(&coord);
+        let c2 = vec![om, coord];
+        let mixed = make_eq_table_from_weight_blocks::<E>(&[&block8[..], &c2[..]], &worker);
+        assert_eq!(mixed.len(), 16);
+        for j in 0..8usize {
+            for k in 0..2usize {
+                let mut expect = block8[j];
+                expect.mul_assign(&c2[k]);
+                assert_eq!(mixed[j + 8 * k], expect, "cell ({j},{k})");
+            }
+        }
+    }
 }
 
 #[cfg(test)]

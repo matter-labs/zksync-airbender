@@ -16,8 +16,10 @@
 use std::mem::MaybeUninit;
 
 use super::*;
+use crate::gkr::prover::sumcheck_loop::windowed_mode::bench::build_soa_program;
+#[cfg(target_arch = "aarch64")]
 use crate::gkr::prover::sumcheck_loop::windowed_mode::bench::{
-    build_soa_program, evaluate_ext_window3_soa_parallel, evaluate_initial_soa_parallel,
+    evaluate_ext_window3_soa_parallel, evaluate_initial_soa_parallel,
     evaluate_transition_soa_parallel, find_eq_with_len,
 };
 use crate::gkr::prover::sumcheck_loop::windowed_mode::full_size_scratch::extension_only_round::evaluate_extension_only_rounds_with_full_sized_scratch_parallel;

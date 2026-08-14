@@ -4,7 +4,9 @@ use std::mem::MaybeUninit;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, PrimeField};
+use field::{Field, FieldExtension, PrimeField};
+use field::baby_bear::base::BabyBearField;
+use field::baby_bear::ext4::BabyBearExt4;
 use transcript::{
     commit_base_field_elements_impl, commit_extension_field_elements_impl,
     draw_random_field_elements_impl, Blake2sTranscript, Seed, Transcript,
@@ -16,10 +18,10 @@ use crate::gkr::prover::sumcheck_loop::evaluate_sumcheck_for_layer;
 use crate::gkr::prover::GKRExternalChallenges;
 use crate::gkr::sumcheck::eq_poly::*;
 
-type F = Mersenne31Field;
-type E = Mersenne31Quartic;
+type F = BabyBearField;
+type E = BabyBearExt4;
 
-/// Test-only transcript implementing `Transcript<Mersenne31Field, Mersenne31Quartic>`.
+/// Test-only transcript implementing `Transcript<BabyBearField, BabyBearExt4>`.
 ///
 /// The production `Blake2sTranscript` only implements `Transcript<BabyBearField,
 /// BabyBearExt4>`; the orphan rule forbids adding a Mersenne impl for it outside
@@ -140,6 +142,7 @@ fn test_sumcheck_loop_product() {
     claims_storage.insert(1, output_claims);
 
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
+    let mut claim_point_entries: std::collections::BTreeMap<usize, Vec<crate::gkr::prover::EvaluationPointEntry<E>>> = Default::default();
     claim_points.insert(1, prev_challenges.clone());
 
     let lookup_multiplicative_part = E::from_base(F::from_u32_with_reduction(0xff));
@@ -152,6 +155,7 @@ fn test_sumcheck_loop_product() {
         0,
         &layer,
         &mut claim_points,
+        &mut claim_point_entries,
         &mut claims_storage,
         &mut storage,
         &mut batching_challenge,
@@ -164,6 +168,7 @@ fn test_sumcheck_loop_product() {
         &GKRExternalChallenges::default(),
         &mut seed,
         &worker,
+        false,
         prover_config::SameSizeSchedules::windowed_default(),
     );
 
@@ -297,6 +302,7 @@ fn test_sumcheck_loop_multiple_gates() {
     claims_storage.insert(1, output_claims);
 
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
+    let mut claim_point_entries: std::collections::BTreeMap<usize, Vec<crate::gkr::prover::EvaluationPointEntry<E>>> = Default::default();
     claim_points.insert(1, prev_challenges.clone());
 
     let lookup_multiplicative_part = E::from_base(F::from_u32_with_reduction(0xff));
@@ -309,6 +315,7 @@ fn test_sumcheck_loop_multiple_gates() {
         0,
         &layer,
         &mut claim_points,
+        &mut claim_point_entries,
         &mut claims_storage,
         &mut storage,
         &mut batching_challenge,
@@ -321,6 +328,7 @@ fn test_sumcheck_loop_multiple_gates() {
         &GKRExternalChallenges::default(),
         &mut seed,
         &worker,
+        false,
         prover_config::SameSizeSchedules::windowed_default(),
     );
 

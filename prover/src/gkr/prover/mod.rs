@@ -295,6 +295,55 @@ pub struct SumcheckIntermediateProofValues<F: PrimeField, E: FieldExtension<F> +
     pub _marker: core::marker::PhantomData<F>,
 }
 
+/// One entry of a claim/evaluation point, in emission (plain-push) order: a
+/// per-variable coordinate from a scalar round, or a uniskip window binding
+/// `width` variables through ONE challenge on the smooth (subgroup) domain.
+/// A uniskip entry has no per-coordinate form -- its eq contribution is the
+/// `2^width` Lagrange fold-weight block, produced by
+/// [`Self::eq_weight_block`] and tensored by
+/// `eq_poly::make_eq_table_from_weight_blocks` (the flatten step). The
+/// verifier evaluates the block's multilinear extension at its own folding
+/// coordinates with `2^width` terms.
+#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+pub enum EvaluationPointEntry<E: Field> {
+    Coordinate { point: E },
+    Uniskip { point: E, width: usize },
+}
+
+impl<E: Field> EvaluationPointEntry<E> {
+    /// Number of variables this entry binds.
+    pub fn bound_vars(&self) -> usize {
+        match self {
+            Self::Coordinate { .. } => 1,
+            Self::Uniskip { width, .. } => *width,
+        }
+    }
+
+    /// The entry's eq weight block (length `2^bound_vars`), LSB-first over
+    /// its variables. `omega16` is F's size-16 domain generator (only used
+    /// by uniskip entries).
+    pub fn eq_weight_block<F: PrimeField>(&self, omega16: F) -> Vec<E>
+    where
+        E: field::FieldExtension<F>,
+    {
+        match self {
+            Self::Coordinate { point } => {
+                let mut om = E::ONE;
+                om.sub_assign(point);
+                vec![om, *point]
+            }
+            Self::Uniskip { point, width } => {
+                assert_eq!(*width, 3, "only width-3 uniskip windows are wired");
+                crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::uniskip8_fold_weights::<
+                    F,
+                    E,
+                >(point, omega16)
+                .to_vec()
+            }
+        }
+    }
+}
+
 /// One transcript message of a sumcheck: either the classic per-variable
 /// multilinear round (degree <= 3 round polynomial, 4 coefficients) or a
 /// univariate-skip round (monomial coefficients of the packed q -- for a
@@ -1077,8 +1126,10 @@ where
                 s,
                 crate::gkr::prover_config::SumcheckStep::NaiveSumcheck
                     | crate::gkr::prover_config::SumcheckStep::WindowedOp(_)
+                    | crate::gkr::prover_config::SumcheckStep::UniskipInitial { window: 3 }
+                    | crate::gkr::prover_config::SumcheckStep::Uniskip { window: 3 }
             )),
-            "{name}_same_size_sumcheck_schedule: a uniskip head needs the block-eq claim plumbing (bring-up env path only)"
+            "{name}_same_size_sumcheck_schedule: unsupported step (naive, windowed, or the width-3 LSB uniskip chain)"
         );
     }
     for (rounds, schedule) in prover_config.dimension_reducing_sumcheck_schedule.iter() {
@@ -1203,9 +1254,13 @@ where
     let mut points_for_claims_at_layer = BTreeMap::new();
 
     claims_for_layers.insert(initial_layer_for_sumcheck + 1, top_layer_claims);
+    // the claim/evaluation coordinate must ALWAYS have one entry per variable
+    assert_eq!(evaluation_point.len(), final_trace_size_log_2);
     points_for_claims_at_layer.insert(initial_layer_for_sumcheck + 1, evaluation_point);
 
     let mut sumcheck_intermediate_values = BTreeMap::new();
+    // mixed claim points (uniskip entries) alongside the scalar map
+    let mut claim_point_entries: BTreeMap<usize, Vec<EvaluationPointEntry<E>>> = BTreeMap::new();
 
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
@@ -1275,10 +1330,6 @@ where
         "Dimension-reducing sumcheck layers total: {:?}",
         dim_reducing_total.elapsed()
     );
-    #[cfg(feature = "gkr_self_checks")]
-    if std::env::var("GKR_LSB_DEBUG").is_ok() {
-        panic!("GKR_LSB_DEBUG: deliberate stop after the dimension-reducing layers (all LSB validations passed)");
-    }
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
@@ -1297,6 +1348,7 @@ where
             layer_idx,
             layer,
             &mut points_for_claims_at_layer,
+            &mut claim_point_entries,
             &mut claims_for_layers,
             &mut gkr_storage,
             &mut sumcheck_batching_challenge,
@@ -1309,6 +1361,7 @@ where
             &external_challenges,
             &mut seed,
             worker,
+            layer_idx == compiled_circuit.layers.len() - 1,
             crate::gkr::prover_config::SameSizeSchedules::from_config(prover_config),
         );
         println!(
@@ -1339,16 +1392,36 @@ where
 
     drop(preprocessed_generic_lookup);
 
-    let mut base_layer_z = points_for_claims_at_layer
-        .get(&0)
-        .expect("must have base layer point")
-        .clone();
+    // a uniskip-scheduled layer 0 emits a MIXED point (entries only); the
+    // scalar map then has no flat entry and WHIR consumes the entries
+    let base_layer_entries: Option<Vec<EvaluationPointEntry<E>>> = claim_point_entries.remove(&0);
+    let mut base_layer_z = if base_layer_entries.is_some() {
+        Vec::new()
+    } else {
+        points_for_claims_at_layer
+            .get(&0)
+            .expect("must have base layer point")
+            .clone()
+    };
 
     let mut _eq_at_z: Box<[E]> = vec![].into_boxed_slice();
     #[cfg(feature = "gkr_self_checks")]
     {
-        let mut eq_precomputed = make_eq_poly_in_full(&base_layer_z, worker);
-        _eq_at_z = eq_precomputed.pop().unwrap();
+        if let Some(entries) = &base_layer_entries {
+            let omega16_f: F = ::fft::domain_generator_for_size::<F>(16);
+            let blocks: Vec<Vec<E>> = entries
+                .iter()
+                .map(|e| e.eq_weight_block::<F>(omega16_f))
+                .collect();
+            let refs: Vec<&[E]> = blocks.iter().map(|b| &b[..]).collect();
+            _eq_at_z = crate::gkr::sumcheck::eq_poly::make_eq_table_from_weight_blocks::<E>(
+                &refs, worker,
+            )
+            .into_boxed_slice();
+        } else {
+            let mut eq_precomputed = make_eq_poly_in_full(&base_layer_z, worker);
+            _eq_at_z = eq_precomputed.pop().unwrap();
+        }
     }
 
     let mut mem_polys_claims = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
@@ -1395,7 +1468,10 @@ where
     }
 
     #[cfg(feature = "gkr_self_checks")]
-    {
+    // TODO: block-aware analytic evaluation of the virtual setup polys for
+    // mixed (uniskip) points; the materialized-poly at-point checks above
+    // already cover the claims
+    if base_layer_entries.is_none() {
         if let Some(value) = claims_for_layers[&0]
             .get(&GKRAddress::VirtualSetup(
                 VirtualSetupPoly::RangeCheck16Bits,
@@ -1474,6 +1550,10 @@ where
                 .map(|input| merge_claims(&input, &extra_coordinates));
 
             // and we need to update claim point
+            assert!(
+                base_layer_entries.is_none(),
+                "packed commitment with a mixed (uniskip) layer-0 point is not wired yet"
+            );
             let mut new_claim_point = extra_coordinates;
             new_claim_point.extend_from_slice(&base_layer_z);
 
@@ -1583,6 +1663,7 @@ where
         setup_commitment,
         setup_polys_claims,
         base_layer_z.clone(),
+        base_layer_entries.clone(),
         whir_batching_challenge,
         &prover_config.whir_schedule,
         twiddles,

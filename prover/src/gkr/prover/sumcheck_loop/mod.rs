@@ -76,191 +76,6 @@ where
 
     let claim = collector.compute_combined_claim(output_claims);
 
-    // Debug break-point path (GKR_LSB_DEBUG=1, gkr_self_checks builds): run
-    // the LSB-binding dimension-reducing engine on the SAME layer data with
-    // deterministic challenges and validate it end-to-end -- eq orientation
-    // against the production claim, per-round chaining (internal asserts),
-    // and the final claim against direct at-point multilinear evaluation of
-    // every input poly. The naive path still runs afterwards so the layer
-    // chain stays intact; `prover/mod.rs` panics after ALL dimension-reducing
-    // layers under the same gate.
-    #[cfg(feature = "gkr_self_checks")]
-    if std::env::var("GKR_LSB_DEBUG").is_ok() {
-        use crate::gkr::prover::dimension_reduction::lsb_backward::{
-            lsb_dim_reducing_sumcheck_prove, LsbDimReducingRelation,
-        };
-        // mirror KernelCollector::from_dimension_reducing_relations exactly:
-        // same relation order, same successive batch-challenge powers
-        // (the collector starts at ONE, then multiplies by the base)
-        let mut cbc = E::ONE;
-        let mut poly_addrs: Vec<GKRAddress> = vec![];
-        let mut relations: Vec<LsbDimReducingRelation<E>> = vec![];
-        fn idx_of(addrs: &mut Vec<GKRAddress>, a: GKRAddress) -> usize {
-            if let Some(i) = addrs.iter().position(|x| *x == a) {
-                i
-            } else {
-                addrs.push(a);
-                addrs.len() - 1
-            }
-        }
-        for (k, v) in layer {
-            match *k {
-                OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
-                    for inp in v.inputs.iter() {
-                        let alpha = cbc;
-                        cbc.mul_assign(&batch_challenge_base);
-                        let input = idx_of(&mut poly_addrs, *inp);
-                        relations.push(LsbDimReducingRelation::PairwiseProduct { input, alpha });
-                    }
-                }
-                OutputType::Lookup16Bits
-                | OutputType::LookupTimestamps
-                | OutputType::GenericLookup => {
-                    let alpha_num = cbc;
-                    cbc.mul_assign(&batch_challenge_base);
-                    let alpha_den = cbc;
-                    cbc.mul_assign(&batch_challenge_base);
-                    let num = idx_of(&mut poly_addrs, v.inputs[0]);
-                    let den = idx_of(&mut poly_addrs, v.inputs[1]);
-                    relations.push(LsbDimReducingRelation::LogupPair {
-                        num,
-                        den,
-                        alpha_num,
-                        alpha_den,
-                    });
-                }
-                _ => panic!("unexpected output type in dimension-reducing layer"),
-            }
-        }
-        let dbg_inputs = GKRInputs {
-            inputs_in_base: Vec::new(),
-            inputs_in_extension: poly_addrs.clone(),
-            outputs_in_base: Vec::new(),
-            outputs_in_extension: Vec::new(),
-        };
-        let sources = unsafe { gkr_storage.get_for_sumcheck_round_0(&dbg_inputs) };
-        let polys: Vec<&[E]> = sources
-            .extension_field_inputs
-            .iter()
-            .map(|src| src.current_values())
-            .collect();
-        let rounds = folding_steps;
-        let m = 1usize << rounds;
-        let gate = |at: &dyn Fn(usize, usize) -> E| -> E {
-            let mut acc = E::ZERO;
-            for rel in relations.iter() {
-                match rel {
-                    LsbDimReducingRelation::PairwiseProduct { input, alpha } => {
-                        let mut t = at(*input, 0);
-                        t.mul_assign(&at(*input, 1));
-                        t.mul_assign(alpha);
-                        acc.add_assign(&t);
-                    }
-                    LsbDimReducingRelation::LogupPair {
-                        num,
-                        den,
-                        alpha_num,
-                        alpha_den,
-                    } => {
-                        let (n0, n1) = (at(*num, 0), at(*num, 1));
-                        let (d0, d1) = (at(*den, 0), at(*den, 1));
-                        let mut nn = n0;
-                        nn.mul_assign(&d1);
-                        let mut t = n1;
-                        t.mul_assign(&d0);
-                        nn.add_assign(&t);
-                        nn.mul_assign(alpha_num);
-                        acc.add_assign(&nn);
-                        let mut dd = d0;
-                        dd.mul_assign(&d1);
-                        dd.mul_assign(alpha_den);
-                        acc.add_assign(&dd);
-                    }
-                }
-            }
-            acc
-        };
-        let eq_table_for = |chals: &[E]| -> Vec<E> {
-            let mut eq = vec![E::ONE; 1 << chals.len()];
-            for (b, c) in chals.iter().enumerate() {
-                let half = 1usize << b;
-                let mut om = E::ONE;
-                om.sub_assign(c);
-                for i in 0..half {
-                    let mut hi = eq[i];
-                    hi.mul_assign(c);
-                    eq[i + half] = hi;
-                    eq[i].mul_assign(&om);
-                }
-            }
-            eq
-        };
-        // resolve the eq orientation of `prev_challenges` against the
-        // production claim: LSB engine wants tau[s] = coordinate of the
-        // variable bound at round s (low first)
-        let direct_sum = |tau: &[E]| -> E {
-            let eq = eq_table_for(tau);
-            let mut acc = E::ZERO;
-            for y in 0..m {
-                let v = gate(&|p, b| polys[p][2 * y + b]);
-                let mut t = v;
-                t.mul_assign(&eq[y]);
-                acc.add_assign(&t);
-            }
-            acc
-        };
-        let tau_fwd: Vec<E> = prev_challenges.to_vec();
-        let tau_rev: Vec<E> = prev_challenges.iter().rev().copied().collect();
-        let tau = if direct_sum(&tau_fwd) == claim {
-            println!("[LSB-DEBUG] layer {layer_idx}: eq orientation = forward (low-var-first)");
-            tau_fwd
-        } else {
-            let s_rev = direct_sum(&tau_rev);
-            assert_eq!(
-                s_rev, claim,
-                "layer {layer_idx}: neither eq orientation reproduces the claim"
-            );
-            println!("[LSB-DEBUG] layer {layer_idx}: eq orientation = reversed (high-var-first storage)");
-            tau_rev
-        };
-        // deterministic debug challenges
-        let mut ch_seed = claim;
-        let challenges: Vec<E> = (0..rounds)
-            .map(|_| {
-                ch_seed.square();
-                let mut t = ch_seed;
-                t.add_assign(&batch_challenge_base);
-                ch_seed = t;
-                t
-            })
-            .collect();
-        let out = lsb_dim_reducing_sumcheck_prove::<F, E>(&polys, &relations, &tau, claim, &challenges);
-        // final claim validated by direct at-point multilinear evaluation
-        let eq_r = eq_table_for(&challenges);
-        for (p, poly) in polys.iter().enumerate() {
-            for b in 0..2 {
-                let mut ev = E::ZERO;
-                for y in 0..m {
-                    let mut t = eq_r[y];
-                    t.mul_assign(&poly[2 * y + b]);
-                    ev.add_assign(&t);
-                }
-                assert_eq!(
-                    ev, out.final_values[p][b],
-                    "layer {layer_idx}: at-point evaluation mismatch, poly {p} b {b}"
-                );
-            }
-        }
-        let mut g = gate(&|p, b| out.final_values[p][b]);
-        g.mul_assign(&out.eq_factor);
-        assert_eq!(g, out.final_claim, "layer {layer_idx}: final claim identity");
-        println!(
-            "[LSB-DEBUG] layer {layer_idx}: LSB sumcheck validated ({} rounds, {} polys, {} relations)",
-            rounds,
-            polys.len(),
-            relations.len()
-        );
-    }
 
     let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
         run_sumcheck_loop::<F, E, TR, 4, false>(
@@ -363,6 +178,9 @@ where
     }
 
     claims_storage.insert(layer_idx, new_claims);
+    // the claim/evaluation coordinate must ALWAYS have one entry per bound
+    // variable: the input layer has the output's rounds plus the gate bit
+    assert_eq!(folding_challenges.len(), folding_steps + 1);
     claim_points.insert(layer_idx, folding_challenges);
 
     // and we can purge the storage
@@ -557,9 +375,11 @@ where
         .map(|&(p, l)| unsafe { core::slice::from_raw_parts(p, l) })
         .collect();
 
-    // incoming claim points are stored high-variable-first; the LSB rounds
-    // consume them low-variable-first
-    let tau: Vec<E> = prev_challenges.iter().rev().copied().collect();
+    // incoming claim points are stored in the dimension-reducing emission
+    // layout [bits 1.., bit 0]; the engine consumes that layout NATIVELY
+    // (per-round accessor + contiguous suffix slice), so the point passes
+    // through untouched
+    let tau: &[E] = &prev_challenges[..];
 
     // fold + tri scratch shared across ALL dimension-reducing layers,
     // max-sized and owned by the backward-pass driver loop
@@ -608,9 +428,12 @@ where
     let challenges = draw_random_field_els::<F, E, TR>(seed, 2);
     let [r_last, next_batching_challenge] = challenges.try_into().unwrap();
 
-    // legacy point order: high-variable-first for the output rounds, gate
-    // (lowest input) coordinate appended last
-    let mut folding_challenges: Vec<E> = lsb_challenges.iter().rev().copied().collect();
+    // plain push in protocol order. The dimension-reducing kernel fixes the
+    // LOWEST input bit (the gate coordinate) to 0/1 structurally, so the
+    // sumcheck rounds bind input bits 1.. (LSB-first) and the gate bit is
+    // bound by `r_last` at the very end: element i < n-1 is the coordinate
+    // of input bit i+1, the LAST element is input bit 0.
+    let mut folding_challenges: Vec<E> = lsb_challenges.clone();
     folding_challenges.push(r_last);
 
     let new_claims: BTreeMap<_, _> = lsb_lines
@@ -621,13 +444,17 @@ where
     #[cfg(feature = "gkr_self_checks")]
     {
         println!("Self-checking explicit at-point evaluations (LSB path)");
-        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
+        // the layout-aware builder consumes the emission order directly
+        let eq = crate::gkr::sumcheck::eq_poly::make_eq_table_dim_reducing_point::<E>(
+            &folding_challenges,
+            worker,
+        );
         for (k, v) in new_claims.iter() {
             if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
-                let eval = evaluate_with_precomputed_eq(poly, &eq_polys.last().unwrap()[..]);
+                let eval = evaluate_with_precomputed_eq(poly, &eq[..]);
                 assert_eq!(eval, *v, "claim diverged for poly {k:?}");
             } else if let Some(poly) = gkr_storage.try_get_ext_poly(*k) {
-                let eval = evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
+                let eval = evaluate_with_precomputed_eq_ext(poly, &eq[..]);
                 assert_eq!(eval, *v, "claim diverged for poly {k:?}");
             } else {
                 unreachable!()
@@ -636,6 +463,10 @@ where
     }
 
     claims_storage.insert(layer_idx, new_claims);
+    // the claim/evaluation coordinate must ALWAYS have one entry per bound
+    // variable of the INPUT layer: the output rounds plus the kernel-fixed
+    // gate bit bound by `r_last` (holds for any schedule, incl. uniskips)
+    assert_eq!(folding_challenges.len(), folding_steps + 1);
     claim_points.insert(layer_idx, folding_challenges);
 
     gkr_storage.purge_up_to_layer(layer_idx);
@@ -663,13 +494,14 @@ where
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing from storage.
 pub fn evaluate_sumcheck_for_layer<
-    F: PrimeField,
+    F: PrimeField + field::TwoAdicField,
     E: FieldExtension<F> + Field,
     TR: Transcript<F, E>,
 >(
     layer_idx: usize,
     layer: &GKRLayerDescription<F>,
     claim_points: &mut BTreeMap<usize, Vec<E>>,
+    claim_point_entries: &mut BTreeMap<usize, Vec<crate::gkr::prover::EvaluationPointEntry<E>>>,
     claims_storage: &mut BTreeMap<usize, BTreeMap<GKRAddress, E>>,
     gkr_storage: &mut GKRStorage<F, E>,
     batching_challenge: &mut E,
@@ -682,6 +514,7 @@ pub fn evaluate_sumcheck_for_layer<
     external_challenges: &GKRExternalChallenges<F, E>,
     seed: &mut TR::Seed,
     worker: &Worker,
+    prev_point_in_dim_reducing_layout: bool,
     same_size_schedules: crate::gkr::prover_config::SameSizeSchedules<'_>,
 ) -> SumcheckIntermediateProofValues<F, E>
 where
@@ -694,15 +527,36 @@ where
     let output_claims = claims_storage
         .get(&output_layer_idx)
         .expect("claims for output layer must exist");
-    let prev_challenges = claim_points
-        .get(&output_layer_idx)
-        .expect("claim points for output layer must exist");
+    // the previous layer's point: scalar coordinates and/or mixed entries
+    // (a uniskip-scheduled producer emits ONLY entries)
+    let prev_flat_opt = claim_points.get(&output_layer_idx);
+    let prev_entries_opt: Option<Vec<crate::gkr::prover::EvaluationPointEntry<E>>> =
+        claim_point_entries.get(&output_layer_idx).cloned();
+    assert!(
+        prev_flat_opt.is_some() || prev_entries_opt.is_some(),
+        "claim point for output layer must exist"
+    );
+    // the same-size scalar engines consume points high-variable-first (their
+    // own round order). A dimension-reducing producer emits [bits 1.., bit 0]
+    // (plain push; the gate bit is bound last), so adapt INTERNALLY here.
+    let adapted_prev: Vec<E>;
+    let prev_flat_opt: Option<&Vec<E>> = match prev_flat_opt {
+        Some(pf) if prev_point_in_dim_reducing_layout => {
+            let n = pf.len();
+            adapted_prev = pf[..n - 1]
+                .iter()
+                .rev()
+                .chain(core::iter::once(&pf[n - 1]))
+                .copied()
+                .collect();
+            Some(&adapted_prev)
+        }
+        other => other,
+    };
 
     assert!(trace_len.is_power_of_two());
     let folding_steps = trace_len.trailing_zeros() as usize;
     assert!(folding_steps >= 4, "need at least 4 folding steps");
-
-    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, worker);
 
     let batch_challenge_base = *batching_challenge;
 
@@ -727,95 +581,204 @@ where
         _marker: core::marker::PhantomData,
     };
 
-    // Bring-up: GKR_SS_LSB=<layer_idx> runs the UNFUSED LSB uniskip chain
-    // for that layer. The engine only computes; THIS caller drives the
-    // transcript, chains claims, collects SumcheckRoundCoefficients and runs
-    // every self-check. The claim point has no per-coordinate form yet, so
-    // the run stops after the layer (prover/mod.rs panics under the gate).
+    // ---- LSB uniskip chain path (schedule-driven; env override for benches) ----
+    // The engine computes; THIS caller drives the transcript, emits
+    // `SumcheckRoundCoefficients::Uniskip` proof rounds and the mixed claim
+    // point as `EvaluationPointEntry::Uniskip` entries, and runs every
+    // self-check against the block-tensor eq tables.
     let lsb_env_layer: Option<usize> = std::env::var("GKR_SS_LSB")
         .ok()
         .and_then(|v| v.parse().ok());
-    if lsb_env_layer == Some(layer_idx) {
+    let chain_description = collector.make_batched_description(&challenge_constants, collector.layer);
+    let (_chain_compact, chain_base_addrs, chain_ext_addrs) =
+        windowed_mode::full_size_scratch::produce_descriptions_from_batched_description(
+            &chain_description,
+        );
+    let (layer_schedule, _width_class) =
+        same_size_schedules.for_width(chain_base_addrs.len() + chain_ext_addrs.len());
+    // the chain engine needs at least one full uniskip pass plus a sane
+    // suffix; tiny layers fall back to the per-round scalar path
+    let use_chain = (matches!(
+        layer_schedule.first(),
+        Some(crate::gkr::prover_config::SumcheckStep::UniskipInitial { .. })
+    ) || lsb_env_layer == Some(layer_idx)
+        || std::env::var("GKR_SS_SCHEDULE").as_deref() == Ok("uniskip"))
+        && folding_steps >= 6;
+    if use_chain {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::*;
+        use crate::gkr::prover::EvaluationPointEntry;
+        use crate::gkr::sumcheck::eq_poly::make_eq_table_from_weight_blocks;
         let n = folding_steps;
-        assert_eq!(n % 3, 0, "LSB chain bring-up expects 3 | folding_steps");
-        let num_passes = n / 3;
-        // pass k sums over the HIGH variables: eq table over prev[0..n-3(k+1)]
-        // (legacy point order is high-variable-first)
+        // number of uniskip passes: the schedule's leading uniskip steps
+        // (head-descriptor semantics: the remaining rounds run as naive
+        // scalar tail rounds); the env override runs the full chain
+        let scheduled_passes = layer_schedule
+            .iter()
+            .take_while(|st| {
+                matches!(
+                    st,
+                    crate::gkr::prover_config::SumcheckStep::UniskipInitial { .. }
+                        | crate::gkr::prover_config::SumcheckStep::Uniskip { .. }
+                )
+            })
+            .count();
+        let num_passes = if std::env::var("GKR_SS_SCHEDULE").as_deref() == Ok("uniskip") {
+            n / 3
+        } else if scheduled_passes > 0 {
+            scheduled_passes.min(n / 3)
+        } else {
+            n / 3
+        };
+        let tail_rounds = n - 3 * num_passes;
+        let omega16_f: F = ::fft::domain_generator_for_size::<F>(16);
+
+        // previous point as per-entry weight blocks in VARIABLE order
+        let prev_blocks: Vec<Vec<E>> = if let Some(entries) = &prev_entries_opt {
+            assert_eq!(
+                entries.iter().map(|e| e.bound_vars()).sum::<usize>(),
+                n,
+                "prev point must cover every variable"
+            );
+            entries
+                .iter()
+                .map(|e| e.eq_weight_block::<F>(omega16_f))
+                .collect()
+        } else {
+            // scalar high-variable-first storage: var b <-> prev[n - 1 - b]
+            let pf = prev_flat_opt.expect("checked above");
+            (0..n)
+                .map(|b| {
+                    let c = pf[n - 1 - b];
+                    let mut om = E::ONE;
+                    om.sub_assign(&c);
+                    vec![om, c]
+                })
+                .collect()
+        };
+        // block variable spans (blocks are in variable order)
+        let mut spans: Vec<(usize, usize)> = Vec::with_capacity(prev_blocks.len());
+        let mut off = 0usize;
+        for b in prev_blocks.iter() {
+            let w = b.len().trailing_zeros() as usize;
+            spans.push((off, w));
+            off += w;
+        }
+        assert_eq!(off, n);
+        let blocks_in = |lo: usize, hi: usize| -> Vec<&[E]> {
+            let mut out = Vec::new();
+            for ((s0, w), b) in spans.iter().zip(prev_blocks.iter()) {
+                if *s0 >= lo && s0 + w <= hi {
+                    out.push(&b[..]);
+                } else {
+                    assert!(
+                        s0 + w <= lo || *s0 >= hi,
+                        "entry straddles the pass window [{lo}, {hi})"
+                    );
+                }
+            }
+            assert_eq!(out.iter().map(|b| b.len().trailing_zeros() as usize).sum::<usize>(), hi - lo);
+            out
+        };
+        // per-pass suffix tables over the HIGH variables
         let eq_suffixes: Vec<Box<[E]>> = (0..num_passes)
-            .map(|k| {
-                let m = n - 3 * (k + 1);
-                if m == 0 {
+            .map(|g| {
+                let lo = 3 * (g + 1);
+                if lo == n {
                     vec![E::ONE].into_boxed_slice()
                 } else {
-                    make_eq_poly_in_full::<E>(&prev_challenges[..m], worker)
-                        .pop()
-                        .unwrap()
+                    make_eq_table_from_weight_blocks::<E>(&blocks_in(lo, n), worker)
+                        .into_boxed_slice()
                 }
             })
             .collect();
 
-        // fold arena provided by THIS caller through the batch-allocation
-        // API (LSB ping-pong sizing), keyed off the same description-derived
-        // poly order the engine uses
-        let lsb_description =
-            collector.make_batched_description(&challenge_constants, collector.layer);
-        let (_lsb_compact, lsb_base_addrs, lsb_ext_addrs) =
-            windowed_mode::full_size_scratch::produce_descriptions_from_batched_description(
-                &lsb_description,
-            );
-        let mut lsb_fold_map = crate::gkr::prover::gkr_backend::allocate_same_size_fold_buffers::<
+        // fold arena via the batch-allocation API (LSB ping-pong sizing)
+        let alloc_schedule: Vec<crate::gkr::prover_config::SumcheckStep> = (0..num_passes)
+            .map(|g| {
+                if g == 0 {
+                    crate::gkr::prover_config::SumcheckStep::UniskipInitial { window: 3 }
+                } else {
+                    crate::gkr::prover_config::SumcheckStep::Uniskip { window: 3 }
+                }
+            })
+            .collect();
+        let mut chain_fold_map = crate::gkr::prover::gkr_backend::allocate_same_size_fold_buffers::<
             F,
             E,
         >(
-            &[crate::gkr::prover_config::SumcheckStep::UniskipInitial { window: 3 }],
+            &alloc_schedule,
             crate::gkr::prover::gkr_backend::SumcheckBindingOrder::Lsb,
             1usize << n,
-            &lsb_base_addrs,
-            &lsb_ext_addrs,
+            &chain_base_addrs,
+            &chain_ext_addrs,
         );
-        let mut lsb_fold_arena: Vec<Box<[core::mem::MaybeUninit<E>]>> = lsb_base_addrs
+        let mut chain_fold_arena: Vec<Box<[core::mem::MaybeUninit<E>]>> = chain_base_addrs
             .iter()
-            .chain(lsb_ext_addrs.iter())
-            .map(|a| lsb_fold_map.remove(a).expect("allocated"))
+            .chain(chain_ext_addrs.iter())
+            .map(|a| chain_fold_map.remove(a).expect("allocated"))
+            .collect();
+
+        // tail suffix table over the variables above the first tail round
+        let mut tail_t_table: Vec<E> = if tail_rounds > 1 {
+            make_eq_table_from_weight_blocks::<E>(&blocks_in(3 * num_passes + 1, n), worker)
+        } else {
+            vec![E::ONE]
+        };
+        // per-variable scalar coordinates of the prev point for the tail
+        // rounds (each must be a width-1 block; a straddling uniskip block
+        // in the producer would make the tail rounds unschedulable)
+        let tail_prev_coords: Vec<E> = (0..tail_rounds)
+            .map(|t| {
+                let var = 3 * num_passes + t;
+                let (bi, _) = spans
+                    .iter()
+                    .enumerate()
+                    .find(|(_, (s0, w))| *s0 == var && *w == 1)
+                    .map(|(i, sp)| (i, *sp))
+                    .expect("tail rounds need width-1 prev blocks at their variables");
+                prev_blocks[bi][1]
+            })
             .collect();
 
         let mut running_claim = claim;
-        let mut lsb_rounds: Vec<crate::gkr::prover::SumcheckRoundCoefficients<E>> = Vec::new();
-        let mut lsb_challenges: Vec<E> = Vec::new();
+        let mut chain_rounds: Vec<crate::gkr::prover::SumcheckRoundCoefficients<E>> = Vec::new();
+        let mut chain_challenges: Vec<E> = Vec::new();
+        let mut tail_challenges: Vec<E> = Vec::new();
+        let mut tail_eq_prefix = E::ONE;
         let chain_timer = std::time::Instant::now();
         let finals = {
             let seed_ref = &mut *seed;
             let rc = &mut running_claim;
-            let rounds = &mut lsb_rounds;
-            let chs = &mut lsb_challenges;
+            let rounds = &mut chain_rounds;
+            let chs = &mut chain_challenges;
+            let blocks_in_ref = &blocks_in;
+            let tail_prev_coords = &tail_prev_coords;
+            let tail_chs = &mut tail_challenges;
+            let tail_eqp = &mut tail_eq_prefix;
             windowed_mode::lsb_chain::run_lsb_uniskip_chain::<F, E, _>(
                 &collector,
                 &challenge_constants,
                 gkr_storage,
                 n,
+                num_passes,
                 &eq_suffixes,
-                &mut lsb_fold_arena,
+                &mut tail_t_table,
+                &mut chain_fold_arena,
                 worker,
-                |g, q16| {
-                    use crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::*;
-                    let omega16_bb = ::fft::domain_generator_for_size::<
-                        ::field::baby_bear::base::BabyBearField,
-                    >(16);
-                    let omega16_f: F = unsafe { *(&omega16_bb as *const _ as *const F) };
+                |round| match round {
+                    windowed_mode::lsb_chain::ChainRound::Pass { pass: g, q16 } => {
+                        let q16 = &q16;
                     let coeffs = uniskip16_to_monomial::<F, E>(q16, omega16_f);
                     #[cfg(feature = "gkr_self_checks")]
                     {
-                        // pass g binds x_{3g}..x_{3g+2}; their legacy coords
-                        // are prev[n-3(g+1)..n-3g], slice order matching the
-                        // in-group memory offset
-                        let lo = n - 3 * (g + 1);
-                        let eq8: [E; 8] =
-                            make_eq_poly_in_full::<E>(&prev_challenges[lo..lo + 3], worker)
-                                .pop()
-                                .unwrap()
-                                .to_vec()
-                                .try_into()
-                                .unwrap();
+                        // pass g binds vars 3g..3g+3: its claim identity uses
+                        // the prev point's blocks over exactly those vars
+                        let eq8: [E; 8] = make_eq_table_from_weight_blocks::<E>(
+                            &blocks_in_ref(3 * g, 3 * g + 3),
+                            worker,
+                        )
+                        .try_into()
+                        .unwrap();
                         assert_eq!(
                             uniskip16_claim_from_monomial::<F, E>(&coeffs, &eq8, omega16_f),
                             *rc,
@@ -830,32 +793,157 @@ where
                     *rc = uniskip16_horner(&coeffs, &r);
                     chs.push(r);
                     r
+                    }
+                    windowed_mode::lsb_chain::ChainRound::Tail { round: t, h0, hinf } => {
+                    use crate::gkr::prover::dimension_reduction::lsb_backward::{
+                        cubic_round_message, derive_h1_from_claim, eq_weight, horner4,
+                    };
+                    let c_t = tail_prev_coords[t];
+                    let h1 = derive_h1_from_claim(rc, tail_eqp, &h0, &c_t);
+                    let coeffs = cubic_round_message(&h0, &h1, &hinf, &c_t, tail_eqp);
+                    commit_field_els::<F, E, TR>(seed_ref, &coeffs);
+                    rounds.push(crate::gkr::prover::SumcheckRoundCoefficients::Multilinear(
+                        coeffs,
+                    ));
+                    let r = draw_random_field_els::<F, E, TR>(seed_ref, 1)[0];
+                    *rc = horner4(&coeffs, &r);
+                    tail_eqp.mul_assign(&eq_weight(&c_t, &r));
+                    tail_chs.push(r);
+                    r
+                    }
                 },
             )
         };
         let finals = finals.expect("LSB chain fast path must apply on this platform");
         println!(
-            "LSB uniskip chain for same-size layer {layer_idx}: {} passes, {} round messages, took {:?}",
+            "LSB uniskip chain for same-size layer {layer_idx}: {} passes, took {:?}",
             num_passes,
-            lsb_rounds.len(),
             chain_timer.elapsed()
         );
+
+        // the emitted mixed claim point, in emission (= variable) order:
+        // uniskip pass entries then the tail's scalar coordinates
+        let point_entries: Vec<EvaluationPointEntry<E>> = chain_challenges
+            .iter()
+            .map(|r| EvaluationPointEntry::Uniskip {
+                point: *r,
+                width: 3,
+            })
+            .chain(
+                tail_challenges
+                    .iter()
+                    .map(|r| EvaluationPointEntry::Coordinate { point: *r }),
+            )
+            .collect();
+        assert_eq!(
+            point_entries.iter().map(|e| e.bound_vars()).sum::<usize>(),
+            folding_steps,
+            "the claim point must cover every bound variable"
+        );
+
+        let mut new_claims: BTreeMap<GKRAddress, E> = finals;
+        // full block-tensor eq table over OWN point: needed by the cached
+        // relations (production) and the at-point self-check
+        let need_full_eq =
+            !layer.cached_relations.is_empty() || cfg!(feature = "gkr_self_checks");
+        let full_eq: Option<Vec<E>> = need_full_eq.then(|| {
+            let own_blocks: Vec<Vec<E>> = point_entries
+                .iter()
+                .map(|e| e.eq_weight_block::<F>(omega16_f))
+                .collect();
+            let refs: Vec<&[E]> = own_blocks.iter().map(|b| &b[..]).collect();
+            make_eq_table_from_weight_blocks::<E>(&refs, worker)
+        });
+
         #[cfg(feature = "gkr_self_checks")]
         {
-            // final G identity: the batched relation at the chain's final
-            // per-poly values must reproduce the running claim
-            let augmented: BTreeMap<_, [E; 2]> =
-                finals.iter().map(|(addr, v)| (*addr, [*v, E::ZERO])).collect();
-            let recomputed = collector
-                .compute_last_step_accumulator_from_evals(&challenge_constants, &augmented);
-            assert_eq!(
-                recomputed[0], running_claim,
-                "LSB uniskip chain: final G identity"
-            );
-            println!("LSB uniskip chain: all in-layer self-checks passed");
+            let eq = full_eq.as_ref().unwrap();
+            for (k, v) in new_claims.iter() {
+                if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
+                    let eval = evaluate_with_precomputed_eq(poly, &eq[..]);
+                    assert_eq!(eval, *v, "chain claim diverged for poly {k:?}");
+                } else if let Some(poly) = gkr_storage.try_get_ext_poly(*k) {
+                    let eval = evaluate_with_precomputed_eq_ext(poly, &eq[..]);
+                    assert_eq!(eval, *v, "chain claim diverged for poly {k:?}");
+                } else {
+                    unreachable!()
+                }
+            }
+            println!("LSB uniskip chain: at-point self-checks passed");
         }
-        let _ = finals;
+
+        let final_step_evaluations: BTreeMap<GKRAddress, Vec<E>> =
+            new_claims.iter().map(|(k, v)| (*k, vec![*v])).collect();
+        let mut transcript_inputs: Vec<E> = new_claims.values().copied().collect();
+
+        // cached relations: extra dependency claims evaluated at the block
+        // point, mirroring the scalar path
+        let mut extra_evaluations_from_caching_relations = BTreeMap::new();
+        for (cached_addr, relation) in layer.cached_relations.iter() {
+            assert!(
+                new_claims.contains_key(cached_addr),
+                "Missing claim for cached address {:?}",
+                cached_addr
+            );
+            for dep in relation.dependencies() {
+                if new_claims.contains_key(&dep) {
+                    continue;
+                }
+                match dep {
+                    GKRAddress::BaseLayerWitness(_)
+                    | GKRAddress::BaseLayerMemory(_)
+                    | GKRAddress::Setup(_)
+                    | GKRAddress::InnerLayer { .. } => {
+                        let eq = full_eq.as_ref().expect("built above");
+                        let evaluation = if let Some(values) = gkr_storage.try_get_base_poly(dep) {
+                            evaluate_with_precomputed_eq::<F, E>(values, &eq[..])
+                        } else if let Some(values) = gkr_storage.try_get_ext_poly(dep) {
+                            evaluate_with_precomputed_eq_ext::<E>(values, &eq[..])
+                        } else {
+                            panic!("Unknown poly at address {:?}", dep);
+                        };
+                        new_claims.insert(dep, evaluation);
+                        extra_evaluations_from_caching_relations.insert(dep, evaluation);
+                    }
+                    _ => panic!(
+                        "Unexpected dependency address {:?} for cached relation {:?}",
+                        dep, cached_addr
+                    ),
+                }
+            }
+        }
+        if !extra_evaluations_from_caching_relations.is_empty() {
+            transcript_inputs.extend(extra_evaluations_from_caching_relations.values().copied());
+        }
+        #[cfg(feature = "gkr_self_checks")]
+        assert!(crate::gkr::prover::debug_utils::verify_cache_relations(
+            layer,
+            &new_claims,
+            external_challenges,
+            lookup_challenges_multiplicative_part,
+        ));
+
+        commit_field_els::<F, E, TR>(seed, &transcript_inputs);
+        let next_batching_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
+
+        claims_storage.insert(layer_idx, new_claims);
+        claim_point_entries.insert(layer_idx, point_entries);
+        gkr_storage.purge_up_to_layer(layer_idx);
+        *batching_challenge = next_batching_challenge;
+
+        return SumcheckIntermediateProofValues {
+            sumcheck_num_rounds: folding_steps,
+            internal_round_coefficients: chain_rounds,
+            final_step_evaluations,
+            extra_evaluations_from_caching_relations,
+            _marker: core::marker::PhantomData,
+        };
     }
+
+    // ---- scalar (windowed / naive) path ----
+    let prev_challenges: &Vec<E> =
+        prev_flat_opt.expect("a scalar-consuming schedule requires a scalar-point producer");
+    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, worker);
 
     let (folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
         run_sumcheck_loop::<F, E, TR, 2, true>(
@@ -1068,6 +1156,9 @@ where
     let next_batching_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
 
     claims_storage.insert(layer_idx, new_claims);
+    // the claim/evaluation coordinate must ALWAYS have one entry per
+    // bound variable, whatever the schedule (incl. uniskip windows)
+    assert_eq!(folding_challenges.len(), folding_steps);
     claim_points.insert(layer_idx, folding_challenges);
 
     // and we can purge the storage

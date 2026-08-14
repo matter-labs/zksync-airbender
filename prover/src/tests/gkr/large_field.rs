@@ -322,6 +322,9 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let prover_config = ProverConfig {
+            // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
+            // keep these tests on the windowed schedule (transcript-identical
+            // to naive), NOT the uniskip default
             wide_same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(),
             narrow_same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(),
             dimension_reducing_sumcheck_schedule: Default::default(),

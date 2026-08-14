@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use cs::definitions::GKRAddress;
 use fft::bitreverse_enumeration_inplace;
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic};
+use field::{Field, FieldExtension};
+use field::baby_bear::base::BabyBearField;
+use field::baby_bear::ext4::BabyBearExt4;
 use worker::Worker;
 
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
@@ -36,8 +38,8 @@ use super::*;
 
 #[test]
 fn bench_simple_product() {
-    type F = Mersenne31Field;
-    type E = Mersenne31Quartic;
+    type F = BabyBearField;
+    type E = BabyBearExt4;
 
     const FOLDING_STEPS: usize = 24;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
@@ -180,7 +182,7 @@ fn bench_simple_product() {
     let eq_reduced_precomputed = make_eq_poly_reduced::<E>(&previous_round_challenges, &worker);
     let eq_reduced_len = eq_reduced_precomputed.len();
 
-    let mut last_evaluations: BTreeMap<GKRAddress, [Mersenne31Quartic; 2]> = BTreeMap::new();
+    let mut last_evaluations: BTreeMap<GKRAddress, [BabyBearExt4; 2]> = BTreeMap::new();
     let mut last_eq_poly_prefactor_contribution = E::ONE;
 
     let now = std::time::Instant::now();
@@ -254,8 +256,8 @@ fn bench_simple_product() {
 
 #[test]
 fn bench_windowed_product() {
-    type F = Mersenne31Field;
-    type E = Mersenne31Quartic;
+    type F = BabyBearField;
+    type E = BabyBearExt4;
 
     const FOLDING_STEPS: usize = 24;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
@@ -428,8 +430,8 @@ fn bench_windowed_product() {
 
 #[test]
 fn bench_windowed_base_product() {
-    type F = Mersenne31Field;
-    type E = Mersenne31Quartic;
+    type F = BabyBearField;
+    type E = BabyBearExt4;
 
     const FOLDING_STEPS: usize = 24;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;

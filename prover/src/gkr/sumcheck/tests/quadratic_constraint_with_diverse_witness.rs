@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, Rand};
+use field::{Field, FieldExtension, Rand};
+use field::baby_bear::base::BabyBearField;
+use field::baby_bear::ext4::BabyBearExt4;
 use rand::SeedableRng;
 use worker::Worker;
 
@@ -18,8 +20,8 @@ use super::*;
 
 #[test]
 fn test_quadratic_constraint_with_constant() {
-    type F = Mersenne31Field;
-    type E = Mersenne31Quartic;
+    type F = BabyBearField;
+    type E = BabyBearExt4;
 
     use rand::Rng;
     let mut seed = [0u8; 32];

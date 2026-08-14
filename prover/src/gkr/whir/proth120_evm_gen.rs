@@ -196,6 +196,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         &setup_commitment,
         vec![],
         z.clone(),
+        None,
         batching_challenge,
         &schedule,
         &twiddles,

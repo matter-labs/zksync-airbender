@@ -369,7 +369,7 @@ fn ws_lde_multiple_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
                     .map(|col| {
                         let mut v = col.to_vec();
                         let size_log2 = v.len().trailing_zeros();
-                        fft::bitreverse_enumeration_inplace(&mut v);
+                        // natural convention: variable b <-> exponent bit b
                         to_monomial(&mut v, size_log2);
                         v
                     })
@@ -381,7 +381,7 @@ fn ws_lde_multiple_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
                 .map(|col| {
                     let mut v = col.to_vec();
                     let size_log2 = v.len().trailing_zeros();
-                    fft::parallel_bitreverse_enumeration_inplace(&mut v, worker);
+                    // natural convention: variable b <-> exponent bit b
                     crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs(
                         &mut v, size_log2, worker,
                     );
@@ -573,18 +573,17 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
         worker: &Worker,
     ) -> (Box<[T]>, Box<[T]>) {
         let pows = make_pows_local(point, log_n);
-        let lo = crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full::<T>(
-            &pows[log_n - log_c..],
+        // natural (LSB-first) layout: low index bits <-> FIRST pows entries
+        let lo = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<T>(
+            &pows[..log_c],
             worker,
         )
-        .pop()
-        .unwrap();
+        .into_boxed_slice();
         let hi = if log_c == log_n {
             vec![T::ONE].into_boxed_slice()
         } else {
-            crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full::<T>(&pows[..log_n - log_c], worker)
-                .pop()
-                .unwrap()
+            crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<T>(&pows[log_c..], worker)
+                .into_boxed_slice()
         };
         (hi, lo)
     }
@@ -604,7 +603,7 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
         })
         .collect();
 
-    let base_addr = eq_poly.as_mut_ptr() as usize;
+    let base_addr = crate::gkr::prover::SendPtr(eq_poly.as_mut_ptr());
     let ood_ref = &ood;
     let base_ref = &base;
     worker.scope(num_hi, |scope, geometry| {
@@ -627,7 +626,7 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                         s.mul_assign_by_base(&hi[h]);
                         s_base.push(s);
                     }
-                    let dst = (base_addr as *mut E).wrapping_add(h << log_c);
+                    let dst = base_addr.get().wrapping_add(h << log_c);
                     for l in 0..c {
                         let mut acc = unsafe { *dst.wrapping_add(l) };
                         for (s, (_, _, lo)) in s_ood.iter().zip(ood_ref.iter()) {
@@ -696,8 +695,20 @@ fn ws_hypercube_evals_from_monomial_form<
     crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_coeffs_into_hypercube_evals(
         &mut v, log_n, worker,
     );
-    fft::parallel_bitreverse_enumeration_inplace(&mut v, worker);
+    // NATURAL order: index bit b <-> variable b, matching the LSB-binding
+    // sumcheck track (the old bitreverse adapted MSB-array kernels)
     v
+}
+
+/// Test-only window into [`ws_monomial_form_from_main_domain`] for the LSB
+/// consistency baseline.
+#[cfg(test)]
+pub(crate) fn test_helpers_monomial_from_main_domain<F: PrimeField + TwoAdicField>(
+    source_domain: Vec<F>,
+    twiddles: &Twiddles<F, Global>,
+    worker: &Worker,
+) -> Vec<F> {
+    ws_monomial_form_from_main_domain::<F, F>(source_domain, twiddles, worker)
 }
 
 #[cfg(test)]

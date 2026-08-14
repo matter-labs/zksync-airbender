@@ -1469,7 +1469,7 @@ use crate::gkr::prover::{SendConstPtr, SendPtr};
 
 /// h(1) from the round claim: `claim = eq_prefix * ((1 - tau)*h(0) + tau*h(1))`.
 #[inline]
-fn derive_h1_from_claim<E: Field>(claim: &E, eq_prefix: &E, h0: &E, tau_s: &E) -> E {
+pub(crate) fn derive_h1_from_claim<E: Field>(claim: &E, eq_prefix: &E, h0: &E, tau_s: &E) -> E {
     let mut e0 = E::ONE;
     e0.sub_assign(tau_s);
     let mut v = *claim;
@@ -1486,7 +1486,7 @@ fn derive_h1_from_claim<E: Field>(claim: &E, eq_prefix: &E, h0: &E, tau_s: &E) -
 /// `eqw(X) = (1 - tau) + (2*tau - 1)*X` and
 /// `h(X) = h0 + (h1 - h0 - hinf)*X + hinf*X^2`.
 #[inline]
-fn cubic_round_message<E: Field>(h0: &E, h1: &E, hinf: &E, tau_s: &E, eq_prefix: &E) -> [E; 4] {
+pub(crate) fn cubic_round_message<E: Field>(h0: &E, h1: &E, hinf: &E, tau_s: &E, eq_prefix: &E) -> [E; 4] {
     let mut h1x = *h1;
     h1x.sub_assign(h0);
     h1x.sub_assign(hinf);
@@ -1517,7 +1517,7 @@ fn cubic_round_message<E: Field>(h0: &E, h1: &E, hinf: &E, tau_s: &E, eq_prefix:
 
 /// Horner evaluation of the 4-coefficient round message at `r`.
 #[inline]
-fn horner4<E: Field>(c: &[E; 4], r: &E) -> E {
+pub(crate) fn horner4<E: Field>(c: &[E; 4], r: &E) -> E {
     let mut nc = c[3];
     nc.mul_assign(r);
     nc.add_assign(&c[2]);
@@ -1528,9 +1528,22 @@ fn horner4<E: Field>(c: &[E; 4], r: &E) -> E {
     nc
 }
 
+/// Coordinate of the output-layer variable bound at round `s`: the incoming
+/// point is in the dimension-reducing emission layout `[bits 1.., bit 0]`
+/// (gate coordinate stored last), so round 0 (output bit 0) reads the LAST
+/// entry and round `s >= 1` reads entry `s - 1`.
+#[inline(always)]
+fn round_coord<E: Field>(output_point: &[E], s: usize) -> E {
+    if s == 0 {
+        output_point[output_point.len() - 1]
+    } else {
+        output_point[s - 1]
+    }
+}
+
 /// The bound round's eq weight `(1 - tau) + (2*tau - 1)*r = eq(r, tau)`.
 #[inline]
-fn eq_weight<E: Field>(tau_s: &E, r: &E) -> E {
+pub(crate) fn eq_weight<E: Field>(tau_s: &E, r: &E) -> E {
     let mut e0 = E::ONE;
     e0.sub_assign(tau_s);
     let mut e1 = *tau_s;
@@ -1760,10 +1773,11 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
         assert_eq!(p.len(), 2 * m);
     }
 
-    // suffix eq table over tau[1..], LSB-first orientation (index bit b <->
-    // tau[1 + b]); built by the shared parallel-or-inline helper
+    // suffix eq table over the round-1.. coordinates. In the emission layout
+    // these are exactly the CONTIGUOUS prefix `tau[..rounds - 1]` (bits 1..
+    // stored first), so no reordering of any kind is needed.
     let mut t_table =
-        crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first(&tau[1..], worker);
+        crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first(&tau[..rounds - 1], worker);
 
     // Caller-provided uninitialized fold scratch: writes are tracked by
     // construction (each round writes exactly the region the next round
@@ -1822,7 +1836,7 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
                 let mut t = vec![E::ONE; 1 << len_log2];
                 for b in 0..len_log2 {
                     let half = 1usize << b;
-                    let c = tau[done + w + b];
+                    let c = round_coord(tau, done + w + b);
                     let mut om = E::ONE;
                     om.sub_assign(&c);
                     for i in 0..half {
@@ -2009,7 +2023,7 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
                                 ok = false;
                                 break;
                             }
-                            let c = tau[done + si + 1 + tvar];
+                            let c = round_coord(tau, done + si + 1 + tvar);
                             if d == 1 {
                                 wgt.mul_assign(&c);
                             } else {
@@ -2029,7 +2043,7 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
                 }
                 let (h0, h1v, hinf) = (h[0], h[1], h[2]);
                 let coeffs =
-                    cubic_round_message(&h0, &h1v, &hinf, &tau[done + si], &eq_prefix);
+                    cubic_round_message(&h0, &h1v, &hinf, &round_coord(tau, done + si), &eq_prefix);
                 #[cfg(feature = "gkr_self_checks")]
                 {
                     let [c0, c1, c2, c3] = coeffs;
@@ -2045,7 +2059,7 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
                 round_coefficients.push(coeffs);
                 win_rs[si] = r;
                 claim = horner4(&coeffs, &r);
-                eq_prefix.mul_assign(&eq_weight(&tau[done + si], &r));
+                eq_prefix.mul_assign(&eq_weight(&round_coord(tau, done + si), &r));
                 // bind the accumulator
                 let mut r2mr = r;
                 r2mr.mul_assign(&r);
@@ -2256,13 +2270,13 @@ pub fn lsb_dim_reducing_sumcheck_prove_fused<
         }
 
         let (h0, hinf) = (h2[0], h2[1]);
-        let h1v = derive_h1_from_claim(&claim, &eq_prefix, &h0, &tau[s]);
-        let coeffs = cubic_round_message(&h0, &h1v, &hinf, &tau[s], &eq_prefix);
+        let h1v = derive_h1_from_claim(&claim, &eq_prefix, &h0, &round_coord(tau, s));
+        let coeffs = cubic_round_message(&h0, &h1v, &hinf, &round_coord(tau, s), &eq_prefix);
         let r = draw_challenge(&coeffs);
         challenges.push(r);
         round_coefficients.push(coeffs);
         claim = horner4(&coeffs, &r);
-        eq_prefix.mul_assign(&eq_weight(&tau[s], &r));
+        eq_prefix.mul_assign(&eq_weight(&round_coord(tau, s), &r));
         pending_r = Some(r);
 
         if s + 1 < rounds {
