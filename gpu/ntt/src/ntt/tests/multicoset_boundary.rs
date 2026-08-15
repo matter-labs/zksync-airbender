@@ -332,3 +332,195 @@ fn probe_multicoset_boundary_ab() {
         us_reversed / us_current
     );
 }
+
+/// Dual-stream column ping-pong: two streams each own whole columns of the
+/// production per-column launch sequence; the hardware may fill one stream's
+/// launch tails with the other stream's blocks (the idiom
+/// `get_lde_grid_dims_for_occupancy_hint` anticipates). The counter-force is
+/// L2: two co-resident columns want 2x the cache. Reference = the same
+/// columns serialized on one stream.
+#[test]
+#[ignore]
+fn probe_pingpong_ab() {
+    use era_cudart::stream::CudaStreamWaitEventFlags;
+    let ctx = make_context();
+    let _keepalive = ctx.get_exec_stream();
+    let stream_a = CudaStream::create().unwrap();
+    let stream_b = CudaStream::create().unwrap();
+
+    const PP_COLS: usize = 4;
+    let num_vblocks = (N / 8192) as u32;
+    let grid: Dim3 = num_vblocks.into();
+
+    let mut inputs = Vec::new();
+    let mut d_scratch = Vec::new();
+    let mut d_out_ref = Vec::new();
+    let mut d_out_pp = Vec::new();
+    for col in 0..PP_COLS {
+        let input = (0..N)
+            .map(|idx| BF::new(47 + col as u32 * 4993 + (idx as u32).wrapping_mul(2654435761)))
+            .collect::<Vec<_>>();
+        let mut scratch = DeviceAllocation::<BF>::alloc(N).unwrap();
+        memory_copy_async(&mut scratch, &input[..], &stream_a).unwrap();
+        inputs.push(input);
+        d_scratch.push(scratch);
+        d_out_ref.push(DeviceAllocation::<BF>::alloc(K * N).unwrap());
+        d_out_pp.push(DeviceAllocation::<BF>::alloc(K * N).unwrap());
+    }
+    let scratch_views: Vec<_> = d_scratch.iter_mut().map(|s| slab_views(s, 0)).collect();
+    let ref_views: Vec<Vec<_>> = d_out_ref
+        .iter_mut()
+        .map(|o| (0..K).map(|k| slab_views(o, k)).collect())
+        .collect();
+    let pp_views: Vec<Vec<_>> = d_out_pp
+        .iter_mut()
+        .map(|o| (0..K).map(|k| slab_views(o, k)).collect())
+        .collect();
+
+    let fused_fn = FusedFunction(ab_lde_fused_boundary_writeback_8_stages_kernel);
+    let initial_fn = InitialFunction(ab_monomials_to_evals_initial_8_stages_kernel);
+    let mid_fn = NoninitialFunction(ab_monomials_to_evals_noninitial_8_stages_kernel);
+    let evict_fn = NoninitialFunction(ab_monomials_to_evals_noninitial_8_stages_evict_kernel);
+
+    // The production per-column sequence (fused + noninit pair + c1 initial +
+    // noninit pair) on an arbitrary stream and output set.
+    let launch_column = |stream: &CudaStream,
+                         col: usize,
+                         out: &[Vec<(PtrAndStride<BF>, MutPtrAndStride<BF>)>]|
+     -> CudaResult<()> {
+        let (scratch_getter, scratch_setter) = scratch_views[col];
+        let config = CudaLaunchConfig::basic(grid, 256, stream);
+        let args = FusedArguments::new(
+            scratch_setter,
+            out[col][0].1,
+            LOG_N as i32,
+            0,
+            COSET_FACTOR_SHIFT,
+            1,
+            0,
+        );
+        fused_fn.launch(&config, &args)?;
+        for (start_stage, f) in [(LOG_N - 16, &mid_fn), (LOG_N - 8, &evict_fn)] {
+            let config = CudaLaunchConfig::basic(grid, 256, stream);
+            let args = NoninitialArguments::new(
+                out[col][0].0,
+                out[col][0].1,
+                LOG_N as i32,
+                start_stage as i32,
+                1,
+                0,
+            );
+            f.launch(&config, &args)?;
+        }
+        let config = CudaLaunchConfig::basic(grid, 256, stream);
+        let args = InitialArguments::new(
+            scratch_getter,
+            out[col][1].1,
+            true,
+            LOG_N as i32,
+            1,
+            COSET_FACTOR_SHIFT,
+            1,
+            0,
+        );
+        initial_fn.launch(&config, &args)?;
+        for (start_stage, f) in [(LOG_N - 16, &mid_fn), (LOG_N - 8, &evict_fn)] {
+            let config = CudaLaunchConfig::basic(grid, 256, stream);
+            let args = NoninitialArguments::new(
+                out[col][1].0,
+                out[col][1].1,
+                LOG_N as i32,
+                start_stage as i32,
+                1,
+                0,
+            );
+            f.launch(&config, &args)?;
+        }
+        Ok(())
+    };
+
+    let join_a = CudaEvent::create().unwrap();
+    let join_b = CudaEvent::create().unwrap();
+    let launch_serial = |_: ()| -> CudaResult<()> {
+        for col in 0..PP_COLS {
+            launch_column(&stream_a, col, &ref_views)?;
+        }
+        Ok(())
+    };
+    // Ping-pong: even columns on A, odd on B, cross-joined at the end so an
+    // iteration fully completes (on-device) before the next begins.
+    let launch_pingpong = |_: ()| -> CudaResult<()> {
+        for pair in 0..PP_COLS / 2 {
+            launch_column(&stream_a, 2 * pair, &pp_views)?;
+            launch_column(&stream_b, 2 * pair + 1, &pp_views)?;
+        }
+        join_a.record(&stream_a)?;
+        join_b.record(&stream_b)?;
+        stream_a.wait_event(&join_b, CudaStreamWaitEventFlags::DEFAULT)?;
+        stream_b.wait_event(&join_a, CudaStreamWaitEventFlags::DEFAULT)?;
+        Ok(())
+    };
+
+    // Parity (column independence makes this structural, but verify once).
+    launch_serial(()).unwrap();
+    for (scratch, input) in d_scratch.iter_mut().zip(&inputs) {
+        memory_copy_async(scratch, &input[..], &stream_a).unwrap();
+    }
+    stream_a.synchronize().unwrap();
+    launch_pingpong(()).unwrap();
+    stream_a.synchronize().unwrap();
+    stream_b.synchronize().unwrap();
+    for col in 0..PP_COLS {
+        let mut h_ref = vec![BF::new(0); K * N];
+        let mut h_pp = vec![BF::new(0); K * N];
+        memory_copy_async(&mut h_ref[..], &d_out_ref[col], &stream_a).unwrap();
+        memory_copy_async(&mut h_pp[..], &d_out_pp[col], &stream_a).unwrap();
+        stream_a.synchronize().unwrap();
+        assert_ne!(
+            h_ref,
+            vec![BF::new(0); K * N],
+            "column {col} reference is zero"
+        );
+        assert_eq!(h_ref, h_pp, "column {col} ping-pong mismatch");
+    }
+
+    // Timing (repeated in-place re-transforms, as in the boundary probe).
+    let time = |pingpong: bool| -> f32 {
+        let run = |_: ()| -> CudaResult<()> {
+            if pingpong {
+                launch_pingpong(())
+            } else {
+                launch_serial(())
+            }
+        };
+        for _ in 0..WARMUP {
+            run(()).unwrap();
+        }
+        let start = CudaEvent::create().unwrap();
+        let end = CudaEvent::create().unwrap();
+        stream_a.synchronize().unwrap();
+        stream_b.synchronize().unwrap();
+        start.record(&stream_a).unwrap();
+        stream_b
+            .wait_event(&start, CudaStreamWaitEventFlags::DEFAULT)
+            .unwrap();
+        for _ in 0..TIMED {
+            run(()).unwrap();
+        }
+        if !pingpong {
+            join_a.record(&stream_a).unwrap();
+        }
+        // After the final cross-join (or serial completion) stream A's
+        // timeline covers all work.
+        end.record(&stream_a).unwrap();
+        end.synchronize().unwrap();
+        elapsed_time(&start, &end).unwrap() * 1000.0 / TIMED as f32
+    };
+    let us_serial = time(false);
+    let us_pingpong = time(true);
+    println!(
+        "{PP_COLS} columns x K={K}: serial one-stream {us_serial:.1} us | \
+         dual-stream ping-pong {us_pingpong:.1} us | ratio {:.3}",
+        us_pingpong / us_serial
+    );
+}
