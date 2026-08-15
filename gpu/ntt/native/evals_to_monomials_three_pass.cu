@@ -3,13 +3,16 @@
 
 namespace airbender::ntt {
 
-EXTERN __launch_bounds__(512, 2) __global__
+// Two tile roles per thread at 256 threads / 3 blocks-per-SM (see the forward
+// noninitial body for the shape rationale).
+EXTERN __launch_bounds__(256, 3) __global__
     void ab_evals_to_monomials_nonfinal_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
                                                         const int start_stage, const int num_cols_per_coset, const int log_cosets_in_tile) {
   using namespace pass_config::three_pass_phase_a;
+  constexpr int ROLES = 2;
+  constexpr int ROLE_TILE_STRIDE = THREAD_TILES_PER_BLOCK / ROLES;
 
   const int lane_in_tile = threadIdx.x & 31;
-  const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
 
   const int exchg_region_size = 1 << (log_n - start_stage);
   const int tile_gmem_stride = exchg_region_size >> LOG_DATA_TILES_PER_BLOCK;
@@ -38,72 +41,79 @@ EXTERN __launch_bounds__(512, 2) __global__
 
   __shared__ bf smem_block[8192];
 
-  bf vals[VALS_PER_THREAD];
+#pragma unroll
+  for (int role = 0; role < ROLES; role++) {
+    const int tile_id = (threadIdx.x >> LOG_DATA_TILE_SIZE) + role * ROLE_TILE_STRIDE;
+    const int thread_il_gmem_start = lane_in_tile + tile_id * tile_gmem_stride;
+    const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
 
-  // "ct" = consecutive tile layout
-  // "il" = interleaved tile layout
-  const int thread_il_gmem_start = lane_in_tile + tile_id * tile_gmem_stride;
-  const int thread_ct_gmem_start = lane_in_tile + tile_id * interleaved_gmem_stride;
-  const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
-  const int thread_ct_smem_start = lane_in_tile + tile_id * TILE_SIZE * THREAD_TILES_PER_BLOCK;
+    bf vals[VALS_PER_THREAD];
 
 #pragma unroll
-  for (int i{0}, addr{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, addr += interleaved_gmem_stride)
-    vals[i] = gmem_in.get_at_row(addr);
+    for (int i{0}, addr{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, addr += interleaved_gmem_stride)
+      vals[i] = gmem_in.get_at_row(addr);
 
-  int block_exchg_region_offset = alternating_block_idx_y;
-  if (start_stage == 0) {
-    reg_exchg_inv<8, 16, 1>(vals, block_exchg_region_offset);
-    block_exchg_region_offset <<= 1;
-    reg_exchg_inv<4, 8, 2>(vals, block_exchg_region_offset);
-    block_exchg_region_offset <<= 1;
-    reg_exchg_inv<2, 4, 4>(vals, block_exchg_region_offset);
-    block_exchg_region_offset <<= 1;
-    reg_exchg_inv<1, 2, 8>(vals, block_exchg_region_offset);
-    block_exchg_region_offset <<= 1;
-  } else {
-    reg_exchg_cmem_twiddles_inv<8, 16, 1>(vals, block_exchg_region_offset);
-    block_exchg_region_offset <<= 1;
-    reg_exchg_cmem_twiddles_inv<4, 8, 2>(vals, block_exchg_region_offset);
-    block_exchg_region_offset <<= 1;
-    reg_exchg_cmem_twiddles_inv<2, 4, 4>(vals, block_exchg_region_offset);
-    block_exchg_region_offset <<= 1;
-    reg_exchg_cmem_twiddles_inv<1, 2, 8>(vals, block_exchg_region_offset);
-    block_exchg_region_offset <<= 1;
+    int block_exchg_region_offset = alternating_block_idx_y;
+    if (start_stage == 0) {
+      reg_exchg_inv<8, 16, 1>(vals, block_exchg_region_offset);
+      block_exchg_region_offset <<= 1;
+      reg_exchg_inv<4, 8, 2>(vals, block_exchg_region_offset);
+      block_exchg_region_offset <<= 1;
+      reg_exchg_inv<2, 4, 4>(vals, block_exchg_region_offset);
+      block_exchg_region_offset <<= 1;
+      reg_exchg_inv<1, 2, 8>(vals, block_exchg_region_offset);
+    } else {
+      reg_exchg_cmem_twiddles_inv<8, 16, 1>(vals, block_exchg_region_offset);
+      block_exchg_region_offset <<= 1;
+      reg_exchg_cmem_twiddles_inv<4, 8, 2>(vals, block_exchg_region_offset);
+      block_exchg_region_offset <<= 1;
+      reg_exchg_cmem_twiddles_inv<2, 4, 4>(vals, block_exchg_region_offset);
+      block_exchg_region_offset <<= 1;
+      reg_exchg_cmem_twiddles_inv<1, 2, 8>(vals, block_exchg_region_offset);
+    }
+
+#pragma unroll
+    for (int i{0}, addr{thread_il_smem_start}; i < VALS_PER_THREAD; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
+      smem_block[addr] = vals[i]; // write interleaved smem tiles
   }
-
-#pragma unroll
-  for (int i{0}, addr{thread_il_smem_start}; i < VALS_PER_THREAD; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
-    smem_block[addr] = vals[i]; // write interleaved smem tiles
 
   __syncthreads();
 
 #pragma unroll
-  for (int i{0}, addr{thread_ct_smem_start}; i < VALS_PER_THREAD; i++, addr += TILE_SIZE)
-    vals[i] = smem_block[addr]; // read consecutive smem tiles
+  for (int role = 0; role < ROLES; role++) {
+    const int tile_id = (threadIdx.x >> LOG_DATA_TILE_SIZE) + role * ROLE_TILE_STRIDE;
+    const int thread_ct_gmem_start = lane_in_tile + tile_id * interleaved_gmem_stride;
+    const int thread_ct_smem_start = lane_in_tile + tile_id * TILE_SIZE * THREAD_TILES_PER_BLOCK;
 
-  int tile_exchg_region_offset = block_exchg_region_offset + tile_id;
-  if (start_stage == 0) {
-    reg_exchg_inv<8, 16, 1>(vals, tile_exchg_region_offset);
-    tile_exchg_region_offset <<= 1;
-    reg_exchg_inv<4, 8, 2>(vals, tile_exchg_region_offset);
-    tile_exchg_region_offset <<= 1;
-    reg_exchg_inv<2, 4, 4>(vals, tile_exchg_region_offset);
-    tile_exchg_region_offset <<= 1;
-    reg_exchg_inv<1, 2, 8>(vals, tile_exchg_region_offset);
-  } else {
-    reg_exchg_cmem_twiddles_inv<8, 16, 1>(vals, tile_exchg_region_offset);
-    tile_exchg_region_offset <<= 1;
-    reg_exchg_cmem_twiddles_inv<4, 8, 2>(vals, tile_exchg_region_offset);
-    tile_exchg_region_offset <<= 1;
-    reg_exchg_cmem_twiddles_inv<2, 4, 4>(vals, tile_exchg_region_offset);
-    tile_exchg_region_offset <<= 1;
-    reg_exchg_cmem_twiddles_inv<1, 2, 8>(vals, tile_exchg_region_offset);
-  }
+    bf vals[VALS_PER_THREAD];
 
 #pragma unroll
-  for (int i{0}, row{thread_ct_gmem_start}; i < VALS_PER_THREAD; i++, row += tile_gmem_stride)
-    gmem_out.set_at_row(row, vals[i]); // write consecutive gmem tiles
+    for (int i{0}, addr{thread_ct_smem_start}; i < VALS_PER_THREAD; i++, addr += TILE_SIZE)
+      vals[i] = smem_block[addr]; // read consecutive smem tiles
+
+    int tile_exchg_region_offset = (alternating_block_idx_y << 4) + tile_id;
+    if (start_stage == 0) {
+      reg_exchg_inv<8, 16, 1>(vals, tile_exchg_region_offset);
+      tile_exchg_region_offset <<= 1;
+      reg_exchg_inv<4, 8, 2>(vals, tile_exchg_region_offset);
+      tile_exchg_region_offset <<= 1;
+      reg_exchg_inv<2, 4, 4>(vals, tile_exchg_region_offset);
+      tile_exchg_region_offset <<= 1;
+      reg_exchg_inv<1, 2, 8>(vals, tile_exchg_region_offset);
+    } else {
+      reg_exchg_cmem_twiddles_inv<8, 16, 1>(vals, tile_exchg_region_offset);
+      tile_exchg_region_offset <<= 1;
+      reg_exchg_cmem_twiddles_inv<4, 8, 2>(vals, tile_exchg_region_offset);
+      tile_exchg_region_offset <<= 1;
+      reg_exchg_cmem_twiddles_inv<2, 4, 4>(vals, tile_exchg_region_offset);
+      tile_exchg_region_offset <<= 1;
+      reg_exchg_cmem_twiddles_inv<1, 2, 8>(vals, tile_exchg_region_offset);
+    }
+
+#pragma unroll
+    for (int i{0}, row{thread_ct_gmem_start}; i < VALS_PER_THREAD; i++, row += tile_gmem_stride)
+      gmem_out.set_at_row(row, vals[i]); // write consecutive gmem tiles
+  }
 }
 
 template <int STAGES>

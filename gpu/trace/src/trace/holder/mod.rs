@@ -22,8 +22,8 @@ use gpu_hash::blake2s::{
     gather_leaf_rows, gather_merkle_paths_device, gather_merkle_paths_from_rows,
 };
 use gpu_ntt::ntt::{
-    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_x1_msb_evals_to_x1_msb_monomials,
-    log_size_supports_transposed_monomials,
+    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_to_multi_coset_evals_fused,
+    hypercube_x1_msb_evals_to_x1_msb_monomials, log_size_supports_transposed_monomials,
 };
 use gpu_prover_context::ProverContext;
 
@@ -370,14 +370,6 @@ impl TraceHolder<BF> {
         for column in 0..self.columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
-            hypercube_x1_msb_evals_to_x1_msb_monomials(
-                source_column,
-                &mut coeff_scratch[0..domain_size],
-                self.log_domain_size as usize,
-                use_transposed_monomials,
-                stream,
-                context.get_device_properties(),
-            )?;
 
             match &mut self.cosets {
                 CosetsHolder::Full(backing) => {
@@ -387,25 +379,49 @@ impl TraceHolder<BF> {
                     // column's position and uses num_cols_per_coset_stride =
                     // columns_count to write each coset's slab in one launch,
                     // replacing the per-coset NTT loop.
-                    let monomials = DeviceMatrixChunk::new(
-                        &coeff_scratch[0..domain_size],
-                        domain_size,
-                        0,
-                        domain_size,
-                    );
                     let backing_from_col = &mut backing[offset..];
-                    bitreversed_monomials_to_natural_evals_multi_coset(
-                        &monomials,
+                    // Hybrid fused-boundary path: the hypercube final pass runs
+                    // once, fused with coset 0's forward initial + in-place
+                    // monomial writeback (transposed 3-pass regime only; falls
+                    // back below).
+                    let fused = hypercube_to_multi_coset_evals_fused(
+                        source_column,
+                        &mut coeff_scratch[0..domain_size],
                         backing_from_col,
                         self.log_domain_size as usize,
                         self.log_lde_factor as usize,
                         self.columns_count,
-                        use_transposed_monomials,
-                        ntt_ctx,
-                        scratch_opt.as_deref_mut(),
                         stream,
                         context.get_device_properties(),
                     )?;
+                    if !fused {
+                        hypercube_x1_msb_evals_to_x1_msb_monomials(
+                            source_column,
+                            &mut coeff_scratch[0..domain_size],
+                            self.log_domain_size as usize,
+                            use_transposed_monomials,
+                            stream,
+                            context.get_device_properties(),
+                        )?;
+                        let monomials = DeviceMatrixChunk::new(
+                            &coeff_scratch[0..domain_size],
+                            domain_size,
+                            0,
+                            domain_size,
+                        );
+                        bitreversed_monomials_to_natural_evals_multi_coset(
+                            &monomials,
+                            backing_from_col,
+                            self.log_domain_size as usize,
+                            self.log_lde_factor as usize,
+                            self.columns_count,
+                            use_transposed_monomials,
+                            ntt_ctx,
+                            scratch_opt.as_deref_mut(),
+                            stream,
+                            context.get_device_properties(),
+                        )?;
+                    }
                 }
                 CosetsHolder::None(_) => {
                     panic!("cosets not allocated — call ensure_cosets_materialized first")

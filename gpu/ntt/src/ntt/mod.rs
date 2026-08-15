@@ -55,8 +55,8 @@ pub(crate) use forward::{monomials_to_evals_2_pass_smem, monomials_to_evals_3_pa
 #[cfg(test)]
 pub(crate) use inverse::{evals_to_monomials_2_pass, evals_to_monomials_3_pass};
 pub use lde::{
-    bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range,
-    MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
+    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_to_multi_coset_evals_fused,
+    lde_with_coset_range, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
 };
 pub(crate) use strategy::{select_ntt_strategy, NttDirection, NttKernelKind, NttStrategy};
 
