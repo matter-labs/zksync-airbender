@@ -139,7 +139,7 @@ EXTERN __launch_bounds__(256, 3) __global__
   monomials_to_evals_noninitial_8_stages_body(gmem_in, gmem_out, log_n, start_stage, num_cols_per_coset, log_cosets_in_tile);
 }
 
-template <int STAGES>
+template <int STAGES, bool REVERSED = false>
 DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                   const bool transposed_monomials, const int log_n, const int coset_index_base,
                                                                   const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
@@ -151,7 +151,12 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
   // Inputs are shared across cosets; outputs are coset-major with per-coset
   // stride `num_cols_per_coset`. `log_cosets_in_tile = 0` collapses cleanly.
   const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 13u; // VALS_PER_BLOCK = 1 << 13
-  const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
+  FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
+  // Reversed window order: read the PREVIOUS pass's writeback newest-first,
+  // so the L2-resident tail of its write stream is consumed before it ages
+  // out (forward order chases the oldest windows, which are always evicted).
+  if (REVERSED)
+    fi.intra_x = (1u << log_blocks_per_ntt) - 1u - fi.intra_x;
   gmem_in.add_col(fi.col);
   gmem_out.add_col(static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col));
   const int coset_factor_power = (coset_index_base + static_cast<int>(fi.coset)) << coset_factor_shift;
@@ -271,6 +276,19 @@ DEFINE_INITIAL_KERNEL(5)
 DEFINE_INITIAL_KERNEL(6)
 DEFINE_INITIAL_KERNEL(7)
 DEFINE_INITIAL_KERNEL(8)
+
+#define DEFINE_INITIAL_REVERSED_KERNEL(STAGES)                                                                                                                 \
+  EXTERN __launch_bounds__(256, 3) __global__ void ab_monomials_to_evals_initial_##STAGES##_stages_reversed_kernel(                                            \
+      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
+      const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                  \
+    monomials_to_evals_initial_up_to_8_stages<STAGES, true>(gmem_in, gmem_out, transposed_monomials, log_n, coset_index_base, coset_factor_shift,              \
+                                                            num_cols_per_coset, log_cosets_in_tile);                                                           \
+  }
+
+DEFINE_INITIAL_REVERSED_KERNEL(5)
+DEFINE_INITIAL_REVERSED_KERNEL(6)
+DEFINE_INITIAL_REVERSED_KERNEL(7)
+DEFINE_INITIAL_REVERSED_KERNEL(8)
 
 #undef DEFINE_INITIAL_KERNEL
 

@@ -1673,6 +1673,7 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_1_cosets_32, 1, 32
 mod dit_engine;
 mod helpers;
 mod lde_writeback_hybrid;
+mod multicoset_boundary;
 use crate::upstream::{Field, PrimeField};
 #[allow(unused_imports)]
 use helpers::*;

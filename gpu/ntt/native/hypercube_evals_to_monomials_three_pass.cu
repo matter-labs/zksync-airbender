@@ -74,6 +74,65 @@ EXTERN __launch_bounds__(256, 3) __global__
   }
 }
 
+// Forward-initial exchange + transpose + store for one coset: consumes vals
+// (already coset-scaled, coarse twiddles already staged in smem) and writes
+// the coset's evals. Ends with smem reads (the transpose) — callers running
+// it in a loop must __syncthreads before reusing smem.
+template <int STAGES, st_modifier ST = st_modifier::cg>
+DEVICE_FORCEINLINE void lde_fwd_initial_exchg_store(bf *vals, const FlatBlockIndex &fi, bf_matrix_setter<ST> gmem_out, bf *smem_warp, bf *smem_twiddles) {
+  using namespace pass_config::three_pass_phase_b;
+  constexpr int REGIONS_PER_WARP = 1 << (10 - STAGES);
+  const int lane_id = threadIdx.x & 31;
+  const int warp_id = threadIdx.x >> 5;
+  int thread_exchg_region_offset = (threadIdx.x + static_cast<int>(fi.intra_x) * blockDim.x) << 4;
+  constexpr bf *cmem_twiddles = ab_fwd_cmem_twiddles_finest_11;
+  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 1, 2, 16, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
+  thread_exchg_region_offset >>= 1;
+  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 2, 4, 8, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
+  thread_exchg_region_offset >>= 1;
+  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 4, 8, 4, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
+  thread_exchg_region_offset >>= 1;
+  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 8, 16, 2, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
+  thread_exchg_region_offset >>= 1;
+  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 16, 32, 1, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
+
+  __syncthreads();
+
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
+
+  if (STAGES >= 5) {
+    int warp_exchg_region_offset = (static_cast<int>(fi.intra_x) * WARPS_PER_BLOCK + warp_id) << 4;
+#pragma unroll
+    for (int i{0}; i < REGIONS_PER_WARP; i++) {
+      if (STAGES == 8) {
+        int exchg_region_offset = warp_exchg_region_offset + i * 4;
+        bf *vals_this_region = vals + 8 * i;
+        reg_exchg_cmem_twiddles_fwd<1, 2, 4>(vals_this_region, exchg_region_offset);
+        exchg_region_offset >>= 1;
+        reg_exchg_cmem_twiddles_fwd<2, 4, 2>(vals_this_region, exchg_region_offset);
+        exchg_region_offset >>= 1;
+        reg_exchg_cmem_twiddles_fwd<4, 8, 1>(vals_this_region, exchg_region_offset);
+      }
+      if (STAGES == 7) {
+        int exchg_region_offset = warp_exchg_region_offset + i * 2;
+        bf *vals_this_region = vals + 4 * i;
+        reg_exchg_cmem_twiddles_fwd<1, 2, 2>(vals_this_region, exchg_region_offset);
+        exchg_region_offset >>= 1;
+        reg_exchg_cmem_twiddles_fwd<2, 4, 1>(vals_this_region, exchg_region_offset);
+      }
+      if (STAGES == 6) {
+        int exchg_region_offset = warp_exchg_region_offset + i;
+        bf *vals_this_region = vals + 2 * i;
+        reg_exchg_cmem_twiddles_fwd<1, 2, 1>(vals_this_region, exchg_region_offset);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
+    gmem_out.set_at_row(row, vals[i]);
+}
+
 // Fused LDE boundary for a column's FIRST coset (transposed layout only):
 // iNTT final stages + in-place monomial writeback + coset scale +
 // forward-initial stages. In-place contract: each block rewrites exactly the
@@ -170,53 +229,7 @@ DEVICE_FORCEINLINE void lde_fused_boundary_writeback_up_to_8_stages(bf_matrix_ge
 
   // Forward NTT initial STAGES stages, transposed path (mirrors
   // monomials_to_evals_three_pass.cu's initial body).
-  int thread_exchg_region_offset = (threadIdx.x + static_cast<int>(fi.intra_x) * blockDim.x) << 4;
-  constexpr bf *cmem_twiddles = ab_fwd_cmem_twiddles_finest_11;
-  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 1, 2, 16, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
-  thread_exchg_region_offset >>= 1;
-  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 2, 4, 8, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
-  thread_exchg_region_offset >>= 1;
-  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 4, 8, 4, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
-  thread_exchg_region_offset >>= 1;
-  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 8, 16, 2, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
-  thread_exchg_region_offset >>= 1;
-  reg_exchg_cmem_smem_twiddles_fwd<EightStages, 16, 32, 1, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
-
-  __syncthreads();
-
-  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
-
-  if (STAGES >= 5) {
-    int warp_exchg_region_offset = (static_cast<int>(fi.intra_x) * WARPS_PER_BLOCK + warp_id) << 4;
-#pragma unroll
-    for (int i{0}; i < REGIONS_PER_WARP; i++) {
-      if (STAGES == 8) {
-        int exchg_region_offset = warp_exchg_region_offset + i * 4;
-        bf *vals_this_region = vals + 8 * i;
-        reg_exchg_cmem_twiddles_fwd<1, 2, 4>(vals_this_region, exchg_region_offset);
-        exchg_region_offset >>= 1;
-        reg_exchg_cmem_twiddles_fwd<2, 4, 2>(vals_this_region, exchg_region_offset);
-        exchg_region_offset >>= 1;
-        reg_exchg_cmem_twiddles_fwd<4, 8, 1>(vals_this_region, exchg_region_offset);
-      }
-      if (STAGES == 7) {
-        int exchg_region_offset = warp_exchg_region_offset + i * 2;
-        bf *vals_this_region = vals + 4 * i;
-        reg_exchg_cmem_twiddles_fwd<1, 2, 2>(vals_this_region, exchg_region_offset);
-        exchg_region_offset >>= 1;
-        reg_exchg_cmem_twiddles_fwd<2, 4, 1>(vals_this_region, exchg_region_offset);
-      }
-      if (STAGES == 6) {
-        int exchg_region_offset = warp_exchg_region_offset + i;
-        bf *vals_this_region = vals + 2 * i;
-        reg_exchg_cmem_twiddles_fwd<1, 2, 1>(vals_this_region, exchg_region_offset);
-      }
-    }
-  }
-
-#pragma unroll
-  for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
-    gmem_out.set_at_row(row, vals[i]);
+  lde_fwd_initial_exchg_store<STAGES>(vals, fi, gmem_out, smem_warp, smem_twiddles);
 }
 
 #define DEFINE_LDE_FUSED_WRITEBACK_KERNEL(STAGES)                                                                                                              \
@@ -232,7 +245,139 @@ DEFINE_LDE_FUSED_WRITEBACK_KERNEL(6)
 DEFINE_LDE_FUSED_WRITEBACK_KERNEL(7)
 DEFINE_LDE_FUSED_WRITEBACK_KERNEL(8)
 
-#undef DEFINE_LDE_FUSED_WRITEBACK_KERNEL
+// Two-coset fused boundary: the single-coset fused body, but the monomial
+// values are KEPT in a second register array across coset 0's initial tail
+// (the butterflies destroy their inputs), then coset-1-scaled and run through
+// the tail again — no monomial re-read at all, saving that pass's 64 MB DRAM
+// round trip plus a launch. The two live arrays need ~104 registers, so this
+// runs at (256,2): 128-register budget, 2 blocks/SM.
+template <int STAGES>
+DEVICE_FORCEINLINE void lde_fused_boundary_writeback_two_coset_up_to_8_stages(bf_matrix_getter_setter<ld_modifier::cg, st_modifier::cg> gmem_scratch,
+                                                                              bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                                              bf_matrix_setter<st_modifier::cs> gmem_out_cs, const int log_n,
+                                                                              const int coset_index_base, const int coset_factor_shift,
+                                                                              const int num_cols_per_coset, const int log_cosets_in_tile) {
+  using namespace pass_config::three_pass_phase_b;
+
+  const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 13u;
+  const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
+  gmem_scratch.add_col(fi.col);
+  gmem_out.add_col(static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col));
+  gmem_out_cs.add_col(static_cast<int>(fi.coset + 1) * num_cols_per_coset + static_cast<int>(fi.col));
+
+  const int lane_id = threadIdx.x & 31;
+  const int warp_id = threadIdx.x >> 5;
+  const int pipeline_memcpy_start = 4 * threadIdx.x;
+  const int pipeline_memcpy_stride = 4 * blockDim.x;
+  const int gmem_block_offset = static_cast<int>(fi.intra_x) * VALS_PER_BLOCK;
+  gmem_scratch.add_row(gmem_block_offset + warp_id * VALS_PER_WARP);
+  gmem_out.add_row(gmem_block_offset + warp_id * VALS_PER_WARP);
+  gmem_out_cs.add_row(gmem_block_offset + warp_id * VALS_PER_WARP);
+
+  __shared__ bf smem_block[8192]; // warp transposes; [4096..8192) doubles as coarse twiddles
+  bf *smem_warp = smem_block + warp_id * VALS_PER_WARP;
+  bf *smem_twiddles = smem_block + (VALS_PER_BLOCK >> 1);
+
+  bf vals[VALS_PER_THREAD];
+
+#pragma unroll
+  for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
+    vals[i] = gmem_scratch.get_at_row(row);
+
+  // Hypercube iNTT final STAGES stages (mirrors the standalone final kernel).
+  if (STAGES >= 5) {
+    constexpr int REGIONS_PER_WARP = 1 << (10 - STAGES);
+#pragma unroll
+    for (int i{0}; i < REGIONS_PER_WARP; i++) {
+      if (STAGES == 8) {
+        bf *vals_this_region = vals + 8 * i;
+        reg_exchg_hypercube_inv<4, 8, 1>(vals_this_region);
+        reg_exchg_hypercube_inv<2, 4, 2>(vals_this_region);
+        reg_exchg_hypercube_inv<1, 2, 4>(vals_this_region);
+      }
+      if (STAGES == 7) {
+        bf *vals_this_region = vals + 4 * i;
+        reg_exchg_hypercube_inv<2, 4, 1>(vals_this_region);
+        reg_exchg_hypercube_inv<1, 2, 2>(vals_this_region);
+      }
+      if (STAGES == 6) {
+        bf *vals_this_region = vals + 2 * i;
+        reg_exchg_hypercube_inv<1, 2, 1>(vals_this_region);
+      }
+    }
+  }
+
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
+
+  reg_exchg_hypercube_inv<16, 32, 1>(vals);
+  reg_exchg_hypercube_inv<8, 16, 2>(vals);
+  reg_exchg_hypercube_inv<4, 8, 4>(vals);
+  reg_exchg_hypercube_inv<2, 4, 8>(vals);
+  reg_exchg_hypercube_inv<1, 2, 16>(vals);
+
+  // Warps 4-7's transposes must retire before the twiddle staging overwrites
+  // smem's upper half.
+  __syncthreads();
+
+#pragma unroll
+  for (int i{0}, addr{pipeline_memcpy_start}; i < 4; i++, addr += pipeline_memcpy_stride)
+    __pipeline_memcpy_async(smem_twiddles + addr, ab_fwd_gmem_twiddles_coarse + addr, 4 * sizeof(bf));
+  __pipeline_commit();
+
+  // Materialize the monomials (pre-scale) and keep a register copy for the
+  // second coset; both overlap the twiddle copy.
+  bf kept[VALS_PER_THREAD];
+#pragma unroll
+  for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE) {
+    gmem_scratch.set_at_row(row, vals[i]);
+    kept[i] = vals[i];
+  }
+
+  // Coset scales for both cosets on the logical monomial rows.
+  {
+    const int power_0 = (coset_index_base + static_cast<int>(fi.coset)) << coset_factor_shift;
+    const int power_1 = (coset_index_base + static_cast<int>(fi.coset) + 1) << coset_factor_shift;
+#pragma unroll
+    for (int i{0}, global_row{lane_id + gmem_block_offset + warp_id * VALS_PER_WARP}; i < VALS_PER_THREAD; i++, global_row += WARP_SIZE) {
+      const int effective_row = transposed_row_to_effective_row(global_row);
+      const int bitreved = bitrev(effective_row, log_n);
+      if (power_0 > 0)
+        vals[i] = bf::mul(vals[i], get_power_from_layers(::ab_ntt_forward_powers, bitreved * power_0));
+      kept[i] = bf::mul(kept[i], get_power_from_layers(::ab_ntt_forward_powers, bitreved * power_1));
+    }
+  }
+
+  __pipeline_wait_prior(0);
+  __syncthreads();
+
+  lde_fwd_initial_exchg_store<STAGES>(vals, fi, gmem_out, smem_warp, smem_twiddles);
+
+  // The first tail's transpose clobbered smem's twiddle half — wait for its
+  // reads to retire and re-stage the coarse twiddles for the second tail.
+  __syncthreads();
+#pragma unroll
+  for (int i{0}, addr{pipeline_memcpy_start}; i < 4; i++, addr += pipeline_memcpy_stride)
+    __pipeline_memcpy_async(smem_twiddles + addr, ab_fwd_gmem_twiddles_coarse + addr, 4 * sizeof(bf));
+  __pipeline_commit();
+  __pipeline_wait_prior(0);
+  __syncthreads();
+
+  lde_fwd_initial_exchg_store<STAGES, st_modifier::cs>(kept, fi, gmem_out_cs, smem_warp, smem_twiddles);
+}
+
+#define DEFINE_LDE_FUSED_WRITEBACK_TWO_COSET_KERNEL(STAGES)                                                                                                    \
+  EXTERN __launch_bounds__(256, 2) __global__ void ab_lde_fused_boundary_writeback_2_cosets_##STAGES##_stages_kernel(                                          \
+      bf_matrix_getter_setter<ld_modifier::cg, st_modifier::cg> gmem_scratch, bf_matrix_setter<st_modifier::cg> gmem_out,                                      \
+      bf_matrix_setter<st_modifier::cs> gmem_out_cs, const int log_n, const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset,  \
+      const int log_cosets_in_tile) {                                                                                                                          \
+    lde_fused_boundary_writeback_two_coset_up_to_8_stages<STAGES>(gmem_scratch, gmem_out, gmem_out_cs, log_n, coset_index_base, coset_factor_shift,            \
+                                                                  num_cols_per_coset, log_cosets_in_tile);                                                     \
+  }
+
+DEFINE_LDE_FUSED_WRITEBACK_TWO_COSET_KERNEL(5)
+DEFINE_LDE_FUSED_WRITEBACK_TWO_COSET_KERNEL(6)
+DEFINE_LDE_FUSED_WRITEBACK_TWO_COSET_KERNEL(7)
+DEFINE_LDE_FUSED_WRITEBACK_TWO_COSET_KERNEL(8)
 
 template <int STAGES>
 DEVICE_FORCEINLINE void hypercube_evals_to_monomials_final_up_to_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
