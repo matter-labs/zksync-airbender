@@ -29,7 +29,6 @@ members = [
 
     "gpu/core",
     "gpu/native_build",
-    "gpu/cub",
     "gpu/hash",
     "gpu/ntt",
     "gpu/ops",
@@ -169,7 +168,6 @@ witness_eval_generator = { path = "./witness_eval_generator", default-features =
 gpu_witness_eval_generator = { path = "./gpu/witness_eval_generator", default-features = false }
 gpu_core = { path = "./gpu/core" }
 gpu_native_build = { path = "./gpu/native_build" }
-gpu_cub = { path = "./gpu/cub" }
 gpu_hash = { path = "./gpu/hash" }
 gpu_ntt = { path = "./gpu/ntt" }
 gpu_ops = { path = "./gpu/ops" }

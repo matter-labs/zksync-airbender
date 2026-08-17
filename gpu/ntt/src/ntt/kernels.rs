@@ -52,6 +52,8 @@ strided_tiles_stages!(ab_monomials_to_evals_last_10_stages_kernel);
 
 // 3-pass monomials to evals
 strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_kernel);
+// evict-first variant for the LAST noninitial pass (hybrid LDE path)
+strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_evict_kernel);
 
 cuda_kernel_signature_and_arguments!(
     pub(super) EvalsToMonomialsFinal,
@@ -90,6 +92,44 @@ evals_to_monomials_final!(ab_evals_to_monomials_final_5_stages_kernel);
 evals_to_monomials_final!(ab_evals_to_monomials_final_6_stages_kernel);
 evals_to_monomials_final!(ab_evals_to_monomials_final_7_stages_kernel);
 evals_to_monomials_final!(ab_evals_to_monomials_final_8_stages_kernel);
+
+cuda_kernel_signature_and_arguments!(
+    pub(super) LdeFusedWriteback,
+    scratch_matrix: MutPtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    coset_index_base: i32,
+    coset_factor_shift: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+);
+pub(super) struct LdeFusedWritebackFunction(pub(super) LdeFusedWritebackSignature);
+impl era_cudart::execution::KernelFunction for LdeFusedWritebackFunction {
+    type Signature = LdeFusedWritebackSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+macro_rules! lde_fused_writeback {
+    ($kernel_name:ident) => {
+        ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
+    scratch_matrix: MutPtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    coset_index_base: i32,
+    coset_factor_shift: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+        ));
+    };
+}
+
+// Fused hypercube-iNTT-final + monomial writeback + coset-scale +
+// forward-initial (transposed path, first coset of a column)
+lde_fused_writeback!(ab_lde_fused_boundary_writeback_5_stages_kernel);
+lde_fused_writeback!(ab_lde_fused_boundary_writeback_6_stages_kernel);
+lde_fused_writeback!(ab_lde_fused_boundary_writeback_7_stages_kernel);
+lde_fused_writeback!(ab_lde_fused_boundary_writeback_8_stages_kernel);
 
 cuda_kernel_signature_and_arguments!(
     pub(super) MonomialsToEvalsInitial,

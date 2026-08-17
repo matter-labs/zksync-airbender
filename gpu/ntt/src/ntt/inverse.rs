@@ -62,7 +62,7 @@ pub(crate) fn evals_to_monomials_3_pass(
         let input_matrix = input_matrix.as_ptr_and_stride();
         let output_matrix_const = output_matrix_const.as_ptr_and_stride();
         let output_matrix_mut = output_matrix_mut.as_mut_ptr_and_stride();
-        let threads = 512;
+        let threads = 256;
         let bf_vals_per_block = 1 << 13; // 8192
         let mut start_stage = 0;
         for i in 0..2 {

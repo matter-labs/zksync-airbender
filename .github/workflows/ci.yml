@@ -79,15 +79,19 @@ jobs:
       # Scope notes:
       #   * GPU packages are excluded because this runner has no CUDA toolkit.
       #     Be clear about what that costs: test-gpu.yaml BUILDS and TESTS the GPU
-      #     stack but runs NO clippy and NO rustfmt, so these 16 packages are not
+      #     stack but runs NO clippy and NO rustfmt, so these 15 packages are not
       #     lint-gated anywhere. The root `formatting` job does cover gpu/** (they
       #     are root workspace members); clippy does not. Three of the excluded
       #     packages -- gpu_gkr_model, gpu_gkr_compiler, gpu_witness_eval_generator
       #     -- are pure CPU, off the CUDA build DAG, and already built and tested
       #     by the `tests` job above, so they could be linted here; they are
       #     excluded only because the standing decision was "exclude gpu/**".
-      #   * `--bins` is REQUIRED, not cosmetic: `experiments_runner` is
-      #     bin-only, so `--lib --tests` silently skips it entirely.
+      #     Keep this list in sync with the workspace: a stale `--exclude` for a
+      #     retired package is only a cargo warning, so it rots silently
+      #     (gpu_cub was retired upstream in #396).
+      #   * `--bins` covers the bin target proper. `experiments_runner` is
+      #     bin-only; `--lib --tests` does still lint it via its test target, but
+      #     note `-p <bin-only-pkg> --lib` ERRORS with "no library targets found".
       #   * Benches are excluded: `prover`'s pow_bench does not build upstream.
       #   * RUST_MIN_STACK mirrors the prover's rustc monomorphization needs.
       - name: Clippy (CPU workspace)
@@ -97,7 +101,6 @@ jobs:
           cargo clippy --workspace \
             --exclude gpu_circuit_prover \
             --exclude gpu_core \
-            --exclude gpu_cub \
             --exclude gpu_execution_prover \
             --exclude gpu_gkr \
             --exclude gpu_gkr_compiler \

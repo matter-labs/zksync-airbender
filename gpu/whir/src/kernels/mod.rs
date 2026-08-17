@@ -607,6 +607,35 @@ cuda_kernel_declaration!(
     )
 );
 
+cuda_kernel_signature_arguments_and_function!(
+    TransformAndHashWhirLeavesFromNttMultiCosetToStagingRegisterV32,
+    src: PtrAndStride<BF>,
+    staging: *mut u32,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    coset_index_base: u32,
+    leaves_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_register_v32_kernel(
+        src: PtrAndStride<BF>,
+        staging: *mut u32,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        coset_index_base: u32,
+        leaves_count: u32,
+    )
+);
+
+const NATURAL_REGISTER_RESIDENT_V32_MIN_LEAVES_COUNT: usize = 1 << 16;
+
+fn use_register_resident_natural_v32(log_values_per_leaf: u32, leaves_count: usize) -> bool {
+    log_values_per_leaf == 5 && leaves_count >= NATURAL_REGISTER_RESIDENT_V32_MIN_LEAVES_COUNT
+}
+
 pub(crate) fn transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging(
     ntt_output: &DeviceSlice<BF>,
     staging: &mut DeviceSlice<Digest>,
@@ -631,6 +660,27 @@ pub(crate) fn transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging(
     assert_eq!(staging.len(), leaves_count);
     assert!(leaves_count <= u32::MAX as usize);
     assert!(ntt_output.len() >= trace_len * 4 * cosets_in_tile as usize);
+
+    if use_register_resident_natural_v32(log_values_per_leaf, leaves_count) {
+        let config = CudaLaunchConfig::basic(
+            (leaves_count as u32).div_ceil(WARP_SIZE),
+            (WARP_SIZE, 2u32),
+            stream,
+        );
+        let args = TransformAndHashWhirLeavesFromNttMultiCosetToStagingRegisterV32Arguments::new(
+            PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+            staging.as_mut_ptr() as *mut u32,
+            transform_params,
+            log_trace_len,
+            log_lde_factor,
+            coset_index_base,
+            leaves_count as u32,
+        );
+        return TransformAndHashWhirLeavesFromNttMultiCosetToStagingRegisterV32Function(
+            ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_register_v32_kernel,
+        )
+        .launch(&config, &args);
+    }
 
     let values_per_leaf = 1usize << log_values_per_leaf;
     let block_dim_x = if values_per_leaf == 2 {
@@ -1179,6 +1229,56 @@ pub(crate) fn launch_whir_three_point_partials(
         WhirThreePointFinalizeArguments::new(partials_ptr, num_blocks, reduce_out.as_mut_ptr());
     WhirThreePointFinalizeFunction(ab_whir_three_point_finalize_e4_kernel)
         .launch(&stage2_config, &stage2_args)
+}
+
+const WHIR_SUM_BLOCK_THREADS: u32 = 256;
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirSum,
+    values: *const E4,
+    count: u32,
+    out: *mut E4,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_sum_e4_kernel(
+        values: *const E4,
+        count: u32,
+        out: *mut E4,
+    )
+);
+
+/// Sums `values` into `out`. Single-launch when `values` fits in one block,
+/// otherwise stage-1 block partials (into `partials`) + stage-2 single-block
+/// finish; `partials` must hold at least `values.len().div_ceil(256)` E4 on
+/// the two-launch path.
+pub(crate) fn whir_sum(
+    values: &DeviceSlice<E4>,
+    partials: &mut DeviceSlice<E4>,
+    out: &mut DeviceVariable<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = values.len();
+    assert!(count >= 1);
+    assert!(count <= u32::MAX as usize);
+
+    let block = WHIR_SUM_BLOCK_THREADS;
+    if count as u32 <= block {
+        let config = CudaLaunchConfig::basic(1, block, stream);
+        let args = WhirSumArguments::new(values.as_ptr(), count as u32, out.as_mut_ptr());
+        return WhirSumFunction(ab_whir_sum_e4_kernel).launch(&config, &args);
+    }
+
+    let num_blocks = count.div_ceil(block as usize) as u32;
+    assert!(partials.len() >= num_blocks as usize);
+    let partials_ptr = partials.as_mut_ptr();
+    let stage1_config = CudaLaunchConfig::basic(num_blocks, block, stream);
+    let stage1_args = WhirSumArguments::new(values.as_ptr(), count as u32, partials_ptr);
+    WhirSumFunction(ab_whir_sum_e4_kernel).launch(&stage1_config, &stage1_args)?;
+
+    let stage2_config = CudaLaunchConfig::basic(1, block, stream);
+    let stage2_args = WhirSumArguments::new(partials_ptr, num_blocks, out.as_mut_ptr());
+    WhirSumFunction(ab_whir_sum_e4_kernel).launch(&stage2_config, &stage2_args)
 }
 
 cuda_kernel_signature_arguments_and_function!(

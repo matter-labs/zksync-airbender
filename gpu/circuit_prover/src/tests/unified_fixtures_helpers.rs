@@ -982,6 +982,7 @@ fn prepare_unified_fixture(
         &page_indices,
         &values_packed,
         &timestamps_packed,
+        &selected_set_top_bits,
     );
 
     let (expected_cpu_proof, delegation_grand_product_factors) = if compute_cpu_reference {

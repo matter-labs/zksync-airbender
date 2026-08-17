@@ -24,6 +24,12 @@ constexpr u32 FWD_VM_REDUCTION_PAIR_CAP = 5;
 constexpr u32 FWD_VM_REDUCTION_PAIR_PAIRWISE2 = 0;
 constexpr u32 FWD_VM_REDUCTION_PAIR_LOOKUP = 1;
 
+// The Rust side encodes both the VM's fused-reduction prefix and the dim-reducing tower
+// batch with the single vocabulary in vm/desc.rs; pin the two native copies.
+static_assert(FWD_VM_REDUCTION_PAIR_CAP == GKR_DIM_REDUCING_FORWARD_TOWER_PAIR_CAP, "reduction-pair cap drift");
+static_assert(FWD_VM_REDUCTION_PAIR_PAIRWISE2 == GKR_DIM_REDUCING_FORWARD_TOWER_PAIRWISE2, "reduction-pair kind drift");
+static_assert(FWD_VM_REDUCTION_PAIR_LOOKUP == GKR_DIM_REDUCING_FORWARD_TOWER_LOOKUP, "reduction-pair kind drift");
+
 static_assert(FWD_VM_SOURCE_WINDOW_COUNT == 1u << FWD_VM_SOURCE_WINDOW_BITS, "source-window field width drift");
 static_assert(FWD_VM_DST_SLOT_COUNT == 1u << FWD_VM_DST_SLOT_BITS, "destination-slot field width drift");
 

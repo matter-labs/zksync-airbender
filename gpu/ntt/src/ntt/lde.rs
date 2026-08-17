@@ -8,9 +8,11 @@ use era_cudart::stream::CudaStream;
 use super::dispatch::dispatch_strategy;
 use super::dit::monomials_to_evals_dit;
 use super::forward::{
-    monomials_to_evals_2_pass_compact_initial, monomials_to_evals_3_pass,
-    monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed, monomials_to_evals_subwarp,
+    fused_writeback_single_coset_3_pass, monomials_to_evals_2_pass_compact_initial,
+    monomials_to_evals_3_pass, monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed,
+    monomials_to_evals_subwarp,
 };
+use super::hypercube::hypercube_evals_to_pre_tail_monomials_3_pass;
 use super::kernels::*;
 use super::shared;
 
@@ -163,7 +165,7 @@ pub(crate) fn lde_intermediate_range(
         "cosets_in_tile must be a power of 2 (got {cosets_in_tile})"
     );
     let log_cosets_in_tile = cosets_in_tile.trailing_zeros();
-    let threads_pass2 = 512;
+    let threads_pass2 = 256;
     let bf_vals_per_block_pass2 = 1 << 13;
     let start_stage = log_k;
     let num_block_exchg_regions = trace_len >> (start_stage + 8);
@@ -241,6 +243,108 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset(
 }
 
 pub const MAX_LOG_N_FOR_SINGLE_KERNEL_LDE: usize = 13;
+
+/// Fused-boundary LDE for the trace-holder hypercube path: the standalone
+/// hypercube final pass disappears into the first coset's fused launch, which
+/// also materializes the monomials in place for the remaining cosets. Returns
+/// `Ok(false)` without scheduling anything when ineligible (non-transposed
+/// log_n or a 2-pass regime); callers fall back to the unfused sequence.
+#[allow(clippy::too_many_arguments)]
+pub fn hypercube_to_multi_coset_evals_fused(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    coeff_scratch: &mut DeviceSlice<BF>,
+    outputs: &mut DeviceSlice<BF>,
+    log_n: usize,
+    log_lde_factor: usize,
+    num_cols_per_coset_stride: usize,
+    stream: &CudaStream,
+    device_properties: &DeviceProperties,
+) -> CudaResult<bool> {
+    if !super::log_size_supports_transposed_monomials(log_n) {
+        return Ok(false);
+    }
+    if !matches!(
+        super::ntt_pass_selection(log_n, device_properties),
+        super::NttPassCount::Three
+    ) {
+        return Ok(false);
+    }
+    let trace_len = 1usize << log_n;
+    let num_cosets = 1usize << log_lde_factor;
+    let num_cols = inputs_matrix.cols();
+    let strategy = super::select_ntt_strategy(
+        super::NttDirection::Forward,
+        log_n,
+        num_cols,
+        num_cosets,
+        device_properties,
+    )
+    .unwrap_or_else(|e| unreachable!("forward strategy unavailable: {e:?}"));
+    if strategy.passes.len() != 3 {
+        return Ok(false);
+    }
+    assert!(
+        log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize,
+        "log_n ({log_n}) + log_lde_factor ({log_lde_factor}) > OMEGA_LOG_ORDER ({OMEGA_LOG_ORDER})",
+    );
+    assert!(num_cols_per_coset_stride >= num_cols);
+    let scratch_len = num_cols * trace_len;
+    assert!(coeff_scratch.len() >= scratch_len);
+    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset_stride + num_cols;
+    assert!(outputs.len() >= max_col_offset_exclusive * trace_len);
+
+    let mut scratch_matrix = DeviceMatrixMut::new(&mut coeff_scratch[0..scratch_len], trace_len);
+    hypercube_evals_to_pre_tail_monomials_3_pass(
+        inputs_matrix,
+        &mut scratch_matrix,
+        log_n,
+        stream,
+    )?;
+
+    let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
+    {
+        let coset0_chunk = &mut outputs[0..num_cols * trace_len];
+        let mut coset0_matrix = DeviceMatrixMut::new(coset0_chunk, trace_len);
+        fused_writeback_single_coset_3_pass(
+            &mut scratch_matrix,
+            &mut coset0_matrix,
+            log_n,
+            0,
+            coset_factor_shift,
+            stream,
+        )?;
+    }
+    // Cosets 1..K over the materialized monomials.
+    let monomials_const =
+        unsafe { DeviceSlice::from_raw_parts(coeff_scratch.as_ptr(), scratch_len) };
+    let monomials_matrix =
+        gpu_core::primitives::device_structures::DeviceMatrix::new(monomials_const, trace_len);
+    let mut coset = 1usize;
+    while coset < num_cosets {
+        let remaining = num_cosets - coset;
+        let tile = strategy.cosets_per_launch.min(1usize << remaining.ilog2());
+        let chunk_start = coset * num_cols_per_coset_stride * trace_len;
+        let chunk_end =
+            (coset + tile - 1) * num_cols_per_coset_stride * trace_len + num_cols * trace_len;
+        let chunk = &mut outputs[chunk_start..chunk_end];
+        let mut coset_matrix = DeviceMatrixMut::new(chunk, trace_len);
+        monomials_to_evals_3_pass(
+            &monomials_matrix,
+            &mut coset_matrix,
+            log_n,
+            coset,
+            coset_factor_shift,
+            tile,
+            num_cols_per_coset_stride,
+            tile,
+            strategy.columns_per_launch,
+            true,
+            stream,
+        )?;
+        coset += tile;
+    }
+    Ok(true)
+}
 
 /// Multi-coset forward NTT over a caller-selected coset range.
 ///

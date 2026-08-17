@@ -1,5 +1,12 @@
 use super::*;
 
+#[test]
+fn cpu_natural_register_resident_v32_respects_threshold_and_width() {
+    assert!(!use_register_resident_natural_v32(5, (1 << 16) - 1));
+    assert!(use_register_resident_natural_v32(5, 1 << 16));
+    assert!(!use_register_resident_natural_v32(4, 1 << 20));
+}
+
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use field::{Field, Rand};
 use gpu_core::primitives::device_structures::DeviceMatrix;
@@ -8,7 +15,6 @@ use rand::{rng, Rng};
 
 fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
     use fft::utils::bitreverse_enumeration_inplace;
-    use gpu_cub::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 
     let count = 1 << log_count;
     let stride = 2 * count;
@@ -49,15 +55,12 @@ fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
     )
     .unwrap();
 
-    let reduce_temp_bytes =
-        get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, partials_count as i32).unwrap();
-    let mut reduce_temp = DeviceAllocation::alloc(reduce_temp_bytes).unwrap();
+    let mut sum_partials = DeviceAllocation::alloc(partials_count.div_ceil(256).max(1)).unwrap();
     let mut reduce_result = DeviceAllocation::alloc(1).unwrap();
 
-    reduce(
-        ReduceOperation::Sum,
-        &mut reduce_temp,
+    whir_sum(
         &scratch0[..partials_count],
+        &mut sum_partials[..],
         &mut reduce_result[0],
         &stream,
     )

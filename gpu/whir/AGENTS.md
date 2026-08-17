@@ -9,11 +9,11 @@ extension oracle (`lib.rs`) and its LDE/Merkle commitment scheduler
 
 ## Layer position
 
-`gpu_core < { gpu_ntt, gpu_ops, gpu_hash, gpu_cub } < gpu_prover_context <
+`gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
 gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
 gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. Dependencies point only down: this crate depends on `gpu_core`,
-`gpu_ntt`, `gpu_ops`, `gpu_hash`, `gpu_cub`, `gpu_prover_context`, `gpu_trace`,
+`gpu_ntt`, `gpu_ops`, `gpu_hash`, `gpu_prover_context`, `gpu_trace`,
 and `gpu_gkr`, plus the upstream crates below; `gpu_circuit_prover` depends on
 it, never the reverse.
 
@@ -58,7 +58,7 @@ rather than letting the duplicate drift by convention.
 - **Archive / `links` key**: `gpu_whir_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_whir_native", "GPU_WHIR").build()`
   — no `export_include`; nothing above this crate includes its headers).
-- **Kernel count**: 24 `__global__` kernels (verified by grep, across
+- **Kernel count**: 25 `__global__` kernels (verified by grep, across
   `whir/{accumulate_eq,columns,fold,leaves}.cu`). No `__constant__` symbols
   (all 8 cluster-wide ones live in `gpu_gkr`).
 - **Namespace**: `airbender::whir`.

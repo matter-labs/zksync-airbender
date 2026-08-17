@@ -25,20 +25,44 @@ pub struct GKRFullWitnessTrace<F: PrimeField, A: Allocator + Clone, B: Allocator
     pub timestamp_range_check_lookup_mapping: Vec<Vec<u32, A>, B>,
 }
 
-pub(crate) fn make_vec_vec<T: Sized, A: Allocator + Clone, B: Allocator + Clone>(
+/// One zeroed buffer per trace column, kept at `len == 0` because witness
+/// generation writes through raw pointers and `set_len`s afterwards.
+///
+/// Zeroed because witness generation visits every row but does not write every
+/// cell: the witness columns holding shared scratch variables are written only
+/// on the rows that use the slot. Those columns are committed, and the scratch
+/// arena feeds the GKR intermediate layers, so stale bytes in either reach the
+/// proof.
+pub(crate) fn make_vec_vec_zeroed<T: Sized, A: Allocator + Clone, B: Allocator + Clone>(
     inner_capacity: usize,
     num_vectors: usize,
     inner_allocator: A,
     outer_allocator: B,
 ) -> Vec<Vec<T, A>, B> {
     let mut result = Vec::with_capacity_in(num_vectors, outer_allocator);
-    for _ in 0..num_vectors {
-        result.push(Vec::with_capacity_in(
-            inner_capacity,
-            inner_allocator.clone(),
-        ));
+    if inner_capacity == 0 {
+        for _ in 0..num_vectors {
+            result.push(Vec::new_in(inner_allocator.clone()));
+        }
+        return result;
     }
-
+    let layout = std::alloc::Layout::array::<T>(inner_capacity).expect("trace column layout");
+    for _ in 0..num_vectors {
+        let ptr = inner_allocator
+            .allocate_zeroed(layout)
+            .expect("zeroed allocation for a trace column");
+        // Safety: `ptr` is from `inner_allocator` for exactly `inner_capacity`
+        // elements of `T` and aligned for `T`.
+        let vector = unsafe {
+            Vec::from_raw_parts_in(
+                ptr.cast::<T>().as_ptr(),
+                0,
+                inner_capacity,
+                inner_allocator.clone(),
+            )
+        };
+        result.push(vector);
+    }
     result
 }
 
@@ -58,41 +82,38 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
         inner_allocator: A,
         outer_allocator: B,
     ) -> Self {
-        // We allocate, but do not initialize, as we will use all the rows, and default padding is not guaranteed
-        // to be zero one in general
-
-        let column_major_memory_trace = make_vec_vec(
+        let column_major_memory_trace = make_vec_vec_zeroed(
             trace_len,
             num_memory_columns,
             inner_allocator.clone(),
             outer_allocator.clone(),
         );
-        let column_major_witness_trace = make_vec_vec(
+        let column_major_witness_trace = make_vec_vec_zeroed(
             trace_len,
             num_witness_columns,
             inner_allocator.clone(),
             outer_allocator.clone(),
         );
-        let column_major_scratch_space_trace = make_vec_vec(
+        let column_major_scratch_space_trace = make_vec_vec_zeroed(
             trace_len,
             scratch_space_size,
             inner_allocator.clone(),
             outer_allocator.clone(),
         );
 
-        let generic_lookup_mapping = make_vec_vec(
+        let generic_lookup_mapping = make_vec_vec_zeroed(
             trace_len,
             num_generic_lookups,
             inner_allocator.clone(),
             outer_allocator.clone(),
         );
-        let range_check_16_lookup_mapping = make_vec_vec(
+        let range_check_16_lookup_mapping = make_vec_vec_zeroed(
             trace_len,
             num_range_check_16_lookups,
             inner_allocator.clone(),
             outer_allocator.clone(),
         );
-        let timestamp_range_check_lookup_mapping = make_vec_vec(
+        let timestamp_range_check_lookup_mapping = make_vec_vec_zeroed(
             trace_len,
             num_timestamp_range_check_lookups,
             inner_allocator.clone(),
