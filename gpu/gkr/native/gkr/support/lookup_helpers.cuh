@@ -117,6 +117,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower(con
   E *smem_b = smem_tower + blockDim.x;
 
   const gkr_dim_reducing_forward_tower_pair<E> &pair = batch.pairs[blockIdx.y];
+  const bool pairwise = ((batch.pairwise_mask >> blockIdx.y) & 1u) != 0u;
   const unsigned tid = threadIdx.x;
   const unsigned bid = blockIdx.x;
   const unsigned base = bid * blockDim.x;
@@ -136,7 +137,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower(con
     E out_b;
     const bool active = tid < cur_len;
     if (active) {
-      if (pair.kind == GKR_DIM_REDUCING_FORWARD_TOWER_PAIRWISE2) {
+      if (pairwise) {
         gkr_eval_product(smem_a[2 * tid], smem_a[2 * tid + 1], out_a);
         gkr_eval_product(smem_b[2 * tid], smem_b[2 * tid + 1], out_b);
       } else {

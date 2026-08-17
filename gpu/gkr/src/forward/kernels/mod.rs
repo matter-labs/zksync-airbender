@@ -14,14 +14,10 @@ pub(crate) const GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK: u32 =
 pub(crate) const GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS: usize =
     GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK as usize;
 
-/// `kind` is `vm::desc::REDUCTION_PAIR_*`: PAIRWISE2 folds two independent
-/// product towers, LOOKUP folds one lookup tower's (num, den).
 #[repr(C)]
 pub(crate) struct GpuGKRDimensionReducingForwardTowerPair<E> {
     pub(crate) input: [*const E; 2],
     pub(crate) round_outputs: [[*mut E; 2]; GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS],
-    pub(crate) kind: u32,
-    pub(crate) reserved: u32,
 }
 
 impl<E> Copy for GpuGKRDimensionReducingForwardTowerPair<E> {}
@@ -37,19 +33,20 @@ impl<E> Default for GpuGKRDimensionReducingForwardTowerPair<E> {
         Self {
             input: [null(); 2],
             round_outputs: [[null_mut(); 2]; GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS],
-            kind: 0,
-            reserved: 0,
         }
     }
 }
 
+/// `pairwise_mask` carries bit `i` for pair `i`: set means PAIRWISE2 (two
+/// independent product towers), clear means LOOKUP (one tower's num/den). Pairs
+/// stay densely packed, so the grid's y extent stays `pair_count`.
 #[repr(C)]
 pub(crate) struct GpuGKRDimensionReducingForwardTowerBatch<E> {
     pub(crate) pairs: [GpuGKRDimensionReducingForwardTowerPair<E>; REDUCTION_PAIR_CAP],
     pub(crate) pair_count: u32,
     pub(crate) input_len: u32,
     pub(crate) round_count: u32,
-    pub(crate) reserved: u32,
+    pub(crate) pairwise_mask: u32,
 }
 
 impl<E> Default for GpuGKRDimensionReducingForwardTowerBatch<E> {
@@ -59,15 +56,15 @@ impl<E> Default for GpuGKRDimensionReducingForwardTowerBatch<E> {
             pair_count: 0,
             input_len: 0,
             round_count: 0,
-            reserved: 0,
+            pairwise_mask: 0,
         }
     }
 }
 
 /// ABI size guards, paired with the CUDA `static_assert`s in `descriptors.cuh`.
 const _: () = {
-    assert!(core::mem::size_of::<GpuGKRDimensionReducingForwardTowerPair<E4>>() == 152);
-    assert!(core::mem::size_of::<GpuGKRDimensionReducingForwardTowerBatch<E4>>() == 776);
+    assert!(core::mem::size_of::<GpuGKRDimensionReducingForwardTowerPair<E4>>() == 144);
+    assert!(core::mem::size_of::<GpuGKRDimensionReducingForwardTowerBatch<E4>>() == 736);
     assert!(core::mem::align_of::<GpuGKRDimensionReducingForwardTowerBatch<E4>>() == 8);
 };
 

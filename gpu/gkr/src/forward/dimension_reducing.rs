@@ -155,6 +155,12 @@ where
     }
     assert!(pair_slots.len() <= REDUCTION_PAIR_CAP);
 
+    let pairwise_mask = pair_slots
+        .iter()
+        .enumerate()
+        .filter(|(_, (kind, _))| *kind == REDUCTION_PAIR_PAIRWISE2)
+        .fold(0u32, |mask, (idx, _)| mask | (1u32 << idx));
+
     let mut round = start_round;
     let mut input_log_2 = prepared.initial_trace_log_2 - start_round;
     while round < prepared.total_rounds {
@@ -164,10 +170,10 @@ where
             pair_count: pair_slots.len() as u32,
             input_len: 1u32 << input_log_2,
             round_count: chunk_rounds,
+            pairwise_mask,
             ..Default::default()
         };
         for (pair, &(kind, slots)) in batch.pairs.iter_mut().zip(&pair_slots) {
-            pair.kind = kind;
             pair.input = pair_input_streams(prepared, round, kind, slots);
             for local_r in 0..chunk_rounds as usize {
                 pair.round_outputs[local_r] =

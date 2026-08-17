@@ -138,7 +138,10 @@ static_assert(__builtin_offsetof(gkr_dim_reducing_batch<e4>, enabled_mask) == 0 
 static_assert(sizeof(gkr_dim_reducing_batch<e4>) + 2 * sizeof(u32) <= 32764, "dim-reducing kernel parameters exceed CUDA limit");
 
 // Merged tower batch (blockIdx.y selects the pair). A pair's two streams are either two
-// independent product towers (PAIRWISE2) or one lookup tower's num/den (LOOKUP).
+// independent product towers (PAIRWISE2) or one lookup tower's num/den (LOOKUP). The kind
+// is not per-pair wire data: `pairwise_mask` carries one bit per pair index, so pairs stay
+// densely packed and the grid's y extent stays `pair_count`. The PAIRWISE2 / LOOKUP tags
+// remain the shared vocabulary of the forward VM's own reduction-pair descriptor.
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_PAIR_CAP = 5;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_PAIRWISE2 = 0;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_LOOKUP = 1;
@@ -146,8 +149,6 @@ static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_LOOKUP = 1;
 template <typename E> struct gkr_dim_reducing_forward_tower_pair {
   const E *input[2];
   E *round_outputs[GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS][2];
-  u32 kind;
-  u32 reserved;
 };
 
 template <typename E> struct gkr_dim_reducing_forward_tower_batch {
@@ -155,11 +156,11 @@ template <typename E> struct gkr_dim_reducing_forward_tower_batch {
   u32 pair_count;
   u32 input_len;
   u32 round_count;
-  u32 reserved;
+  u32 pairwise_mask;
 };
 
-static_assert(sizeof(gkr_dim_reducing_forward_tower_pair<e4>) == 152, "tower pair ABI size drift");
-static_assert(sizeof(gkr_dim_reducing_forward_tower_batch<e4>) == 776, "tower batch ABI size drift");
+static_assert(sizeof(gkr_dim_reducing_forward_tower_pair<e4>) == 144, "tower pair ABI size drift");
+static_assert(sizeof(gkr_dim_reducing_forward_tower_batch<e4>) == 736, "tower batch ABI size drift");
 static_assert(alignof(gkr_dim_reducing_forward_tower_batch<e4>) == 8, "tower batch ABI alignment drift");
 
 struct gkr_forward_setup_generic_lookup_descriptor {
