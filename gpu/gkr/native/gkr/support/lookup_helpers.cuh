@@ -5,23 +5,31 @@
 
 namespace airbender::gkr {
 
+// Slot bodies accumulate into the round's (constant-term, t^2-coefficient) pair;
+// the round's linear coefficient is recovered from the running claim downstream,
+// which is why only two values per round leave the kernel.
+
 template <typename E>
-DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E batch_challenge,
-                                                   const unsigned gid, E &c0, E &c1) {
+DEVICE_FORCEINLINE void gkr_pairwise_round0_accumulate(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *bc,
+                                                       const unsigned gid, E &acc0, E &acc1) {
   const unsigned even_index = gid * 2;
   const unsigned odd_index = even_index + 1;
 
-  const E output_value = gkr_get_initial_value(outputs[0], gid);
-  const E delta_even = gkr_get_initial_delta(inputs[0], even_index);
-  const E delta_odd = gkr_get_initial_delta(inputs[0], odd_index);
+#pragma unroll
+  for (unsigned t = 0; t < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT; ++t) {
+    // Round 0 reads the forward tower's own output as the value at t = 0.
+    const E output_value = gkr_get_initial_value(outputs[t], gid);
+    const E delta_even = gkr_get_initial_delta(inputs[t], even_index);
+    const E delta_odd = gkr_get_initial_delta(inputs[t], odd_index);
 
-  c0 = E::mul(batch_challenge, output_value);
-  c1 = E::mul(batch_challenge, E::mul(delta_even, delta_odd));
+    acc0 = E::fma(bc[t], output_value, acc0);
+    acc1 = E::fma(bc[t], E::mul(delta_even, delta_odd), acc1);
+  }
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E batch_challenge_0,
-                                                 const E batch_challenge_1, const unsigned gid, E &c0, E &c1) {
+DEVICE_FORCEINLINE void gkr_lookup_round0_accumulate(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *bc,
+                                                     const unsigned gid, E &acc0, E &acc1) {
   const unsigned even_index = gid * 2;
   const unsigned odd_index = even_index + 1;
 
@@ -36,33 +44,36 @@ DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E>
   const E num = E::fma(a, d, E::mul(c, b));
   const E den = E::mul(b, d);
 
-  c0 = E::fma(batch_challenge_0, output_num, E::mul(batch_challenge_1, output_den));
-  c1 = E::fma(batch_challenge_0, num, E::mul(batch_challenge_1, den));
+  acc0 = E::fma(bc[0], output_num, E::fma(bc[1], output_den, acc0));
+  acc1 = E::fma(bc[0], num, E::fma(bc[1], den, acc1));
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_pairwise_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E batch_challenge,
-                                                         const unsigned gid, E &c0, E &c1) {
+DEVICE_FORCEINLINE void gkr_pairwise_continuation_accumulate(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *bc,
+                                                             const unsigned gid, E &acc0, E &acc1) {
   const E current_folding_challenge = folding_challenge[0];
 
   const unsigned even_index = gid * 2;
   const unsigned odd_index = even_index + 1;
 
-  E even_f0;
-  E even_f1_or_delta;
-  gkr_get_continuing_points<E>(inputs[0], current_folding_challenge, even_index, even_f0, even_f1_or_delta);
+#pragma unroll
+  for (unsigned t = 0; t < GKR_DIM_REDUCING_INPUTS_PER_SLOT; ++t) {
+    E even_f0;
+    E even_delta;
+    gkr_get_continuing_points<E>(inputs[t], current_folding_challenge, even_index, even_f0, even_delta);
 
-  E odd_f0;
-  E odd_f1_or_delta;
-  gkr_get_continuing_points<E>(inputs[0], current_folding_challenge, odd_index, odd_f0, odd_f1_or_delta);
+    E odd_f0;
+    E odd_delta;
+    gkr_get_continuing_points<E>(inputs[t], current_folding_challenge, odd_index, odd_f0, odd_delta);
 
-  c0 = E::mul(batch_challenge, E::mul(even_f0, odd_f0));
-  c1 = E::mul(batch_challenge, E::mul(even_f1_or_delta, odd_f1_or_delta));
+    acc0 = E::fma(bc[t], E::mul(even_f0, odd_f0), acc0);
+    acc1 = E::fma(bc[t], E::mul(even_delta, odd_delta), acc1);
+  }
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E batch_challenge_0,
-                                                       const E batch_challenge_1, const unsigned gid, E &out0, E &out1) {
+DEVICE_FORCEINLINE void gkr_lookup_continuation_accumulate(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *bc,
+                                                           const unsigned gid, E &acc0, E &acc1) {
   const E current_folding_challenge = folding_challenge[0];
 
   const unsigned even_index = gid * 2;
@@ -86,8 +97,8 @@ DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_
   const E num1 = E::fma(a1, d1, E::mul(c1, b1));
   const E den1 = E::mul(b1, d1);
 
-  out0 = E::fma(batch_challenge_0, num0, E::mul(batch_challenge_1, den0));
-  out1 = E::fma(batch_challenge_0, num1, E::mul(batch_challenge_1, den1));
+  acc0 = E::fma(bc[0], num0, E::fma(bc[1], den0, acc0));
+  acc1 = E::fma(bc[0], num1, E::fma(bc[1], den1, acc1));
 }
 
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_product(const E a, const E b, E &value) { value = E::mul(a, b); }
@@ -189,39 +200,44 @@ DEVICE_FORCEINLINE gkr_ext_initial_source<E> gkr_resolve_dim_reducing_initial_so
   return gkr_ext_initial_source<E>{start, 2u * acc_size};
 }
 
-template <typename E>
-DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched_compact(const gkr_dim_reducing_round0_batch_compact<E> &batch, const unsigned acc_size) {
+// Loads a slot's 2 batch challenges from the __constant__ table.
+DEVICE_FORCEINLINE void gkr_load_slot_batch_challenges(const gkr_dim_reducing_slot &slot, e4 (&bc)[GKR_DIM_REDUCING_OUTPUTS_PER_SLOT]) {
+#pragma unroll
+  for (unsigned t = 0; t < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT; ++t)
+    bc[t] = ::ab_gkr_dim_reducing_batch_challenge_table[slot.batch_exp[t]];
+}
+
+template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched_compact(const gkr_dim_reducing_batch<E> &batch, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
 
   E total0 = E::ZERO();
   E total1 = E::ZERO();
-  for (unsigned i = 0; i < batch.record_count; ++i) {
-    const auto &record = batch.records[i];
-    gkr_ext_initial_source<E> inputs[GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD];
-    gkr_ext_initial_source<E> outputs[GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD];
-    for (unsigned k = 0; k < record.inputs.count; ++k) {
-      inputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size);
-    }
-    for (unsigned k = 0; k < record.outputs.count; ++k) {
-      outputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, batch.inline_payload[record.outputs.offset + k], acc_size);
-    }
-    E c0;
-    E c1;
-    switch (record.kind) {
-    case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_round0_values(inputs, outputs, ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
-      break;
-    case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_round0_values(inputs, outputs, ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
-                               ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
-      break;
-    default:
-      return;
-    }
-    total0 = E::add(total0, c0);
-    total1 = E::add(total1, c1);
+  // Fully unrolled: `slot` is a compile-time constant in each copy, so the
+  // pairwise/lookup selection folds away and no dispatch survives codegen.
+#pragma unroll
+  for (unsigned slot = 0; slot < GKR_DIM_REDUCING_SLOTS; ++slot) {
+    if ((batch.enabled_mask & (1u << slot)) == 0)
+      continue;
+    const gkr_dim_reducing_slot &desc = batch.slots[slot];
+
+    E bc[GKR_DIM_REDUCING_OUTPUTS_PER_SLOT];
+    gkr_load_slot_batch_challenges(desc, bc);
+
+    gkr_ext_initial_source<E> inputs[GKR_DIM_REDUCING_INPUTS_PER_SLOT];
+    gkr_ext_initial_source<E> outputs[GKR_DIM_REDUCING_OUTPUTS_PER_SLOT];
+#pragma unroll
+    for (unsigned k = 0; k < GKR_DIM_REDUCING_INPUTS_PER_SLOT; ++k)
+      inputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, desc.io[k], acc_size);
+#pragma unroll
+    for (unsigned k = 0; k < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT; ++k)
+      outputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, desc.io[GKR_DIM_REDUCING_INPUTS_PER_SLOT + k], acc_size);
+
+    if ((GKR_DIM_REDUCING_PAIRWISE_SLOT_MASK >> slot) & 1u)
+      gkr_pairwise_round0_accumulate<E>(inputs, outputs, bc, gid, total0, total1);
+    else
+      gkr_lookup_round0_accumulate<E>(inputs, outputs, bc, gid, total0, total1);
   }
 
   const E eq = gkr_compute_eq_inline<E>(batch.eq_low, batch.eq_sizes, gid);
@@ -229,73 +245,14 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched_compact(const gkr_dim_re
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-// Round-1 (sumcheck step 1) source resolver. The u16 encodes the GKR ext
-// storage slot of the original input poly; `previous_layer_start` is that
-// poly's start, and `this_layer_start` is the matching folding-buffer slot
-// from the record's cache half. this_layer_size and
-// next_layer_size at step 1 are uniformly `2 * acc_size` and `acc_size`.
-template <typename E>
-DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_round1_source(const gkr_dim_reducing_tables &tables, const gkr_source_record record,
-                                                                                       const unsigned acc_size) {
-  bool first_access;
-  u32 ptr_idx;
-  u32 poly_idx;
-  unpack_dim_reducing_source_u16(record.src, first_access, ptr_idx, poly_idx);
-  const E *poly_base = reinterpret_cast<const E *>(tables.bases[ptr_idx]);
-  const u32 poly_log2_stride = tables.log2_stride[ptr_idx];
-  const E *previous = poly_base + (static_cast<size_t>(poly_idx) << poly_log2_stride);
-  u32 buffer_slot;
-  u32 buffer_poly_idx;
-  unpack_dim_reducing_cache_u16(record.cache, buffer_slot, buffer_poly_idx);
-  E *buffer_base = reinterpret_cast<E *>(const_cast<u8 *>(tables.bases[buffer_slot]));
-  const u32 buffer_log2_stride = tables.log2_stride[buffer_slot];
-  E *this_layer = buffer_base + (static_cast<size_t>(buffer_poly_idx) << buffer_log2_stride);
-  // At sumcheck step 1, `this_layer_size` is the f0/f1 stride within the
-  // previous (= original input) poly, which is `poly_size / 2 = 4 * acc_size`
-  // (input size at step 1 = 8 * acc_size since acc_size = trace_len_after_reduction/4).
-  // `next_layer_size` is the produced fold's stride = `this_layer_size / 2 = 2 * acc_size`.
-  return gkr_ext_continuing_source<E>{previous, this_layer, 4u * acc_size, 2u * acc_size, first_access};
-}
-
-template <typename E>
-DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_dim_reducing_continuation_batch_compact<E> &batch, const unsigned acc_size) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= acc_size)
-    return;
-
-  E total0 = E::ZERO();
-  E total1 = E::ZERO();
-  for (unsigned i = 0; i < batch.record_count; ++i) {
-    const auto &record = batch.records[i];
-    gkr_ext_continuing_source<E> inputs[GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD];
-    for (unsigned k = 0; k < record.inputs.count; ++k) {
-      inputs[k] = gkr_resolve_dim_reducing_round1_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size);
-    }
-    E c0;
-    E c1;
-    switch (record.kind) {
-    case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_continuation_values<E>(inputs, &::ab_gkr_dim_reducing_layer_claim_point[0],
-                                          ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
-      break;
-    case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_continuation_values<E>(inputs, &::ab_gkr_dim_reducing_layer_claim_point[0],
-                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
-                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
-      break;
-    default:
-      return;
-    }
-    total0 = E::add(total0, c0);
-    total1 = E::add(total1, c1);
-  }
-
-  const E eq = gkr_compute_eq_inline<E>(batch.eq_low, batch.eq_sizes, gid);
-  store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
-  store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
-}
-
-// Continuation sources read the current round arena and write the next one.
+// `src` names the poly being folded -- the original GKR ext storage poly at step
+// 1, the previous round's arena from step 2 on -- and `cache` the arena slot the
+// fold is written to. Both resolve through the same pointer table, so one kernel
+// serves every step past 0; only the host encoder distinguishes the two cases.
+//
+// `this_layer_size` is the f0/f1 stride within the source span
+// (trace_len_after_reduction >> (step - 1) = 4 * acc_size); `next_layer_size` is
+// the produced fold's stride, half of it.
 template <typename E>
 DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continuation_source(const gkr_dim_reducing_tables &tables,
                                                                                              const gkr_source_record record, const unsigned acc_size) {
@@ -312,44 +269,40 @@ DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continu
   E *cache_base = reinterpret_cast<E *>(const_cast<u8 *>(tables.bases[cache_slot]));
   const u32 cache_log2_stride = tables.log2_stride[cache_slot];
   E *cache_start = cache_base + (static_cast<size_t>(cache_poly_idx) << cache_log2_stride);
-  // At step k >= 2, `this_layer_size = 4 * acc_size` (the f0/f1 stride within
-  // the previous-layer span = trace_len_after_reduction >> (k-1) = 4 * acc_size_at_step_k);
-  // `next_layer_size = this_layer_size / 2 = 2 * acc_size`.
   return gkr_ext_continuing_source<E>{source_start, cache_start, 4u * acc_size, 2u * acc_size, first_access};
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(const gkr_dim_reducing_continuation_batch_compact<E> &batch,
-                                                                            const unsigned acc_size, const unsigned step) {
+DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(const gkr_dim_reducing_batch<E> &batch, const unsigned acc_size,
+                                                                            const unsigned step) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
 
+  const E *folding_challenge = &::ab_gkr_dim_reducing_layer_claim_point[step - 1];
+
   E total0 = E::ZERO();
   E total1 = E::ZERO();
-  for (unsigned i = 0; i < batch.record_count; ++i) {
-    const auto &record = batch.records[i];
-    gkr_ext_continuing_source<E> inputs[GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD];
-    for (unsigned k = 0; k < record.inputs.count; ++k) {
-      inputs[k] = gkr_resolve_dim_reducing_continuation_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size);
-    }
-    E c0;
-    E c1;
-    switch (record.kind) {
-    case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_continuation_values<E>(inputs, &::ab_gkr_dim_reducing_layer_claim_point[step - 1],
-                                          ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
-      break;
-    case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_continuation_values<E>(inputs, &::ab_gkr_dim_reducing_layer_claim_point[step - 1],
-                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
-                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
-      break;
-    default:
-      return;
-    }
-    total0 = E::add(total0, c0);
-    total1 = E::add(total1, c1);
+  // Fully unrolled: `slot` is a compile-time constant in each copy, so the
+  // pairwise/lookup selection folds away and no dispatch survives codegen.
+#pragma unroll
+  for (unsigned slot = 0; slot < GKR_DIM_REDUCING_SLOTS; ++slot) {
+    if ((batch.enabled_mask & (1u << slot)) == 0)
+      continue;
+    const gkr_dim_reducing_slot &desc = batch.slots[slot];
+
+    E bc[GKR_DIM_REDUCING_OUTPUTS_PER_SLOT];
+    gkr_load_slot_batch_challenges(desc, bc);
+
+    gkr_ext_continuing_source<E> inputs[GKR_DIM_REDUCING_INPUTS_PER_SLOT];
+#pragma unroll
+    for (unsigned k = 0; k < GKR_DIM_REDUCING_INPUTS_PER_SLOT; ++k)
+      inputs[k] = gkr_resolve_dim_reducing_continuation_source<E>(batch.tables, desc.io[k], acc_size);
+
+    if ((GKR_DIM_REDUCING_PAIRWISE_SLOT_MASK >> slot) & 1u)
+      gkr_pairwise_continuation_accumulate<E>(inputs, folding_challenge, bc, gid, total0, total1);
+    else
+      gkr_lookup_continuation_accumulate<E>(inputs, folding_challenge, bc, gid, total0, total1);
   }
 
   const E eq = gkr_compute_eq_inline<E>(batch.eq_low, batch.eq_sizes, gid);
