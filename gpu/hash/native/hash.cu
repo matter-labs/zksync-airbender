@@ -2,18 +2,6 @@
 
 namespace airbender::hash {
 
-// Hash one 64-byte block (2 adjacent digests) into a single output digest.
-DEVICE_FORCEINLINE void hash_two_digests(const digest *in2, digest *out) {
-  digest state;
-  digest block[2];
-  block[0] = load_cs(in2);
-  block[1] = load_cs(in2 + 1);
-  initialize(state.words);
-  u32 t = 0;
-  compress<true>(state.words, t, reinterpret_cast<const u32 *>(block), BLOCK_SIZE);
-  store_cs(out, state);
-}
-
 // One transcript squeeze round: seed_io <- Blake2s(seed_io), in place.
 DEVICE_FORCEINLINE void advance_seed(u32 seed_io[STATE_SIZE]) {
   u32 state[STATE_SIZE];
@@ -214,32 +202,63 @@ EXTERN __global__ void ab_blake2s_leaves_from_ntt_flat_range_to_staging_kernel(c
   store_cs(reinterpret_cast<digest *>(staging) + gid, state);
 }
 
-EXTERN __global__ void ab_blake2s_nodes_kernel(const u32 *values, u32 *results, const unsigned count) {
-  const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
-  if (gid >= count)
-    return;
-  // Input block = 64 B = 2 digests; address is 64-aligned, so hash_two_digests
-  // loads via two 256-bit ops (LDG.E.ENL2.256 on sm_100+ / 2× LDG.E.128 on
-  // older) instead of 16× LDG.E.
-  hash_two_digests(reinterpret_cast<const digest *>(values) + gid * 2, reinterpret_cast<digest *>(results) + gid);
-}
+// Fused node tower: one launch folds `layers` Merkle layers instead of one
+// launch per layer. Every intermediate layer is still written at its flat
+// prefix-sum offset, because gather.cu resolves a layer by closed form
+// (`(1<<(L+1)) - (1<<(L+1-layer))`) with no per-layer pointer table — no layer
+// may be skipped or displaced. `src`/`dst` are independent bases so this serves
+// both the flat single-tree build and the multi-coset build.
+EXTERN __global__ void ab_blake2s_nodes_tower_multi_coset_kernel(const u32 *src, u32 *dst, const unsigned layers, const unsigned log_blocks_per_coset,
+                                                                 const unsigned stride_digests, const unsigned src_count_per_coset) {
+  extern __shared__ digest values[];
+  const unsigned threads = blockDim.x;
+  const unsigned coset = blockIdx.x >> log_blocks_per_coset;
+  const unsigned block_in_coset = blockIdx.x & ((1u << log_blocks_per_coset) - 1u);
 
-// Multi-coset nodes kernel: hashes `(1 << log_per_coset_count) *
-// cosets_in_tile` pairs of digests into the same number of output digests.
-// Each coset's layer-input and layer-output sit in independent slabs offset
-// by `per_coset_values_stride_digests` and `per_coset_results_stride_digests`.
-EXTERN __global__ void ab_blake2s_nodes_multi_coset_kernel(const u32 *values, u32 *results, const unsigned log_per_coset_count,
-                                                           const unsigned per_coset_values_stride_digests, const unsigned per_coset_results_stride_digests,
-                                                           const unsigned count) {
-  const unsigned gid_global = threadIdx.x + blockIdx.x * blockDim.x;
-  if (gid_global >= count)
-    return;
-  const unsigned coset = gid_global >> log_per_coset_count;
-  const unsigned gid = gid_global & ((1u << log_per_coset_count) - 1u);
-  // Each leaf pair is 2 adjacent digests (64 B), 64-aligned at every (coset, gid).
-  const digest *values_d = reinterpret_cast<const digest *>(values) + static_cast<size_t>(coset) * per_coset_values_stride_digests + gid * 2;
-  digest *results_d = reinterpret_cast<digest *>(results) + static_cast<size_t>(coset) * per_coset_results_stride_digests + gid;
-  hash_two_digests(values_d, results_d);
+  const digest *src_d = reinterpret_cast<const digest *>(src) + static_cast<size_t>(coset) * stride_digests + static_cast<size_t>(block_in_coset) * 2 * threads;
+  digest *dst_d = reinterpret_cast<digest *>(dst) + static_cast<size_t>(coset) * stride_digests;
+
+  unsigned layer_count = src_count_per_coset >> 1;
+  unsigned layer_off = 0;
+
+  // Layer 0 reads from gmem; only its output is staged in smem, which halves
+  // the footprint and doubles the block-per-SM limit.
+  {
+    digest children[2];
+    children[0] = load_cs(src_d + 2 * threadIdx.x);
+    children[1] = load_cs(src_d + 2 * threadIdx.x + 1);
+    digest state;
+    initialize(state.words);
+    u32 t = 0;
+    compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+    values[threadIdx.x] = state;
+    store_cs(dst_d + layer_off + static_cast<size_t>(block_in_coset) * threads + threadIdx.x, state);
+  }
+  __syncthreads();
+  layer_off += layer_count;
+  layer_count >>= 1;
+
+  for (unsigned layer = 1; layer < layers; layer++) {
+    const unsigned n_active = threads >> layer;
+    const bool enabled = threadIdx.x < n_active;
+    digest children[2];
+    if (enabled) {
+      children[0] = values[2 * threadIdx.x];
+      children[1] = values[2 * threadIdx.x + 1];
+    }
+    __syncthreads(); // children read before any thread overwrites the lower half
+    if (enabled) {
+      digest state;
+      initialize(state.words);
+      u32 t = 0;
+      compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+      values[threadIdx.x] = state;
+      store_cs(dst_d + layer_off + static_cast<size_t>(block_in_coset) * n_active + threadIdx.x, state);
+    }
+    __syncthreads();
+    layer_off += layer_count;
+    layer_count >>= 1;
+  }
 }
 
 EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
