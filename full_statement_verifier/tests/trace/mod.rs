@@ -133,6 +133,33 @@ pub fn measure_verifier_cycles(bin: &[u32], text: &[u32], stream: Vec<u32>) -> u
     to_cycles(state.timestamp)
 }
 
-pub fn load_calibration_proof(_name: &str) -> (Setups, ProgramProof) {
-    unimplemented!("implemented in Task 6")
+pub fn fsv_dir() -> String {
+    format!("{}/../tools/gkr_verifier", env!("CARGO_MANIFEST_DIR"))
+}
+
+fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {
+    use flate2::read::ZlibDecoder;
+    use std::io::Read;
+
+    let mut src = std::fs::File::open(path).unwrap_or_else(|e| panic!("open {path}: {e}"));
+    let mut buffer = vec![];
+    src.read_to_end(&mut buffer).expect("read fixture");
+    let mut decoder = ZlibDecoder::new(&buffer[..]);
+    let mut unpacked: Vec<u8> = vec![];
+    decoder
+        .read_to_end(&mut unpacked)
+        .expect("decompress fixture");
+    bincode::deserialize_from(&unpacked[..]).expect("deserialize fixture")
+}
+
+pub fn load_calibration_proof(name: &str) -> (Setups, ProgramProof) {
+    let dir = std::env::var("COST_MODEL_FIXTURE_DIR").unwrap_or_else(|_| {
+        panic!(
+            "set COST_MODEL_FIXTURE_DIR to the directory holding \
+             {name}_proof.bin / {name}_setups.bin (see plan Task 6 Step 1)"
+        )
+    });
+    let proof = read_compressed(&format!("{dir}/{name}_proof.bin"));
+    let setups = read_compressed(&format!("{dir}/{name}_setups.bin"));
+    (setups, proof)
 }

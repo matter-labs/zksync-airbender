@@ -1,10 +1,12 @@
 use super::plan::{plan_unrolled_stream, RegionPlan, Section, StreamPlan};
-use super::{load_calibration_proof, trace_verifier, Trace};
-use full_statement_verifier::cost_model::CircuitId;
+use super::{fsv_dir, load_calibration_proof, trace_verifier, Trace};
+use full_statement_verifier::cost_model::{compiled_circuits, CircuitId};
+use std::collections::BTreeMap;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
 pub const FIXTURES: &[(&str, FsvProgram)] = &[
     ("base", FsvProgram::UnrolledBaseLayer),
+    ("base_alt", FsvProgram::UnrolledBaseLayer),
     ("rung0", FsvProgram::UnrolledRecursionLayer),
     ("rung1", FsvProgram::UnrolledRecursionLayer),
 ];
@@ -19,9 +21,9 @@ pub struct Calibration {
     pub s_delegation: u64,
 }
 
-pub fn calibrate_fixture(name: &str, program: FsvProgram) -> Calibration {
+pub fn trace_fixture(name: &str, program: FsvProgram) -> (Trace, StreamPlan) {
     let (bin, text) = full_statement_verifier::host_utils::load_fsv_program(
-        format!("{}/../tools/gkr_verifier", env!("CARGO_MANIFEST_DIR")),
+        fsv_dir(),
         program,
         BlakeMode::Compression,
     );
@@ -34,47 +36,65 @@ pub fn calibrate_fixture(name: &str, program: FsvProgram) -> Calibration {
         "{name}: stream plan disagrees with the stream"
     );
     let t = trace_verifier(&bin, &text, stream);
+    (t, plan)
+}
+
+pub fn calibrate_fixture(name: &str, program: FsvProgram) -> Calibration {
+    let (t, plan) = trace_fixture(name, program);
     calibrate(&t, &plan)
 }
 
-pub fn calibrate(trace: &Trace, plan: &StreamPlan) -> Calibration {
-    let cycle_at = |w: usize| trace.marks[w];
-    let region_cycles = |r: &RegionPlan| cycle_at(r.end_word) - cycle_at(r.count_word);
+fn region_cycles(trace: &Trace, r: &RegionPlan) -> u64 {
+    trace.marks[r.end_word] - trace.marks[r.count_word]
+}
 
-    let spans_of = |r: &RegionPlan| -> Vec<u64> {
-        r.proof_first_words
-            .windows(2)
-            .map(|w| cycle_at(w[1]) - cycle_at(w[0]))
-            .collect()
-    };
-    let period_of = |r: &RegionPlan| -> Option<u64> {
-        let spans = spans_of(r);
-        if spans.is_empty() {
-            None
-        } else {
-            let len = spans.len() as u64;
-            Some((spans.iter().sum::<u64>() + len / 2) / len)
-        }
-    };
+fn spans_of(trace: &Trace, r: &RegionPlan) -> Vec<u64> {
+    r.proof_first_words
+        .windows(2)
+        .map(|w| trace.marks[w[1]] - trace.marks[w[0]])
+        .collect()
+}
 
-    let section_s = |section: Section| -> u64 {
-        plan.regions
-            .iter()
-            .filter(|r| r.section == section && !r.closes_at_epilogue)
-            .find_map(|r| {
-                period_of(r).map(|v| {
-                    let priced = r.proof_first_words.len() as u64 * v;
-                    region_cycles(r).checked_sub(priced).unwrap_or_else(|| {
-                        panic!(
-                            "{:?}: region_cycles {} < n*v {}, so S_{:?} would be negative",
-                            r.circuit,
-                            region_cycles(r),
-                            priced,
-                            section
-                        )
-                    })
-                })
+fn period_of(trace: &Trace, r: &RegionPlan) -> Option<u64> {
+    let spans = spans_of(trace, r);
+    if spans.is_empty() {
+        None
+    } else {
+        let len = spans.len() as u64;
+        Some((spans.iter().sum::<u64>() + len / 2) / len)
+    }
+}
+
+/// `region_cycles - n*v` per region: the per-type overhead each one implies.
+pub fn implied_section_s(
+    trace: &Trace,
+    plan: &StreamPlan,
+    section: Section,
+) -> Vec<(CircuitId, u64)> {
+    plan.regions
+        .iter()
+        .filter(|r| r.section == section && !r.closes_at_epilogue)
+        .filter_map(|r| {
+            period_of(trace, r).map(|v| {
+                let priced = r.proof_first_words.len() as u64 * v;
+                let cycles = region_cycles(trace, r);
+                let s = cycles.checked_sub(priced).unwrap_or_else(|| {
+                    panic!(
+                        "{:?}: region_cycles {} < n*v {}, so S_{:?} would be negative",
+                        r.circuit, cycles, priced, section
+                    )
+                });
+                (r.circuit, s)
             })
+        })
+        .collect()
+}
+
+pub fn calibrate(trace: &Trace, plan: &StreamPlan) -> Calibration {
+    let section_s = |section: Section| -> u64 {
+        implied_section_s(trace, plan, section)
+            .first()
+            .map(|(_, s)| *s)
             .unwrap_or_else(|| {
                 panic!(
                     "calibration precondition violated: the {section:?} section has no \
@@ -95,26 +115,24 @@ pub fn calibrate(trace: &Trace, plan: &StreamPlan) -> Calibration {
     for r in &plan.regions {
         let n = r.proof_first_words.len();
         counts.push((r.circuit, n));
-        spans.push((r.circuit, spans_of(r)));
+        spans.push((r.circuit, spans_of(trace, r)));
 
         if n == 0 {
             unpriced.push(r.circuit);
             continue;
         }
-        let cost = match period_of(r) {
+        let cost = match period_of(trace, r) {
             Some(period) => period,
             None if !r.closes_at_epilogue => {
                 let s = match r.section {
                     Section::Riscv => s_riscv,
                     Section::Delegation => s_delegation,
                 };
-                region_cycles(r).checked_sub(s).unwrap_or_else(|| {
+                let cycles = region_cycles(trace, r);
+                cycles.checked_sub(s).unwrap_or_else(|| {
                     panic!(
                         "{:?}: region_cycles {} < S_{:?} {}",
-                        r.circuit,
-                        region_cycles(r),
-                        r.section,
-                        s
+                        r.circuit, cycles, r.section, s
                     )
                 })
             }
@@ -137,4 +155,93 @@ pub fn calibrate(trace: &Trace, plan: &StreamPlan) -> Calibration {
         s_riscv,
         s_delegation,
     }
+}
+
+pub struct Pooled {
+    pub v: BTreeMap<CircuitId, u64>,
+    pub c0: Vec<(FsvProgram, u64)>,
+    pub unpriced: Vec<CircuitId>,
+}
+
+pub fn pool(cals: &[(&str, FsvProgram, Calibration)]) -> Pooled {
+    let mut observations: BTreeMap<CircuitId, Vec<(String, u64)>> = BTreeMap::new();
+    for (name, _, c) in cals {
+        for (circuit, cost) in &c.v {
+            observations
+                .entry(*circuit)
+                .or_default()
+                .push(((*name).to_string(), *cost));
+        }
+    }
+
+    let mut v = BTreeMap::new();
+    for (circuit, obs) in &observations {
+        let lo = obs.iter().map(|(_, c)| *c).min().unwrap();
+        let hi = obs.iter().map(|(_, c)| *c).max().unwrap();
+        assert!(
+            hi - lo <= hi / 200,
+            "{circuit:?} costs differ by more than 0.5% across fixtures {obs:?} — \
+             the same compiled circuit is not costing the same in both binaries, \
+             which the design assumes"
+        );
+        v.insert(
+            *circuit,
+            obs.iter().map(|(_, c)| *c).sum::<u64>() / obs.len() as u64,
+        );
+    }
+
+    let mut c0 = Vec::new();
+    for (name, program, c) in cals {
+        let priced: u64 = c
+            .counts
+            .iter()
+            .map(|(circuit, n)| *n as u64 * v.get(circuit).copied().unwrap_or(0))
+            .sum();
+        let fitted = c.total_cycles - priced;
+        if let Some((_, existing)) = c0.iter().find(|(p, _)| p == program) {
+            let (lo, hi) = (fitted.min(*existing), fitted.max(*existing));
+            assert!(
+                hi - lo <= hi / 2000,
+                "{name}: C0 for {program:?} is {fitted} here but {existing} from another \
+                 fixture — C0 is not composition-independent, which breaks the model \
+                 (spec section 2)"
+            );
+        } else {
+            c0.push((*program, fitted));
+        }
+    }
+
+    let mut unpriced = Vec::new();
+    for (_, program, _) in cals {
+        for circuit in compiled_circuits(*program) {
+            if !v.contains_key(&circuit) && !unpriced.contains(&circuit) {
+                unpriced.push(circuit);
+            }
+        }
+    }
+
+    Pooled { v, c0, unpriced }
+}
+
+pub fn render_tables(pooled: &Pooled) -> String {
+    let mut out = String::new();
+    for (program, c0) in &pooled.c0 {
+        out.push_str(&format!(
+            "    (FsvProgram::{program:?}, BlakeMode::Compression, CostTable {{\n        c0: {c0},\n        v: &[\n"
+        ));
+        for circuit in compiled_circuits(*program) {
+            if let Some(cost) = pooled.v.get(&circuit) {
+                let id = match circuit {
+                    CircuitId::Riscv(k) => format!("CircuitId::Riscv({k})"),
+                    CircuitId::Delegation(k) => format!("CircuitId::Delegation({k})"),
+                };
+                out.push_str(&format!("            ({id}, {cost}),\n"));
+            }
+        }
+        out.push_str("        ],\n    }),\n");
+    }
+    if !pooled.unpriced.is_empty() {
+        out.push_str(&format!("    // unpriced: {:?}\n", pooled.unpriced));
+    }
+    out
 }
