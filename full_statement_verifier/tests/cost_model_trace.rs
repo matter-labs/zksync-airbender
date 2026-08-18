@@ -2,6 +2,28 @@
 #![feature(generic_const_exprs)]
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
+//! Calibration harness for `src/cost_model/table.rs`. Every test here needs real
+//! recursion proofs, far too large to commit, so all of them are `#[ignore]`d and
+//! run by hand when the table is recalibrated. `cost_model_drift.rs` needs only
+//! committed artifacts, so it runs unignored in CI.
+//!
+//! Fixtures live in `$COST_MODEL_FIXTURE_DIR` as `<fixture>_proof.bin` /
+//! `<fixture>_setups.bin`: zlib-compressed bincode of `ProgramProof` and `Setups`.
+//! `circuit_defs/prover_examples`'s `test_recursive_proving_pipeline_zksync_os`
+//! (itself `#[ignore]`d — hours, large RAM) writes exactly that format via
+//! `serialize_compressed_to_file`, but under **different names**, so its output has
+//! to be renamed:
+//!
+//! | fixture | producer output | role |
+//! |---|---|---|
+//! | `base` | `base_proofs.bin` / `base_setups.bin` (note the plural) | RISC-V, keccak and bigint coefficients |
+//! | `base_alt` | the same two files from a second run, with the producer's hardcoded zksync_os guest swapped for one whose delegation set differs | a second base-layer delegation presence mask |
+//! | `rung0` | `recursion_layer_0_proof_<tag>.bin` / `recursion_layer_0_setups_<tag>.bin` | recursion-layer `c0`, blake2 coefficient |
+//! | `rung1` | `recursion_layer_1_proof_<tag>.bin` / `recursion_layer_1_setups_<tag>.bin` | steady-rung chain path |
+//!
+//! `emit_cost_tables` prints the tables to paste into `src/cost_model/table.rs`;
+//! `estimate_matches_measurement_on_every_fixture` is the acceptance gate.
+
 mod trace;
 
 use trace::calibrate::Fixture;
@@ -17,7 +39,7 @@ fn load_base_layer() -> (Vec<u32>, Vec<u32>) {
 }
 
 #[test]
-#[ignore = "needs a real base proof; see Task 6"]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn marks_are_monotonic_and_one_per_stream_word() {
     let (bin, text) = load_base_layer();
     let (setups, proof) = trace::load_calibration_proof("base");
@@ -39,7 +61,7 @@ fn marks_are_monotonic_and_one_per_stream_word() {
 }
 
 #[test]
-#[ignore = "needs a real base proof; see Task 6"]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn total_cycles_matches_the_uninstrumented_measurement() {
     let (bin, text) = load_base_layer();
     let (setups, proof) = trace::load_calibration_proof("base");
@@ -55,7 +77,7 @@ fn total_cycles_matches_the_uninstrumented_measurement() {
 }
 
 #[test]
-#[ignore = "needs real proofs; see Task 6"]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn stream_plan_matches_the_actual_stream() {
     for Fixture {
         name: fixture,
@@ -126,7 +148,7 @@ fn stream_plan_matches_the_actual_stream() {
 }
 
 #[test]
-#[ignore = "needs real proofs; see Task 6"]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn per_proof_spans_agree_within_a_circuit() {
     for Fixture {
         name: fixture,
@@ -151,7 +173,7 @@ fn per_proof_spans_agree_within_a_circuit() {
 }
 
 #[test]
-#[ignore = "needs real proofs; see Task 6"]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn proof_counts_matches_the_planned_regions() {
     use full_statement_verifier::cost_model::proof_counts;
     for Fixture {
@@ -182,7 +204,7 @@ fn proof_counts_matches_the_planned_regions() {
 }
 
 #[test]
-#[ignore = "needs real proofs; see Task 6"]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn implied_per_type_overhead_agrees_within_a_section() {
     use trace::plan::Section;
     for Fixture {
@@ -211,7 +233,7 @@ fn implied_per_type_overhead_agrees_within_a_section() {
 }
 
 #[test]
-#[ignore = "needs real proofs; see Task 6"]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn every_fixture_verifies_natively() {
     for Fixture { name, program, .. } in trace::calibrate::ALL_FIXTURES {
         let (setups, proof) = trace::load_calibration_proof(name);
@@ -224,7 +246,7 @@ fn every_fixture_verifies_natively() {
 }
 
 #[test]
-#[ignore = "needs real proofs; see Task 6"]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn emit_cost_tables() {
     let cals: Vec<_> = trace::calibrate::calibration_fixtures()
         .map(|f| {
@@ -249,7 +271,7 @@ fn emit_cost_tables() {
 }
 
 #[test]
-#[ignore = "needs real proofs; see Task 6"]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn estimate_matches_measurement_on_every_fixture() {
     use full_statement_verifier::cost_model::estimate_verifier_cycles;
 

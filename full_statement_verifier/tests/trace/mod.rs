@@ -156,7 +156,9 @@ pub fn load_calibration_proof(name: &str) -> (Setups, ProgramProof) {
     let dir = std::env::var("COST_MODEL_FIXTURE_DIR").unwrap_or_else(|_| {
         panic!(
             "set COST_MODEL_FIXTURE_DIR to the directory holding \
-             {name}_proof.bin / {name}_setups.bin (see plan Task 6 Step 1)"
+             {name}_proof.bin / {name}_setups.bin (zlib-compressed bincode of \
+             ProgramProof / Setups); see the module docs of \
+             tests/cost_model_trace.rs for how to produce and name them"
         )
     });
     let proof = read_compressed(&format!("{dir}/{name}_proof.bin"));

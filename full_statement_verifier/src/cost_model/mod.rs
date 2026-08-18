@@ -35,7 +35,10 @@ impl core::fmt::Display for EstimateError {
             ),
             Self::UnpricedCircuit { circuit } => write!(
                 f,
-                "no per-proof cost for {circuit:?}; it was absent from every calibration fixture"
+                "no per-proof cost for {circuit:?}; it was absent from every calibration \
+                 fixture. Recalibrate against a fixture set that exercises it with \
+                 `cargo test -p full_statement_verifier --features host_utils,verifiers \
+                 --test cost_model_trace -- --ignored`"
             ),
             Self::UnexpectedInitsAndTeardowns { found } => {
                 write!(f, "expected exactly 1 inits/teardowns proof, found {found}")
@@ -73,8 +76,9 @@ pub fn table_for(program: FsvProgram, mode: BlakeMode) -> Option<&'static CostTa
 ///
 /// **Domain: valid canonical proofs only.** The generated verifier returns early
 /// on content checks, so this is a scheduling estimate and never a bound on the
-/// cost of a malformed proof. Affine in the per-circuit proof counts, with the
-/// error budget documented in the design spec.
+/// cost of a malformed proof. Affine in the per-circuit proof counts, and held to
+/// 0.05% of the measured cycle count on every calibration fixture by
+/// `estimate_matches_measurement_on_every_fixture` in `tests/cost_model_trace.rs`.
 pub fn estimate_verifier_cycles(
     proof: &ProgramProof,
     program: FsvProgram,

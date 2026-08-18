@@ -41,7 +41,7 @@ jobs:
       - name: Verifier cost-model drift guard
         env:
           RUST_MIN_STACK: 1073741824
-        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --test cost_model_drift
+        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift
 
   formatting:
     name: cargo fmt

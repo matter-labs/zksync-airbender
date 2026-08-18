@@ -203,9 +203,11 @@ pub fn pool(cals: &[(&str, FsvProgram, Calibration)]) -> Pooled {
         let hi = obs.iter().map(|(_, c)| *c).max().unwrap();
         assert!(
             hi - lo <= hi / 200,
-            "{circuit:?} costs differ by more than 0.5% across fixtures {obs:?} — \
-             the same compiled circuit is not costing the same in both binaries, \
-             which the design assumes"
+            "{circuit:?} costs differ by more than 0.5% across fixtures {obs:?}. Pooling \
+             averages these observations, so 0.5% is only a sanity bound on how far the \
+             same compiled circuit may drift between guest binaries before the average \
+             stops being meaningful; it is not the model's error budget (0.05%), and the \
+             binding gate is estimate_matches_measurement_on_every_fixture"
         );
         v.insert(
             *circuit,
@@ -218,7 +220,18 @@ pub fn pool(cals: &[(&str, FsvProgram, Calibration)]) -> Pooled {
         let priced: u64 = c
             .counts
             .iter()
-            .map(|(circuit, n)| *n as u64 * v.get(circuit).copied().unwrap_or(0))
+            .map(|(circuit, n)| {
+                if *n == 0 {
+                    return 0;
+                }
+                let cost = v.get(circuit).copied().unwrap_or_else(|| {
+                    panic!(
+                        "{name}: {circuit:?} has {n} proofs but no pooled cost, so it would \
+                         price at 0 and inflate C0 for {program:?} by its entire cost"
+                    )
+                });
+                *n as u64 * cost
+            })
             .sum();
         let fitted = c.total_cycles.checked_sub(priced).unwrap_or_else(|| {
             panic!(
