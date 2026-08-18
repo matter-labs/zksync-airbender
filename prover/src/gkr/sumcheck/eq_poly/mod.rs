@@ -202,20 +202,39 @@ pub fn make_eq_table_lsb_first_with_capacity<E: Field>(
     min_capacity: usize,
     worker: &Worker,
 ) -> Vec<E> {
-    use crate::gkr::PAR_THRESHOLD;
     let size = 1usize << challenges.len();
     let mut table = Vec::with_capacity(size.max(min_capacity));
-    table.resize(size, E::ONE);
+    fill_eq_table_lsb_first_uninit(challenges, &mut table.spare_capacity_mut()[..size], worker);
+    // SAFETY: the fill initialized exactly the first `size` entries.
+    unsafe { table.set_len(size) };
+    table
+}
+
+/// The eq-table materialization core, shared by every table builder: fills
+/// `dst[..1 << challenges.len()]` with the LSB-first eq table over
+/// UNINITIALIZED memory. Entry 0 seeds the doubling and every other entry is
+/// WRITTEN before it is ever read, so callers pay no zero/`ONE` pre-fill of
+/// the allocation. Each doubling level parallelizes above
+/// [`crate::gkr::PAR_THRESHOLD`].
+pub fn fill_eq_table_lsb_first_uninit<E: Field>(
+    challenges: &[E],
+    dst: &mut [core::mem::MaybeUninit<E>],
+    worker: &Worker,
+) {
+    use crate::gkr::PAR_THRESHOLD;
+    let size = 1usize << challenges.len();
+    assert!(dst.len() >= size);
+    dst[0].write(E::ONE);
     for (b, c) in challenges.iter().enumerate() {
         let half = 1usize << b;
         let mut om = E::ONE;
         om.sub_assign(c);
         let c = *c;
-        let (lo_all, hi_all) = table.split_at_mut(half);
-        let hi_all = &mut hi_all[..half];
+        let (lo_all, rest) = dst.split_at_mut(half);
+        let hi_all = &mut rest[..half];
         worker.scope_with_threshold(half, PAR_THRESHOLD, |scope, geometry| {
-            let mut lo_rest: &mut [E] = lo_all;
-            let mut hi_rest: &mut [E] = hi_all;
+            let mut lo_rest: &mut [core::mem::MaybeUninit<E>] = lo_all;
+            let mut hi_rest: &mut [core::mem::MaybeUninit<E>] = hi_all;
             for thread_idx in 0..geometry.num_chunks {
                 let chunk = geometry.get_chunk_size(thread_idx);
                 let (lo, lo_tail) = core::mem::take(&mut lo_rest).split_at_mut(chunk);
@@ -224,16 +243,18 @@ pub fn make_eq_table_lsb_first_with_capacity<E: Field>(
                 hi_rest = hi_tail;
                 Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                     for (l, h) in lo.iter_mut().zip(hi.iter_mut()) {
+                        // SAFETY: `lo` covers `[0, half)`, fully written by
+                        // the previous levels (entry 0 seeded up front).
+                        let l = unsafe { l.assume_init_mut() };
                         let mut v = *l;
                         v.mul_assign(&c);
-                        *h = v;
+                        h.write(v);
                         l.mul_assign(&om);
                     }
                 });
             }
         });
     }
-    table
 }
 
 // Domain equality polys

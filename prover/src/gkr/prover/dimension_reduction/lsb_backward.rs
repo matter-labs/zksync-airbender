@@ -115,59 +115,91 @@ impl<E> LsbDimReducingRelation<E> {
     }
 }
 
-/// Ping-pong folding scratch for one poly: a single allocation of the input
-/// size; round `s` reads the previous round's dense region and writes the
-/// next dense region into the other half.
-struct PingPong<E> {
-    buf: Vec<E>,
-    /// offset of the current live region
-    live_at: usize,
-    live_len: usize,
+/// The dimension-reducing suffix eq table `T_s` (over `tau[s+1..]`) in its
+/// 3/4-sized ping-pong pool: one UNINITIALIZED allocation plus a
+/// [`FoldBufferTracker`] over it. The table is materialized once by
+/// first-touch writes (no zero/`ONE` pre-fill of the pool) and every
+/// [`Self::contract`] writes the next (half-sized) table densely into the
+/// dead ping-pong region — the same allocation discipline as the poly fold
+/// scratch. Shared by the production initial/continue pair and the
+/// whole-sumcheck reference engine.
+pub struct SuffixEqTable<E> {
+    /// owns the allocation the tracker's pointer ranges refer to
+    #[allow(dead_code)]
+    pool: Box<[core::mem::MaybeUninit<E>]>,
+    tracker: FoldBufferTracker<E>,
 }
 
-impl<E: Field> PingPong<E> {
-    fn new(initial: &[E]) -> Self {
-        let mut buf = initial.to_vec();
-        buf.resize(initial.len() + initial.len() / 2, E::ZERO);
-        PingPong {
-            buf,
-            live_at: 0,
-            live_len: initial.len(),
-        }
+impl<E: Field> SuffixEqTable<E> {
+    /// Materializes the round-0 table over `challenges` (`= tau[1..]`,
+    /// `2^challenges.len()` entries) into a fresh pool with the contraction
+    /// room reserved; the freshly written table becomes the live region.
+    pub fn materialize(challenges: &[E], worker: &worker::Worker) -> Self {
+        let size = 1usize << challenges.len();
+        let pool_len = size + size / 2;
+        let mut pool = Box::new_uninit_slice(pool_len);
+        crate::gkr::sumcheck::eq_poly::fill_eq_table_lsb_first_uninit(
+            challenges,
+            &mut pool[..size],
+            worker,
+        );
+        let mut tracker =
+            FoldBufferTracker::new_with_first_output(pool.as_mut_ptr() as *mut E, pool_len, size);
+        // promote the written table to the live INPUT region; the first
+        // contraction's destination is carved from the allocation's tail
+        tracker.step_to(size / 2);
+        Self { pool, tracker }
     }
 
+    /// Start pointer of the CURRENT table, for the sweep kernels.
     #[inline(always)]
-    fn live(&self) -> &[E] {
-        &self.buf[self.live_at..self.live_at + self.live_len]
+    pub fn as_ptr(&self) -> *const E {
+        self.tracker.input_ptr_range().start
     }
 
-    /// `dst[2j + b] = (1 - r)*src[4j + b] + r*src[4j + 2 + b]`, written
-    /// densely into the non-live half.
-    fn fold(&mut self, r: &E) {
-        let new_len = self.live_len / 2;
-        let dst_at = if self.live_at == 0 { self.live_len } else { 0 };
-        debug_assert!(dst_at + new_len <= self.buf.len());
-        let (src_ptr, dst_ptr) = unsafe {
-            (
-                self.buf.as_ptr().add(self.live_at),
-                self.buf.as_mut_ptr().add(dst_at),
-            )
-        };
-        for j in 0..(new_len / 2) {
-            for b in 0..2 {
-                unsafe {
-                    let lo = *src_ptr.add(4 * j + b);
-                    let hi = *src_ptr.add(4 * j + 2 + b);
-                    let mut v = hi;
-                    v.sub_assign(&lo);
-                    v.mul_assign(r);
-                    v.add_assign(&lo);
-                    *dst_ptr.add(2 * j + b) = v;
-                }
+    /// Number of entries of the CURRENT table.
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.tracker.input_len()
+    }
+
+    /// The CURRENT table as a slice (always fully written).
+    #[inline(always)]
+    pub fn as_slice(&self) -> &[E] {
+        unsafe { self.tracker.input_slice() }
+    }
+
+    /// One contraction `t'[j] = t[2j] + t[2j+1]` — dropping the table's
+    /// lowest remaining variable EXACTLY (`f(0)*x + f(1)*x = x` per factor)
+    /// — written densely into the dead ping-pong region; parallel above
+    /// [`crate::gkr::PAR_THRESHOLD`].
+    pub fn contract(&mut self, worker: &worker::Worker) {
+        use crate::gkr::PAR_THRESHOLD;
+        let next = self.tracker.input_len() / 2;
+        assert!(next >= 1);
+        assert_eq!(self.tracker.output_len(), next);
+        let src = SendConstPtr(self.tracker.input_ptr_range().start);
+        let dst = SendPtr(self.tracker.output_ptr_range().start);
+        worker.scope_with_threshold(next, PAR_THRESHOLD, |scope, geometry| {
+            for thread_idx in 0..geometry.num_chunks {
+                let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                let chunk_size = geometry.get_chunk_size(thread_idx);
+                worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    // capture the Send wrappers WHOLESALE (edition-2021
+                    // disjoint capture would otherwise grab the bare
+                    // pointers out of them)
+                    let (src, dst) = (src, dst);
+                    for j in chunk_start..chunk_start + chunk_size {
+                        unsafe {
+                            let mut v = *src.0.add(2 * j);
+                            v.add_assign(&*src.0.add(2 * j + 1));
+                            *dst.0.add(j) = v;
+                        }
+                    }
+                });
             }
-        }
-        self.live_at = dst_at;
-        self.live_len = new_len;
+        });
+        self.tracker.step();
     }
 }
 
@@ -226,10 +258,14 @@ pub struct LsbDimReducingSumcheckOutput<E> {
 }
 
 /// Runs the full LSB-binding sumcheck for one dimension-reducing layer
-/// (serial reference implementation, kept for tests).
+/// (whole-sumcheck reference engine, kept for tests; parallelized — the
+/// dimension-reducing layers are large at the start, so the sweep, the
+/// folds, and the table contraction all chunk over the worker above
+/// [`crate::gkr::PAR_THRESHOLD`]).
 ///
 /// * `polys` — the layer's input polys by address (each `2 * M` values,
-///   `2Y + b` interleaved); consumed as working copies.
+///   `2Y + b` interleaved); read-only — round 0 reads them in place and the
+///   folds write into per-poly uninitialized ping-pong scratch.
 /// * `relations` — the batched gate list over those polys.
 /// * `tau` — the eq challenges of the OUTPUT claim point, ordered
 ///   low-variable-first (`tau[s]` is the coordinate of the variable bound at
@@ -239,16 +275,19 @@ pub struct LsbDimReducingSumcheckOutput<E> {
 ///   production these come from the transcript after absorbing each round's
 ///   coefficients; the caller controls that interaction).
 ///
-/// The eq suffix tables `T_s` are maintained INCREMENTALLY: `T_0` is the eq
-/// table over `tau[1..]` and each round drops its lowest variable by the
-/// standard doubling contraction, so no per-round table rebuild is needed.
+/// The eq suffix tables `T_s` are maintained INCREMENTALLY by a
+/// [`SuffixEqTable`]: `T_0` is materialized once over `tau[1..]` and each
+/// round drops its lowest variable by the standard doubling contraction, so
+/// no per-round table rebuild is needed.
 pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Field>(
     polys: &BTreeMap<GKRAddress, &[E]>,
     relations: &[LsbDimReducingRelation<E>],
     tau: &[E],
     claim: E,
     challenges: &[E],
+    worker: &worker::Worker,
 ) -> LsbDimReducingSumcheckOutput<E> {
+    use crate::gkr::PAR_THRESHOLD;
     let rounds = tau.len();
     assert_eq!(challenges.len(), rounds);
     let m = 1usize << rounds;
@@ -256,29 +295,25 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
         assert_eq!(p.len(), 2 * m);
     }
 
-    // T_0 over tau[1..], low-variable-first: T[j] = prod_b f_{tau[1+b]}(j_b),
-    // materialized into a 3/4-sized ping-pong buffer (front live region +
-    // room for the dense contraction writes)
-    let mut t_table = vec![E::ONE; m / 2 + m / 4];
-    for b in 0..rounds.saturating_sub(1) {
-        let half = 1usize << b;
-        let c = tau[1 + b];
-        let mut one_minus = E::ONE;
-        one_minus.sub_assign(&c);
-        for i in 0..half {
-            let mut hi = t_table[i];
-            hi.mul_assign(&c);
-            t_table[i + half] = hi;
-            t_table[i].mul_assign(&one_minus);
-        }
-    }
-    let mut t_at = 0usize;
-    let mut t_len = m / 2;
+    let mut t_table = SuffixEqTable::materialize(&tau[1..], worker);
 
-    let mut buffers: BTreeMap<GKRAddress, PingPong<E>> = polys
-        .iter()
-        .map(|(addr, p)| (*addr, PingPong::new(p)))
+    // per-poly uninit fold scratch + tracker, exactly like the production
+    // continue path: round 0 reads the BORROWED originals, the first fold
+    // writes the pool's front half
+    let mut pools: BTreeMap<GKRAddress, Box<[core::mem::MaybeUninit<E>]>> = polys
+        .keys()
+        .map(|addr| (*addr, Box::new_uninit_slice(m + m / 2)))
         .collect();
+    let mut buffers: BTreeMap<GKRAddress, FoldBufferTracker<E>> = pools
+        .iter_mut()
+        .map(|(addr, pool)| {
+            let mut tracker =
+                FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), 2 * m);
+            tracker.set_external_input(polys[addr]);
+            (*addr, tracker)
+        })
+        .collect();
+
     let mut round_coefficients = Vec::with_capacity(rounds);
     let mut claim = claim;
     // the PREVIOUS round's single eq factor (normalized convention): each
@@ -288,27 +323,63 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
 
     for s in 0..rounds {
         let pairs = 1usize << (rounds - 1 - s);
-        // accumulate h(0), h(1), h(inf) over all pairs, T-weighted
-        let mut h = [E::ZERO; 3];
-        for j in 0..pairs {
-            let w = t_table[t_at + j];
-            // h(0): gate at Y' = 2j (indices 4j + b)
-            let v0 = gate_batch(relations, |a, b| buffers[&a].live()[4 * j + b]);
-            // h(1): gate at Y' = 2j + 1 (indices 4j + 2 + b)
-            let v1 = gate_batch(relations, |a, b| buffers[&a].live()[4 * j + 2 + b]);
-            // h(inf): gate's leading X-coefficient = gate on the differences
-            let vinf = gate_batch(relations, |a, b| {
-                let live = buffers[&a].live();
-                let mut d = live[4 * j + 2 + b];
-                d.sub_assign(&live[4 * j + b]);
-                d
+        debug_assert_eq!(t_table.len(), pairs);
+        // accumulate h(0), h(1), h(inf) over all pairs, T-weighted; chunked
+        // partial sums reduce exactly (field addition is exact, so the
+        // chunking cannot change the value)
+        let h = {
+            let t_slice = t_table.as_slice();
+            let buffers_ref = &buffers;
+            let geometry = worker.get_geometry_with_threshold(pairs, PAR_THRESHOLD);
+            let mut partials = vec![[E::ZERO; 3]; geometry.num_chunks];
+            worker.scope_with_threshold(pairs, PAR_THRESHOLD, |scope, geometry| {
+                let mut it = partials.iter_mut();
+                for thread_idx in 0..geometry.num_chunks {
+                    let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                    let chunk_size = geometry.get_chunk_size(thread_idx);
+                    let dst = it.next().unwrap();
+                    worker::Worker::smart_spawn(
+                        scope,
+                        thread_idx == geometry.len() - 1,
+                        move |_| {
+                            // SAFETY: every tracker input region is fully
+                            // written (the originals, or a completed fold)
+                            let at = |a: GKRAddress, i: usize| unsafe {
+                                buffers_ref[&a].input_slice()[i]
+                            };
+                            let mut acc = [E::ZERO; 3];
+                            for j in chunk_start..chunk_start + chunk_size {
+                                let w = t_slice[j];
+                                // h(0): gate at Y' = 2j (indices 4j + b)
+                                let v0 = gate_batch(relations, |a, b| at(a, 4 * j + b));
+                                // h(1): gate at Y' = 2j + 1 (indices 4j + 2 + b)
+                                let v1 = gate_batch(relations, |a, b| at(a, 4 * j + 2 + b));
+                                // h(inf): gate's leading X-coefficient = gate
+                                // on the differences
+                                let vinf = gate_batch(relations, |a, b| {
+                                    let mut d = at(a, 4 * j + 2 + b);
+                                    d.sub_assign(&at(a, 4 * j + b));
+                                    d
+                                });
+                                for (dst, v) in acc.iter_mut().zip([v0, v1, vinf]) {
+                                    let mut t = v;
+                                    t.mul_assign(&w);
+                                    dst.add_assign(&t);
+                                }
+                            }
+                            *dst = acc;
+                        },
+                    );
+                }
             });
-            for (dst, v) in h.iter_mut().zip([v0, v1, vinf]) {
-                let mut t = v;
-                t.mul_assign(&w);
-                dst.add_assign(&t);
+            let mut h = [E::ZERO; 3];
+            for p in partials {
+                for k in 0..3 {
+                    h[k].add_assign(&p[k]);
+                }
             }
-        }
+            h
+        };
         // q(X) = eqw(X) * h(X) -- LOCAL eq factor only
         let coeffs = cubic_round_message(&h[0], &h[1], &h[2], &tau[s]);
 
@@ -331,13 +402,48 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
         claim = horner4(&coeffs, &r);
         eq_prev = eq_weight(&tau[s], &r);
 
-        for buf in buffers.values_mut() {
-            buf.fold(&r);
+        // fold every poly `dst[2j + b] = (1 - r)*src[4j + b] + r*src[4j + 2 + b]`,
+        // written densely into its tracker's output region, chunked over pairs
+        for tracker in buffers.values_mut() {
+            let out_pairs = tracker.output_len() / 2;
+            debug_assert_eq!(out_pairs, pairs);
+            let src = SendConstPtr(tracker.input_ptr_range().start);
+            let dst = SendPtr(tracker.output_ptr_range().start);
+            worker.scope_with_threshold(out_pairs, PAR_THRESHOLD, |scope, geometry| {
+                for thread_idx in 0..geometry.num_chunks {
+                    let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                    let chunk_size = geometry.get_chunk_size(thread_idx);
+                    worker::Worker::smart_spawn(
+                        scope,
+                        thread_idx == geometry.len() - 1,
+                        move |_| {
+                            // capture the Send wrappers WHOLESALE (edition-2021
+                            // disjoint capture would otherwise grab the bare
+                            // pointers out of them)
+                            let (src, dst) = (src, dst);
+                            for j in chunk_start..chunk_start + chunk_size {
+                                for b in 0..2 {
+                                    unsafe {
+                                        let lo = *src.0.add(4 * j + b);
+                                        let hi = *src.0.add(4 * j + 2 + b);
+                                        let mut v = hi;
+                                        v.sub_assign(&lo);
+                                        v.mul_assign(&r);
+                                        v.add_assign(&lo);
+                                        *dst.0.add(2 * j + b) = v;
+                                    }
+                                }
+                            }
+                        },
+                    );
+                }
+            });
+            tracker.step();
         }
         // contract T: the pair sum drops the (new) lowest variable exactly --
         // f(0)*x + f(1)*x = x per table factor
         if s + 1 < rounds {
-            (t_at, t_len) = contract_t_table(&mut t_table, t_at, t_len);
+            t_table.contract(worker);
         }
 
         round_coefficients.push(coeffs);
@@ -345,8 +451,9 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
 
     let final_values: BTreeMap<GKRAddress, [E; 2]> = buffers
         .iter()
-        .map(|(addr, buf)| {
-            let live = buf.live();
+        .map(|(addr, tracker)| {
+            // SAFETY: the last fold fully wrote this 2-element region
+            let live = unsafe { tracker.input_slice() };
             assert_eq!(live.len(), 2);
             (*addr, [live[0], live[1]])
         })
@@ -898,28 +1005,6 @@ impl<E> FoldBufferTracker<E> {
     }
 }
 
-/// One suffix-eq-table contraction, `t'[j] = t[2j] + t[2j+1]` — dropping the
-/// table's lowest remaining variable EXACTLY (`f(0)*x + f(1)*x = x` per
-/// factor) — written DENSELY into the OTHER ping-pong region of the table's
-/// 3/4-sized buffer, exactly like the poly fold scratch: source and
-/// destination are disjoint and the round always reads a contiguous region.
-/// Takes the current live `(offset, len)` and returns the new one.
-fn contract_t_table<E: Field>(buf: &mut [E], at: usize, len: usize) -> (usize, usize) {
-    assert!(len >= 2);
-    let next = len / 2;
-    let dst_at = if at == 0 { len } else { 0 };
-    debug_assert!(dst_at + next <= buf.len());
-    let (src_ptr, dst_ptr) = unsafe { (buf.as_ptr().add(at), buf.as_mut_ptr().add(dst_at)) };
-    for j in 0..next {
-        unsafe {
-            let mut v = *src_ptr.add(2 * j);
-            v.add_assign(&*src_ptr.add(2 * j + 1));
-            *dst_ptr.add(j) = v;
-        }
-    }
-    (dst_at, next)
-}
-
 /// Round 0 of the production dimension-reducing sumcheck: the gate values at
 /// `X = 0` are read straight from the OUTPUT layer polys (they hold exactly
 /// `gate(inputs)` pointwise), `X = inf` from the input differences; nothing
@@ -955,7 +1040,7 @@ pub fn lsb_dim_reducing_sumcheck_initial_round<
     worker: &worker::Worker,
     tri_scratch: &mut [Box<[core::mem::MaybeUninit<S>]>],
     chunk_kernel: CKI,
-) -> ([E; 4], Vec<E>) {
+) -> ([E; 4], SuffixEqTable<E>) {
     let rounds = tau.len();
     let m = 1usize << rounds;
     for p in inputs.values() {
@@ -966,14 +1051,10 @@ pub fn lsb_dim_reducing_sumcheck_initial_round<
     }
     assert!(tri_scratch.len() >= worker.num_cores);
 
-    // round 0's suffix eq table covers tau[1..]; reserve room for it to
-    // grow into the continuing rounds' 3/4-sized ping-pong contraction
-    // buffer without reallocating
-    let t_table = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first_with_capacity(
-        &tau[1..],
-        m / 2 + m / 4,
-        worker,
-    );
+    // round 0's suffix eq table covers tau[1..], materialized ONCE into its
+    // 3/4-sized ping-pong pool (uninit first-touch writes, contraction room
+    // included)
+    let t_table = SuffixEqTable::materialize(&tau[1..], worker);
 
     let t_ptr = SendConstPtr(t_table.as_ptr());
     let [h0, hinf] = tri_weighted_sweep(m / 2, worker, tri_scratch, |start, size, tri| {
@@ -1033,7 +1114,7 @@ pub fn lsb_dim_reducing_sumcheck_continue<
     tau: &[E],
     round_0_coefficients: &[E; 4],
     r_0: E,
-    mut t_table: Vec<E>,
+    mut t_table: SuffixEqTable<E>,
     worker: &worker::Worker,
     tri_scratch: &mut [Box<[core::mem::MaybeUninit<S>]>],
     chunk_kernel: CK,
@@ -1061,24 +1142,19 @@ pub fn lsb_dim_reducing_sumcheck_continue<
     let mut eq_prev = eq_weight(&tau[0], &r_0);
     let mut folding_challenge = r_0;
 
-    // the initial round's table covers tau[1..]; grow it into a 3/4-sized
-    // ping-pong buffer, then one contraction drops the round-0 variable so
-    // it covers tau[2..] for round 1, and later rounds keep contracting it
+    // the initial round's table covers tau[1..]; one contraction drops the
+    // round-0 variable so it covers tau[2..] for round 1, and later rounds
+    // keep contracting it inside its 3/4-sized ping-pong pool
     assert_eq!(t_table.len(), m / 2);
-    assert!(
-        t_table.capacity() >= m / 2 + m / 4,
-        "the initial round must reserve the contraction buffer"
-    );
-    t_table.resize(m / 2 + m / 4, E::ZERO);
-    let (mut t_at, mut t_len) = contract_t_table(&mut t_table, 0, m / 2);
+    t_table.contract(worker);
 
     for s in 1..rounds {
         let pairs = (m >> s) / 2;
 
-        debug_assert_eq!(t_len, pairs);
+        debug_assert_eq!(t_table.len(), pairs);
         // computational part: one T-weighted sweep over the trackers'
         // current regions, folding `folding_challenge` on read
-        let t_ptr = SendConstPtr(unsafe { t_table.as_ptr().add(t_at) });
+        let t_ptr = SendConstPtr(t_table.as_ptr());
         let buffers_ref = &*buffers;
         let [h0, hinf] = tri_weighted_sweep(pairs, worker, tri_scratch, |start, size, tri| {
             chunk_kernel(
@@ -1117,7 +1193,7 @@ pub fn lsb_dim_reducing_sumcheck_continue<
         folding_challenge = r;
 
         if s + 1 < rounds {
-            (t_at, t_len) = contract_t_table(&mut t_table, t_at, t_len);
+            t_table.contract(worker);
         }
     }
 
@@ -1240,8 +1316,15 @@ mod tests {
             claim.add_assign(&t);
         }
 
-        let out =
-            lsb_dim_reducing_sumcheck_prove::<F, E>(&poly_map, &relations, &tau, claim, &challenges);
+        let worker = worker::Worker::new_with_num_threads(4);
+        let out = lsb_dim_reducing_sumcheck_prove::<F, E>(
+            &poly_map,
+            &relations,
+            &tau,
+            claim,
+            &challenges,
+            &worker,
+        );
 
         // external verification of the chaining, in EXACTLY the generated
         // verifier's round shape (`verify_sumcheck_rounds`):
