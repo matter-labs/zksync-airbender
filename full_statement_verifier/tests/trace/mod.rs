@@ -70,7 +70,10 @@ fn to_cycles(ts: TimestampScalar) -> u64 {
     (ts - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
 }
 
-fn prepare(bin: &[u32], text: &[u32]) -> (Vec<Instruction>, RamWithRomRegion<ROM_SECOND_WORD_BITS>) {
+fn prepare(
+    bin: &[u32],
+    text: &[u32],
+) -> (Vec<Instruction>, RamWithRomRegion<ROM_SECOND_WORD_BITS>) {
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<ReducedMachineDecoderConfig, true>(text);
     let ram = RamWithRomRegion::<ROM_SECOND_WORD_BITS>::from_rom_content(bin, RAM_BOUND);

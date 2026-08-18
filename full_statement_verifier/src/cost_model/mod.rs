@@ -84,10 +84,7 @@ pub fn estimate_verifier_cycles(
     estimate_from_table(table, proof)
 }
 
-pub fn estimate_from_table(
-    table: &CostTable,
-    proof: &ProgramProof,
-) -> Result<u64, EstimateError> {
+pub fn estimate_from_table(table: &CostTable, proof: &ProgramProof) -> Result<u64, EstimateError> {
     estimate_from_counts(
         table,
         &proof_counts(proof),
@@ -129,7 +126,6 @@ pub fn estimate_from_counts(
     }
     Ok(total)
 }
-
 
 pub const BASE_LAYER_RISCV: &[u32] = &[
     common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
@@ -203,13 +199,19 @@ mod tests {
     #[test]
     fn absent_circuits_contribute_nothing() {
         let counts = [(ADD_SUB, 1)];
-        assert_eq!(estimate_from_counts(&test_table(), &counts, 1).unwrap(), 1_010);
+        assert_eq!(
+            estimate_from_counts(&test_table(), &counts, 1).unwrap(),
+            1_010
+        );
     }
 
     #[test]
     fn zero_count_is_treated_as_absent_not_unpriced() {
         let counts = [(ADD_SUB, 1), (CircuitId::Delegation(9999), 0)];
-        assert_eq!(estimate_from_counts(&test_table(), &counts, 1).unwrap(), 1_010);
+        assert_eq!(
+            estimate_from_counts(&test_table(), &counts, 1).unwrap(),
+            1_010
+        );
     }
 
     #[test]

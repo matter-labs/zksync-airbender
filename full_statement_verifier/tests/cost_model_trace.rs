@@ -64,7 +64,11 @@ fn stream_plan_matches_the_actual_stream() {
     let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
     let plan = trace::plan::plan_unrolled_stream(&setups, &proof, FsvProgram::UnrolledBaseLayer);
 
-    assert_eq!(plan.total_words, stream.len(), "planned length must match the stream");
+    assert_eq!(
+        plan.total_words,
+        stream.len(),
+        "planned length must match the stream"
+    );
 
     for region in &plan.regions {
         let n = region.proof_first_words.len() as u32;
@@ -76,14 +80,22 @@ fn stream_plan_matches_the_actual_stream() {
     }
     assert_eq!(stream[plan.inits_count_word], 1);
 
-    let riscv: Vec<_> = plan.regions.iter().filter(|r| r.section == trace::plan::Section::Riscv).collect();
+    let riscv: Vec<_> = plan
+        .regions
+        .iter()
+        .filter(|r| r.section == trace::plan::Section::Riscv)
+        .collect();
     assert_eq!(
         riscv.last().unwrap().end_word,
         plan.inits_count_word,
         "the last RISC-V region must close at the inits/teardowns count word, \
          not at the first delegation region"
     );
-    let deleg: Vec<_> = plan.regions.iter().filter(|r| r.section == trace::plan::Section::Delegation).collect();
+    let deleg: Vec<_> = plan
+        .regions
+        .iter()
+        .filter(|r| r.section == trace::plan::Section::Delegation)
+        .collect();
     assert_eq!(deleg.last().unwrap().end_word, plan.pow_word);
     assert!(deleg.last().unwrap().closes_at_epilogue);
     assert!(riscv.iter().all(|r| !r.closes_at_epilogue));
