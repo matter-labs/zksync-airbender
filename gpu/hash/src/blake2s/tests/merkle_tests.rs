@@ -19,15 +19,17 @@ fn blake2s_nodes() {
     const N: usize = 1 << LOG_N;
     let mut values_host = vec![Digest::default(); N * 2];
     values_host.fill_with(random_digest);
-    let mut results_host = vec![Digest::default(); N];
+    // One layer through the public builder: `results` is sized like `values`,
+    // and a single layer fills its first `N` digests.
+    let mut results_host = vec![Digest::default(); N * 2];
     let stream = CudaStream::default();
     let mut values_device = DeviceAllocation::alloc(values_host.len()).unwrap();
     let mut results_device = DeviceAllocation::alloc(results_host.len()).unwrap();
     memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
-    hash_nodes(&values_device, &mut results_device, &stream).unwrap();
+    build_merkle_tree_nodes(&values_device, &mut results_device, 1, &stream).unwrap();
     memory_copy_async(&mut results_host, &results_device, &stream).unwrap();
     stream.synchronize().unwrap();
-    verify_nodes(&values_host, &results_host);
+    verify_nodes(&values_host, &results_host[..N]);
 }
 
 fn verify_tree(values: &[Digest], results: &[Digest], layers_count: u32) {
