@@ -390,12 +390,15 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
             state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
         ) -> Result<(), E::Error> {
             unsafe {
+                // The claim point is in plain VARIABLE order (LSB binding):
+                // coordinate `k` is index bit `k`, matching the prover's
+                // `evaluate_virtual_range_check_setup_poly`.
                 let pt = state.prev_point.get_unchecked(..#n);
                 let mut result: #quartic_struct = #quartic_zero;
                 let mut prefactor: #field_struct = #field_one;
                 let mut k: usize = 0;
                 while k < #bits {
-                    let mut t = *pt.get_unchecked(#n - 1 - k);
+                    let mut t = *pt.get_unchecked(k);
                     #mul_t_pre;
                     #add_res_t;
                     #dbl_pre;
@@ -403,7 +406,7 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
                 }
                 while k < #n {
                     let mut t: #quartic_struct = #quartic_one;
-                    let p = pt.get_unchecked(#n - 1 - k);
+                    let p = pt.get_unchecked(k);
                     #sub_t_p;
                     #mul_res_t;
                     k += 1;
@@ -455,6 +458,9 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
             state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
         ) -> Result<(), E::Error> {
             unsafe {
+                // The claim point is in plain VARIABLE order (LSB binding):
+                // coordinate `k` is index bit `k`, matching the prover's
+                // `evaluate_virtual_inits_and_teardowns_base_address_setup_polys`.
                 let pt = state.prev_point.get_unchecked(..#n);
 
                 let mut low_eval: #quartic_struct = #quartic_zero;
@@ -467,7 +473,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
                     }
                     let mut k: usize = 0;
                     while k < #take_count {
-                        let mut t = *pt.get_unchecked(#n - 1 - k);
+                        let mut t = *pt.get_unchecked(k);
                         #mul_t_pre;
                         #add_low_t;
                         #dbl_pre;
@@ -480,7 +486,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
                     let mut prefactor: #field_struct = #field_one;
                     let mut k: usize = 0;
                     while k < #n - #take_count {
-                        let mut t = *pt.get_unchecked(#n - 1 - #take_count - k);
+                        let mut t = *pt.get_unchecked(#take_count + k);
                         #mul_t_pre;
                         #add_high_t;
                         #dbl_pre;
@@ -1405,7 +1411,17 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
                 let r_last = *draw_buf.get(0);
                 let next_batching = *draw_buf.get(1);
-                *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+                // `r_last` binds bit 0 of the NEXT layer's enumeration, so the new claim
+                // point is `[r_last, r_0, .., r_{n-1}]` in plain variable order: shift the
+                // round challenges up by one and prepend.
+                {
+                    let mut i = fc_len;
+                    while i > 0 {
+                        *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                        i -= 1;
+                    }
+                    *state.prev_point.get_unchecked_mut(0) = r_last;
+                }
                 fc_len += 1;
                 const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
                 const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;

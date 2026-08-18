@@ -41,8 +41,15 @@
 //! `h_s` is quadratic (gates are quadratic, inputs linear in X), so the
 //! engine accumulates `[h(0), h(inf)]` (h(1) is derived from the running
 //! claim) and emits the CUBIC monomial coefficients `[c0, c1, c2, c3]` of
-//! `q_s`. Soundness bookkeeping is the standard chaining
-//! `q_s(0) + q_s(1) == claim_s`, `claim_{s+1} = q_s(r_s)`.
+//! `q_s`.
+//!
+//! The wire format is the NORMALIZED single-eq-factor convention shared with
+//! the same-size scalar rounds (see the `GKRBackend` trait docs): the
+//! message carries only the LOCAL `eqw_s` factor, and the chaining is
+//! `eqw_{s-1}(r_{s-1}) * (q_s(0) + q_s(1)) == claim_s`,
+//! `claim_{s+1} = q_s(r_s)`, with the layer's final identity
+//! `claim == eqw_last(r_last) * gate(final values)` — so the generated
+//! verifier checks every layer type with ONE round routine.
 //!
 //! # Production shape
 //!
@@ -211,8 +218,10 @@ pub struct LsbDimReducingSumcheckOutput<E> {
     pub round_coefficients: Vec<[E; 4]>,
     pub final_claim: E,
     pub final_values: BTreeMap<GKRAddress, [E; 2]>,
-    /// `prod_s eqw_s(r_s)` -- the eq factor of the bound variables; the
-    /// final claim satisfies `final_claim == eq_factor * gate(final_values)`.
+    /// `eqw_last(r_last)` -- the LAST round's eq factor (normalized
+    /// convention: earlier factors are divided out of each round's claim);
+    /// the final claim satisfies
+    /// `final_claim == eq_factor * gate(final_values)`.
     pub eq_factor: E,
 }
 
@@ -272,9 +281,10 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
         .collect();
     let mut round_coefficients = Vec::with_capacity(rounds);
     let mut claim = claim;
-    // accumulated eq prefix over the already-bound variables:
-    // prod_{t<s} eqw_t(r_t); it scales every later round polynomial
-    let mut eq_prefix = E::ONE;
+    // the PREVIOUS round's single eq factor (normalized convention): each
+    // round's claim is divided by it, and the message carries only the
+    // local eqw_s factor
+    let mut eq_prev = E::ONE;
 
     for s in 0..rounds {
         let pairs = 1usize << (rounds - 1 - s);
@@ -299,10 +309,11 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
                 dst.add_assign(&t);
             }
         }
-        // q(X) = eqw(X) * h(X), scaled by the accumulated eq prefix
-        let coeffs = cubic_round_message(&h[0], &h[1], &h[2], &tau[s], &eq_prefix);
+        // q(X) = eqw(X) * h(X) -- LOCAL eq factor only
+        let coeffs = cubic_round_message(&h[0], &h[1], &h[2], &tau[s]);
 
-        // soundness bookkeeping: q(0) + q(1) must reproduce the claim
+        // soundness bookkeeping: eqw_{s-1}(r_{s-1}) * (q(0) + q(1)) must
+        // reproduce the claim
         #[cfg(feature = "gkr_self_checks")]
         {
             let [c0, c1, c2, c3] = coeffs;
@@ -311,13 +322,14 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
             q01.add_assign(&c1);
             q01.add_assign(&c2);
             q01.add_assign(&c3);
+            q01.mul_assign(&eq_prev);
             assert_eq!(q01, claim, "LSB dim-reducing round {} claim mismatch", s);
         }
 
         // bind the challenge: claim = q(r), fold polys, contract T
         let r = challenges[s];
         claim = horner4(&coeffs, &r);
-        eq_prefix.mul_assign(&eq_weight(&tau[s], &r));
+        eq_prev = eq_weight(&tau[s], &r);
 
         for buf in buffers.values_mut() {
             buf.fold(&r);
@@ -341,12 +353,12 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
         .collect();
 
     // final identity: the claim after all rounds equals the batched gate on
-    // the fully folded values (eq fully consumed by the eqw factors)
+    // the fully folded values times the LAST round's eq factor
     #[cfg(feature = "gkr_self_checks")]
     {
         let fv = &final_values;
         let mut g = gate_batch(relations, |a, b| fv[&a][b]);
-        g.mul_assign(&eq_prefix);
+        g.mul_assign(&eq_prev);
         assert_eq!(g, claim, "LSB dim-reducing final gate identity");
     }
 
@@ -354,36 +366,17 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
         round_coefficients,
         final_claim: claim,
         final_values,
-        eq_factor: eq_prefix,
+        eq_factor: eq_prev,
     }
 }
 
-/// h(1) from the round claim: `claim = eq_prefix * ((1 - tau)*h(0) + tau*h(1))`.
-#[inline]
-pub(crate) fn derive_h1_from_claim<E: Field>(claim: &E, eq_prefix: &E, h0: &E, tau_s: &E) -> E {
-    let mut e0 = E::ONE;
-    e0.sub_assign(tau_s);
-    let mut v = *claim;
-    v.mul_assign(&eq_prefix.inverse().expect("eq prefix nonzero"));
-    let mut t = e0;
-    t.mul_assign(h0);
-    v.sub_assign(&t);
-    v.mul_assign(&tau_s.inverse().expect("tau nonzero"));
-    v
-}
-
 /// Monomial coefficients of the cubic round message
-/// `q(X) = eq_prefix * eqw(X) * h(X)` from the `(h0, h1, hinf)` triple, with
+/// `q(X) = eqw(X) * h(X)` from the `(h0, h1, hinf)` triple, with
 /// `eqw(X) = (1 - tau) + (2*tau - 1)*X` and
-/// `h(X) = h0 + (h1 - h0 - hinf)*X + hinf*X^2`.
+/// `h(X) = h0 + (h1 - h0 - hinf)*X + hinf*X^2` (local eq factor only --
+/// the normalized wire convention).
 #[inline]
-pub(crate) fn cubic_round_message<E: Field>(
-    h0: &E,
-    h1: &E,
-    hinf: &E,
-    tau_s: &E,
-    eq_prefix: &E,
-) -> [E; 4] {
+pub(crate) fn cubic_round_message<E: Field>(h0: &E, h1: &E, hinf: &E, tau_s: &E) -> [E; 4] {
     let mut h1x = *h1;
     h1x.sub_assign(h0);
     h1x.sub_assign(hinf);
@@ -405,11 +398,7 @@ pub(crate) fn cubic_round_message<E: Field>(
     c2.add_assign(&t);
     let mut c3 = e1;
     c3.mul_assign(hinf);
-    let mut coeffs = [c0, c1, c2, c3];
-    for c in coeffs.iter_mut() {
-        c.mul_assign(eq_prefix);
-    }
-    coeffs
+    [c0, c1, c2, c3]
 }
 
 /// Horner evaluation of the 4-coefficient round message at `r`.
@@ -991,8 +980,13 @@ pub fn lsb_dim_reducing_sumcheck_initial_round<
         chunk_kernel(inputs, outputs, relations, t_ptr, start, size, tri)
     });
 
-    let h1 = derive_h1_from_claim(&claim, &E::ONE, &h0, &tau[0]);
-    let coefficients = cubic_round_message(&h0, &h1, &hinf, &tau[0], &E::ONE);
+    // round 0 has no previous eq factor, so the claim is already normalized;
+    // the message comes from the SAME builder as the same-size scalar rounds
+    // (the unified wire format -- see the `GKRBackend` trait docs)
+    let coefficients =
+        crate::gkr::sumcheck::output_univariate_monomial_form_max_quadratic::<F, E>(
+            tau[0], claim, h0, hinf,
+        );
     (coefficients, t_table)
 }
 
@@ -1063,7 +1057,8 @@ pub fn lsb_dim_reducing_sumcheck_continue<
     let mut round_coefficients = Vec::with_capacity(rounds - 1);
     let mut challenges = Vec::with_capacity(rounds - 1);
     let mut claim = horner4(round_0_coefficients, &r_0);
-    let mut eq_prefix = eq_weight(&tau[0], &r_0);
+    // the PREVIOUS round's single eq factor (normalized wire convention)
+    let mut eq_prev = eq_weight(&tau[0], &r_0);
     let mut folding_challenge = r_0;
 
     // the initial round's table covers tau[1..]; grow it into a 3/4-sized
@@ -1097,13 +1092,22 @@ pub fn lsb_dim_reducing_sumcheck_continue<
             )
         });
 
-        let h1 = derive_h1_from_claim(&claim, &eq_prefix, &h0, &tau[s]);
-        let coeffs = cubic_round_message(&h0, &h1, &hinf, &tau[s], &eq_prefix);
+        // normalized wire convention: divide the claim by the previous
+        // round's single eq factor and build the message with the SAME
+        // builder as the same-size scalar rounds
+        let mut normalized_claim = claim;
+        normalized_claim.mul_assign(&eq_prev.inverse().expect("eq factor non-zero"));
+        let coeffs = crate::gkr::sumcheck::output_univariate_monomial_form_max_quadratic::<F, E>(
+            tau[s],
+            normalized_claim,
+            h0,
+            hinf,
+        );
         let r = draw_challenge(&coeffs);
         round_coefficients.push(coeffs);
         challenges.push(r);
         claim = horner4(&coeffs, &r);
-        eq_prefix.mul_assign(&eq_weight(&tau[s], &r));
+        eq_prev = eq_weight(&tau[s], &r);
 
         // pointer adjustment for the next round: every tracker promotes its
         // just-written output to the next input and carves the next output
@@ -1139,12 +1143,12 @@ pub fn lsb_dim_reducing_sumcheck_continue<
         .collect();
 
     // final identity: the claim after all rounds equals the batched gate on
-    // the fully folded values (eq fully consumed by the eqw factors)
+    // the fully folded values times the LAST round's eq factor
     #[cfg(feature = "gkr_self_checks")]
     {
         let fv = &final_values;
         let mut g = gate_batch(relations, |a, b| fv[&a][b]);
-        g.mul_assign(&eq_prefix);
+        g.mul_assign(&eq_prev);
         assert_eq!(g, claim, "LSB dim-reducing final gate identity");
     }
 
@@ -1153,7 +1157,7 @@ pub fn lsb_dim_reducing_sumcheck_continue<
             round_coefficients,
             final_claim: claim,
             final_values,
-            eq_factor: eq_prefix,
+            eq_factor: eq_prev,
         },
         challenges,
     )
@@ -1239,10 +1243,13 @@ mod tests {
         let out =
             lsb_dim_reducing_sumcheck_prove::<F, E>(&poly_map, &relations, &tau, claim, &challenges);
 
-        // external verification of the chaining (independent of the internal
-        // gkr_self_checks asserts): q_s(0) + q_s(1) == claim_s, claim_{s+1} =
-        // q_s(r_s), and the final gate identity
+        // external verification of the chaining, in EXACTLY the generated
+        // verifier's round shape (`verify_sumcheck_rounds`):
+        // eqw_{s-1}(r_{s-1}) * (q_s(0) + q_s(1)) == claim_s,
+        // claim_{s+1} = q_s(r_s), and the final gate identity with the LAST
+        // round's eq factor
         let mut c = claim;
+        let mut eq_prev = E::ONE;
         for (s, coeffs) in out.round_coefficients.iter().enumerate() {
             let [c0, c1, c2, c3] = *coeffs;
             let mut q01 = c0;
@@ -1250,10 +1257,13 @@ mod tests {
             q01.add_assign(&c1);
             q01.add_assign(&c2);
             q01.add_assign(&c3);
+            q01.mul_assign(&eq_prev);
             assert_eq!(q01, c, "round {} chaining", s);
             c = horner4(coeffs, &challenges[s]);
+            eq_prev = eq_weight(&tau[s], &challenges[s]);
         }
         assert_eq!(c, out.final_claim);
+        assert_eq!(eq_prev, out.eq_factor);
         let mut g = gate_batch(&relations, |a, b| out.final_values[&a][b]);
         g.mul_assign(&out.eq_factor);
         assert_eq!(g, out.final_claim, "final folded gate identity");
