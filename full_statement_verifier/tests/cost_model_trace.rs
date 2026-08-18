@@ -110,7 +110,6 @@ fn stream_plan_matches_the_actual_stream() {
 #[test]
 #[ignore = "needs real proofs; see Task 6"]
 fn per_proof_spans_agree_within_a_circuit() {
-    use verifier_common::fsv_binaries::FsvProgram;
     for (fixture, program) in trace::calibrate::FIXTURES {
         let c = trace::calibrate::calibrate_fixture(fixture, *program);
         for (circuit, spans) in &c.spans {

@@ -52,7 +52,8 @@ pub fn calibrate(trace: &Trace, plan: &StreamPlan) -> Calibration {
         if spans.is_empty() {
             None
         } else {
-            Some(spans.iter().sum::<u64>() / spans.len() as u64)
+            let len = spans.len() as u64;
+            Some((spans.iter().sum::<u64>() + len / 2) / len)
         }
     };
 
@@ -61,7 +62,18 @@ pub fn calibrate(trace: &Trace, plan: &StreamPlan) -> Calibration {
             .iter()
             .filter(|r| r.section == section && !r.closes_at_epilogue)
             .find_map(|r| {
-                period_of(r).map(|v| region_cycles(r) - r.proof_first_words.len() as u64 * v)
+                period_of(r).map(|v| {
+                    let priced = r.proof_first_words.len() as u64 * v;
+                    region_cycles(r).checked_sub(priced).unwrap_or_else(|| {
+                        panic!(
+                            "{:?}: region_cycles {} < n*v {}, so S_{:?} would be negative",
+                            r.circuit,
+                            region_cycles(r),
+                            priced,
+                            section
+                        )
+                    })
+                })
             })
             .unwrap_or_else(|| {
                 panic!(
@@ -96,7 +108,15 @@ pub fn calibrate(trace: &Trace, plan: &StreamPlan) -> Calibration {
                     Section::Riscv => s_riscv,
                     Section::Delegation => s_delegation,
                 };
-                region_cycles(r) - s
+                region_cycles(r).checked_sub(s).unwrap_or_else(|| {
+                    panic!(
+                        "{:?}: region_cycles {} < S_{:?} {}",
+                        r.circuit,
+                        region_cycles(r),
+                        r.section,
+                        s
+                    )
+                })
             }
             None => panic!(
                 "{:?} is a singleton in the epilogue-tail region; its span includes the \
