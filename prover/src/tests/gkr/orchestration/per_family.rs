@@ -10,6 +10,7 @@ use crate::gkr::prover::{
 };
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
+use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::whir::ColumnMajorBaseOracleForLDE;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::family_circuits::{
@@ -82,6 +83,33 @@ pub fn prove_built_family_trace(
         trace_len.trailing_zeros() as usize,
         level,
     );
+    prove_built_family_trace_with_prover_config(
+        circuit,
+        table_driver,
+        decoder_table_data,
+        full_trace,
+        trace_len,
+        external_challenges,
+        &prover_config,
+        worker,
+    )
+}
+
+/// Like [`prove_built_family_trace`] but takes an explicit [`ProverConfig`]
+/// instead of building the example config from the security level, so tests
+/// can A/B config variations (e.g. windowed vs all-naive same-size
+/// schedules) over the exact same prove path.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_built_family_trace_with_prover_config(
+    circuit: &GKRCircuitArtifact<BabyBearField>,
+    table_driver: &TableDriver<BabyBearField>,
+    decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
+    full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    trace_len: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    prover_config: &ProverConfig,
+    worker: &Worker,
+) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
     let setup_commitment = setup.commit(
@@ -112,7 +140,7 @@ pub fn prove_built_family_trace(
         &setup,
         &setup_commitment,
         &twiddles,
-        &prover_config,
+        prover_config,
         CommitmentMode::SeparateMemoryAndWitness,
         WhirOracleStorage::fully_in_memory(),
         Vec::new(),
@@ -348,6 +376,60 @@ pub fn prove_non_mem_family<const CIRCUIT_TYPE: u8, C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
+    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
+        trace_len.trailing_zeros() as usize,
+        level,
+    );
+    prove_non_mem_family_with_prover_config::<CIRCUIT_TYPE, C>(
+        snapshotter,
+        tape,
+        expected_final_state,
+        cycles_bound,
+        num_calls,
+        decoder_table_data,
+        table_driver_setup,
+        trace_len,
+        num_cycles_per_chunk,
+        external_challenges,
+        &prover_config,
+        prove_empty,
+        compute_only,
+        circuits_filter,
+        circuit_stem,
+        proof_suffix,
+        worker,
+        eval_fn,
+    )
+}
+
+/// Like [`prove_non_mem_family`] but takes an explicit [`ProverConfig`]
+/// instead of the security level (the example config is built from the level
+/// by the wrapper above), so tests can A/B config variations over the exact
+/// same orchestration.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_non_mem_family_with_prover_config<const CIRCUIT_TYPE: u8, C>(
+    snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
+    tape: &SimpleTape,
+    expected_final_state: &State<C>,
+    cycles_bound: usize,
+    num_calls: usize,
+    decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
+    table_driver_setup: impl FnOnce(&mut TableDriver<BabyBearField>),
+    trace_len: usize,
+    num_cycles_per_chunk: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    prover_config: &ProverConfig,
+    prove_empty: bool,
+    compute_only: bool,
+    circuits_filter: &Option<std::collections::HashSet<String>>,
+    circuit_stem: &str,
+    proof_suffix: &str,
+    worker: &Worker,
+    eval_fn: fn(&mut ColumnMajorWitnessProxy<'_, NonMemoryCircuitOracle<'_>, BabyBearField>),
+) -> FamilyProveOutput
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path(circuit_stem));
     let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -383,14 +465,14 @@ where
             );
         }
 
-        let proof = prove_built_family_trace(
+        let proof = prove_built_family_trace_with_prover_config(
             &circuit,
             &table_driver,
             decoder_table_data,
             built.full_trace,
             trace_len,
             external_challenges,
-            level,
+            prover_config,
             worker,
         );
 

@@ -11,103 +11,214 @@ pub mod pow_bits;
 /// (consistent with monomial ordering and WHIR's RS-codeword folding), so a
 /// step always consumes the CURRENTLY LOWEST variables of the remaining
 /// hypercube.
+///
+/// The grammar is STRICT (see [`validate_sumcheck_schedule`]): a valid
+/// schedule is either all-naive (the empty schedule, or one `NaiveSumcheck`
+/// per variable), or a window chain
+/// (`WindowInitial, FoldInitial, (WindowContinuing, FoldContinuing)*, Tail`).
+/// Pass steps are labeled by what they READ (`*Initial` reads the original
+/// layer inputs, `*Continuing` the folded tables); the non-merged fold that
+/// materializes each pass's binding is an EXPLICIT step with the same
+/// labeling, and the scalar rounds that finish the layer are the explicit
+/// `Tail` step.
+///
+/// Uniskip chains
+/// (`UniskipInitial, FoldInitial, (UniskipContinuing, FoldContinuing)*, Tail`)
+/// are grammatically reserved but currently UNIMPLEMENTED:
+/// [`validate_sumcheck_schedule`] panics on any uniskip step. The redesign
+/// makes a uniskip pass emit a Lagrange WEIGHT-BLOCK claim (8 node-Lagrange
+/// weights over the window corners instead of 3 bound point coordinates),
+/// and neither the same-size engines nor the WHIR handoff carry that claim
+/// shape yet.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SumcheckStep {
     /// The classic mode: fold exactly one variable with the per-round batched
-    /// evaluator (one `[E; 4]` message per round).
+    /// evaluator (one `[E; 4]` message per round; the fold is lazy, merged
+    /// into the next round's evaluation).
     NaiveSumcheck,
-    /// A windowed-accumulator step of the bracket-preserving SoA engine: the
-    /// window's `{0,1,inf}^w` accumulator is computed in one pass and the
-    /// per-round messages are emitted from the bind chain. `window = 1` is
-    /// logically equivalent to [`SumcheckStep::NaiveSumcheck`] but runs the
-    /// windowed kernels.
-    WindowedOp(WindowedOp),
-    /// Univariate skip: `window` variables are packed into ONE univariate
-    /// round (message = monomial coefficients of the packed q, degree
-    /// `< 2^{window + 1}`), then bound by a single challenge via the Lagrange
-    /// fold. Only `window == 3` is implemented initially.
-    Uniskip { window: usize },
-    /// Uniskip head over the layer inputs: binds `window` variables with one
-    /// univariate message; leaves its own challenge's L-fold pending.
+    /// Univariate-skip pass over the ORIGINAL layer inputs: `window`
+    /// variables packed into ONE univariate round (message = monomial
+    /// coefficients of the packed q, degree `< 2^{window + 1}`). Leaves its
+    /// challenge's Lagrange fold to the following [`SumcheckStep::FoldInitial`].
     UniskipInitial { window: usize },
-}
-
-/// Flavor of a windowed step (validated by
-/// [`validate_sumcheck_schedule`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum WindowedOp {
-    /// Head descriptor of the LSB window-3 chain: 27-cell window passes for
-    /// as long as three variables remain, then naive scalar tail rounds.
-    Initial { window: usize },
+    /// Univariate-skip pass over the PREVIOUSLY FOLDED tables; its fold is
+    /// the following [`SumcheckStep::FoldContinuing`].
+    UniskipContinuing { window: usize },
+    /// Windowed-accumulator pass over the ORIGINAL layer inputs: the
+    /// `{0,1,inf}^window` accumulator is computed in one pass and `window`
+    /// ordinary scalar rounds are emitted from the bind chain. The batched
+    /// eq-tensor fold is the following [`SumcheckStep::FoldInitial`].
+    WindowInitial { window: usize },
+    /// Windowed-accumulator pass over the PREVIOUSLY FOLDED tables; its fold
+    /// is the following [`SumcheckStep::FoldContinuing`].
+    WindowContinuing { window: usize },
+    /// The explicit (non-merged) fold materializing the PRECEDING pass's
+    /// binding, reading the ORIGINAL layer inputs (i.e. after an `*Initial`
+    /// pass) and writing the first dense folded tables. `width` is the
+    /// folding width and must equal the preceding pass's window (validated).
+    FoldInitial { width: usize },
+    /// The explicit fold after a `*Continuing` pass: reads the previous
+    /// dense folded tables, writes the next ones. `width` must equal the
+    /// preceding pass's window (validated).
+    FoldContinuing { width: usize },
+    /// Scalar naive rounds over the dense folded tables, binding ALL
+    /// remaining variables (possibly zero) and finishing the layer. Required
+    /// after uniskip/window chains.
+    Tail,
 }
 
 impl SumcheckStep {
-    /// Number of hypercube variables this step binds.
+    /// Number of hypercube variables this step binds. Folds bind none (they
+    /// materialize the preceding pass's binding); [`SumcheckStep::Tail`]
+    /// binds "all remaining", which only [`validate_sumcheck_schedule`] can
+    /// account for.
     pub fn variables_bound(&self) -> usize {
         match self {
             SumcheckStep::NaiveSumcheck => 1,
-            SumcheckStep::WindowedOp(WindowedOp::Initial { window }) => *window,
-            SumcheckStep::Uniskip { window } => *window,
-            SumcheckStep::UniskipInitial { window } => *window,
+            SumcheckStep::UniskipInitial { window }
+            | SumcheckStep::UniskipContinuing { window }
+            | SumcheckStep::WindowInitial { window }
+            | SumcheckStep::WindowContinuing { window } => *window,
+            SumcheckStep::FoldInitial { .. }
+            | SumcheckStep::FoldContinuing { .. }
+            | SumcheckStep::Tail => 0,
         }
     }
 }
 
-/// Checks that a schedule is well-formed for `folding_steps` variables: the
-/// bound-variable counts sum to `folding_steps`, windows are within the
-/// supported sizes, and windowed flavors appear in a consistent order
-/// (`Initial`* -> at most one `Transition` -> `Interior`*/naive tail). An
-/// EMPTY schedule is always valid and means "NaiveSumcheck for every round"
-/// (the current production behavior).
+/// The three valid schedule shapes (see [`validate_sumcheck_schedule`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SumcheckScheduleClass {
+    Naive,
+    Uniskip,
+    Windowed,
+}
+
+/// Checks the STRICT schedule grammar for `folding_steps` variables and
+/// returns the schedule's class. Valid schedules:
+///
+/// * all-naive: the EMPTY schedule (naive for every round), or exactly
+///   `folding_steps` `NaiveSumcheck` steps;
+/// * window chain: `WindowInitial{3}, FoldInitial,
+///   (WindowContinuing{3}, FoldContinuing)*, Tail`.
+///
+/// Chains additionally require `3 * passes <= folding_steps` (the `Tail`
+/// binds the remainder, possibly zero) and at least 6 folding steps (the
+/// engines' shape guard). Fold labels must match their pass (`FoldInitial`
+/// only right after the `*Initial` pass).
+///
+/// Uniskip steps PANIC as unimplemented (see the [`SumcheckStep`] docs); the
+/// uniskip arms of the grammar below are kept as the spec for re-enabling.
 pub fn validate_sumcheck_schedule(
     schedule: &[SumcheckStep],
     folding_steps: usize,
-) -> Result<(), String> {
-    if schedule.is_empty() {
-        return Ok(());
+) -> Result<SumcheckScheduleClass, String> {
+    if schedule.iter().any(|s| {
+        matches!(
+            s,
+            SumcheckStep::UniskipInitial { .. } | SumcheckStep::UniskipContinuing { .. }
+        )
+    }) {
+        unimplemented!(
+            "uniskip sumcheck steps: the Lagrange weight-block claim shape is not \
+             wired through the same-size engines and the WHIR handoff"
+        );
     }
-    let total: usize = schedule.iter().map(|s| s.variables_bound()).sum();
-    if total != folding_steps {
+    if schedule.is_empty() {
+        return Ok(SumcheckScheduleClass::Naive);
+    }
+    if schedule
+        .iter()
+        .all(|s| matches!(s, SumcheckStep::NaiveSumcheck))
+    {
+        if schedule.len() != folding_steps {
+            return Err(format!(
+                "all-naive schedule has {} steps, layer has {} variables",
+                schedule.len(),
+                folding_steps
+            ));
+        }
+        return Ok(SumcheckScheduleClass::Naive);
+    }
+
+    // chain grammar
+    let class = match schedule.first() {
+        Some(SumcheckStep::UniskipInitial { window: 3 }) => SumcheckScheduleClass::Uniskip,
+        Some(SumcheckStep::WindowInitial { window: 3 }) => SumcheckScheduleClass::Windowed,
+        other => {
+            return Err(format!(
+                "a chain schedule must open with UniskipInitial{{3}} or WindowInitial{{3}}, got {:?}",
+                other
+            ))
+        }
+    };
+    if folding_steps < 6 {
         return Err(format!(
-            "schedule binds {} variables, layer has {}",
-            total, folding_steps
+            "chain schedules need at least 6 folding steps, layer has {folding_steps}"
         ));
     }
-    let mut seen_transition = false;
-    let mut past_initial = false;
-    for (i, step) in schedule.iter().enumerate() {
-        match step {
-            SumcheckStep::NaiveSumcheck => {
-                past_initial = true;
-            }
-            SumcheckStep::Uniskip { window } => {
-                if *window != 3 {
-                    return Err(format!("uniskip window {} unsupported (only 3)", window));
-                }
-            }
-            SumcheckStep::UniskipInitial { window } => {
-                if *window != 3 {
-                    return Err(format!("uniskip window {} unsupported (only 3)", window));
-                }
-                if i != 0 {
-                    return Err(format!(
-                        "UniskipInitial at position {i} (must open the schedule)"
-                    ));
-                }
-            }
-            SumcheckStep::WindowedOp(op) => match op {
-                WindowedOp::Initial { window } => {
-                    if past_initial || seen_transition {
-                        return Err(format!("Initial window at position {} after fold", i));
-                    }
-                    if *window == 0 || *window > 3 {
-                        return Err(format!("window {} out of range 1..=3", window));
-                    }
-                }
-            },
+    let first_window = schedule[0].variables_bound();
+    match schedule.get(1) {
+        Some(SumcheckStep::FoldInitial { width }) if *width == first_window => {}
+        Some(SumcheckStep::FoldInitial { width }) => {
+            return Err(format!(
+                "FoldInitial width {width} does not match the initial pass window {first_window}"
+            ))
+        }
+        other => {
+            return Err(format!(
+                "the initial pass must be followed by a width-matched FoldInitial, got {other:?}"
+            ))
         }
     }
-    Ok(())
+    let mut passes = 1usize;
+    let mut i = 2usize;
+    loop {
+        match (schedule.get(i), class) {
+            (Some(SumcheckStep::UniskipContinuing { window: 3 }), SumcheckScheduleClass::Uniskip)
+            | (Some(SumcheckStep::WindowContinuing { window: 3 }), SumcheckScheduleClass::Windowed) =>
+            {
+                let pass_window = schedule[i].variables_bound();
+                match schedule.get(i + 1) {
+                    Some(SumcheckStep::FoldContinuing { width }) if *width == pass_window => {}
+                    Some(SumcheckStep::FoldContinuing { width }) => {
+                        return Err(format!(
+                            "FoldContinuing width {width} at position {} does not match the \
+                             pass window {pass_window}",
+                            i + 1
+                        ))
+                    }
+                    other => {
+                        return Err(format!(
+                            "the continuing pass at position {i} must be followed by a \
+                             width-matched FoldContinuing, got {other:?}"
+                        ))
+                    }
+                }
+                passes += 1;
+                i += 2;
+            }
+            (Some(SumcheckStep::Tail), _) => {
+                if i + 1 != schedule.len() {
+                    return Err("Tail must be the last step".to_string());
+                }
+                break;
+            }
+            (other, _) => {
+                return Err(format!(
+                    "unexpected step {:?} at position {i} (expected a matching continuing pass or Tail)",
+                    other
+                ))
+            }
+        }
+    }
+    if 3 * passes > folding_steps {
+        return Err(format!(
+            "{passes} passes bind {} variables, layer has {folding_steps}",
+            3 * passes
+        ));
+    }
+    Ok(class)
 }
 
 #[derive(Clone, Debug)]
@@ -122,17 +233,11 @@ pub struct ProverConfig {
     // per-circuit from `security_level` via `pow_bits`, so neither is stored here.
     pub security_level: SecurityLevel,
     pub whir_schedule: WhirSchedule,
-    /// Step schedule for WIDE same-size (per-circuit batched relation)
-    /// sumchecks -- layers whose batched relation reads at least
-    /// [`SAME_SIZE_SCHEDULE_POLY_CUTOFF`] input polys. Interpreted as a head
-    /// descriptor: empty (or NaiveSumcheck-first) selects the per-round
-    /// naive loop; a WindowedOp head selects the self-adapting windowed
-    /// chain (see the `[ss-schedule]` prints for the realized stages).
-    pub wide_same_size_sumcheck_schedule: Vec<SumcheckStep>,
-    /// Step schedule for NARROW same-size sumchecks (fewer than
-    /// [`SAME_SIZE_SCHEDULE_POLY_CUTOFF`] input polys); same head-descriptor
-    /// interpretation as the wide schedule.
-    pub narrow_same_size_sumcheck_schedule: Vec<SumcheckStep>,
+    /// Step schedule for the same-size (per-circuit batched relation) layer
+    /// sumchecks, applied to every same-size layer regardless of its input
+    /// poly count. Must satisfy the STRICT grammar of
+    /// [`validate_sumcheck_schedule`] for the trace length's variable count.
+    pub same_size_sumcheck_schedule: Vec<SumcheckStep>,
     /// Step schedules for the DIMENSION-REDUCING layer sumchecks (pairwise
     /// products + logup reduction gates only), keyed by the layer's number
     /// of sumcheck rounds: a layer with `n` rounds uses
@@ -142,22 +247,21 @@ pub struct ProverConfig {
     pub dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
 }
 
-/// Provisional wide/narrow cutoff for the same-size schedule choice: a
-/// layer whose batched relation reads fewer than this many input polys
-/// (base + ext together) is "narrow", otherwise "wide". First guess pending
-/// cross-circuit measurements; the heuristic is expected to grow beyond a
-/// plain poly count (e.g. weighing the base/ext split, since base polys are
-/// 4x cheaper to read and LDE than ext polys).
-pub const SAME_SIZE_SCHEDULE_POLY_CUTOFF: usize = 24;
-
-/// The default same-size head descriptor: the windowed chain.
-pub const WINDOWED_SAME_SIZE_SCHEDULE: [SumcheckStep; 1] =
-    [SumcheckStep::WindowedOp(WindowedOp::Initial { window: 3 })];
-
-/// Returns the default (windowed-chain) same-size schedule as an owned vec,
-/// for ProverConfig literals.
-pub fn windowed_same_size_schedule() -> Vec<SumcheckStep> {
-    WINDOWED_SAME_SIZE_SCHEDULE.to_vec()
+/// The DEFAULT same-size schedule: the full window chain for
+/// `folding_steps` variables -- window passes while three variables remain,
+/// then the scalar `Tail`.
+pub fn windowed_same_size_schedule(folding_steps: usize) -> Vec<SumcheckStep> {
+    assert!(folding_steps >= 6);
+    let passes = folding_steps / 3;
+    let mut schedule = Vec::with_capacity(2 * passes + 1);
+    schedule.push(SumcheckStep::WindowInitial { window: 3 });
+    schedule.push(SumcheckStep::FoldInitial { width: 3 });
+    for _ in 1..passes {
+        schedule.push(SumcheckStep::WindowContinuing { window: 3 });
+        schedule.push(SumcheckStep::FoldContinuing { width: 3 });
+    }
+    schedule.push(SumcheckStep::Tail);
+    schedule
 }
 
 /// The all-naive same-size schedule for ProverConfig literals: the EMPTY
@@ -165,69 +269,6 @@ pub fn windowed_same_size_schedule() -> Vec<SumcheckStep> {
 /// [`validate_sumcheck_schedule`]). No windows, no uniskip.
 pub fn naive_same_size_schedule() -> Vec<SumcheckStep> {
     Vec::new()
-}
-
-/// The DEFAULT same-size head descriptor: three width-3 uniskip passes
-/// (covering the large stages, down to 2^(n-9)) followed by naive scalar
-/// rounds for the tail. The tail stages are below the parallel threshold
-/// anyway, the scalar rounds emit ordinary per-coordinate entries, and the
-/// proof is slightly smaller than with uniskip-everywhere (measured: the
-/// abandoned tail passes cost < 1% of the layer).
-pub const UNISKIP_HEAD_SAME_SIZE_SCHEDULE: [SumcheckStep; 3] = [
-    SumcheckStep::UniskipInitial { window: 3 },
-    SumcheckStep::Uniskip { window: 3 },
-    SumcheckStep::Uniskip { window: 3 },
-];
-
-/// Owned copy of [`UNISKIP_HEAD_SAME_SIZE_SCHEDULE`] for ProverConfig
-/// literals (head-descriptor semantics: rounds beyond the listed steps run
-/// as naive scalar rounds).
-pub fn uniskip_head_same_size_schedule() -> Vec<SumcheckStep> {
-    UNISKIP_HEAD_SAME_SIZE_SCHEDULE.to_vec()
-}
-
-/// Borrowed view of the two same-size schedules, threaded down to the layer
-/// evaluation: the width that picks between them (input poly count of the
-/// batched description) is only known once the layer's description is
-/// built, deep in the sumcheck engine.
-#[derive(Clone, Copy, Debug)]
-pub struct SameSizeSchedules<'a> {
-    pub wide: &'a [SumcheckStep],
-    pub narrow: &'a [SumcheckStep],
-}
-
-impl<'a> SameSizeSchedules<'a> {
-    pub fn from_config(config: &'a ProverConfig) -> Self {
-        Self {
-            wide: &config.wide_same_size_sumcheck_schedule,
-            narrow: &config.narrow_same_size_sumcheck_schedule,
-        }
-    }
-
-    /// Naive-everywhere selector (both classes empty).
-    pub fn naive() -> Self {
-        Self {
-            wide: &[],
-            narrow: &[],
-        }
-    }
-
-    /// Windowed-chain selector for both classes.
-    pub fn windowed_default() -> SameSizeSchedules<'static> {
-        SameSizeSchedules {
-            wide: &WINDOWED_SAME_SIZE_SCHEDULE,
-            narrow: &WINDOWED_SAME_SIZE_SCHEDULE,
-        }
-    }
-
-    /// Schedule choice by layer width, with the class name for logging.
-    pub fn for_width(&self, total_input_polys: usize) -> (&'a [SumcheckStep], &'static str) {
-        if total_input_polys < SAME_SIZE_SCHEDULE_POLY_CUTOFF {
-            (self.narrow, "narrow")
-        } else {
-            (self.wide, "wide")
-        }
-    }
 }
 
 impl WhirSchedule {

@@ -22,11 +22,12 @@ use cs::gkr_circuits::opcodes_for_full_machine_with_unsigned_mul_div_only_with_m
 use cs::gkr_circuits::process_binary_into_separate_tables_ext;
 use field::baby_bear::base::BabyBearField;
 use prover::definitions::SecurityLevel;
+use prover::gkr::prover_config::{example_configs, naive_same_size_schedule, ProverConfig};
 use prover::tests::gkr::add_sub_lui_auipc_mop;
 use prover::tests::gkr::orchestration::common::{
     hardcoded_external_challenges, run_vm_and_capture, ProgramConfig,
 };
-use prover::tests::gkr::orchestration::per_family::prove_non_mem_family;
+use prover::tests::gkr::orchestration::per_family::prove_non_mem_family_with_prover_config;
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::vm::{Counters, DelegationsAndFamiliesCounters};
 use std::alloc::Global;
@@ -38,11 +39,37 @@ const TRACE_LEN_LOG2: usize = 24;
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 const PROVE_EMPTY: bool = true;
 
+/// Test-local same-size-schedule A/B switch (the proofs must be
+/// byte-identical): the DEFAULT example config (windowed same-size
+/// schedule), or the same config with the all-naive schedule when
+/// `GKR_TEST_SAME_SIZE_SCHEDULE=naive`. The environment variable is read
+/// HERE only — the prover engine has no env knobs.
+fn prover_config_from_env(level: SecurityLevel) -> ProverConfig {
+    let windowed_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
+        TRACE_LEN_LOG2,
+        level,
+    );
+    let mut naive_config = windowed_config.clone();
+    naive_config.same_size_sumcheck_schedule = naive_same_size_schedule();
+
+    match std::env::var("GKR_TEST_SAME_SIZE_SCHEDULE") {
+        Ok(v) if v == "naive" => {
+            println!("[config] same-size schedule: NAIVE (env override)");
+            naive_config
+        }
+        Ok(v) if v == "windowed" => windowed_config,
+        Err(std::env::VarError::NotPresent) => windowed_config,
+        Ok(v) => panic!("GKR_TEST_SAME_SIZE_SCHEDULE: unknown value {v:?} (naive|windowed)"),
+        Err(e) => panic!("GKR_TEST_SAME_SIZE_SCHEDULE: {e}"),
+    }
+}
+
 #[test]
 fn gkr_prove_add_sub_family_sec_80() {
     let level = SecurityLevel::Sec80;
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
+    let prover_config = prover_config_from_env(level);
 
     let config = ProgramConfig::keccak_f1600();
     let vm = run_vm_and_capture::<DelegationsAndFamiliesCounters, FullUnsignedMachineDecoderConfig>(
@@ -84,7 +111,7 @@ fn gkr_prove_add_sub_family_sec_80() {
 
     std::fs::create_dir_all("test_proofs").unwrap();
 
-    let out = prove_non_mem_family::<CIRCUIT_TYPE, DelegationsAndFamiliesCounters>(
+    let out = prove_non_mem_family_with_prover_config::<CIRCUIT_TYPE, DelegationsAndFamiliesCounters>(
         &snapshotter,
         &tape,
         &expected_final_state,
@@ -95,7 +122,7 @@ fn gkr_prove_add_sub_family_sec_80() {
         trace_len,
         NUM_CYCLES_PER_CHUNK,
         &external_challenges,
-        level,
+        &prover_config,
         PROVE_EMPTY,
         false,
         &None,

@@ -1122,38 +1122,29 @@ where
     // final trace size on which we output the polynomials in plain text
     let final_trace_size_log_2 = prover_config.sumcheck_explicit_output_size_log_2;
 
-    // Sumcheck schedules: validated up front; the non-naive dispatchers land
-    // with the LSB-binding integration, so until then only NaiveSumcheck
-    // steps (or the empty schedule, which means naive-everywhere) are
-    // accepted -- this keeps a misconfigured schedule from silently proving
-    // with the wrong transcript shape.
-    for (name, schedule) in [
-        ("wide", &prover_config.wide_same_size_sumcheck_schedule),
-        ("narrow", &prover_config.narrow_same_size_sumcheck_schedule),
-    ] {
-        assert!(
-            schedule.iter().all(|s| matches!(
-                s,
-                crate::gkr::prover_config::SumcheckStep::NaiveSumcheck
-                    | crate::gkr::prover_config::SumcheckStep::WindowedOp(
-                        crate::gkr::prover_config::WindowedOp::Initial { window: 3 }
-                    )
-                    | crate::gkr::prover_config::SumcheckStep::UniskipInitial { window: 3 }
-                    | crate::gkr::prover_config::SumcheckStep::Uniskip { window: 3 }
-            )),
-            "{name}_same_size_sumcheck_schedule: unsupported step (naive, the width-3 LSB window chain head, or the width-3 LSB uniskip chain)"
-        );
+    // Sumcheck schedules: validated up front against the STRICT grammar so a
+    // misconfigured schedule fails before any proving work. Uniskip steps
+    // panic inside the validation as unimplemented (the Lagrange weight-block
+    // claim shape is not wired through the engines and the WHIR handoff).
+    {
+        let folding_steps = trace_len.trailing_zeros() as usize;
+        crate::gkr::prover_config::validate_sumcheck_schedule(
+            &prover_config.same_size_sumcheck_schedule,
+            folding_steps,
+        )
+        .unwrap_or_else(|e| panic!("same_size_sumcheck_schedule: {e}"));
     }
     for (rounds, schedule) in prover_config.dimension_reducing_sumcheck_schedule.iter() {
-        crate::gkr::prover_config::validate_sumcheck_schedule(schedule, *rounds)
-            .unwrap_or_else(|e| panic!("dimension_reducing_sumcheck_schedule[{rounds}]: {e}"));
         assert!(
             schedule.iter().all(|s| matches!(
                 s,
                 crate::gkr::prover_config::SumcheckStep::NaiveSumcheck
-                    | crate::gkr::prover_config::SumcheckStep::WindowedOp(_)
             )),
-            "dimension_reducing_sumcheck_schedule[{rounds}]: uniskip is not used for dimension-reducing layers"
+            "dimension_reducing_sumcheck_schedule[{rounds}]: the dimension-reducing engines run naive rounds only"
+        );
+        assert!(
+            schedule.is_empty() || schedule.len() == *rounds,
+            "dimension_reducing_sumcheck_schedule[{rounds}]: an explicit all-naive schedule must have one step per round"
         );
     }
 
@@ -1347,24 +1338,22 @@ where
     let same_size_total = std::time::Instant::now();
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
         let layer_timer = std::time::Instant::now();
-        let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<F, E, TR>(
+        let proof = gkr_backend.evaluate_same_size_sumcheck_for_layer::<TR>(
             layer_idx,
             layer,
             &mut claim_point_entries,
             &mut claims_for_layers,
             &mut gkr_storage,
             &mut sumcheck_batching_challenge,
-            compiled_circuit,
             trace_len,
             lookup_alpha,
             lookup_additive_part,
             &inits_and_teardowns_top_bits[..],
             address_high_bits_shift,
             &external_challenges,
+            prover_config,
             &mut seed,
             worker,
-            layer_idx == compiled_circuit.layers.len() - 1,
-            crate::gkr::prover_config::SameSizeSchedules::from_config(prover_config),
         );
         println!(
             "Same-size layer {layer_idx} sumcheck took {:?}",
@@ -1615,11 +1604,6 @@ where
         t_gkr_phase.elapsed()
     );
     let t_whir = std::time::Instant::now();
-    // bench/consistency stop: everything up to and including the GKR layers
-    // (with their per-layer at-point self-checks) has run; WHIR is skipped
-    if std::env::var("GKR_STOP_BEFORE_WHIR").is_ok() {
-        panic!("GKR_STOP_BEFORE_WHIR: stopping before whir_fold");
-    }
     let whir_proof = whir_fold::<F, E, T, TR>(
         mem_oracle,
         mem_polys_claims,

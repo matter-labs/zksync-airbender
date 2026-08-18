@@ -324,9 +324,9 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     let prover_config = ProverConfig {
         // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
         // keep these tests on the windowed schedule (transcript-identical
-        // to naive), NOT the uniskip default
-        wide_same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(),
-        narrow_same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
+        // to naive)
+        same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
+            TRACE_LEN_LOG2,
         ),
         dimension_reducing_sumcheck_schedule: Default::default(),
         lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)

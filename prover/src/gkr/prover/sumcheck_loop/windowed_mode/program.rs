@@ -77,7 +77,7 @@ pub enum TiledStep<E: Field> {
 
 /// Owned SoA + bracket program for one layer, consumed by the production
 /// windowed sumcheck loop (mirrors the program the bench driver builds inline).
-pub(crate) struct OwnedSoaProgram<F: PrimeField, E: Field> {
+pub struct OwnedSoaProgram<F: PrimeField, E: Field> {
     pub base_interp: Vec<bool>,
     pub ext_interp: Vec<bool>,
     pub forms: Vec<Vec<(FormOp<F>, u16)>>,
@@ -92,7 +92,7 @@ pub(crate) struct OwnedSoaProgram<F: PrimeField, E: Field> {
 /// CSE'd multi-member bracket forms + preserved products (from the enforce
 /// max-quadratic kernels), the bracket-subtracted expanded remainder, and the
 /// folded-stage step lists over the combined slot space.
-pub(crate) fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
+pub fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
     description: &BatchedGKRDescription<F, E>,
     collector: &KernelCollector<F, E>,
     base_polys: &[GKRAddress],

@@ -438,6 +438,202 @@ pub unsafe fn neon_continuing_chunk<E: Field>(
     neon_tdot(tri, t_ptr, chunk_start)
 }
 
+
+/// The aarch64 + BabyBear/Ext4 same-size chain executor: NEON uniskip
+/// passes and folds via `lsb_bench`; the window passes run the portable
+/// kernels (no NEON variant exists for them yet).
+pub struct NeonSameSizeChain {
+    prog: crate::gkr::prover::sumcheck_loop::OwnedSoaProgram<BabyBearField, BabyBearExt4>,
+    tables: crate::gkr::prover::sumcheck_loop::windowed_mode::lsb_bench::LsbLdeAny,
+}
+
+impl NeonSameSizeChain {
+    pub fn new(
+        prog: crate::gkr::prover::sumcheck_loop::OwnedSoaProgram<BabyBearField, BabyBearExt4>,
+    ) -> Self {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, neon as neon_kernels};
+        let omega16_bb = ::fft::domain_generator_for_size::<BabyBearField>(16);
+        let mut omega8_bb = omega16_bb;
+        omega8_bb.square();
+        Self {
+            prog,
+            tables: lsb_bench::LsbLdeAny::K8Mat(neon_kernels::LsbLde8MatTables::new(
+                omega8_bb,
+                omega16_bb,
+            )),
+        }
+    }
+}
+
+impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBearExt4>
+    for NeonSameSizeChain
+{
+    fn uniskip_initial_pass(
+        &self,
+        base_polys: &[&[BabyBearField]],
+        ext_polys: &[&[BabyBearExt4]],
+        eq_suffix: &[BabyBearExt4],
+        out_size: usize,
+        worker: &Worker,
+    ) -> [BabyBearExt4; 16] {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::quasi};
+        lsb_bench::lsb_soa_full_parallel::<BabyBearField, BabyBearExt4, 4, 4, 16, 2>(
+            &quasi::<BabyBearField, false>(base_polys),
+            &quasi::<BabyBearExt4, false>(ext_polys),
+            &self.prog.base_interp,
+            &self.prog.ext_interp,
+            Some(&self.tables),
+            &self.prog.forms,
+            &self.prog.products,
+            &self.prog.rest_steps,
+            &self.prog.additive_constant,
+            eq_suffix,
+            out_size,
+            worker,
+            lsb_bench::PH_ALL,
+        )
+    }
+
+    fn uniskip_continuing_pass(
+        &self,
+        folded: &[&[BabyBearExt4]],
+        eq_suffix: &[BabyBearExt4],
+        out_size: usize,
+        worker: &Worker,
+    ) -> [BabyBearExt4; 16] {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::quasi};
+        let srcs = quasi::<BabyBearExt4, false>(folded);
+        if out_size % 2 == 0 {
+            lsb_bench::lsb_uniskip_ext_pass_parallel::<BabyBearField, BabyBearExt4, 2>(
+                &srcs,
+                &self.prog.forms,
+                &self.prog.products,
+                &self.prog.folded_quad,
+                &self.prog.folded_lin,
+                &self.prog.additive_constant,
+                &self.tables,
+                eq_suffix,
+                out_size,
+                worker,
+            )
+        } else {
+            lsb_bench::lsb_uniskip_ext_pass_parallel::<BabyBearField, BabyBearExt4, 1>(
+                &srcs,
+                &self.prog.forms,
+                &self.prog.products,
+                &self.prog.folded_quad,
+                &self.prog.folded_lin,
+                &self.prog.additive_constant,
+                &self.tables,
+                eq_suffix,
+                out_size,
+                worker,
+            )
+        }
+    }
+
+    fn window_initial_pass(
+        &self,
+        base_polys: &[&[BabyBearField]],
+        ext_polys: &[&[BabyBearExt4]],
+        eq_suffix: &[BabyBearExt4],
+        out_size: usize,
+        worker: &Worker,
+    ) -> [BabyBearExt4; 27] {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_chain::quasi, lsb_generic};
+        lsb_generic::window27_head_pass::<BabyBearField, BabyBearExt4>(
+            &quasi::<BabyBearField, false>(base_polys),
+            &quasi::<BabyBearExt4, false>(ext_polys),
+            &self.prog,
+            eq_suffix,
+            out_size,
+            worker,
+        )
+    }
+
+    fn window_continuing_pass(
+        &self,
+        folded: &[&[BabyBearExt4]],
+        eq_suffix: &[BabyBearExt4],
+        out_size: usize,
+        worker: &Worker,
+    ) -> [BabyBearExt4; 27] {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_chain::quasi, lsb_generic};
+        lsb_generic::window27_ext_pass::<BabyBearField, BabyBearExt4>(
+            &quasi::<BabyBearExt4, false>(folded),
+            &self.prog,
+            eq_suffix,
+            out_size,
+            worker,
+        )
+    }
+
+    fn fold_initial(
+        &self,
+        base_polys: &[&[BabyBearField]],
+        ext_polys: &[&[BabyBearExt4]],
+        weights: &[BabyBearExt4; 8],
+        trackers: &mut [FoldBufferTracker<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::chain_fold_dst};
+        let nb = base_polys.len();
+        assert_eq!(trackers.len(), nb + ext_polys.len());
+        for (i, src) in base_polys.iter().enumerate() {
+            let dst = chain_fold_dst(&trackers[i], src.len() / 8);
+            lsb_bench::lsb_fold_base_soa_parallel::<BabyBearField, BabyBearExt4>(
+                src.as_ptr() as *const u8,
+                dst,
+                weights,
+                worker,
+            );
+        }
+        for (i, src) in ext_polys.iter().enumerate() {
+            let dst = chain_fold_dst(&trackers[nb + i], src.len() / 8);
+            lsb_bench::lsb_fold_ext_soa_parallel::<BabyBearExt4>(
+                src.as_ptr() as *const u8,
+                dst,
+                weights,
+                worker,
+            );
+        }
+    }
+
+    fn fold_continuing(
+        &self,
+        weights: &[BabyBearExt4; 8],
+        trackers: &mut [FoldBufferTracker<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::chain_fold_dst};
+        for tracker in trackers.iter_mut() {
+            let fold_out = tracker.output_len();
+            assert_eq!(tracker.input_len(), 8 * fold_out);
+            let src_ptr = tracker.input_ptr_range().start as *const u8;
+            let dst = chain_fold_dst(tracker, fold_out);
+            if fold_out % 4 == 0 {
+                lsb_bench::lsb_fold_ext_soa_parallel::<BabyBearExt4>(src_ptr, dst, weights, worker);
+            } else {
+                lsb_bench::lsb_fold_ext_parallel::<BabyBearExt4>(src_ptr, dst, weights, worker);
+            }
+        }
+    }
+
+    fn tail_round_message(
+        &self,
+        trackers: &[FoldBufferTracker<BabyBearExt4>],
+        tail_t_table: &[BabyBearExt4],
+        worker: &Worker,
+    ) -> (BabyBearExt4, BabyBearExt4) {
+        crate::gkr::prover::sumcheck_loop::windowed_mode::lsb_chain::tail_round_message_with_program(
+            &self.prog,
+            trackers,
+            tail_t_table,
+            worker,
+        )
+    }
+}
+
 /// The aarch64 + BabyBear/Ext4 backend. Implemented for that concrete field
 /// pair ONLY — the arch and field expectations live entirely in this type,
 /// never in the callers.
@@ -517,6 +713,96 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for NeonGKRBackend {
             trace_len_after_reduction,
             worker,
             buffers,
+        )
+    }
+
+    type NaiveSameSizeFoldBuffer = Box<[core::mem::MaybeUninit<BabyBearExt4>]>;
+    type WindowedSameSizeFoldBuffer = Box<[core::mem::MaybeUninit<BabyBearExt4>]>;
+    type UniskipSameSizeFoldBuffer = Box<[core::mem::MaybeUninit<BabyBearExt4>]>;
+
+    fn make_naive_same_size_fold_buffers(
+        &self,
+        _schedule: &[crate::gkr::prover_config::SumcheckStep],
+        _trace_len: usize,
+        _num_base_polys: usize,
+        _num_ext_polys: usize,
+    ) -> Vec<Self::NaiveSameSizeFoldBuffer> {
+        // the naive loop's lazy folds live inside GKRStorage
+        Vec::new()
+    }
+
+    fn make_windowed_same_size_fold_buffers(
+        &self,
+        schedule: &[crate::gkr::prover_config::SumcheckStep],
+        trace_len: usize,
+        num_base_polys: usize,
+        num_ext_polys: usize,
+    ) -> Vec<Self::WindowedSameSizeFoldBuffer> {
+        let capacity = super::same_size_chain_fold_capacity(schedule, trace_len);
+        (0..num_base_polys + num_ext_polys)
+            .map(|_| Box::new_uninit_slice(capacity))
+            .collect()
+    }
+
+    fn make_uniskip_same_size_fold_buffers(
+        &self,
+        schedule: &[crate::gkr::prover_config::SumcheckStep],
+        trace_len: usize,
+        num_base_polys: usize,
+        num_ext_polys: usize,
+    ) -> Vec<Self::UniskipSameSizeFoldBuffer> {
+        let capacity = super::same_size_chain_fold_capacity(schedule, trace_len);
+        (0..num_base_polys + num_ext_polys)
+            .map(|_| Box::new_uninit_slice(capacity))
+            .collect()
+    }
+
+    type SameSizeChain = NeonSameSizeChain;
+
+    fn make_same_size_chain(
+        &self,
+        prog: crate::gkr::prover::sumcheck_loop::OwnedSoaProgram<BabyBearField, BabyBearExt4>,
+    ) -> Self::SameSizeChain {
+        NeonSameSizeChain::new(prog)
+    }
+
+    fn evaluate_same_size_sumcheck_for_layer<TR: Transcript<BabyBearField, BabyBearExt4>>(
+        &self,
+        layer_idx: usize,
+        layer: &cs::gkr_compiler::GKRLayerDescription<BabyBearField>,
+        claim_points: &mut BTreeMap<usize, Vec<EvaluationPointEntry<BabyBearExt4>>>,
+        claims_storage: &mut BTreeMap<usize, BTreeMap<GKRAddress, BabyBearExt4>>,
+        gkr_storage: &mut GKRStorage<BabyBearField, BabyBearExt4>,
+        batching_challenge: &mut BabyBearExt4,
+        trace_len: usize,
+        lookup_challenges_multiplicative_part: BabyBearExt4,
+        lookup_challenges_additive_part: BabyBearExt4,
+        inits_and_teardowns_top_bits: &[u32],
+        address_high_bits_shift: u32,
+        external_challenges: &super::super::GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+        prover_config: &crate::gkr::prover_config::ProverConfig,
+        seed: &mut TR::Seed,
+        worker: &Worker,
+    ) -> SumcheckIntermediateProofValues<BabyBearField, BabyBearExt4> {
+        super::super::sumcheck_loop::evaluate_sumcheck_for_layer::<BabyBearField, BabyBearExt4, TR, _>(
+            layer_idx,
+            layer,
+            claim_points,
+            claims_storage,
+            gkr_storage,
+            batching_challenge,
+            trace_len,
+            lookup_challenges_multiplicative_part,
+            lookup_challenges_additive_part,
+            inits_and_teardowns_top_bits,
+            address_high_bits_shift,
+            external_challenges,
+            prover_config,
+            seed,
+            worker,
+            |s, t, b, e| self.make_uniskip_same_size_fold_buffers(s, t, b, e),
+            |s, t, b, e| self.make_windowed_same_size_fold_buffers(s, t, b, e),
+            |prog| self.make_same_size_chain(prog),
         )
     }
 }

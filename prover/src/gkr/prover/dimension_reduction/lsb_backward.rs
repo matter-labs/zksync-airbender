@@ -806,10 +806,20 @@ impl<E> FoldBufferTracker<E> {
     pub fn new(full: *mut E, full_len: usize, poly_len: usize) -> Self {
         assert!(poly_len.is_power_of_two());
         assert!(full_len >= poly_len / 2 + poly_len / 4);
+        Self::new_with_first_output(full, full_len, poly_len / 2)
+    }
+
+    /// Like [`Self::new`] but with an explicit FIRST output length, for
+    /// engines whose first fold shrinks by more than half (the same-size
+    /// chain folds by `2^window` per pass). The caller owns the capacity
+    /// contract for its fold factors; the tracker only asserts the first
+    /// output fits.
+    pub fn new_with_first_output(full: *mut E, full_len: usize, first_output_len: usize) -> Self {
+        assert!(full_len >= first_output_len);
         Self {
             full: full..unsafe { full.add(full_len) },
             input: core::ptr::null()..core::ptr::null(),
-            output: full..unsafe { full.add(poly_len / 2) },
+            output: full..unsafe { full.add(first_output_len) },
         }
     }
 
@@ -877,13 +887,21 @@ impl<E> FoldBufferTracker<E> {
     /// region — or from the allocation's tail when that input was the
     /// external original poly.
     pub fn step(&mut self) {
+        let next = self.output_len() / 2;
+        self.step_to(next);
+    }
+
+    /// [`Self::step`] with an explicit next output length (engines whose
+    /// folds shrink by more than half). Same carve policy: the next output
+    /// reuses the now-dead previous input's region, or the allocation's
+    /// tail right behind the current output when that input was the
+    /// external original poly.
+    pub fn step_to(&mut self, next_output_len: usize) {
+        assert!(next_output_len <= self.output_len() / 2);
         let prev_input_start = self.input.start;
-        let next_output_len = self.output_len() / 2;
         let next_output_start = if self.full.contains(&(prev_input_start as *mut E)) {
             prev_input_start as *mut E
         } else {
-            // first step: the original poly is not ours to write; carve the
-            // tail right behind the front-half output
             self.output.end
         };
         self.input = (self.output.start as *const E)..(self.output.end as *const E);

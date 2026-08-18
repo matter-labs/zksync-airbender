@@ -115,63 +115,117 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     ) -> SumcheckIntermediateProofValues<F, E>
     where
         [(); E::DEGREE]: Sized;
+
+    /// Fold-scratch buffer of the all-naive same-size schedule. The naive
+    /// loop's lazy folds live inside `GKRStorage`, so the bundled backends
+    /// use an empty buffer set here; the type exists so alternative
+    /// backends can carry state of their own.
+    type NaiveSameSizeFoldBuffer;
+    /// Fold-scratch buffer of the windowed same-size chain (one per input
+    /// poly of the layer's batched relation).
+    type WindowedSameSizeFoldBuffer;
+    /// Fold-scratch buffer of the uniskip same-size chain (one per input
+    /// poly of the layer's batched relation).
+    type UniskipSameSizeFoldBuffer;
+
+    /// Constructor for the all-naive same-size fold buffers: takes the
+    /// validated schedule, the trace length, and the input poly counts
+    /// (base, extension) that require a buffer; returns one buffer per poly
+    /// that needs one.
+    fn make_naive_same_size_fold_buffers(
+        &self,
+        schedule: &[crate::gkr::prover_config::SumcheckStep],
+        trace_len: usize,
+        num_base_polys: usize,
+        num_ext_polys: usize,
+    ) -> Vec<Self::NaiveSameSizeFoldBuffer>;
+
+    /// Constructor for the windowed-chain fold buffers (same contract as
+    /// [`GKRBackend::make_naive_same_size_fold_buffers`]).
+    fn make_windowed_same_size_fold_buffers(
+        &self,
+        schedule: &[crate::gkr::prover_config::SumcheckStep],
+        trace_len: usize,
+        num_base_polys: usize,
+        num_ext_polys: usize,
+    ) -> Vec<Self::WindowedSameSizeFoldBuffer>;
+
+    /// Constructor for the uniskip-chain fold buffers (same contract as
+    /// [`GKRBackend::make_naive_same_size_fold_buffers`]).
+    fn make_uniskip_same_size_fold_buffers(
+        &self,
+        schedule: &[crate::gkr::prover_config::SumcheckStep],
+        trace_len: usize,
+        num_base_polys: usize,
+        num_ext_polys: usize,
+    ) -> Vec<Self::UniskipSameSizeFoldBuffer>;
+
+    /// The per-layer same-size chain EXECUTOR (compiled SoA program +
+    /// whatever kernel tables the platform needs) — the analog of the
+    /// dimension-reducing chunk kernels. Arch-specific concrete types live
+    /// in the arch-gated backend modules; no platform dispatch exists
+    /// anywhere else.
+    type SameSizeChain: crate::gkr::prover::sumcheck_loop::SameSizeChainOps<F, E>;
+
+    /// Constructor for the per-layer chain executor from the layer's
+    /// compiled SoA program.
+    fn make_same_size_chain(
+        &self,
+        prog: crate::gkr::prover::sumcheck_loop::OwnedSoaProgram<F, E>,
+    ) -> Self::SameSizeChain
+    where
+        F: field::TwoAdicField;
+
+    /// Sumcheck over ONE same-size layer: builds the layer's batched
+    /// relation, selects + validates the schedule from the
+    /// [`ProverConfig`](crate::gkr::prover_config::ProverConfig) by layer
+    /// width, branches into the all-naive / windowed / uniskip case engine
+    /// (constructing that case's fold buffers through the constructors
+    /// above), and emits the layer's claims and claim point.
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_same_size_sumcheck_for_layer<TR: Transcript<F, E>>(
+        &self,
+        layer_idx: usize,
+        layer: &cs::gkr_compiler::GKRLayerDescription<F>,
+        claim_points: &mut BTreeMap<usize, Vec<EvaluationPointEntry<E>>>,
+        claims_storage: &mut BTreeMap<usize, BTreeMap<super::GKRAddress, E>>,
+        gkr_storage: &mut GKRStorage<F, E>,
+        batching_challenge: &mut E,
+        trace_len: usize,
+        lookup_challenges_multiplicative_part: E,
+        lookup_challenges_additive_part: E,
+        inits_and_teardowns_top_bits: &[u32],
+        address_high_bits_shift: u32,
+        external_challenges: &super::GKRExternalChallenges<F, E>,
+        prover_config: &crate::gkr::prover_config::ProverConfig,
+        seed: &mut TR::Seed,
+        worker: &Worker,
+    ) -> SumcheckIntermediateProofValues<F, E>
+    where
+        F: field::TwoAdicField,
+        [(); E::DEGREE]: Sized;
 }
 
-/// Batch allocation of the SAME-SIZE layers' fold buffers: ONE call per
-/// layer, one uninitialized buffer per input poly keyed by address (after
-/// the first fold every poly lives in the extension field). The LSB chain
-/// writes each fold output into a fresh dense region, so the footprint is
-/// the sum of the pass regions plus one live-sized region for a scalar
-/// tail. Buffers are `Box<[MaybeUninit<E>]>` (uninit is free on fresh pages
-/// and skips the memset on allocator-reused ones); the engine communicates
-/// positions via pointer ranges, never reallocating, so the map also guards
-/// against accidental deallocation.
-pub fn allocate_same_size_fold_buffers<F: PrimeField, E: FieldExtension<F> + Field>(
+/// Fold-scratch capacity (elements per input poly) of the same-size chain
+/// engines for the given STRICT schedule: the chain's [`FoldBufferTracker`]s
+/// ping-pong between the first pass's output region (`trace_len / 2^w`) and
+/// the region right behind it (at most half that), so `3/2` of the first
+/// output covers every later stage. Returns 0 for all-naive schedules (the
+/// naive loop's lazy folds live inside `GKRStorage`).
+///
+/// [`FoldBufferTracker`]: super::dimension_reduction::lsb_backward::FoldBufferTracker
+pub fn same_size_chain_fold_capacity(
     schedule: &[crate::gkr::prover_config::SumcheckStep],
     trace_len: usize,
-    base_polys: &[super::GKRAddress],
-    ext_polys: &[super::GKRAddress],
-) -> BTreeMap<super::GKRAddress, Box<[core::mem::MaybeUninit<E>]>> {
-    let first_fold = schedule
-        .first()
-        .map(|s| 1usize << s.variables_bound())
-        .unwrap_or(2);
-    let after_first = (trace_len / first_fold).max(2);
-    // the LSB chain writes every fold output into a fresh dense region:
-    // one region per leading pass (m/8, m/64, ...), then -- if the schedule
-    // truncates into scalar tail rounds -- the tail's halving folds, which
-    // sum to strictly less than one extra live-sized region
-    let per_poly = {
-        let n = trace_len.trailing_zeros() as usize;
-        let passes = schedule
-            .iter()
-            .take_while(|s| {
-                matches!(
-                    s,
-                    crate::gkr::prover_config::SumcheckStep::UniskipInitial { .. }
-                        | crate::gkr::prover_config::SumcheckStep::Uniskip { .. }
-                        | crate::gkr::prover_config::SumcheckStep::WindowedOp(_)
-                )
-            })
-            .count()
-            .max(1)
-            .min(n / 3);
-        let mut cap = 0usize;
-        let mut live = trace_len;
-        for _ in 0..passes {
-            live >>= 3;
-            cap += live;
-        }
-        if 3 * passes < n {
-            cap += live;
-        }
-        cap.max(2)
+) -> usize {
+    use crate::gkr::prover_config::SumcheckStep;
+    let first_window = match schedule.first() {
+        Some(SumcheckStep::UniskipInitial { window })
+        | Some(SumcheckStep::WindowInitial { window }) => *window,
+        _ => return 0,
     };
-    base_polys
-        .iter()
-        .chain(ext_polys.iter())
-        .map(|addr| (*addr, Box::new_uninit_slice(per_poly)))
-        .collect()
+    let first_out = trace_len >> first_window;
+    first_out + first_out / 2
 }
 
 /// Pass-wide work buffers shared by the bundled backends for the
