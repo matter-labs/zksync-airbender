@@ -26,21 +26,9 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         launch_dim_reducing_round0_batched_compact(&batch, acc_size, context)
     }
 
-    fn launch_round1_kernels(
-        &mut self,
-        mut batch: GpuGKRDimensionReducingContinuationBatchCompact<E4>,
-        acc_size: usize,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        batch.eq_low = self.round_scratch.eq_low_group.as_ptr();
-        batch.eq_sizes = self.eq_sizes;
-        batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        launch_dim_reducing_round1_batched_compact(&batch, acc_size, context)
-    }
-
     fn launch_continuation_kernels(
         &mut self,
-        mut batch: GpuGKRDimensionReducingContinuationBatchCompact<E4>,
+        mut batch: GpuGKRDimensionReducingBatch<E4>,
         step: usize,
         acc_size: usize,
         context: &ProverContext,
@@ -124,24 +112,22 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         per_poly_len: usize,
     ) -> BTreeMap<GKRAddress, *const E4> {
         let mut result = BTreeMap::new();
-        for kernel in self.kernel_plans.iter() {
-            for address in kernel.inputs.inputs_in_extension.iter() {
-                if *address == GKRAddress::placeholder() || result.contains_key(address) {
-                    continue;
-                }
-                let canonical = storage
-                    .layout
-                    .as_ref()
-                    .and_then(|layout| layout.aliases.get(address))
-                    .copied()
-                    .unwrap_or(*address);
-                let poly_idx = self
-                    .folding_addresses
-                    .binary_search(&canonical)
-                    .expect("final folding source missing from dense arena");
-                let pointer = unsafe { folding.as_ptr().add(poly_idx * per_poly_len) };
-                result.insert(*address, pointer);
+        for address in self.layer_slots.input_addresses() {
+            if result.contains_key(&address) {
+                continue;
             }
+            let canonical = storage
+                .layout
+                .as_ref()
+                .and_then(|layout| layout.aliases.get(&address))
+                .copied()
+                .unwrap_or(address);
+            let poly_idx = self
+                .folding_addresses
+                .binary_search(&canonical)
+                .expect("final folding source missing from dense arena");
+            let pointer = unsafe { folding.as_ptr().add(poly_idx * per_poly_len) };
+            result.insert(address, pointer);
         }
 
         result
@@ -175,15 +161,12 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         } else {
             None
         };
-        let mut desc_pairs: Vec<u32> = Vec::with_capacity(
-            self.kernel_plans
-                .iter()
-                .map(|kernel| kernel.inputs.outputs_in_extension.len() * 2)
-                .sum(),
-        );
-        for kernel in self.kernel_plans.iter() {
-            for (j, output) in kernel.inputs.outputs_in_extension.iter().enumerate() {
-                desc_pairs.push((kernel.batch_challenge_offset + j) as u32);
+        // Exponents come from the same slot table the kernels read, so the claim
+        // combination and the per-output kernel weights cannot disagree.
+        let mut desc_pairs: Vec<u32> = Vec::new();
+        for (_, slot) in self.layer_slots.iter_enabled() {
+            for (output, batch_exp) in slot.outputs.iter().zip(slot.batch_exp.iter()) {
+                desc_pairs.push(u32::from(*batch_exp));
                 desc_pairs.push(claim_layout.claim_idx(output));
             }
         }
@@ -271,12 +254,12 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 );
                 if step == 1 {
                     let batch = dim_reducing_encoder::build_round1_batch_compact_for_arena(
-                        &self.kernel_plans,
+                        &self.layer_slots,
                         storage,
                         &self.folding_addresses,
                         destination_binding,
                     );
-                    self.launch_round1_kernels(batch, acc_size, context)?;
+                    self.launch_continuation_kernels(batch, step, acc_size, context)?;
                 } else {
                     let current = folding_current
                         .as_ref()
@@ -286,7 +269,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                         folding_current_len.trailing_zeros(),
                     );
                     let batch = dim_reducing_encoder::build_continuation_batch_compact_for_arenas(
-                        &self.kernel_plans,
+                        &self.layer_slots,
                         storage,
                         &self.folding_addresses,
                         current_binding,
@@ -332,12 +315,12 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         );
         if last_step == 1 {
             let batch = dim_reducing_encoder::build_round1_batch_compact_for_arena(
-                &self.kernel_plans,
+                &self.layer_slots,
                 storage,
                 &self.folding_addresses,
                 destination_binding,
             );
-            self.launch_round1_kernels(batch, 1, context)?;
+            self.launch_continuation_kernels(batch, last_step, 1, context)?;
         } else {
             let current = folding_current
                 .as_ref()
@@ -347,7 +330,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 folding_current_len.trailing_zeros(),
             );
             let batch = dim_reducing_encoder::build_continuation_batch_compact_for_arenas(
-                &self.kernel_plans,
+                &self.layer_slots,
                 storage,
                 &self.folding_addresses,
                 current_binding,
