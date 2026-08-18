@@ -169,10 +169,14 @@ pub fn final_blake_mode() -> BlakeMode {
 
 /// Default for the unrolled-to-unified switch threshold.
 ///
-/// Once a single verifier invocation runs in fewer cycles than this, it is
-/// small enough to be proven on the unified machine (a few 1<<24 instances),
-/// so unrolled recursion can stop and bridge to unified. A scheduling
-/// heuristic, not a protocol constant — drivers may pick their own threshold.
+/// The ladder stops taking unrolled rungs once the *estimated* cycle count of
+/// the next verifier invocation drops below this. A scheduling heuristic, not a
+/// protocol constant — drivers may pick their own, and
+/// `RECURSION_UNIFIED_SWITCH_CYCLES` overrides it.
+///
+/// The value is unvalidated: it predates the halving of the unified circuit to
+/// 2^23 rows and has not been re-tuned since. Treat it as a placeholder pending
+/// a measured sweep.
 pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 64 * 1024 * 1024;
 
 #[must_use]

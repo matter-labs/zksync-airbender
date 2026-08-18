@@ -8,10 +8,10 @@
 //! 2. Feed that proof into `fsv_unrolled_base_layer_sec_80` and prove it
 //!    (unrolled machine mode, reduced ISA + delegations). Verify natively.
 //! 3. Feed into `fsv_unrolled_recursion_layer_sec_80`, prove (unrolled, reduced).
-//!    Before each round we *measure* how many cycles running the verifier over
+//!    Before each round we *estimate* how many cycles running the verifier over
 //!    the current proof would take; we keep recursing on the unrolled machine
 //!    while that stays at/above a configurable threshold.
-//! 4. Once the measured verifier run drops below the threshold
+//! 4. Once the estimated verifier cost drops below the threshold
 //!    (`RECURSION_UNIFIED_SWITCH_CYCLES`, default 64M), **bridge** to the unified
 //!    machine: re-prove the unrolled verifier over the last unrolled proof in
 //!    **unified** machine mode, emitting a *unified* single-circuit proof.
@@ -188,7 +188,7 @@ mod tests {
         println!("zksync_os base layer ran {total_cycles} cycles");
 
         // === Stages 2-3: unrolled recursion (reduced ISA). Each round we first
-        //                 MEASURE how many cycles running the next verifier would
+        //                 ESTIMATE how many cycles running the next verifier would
         //                 take; once that drops below the configurable threshold
         //                 we stop and switch to the unified machine. ===
         let unrolled_blake = unrolled_blake_mode();
@@ -240,11 +240,20 @@ mod tests {
                 continue;
             }
 
-            // Measure the next verifier invocation BEFORE proving it.
-            let measured =
-                measure_verifier_cycles(bin, text, build_unrolled_stream(&setups, &proof));
-            println!("running the layer-{layer} verifier would take {measured} cycles");
-            if measured < switch_cycles {
+            // Estimate the next verifier invocation BEFORE proving it.
+            let program = if input_is_base {
+                FsvProgram::UnrolledBaseLayer
+            } else {
+                FsvProgram::UnrolledRecursionLayer
+            };
+            let estimated = full_statement_verifier::cost_model::estimate_verifier_cycles(
+                &proof,
+                program,
+                unrolled_blake,
+            )
+            .expect("cannot estimate verifier cycles");
+            println!("running the layer-{layer} verifier would take ~{estimated} cycles");
+            if estimated < switch_cycles {
                 println!("... below {switch_cycles} — switching to the unified machine");
                 break;
             }

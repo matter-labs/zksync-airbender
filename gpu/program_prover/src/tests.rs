@@ -542,9 +542,9 @@ fn test_program_prover_recursion_layer_verify() {
 ///
 /// with the recursion hash chain threaded through and every rung verified
 /// natively. Deviation from the CPU pipeline: the base workload is tiny
-/// (~1.7k cycles), so the layer-0 verifier measures far below the unified
+/// (~1.7k cycles), so the layer-0 verifier estimates far below the unified
 /// switch threshold and the CPU flow would bridge immediately; we force one
-/// unrolled rung first so the loop machinery (measure → prove → chain) is
+/// unrolled rung first so the loop machinery (estimate → prove → chain) is
 /// exercised, then bridge over the recursion proof. Blake modes are
 /// env-selectable like the CPU pipeline (default blake2_with_compression;
 /// the g-function variants need a JIT delegation that doesn't exist).
@@ -559,7 +559,7 @@ fn test_program_prover_recursive_pipeline() {
 
 /// The real thing: the recursion ladder over the zksync_os block workload —
 /// the GPU analogue of `test_recursive_proving_pipeline_zksync_os` (heavy;
-/// the base layer proves a full zksync_os block). The base measures well
+/// the base layer proves a full zksync_os block). The base estimates well
 /// above the unified-switch threshold, so the unrolled recursion loop runs
 /// its natural course (no forced rung). Threshold overridable via
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` like the CPU pipeline.
@@ -595,53 +595,10 @@ fn run_gpu_recursive_pipeline(
     force_first_rung: bool,
 ) {
     use crate::upstream::{
-        bridge_blake_mode, build_unified_stream, compute_end_params, final_blake_mode,
-        load_fsv_program, native_verify_unified, native_verify_unrolled, unified_switch_cycles,
-        unrolled_blake_mode, FsvProgram, FsvRecursionChain,
+        bridge_blake_mode, build_unified_stream, compute_end_params, estimate_verifier_cycles,
+        final_blake_mode, load_fsv_program, native_verify_unified, native_verify_unrolled,
+        unified_switch_cycles, unrolled_blake_mode, FsvProgram, FsvRecursionChain,
     };
-    use crate::upstream::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
-
-    // Mirrors prover_examples::recursion's private bounds.
-    const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 28;
-    const RAM_BOUND: usize = 1 << 30;
-
-    // Mirrors prover_examples::recursion::measure_verifier_cycles (which wraps
-    // run_unrolled_machine_in_full — calling that across crates trips a rustc
-    // E0391 normalization cycle on its const-generic return type, so the
-    // reduced-machine VM run is inlined here).
-    fn measure_verifier_cycles(bin: &[u32], text: &[u32], stream: Vec<u32>) -> u64 {
-        use prover::field::baby_bear::base::BabyBearField;
-        use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
-        use riscv_transpiler::ir::ReducedMachineDecoderConfig;
-        use riscv_transpiler::vm::{
-            DelegationsAndUnifiedCounters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State,
-            VM,
-        };
-        const ROM_BITS: usize = common_constants::ROM_SECOND_WORD_BITS;
-
-        let instructions: Vec<Instruction> =
-            preprocess_bytecode::<ReducedMachineDecoderConfig, true>(text);
-        let tape = SimpleTape::new(&instructions);
-        let mut ram = RamWithRomRegion::<ROM_BITS>::from_rom_content(bin, RAM_BOUND);
-        let mut state = State::initial_with_counters(DelegationsAndUnifiedCounters::default());
-        let mut snapshotter =
-            SimpleSnapshotter::<DelegationsAndUnifiedCounters, ROM_BITS>::new_with_cycle_limit(
-                UNROLLED_RECURSION_CYCLES_BOUND,
-                state,
-            );
-        let mut non_determinism = QuasiUARTSource::new_with_reads(stream);
-        let finished =
-            VM::<DelegationsAndUnifiedCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
-                &mut state,
-                &mut ram,
-                &mut snapshotter,
-                &tape,
-                UNROLLED_RECURSION_CYCLES_BOUND,
-                &mut non_determinism,
-            );
-        assert!(finished, "verifier program must reach its end state");
-        (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
-    }
 
     let switch_cycles = unified_switch_cycles();
 
@@ -697,12 +654,18 @@ fn run_gpu_recursive_pipeline(
         } else {
             (&unrolled_rec_bin, &unrolled_rec_text)
         };
-        let measured = measure_verifier_cycles(bin, text, build_unrolled_stream(&setups, &proof));
-        log::info!("layer-{layer} verifier measures {measured} cycles");
+        let program = if input_is_base {
+            FsvProgram::UnrolledBaseLayer
+        } else {
+            FsvProgram::UnrolledRecursionLayer
+        };
+        let estimated = estimate_verifier_cycles(&proof, program, unrolled_blake)
+            .expect("cannot estimate verifier cycles");
+        log::info!("layer-{layer} verifier estimates ~{estimated} cycles");
         // Forced first rung (small workloads only): run one unrolled
-        // recursion layer even when the base already measures below the
+        // recursion layer even when the base already estimates below the
         // threshold, so the loop machinery is exercised (see caller doc).
-        if (layer > 0 || !force_first_rung) && measured < switch_cycles {
+        if (layer > 0 || !force_first_rung) && estimated < switch_cycles {
             log::info!("... below {switch_cycles} — switching to the unified machine");
             break;
         }

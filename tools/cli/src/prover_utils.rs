@@ -12,7 +12,7 @@
 //!
 //!   base (unrolled, full-unsigned ISA)
 //!   → unrolled recursion rungs (reduced ISA, fsv verifier binaries) while the
-//!     measured verifier run stays at/above `unified_switch_cycles()`
+//!     estimated verifier cost stays at/above `unified_switch_cycles()`
 //!   → bridge (the unrolled verifier proved in UNIFIED machine mode)
 //!   → final (fsv_unified_recursion_layer, unified mode)
 
@@ -468,44 +468,6 @@ fn fsv_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../gkr_verifier")
 }
 
-/// Run (without proving) the reduced-machine verifier program over `stream`
-/// and return the number of cycles it executes. Mirrors
-/// `prover_examples::recursion::measure_verifier_cycles`; the reduced-machine
-/// VM run is inlined (calling `run_unrolled_machine_in_full` across crates
-/// trips a rustc E0391 normalization cycle on its const-generic return type).
-fn measure_verifier_cycles(bin: &[u32], text: &[u32], stream: Vec<u32>, ram_bound: usize) -> u64 {
-    use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
-    use prover::field::baby_bear::base::BabyBearField;
-    use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
-    use riscv_transpiler::ir::ReducedMachineDecoderConfig;
-    use riscv_transpiler::vm::{
-        DelegationsAndUnifiedCounters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State, VM,
-    };
-    const ROM_BITS: usize = common_constants::ROM_SECOND_WORD_BITS;
-
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(text);
-    let tape = SimpleTape::new(&instructions);
-    let mut ram = RamWithRomRegion::<ROM_BITS>::from_rom_content(bin, ram_bound);
-    let mut state = State::initial_with_counters(DelegationsAndUnifiedCounters::default());
-    let mut snapshotter =
-        SimpleSnapshotter::<DelegationsAndUnifiedCounters, ROM_BITS>::new_with_cycle_limit(
-            UNROLLED_RECURSION_CYCLES_BOUND,
-            state,
-        );
-    let mut non_determinism = QuasiUARTSource::new_with_reads(stream);
-    let finished = VM::<DelegationsAndUnifiedCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
-        &mut state,
-        &mut ram,
-        &mut snapshotter,
-        &tape,
-        UNROLLED_RECURSION_CYCLES_BOUND,
-        &mut non_determinism,
-    );
-    assert!(finished, "verifier program must reach its end state");
-    (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
-}
-
 /// Advance a proof at some ladder position to `target`. `state.proof` must be
 /// either a base proof or an unrolled recursion proof (never unified).
 fn advance_to_target(
@@ -513,7 +475,6 @@ fn advance_to_target(
     mut state: LadderState,
     target: ProofTarget,
     batch_id: u64,
-    ram_bound: usize,
 ) -> Result<LadderState, String> {
     if target == ProofTarget::Base {
         return Ok(state);
@@ -536,14 +497,19 @@ fn advance_to_target(
         } else {
             (&unrolled_rec_bin, &unrolled_rec_text)
         };
-        let measured = measure_verifier_cycles(
-            bin,
-            text,
-            build_unrolled_stream(&state.setups, &state.proof),
-            ram_bound,
-        );
-        log::info!("verifying the current proof would take {measured} cycles");
-        if measured < switch_cycles {
+        let program = if state.input_is_base {
+            FsvProgram::UnrolledBaseLayer
+        } else {
+            FsvProgram::UnrolledRecursionLayer
+        };
+        let estimated = full_statement_verifier::cost_model::estimate_verifier_cycles(
+            &state.proof,
+            program,
+            unrolled_blake,
+        )
+        .map_err(|e| format!("cannot estimate verifier cycles: {e}"))?;
+        log::info!("verifying the current proof would take ~{estimated} cycles");
+        if estimated < switch_cycles {
             log::info!("... below {switch_cycles} — stopping the unrolled recursion loop");
             break;
         }
@@ -724,13 +690,7 @@ impl ProgramProver {
             },
         };
 
-        let state = advance_to_target(
-            self.backend.as_dyn(),
-            state,
-            self.config.target,
-            batch_id,
-            self.config.cpu.ram_bound,
-        )?;
+        let state = advance_to_target(self.backend.as_dyn(), state, self.config.target, batch_id)?;
 
         Ok(finalize_artifact(
             self.config.target,
@@ -758,13 +718,7 @@ impl ProgramProver {
             timings: artifact.timings_ms,
         };
 
-        let state = advance_to_target(
-            self.backend.as_dyn(),
-            state,
-            self.config.target,
-            batch_id,
-            self.config.cpu.ram_bound,
-        )?;
+        let state = advance_to_target(self.backend.as_dyn(), state, self.config.target, batch_id)?;
 
         Ok(finalize_artifact(
             self.config.target,
