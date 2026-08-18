@@ -2,6 +2,7 @@
 #![feature(generic_const_exprs)]
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
+#[allow(dead_code)]
 mod trace;
 
 use verifier_common::field::baby_bear::base::BabyBearField;
@@ -50,9 +51,17 @@ fn guest_cycles(circuit: &str) -> u64 {
         serde_json::from_reader(std::io::BufReader::new(f)).expect("deserialize proof")
     };
 
+    let bin_path = format!("{root}/tools/gkr_verifier/{circuit}_sec_80.bin");
+    let text_path = format!("{root}/tools/gkr_verifier/{circuit}_sec_80.text");
+    for path in [&bin_path, &text_path] {
+        assert!(
+            std::path::Path::new(path).exists(),
+            "open {path}: no such file"
+        );
+    }
     let (bin, text) = full_statement_verifier::host_utils::load_program(
-        std::path::Path::new(&format!("{root}/tools/gkr_verifier/{circuit}_sec_80.bin")),
-        std::path::Path::new(&format!("{root}/tools/gkr_verifier/{circuit}_sec_80.text")),
+        std::path::Path::new(&bin_path),
+        std::path::Path::new(&text_path),
     );
 
     let mut stream = Vec::new();
@@ -66,13 +75,12 @@ fn guest_cycles(circuit: &str) -> u64 {
 fn per_circuit_verifier_cost_has_not_drifted() {
     for (circuit, expected) in EXPECTED {
         let actual = guest_cycles(circuit);
-        let tol = expected / 1000;
-        assert!(
-            actual.abs_diff(*expected) <= tol,
-            "{circuit}: {actual} vs expected {expected} (tolerance {tol}) — \
-             the generated verifier changed; recalibrate the cost tables. \
-             This guard is a proxy: the guest runs only verify(), so it detects \
-             codegen drift but cannot validate the cost table's numbers"
+        assert_eq!(
+            actual, *expected,
+            "{circuit}: the generated verifier changed. Re-measure and update EXPECTED in this \
+             file; regenerating the test proof, {circuit}_sec_80.bin/.text, or the compiled \
+             circuit all move these counts. This guard is a proxy: the guest runs only verify(), \
+             so it detects codegen drift but cannot validate the cost table's numbers"
         );
     }
 }

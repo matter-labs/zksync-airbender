@@ -38,6 +38,10 @@ jobs:
         env:
           RUST_MIN_STACK: 16777216
         run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_search --bin gkr-forward-artifact
+      - name: Verifier cost-model drift guard
+        env:
+          RUST_MIN_STACK: 1073741824
+        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --test cost_model_drift
 
   formatting:
     name: cargo fmt
