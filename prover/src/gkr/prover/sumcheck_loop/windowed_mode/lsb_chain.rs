@@ -129,7 +129,9 @@ impl<F: PrimeField + field::TwoAdicField, E: FieldExtension<F> + Field> GenericS
 
 /// Wraps plain borrowed slices into the kernels' access type (a raw
 /// pointer + length view; no interior mutability is exercised).
-pub fn quasi<T: Send + Sync, const A: bool>(slices: &[&[T]]) -> Vec<DisjointAccessQuasiSlice<T, A>> {
+pub fn quasi<T: Send + Sync, const A: bool>(
+    slices: &[&[T]],
+) -> Vec<DisjointAccessQuasiSlice<T, A>> {
     slices
         .iter()
         .map(|s| DisjointAccessQuasiSlice::<_, A>::from_init_slice(s))
@@ -425,11 +427,7 @@ fn tail_eval_pair<F: PrimeField, E: FieldExtension<F> + Field>(
 /// Folds every tracker's INPUT region by `(1 - r, r)` over adjacent pairs
 /// into its OUTPUT region. Parallel over pairs; the regions are disjoint by
 /// the tracker's construction. Executor-independent (plain scalar folds).
-pub fn tail_fold_trackers<E: Field>(
-    trackers: &mut [FoldBufferTracker<E>],
-    r: &E,
-    worker: &Worker,
-) {
+pub fn tail_fold_trackers<E: Field>(trackers: &mut [FoldBufferTracker<E>], r: &E, worker: &Worker) {
     use crate::gkr::prover::{SendConstPtr, SendPtr};
     use crate::gkr::PAR_THRESHOLD;
 
@@ -460,19 +458,4 @@ pub fn tail_fold_trackers<E: Field>(
             }
         });
     }
-}
-
-/// Contracts an eq suffix table by summing out its lowest variable:
-/// `t[j] = t[2j] + t[2j+1]`, halving the length (no-op at length 1).
-pub fn contract_pair_sums<E: Field>(table: &mut Vec<E>) {
-    let pairs = table.len() / 2;
-    if pairs == 0 {
-        return;
-    }
-    for j in 0..pairs {
-        let mut v = table[2 * j];
-        v.add_assign(&table[2 * j + 1]);
-        table[j] = v;
-    }
-    table.truncate(pairs);
 }

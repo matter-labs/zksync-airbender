@@ -61,6 +61,7 @@
 // - then we draw a challenge and evaluate p(alpha) = \sum_{X'} eq(r1, ...., alpha, X') f(alpha, X') =
 // = \sum_{X''} eq(r1, ...., alpha, 0, X'') f(alpha, 0, X'') + eq(r1, ...., alpha, 1, X'') f(alpha, 1, X'')
 
+use crate::gkr::prover::backend::TwiddleSetOps;
 use crate::gkr::prover::stages::commitment_utils::{
     compute_column_major_lde_from_monomial_form,
     compute_column_major_monomial_form_from_main_domain_owned, ColumnMajorCosetBoundTracePart,
@@ -69,7 +70,6 @@ use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
 use crate::gkr::prover::WhirSchedule;
-use crate::gkr::sumcheck::eq_poly::make_domain_eq_poly_in_full;
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use crate::gkr::whir::hypercube_to_monomial::{
@@ -255,10 +255,8 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
     /// An oracle with no columns (used when a commitment set is absent): empty
     /// cosets with the right offsets and a dummy tree.
     pub fn empty(values_per_leaf: usize, coset_size_log2: usize, lde_factor: usize) -> Self {
-        let generators: Vec<F> = materialize_powers_serial_starting_with_one(
-            domain_generator_for_size::<F>((1 << coset_size_log2) * lde_factor as u64),
-            lde_factor,
-        );
+        let generators: Vec<F> =
+            crate::gkr::prover::backend::coset_offsets::<F>(1 << coset_size_log2, lde_factor);
         let mut cosets = Vec::with_capacity(lde_factor);
         for i in 0..lde_factor {
             let offset = generators[i];
@@ -732,14 +730,14 @@ where
 
 /// Build the intermediate oracle for a folded monomial form, returning its Merkle
 /// cap (to commit) and the oracle.
-fn build_intermediate_oracle<F, E, T>(
-    backend: &impl crate::gkr::prover::backend::Backend<F, E>,
+fn build_intermediate_oracle<F, E, T, B: crate::gkr::prover::backend::Backend<F, E>>(
+    backend: &B,
     monomial_form: &[E],
     lde_factor: usize,
     values_per_leaf: usize,
     tree_cap_size: usize,
     mode: WhirIntermediateOracleMode,
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     worker: &Worker,
 ) -> (MerkleTreeCapVarLength, IntermediateOracle<F, E, T>)
 where
@@ -778,7 +776,7 @@ where
         WhirIntermediateOracleMode::CosetByCoset => {
             let commitment = coset_commit::CosetByCosetExtCommitment::<F, E, T>::commit(
                 monomial_form,
-                twiddles,
+                twiddles.plain(),
                 lde_factor,
                 values_per_leaf,
                 tree_cap_size,
@@ -795,6 +793,7 @@ pub fn whir_fold<
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
     TR: Transcript<F, E>,
+    B: crate::gkr::prover::backend::Backend<F, E>,
 >(
     mem_oracle: ColumnMajorBaseOracleForLDE<F, T>,
     mem_polys_claims: Vec<E>,
@@ -805,13 +804,13 @@ pub fn whir_fold<
     original_evaluation_point: Vec<E>,
     batching_challenge: E,
     whir_schedule: &WhirSchedule,
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     mut transcript_seed: TR::Seed,
     tree_cap_size: usize,
     trace_len_log2: usize,
     // Compute backend for the in-memory-path heavy ops (intermediate-oracle LDEs,
     // the batching IFFT). The backend must not change any produced values.
-    backend: &impl crate::gkr::prover::backend::Backend<F, E>,
+    backend: &B,
     // How to materialize each intermediate (folded) RS oracle. Independent from the
     // storage policy of the base oracles: the base oracles carry their own policy in
     // their `ColumnMajorBaseOracleForLDE` variant, so e.g. recompute-based base
@@ -876,7 +875,7 @@ where
                 } else {
                     compute_column_major_monomial_form_from_main_domain_owned(
                         column.into_owned(),
-                        twiddles,
+                        twiddles.plain(),
                     )
                 };
                 assert_eq!(monomial_form.len(), 1 << trace_len_log2);
@@ -1270,7 +1269,7 @@ where
             let lde_factor = *whir_steps_lde_factors.next().unwrap();
             let next_folding_steps = *whir_steps_schedule.peek().unwrap();
             let t_build = std::time::Instant::now();
-            let (cap, next_oracle) = build_intermediate_oracle::<F, E, T>(
+            let (cap, next_oracle) = build_intermediate_oracle::<F, E, T, B>(
                 backend,
                 &sumchecked_poly_monomial_form,
                 lde_factor,
@@ -1396,17 +1395,17 @@ where
             3] = [
             (set_num_columns[0] > 0).then(|| {
                 mem_oracle
-                    .query_many(&query_indexes, twiddles, worker)
+                    .query_many(&query_indexes, twiddles.plain(), worker)
                     .into_iter()
             }),
             (set_num_columns[1] > 0).then(|| {
                 wit_oracle
-                    .query_many(&query_indexes, twiddles, worker)
+                    .query_many(&query_indexes, twiddles.plain(), worker)
                     .into_iter()
             }),
             (set_num_columns[2] > 0).then(|| {
                 setup
-                    .query_many(&query_indexes, twiddles, worker)
+                    .query_many(&query_indexes, twiddles.plain(), worker)
                     .into_iter()
             }),
         ];
@@ -1644,7 +1643,7 @@ where
             let lde_factor = *whir_steps_lde_factors.next().unwrap();
             let next_folding_steps = *whir_steps_schedule.peek().unwrap();
             let t_build = std::time::Instant::now();
-            let (cap, next_oracle) = build_intermediate_oracle::<F, E, T>(
+            let (cap, next_oracle) = build_intermediate_oracle::<F, E, T, B>(
                 backend,
                 &sumchecked_poly_monomial_form,
                 lde_factor,
@@ -1759,7 +1758,7 @@ where
         println!("  drawing {num_queries} queries...");
         let t_queries = std::time::Instant::now();
         let mut round_queries = rs_oracle_to_query
-            .query_many(&query_indexes, twiddles, worker)
+            .query_many(&query_indexes, twiddles.plain(), worker)
             .into_iter();
         println!(
             "  [timing] round {} queries ({num_queries}) served in {:.3?}",
@@ -1974,7 +1973,7 @@ where
         println!("  drawing {num_queries} queries...");
         let t_queries = std::time::Instant::now();
         let mut round_queries = rs_oracle_to_query
-            .query_many(&query_indexes, twiddles, worker)
+            .query_many(&query_indexes, twiddles.plain(), worker)
             .into_iter();
         println!(
             "  [timing] final-round queries ({num_queries}) served in {:.3?}",
@@ -3169,16 +3168,7 @@ fn special_lagrange_interpolate<E: Field>(
     result
 }
 
-fn make_pows<E: Field>(el: E, num_powers: usize) -> Vec<E> {
-    let mut result = Vec::with_capacity(num_powers);
-    let mut current = el;
-    for _ in 0..num_powers {
-        result.push(current);
-        current.square();
-    }
-
-    result
-}
+pub(crate) use crate::gkr::sumcheck::eq_poly::make_pows;
 
 pub(crate) fn update_eq_poly_reference<F: PrimeField, E: FieldExtension<F> + Field>(
     eq_poly: &mut [E],
@@ -4046,7 +4036,7 @@ mod test {
         };
 
         let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup);
-        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript>(
+        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _>(
             mem,
             a,
             wit,

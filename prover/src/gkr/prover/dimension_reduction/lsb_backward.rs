@@ -607,11 +607,13 @@ pub(crate) unsafe fn scalar_initial_chunk<E: Field>(
     chunk_size: usize,
     scratch: SendPtr<[E; 2]>,
 ) -> [E; 2] {
-    // caller-provided typed tri scratch: [v0, vinf] per row
-    let tri = unsafe { core::slice::from_raw_parts_mut(scratch.0, chunk_size) };
-    for t in tri.iter_mut() {
-        *t = [E::ZERO; 2];
+    // caller-provided typed tri scratch: [v0, vinf] per row. NOT
+    // pre-zeroed: the `first` flag makes the first relation's pass a pure
+    // store, so every row is written before it is read.
+    if relations.is_empty() {
+        return [E::ZERO; 2];
     }
+    let tri = unsafe { core::slice::from_raw_parts_mut(scratch.0, chunk_size) };
     let mut first = true;
     for rel in relations.iter() {
         match rel {
@@ -734,11 +736,13 @@ pub(crate) unsafe fn scalar_continuing_chunk<E: Field>(
     chunk_size: usize,
     scratch: SendPtr<[E; 2]>,
 ) -> [E; 2] {
-    // caller-provided typed tri scratch: [v0, vinf] per row
-    let tri = unsafe { core::slice::from_raw_parts_mut(scratch.0, chunk_size) };
-    for t in tri.iter_mut() {
-        *t = [E::ZERO; 2];
+    // caller-provided typed tri scratch: [v0, vinf] per row. NOT
+    // pre-zeroed: the `first` flag makes the first relation's pass a pure
+    // store, so every row is written before it is read.
+    if relations.is_empty() {
+        return [E::ZERO; 2];
     }
+    let tri = unsafe { core::slice::from_raw_parts_mut(scratch.0, chunk_size) };
     let r = &folding_challenge;
     let mut first = true;
     for rel in relations.iter() {
@@ -1064,10 +1068,9 @@ pub fn lsb_dim_reducing_sumcheck_initial_round<
     // round 0 has no previous eq factor, so the claim is already normalized;
     // the message comes from the SAME builder as the same-size scalar rounds
     // (the unified wire format -- see the `GKRBackend` trait docs)
-    let coefficients =
-        crate::gkr::sumcheck::output_univariate_monomial_form_max_quadratic::<F, E>(
-            tau[0], claim, h0, hinf,
-        );
+    let coefficients = crate::gkr::sumcheck::output_univariate_monomial_form_max_quadratic::<F, E>(
+        tau[0], claim, h0, hinf,
+    );
     (coefficients, t_table)
 }
 

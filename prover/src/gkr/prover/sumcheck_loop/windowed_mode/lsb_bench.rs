@@ -260,6 +260,68 @@ unsafe fn apply_form_op<F: PrimeField, const NG: usize>(
     }
 }
 
+/// First-member variant of [`apply_form_op`]: a pure STORE (copy / negate /
+/// scale) into the form buffer, which is never pre-zeroed.
+#[inline(always)]
+unsafe fn apply_form_op_first<F: PrimeField, const NG: usize>(
+    dst: *mut u32,
+    src: *const u32,
+    op: &FormOp<F>,
+) {
+    match op {
+        FormOp::Add => neon::soa_base_form_store_n::<NG>(dst, src),
+        FormOp::Sub => neon::soa_base_form_neg_store_n::<NG>(dst, src),
+        FormOp::Mul(c) => {
+            neon::soa_base_form_mul_store_n::<NG>(dst, src, *(c as *const F as *const _))
+        }
+    }
+}
+
+/// Ext twin of [`apply_form_op`] (shared by the uniskip ext passes).
+#[inline(always)]
+unsafe fn apply_ext_form_op<F: PrimeField, const NG: usize>(
+    dst: *mut u32,
+    src: *const u32,
+    op: &FormOp<F>,
+) {
+    match op {
+        FormOp::Add => neon::soa_ext_form_add_n::<NG>(dst, src),
+        FormOp::Sub => neon::soa_ext_form_sub_n::<NG>(dst, src),
+        FormOp::Mul(c) => neon::soa_ext_form_muladd_n::<NG>(dst, src, *(c as *const F as *const _)),
+    }
+}
+
+/// Ext twin of [`apply_form_op_first`].
+#[inline(always)]
+unsafe fn apply_ext_form_op_first<F: PrimeField, const NG: usize>(
+    dst: *mut u32,
+    src: *const u32,
+    op: &FormOp<F>,
+) {
+    match op {
+        FormOp::Add => neon::soa_ext_form_store_n::<NG>(dst, src),
+        FormOp::Sub => neon::soa_ext_form_neg_store_n::<NG>(dst, src),
+        FormOp::Mul(c) => {
+            neon::soa_ext_form_mul_store_n::<NG>(dst, src, *(c as *const F as *const _))
+        }
+    }
+}
+
+/// Shared kernel epilogue: untranspose the SoA accumulator into AoS ext
+/// values and read out the first `OUT` cells.
+#[inline(always)]
+unsafe fn finish_soa_acc<E: Field, const NG: usize, const OUT: usize>(
+    acc_soa: &[u32],
+    ext_tmp: &mut [BabyBearExt4],
+) -> [E; OUT] {
+    neon::soa_untranspose_to_aos_ext::<NG>(acc_soa.as_ptr(), ext_tmp.as_mut_ptr());
+    let mut out = [E::ZERO; OUT];
+    for i in 0..OUT {
+        out[i] = *(ext_tmp.as_ptr().add(i) as *const E);
+    }
+    out
+}
+
 macro_rules! reduce_chunks {
     ($chunks:expr, $n:expr) => {{
         let mut acc = $chunks.pop().unwrap();
@@ -390,8 +452,17 @@ pub fn lsb_soa_full_parallel<
                         for (f, members) in forms.iter().enumerate() {
                             for u in 0..U {
                                 let g = fptr.add((f * U + u) * bs);
-                                core::ptr::write_bytes(g, 0, bs);
-                                for (op, idx) in members.iter() {
+                                // the first member STORES; no dead zero-fill
+                                let mut it = members.iter();
+                                match it.next() {
+                                    Some((op, idx)) => apply_form_op_first::<F, NG>(
+                                        g,
+                                        bptr.add((*idx as usize * U + u) * bs),
+                                        op,
+                                    ),
+                                    None => core::ptr::write_bytes(g, 0, bs),
+                                }
+                                for (op, idx) in it {
                                     apply_form_op::<F, NG>(
                                         g,
                                         bptr.add((*idx as usize * U + u) * bs),
@@ -535,12 +606,7 @@ pub fn lsb_soa_full_parallel<
                     block += U;
                 }
 
-                neon::soa_untranspose_to_aos_ext::<NG>(acc_soa.as_ptr(), ext_tmp.as_mut_ptr());
-                let mut out = [E::ZERO; OUT];
-                for i in 0..OUT {
-                    out[i] = *(ext_tmp.as_ptr().add(i) as *const E);
-                }
-                *acc_dst = out;
+                *acc_dst = finish_soa_acc::<E, NG, OUT>(&acc_soa, &mut ext_tmp);
             })
         }
     });
@@ -646,10 +712,20 @@ pub fn lsb_soa_bounded_parallel<
                                 member_slots,
                             } => {
                                 let dst = sptr.add(*slot as usize * bs);
-                                core::ptr::write_bytes(dst, 0, bs);
-                                for ((op, _), ms) in
-                                    forms[*form as usize].iter().zip(member_slots.iter())
-                                {
+                                // the first member STORES; no dead zero-fill
+                                let mut it = forms[*form as usize].iter().zip(member_slots.iter());
+                                match it.next() {
+                                    Some(((op, _), ms)) => {
+                                        debug_assert_ne!(*ms, *slot);
+                                        apply_form_op_first::<F, NG>(
+                                            dst,
+                                            sptr.add(*ms as usize * bs),
+                                            op,
+                                        );
+                                    }
+                                    None => core::ptr::write_bytes(dst, 0, bs),
+                                }
+                                for ((op, _), ms) in it {
                                     debug_assert_ne!(*ms, *slot);
                                     apply_form_op::<F, NG>(dst, sptr.add(*ms as usize * bs), op);
                                 }
@@ -716,12 +792,7 @@ pub fn lsb_soa_bounded_parallel<
                     );
                 }
 
-                neon::soa_untranspose_to_aos_ext::<NG>(acc_soa.as_ptr(), ext_tmp.as_mut_ptr());
-                let mut out = [E::ZERO; OUT];
-                for i in 0..OUT {
-                    out[i] = *(ext_tmp.as_ptr().add(i) as *const E);
-                }
-                *acc_dst = out;
+                *acc_dst = finish_soa_acc::<E, NG, OUT>(&acc_soa, &mut ext_tmp);
             })
         }
     });
@@ -811,18 +882,22 @@ pub fn lsb_uniskip_ext_pass_parallel<
                     for (f, members) in forms.iter().enumerate() {
                         for u in 0..U {
                             let g = fptr.add((f * U + u) * es);
-                            core::ptr::write_bytes(g, 0, es);
-                            for (op, idx) in members.iter() {
-                                let src = xptr.add((*idx as usize * U + u) * es);
-                                match op {
-                                    FormOp::Add => neon::soa_ext_form_add_n::<NG>(g, src),
-                                    FormOp::Sub => neon::soa_ext_form_sub_n::<NG>(g, src),
-                                    FormOp::Mul(c) => neon::soa_ext_form_muladd_n::<NG>(
-                                        g,
-                                        src,
-                                        *(c as *const F as *const _),
-                                    ),
-                                }
+                            // the first member STORES; no dead zero-fill
+                            let mut it = members.iter();
+                            match it.next() {
+                                Some((op, idx)) => apply_ext_form_op_first::<F, NG>(
+                                    g,
+                                    xptr.add((*idx as usize * U + u) * es),
+                                    op,
+                                ),
+                                None => core::ptr::write_bytes(g, 0, es),
+                            }
+                            for (op, idx) in it {
+                                apply_ext_form_op::<F, NG>(
+                                    g,
+                                    xptr.add((*idx as usize * U + u) * es),
+                                    op,
+                                );
                             }
                         }
                     }
@@ -875,12 +950,7 @@ pub fn lsb_uniskip_ext_pass_parallel<
                     block += U;
                 }
 
-                neon::soa_untranspose_to_aos_ext::<NG>(acc_soa.as_ptr(), ext_tmp.as_mut_ptr());
-                let mut out = [E::ZERO; 16];
-                for i in 0..16 {
-                    out[i] = *(ext_tmp.as_ptr().add(i) as *const E);
-                }
-                *acc_dst = out;
+                *acc_dst = finish_soa_acc::<E, NG, 16>(&acc_soa, &mut ext_tmp);
             })
         }
     });
@@ -1179,18 +1249,18 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
                     }
                     for (f, members) in forms.iter().enumerate() {
                         let g = fptr.add(f * es);
-                        core::ptr::write_bytes(g, 0, es);
-                        for (op, idx) in members.iter() {
-                            let src = xptr.add(*idx as usize * es);
-                            match op {
-                                FormOp::Add => neon::soa_ext_form_add_n::<NG>(g, src),
-                                FormOp::Sub => neon::soa_ext_form_sub_n::<NG>(g, src),
-                                FormOp::Mul(c) => neon::soa_ext_form_muladd_n::<NG>(
-                                    g,
-                                    src,
-                                    *(c as *const F as *const _),
-                                ),
-                            }
+                        // the first member STORES; no dead zero-fill
+                        let mut it = members.iter();
+                        match it.next() {
+                            Some((op, idx)) => apply_ext_form_op_first::<F, NG>(
+                                g,
+                                xptr.add(*idx as usize * es),
+                                op,
+                            ),
+                            None => core::ptr::write_bytes(g, 0, es),
+                        }
+                        for (op, idx) in it {
+                            apply_ext_form_op::<F, NG>(g, xptr.add(*idx as usize * es), op);
                         }
                     }
                     for ((a, f, _), tb) in products.iter().zip(tables_p.iter()) {
@@ -1227,12 +1297,7 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
                     );
                 }
 
-                neon::soa_untranspose_to_aos_ext::<NG>(acc_soa.as_ptr(), ext_tmp.as_mut_ptr());
-                let mut out = [E::ZERO; 16];
-                for i in 0..16 {
-                    out[i] = *(ext_tmp.as_ptr().add(i) as *const E);
-                }
-                *acc_dst = out;
+                *acc_dst = finish_soa_acc::<E, NG, 16>(&acc_soa, &mut ext_tmp);
             })
         }
     });

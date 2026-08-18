@@ -110,10 +110,15 @@ pub fn prove_built_family_trace_with_prover_config(
     prover_config: &ProverConfig,
     worker: &Worker,
 ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
-    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
+    // Concretely BabyBear/Ext4, so pick the target-recommended backend (the
+    // NEON one on aarch64) and build ITS twiddle set once — the setup commit
+    // reads the plain tables through the set.
+    use crate::gkr::prover::{Backend, TwiddleSetOps};
+    let backend = DefaultBabyBearBackend::default();
+    let twiddles = backend.make_twiddles(trace_len, worker);
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
     let setup_commitment = setup.commit(
-        &twiddles,
+        twiddles.plain(),
         prover_config.lde_factor,
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.cap_size,
@@ -123,9 +128,8 @@ pub fn prove_built_family_trace_with_prover_config(
 
     println!("Trying to prove");
     let now = std::time::Instant::now();
-    // Concretely BabyBear/Ext4, so pick the target-recommended backend (the
-    // NEON one on aarch64). `SeparateMemoryAndWitness` historically maps to
-    // the fully-in-memory storage policy — kept explicitly here.
+    // `SeparateMemoryAndWitness` historically maps to the fully-in-memory
+    // storage policy — kept explicitly here.
     let proof = prove_configured_with_gkr_with_storage_and_backend::<
         BabyBearField,
         BabyBearExt4,
@@ -145,7 +149,7 @@ pub fn prove_built_family_trace_with_prover_config(
         WhirOracleStorage::fully_in_memory(),
         Vec::new(),
         trace_len,
-        &DefaultBabyBearBackend::default(),
+        &backend,
         &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
         worker,
     );
@@ -657,10 +661,12 @@ pub fn prove_inits_and_teardowns(
         trace_len.trailing_zeros() as usize,
         level,
     );
-    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
+    use crate::gkr::prover::{Backend, TwiddleSetOps};
+    let backend = DefaultBabyBearBackend::default();
+    let twiddles = backend.make_twiddles(trace_len, worker);
     let setup = GKRSetup::construct(&table_driver, &[], trace_len, &circuit);
     let setup_commitment = setup.commit(
-        &twiddles,
+        twiddles.plain(),
         prover_config.lde_factor,
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.cap_size,
@@ -692,7 +698,7 @@ pub fn prove_inits_and_teardowns(
         WhirOracleStorage::fully_in_memory(),
         inits_and_teardowns_top_bits,
         trace_len,
-        &DefaultBabyBearBackend::default(),
+        &backend,
         &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
         worker,
     );

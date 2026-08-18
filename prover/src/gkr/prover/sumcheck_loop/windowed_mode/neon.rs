@@ -1463,6 +1463,39 @@ pub unsafe fn soa_ext_form_add_n<const N: usize>(dst: *mut u32, src: *const u32)
     }
 }
 
+/// `dst[cell] = src[cell]` over N ext SoA cells — the FIRST form member's
+/// pure store (the destination is never pre-zeroed).
+#[inline(always)]
+pub unsafe fn soa_ext_form_store_n<const N: usize>(dst: *mut u32, src: *const u32) {
+    for i in 0..(4 * N) {
+        vst1q_u32(dst.add(4 * i), vld1q_u32(src.add(4 * i)));
+    }
+}
+
+/// `dst[cell] = -src[cell]` over N ext SoA cells (first-member store form of
+/// [`soa_ext_form_sub_n`]; identical values to `0 - src`).
+#[inline(always)]
+pub unsafe fn soa_ext_form_neg_store_n<const N: usize>(dst: *mut u32, src: *const u32) {
+    let zero = vdupq_n_u32(0);
+    for i in 0..(4 * N) {
+        vst1q_u32(dst.add(4 * i), sub4(zero, vld1q_u32(src.add(4 * i))));
+    }
+}
+
+/// `dst[cell] = c * src[cell]` over N ext SoA cells (first-member store form
+/// of [`soa_ext_form_muladd_n`]; identical values to `0 + c*src`).
+#[inline(always)]
+pub unsafe fn soa_ext_form_mul_store_n<const N: usize>(
+    dst: *mut u32,
+    src: *const u32,
+    c: BabyBearField,
+) {
+    let cv = vdupq_n_u32(c.raw_u32_value());
+    for i in 0..(4 * N) {
+        vst1q_u32(dst.add(4 * i), mont_mul4(vld1q_u32(src.add(4 * i)), cv));
+    }
+}
+
 /// `dst[cell] -= src[cell]` over N ext SoA cells.
 #[inline(always)]
 pub unsafe fn soa_ext_form_sub_n<const N: usize>(dst: *mut u32, src: *const u32) {
@@ -1689,6 +1722,39 @@ pub unsafe fn soa_base_form_add_n<const N: usize>(dst: *mut u32, src: *const u32
     for i in 0..N {
         let p = dst.add(4 * i);
         vst1q_u32(p, add4(vld1q_u32(p), vld1q_u32(src.add(4 * i))));
+    }
+}
+
+/// `dst[cell] = src[cell]` over N base SoA cells — the FIRST form member's
+/// pure store (the destination is never pre-zeroed).
+#[inline(always)]
+pub unsafe fn soa_base_form_store_n<const N: usize>(dst: *mut u32, src: *const u32) {
+    for i in 0..N {
+        vst1q_u32(dst.add(4 * i), vld1q_u32(src.add(4 * i)));
+    }
+}
+
+/// `dst[cell] = -src[cell]` (first-member store form of
+/// [`soa_base_form_sub_n`]; identical values to `0 - src`).
+#[inline(always)]
+pub unsafe fn soa_base_form_neg_store_n<const N: usize>(dst: *mut u32, src: *const u32) {
+    let zero = vdupq_n_u32(0);
+    for i in 0..N {
+        vst1q_u32(dst.add(4 * i), sub4(zero, vld1q_u32(src.add(4 * i))));
+    }
+}
+
+/// `dst[cell] = c * src[cell]` (first-member store form of
+/// [`soa_base_form_muladd_n`]; identical values to `0 + c*src`).
+#[inline(always)]
+pub unsafe fn soa_base_form_mul_store_n<const N: usize>(
+    dst: *mut u32,
+    src: *const u32,
+    c: BabyBearField,
+) {
+    let cv = vdupq_n_u32(c.raw_u32_value());
+    for i in 0..N {
+        vst1q_u32(dst.add(4 * i), mont_mul4(vld1q_u32(src.add(4 * i)), cv));
     }
 }
 

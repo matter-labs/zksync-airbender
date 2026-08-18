@@ -361,7 +361,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
         use crate::gkr::prover::commitment_utils::commit_trace_part;
 
-        SetupCommitment::InMemory(commit_trace_part::<F, F, T>(
+        SetupCommitment::InMemory(commit_trace_part::<F, F, T, _>(
             &crate::gkr::prover::backend::NaiveBackend,
             &inputs,
             twiddles,
@@ -398,7 +398,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
         use crate::gkr::prover::commitment_utils::commit_trace_part_packed;
 
-        commit_trace_part_packed::<F, F, T>(
+        commit_trace_part_packed::<F, F, T, _>(
             &crate::gkr::prover::backend::NaiveBackend,
             &inputs,
             twiddles,

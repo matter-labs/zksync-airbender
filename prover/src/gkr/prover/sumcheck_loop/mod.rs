@@ -126,10 +126,9 @@ where
     // the production engines run naive (one variable per round) schedules
     // only; windowed dimension-reducing passes were removed
     assert!(
-        schedule.iter().all(|s| matches!(
-            s,
-            crate::gkr::prover_config::SumcheckStep::NaiveSumcheck
-        )),
+        schedule
+            .iter()
+            .all(|s| matches!(s, crate::gkr::prover_config::SumcheckStep::NaiveSumcheck)),
         "the dimension-reducing engines support only naive round schedules; got {:?}",
         schedule
     );
@@ -569,11 +568,7 @@ where
 /// the same [`run_sumcheck_loop`] (round 0 reads the original polys, every
 /// later round folds the previous challenge on read).
 #[allow(clippy::too_many_arguments)]
-fn same_size_naive_sumcheck<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
-    TR: Transcript<F, E>,
->(
+fn same_size_naive_sumcheck<F: PrimeField, E: FieldExtension<F> + Field, TR: Transcript<F, E>>(
     collector: &KernelCollector<F, E>,
     challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
     claim: E,
@@ -726,7 +721,8 @@ fn scalar_chain_round<F: PrimeField, E: FieldExtension<F> + Field, TR: Transcrip
     let r = draw_random_field_els::<F, E, TR>(seed, 1)[0];
     st.running_claim = evaluate_small_univariate_poly::<F, E, _>(&coeffs, &r);
     st.eq_prefactor = evaluate_eq_poly::<F, E>(&r, &tau);
-    st.entries.push(EvaluationPointEntry::Coordinate { point: r });
+    st.entries
+        .push(EvaluationPointEntry::Coordinate { point: r });
     st.vars_bound += 1;
     r
 }
@@ -874,7 +870,6 @@ where
 {
     use crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker;
     use crate::gkr::prover_config::SumcheckStep;
-    use crate::gkr::sumcheck::eq_poly::make_eq_table_from_weight_blocks;
     use windowed_mode::lsb_chain::*;
 
     let n = folding_steps;
@@ -925,27 +920,22 @@ where
     }
     assert_eq!(off, n);
 
-    // per-pass suffix tables over the HIGH variables
-    let eq_suffixes: Vec<Box<[E]>> = (0..num_passes)
-        .map(|g| {
-            let lo = 3 * (g + 1);
-            if lo == n {
-                vec![E::ONE].into_boxed_slice()
-            } else {
-                make_eq_table_from_weight_blocks::<E>(&blocks_in(lo, n, &spans, &prev_blocks), worker)
-                    .into_boxed_slice()
-            }
-        })
-        .collect();
-    // tail suffix table over the variables above the first tail round
-    let mut tail_t_table: Vec<E> = if tail_rounds > 1 {
-        make_eq_table_from_weight_blocks::<E>(
-            &blocks_in(3 * num_passes + 1, n, &spans, &prev_blocks),
-            worker,
-        )
-    } else {
-        vec![E::ONE]
-    };
+    // Suffix eq tables for every step of the schedule, built ONCE by
+    // interleaved extension from the shortest suffix (each length is an
+    // intermediate of the next longer one, so retention is free and no
+    // contraction is ever needed): pass `g` reads the table over its HIGH
+    // variables (suffix length `n - 3*(g+1)`), and the tail round binding
+    // variable `v` reads the table over `v+1..n` (length `n - v - 1`).
+    let mut needed = std::collections::BTreeSet::new();
+    for g in 0..num_passes {
+        needed.insert(n - 3 * (g + 1));
+    }
+    for t in 0..tail_rounds {
+        needed.insert(tail_rounds - 1 - t);
+    }
+    let all_blocks: Vec<&[E]> = prev_blocks.iter().map(|b| &b[..]).collect();
+    let suffix_tables =
+        crate::gkr::sumcheck::eq_poly::SuffixTables::<E>::materialize(&all_blocks, &needed, worker);
 
     // one ping-pong fold tracker per input poly, in slot order
     assert_eq!(fold_buffers.len(), base_polys.len() + ext_polys.len());
@@ -968,10 +958,16 @@ where
 
     // ---- the INITIAL pass and its explicit fold (schedule[0..2]) ----
     let out_size = 1usize << (n - 3);
+    let initial_suffix = suffix_tables.get(n - 3);
     let weights = match schedule[0] {
         SumcheckStep::UniskipInitial { window: 3 } => {
-            let q16 =
-                chain.uniskip_initial_pass(&base_polys, &ext_polys, &eq_suffixes[0], out_size, worker);
+            let q16 = chain.uniskip_initial_pass(
+                &base_polys,
+                &ext_polys,
+                initial_suffix,
+                out_size,
+                worker,
+            );
             uniskip_transcript_round::<F, E, TR>(
                 &mut st,
                 q16,
@@ -983,8 +979,13 @@ where
             )
         }
         SumcheckStep::WindowInitial { window: 3 } => {
-            let acc27 =
-                chain.window_initial_pass(&base_polys, &ext_polys, &eq_suffixes[0], out_size, worker);
+            let acc27 = chain.window_initial_pass(
+                &base_polys,
+                &ext_polys,
+                initial_suffix,
+                out_size,
+                worker,
+            );
             let w = window_pass_rounds::<F, E, TR>(&mut st, acc27, &spans, &prev_blocks, seed);
             st.pass_idx = 1;
             w
@@ -1008,8 +1009,7 @@ where
         n,
         &mut st,
         &mut trackers,
-        &eq_suffixes,
-        &mut tail_t_table,
+        &suffix_tables,
         &spans,
         &prev_blocks,
         seed,
@@ -1053,8 +1053,7 @@ fn chain_continue<
     folding_steps: usize,
     st: &mut ChainState<E>,
     trackers: &mut Vec<crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker<E>>,
-    eq_suffixes: &[Box<[E]>],
-    tail_t_table: &mut Vec<E>,
+    suffix_tables: &crate::gkr::sumcheck::eq_poly::SuffixTables<E>,
     spans: &[(usize, usize)],
     prev_blocks: &[Vec<E>],
     seed: &mut TR::Seed,
@@ -1073,8 +1072,12 @@ fn chain_continue<
             SumcheckStep::UniskipContinuing { window: 3 } => {
                 let g = st.pass_idx;
                 let out_size = 1usize << (n - 3 * (g + 1));
-                let folded: Vec<&[E]> = trackers.iter().map(|t| unsafe { t.input_slice() }).collect();
-                let q16 = chain.uniskip_continuing_pass(&folded, &eq_suffixes[g], out_size, worker);
+                let suffix = suffix_tables.get(n - 3 * (g + 1));
+                let folded: Vec<&[E]> = trackers
+                    .iter()
+                    .map(|t| unsafe { t.input_slice() })
+                    .collect();
+                let q16 = chain.uniskip_continuing_pass(&folded, suffix, out_size, worker);
                 pending_weights = Some(uniskip_transcript_round::<F, E, TR>(
                     st,
                     q16,
@@ -1088,8 +1091,12 @@ fn chain_continue<
             SumcheckStep::WindowContinuing { window: 3 } => {
                 let g = st.pass_idx;
                 let out_size = 1usize << (n - 3 * (g + 1));
-                let folded: Vec<&[E]> = trackers.iter().map(|t| unsafe { t.input_slice() }).collect();
-                let acc27 = chain.window_continuing_pass(&folded, &eq_suffixes[g], out_size, worker);
+                let suffix = suffix_tables.get(n - 3 * (g + 1));
+                let folded: Vec<&[E]> = trackers
+                    .iter()
+                    .map(|t| unsafe { t.input_slice() })
+                    .collect();
+                let acc27 = chain.window_continuing_pass(&folded, suffix, out_size, worker);
                 pending_weights = Some(window_pass_rounds::<F, E, TR>(
                     st,
                     acc27,
@@ -1113,7 +1120,11 @@ fn chain_continue<
                 let tail_rounds = n - st.vars_bound;
                 for _ in 0..tail_rounds {
                     let var = st.vars_bound;
-                    let (h0, hinf) = chain.tail_round_message(trackers, tail_t_table, worker);
+                    // the round binding variable `var` weighs pairs with the
+                    // suffix table over `var+1..n` — always available, no
+                    // contraction
+                    let tail_t = suffix_tables.get(n - var - 1);
+                    let (h0, hinf) = chain.tail_round_message(trackers, tail_t, worker);
                     let tau = scalar_coord(var, spans, prev_blocks);
                     let r = scalar_chain_round::<F, E, TR>(st, tau, h0, hinf, seed);
                     tail_fold_trackers(trackers, &r, worker);
@@ -1121,7 +1132,6 @@ fn chain_continue<
                     for t in trackers.iter_mut() {
                         t.step_to(pairs / 2);
                     }
-                    contract_pair_sums(tail_t_table);
                 }
             }
             other => unreachable!("validated schedule cannot contain {other:?} here"),
@@ -1269,7 +1279,6 @@ where
         _marker: core::marker::PhantomData,
     }
 }
-
 
 fn run_sumcheck_loop<
     F: PrimeField,

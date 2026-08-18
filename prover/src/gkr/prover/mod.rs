@@ -14,13 +14,13 @@ use crate::fft::Twiddles;
 #[cfg(target_arch = "aarch64")]
 pub use crate::gkr::prover::backend::BabyBearNeonWorkStealingBackend;
 pub use crate::gkr::prover::backend::{
-    Backend, DefaultBabyBearBackend, NaiveBackend, Proth120WorkStealingLazyBackend,
+    Backend, DefaultBabyBearBackend, NaiveBackend, Proth120WorkStealingLazyBackend, TwiddleSetOps,
     WorkStealingBackend,
 };
+use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 #[cfg(target_arch = "aarch64")]
 pub use crate::gkr::prover::gkr_backend::NeonGKRBackend;
 pub use crate::gkr::prover::gkr_backend::{DefaultBabyBearGKRBackend, GKRBackend, NaiveGKRBackend};
-use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils;
 use crate::gkr::prover::sumcheck_loop::flatten_claim_point;
@@ -326,7 +326,7 @@ impl<E: Field> EvaluationPointEntry<E> {
     /// The entry's eq weight block (length `2^bound_vars`), LSB-first over
     /// its variables. `omega16` is F's size-16 domain generator (only used
     /// by uniskip entries).
-    pub fn eq_weight_block<F: PrimeField>(&self, omega16: F) -> Vec<E>
+    pub fn eq_weight_block<F: PrimeField>(&self, _omega16: F) -> Vec<E>
     where
         E: field::FieldExtension<F>,
     {
@@ -337,12 +337,13 @@ impl<E: Field> EvaluationPointEntry<E> {
                 vec![om, *point]
             }
             Self::Uniskip { point, width } => {
-                assert_eq!(*width, 3, "only width-3 uniskip windows are wired");
-                crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::uniskip8_fold_weights::<
-                    F,
-                    E,
-                >(point, omega16)
-                .to_vec()
+                unimplemented!("uniskip support is not implemented for now");
+                // assert_eq!(*width, 3, "only width-3 uniskip windows are wired");
+                // crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::uniskip8_fold_weights::<
+                //     F,
+                //     E,
+                // >(point, omega16)
+                // .to_vec()
             }
         }
     }
@@ -642,7 +643,7 @@ pub fn prove_configured_with_gkr_with_storage_and_backend<
     witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
     setup: &GKRSetup<F>,
     setup_commitment: &SetupCommitment<F, T>,
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
     commitment_mode: CommitmentMode,
     storage: WhirOracleStorage,
@@ -688,7 +689,7 @@ fn prove_configured_with_gkr_impl<
     witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
     setup: &GKRSetup<F>,
     setup_commitment: &SetupCommitment<F, T>,
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
     commitment_mode: CommitmentMode,
     storage: WhirOracleStorage,
@@ -740,7 +741,7 @@ where
             // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
             let (mem_oracle, wit_oracle) = match rs_codeword_source {
                 RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, E, T>(
+                    stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, E, T, B>(
                         backend,
                         &witness_eval_data,
                         twiddles,
@@ -754,7 +755,7 @@ where
                 RsCodewordSource::Recompute => {
                     stages::initial_commit::commit_separate_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
-                        twiddles,
+                        twiddles.plain(),
                         prover_config.lde_factor,
                         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                         prover_config.cap_size,
@@ -827,7 +828,7 @@ where
         CommitmentMode::MergedMemoryAndWitness => {
             let merged_oracle = match rs_codeword_source {
                 RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, E, T>(
+                    stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, E, T, B>(
                         backend,
                         &witness_eval_data,
                         twiddles,
@@ -841,7 +842,7 @@ where
                 RsCodewordSource::Recompute => {
                     stages::initial_commit::commit_merged_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
-                        twiddles,
+                        twiddles.plain(),
                         prover_config.lde_factor,
                         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                         prover_config.cap_size,
@@ -922,6 +923,7 @@ where
                         F,
                         E,
                         T,
+                        B,
                     >(
                         backend,
                         &witness_eval_data,
@@ -937,7 +939,7 @@ where
                 RsCodewordSource::Recompute => {
                     stages::initial_commit::commit_packed_merged_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
-                        twiddles,
+                        twiddles.plain(),
                         prover_config.lde_factor,
                         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                         prover_config.cap_size,
@@ -1150,8 +1152,8 @@ where
 
     // GKRBackend seam: the dimension-reducing paths run through the backend
     // selection in `gkr_backend` (platform dispatch lives ONLY there)
-    let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
-        gkr_backend.dimension_reduction_forward(
+    let (initial_layer_for_sumcheck, dimension_reducing_inputs) = gkr_backend
+        .dimension_reduction_forward(
             &mut gkr_storage,
             compiled_circuit,
             trace_len.trailing_zeros() as usize,
@@ -1286,11 +1288,8 @@ where
         })
         .max()
         .unwrap_or(0);
-    let mut dr_work_buffers = gkr_backend.make_dim_reducing_work_buffers(
-        dr_max_rounds,
-        dr_max_polys,
-        worker,
-    );
+    let mut dr_work_buffers =
+        gkr_backend.make_dim_reducing_work_buffers(dr_max_rounds, dr_max_polys, worker);
     let dim_reducing_total = std::time::Instant::now();
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
         let dr_schedule: &[crate::gkr::prover_config::SumcheckStep] = {
@@ -1541,7 +1540,7 @@ where
                     } else {
                         compute_column_major_monomial_form_from_main_domain::<F, F, Global>(
                             column.as_slice(),
-                            twiddles,
+                            twiddles.plain(),
                         )
                     };
                     // monomials -> hypercube evaluations of the packed multilinear,
@@ -1604,7 +1603,7 @@ where
         t_gkr_phase.elapsed()
     );
     let t_whir = std::time::Instant::now();
-    let whir_proof = whir_fold::<F, E, T, TR>(
+    let whir_proof = whir_fold::<F, E, T, TR, B>(
         mem_oracle,
         mem_polys_claims,
         wit_oracle,

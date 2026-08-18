@@ -93,19 +93,23 @@ pub fn make_eq_poly_impl_lsb<E: Field, const FULL: bool>(
 /// the table exactly like a standard eq table.
 pub fn make_eq_table_from_weight_blocks<E: Field>(blocks: &[&[E]], worker: &Worker) -> Vec<E> {
     use crate::gkr::PAR_THRESHOLD;
-    let total: usize = blocks.iter().map(|b| b.len()).product();
-    let mut table = vec![E::ONE; total.max(1)];
+    let total: usize = blocks.iter().map(|b| b.len()).product::<usize>().max(1);
+    // uninit build: entry 0 seeds the growth and every other entry is
+    // WRITTEN (a scaled copy of the live prefix) before it is ever read
+    let mut table = Vec::with_capacity(total);
+    let dst = &mut table.spare_capacity_mut()[..total];
+    dst[0].write(E::ONE);
     let mut live = 1usize;
     for block in blocks.iter() {
         assert!(block.len().is_power_of_two() && block.len() >= 2);
         // scale copies of the live prefix by each block weight: the j-th
         // copy lands at [j*live .. (j+1)*live)
-        let (lo_all, hi_all) = table.split_at_mut(live);
+        let (lo_all, hi_all) = dst.split_at_mut(live);
         for (j, w) in block.iter().enumerate().skip(1) {
-            let dst = &mut hi_all[(j - 1) * live..j * live];
+            let d = &mut hi_all[(j - 1) * live..j * live];
             worker.scope_with_threshold(live, PAR_THRESHOLD, |scope, geometry| {
-                let mut lo_rest: &[E] = lo_all;
-                let mut dst_rest: &mut [E] = dst;
+                let mut lo_rest: &[MaybeUninit<E>] = lo_all;
+                let mut dst_rest: &mut [MaybeUninit<E>] = d;
                 for thread_idx in 0..geometry.num_chunks {
                     let chunk = geometry.get_chunk_size(thread_idx);
                     let (lo, lo_tail) = lo_rest.split_at(chunk);
@@ -115,9 +119,11 @@ pub fn make_eq_table_from_weight_blocks<E: Field>(blocks: &[&[E]], worker: &Work
                     let w = *w;
                     Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                         for (dv, lv) in d.iter_mut().zip(lo.iter()) {
-                            let mut v = *lv;
+                            // SAFETY: `lo` is within the live prefix, fully
+                            // written by the previous blocks (entry 0 seeded).
+                            let mut v = unsafe { lv.assume_init_read() };
                             v.mul_assign(&w);
-                            *dv = v;
+                            dv.write(v);
                         }
                     });
                 }
@@ -126,7 +132,7 @@ pub fn make_eq_table_from_weight_blocks<E: Field>(blocks: &[&[E]], worker: &Work
         // scale the base copy (j = 0) in place LAST (it is the source above)
         let w0 = block[0];
         worker.scope_with_threshold(live, PAR_THRESHOLD, |scope, geometry| {
-            let mut lo_rest: &mut [E] = lo_all;
+            let mut lo_rest: &mut [MaybeUninit<E>] = lo_all;
             for thread_idx in 0..geometry.num_chunks {
                 let chunk = geometry.get_chunk_size(thread_idx);
                 let (lo, lo_tail) = core::mem::take(&mut lo_rest).split_at_mut(chunk);
@@ -134,15 +140,115 @@ pub fn make_eq_table_from_weight_blocks<E: Field>(blocks: &[&[E]], worker: &Work
                 let w0 = w0;
                 Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                     for lv in lo.iter_mut() {
-                        lv.mul_assign(&w0);
+                        // SAFETY: live prefix, see above.
+                        unsafe { lv.assume_init_mut() }.mul_assign(&w0);
                     }
                 });
             }
         });
         live *= block.len();
     }
-    assert_eq!(live, total.max(1));
+    assert_eq!(live, total);
+    // SAFETY: the growth loop initialized exactly the first `total` entries.
+    unsafe { table.set_len(total) };
     table
+}
+
+/// Nested SUFFIX eq tables for one chain layer, keyed by suffix length (in
+/// variables): `get(L)` is the eq table over the LAST `L` variables of the
+/// previous claim point (LSB-first: table index bit `b` pairs with variable
+/// `n - L + b`). Built ONCE by interleaved extension from the shortest
+/// suffix — each length is an intermediate of building the next longer one,
+/// so retaining the schedule's lengths costs no extra work and NO
+/// contraction is ever needed: every table a pass or a tail round consumes
+/// is simply available. The build stops at the LONGEST needed length (the
+/// full table is never materialized), at the price of a slightly larger
+/// footprint than a contract-in-place scheme (`sum of needed sizes` vs `3/2
+/// of the largest`).
+pub struct SuffixTables<E> {
+    tables: std::collections::BTreeMap<usize, Box<[E]>>,
+}
+
+impl<E: Field> SuffixTables<E> {
+    /// Builds the tables for suffix lengths in `needed` from the previous
+    /// point's per-entry weight blocks in VARIABLE order (`blocks[i]` covers
+    /// `width(i) = log2(blocks[i].len())` variables; a plain coordinate `p`
+    /// is the 2-block `[1-p, p]`). Every needed length must land on a block
+    /// boundary counted from the END.
+    pub fn materialize(
+        blocks: &[&[E]],
+        needed: &std::collections::BTreeSet<usize>,
+        worker: &Worker,
+    ) -> Self {
+        use crate::gkr::PAR_THRESHOLD;
+        let mut tables = std::collections::BTreeMap::new();
+        if needed.is_empty() {
+            return Self { tables };
+        }
+        let max_needed = *needed.iter().next_back().expect("non-empty");
+
+        // grow from the length-0 suffix, one block at a time from the END;
+        // the newly consumed block covers the suffix's LOWEST variables, so
+        // its weights land INTERLEAVED at the low index bits
+        let mut cur: Box<[E]> = vec![E::ONE].into_boxed_slice();
+        let mut cur_vars = 0usize;
+        for block in blocks.iter().rev() {
+            if cur_vars >= max_needed {
+                break;
+            }
+            let width = block.len().trailing_zeros() as usize;
+            assert!(block.len().is_power_of_two() && width >= 1);
+            let mut next = Box::new_uninit_slice(cur.len() * block.len());
+            worker.scope_with_threshold(cur.len(), PAR_THRESHOLD, |scope, geometry| {
+                let mut prev_rest: &[E] = &cur;
+                let mut out_rest: &mut [MaybeUninit<E>] = &mut next;
+                for thread_idx in 0..geometry.num_chunks {
+                    let chunk = geometry.get_chunk_size(thread_idx);
+                    let (prev, prev_tail) = prev_rest.split_at(chunk);
+                    let (out, out_tail) =
+                        core::mem::take(&mut out_rest).split_at_mut(chunk * block.len());
+                    prev_rest = prev_tail;
+                    out_rest = out_tail;
+                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                        for (p, dst) in prev.iter().zip(out.chunks_exact_mut(block.len())) {
+                            for (d, w) in dst.iter_mut().zip(block.iter()) {
+                                let mut v = *p;
+                                v.mul_assign(w);
+                                d.write(v);
+                            }
+                        }
+                    });
+                }
+            });
+            let next = unsafe { next.assume_init() };
+            if needed.contains(&cur_vars) {
+                tables.insert(cur_vars, cur);
+            }
+            cur = next;
+            cur_vars += width;
+        }
+        assert!(
+            cur_vars >= max_needed,
+            "blocks cover {cur_vars} variables, schedule needs a suffix of {max_needed}"
+        );
+        if needed.contains(&cur_vars) {
+            tables.insert(cur_vars, cur);
+        }
+        for l in needed.iter() {
+            assert!(
+                tables.contains_key(l),
+                "needed suffix length {l} does not land on a block boundary"
+            );
+        }
+        Self { tables }
+    }
+
+    /// The table over the last `suffix_len` variables (present iff the
+    /// length was in `needed`).
+    #[inline(always)]
+    pub fn get(&self, suffix_len: usize) -> &[E] {
+        &self.tables[&suffix_len]
+    }
 }
 
 /// Eq table for a point in the DIMENSION-REDUCING emission layout
@@ -181,6 +287,41 @@ pub fn make_eq_table_dim_reducing_point<E: Field>(point: &[E], worker: &Worker) 
         });
     }
     table
+}
+
+/// Squared-powers vector `[el, el^2, el^4, ..]` of length `num_powers` —
+/// the per-variable coordinates of a WHIR statement point. Shared by the
+/// WHIR verifier-statement evaluations and the backend eq-poly updates.
+pub(crate) fn make_pows<E: Field>(el: E, num_powers: usize) -> Vec<E> {
+    let mut result = Vec::with_capacity(num_powers);
+    let mut current = el;
+    for _ in 0..num_powers {
+        result.push(current);
+        current.square();
+    }
+    result
+}
+
+/// Split-tensor eq tables for a squared-powers point: `lo` covers the LOW
+/// `log_c` index bits, `hi` the remaining `log_n - log_c`. The full
+/// `2^log_n` table factors EXACTLY into `hi (x) lo` over the bit split
+/// (field multiplication is exact), so consumers can weigh elements with
+/// two tiny tensors instead of one full-size table.
+pub(crate) fn split_eq_tensors<T: Field>(
+    point: T,
+    log_n: usize,
+    log_c: usize,
+    worker: &Worker,
+) -> (Box<[T]>, Box<[T]>) {
+    let pows = make_pows(point, log_n);
+    // natural (LSB-first) layout: low index bits <-> FIRST pows entries
+    let lo = make_eq_table_lsb_first::<T>(&pows[..log_c], worker).into_boxed_slice();
+    let hi = if log_c == log_n {
+        vec![T::ONE].into_boxed_slice()
+    } else {
+        make_eq_table_lsb_first::<T>(&pows[log_c..], worker).into_boxed_slice()
+    };
+    (hi, lo)
 }
 
 /// Single eq table with the LSB-first index orientation used by the
@@ -255,92 +396,6 @@ pub fn fill_eq_table_lsb_first_uninit<E: Field>(
             }
         });
     }
-}
-
-// Domain equality polys
-fn make_domain_eq_poly_impl<
-    F: PrimeField + TwoAdicField,
-    E: FieldExtension<F> + Field,
-    const FULL: bool,
->(
-    challenges: &[E],
-) -> Vec<Box<[E]>> {
-    // See WHIR comments: our equality poly is special here as we choose not the 0/1 hypercube, but 1/omega one.
-    // So our equality is eq(X, Y) = 1 / (omega - 1) ^ 2 * (X - 1)(Y - 1) + (1 - (X - 1)/(omega - 1))(1 - (Y - 1)/(omega - 1))
-
-    assert!(challenges.len() > 0);
-    // challenges[0] is the challenge used to fold a variable, that is encoded as MSB in the values enumeration,
-    // and we will produce the outputs in a same form. We also keep all intermediate forms for simplicity
-    let mut result = Vec::with_capacity(challenges.len() + 1);
-    result.push(vec![E::ONE].into_boxed_slice());
-
-    let mut size = 1;
-    let mut idx = challenges.len();
-
-    let bound = if FULL {
-        challenges.len() + 1
-    } else {
-        challenges.len()
-    };
-
-    for _ in 1..bound {
-        size *= 2;
-        idx -= 1;
-
-        let omega = F::TWO_ADICITY_GENERATORS[idx + 1];
-        let mut omega_minus_one = omega;
-        omega_minus_one.sub_assign(&F::ONE);
-        let omega_minus_one_inverse = omega_minus_one.inverse().expect("not 1-sized domain");
-
-        let mut layer = Box::new_uninit_slice(size);
-        let previous_layer = result.last().expect("is present");
-
-        // eq(X, challenge)
-        let challenge = challenges[idx];
-
-        let mut eq_at_1 = E::ONE;
-        eq_at_1.sub_assign(&challenge);
-        eq_at_1.mul_assign_by_base(&omega_minus_one_inverse);
-        eq_at_1.add_assign(&E::ONE);
-
-        let mut eq_at_omega = challenge;
-        eq_at_omega.sub_assign(&E::ONE);
-        eq_at_omega.mul_assign_by_base(&omega_minus_one_inverse);
-
-        dbg!(eq_at_1);
-        dbg!(eq_at_omega);
-
-        let half_size = size / 2;
-
-        assert_eq!(previous_layer.len(), half_size);
-
-        for index in 0..half_size {
-            let mut left = previous_layer[index];
-            let mut right = left;
-            left.mul_assign(&eq_at_1);
-            right.mul_assign(&eq_at_omega);
-            layer[index].write(left);
-            layer[index + half_size].write(right);
-        }
-
-        let layer = unsafe { layer.assume_init() };
-        dbg!(&layer);
-        result.push(layer);
-    }
-
-    result
-}
-
-pub fn make_domain_eq_poly_reduced<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
-    challenges: &[E],
-) -> Vec<Box<[E]>> {
-    make_domain_eq_poly_impl::<F, E, false>(challenges)
-}
-
-pub fn make_domain_eq_poly_in_full<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
-    challenges: &[E],
-) -> Vec<Box<[E]>> {
-    make_domain_eq_poly_impl::<F, E, true>(challenges)
 }
 
 /// LSB-first single-table variant of the domain (1/omega hypercube) eq poly:

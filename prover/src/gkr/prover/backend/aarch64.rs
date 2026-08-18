@@ -120,21 +120,57 @@ impl ExtCoeffConversion<BabyBearField, BabyBearExt4> for BabyBearNeonExtCoeffCon
     }
 }
 
+/// The NEON backend's twiddle set: the plain radix-2 tables plus the
+/// combined-twiddle tables for BOTH directions, all built ONCE per proving
+/// run by `make_twiddles` (parallel fills) and shared across every batched
+/// call — smaller transforms read prefixes, so no method ever rebuilds them.
+pub struct BabyBearNeonTwiddles {
+    pub plain: Twiddles<BabyBearField, Global>,
+    pub forward_ext: fft::baby_bear_neon::NeonTwiddleExt,
+    pub inverse_ext: fft::baby_bear_neon::NeonTwiddleExt,
+}
+
+impl TwiddleSetOps<BabyBearField> for BabyBearNeonTwiddles {
+    #[inline(always)]
+    fn plain(&self) -> &Twiddles<BabyBearField, Global> {
+        &self.plain
+    }
+}
+
 impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
+    type TwiddleSet = BabyBearNeonTwiddles;
+    fn make_twiddles(&self, domain_size: usize, worker: &Worker) -> Self::TwiddleSet {
+        let plain: Twiddles<BabyBearField, Global> = Twiddles::new(domain_size, worker);
+        let forward_ext = fft::baby_bear_neon::NeonTwiddleExt::build_parallel(
+            &plain.forward_twiddles,
+            domain_size,
+            worker,
+        );
+        let inverse_ext = fft::baby_bear_neon::NeonTwiddleExt::build_parallel(
+            &plain.inverse_twiddles,
+            domain_size,
+            worker,
+        );
+        BabyBearNeonTwiddles {
+            plain,
+            forward_ext,
+            inverse_ext,
+        }
+    }
+
     fn lde_multiple_polys_from_hypercubes(
         &self,
         evals: &[&[BabyBearField]],
-        twiddles: &Twiddles<BabyBearField, Global>,
+        twiddles: &Self::TwiddleSet,
         lde_factor: usize,
         worker: &Worker,
     ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<BabyBearField, BabyBearField>>> {
-        let n = evals.first().map(|c| c.len()).unwrap_or(0);
-        let ext = fft::baby_bear_neon::NeonTwiddleExt::build(&twiddles.forward_twiddles, n);
+        let ext = &twiddles.forward_ext;
         ws_lde_multiple_polys_from_hypercubes(
             evals,
-            twiddles,
+            &twiddles.plain,
             lde_factor,
-            &|m, o, t| fft::baby_bear_neon::lde_coset_neon(m, o, t, &ext),
+            &|m, o, t| fft::baby_bear_neon::lde_coset_neon(m, o, t, ext),
             &|v, l| {
                 crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_neon_bb(v, l)
             },
@@ -146,17 +182,16 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
     fn lde_packed_monomials_into_cosets(
         &self,
         monomials: Vec<Vec<BabyBearField>>,
-        twiddles: &Twiddles<BabyBearField, Global>,
+        twiddles: &Self::TwiddleSet,
         lde_factor: usize,
         worker: &Worker,
     ) -> Vec<ColumnMajorBaseOracleForCoset<BabyBearField>> {
-        let n = monomials.first().map(|c| c.len()).unwrap_or(0);
-        let ext = fft::baby_bear_neon::NeonTwiddleExt::build(&twiddles.forward_twiddles, n);
+        let ext = &twiddles.forward_ext;
         ws_lde_packed_monomials_into_cosets(
             monomials,
-            twiddles,
+            &twiddles.plain,
             lde_factor,
-            &|m, o, t| fft::baby_bear_neon::lde_coset_neon(m, o, t, &ext),
+            &|m, o, t| fft::baby_bear_neon::lde_coset_neon(m, o, t, ext),
             &|m, o, t, w| lde_coset_canonical_parallel(m, o, t, w),
             worker,
         )
@@ -165,16 +200,16 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
     fn lde_ext_poly_from_monomial_form(
         &self,
         monomial_form_normal_order: &[BabyBearExt4],
-        twiddles: &Twiddles<BabyBearField, Global>,
+        twiddles: &Self::TwiddleSet,
         lde_factor: usize,
         worker: &Worker,
     ) -> Vec<(Box<[BabyBearExt4]>, BabyBearField)> {
         use worker::rayon::prelude::*;
 
         let n = monomial_form_normal_order.len();
-        let ext = fft::baby_bear_neon::NeonTwiddleExt::build(&twiddles.forward_twiddles, n);
+        let ext = &twiddles.forward_ext;
         let root_powers = coset_offsets::<BabyBearField>(n, lde_factor);
-        let tw = &twiddles.forward_twiddles[..];
+        let tw = &twiddles.plain.forward_twiddles[..];
 
         // MODE A everywhere: all cosets in parallel, each running the
         // worker-parallel kernel. With few cosets the nested scopes land on
@@ -193,7 +228,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
                         monomial_form_normal_order,
                         offset,
                         tw,
-                        &ext,
+                        ext,
                         worker,
                     );
                     (data.into_boxed_slice(), offset)
@@ -205,17 +240,16 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
     fn lde_base_poly_from_monomial_form(
         &self,
         monomial_form_normal_order: &[BabyBearField],
-        twiddles: &Twiddles<BabyBearField, Global>,
+        twiddles: &Self::TwiddleSet,
         lde_factor: usize,
         worker: &Worker,
     ) -> Vec<(Box<[BabyBearField]>, BabyBearField)> {
-        let n = monomial_form_normal_order.len();
-        let ext = fft::baby_bear_neon::NeonTwiddleExt::build(&twiddles.forward_twiddles, n);
+        let ext = &twiddles.forward_ext;
         ws_lde_single_poly_from_monomial_form(
             monomial_form_normal_order,
-            twiddles,
+            &twiddles.plain,
             lde_factor,
-            &|m, o, t| fft::baby_bear_neon::lde_coset_neon(m, o, t, &ext),
+            &|m, o, t| fft::baby_bear_neon::lde_coset_neon(m, o, t, ext),
             &|m, o, t, w| lde_coset_canonical_parallel(m, o, t, w),
             worker,
         )
@@ -233,15 +267,14 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
     fn monomial_form_from_main_domain(
         &self,
         source_domain: Vec<BabyBearExt4>,
-        twiddles: &Twiddles<BabyBearField, Global>,
+        twiddles: &Self::TwiddleSet,
         worker: &Worker,
     ) -> Vec<BabyBearExt4> {
-        let n = source_domain.len();
-        let inv_ext = fft::baby_bear_neon::NeonTwiddleExt::build(&twiddles.inverse_twiddles, n);
+        let inv_ext = &twiddles.inverse_ext;
         fft::baby_bear_neon::ext4::monomial_form_from_main_domain(
             source_domain,
-            &twiddles.inverse_twiddles,
-            &inv_ext,
+            &twiddles.plain.inverse_twiddles,
+            inv_ext,
             worker,
         )
     }

@@ -333,6 +333,50 @@ impl NeonTwiddleExt {
         }
         Self { ao, bo }
     }
+
+    /// [`Self::build`] with the fill chunked over the worker: the entries
+    /// are independent functions of `k`, so the (up to `n/4`-entry,
+    /// coset-scale) tables fan out across the pool instead of running as a
+    /// serial ~`n/2`-multiply prologue; small tables run inline. Writes
+    /// first-touch into the vectors' spare capacity (no pre-fill).
+    pub fn build_parallel(twiddles: &[BabyBearField], n: usize, worker: &worker::Worker) -> Self {
+        const PAR_THRESHOLD: usize = 1 << 10;
+        let len = if n >= 8 { n / 4 } else { 0 };
+        let mut ao: Vec<u32> = Vec::with_capacity(len);
+        let mut bo: Vec<u32> = Vec::with_capacity(len);
+        worker.scope_with_threshold(len, PAR_THRESHOLD, |scope, geometry| {
+            let mut ao_rest = &mut ao.spare_capacity_mut()[..len];
+            let mut bo_rest = &mut bo.spare_capacity_mut()[..len];
+            for thread_idx in 0..geometry.num_chunks {
+                let k0 = geometry.get_chunk_start_pos(thread_idx);
+                let chunk = geometry.get_chunk_size(thread_idx);
+                let (a, a_tail) = core::mem::take(&mut ao_rest).split_at_mut(chunk);
+                let (b, b_tail) = core::mem::take(&mut bo_rest).split_at_mut(chunk);
+                ao_rest = a_tail;
+                bo_rest = b_tail;
+                worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    for (i, (a, b)) in a.iter_mut().zip(b.iter_mut()).enumerate() {
+                        let k = k0 + i;
+                        a.write(mont_mul_scalar(
+                            twiddles[2 * k].raw_u32_value(),
+                            twiddles[k].raw_u32_value(),
+                        ));
+                        b.write(mont_mul_scalar(
+                            twiddles[2 * k + 1].raw_u32_value(),
+                            twiddles[k].raw_u32_value(),
+                        ));
+                    }
+                });
+            }
+        });
+        // SAFETY: the chunked fill initialized exactly the first `len`
+        // entries of both vectors.
+        unsafe {
+            ao.set_len(len);
+            bo.set_len(len);
+        }
+        Self { ao, bo }
+    }
 }
 
 /// Serial LDE coset, fully NEON: scaled copy (vector muls, split-power

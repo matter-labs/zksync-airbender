@@ -110,20 +110,14 @@ pub fn produce_descriptions_from_batched_description<
 
     let ext_offset_for_folded_stages = base_sources.len();
 
+    // the source vectors were collected from the (sorted) BTreeSets, so the
+    // slot of an address IS its enumeration index
     let mut base_mapping = BTreeMap::new();
-    for src in all_base_sources.iter() {
-        let idx = base_sources
-            .iter()
-            .position(|el| *el == *src)
-            .expect("position");
+    for (idx, src) in base_sources.iter().enumerate() {
         base_mapping.insert(*src, idx);
     }
     let mut ext_mapping = BTreeMap::new();
-    for src in all_ext_sources.iter() {
-        let idx = ext_sources
-            .iter()
-            .position(|el| *el == *src)
-            .expect("position");
+    for (idx, src) in ext_sources.iter().enumerate() {
         ext_mapping.insert(*src, idx);
     }
 

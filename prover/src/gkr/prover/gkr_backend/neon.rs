@@ -280,11 +280,13 @@ pub unsafe fn neon_initial_chunk<E: Field>(
     let rels = rel_matrices(relations);
 
     // caller-provided tri scratch as raw vectors: [v0, vinf] per row
-    // ([u128; 2] slots are size/align-compatible with [uint32x4_t; 2])
-    let tri = core::slice::from_raw_parts_mut(scratch.0 as *mut [uint32x4_t; 2], chunk_size);
-    for t in tri.iter_mut() {
-        *t = [vdupq_n_u32(0); 2];
+    // ([u128; 2] slots are size/align-compatible with [uint32x4_t; 2]).
+    // NOT pre-zeroed: the `first` flag makes the first relation's pass a
+    // pure store, so every row is written before it is read.
+    if rels.is_empty() {
+        return [E::ZERO; 2];
     }
+    let tri = core::slice::from_raw_parts_mut(scratch.0 as *mut [uint32x4_t; 2], chunk_size);
 
     let mut first = true;
     for rel in rels.iter() {
@@ -377,11 +379,13 @@ pub unsafe fn neon_continuing_chunk<E: Field>(
     let fold_m = ExtMatrix::new(as_bb(&folding_challenge));
     let rels = rel_matrices(relations);
 
-    // caller-provided tri scratch as raw vectors: [v0, vinf] per row
-    let tri = core::slice::from_raw_parts_mut(scratch.0 as *mut [uint32x4_t; 2], chunk_size);
-    for t in tri.iter_mut() {
-        *t = [vdupq_n_u32(0); 2];
+    // caller-provided tri scratch as raw vectors: [v0, vinf] per row. NOT
+    // pre-zeroed: the `first` flag makes the first relation's pass a pure
+    // store, so every row is written before it is read.
+    if rels.is_empty() {
+        return [E::ZERO; 2];
     }
+    let tri = core::slice::from_raw_parts_mut(scratch.0 as *mut [uint32x4_t; 2], chunk_size);
 
     let mut first = true;
     for rel in rels.iter() {
@@ -438,7 +442,6 @@ pub unsafe fn neon_continuing_chunk<E: Field>(
     neon_tdot(tri, t_ptr, chunk_start)
 }
 
-
 /// The aarch64 + BabyBear/Ext4 same-size chain executor: NEON uniskip
 /// passes and folds via `lsb_bench`; the window passes run the portable
 /// kernels (no NEON variant exists for them yet).
@@ -458,8 +461,7 @@ impl NeonSameSizeChain {
         Self {
             prog,
             tables: lsb_bench::LsbLdeAny::K8Mat(neon_kernels::LsbLde8MatTables::new(
-                omega8_bb,
-                omega16_bb,
+                omega8_bb, omega16_bb,
             )),
         }
     }
@@ -576,7 +578,9 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         trackers: &mut [FoldBufferTracker<BabyBearExt4>],
         worker: &Worker,
     ) {
-        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::chain_fold_dst};
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{
+            lsb_bench, lsb_chain::chain_fold_dst,
+        };
         let nb = base_polys.len();
         assert_eq!(trackers.len(), nb + ext_polys.len());
         for (i, src) in base_polys.iter().enumerate() {
@@ -605,7 +609,9 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         trackers: &mut [FoldBufferTracker<BabyBearExt4>],
         worker: &Worker,
     ) {
-        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::chain_fold_dst};
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{
+            lsb_bench, lsb_chain::chain_fold_dst,
+        };
         for tracker in trackers.iter_mut() {
             let fold_out = tracker.output_len();
             assert_eq!(tracker.input_len(), 8 * fold_out);

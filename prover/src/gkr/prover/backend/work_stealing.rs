@@ -24,6 +24,11 @@ pub struct WorkStealingBackend;
 impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
     for WorkStealingBackend
 {
+    type TwiddleSet = Twiddles<F, Global>;
+    fn make_twiddles(&self, domain_size: usize, worker: &Worker) -> Self::TwiddleSet {
+        Twiddles::new(domain_size, worker)
+    }
+
     fn lde_multiple_polys_from_hypercubes(
         &self,
         evals: &[&[F]],

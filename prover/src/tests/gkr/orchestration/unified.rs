@@ -392,7 +392,7 @@ fn commit_memory_cap(
         level,
     );
     let twiddles: Twiddles<BabyBearField, Global> = Twiddles::new(trace_len, worker);
-    let mem = commit_trace_part::<BabyBearField, BabyBearField, DefaultTreeConstructor>(
+    let mem = commit_trace_part::<BabyBearField, BabyBearField, DefaultTreeConstructor, _>(
         &crate::gkr::prover::backend::NaiveBackend,
         columns,
         &twiddles,

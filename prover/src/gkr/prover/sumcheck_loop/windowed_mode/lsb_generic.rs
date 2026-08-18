@@ -102,88 +102,78 @@ pub(crate) fn head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     worker: &Worker,
 ) -> [E; 16] {
     assert_eq!(eq_suffix.len(), out_size.max(1));
-    let geometry = worker.get_geometry_with_threshold(out_size, PAR_THRESHOLD);
-    let mut acc_chunks: Vec<([E; 16], E)> = vec![([E::ZERO; 16], E::ZERO); geometry.num_chunks];
-
-    worker.scope_with_threshold(out_size, PAR_THRESHOLD, |scope, geometry| {
-        let mut it = acc_chunks.iter_mut();
-        for thread_idx in 0..geometry.num_chunks {
-            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-            let chunk_size = geometry.get_chunk_size(thread_idx);
-            let base_sources = base_sources.to_vec();
-            let ext_sources = ext_sources.to_vec();
-            let acc_dst = it.next().unwrap();
-            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                let mut bgrids: Vec<[F; 16]> = vec![[F::ZERO; 16]; base_sources.len()];
-                let mut egrids: Vec<[E; 16]> = vec![[E::ZERO; 16]; ext_sources.len()];
-                let mut fvals: Vec<[F; 16]> = vec![[F::ZERO; 16]; prog.forms.len()];
-                let (q16, eq_sum) = acc_dst;
-                for j in chunk_start..(chunk_start + chunk_size) {
-                    for (s, src) in base_sources.iter().enumerate() {
-                        for i in 0..8 {
-                            bgrids[s][i] = src.read(8 * j + i);
-                        }
-                        extend_base_grid(&mut bgrids[s], lde);
+    let acc_chunks =
+        chunked_cell_sweep::<E, 16>(out_size, worker, |chunk_start, chunk_size, acc_dst| {
+            let mut bgrids: Vec<[F; 16]> = vec![[F::ZERO; 16]; base_sources.len()];
+            let mut egrids: Vec<[E; 16]> = vec![[E::ZERO; 16]; ext_sources.len()];
+            let mut fvals: Vec<[F; 16]> = vec![[F::ZERO; 16]; prog.forms.len()];
+            let (q16, eq_sum) = acc_dst;
+            for j in chunk_start..(chunk_start + chunk_size) {
+                for (s, src) in base_sources.iter().enumerate() {
+                    for i in 0..8 {
+                        bgrids[s][i] = src.read(8 * j + i);
                     }
-                    for (s, src) in ext_sources.iter().enumerate() {
-                        for i in 0..8 {
-                            egrids[s][i] = src.read(8 * j + i);
-                        }
-                        extend_ext_grid(&mut egrids[s], lde);
+                    extend_base_grid(&mut bgrids[s], lde);
+                }
+                for (s, src) in ext_sources.iter().enumerate() {
+                    for i in 0..8 {
+                        egrids[s][i] = src.read(8 * j + i);
                     }
-                    apply_base_forms(&prog.forms, &bgrids, &mut fvals);
-                    for p in 0..16 {
-                        let mut g = E::ZERO;
-                        for (a, f, c) in prog.products.iter() {
-                            let mut t = bgrids[*a as usize][p];
-                            t.mul_assign(&fvals[*f as usize][p]);
-                            let mut tc = *c;
-                            tc.mul_assign_by_base(&t);
-                            g.add_assign(&tc);
-                        }
-                        for step in prog.rest_steps.iter() {
-                            match step {
-                                ProgramStep::QuadBB { a, b, c } => {
-                                    let mut t = bgrids[*a as usize][p];
-                                    t.mul_assign(&bgrids[*b as usize][p]);
-                                    let mut tc = *c;
-                                    tc.mul_assign_by_base(&t);
-                                    g.add_assign(&tc);
-                                }
-                                ProgramStep::QuadBE { base, ext, c } => {
-                                    let mut t = egrids[*ext as usize][p];
-                                    t.mul_assign_by_base(&bgrids[*base as usize][p]);
-                                    t.mul_assign(c);
-                                    g.add_assign(&t);
-                                }
-                                ProgramStep::QuadEE { a, b, c } => {
-                                    let mut t = egrids[*a as usize][p];
-                                    t.mul_assign(&egrids[*b as usize][p]);
-                                    t.mul_assign(c);
-                                    g.add_assign(&t);
-                                }
-                                ProgramStep::LinB { i, c } => {
-                                    let mut tc = *c;
-                                    tc.mul_assign_by_base(&bgrids[*i as usize][p]);
-                                    g.add_assign(&tc);
-                                }
-                                ProgramStep::LinE { i, c } => {
-                                    let mut t = egrids[*i as usize][p];
-                                    t.mul_assign(c);
-                                    g.add_assign(&t);
-                                }
+                    extend_ext_grid(&mut egrids[s], lde);
+                }
+                apply_forms::<F, F, 16>(&prog.forms, &bgrids, &mut fvals, |t, c| {
+                    t.mul_assign(c);
+                });
+                for p in 0..16 {
+                    let mut g = E::ZERO;
+                    for (a, f, c) in prog.products.iter() {
+                        let mut t = bgrids[*a as usize][p];
+                        t.mul_assign(&fvals[*f as usize][p]);
+                        let mut tc = *c;
+                        tc.mul_assign_by_base(&t);
+                        g.add_assign(&tc);
+                    }
+                    for step in prog.rest_steps.iter() {
+                        match step {
+                            ProgramStep::QuadBB { a, b, c } => {
+                                let mut t = bgrids[*a as usize][p];
+                                t.mul_assign(&bgrids[*b as usize][p]);
+                                let mut tc = *c;
+                                tc.mul_assign_by_base(&t);
+                                g.add_assign(&tc);
+                            }
+                            ProgramStep::QuadBE { base, ext, c } => {
+                                let mut t = egrids[*ext as usize][p];
+                                t.mul_assign_by_base(&bgrids[*base as usize][p]);
+                                t.mul_assign(c);
+                                g.add_assign(&t);
+                            }
+                            ProgramStep::QuadEE { a, b, c } => {
+                                let mut t = egrids[*a as usize][p];
+                                t.mul_assign(&egrids[*b as usize][p]);
+                                t.mul_assign(c);
+                                g.add_assign(&t);
+                            }
+                            ProgramStep::LinB { i, c } => {
+                                let mut tc = *c;
+                                tc.mul_assign_by_base(&bgrids[*i as usize][p]);
+                                g.add_assign(&tc);
+                            }
+                            ProgramStep::LinE { i, c } => {
+                                let mut t = egrids[*i as usize][p];
+                                t.mul_assign(c);
+                                g.add_assign(&t);
                             }
                         }
-                        g.mul_assign(&eq_suffix[j]);
-                        q16[p].add_assign(&g);
                     }
-                    eq_sum.add_assign(&eq_suffix[j]);
+                    g.mul_assign(&eq_suffix[j]);
+                    q16[p].add_assign(&g);
                 }
-            })
-        }
-    });
+                eq_sum.add_assign(&eq_suffix[j]);
+            }
+        });
 
-    reduce_with_constant(acc_chunks, &prog.additive_constant)
+    reduce_cells_with_constant::<E, 16>(acc_chunks, &prog.additive_constant, 0..16)
 }
 
 /// Ext pass (pass > 0): all sources are already-folded extension-field
@@ -199,134 +189,159 @@ pub(crate) fn ext_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     worker: &Worker,
 ) -> [E; 16] {
     assert_eq!(eq_suffix.len(), out_size.max(1));
-    let geometry = worker.get_geometry_with_threshold(out_size, PAR_THRESHOLD);
-    let mut acc_chunks: Vec<([E; 16], E)> = vec![([E::ZERO; 16], E::ZERO); geometry.num_chunks];
+    let acc_chunks =
+        chunked_cell_sweep::<E, 16>(out_size, worker, |chunk_start, chunk_size, acc_dst| {
+            let mut grids: Vec<[E; 16]> = vec![[E::ZERO; 16]; srcs.len()];
+            let mut fvals: Vec<[E; 16]> = vec![[E::ZERO; 16]; prog.forms.len()];
+            let (q16, eq_sum) = acc_dst;
+            for j in chunk_start..(chunk_start + chunk_size) {
+                for (s, src) in srcs.iter().enumerate() {
+                    for i in 0..8 {
+                        grids[s][i] = src.read(8 * j + i);
+                    }
+                    extend_ext_grid(&mut grids[s], lde);
+                }
+                apply_forms::<F, E, 16>(&prog.forms, &grids, &mut fvals, |t, c| {
+                    t.mul_assign_by_base(c);
+                });
+                for p in 0..16 {
+                    let mut g = E::ZERO;
+                    for (a, f, c) in prog.products.iter() {
+                        let mut t = grids[*a as usize][p];
+                        t.mul_assign(&fvals[*f as usize][p]);
+                        t.mul_assign(c);
+                        g.add_assign(&t);
+                    }
+                    for (a, b, c) in prog.folded_quad.iter() {
+                        let mut t = grids[*a as usize][p];
+                        t.mul_assign(&grids[*b as usize][p]);
+                        t.mul_assign(c);
+                        g.add_assign(&t);
+                    }
+                    for (i, c) in prog.folded_lin.iter() {
+                        let mut t = grids[*i as usize][p];
+                        t.mul_assign(c);
+                        g.add_assign(&t);
+                    }
+                    g.mul_assign(&eq_suffix[j]);
+                    q16[p].add_assign(&g);
+                }
+                eq_sum.add_assign(&eq_suffix[j]);
+            }
+        });
 
+    reduce_cells_with_constant::<E, 16>(acc_chunks, &prog.additive_constant, 0..16)
+}
+
+/// One bracket-form evaluation over ANY cell grid (`N` = 16 for the LDE
+/// domain, 27 for the {0,1,inf}^3 window), for base (`T = F`) and ext
+/// (`T = E`) grids alike — `mul_coeff` is the only difference (`mul_assign`
+/// vs `mul_assign_by_base`). The FIRST member of every form is a pure STORE
+/// (copy / negate / scale), so the bracket buffers are never pre-zeroed —
+/// the per-row `[ZERO; N]` fill was fully dead.
+#[inline(always)]
+fn apply_forms<F: PrimeField, T: Field, const N: usize>(
+    forms: &[Vec<(FormOp<F>, u16)>],
+    grids: &[[T; N]],
+    fvals: &mut [[T; N]],
+    mul_coeff: impl Fn(&mut T, &F) + Copy,
+) {
+    for (fi, members) in forms.iter().enumerate() {
+        let mut it = members.iter();
+        match it.next() {
+            Some((op, idx)) => {
+                let src = &grids[*idx as usize];
+                for p in 0..N {
+                    fvals[fi][p] = match op {
+                        FormOp::Add => src[p],
+                        FormOp::Sub => {
+                            let mut t = T::ZERO;
+                            t.sub_assign(&src[p]);
+                            t
+                        }
+                        FormOp::Mul(c) => {
+                            let mut t = src[p];
+                            mul_coeff(&mut t, c);
+                            t
+                        }
+                    };
+                }
+            }
+            None => {
+                fvals[fi] = [T::ZERO; N];
+                continue;
+            }
+        }
+        for (op, idx) in it {
+            let src = &grids[*idx as usize];
+            for p in 0..N {
+                match op {
+                    FormOp::Add => {
+                        fvals[fi][p].add_assign(&src[p]);
+                    }
+                    FormOp::Sub => {
+                        fvals[fi][p].sub_assign(&src[p]);
+                    }
+                    FormOp::Mul(c) => {
+                        let mut t = src[p];
+                        mul_coeff(&mut t, c);
+                        fvals[fi][p].add_assign(&t);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The shared chunked-sweep scaffolding of every pass kernel: allocates one
+/// `([E; N], eq_sum)` accumulator pair per worker chunk, fans `run_chunk`
+/// out above the threshold, and returns the per-chunk partials for the
+/// reduce step.
+fn chunked_cell_sweep<E: Field, const N: usize>(
+    out_size: usize,
+    worker: &Worker,
+    run_chunk: impl Fn(usize, usize, &mut ([E; N], E)) + Send + Sync + Copy,
+) -> Vec<([E; N], E)> {
+    let geometry = worker.get_geometry_with_threshold(out_size, PAR_THRESHOLD);
+    let mut acc_chunks: Vec<([E; N], E)> = vec![([E::ZERO; N], E::ZERO); geometry.num_chunks];
     worker.scope_with_threshold(out_size, PAR_THRESHOLD, |scope, geometry| {
         let mut it = acc_chunks.iter_mut();
         for thread_idx in 0..geometry.num_chunks {
             let chunk_start = geometry.get_chunk_start_pos(thread_idx);
             let chunk_size = geometry.get_chunk_size(thread_idx);
-            let srcs = srcs.to_vec();
             let acc_dst = it.next().unwrap();
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                let mut grids: Vec<[E; 16]> = vec![[E::ZERO; 16]; srcs.len()];
-                let mut fvals: Vec<[E; 16]> = vec![[E::ZERO; 16]; prog.forms.len()];
-                let (q16, eq_sum) = acc_dst;
-                for j in chunk_start..(chunk_start + chunk_size) {
-                    for (s, src) in srcs.iter().enumerate() {
-                        for i in 0..8 {
-                            grids[s][i] = src.read(8 * j + i);
-                        }
-                        extend_ext_grid(&mut grids[s], lde);
-                    }
-                    apply_ext_forms(&prog.forms, &grids, &mut fvals);
-                    for p in 0..16 {
-                        let mut g = E::ZERO;
-                        for (a, f, c) in prog.products.iter() {
-                            let mut t = grids[*a as usize][p];
-                            t.mul_assign(&fvals[*f as usize][p]);
-                            t.mul_assign(c);
-                            g.add_assign(&t);
-                        }
-                        for (a, b, c) in prog.folded_quad.iter() {
-                            let mut t = grids[*a as usize][p];
-                            t.mul_assign(&grids[*b as usize][p]);
-                            t.mul_assign(c);
-                            g.add_assign(&t);
-                        }
-                        for (i, c) in prog.folded_lin.iter() {
-                            let mut t = grids[*i as usize][p];
-                            t.mul_assign(c);
-                            g.add_assign(&t);
-                        }
-                        g.mul_assign(&eq_suffix[j]);
-                        q16[p].add_assign(&g);
-                    }
-                    eq_sum.add_assign(&eq_suffix[j]);
-                }
-            })
+                run_chunk(chunk_start, chunk_size, acc_dst)
+            });
         }
     });
-
-    reduce_with_constant(acc_chunks, &prog.additive_constant)
-}
-
-#[inline(always)]
-fn apply_base_forms<F: PrimeField>(
-    forms: &[Vec<(FormOp<F>, u16)>],
-    grids: &[[F; 16]],
-    fvals: &mut [[F; 16]],
-) {
-    for (fi, members) in forms.iter().enumerate() {
-        fvals[fi] = [F::ZERO; 16];
-        for (op, idx) in members.iter() {
-            let src = &grids[*idx as usize];
-            for p in 0..16 {
-                match op {
-                    FormOp::Add => {
-                        fvals[fi][p].add_assign(&src[p]);
-                    }
-                    FormOp::Sub => {
-                        fvals[fi][p].sub_assign(&src[p]);
-                    }
-                    FormOp::Mul(c) => {
-                        let mut t = src[p];
-                        t.mul_assign(c);
-                        fvals[fi][p].add_assign(&t);
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[inline(always)]
-fn apply_ext_forms<F: PrimeField, E: FieldExtension<F> + Field>(
-    forms: &[Vec<(FormOp<F>, u16)>],
-    grids: &[[E; 16]],
-    fvals: &mut [[E; 16]],
-) {
-    for (fi, members) in forms.iter().enumerate() {
-        fvals[fi] = [E::ZERO; 16];
-        for (op, idx) in members.iter() {
-            let src = &grids[*idx as usize];
-            for p in 0..16 {
-                match op {
-                    FormOp::Add => {
-                        fvals[fi][p].add_assign(&src[p]);
-                    }
-                    FormOp::Sub => {
-                        fvals[fi][p].sub_assign(&src[p]);
-                    }
-                    FormOp::Mul(c) => {
-                        let mut t = src[p];
-                        t.mul_assign_by_base(c);
-                        fvals[fi][p].add_assign(&t);
-                    }
-                }
-            }
-        }
-    }
+    acc_chunks
 }
 
 /// Chunk reduce + the constant term: G's additive constant contributes
-/// `constant * sum_j eq[j]` to EVERY domain point.
-fn reduce_with_constant<E: Field>(acc_chunks: Vec<([E; 16], E)>, constant: &E) -> [E; 16] {
-    let mut q16 = [E::ZERO; 16];
+/// `constant * sum_j eq[j]` to every cell in `constant_cells` (all 16 LDE
+/// points; only the 8 binary cells of the 27-cell window grid — it is
+/// constant in every window variable, so its difference/infinity cells are
+/// zero).
+fn reduce_cells_with_constant<E: Field, const N: usize>(
+    acc_chunks: Vec<([E; N], E)>,
+    constant: &E,
+    constant_cells: impl Iterator<Item = usize>,
+) -> [E; N] {
+    let mut acc = [E::ZERO; N];
     let mut eq_sum = E::ZERO;
     for (part, eq_part) in acc_chunks.into_iter() {
-        for p in 0..16 {
-            q16[p].add_assign(&part[p]);
+        for p in 0..N {
+            acc[p].add_assign(&part[p]);
         }
         eq_sum.add_assign(&eq_part);
     }
     let mut c = *constant;
     c.mul_assign(&eq_sum);
-    for p in 0..16 {
-        q16[p].add_assign(&c);
+    for p in constant_cells {
+        acc[p].add_assign(&c);
     }
-    q16
+    acc
 }
 
 /// Fold a base-field source 8 -> 1 with the challenge's Lagrange weights:
@@ -409,32 +424,11 @@ fn window27_cell(i: usize) -> usize {
     9 * (i & 1) + 3 * ((i >> 1) & 1) + ((i >> 2) & 1)
 }
 
+/// Difference extension of the 27-cell window grid (any field: the base and
+/// ext variants were byte-identical modulo the type).
 #[inline(always)]
-fn extend_window27_base<F: PrimeField>(grid: &mut [F; 27]) {
+fn extend_window27<T: Field>(grid: &mut [T; 27]) {
     // infinity cells = pairwise differences along each axis
-    for x0 in 0..2usize {
-        let base = 9 * x0;
-        for x1 in 0..2usize {
-            let off = base + 3 * x1;
-            let mut d = grid[off + 1];
-            d.sub_assign(&grid[off]);
-            grid[off + 2] = d;
-        }
-        for x2 in 0..3usize {
-            let mut d = grid[base + 3 + x2];
-            d.sub_assign(&grid[base + x2]);
-            grid[base + 6 + x2] = d;
-        }
-    }
-    for c in 0..9usize {
-        let mut d = grid[9 + c];
-        d.sub_assign(&grid[c]);
-        grid[18 + c] = d;
-    }
-}
-
-#[inline(always)]
-fn extend_window27_ext<E: Field>(grid: &mut [E; 27]) {
     for x0 in 0..2usize {
         let base = 9 * x0;
         for x1 in 0..2usize {
@@ -469,112 +463,86 @@ pub(crate) fn window27_head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     worker: &Worker,
 ) -> [E; 27] {
     assert_eq!(eq_suffix.len(), out_size.max(1));
-    let geometry = worker.get_geometry_with_threshold(out_size, PAR_THRESHOLD);
-    let mut acc_chunks: Vec<([E; 27], E)> = vec![([E::ZERO; 27], E::ZERO); geometry.num_chunks];
-
-    worker.scope_with_threshold(out_size, PAR_THRESHOLD, |scope, geometry| {
-        let mut it = acc_chunks.iter_mut();
-        for thread_idx in 0..geometry.num_chunks {
-            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-            let chunk_size = geometry.get_chunk_size(thread_idx);
-            let base_sources = base_sources.to_vec();
-            let ext_sources = ext_sources.to_vec();
-            let acc_dst = it.next().unwrap();
-            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                let mut bgrids: Vec<[F; 27]> = vec![[F::ZERO; 27]; base_sources.len()];
-                let mut egrids: Vec<[E; 27]> = vec![[E::ZERO; 27]; ext_sources.len()];
-                let mut fvals: Vec<[F; 27]> = vec![[F::ZERO; 27]; prog.forms.len()];
-                let (acc27, eq_sum) = acc_dst;
-                for j in chunk_start..(chunk_start + chunk_size) {
-                    for (s, src) in base_sources.iter().enumerate() {
-                        for i in 0..8 {
-                            bgrids[s][window27_cell(i)] = src.read(8 * j + i);
-                        }
-                        extend_window27_base(&mut bgrids[s]);
+    let acc_chunks =
+        chunked_cell_sweep::<E, 27>(out_size, worker, |chunk_start, chunk_size, acc_dst| {
+            let mut bgrids: Vec<[F; 27]> = vec![[F::ZERO; 27]; base_sources.len()];
+            let mut egrids: Vec<[E; 27]> = vec![[E::ZERO; 27]; ext_sources.len()];
+            let mut fvals: Vec<[F; 27]> = vec![[F::ZERO; 27]; prog.forms.len()];
+            let (acc27, eq_sum) = acc_dst;
+            for j in chunk_start..(chunk_start + chunk_size) {
+                for (s, src) in base_sources.iter().enumerate() {
+                    for i in 0..8 {
+                        bgrids[s][window27_cell(i)] = src.read(8 * j + i);
                     }
-                    for (s, src) in ext_sources.iter().enumerate() {
-                        for i in 0..8 {
-                            egrids[s][window27_cell(i)] = src.read(8 * j + i);
-                        }
-                        extend_window27_ext(&mut egrids[s]);
+                    extend_window27(&mut bgrids[s]);
+                }
+                for (s, src) in ext_sources.iter().enumerate() {
+                    for i in 0..8 {
+                        egrids[s][window27_cell(i)] = src.read(8 * j + i);
                     }
-                    for (fi, members) in prog.forms.iter().enumerate() {
-                        fvals[fi] = [F::ZERO; 27];
-                        for (op, idx) in members.iter() {
-                            let src = &bgrids[*idx as usize];
-                            for c in 0..27 {
-                                match op {
-                                    FormOp::Add => {
-                                        fvals[fi][c].add_assign(&src[c]);
-                                    }
-                                    FormOp::Sub => {
-                                        fvals[fi][c].sub_assign(&src[c]);
-                                    }
-                                    FormOp::Mul(k) => {
-                                        let mut t = src[c];
-                                        t.mul_assign(k);
-                                        fvals[fi][c].add_assign(&t);
-                                    }
-                                }
+                    extend_window27(&mut egrids[s]);
+                }
+                apply_forms::<F, F, 27>(&prog.forms, &bgrids, &mut fvals, |t, c| {
+                    t.mul_assign(c);
+                });
+                for c in 0..27 {
+                    let mut g = E::ZERO;
+                    for (a, f, k) in prog.products.iter() {
+                        let mut t = bgrids[*a as usize][c];
+                        t.mul_assign(&fvals[*f as usize][c]);
+                        let mut tc = *k;
+                        tc.mul_assign_by_base(&t);
+                        g.add_assign(&tc);
+                    }
+                    for step in prog.rest_steps.iter() {
+                        match step {
+                            ProgramStep::QuadBB { a, b, c: k } => {
+                                let mut t = bgrids[*a as usize][c];
+                                t.mul_assign(&bgrids[*b as usize][c]);
+                                let mut tc = *k;
+                                tc.mul_assign_by_base(&t);
+                                g.add_assign(&tc);
                             }
-                        }
-                    }
-                    for c in 0..27 {
-                        let mut g = E::ZERO;
-                        for (a, f, k) in prog.products.iter() {
-                            let mut t = bgrids[*a as usize][c];
-                            t.mul_assign(&fvals[*f as usize][c]);
-                            let mut tc = *k;
-                            tc.mul_assign_by_base(&t);
-                            g.add_assign(&tc);
-                        }
-                        for step in prog.rest_steps.iter() {
-                            match step {
-                                ProgramStep::QuadBB { a, b, c: k } => {
-                                    let mut t = bgrids[*a as usize][c];
-                                    t.mul_assign(&bgrids[*b as usize][c]);
+                            ProgramStep::QuadBE { base, ext, c: k } => {
+                                let mut t = egrids[*ext as usize][c];
+                                t.mul_assign_by_base(&bgrids[*base as usize][c]);
+                                t.mul_assign(k);
+                                g.add_assign(&t);
+                            }
+                            ProgramStep::QuadEE { a, b, c: k } => {
+                                let mut t = egrids[*a as usize][c];
+                                t.mul_assign(&egrids[*b as usize][c]);
+                                t.mul_assign(k);
+                                g.add_assign(&t);
+                            }
+                            ProgramStep::LinB { i, c: k } => {
+                                if window27_is_binary(c) {
                                     let mut tc = *k;
-                                    tc.mul_assign_by_base(&t);
+                                    tc.mul_assign_by_base(&bgrids[*i as usize][c]);
                                     g.add_assign(&tc);
                                 }
-                                ProgramStep::QuadBE { base, ext, c: k } => {
-                                    let mut t = egrids[*ext as usize][c];
-                                    t.mul_assign_by_base(&bgrids[*base as usize][c]);
+                            }
+                            ProgramStep::LinE { i, c: k } => {
+                                if window27_is_binary(c) {
+                                    let mut t = egrids[*i as usize][c];
                                     t.mul_assign(k);
                                     g.add_assign(&t);
-                                }
-                                ProgramStep::QuadEE { a, b, c: k } => {
-                                    let mut t = egrids[*a as usize][c];
-                                    t.mul_assign(&egrids[*b as usize][c]);
-                                    t.mul_assign(k);
-                                    g.add_assign(&t);
-                                }
-                                ProgramStep::LinB { i, c: k } => {
-                                    if window27_is_binary(c) {
-                                        let mut tc = *k;
-                                        tc.mul_assign_by_base(&bgrids[*i as usize][c]);
-                                        g.add_assign(&tc);
-                                    }
-                                }
-                                ProgramStep::LinE { i, c: k } => {
-                                    if window27_is_binary(c) {
-                                        let mut t = egrids[*i as usize][c];
-                                        t.mul_assign(k);
-                                        g.add_assign(&t);
-                                    }
                                 }
                             }
                         }
-                        g.mul_assign(&eq_suffix[j]);
-                        acc27[c].add_assign(&g);
                     }
-                    eq_sum.add_assign(&eq_suffix[j]);
+                    g.mul_assign(&eq_suffix[j]);
+                    acc27[c].add_assign(&g);
                 }
-            })
-        }
-    });
+                eq_sum.add_assign(&eq_suffix[j]);
+            }
+        });
 
-    reduce_window27_with_constant(acc_chunks, &prog.additive_constant)
+    reduce_cells_with_constant::<E, 27>(
+        acc_chunks,
+        &prog.additive_constant,
+        (0..8).map(window27_cell),
+    )
 }
 
 /// Window-3 ext pass over the folded COMBINED slots (all extension field).
@@ -587,97 +555,52 @@ pub(crate) fn window27_ext_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     worker: &Worker,
 ) -> [E; 27] {
     assert_eq!(eq_suffix.len(), out_size.max(1));
-    let geometry = worker.get_geometry_with_threshold(out_size, PAR_THRESHOLD);
-    let mut acc_chunks: Vec<([E; 27], E)> = vec![([E::ZERO; 27], E::ZERO); geometry.num_chunks];
-
-    worker.scope_with_threshold(out_size, PAR_THRESHOLD, |scope, geometry| {
-        let mut it = acc_chunks.iter_mut();
-        for thread_idx in 0..geometry.num_chunks {
-            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-            let chunk_size = geometry.get_chunk_size(thread_idx);
-            let srcs = srcs.to_vec();
-            let acc_dst = it.next().unwrap();
-            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                let mut grids: Vec<[E; 27]> = vec![[E::ZERO; 27]; srcs.len()];
-                let mut fvals: Vec<[E; 27]> = vec![[E::ZERO; 27]; prog.forms.len()];
-                let (acc27, eq_sum) = acc_dst;
-                for j in chunk_start..(chunk_start + chunk_size) {
-                    for (s, src) in srcs.iter().enumerate() {
-                        for i in 0..8 {
-                            grids[s][window27_cell(i)] = src.read(8 * j + i);
-                        }
-                        extend_window27_ext(&mut grids[s]);
+    let acc_chunks =
+        chunked_cell_sweep::<E, 27>(out_size, worker, |chunk_start, chunk_size, acc_dst| {
+            let mut grids: Vec<[E; 27]> = vec![[E::ZERO; 27]; srcs.len()];
+            let mut fvals: Vec<[E; 27]> = vec![[E::ZERO; 27]; prog.forms.len()];
+            let (acc27, eq_sum) = acc_dst;
+            for j in chunk_start..(chunk_start + chunk_size) {
+                for (s, src) in srcs.iter().enumerate() {
+                    for i in 0..8 {
+                        grids[s][window27_cell(i)] = src.read(8 * j + i);
                     }
-                    for (fi, members) in prog.forms.iter().enumerate() {
-                        fvals[fi] = [E::ZERO; 27];
-                        for (op, idx) in members.iter() {
-                            let src = &grids[*idx as usize];
-                            for c in 0..27 {
-                                match op {
-                                    FormOp::Add => {
-                                        fvals[fi][c].add_assign(&src[c]);
-                                    }
-                                    FormOp::Sub => {
-                                        fvals[fi][c].sub_assign(&src[c]);
-                                    }
-                                    FormOp::Mul(k) => {
-                                        let mut t = src[c];
-                                        t.mul_assign_by_base(k);
-                                        fvals[fi][c].add_assign(&t);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    for c in 0..27 {
-                        let mut g = E::ZERO;
-                        for (a, f, k) in prog.products.iter() {
-                            let mut t = grids[*a as usize][c];
-                            t.mul_assign(&fvals[*f as usize][c]);
-                            t.mul_assign(k);
-                            g.add_assign(&t);
-                        }
-                        for (a, b, k) in prog.folded_quad.iter() {
-                            let mut t = grids[*a as usize][c];
-                            t.mul_assign(&grids[*b as usize][c]);
-                            t.mul_assign(k);
-                            g.add_assign(&t);
-                        }
-                        if window27_is_binary(c) {
-                            for (i, k) in prog.folded_lin.iter() {
-                                let mut t = grids[*i as usize][c];
-                                t.mul_assign(k);
-                                g.add_assign(&t);
-                            }
-                        }
-                        g.mul_assign(&eq_suffix[j]);
-                        acc27[c].add_assign(&g);
-                    }
-                    eq_sum.add_assign(&eq_suffix[j]);
+                    extend_window27(&mut grids[s]);
                 }
-            })
-        }
-    });
+                apply_forms::<F, E, 27>(&prog.forms, &grids, &mut fvals, |t, c| {
+                    t.mul_assign_by_base(c);
+                });
+                for c in 0..27 {
+                    let mut g = E::ZERO;
+                    for (a, f, k) in prog.products.iter() {
+                        let mut t = grids[*a as usize][c];
+                        t.mul_assign(&fvals[*f as usize][c]);
+                        t.mul_assign(k);
+                        g.add_assign(&t);
+                    }
+                    for (a, b, k) in prog.folded_quad.iter() {
+                        let mut t = grids[*a as usize][c];
+                        t.mul_assign(&grids[*b as usize][c]);
+                        t.mul_assign(k);
+                        g.add_assign(&t);
+                    }
+                    if window27_is_binary(c) {
+                        for (i, k) in prog.folded_lin.iter() {
+                            let mut t = grids[*i as usize][c];
+                            t.mul_assign(k);
+                            g.add_assign(&t);
+                        }
+                    }
+                    g.mul_assign(&eq_suffix[j]);
+                    acc27[c].add_assign(&g);
+                }
+                eq_sum.add_assign(&eq_suffix[j]);
+            }
+        });
 
-    reduce_window27_with_constant(acc_chunks, &prog.additive_constant)
-}
-
-/// Chunk reduce for the 27-cell accumulator; the constant contributes
-/// `constant * sum_j eq[j]` to the 8 BINARY cells only (it is constant in
-/// every window variable, so its difference/infinity cells are zero).
-fn reduce_window27_with_constant<E: Field>(acc_chunks: Vec<([E; 27], E)>, constant: &E) -> [E; 27] {
-    let mut acc = [E::ZERO; 27];
-    let mut eq_sum = E::ZERO;
-    for (part, eq_part) in acc_chunks.into_iter() {
-        for c in 0..27 {
-            acc[c].add_assign(&part[c]);
-        }
-        eq_sum.add_assign(&eq_part);
-    }
-    let mut k = *constant;
-    k.mul_assign(&eq_sum);
-    for i in 0..8 {
-        acc[window27_cell(i)].add_assign(&k);
-    }
-    acc
+    reduce_cells_with_constant::<E, 27>(
+        acc_chunks,
+        &prog.additive_constant,
+        (0..8).map(window27_cell),
+    )
 }

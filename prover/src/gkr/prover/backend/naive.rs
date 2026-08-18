@@ -10,6 +10,11 @@ use super::*;
 pub struct NaiveBackend;
 
 impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> for NaiveBackend {
+    type TwiddleSet = Twiddles<F, Global>;
+    fn make_twiddles(&self, domain_size: usize, worker: &Worker) -> Self::TwiddleSet {
+        Twiddles::new(domain_size, worker)
+    }
+
     fn lde_multiple_polys_from_hypercubes(
         &self,
         evals: &[&[F]],
@@ -73,12 +78,11 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         &self,
         source_domain: Vec<E>,
         twiddles: &Twiddles<F, Global>,
-        _worker: &Worker,
+        worker: &Worker,
     ) -> Vec<E> {
-        compute_column_major_monomial_form_from_main_domain_owned::<F, E, Global>(
-            source_domain,
-            twiddles,
-        )
+        // worker-parallel inverse NTT + scaling + bit-reversal, byte-identical
+        // to the serial `compute_column_major_monomial_form_from_main_domain_owned`
+        super::ws_monomial_form_from_main_domain::<F, E>(source_domain, twiddles, worker)
     }
 
     fn hypercube_evals_from_monomial_form(&self, monomial_form: Vec<E>, worker: &Worker) -> Vec<E> {

@@ -101,8 +101,20 @@ pub fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
     use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelVariant;
     use std::collections::BTreeSet;
 
-    let bidx = |addr: &GKRAddress| base_polys.iter().position(|el| el == addr).unwrap() as u16;
-    let eidx = |addr: &GKRAddress| ext_polys.iter().position(|el| el == addr).unwrap() as u16;
+    // slot lookup by map instead of a linear scan per term (the slot lists
+    // are BTreeSet-ordered, so enumeration == slot index)
+    let base_map: std::collections::BTreeMap<GKRAddress, u16> = base_polys
+        .iter()
+        .enumerate()
+        .map(|(i, a)| (*a, i as u16))
+        .collect();
+    let ext_map: std::collections::BTreeMap<GKRAddress, u16> = ext_polys
+        .iter()
+        .enumerate()
+        .map(|(i, a)| (*a, i as u16))
+        .collect();
+    let bidx = |addr: &GKRAddress| base_map[addr];
+    let eidx = |addr: &GKRAddress| ext_map[addr];
 
     let mut base_quad: BTreeSet<GKRAddress> = BTreeSet::new();
     let mut ext_quad: BTreeSet<GKRAddress> = BTreeSet::new();
