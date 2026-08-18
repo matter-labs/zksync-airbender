@@ -145,10 +145,12 @@ pub fn validate_sumcheck_schedule(
     let class = match schedule.first() {
         Some(SumcheckStep::UniskipInitial { window: 3 }) => SumcheckScheduleClass::Uniskip,
         Some(SumcheckStep::WindowInitial { window: 3 }) => SumcheckScheduleClass::Windowed,
-        other => return Err(format!(
+        other => {
+            return Err(format!(
             "a chain schedule must open with UniskipInitial{{3}} or WindowInitial{{3}}, got {:?}",
             other
-        )),
+        ))
+        }
     };
     if folding_steps < 6 {
         return Err(format!(

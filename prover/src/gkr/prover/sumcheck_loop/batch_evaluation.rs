@@ -64,10 +64,29 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn make_batched_description(
         &self,
         challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+        layer: usize,
+    ) -> BatchedGKRDescription<F, E> {
+        self.make_batched_description_excluding(
+            challenge_constants,
+            layer,
+            &std::collections::BTreeSet::new(),
+        )
+    }
+
+    /// [`Self::make_batched_description`] with the kernels at the given
+    /// indices SKIPPED — the expression-compiled relations of the windowed
+    /// program are evaluated factored and must not be flattened in again.
+    pub(crate) fn make_batched_description_excluding(
+        &self,
+        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
         _layer: usize,
+        exclude_kernels: &std::collections::BTreeSet<usize>,
     ) -> BatchedGKRDescription<F, E> {
         let mut draft = BatchedGKRDescriptionDraft::<F, E>::default();
-        for kernel in self.kernels.iter() {
+        for (kernel_idx, kernel) in self.kernels.iter().enumerate() {
+            if exclude_kernels.contains(&kernel_idx) {
+                continue;
+            }
             let terms = kernel.get_terms(challenge_constants);
             let challenges = kernel.batch_challenges();
             assert_eq!(

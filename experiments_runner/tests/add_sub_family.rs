@@ -63,11 +63,29 @@ fn prover_config_from_env(level: SecurityLevel) -> ProverConfig {
     }
 }
 
+/// Worker size for the run: 8 threads by default, `GKR_TEST_NUM_THREADS`
+/// overrides for scaling measurements. The environment variable is read HERE
+/// only — the prover engine has no env knobs.
+fn worker_from_env() -> Worker {
+    let threads = match std::env::var("GKR_TEST_NUM_THREADS") {
+        Ok(v) => {
+            let n: usize = v
+                .parse()
+                .unwrap_or_else(|e| panic!("GKR_TEST_NUM_THREADS: {e}"));
+            println!("[config] worker threads: {n} (env override)");
+            n
+        }
+        Err(std::env::VarError::NotPresent) => 8,
+        Err(e) => panic!("GKR_TEST_NUM_THREADS: {e}"),
+    };
+    Worker::new_with_num_threads(threads)
+}
+
 #[test]
 fn gkr_prove_add_sub_family_sec_80() {
     let level = SecurityLevel::Sec80;
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let worker = Worker::new_with_num_threads(8);
+    let worker = worker_from_env();
     let prover_config = prover_config_from_env(level);
 
     let config = ProgramConfig::keccak_f1600();

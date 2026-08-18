@@ -1782,6 +1782,29 @@ pub unsafe fn soa_base_form_muladd_n<const N: usize>(
     }
 }
 
+/// `dst[cell] += c` over the FIRST N base SoA cell groups -- a mixed-degree
+/// form's constant, applied to real evaluation cells only (a constant has no
+/// leading coefficient, so difference/infinity cells never see it).
+#[inline(always)]
+pub unsafe fn soa_base_form_add_const_n<const N: usize>(dst: *mut u32, c: BabyBearField) {
+    let cv = vdupq_n_u32(c.raw_u32_value());
+    for i in 0..N {
+        let p = dst.add(4 * i);
+        vst1q_u32(p, add4(vld1q_u32(p), cv));
+    }
+}
+
+/// Ext twin of [`soa_base_form_add_const_n`]: the base constant lands on
+/// limb 0 only (`add_assign_base`), over the FIRST N ext SoA cell groups.
+#[inline(always)]
+pub unsafe fn soa_ext_form_add_base_const_n<const N: usize>(dst: *mut u32, c: BabyBearField) {
+    let cv = vdupq_n_u32(c.raw_u32_value());
+    for g in 0..N {
+        let p = dst.add(16 * g);
+        vst1q_u32(p, add4(vld1q_u32(p), cv));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // size-64 NTT / LDE kernels for the univariate skip (k = 6)
 //

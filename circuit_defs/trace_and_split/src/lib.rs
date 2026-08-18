@@ -82,7 +82,7 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, F, T>(
+    let mem = commit_trace_part::<F, F, T, _>(
         &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,
@@ -149,7 +149,7 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, F, T>(
+    let mem = commit_trace_part::<F, F, T, _>(
         &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,
@@ -200,7 +200,7 @@ where
         evaluate_init_and_teardown_memory_witness(inits_and_teardowns, &circuit, Global, Global);
 
     let mem_inputs: Vec<_> = witness_inner.iter().map(|el| &el[..]).collect();
-    let mem = commit_trace_part::<F, F, T>(
+    let mem = commit_trace_part::<F, F, T, _>(
         &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,
@@ -278,7 +278,7 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, F, T>(
+    let mem = commit_trace_part::<F, F, T, _>(
         &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,
@@ -351,7 +351,7 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, F, T>(
+    let mem = commit_trace_part::<F, F, T, _>(
         &::prover::gkr::prover::backend::NaiveBackend,
         &mem_inputs,
         twiddles,

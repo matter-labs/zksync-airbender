@@ -522,6 +522,8 @@ where
             let prog = windowed_mode::program::build_soa_program(
                 &description,
                 &collector,
+                layer,
+                &challenge_constants,
                 &chain_base_addrs,
                 &chain_ext_addrs,
             );

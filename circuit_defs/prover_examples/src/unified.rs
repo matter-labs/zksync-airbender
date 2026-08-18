@@ -21,7 +21,9 @@ use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
-use prover::gkr::prover::{prove_configured_with_gkr, CommitmentMode};
+use prover::gkr::prover::{
+    prove_configured_with_gkr_with_gkr_backend, CommitmentMode, DefaultBabyBearGKRBackend,
+};
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
@@ -684,11 +686,12 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             );
 
             let now = std::time::Instant::now();
-            let proof = prove_configured_with_gkr::<
+            let proof = prove_configured_with_gkr_with_gkr_backend::<
                 BabyBearField,
                 BabyBearExt4,
                 DefaultTreeConstructor,
                 Blake2sTranscript,
+                _,
             >(
                 &unified_setup.compiled_circuit,
                 &external_challenges,
@@ -700,6 +703,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                 CommitmentMode::SeparateMemoryAndWitness,
                 top_bits.clone(),
                 trace_len,
+                &DefaultBabyBearGKRBackend::default(),
                 worker,
             );
             println!("Proving time for unified circuit is {:?}", now.elapsed());

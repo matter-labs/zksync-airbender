@@ -121,14 +121,31 @@ pub(crate) fn head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
                     }
                     extend_ext_grid(&mut egrids[s], lde);
                 }
-                apply_forms::<F, F, 16>(&prog.forms, &bgrids, &mut fvals, |t, c| {
-                    t.mul_assign(c);
-                });
+                apply_forms::<F, F, 16>(
+                    &prog.forms,
+                    &bgrids,
+                    &mut fvals,
+                    |t, c| {
+                        t.mul_assign(c);
+                    },
+                    |t, c| {
+                        t.add_assign(c);
+                    },
+                    &LDE16_CELLS,
+                );
                 for p in 0..16 {
                     let mut g = E::ZERO;
-                    for (a, f, c) in prog.products.iter() {
-                        let mut t = bgrids[*a as usize][p];
-                        t.mul_assign(&fvals[*f as usize][p]);
+                    for (a, b, c) in prog.products.iter() {
+                        let va = match a {
+                            super::program::FormRef::Slot(i) => bgrids[*i as usize][p],
+                            super::program::FormRef::Form(i) => fvals[*i as usize][p],
+                        };
+                        let vb = match b {
+                            super::program::FormRef::Slot(i) => bgrids[*i as usize][p],
+                            super::program::FormRef::Form(i) => fvals[*i as usize][p],
+                        };
+                        let mut t = va;
+                        t.mul_assign(&vb);
                         let mut tc = *c;
                         tc.mul_assign_by_base(&t);
                         g.add_assign(&tc);
@@ -201,14 +218,30 @@ pub(crate) fn ext_pass<F: PrimeField, E: FieldExtension<F> + Field>(
                     }
                     extend_ext_grid(&mut grids[s], lde);
                 }
-                apply_forms::<F, E, 16>(&prog.forms, &grids, &mut fvals, |t, c| {
-                    t.mul_assign_by_base(c);
-                });
+                apply_forms::<F, E, 16>(
+                    &prog.forms,
+                    &grids,
+                    &mut fvals,
+                    |t, c| {
+                        t.mul_assign_by_base(c);
+                    },
+                    |t, c| {
+                        t.add_assign_base(c);
+                    },
+                    &LDE16_CELLS,
+                );
                 for p in 0..16 {
                     let mut g = E::ZERO;
-                    for (a, f, c) in prog.products.iter() {
-                        let mut t = grids[*a as usize][p];
-                        t.mul_assign(&fvals[*f as usize][p]);
+                    for (a, b, c) in prog.products.iter() {
+                        let va = match a {
+                            super::program::FormRef::Slot(i) => grids[*i as usize][p],
+                            super::program::FormRef::Form(i) => fvals[*i as usize][p],
+                        };
+                        let mut t = va;
+                        t.mul_assign(&match b {
+                            super::program::FormRef::Slot(i) => grids[*i as usize][p],
+                            super::program::FormRef::Form(i) => fvals[*i as usize][p],
+                        });
                         t.mul_assign(c);
                         g.add_assign(&t);
                     }
@@ -241,12 +274,17 @@ pub(crate) fn ext_pass<F: PrimeField, E: FieldExtension<F> + Field>(
 /// the per-row `[ZERO; N]` fill was fully dead.
 #[inline(always)]
 fn apply_forms<F: PrimeField, T: Field, const N: usize>(
-    forms: &[Vec<(FormOp<F>, u16)>],
+    forms: &[super::program::FormDesc<F>],
     grids: &[[T; N]],
     fvals: &mut [[T; N]],
     mul_coeff: impl Fn(&mut T, &F) + Copy,
+    add_constant: impl Fn(&mut T, &F) + Copy,
+    // cells the form CONSTANT contributes to: real evaluation points only,
+    // never difference/infinity cells (a constant has no leading coefficient)
+    constant_cells: &[usize],
 ) {
-    for (fi, members) in forms.iter().enumerate() {
+    for (fi, form) in forms.iter().enumerate() {
+        let members = &form.members;
         let mut it = members.iter();
         match it.next() {
             Some((op, idx)) => {
@@ -269,7 +307,6 @@ fn apply_forms<F: PrimeField, T: Field, const N: usize>(
             }
             None => {
                 fvals[fi] = [T::ZERO; N];
-                continue;
             }
         }
         for (op, idx) in it {
@@ -290,8 +327,23 @@ fn apply_forms<F: PrimeField, T: Field, const N: usize>(
                 }
             }
         }
+        if !form.constant.is_zero() {
+            for p in constant_cells.iter() {
+                add_constant(&mut fvals[fi][*p], &form.constant);
+            }
+        }
     }
 }
+
+/// The 8 binary cells of the 27-cell window grid, in local-value order.
+#[inline(always)]
+fn window27_binary_cells() -> [usize; 8] {
+    core::array::from_fn(window27_cell)
+}
+
+/// All 16 points of the uniskip LDE domain (real evaluation points -- a
+/// constant contributes everywhere there).
+const LDE16_CELLS: [usize; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
 /// The shared chunked-sweep scaffolding of every pass kernel: allocates one
 /// `([E; N], eq_sum)` accumulator pair per worker chunk, fans `run_chunk`
@@ -482,14 +534,31 @@ pub(crate) fn window27_head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
                     }
                     extend_window27(&mut egrids[s]);
                 }
-                apply_forms::<F, F, 27>(&prog.forms, &bgrids, &mut fvals, |t, c| {
-                    t.mul_assign(c);
-                });
+                apply_forms::<F, F, 27>(
+                    &prog.forms,
+                    &bgrids,
+                    &mut fvals,
+                    |t, c| {
+                        t.mul_assign(c);
+                    },
+                    |t, c| {
+                        t.add_assign(c);
+                    },
+                    &window27_binary_cells(),
+                );
                 for c in 0..27 {
                     let mut g = E::ZERO;
-                    for (a, f, k) in prog.products.iter() {
-                        let mut t = bgrids[*a as usize][c];
-                        t.mul_assign(&fvals[*f as usize][c]);
+                    for (a, b, k) in prog.products.iter() {
+                        let va = match a {
+                            super::program::FormRef::Slot(i) => bgrids[*i as usize][c],
+                            super::program::FormRef::Form(i) => fvals[*i as usize][c],
+                        };
+                        let vb = match b {
+                            super::program::FormRef::Slot(i) => bgrids[*i as usize][c],
+                            super::program::FormRef::Form(i) => fvals[*i as usize][c],
+                        };
+                        let mut t = va;
+                        t.mul_assign(&vb);
                         let mut tc = *k;
                         tc.mul_assign_by_base(&t);
                         g.add_assign(&tc);
@@ -567,14 +636,30 @@ pub(crate) fn window27_ext_pass<F: PrimeField, E: FieldExtension<F> + Field>(
                     }
                     extend_window27(&mut grids[s]);
                 }
-                apply_forms::<F, E, 27>(&prog.forms, &grids, &mut fvals, |t, c| {
-                    t.mul_assign_by_base(c);
-                });
+                apply_forms::<F, E, 27>(
+                    &prog.forms,
+                    &grids,
+                    &mut fvals,
+                    |t, c| {
+                        t.mul_assign_by_base(c);
+                    },
+                    |t, c| {
+                        t.add_assign_base(c);
+                    },
+                    &window27_binary_cells(),
+                );
                 for c in 0..27 {
                     let mut g = E::ZERO;
-                    for (a, f, k) in prog.products.iter() {
-                        let mut t = grids[*a as usize][c];
-                        t.mul_assign(&fvals[*f as usize][c]);
+                    for (a, b, k) in prog.products.iter() {
+                        let va = match a {
+                            super::program::FormRef::Slot(i) => grids[*i as usize][c],
+                            super::program::FormRef::Form(i) => fvals[*i as usize][c],
+                        };
+                        let mut t = va;
+                        t.mul_assign(&match b {
+                            super::program::FormRef::Slot(i) => grids[*i as usize][c],
+                            super::program::FormRef::Form(i) => fvals[*i as usize][c],
+                        });
                         t.mul_assign(k);
                         g.add_assign(&t);
                     }

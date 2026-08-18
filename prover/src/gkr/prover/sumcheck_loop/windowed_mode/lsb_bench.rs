@@ -13,8 +13,9 @@
 //!    [`lsb_soa_full_parallel`] below (instantiated with NG=4/NBIN=4/OUT=16
 //!    for k=3 uniskip) -- the per-row steps are annotated in place.
 //! 3. **One pass over already-folded (all-ext) columns**:
-//!    [`lsb_uniskip_ext_pass_parallel`] -- same steps, ext-only kernels,
-//!    fully lazy accumulation.
+//!    [`lsb_soa_ext_pass_parallel`] -- same steps, ext-only kernels, fully
+//!    lazy accumulation; `tables: None` selects window-3 mode (NG=7/NBIN=2),
+//!    `Some` uniskip (NG=NBIN=K/2).
 //! 4. **The LDE kernel**: `neon::lsb_lde8_base_mat` (Lagrange-matrix form,
 //!    the fastest) or `neon::lsb_lde8_base` (the NTT form the comments
 //!    explain first); `neon::soa_lde8` for ext values.
@@ -65,7 +66,7 @@
 use super::*;
 
 use super::neon;
-use super::program::{FormOp, ProgramStep, TiledStep};
+use super::program::{FormDesc, FormOp, FormRef, ProgramStep, TiledStep};
 use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
 
 use ::field::baby_bear::ext4::BabyBearExt4;
@@ -108,6 +109,26 @@ const W3_INF: [(u8, u8, u8); 19] = [
     (25, 16, 13),
     (26, 17, 14),
 ];
+
+/// NEON W3 SoA cell index of the GENERIC-layout {0,1,inf}^3 cell
+/// `g = 9*c0 + 3*c1 + c2` (c0 = the window variable bound FIRST, 2 = inf).
+/// The SoA layout keeps binary cells at the natural tap order
+/// `c0 + 2*c1 + 4*c2` and the infinity cells in the [`W3_INF`] blocks, so
+/// the chain executor permutes the returned accumulator through this map to
+/// hand the driver the generic cell order.
+#[inline(always)]
+pub fn w3_soa_cell_of_generic(g: usize) -> usize {
+    let (c0, c1, c2) = (g / 9, (g / 3) % 3, g % 3);
+    if c0 < 2 && c1 < 2 && c2 < 2 {
+        c0 + 2 * c1 + 4 * c2
+    } else if c0 == 2 && c1 < 2 && c2 < 2 {
+        8 + 2 * c2 + c1
+    } else if c1 == 2 && c2 < 2 {
+        12 + 3 * c2 + c0
+    } else {
+        18 + 3 * c1 + c0
+    }
+}
 
 #[inline(always)]
 unsafe fn lsb_read_base_w3(dst: *mut u32, src: *const u32, row: usize, interpolate: bool) {
@@ -352,8 +373,8 @@ pub fn lsb_soa_full_parallel<
     base_interp: &[bool],
     ext_interp: &[bool],
     tables: Option<&LsbLdeAny>,
-    forms: &[Vec<(FormOp<F>, u16)>],
-    products: &[(u16, u16, E)],
+    forms: &[FormDesc<F>],
+    products: &[(FormRef, FormRef, E)],
     rest_steps: &[ProgramStep<E>],
     additive_constant: &E,
     t_suffix: &[E],
@@ -449,11 +470,11 @@ pub fn lsb_soa_full_parallel<
                     // linear, so combining the members' full 16-cell grids is
                     // valid on the coset half too.
                     if mask & PH_FORMS != 0 {
-                        for (f, members) in forms.iter().enumerate() {
+                        for (f, form) in forms.iter().enumerate() {
                             for u in 0..U {
                                 let g = fptr.add((f * U + u) * bs);
                                 // the first member STORES; no dead zero-fill
-                                let mut it = members.iter();
+                                let mut it = form.members.iter();
                                 match it.next() {
                                     Some((op, idx)) => apply_form_op_first::<F, NG>(
                                         g,
@@ -467,6 +488,14 @@ pub fn lsb_soa_full_parallel<
                                         g,
                                         bptr.add((*idx as usize * U + u) * bs),
                                         op,
+                                    );
+                                }
+                                // mixed-degree form constant: real evaluation
+                                // cells only (the first NBIN groups)
+                                if !form.constant.is_zero() {
+                                    neon::soa_base_form_add_const_n::<NBIN>(
+                                        g,
+                                        *(&form.constant as *const F as *const _),
                                     );
                                 }
                             }
@@ -491,14 +520,17 @@ pub fn lsb_soa_full_parallel<
                         };
                     }
                     if mask & PH_LAZY != 0 {
-                        for (a, f, c) in products.iter() {
+                        for (a, b, c) in products.iter() {
+                            let pa = |u: usize| match a {
+                                FormRef::Slot(i) => bptr.add((*i as usize * U + u) * bs),
+                                FormRef::Form(i) => fptr.add((*i as usize * U + u) * bs),
+                            };
+                            let pb = |u: usize| match b {
+                                FormRef::Slot(i) => bptr.add((*i as usize * U + u) * bs),
+                                FormRef::Form(i) => fptr.add((*i as usize * U + u) * bs),
+                            };
                             for u in 0..U {
-                                neon::soa_quad_bb_lazy::<NG>(
-                                    lptr.add(u * es),
-                                    bptr.add((*a as usize * U + u) * bs),
-                                    fptr.add((*f as usize * U + u) * bs),
-                                    ec(c),
-                                );
+                                neon::soa_quad_bb_lazy::<NG>(lptr.add(u * es), pa(u), pb(u), ec(c));
                             }
                             lazy_tick!();
                         }
@@ -626,7 +658,7 @@ pub fn lsb_soa_bounded_parallel<
     base_field_inputs: &[DisjointAccessQuasiSlice<F, false>],
     ext_field_inputs: &[DisjointAccessQuasiSlice<E, false>],
     tables: Option<&LsbLdeAny>,
-    forms: &[Vec<(FormOp<F>, u16)>],
+    forms: &[FormDesc<F>],
     schedule: &[TiledStep<E>],
     base_cap: usize,
     ext_cap: usize,
@@ -713,7 +745,14 @@ pub fn lsb_soa_bounded_parallel<
                             } => {
                                 let dst = sptr.add(*slot as usize * bs);
                                 // the first member STORES; no dead zero-fill
-                                let mut it = forms[*form as usize].iter().zip(member_slots.iter());
+                                assert!(
+                                    forms[*form as usize].constant.is_zero(),
+                                    "uniskip SoA kernels do not support form constants"
+                                );
+                                let mut it = forms[*form as usize]
+                                    .members
+                                    .iter()
+                                    .zip(member_slots.iter());
                                 match it.next() {
                                     Some(((op, _), ms)) => {
                                         debug_assert_ne!(*ms, *slot);
@@ -806,22 +845,29 @@ pub fn lsb_soa_bounded_parallel<
 /// u64 -- there are no base*base products left). `quads`/`lins` index the
 /// combined folded slot space (base-origin polys first). Returns the 16-point
 /// packed q accumulator.
-pub fn lsb_uniskip_ext_pass_parallel<
+pub fn lsb_soa_ext_pass_parallel<
     F: PrimeField,
     E: FieldExtension<F> + Field,
+    const NG: usize,
+    const NBIN: usize,
+    const OUT: usize,
     const U: usize,
 >(
     ext_inputs: &[DisjointAccessQuasiSlice<E, false>],
-    forms: &[Vec<(FormOp<F>, u16)>],
-    products: &[(u16, u16, E)],
+    // window-3 mode only: per-slot difference-extension flags (a slot read at
+    // the infinity cells -- any quad/product/form member -- must be true)
+    interp: &[bool],
+    // `None` selects window-3 mode (interp readers), `Some` uniskip LDE
+    tables: Option<&LsbLdeAny>,
+    forms: &[FormDesc<F>],
+    products: &[(FormRef, FormRef, E)],
     quads: &[(u16, u16, E)],
     lins: &[(u16, E)],
     additive_constant: &E,
-    tables: &LsbLdeAny,
     t_suffix: &[E],
     rows: usize,
     worker: &Worker,
-) -> [E; 16] {
+) -> [E; OUT] {
     use crate::gkr::PAR_THRESHOLD;
 
     if const { !neon::is_bb_pair::<F, E>() } {
@@ -829,9 +875,13 @@ pub fn lsb_uniskip_ext_pass_parallel<
     }
     assert_eq!(t_suffix.len(), rows);
     assert_eq!(rows % U, 0);
+    if tables.is_none() {
+        assert_eq!(NG, 7, "window-3 mode uses the 28-cell padded grid");
+        assert_eq!(interp.len(), ext_inputs.len());
+    }
     let num_blocks = rows / U;
     let geometry = worker.get_geometry_with_threshold(num_blocks, (PAR_THRESHOLD / U).max(1));
-    let mut acc_chunks = vec![[E::ZERO; 16]; geometry.num_chunks];
+    let mut acc_chunks = vec![[E::ZERO; OUT]; geometry.num_chunks];
 
     worker.scope_with_threshold(num_blocks, (PAR_THRESHOLD / U).max(1), |scope, geometry| {
         let mut it = acc_chunks.iter_mut();
@@ -846,7 +896,6 @@ pub fn lsb_uniskip_ext_pass_parallel<
                 let r11v = neon::soa_r11v();
                 let const_bcast = neon::soa_broadcast_ext(ec(additive_constant));
                 let has_const = !additive_constant.is_zero();
-                const NG: usize = 4;
                 let es = 16 * NG;
 
                 let mut ext_flat = vec![0u32; ext_inputs.len() * U * es];
@@ -871,19 +920,24 @@ pub fn lsb_uniskip_ext_pass_parallel<
                     for (i, src) in ext_inputs.iter().enumerate() {
                         let src_ptr = src.ptr as *const u32;
                         for u in 0..U {
-                            fill_ext_uniskip_soa(
-                                xptr.add((i * U + u) * es),
-                                src_ptr,
-                                block + u,
-                                tables,
-                            );
+                            let g = xptr.add((i * U + u) * es);
+                            match tables {
+                                None => fill_ext_w3_soa(
+                                    g,
+                                    src_ptr as *const BabyBearExt4,
+                                    block + u,
+                                    interp[i],
+                                    ext_tmp.as_mut_ptr(),
+                                ),
+                                Some(t) => fill_ext_uniskip_soa(g, src_ptr, block + u, t),
+                            }
                         }
                     }
-                    for (f, members) in forms.iter().enumerate() {
+                    for (f, form) in forms.iter().enumerate() {
                         for u in 0..U {
                             let g = fptr.add((f * U + u) * es);
                             // the first member STORES; no dead zero-fill
-                            let mut it = members.iter();
+                            let mut it = form.members.iter();
                             match it.next() {
                                 Some((op, idx)) => apply_ext_form_op_first::<F, NG>(
                                     g,
@@ -899,17 +953,27 @@ pub fn lsb_uniskip_ext_pass_parallel<
                                     op,
                                 );
                             }
+                            // mixed-degree form constant: real evaluation
+                            // cells only (the first NBIN groups)
+                            if !form.constant.is_zero() {
+                                neon::soa_ext_form_add_base_const_n::<NBIN>(
+                                    g,
+                                    *(&form.constant as *const F as *const _),
+                                );
+                            }
                         }
                     }
-                    for ((a, f, _), tb) in products.iter().zip(tables_p.iter()) {
+                    for ((a, b, _), tb) in products.iter().zip(tables_p.iter()) {
+                        let pa = |u: usize| match a {
+                            FormRef::Slot(i) => xptr.add((*i as usize * U + u) * es),
+                            FormRef::Form(i) => fptr.add((*i as usize * U + u) * es),
+                        };
+                        let pb = |u: usize| match b {
+                            FormRef::Slot(i) => xptr.add((*i as usize * U + u) * es),
+                            FormRef::Form(i) => fptr.add((*i as usize * U + u) * es),
+                        };
                         for u in 0..U {
-                            neon::soa_quad_ee_lazy::<NG>(
-                                lptr.add(u * es),
-                                xptr.add((*a as usize * U + u) * es),
-                                fptr.add((*f as usize * U + u) * es),
-                                tb,
-                                r11v,
-                            );
+                            neon::soa_quad_ee_lazy::<NG>(lptr.add(u * es), pa(u), pb(u), tb, r11v);
                         }
                     }
                     for ((a, b, _), tb) in quads.iter().zip(tables_q.iter()) {
@@ -925,7 +989,10 @@ pub fn lsb_uniskip_ext_pass_parallel<
                     }
                     for ((i, _), tb) in lins.iter().zip(tables_l.iter()) {
                         for u in 0..U {
-                            neon::soa_lin_ext_lazy::<NG>(
+                            // linear terms touch real evaluation cells only
+                            // (all of them for uniskip, the binary cells for
+                            // window-3)
+                            neon::soa_lin_ext_lazy::<NBIN>(
                                 lptr.add(u * es),
                                 xptr.add((*i as usize * U + u) * es),
                                 tb,
@@ -937,7 +1004,7 @@ pub fn lsb_uniskip_ext_pass_parallel<
                         if has_const {
                             // add in canonical (Montgomery) domain AFTER the
                             // REDC -- the lazy accumulator holds R^2-scaled sums
-                            neon::soa_add_const_all_n::<NG>(lazy_out.as_mut_ptr(), &const_bcast);
+                            neon::soa_add_const_all_n::<NBIN>(lazy_out.as_mut_ptr(), &const_bcast);
                         }
                         let eqb = neon::soa_broadcast_ext(ec(&t_suffix[block + u]));
                         neon::soa_apply_eq_and_accumulate_n::<NG>(
@@ -950,12 +1017,12 @@ pub fn lsb_uniskip_ext_pass_parallel<
                     block += U;
                 }
 
-                *acc_dst = finish_soa_acc::<E, NG, 16>(&acc_soa, &mut ext_tmp);
+                *acc_dst = finish_soa_acc::<E, NG, OUT>(&acc_soa, &mut ext_tmp);
             })
         }
     });
 
-    reduce_chunks!(acc_chunks, 16)
+    reduce_chunks!(acc_chunks, OUT)
 }
 
 /// Lagrange fold of a base column in LSB layout: `dst[row] = sum_j w_j *
@@ -1128,8 +1195,8 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
     ext_srcs: &[usize],  // pass-0 ext column ptrs
     fold_out: &[usize],  // nb+ne folded column ptrs (each 8 * rows ext values)
     fold_w: &[E; 8],
-    forms: &[Vec<(FormOp<F>, u16)>],
-    products: &[(u16, u16, E)],
+    forms: &[FormDesc<F>],
+    products: &[(FormRef, FormRef, E)],
     quads: &[(u16, u16, E)],
     lins: &[(u16, E)],
     additive_constant: &E,
@@ -1247,10 +1314,14 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
                         neon::soa_store_ext4(&g1, out.add(8 * row + 4));
                         lde(grid);
                     }
-                    for (f, members) in forms.iter().enumerate() {
+                    for (f, form) in forms.iter().enumerate() {
+                        assert!(
+                            form.constant.is_zero(),
+                            "uniskip SoA kernels do not support form constants"
+                        );
                         let g = fptr.add(f * es);
                         // the first member STORES; no dead zero-fill
-                        let mut it = members.iter();
+                        let mut it = form.members.iter();
                         match it.next() {
                             Some((op, idx)) => apply_ext_form_op_first::<F, NG>(
                                 g,
@@ -1263,14 +1334,12 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
                             apply_ext_form_op::<F, NG>(g, xptr.add(*idx as usize * es), op);
                         }
                     }
-                    for ((a, f, _), tb) in products.iter().zip(tables_p.iter()) {
-                        neon::soa_quad_ee_lazy::<NG>(
-                            lptr,
-                            xptr.add(*a as usize * es),
-                            fptr.add(*f as usize * es),
-                            tb,
-                            r11v,
-                        );
+                    for ((a, b, _), tb) in products.iter().zip(tables_p.iter()) {
+                        let pick = |r: &FormRef| match r {
+                            FormRef::Slot(i) => xptr.add(*i as usize * es),
+                            FormRef::Form(i) => fptr.add(*i as usize * es),
+                        };
+                        neon::soa_quad_ee_lazy::<NG>(lptr, pick(a), pick(b), tb, r11v);
                     }
                     for ((a, b, _), tb) in quads.iter().zip(tables_q.iter()) {
                         neon::soa_quad_ee_lazy::<NG>(

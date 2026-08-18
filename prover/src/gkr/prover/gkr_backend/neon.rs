@@ -442,11 +442,17 @@ pub unsafe fn neon_continuing_chunk<E: Field>(
     neon_tdot(tri, t_ptr, chunk_start)
 }
 
-/// The aarch64 + BabyBear/Ext4 same-size chain executor: NEON uniskip
-/// passes and folds via `lsb_bench`; the window passes run the portable
-/// kernels (no NEON variant exists for them yet).
+/// The aarch64 + BabyBear/Ext4 same-size chain executor: every pass and fold
+/// runs the `lsb_bench` NEON SoA kernels (window-3 mode for the production
+/// window chain, LDE mode for the -- currently unimplemented -- uniskip
+/// schedules). The SoA window accumulator uses its own cell layout;
+/// [`lsb_bench::w3_soa_cell_of_generic`] permutes it into the generic
+/// 27-cell order the chain driver consumes.
 pub struct NeonSameSizeChain {
     prog: crate::gkr::prover::sumcheck_loop::OwnedSoaProgram<BabyBearField, BabyBearExt4>,
+    /// per-FOLDED-slot difference-extension flags (base slots then ext
+    /// slots) for the window-3 continuing passes
+    folded_interp: Vec<bool>,
     tables: crate::gkr::prover::sumcheck_loop::windowed_mode::lsb_bench::LsbLdeAny,
 }
 
@@ -458,8 +464,34 @@ impl NeonSameSizeChain {
         let omega16_bb = ::fft::domain_generator_for_size::<BabyBearField>(16);
         let mut omega8_bb = omega16_bb;
         omega8_bb.square();
+        // the SoA kernels skip difference extension for slots without the
+        // interpolation flag, so anything read at the infinity cells (form
+        // members, product slot operands) must carry it -- the flattened
+        // description's quad participation guarantees this; make a violation
+        // loud instead of a silently wrong accumulator
+        for form in prog.forms.iter() {
+            for (_, idx) in form.members.iter() {
+                assert!(prog.base_interp[*idx as usize]);
+            }
+        }
+        for (a, b, _) in prog.products.iter() {
+            for r in [a, b] {
+                if let crate::gkr::prover::sumcheck_loop::windowed_mode::program::FormRef::Slot(i) =
+                    r
+                {
+                    assert!(prog.base_interp[*i as usize]);
+                }
+            }
+        }
+        let folded_interp: Vec<bool> = prog
+            .base_interp
+            .iter()
+            .chain(prog.ext_interp.iter())
+            .copied()
+            .collect();
         Self {
             prog,
+            folded_interp,
             tables: lsb_bench::LsbLdeAny::K8Mat(neon_kernels::LsbLde8MatTables::new(
                 omega8_bb, omega16_bb,
             )),
@@ -506,27 +538,29 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::quasi};
         let srcs = quasi::<BabyBearExt4, false>(folded);
         if out_size % 2 == 0 {
-            lsb_bench::lsb_uniskip_ext_pass_parallel::<BabyBearField, BabyBearExt4, 2>(
+            lsb_bench::lsb_soa_ext_pass_parallel::<BabyBearField, BabyBearExt4, 4, 4, 16, 2>(
                 &srcs,
+                &[],
+                Some(&self.tables),
                 &self.prog.forms,
                 &self.prog.products,
                 &self.prog.folded_quad,
                 &self.prog.folded_lin,
                 &self.prog.additive_constant,
-                &self.tables,
                 eq_suffix,
                 out_size,
                 worker,
             )
         } else {
-            lsb_bench::lsb_uniskip_ext_pass_parallel::<BabyBearField, BabyBearExt4, 1>(
+            lsb_bench::lsb_soa_ext_pass_parallel::<BabyBearField, BabyBearExt4, 4, 4, 16, 1>(
                 &srcs,
+                &[],
+                Some(&self.tables),
                 &self.prog.forms,
                 &self.prog.products,
                 &self.prog.folded_quad,
                 &self.prog.folded_lin,
                 &self.prog.additive_constant,
-                &self.tables,
                 eq_suffix,
                 out_size,
                 worker,
@@ -542,15 +576,43 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         out_size: usize,
         worker: &Worker,
     ) -> [BabyBearExt4; 27] {
-        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_chain::quasi, lsb_generic};
-        lsb_generic::window27_head_pass::<BabyBearField, BabyBearExt4>(
-            &quasi::<BabyBearField, false>(base_polys),
-            &quasi::<BabyBearExt4, false>(ext_polys),
-            &self.prog,
-            eq_suffix,
-            out_size,
-            worker,
-        )
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::quasi};
+        let base_srcs = quasi::<BabyBearField, false>(base_polys);
+        let ext_srcs = quasi::<BabyBearExt4, false>(ext_polys);
+        let acc = if out_size % 2 == 0 {
+            lsb_bench::lsb_soa_full_parallel::<BabyBearField, BabyBearExt4, 7, 2, 27, 2>(
+                &base_srcs,
+                &ext_srcs,
+                &self.prog.base_interp,
+                &self.prog.ext_interp,
+                None,
+                &self.prog.forms,
+                &self.prog.products,
+                &self.prog.rest_steps,
+                &self.prog.additive_constant,
+                eq_suffix,
+                out_size,
+                worker,
+                lsb_bench::PH_ALL,
+            )
+        } else {
+            lsb_bench::lsb_soa_full_parallel::<BabyBearField, BabyBearExt4, 7, 2, 27, 1>(
+                &base_srcs,
+                &ext_srcs,
+                &self.prog.base_interp,
+                &self.prog.ext_interp,
+                None,
+                &self.prog.forms,
+                &self.prog.products,
+                &self.prog.rest_steps,
+                &self.prog.additive_constant,
+                eq_suffix,
+                out_size,
+                worker,
+                lsb_bench::PH_ALL,
+            )
+        };
+        core::array::from_fn(|g| acc[lsb_bench::w3_soa_cell_of_generic(g)])
     }
 
     fn window_continuing_pass(
@@ -560,14 +622,38 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         out_size: usize,
         worker: &Worker,
     ) -> [BabyBearExt4; 27] {
-        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_chain::quasi, lsb_generic};
-        lsb_generic::window27_ext_pass::<BabyBearField, BabyBearExt4>(
-            &quasi::<BabyBearExt4, false>(folded),
-            &self.prog,
-            eq_suffix,
-            out_size,
-            worker,
-        )
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::quasi};
+        let srcs = quasi::<BabyBearExt4, false>(folded);
+        let acc = if out_size % 2 == 0 {
+            lsb_bench::lsb_soa_ext_pass_parallel::<BabyBearField, BabyBearExt4, 7, 2, 27, 2>(
+                &srcs,
+                &self.folded_interp,
+                None,
+                &self.prog.forms,
+                &self.prog.products,
+                &self.prog.folded_quad,
+                &self.prog.folded_lin,
+                &self.prog.additive_constant,
+                eq_suffix,
+                out_size,
+                worker,
+            )
+        } else {
+            lsb_bench::lsb_soa_ext_pass_parallel::<BabyBearField, BabyBearExt4, 7, 2, 27, 1>(
+                &srcs,
+                &self.folded_interp,
+                None,
+                &self.prog.forms,
+                &self.prog.products,
+                &self.prog.folded_quad,
+                &self.prog.folded_lin,
+                &self.prog.additive_constant,
+                eq_suffix,
+                out_size,
+                worker,
+            )
+        };
+        core::array::from_fn(|g| acc[lsb_bench::w3_soa_cell_of_generic(g)])
     }
 
     fn fold_initial(

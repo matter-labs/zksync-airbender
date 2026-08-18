@@ -367,10 +367,10 @@ fn tail_eval_pair<F: PrimeField, E: FieldExtension<F> + Field>(
         v0s[slot] = v0;
         dts[slot] = d;
     }
-    for (fi, members) in prog.forms.iter().enumerate() {
+    for (fi, form) in prog.forms.iter().enumerate() {
         let mut a0 = E::ZERO;
         let mut ad = E::ZERO;
-        for (op, idx) in members.iter() {
+        for (op, idx) in form.members.iter() {
             let (x0, xd) = (v0s[*idx as usize], dts[*idx as usize]);
             match op {
                 super::program::FormOp::Add => {
@@ -391,18 +391,30 @@ fn tail_eval_pair<F: PrimeField, E: FieldExtension<F> + Field>(
                 }
             }
         }
+        // the form CONSTANT contributes to the evaluation at 0 only -- a
+        // constant has no leading coefficient
+        a0.add_assign_base(&form.constant);
         form0[fi] = a0;
         formd[fi] = ad;
     }
     let mut g0 = prog.additive_constant;
     let mut ginf = E::ZERO;
-    for (a, f, c) in prog.products.iter() {
-        let mut t0 = v0s[*a as usize];
-        t0.mul_assign(&form0[*f as usize]);
+    for (a, b, c) in prog.products.iter() {
+        use super::program::FormRef;
+        let (a0, ad) = match a {
+            FormRef::Slot(i) => (v0s[*i as usize], dts[*i as usize]),
+            FormRef::Form(i) => (form0[*i as usize], formd[*i as usize]),
+        };
+        let (b0, bd) = match b {
+            FormRef::Slot(i) => (v0s[*i as usize], dts[*i as usize]),
+            FormRef::Form(i) => (form0[*i as usize], formd[*i as usize]),
+        };
+        let mut t0 = a0;
+        t0.mul_assign(&b0);
         t0.mul_assign(c);
         g0.add_assign(&t0);
-        let mut ti = dts[*a as usize];
-        ti.mul_assign(&formd[*f as usize]);
+        let mut ti = ad;
+        ti.mul_assign(&bd);
         ti.mul_assign(c);
         ginf.add_assign(&ti);
     }
