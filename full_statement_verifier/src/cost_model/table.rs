@@ -20,6 +20,12 @@
 //! guest under `tools/gkr_verifier`, a regenerated circuit under
 //! `cs/compiled_circuits`, a change to the verifier's circuit lists or their order,
 //! a different security level or `BlakeMode`.
+//!
+//! The blake2 g-function delegation is deliberately unpriced: no workload in scope
+//! uses it, so no fixture exercises it. A proof carrying it is rejected with
+//! `EstimateError::UnpricedCircuit` rather than estimated. Bringing it into scope
+//! means adding a fixture with at least two of its proofs -- it sits in the
+//! epilogue-tail region, where a singleton cannot be priced.
 
 use super::{CircuitId, CostTable};
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
