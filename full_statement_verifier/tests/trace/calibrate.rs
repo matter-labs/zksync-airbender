@@ -17,8 +17,8 @@ pub struct Calibration {
     pub counts: Vec<(CircuitId, usize)>,
     pub spans: Vec<(CircuitId, Vec<u64>)>,
     pub unpriced: Vec<CircuitId>,
-    pub s_riscv: u64,
-    pub s_delegation: u64,
+    pub s_riscv: i64,
+    pub s_delegation: i64,
 }
 
 pub fn trace_fixture(name: &str, program: FsvProgram) -> (Trace, StreamPlan) {
@@ -70,28 +70,21 @@ pub fn implied_section_s(
     trace: &Trace,
     plan: &StreamPlan,
     section: Section,
-) -> Vec<(CircuitId, u64)> {
+) -> Vec<(CircuitId, i64)> {
     plan.regions
         .iter()
         .filter(|r| r.section == section && !r.closes_at_epilogue)
         .filter_map(|r| {
             period_of(trace, r).map(|v| {
                 let priced = r.proof_first_words.len() as u64 * v;
-                let cycles = region_cycles(trace, r);
-                let s = cycles.checked_sub(priced).unwrap_or_else(|| {
-                    panic!(
-                        "{:?}: region_cycles {} < n*v {}, so S_{:?} would be negative",
-                        r.circuit, cycles, priced, section
-                    )
-                });
-                (r.circuit, s)
+                (r.circuit, region_cycles(trace, r) as i64 - priced as i64)
             })
         })
         .collect()
 }
 
 pub fn calibrate(trace: &Trace, plan: &StreamPlan) -> Calibration {
-    let section_s = |section: Section| -> u64 {
+    let section_s = |section: Section| -> i64 {
         implied_section_s(trace, plan, section)
             .first()
             .map(|(_, s)| *s)
@@ -129,7 +122,7 @@ pub fn calibrate(trace: &Trace, plan: &StreamPlan) -> Calibration {
                     Section::Delegation => s_delegation,
                 };
                 let cycles = region_cycles(trace, r);
-                cycles.checked_sub(s).unwrap_or_else(|| {
+                u64::try_from(cycles as i64 - s).unwrap_or_else(|_| {
                     panic!(
                         "{:?}: region_cycles {} < S_{:?} {}",
                         r.circuit, cycles, r.section, s

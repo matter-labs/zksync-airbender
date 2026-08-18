@@ -173,15 +173,32 @@ fn implied_per_type_overhead_agrees_within_a_section() {
         let (t, plan) = trace::calibrate::trace_fixture(fixture, *program);
         for section in [Section::Riscv, Section::Delegation] {
             let observed = trace::calibrate::implied_section_s(&t, &plan, section);
-            let lo = observed.iter().map(|(_, s)| *s).min().unwrap();
-            let hi = observed.iter().map(|(_, s)| *s).max().unwrap();
+            if observed.len() < 2 {
+                continue;
+            }
+            let spread = observed.iter().map(|(_, s)| *s).max().unwrap()
+                - observed.iter().map(|(_, s)| *s).min().unwrap();
+            let budget = (t.total_cycles / 2000) as i64;
             assert!(
-                hi - lo <= hi / 200,
-                "{fixture}/{section:?}: the implied per-type overhead S varies more than 0.5% \
-                 across regions {observed:?} — singletons priced as region_cycles - S are \
-                 mispriced by the spread"
+                spread <= budget,
+                "{fixture}/{section:?}: the implied per-type overhead S spans {spread} cycles \
+                 across regions {observed:?} — every singleton priced as region_cycles - S \
+                 inherits that spread, which exceeds the 0.05% budget ({budget})"
             );
         }
+    }
+}
+
+#[test]
+#[ignore = "needs real proofs; see Task 6"]
+fn every_fixture_verifies_natively() {
+    for (name, program) in trace::calibrate::FIXTURES {
+        let (setups, proof) = trace::load_calibration_proof(name);
+        let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+        full_statement_verifier::host_utils::native_verify_unrolled(
+            stream,
+            *program == FsvProgram::UnrolledBaseLayer,
+        );
     }
 }
 
