@@ -4,7 +4,17 @@ use full_statement_verifier::cost_model::{compiled_circuits, CircuitId};
 use std::collections::BTreeMap;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
-pub const FIXTURES: &[(&str, FsvProgram)] = &[
+/// Fixtures that coefficients are derived from. Every circuit type they carry
+/// must appear at least twice somewhere, or its per-type overhead is unmeasurable.
+pub const CALIBRATION_FIXTURES: &[(&str, FsvProgram)] = &[
+    ("base", FsvProgram::UnrolledBaseLayer),
+    ("base_alt", FsvProgram::UnrolledBaseLayer),
+    ("rung0", FsvProgram::UnrolledRecursionLayer),
+];
+
+/// Every fixture, including the steady rung, which carries one proof of each
+/// type and so can only be checked end to end.
+pub const ALL_FIXTURES: &[(&str, FsvProgram)] = &[
     ("base", FsvProgram::UnrolledBaseLayer),
     ("base_alt", FsvProgram::UnrolledBaseLayer),
     ("rung0", FsvProgram::UnrolledRecursionLayer),
@@ -183,7 +193,7 @@ pub fn pool(cals: &[(&str, FsvProgram, Calibration)]) -> Pooled {
         );
     }
 
-    let mut c0 = Vec::new();
+    let mut fits: Vec<(FsvProgram, u64, u64)> = Vec::new();
     for (name, program, c) in cals {
         let priced: u64 = c
             .counts
@@ -191,18 +201,24 @@ pub fn pool(cals: &[(&str, FsvProgram, Calibration)]) -> Pooled {
             .map(|(circuit, n)| *n as u64 * v.get(circuit).copied().unwrap_or(0))
             .sum();
         let fitted = c.total_cycles - priced;
-        if let Some((_, existing)) = c0.iter().find(|(p, _)| p == program) {
-            let (lo, hi) = (fitted.min(*existing), fitted.max(*existing));
+        if let Some((_, existing, existing_total)) = fits.iter().find(|(p, _, _)| p == program) {
+            let spread = fitted.max(*existing) - fitted.min(*existing);
+            let scale = c.total_cycles.min(*existing_total);
+            let budget = scale / 2000;
             assert!(
-                hi - lo <= hi / 2000,
+                spread <= budget,
                 "{name}: C0 for {program:?} is {fitted} here but {existing} from another \
-                 fixture — C0 is not composition-independent, which breaks the model \
-                 (spec section 2)"
+                 fixture — the presence-mask residual is {spread} cycles, {:.4}% of the \
+                 {scale}-cycle estimate it perturbs, over the 0.05% budget ({budget}). C0 is \
+                 not composition-independent, which breaks the model (spec section 2); the \
+                 tag term needs an explicit per-section coefficient (spec section 10)",
+                spread as f64 * 100.0 / scale as f64
             );
         } else {
-            c0.push((*program, fitted));
+            fits.push((*program, fitted, c.total_cycles));
         }
     }
+    let c0 = fits.into_iter().map(|(p, fitted, _)| (p, fitted)).collect();
 
     let mut unpriced = Vec::new();
     for (_, program, _) in cals {
