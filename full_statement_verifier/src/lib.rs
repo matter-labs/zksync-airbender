@@ -26,6 +26,9 @@ pub mod statement_common;
 pub mod program_proof;
 
 #[cfg(feature = "host_utils")]
+pub mod cost_model;
+
+#[cfg(feature = "host_utils")]
 pub mod host_utils;
 pub mod recursion_chain;
 
