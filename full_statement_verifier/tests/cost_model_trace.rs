@@ -106,3 +106,50 @@ fn stream_plan_matches_the_actual_stream() {
         "final sentinel must land on the first PoW word"
     );
 }
+
+#[test]
+#[ignore = "needs real proofs; see Task 6"]
+fn per_proof_spans_agree_within_a_circuit() {
+    use verifier_common::fsv_binaries::FsvProgram;
+    for (fixture, program) in trace::calibrate::FIXTURES {
+        let c = trace::calibrate::calibrate_fixture(fixture, *program);
+        for (circuit, spans) in &c.spans {
+            if spans.len() < 2 {
+                continue;
+            }
+            let lo = *spans.iter().min().unwrap();
+            let hi = *spans.iter().max().unwrap();
+            assert!(
+                hi - lo <= hi / 200,
+                "{fixture}/{circuit:?}: per-proof spans vary more than 0.5% \
+                 (min {lo}, max {hi}) — the affine model does not hold for this circuit"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "needs real proofs; see Task 6"]
+fn proof_counts_matches_the_planned_regions() {
+    use full_statement_verifier::cost_model::proof_counts;
+    for (fixture, program) in trace::calibrate::FIXTURES {
+        let (setups, proof) = trace::load_calibration_proof(fixture);
+        let plan = trace::plan::plan_unrolled_stream(&setups, &proof, *program);
+        let mut from_api: Vec<_> = proof_counts(&proof)
+            .into_iter()
+            .filter(|(_, n)| *n > 0)
+            .collect();
+        let mut from_plan: Vec<_> = plan
+            .regions
+            .iter()
+            .map(|r| (r.circuit, r.proof_first_words.len()))
+            .filter(|(_, n)| *n > 0)
+            .collect();
+        from_api.sort();
+        from_plan.sort();
+        assert_eq!(
+            from_api, from_plan,
+            "{fixture}: proof_counts disagrees with the stream plan"
+        );
+    }
+}
