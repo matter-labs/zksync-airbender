@@ -4,6 +4,7 @@
 
 mod trace;
 
+use trace::calibrate::Fixture;
 use trace::fsv_dir;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
@@ -56,7 +57,12 @@ fn total_cycles_matches_the_uninstrumented_measurement() {
 #[test]
 #[ignore = "needs real proofs; see Task 6"]
 fn stream_plan_matches_the_actual_stream() {
-    for (fixture, program) in trace::calibrate::ALL_FIXTURES {
+    for Fixture {
+        name: fixture,
+        program,
+        ..
+    } in trace::calibrate::ALL_FIXTURES
+    {
         let (setups, proof) = trace::load_calibration_proof(fixture);
         let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
         let plan = trace::plan::plan_unrolled_stream(&setups, &proof, *program);
@@ -122,7 +128,12 @@ fn stream_plan_matches_the_actual_stream() {
 #[test]
 #[ignore = "needs real proofs; see Task 6"]
 fn per_proof_spans_agree_within_a_circuit() {
-    for (fixture, program) in trace::calibrate::CALIBRATION_FIXTURES {
+    for Fixture {
+        name: fixture,
+        program,
+        ..
+    } in trace::calibrate::calibration_fixtures()
+    {
         let c = trace::calibrate::calibrate_fixture(fixture, *program);
         for (circuit, spans) in &c.spans {
             if spans.len() < 2 {
@@ -143,7 +154,12 @@ fn per_proof_spans_agree_within_a_circuit() {
 #[ignore = "needs real proofs; see Task 6"]
 fn proof_counts_matches_the_planned_regions() {
     use full_statement_verifier::cost_model::proof_counts;
-    for (fixture, program) in trace::calibrate::ALL_FIXTURES {
+    for Fixture {
+        name: fixture,
+        program,
+        ..
+    } in trace::calibrate::ALL_FIXTURES
+    {
         let (setups, proof) = trace::load_calibration_proof(fixture);
         let plan = trace::plan::plan_unrolled_stream(&setups, &proof, *program);
         let mut from_api: Vec<_> = proof_counts(&proof)
@@ -169,7 +185,12 @@ fn proof_counts_matches_the_planned_regions() {
 #[ignore = "needs real proofs; see Task 6"]
 fn implied_per_type_overhead_agrees_within_a_section() {
     use trace::plan::Section;
-    for (fixture, program) in trace::calibrate::CALIBRATION_FIXTURES {
+    for Fixture {
+        name: fixture,
+        program,
+        ..
+    } in trace::calibrate::calibration_fixtures()
+    {
         let (t, plan) = trace::calibrate::trace_fixture(fixture, *program);
         for section in [Section::Riscv, Section::Delegation] {
             let observed = trace::calibrate::implied_section_s(&t, &plan, section);
@@ -192,7 +213,7 @@ fn implied_per_type_overhead_agrees_within_a_section() {
 #[test]
 #[ignore = "needs real proofs; see Task 6"]
 fn every_fixture_verifies_natively() {
-    for (name, program) in trace::calibrate::ALL_FIXTURES {
+    for Fixture { name, program, .. } in trace::calibrate::ALL_FIXTURES {
         let (setups, proof) = trace::load_calibration_proof(name);
         let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
         full_statement_verifier::host_utils::native_verify_unrolled(
@@ -205,13 +226,12 @@ fn every_fixture_verifies_natively() {
 #[test]
 #[ignore = "needs real proofs; see Task 6"]
 fn emit_cost_tables() {
-    let cals: Vec<_> = trace::calibrate::CALIBRATION_FIXTURES
-        .iter()
-        .map(|(name, program)| {
+    let cals: Vec<_> = trace::calibrate::calibration_fixtures()
+        .map(|f| {
             (
-                *name,
-                *program,
-                trace::calibrate::calibrate_fixture(name, *program),
+                f.name,
+                f.program,
+                trace::calibrate::calibrate_fixture(f.name, f.program),
             )
         })
         .collect();
@@ -233,7 +253,7 @@ fn emit_cost_tables() {
 fn estimate_matches_measurement_on_every_fixture() {
     use full_statement_verifier::cost_model::estimate_verifier_cycles;
 
-    for (name, program) in trace::calibrate::ALL_FIXTURES {
+    for Fixture { name, program, .. } in trace::calibrate::ALL_FIXTURES {
         let (bin, text) = full_statement_verifier::host_utils::load_fsv_program(
             fsv_dir(),
             *program,

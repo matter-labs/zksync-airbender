@@ -4,22 +4,42 @@ use full_statement_verifier::cost_model::{compiled_circuits, CircuitId};
 use std::collections::BTreeMap;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
-/// Fixtures that coefficients are derived from. Every circuit type they carry
-/// must appear at least twice somewhere, or its per-type overhead is unmeasurable.
-pub const CALIBRATION_FIXTURES: &[(&str, FsvProgram)] = &[
-    ("base", FsvProgram::UnrolledBaseLayer),
-    ("base_alt", FsvProgram::UnrolledBaseLayer),
-    ("rung0", FsvProgram::UnrolledRecursionLayer),
+pub struct Fixture {
+    pub name: &'static str,
+    pub program: FsvProgram,
+    /// Whether coefficients may be derived from it: `calibrate` fits each
+    /// section's `S` from one non-epilogue region with `n >= 2` in that section,
+    /// so a fixture without one anywhere can only be checked end to end. Every
+    /// other circuit type may be a singleton, priced as `region_cycles - S`.
+    pub calibrated: bool,
+}
+
+pub const ALL_FIXTURES: &[Fixture] = &[
+    Fixture {
+        name: "base",
+        program: FsvProgram::UnrolledBaseLayer,
+        calibrated: true,
+    },
+    Fixture {
+        name: "base_alt",
+        program: FsvProgram::UnrolledBaseLayer,
+        calibrated: true,
+    },
+    Fixture {
+        name: "rung0",
+        program: FsvProgram::UnrolledRecursionLayer,
+        calibrated: true,
+    },
+    Fixture {
+        name: "rung1",
+        program: FsvProgram::UnrolledRecursionLayer,
+        calibrated: false,
+    },
 ];
 
-/// Every fixture, including the steady rung, which carries one proof of each
-/// type and so can only be checked end to end.
-pub const ALL_FIXTURES: &[(&str, FsvProgram)] = &[
-    ("base", FsvProgram::UnrolledBaseLayer),
-    ("base_alt", FsvProgram::UnrolledBaseLayer),
-    ("rung0", FsvProgram::UnrolledRecursionLayer),
-    ("rung1", FsvProgram::UnrolledRecursionLayer),
-];
+pub fn calibration_fixtures() -> impl Iterator<Item = &'static Fixture> {
+    ALL_FIXTURES.iter().filter(|f| f.calibrated)
+}
 
 pub struct Calibration {
     pub total_cycles: u64,
@@ -200,7 +220,13 @@ pub fn pool(cals: &[(&str, FsvProgram, Calibration)]) -> Pooled {
             .iter()
             .map(|(circuit, n)| *n as u64 * v.get(circuit).copied().unwrap_or(0))
             .sum();
-        let fitted = c.total_cycles - priced;
+        let fitted = c.total_cycles.checked_sub(priced).unwrap_or_else(|| {
+            panic!(
+                "{name}: total_cycles {} < priced {priced}, so C0 for {program:?} would be \
+                 negative",
+                c.total_cycles
+            )
+        });
         if let Some((_, existing, existing_total)) = fits.iter().find(|(p, _, _)| p == program) {
             let spread = fitted.max(*existing) - fitted.min(*existing);
             let scale = c.total_cycles.min(*existing_total);
