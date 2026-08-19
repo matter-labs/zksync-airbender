@@ -1917,7 +1917,7 @@ pub(crate) mod test {
             1 << 30,
             &worker,
             SecurityLevel::Sec100,
-            0,
+            verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
             &prover::gkr::prover::DefaultBabyBearBackend::default(),
             &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
         );

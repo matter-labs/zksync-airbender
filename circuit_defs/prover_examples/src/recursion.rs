@@ -105,7 +105,8 @@ mod tests {
         skip_if_ci!();
 
         let use_caches = true;
-        let worker = Worker::new_with_num_threads(8);
+        // 12 = this machine's P-core count; E-cores regress proving (measured).
+        let worker = Worker::new_with_num_threads(12);
 
         // === Stage 1: base layer — prove zksync_os app + witness (IM ISA). ===
         let (zksync_bin, zksync_text) = load_program(
@@ -139,7 +140,7 @@ mod tests {
                     RAM_BOUND,
                     &worker,
                     SecurityLevel::Sec100,
-                    0,
+                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                     &DefaultBabyBearBackend::default(),
                     &DefaultBabyBearGKRBackend::default(),
                 );
@@ -242,7 +243,7 @@ mod tests {
                     RAM_BOUND,
                     &worker,
                     SecurityLevel::Sec100,
-                    0,
+                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                     &DefaultBabyBearBackend::default(),
                     &DefaultBabyBearGKRBackend::default(),
                 );
@@ -310,7 +311,7 @@ mod tests {
                     RAM_BOUND,
                     &worker,
                     SecurityLevel::Sec100,
-                    0,
+                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                     &DefaultBabyBearBackend::default(),
                     &DefaultBabyBearGKRBackend::default(),
                 );
@@ -339,59 +340,171 @@ mod tests {
         setups = bridge_setups;
 
         // === Stage 5: final — prove fsv_unified_recursion_layer (final-blake
-        //              variant) over the unified bridge proof, in unified mode. ===
-        println!("=== final: proving fsv_unified_recursion_layer in unified mode (blake {final_tag}) ===");
+        //              variant) over the unified bridge proof, in unified mode,
+        //              REPEATED until the proof shape reaches its fixed point:
+        //              exactly ONE unified circuit chunk (2^23 cycles) and ONE
+        //              blake2-with-compression delegation proof. Each layer is
+        //              cached to disk under its index, so an interrupted run
+        //              resumes at the first unproven layer. ===
         let (unified_rec_bin, unified_rec_text) =
             load_fsv_program(FSV_DIR, FsvProgram::UnifiedRecursionLayer, final_blake);
-        let (final_proof, final_setups) = if let Ok(final_proof) =
-            try_deserialize_compressed_from_file::<ProgramProof>(&format!(
-                "final_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"
-            )) {
-            println!("Using existing files for final layer");
-            (
-                final_proof,
-                try_deserialize_compressed_from_file(&format!(
-                    "final_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"
-                ))
-                .unwrap(),
-            )
-        } else {
-            let (mut final_proof, final_setups) =
-                prove_unified_execution_with_replayer::<Global, _, _>(
-                    UNIFIED_CYCLES_BOUND,
-                    &unified_rec_bin,
-                    &unified_rec_text,
-                    use_caches,
-                    QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
-                    RAM_BOUND,
-                    &worker,
-                    SecurityLevel::Sec100,
-                    0,
-                    &DefaultBabyBearBackend::default(),
-                    &DefaultBabyBearGKRBackend::default(),
-                );
-            final_proof.set_recursion_chain(&chain);
 
-            serialize_compressed_to_file(
-                &final_proof,
-                &format!("final_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"),
-            );
-            serialize_compressed_to_file(
-                &final_setups,
-                &format!("final_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"),
-            );
-
-            (final_proof, final_setups)
+        // (total unified chunks, per-delegation-type proof counts)
+        fn proof_shape(p: &ProgramProof) -> (usize, Vec<(u32, usize)>) {
+            let unified_chunks = p.riscv_proofs.values().map(|v| v.len()).sum::<usize>();
+            let delegations: Vec<(u32, usize)> = p
+                .delegation_proofs
+                .iter()
+                .map(|(k, v)| (*k, v.len()))
+                .filter(|(_, n)| *n > 0)
+                .collect();
+            (unified_chunks, delegations)
+        }
+        let blake_delegation_type =
+            <setups::Blake2sWithCompressionDelegationCircuit as circuit_common::DelegationCircuit<
+                prover::field::baby_bear::base::BabyBearField,
+            >>::DELEGATION_TYPE_ID as u32;
+        let converged = |p: &ProgramProof| {
+            proof_shape(p) == (1, vec![(blake_delegation_type, 1)])
         };
-        let final_proof_cycles = final_proof.executed_cycles();
-        total_cycles += final_proof_cycles;
-        println!("final unified proof ran {final_proof_cycles} cycles (total {total_cycles})");
 
-        let final_output =
-            native_verify_unified(build_unified_stream(&final_setups, &final_proof), false);
+        const MAX_FINAL_LAYERS: usize = 8;
+        let mut final_layer = 0usize;
+        while !converged(&proof) {
+            assert!(
+                final_layer < MAX_FINAL_LAYERS,
+                "unified recursion did not converge to (1 unified chunk, 1 blake proof) \
+                 within {MAX_FINAL_LAYERS} layers"
+            );
+            let (chunks, delegations) = proof_shape(&proof);
+            let measured = measure_verifier_cycles(
+                &unified_rec_bin,
+                &unified_rec_text,
+                build_unified_stream(&setups, &proof),
+            );
+            println!(
+                "=== final layer {final_layer}: proving fsv_unified_recursion_layer in unified \
+                 mode (blake {final_tag}) over a proof with {chunks} unified chunk(s) + \
+                 delegations {delegations:?}; measured {measured} verifier cycles -> {} chunk(s) ===",
+                measured.div_ceil(1 << 23)
+            );
+
+            let proof_file =
+                format!("final_layer_{final_layer}_proof_{u_tag}_{bridge_tag}_{final_tag}.bin");
+            let setups_file =
+                format!("final_layer_{final_layer}_setups_{u_tag}_{bridge_tag}_{final_tag}.bin");
+            let (new_proof, new_setups) = if let Ok(cached_proof) =
+                try_deserialize_compressed_from_file::<ProgramProof>(&proof_file)
+            {
+                println!("Using existing files for final layer {final_layer}");
+                (
+                    cached_proof,
+                    try_deserialize_compressed_from_file(&setups_file).unwrap(),
+                )
+            } else {
+                let (mut new_proof, new_setups) =
+                    prove_unified_execution_with_replayer::<Global, _, _>(
+                        UNIFIED_CYCLES_BOUND,
+                        &unified_rec_bin,
+                        &unified_rec_text,
+                        use_caches,
+                        QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
+                        RAM_BOUND,
+                        &worker,
+                        SecurityLevel::Sec100,
+                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                        &DefaultBabyBearBackend::default(),
+                        &DefaultBabyBearGKRBackend::default(),
+                    );
+                new_proof.set_recursion_chain(&chain);
+                serialize_compressed_to_file(&new_proof, &proof_file);
+                serialize_compressed_to_file(&new_setups, &setups_file);
+                (new_proof, new_setups)
+            };
+
+            let layer_cycles = new_proof.executed_cycles();
+            total_cycles += layer_cycles;
+            let (new_chunks, new_delegations) = proof_shape(&new_proof);
+            println!(
+                "final layer {final_layer} unified proof ran {layer_cycles} cycles \
+                 (total {total_cycles}); shape: {new_chunks} unified chunk(s), \
+                 delegations {new_delegations:?}"
+            );
+
+            native_verify_unified(build_unified_stream(&new_setups, &new_proof), false);
+
+            let end_params = compute_end_params(&new_setups, new_proof.final_pc);
+            chain.extend(&end_params);
+            proof = new_proof;
+            setups = new_setups;
+            final_layer += 1;
+        }
+
+        let (chunks, delegations) = proof_shape(&proof);
+        let final_output = native_verify_unified(build_unified_stream(&setups, &proof), false);
 
         println!("=== pipeline complete: {total_cycles} total cycles proven ===");
+        println!(
+            "converged after {final_layer} final layer(s): {chunks} unified chunk(s), \
+             delegations {delegations:?}"
+        );
         println!("final recursion-chain output registers: {final_output:?}");
+
+        // Informational: how big a further unified-recursion step would be —
+        // this is the number that must fit the L1 (Proth120) wrapper circuit.
+        let next_cycles = measure_verifier_cycles(
+            &unified_rec_bin,
+            &unified_rec_text,
+            build_unified_stream(&setups, &proof),
+        );
+        println!(
+            "verifying the final proof would take {next_cycles} cycles ({} unified chunk(s))",
+            next_cycles.div_ceil(1 << 23)
+        );
+    }
+
+    /// Cheap follow-up to the converged pipeline (needs its cached
+    /// `final_layer_0_proof_*` files): measure, for every unified-recursion
+    /// verifier blake variant, how many cycles verifying the CONVERGED
+    /// (1 unified chunk + 1 blake proof) takes. This is the cycle count the
+    /// L1 (Proth120) wrapper circuit must fit; the special-opcodes variant
+    /// additionally does blake inline, so its proof would carry NO delegation
+    /// circuit — the shape the single-proof EVM verifier consumes.
+    #[test]
+    #[ignore = "needs the cached artifacts of test_recursive_proving_pipeline_zksync_os"]
+    #[serial_test::serial(prover_examples_proof_artifacts)]
+    fn measure_final_proof_verifier_variants() {
+        use verifier_common::fsv_binaries::BlakeMode;
+        skip_if_ci!();
+
+        let u_tag = unrolled_blake_mode().tag();
+        let bridge_tag = bridge_blake_mode().tag();
+        let final_tag = final_blake_mode().tag();
+        let proof: ProgramProof = try_deserialize_compressed_from_file(&format!(
+            "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"
+        ))
+        .expect("run test_recursive_proving_pipeline_zksync_os first");
+        let setups: Setups = try_deserialize_compressed_from_file(&format!(
+            "final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"
+        ))
+        .unwrap();
+
+        for mode in [
+            BlakeMode::Compression,
+            BlakeMode::GFunction,
+            BlakeMode::BlakeSpecialOpcodes,
+        ] {
+            let (bin, text) =
+                load_fsv_program(FSV_DIR, FsvProgram::UnifiedRecursionLayer, mode);
+            let cycles =
+                measure_verifier_cycles(&bin, &text, build_unified_stream(&setups, &proof));
+            println!(
+                "verifying the converged proof with fsv_unified_recursion_layer[{}] takes {cycles} cycles ({} x 2^22, {} x 2^23 chunks)",
+                mode.tag(),
+                cycles.div_ceil(1 << 22),
+                cycles.div_ceil(1 << 23),
+            );
+        }
     }
 
     #[test]
