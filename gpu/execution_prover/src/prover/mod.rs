@@ -82,6 +82,9 @@ use worker::Worker;
 
 pub struct ExecutionProver {
     configuration: ExecutionProverConfiguration,
+    // Field order is load-bearing: `gpu_manager` must be declared (and thus
+    // dropped) before the precomputation maps so workers finish before the
+    // pinned setup hosts drop.
     gpu_manager: GpuManager,
     worker: Arc<Worker>,
     memory_holders_cache: Arc<Mutex<Vec<LockedBoxedMemoryHolder>>>,

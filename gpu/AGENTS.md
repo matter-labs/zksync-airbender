@@ -139,7 +139,7 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
 `gpu_whir` (and `gpu_core`/`gpu_hash`) as ordinary Cargo
 dependencies — there are no more in-crate facade re-exports for the kernel
 crates, and **no `native/` tree at all**: its `build.rs` only emits the
-`no_cuda` cfg its test sites key off. `execution_prover` holds `ExecutionProver` + the 9-symbol facade.
+`no_cuda` cfg its test sites key off. `execution_prover` holds `ExecutionProver` + the 12-symbol facade.
 `program_prover` is the program-level driver on top of `execution_prover`: it
 assembles `ProveResult` into `full_statement_verifier::ProgramProof`, builds the
 non-determinism streams the `fsv_*` verifier binaries consume, and (behind its

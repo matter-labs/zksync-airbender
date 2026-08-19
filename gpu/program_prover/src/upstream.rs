@@ -17,7 +17,7 @@ pub use full_statement_verifier::unrolled_proof_statement::{
     verify_unrolled_recursion_layer_sec_100, verify_unrolled_recursion_layer_sec_80,
 };
 
-// `prover` — definitions consumed by tests and the ND-stream contract.
+// `prover` — definitions consumed by tests only.
 pub use prover::definitions::SecurityLevel;
 
 // `setups` — the per-program setup-params entry the ND stream contract uses.

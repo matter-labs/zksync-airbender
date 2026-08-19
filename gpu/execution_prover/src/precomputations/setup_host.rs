@@ -14,9 +14,10 @@ use std::sync::{Arc, OnceLock};
 /// Lazy GPU-side setup host: the CPU setup and the geometry needed to
 /// produce a `GpuGKRSetupHost` are stored here, and the actual
 /// `GpuGKRSetupHost::precompute_from_cpu_setup` call (which does GPU LDE +
-/// commit + D2H of partial trees and the unified cap) runs on first use
-/// inside the GPU worker, against that worker's already-initialized
-/// `ProverContext`.
+/// commit + D2H of partial trees and the unified cap) runs on a GPU worker
+/// serving a `SetupInitialization` request from the synchronous setup
+/// batches in `ExecutionProver::with_configuration` / `add_binary`, against
+/// that worker's already-initialized `ProverContext`.
 ///
 /// The `Arc` wrapper around `GpuGKRSetupHost` is what subsequent workers
 /// clone — every prove() that uses this circuit picks up the same cached

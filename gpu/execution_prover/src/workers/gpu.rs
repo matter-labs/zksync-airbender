@@ -189,7 +189,12 @@ fn schedule_phase_one<'a>(
         trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] initializing setup for circuit {circuit_type:?}[{sequence_id}]"
         );
+        let timer = std::time::Instant::now();
         precomputations.setup_host.get_or_init(context)?;
+        debug!(
+            "BATCH[{batch_id}] GPU_WORKER[{device_id}] initialized setup for circuit {circuit_type:?}[{sequence_id}] in {:.3} ms",
+            timer.elapsed().as_secs_f64() * 1e3
+        );
         let state = RequestState {
             batch_id,
             circuit_type,

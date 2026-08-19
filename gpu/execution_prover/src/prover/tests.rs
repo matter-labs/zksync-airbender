@@ -244,10 +244,7 @@ fn test_setup_hosts_initialized_by_constructor_and_add_binary() {
     );
     for (circuit_type, precomputations) in prover.binary_holders[&0].precomputations.iter() {
         assert!(
-            precomputations
-                .setup_host
-                .get_initialized()
-                .is_some(),
+            precomputations.setup_host.get_initialized().is_some(),
             "{circuit_type:?} family setup not initialized by add_binary"
         );
     }

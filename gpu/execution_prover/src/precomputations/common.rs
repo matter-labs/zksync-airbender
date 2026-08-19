@@ -12,8 +12,8 @@ use worker::Worker;
 
 /// Build the binary-independent precomputations: every delegation circuit
 /// and inits-and-teardowns. CPU-only — no GPU context needed; the
-/// `GpuGKRSetupHost` for each circuit is materialized lazily on first GPU
-/// worker use.
+/// `GpuGKRSetupHost` for each circuit is initialized by the constructor's
+/// synchronous setup batch before `with_configuration` returns.
 ///
 /// `whir_logs_for_circuit` is invoked per-`CircuitType` and must return
 /// `(log_lde_factor, log_rows_per_leaf, log_tree_cap_size)` matching the
