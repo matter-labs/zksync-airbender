@@ -17,11 +17,13 @@ pub(crate) struct NttPass {
 }
 
 /// Direction the NTT plan runs in. Forward = bitreversed monomials → natural
-/// evals; Inverse = natural evals → bitreversed monomials.
+/// evals; Inverse = natural evals → bitreversed monomials; NaturalToBitrev =
+/// natural monomials → bitreversed evals (the LSB commitment layer's LDE).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NttDirection {
     Forward,
     Inverse,
+    NaturalToBitrev,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,6 +87,22 @@ pub(crate) enum NttKernelKind {
     EvalsToMonomialsFinal {
         stages: usize,
     },
+    /// Natural→bitrev 3-pass initial: 8 descending-stride stages with the coset
+    /// pre-scale fused into the load
+    /// (`ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel`).
+    NaturalToBitrevInitial {
+        stages: usize,
+    },
+    /// Natural→bitrev 3-pass middle: 8 in-place stages
+    /// (`ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel`).
+    NaturalToBitrevMiddle {
+        stages: usize,
+    },
+    /// Natural→bitrev 3-pass final: `log_n - 16` finest stages
+    /// (`ab_natural_monomials_to_bitrev_evals_final_K_stages_kernel`).
+    NaturalToBitrevFinal {
+        stages: usize,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -136,6 +154,9 @@ pub(crate) fn select_ntt_strategy(
         }
         NttDirection::Inverse => {
             select_inverse_strategy(log_n, num_columns, num_cosets, device_props)
+        }
+        NttDirection::NaturalToBitrev => {
+            select_natural_to_bitrev_strategy(log_n, num_columns, num_cosets, device_props)
         }
     }
 }
@@ -609,6 +630,61 @@ fn select_forward_strategy(
     // `(cols_per_launch, cosets_per_launch)` selection from the unified
     // (K + 1) * cols * col_bytes <= L2 budget. See
     // `pick_cols_and_cosets_per_launch`.
+    let (columns_per_launch, cosets_per_launch) =
+        pick_cols_and_cosets_per_launch(log_n, num_columns, num_cosets, device_props);
+    Ok(NttStrategy {
+        passes,
+        columns_per_launch,
+        cosets_per_launch,
+    })
+}
+
+/// Natural-order monomials → bitreversed-order evals. Descending-stride DIT
+/// network over forward twiddles: `Initial{8}` + `Middle{8}` +
+/// `Final{log_n - 16}`, with the FORWARD selector's joint
+/// `(columns_per_launch, cosets_per_launch)` tiling (the multi-coset input
+/// column is re-read once per coset, so the L2 budget is the forward one, not
+/// the inverse's single-coset one).
+fn select_natural_to_bitrev_strategy(
+    log_n: usize,
+    num_columns: usize,
+    num_cosets: usize,
+    device_props: &DeviceProperties,
+) -> Result<NttStrategy, NttStrategyError> {
+    if log_n < MULTIPASS_MIN_LOG_N {
+        return Err(NttStrategyError::LogNBelowSupported {
+            log_n,
+            min_supported: MULTIPASS_MIN_LOG_N,
+        });
+    }
+    let column_bytes = (1usize << log_n) * size_of::<BF>();
+    let use_two_pass = column_bytes >= device_props.l2_cache_size_bytes && log_n >= 23;
+    assert!(
+        !use_two_pass,
+        "natural→bitrev two-pass multipass regime (log_n {log_n}, column {column_bytes} B >= L2 \
+         {} B) is not implemented yet (plan Task 8)",
+        device_props.l2_cache_size_bytes,
+    );
+    let final_stages = log_n - 16;
+    let passes = vec![
+        NttPass {
+            start_stage: 0,
+            stage_count: 8,
+            kernel: NttKernelKind::NaturalToBitrevInitial { stages: 8 },
+        },
+        NttPass {
+            start_stage: 8,
+            stage_count: 8,
+            kernel: NttKernelKind::NaturalToBitrevMiddle { stages: 8 },
+        },
+        NttPass {
+            start_stage: 16,
+            stage_count: final_stages,
+            kernel: NttKernelKind::NaturalToBitrevFinal {
+                stages: final_stages,
+            },
+        },
+    ];
     let (columns_per_launch, cosets_per_launch) =
         pick_cols_and_cosets_per_launch(log_n, num_columns, num_cosets, device_props);
     Ok(NttStrategy {

@@ -52,6 +52,9 @@ strided_tiles_stages!(ab_monomials_to_evals_last_10_stages_kernel);
 
 // 3-pass monomials to evals
 strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_kernel);
+
+// 3-pass natural monomials to bitreversed evals: middle (in-place, 8 stages)
+strided_tiles_stages!(ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel);
 // evict-first variant for the LAST noninitial pass (hybrid LDE path)
 strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_evict_kernel);
 
@@ -244,6 +247,11 @@ monomials_to_evals_compact!(ab_monomials_to_evals_initial_6_stages_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_initial_7_stages_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_initial_8_stages_kernel);
 
+// 3-pass natural monomials to bitreversed evals: initial pass. Shares the
+// multi-coset MonomialsToEvalsCompact signature (shared input column, per-coset
+// output slab, coset pre-scale from coset_index_base + coset_factor_shift).
+monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel);
+
 // 2-pass first-K-stages compact kernels for log_n in [13, 20]. Pass 1 does the
 // first K = log_n - 8 butterfly stages per chunk of 2^K bitreversed inputs;
 // pass 2 is the existing noninitial_8 starting at start_stage = K. Multi-coset
@@ -293,3 +301,38 @@ lde_intermediate!(ab_lde_first_9_stages_kernel);
 lde_intermediate!(ab_lde_first_8_stages_kernel);
 lde_intermediate!(ab_lde_first_7_stages_kernel);
 lde_intermediate!(ab_lde_first_6_stages_kernel);
+
+// 3-pass natural monomials to bitreversed evals: final pass. No
+// `transposed_monomials` argument -- the bitreversed codeword is always written
+// in plain row order.
+cuda_kernel_signature_and_arguments!(
+    pub(super) NaturalToBitrevFinal,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+);
+pub(super) struct NaturalToBitrevFinalFunction(pub(super) NaturalToBitrevFinalSignature);
+impl era_cudart::execution::KernelFunction for NaturalToBitrevFinalFunction {
+    type Signature = NaturalToBitrevFinalSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+macro_rules! natural_to_bitrev_final {
+    ($kernel_name:ident) => {
+        ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+        ));
+    };
+}
+
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_5_stages_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_6_stages_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_7_stages_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_8_stages_kernel);

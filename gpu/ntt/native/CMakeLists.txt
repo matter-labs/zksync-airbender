@@ -24,6 +24,7 @@ add_library(gpu_ntt_native STATIC
         monomials_to_evals_subwarp.cu
         monomials_to_evals_three_pass.cu
         monomials_to_evals_two_pass.cu
+        natural_monomials_to_bitrev_evals_three_pass.cu
         ntt.cu
         ntt.cuh
         whir_leaf_transform.cuh
