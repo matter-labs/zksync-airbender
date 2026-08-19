@@ -69,6 +69,7 @@ const MEM_SUBWORD_ONLY_LAYOUT_PATH: &str = "cs/compiled_circuits/mem_subword_onl
 
 mod asserts;
 mod commit_memory;
+mod cpu_lde_labeling;
 mod fixtures;
 mod inits_and_teardowns;
 mod proof_matrix;
