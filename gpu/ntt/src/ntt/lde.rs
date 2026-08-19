@@ -10,7 +10,8 @@ use super::dit::monomials_to_evals_dit;
 use super::forward::{
     fused_writeback_single_coset_3_pass, monomials_to_evals_2_pass_compact_initial,
     monomials_to_evals_3_pass, monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed,
-    monomials_to_evals_subwarp, natural_monomials_to_bitrev_evals_3_pass,
+    monomials_to_evals_subwarp, natural_monomials_to_bitrev_evals_2_pass,
+    natural_monomials_to_bitrev_evals_3_pass,
 };
 use super::hypercube::hypercube_evals_to_pre_tail_monomials_3_pass;
 use super::kernels::*;
@@ -655,8 +656,9 @@ fn dispatch_forward_multi_coset(
 /// inner; coset `k`'s columns occupy
 /// `outputs[(k * num_cols_per_coset_stride + col) * trace_len ..]`.
 ///
-/// Currently covers the three-pass regime only (`log_n` in `[21, 24]` below the
-/// two-pass L2 gate); other dispatch families land in later plan tasks.
+/// Currently covers the multipass regimes (`log_n` in `[21, 24]`: three-pass,
+/// or two-pass once one column reaches the device L2 at `log_n >= 23`); other
+/// dispatch families land in later plan tasks.
 #[allow(clippy::too_many_arguments)]
 pub fn natural_monomials_to_bitreversed_evals_multi_coset(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -757,28 +759,42 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
              below the multipass floor land in plan Task 9)"
         )
     });
-    assert!(
-        strategy.passes.len() == 3
-            && matches!(
-                strategy.passes[0].kernel,
-                super::NttKernelKind::NaturalToBitrevInitial { .. }
-            ),
-        "natural->bitrev LDE only implements the three-pass plan (got {:?})",
-        strategy.passes,
-    );
     let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
     let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);
-    natural_monomials_to_bitrev_evals_3_pass(
-        inputs_matrix,
-        &mut outputs_matrix,
-        log_n,
-        coset_index_base,
-        coset_factor_shift,
-        num_cosets,
-        num_cols_per_coset_stride,
-        strategy.cosets_per_launch,
-        strategy.columns_per_launch,
-        transposed_monomials,
-        stream,
-    )
+    match strategy.passes[0].kernel {
+        super::NttKernelKind::NaturalToBitrevInitial { .. } => {
+            natural_monomials_to_bitrev_evals_3_pass(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                strategy.cosets_per_launch,
+                strategy.columns_per_launch,
+                transposed_monomials,
+                stream,
+            )
+        }
+        super::NttKernelKind::NaturalToBitrevFirst { .. } => {
+            natural_monomials_to_bitrev_evals_2_pass(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                strategy.cosets_per_launch,
+                strategy.columns_per_launch,
+                transposed_monomials,
+                stream,
+            )
+        }
+        _ => unreachable!(
+            "natural->bitrev LDE implements the multipass plans only (got {:?})",
+            strategy.passes,
+        ),
+    }
 }

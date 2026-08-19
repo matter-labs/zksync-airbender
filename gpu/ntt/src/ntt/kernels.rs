@@ -252,6 +252,12 @@ monomials_to_evals_compact!(ab_monomials_to_evals_initial_8_stages_kernel);
 // output slab, coset pre-scale from coset_index_base + coset_factor_shift).
 monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel);
 
+// 2-pass natural monomials to bitreversed evals: first pass (stages 0 ..
+// log_n - 14). Same multi-coset MonomialsToEvalsCompact signature as the
+// three-pass initial pass.
+monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_first_9_stages_kernel);
+monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_first_10_stages_kernel);
+
 // 2-pass first-K-stages compact kernels for log_n in [13, 20]. Pass 1 does the
 // first K = log_n - 8 butterfly stages per chunk of 2^K bitreversed inputs;
 // pass 2 is the existing noninitial_8 starting at start_stage = K. Multi-coset
@@ -331,6 +337,9 @@ macro_rules! natural_to_bitrev_final {
         ));
     };
 }
+
+// 2-pass natural monomials to bitreversed evals: last pass (14 stages).
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_14_stages_kernel);
 
 natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_5_stages_kernel);
 natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_6_stages_kernel);

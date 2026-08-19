@@ -1873,7 +1873,8 @@ fn characterize_commit_chain_labeling_vs_cpu() {
 #[cfg(not(no_cuda))]
 mod natural_to_bitrev {
     use super::super::forward::{
-        monomials_to_evals_3_pass, natural_monomials_to_bitrev_evals_3_pass,
+        monomials_to_evals_3_pass, natural_monomials_to_bitrev_evals_2_pass,
+        natural_monomials_to_bitrev_evals_3_pass,
     };
     use super::super::{
         natural_monomials_to_bitreversed_evals_coset_range,
@@ -2249,38 +2250,17 @@ mod natural_to_bitrev {
         oracle_a_duality(shape(21, 2, 2, 2, 3, 4, true), 0xa7);
     }
 
-    // log_n 23 / 24 cover the remaining final-pass instantiations (Final{7} and
-    // Final{8}). Their regime is device-dependent: once one column reaches the
-    // device L2 they route to the two-pass plan, which lands in plan Task 8, so
-    // these two rows only assert where the three-pass plan is what runs.
-    fn three_pass_regime_on_this_device(log_n: usize) -> bool {
-        let props = DeviceProperties::new().unwrap();
-        let three_pass = matches!(
-            super::super::ntt_pass_selection(log_n, &props),
-            super::super::NttPassCount::Three
-        );
-        if !three_pass {
-            println!(
-                "skipping log_n = {log_n}: L2 = {} B routes it to the two-pass regime (plan Task 8)",
-                props.l2_cache_size_bytes,
-            );
-        }
-        three_pass
-    }
-
+    // log_n 23 / 24 run whatever regime THIS device selects (three-pass while a
+    // column fits its L2, two-pass otherwise); the two-pass kernels are covered
+    // by direct launch below, since no dev box has a small enough L2 to route
+    // there.
     #[test]
     fn natural_to_bitrev_duality_log_n_23_transposed() {
-        if !three_pass_regime_on_this_device(23) {
-            return;
-        }
         oracle_a_duality(shape(23, 1, 2, 0, 1, 1, true), 0xa9);
     }
 
     #[test]
     fn natural_to_bitrev_duality_log_n_24() {
-        if !three_pass_regime_on_this_device(24) {
-            return;
-        }
         oracle_a_duality(shape(24, 1, 2, 0, 1, 1, false), 0xaa);
     }
 
@@ -2364,5 +2344,229 @@ mod natural_to_bitrev {
         memory_copy_async(&mut outputs, &outputs_device, stream).unwrap();
         stream.synchronize().unwrap();
         check_vs_cpu_naive(&shape, &logical, &outputs, "forced launch tiling");
+    }
+
+    // ---- two-pass multipass regime (log_n in [23, 24], column >= L2) ----
+
+    /// How a two-pass run reaches the kernels.
+    #[derive(Clone, Copy, Debug)]
+    enum TwoPassRoute {
+        /// The public entry with SYNTHETIC device properties: a 16 MB L2 makes
+        /// the strategy selector route log_n 23/24 to the two-pass plan on a
+        /// dev box whose real L2 (larger than a 64 MB column) never would.
+        Entry,
+        /// The two-pass launcher directly, with forced per-launch tiling.
+        Direct {
+            cosets_per_launch: usize,
+            columns_per_launch: usize,
+        },
+    }
+
+    /// Live device properties with the L2 shrunk to 16 MB, so one column at
+    /// log_n >= 23 always exceeds it.
+    fn synthetic_tiny_l2_props(context: &NttTestContext) -> DeviceProperties {
+        let live = context.get_device_properties();
+        DeviceProperties {
+            l2_cache_size_bytes: 16 * 1024 * 1024,
+            sm_count: live.sm_count,
+            compute_capability_major: live.compute_capability_major,
+            compute_capability_minor: live.compute_capability_minor,
+            max_dynamic_smem_per_block_optin: live.max_dynamic_smem_per_block_optin,
+        }
+    }
+
+    /// SUBJECT, two-pass regime. `Entry` asserts the synthetic-props selection
+    /// really is the two-pass plan before running it, so the test cannot
+    /// silently degrade into a three-pass run.
+    fn run_natural_to_bitrev_two_pass(
+        context: &NttTestContext,
+        shape: &Shape,
+        logical: &[Vec<BF>],
+        route: TwoPassRoute,
+    ) -> Vec<BF> {
+        let stream = context.get_exec_stream();
+        let n = shape.n();
+        let inputs_host = layout_columns(logical, shape.transposed);
+        let mut inputs_device = context.alloc(inputs_host.len()).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+        let mut outputs_device = context.alloc(shape.output_len()).unwrap();
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+            match route {
+                TwoPassRoute::Entry => {
+                    let props = synthetic_tiny_l2_props(context);
+                    let strategy = super::super::select_ntt_strategy(
+                        super::super::NttDirection::NaturalToBitrev,
+                        shape.log_n,
+                        shape.num_cols,
+                        shape.num_cosets,
+                        &props,
+                    )
+                    .unwrap();
+                    assert!(
+                        strategy.passes.len() == 2
+                            && matches!(
+                                strategy.passes[0].kernel,
+                                super::super::NttKernelKind::NaturalToBitrevFirst { .. }
+                            ),
+                        "synthetic 16 MB L2 must route {shape:?} to the two-pass plan, got {:?}",
+                        strategy.passes,
+                    );
+                    natural_monomials_to_bitreversed_evals_coset_range(
+                        &inputs_matrix,
+                        &mut outputs_device[..],
+                        shape.log_n,
+                        shape.log_lde_factor,
+                        shape.num_cosets,
+                        shape.coset_index_base,
+                        shape.stride_cols,
+                        shape.transposed,
+                        context.device_context(),
+                        None,
+                        stream,
+                        &props,
+                    )
+                    .unwrap();
+                }
+                TwoPassRoute::Direct {
+                    cosets_per_launch,
+                    columns_per_launch,
+                } => {
+                    let mut outputs_matrix =
+                        DeviceMatrixChunkMut::new(&mut outputs_device[..], n, 0, n);
+                    natural_monomials_to_bitrev_evals_2_pass(
+                        &inputs_matrix,
+                        &mut outputs_matrix,
+                        shape.log_n,
+                        shape.coset_index_base,
+                        shape.coset_factor_shift(),
+                        shape.num_cosets,
+                        shape.stride_cols,
+                        cosets_per_launch,
+                        columns_per_launch,
+                        shape.transposed,
+                        stream,
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        let mut outputs_host = vec![BF::ZERO; shape.output_len()];
+        memory_copy_async(&mut outputs_host, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+        outputs_host
+    }
+
+    /// ORACLE A for the two-pass regime: same duality as `oracle_a_duality`,
+    /// against the old bitrev-monomials -> natural-evals family.
+    fn two_pass_oracle_a_duality(shape: Shape, seed: u64, route: TwoPassRoute) {
+        let context = make_context();
+        let logical = random_columns(&shape, seed);
+        let new_outputs = run_natural_to_bitrev_two_pass(&context, &shape, &logical, route);
+        let old_outputs = run_bitrev_to_natural(&context, &shape, &logical);
+        for coset_offset in 0..shape.num_cosets {
+            for col in 0..shape.num_cols {
+                let range = shape.slab(coset_offset, col);
+                let mut expected = old_outputs[range.clone()].to_vec();
+                bitreverse_enumeration_inplace(&mut expected);
+                compare_slices(
+                    &new_outputs[range],
+                    &expected,
+                    &format!(
+                        "two-pass oracle A {shape:?} seed={seed:#x} route={route:?} \
+                         coset_offset={coset_offset} col={col}"
+                    ),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_duality_log_n_23() {
+        two_pass_oracle_a_duality(shape(23, 1, 2, 0, 1, 1, false), 0xb1, TwoPassRoute::Entry);
+    }
+
+    /// Transposed monomials at log_n = 23 (pass-1 phase B): pass 1 resolves the
+    /// layout on its output rows, so pass 2 sees natural row order.
+    #[test]
+    fn natural_to_bitrev_two_pass_duality_log_n_23_transposed() {
+        two_pass_oracle_a_duality(shape(23, 1, 2, 0, 1, 1, true), 0xb2, TwoPassRoute::Entry);
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_duality_log_n_24() {
+        two_pass_oracle_a_duality(shape(24, 1, 2, 0, 1, 1, false), 0xb3, TwoPassRoute::Entry);
+    }
+
+    /// Transposed monomials at log_n = 24 (pass-1 phase A).
+    #[test]
+    fn natural_to_bitrev_two_pass_duality_log_n_24_transposed() {
+        two_pass_oracle_a_duality(shape(24, 1, 2, 0, 1, 1, true), 0xb4, TwoPassRoute::Entry);
+    }
+
+    /// ORACLE B for the two-pass regime: `c = e0` -> all ones, `c = e1` ->
+    /// `out_k[p] == g_k * omega^rev_n(p)`.
+    #[test]
+    fn natural_to_bitrev_two_pass_basis_vectors_log_n_23() {
+        let shape = shape(23, 1, 2, 0, 2, 2, false);
+        let context = make_context();
+        let n = shape.n();
+        let mut e0 = vec![BF::ZERO; n];
+        e0[0] = BF::ONE;
+        let mut e1 = vec![BF::ZERO; n];
+        e1[1] = BF::ONE;
+        let outputs =
+            run_natural_to_bitrev_two_pass(&context, &shape, &[e0, e1], TwoPassRoute::Entry);
+        let omega = domain_generator_for_size::<BF>(n as u64);
+        let mut omega_powers = vec![BF::ONE; n];
+        distribute_powers_serial::<BF, BF>(&mut omega_powers, BF::ONE, omega);
+        bitreverse_enumeration_inplace(&mut omega_powers);
+        for coset_offset in 0..shape.num_cosets {
+            compare_slices(
+                &outputs[shape.slab(coset_offset, 0)],
+                &vec![BF::ONE; n],
+                &format!("two-pass oracle B (c = e0) {shape:?} coset_offset={coset_offset}"),
+            );
+            let coset_factor = shape.coset_factor(coset_offset);
+            let expected: Vec<BF> = omega_powers
+                .iter()
+                .map(|p| {
+                    let mut v = *p;
+                    v.mul_assign(&coset_factor);
+                    v
+                })
+                .collect();
+            compare_slices(
+                &outputs[shape.slab(coset_offset, 1)],
+                &expected,
+                &format!("two-pass oracle B (c = e1) {shape:?} coset_offset={coset_offset}"),
+            );
+        }
+    }
+
+    /// ORACLE C for the two-pass regime: pure-CPU ground truth, on the
+    /// transposed layout over a non-zero coset base.
+    #[test]
+    fn natural_to_bitrev_two_pass_vs_cpu_naive_log_n_23_range_base_2_transposed() {
+        let shape = shape(23, 2, 2, 2, 1, 1, true);
+        let context = make_context();
+        let logical = random_columns(&shape, 0xc5);
+        let outputs =
+            run_natural_to_bitrev_two_pass(&context, &shape, &logical, TwoPassRoute::Entry);
+        check_vs_cpu_naive(&shape, &logical, &outputs, "two-pass oracle C");
+    }
+
+    /// The two-pass launcher's column / coset tiling loops: one launch per
+    /// (column, coset) over a padded output stride and a non-zero coset base.
+    #[test]
+    fn natural_to_bitrev_two_pass_forced_launch_tiling_log_n_23() {
+        two_pass_oracle_a_duality(
+            shape(23, 2, 2, 2, 3, 5, true),
+            0xb5,
+            TwoPassRoute::Direct {
+                cosets_per_launch: 1,
+                columns_per_launch: 1,
+            },
+        );
     }
 }
