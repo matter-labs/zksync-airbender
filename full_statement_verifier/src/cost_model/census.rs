@@ -7,17 +7,14 @@
 //! of RAM), and unified layers carry i&t inline.
 //!
 //! `c0` folds the small data-dependent residual (pow loop, per-present-type
-//! transcript absorbs) — composition-independent only to within the budgets
-//! the calibration tests enforce (0.05% on cycles, 0.1% per family dim).
+//! transcript absorbs); the calibration tests bound it (0.05% on cycles,
+//! 0.1% per family dim).
 //!
-//! Calibrated for the Sec80 guests the `FsvProgram` registry names.
-//! Regenerate (`emit_census_tables` in `tests/cost_model_trace.rs` prints the
-//! replacement for `CENSUS_TABLES`) whenever anything moves a guest's
-//! instruction stream: rebuilt fsv guests, regenerated circuits, changed
-//! circuit lists, a different security level or `BlakeMode`. The blake2
-//! g-function delegation is deliberately unpriced — no workload in scope
-//! routes it, so proofs carrying it are rejected with
-//! `EstimateError::UnpricedCircuit` rather than estimated.
+//! Calibrated for the Sec80 guests the `FsvProgram` registry names; anything
+//! that moves a guest's instruction stream invalidates the tables — regenerate
+//! via `emit_census_tables` in `tests/cost_model_trace.rs`. The blake2
+//! g-function delegation is unpriced (no workload in scope routes it); proofs
+//! carrying it are rejected with `EstimateError::UnpricedCircuit`.
 
 use super::{proof_counts, CircuitId, EstimateError};
 use crate::program_proof::ProgramProof;
