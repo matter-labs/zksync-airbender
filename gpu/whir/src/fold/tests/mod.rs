@@ -11,7 +11,9 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_ntt::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
 use gpu_trace::trace::holder::TreesCacheMode;
 
-use crate::upstream::{make_eq_poly_in_full, multivariate_coeffs_into_hypercube_evals, PrimeField};
+use crate::upstream::{
+    make_eq_poly_in_full_lsb, multivariate_coeffs_into_hypercube_evals, PrimeField,
+};
 use worker::Worker;
 
 fn sample_ext(seed: u32) -> E4 {
@@ -653,7 +655,7 @@ fn run_whir_initial_state_matches_cpu(
     multivariate_coeffs_into_hypercube_evals(&mut expected_eval_form, expected_eval_log_n);
     bitreverse_enumeration_inplace(&mut expected_eval_form);
 
-    let expected_eq = make_eq_poly_in_full::<E4>(&original_evaluation_point, &worker)
+    let expected_eq = make_eq_poly_in_full_lsb::<E4>(&original_evaluation_point, &worker)
         .pop()
         .unwrap()
         .into_vec();
@@ -719,3 +721,5 @@ use crate::fold::debug::{
 };
 
 mod query_tests;
+
+mod recursive_commitment_convention;
