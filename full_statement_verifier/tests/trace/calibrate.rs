@@ -27,12 +27,12 @@ pub const ALL_FIXTURES: &[Fixture] = &[
         calibrated: true,
     },
     Fixture {
-        name: "rung0",
+        name: "recursion0",
         program: FsvProgram::UnrolledRecursionLayer,
         calibrated: true,
     },
     Fixture {
-        name: "rung1",
+        name: "recursion1",
         program: FsvProgram::UnrolledRecursionLayer,
         calibrated: false,
     },

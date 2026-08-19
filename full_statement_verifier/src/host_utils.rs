@@ -169,16 +169,18 @@ pub fn final_blake_mode() -> BlakeMode {
 
 /// Default for the unrolled-to-unified switch threshold.
 ///
-/// The ladder stops taking unrolled rungs once the *estimated* cycle count of
-/// the next verifier invocation drops below this. A scheduling heuristic, not a
+/// Unrolled recursion stops once the *estimated* cycle count of the next
+/// verifier invocation drops below this. A scheduling heuristic, not a
 /// protocol constant — drivers may pick their own, and
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` overrides it.
 ///
 /// Measured crossover ~60M cycles, indifferent within [55M, 70M].
 pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 64 * 1024 * 1024;
 
-/// The rung estimate bottoms out at ~6.55M cycles once rungs verify rungs;
-/// at or below that the rung loop never stops. 16Mi leaves recalibration margin.
+/// The estimated verifier cost never drops below ~6.55M cycles (past the first
+/// layer, each unrolled recursion layer verifies another such layer), so lower
+/// thresholds never stop the unrolled recursion loop. 16Mi leaves
+/// recalibration margin.
 pub const MIN_UNIFIED_SWITCH_CYCLES: u64 = 16 * 1024 * 1024;
 
 #[must_use]
@@ -190,8 +192,9 @@ pub fn unified_switch_cycles() -> u64 {
     assert!(
         cycles >= MIN_UNIFIED_SWITCH_CYCLES,
         "unified switch threshold {cycles} is below the convergence floor \
-         {MIN_UNIFIED_SWITCH_CYCLES}: the rung estimate bottoms out at ~6.55M \
-         cycles, so lower thresholds never stop the unrolled recursion loop"
+         {MIN_UNIFIED_SWITCH_CYCLES}: the estimated verifier cost never drops \
+         below ~6.55M cycles, so lower thresholds never stop the unrolled \
+         recursion loop"
     );
     cycles
 }

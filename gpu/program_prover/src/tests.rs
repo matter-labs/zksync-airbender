@@ -531,7 +531,7 @@ fn test_program_prover_recursion_layer_verify() {
     log::info!("recursion layer verified natively; output registers: {output:?}");
 }
 
-/// Full GPU recursion ladder, mirroring `prover_examples::recursion`'s
+/// Full GPU recursive pipeline, mirroring `prover_examples::recursion`'s
 /// `test_recursive_proving_pipeline_zksync_os` but with our test workload
 /// (hashed_fibonacci) and every proof produced by the GPU `ExecutionProver`:
 ///
@@ -540,11 +540,11 @@ fn test_program_prover_recursion_layer_verify() {
 ///   → bridge (the unrolled verifier proved in UNIFIED mode)
 ///   → final (fsv_unified_recursion_layer, unified mode)
 ///
-/// with the recursion hash chain threaded through and every rung verified
+/// with the recursion hash chain threaded through and every layer verified
 /// natively. Deviation from the CPU pipeline: the base workload is tiny
 /// (~1.7k cycles), so the layer-0 verifier estimates far below the unified
 /// switch threshold and the CPU flow would bridge immediately; we force one
-/// unrolled rung first so the loop machinery (estimate → prove → chain) is
+/// unrolled layer first so the loop machinery (estimate → prove → chain) is
 /// exercised, then bridge over the recursion proof. Blake modes are
 /// env-selectable like the CPU pipeline (default blake2_with_compression;
 /// the g-function variants need a JIT delegation that doesn't exist).
@@ -557,11 +557,11 @@ fn test_program_prover_recursive_pipeline() {
     run_gpu_recursive_pipeline(binary_image, text_section, vec![100, 5], true);
 }
 
-/// The real thing: the recursion ladder over the zksync_os block workload —
+/// The real thing: the recursive pipeline over the zksync_os block workload —
 /// the GPU analogue of `test_recursive_proving_pipeline_zksync_os` (heavy;
 /// the base layer proves a full zksync_os block). The base estimates well
 /// above the unified-switch threshold, so the unrolled recursion loop runs
-/// its natural course (no forced rung). Threshold overridable via
+/// its natural course (no forced layer). Threshold overridable via
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` like the CPU pipeline.
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
@@ -592,7 +592,7 @@ fn run_gpu_recursive_pipeline(
     base_binary_image: Vec<u32>,
     base_text_section: Vec<u32>,
     base_non_determinism: Vec<u32>,
-    force_first_rung: bool,
+    force_first_layer: bool,
 ) {
     use crate::upstream::{
         bridge_blake_mode, build_unified_stream, compute_end_params, estimate_verifier_cycles,
@@ -665,10 +665,10 @@ fn run_gpu_recursive_pipeline(
         let estimated = estimate_verifier_cycles(&proof, program, unrolled_blake)
             .expect("cannot estimate verifier cycles");
         log::info!("layer-{layer} verifier estimates ~{estimated} cycles");
-        // Forced first rung (small workloads only): run one unrolled
+        // Forced first layer (small workloads only): run one unrolled
         // recursion layer even when the base already estimates below the
         // threshold, so the loop machinery is exercised (see caller doc).
-        if (layer > 0 || !force_first_rung) && estimated < switch_cycles {
+        if (layer > 0 || !force_first_layer) && estimated < switch_cycles {
             log::info!("... below {switch_cycles} — switching to the unified machine");
             break;
         }

@@ -18,8 +18,8 @@
 //! |---|---|---|
 //! | `base` | `base_proofs.bin` / `base_setups.bin` (note the plural) | RISC-V, keccak and bigint coefficients |
 //! | `base_alt` | the same two files from a second run, with the producer's hardcoded zksync_os guest swapped for one whose delegation set differs | a second base-layer delegation presence mask |
-//! | `rung0` | `recursion_layer_0_proof_<tag>.bin` / `recursion_layer_0_setups_<tag>.bin` | recursion-layer `c0`, blake2 coefficient |
-//! | `rung1` | `recursion_layer_1_proof_<tag>.bin` / `recursion_layer_1_setups_<tag>.bin` | steady-rung chain path |
+//! | `recursion0` | `recursion_layer_0_proof_<tag>.bin` / `recursion_layer_0_setups_<tag>.bin` | recursion-layer `c0`, blake2 coefficient |
+//! | `recursion1` | `recursion_layer_1_proof_<tag>.bin` / `recursion_layer_1_setups_<tag>.bin` | steady recursion-chain path |
 //!
 //! `emit_census_tables` prints the tables to paste into `src/cost_model/census.rs`;
 //! `estimate_matches_measurement_on_every_fixture` and its census sibling are

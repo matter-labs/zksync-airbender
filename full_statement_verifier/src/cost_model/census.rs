@@ -3,7 +3,7 @@
 //! proof's per-circuit counts. Total cycles are the family-dim sum — the family
 //! counters partition the cycle count — which is how
 //! `estimate_verifier_cycles` is derived. Inits/teardowns needs no dim: an
-//! unrolled rung always carries exactly one i&t instance (its 16 sets span all
+//! unrolled recursion layer always carries exactly one i&t instance (its 16 sets span all
 //! of RAM), and unified layers carry i&t inline.
 //!
 //! `c0` folds the small data-dependent residual (pow loop, per-present-type
