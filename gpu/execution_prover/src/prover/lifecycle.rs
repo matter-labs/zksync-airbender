@@ -66,6 +66,14 @@ impl ExecutionProver {
         let binary_holders = BTreeMap::new();
         info!("PROVER generating common precomputations");
         let common_precomputations = get_common_precomputations_for_all(&worker, security_level);
+        let pending_setup_initialization = request_setup_initialization(
+            &gpu_manager,
+            security_level,
+            common_precomputations
+                .iter()
+                .map(|(circuit_type, precomputations)| (*circuit_type, precomputations.clone()))
+                .collect(),
+        );
         let host_allocators_count = expected_concurrent_jobs * host_allocators_per_job_count
             + device_count * host_allocators_per_device_count;
         let host_allocation_size = host_allocator_backing_allocation_size;
@@ -87,6 +95,10 @@ impl ExecutionProver {
                 .expect("ExecutionProver allocator pool channel closed during initialization");
         });
         gpu_wait_group.wait();
+        pending_setup_initialization.wait();
+        for precomputations in common_precomputations.values() {
+            assert!(precomputations.setup_host.is_initialized());
+        }
         info!("PROVER initialized");
         Ok(Self {
             configuration,

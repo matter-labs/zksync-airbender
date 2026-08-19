@@ -12,6 +12,7 @@ mod non_determinism_wrapper;
 mod pipeline;
 mod proof_artifacts;
 mod result;
+mod setup_init;
 
 pub use artifacts::{CircuitArtifact, ProgramArtifacts};
 pub use config::{ExecutionKind, ExecutionProverConfiguration};
@@ -29,6 +30,7 @@ use cache::{TraceCache, TraceCacheEntry};
 use config::BinaryHolder;
 use non_determinism_wrapper::NonDeterminismWrapper;
 use result::ExecutionProverResult;
+use setup_init::request_setup_initialization;
 
 use crate::messages::{
     GpuWorkBatch, GpuWorkRequest, GpuWorkResult, InitsAndTeardownsData, MemoryCommitmentRequest,
@@ -70,7 +72,7 @@ use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use riscv_transpiler::vm::{NonDeterminismCSRSource, SimpleTape};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
