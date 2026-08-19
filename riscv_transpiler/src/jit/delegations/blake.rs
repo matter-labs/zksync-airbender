@@ -47,10 +47,7 @@ pub(crate) fn blake_implementation(
             (1 << 10) & ((1 << BLAKE2S_MAX_ROUNDS) - 1)
         };
 
-        let final_x12 =
-            (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16;
-
-        final_x12
+        (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16
     };
 
     let num_rounds = if reduced_rounds { 7 } else { 10 };
@@ -129,17 +126,13 @@ pub(crate) fn blake_implementation(
 
         if mode_compression {
             // overwrite first 8 elements to the extended
-            for i in 0..8 {
-                extended_state[i] = CONFIGURED_IV[i];
-                extended_state[i + 8] = IV[i];
-            }
+            extended_state[..8].copy_from_slice(&CONFIGURED_IV[..8]);
+            extended_state[8..16].copy_from_slice(&IV[..8]);
             extended_state[12] ^= BLAKE2S_BLOCK_SIZE_BYTES as u32;
             extended_state[14] ^= 0xffffffff;
         } else {
             // overwrite first 8 elements of the extended with current state
-            for i in 0..8 {
-                extended_state[i] = blake_state[i];
-            }
+            extended_state[..8].copy_from_slice(&blake_state[..8]);
             // overwrite elements 8-11, 13, 15
             extended_state[8] = IV[0];
             extended_state[9] = IV[1];
@@ -151,6 +144,10 @@ pub(crate) fn blake_implementation(
 
         let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
 
+        #[allow(
+            clippy::needless_range_loop,
+            reason = "index also computes `last_round`; iterator form obscures it"
+        )]
         for round in 0..num_rounds {
             let last_round = round == num_rounds - 1;
             if mode_compression {
@@ -165,7 +162,7 @@ pub(crate) fn blake_implementation(
                 mixing_function(extended_state, &buffer, sigma);
             } else {
                 let sigma = &SIGMAS[round];
-                mixing_function(extended_state, &input, sigma);
+                mixing_function(extended_state, input, sigma);
             }
 
             // update output the state if needed

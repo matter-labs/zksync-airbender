@@ -283,6 +283,10 @@ impl MachineState {
         assert!(Self::SIZE % 16 == 0); // so our stack is aligned if we just grow it by this structure size
     };
 
+    #[allow(
+        dead_code,
+        reason = "layout constant kept beside SIZE for the prologue math"
+    )]
     const SIZE_IN_QWORDS: usize = Self::SIZE / core::mem::size_of::<u64>();
     // Number of leading qwords the JIT prologue zeroes with the (unrolled) base loop. With
     // packed_ts the large `packed_timestamps` tail is instead zeroed by a small runtime

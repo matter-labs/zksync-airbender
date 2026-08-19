@@ -1,3 +1,29 @@
+// Two lints fire throughout this file for reasons that are not defects:
+//
+// * `useless_conversion`: dynasm! expands every asm mnemonic into dynasmrt
+//   builder calls, and THAT expansion emits the `.into()` -- the source here is
+//   e.g. `; pinsrd Rx(xmm_register), eax, imm as i8`, which contains no
+//   conversion at all. clippy attributes the span to the macro invocation, so
+//   there is no source-level rewrite that silences it.
+// * `identity_op`: the `+ 0` in `[rdx + off + 0]` and the `1 *` in
+//   `[rdx + off + (1 * 4)] // a0, slot 1` are deliberate. They document a
+//   register-slot series (+0/+16/+32, slot*width) inside the asm; collapsing
+//   them to satisfy the lint would delete that documentation.
+//
+// Scoped to exactly these two so real regressions in the hand-written code
+// around the asm still surface. `allow`, not `expect`: this file compiles only
+// on x86_64 + `jit`, and on an aarch64 host dynasm parses the x86 asm as ARM64
+// so the lint pass never runs here -- an `expect` would be unfulfilled wherever
+// the file is not linted.
+#![allow(
+    clippy::useless_conversion,
+    reason = "emitted by the dynasm! expansion, absent from this source"
+)]
+#![allow(
+    clippy::identity_op,
+    reason = "redundant arithmetic documents asm register-slot offsets"
+)]
+
 use std::ptr::NonNull;
 
 use super::*;
@@ -133,7 +159,7 @@ macro_rules! receive_trace {
             // ; push rax
             // ; push rcx
             ; push rdx
-            ; mov rax, QWORD ($recv as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD ($recv as *const ()).addr() as isize as i64
             ; mov rsi, rdi // second argument is our trace chunk
             ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)] // first argument is pointer to the context
             // third argument is machine state
@@ -163,7 +189,7 @@ macro_rules! quit {
             ;; before_call!($ops)
             ;; spill_counters!($ops) // make the live counters visible in the final state
             ; push rdx
-            ; mov rax, QWORD ($recv as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD ($recv as *const ()).addr() as isize as i64
             ; mov rsi, rdi // second argument is our trace chunk
             ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)] // first argument is pointer to the context
             // third is our machine state - already in RDX - no need to load it
@@ -645,6 +671,7 @@ fn load_abelian_into(ops: &mut x64::Assembler, x: u32, y: u32, destination: u8, 
     }
 }
 
+#[allow(unused_macros, reason = "debug helper kept for JIT bring-up")]
 macro_rules! print_registers {
     ($ops:ident, $pc:expr, $instr:expr) => {
         dynasm!($ops
@@ -1438,7 +1465,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 ;; before_call!(ops)
                 ; push rdx
                 ; push r9
-                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as usize as isize as i64
+                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as isize as i64
                 ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)] // first argument is pointer to the context
                 ; call rax
                 ; pop r9
@@ -2384,7 +2411,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             ;; before_call!(ops)
                             ; push rdx
                             ; push r9
-                            ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as usize as isize as i64
+                            ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as isize as i64
                             ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
                             ; call rax
                             ; pop r9
@@ -2424,7 +2451,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             ;; before_call!(ops)
                             ; push rdx
                             ; push r9
-                            ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as usize as isize as i64
+                            ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as isize as i64
                             ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
                             ; mov rdx, rsi
                             ; mov esi, Rd(SCRATCH_REGISTER)
@@ -2443,7 +2470,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 // the corresponding CSR register number. Consecutive identical
                 // delegation instructions belong to a single delegated call.
                 Op::ZicsrDelegation => {
-                    let mut cycles_taken = 0;
+                    let mut cycles_taken;
                     // NOTE: all the increment below happen before moving RSP
                     let function: *const () = match instr.imm {
                         BLAKE2S_DELEGATION_CSR_REGISTER => {
@@ -2494,7 +2521,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             );
                             process_csr::<KECCAK_SPECIAL5_CSR_REGISTER> as *const ()
                         }
-                        other_csrs @ _ => {
+                        other_csrs => {
                             panic!("Unknown CSR {}", other_csrs);
                         }
                     };
@@ -2524,7 +2551,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         // NOTE: we should write r9 into structure, so snapshotter is consistent as a structure
                         ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9
                         ; sub rsp, 8
-                        ; mov rax, QWORD (function as *const ()).addr() as usize as isize as i64
+                        ; mov rax, QWORD (function as *const ()).addr() as isize as i64
                         // we already have trace chunk in RDI, memory in RSI, and MachineState in RDX
                         ; call rax
                         ; add rsp, 8
@@ -2584,7 +2611,7 @@ impl<I: ContextImpl> JittedCode<I> {
             ; mov rdx, rsp
             ; mov [rdx + (MachineState::PC_OFFSET as i32)], r9d
             ;; save_machine_state!(ops)
-            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; mov rsi, rdx
             ; call rax
@@ -2592,7 +2619,7 @@ impl<I: ContextImpl> JittedCode<I> {
 
         dynasm!(ops
             ; ->exit_on_misaligned:
-            ; mov rax, QWORD (print_misaligned as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_misaligned as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
@@ -2600,14 +2627,14 @@ impl<I: ContextImpl> JittedCode<I> {
         let exit_with_error_offset = ops.offset().0;
         dynasm!(ops
             ; ->exit_with_error:
-            ; mov rax, QWORD (print_complaint as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_complaint as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
 
         // map jump offsets that were no initialized to point into error
         for (i, offset) in jump_offsets.iter_mut().enumerate() {
-            if initialized_jump_offsets.contains(&i) == false {
+            if !initialized_jump_offsets.contains(&i) {
                 assert_eq!(*offset, 0);
                 *offset = exit_with_error_offset;
             }
@@ -2815,7 +2842,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
 
         let mut memory: Box<MemoryHolder> = unsafe {
             // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
-            let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
+            let memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
 
             memory
         };
@@ -2906,7 +2933,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
 
         let mut memory: Box<MemoryHolder> = unsafe {
             // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
-            let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
+            let memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
 
             memory
         };
@@ -2928,7 +2955,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     (&*trace as *const TraceChunk).addr()
         // );
 
-        let context_ref_mut = &mut context;
+        let _context_ref_mut = &mut context;
 
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
@@ -3026,6 +3053,7 @@ impl<I: ContextImpl> Context<I> {
     }
 }
 
+#[allow(dead_code, reason = "debug helper kept for JIT bring-up")]
 extern "sysv64" fn print_registers(
     registers: &[u32; 32],
     timestamp: u64,
@@ -3069,11 +3097,13 @@ extern "sysv64" fn print_complaint(timestamp: u64) {
     )
 }
 
+#[allow(dead_code, reason = "debug helper kept for JIT bring-up")]
 fn sign_extend<const SOURCE_BITS: u8>(x: u32) -> i32 {
     let shift = 32 - SOURCE_BITS;
     i32::from_ne_bytes((x << shift).to_ne_bytes()) >> shift
 }
 
+#[allow(dead_code, reason = "debug helper kept for JIT bring-up")]
 fn view_assembly(assembly: &[u8], start: usize) {
     /// Print register names
     fn reg_names(cs: &Capstone, regs: &[RegId]) -> String {
@@ -3106,7 +3136,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3118,7 +3148,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 
@@ -3129,6 +3159,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
     }
 }
 
+#[allow(dead_code, reason = "debug helper kept for JIT bring-up")]
 fn view_rv32_assembly(assembly: &[u32], start: usize) {
     let assembly =
         unsafe { core::slice::from_raw_parts(assembly.as_ptr().cast(), assembly.len() * 4) };
@@ -3162,7 +3193,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3174,7 +3205,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 

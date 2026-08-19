@@ -19,5 +19,5 @@ mod keccak;
 
 pub use self::bigint::*;
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
-pub use self::blake::*;
+pub(crate) use self::blake::*;
 pub use self::keccak::*;
