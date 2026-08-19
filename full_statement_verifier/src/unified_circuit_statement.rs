@@ -430,6 +430,33 @@ pub fn verify_unified_circuit_recursion_layer<
     }
 }
 
+/// [`verify_unified_circuit_recursion_layer_sec_100`] against the high-LDE
+/// "L1 feeder" unified verifier (base LDE 16, round-0 queries 22 — see
+/// `prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23`).
+/// Verifies proofs of the FINAL BabyBear recursion layer(s), whose cheap
+/// verification is what the L1 (Proth120) 2^22 wrapper circuit executes.
+/// Same circuit, same delegation table, same 100-bit target — only the
+/// commitment parameters embedded in the generated verify function differ.
+pub fn verify_unified_circuit_recursion_layer_sec_100_l1_feeder<
+    I: NonDeterminismSource<BabyBearField>,
+    E: ErrorCreator,
+    const REDUCED_ROUNDS: bool,
+>(
+    nd_source: &mut I,
+) -> Result<[u32; 16], E::Error> {
+    unsafe {
+        let unified_setup =
+            read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>(nd_source);
+        verify_full_statement_for_unified_circuit::<I, E, false, REDUCED_ROUNDS, _, _>(
+            &unified_setup,
+            crate::imports::unified_reduced_machine_sec_100_l1_feeder::verify::<I, E>,
+            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
+            &crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>(),
+            nd_source,
+        )
+    }
+}
+
 pub fn verify_unrolled_or_unified_circuit_recursion_layer_sec_100<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,

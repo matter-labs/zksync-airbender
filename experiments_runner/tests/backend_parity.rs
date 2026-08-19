@@ -55,18 +55,19 @@ fn default_babybear_backend_lde_matches_naive_at_2_20() {
 
     let mut rng = rand::rng();
     let cols: Vec<Vec<BabyBearField>> = (0..NUM_COLS)
-        .map(|_| (0..n).map(|_| BabyBearField::random_element(&mut rng)).collect())
+        .map(|_| {
+            (0..n)
+                .map(|_| BabyBearField::random_element(&mut rng))
+                .collect()
+        })
         .collect();
     let col_refs: Vec<&[BabyBearField]> = cols.iter().map(|c| &c[..]).collect();
 
     // Each backend builds its own twiddle set (the NEON one carries extra
     // combined tables on top of the plain radix-2 ones).
     let default_backend = DefaultBabyBearBackend::default();
-    let default_twiddles = Backend::<BabyBearField, BabyBearExt4>::make_twiddles(
-        &default_backend,
-        n,
-        &worker,
-    );
+    let default_twiddles =
+        Backend::<BabyBearField, BabyBearExt4>::make_twiddles(&default_backend, n, &worker);
     let naive_twiddles =
         Backend::<BabyBearField, BabyBearExt4>::make_twiddles(&NaiveBackend, n, &worker);
 
@@ -200,9 +201,8 @@ fn ntt_kernel_pair_is_transposed_not_twiddle_reorderable() {
 
     // reference DFT matrix
     let omega = fft::domain_generator_for_size::<BabyBearField>(n as u64);
-    let omega_pows = fft::materialize_powers_serial_starting_with_one::<BabyBearField, Global>(
-        omega, n,
-    );
+    let omega_pows =
+        fft::materialize_powers_serial_starting_with_one::<BabyBearField, Global>(omega, n);
     let f_matrix: Vec<Vec<BabyBearField>> = (0..n)
         .map(|i| (0..n).map(|j| omega_pows[(i * j) % n]).collect())
         .collect();
@@ -238,15 +238,16 @@ fn ntt_kernel_pair_is_transposed_not_twiddle_reorderable() {
     };
 
     // matrix of a kernel via unit vectors: columns of the map
-    let matrix_of = |f: &dyn Fn(&[BabyBearField]) -> Vec<BabyBearField>| -> Vec<Vec<BabyBearField>> {
-        let mut cols = Vec::with_capacity(n);
-        for j in 0..n {
-            let mut e = vec![BabyBearField::ZERO; n];
-            e[j] = BabyBearField::ONE;
-            cols.push(f(&e));
-        }
-        cols // cols[j][i] = M[i][j]
-    };
+    let matrix_of =
+        |f: &dyn Fn(&[BabyBearField]) -> Vec<BabyBearField>| -> Vec<Vec<BabyBearField>> {
+            let mut cols = Vec::with_capacity(n);
+            for j in 0..n {
+                let mut e = vec![BabyBearField::ZERO; n];
+                e[j] = BabyBearField::ONE;
+                cols.push(f(&e));
+            }
+            cols // cols[j][i] = M[i][j]
+        };
 
     // random probe for the exact identities 1-3
     let mut rng = rand::rng();

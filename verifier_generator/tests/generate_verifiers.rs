@@ -67,16 +67,15 @@ fn generate_common<MW: FieldWrapper>() {
 
 fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
-    level: SecurityLevel,
+    prover_config: &prover::gkr::prover_config::ProverConfig,
     dir: &str,
 ) -> GKRGeneratedFiles {
     let compiled_circuit = circuit.compiled_circuit();
 
-    let prover_config = circuit.prover_config_for(level);
     let files = gkr::generate_gkr_inlined::<MW>(
         &compiled_circuit,
         prover_config.sumcheck_explicit_output_size_log_2,
-        circuit.whir_schedule_for(level),
+        &prover_config.whir_schedule,
         prover_config.security_level.security_bits() as u32,
     );
 
@@ -87,12 +86,11 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
 }
 
 fn generate_whir_verifier<MW: FieldWrapper>(
-    circuit: &CircuitData,
-    level: SecurityLevel,
+    prover_config: &prover::gkr::prover_config::ProverConfig,
     dir: &str,
     gkr_files: &GKRGeneratedFiles,
 ) {
-    let whir_schedule = circuit.whir_schedule_for(level);
+    let whir_schedule = &prover_config.whir_schedule;
 
     let whir_initial = whir::generate_whir_initial_round::<MW>(
         whir_schedule,
@@ -150,17 +148,30 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     level: SecurityLevel,
 ) {
+    let prover_config = circuit.prover_config_for(level);
+    generate_verifier_for_circuit_with_config::<MW>(circuit, prover_config, level.dir_suffix());
+}
+
+/// Like [`generate_verifier_for_circuit`] but with an EXPLICIT prover config
+/// and output dir suffix — for special-purpose verifier variants whose
+/// LDE factor / WHIR schedule differ from the standard per-level configs
+/// (e.g. the high-LDE "L1 feeder" unified verifier).
+fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBearField>>(
+    circuit: &CircuitData,
+    prover_config: &prover::gkr::prover_config::ProverConfig,
+    dir_suffix: &str,
+) {
     ensure_common();
 
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let field_use_stmts = MW::field_use_statements();
 
-    let dir = format!("{}/{}", circuit.generated_dir(), level.dir_suffix());
+    let dir = format!("{}/{}", circuit.generated_dir(), dir_suffix);
     std::fs::create_dir_all(&dir).unwrap();
 
-    let gkr_files = generate_gkr_verifier::<MW>(circuit, level, &dir);
-    generate_whir_verifier::<MW>(circuit, level, &dir, &gkr_files);
+    let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, &dir);
+    generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
 
     let mod_rs = quote::quote! {
         pub mod constants;
@@ -197,6 +208,29 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
         }
     };
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
+}
+
+/// High-LDE "L1 feeder" unified verifier: same circuit and 100-bit target as
+/// `unified_reduced_machine` at sec_100, but the base oracle is committed at
+/// LDE factor 16 (round-0 queries 87 -> 22), making the proof maximally cheap
+/// to verify. Generated into `.../unified_reduced_machine/sec_100_l1_feeder`.
+#[test]
+fn unified_reduced_machine_l1_feeder() {
+    let circuit = CIRCUITS
+        .iter()
+        .find(|c| c.name == "unified_reduced_machine")
+        .unwrap();
+    let prover_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
+    assert_eq!(
+        circuit.compiled_circuit().trace_len.trailing_zeros(),
+        23,
+        "the L1 feeder config is computed for the 2^23 unified circuit"
+    );
+    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
+        circuit,
+        &prover_config,
+        "sec_100_l1_feeder",
+    );
 }
 
 macro_rules! generate_circuit_tests {

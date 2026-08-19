@@ -22,7 +22,8 @@ use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_backends, Backend, CommitmentMode, GKRBackend, TwiddleSetOps,
+    prove_configured_with_gkr_with_storage_and_backend, Backend, CommitmentMode, GKRBackend,
+    TwiddleSetOps, WhirOracleStorage,
 };
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
@@ -135,6 +136,88 @@ pub fn prove_unified_execution_with_replayer<
     worker: &worker::Worker,
     security_level: SecurityLevel,
     permutation_argument_pow_bits: u32,
+    backend: &B,
+    gkr_backend: &GB,
+) -> (
+    full_statement_verifier::program_proof::ProgramProof,
+    BTreeMap<u32, UnrolledCircuitSetupParams>,
+) {
+    prove_unified_execution_with_replayer_impl::<A, B, GB>(
+        cycles_bound,
+        binary_image,
+        text_section,
+        use_caches,
+        non_determinism,
+        ram_bound,
+        worker,
+        security_level,
+        permutation_argument_pow_bits,
+        None,
+        backend,
+        gkr_backend,
+    )
+}
+
+/// [`prove_unified_execution_with_replayer`] with an explicit prover config
+/// for the UNIFIED circuit (delegation circuits keep their standard per-level
+/// configs). Used to prove final recursion layers under special commitment
+/// parameters (e.g. the high-LDE "L1 feeder" config) — the corresponding
+/// generated verifier must be used to verify the result, since the LDE factor
+/// and WHIR schedule are baked into the verify function.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_unified_execution_with_replayer_with_unified_config<
+    A: GoodAllocator,
+    B: Backend<BabyBearField, BabyBearExt4>,
+    GB: GKRBackend<BabyBearField, BabyBearExt4>,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
+    ram_bound: usize,
+    worker: &worker::Worker,
+    security_level: SecurityLevel,
+    permutation_argument_pow_bits: u32,
+    unified_prover_config: &prover::gkr::prover_config::ProverConfig,
+    backend: &B,
+    gkr_backend: &GB,
+) -> (
+    full_statement_verifier::program_proof::ProgramProof,
+    BTreeMap<u32, UnrolledCircuitSetupParams>,
+) {
+    prove_unified_execution_with_replayer_impl::<A, B, GB>(
+        cycles_bound,
+        binary_image,
+        text_section,
+        use_caches,
+        non_determinism,
+        ram_bound,
+        worker,
+        security_level,
+        permutation_argument_pow_bits,
+        Some(unified_prover_config),
+        backend,
+        gkr_backend,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_unified_execution_with_replayer_impl<
+    A: GoodAllocator,
+    B: Backend<BabyBearField, BabyBearExt4>,
+    GB: GKRBackend<BabyBearField, BabyBearExt4>,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
+    ram_bound: usize,
+    worker: &worker::Worker,
+    security_level: SecurityLevel,
+    permutation_argument_pow_bits: u32,
+    unified_prover_config_override: Option<&prover::gkr::prover_config::ProverConfig>,
     backend: &B,
     gkr_backend: &GB,
 ) -> (
@@ -376,7 +459,18 @@ pub fn prove_unified_execution_with_replayer<
         .entry(trace_len)
         .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
-    let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+    // The UNIFIED circuit's commitment parameters; delegation circuits below
+    // always use the standard per-level configs for their own trace lengths.
+    let prover_config = match unified_prover_config_override {
+        Some(config) => {
+            assert_eq!(
+                config.security_level, security_level,
+                "override config must match the requested security level"
+            );
+            config.clone()
+        }
+        None => prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level),
+    };
 
     // Commit the unified memory tree (which embeds inits/teardowns).
     let mut memory_trees: Vec<(Vec<u32>, prover::merkle_trees::MerkleTreeCapVarLength)> = vec![];
@@ -715,7 +809,16 @@ pub fn prove_unified_execution_with_replayer<
             );
 
             let now = std::time::Instant::now();
-            let proof = prove_configured_with_gkr_with_backends::<
+            // With an override config (e.g. the high-LDE L1 feeder) the
+            // materialized RS codewords would not fit in memory — serve base
+            // codewords and trees by RECOMPUTATION instead. The default path
+            // keeps the historical fully-in-memory policy.
+            let storage = if unified_prover_config_override.is_some() {
+                WhirOracleStorage::fully_recompute()
+            } else {
+                WhirOracleStorage::fully_in_memory()
+            };
+            let proof = prove_configured_with_gkr_with_storage_and_backend::<
                 BabyBearField,
                 BabyBearExt4,
                 DefaultTreeConstructor,
@@ -731,6 +834,7 @@ pub fn prove_unified_execution_with_replayer<
                 twiddles_for_size,
                 &prover_config,
                 CommitmentMode::SeparateMemoryAndWitness,
+                storage,
                 top_bits.clone(),
                 trace_len,
                 backend,
@@ -765,22 +869,30 @@ pub fn prove_unified_execution_with_replayer<
         let delegation_type = <setups::Blake2sWithCompressionDelegationCircuit as circuit_common::DelegationCircuit<BabyBearField>>::DELEGATION_TYPE_ID;
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(blake_round_function_setup.trace_len.trailing_zeros() as usize, security_level);
         if blake_circuits.is_empty() == false {
-            let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, Blake2sRoundFunctionAbiDescription, _, _, _, _, _, _>(
-                    &blake_circuits[..],
-                    &external_challenges,
-                    &blake_round_function_setup,
-                    setups::blake2_with_compression_witness_eval_fn,
-                    delegation_type as u16,
-                    &mut permutation_argument_accumulator,
-                    &mut delegation_proofs_count,
-                    should_dump_witness,
-                    &mut twiddles,
-                    &prover_config,
-                    backend,
-                    gkr_backend,
-                    worker,
-                );
+            let (proofs, per_tree_set) = prove_delegation_circuit::<
+                Global,
+                Blake2sRoundFunctionAbiDescription,
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+            >(
+                &blake_circuits[..],
+                &external_challenges,
+                &blake_round_function_setup,
+                setups::blake2_with_compression_witness_eval_fn,
+                delegation_type as u16,
+                &mut permutation_argument_accumulator,
+                &mut delegation_proofs_count,
+                should_dump_witness,
+                &mut twiddles,
+                &prover_config,
+                backend,
+                gkr_backend,
+                worker,
+            );
             program_proof
                 .delegation_proofs
                 .insert(delegation_type as u32, proofs.clone());
@@ -856,22 +968,30 @@ pub fn prove_unified_execution_with_replayer<
             >>::DELEGATION_TYPE_ID;
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(blake_g_function_setup.trace_len.trailing_zeros() as usize, security_level);
         if blake_g_function_circuits.is_empty() == false {
-            let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, Blake2sGFunctionAbiDescription, _, _, _, _, _, _>(
-                    &blake_g_function_circuits[..],
-                    &external_challenges,
-                    &blake_g_function_setup,
-                    setups::blake2_g_function_witness_eval_fn,
-                    delegation_type as u16,
-                    &mut permutation_argument_accumulator,
-                    &mut delegation_proofs_count,
-                    should_dump_witness,
-                    &mut twiddles,
-                    &prover_config,
-                    backend,
-                    gkr_backend,
-                    worker,
-                );
+            let (proofs, per_tree_set) = prove_delegation_circuit::<
+                Global,
+                Blake2sGFunctionAbiDescription,
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+            >(
+                &blake_g_function_circuits[..],
+                &external_challenges,
+                &blake_g_function_setup,
+                setups::blake2_g_function_witness_eval_fn,
+                delegation_type as u16,
+                &mut permutation_argument_accumulator,
+                &mut delegation_proofs_count,
+                should_dump_witness,
+                &mut twiddles,
+                &prover_config,
+                backend,
+                gkr_backend,
+                worker,
+            );
             program_proof
                 .delegation_proofs
                 .insert(delegation_type as u32, proofs.clone());

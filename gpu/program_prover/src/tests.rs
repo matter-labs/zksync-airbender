@@ -169,20 +169,23 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
     let configuration = ExecutionProverConfiguration::default();
     let security_level = configuration.security_level;
 
-    let (cpu_proof, cpu_setups) =
-        prover_examples::unified::prove_unified_execution_with_replayer::<std::alloc::Global, _, _>(
-            1 << 31,
-            &padded_binary_image,
-            &padded_text_section,
-            true,
-            QuasiUARTSource::new_with_reads(vec![50, 0xDEAD_BEEF]),
-            1 << 30,
-            &worker,
-            security_level,
-            0,
-            &prover_examples::prover::gkr::prover::DefaultBabyBearBackend::default(),
-            &prover_examples::prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
-        );
+    let (cpu_proof, cpu_setups) = prover_examples::unified::prove_unified_execution_with_replayer::<
+        std::alloc::Global,
+        _,
+        _,
+    >(
+        1 << 31,
+        &padded_binary_image,
+        &padded_text_section,
+        true,
+        QuasiUARTSource::new_with_reads(vec![50, 0xDEAD_BEEF]),
+        1 << 30,
+        &worker,
+        security_level,
+        0,
+        &prover_examples::prover::gkr::prover::DefaultBabyBearBackend::default(),
+        &prover_examples::prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
+    );
     log::info!("CPU reference proved (internal closure passed); verifying natively");
     let cpu_output = crate::upstream::native_verify_unified(
         crate::upstream::build_unified_stream(&cpu_setups, &cpu_proof),
@@ -511,10 +514,10 @@ fn test_program_prover_recursion_layer_verify() {
         &artifact_root()
             .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.bin"),
     );
-    let (_, fsv_text) = read_binary(
-        &artifact_root()
-            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.text"),
-    );
+    let (_, fsv_text) =
+        read_binary(&artifact_root().join(
+            "tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.text",
+        ));
     let stream = build_unrolled_stream(&base_setups, &base_proof);
     let (mut recursion_proof, recursion_setups) = prove_on_gpu(
         &mut prover,
