@@ -250,16 +250,14 @@ pub enum LadderMachine {
 /// stream, returning the assembled `(ProgramProof, Setups)` pair.
 pub trait ProveBackend {
     /// Pre-register a binary so backend precomputations (GPU setups) run at
-    /// startup instead of inside the first timed prove call. No-op on
-    /// backends that build nothing up front.
+    /// startup instead of inside the first timed prove call.
     fn register(
         &mut self,
         _kind: LadderKind,
         _machine: LadderMachine,
         _bin: &[u32],
         _text: &[u32],
-    ) -> Result<(), String> {
-        Ok(())
+    ) {
     }
 
     fn prove(
@@ -382,12 +380,12 @@ impl GpuBackend {
         &mut self,
         kind: LadderKind,
         machine: LadderMachine,
-        execution_kind: gpu_execution_prover::ExecutionKind,
-        machine_type: gpu_execution_prover::MachineType,
         bin: &[u32],
         text: &[u32],
     ) -> gpu_execution_prover::BinaryHandle {
+        use gpu_execution_prover::{ExecutionKind, MachineType};
         let mut hasher = Keccak256::new();
+        hasher.update((bin.len() as u64).to_le_bytes());
         for word in bin.iter().chain(text.iter()) {
             hasher.update(word.to_le_bytes());
         }
@@ -395,6 +393,14 @@ impl GpuBackend {
         if let Some(handle) = self.handles.get(&key) {
             *handle
         } else {
+            let execution_kind = match kind {
+                LadderKind::Unrolled => ExecutionKind::Unrolled,
+                LadderKind::Unified => ExecutionKind::Unified,
+            };
+            let machine_type = match machine {
+                LadderMachine::FullUnsigned => MachineType::FullUnsigned,
+                LadderMachine::Reduced => MachineType::Reduced,
+            };
             // `add_binary` pads internally; pass the words as loaded.
             let handle = self.prover.add_binary(
                 execution_kind,
@@ -423,24 +429,8 @@ impl GpuBackend {
 
 #[cfg(feature = "gpu")]
 impl ProveBackend for GpuBackend {
-    fn register(
-        &mut self,
-        kind: LadderKind,
-        machine: LadderMachine,
-        bin: &[u32],
-        text: &[u32],
-    ) -> Result<(), String> {
-        use gpu_execution_prover::{ExecutionKind, MachineType};
-        let execution_kind = match kind {
-            LadderKind::Unrolled => ExecutionKind::Unrolled,
-            LadderKind::Unified => ExecutionKind::Unified,
-        };
-        let machine_type = match machine {
-            LadderMachine::FullUnsigned => MachineType::FullUnsigned,
-            LadderMachine::Reduced => MachineType::Reduced,
-        };
-        self.handle_for(kind, machine, execution_kind, machine_type, bin, text);
-        Ok(())
+    fn register(&mut self, kind: LadderKind, machine: LadderMachine, bin: &[u32], text: &[u32]) {
+        self.handle_for(kind, machine, bin, text);
     }
 
     fn prove(
@@ -453,18 +443,7 @@ impl ProveBackend for GpuBackend {
         _cycles_bound: usize,
         nd_words: Vec<u32>,
     ) -> Result<(ProgramProof, Setups), String> {
-        use gpu_execution_prover::{ExecutionKind, MachineType};
-
-        let execution_kind = match kind {
-            LadderKind::Unrolled => ExecutionKind::Unrolled,
-            LadderKind::Unified => ExecutionKind::Unified,
-        };
-        let machine_type = match machine {
-            LadderMachine::FullUnsigned => MachineType::FullUnsigned,
-            LadderMachine::Reduced => MachineType::Reduced,
-        };
-
-        let handle = self.handle_for(kind, machine, execution_kind, machine_type, bin, text);
+        let handle = self.handle_for(kind, machine, bin, text);
 
         let result = self.prover.commit_memory_and_prove(
             batch_id,
@@ -537,15 +516,18 @@ fn advance_to_target(
         load_fsv_program(&fsv_dir, FsvProgram::UnrolledRecursionLayer, unrolled_blake);
 
     loop {
-        let (bin, text) = if state.input_is_base {
-            (&unrolled_base_bin, &unrolled_base_text)
+        let (program, bin, text) = if state.input_is_base {
+            (
+                FsvProgram::UnrolledBaseLayer,
+                &unrolled_base_bin,
+                &unrolled_base_text,
+            )
         } else {
-            (&unrolled_rec_bin, &unrolled_rec_text)
-        };
-        let program = if state.input_is_base {
-            FsvProgram::UnrolledBaseLayer
-        } else {
-            FsvProgram::UnrolledRecursionLayer
+            (
+                FsvProgram::UnrolledRecursionLayer,
+                &unrolled_rec_bin,
+                &unrolled_rec_text,
+            )
         };
         let estimated = full_statement_verifier::cost_model::estimate_verifier_cycles(
             &state.proof,
@@ -617,13 +599,10 @@ fn advance_to_target(
         bridge_proof.executed_cycles()
     );
 
-    // === Final: fsv_unified_recursion_layer in unified mode, repeated until
-    // === the proof converges to one unified + one delegation proof.
-    let (final_bin, final_text) = load_fsv_program(
-        &fsv_dir,
-        FsvProgram::UnifiedRecursionLayer,
-        final_blake_mode(),
-    );
+    // === Final: fsv_unified_recursion_layer in unified mode, repeated until convergence. ===
+    let final_mode = final_blake_mode();
+    let (final_bin, final_text) =
+        load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_mode);
 
     let mut proof = bridge_proof;
     let mut setups = bridge_setups;
@@ -643,7 +622,12 @@ fn advance_to_target(
         new_proof.set_recursion_chain(&chain);
         let end_params = compute_end_params(&new_setups, new_proof.final_pc);
         chain.extend(&end_params);
-        state.chain_end_params.push(end_params);
+        // One chain entry per distinct-program layer: every final round runs
+        // the same binary to the same end state, and artifact verification
+        // models the tail as exactly one final layer.
+        if state.chain_end_params.last() != Some(&end_params) {
+            state.chain_end_params.push(end_params);
+        }
         rounds += 1;
         log::debug!(
             "unified recursion round {rounds} proved ({} cycles)",
@@ -651,7 +635,7 @@ fn advance_to_target(
         );
         proof = new_proof;
         setups = new_setups;
-        if unified_recursion_has_converged(&proof) {
+        if unified_recursion_has_converged(&proof, final_mode) {
             break;
         }
     }
@@ -666,13 +650,14 @@ fn advance_to_target(
     Ok(state)
 }
 
-/// Converged: the unified self-recursion fixed point of one unified proof and
-/// one delegation proof, at which every further round reproduces the same
-/// census.
-fn unified_recursion_has_converged(proof: &ProgramProof) -> bool {
+/// Converged: the unified self-recursion fixed point — one unified proof plus
+/// one blake delegation proof, except under `BlakeSpecialOpcodes`, whose
+/// verifier hashes with inline MOP instructions and makes no delegation calls.
+fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) -> bool {
     let riscv: usize = proof.riscv_proofs.iter().map(|(_, v)| v.len()).sum();
     let delegation: usize = proof.delegation_proofs.iter().map(|(_, v)| v.len()).sum();
-    riscv == 1 && delegation == 1
+    let expected_delegations = usize::from(final_mode != BlakeMode::BlakeSpecialOpcodes);
+    riscv == 1 && delegation == expected_delegations
 }
 
 // ==============================================================================
@@ -728,8 +713,8 @@ impl ProgramProver {
         Ok(prover)
     }
 
-    /// Register every binary the ladder can touch so backend precomputations
-    /// (GPU setups) run here, before any timed proving.
+    /// Register every binary the selected target's ladder can touch so backend
+    /// precomputations (GPU setups) run here, before any timed proving.
     fn register_ladder_binaries(&mut self) -> Result<(), String> {
         let start = Instant::now();
         let loaded = load_program(&self.source)?;
@@ -739,45 +724,45 @@ impl ProgramProver {
             LadderMachine::FullUnsigned,
             &loaded.bin_u32,
             &loaded.text_u32,
-        )?;
-        let mut count = 1;
+        );
+        let mut programs = Vec::new();
         if self.config.target != ProofTarget::Base {
-            let fsv_dir = fsv_dir();
-            let programs = [
-                (
-                    FsvProgram::UnrolledBaseLayer,
-                    unrolled_blake_mode(),
-                    LadderKind::Unrolled,
-                ),
-                (
-                    FsvProgram::UnrolledRecursionLayer,
-                    unrolled_blake_mode(),
-                    LadderKind::Unrolled,
-                ),
-                (
-                    FsvProgram::UnrolledBaseLayer,
-                    bridge_blake_mode(),
-                    LadderKind::Unified,
-                ),
-                (
-                    FsvProgram::UnrolledRecursionLayer,
-                    bridge_blake_mode(),
-                    LadderKind::Unified,
-                ),
-                (
-                    FsvProgram::UnifiedRecursionLayer,
-                    final_blake_mode(),
-                    LadderKind::Unified,
-                ),
-            ];
-            for (program, mode, kind) in programs {
-                let (bin, text) = load_fsv_program(&fsv_dir, program, mode);
-                backend.register(kind, LadderMachine::Reduced, &bin, &text)?;
-                count += 1;
-            }
+            programs.push((
+                FsvProgram::UnrolledBaseLayer,
+                unrolled_blake_mode(),
+                LadderKind::Unrolled,
+            ));
+            programs.push((
+                FsvProgram::UnrolledRecursionLayer,
+                unrolled_blake_mode(),
+                LadderKind::Unrolled,
+            ));
+        }
+        if self.config.target == ProofTarget::RecursionUnified {
+            programs.push((
+                FsvProgram::UnrolledBaseLayer,
+                bridge_blake_mode(),
+                LadderKind::Unified,
+            ));
+            programs.push((
+                FsvProgram::UnrolledRecursionLayer,
+                bridge_blake_mode(),
+                LadderKind::Unified,
+            ));
+            programs.push((
+                FsvProgram::UnifiedRecursionLayer,
+                final_blake_mode(),
+                LadderKind::Unified,
+            ));
+        }
+        let count = 1 + programs.len();
+        let fsv_dir = fsv_dir();
+        for (program, mode, kind) in programs {
+            let (bin, text) = load_fsv_program(&fsv_dir, program, mode);
+            backend.register(kind, LadderMachine::Reduced, &bin, &text);
         }
         log::info!(
-            "registered {count} ladder binaries in {} ms",
+            "prepared {count} ladder binaries in {} ms",
             elapsed_ms(start)
         );
         Ok(())
@@ -869,7 +854,7 @@ fn finalize_artifact(
         + state.timings.unrolled_recursion_ms.iter().sum::<u64>()
         + state.timings.unified_recursion_ms.iter().sum::<u64>();
     log::info!(
-        "proof complete in {} ms (base {} ms, unrolled {:?} ms, unified {:?} ms)",
+        "proving stages took {} ms (base {} ms, unrolled {:?} ms, unified {:?} ms)",
         state.timings.total_ms,
         state.timings.base_ms,
         state.timings.unrolled_recursion_ms,
