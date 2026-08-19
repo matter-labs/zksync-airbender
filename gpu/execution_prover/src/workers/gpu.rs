@@ -295,10 +295,8 @@ fn schedule_phase_one<'a>(
     };
 
     let inputs = if is_proof {
-        // Setup transfer (Proof only) — lazy-init the GPU setup host on first
-        // use against this worker's context.
         let setup_transfer =
-            if let Some(setup_host) = state.precomputations.setup_host.get_or_init(context)? {
+            if let Some(setup_host) = state.precomputations.setup_host.get_initialized() {
                 Some(GpuGKRSetupTransfer::new(setup_host, context)?)
             } else {
                 None

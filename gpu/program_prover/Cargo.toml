@@ -31,7 +31,6 @@ common_constants = { workspace = true }
 riscv_transpiler = { workspace = true, features = ["jit"] }
 verifier_common = { workspace = true }
 transcript = { workspace = true }
-worker = { workspace = true }
 
 itertools = "0.14"
 log = "0.4.29"
@@ -61,6 +60,7 @@ verifiers = [
 [dev-dependencies]
 env_logger = "0.11"
 serde_json = "*"
+worker = { workspace = true }
 # CPU reference prover, used only by the GPU-vs-CPU proof-diff test.
 prover_examples = { workspace = true, default-features = false, features = [
     "timing_logs",

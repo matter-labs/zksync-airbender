@@ -17,12 +17,8 @@ pub use full_statement_verifier::unrolled_proof_statement::{
     verify_unrolled_recursion_layer_sec_100, verify_unrolled_recursion_layer_sec_80,
 };
 
-// `prover` — CPU-side setup commitment machinery for the per-family setup
-// caps that prefix the verifier ND streams.
-pub use prover::definitions::{MerkleTreeCap, SecurityLevel};
-pub use prover::fft::Twiddles;
-pub use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
-pub use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor};
+// `prover` — definitions consumed by tests and the ND-stream contract.
+pub use prover::definitions::SecurityLevel;
 
 // `setups` — the per-program setup-params entry the ND stream contract uses.
 pub use setups::UnrolledCircuitSetupParams;

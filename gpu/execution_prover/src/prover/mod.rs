@@ -14,7 +14,7 @@ mod proof_artifacts;
 mod result;
 mod setup_init;
 
-pub use artifacts::{CircuitArtifact, ProgramArtifacts};
+pub use artifacts::{CommonCircuitArtifact, ProgramArtifacts, RiscvFamilyArtifact};
 pub use config::{ExecutionKind, ExecutionProverConfiguration};
 pub use result::{CommitMemoryResult, ProveResult};
 
