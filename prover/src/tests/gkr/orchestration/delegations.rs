@@ -2,7 +2,7 @@ use super::common::*;
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
-use crate::gkr::prover::prove_configured_with_gkr_with_gkr_backend;
+use crate::gkr::prover::prove_configured_with_gkr_with_backends;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::CommitmentMode;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
@@ -133,11 +133,12 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
 
     println!("Trying to prove");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr_with_gkr_backend::<
+    let proof = prove_configured_with_gkr_with_backends::<
         BabyBearField,
         BabyBearExt4,
         DefaultTreeConstructor,
         Blake2sTranscript,
+        _,
         _,
     >(
         circuit,
@@ -150,6 +151,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         CommitmentMode::SeparateMemoryAndWitness,
         Vec::new(),
         num_delegation_cycles,
+        &crate::gkr::prover::WorkStealingBackend,
         &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
         worker,
     );

@@ -28,6 +28,9 @@ field.workspace = true
 common_constants.workspace = true
 worker.workspace = true
 
+[dev-dependencies]
+rand = { workspace = true, features = ["std", "thread_rng", "std_rng"] }
+
 [features]
 gkr_self_checks = ["prover/gkr_self_checks"]
 deterministic_pow = ["prover/deterministic_pow"]

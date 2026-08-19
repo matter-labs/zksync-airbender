@@ -18,6 +18,7 @@ use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_e
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use riscv_transpiler::witness::DelegationAbiDescription;
 use riscv_transpiler::witness::*;
+use prover::gkr::prover::backend::{Backend, TwiddleSetOps};
 use setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS;
 use setups::prover::fft::*;
 use setups::prover::field::*;
@@ -33,13 +34,16 @@ pub use setups;
 
 pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
     F: PrimeField + TwoAdicField,
+    EF: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
     A: GoodAllocator,
     B: GoodAllocator,
+    BE: Backend<F, EF>,
 >(
+    backend: &BE,
     circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[NonMemoryOpcodeTracingDataWithTimestamp],
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     default_pc_value_in_padding: u32,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
@@ -51,7 +55,7 @@ where
     use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 
-    let trace_len = twiddles.domain_size;
+    let trace_len = twiddles.plain().domain_size;
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
@@ -82,8 +86,8 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, F, T, _>(
-        &::prover::gkr::prover::backend::NaiveBackend,
+    let mem = commit_trace_part::<F, EF, T, _>(
+        backend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,
@@ -102,13 +106,16 @@ where
 
 pub fn commit_memory_tree_for_unrolled_mem_circuits<
     F: PrimeField + TwoAdicField,
+    EF: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
     A: GoodAllocator,
     B: GoodAllocator,
+    BE: Backend<F, EF>,
 >(
+    backend: &BE,
     circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[MemoryOpcodeTracingDataWithTimestamp],
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
@@ -119,7 +126,7 @@ where
     use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::oracles::MemoryCircuitOracle;
 
-    let trace_len = twiddles.domain_size;
+    let trace_len = twiddles.plain().domain_size;
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
@@ -149,8 +156,8 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, F, T, _>(
-        &::prover::gkr::prover::backend::NaiveBackend,
+    let mem = commit_trace_part::<F, EF, T, _>(
+        backend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,
@@ -169,20 +176,23 @@ where
 
 pub fn commit_memory_tree_for_inits_and_teardowns<
     F: PrimeField + TwoAdicField,
+    EF: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
     A: GoodAllocator,
     B: GoodAllocator,
+    BE: Backend<F, EF>,
 >(
+    backend: &BE,
     circuit: &GKRCircuitArtifact<F>,
     inits_and_teardowns: Vec<([Vec<F>; 2], [Vec<F>; 2])>,
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength
 where
     [(); F::DEGREE]:,
 {
-    let trace_len = twiddles.domain_size;
+    let trace_len = twiddles.plain().domain_size;
     assert!(trace_len.is_power_of_two());
 
     assert_eq!(inits_and_teardowns.len(), NUM_INIT_AND_TEARDOWN_SETS);
@@ -200,8 +210,8 @@ where
         evaluate_init_and_teardown_memory_witness(inits_and_teardowns, &circuit, Global, Global);
 
     let mem_inputs: Vec<_> = witness_inner.iter().map(|el| &el[..]).collect();
-    let mem = commit_trace_part::<F, F, T, _>(
-        &::prover::gkr::prover::backend::NaiveBackend,
+    let mem = commit_trace_part::<F, EF, T, _>(
+        backend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,
@@ -229,15 +239,18 @@ where
 /// with the unified oracle and `Some(inits_and_teardowns)`.
 pub fn commit_memory_tree_for_unified_circuits<
     F: PrimeField + TwoAdicField,
+    EF: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
     A: GoodAllocator,
     B: GoodAllocator,
+    BE: Backend<F, EF>,
 >(
+    backend: &BE,
     circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
     inits_and_teardowns: Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>,
     text_section: &[u32],
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
@@ -248,7 +261,7 @@ where
     use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
-    let trace_len = twiddles.domain_size;
+    let trace_len = twiddles.plain().domain_size;
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
@@ -278,8 +291,8 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, F, T, _>(
-        &::prover::gkr::prover::backend::NaiveBackend,
+    let mem = commit_trace_part::<F, EF, T, _>(
+        backend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,
@@ -298,6 +311,7 @@ where
 
 pub fn commit_memory_tree_for_delegation_circuit<
     F: PrimeField + TwoAdicField,
+    EF: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
     A: GoodAllocator,
     B: GoodAllocator,
@@ -306,7 +320,9 @@ pub fn commit_memory_tree_for_delegation_circuit<
     const INDIRECT_READS: usize,
     const INDIRECT_WRITES: usize,
     const VARIABLE_OFFSETS: usize,
+    BE: Backend<F, EF>,
 >(
+    backend: &BE,
     circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[riscv_transpiler::witness::DelegationWitness<
         REG_ACCESSES,
@@ -314,7 +330,7 @@ pub fn commit_memory_tree_for_delegation_circuit<
         INDIRECT_WRITES,
         VARIABLE_OFFSETS,
     >],
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength
@@ -323,7 +339,7 @@ where
 {
     use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
 
-    let trace_len = twiddles.domain_size;
+    let trace_len = twiddles.plain().domain_size;
     assert!(trace_len.is_power_of_two());
 
     let now = std::time::Instant::now();
@@ -351,8 +367,8 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, F, T, _>(
-        &::prover::gkr::prover::backend::NaiveBackend,
+    let mem = commit_trace_part::<F, EF, T, _>(
+        backend,
         &mem_inputs,
         twiddles,
         prover_config.lde_factor,

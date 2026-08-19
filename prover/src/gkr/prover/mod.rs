@@ -573,19 +573,22 @@ where
 }
 
 /// [`prove_configured_with_gkr`] (same historical mode-dependent storage
-/// policy, same [`WorkStealingBackend`] FFT/tree backend and plain twiddles)
-/// with an explicit [`GKRBackend`]. Field-concrete callers select their
-/// target-recommended sumcheck engine here — the DEFAULT configurations
-/// (prover_examples, the test orchestration) pass
-/// [`DefaultBabyBearGKRBackend`], which resolves to the NEON SoA engine on
-/// aarch64 and to [`NaiveGKRBackend`] elsewhere. Proof bytes are identical
-/// across GKR backends; only the execution strategy differs.
+/// policy) with explicit compute backends: the FFT/tree [`Backend`] — whose
+/// [`Backend::TwiddleSet`] (built once via [`Backend::make_twiddles`]) replaces
+/// the plain twiddles — and the [`GKRBackend`] sumcheck engine. Field-concrete
+/// callers select their target-recommended pair here — the DEFAULT
+/// configurations (prover_examples, the test orchestration) pass
+/// [`DefaultBabyBearBackend`] + [`DefaultBabyBearGKRBackend`], which resolve to
+/// the NEON implementations on aarch64 and to the generic ones elsewhere.
+/// Proof bytes are identical across backends; only the execution strategy
+/// differs.
 #[allow(clippy::too_many_arguments)]
-pub fn prove_configured_with_gkr_with_gkr_backend<
+pub fn prove_configured_with_gkr_with_backends<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
     TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
     GB: GKRBackend<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
@@ -593,11 +596,12 @@ pub fn prove_configured_with_gkr_with_gkr_backend<
     witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
     setup: &GKRSetup<F>,
     setup_commitment: &SetupCommitment<F, T>,
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
     commitment_mode: CommitmentMode,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
+    backend: &B,
     gkr_backend: &GB,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
@@ -613,7 +617,7 @@ where
             WhirOracleStorage::fully_in_memory()
         }
     };
-    prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -625,7 +629,7 @@ where
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
-        &WorkStealingBackend,
+        backend,
         gkr_backend,
         worker,
     )

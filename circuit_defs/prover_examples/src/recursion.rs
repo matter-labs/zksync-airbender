@@ -43,6 +43,7 @@ mod tests {
     use program_prover::unified::prove_unified_execution_with_replayer;
     use program_prover::unrolled::prove_unrolled_execution_with_replayer;
     use prover::definitions::SecurityLevel;
+    use prover::gkr::prover::{DefaultBabyBearBackend, DefaultBabyBearGKRBackend};
     use prover::worker::Worker;
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
     use riscv_transpiler::cycle::{
@@ -127,6 +128,8 @@ mod tests {
                 let (base_proof, base_setups) = prove_unrolled_execution_with_replayer::<
                     IMStandardIsaConfigUnsignedMulDivOnly,
                     Global,
+                    _,
+                    _,
                 >(
                     BASE_CYCLES_BOUND,
                     &zksync_bin,
@@ -137,6 +140,8 @@ mod tests {
                     &worker,
                     SecurityLevel::Sec100,
                     0,
+                    &DefaultBabyBearBackend::default(),
+                    &DefaultBabyBearGKRBackend::default(),
                 );
                 println!("Base proofs are done");
                 serialize_compressed_to_file(&base_proof, "base_proofs.bin");
@@ -228,7 +233,7 @@ mod tests {
                 if input_is_base { "base" } else { "recursion" }
             );
             let (mut new_proof, new_setups) =
-                prove_unrolled_execution_with_replayer::<ReducedMachineWithDelegation, Global>(
+                prove_unrolled_execution_with_replayer::<ReducedMachineWithDelegation, Global, _, _>(
                     UNROLLED_RECURSION_CYCLES_BOUND,
                     bin,
                     text,
@@ -238,6 +243,8 @@ mod tests {
                     &worker,
                     SecurityLevel::Sec100,
                     0,
+                    &DefaultBabyBearBackend::default(),
+                    &DefaultBabyBearGKRBackend::default(),
                 );
             new_proof.set_recursion_chain(&chain);
             serialize_compressed_to_file(
@@ -293,17 +300,20 @@ mod tests {
                 .unwrap(),
             )
         } else {
-            let (mut bridge_proof, bridge_setups) = prove_unified_execution_with_replayer::<Global>(
-                UNIFIED_CYCLES_BOUND,
-                &bridge_bin,
-                &bridge_text,
-                use_caches,
-                QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
-                RAM_BOUND,
-                &worker,
-                SecurityLevel::Sec100,
-                0,
-            );
+            let (mut bridge_proof, bridge_setups) =
+                prove_unified_execution_with_replayer::<Global, _, _>(
+                    UNIFIED_CYCLES_BOUND,
+                    &bridge_bin,
+                    &bridge_text,
+                    use_caches,
+                    QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
+                    RAM_BOUND,
+                    &worker,
+                    SecurityLevel::Sec100,
+                    0,
+                    &DefaultBabyBearBackend::default(),
+                    &DefaultBabyBearGKRBackend::default(),
+                );
             bridge_proof.set_recursion_chain(&chain);
 
             serialize_compressed_to_file(
@@ -346,17 +356,20 @@ mod tests {
                 .unwrap(),
             )
         } else {
-            let (mut final_proof, final_setups) = prove_unified_execution_with_replayer::<Global>(
-                UNIFIED_CYCLES_BOUND,
-                &unified_rec_bin,
-                &unified_rec_text,
-                use_caches,
-                QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
-                RAM_BOUND,
-                &worker,
-                SecurityLevel::Sec100,
-                0,
-            );
+            let (mut final_proof, final_setups) =
+                prove_unified_execution_with_replayer::<Global, _, _>(
+                    UNIFIED_CYCLES_BOUND,
+                    &unified_rec_bin,
+                    &unified_rec_text,
+                    use_caches,
+                    QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
+                    RAM_BOUND,
+                    &worker,
+                    SecurityLevel::Sec100,
+                    0,
+                    &DefaultBabyBearBackend::default(),
+                    &DefaultBabyBearGKRBackend::default(),
+                );
             final_proof.set_recursion_chain(&chain);
 
             serialize_compressed_to_file(

@@ -22,7 +22,7 @@ use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_gkr_backend, CommitmentMode, DefaultBabyBearGKRBackend,
+    prove_configured_with_gkr_with_backends, Backend, CommitmentMode, GKRBackend, TwiddleSetOps,
 };
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
@@ -115,7 +115,17 @@ fn replay_unified_circuit<C: Counters>(
 /// [`crate::unrolled::prove_unrolled_execution_with_replayer`]; it follows the
 /// same Fiat-Shamir flow (commit memory trees -> derive challenges -> prove) and
 /// asserts that the global permutation grand-product closes to ONE.
-pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
+///
+/// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
+/// [`Backend::TwiddleSet`]s are built here, once per trace length) and the
+/// [`GKRBackend`] sumcheck engine. Proof bytes are backend-independent; pass
+/// `DefaultBabyBearBackend::default()` + `DefaultBabyBearGKRBackend::default()`
+/// for the target-recommended pair.
+pub fn prove_unified_execution_with_replayer<
+    A: GoodAllocator,
+    B: Backend<BabyBearField, BabyBearExt4>,
+    GB: GKRBackend<BabyBearField, BabyBearExt4>,
+>(
     cycles_bound: usize,
     binary_image: &[u32],
     text_section: &[u32],
@@ -125,6 +135,8 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     worker: &worker::Worker,
     security_level: SecurityLevel,
     permutation_argument_pow_bits: u32,
+    backend: &B,
+    gkr_backend: &GB,
 ) -> (
     full_statement_verifier::program_proof::ProgramProof,
     BTreeMap<u32, UnrolledCircuitSetupParams>,
@@ -359,10 +371,10 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     program_proof.final_pc = final_pc;
     program_proof.final_timestamp = final_timestamp;
 
-    let mut twiddles = HashMap::new();
+    let mut twiddles: HashMap<usize, B::TwiddleSet> = HashMap::new();
     twiddles
         .entry(trace_len)
-        .or_insert_with(|| Twiddles::new(trace_len, worker));
+        .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
     let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
 
@@ -397,10 +409,13 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             };
             let cap = commit_memory_tree_for_unified_circuits::<
                 BabyBearField,
+                BabyBearExt4,
                 DefaultTreeConstructor,
                 Global,
                 Global,
+                _,
             >(
+                backend,
                 &unified_setup.compiled_circuit,
                 unified_buffer,
                 inits_and_teardowns,
@@ -426,11 +441,12 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
+                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
                     BabyBearField,
+                    BabyBearExt4,
                     DefaultTreeConstructor,
                     Global,
                     Global,
@@ -439,7 +455,9 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     _,
                     _,
                     _,
+                    _,
                 >(
+                    backend,
                     &setup.compiled_circuit,
                     el,
                     &*twiddles_for_size,
@@ -463,11 +481,12 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
+                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
                     BabyBearField,
+                    BabyBearExt4,
                     DefaultTreeConstructor,
                     Global,
                     Global,
@@ -476,7 +495,9 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     _,
                     _,
                     _,
+                    _,
                 >(
+                    backend,
                     &setup.compiled_circuit,
                     el,
                     &*twiddles_for_size,
@@ -501,11 +522,12 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
+                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
                     BabyBearField,
+                    BabyBearExt4,
                     DefaultTreeConstructor,
                     Global,
                     Global,
@@ -514,7 +536,9 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     _,
                     _,
                     _,
+                    _,
                 >(
+                    backend,
                     &setup.compiled_circuit,
                     el,
                     &*twiddles_for_size,
@@ -539,11 +563,12 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
+                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
                     BabyBearField,
+                    BabyBearExt4,
                     DefaultTreeConstructor,
                     Global,
                     Global,
@@ -552,7 +577,9 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     _,
                     _,
                     _,
+                    _,
                 >(
+                    backend,
                     &setup.compiled_circuit,
                     el,
                     &*twiddles_for_size,
@@ -620,8 +647,10 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     let mut unified_proofs = vec![];
     {
         let twiddles_for_size = &twiddles[&trace_len];
+        // GKRSetup::commit runs on the naive backend internally and consumes
+        // only the plain radix-2 tables (not performance-sensitive).
         let setup_commitment = unified_setup.setup.commit::<DefaultTreeConstructor>(
-            twiddles_for_size,
+            twiddles_for_size.plain(),
             prover_config.lde_factor,
             prover_config.whir_schedule.whir_steps_schedule[0],
             prover_config.cap_size,
@@ -686,11 +715,12 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             );
 
             let now = std::time::Instant::now();
-            let proof = prove_configured_with_gkr_with_gkr_backend::<
+            let proof = prove_configured_with_gkr_with_backends::<
                 BabyBearField,
                 BabyBearExt4,
                 DefaultTreeConstructor,
                 Blake2sTranscript,
+                _,
                 _,
             >(
                 &unified_setup.compiled_circuit,
@@ -703,7 +733,8 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                 CommitmentMode::SeparateMemoryAndWitness,
                 top_bits.clone(),
                 trace_len,
-                &DefaultBabyBearGKRBackend::default(),
+                backend,
+                gkr_backend,
                 worker,
             );
             println!("Proving time for unified circuit is {:?}", now.elapsed());
@@ -735,7 +766,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(blake_round_function_setup.trace_len.trailing_zeros() as usize, security_level);
         if blake_circuits.is_empty() == false {
             let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, Blake2sRoundFunctionAbiDescription, _, _, _, _>(
+                prove_delegation_circuit::<Global, Blake2sRoundFunctionAbiDescription, _, _, _, _, _, _>(
                     &blake_circuits[..],
                     &external_challenges,
                     &blake_round_function_setup,
@@ -746,6 +777,8 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     should_dump_witness,
                     &mut twiddles,
                     &prover_config,
+                    backend,
+                    gkr_backend,
                     worker,
                 );
             program_proof
@@ -762,7 +795,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(bigint_setup.trace_len.trailing_zeros() as usize, security_level);
         if bigint_circuits.is_empty() == false {
             let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, BigintAbiDescription, _, _, _, _>(
+                prove_delegation_circuit::<Global, BigintAbiDescription, _, _, _, _, _, _>(
                     &bigint_circuits[..],
                     &external_challenges,
                     &bigint_setup,
@@ -773,6 +806,8 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     should_dump_witness,
                     &mut twiddles,
                     &prover_config,
+                    backend,
+                    gkr_backend,
                     worker,
                 );
             program_proof
@@ -791,7 +826,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(keccak_special5_setup.trace_len.trailing_zeros() as usize, security_level);
         if keccak_special5_circuits.is_empty() == false {
             let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, KeccakSpecial5AbiDescription, _, _, _, _>(
+                prove_delegation_circuit::<Global, KeccakSpecial5AbiDescription, _, _, _, _, _, _>(
                     &keccak_special5_circuits[..],
                     &external_challenges,
                     &keccak_special5_setup,
@@ -802,6 +837,8 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     should_dump_witness,
                     &mut twiddles,
                     &prover_config,
+                    backend,
+                    gkr_backend,
                     worker,
                 );
             program_proof
@@ -820,7 +857,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(blake_g_function_setup.trace_len.trailing_zeros() as usize, security_level);
         if blake_g_function_circuits.is_empty() == false {
             let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, Blake2sGFunctionAbiDescription, _, _, _, _>(
+                prove_delegation_circuit::<Global, Blake2sGFunctionAbiDescription, _, _, _, _, _, _>(
                     &blake_g_function_circuits[..],
                     &external_challenges,
                     &blake_g_function_setup,
@@ -831,6 +868,8 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     should_dump_witness,
                     &mut twiddles,
                     &prover_config,
+                    backend,
+                    gkr_backend,
                     worker,
                 );
             program_proof
@@ -886,7 +925,7 @@ pub(crate) mod test {
         let worker = worker::Worker::new_with_num_threads(8);
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-        let (program_proof, setups) = prove_unified_execution_with_replayer::<Global>(
+        let (program_proof, setups) = prove_unified_execution_with_replayer::<Global, _, _>(
             1 << 24,
             &binary_image,
             &text_section,
@@ -896,6 +935,8 @@ pub(crate) mod test {
             &worker,
             SecurityLevel::Sec100,
             0,
+            &prover::gkr::prover::DefaultBabyBearBackend::default(),
+            &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
         );
 
         bincode_serialize_to_file(&program_proof, "tmp_unified_proof.bin");

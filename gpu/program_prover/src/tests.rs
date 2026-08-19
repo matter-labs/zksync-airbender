@@ -170,7 +170,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
     let security_level = configuration.security_level;
 
     let (cpu_proof, cpu_setups) =
-        program_prover::unified::prove_unified_execution_with_replayer::<std::alloc::Global>(
+        prover_examples::unified::prove_unified_execution_with_replayer::<std::alloc::Global, _, _>(
             1 << 31,
             &padded_binary_image,
             &padded_text_section,
@@ -180,6 +180,8 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
             &worker,
             security_level,
             0,
+            &prover_examples::prover::gkr::prover::DefaultBabyBearBackend::default(),
+            &prover_examples::prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
         );
     log::info!("CPU reference proved (internal closure passed); verifying natively");
     let cpu_output = crate::upstream::native_verify_unified(
@@ -289,6 +291,8 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     let (cpu_proof, cpu_setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
         riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
         std::alloc::Global,
+        _,
+        _,
     >(
         1 << 31,
         &padded_binary_image,
@@ -299,6 +303,8 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         &worker,
         crate::upstream::SecurityLevel::Sec100,
         0,
+        &prover_examples::prover::gkr::prover::DefaultBabyBearBackend::default(),
+        &prover_examples::prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
     );
     log::info!("CPU reference proved; verifying natively");
     let cpu_output = crate::upstream::native_verify_unrolled(
