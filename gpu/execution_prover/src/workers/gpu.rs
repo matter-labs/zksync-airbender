@@ -1,6 +1,6 @@
 use crate::messages::{
     GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
-    ProofResult,
+    ProofResult, SetupInitializationRequest, SetupInitializationResult,
 };
 use crate::precomputations::CircuitPrecomputations;
 use crate::A;
@@ -47,6 +47,13 @@ pub(crate) fn get_gpu_worker_func(
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RequestKind {
+    MemoryCommitment,
+    Proof,
+    SetupInitialization,
+}
+
 /// Per-request bookkeeping carried across all three phases. Owns the
 /// precomputations Arc (which holds the compiled circuit, lazy-init setup
 /// host, and optional decoder host), so it outlives any Phase-2 borrow,
@@ -57,6 +64,7 @@ struct RequestState {
     circuit_type: CircuitType,
     sequence_id: usize,
     precomputations: CircuitPrecomputations,
+    kind: RequestKind,
     /// Set only for Proof requests; consumed in Phase 2 by `prove()`.
     external_challenges: Option<GKRExternalChallenges<BF, E4>>,
     /// Per-coset caps from a prior commit_memory phase; only present for
@@ -67,12 +75,6 @@ struct RequestState {
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost>,
     tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
     security_level: SecurityLevel,
-}
-
-impl RequestState {
-    fn is_proof(&self) -> bool {
-        self.external_challenges.is_some()
-    }
 }
 
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
@@ -91,6 +93,7 @@ struct PhaseOne<'a> {
 enum PhaseOneInputs<'a> {
     Proof(gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
     MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
+    SetupInitialization,
 }
 
 /// Phase-2 state: GPU job enqueued, awaiting `finish()`.
@@ -107,6 +110,7 @@ struct PhaseTwo<'a> {
 enum JobType<'a> {
     MemoryCommitment(MemoryCommitmentJob<'a, A>),
     Proof(GpuGKRProofJob<'a, A>),
+    SetupInitialization,
 }
 
 fn gpu_worker(
@@ -174,6 +178,35 @@ fn schedule_phase_one<'a>(
     context: &ProverContext,
     request: GpuWorkRequest<A>,
 ) -> CudaResult<PhaseOne<'a>> {
+    if let GpuWorkRequest::SetupInitialization(request) = request {
+        let SetupInitializationRequest {
+            batch_id,
+            circuit_type,
+            sequence_id,
+            precomputations,
+            security_level,
+        } = request;
+        trace!(
+            "BATCH[{batch_id}] GPU_WORKER[{device_id}] initializing setup for circuit {circuit_type:?}[{sequence_id}]"
+        );
+        precomputations.setup_host.get_or_init(context)?;
+        let state = RequestState {
+            batch_id,
+            circuit_type,
+            sequence_id,
+            precomputations,
+            kind: RequestKind::SetupInitialization,
+            external_challenges: None,
+            memory_caps: None,
+            inits_and_teardowns_result: None,
+            tracing_data_result: None,
+            security_level,
+        };
+        return Ok(PhaseOne {
+            state,
+            inputs: PhaseOneInputs::SetupInitialization,
+        });
+    }
     // Decompose the request into bookkeeping plus the host buffers that
     // become Phase 1 H2D inputs.
     let (state, inits_and_teardowns_host, tracing_data_host) = match request {
@@ -192,6 +225,7 @@ fn schedule_phase_one<'a>(
                 circuit_type,
                 sequence_id,
                 precomputations,
+                kind: RequestKind::MemoryCommitment,
                 external_challenges: None,
                 memory_caps: None,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
@@ -217,6 +251,7 @@ fn schedule_phase_one<'a>(
                 circuit_type,
                 sequence_id,
                 precomputations,
+                kind: RequestKind::Proof,
                 external_challenges: Some(external_challenges),
                 memory_caps: Some(memory_caps),
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
@@ -225,11 +260,14 @@ fn schedule_phase_one<'a>(
             };
             (state, inits_and_teardowns, tracing_data)
         }
+        GpuWorkRequest::SetupInitialization(_) => {
+            unreachable!("setup initialization returns early above")
+        }
     };
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
-    let is_proof = state.is_proof();
+    let is_proof = state.kind == RequestKind::Proof;
 
     let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
         Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
@@ -378,6 +416,7 @@ fn enqueue_phase_two<'a>(
             )?;
             JobType::MemoryCommitment(job)
         }
+        PhaseOneInputs::SetupInitialization => JobType::SetupInitialization,
     };
 
     Ok(PhaseTwo { state, job })
@@ -421,6 +460,18 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
                 tracing_data: tracing_data_result,
                 proof,
             }))
+        }
+        JobType::SetupInitialization => {
+            trace!(
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] initialized setup for circuit {circuit_type:?}[{sequence_id}]"
+            );
+            Ok(GpuWorkResult::SetupInitialization(
+                SetupInitializationResult {
+                    batch_id,
+                    circuit_type,
+                    sequence_id,
+                },
+            ))
         }
     }
 }
