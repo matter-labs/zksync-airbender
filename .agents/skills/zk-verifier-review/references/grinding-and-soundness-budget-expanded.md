@@ -2,16 +2,18 @@
 
 ## Why grinding exists
 
-Every place a prover can retry until a challenge is favourable is an attack
-with cost `1/ε` retries, where `ε` is the per-attempt success probability.
-Proof-of-work forces each retry to cost `2^b` hash evaluations, so an argument
-with `s` bits of base soundness delivers `s + b` bits against a
-grinding-capable prover. This is what lets a scheme cut query counts (and proof
-size) without losing security.
+Every place a prover can retry until a challenge is favourable is an attack.
+If `ε` is a valid per-attempt success bound and the adversary can afford `A`
+effectively distinct attempts, a conservative classical bound is
+`min(1, A·ε)`. Proof-of-work makes each retry cost roughly `2^b` hash
+evaluations and therefore constrains `A` under a stated work budget. It does
+**not** unconditionally turn `s` bits of information-theoretic soundness into
+`s+b` bits. Any such shorthand must define the adversarial work convention,
+parallelism/amortization, protected transcript prefix, and retry model.
 
-Grinding is therefore load-bearing, not a formality. A verifier that checks the
-nonce incorrectly, or checks it against the wrong state, silently removes `b`
-bits.
+Grinding is therefore load-bearing when the parameter analysis credits it, not
+a formality. A verifier that checks the nonce incorrectly or against the wrong
+state can invalidate that retry-cost analysis.
 
 ## What the verifier must enforce
 
@@ -48,6 +50,10 @@ support the claimed security level.
 
 | Argument | Error term | Value (bits) | Grinding added | Net |
 |---|---|---|---|---|
+
+Treat the `Grinding added` column as a work-model adjustment, not a probability
+term. Prefer a separate retry table containing per-attempt error, work per
+attempt, attempt budget, and total success bound.
 
 Terms to include:
 

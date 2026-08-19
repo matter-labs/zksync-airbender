@@ -1,9 +1,7 @@
 # Fiat-Shamir Implementation Examples
 
-These records concern native transcript or Fiat-Shamir implementation behavior,
-not an AIR/GKR circuit relation. They are excluded from blind circuit-audit
-scoring.
+Native transcript and Fiat-Shamir implementation behavior is outside the
+circuit skill. The historical PoW threshold record was migrated to its primary
+owner rather than duplicated:
 
-| # | Record | Fix | Category |
-|---:|---|---|---|
-| 1 | [PoW threshold full-width shift](01-pow-threshold-full-width-shift.md) | `bbf919d`, PR #322 | latent native prover/verifier threshold disagreement |
+- [PoW threshold full-width shift](../../../../zk-verifier-soundness-review/examples/01-pow-threshold-shift-32.md)

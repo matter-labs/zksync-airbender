@@ -1,12 +1,21 @@
-# Skill Design Requirements
+# Verifier-Review Suite Design Requirements
 
-Preserve these when revising the skill.
+Preserve these when revising the coordinator or any specialist.
 
-## Portability
+## Suite architecture
 
-- Keep the skill vendor-neutral and usable from a copied standalone folder. Do
-  not depend on a sibling skill's files, a shared reference directory, or any
-  host-specific path. Cross-skill pointers must be optional enrichment.
+- Treat `zk-verifier-review` plus its named specialists as one installable
+  suite. Keep canonical shared references in the coordinator and let specialists
+  link directly to them instead of copying large theory files into every skill.
+  If distributing a specialist, distribute the suite or vendor the referenced
+  files; do not silently leave broken sibling links.
+- Keep each specialist's procedural contract self-contained enough to preserve
+  target scoping, safety, local transcript obligations, evidence standards, and
+  deliverables without loading coordinator methodology prose.
+- Keep specialist trigger descriptions narrow and mutually intelligible. A
+  generic whole-system or routing request should select the coordinator; a
+  named domain/component should select the matching specialist rather than all
+  skills simultaneously.
 - Route non-matching targets away from the repository profile. A bundled
   profile is not automatically applicable; it must pass its own applicability
   check first.
@@ -18,16 +27,30 @@ Preserve these when revising the skill.
 
 ## Scope discipline
 
-- Fix one verifier and one review mode before analyzing. Do not silently expand
-  a named component into a whole-system audit, and do not silently narrow a
-  whole-verifier request to one function.
-- Keep the transcript pass first and mandatory when any other protocol pass
-  runs; the round table is its output and the other passes consume it.
+- Bound a specialist run by one concrete entrypoint/component, one proof-system
+  instance/configuration, and one phase, invariant, or statement boundary. A
+  complete audit is a matrix of bounded runs, not one agent context.
+- Require one coordinator-built verifier model before a multi-run campaign:
+  accepted statement, round table, prover-freedom ledger, claim/handoff graph,
+  implementation-layer map, and configuration matrix. Specialists consume and
+  correct bounded slices instead of rebuilding incompatible global models.
+- For composition, permit the selected invariant to span all necessary circuit
+  families/proof classes, but do not let that broaden into unrelated global
+  arguments. Treat composition as the horizontal join across participating
+  cells, not as a file-local peer review.
+- Make local transcript reconstruction mandatory inside every challenge-
+  dependent specialist. The transcript specialist owns the complete selected
+  schedule; protocol, composition, soundness, and recursion specialists own and
+  emit the rows necessary for their target. Reconcile overlaps instead of
+  assuming a prior transcript pass made protocol ordering correct.
 - Classify implementation relationships before parity work. Do not demand the
   same proof language from independent outer instances that deliberately use a
   different field, hash, encoding, or commitment scheme.
-- Audit the verifier. Use the prover as evidence of message format and the
-  papers as evidence of soundness obligations, never the reverse.
+- Default to the verifier, where the acceptance predicate converges. Permit an
+  explicitly requested prover-first review, but label its verification contract
+  provisional and schedule verifier-side confirmation. Use the prover as
+  evidence of message format and the papers as evidence of soundness
+  obligations, never the reverse.
 
 ## Method
 
@@ -44,8 +67,17 @@ Preserve these when revising the skill.
   check; a check the honest prover satisfies is not necessarily a binding; a
   recomputation whose comparison is dropped is not a check; an empty-container
   early return is a vacuous success.
+- Treat syntactically present but semantically degenerate checks as a standing
+  cross-cutting class: zero coefficients, hardcoded challenges, inactive
+  selectors, empty generator arms, discarded authenticated outputs, zero-valued
+  security parameters, and checks gated to only one participant or default
+  configuration.
 - For generated verifiers, require reading the emitted code, not only the
   generator.
+- Overlay implementation-layer coverage on every protocol cell: handwritten
+  verifier, generator, emitted artifact, producer/serializer, recursive mirror,
+  caller, and settlement boundary. Domain coverage does not imply artifact-layer
+  coverage.
 - For on-chain verifiers, require tracing generated source through exact
   compiler settings and deployed runtime bytecode to the state-transition
   caller; transaction success, an event, or an unauthenticated registry mark is
@@ -55,6 +87,14 @@ Preserve these when revising the skill.
 - Require provenance and reproducible regeneration for trusted setup caps,
   verifier keys, imported constants, program identities, and deployment
   parameters.
+- Require each specialist to emit a compatible target fingerprint, claim or
+  boundary handoff, local transcript/proof-data rows, candidate disposition,
+  coverage limits, and dependent next cells so the coordinator can integrate
+  without laundering assumptions.
+- Keep quantitative security accounting separate from local protocol
+  correctness. Protocol specialists emit concrete local error terms and
+  hypotheses; the soundness specialist independently validates and composes
+  them under one stated experiment and retry/work model.
 
 ## Evidence and honesty
 
@@ -68,6 +108,10 @@ Preserve these when revising the skill.
   read.
 - Keep an honest coverage ledger, including which phases and which
   configurations were not traced.
+- For a campaign, maintain a matrix whose rows are concrete verifier convergence
+  points and whose columns are applicable specialist focuses. Never infer one
+  cell from a neighboring circuit family, security level, proof-system instance,
+  generated artifact, or implementation language.
 - Preserve a verified-closures ledger so recurring false positives are closed
   with exact evidence and revalidated after version changes.
 
@@ -105,6 +149,9 @@ Preserve these when revising the skill.
   selected scope. In particular, do not load the Solidity/Yul/L1 chapter for a
   Rust-only focused review; retain its depth for audits whose final acceptance
   boundary is on-chain.
+- Keep the soundness reference explicit about theorem versions, proximity-gap
+  hypotheses, actual challenge support, probability composition, and retry
+  work. Do not encode the heuristic “PoW simply adds bits” as a general rule.
 - Avoid personal names, private conversation details, and organization-internal
   rationale not needed to execute the review.
 - Add only independently verified historical examples, and keep any blind
