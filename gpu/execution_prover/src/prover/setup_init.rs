@@ -8,12 +8,10 @@ use crate::A;
 use crossbeam_channel::{unbounded, Receiver};
 use gpu_trace::witness::circuit_type::CircuitType;
 
-/// Reserved id for the synchronous setup-initialization batches issued by
-/// `with_configuration` and `add_binary`. Collision with caller-chosen batch
-/// ids is structurally impossible: these batches are fully drained before
-/// the constructor / `add_binary` returns, `add_binary` takes `&mut self`,
-/// and user batches are retired from the manager before
-/// `commit_memory`/`prove` return.
+/// Collision with caller-chosen batch ids is structurally impossible: setup
+/// batches are fully drained before the constructor / `add_binary` returns
+/// (`add_binary` is `&mut self`), and user batches are retired from the
+/// manager before `commit_memory`/`prove` return.
 pub(super) const SETUP_BATCH_ID: u64 = 0;
 
 pub(super) struct PendingSetupInitialization {

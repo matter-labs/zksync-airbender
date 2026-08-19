@@ -4,9 +4,7 @@
 //! `ProgramProof` the verifiers consume additionally embeds the compiled
 //! circuit artifacts and is accompanied by the per-family setup-cap map
 //! (`Setups`) that prefixes the ND streams. Both come from
-//! `ExecutionProver::program_artifacts`; the setup caps are the ones the
-//! GPU committed (copied out of each family's `GpuGKRSetupHost`), so no
-//! CPU-side setup commitment happens here.
+//! `ExecutionProver::program_artifacts`.
 
 use std::collections::BTreeMap;
 

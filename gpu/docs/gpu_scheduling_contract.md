@@ -310,20 +310,3 @@ Callbacks must **not**:
 - Create or destroy any allocation backed by one of the context's memory pools
   (device or host). Pool operations are not safe to perform from callback
   context.
-
-## One-shot setup precomputation
-
-`GpuGKRSetupHost::precompute_from_cpu_setup` runs once per
-`CircuitPrecomputations` instance (each `ExecutionProver` and each registered
-binary owns its own instances), only inside a GPU worker's phase-1 slot while
-serving a `SetupInitialization` work request from the synchronous setup
-batches that `ExecutionProver::with_configuration` and `add_binary` drain
-before returning. It is a sanctioned, deliberate exception to two rules
-above: it D2Hs the partial trees and the unified cap into dedicated
-static-pinned host boxes (normally never a DMA destination), and it ends
-with a full exec-stream synchronize (normally host blocking belongs in
-`finish()`). The synchronize is a hard invariant: it is what makes the D2H
-destinations safe to read and what allows the setup batch to acknowledge a
-result only after the pinned host data is complete. Its transient device
-allocations are released before it returns, so it leaves no state in the
-worker's alternating allocation-placement scheme.

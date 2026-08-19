@@ -8,10 +8,8 @@ use super::*;
 use crate::precomputations::CircuitPrecomputations;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 
-/// Compiled circuit + GPU-committed setup cap for one RISC-V family circuit.
-/// The cap is copied out of the family's initialized `GpuGKRSetupHost`
-/// (guaranteed by `add_binary`'s setup batch) — it is the exact digest
-/// sequence the GPU committed and every proof of this family binds.
+/// `setup_cap` is the exact digest sequence the GPU committed and every
+/// proof of this family binds.
 pub struct RiscvFamilyArtifact {
     pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub setup_cap: MerkleTreeCapVarLength,
@@ -41,8 +39,7 @@ pub struct ProgramArtifacts {
     pub riscv_families: BTreeMap<u32, RiscvFamilyArtifact>,
     /// `None` for `ExecutionKind::Unified` (inits and teardowns are inline in
     /// the unified circuit). Common circuits carry no program-level setup cap:
-    /// delegation setup params are compile-time constants in the fsv verifiers,
-    /// and inits-and-teardowns has no setup columns at all.
+    /// delegation setup params are compile-time constants in the fsv verifiers.
     pub inits_and_teardowns: Option<Arc<GKRCircuitArtifact<BF>>>,
     /// Keyed by delegation type id.
     pub delegations: BTreeMap<u32, Arc<GKRCircuitArtifact<BF>>>,

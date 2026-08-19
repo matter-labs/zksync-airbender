@@ -92,10 +92,8 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 .expect("setup transfers require partial-tree caching");
             memory_copy_async(dst_tree, &src_tree[..], stream)?;
         }
-        // Pre-prove H2D of the unified cap into the trace holder's
-        // `unified_device_cap`. This is the production source of the proof's
-        // setup cap: stage 1 D2Ds it from this buffer into the proof slab's
-        // whir.setup.cap range (gpu_circuit_prover stage1_forward).
+        // Production source of the proof's setup cap: stage 1 D2Ds it from
+        // this buffer into the proof slab (gpu_circuit_prover stage1_forward).
         let unified_dst = self
             .trace_holder
             .unified_device_cap

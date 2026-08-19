@@ -11,17 +11,6 @@ use era_cudart::result::CudaResult;
 use crate::upstream::{CSExecutorFamilyDecoderData, CpuGKRSetup, GKRCircuitArtifact};
 use std::sync::{Arc, OnceLock};
 
-/// Lazy GPU-side setup host: the CPU setup and the geometry needed to
-/// produce a `GpuGKRSetupHost` are stored here, and the actual
-/// `GpuGKRSetupHost::precompute_from_cpu_setup` call (which does GPU LDE +
-/// commit + D2H of partial trees and the unified cap) runs on a GPU worker
-/// serving a `SetupInitialization` request from the synchronous setup
-/// batches in `ExecutionProver::with_configuration` / `add_binary`, against
-/// that worker's already-initialized `ProverContext`.
-///
-/// The `Arc` wrapper around `GpuGKRSetupHost` is what subsequent workers
-/// clone — every prove() that uses this circuit picks up the same cached
-/// pinned-host buffers.
 pub(crate) struct LazyGpuGKRSetupHost {
     inner: OnceLock<Option<Arc<GpuGKRSetupHost>>>,
     cpu_setup: Arc<CpuGKRSetup<BF>>,
@@ -46,11 +35,6 @@ impl LazyGpuGKRSetupHost {
         }
     }
 
-    /// First call: builds the host on `context` (one-shot stream sync inside
-    /// `precompute_from_cpu_setup`) and fills the lock — with `None` when the
-    /// CPU setup has no columns (e.g. InitsAndTeardowns), so "initialized as
-    /// absent" is distinguishable from "never initialized". Subsequent calls
-    /// are no-ops.
     pub fn get_or_init(&self, context: &ProverContext) -> CudaResult<()> {
         self.inner
             .get_or_try_init(|| {
@@ -78,10 +62,6 @@ impl LazyGpuGKRSetupHost {
     }
 }
 
-/// Per-circuit precomputations cached across `prove()` invocations.
-/// `setup_host` is a `LazyGpuGKRSetupHost` initialized by the synchronous
-/// setup batches in `ExecutionProver::with_configuration` / `add_binary`;
-/// the decoder table is host-only and built eagerly in this constructor.
 #[derive(Clone)]
 pub(crate) struct CircuitPrecomputations {
     pub gkr_programs: Arc<GkrPrograms>,
@@ -90,9 +70,6 @@ pub(crate) struct CircuitPrecomputations {
 }
 
 impl CircuitPrecomputations {
-    /// Build the per-circuit precomputations. The GPU-side `GpuGKRSetupHost`
-    /// is *not* materialized here — the constructor/add_binary setup batch is
-    /// the sole initializer, filling `setup_host` synchronously afterward.
     pub fn new(
         circuit_type: CircuitType,
         compiled_circuit: GKRCircuitArtifact<BF>,
