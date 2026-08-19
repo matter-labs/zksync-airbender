@@ -115,7 +115,7 @@ pub fn prove_built_family_trace_with_prover_config(
     // reads the plain tables through the set.
     use crate::gkr::prover::{Backend, TwiddleSetOps};
     let backend = DefaultBabyBearBackend::default();
-    let twiddles = backend.make_twiddles(trace_len, worker);
+    let twiddles = Backend::<BabyBearField, BabyBearExt4>::make_twiddles(&backend, trace_len, worker);
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
     let setup_commitment = setup.commit(
         twiddles.plain(),
@@ -663,7 +663,7 @@ pub fn prove_inits_and_teardowns(
     );
     use crate::gkr::prover::{Backend, TwiddleSetOps};
     let backend = DefaultBabyBearBackend::default();
-    let twiddles = backend.make_twiddles(trace_len, worker);
+    let twiddles = Backend::<BabyBearField, BabyBearExt4>::make_twiddles(&backend, trace_len, worker);
     let setup = GKRSetup::construct(&table_driver, &[], trace_len, &circuit);
     let setup_commitment = setup.commit(
         twiddles.plain(),
