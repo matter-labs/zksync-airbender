@@ -357,8 +357,6 @@ impl ProveBackend for CpuBackend {
 #[cfg(feature = "gpu")]
 pub struct GpuBackend {
     prover: gpu_execution_prover::ExecutionProver,
-    security_level: prover::definitions::SecurityLevel,
-    worker: worker::Worker,
     // Cache handles so ladder stages / batch items reuse per-binary GPU
     // precomputations instead of re-adding the same program.
     handles: std::collections::BTreeMap<(u8, u8, [u8; 32]), gpu_execution_prover::BinaryHandle>,
@@ -370,13 +368,10 @@ impl GpuBackend {
         let mut configuration = gpu_execution_prover::ExecutionProverConfiguration::default();
         configuration.replay_worker_threads_count = gpu.replay_worker_threads_count;
         configuration.security_level = COMPILED_SECURITY_LEVEL.to_prover();
-        let security_level = configuration.security_level;
         let prover = gpu_execution_prover::ExecutionProver::with_configuration(configuration)
             .map_err(|e| format!("failed to create GPU execution prover: {e:?}"))?;
         Ok(Self {
             prover,
-            security_level,
-            worker: worker::Worker::new(),
             handles: std::collections::BTreeMap::new(),
         })
     }
@@ -433,10 +428,7 @@ impl ProveBackend for GpuBackend {
         );
         let artifacts = self.prover.program_artifacts(&handle);
         Ok(gpu_program_prover::assemble_program_proof(
-            &artifacts,
-            result,
-            self.security_level,
-            &self.worker,
+            &artifacts, result,
         ))
     }
 }

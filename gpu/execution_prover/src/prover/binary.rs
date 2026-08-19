@@ -51,7 +51,7 @@ impl ExecutionProver {
         crate::upstream::pad_bytecode_for_proving(&mut padded_binary_image);
         let mut padded_text_section = text_section.clone();
         crate::upstream::pad_bytecode_for_proving(&mut padded_text_section);
-        let precomputations = circuit_types
+        let precomputations: HashMap<_, _> = circuit_types
             .into_iter()
             .map(|circuit_type| {
                 debug!(
@@ -68,6 +68,17 @@ impl ExecutionProver {
                 (circuit_type, precomp)
             })
             .collect();
+        let pending_setup_initialization = request_setup_initialization(
+            &self.gpu_manager,
+            self.configuration.security_level,
+            precomputations
+                .iter()
+                .map(|(circuit_type, precomp)| {
+                    (CircuitType::Unrolled(*circuit_type), precomp.clone())
+                })
+                .collect(),
+        );
+        pending_setup_initialization.wait();
         let binary_image = Arc::new(binary_image.into_boxed_slice());
         let text_section = Arc::new(text_section.into_boxed_slice());
         let jit_cache = Arc::new(Mutex::new(TypeMap::new()));

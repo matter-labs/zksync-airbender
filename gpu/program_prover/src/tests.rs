@@ -56,12 +56,11 @@ fn prove_on_gpu(
     binary_image: Vec<u32>,
     text_section: Vec<u32>,
     reads: Vec<u32>,
-    (security_level, worker): (crate::upstream::SecurityLevel, &worker::Worker),
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
     let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
     let result = prover.commit_memory_and_prove(0, &handle, QuasiUARTSource::new_with_reads(reads));
     let artifacts = prover.program_artifacts(&handle);
-    assemble_program_proof(&artifacts, result, security_level, worker)
+    assemble_program_proof(&artifacts, result)
 }
 
 /// Prove `hashed_fibonacci` (blake2_with_compression build — fires the
@@ -74,9 +73,7 @@ fn prove_on_gpu(
 fn test_program_prover_base_layer_verify() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let worker = worker::Worker::new();
     let (binary_image, text_section) = load_workload("hashed_fibonacci");
     let (proof, setups) = prove_on_gpu(
         &mut prover,
@@ -85,7 +82,6 @@ fn test_program_prover_base_layer_verify() {
         binary_image,
         text_section,
         vec![100, 5],
-        (security_level, &worker),
     );
     log::info!(
         "assembled ProgramProof: {} cycles, {} riscv families, {} delegation types",
@@ -124,9 +120,7 @@ fn test_program_prover_base_layer_verify() {
 fn test_program_prover_unified_base_layer_verify() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let worker = worker::Worker::new();
     let (binary_image, text_section) = load_workload("multi_family_smoke");
     let (proof, setups) = prove_on_gpu(
         &mut prover,
@@ -135,7 +129,6 @@ fn test_program_prover_unified_base_layer_verify() {
         binary_image,
         text_section,
         vec![50, 0xDEAD_BEEF],
-        (security_level, &worker),
     );
     log::info!(
         "assembled unified ProgramProof: {} cycles, {} unified circuits, num_it_circuits {:?}, {} delegation types",
@@ -197,15 +190,28 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 
     // GPU flow.
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let (gpu_proof, _gpu_setups) = prove_on_gpu(
+    let (gpu_proof, gpu_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unified,
         MachineType::Reduced,
         binary_image,
         text_section,
         vec![50, 0xDEAD_BEEF],
-        (security_level, &worker),
     );
+
+    assert_eq!(
+        cpu_setups.keys().collect::<Vec<_>>(),
+        gpu_setups.keys().collect::<Vec<_>>(),
+        "setups family keys differ"
+    );
+    for (family_idx, cpu_params) in cpu_setups.iter() {
+        let gpu_params = &gpu_setups[family_idx];
+        assert_eq!(
+            cpu_params, gpu_params,
+            "setup params differ for family {family_idx}"
+        );
+    }
+    log::info!("setups match");
 
     serde_json::to_writer(
         std::fs::File::create("/tmp/pp_unified_cpu_proof.json").unwrap(),
@@ -303,7 +309,6 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 
     // GPU flow.
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
     let (gpu_proof, gpu_setups) = prove_on_gpu(
         &mut prover,
@@ -312,7 +317,6 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         binary_image,
         text_section,
         vec![100, 5],
-        (security_level, &worker),
     );
 
     // Diff setups.
@@ -475,9 +479,7 @@ fn test_program_prover_recursion_layer_verify() {
 
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let worker = worker::Worker::new();
 
     // Stage 1: base layer (identical to test_program_prover_base_layer_verify).
     let (binary_image, text_section) = load_workload("hashed_fibonacci");
@@ -488,7 +490,6 @@ fn test_program_prover_recursion_layer_verify() {
         binary_image,
         text_section,
         vec![100, 5],
-        (security_level, &worker),
     );
     native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
     log::info!(
@@ -516,7 +517,6 @@ fn test_program_prover_recursion_layer_verify() {
         fsv_binary,
         fsv_text,
         stream,
-        (security_level, &worker),
     );
     recursion_proof.set_recursion_chain(&chain);
     log::info!(
@@ -646,9 +646,7 @@ fn run_gpu_recursive_pipeline(
     let switch_cycles = unified_switch_cycles();
 
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let worker = worker::Worker::new();
 
     // === Stage 1: base layer. ===
     let (base_proof, base_setups) = prove_on_gpu(
@@ -658,7 +656,6 @@ fn run_gpu_recursive_pipeline(
         base_binary_image,
         base_text_section,
         base_non_determinism,
-        (security_level, &worker),
     );
     native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
     log::info!(
@@ -717,7 +714,6 @@ fn run_gpu_recursive_pipeline(
             bin.clone(),
             text.clone(),
             build_unrolled_stream(&setups, &proof),
-            (security_level, &worker),
         );
         new_proof.set_recursion_chain(&chain);
         native_verify_unrolled(build_unrolled_stream(&new_setups, &new_proof), false);
@@ -750,7 +746,6 @@ fn run_gpu_recursive_pipeline(
         bridge_bin.clone(),
         bridge_text.clone(),
         build_unrolled_stream(&setups, &proof),
-        (security_level, &worker),
     );
     bridge_proof.set_recursion_chain(&chain);
     native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof), false);
@@ -772,7 +767,6 @@ fn run_gpu_recursive_pipeline(
         final_bin.clone(),
         final_text.clone(),
         build_unified_stream(&bridge_setups, &bridge_proof),
-        (security_level, &worker),
     );
     final_proof.set_recursion_chain(&chain);
     let output = native_verify_unified(build_unified_stream(&final_setups, &final_proof), false);
@@ -800,7 +794,6 @@ fn run_gpu_recursive_pipeline(
             final_bin.clone(),
             final_text.clone(),
             build_unified_stream(&setups, &proof),
-            (security_level, &worker),
         );
         new_proof.set_recursion_chain(&chain);
         native_verify_unified(build_unified_stream(&new_setups, &new_proof), false);

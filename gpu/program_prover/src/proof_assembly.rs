@@ -4,23 +4,14 @@
 //! `ProgramProof` the verifiers consume additionally embeds the compiled
 //! circuit artifacts and is accompanied by the per-family setup-cap map
 //! (`Setups`) that prefixes the ND streams. Both come from
-//! `ExecutionProver::program_artifacts`. Setup caps are recomputed on the CPU
-//! via `GKRSetup::commit` — byte-identical to the caps the GPU prover
-//! committed to (validated by the gpu_circuit_prover proof-parity suite), without
-//! needing a GPU context here.
+//! `ExecutionProver::program_artifacts`.
 
-use std::alloc::Global;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use gpu_core::primitives::field::BF;
 use gpu_execution_prover::{ProgramArtifacts, ProveResult};
-use worker::Worker;
 
 use crate::upstream::{compute_end_params, Setups};
-use crate::upstream::{
-    config_for_security_level_under_pessimistic_conjecture, DefaultTreeConstructor, MerkleTreeCap,
-    ProgramProof, SecurityLevel, Twiddles, UnrolledCircuitSetupParams,
-};
+use crate::upstream::{ProgramProof, UnrolledCircuitSetupParams};
 
 /// Assemble a `ProgramProof` + its `Setups` map from a GPU prove result.
 ///
@@ -36,37 +27,17 @@ use crate::upstream::{
 pub fn assemble_program_proof(
     artifacts: &ProgramArtifacts,
     result: ProveResult,
-    security_level: SecurityLevel,
-    worker: &Worker,
 ) -> (ProgramProof, Setups) {
-    let mut twiddles: HashMap<usize, Twiddles<BF, Global>> = HashMap::new();
     let mut setups: Setups = BTreeMap::new();
     for (family_idx, artifact) in artifacts.riscv_families.iter() {
         let trace_len = artifact.compiled_circuit.trace_len;
-        let prover_config = config_for_security_level_under_pessimistic_conjecture(
-            trace_len.trailing_zeros() as usize,
-            security_level,
-        );
-        let twiddles_for_size = twiddles
-            .entry(trace_len)
-            .or_insert_with(|| Twiddles::new(trace_len, worker));
-        let setup_commitment = artifact.cpu_setup.commit::<DefaultTreeConstructor>(
-            &*twiddles_for_size,
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
-            worker,
-        );
         setups.insert(
             *family_idx,
-            UnrolledCircuitSetupParams {
-                family_idx: *family_idx,
-                capacity: trace_len as u32,
-                setup_caps: MerkleTreeCap {
-                    cap: setup_commitment.get_cap().cap.try_into().unwrap(),
-                },
-            },
+            UnrolledCircuitSetupParams::from_setup_tree_cap(
+                *family_idx,
+                trace_len as u32,
+                artifact.setup_cap.clone(),
+            ),
         );
     }
 
@@ -90,12 +61,12 @@ pub fn assemble_program_proof(
     let compiled_delegation_circuits = artifacts
         .delegations
         .iter()
-        .map(|(delegation_type, artifact)| (*delegation_type, (*artifact.compiled_circuit).clone()))
+        .map(|(delegation_type, artifact)| (*delegation_type, (**artifact).clone()))
         .collect();
     let inits_and_teardowns_circuit = artifacts
         .inits_and_teardowns
         .as_ref()
-        .map(|artifact| (*artifact.compiled_circuit).clone());
+        .map(|artifact| (**artifact).clone());
 
     let end_params = compute_end_params(&setups, result.final_pc);
 
