@@ -122,13 +122,6 @@ macro_rules! generate_transpiler_tests {
     ($($name:ident; $prod_path:expr),* $(,)?) => {
         paste::paste! {
             $(
-                #[cfg(feature = "security_80")]
-                #[test]
-                #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
-                fn [<$name _sec_80>]() {
-                    run_transpiler(stringify!($name), SecurityLevel::Sec80);
-                }
-                #[cfg(feature = "security_100")]
                 #[test]
                 #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
                 fn [<$name _sec_100>]() {

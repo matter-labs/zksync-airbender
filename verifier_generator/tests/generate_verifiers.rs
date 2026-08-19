@@ -6,15 +6,7 @@ use verifier_generator::field_wrapper::FieldWrapper;
 use verifier_generator::gkr::GKRGeneratedFiles;
 use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
 
-#[cfg(not(any(feature = "security_80", feature = "security_100")))]
-compile_error!("at least one of `security_80` or `security_100` features must be enabled");
-
-const LEVELS_TO_GENERATE: &[SecurityLevel] = &[
-    #[cfg(feature = "security_80")]
-    SecurityLevel::Sec80,
-    #[cfg(feature = "security_100")]
-    SecurityLevel::Sec100,
-];
+const LEVELS_TO_GENERATE: &[SecurityLevel] = &[SecurityLevel::Sec100];
 
 fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
     let mut dst = std::fs::File::create(path).unwrap();

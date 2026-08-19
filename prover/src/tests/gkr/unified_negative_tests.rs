@@ -1185,7 +1185,7 @@ fn generate_malicious_unified_proof(
         &decoder_table,
         num_teardown_sets,
         &hardcoded_external_challenges(),
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &worker,
     );
 

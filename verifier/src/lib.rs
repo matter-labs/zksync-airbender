@@ -15,9 +15,6 @@ mod __generated {
         ($($name:ident; $prod_path:expr),* $(,)?) => {
             $(
                 pub mod $name {
-                    #[cfg(feature = "security_80")]
-                    pub mod sec_80;
-                    #[cfg(feature = "security_100")]
                     pub mod sec_100;
                 }
             )*

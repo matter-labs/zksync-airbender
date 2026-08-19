@@ -208,7 +208,7 @@ pub(super) fn build_unified_full_trace_for_test(
 ///
 /// The resulting `prover_config` (`config_for_security_level_under_pessimistic_conjecture`
 /// at `num_delegation_cycles.trailing_zeros()`) is bit-identical to
-/// `crate::config::prover_config(CircuitType::Delegation(_), Sec80)`,
+/// `crate::config::prover_config(CircuitType::Delegation(_), Sec100)`,
 /// so the GPU `prove()` path reproduces this proof exactly.
 pub(super) fn prove_delegation_proof<O>(
     circuit: &GKRCircuitArtifact<BF>,
@@ -349,7 +349,7 @@ fn prove_unified_delegation_factors(
     external_challenges: &GKRExternalChallenges<BF, E4>,
     worker: &Worker,
 ) -> Vec<E4> {
-    let level = SecurityLevel::Sec80;
+    let level = SecurityLevel::Sec100;
     let mut factors = Vec::new();
 
     // --- Blake2 round function (with extended control). ---
@@ -581,7 +581,7 @@ where
 ///     layouts have no executor-family decoder lookup, so it resolves to `None`).
 ///
 /// The CPU reference and the GPU prove share one `ProverConfig`
-/// (`prover_config(CircuitType::Delegation(_), Sec80)` ≡ the pessimistic config
+/// (`prover_config(CircuitType::Delegation(_), Sec100)` ≡ the pessimistic config
 /// `prove_delegation_proof` selects internally), so the proof must be field-wise
 /// identical. The memory tree caps are split from the CPU proof's
 /// `memory_commitment.commitment.cap`, the same idiom the other fixtures use.
@@ -633,7 +633,7 @@ where
         witness_eval_fn,
         num_delegation_cycles,
         &external_challenges,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &worker,
     );
     eprintln!("delegation fixture ({circuit_type:?}): cpu proof ready");
@@ -938,7 +938,7 @@ fn prepare_unified_fixture(
 
     let fixture_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Unified);
     let prover_config =
-        crate::config::prover_config(fixture_circuit_type, SecurityLevel::Sec80).unwrap();
+        crate::config::prover_config(fixture_circuit_type, SecurityLevel::Sec100).unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
 
     // The CPU setup needs the genuine `Option<..>` decoder table (the `None`

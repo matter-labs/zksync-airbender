@@ -16,12 +16,6 @@ macro_rules! define_dispatch {
             ($circuit_name:expr, $level:expr, |$m:ident| $body:expr) => {
                 match ($circuit_name, $level) {
                     $(
-                        #[cfg(feature = "security_80")]
-                        (stringify!($name), ::prover::definitions::SecurityLevel::Sec80) => {
-                            use verifier::$name::sec_80 as $m;
-                            $body
-                        }
-                        #[cfg(feature = "security_100")]
                         (stringify!($name), ::prover::definitions::SecurityLevel::Sec100) => {
                             use verifier::$name::sec_100 as $m;
                             $body

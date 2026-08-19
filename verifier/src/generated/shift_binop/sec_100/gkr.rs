@@ -2293,7 +2293,7 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
         let mut prefactor: BabyBearField = BabyBearField::ONE;
         let mut k: usize = 0;
         while k < 16usize {
-            let mut t = *pt.get_unchecked(24usize - 1 - k);
+            let mut t = *pt.get_unchecked(k);
             field_ops::mul_assign_by_base(&mut t, &prefactor);
             field_ops::add_assign(&mut result, &t);
             field_ops::double(&mut prefactor);
@@ -2301,7 +2301,7 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
         }
         while k < 24usize {
             let mut t: BabyBearExt4 = BabyBearExt4::ONE;
-            let p = pt.get_unchecked(24usize - 1 - k);
+            let p = pt.get_unchecked(k);
             field_ops::sub_assign(&mut t, &*p);
             field_ops::mul_assign(&mut result, &t);
             k += 1;
@@ -2326,7 +2326,7 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
         let mut prefactor: BabyBearField = BabyBearField::ONE;
         let mut k: usize = 0;
         while k < 19usize {
-            let mut t = *pt.get_unchecked(24usize - 1 - k);
+            let mut t = *pt.get_unchecked(k);
             field_ops::mul_assign_by_base(&mut t, &prefactor);
             field_ops::add_assign(&mut result, &t);
             field_ops::double(&mut prefactor);
@@ -2334,7 +2334,7 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
         }
         while k < 24usize {
             let mut t: BabyBearExt4 = BabyBearExt4::ONE;
-            let p = pt.get_unchecked(24usize - 1 - k);
+            let p = pt.get_unchecked(k);
             field_ops::sub_assign(&mut t, &*p);
             field_ops::mul_assign(&mut result, &t);
             k += 1;
@@ -2561,7 +2561,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -2619,7 +2626,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -2677,7 +2691,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -2735,7 +2756,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -2793,7 +2821,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -2851,7 +2886,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -2909,7 +2951,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -2967,7 +3016,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3025,7 +3081,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3083,7 +3146,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3141,7 +3211,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3199,7 +3276,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3257,7 +3341,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3315,7 +3406,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3373,7 +3471,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3431,7 +3536,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3489,7 +3601,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3547,7 +3666,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3605,7 +3731,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -3663,7 +3796,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            {
+                let mut i = fc_len;
+                while i > 0 {
+                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    i -= 1;
+                }
+                *state.prev_point.get_unchecked_mut(0) = r_last;
+            }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;

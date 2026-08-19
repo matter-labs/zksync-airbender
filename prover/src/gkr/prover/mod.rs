@@ -1562,11 +1562,11 @@ where
             let [merged_claims, setup_polys_claims] = [merged_claims, setup_polys_claims]
                 .map(|input| merge_claims(&input, &extra_coordinates));
 
-            // and we need to update claim point
-            let mut new_claim_point = extra_coordinates;
-            new_claim_point.extend_from_slice(&base_layer_z);
-
-            base_layer_z = new_claim_point;
+            // and we need to update claim point: the pack index occupies the HIGH
+            // bits of the packed enumeration (sub-polys are concatenated block by
+            // block), so under LSB binding the packing coordinates EXTEND the
+            // claim point at the top.
+            base_layer_z.extend_from_slice(&extra_coordinates);
             trace_len_log2_for_whir += pack_log2;
 
             #[cfg(feature = "gkr_self_checks")]
@@ -1602,13 +1602,13 @@ where
                             twiddles.plain(),
                         )
                     };
-                    // monomials -> hypercube evaluations of the packed multilinear,
-                    // then bit-reverse (the packing committed `evals_into_coeffs(bitrev(H))`,
-                    // so the inverse is `coeffs_into_hypercube_evals` then `bitreverse`;
-                    // this mirrors `whir_fold`'s own claim recomputation).
+                    // monomials -> hypercube evaluations of the packed multilinear.
+                    // The packing is reversal-free under the LSB convention
+                    // (`evals_into_coeffs` straight over the concatenated blocks),
+                    // so the inverse is just `coeffs_into_hypercube_evals` —
+                    // mirroring `whir_fold`'s own reversal-free claim recomputation.
                     let size_log2 = hypercube_evals.len().trailing_zeros();
                     multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, size_log2);
-                    crate::fft::bitreverse_enumeration_inplace(&mut hypercube_evals);
                     // re-evaluate at the extended claim point and compare
                     assert_eq!(hypercube_evals.len(), eq_at_point.len());
                     let reevaluated =
@@ -1793,9 +1793,11 @@ fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
             padded
         };
         let mut buffer = vec![];
-        // note `rev` on the coordiantes - we will later on concatenate
-        // coordiantes, so first coordiante is MSB
-        for merge_point in extra_coordinates.iter().rev() {
+        // adjacent claims differ in pack-index bit 0, which pairs with
+        // extra_coordinates[0] under LSB binding — iterate FORWARD (the pack
+        // coordinates land at the TOP of the claim point, but their own bits
+        // are still enumerated LSB-first)
+        for merge_point in extra_coordinates.iter() {
             for [a, b] in input.as_chunks::<2>().0 {
                 // canonical interpolation a + (b - a) * r', consistent with the packing
                 // that concatenates sub-polys in order (block 0 => a at coordinate 0)

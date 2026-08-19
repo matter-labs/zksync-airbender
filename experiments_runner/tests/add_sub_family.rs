@@ -1,10 +1,10 @@
 //! Analog of the `add_sub_lui_auipc_mop` section of
 //! `prover::tests::gkr::family_circuits::gkr_run_basic_unrolled_test_impl`:
 //! run the default keccak-f1600 program, preprocess the binary, and prove
-//! ONLY the add/sub family circuit at Sec80. Kept byte-compatible with the
+//! ONLY the add/sub family circuit at Sec100. Kept byte-compatible with the
 //! per-family test by reusing the exact same orchestration helpers
 //! (`run_vm_and_capture` + `prove_non_mem_family`); the proof lands in
-//! `experiments_runner/test_proofs/add_sub_lui_auipc_mop_sec_80_gkr_proof.json`.
+//! `experiments_runner/test_proofs/add_sub_lui_auipc_mop_sec_100_gkr_proof.json`.
 
 // Same nightly features the prover crate builds with: its orchestration API
 // surfaces `Global` and a const-generic snapshotter parameter.
@@ -82,8 +82,8 @@ fn worker_from_env() -> Worker {
 }
 
 #[test]
-fn gkr_prove_add_sub_family_sec_80() {
-    let level = SecurityLevel::Sec80;
+fn gkr_prove_add_sub_family_sec_100() {
+    let level = SecurityLevel::Sec100;
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = worker_from_env();
     let prover_config = prover_config_from_env(level);

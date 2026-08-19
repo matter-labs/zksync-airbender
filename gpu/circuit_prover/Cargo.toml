@@ -18,9 +18,6 @@ cs = { workspace = true, features = ["compiler"] }
 fft = { workspace = true }
 field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
-# Feature-only dependency: security_80 / security_100 forward to it.
-verifier_common = { workspace = true }
-
 # GPU crates orchestrated by the apex prover.
 gpu_core = { workspace = true }
 gpu_hash = { workspace = true }
@@ -33,13 +30,11 @@ era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
 
 [features]
-default = ["security_80", "deterministic_pow"]
+default = ["deterministic_pow"]
 # gpu_whir owns both PoW-determinism legs: gpu_whir/deterministic_pow enables
 # prover/deterministic_pow (host) + gpu_hash/deterministic_pow (GPU search
 # kernel). Same two upstream features end up enabled as before the split.
 deterministic_pow = ["gpu_whir/deterministic_pow"]
-security_80 = ["verifier_common/security_80"]
-security_100 = ["verifier_common/security_100"]
 test_no_inline = ["field/no_inline"]
 # Commit recursive WHIR oracle leaves in evaluation form instead of the default
 # coefficient form (#279). PROTOCOL-level: the generated verifier must be built

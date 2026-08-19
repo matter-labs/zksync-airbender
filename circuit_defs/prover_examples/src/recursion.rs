@@ -5,17 +5,17 @@
 //!
 //! 1. Prove the `zksync_os` app+witness as a **base layer** program (unrolled
 //!    machine mode, IM ISA + delegations). Verify natively.
-//! 2. Feed that proof into `fsv_unrolled_base_layer_sec_80` and prove it
+//! 2. Feed that proof into `fsv_unrolled_base_layer_sec_100` and prove it
 //!    (unrolled machine mode, reduced ISA + delegations). Verify natively.
-//! 3. Feed into `fsv_unrolled_recursion_layer_sec_80`, prove (unrolled, reduced).
-//!    Before each round we *estimate* how many cycles running the verifier over
+//! 3. Feed into `fsv_unrolled_recursion_layer_sec_100`, prove (unrolled, reduced).
+//!    Before each round we *measure* how many cycles running the verifier over
 //!    the current proof would take; we keep recursing on the unrolled machine
 //!    while that stays at/above a configurable threshold.
 //! 4. Once the estimated verifier cost drops below the threshold
 //!    (`RECURSION_UNIFIED_SWITCH_CYCLES`, default 64M), **bridge** to the unified
 //!    machine: re-prove the unrolled verifier over the last unrolled proof in
 //!    **unified** machine mode, emitting a *unified* single-circuit proof.
-//! 5. Feed the unified proof into `fsv_unified_recursion_layer_sec_80` and prove
+//! 5. Feed the unified proof into `fsv_unified_recursion_layer_sec_100` and prove
 //!    it in unified machine mode. Verify natively.
 //!
 //! Blake variants of the recursive verifiers are selected at runtime, per stage:
@@ -135,7 +135,7 @@ mod tests {
                     QuasiUARTSource::new_with_reads(zksync_witness),
                     RAM_BOUND,
                     &worker,
-                    SecurityLevel::Sec80,
+                    SecurityLevel::Sec100,
                     0,
                 );
                 println!("Base proofs are done");
@@ -236,7 +236,7 @@ mod tests {
                     QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
                     RAM_BOUND,
                     &worker,
-                    SecurityLevel::Sec80,
+                    SecurityLevel::Sec100,
                     0,
                 );
             new_proof.set_recursion_chain(&chain);
@@ -301,7 +301,7 @@ mod tests {
                 QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
                 RAM_BOUND,
                 &worker,
-                SecurityLevel::Sec80,
+                SecurityLevel::Sec100,
                 0,
             );
             bridge_proof.set_recursion_chain(&chain);
@@ -354,7 +354,7 @@ mod tests {
                 QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
                 RAM_BOUND,
                 &worker,
-                SecurityLevel::Sec80,
+                SecurityLevel::Sec100,
                 0,
             );
             final_proof.set_recursion_chain(&chain);

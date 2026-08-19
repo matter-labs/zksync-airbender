@@ -42,10 +42,10 @@ impl FsvProgram {
     #[must_use]
     pub const fn base_name(self) -> &'static str {
         match self {
-            Self::UnrolledBaseLayer => "fsv_unrolled_base_layer_sec_80",
-            Self::UnrolledRecursionLayer => "fsv_unrolled_recursion_layer_sec_80",
-            Self::UnifiedBaseLayer => "fsv_unified_base_layer_sec_80",
-            Self::UnifiedRecursionLayer => "fsv_unified_recursion_layer_sec_80",
+            Self::UnrolledBaseLayer => "fsv_unrolled_base_layer_sec_100",
+            Self::UnrolledRecursionLayer => "fsv_unrolled_recursion_layer_sec_100",
+            Self::UnifiedBaseLayer => "fsv_unified_base_layer_sec_100",
+            Self::UnifiedRecursionLayer => "fsv_unified_recursion_layer_sec_100",
         }
     }
 

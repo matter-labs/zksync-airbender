@@ -36,17 +36,7 @@ itertools = "0.14"
 log = "0.4.29"
 
 [features]
-default = ["security_80", "deterministic_pow"]
-security_80 = [
-    "gpu_execution_prover/security_80",
-    "gpu_circuit_prover/security_80",
-    "program_prover/security_80",
-]
-security_100 = [
-    "gpu_execution_prover/security_100",
-    "gpu_circuit_prover/security_100",
-    "program_prover/security_100",
-]
+default = ["deterministic_pow"]
 deterministic_pow = ["gpu_execution_prover/deterministic_pow"]
 eval_leaves = ["gpu_execution_prover/eval_leaves", "gpu_circuit_prover/eval_leaves"]
 # Pulls in the embedded verifier circuits so proofs can be verified natively.
@@ -54,7 +44,6 @@ eval_leaves = ["gpu_execution_prover/eval_leaves", "gpu_circuit_prover/eval_leav
 verifiers = [
     "verifier_common/no_inline",
     "full_statement_verifier/verifiers",
-    "full_statement_verifier/security_80",
 ]
 
 [dev-dependencies]

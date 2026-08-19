@@ -1860,7 +1860,7 @@ pub(crate) mod test {
             non_determinism_source,
             1 << 30,
             &worker,
-            SecurityLevel::Sec80,
+            SecurityLevel::Sec100,
             0,
         );
 
@@ -1901,7 +1901,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let verification_result =
-                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer_sec_80::<
+                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer_sec_100::<
                         _,
                         DebugErrorCreator,
                         true,
@@ -1942,7 +1942,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let (family, verifier_fn) =
-                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_80::<
+                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<
                         _,
                         DebugErrorCreator,
                     >()[verifier_idx];

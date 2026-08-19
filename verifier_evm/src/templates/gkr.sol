@@ -266,12 +266,14 @@ contract GKRVerifier {
             mstore(sp, seed)
             mstore(GKR_BATCHING_PTR(), mod(shr(128, seed), mload(P_PTR)))
 
-            // eq[16] over eval_point[4] (MSB-first: eq[j] = Π_v (bit_{3-v}(j)? z[v] : 1-z[v]))
+            // eq[16] over eval_point[4] (LSB binding: eq[j] = Π_v (bit_v(j)? z[v] : 1-z[v]),
+            // index bit v pairs with point coordinate v — matches the prover's
+            // make_eq_table_lsb_first over the drawn point)
             for { let j := 0 } lt(j, 16) { j := add(j, 1) } {
                 let e := 1
                 for { let v := 0 } lt(v, 4) { v := add(v, 1) } {
                     let zv := mload(add(POINT_PTR(), mul(v, 32)))
-                    let bit := and(shr(sub(3, v), j), 1)
+                    let bit := and(shr(v, j), 1)
                     // f = bit ? zv : (1 - zv)   (non-canonical 1-zv = 1 + (P - zv))
                     let f := zv
                     if iszero(bit) {
@@ -480,7 +482,13 @@ contract GKRVerifier {
             seed := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), seed)
             nbatch := mod(shr(128, seed), modulus)
-            mstore(add(POINT_PTR(), mul(fs, 32)), r_last)
+            // r_last binds bit 0 of the NEXT layer's enumeration, so the new claim point is
+            // [r_last, r_0, .., r_{fs-1}] in plain variable order: shift the round challenges
+            // up by one slot and prepend (mirrors the CPU generator's LSB fix).
+            for { let sh := fs } gt(sh, 0) { sh := sub(sh, 1) } {
+                mstore(add(POINT_PTR(), mul(sh, 32)), mload(add(POINT_PTR(), mul(sub(sh, 1), 32))))
+            }
+            mstore(POINT_PTR(), r_last)
             // next claims = interpolate lsb_sorted at r_last (no perm): a + (b-a)*r_last
             for { let li := 0 } lt(li, 10) { li := add(li, 1) } {
                 let word := calldataload(add(cp, mul(li, 32)))
@@ -575,7 +583,9 @@ contract GKRVerifier {
             }
         }
         // Fold one 2^4=16-chunk (count real evals from calldata, rest zero) by the 4 packing
-        // coords in reversed order (e3,e2,e1,e0) — a 4-var multilinear eval → single claim.
+        // coords — a 4-var multilinear eval → single claim. LSB binding: adjacent evals
+        // differ in pack-index bit 0, which pairs with e0, so the coords apply FORWARD
+        // (mirrors the prover's merge_claims).
         function whir_fold16(cdbase, count, e0, e1, e2, e3) -> v {
             let sc := add(GKR_ABS_PTR(), 384)
             for { let i := 0 } lt(i, 16) { i := add(i, 1) } {
@@ -584,17 +594,19 @@ contract GKRVerifier {
                 val := shr(128, calldataload(add(cdbase, mul(16, i)))) }
                 mstore(add(sc, mul(32, i)), val)
             }
-            whir_foldhalf(sc, 16, e3)
-            whir_foldhalf(sc, 8, e2)
-            whir_foldhalf(sc, 4, e1)
-            whir_foldhalf(sc, 2, e0)
+            whir_foldhalf(sc, 16, e0)
+            whir_foldhalf(sc, 8, e1)
+            whir_foldhalf(sc, 4, e2)
+            whir_foldhalf(sc, 2, e3)
             v := mload(sc)
         }
 
         // GKR→WHIR handoff: draw the 4 packing coords, merge the base-layer claims (mem++wit
         // 104→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
         // opening, and mark_gkr_verified(keccak(preimage)) with preimage
-        //   [seed:32][batching:16][opening:16][z = extra(4) ++ base_z(22) : 26·16][caps:2·CAP·32].
+        //   [seed:32][batching:16][opening:16][z = base_z(22) ++ extra(4) : 26·16][caps:2·CAP·32]
+        // (the pack index occupies the HIGH bits of the packed enumeration, so under LSB
+        // binding the packing coords EXTEND the claim point at the top).
         function emit_gkr_mark(claim_v) {
             let sp := SEED_PTR()
             let ex := GKR_ABS_PTR()            // 4 packing coords
@@ -645,12 +657,12 @@ contract GKRVerifier {
             mstore(add(base, 32), shl(128, and(batching, MASK)))
             mstore(add(base, 48), shl(128, and(opening, MASK)))
             let plen := 64
-            for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
-                mstore(add(base, plen), shl(128, and(mload(add(ex, mul(32, i))), MASK)))
-                plen := add(plen, 16)
-            }
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_BASE_Z_COORDS) { i := add(i, 1) } {
                 mstore(add(base, plen), shl(128, and(mload(add(POINT_PTR(), mul(i, 32))), MASK)))
+                plen := add(plen, 16)
+            }
+            for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
+                mstore(add(base, plen), shl(128, and(mload(add(ex, mul(32, i))), MASK)))
                 plen := add(plen, 16)
             }
             // caps: committed state wants [memory_cap][setup_cap] as BE u32. The GKR preimage

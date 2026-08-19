@@ -894,7 +894,7 @@ pub(crate) mod test {
             non_determinism_source,
             1 << 30,
             &worker,
-            SecurityLevel::Sec80,
+            SecurityLevel::Sec100,
             0,
         );
 
@@ -934,7 +934,7 @@ pub(crate) mod test {
                 let mut it = families_setups.into_iter().chain(responses.into_iter());
 
                 let verification_result =
-                    full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer_sec_80::<
+                    full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer_sec_100::<
                         _,
                         DebugErrorCreator,
                         true,

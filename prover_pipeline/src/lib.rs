@@ -40,33 +40,21 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
-#[cfg(all(feature = "security_80", feature = "security_100"))]
-compile_error!("multiple security levels selected at the same time");
-#[cfg(all(not(feature = "security_80"), not(feature = "security_100")))]
-compile_error!(
-    "one security level must be selected: enable either `security_80` or `security_100`"
-);
-
 /// Serde-friendly mirror of `prover::definitions::SecurityLevel` (which does
 /// not derive serde) for the persisted artifact.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SecurityLevel {
-    Sec80,
     Sec100,
 }
 
 impl SecurityLevel {
     pub fn to_prover(self) -> prover::definitions::SecurityLevel {
         match self {
-            SecurityLevel::Sec80 => prover::definitions::SecurityLevel::Sec80,
             SecurityLevel::Sec100 => prover::definitions::SecurityLevel::Sec100,
         }
     }
 }
 
-#[cfg(feature = "security_80")]
-pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec80;
-#[cfg(feature = "security_100")]
 pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
 
 // Per-stage cycle bounds, mirroring prover_examples::recursion.

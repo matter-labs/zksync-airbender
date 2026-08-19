@@ -297,7 +297,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         QuasiUARTSource::new_with_reads(vec![100, 5]),
         1 << 30,
         &worker,
-        crate::upstream::SecurityLevel::Sec80,
+        crate::upstream::SecurityLevel::Sec100,
         0,
     );
     log::info!("CPU reference proved; verifying natively");
@@ -503,11 +503,11 @@ fn test_program_prover_recursion_layer_verify() {
     // Stage 2: prove the fsv base-layer verifier over the base proof's stream.
     let (_, fsv_binary) = read_binary(
         &artifact_root()
-            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_80_blake2_with_compression.bin"),
+            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.bin"),
     );
     let (_, fsv_text) = read_binary(
         &artifact_root()
-            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_80_blake2_with_compression.text"),
+            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.text"),
     );
     let stream = build_unrolled_stream(&base_setups, &base_proof);
     let (mut recursion_proof, recursion_setups) = prove_on_gpu(
