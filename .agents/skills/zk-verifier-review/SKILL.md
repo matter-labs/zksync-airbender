@@ -164,20 +164,45 @@ explicit exclusions
 Do not preload conclusions or suspected bugs when using an independent reviewer.
 Provide raw source and prior artifacts only when they are legitimate inputs.
 
-## Campaign order
+## Default priority and campaign order
+
+Allocate attention in this dependency order unless the requested acceptance
+boundary requires promotion:
+
+| Priority | Specialists | Default purpose |
+|---|---|---|
+| **P0 — highest** | Transcript/proof input and cross-circuit/global composition | Establish causal challenge binding and whether valid local proofs imply one valid global statement. Start here at verifier convergence points. |
+| **P1 — middle** | GKR/WHIR or STARK/DEEP-ALI/FRI | Audit the active algebraic backend and its local transcript rows after the shared statement and challenge model exists. |
+| **P2 — later boundary** | Recursion, verifier binaries, and L1/EVM acceptance | Check that the established claim survives recursive, generated, deployed, and settlement boundaries. |
+| **P3 — final quantitative pass** | Concrete soundness/security accounting | Compute the complete error budget from the exact degrees, distributions, query schedules, retry freedom, and deployment lifetime established by earlier passes. |
+
+Priority governs default audit order and effort allocation, not finding severity.
+A recursion or L1 bug can be catastrophic. Promote recursion/L1 to P0 or P1
+when the named target is a recursive guest, deployed verifier, Solidity/Yul
+contract, or settlement path. Select only the active P1 backend: use GKR/WHIR
+for current GKR systems and STARK/FRI for legacy or explicitly selected STARK
+instances rather than auditing both by habit.
+
+Perform a cheap soundness sanity scan during fingerprinting for disabled or zero
+security parameters, incoherent fields, missing PoW, or obviously wrong query
+counts. Reserve theorem-driven probability accounting and union bounds for P3,
+after local reviewers supply the enforced parameters and hypotheses.
+
+Execute a full campaign as follows:
 
 1. Build the shared verifier model: statement, round table, freedom ledger,
    claim graph, artifact layers, and configuration matrix.
-2. Prioritize transcript/input reviews of the verifier convergence points.
-3. Prioritize one composition run per highest-risk global invariant, especially
-   memory, PC/timestamp, delegation, padding/chunk coverage, and deferred shared
-   challenges.
-4. Run GKR/WHIR or STARK/FRI specialists per concrete phase/component; use their
-   local transcript rows to challenge the complete transcript artifact.
-5. Run recursion/L1 per statement/binary/deployment boundary.
-6. Run concrete soundness accounting after local protocol reviewers have emitted
-   actual degrees, counts, gaps, queries, and challenge distributions.
-7. Validate each material candidate skeptically, reconcile overlaps, and produce
+2. Run P0 transcript/input reviews at verifier convergence points and one P0
+   composition run per highest-risk global invariant, especially memory,
+   PC/timestamp, delegation, padding/chunk coverage, and deferred challenges.
+3. Run the active P1 GKR/WHIR or STARK/FRI specialists per concrete
+   phase/component; use their local transcript rows to challenge the complete
+   transcript artifact.
+4. Run P2 recursion/L1 reviews per applicable statement, binary, deployment, and
+   settlement boundary, subject to the promotion rule above.
+5. Run the P3 concrete soundness budget with actual degrees, counts, gaps,
+   queries, challenge distributions, and deployment-scale union bounds.
+6. Validate each material candidate skeptically, reconcile overlaps, and produce
    an integrated coverage and trust report.
 
 When delegation is available and explicitly permitted, isolate runs so bulk

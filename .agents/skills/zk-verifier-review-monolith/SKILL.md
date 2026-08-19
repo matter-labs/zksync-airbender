@@ -181,17 +181,34 @@ Mutual consistency is not provenance. A group of prover-supplied values may sati
 
 Pass 0 is mandatory: finish the verifier-derived interactive/transcript schedule,
 challenge dependency sets, and proof-data ledger before any challenge-dependent
-pass. This satisfies the transcript-first rule. Then prioritize deeper review in
-the order below while finishing all applicable passes:
+pass. This satisfies the transcript-first rule.
 
-1. **Cross-circuit, cross-chunk, recursive, and L1 composition.** Check challenge continuity, accumulator coverage, setup equality, circuit/type identity, count handling, empty cases, padding, PC/timestamp continuity, delegation closure, final memory equality, recursion-chain genesis/extension/termination, and the exact public output the settlement caller trusts.
-2. **Fiat-Shamir deep pass.** Using pass 0, check complete absorption, exact order, statement/context binding, domain separation, challenge independence, serialization, branching, state resets/forks, canonicality, batching coverage, PoW placement, and the relation between transcript state and emitted challenge material.
-3. **Parser and proof-data validation.** Establish the field/encoding API first, then check length/count arithmetic, field-specific canonical decoding, unused proof data, duplicate values, unchecked caches, cap/path geometry, tags, optional sections, initialized length versus capacity, and release-vs-debug behavior.
-4. **Protocol algebra.** For GKR/WHIR use the GKR reference; for STARK/DEEP-FRI use the legacy reference. Check every round equation, degree bound, claimed evaluation, random linear combination, opening, and final reduction.
-5. **Parameters and soundness accounting.** Recompute field-size, degree, query, folding, batching, union-bound, and grinding assumptions. Ensure runtime sizes respect the analyzed bounds and security-level features select coherent constants and binaries.
-6. **Generator, trusted-constant, and deployment equivalence.** Compare program/circuit source, setup/key generation, imported constants, generator, generated verifier, flattening/serialization code, test proof writer, feature-selected binary, Solidity/Yul template, compiler settings, generated runtime bytecode, deployed code hash/address, registry/wrapper, and settlement entrypoint. Reproduce trusted caps and constants when supported.
-7. **Implementation relationship.** First classify each pair. For genuine mirrors of one concrete instance, compare initial seed, absorb grouping, canonicalization, draw advancement, PoW mutation/word skipping, branches, rejection, proof framing, public outputs, and recursion semantics. For different fields/hashes/encodings or an independent outer proof instance, do not demand proof portability; verify the intended statement handoff and compare the deployed implementation with its same-instance Rust mirror/flattener/reference.
-8. **EVM execution semantics and integration.** Check exact calldata exhaustion, zero-padding reads, 256-bit-versus-field arithmetic, memory/spill aliasing, low-level-call success, registry authorization and idempotence, transaction atomicity, caller return handling, deploy-time parameter immutability, proxy/upgradability assumptions, gas/code-size reachability, and chain/fork-specific deployment behavior. A successful transaction is not proof acceptance unless the state-transition caller consumes an authenticated verifier success result.
+Use this default effort priority:
+
+| Priority | Review domains |
+|---|---|
+| **P0 — highest** | Fiat-Shamir/transcript, proof-input validation, and cross-circuit/chunk/global composition |
+| **P1 — middle** | The active GKR/WHIR or STARK/DEEP-ALI/FRI algebraic backend and its same-instance generated artifacts |
+| **P2 — later boundary** | Recursion, verifier binaries, Solidity/Yul, deployed L1 verification, and settlement integration |
+| **P3 — final quantitative pass** | Concrete field, proximity, query, batching, grinding, hash, retry, and union-bound soundness accounting |
+
+Priority controls default order and depth, not severity. Promote P2 to P0 or P1
+when the selected target is recursive, deployed, on-chain, or settlement-facing.
+Audit only the active P1 backend unless the target explicitly spans current GKR
+and historical STARK implementations. During fingerprinting, perform a cheap
+soundness sanity scan for disabled or zero parameters, incoherent fields,
+missing PoW, and obviously wrong query counts; perform the full theorem-driven
+budget only at P3 when its inputs are known.
+
+Then run the deeper passes in this order while finishing every applicable pass:
+
+1. **Fiat-Shamir, parser, and proof-data deep pass (P0).** Using pass 0, check complete absorption, exact order, statement/context binding, domain separation, challenge independence, serialization, branching, state resets/forks, canonical field decoding, length/count arithmetic, unused data, duplicate or cached values, cap/path geometry, optional sections, batching coverage, PoW placement, and release-vs-debug behavior.
+2. **Cross-circuit, cross-chunk, and global composition (P0).** Check challenge continuity, accumulator coverage, setup equality, circuit/type identity, count handling, empty cases, padding, PC/timestamp continuity, delegation closure, final memory equality, and every verifier-injected boundary term.
+3. **Active protocol algebra (P1).** For GKR/WHIR use the GKR reference; for STARK/DEEP-FRI use the legacy reference. Check every round equation, degree bound, claimed evaluation, random linear combination, opening, final reduction, and protocol-specific transcript row.
+4. **Generator, trusted constants, and active-instance equivalence (P1).** Compare program/circuit source, setup/key generation, imported constants, generator, generated verifier, flattening/serialization code, proof writer, and feature-selected binary. For genuine mirrors compare seed, absorb grouping, canonicalization, draw advancement, PoW mutation, branches, rejection, and proof framing. For independent outer instances verify the statement handoff rather than demanding proof portability.
+5. **Recursion, verifier binary, and L1 acceptance boundaries (P2).** Check recursion-chain genesis/extension/termination, inner-program and verifier-key identity, public-output binding, generated binary selection, Solidity/Yul template and bytecode, deployed code hash/address, registry/wrapper authorization, and the exact statement the settlement caller trusts.
+6. **EVM execution semantics and integration (P2).** Check exact calldata exhaustion, zero-padding reads, 256-bit-versus-field arithmetic, memory/spill aliasing, low-level-call success, registry authorization and idempotence, transaction atomicity, caller return handling, deploy-time parameter immutability, proxy/upgradability assumptions, gas/code-size reachability, and chain/fork-specific deployment behavior. A successful transaction is not proof acceptance unless the state-transition caller consumes an authenticated verifier success result.
+7. **Parameters and concrete soundness accounting (P3).** Recompute field-size, algebraic, proximity, query, folding, batching, hash, retry, deployment-lifetime union-bound, and grinding assumptions from the enforced configuration. Ensure runtime sizes respect analyzed bounds and security-level features select coherent constants and binaries.
 
 Use the prover only after the verifier-derived model exists. Read it to identify omitted messages, mismatched order/serialization, intended formulas, unsupported verifier paths, or specification gaps. Never dismiss a candidate because the honest prover does not exercise the malicious freedom.
 

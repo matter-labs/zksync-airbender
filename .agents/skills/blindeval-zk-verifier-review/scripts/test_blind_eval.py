@@ -11,33 +11,70 @@ import blind_eval
 
 
 SKILLS_ROOT = Path(__file__).resolve().parents[2]
-CORPUS_SKILL = SKILLS_ROOT / "zk-verifier-review-monolith"
+SPECIALISTS = {
+    domain: SKILLS_ROOT / skill_name
+    for domain, skill_name in blind_eval.SPECIALIST_SKILLS.items()
+}
 
 
 class CorpusTests(unittest.TestCase):
-    def test_domain_qualified_selector(self) -> None:
-        selected = blind_eval.resolve_example(CORPUS_SKILL, "gkr-whir/12")
+    def test_numeric_selector_is_local_to_specialist(self) -> None:
+        selected = blind_eval.resolve_example(SPECIALISTS["gkr-whir"], "12")
         self.assertEqual(selected.name, "12-dimension-reduction-index-space.md")
 
-    def test_bare_number_is_ambiguous(self) -> None:
+    def test_specialist_mapping(self) -> None:
+        self.assertEqual(
+            blind_eval.specialist_skill("transcript"),
+            "zk-verifier-transcript-review",
+        )
         with self.assertRaises(blind_eval.EvalError):
-            blind_eval.resolve_example(CORPUS_SKILL, "1")
+            blind_eval.specialist_skill("coordinator")
 
     def test_every_corpus_case_has_blindeval_metadata(self) -> None:
-        examples = blind_eval.example_files(CORPUS_SKILL)
+        examples = [
+            (domain, path)
+            for domain, skill in SPECIALISTS.items()
+            for path in blind_eval.example_files(skill)
+        ]
         self.assertEqual(len(examples), 65)
-        parsed = [blind_eval.parse_example(path) for path in examples]
+        parsed = [blind_eval.parse_example(path, domain) for domain, path in examples]
         self.assertTrue(all(item["paths"] for item in parsed))
         self.assertTrue(all(item["failure"] for item in parsed))
         self.assertTrue(all(item["impact_and_fix"] for item in parsed))
+        self.assertEqual({item["domain"] for item in parsed}, set(SPECIALISTS))
 
     def test_strip_examples_removes_answer_corpus(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             copied = Path(directory) / "skill"
-            shutil.copytree(CORPUS_SKILL, copied)
+            shutil.copytree(SPECIALISTS["transcript"], copied)
             blind_eval.strip_examples(copied)
             self.assertFalse((copied / "examples").exists())
             self.assertTrue((copied / "SKILL.md").is_file())
+
+    def test_reference_support_is_not_a_discoverable_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            injected = Path(directory) / "skills"
+            injected.mkdir()
+            support = blind_eval.inject_reference_support(
+                SKILLS_ROOT, injected, "composition"
+            )
+            self.assertEqual(
+                support,
+                ["zk-verifier-review/references", "zk-circuit-review/references"],
+            )
+            self.assertFalse(any(injected.rglob("SKILL.md")))
+
+    def test_prompt_invokes_only_selected_specialist(self) -> None:
+        prompt = blind_eval.audit_prompt(
+            "codex",
+            "bounded target",
+            "repository",
+            "transcript",
+            "zk-verifier-transcript-review",
+        )
+        self.assertIn("$zk-verifier-transcript-review", prompt)
+        self.assertNotIn("$zk-verifier-review ", prompt)
+        self.assertNotIn("monolith", prompt)
 
 
 class TraceInspectionTests(unittest.TestCase):
@@ -83,7 +120,7 @@ class LifecycleTests(unittest.TestCase):
         blind_eval.write_json(
             run / "run.json",
             {
-                "version": 3,
+                "version": 4,
                 "returncode": 0,
                 "timed_out": False,
                 "contaminated": contaminated,
@@ -107,7 +144,7 @@ class LifecycleTests(unittest.TestCase):
             result = self.grade(case, "catch", "same root freedom")
             grade = json.loads((case / "grade.json").read_text(encoding="utf-8"))
         self.assertEqual(result, 0)
-        self.assertEqual(grade["run_schema_version"], 3)
+        self.assertEqual(grade["run_schema_version"], 4)
 
     def test_cleanup_refuses_ungraded_case(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

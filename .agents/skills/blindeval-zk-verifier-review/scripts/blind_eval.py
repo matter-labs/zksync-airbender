@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Blind-evaluate a verifier-review monolith or coordinator against one case."""
+"""Blind-evaluate one verifier-review specialist against one matching case."""
 
 from __future__ import annotations
 
@@ -20,17 +20,16 @@ from typing import Any, Iterable
 
 
 CASE_ID_RE = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
-CORPUS_SKILL_NAME = "zk-verifier-review-monolith"
-MONOLITH_SKILLS = [CORPUS_SKILL_NAME]
-COORDINATOR_SKILLS = [
-    "zk-verifier-review",
-    "zk-verifier-transcript-review",
-    "zk-verifier-composition-review",
-    "zk-gkr-whir-verifier-review",
-    "zk-stark-fri-verifier-review",
-    "zk-verifier-soundness-review",
-    "zk-recursion-l1-verifier-review",
-]
+SPECIALIST_SKILLS = {
+    "transcript": "zk-verifier-transcript-review",
+    "composition": "zk-verifier-composition-review",
+    "gkr-whir": "zk-gkr-whir-verifier-review",
+    "stark-fri": "zk-stark-fri-verifier-review",
+    "soundness": "zk-verifier-soundness-review",
+    "recursion-l1": "zk-recursion-l1-verifier-review",
+}
+SHARED_REFERENCE_SKILL = "zk-verifier-review"
+CIRCUIT_REFERENCE_SKILL = "zk-circuit-review"
 
 
 class EvalError(RuntimeError):
@@ -166,7 +165,7 @@ def example_files(skill: Path) -> list[Path]:
         return []
     return sorted(
         path
-        for path in examples.glob("*/*.md")
+        for path in examples.rglob("*.md")
         if path.name != "INDEX.md" and re.match(r"^[0-9]+-", path.name)
     )
 
@@ -228,7 +227,7 @@ def resolve_example(skill: Path, selector: str) -> Path:
     return matches[0]
 
 
-def parse_example(path: Path) -> dict[str, Any]:
+def parse_example(path: Path, domain: str | None = None) -> dict[str, Any]:
     content = path.read_text(encoding="utf-8", errors="replace")
     title = example_title(path)
     def field(pattern: str, label: str) -> str:
@@ -266,7 +265,7 @@ def parse_example(path: Path) -> dict[str, Any]:
         )
         return match.group(1).strip() if match else ""
 
-    domain = path.parent.name
+    domain = domain or path.parent.name
     component = f"{domain} verifier/argument component"
     target = f"{component}; affected historical paths: {', '.join(paths)}"
     return {
@@ -286,6 +285,38 @@ def parse_example(path: Path) -> dict[str, Any]:
 
 def strip_examples(skill: Path) -> None:
     remove_path(skill / "examples")
+
+
+def specialist_skill(domain: str) -> str:
+    try:
+        return SPECIALIST_SKILLS[domain]
+    except KeyError as error:
+        raise EvalError(
+            f"unknown specialist domain {domain!r}; choose from "
+            + ", ".join(SPECIALIST_SKILLS)
+        ) from error
+
+
+def reference_support_paths(domain: str) -> list[str]:
+    specialist_skill(domain)
+    support_paths = [f"{SHARED_REFERENCE_SKILL}/references"]
+    if domain == "composition":
+        support_paths.append(f"{CIRCUIT_REFERENCE_SKILL}/references")
+    return support_paths
+
+
+def inject_reference_support(
+    skills_source_root: Path, injected_root: Path, domain: str
+) -> list[str]:
+    support_paths = reference_support_paths(domain)
+    for relative in support_paths:
+        source = skills_source_root / relative
+        if not source.is_dir():
+            raise EvalError(f"missing specialist reference support: {source}")
+        destination = injected_root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, destination, symlinks=True)
+    return support_paths
 
 
 def scan_skill(skill: Path, patterns: Iterable[tuple[str, re.Pattern[str]]]) -> list[str]:
@@ -367,15 +398,56 @@ def verification_errors(case_dir: Path, manifest: dict[str, Any]) -> list[str]:
     if not claude_skills.is_symlink() or os.readlink(claude_skills) != "../.agents/skills":
         errors.append("Claude shared-skills symlink is missing or incorrect")
     skills_root = fixture / ".agents" / "skills"
+    domain = manifest.get("domain")
+    try:
+        expected_specialist = specialist_skill(domain)
+    except EvalError as error:
+        errors.append(str(error))
+        expected_specialist = None
+    if expected_specialist and manifest.get("reviewer_skill") != expected_specialist:
+        errors.append(
+            "reviewer skill does not match the selected domain: "
+            f"expected {expected_specialist!r}, got {manifest.get('reviewer_skill')!r}"
+        )
+    if manifest.get("selected_example_domain") != domain:
+        errors.append("selected example domain does not match the specialist domain")
     expected_skill_names = manifest.get("injected_skill_names", [])
-    if not isinstance(expected_skill_names, list) or not expected_skill_names:
-        errors.append("injected skill names are missing")
+    if not isinstance(expected_skill_names, list) or len(expected_skill_names) != 1:
+        errors.append("exactly one injected specialist skill name is required")
+        expected_skill_names = []
+    elif expected_specialist and expected_skill_names != [expected_specialist]:
+        errors.append(
+            "injected specialist does not match the selected domain: "
+            f"expected {[expected_specialist]!r}, got {expected_skill_names!r}"
+        )
     for name in expected_skill_names:
         skill = skills_root / name
         if not (skill / "SKILL.md").is_file():
             errors.append(f"injected skill is missing: {name}")
         if (skill / "examples").exists():
             errors.append(f"historical examples remain in injected skill: {name}")
+    actual_skill_files = sorted(
+        path.relative_to(skills_root).as_posix()
+        for path in skills_root.rglob("SKILL.md")
+    ) if skills_root.is_dir() else []
+    expected_skill_files = sorted(f"{name}/SKILL.md" for name in expected_skill_names)
+    if actual_skill_files != expected_skill_files:
+        errors.append(
+            "fixture must expose exactly the selected specialist skill; "
+            f"expected {expected_skill_files!r}, got {actual_skill_files!r}"
+        )
+    support_paths = manifest.get("injected_support_paths", [])
+    expected_support_paths = reference_support_paths(domain) if expected_specialist else []
+    if support_paths != expected_support_paths:
+        errors.append(
+            "reference support does not match the selected specialist: "
+            f"expected {expected_support_paths!r}, got {support_paths!r}"
+        )
+        support_paths = []
+    for relative in support_paths:
+        support = skills_root / relative
+        if not support.is_dir():
+            errors.append(f"injected reference support is missing: {relative}")
 
     snapshot = case_dir / "injected-skills"
     if not snapshot.is_dir():
@@ -420,25 +492,20 @@ def verification_errors(case_dir: Path, manifest: dict[str, Any]) -> list[str]:
 def prepare(args: argparse.Namespace) -> int:
     repo = resolve_repo(args.repo)
     skills_source_root = (args.skills_root or repo / ".agents" / "skills").resolve()
-    corpus_skill = (
-        args.corpus_skill or skills_source_root / CORPUS_SKILL_NAME
-    ).resolve()
-    if not (corpus_skill / "SKILL.md").is_file():
-        raise EvalError(f"invalid verifier-review corpus skill: {corpus_skill}")
-    selected_path = resolve_example(corpus_skill, args.example)
-    selected = parse_example(selected_path)
+    skill_name = specialist_skill(args.domain)
+    specialist_source = (skills_source_root / skill_name).resolve()
+    if not (specialist_source / "SKILL.md").is_file():
+        raise EvalError(f"invalid verifier-review specialist: {specialist_source}")
+    selected_path = resolve_example(specialist_source, args.example)
+    selected = parse_example(selected_path, args.domain)
     fix_commit = resolve_commit(repo, selected["fix_ref"])
     source_commit = resolve_commit(repo, selected["vulnerable_ref"])
     repo_markers = repository_markers(repo)
-
-    skill_names = MONOLITH_SKILLS if args.reviewer == "monolith" else COORDINATOR_SKILLS
-    skill_sources = [skills_source_root / name for name in skill_names]
-    missing = [str(path) for path in skill_sources if not (path / "SKILL.md").is_file()]
-    if missing:
-        raise EvalError("missing reviewer skill(s): " + ", ".join(missing))
+    skill_names = [skill_name]
+    skill_sources = [specialist_source]
 
     case_id = args.case_id or (
-        f"{args.reviewer}-{selected['domain']}-{selected_path.stem}-"
+        f"{args.domain}-{selected_path.stem}-"
         f"{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     )
     if not CASE_ID_RE.fullmatch(case_id):
@@ -466,10 +533,12 @@ def prepare(args: argparse.Namespace) -> int:
 
         injected_root = fixture / ".agents" / "skills"
         injected_root.mkdir(parents=True, exist_ok=True)
-        for source_skill, skill_name in zip(skill_sources, skill_names, strict=True):
-            injected = injected_root / skill_name
-            shutil.copytree(source_skill, injected, symlinks=True)
-            strip_examples(injected)
+        injected = injected_root / skill_name
+        shutil.copytree(specialist_source, injected, symlinks=True)
+        strip_examples(injected)
+        support_paths = inject_reference_support(
+            skills_source_root, injected_root, args.domain
+        )
         injected_skills_snapshot = staging / "injected-skills"
         shutil.copytree(injected_root, injected_skills_snapshot, symlinks=True)
         injected_skills_digest = tree_digest(injected_skills_snapshot)
@@ -483,11 +552,12 @@ def prepare(args: argparse.Namespace) -> int:
         initialize_singleton_repo(fixture)
 
         manifest = {
-            "version": 6,
+            "version": 7,
             "case_id": case_id,
             "created_at": utc_now(),
             "repo_root": str(repo),
-            "reviewer": args.reviewer,
+            "domain": args.domain,
+            "reviewer_skill": skill_name,
             "selected_example": selected["selector"],
             "selected_example_title": selected["title"],
             "selected_example_domain": selected["domain"],
@@ -509,9 +579,10 @@ def prepare(args: argparse.Namespace) -> int:
                     fix_commit.casefold(),
                 }
             ),
-            "corpus_skill_source": str(corpus_skill),
+            "specialist_source": str(specialist_source),
             "injected_skill_names": skill_names,
             "injected_skill_sources": [str(path) for path in skill_sources],
+            "injected_support_paths": support_paths,
             "injected_skills_snapshot": "injected-skills",
             "injected_skills_sha256": injected_skills_digest,
             "forbidden_patterns": [re.escape(selected["title"])],
@@ -530,12 +601,14 @@ def prepare(args: argparse.Namespace) -> int:
             {
                 "case_dir": str(case_dir),
                 "fixture": str(case_dir / "fixture"),
-                "reviewer": args.reviewer,
+                "domain": args.domain,
+                "reviewer_skill": skill_name,
                 "selected_example": selected["selector"],
                 "source_commit": source_commit,
                 "fix_commit": fix_commit,
                 "target": selected["target"],
                 "injected_skill_names": skill_names,
+                "injected_support_paths": support_paths,
                 "answer_key": str(case_dir / "answer-key.md"),
                 "verification": "passed",
             },
@@ -668,17 +741,18 @@ def minimal_bwrap(
 
 
 def audit_prompt(
-    provider: str, target: str, repository_label: str, reviewer: str
+    provider: str,
+    target: str,
+    repository_label: str,
+    domain: str,
+    skill_name: str,
 ) -> str:
-    skill_name = (
-        "zk-verifier-review-monolith" if reviewer == "monolith" else "zk-verifier-review"
-    )
     invocation = f"${skill_name}" if provider == "codex" else f"/{skill_name}"
     return (
-        f"Use {invocation} to perform an authorized, defensive, read-only verifier-soundness review of exactly this historical target: "
+        f"Use {invocation} to perform an authorized, defensive, read-only {domain} specialist review of exactly this historical target: "
         f"{target}\n\n"
-        "Inspect every protocol, transcript, generated-artifact, composition, or acceptance dependency "
-        "needed to decide this bounded target, while stating explicit coverage limits. Follow the skill's "
+        "Stay within this specialist's domain. Inspect the local dependencies needed to decide the bounded "
+        "target, while stating explicit coverage limits. Follow the skill's "
         "evidence gate and reporting format. Use only minimal bounded symbolic assignments or abstract "
         "proof flows needed to establish a verifier mismatch. Do not generate or "
         "execute proof-generation exploits, attack scripts, operational reproduction procedures, "
@@ -936,7 +1010,8 @@ def run_eval(args: argparse.Namespace) -> int:
         args.provider,
         manifest["target"],
         manifest.get("repository_label", Path(manifest["repo_root"]).name),
-        manifest["reviewer"],
+        manifest["domain"],
+        manifest["reviewer_skill"],
     )
     executable = shutil.which(args.provider)
     if not executable:
@@ -973,13 +1048,14 @@ def run_eval(args: argparse.Namespace) -> int:
     (run_dir / "final.md").write_text(final.rstrip() + "\n", encoding="utf-8")
     event_count = sum(1 for _ in events.open(encoding="utf-8", errors="replace"))
     metadata = {
-        "version": 3,
+        "version": 4,
         "case_id": manifest["case_id"],
         "provider": args.provider,
         "model": args.model,
         "effort": args.effort,
         "provider_version": provider_version,
-        "reviewer": manifest["reviewer"],
+        "domain": manifest["domain"],
+        "reviewer_skill": manifest["reviewer_skill"],
         "selected_example": manifest["selected_example"],
         "source_commit": manifest["source_commit"],
         "injected_skill_names": manifest["injected_skill_names"],
@@ -1134,13 +1210,12 @@ def parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument("--repo", type=Path, default=Path.cwd())
     prepare_parser.add_argument("--example", required=True)
     prepare_parser.add_argument(
-        "--reviewer",
-        choices=["monolith", "coordinator"],
+        "--domain",
+        choices=list(SPECIALIST_SKILLS),
         required=True,
-        help="inject the historical monolith or the coordinator and all specialists",
+        help="inject only the specialist for this example domain",
     )
     prepare_parser.add_argument("--case-id")
-    prepare_parser.add_argument("--corpus-skill", type=Path)
     prepare_parser.add_argument("--skills-root", type=Path)
     prepare_parser.add_argument("--output-root", type=Path)
     prepare_parser.set_defaults(func=prepare)
