@@ -10,13 +10,14 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_structures::DeviceMatrix;
 use gpu_core::primitives::device_structures::{
-    DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
+    DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
 };
 use gpu_core::primitives::field::BF;
 use gpu_hash::blake2s::build_merkle_tree;
 use gpu_hash::blake2s::{
-    build_merkle_tree_multi_coset, build_partial_merkle_tree_multi_coset, gather_tree_caps_inline,
-    Digest,
+    build_merkle_tree_multi_coset, build_merkle_tree_nodes_multi_coset_over_existing_layer,
+    build_partial_merkle_tree_multi_coset, gather_tree_caps_inline,
+    hash_leaves_multi_coset_physical, Digest,
 };
 use gpu_hash::blake2s::{
     gather_leaf_rows, gather_merkle_paths_device, gather_merkle_paths_from_rows,
@@ -25,6 +26,7 @@ use gpu_ntt::ntt::{
     bitreversed_monomials_to_natural_evals_multi_coset, hypercube_to_multi_coset_evals_fused,
     hypercube_x1_msb_evals_to_x1_msb_monomials, log_size_supports_transposed_monomials,
 };
+use gpu_ops::bit_reverse::bit_reverse_in_place;
 use gpu_prover_context::ProverContext;
 
 // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
@@ -1030,6 +1032,68 @@ pub(crate) fn commit_trace_multi_coset(
         per_coset_evals_stride,
         per_coset_tree_stride,
         columns_count,
+        stream,
+    )
+}
+
+/// LSB sibling of [`commit_trace_multi_coset`]: each coset slab of
+/// `evals_backing` is the BITREVERSED-order codeword, so every leaf is one
+/// physically contiguous row block. Leaf digest `j` lands in physical-block
+/// order; one strided bit-reverse over the `per_coset_leaves_count`-row leaves
+/// half of each `per_coset_tree_stride`-digest slab canonicalizes it back to
+/// logical order, leaving the internal-node half untouched, and only the node
+/// tower runs on top. The resulting backing is byte-identical to
+/// [`commit_trace_multi_coset`] over the natural-order codeword.
+#[doc(hidden)]
+pub fn build_full_trees_from_physical(
+    evals_backing: &DeviceSlice<BF>,
+    trees_backing: &mut DeviceSlice<Digest>,
+    log_domain_size: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    columns_count: usize,
+    cosets_in_tile: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_tree_cap_size >= log_lde_factor);
+    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    assert!(log_domain_size >= log_rows_per_leaf + log_coset_tree_cap_size);
+    let per_coset_evals_stride = columns_count << log_domain_size;
+    let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
+    let per_coset_tree_stride = per_coset_leaves_count << 1;
+    assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
+    assert_eq!(trees_backing.len(), per_coset_tree_stride * cosets_in_tile);
+    let layers_count = log_domain_size + 1 - log_rows_per_leaf - log_coset_tree_cap_size;
+    assert_ne!(layers_count, 0);
+    assert!(per_coset_leaves_count >= 1 << (layers_count - 1));
+    hash_leaves_multi_coset_physical(
+        evals_backing,
+        trees_backing,
+        log_rows_per_leaf,
+        cosets_in_tile,
+        per_coset_leaves_count,
+        per_coset_evals_stride,
+        per_coset_tree_stride,
+        columns_count,
+        stream,
+    )?;
+    {
+        let mut leaves = DeviceMatrixChunkMut::new(
+            trees_backing,
+            per_coset_tree_stride,
+            0,
+            per_coset_leaves_count,
+        );
+        bit_reverse_in_place(&mut leaves, stream)?;
+    }
+    build_merkle_tree_nodes_multi_coset_over_existing_layer(
+        trees_backing,
+        layers_count - 1,
+        cosets_in_tile,
+        per_coset_tree_stride,
+        /*initial_src_offset_in_coset=*/ 0,
+        /*initial_src_layer_count_per_coset=*/ per_coset_leaves_count,
         stream,
     )
 }
