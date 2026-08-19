@@ -1,0 +1,4 @@
+interface:
+  display_name: "Blind-Eval ZK Verifier Review"
+  short_description: "Blind-test monolith or coordinator bug recall"
+  default_prompt: "Use $blindeval-zk-verifier-review to blind-test the monolith or coordinator against one historical verifier bug."
