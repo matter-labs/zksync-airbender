@@ -1383,10 +1383,6 @@ fn measure_register_timestamp_deltas() {
         total_cycles += 1;
 
         let mut min_touched = u64::MAX;
-        #[allow(
-            clippy::needless_range_loop,
-            reason = "register index r is the loop's subject, not just a cursor"
-        )]
         for r in 1..32 {
             let ts = state.registers[r].timestamp;
             if ts != prev_ts[r] {
@@ -1425,6 +1421,10 @@ fn measure_register_timestamp_deltas() {
     let global_max_gap = max_gap.iter().copied().max().unwrap();
     // final staleness (touched-once-then-read-at-end case)
     let mut max_final_staleness = 0u64;
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "r is the register number being reported, not just a cursor"
+    )]
     for r in 1..32 {
         if prev_ts[r] != 0 {
             max_final_staleness = max_final_staleness.max(state.timestamp - prev_ts[r]);
