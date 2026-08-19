@@ -227,6 +227,32 @@ fn build_merkle_tree_nodes_multi_coset(
     Ok(())
 }
 
+/// Node-only seam over an ALREADY-POPULATED source layer in `tree_backing`,
+/// forwarding verbatim to [`build_merkle_tree_nodes_multi_coset`]. Callers that
+/// write (and permute) their own leaves layer cannot use
+/// [`build_merkle_tree_multi_coset`], which re-hashes leaves first and would
+/// overwrite it.
+#[doc(hidden)]
+pub fn build_merkle_tree_nodes_multi_coset_over_existing_layer(
+    tree_backing: &mut DeviceSlice<Digest>,
+    layers_count: u32,
+    cosets_in_tile: usize,
+    per_coset_tree_stride_digests: usize,
+    initial_src_offset_in_coset: usize,
+    initial_src_layer_count_per_coset: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    build_merkle_tree_nodes_multi_coset(
+        tree_backing,
+        layers_count,
+        cosets_in_tile,
+        per_coset_tree_stride_digests,
+        initial_src_offset_in_coset,
+        initial_src_layer_count_per_coset,
+        stream,
+    )
+}
+
 cuda_kernel!(
     PartialTreeMultiCoset,
     ab_blake2s_partial_tree_multi_coset_kernel(
