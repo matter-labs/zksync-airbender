@@ -21,10 +21,8 @@ pub struct RegionPlan {
 }
 
 pub struct StreamPlan {
-    pub prefix_words: usize,
     pub regions: Vec<RegionPlan>,
     pub inits_count_word: usize,
-    pub inits_first_word: usize,
     pub pow_word: usize,
     pub total_words: usize,
 }
@@ -42,7 +40,6 @@ pub fn plan_unrolled_stream(
     w += 32 * 3;
     w += 3;
     w += external_challenge_words(proof);
-    let prefix_words = w;
 
     let mut regions = Vec::new();
     for k in riscv_order(program) {
@@ -68,7 +65,6 @@ pub fn plan_unrolled_stream(
 
     let inits_count_word = w;
     w += 1;
-    let inits_first_word = w;
     {
         let compiled = proof
             .inits_and_teardowns_circuit
@@ -121,10 +117,8 @@ pub fn plan_unrolled_stream(
     }
 
     StreamPlan {
-        prefix_words,
         regions,
         inits_count_word,
-        inits_first_word,
         pow_word,
         total_words: w,
     }

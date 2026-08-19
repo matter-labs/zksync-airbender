@@ -649,15 +649,18 @@ fn run_gpu_recursive_pipeline(
     let mut layer = 0u32;
 
     loop {
-        let (bin, text) = if input_is_base {
-            (&unrolled_base_bin, &unrolled_base_text)
+        let (program, bin, text) = if input_is_base {
+            (
+                FsvProgram::UnrolledBaseLayer,
+                &unrolled_base_bin,
+                &unrolled_base_text,
+            )
         } else {
-            (&unrolled_rec_bin, &unrolled_rec_text)
-        };
-        let program = if input_is_base {
-            FsvProgram::UnrolledBaseLayer
-        } else {
-            FsvProgram::UnrolledRecursionLayer
+            (
+                FsvProgram::UnrolledRecursionLayer,
+                &unrolled_rec_bin,
+                &unrolled_rec_text,
+            )
         };
         let estimated = estimate_verifier_cycles(&proof, program, unrolled_blake)
             .expect("cannot estimate verifier cycles");

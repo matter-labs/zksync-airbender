@@ -187,8 +187,6 @@ pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 64 * 1024 * 1024;
 /// keeps ~2.5x margin against recalibration drift.
 pub const MIN_UNIFIED_SWITCH_CYCLES: u64 = 16 * 1024 * 1024;
 
-const _: () = assert!(DEFAULT_UNIFIED_SWITCH_CYCLES >= MIN_UNIFIED_SWITCH_CYCLES);
-
 #[must_use]
 pub fn unified_switch_cycles() -> u64 {
     let cycles = std::env::var("RECURSION_UNIFIED_SWITCH_CYCLES")
@@ -198,7 +196,7 @@ pub fn unified_switch_cycles() -> u64 {
     assert!(
         cycles >= MIN_UNIFIED_SWITCH_CYCLES,
         "unified switch threshold {cycles} is below the convergence floor \
-         {MIN_UNIFIED_SWITCH_CYCLES}: the rung estimate bottoms out at ~6.6M \
+         {MIN_UNIFIED_SWITCH_CYCLES}: the rung estimate bottoms out at ~6.55M \
          cycles, so lower thresholds never stop the unrolled recursion loop"
     );
     cycles

@@ -1,5 +1,4 @@
 pub mod census;
-pub mod table;
 
 use crate::program_proof::ProgramProof;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
@@ -29,7 +28,7 @@ impl core::fmt::Display for EstimateError {
         match self {
             Self::UnknownBinary { program, mode } => write!(
                 f,
-                "no cost table for {program:?}/{}; recalibrate with \
+                "no census table for {program:?}/{}; recalibrate with \
                  `cargo test -p full_statement_verifier --features host_utils,verifiers \
                  --test cost_model_trace -- --ignored`",
                 mode.tag()
@@ -48,31 +47,6 @@ impl core::fmt::Display for EstimateError {
     }
 }
 
-impl std::error::Error for EstimateError {}
-
-pub struct CostTable {
-    pub c0: u64,
-    pub v: &'static [(CircuitId, u64)],
-}
-
-impl CostTable {
-    fn lookup(&self, circuit: CircuitId) -> Result<u64, EstimateError> {
-        self.v
-            .iter()
-            .find(|(c, _)| *c == circuit)
-            .map(|(_, v)| *v)
-            .ok_or(EstimateError::UnpricedCircuit { circuit })
-    }
-}
-
-#[must_use]
-pub fn table_for(program: FsvProgram, mode: BlakeMode) -> Option<&'static CostTable> {
-    table::TABLES
-        .iter()
-        .find(|(p, m, _)| *p == program && *m == mode)
-        .map(|(_, _, t)| t)
-}
-
 /// Estimated cycles for verifying `proof` with the given fsv binary.
 ///
 /// **Domain: valid canonical proofs only.** The generated verifier returns early
@@ -85,16 +59,11 @@ pub fn estimate_verifier_cycles(
     program: FsvProgram,
     mode: BlakeMode,
 ) -> Result<u64, EstimateError> {
-    let table = table_for(program, mode).ok_or(EstimateError::UnknownBinary { program, mode })?;
-    estimate_from_table(table, proof)
-}
-
-pub fn estimate_from_table(table: &CostTable, proof: &ProgramProof) -> Result<u64, EstimateError> {
-    estimate_from_counts(
-        table,
-        &proof_counts(proof),
-        proof.inits_and_teardown_proofs.len(),
-    )
+    // The census family dims partition the cycle count (the calibration test
+    // `census_family_cycles_sum_to_total` asserts it), so total cycles are the
+    // family sum of the same fit.
+    let totals = census::census_totals(proof, program, mode)?;
+    Ok(totals[..census::NUM_FAMILY_DIMS].iter().sum())
 }
 
 #[must_use]
@@ -112,42 +81,6 @@ pub fn proof_counts(proof: &ProgramProof) -> Vec<(CircuitId, usize)> {
         .collect()
 }
 
-pub fn estimate_from_counts(
-    table: &CostTable,
-    counts: &[(CircuitId, usize)],
-    inits_and_teardowns: usize,
-) -> Result<u64, EstimateError> {
-    if inits_and_teardowns != 1 {
-        return Err(EstimateError::UnexpectedInitsAndTeardowns {
-            found: inits_and_teardowns,
-        });
-    }
-    let mut total = table.c0;
-    for (circuit, n) in counts {
-        if *n == 0 {
-            continue;
-        }
-        total += table.lookup(*circuit)? * *n as u64;
-    }
-    Ok(total)
-}
-
-pub const BASE_LAYER_RISCV: &[u32] = &[
-    common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
-    common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
-    common_constants::SHIFT_BINARY_CIRCUIT_FAMILY_IDX as u32,
-    common_constants::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
-    common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-    common_constants::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-];
-
-pub const RECURSION_LAYER_RISCV: &[u32] = &[
-    common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
-    common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
-    common_constants::SHIFT_BINARY_CIRCUIT_FAMILY_IDX as u32,
-    common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-];
-
 pub const DELEGATION_TYPES: &[u32] = &[
     common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
     common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
@@ -158,8 +91,20 @@ pub const DELEGATION_TYPES: &[u32] = &[
 #[must_use]
 pub fn riscv_order(program: FsvProgram) -> &'static [u32] {
     match program {
-        FsvProgram::UnrolledBaseLayer => BASE_LAYER_RISCV,
-        FsvProgram::UnrolledRecursionLayer => RECURSION_LAYER_RISCV,
+        FsvProgram::UnrolledBaseLayer => &[
+            common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
+            common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
+            common_constants::SHIFT_BINARY_CIRCUIT_FAMILY_IDX as u32,
+            common_constants::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
+            common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+            common_constants::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+        ],
+        FsvProgram::UnrolledRecursionLayer => &[
+            common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
+            common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
+            common_constants::SHIFT_BINARY_CIRCUIT_FAMILY_IDX as u32,
+            common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+        ],
         other => panic!("{other:?} is not an unrolled program"),
     }
 }
@@ -171,87 +116,6 @@ pub fn compiled_circuits(program: FsvProgram) -> Vec<CircuitId> {
         .map(|k| CircuitId::Riscv(*k))
         .chain(DELEGATION_TYPES.iter().map(|k| CircuitId::Delegation(*k)))
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use common_constants::{
-        ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
-        KECCAK_SPECIAL5_CSR_REGISTER,
-    };
-
-    const ADD_SUB: CircuitId = CircuitId::Riscv(ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32);
-    const JUMP_BR: CircuitId = CircuitId::Riscv(JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32);
-    const KECCAK: CircuitId = CircuitId::Delegation(KECCAK_SPECIAL5_CSR_REGISTER);
-
-    fn test_table() -> CostTable {
-        CostTable {
-            c0: 1_000,
-            v: &[(ADD_SUB, 10), (JUMP_BR, 100), (KECCAK, 1_000)],
-        }
-    }
-
-    #[test]
-    fn sums_counts_times_per_proof_cost() {
-        let counts = [(ADD_SUB, 3), (JUMP_BR, 2)];
-        assert_eq!(
-            estimate_from_counts(&test_table(), &counts, 1).unwrap(),
-            1_000 + 30 + 200
-        );
-    }
-
-    #[test]
-    fn absent_circuits_contribute_nothing() {
-        let counts = [(ADD_SUB, 1)];
-        assert_eq!(
-            estimate_from_counts(&test_table(), &counts, 1).unwrap(),
-            1_010
-        );
-    }
-
-    #[test]
-    fn zero_count_is_treated_as_absent_not_unpriced() {
-        let counts = [(ADD_SUB, 1), (CircuitId::Delegation(9999), 0)];
-        assert_eq!(
-            estimate_from_counts(&test_table(), &counts, 1).unwrap(),
-            1_010
-        );
-    }
-
-    #[test]
-    fn unpriced_circuit_is_a_hard_error() {
-        let counts = [(CircuitId::Riscv(4242), 1)];
-        assert!(matches!(
-            estimate_from_counts(&test_table(), &counts, 1),
-            Err(EstimateError::UnpricedCircuit {
-                circuit: CircuitId::Riscv(4242)
-            })
-        ));
-    }
-
-    #[test]
-    fn inits_and_teardowns_must_be_exactly_one() {
-        let counts = [(ADD_SUB, 1)];
-        assert!(matches!(
-            estimate_from_counts(&test_table(), &counts, 2),
-            Err(EstimateError::UnexpectedInitsAndTeardowns { found: 2 })
-        ));
-        assert!(matches!(
-            estimate_from_counts(&test_table(), &counts, 0),
-            Err(EstimateError::UnexpectedInitsAndTeardowns { found: 0 })
-        ));
-    }
-
-    #[test]
-    fn delegation_and_riscv_keys_do_not_collide() {
-        let table = CostTable {
-            c0: 0,
-            v: &[(CircuitId::Riscv(7), 5), (CircuitId::Delegation(7), 50)],
-        };
-        let counts = [(CircuitId::Riscv(7), 1), (CircuitId::Delegation(7), 1)];
-        assert_eq!(estimate_from_counts(&table, &counts, 1).unwrap(), 55);
-    }
 }
 
 #[cfg(all(test, feature = "verifiers"))]
@@ -280,7 +144,10 @@ mod order_tests {
             .iter()
             .map(|(k, _)| *k)
             .collect();
-        assert_eq!(BASE_LAYER_RISCV, actual.as_slice());
+        assert_eq!(
+            riscv_order(FsvProgram::UnrolledBaseLayer),
+            actual.as_slice()
+        );
     }
 
     #[test]
@@ -293,7 +160,10 @@ mod order_tests {
             .iter()
             .map(|(k, _)| *k)
             .collect();
-        assert_eq!(RECURSION_LAYER_RISCV, actual.as_slice());
+        assert_eq!(
+            riscv_order(FsvProgram::UnrolledRecursionLayer),
+            actual.as_slice()
+        );
     }
 
     #[test]

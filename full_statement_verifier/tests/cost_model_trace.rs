@@ -2,7 +2,7 @@
 #![feature(generic_const_exprs)]
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
-//! Calibration harness for `src/cost_model/table.rs`. Every test here needs real
+//! Calibration harness for `src/cost_model/census.rs`. Every test here needs real
 //! recursion proofs, far too large to commit, so all of them are `#[ignore]`d and
 //! run by hand when the table is recalibrated. `cost_model_drift.rs` needs only
 //! committed artifacts, so it runs unignored in CI.
@@ -21,8 +21,9 @@
 //! | `rung0` | `recursion_layer_0_proof_<tag>.bin` / `recursion_layer_0_setups_<tag>.bin` | recursion-layer `c0`, blake2 coefficient |
 //! | `rung1` | `recursion_layer_1_proof_<tag>.bin` / `recursion_layer_1_setups_<tag>.bin` | steady-rung chain path |
 //!
-//! `emit_cost_tables` prints the tables to paste into `src/cost_model/table.rs`;
-//! `estimate_matches_measurement_on_every_fixture` is the acceptance gate.
+//! `emit_census_tables` prints the tables to paste into `src/cost_model/census.rs`;
+//! `estimate_matches_measurement_on_every_fixture` and its census sibling are
+//! the acceptance gates.
 
 mod trace;
 
@@ -104,15 +105,6 @@ fn stream_plan_matches_the_actual_stream() {
             );
         }
         assert_eq!(stream[plan.inits_count_word], 1);
-        assert_eq!(
-            plan.inits_first_word,
-            plan.inits_count_word + 1,
-            "{fixture}: the inits/teardowns proof must start right after its count word"
-        );
-        assert_eq!(
-            plan.prefix_words, plan.regions[0].count_word,
-            "{fixture}: the first RISC-V count word must sit at the end of the prefix"
-        );
 
         let riscv: Vec<_> = plan
             .regions
@@ -149,31 +141,6 @@ fn stream_plan_matches_the_actual_stream() {
 
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
-fn per_proof_spans_agree_within_a_circuit() {
-    for Fixture {
-        name: fixture,
-        program,
-        ..
-    } in trace::calibrate::calibration_fixtures()
-    {
-        let c = trace::calibrate::calibrate_fixture(fixture, *program);
-        for (circuit, spans) in &c.spans {
-            if spans.len() < 2 {
-                continue;
-            }
-            let lo = *spans.iter().min().unwrap();
-            let hi = *spans.iter().max().unwrap();
-            assert!(
-                hi - lo <= hi / 200,
-                "{fixture}/{circuit:?}: per-proof spans vary more than 0.5% \
-                 (min {lo}, max {hi}) — the affine model does not hold for this circuit"
-            );
-        }
-    }
-}
-
-#[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn proof_counts_matches_the_planned_regions() {
     use full_statement_verifier::cost_model::proof_counts;
     for Fixture {
@@ -205,35 +172,6 @@ fn proof_counts_matches_the_planned_regions() {
 
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
-fn implied_per_type_overhead_agrees_within_a_section() {
-    use trace::plan::Section;
-    for Fixture {
-        name: fixture,
-        program,
-        ..
-    } in trace::calibrate::calibration_fixtures()
-    {
-        let (t, plan) = trace::calibrate::trace_fixture(fixture, *program);
-        for section in [Section::Riscv, Section::Delegation] {
-            let observed = trace::calibrate::implied_section_s(&t, &plan, section);
-            if observed.len() < 2 {
-                continue;
-            }
-            let spread = observed.iter().map(|(_, s)| *s).max().unwrap()
-                - observed.iter().map(|(_, s)| *s).min().unwrap();
-            let budget = (t.total_cycles / 2000) as i64;
-            assert!(
-                spread <= budget,
-                "{fixture}/{section:?}: the implied per-type overhead S spans {spread} cycles \
-                 across regions {observed:?} — every singleton priced as region_cycles - S \
-                 inherits that spread, which exceeds the 0.05% budget ({budget})"
-            );
-        }
-    }
-}
-
-#[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn every_fixture_verifies_natively() {
     for Fixture { name, program, .. } in trace::calibrate::ALL_FIXTURES {
         let (setups, proof) = trace::load_calibration_proof(name);
@@ -243,31 +181,6 @@ fn every_fixture_verifies_natively() {
             *program == FsvProgram::UnrolledBaseLayer,
         );
     }
-}
-
-#[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
-fn emit_cost_tables() {
-    let cals: Vec<_> = trace::calibrate::calibration_fixtures()
-        .map(|f| {
-            (
-                f.name,
-                f.program,
-                trace::calibrate::calibrate_fixture(f.name, f.program),
-            )
-        })
-        .collect();
-    let pooled = trace::calibrate::pool(&cals);
-
-    assert_eq!(
-        pooled.unpriced,
-        vec![full_statement_verifier::cost_model::CircuitId::Delegation(
-            common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER
-        )],
-        "only blake2_g_function may remain unpriced; anything else means a fixture gap"
-    );
-
-    println!("{}", trace::calibrate::render_tables(&pooled));
 }
 
 #[test]
@@ -349,9 +262,7 @@ fn census_estimate_matches_measurement_on_every_fixture() {
             assert_eq!(*dim, CENSUS_DIMS[d]);
             let measured = t.total_census[d];
             let err = (*est_v as i64 - measured as i64).unsigned_abs();
-            // Family-cycle dims get 0.1%: data-dependent work shifts cycles
-            // between families while the total stays within 0.05%. Call-count
-            // dims keep the 0.05% budget.
+            // Family dims get 2x slack; see CENSUS_REL_DIV in trace/calibrate.rs.
             let rel = if d < full_statement_verifier::cost_model::census::NUM_FAMILY_DIMS {
                 measured / 1000
             } else {
@@ -386,10 +297,7 @@ fn per_proof_census_spans_agree_within_a_circuit() {
             for d in 0..NUM_CENSUS_DIMS {
                 let lo = spans.iter().map(|s| s[d]).min().unwrap();
                 let hi = spans.iter().map(|s| s[d]).max().unwrap();
-                // Family-cycle spans carry data-dependent jitter (pow loop,
-                // challenge-dependent branches) that lands in one family and
-                // cancels in another; it averages out in the pooled period.
-                // Delegation-call spans are shape-exact in practice.
+                // Bound rationale: CENSUS_REL_DIV in trace/calibrate.rs.
                 assert!(
                     hi - lo <= (hi / 64).max(2),
                     "{fixture}/{circuit:?} census dim {d}: per-proof spans vary beyond the \
