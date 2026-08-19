@@ -16,14 +16,13 @@ use std::sync::{Arc, OnceLock};
 /// `GpuGKRSetupHost::precompute_from_cpu_setup` call (which does GPU LDE +
 /// commit + D2H of partial trees and the unified cap) runs on first use
 /// inside the GPU worker, against that worker's already-initialized
-/// `ProverContext`. Uses a `OnceLock` so concurrent workers race once and
-/// the loser drops its Arc instead of installing a duplicate.
+/// `ProverContext`.
 ///
 /// The `Arc` wrapper around `GpuGKRSetupHost` is what subsequent workers
 /// clone — every prove() that uses this circuit picks up the same cached
 /// pinned-host buffers.
 pub(crate) struct LazyGpuGKRSetupHost {
-    inner: OnceLock<Arc<GpuGKRSetupHost>>,
+    inner: OnceLock<Option<Arc<GpuGKRSetupHost>>>,
     cpu_setup: Arc<CpuGKRSetup<BF>>,
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
@@ -54,28 +53,36 @@ impl LazyGpuGKRSetupHost {
     }
 
     /// First call: builds the host on `context` (one-shot stream sync inside
-    /// `precompute_from_cpu_setup`); subsequent calls return the cached Arc.
-    ///
-    /// Returns `None` when the CPU setup has no columns (e.g.
-    /// InitsAndTeardowns has `generic_lookup_tables_width == 0` and no
-    /// decoder table). The proof flow already treats `setup_transfer` as
-    /// optional, so a column-less circuit simply has no setup to transfer
-    /// or commit.
+    /// `precompute_from_cpu_setup`) and fills the lock — with `None` when the
+    /// CPU setup has no columns (e.g. InitsAndTeardowns), so "initialized as
+    /// absent" is distinguishable from "never initialized". Subsequent calls
+    /// return the cached value.
     pub fn get_or_init(&self, context: &ProverContext) -> CudaResult<Option<Arc<GpuGKRSetupHost>>> {
-        if self.cpu_setup.hypercube_evals.is_empty() {
-            return Ok(None);
-        }
         self.inner
             .get_or_try_init(|| {
-                Ok(Arc::new(GpuGKRSetupHost::precompute_from_cpu_setup(
+                if self.cpu_setup.hypercube_evals.is_empty() {
+                    return Ok(None);
+                }
+                Ok(Some(Arc::new(GpuGKRSetupHost::precompute_from_cpu_setup(
                     &self.cpu_setup,
                     self.log_lde_factor,
                     self.log_rows_per_leaf,
                     self.log_tree_cap_size,
                     context,
-                )?))
+                )?)))
             })
-            .map(|arc| Some(Arc::clone(arc)))
+            .map(|opt| opt.clone())
+    }
+
+    pub fn get_initialized(&self) -> Option<Arc<GpuGKRSetupHost>> {
+        self.inner
+            .get()
+            .expect("setup host must be initialized by a constructor/add_binary setup batch before use")
+            .clone()
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.inner.get().is_some()
     }
 }
 
