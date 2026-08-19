@@ -14,7 +14,7 @@ const TOTAL_TABLE_WIDTH: usize =
 // ABI:
 // - registers x10-x12 are used to pass the parameters
 // - x10 and x11 are pointers: x10 is a pointer to 16 words of extended state (aligned at 64 bytes), x11 is a pointer to the input to mix (aligned at 64 bytes)
-// - x12 is a control register, with lower bits starting from 0 if full blake absorbtion round is needed. One bit marks if we are running reduced or not rounds,
+// - x12 is a control register, with lower bits starting from 0 if full blake absorption round is needed. One bit marks if we are running reduced or not rounds,
 // but such bit is only needed for witness gen for now and doesn't affect selection of inputs
 
 pub fn all_table_types() -> Vec<TableType> {
@@ -305,7 +305,7 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
     // v[c] = v[c].wrapping_add(v[d]);
     // v[b] = rotate_right::<7>(v[b] ^ v[c]);
 
-    // and in our implementation even though we chunk `a` and `c` using extra witness, they are immediatelly fed into XOR + rotate lookups,
+    // and in our implementation even though we chunk `a` and `c` using extra witness, they are immediately fed into XOR + rotate lookups,
     // so `a`/`c` chunks and constraints are range checked
 
     let _output_decompositions = g_function::g_function(

@@ -4,10 +4,10 @@ use cs::definitions::GKRAddress;
 pub mod base;
 pub mod once_folded;
 
-pub trait EvaluationRepresentaionBase<F: PrimeField, E: FieldExtension<F> + Field>:
+pub trait EvaluationRepresentationBase<F: PrimeField, E: FieldExtension<F> + Field>:
     'static + Clone + Copy + core::fmt::Debug + Send + Sync
 {
-    type Product: EvaluationRepresentaionExt<F, E, Base = Self, CTX = Self::CTX>;
+    type Product: EvaluationRepresentationExt<F, E, Base = Self, CTX = Self::CTX>;
     type CTX: 'static + Clone + Copy + core::fmt::Debug + Send + Sync;
 
     fn into_ext(self, ctx: &Self::CTX) -> E;
@@ -19,10 +19,10 @@ pub trait EvaluationRepresentaionBase<F: PrimeField, E: FieldExtension<F> + Fiel
     fn mul_by_ext_and_into_ext(self, other: &E, ctx: &Self::CTX) -> E;
 }
 
-pub trait EvaluationRepresentaionExt<F: PrimeField, E: FieldExtension<F> + Field>:
+pub trait EvaluationRepresentationExt<F: PrimeField, E: FieldExtension<F> + Field>:
     'static + Clone + Copy + core::fmt::Debug + Send + Sync
 {
-    type Base: EvaluationRepresentaionBase<F, E, Product = Self, CTX = Self::CTX>;
+    type Base: EvaluationRepresentationBase<F, E, Product = Self, CTX = Self::CTX>;
 
     type CTX: 'static + Clone + Copy + core::fmt::Debug + Send + Sync;
 
@@ -40,29 +40,29 @@ pub trait EvaluationRepresentaionExt<F: PrimeField, E: FieldExtension<F> + Field
 }
 
 pub trait SumcheckRoundSource<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
-    type BaseFieldInput: EvaluationRepresentaionBase<F, E>;
+    type BaseFieldInput: EvaluationRepresentationBase<F, E>;
     type BaseInputAccessor<'a>: PolyAccessor<F, E, Representation = Self::BaseFieldInput>
     where
         Self: 'a;
 
-    type ExtFieldInput: EvaluationRepresentaionBase<F, E>;
+    type ExtFieldInput: EvaluationRepresentationBase<F, E>;
     type ExtInputAccessor<'a>: PolyAccessor<F, E, Representation = Self::ExtFieldInput>
     where
         Self: 'a;
 
     fn base_field_input_ctx(
         &self,
-    ) -> <Self::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX;
+    ) -> <Self::BaseFieldInput as EvaluationRepresentationBase<F, E>>::CTX;
     fn ext_field_input_ctx(
         &self,
-    ) -> <Self::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX;
+    ) -> <Self::ExtFieldInput as EvaluationRepresentationBase<F, E>>::CTX;
     fn get_source_for_base_poly<'a>(&'a self, address: GKRAddress) -> Self::BaseInputAccessor<'a>;
     fn get_source_for_ext_poly<'a>(&'a self, address: GKRAddress) -> Self::ExtInputAccessor<'a>;
 }
 
 pub trait PolyAccessor<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     const SHOULD_ACCESS_TO_PREPARE_FOR_NEXT_STEP: bool;
-    type Representation: EvaluationRepresentaionBase<F, E>;
+    type Representation: EvaluationRepresentationBase<F, E>;
 
     fn get_at_index(&self, index: usize) -> Self::Representation;
     #[inline(always)]

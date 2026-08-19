@@ -54,7 +54,7 @@ pub fn bigint_with_extended_control_delegation_circuit_table_addition_fn<
 pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) -> (Vec<[Variable; 2]>, [Variable; REGISTER_SIZE]) {
-    let (_execute, _invication_ts) =
+    let (_execute, _invocation_ts) =
         cs.allocate_delegation_state(BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16);
 
     let dst_accesses = (0..8)

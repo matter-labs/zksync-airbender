@@ -29,7 +29,7 @@ impl<F: PrimeField> BaseFieldFoldedOnceRepresentationProduct<F> {
     }
 }
 
-impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F, E>
+impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentationBase<F, E>
     for BaseFieldFoldedOnceRepresentation<F>
 {
     type Product = BaseFieldFoldedOnceRepresentationProduct<F>;
@@ -78,7 +78,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
     }
 }
 
-impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionExt<F, E>
+impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentationExt<F, E>
     for BaseFieldFoldedOnceRepresentationProduct<F>
 {
     type Base = BaseFieldFoldedOnceRepresentation<F>;

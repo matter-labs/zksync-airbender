@@ -331,7 +331,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         let input = Expr::from(gate_fam4_rom_read) * rom_addr_constraint;
         // we want a constraint such that it's if we do ROM read then it's equal to destination value
         // (what we write to RD), otherwise (RAM read or SW) - it's 0. We need in mind that SW * is_ROM is
-        // unreachable combiantion, so we freely treat is as 0. We also want to ensure that
+        // unreachable combination, so we freely treat is as 0. We also want to ensure that
         // if we do RAM read or SW, then source and destination values are the same
 
         // ROM read case

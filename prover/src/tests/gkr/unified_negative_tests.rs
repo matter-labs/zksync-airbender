@@ -958,12 +958,12 @@ fn select_trick_each_half_binds() {
 fn unified_mulmod_intermediate_forge_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let mul_bit = find_base_layer_address(circuit, &format!("family_bit[{MULMOD_BIT_INDEX}]"));
-        let interm = find_base_layer_address(circuit, "MULMOD intermediate value");
+        let interim = find_base_layer_address(circuit, "MULMOD intermediate value");
         let row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, mul_bit, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute MULMOD");
-        let cur = read_cell(trace, interm, row);
-        write_cell(trace, interm, row, cur + BabyBearField::ONE);
+        let cur = read_cell(trace, interim, row);
+        write_cell(trace, interim, row, cur + BabyBearField::ONE);
     });
     assert!(
         !check_satisfied(&circuit, &full_trace),

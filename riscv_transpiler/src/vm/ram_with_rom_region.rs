@@ -262,7 +262,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
     ) {
         use common_constants::*;
 
-        // parallel collect, and we access mutually exclusive places, so we first degrate everything to pointers
+        // parallel collect, and we access mutually exclusive places, so we first degrade everything to pointers
         // first we will walk over access_bitmask and collect subparts
 
         let words_per_chunk = 1 << words_per_chunk_log2;
@@ -359,7 +359,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
             chunks_in_set <= 2,
             "we do not support logic for generic grouping of chunks yet"
         );
-        // parallel collect, and we access mutually exclusive places, so we first degrate everything to pointers
+        // parallel collect, and we access mutually exclusive places, so we first degrade everything to pointers
         // first we will walk over access_bitmask and collect subparts
 
         let (sender, receiver) = std::sync::mpsc::channel();

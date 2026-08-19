@@ -217,7 +217,7 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
     }
 }
 
-impl<B: GoodAllocator> PathQueriable for Keccak256MerkleTreeWithCap<B> {
+impl<B: GoodAllocator> PathQueryable for Keccak256MerkleTreeWithCap<B> {
     fn get_cap(&self) -> MerkleTreeCapVarLength {
         let output = if let Some(cap) = self.node_hashes_enumerated_from_leafs.last() {
             let mut result = Vec::new();

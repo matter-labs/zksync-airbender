@@ -38,7 +38,7 @@ impl ProximityTestingMode for PessimisticConjectureMode {
         neg_rate_log_2: u32,
     ) -> u32 {
         // Even though the conjecture doesn't hold, the correction terms are O(1/q) and O(1/log(q)),
-        // and for ~31 bit field those yeild in 10% more queries. So we do extra 20% more queries to have a margin.
+        // and for ~31 bit field those yield in 10% more queries. So we do extra 20% more queries to have a margin.
 
         let bits_per_query = neg_rate_log_2;
         let num_queries = security_bits / bits_per_query;

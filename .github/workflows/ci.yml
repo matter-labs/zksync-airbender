@@ -53,20 +53,6 @@ jobs:
           rustup set profile minimal
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
-      # `tools/gkr_verifier` is a SEPARATE workspace: it is in neither `members`
-      # nor `exclude` of the root manifest and declares its own `[workspace]`,
-      # because profiles and `cargo-features` are honored only from a workspace
-      # ROOT -- and it needs `panic = "immediate-abort"` to keep unwinding
-      # machinery out of the in-VM verifier. So the action above, which only
-      # sees the root workspace, never formats it. Check it explicitly.
-      #
-      # Must `cd` and must set RUSTC_BOOTSTRAP, for the SAME two reasons as the
-      # clippy job -- an earlier version of this step did neither and was doubly
-      # broken: from the repo root `--manifest-path` still resolves the ROOT
-      # workspace, so it silently re-checked the root instead of this crate; and
-      # without RUSTC_BOOTSTRAP cargo cannot parse this manifest
-      # (`cargo-features = ["panic-immediate-abort"]` is nightly-only), which
-      # exits non-zero while reporting zero diffs.
       - name: Rustfmt Check (gkr_verifier sub-workspace)
         working-directory: tools/gkr_verifier
         env:
@@ -85,27 +71,7 @@ jobs:
           rustflags: ""
       - name: Setup
         run: rustup set profile minimal
-      # Scope notes:
-      #   * GPU packages are excluded because this runner has no CUDA toolkit.
-      #     Be clear about what that costs: test-gpu.yaml BUILDS and TESTS the GPU
-      #     stack but runs NO clippy and NO rustfmt, so these 15 packages are not
-      #     lint-gated anywhere. The root `formatting` job does cover gpu/** (they
-      #     are root workspace members); clippy does not. Three of the excluded
-      #     packages -- gpu_gkr_model, gpu_gkr_compiler, gpu_witness_eval_generator
-      #     -- are pure CPU, off the CUDA build DAG, and already built and tested
-      #     by the `tests` job above, so they could be linted here; they are
-      #     excluded only because the standing decision was "exclude gpu/**".
-      #     Keep this list in sync with the workspace: a stale `--exclude` for a
-      #     retired package is only a cargo warning, so it rots silently
-      #     (gpu_cub was retired upstream in #396).
-      #   * `--bins` covers the bin target proper. `experiments_runner` is
-      #     bin-only; `--lib --tests` does still lint it via its test target, but
-      #     note `-p <bin-only-pkg> --lib` ERRORS with "no library targets found".
-      #   * Benches are excluded: `prover`'s pow_bench does not build upstream.
-      #   * RUST_MIN_STACK mirrors the prover's rustc monomorphization needs.
       - name: Clippy (CPU workspace)
-        env:
-          RUST_MIN_STACK: "100000000"
         run: |
           cargo clippy --workspace \
             --exclude gpu_circuit_prover \
@@ -125,38 +91,12 @@ jobs:
             --exclude gpu_witness_eval_generator \
             --lib --tests --bins \
             -- -D warnings
-      # Three things here are load-bearing, all verified by running them:
-      #   * MUST `cd` rather than use --manifest-path: cargo discovers
-      #     `.cargo/config.toml` from the CURRENT DIRECTORY, not from the
-      #     manifest. That config supplies `target = riscv32i-unknown-none-elf`,
-      #     the `+zimop` / linker-script rustflags and `[unstable]
-      #     panic-immediate-abort`. From the repo root this no_std RISC-V crate
-      #     would be built for the host and fail.
-      #   * RUSTC_BOOTSTRAP=1 is REQUIRED, not belt-and-braces: this directory
-      #     pins stable 1.97.1 via rust-toolchain.toml, and without it cargo
-      #     cannot even parse the manifest (`cargo-features =
-      #     ["panic-immediate-abort"]` is nightly-only). Same trick as dump_bin.sh.
-      #   * `--bins`, NOT `--all-targets`: the latter adds test targets, and
-      #     there is no `test` crate for riscv32i-unknown-none-elf (E0463).
-      # Note `-- -D warnings` applies to this package only, so the dead-code
-      # warnings that `field`/`prover` emit under this no_std riscv config do
-      # not fail the job.
       - name: Clippy (gkr_verifier sub-workspace)
         working-directory: tools/gkr_verifier
         env:
           RUSTC_BOOTSTRAP: "1"
         run: cargo clippy --bins -- -D warnings
-
-  # Restored after a pre-push review found all four critic seats flagging its
-  # absence. This is the ONLY automated link between cs/src/** +
-  # verifier_generator/src/** and the committed cs/compiled_circuits/*.json +
-  # circuit_defs/**/generated/layout.json + verifier/src/generated/**.
-  # check_verifiers does NOT cover it: that job rebuilds the fsv_* binaries FROM
-  # the already-committed generated sources, so stale generated source reproduces
-  # bit-for-bit and reports green. The two guarded properties are disjoint.
-  # Note the compiled layouts embed #[track_caller] source LINE NUMBERS, so any
-  # edit under cs/src/gkr_circuits/** -- including a pure lint edit -- invalidates
-  # them; that is precisely the drift this job catches.
+  
   circuits_generated:
     name: circuits_generated
     runs-on: [matterlabs-ci-runner-c3d]
