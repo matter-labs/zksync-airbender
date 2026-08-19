@@ -117,7 +117,7 @@ pub mod imp {
 /// Compare against the reference `Proth120` multiplication on random inputs.
 #[cfg(target_arch = "x86_64")]
 pub fn self_check() {
-    use field::{Field, PrimeField, Proth120, Rand};
+    use field::{Field, Proth120, Rand};
     let mut rng = rand::rng();
     for _ in 0..200_000 {
         let a = Proth120::random_element(&mut rng);

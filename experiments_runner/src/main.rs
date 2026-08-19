@@ -13,7 +13,11 @@
 //!
 //! Env knobs: `BENCH_THREADS` caps the worker pool.
 
-use field::{Field, FieldExtension, PrimeField, Proth120, Rand};
+use field::{Field, Proth120, Rand};
+// Only needed to bring the trait methods into scope for the aarch64/NEON
+// code paths below; unused on every other target.
+#[cfg(target_arch = "aarch64")]
+use field::{FieldExtension, PrimeField};
 use std::alloc::Global;
 use std::time::Instant;
 use worker::Worker;
@@ -1868,6 +1872,7 @@ fn bench_gather(worker: &Worker, log_t: u32) {
 fn bench_ext4_diag() {
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
+    #[cfg(target_arch = "aarch64")]
     use worker::rayon::prelude::*;
 
     println!("\n== Ext4 2^18 x 512 diagnostic ==");
@@ -1965,7 +1970,7 @@ fn bench_ext4_diag() {
     }
     #[cfg(not(target_arch = "aarch64"))]
     {
-        let _ = (poly, tw);
+        let _ = (poly, tw, cosets);
         println!("  (aarch64 only)");
     }
 }
