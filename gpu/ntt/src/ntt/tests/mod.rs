@@ -1728,3 +1728,136 @@ fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2
         b.sub_assign(&*a);
     }
 }
+
+// Characterizes which monomial LABELING the GPU commit chain implements, by
+// comparing coset 0 of the LDE (where no coset shift applies) against naive
+// CPU evaluations under both labelings. Answers: is the GPU output equal to
+// the CPU's, a bit-reversal of it, or neither?
+#[test]
+#[cfg(not(no_cuda))]
+fn characterize_commit_chain_labeling_vs_cpu() {
+    use super::{
+        bitreversed_monomials_to_natural_evals_multi_coset,
+        hypercube_x1_msb_evals_to_x1_msb_monomials,
+    };
+    use gpu_core::primitives::device_structures::DeviceMatrixChunk;
+
+    let ctx = make_context();
+    let stream = ctx.get_exec_stream();
+
+    for &log_n in &[3usize, 4, 5] {
+        let n = 1usize << log_n;
+        let log_lde_factor = 1usize;
+        let num_cosets = 1usize << log_lde_factor;
+
+        let evals: Vec<BF> = (0..n).map(|i| BF::new((7 + i * 5) as u32)).collect();
+
+        // ---- CPU: hypercube evals -> monomial coeffs (the Mobius transform)
+        let mut coeffs = evals.clone();
+        multivariate_hypercube_evals_into_coeffs(&mut coeffs, log_n as u32);
+
+        // ---- CPU: naive evaluation on the base domain (coset 0), both labelings.
+        let omega: BF = fft::domain_generator_for_size::<BF>(n as u64);
+        let pow = |base: BF, e: usize| {
+            let mut acc = BF::ONE;
+            for _ in 0..e {
+                acc.mul_assign(&base);
+            }
+            acc
+        };
+        let br = |i: usize| -> usize {
+            let mut r = 0usize;
+            for b in 0..log_n {
+                if i & (1 << b) != 0 {
+                    r |= 1 << (log_n - 1 - b);
+                }
+            }
+            r
+        };
+        // natural labeling: array index IS the exponent
+        let mut cpu_natural = vec![BF::ZERO; n];
+        // bitrev labeling: exponent is bitrev(array index)
+        let mut cpu_bitrev = vec![BF::ZERO; n];
+        for j in 0..n {
+            let x = pow(omega, j);
+            let mut acc_nat = BF::ZERO;
+            let mut acc_rev = BF::ZERO;
+            for i in 0..n {
+                let mut t = coeffs[i];
+                t.mul_assign(&pow(x, i));
+                acc_nat.add_assign(&t);
+                let mut u = coeffs[i];
+                u.mul_assign(&pow(x, br(i)));
+                acc_rev.add_assign(&u);
+            }
+            cpu_natural[j] = acc_nat;
+            cpu_bitrev[j] = acc_rev;
+        }
+
+        // ---- GPU: the production commit chain
+        let mut d_in = ctx.alloc::<BF>(n).unwrap();
+        let mut d_mono = ctx.alloc::<BF>(n).unwrap();
+        let mut d_out = ctx.alloc::<BF>(num_cosets * n).unwrap();
+        memory_copy_async(&mut d_in, &evals[..], stream).unwrap();
+        hypercube_x1_msb_evals_to_x1_msb_monomials(
+            &d_in[..],
+            &mut d_mono[..],
+            log_n,
+            false,
+            stream,
+            ctx.get_device_properties(),
+        )
+        .unwrap();
+        let mut h_mono = vec![BF::ZERO; n];
+        memory_copy_async(&mut h_mono[..], &d_mono, stream).unwrap();
+        let monomials = DeviceMatrixChunk::new(&d_mono[..], n, 0, n);
+        bitreversed_monomials_to_natural_evals_multi_coset(
+            &monomials,
+            &mut d_out[..],
+            log_n,
+            log_lde_factor,
+            1,
+            false,
+            ctx.device_context(),
+            None,
+            stream,
+            ctx.get_device_properties(),
+        )
+        .unwrap();
+        let mut h_out = vec![BF::ZERO; num_cosets * n];
+        memory_copy_async(&mut h_out[..], &d_out, stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let gpu_c0 = &h_out[0..n];
+        let mut gpu_c0_rev = gpu_c0.to_vec();
+        fft::bitreverse_enumeration_inplace(&mut gpu_c0_rev);
+
+        // Does the GPU's monomial scratch equal the CPU Mobius output?
+        println!(
+            "log_n={log_n}  gpu_monomials == cpu_coeffs: {}",
+            h_mono == coeffs
+        );
+        let mut coeffs_rev = coeffs.clone();
+        fft::bitreverse_enumeration_inplace(&mut coeffs_rev);
+        println!(
+            "log_n={log_n}  gpu_monomials == bitrev(cpu_coeffs): {}",
+            h_mono == coeffs_rev
+        );
+        println!(
+            "log_n={log_n}  gpu_evals == cpu_NATURAL-labeling: {}",
+            gpu_c0 == &cpu_natural[..]
+        );
+        println!(
+            "log_n={log_n}  gpu_evals == cpu_BITREV-labeling:  {}",
+            gpu_c0 == &cpu_bitrev[..]
+        );
+        println!(
+            "log_n={log_n}  bitrev(gpu_evals) == cpu_NATURAL:  {}",
+            gpu_c0_rev == cpu_natural
+        );
+        println!(
+            "log_n={log_n}  bitrev(gpu_evals) == cpu_BITREV:   {}",
+            gpu_c0_rev == cpu_bitrev
+        );
+    }
+}
