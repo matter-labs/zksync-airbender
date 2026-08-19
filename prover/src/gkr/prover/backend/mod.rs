@@ -19,6 +19,10 @@ use super::commitment_utils::{
 };
 use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
 use fft::Twiddles;
+// Only reachable from the aarch64/NEON backend items below; on every other
+// target `DefaultBabyBearBackend` is the generic WorkStealingBackend and these
+// names go unused. (The test module has its own import.)
+#[cfg(target_arch = "aarch64")]
 use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use field::{Field, FieldExtension, PrimeField, Proth120, TwoAdicField};
 use std::alloc::Global;
