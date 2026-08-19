@@ -24,7 +24,7 @@ const NTT_SHAPES: [(u32, u32); 2] = [(6, 1), (10, 5)];
 const NTT_COLS_COUNTS: [u32; 2] = [1, 4];
 const NTT_LOG_LDE_FACTOR: u32 = 2;
 
-fn random_values(len: usize) -> Vec<BF> {
+pub(super) fn random_values(len: usize) -> Vec<BF> {
     let mut rng = rand::rng();
     let mut values = vec![BF::ZERO; len];
     values.fill_with(|| BF::from_nonreduced_u32(rng.random()));
@@ -33,7 +33,7 @@ fn random_values(len: usize) -> Vec<BF> {
 
 /// `cudaMalloc(0)` hands back a null pointer that `DeviceAllocation` rejects, so
 /// the legal `cols_count == 0` shapes get a one-element backing sliced to zero.
-fn upload(values: &[BF], stream: &CudaStream) -> DeviceAllocation<BF> {
+pub(super) fn upload(values: &[BF], stream: &CudaStream) -> DeviceAllocation<BF> {
     let mut device = DeviceAllocation::alloc(values.len().max(1)).unwrap();
     if !values.is_empty() {
         memory_copy_async(&mut device[..values.len()], values, stream).unwrap();
@@ -43,7 +43,12 @@ fn upload(values: &[BF], stream: &CudaStream) -> DeviceAllocation<BF> {
 
 /// Permutes every column of every coset slab from natural row order into the
 /// bitreversed row order the LSB NTT emits.
-fn bitreverse_rows(values: &[BF], cosets_count: usize, cols_count: usize, log_n: u32) -> Vec<BF> {
+pub(super) fn bitreverse_rows(
+    values: &[BF],
+    cosets_count: usize,
+    cols_count: usize,
+    log_n: u32,
+) -> Vec<BF> {
     let rows_count = 1usize << log_n;
     let coset_stride = cols_count * rows_count;
     let mut result = vec![BF::ZERO; values.len()];
@@ -60,7 +65,7 @@ fn bitreverse_rows(values: &[BF], cosets_count: usize, cols_count: usize, log_n:
 
 /// Host blake2s over the LOGICAL leaf `leaf`: slot `s` of column `col` reads
 /// natural row `leaf + rev_b(s) * leaves_count`, absorbed slot-fast.
-fn host_logical_leaf(
+pub(super) fn host_logical_leaf(
     values: &[BF],
     coset_base: usize,
     rows_count: usize,

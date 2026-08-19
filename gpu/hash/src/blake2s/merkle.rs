@@ -331,6 +331,92 @@ pub fn build_partial_merkle_tree_multi_coset(
     )
 }
 
+cuda_kernel!(
+    PartialTreeMultiCosetPhysical,
+    ab_blake2s_partial_tree_multi_coset_physical_kernel(
+        values: *const BF,
+        tree_backing: *mut Digest,
+        log_rows_per_hash: u32,
+        cols_count: u32,
+        log_per_coset_count: u32,
+        per_coset_values_stride_bf: u32,
+        per_coset_tree_stride_digests: u32,
+        count: u32,
+    )
+);
+
+/// LSB sibling of [`build_partial_merkle_tree_multi_coset`]: `values` is the
+/// same exact `[coset][column][row]` storage, but in BITREVERSED row order.
+/// The tree backing it writes is byte-identical to the natural-order builder's.
+pub fn build_partial_merkle_tree_multi_coset_physical(
+    values: &DeviceSlice<BF>,
+    tree_backing: &mut DeviceSlice<Digest>,
+    log_rows_per_hash: u32,
+    layers_count: u32,
+    cosets_in_tile: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const THREADS_PER_BLOCK: u32 = 256;
+    const LEAVES_PER_BLOCK: u32 = 512;
+    const REDUCTION_LAYERS: u32 = WARP_SIZE.trailing_zeros();
+
+    assert_ne!(layers_count, 0);
+    assert!(cosets_in_tile >= 1);
+    assert!(log_rows_per_hash < 32);
+    assert_eq!(tree_backing.len() % cosets_in_tile, 0);
+    let per_coset_tree_stride_digests = tree_backing.len() / cosets_in_tile;
+    assert!(per_coset_tree_stride_digests.is_power_of_two());
+    let per_coset_leaves_count = per_coset_tree_stride_digests << (REDUCTION_LAYERS - 1);
+    // A CTA reduces one contiguous run of 512 LOGICAL leaves, and the physical
+    // block translation below is only coset-local for a CTA that stays inside
+    // one coset.
+    assert!(
+        per_coset_leaves_count.trailing_zeros() >= LEAVES_PER_BLOCK.trailing_zeros(),
+        "each 512-leaf CTA must stay inside one coset ({per_coset_leaves_count} leaves per coset)"
+    );
+    assert!(layers_count <= per_coset_tree_stride_digests.trailing_zeros());
+    let boundary_roots_per_coset = per_coset_leaves_count >> REDUCTION_LAYERS;
+    assert_eq!(values.len() % cosets_in_tile, 0);
+    let per_coset_values_stride_bf = values.len() / cosets_in_tile;
+    let rows_per_coset = per_coset_leaves_count
+        .checked_mul(1usize << log_rows_per_hash)
+        .expect("partial tree rows count overflow");
+    assert_eq!(per_coset_values_stride_bf % rows_per_coset, 0);
+    let cols_count = per_coset_values_stride_bf / rows_per_coset;
+
+    let total_leaves = checked_u32(
+        per_coset_leaves_count
+            .checked_mul(cosets_in_tile)
+            .expect("partial tree leaves count overflow"),
+    );
+    let mut config = CudaLaunchConfig::basic(
+        total_leaves.div_ceil(LEAVES_PER_BLOCK),
+        THREADS_PER_BLOCK,
+        stream,
+    );
+    config.dynamic_smem_bytes = LEAVES_PER_BLOCK as usize * core::mem::size_of::<Digest>();
+    let args = PartialTreeMultiCosetPhysicalArguments::new(
+        values.as_ptr(),
+        tree_backing.as_mut_ptr(),
+        log_rows_per_hash,
+        checked_u32(cols_count),
+        per_coset_leaves_count.trailing_zeros(),
+        checked_u32(per_coset_values_stride_bf),
+        checked_u32(per_coset_tree_stride_digests),
+        total_leaves,
+    );
+    PartialTreeMultiCosetPhysicalFunction::default().launch(&config, &args)?;
+    build_merkle_tree_nodes_multi_coset(
+        tree_backing,
+        layers_count - 1,
+        cosets_in_tile,
+        per_coset_tree_stride_digests,
+        0,
+        boundary_roots_per_coset,
+        stream,
+    )
+}
+
 /// Multi-coset full merkle tree build. `tree_backing` holds
 /// `cosets_in_tile` per-coset tree slabs of `per_coset_tree_stride_digests`
 /// digests each (`[coset0_tree | coset1_tree | ...]`). Each coset's tree is
