@@ -101,4 +101,5 @@ fn random_digest() -> Digest {
 mod merkle_tests;
 mod physical_leaf_tests;
 mod physical_partial_tree_tests;
+mod physical_query_gather_tests;
 mod transcript_tests;

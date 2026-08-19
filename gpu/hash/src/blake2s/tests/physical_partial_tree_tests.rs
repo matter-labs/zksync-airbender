@@ -25,7 +25,7 @@ fn host_parent(left: &Digest, right: &Digest) -> Digest {
     digest
 }
 
-fn host_layer_above(layer: &[Digest]) -> Vec<Digest> {
+pub(super) fn host_layer_above(layer: &[Digest]) -> Vec<Digest> {
     layer
         .as_chunks::<2>()
         .0
