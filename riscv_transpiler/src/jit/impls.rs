@@ -2470,7 +2470,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 // the corresponding CSR register number. Consecutive identical
                 // delegation instructions belong to a single delegated call.
                 Op::ZicsrDelegation => {
-                    let mut cycles_taken;
+                    let cycles_taken;
                     // NOTE: all the increment below happen before moving RSP
                     let function: *const () = match instr.imm {
                         BLAKE2S_DELEGATION_CSR_REGISTER => {
@@ -2551,7 +2551,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         // NOTE: we should write r9 into structure, so snapshotter is consistent as a structure
                         ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9
                         ; sub rsp, 8
-                        ; mov rax, QWORD (function as *const ()).addr() as isize as i64
+                        ; mov rax, QWORD function.addr() as isize as i64
                         // we already have trace chunk in RDI, memory in RSI, and MachineState in RDX
                         ; call rax
                         ; add rsp, 8

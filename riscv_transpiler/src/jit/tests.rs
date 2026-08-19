@@ -139,7 +139,7 @@ fn test_jit_recursive_verifier() {
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let source = QuasiUARTSource::new_with_reads(responses);
+    let mut source = QuasiUARTSource::new_with_reads(responses);
 
     JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
 }
@@ -462,7 +462,7 @@ fn test_jit_full_block() {
         .iter()
         .map(|el| u32::from_be_bytes(*el))
         .collect();
-    let source = QuasiUARTSource::new_with_reads(witness);
+    let mut source = QuasiUARTSource::new_with_reads(witness);
     let (state, _) = JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.materialized_registers());
@@ -1501,7 +1501,7 @@ fn run_and_compare() {
         .iter()
         .map(|el| u32::from_be_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(witness);
+    let source = QuasiUARTSource::new_with_reads(witness);
 
     let step = 1 << 19;
     let initial_step = 762314752;
@@ -1718,7 +1718,7 @@ fn run_recursion_and_compare() {
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(responses);
+    let source = QuasiUARTSource::new_with_reads(responses);
 
     let step = 1 << 16;
     let initial_step = 836694;

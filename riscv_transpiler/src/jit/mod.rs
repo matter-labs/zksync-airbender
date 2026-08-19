@@ -299,6 +299,10 @@ impl MachineState {
     const PACKED_TS_OFFSET: usize = offset_of!(Self, packed_timestamps);
     const GPR_REGISTERS_OFFSET: usize = offset_of!(Self, gpr_registers);
     const XMM_SPILL_OFFSET: usize = offset_of!(Self, xmm_register_spill);
+    #[allow(
+        dead_code,
+        reason = "layout constant kept beside the other offset_of consts"
+    )]
     const REGISTER_TIMESTAMPS_OFFSET: usize = offset_of!(Self, register_timestamps);
     const COUNTERS_OFFSET: usize = offset_of!(Self, counters);
     const PC_OFFSET: usize = offset_of!(Self, pc);
