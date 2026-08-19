@@ -319,7 +319,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             .collect::<Vec<_>>()
     } else {
         let (mem_oracle, _wit_oracle) =
-            commit_separate_memory_and_witness_subtrees::<BF, BF, DefaultTreeConstructor>(
+            commit_separate_memory_and_witness_subtrees::<BF, BF, DefaultTreeConstructor, _>(
                 &NaiveBackend,
                 &make_full_trace(),
                 &twiddles,

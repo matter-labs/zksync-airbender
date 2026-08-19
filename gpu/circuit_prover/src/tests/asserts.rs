@@ -24,7 +24,7 @@ pub(super) fn assert_sumcheck_intermediate_values_eq_for_test_with_layer<
         .enumerate()
     {
         for (coeff_idx, (&actual_coeff, &expected_coeff)) in
-            actual_coeffs.iter().zip(expected_coeffs.iter()).enumerate()
+            actual_coeffs.as_multilinear().iter().zip(expected_coeffs.as_multilinear().iter()).enumerate()
         {
             assert_eq!(
                 actual_coeff, expected_coeff,
