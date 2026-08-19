@@ -296,3 +296,106 @@ fn estimate_matches_measurement_on_every_fixture() {
         );
     }
 }
+
+#[test]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
+fn emit_census_tables() {
+    let cals: Vec<_> = trace::calibrate::calibration_fixtures()
+        .map(|f| {
+            (
+                f.name,
+                f.program,
+                trace::calibrate::calibrate_census_fixture(f.name, f.program),
+            )
+        })
+        .collect();
+    let pooled = trace::calibrate::pool_census(&cals);
+    println!("{}", trace::calibrate::render_census_tables(&pooled));
+}
+
+#[test]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
+fn census_family_cycles_sum_to_total() {
+    for Fixture { name, program, .. } in trace::calibrate::ALL_FIXTURES {
+        let (t, _) = trace::calibrate::trace_fixture(name, *program);
+        let family_sum: u64 = t.total_census
+            [..full_statement_verifier::cost_model::census::NUM_FAMILY_DIMS]
+            .iter()
+            .sum();
+        assert_eq!(
+            family_sum, t.total_cycles,
+            "{name}: per-family cycle counters must partition the total cycle count"
+        );
+    }
+}
+
+#[test]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
+fn census_estimate_matches_measurement_on_every_fixture() {
+    use full_statement_verifier::cost_model::census::{
+        estimate_verifier_census, CENSUS_DIMS, NUM_CENSUS_DIMS,
+    };
+
+    for Fixture { name, program, .. } in trace::calibrate::ALL_FIXTURES {
+        let (t, _) = trace::calibrate::trace_fixture(name, *program);
+        let est = estimate_verifier_census(
+            &trace::load_calibration_proof(name).1,
+            *program,
+            BlakeMode::Compression,
+        )
+        .unwrap();
+        assert_eq!(est.len(), NUM_CENSUS_DIMS);
+        for (d, (dim, est_v)) in est.iter().enumerate() {
+            assert_eq!(*dim, CENSUS_DIMS[d]);
+            let measured = t.total_census[d];
+            let err = (*est_v as i64 - measured as i64).unsigned_abs();
+            // Family-cycle dims get 0.1%: data-dependent work shifts cycles
+            // between families while the total stays within 0.05%. Call-count
+            // dims keep the 0.05% budget.
+            let rel = if d < full_statement_verifier::cost_model::census::NUM_FAMILY_DIMS {
+                measured / 1000
+            } else {
+                measured / 2000
+            };
+            let budget = rel.max(8);
+            assert!(
+                err <= budget,
+                "{name} dim {d} ({dim:?}): estimate {est_v} vs measured {measured} exceeds \
+                 the budget ({err} > {budget})"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
+fn per_proof_census_spans_agree_within_a_circuit() {
+    use full_statement_verifier::cost_model::census::NUM_CENSUS_DIMS;
+
+    for Fixture {
+        name: fixture,
+        program,
+        ..
+    } in trace::calibrate::calibration_fixtures()
+    {
+        let c = trace::calibrate::calibrate_census_fixture(fixture, *program);
+        for (circuit, spans) in &c.spans {
+            if spans.len() < 2 {
+                continue;
+            }
+            for d in 0..NUM_CENSUS_DIMS {
+                let lo = spans.iter().map(|s| s[d]).min().unwrap();
+                let hi = spans.iter().map(|s| s[d]).max().unwrap();
+                // Family-cycle spans carry data-dependent jitter (pow loop,
+                // challenge-dependent branches) that lands in one family and
+                // cancels in another; it averages out in the pooled period.
+                // Delegation-call spans are shape-exact in practice.
+                assert!(
+                    hi - lo <= (hi / 64).max(2),
+                    "{fixture}/{circuit:?} census dim {d}: per-proof spans vary beyond the \
+                     bound (min {lo}, max {hi})"
+                );
+            }
+        }
+    }
+}

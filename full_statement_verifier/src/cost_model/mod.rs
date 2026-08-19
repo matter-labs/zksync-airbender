@@ -1,3 +1,4 @@
+pub mod census;
 pub mod table;
 
 use crate::program_proof::ProgramProof;
