@@ -99,4 +99,5 @@ fn random_digest() -> Digest {
 }
 
 mod merkle_tests;
+mod physical_leaf_tests;
 mod transcript_tests;
