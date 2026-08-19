@@ -72,6 +72,7 @@ mod commit_memory;
 mod cpu_lde_labeling;
 mod fixtures;
 mod inits_and_teardowns;
+mod lsb_commit_pipeline;
 mod proof_matrix;
 mod stagewise;
 
