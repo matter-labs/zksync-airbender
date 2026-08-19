@@ -11,7 +11,7 @@ use super::forward::{
     fused_writeback_single_coset_3_pass, monomials_to_evals_2_pass_compact_initial,
     monomials_to_evals_3_pass, monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed,
     monomials_to_evals_subwarp, natural_monomials_to_bitrev_evals_2_pass,
-    natural_monomials_to_bitrev_evals_3_pass,
+    natural_monomials_to_bitrev_evals_2_pass_compact, natural_monomials_to_bitrev_evals_3_pass,
 };
 use super::hypercube::hypercube_evals_to_pre_tail_monomials_3_pass;
 use super::kernels::*;
@@ -656,9 +656,10 @@ fn dispatch_forward_multi_coset(
 /// inner; coset `k`'s columns occupy
 /// `outputs[(k * num_cols_per_coset_stride + col) * trace_len ..]`.
 ///
-/// Currently covers the multipass regimes (`log_n` in `[21, 24]`: three-pass,
-/// or two-pass once one column reaches the device L2 at `log_n >= 23`); other
-/// dispatch families land in later plan tasks.
+/// Covers `log_n` in `[13, 24]`: the multipass regimes (three-pass, or two-pass
+/// once one column reaches the device L2 at `log_n >= 23`) plus the
+/// two-pass-compact range below them. Smaller dispatch families are out of
+/// scope -- no production base size reaches them.
 #[allow(clippy::too_many_arguments)]
 pub fn natural_monomials_to_bitreversed_evals_multi_coset(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -755,14 +756,17 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
     )
     .unwrap_or_else(|e| {
         unreachable!(
-            "natural->bitrev strategy unavailable for log_n {log_n}: {e:?} (dispatch families \
-             below the multipass floor land in plan Task 9)"
+            "natural->bitrev strategy unavailable for log_n {log_n}: {e:?} (verdict V-a scopes \
+             this entry to the multipass sizes plus the two-pass-compact range, log_n in \
+             [13, 24])"
         )
     });
     let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
     let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);
-    match strategy.passes[0].kernel {
-        super::NttKernelKind::NaturalToBitrevInitial { .. } => {
+    // Routed on the LAST pass: the three-pass and two-pass-compact plans share
+    // `NaturalToBitrevInitial` as pass 1.
+    match strategy.passes.last().unwrap().kernel {
+        super::NttKernelKind::NaturalToBitrevFinal { .. } => {
             natural_monomials_to_bitrev_evals_3_pass(
                 inputs_matrix,
                 &mut outputs_matrix,
@@ -777,7 +781,7 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
                 stream,
             )
         }
-        super::NttKernelKind::NaturalToBitrevFirst { .. } => {
+        super::NttKernelKind::NaturalToBitrevLast { .. } => {
             natural_monomials_to_bitrev_evals_2_pass(
                 inputs_matrix,
                 &mut outputs_matrix,
@@ -792,8 +796,24 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
                 stream,
             )
         }
+        super::NttKernelKind::NaturalToBitrevLastCompact { .. } => {
+            natural_monomials_to_bitrev_evals_2_pass_compact(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                strategy.cosets_per_launch,
+                strategy.columns_per_launch,
+                transposed_monomials,
+                stream,
+            )
+        }
         _ => unreachable!(
-            "natural->bitrev LDE implements the multipass plans only (got {:?})",
+            "natural->bitrev LDE implements the multipass and two-pass-compact plans only \
+             (got {:?})",
             strategy.passes,
         ),
     }

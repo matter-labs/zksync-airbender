@@ -1873,7 +1873,8 @@ fn characterize_commit_chain_labeling_vs_cpu() {
 #[cfg(not(no_cuda))]
 mod natural_to_bitrev {
     use super::super::forward::{
-        monomials_to_evals_3_pass, natural_monomials_to_bitrev_evals_2_pass,
+        monomials_to_evals_2_pass_compact_initial, monomials_to_evals_3_pass,
+        natural_monomials_to_bitrev_evals_2_pass, natural_monomials_to_bitrev_evals_2_pass_compact,
         natural_monomials_to_bitrev_evals_3_pass,
     };
     use super::super::{
@@ -2568,5 +2569,176 @@ mod natural_to_bitrev {
                 columns_per_launch: 1,
             },
         );
+    }
+
+    // ---- two-pass-compact regime (log_n in [13, 20]) ----
+
+    /// ORACLE A leg for the two-pass-compact range: the OLD family's own
+    /// two-pass-compact plan (`first_K_stages_compact` + `noninitial_8`), which
+    /// is what covers log_n in [13, 20] on the bitrev-monomials side (the
+    /// three-pass forward kernels exist only for log_n in [21, 24]).
+    fn run_bitrev_to_natural_two_pass_compact(
+        context: &NttTestContext,
+        shape: &Shape,
+        logical: &[Vec<BF>],
+    ) -> Vec<BF> {
+        assert!(!shape.transposed);
+        let stream = context.get_exec_stream();
+        let n = shape.n();
+        let bitrev_labeled: Vec<Vec<BF>> = logical
+            .iter()
+            .map(|column| {
+                let mut column = column.clone();
+                bitreverse_enumeration_inplace(&mut column);
+                column
+            })
+            .collect();
+        let inputs_host = layout_columns(&bitrev_labeled, false);
+        let mut inputs_device = context.alloc(inputs_host.len()).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+        let mut outputs_device = context.alloc(shape.output_len()).unwrap();
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+            let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut outputs_device[..], n, 0, n);
+            monomials_to_evals_2_pass_compact_initial(
+                &inputs_matrix,
+                &mut outputs_matrix,
+                shape.log_n,
+                shape.coset_index_base,
+                shape.coset_factor_shift(),
+                shape.num_cosets,
+                shape.stride_cols,
+                shape.num_cosets,
+                shape.num_cols,
+                stream,
+            )
+            .unwrap();
+        }
+        let mut outputs_host = vec![BF::ZERO; shape.output_len()];
+        memory_copy_async(&mut outputs_host, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+        outputs_host
+    }
+
+    fn two_pass_compact_oracle_a_duality(shape: Shape, seed: u64) {
+        let context = make_context();
+        let logical = random_columns(&shape, seed);
+        let new_outputs = run_natural_to_bitrev(&context, &shape, &logical);
+        let old_outputs = run_bitrev_to_natural_two_pass_compact(&context, &shape, &logical);
+        for coset_offset in 0..shape.num_cosets {
+            for col in 0..shape.num_cols {
+                let range = shape.slab(coset_offset, col);
+                let mut expected = old_outputs[range.clone()].to_vec();
+                bitreverse_enumeration_inplace(&mut expected);
+                compare_slices(
+                    &new_outputs[range],
+                    &expected,
+                    &format!(
+                        "two-pass-compact oracle A {shape:?} seed={seed:#x} \
+                         coset_offset={coset_offset} col={col}"
+                    ),
+                );
+            }
+        }
+    }
+
+    /// The production size: log_n = 20 is the Blake2WithCompression delegation
+    /// circuit's trace length, the only sub-21 base size the commitment layer
+    /// asks for.
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_vs_cpu_naive_log_n_20() {
+        oracle_c_cpu_naive(shape(20, 1, 2, 0, 1, 1, false), 0xd1);
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_vs_cpu_naive_log_n_20_cols_3_range_base_2() {
+        oracle_c_cpu_naive(shape(20, 2, 2, 2, 3, 5, false), 0xd2);
+    }
+
+    /// The bottom of the family's range (K = log_n - 8 = 5 pass-2 stages).
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_vs_cpu_naive_log_n_13() {
+        oracle_c_cpu_naive(shape(13, 1, 2, 0, 3, 3, false), 0xd3);
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_vs_cpu_naive_log_n_14() {
+        oracle_c_cpu_naive(shape(14, 2, 2, 2, 1, 1, false), 0xd4);
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_basis_vectors_log_n_20() {
+        oracle_b_basis_vectors(shape(20, 1, 2, 0, 2, 2, false));
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_basis_vectors_log_n_13() {
+        oracle_b_basis_vectors(shape(13, 2, 2, 2, 2, 3, false));
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_duality_log_n_20() {
+        two_pass_compact_oracle_a_duality(shape(20, 1, 2, 0, 1, 1, false), 0xd5);
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_duality_log_n_20_cols_3_stride_5() {
+        two_pass_compact_oracle_a_duality(shape(20, 2, 2, 2, 3, 5, false), 0xd6);
+    }
+
+    /// The two-pass-compact launcher's column / coset tiling loops: one launch
+    /// per (column, coset) over a padded output stride and a non-zero coset
+    /// base, oracled against the CPU naive NTT.
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_forced_launch_tiling_log_n_20() {
+        let shape = shape(20, 2, 2, 2, 3, 5, false);
+        let context = make_context();
+        let stream = context.get_exec_stream();
+        let n = shape.n();
+        let logical = random_columns(&shape, 0xd8);
+        let inputs_host = layout_columns(&logical, shape.transposed);
+        let mut inputs_device = context.alloc(inputs_host.len()).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+        let mut outputs_device = context.alloc(shape.output_len()).unwrap();
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+            let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut outputs_device[..], n, 0, n);
+            natural_monomials_to_bitrev_evals_2_pass_compact(
+                &inputs_matrix,
+                &mut outputs_matrix,
+                shape.log_n,
+                shape.coset_index_base,
+                shape.coset_factor_shift(),
+                shape.num_cosets,
+                shape.stride_cols,
+                1, // cosets_per_launch
+                1, // columns_per_launch
+                shape.transposed,
+                stream,
+            )
+            .unwrap();
+        }
+        let mut outputs = vec![BF::ZERO; shape.output_len()];
+        memory_copy_async(&mut outputs, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+        check_vs_cpu_naive(
+            &shape,
+            &logical,
+            &outputs,
+            "two-pass-compact forced launch tiling",
+        );
+    }
+
+    /// The transposed-monomial layout has no path in this range: pass 2
+    /// exchanges rows inside a 1024-row transposition chunk, and
+    /// `log_size_supports_transposed_monomials` is false below log_n = 21, so
+    /// the launcher rejects it instead of computing garbage.
+    #[test]
+    #[should_panic(expected = "transposed_monomials")]
+    fn natural_to_bitrev_two_pass_compact_rejects_transposed() {
+        let context = make_context();
+        let shape = shape(20, 1, 2, 0, 1, 1, true);
+        let logical = random_columns(&shape, 0xd7);
+        run_natural_to_bitrev(&context, &shape, &logical);
     }
 }

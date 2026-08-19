@@ -341,6 +341,19 @@ macro_rules! natural_to_bitrev_final {
 // 2-pass natural monomials to bitreversed evals: last pass (14 stages).
 natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_14_stages_kernel);
 
+// 2-pass-compact natural monomials to bitreversed evals: pass 2 does the last
+// K = log_n - 8 stages per chunk of 2^K consecutive rows, for log_n in [13, 20]
+// (pass 1 is the three-pass initial kernel). Same NaturalToBitrevFinal
+// signature: in place per coset slab, plain row order out.
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_5_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_6_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_7_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_8_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_9_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_10_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_11_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_12_stages_compact_kernel);
+
 natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_5_stages_kernel);
 natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_6_stages_kernel);
 natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_7_stages_kernel);
