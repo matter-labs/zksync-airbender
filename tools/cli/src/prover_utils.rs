@@ -14,7 +14,8 @@
 //!   → unrolled recursion rungs (reduced ISA, fsv verifier binaries) while the
 //!     estimated verifier cost stays at/above `unified_switch_cycles()`
 //!   → bridge (the unrolled verifier proved in UNIFIED machine mode)
-//!   → final (fsv_unified_recursion_layer, unified mode)
+//!   → final (fsv_unified_recursion_layer, unified mode), repeated until the
+//!     proof converges to one unified + one delegation proof
 
 use clap::ValueEnum;
 use full_statement_verifier::host_utils::{
@@ -248,6 +249,19 @@ pub enum LadderMachine {
 /// need) in the given machine/kind with `nd_words` as the non-determinism
 /// stream, returning the assembled `(ProgramProof, Setups)` pair.
 pub trait ProveBackend {
+    /// Pre-register a binary so backend precomputations (GPU setups) run at
+    /// startup instead of inside the first timed prove call. No-op on
+    /// backends that build nothing up front.
+    fn register(
+        &mut self,
+        _kind: LadderKind,
+        _machine: LadderMachine,
+        _bin: &[u32],
+        _text: &[u32],
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
     fn prove(
         &mut self,
         batch_id: u64,
@@ -364,6 +378,36 @@ pub struct GpuBackend {
 
 #[cfg(feature = "gpu")]
 impl GpuBackend {
+    fn handle_for(
+        &mut self,
+        kind: LadderKind,
+        machine: LadderMachine,
+        execution_kind: gpu_execution_prover::ExecutionKind,
+        machine_type: gpu_execution_prover::MachineType,
+        bin: &[u32],
+        text: &[u32],
+    ) -> gpu_execution_prover::BinaryHandle {
+        let mut hasher = Keccak256::new();
+        for word in bin.iter().chain(text.iter()) {
+            hasher.update(word.to_le_bytes());
+        }
+        let key = (kind as u8, machine as u8, hasher.finalize().into());
+        if let Some(handle) = self.handles.get(&key) {
+            *handle
+        } else {
+            // `add_binary` pads internally; pass the words as loaded.
+            let handle = self.prover.add_binary(
+                execution_kind,
+                machine_type,
+                bin.to_vec(),
+                text.to_vec(),
+                None,
+            );
+            self.handles.insert(key, handle);
+            handle
+        }
+    }
+
     pub fn new(gpu: &GpuConfig) -> Result<Self, String> {
         let mut configuration = gpu_execution_prover::ExecutionProverConfiguration::default();
         configuration.replay_worker_threads_count = gpu.replay_worker_threads_count;
@@ -379,6 +423,26 @@ impl GpuBackend {
 
 #[cfg(feature = "gpu")]
 impl ProveBackend for GpuBackend {
+    fn register(
+        &mut self,
+        kind: LadderKind,
+        machine: LadderMachine,
+        bin: &[u32],
+        text: &[u32],
+    ) -> Result<(), String> {
+        use gpu_execution_prover::{ExecutionKind, MachineType};
+        let execution_kind = match kind {
+            LadderKind::Unrolled => ExecutionKind::Unrolled,
+            LadderKind::Unified => ExecutionKind::Unified,
+        };
+        let machine_type = match machine {
+            LadderMachine::FullUnsigned => MachineType::FullUnsigned,
+            LadderMachine::Reduced => MachineType::Reduced,
+        };
+        self.handle_for(kind, machine, execution_kind, machine_type, bin, text);
+        Ok(())
+    }
+
     fn prove(
         &mut self,
         batch_id: u64,
@@ -400,26 +464,7 @@ impl ProveBackend for GpuBackend {
             LadderMachine::Reduced => MachineType::Reduced,
         };
 
-        let mut hasher = Keccak256::new();
-        for word in bin.iter().chain(text.iter()) {
-            hasher.update(word.to_le_bytes());
-        }
-        let key = (kind as u8, machine as u8, hasher.finalize().into());
-
-        let handle = if let Some(handle) = self.handles.get(&key) {
-            *handle
-        } else {
-            // `add_binary` pads internally; pass the words as loaded.
-            let handle = self.prover.add_binary(
-                execution_kind,
-                machine_type,
-                bin.to_vec(),
-                text.to_vec(),
-                None,
-            );
-            self.handles.insert(key, handle);
-            handle
-        };
+        let handle = self.handle_for(kind, machine, execution_kind, machine_type, bin, text);
 
         let result = self.prover.commit_memory_and_prove(
             batch_id,
@@ -508,9 +553,10 @@ fn advance_to_target(
             unrolled_blake,
         )
         .map_err(|e| format!("cannot estimate verifier cycles: {e}"))?;
-        log::info!("verifying the current proof would take ~{estimated} cycles");
+        log::debug!(
+            "estimated verifier cost {estimated} cycles vs switch threshold {switch_cycles}"
+        );
         if estimated < switch_cycles {
-            log::info!("... below {switch_cycles} — stopping the unrolled recursion loop");
             break;
         }
 
@@ -571,37 +617,62 @@ fn advance_to_target(
         bridge_proof.executed_cycles()
     );
 
-    // === Final: fsv_unified_recursion_layer in unified mode. ===
+    // === Final: fsv_unified_recursion_layer in unified mode, repeated until
+    // === the proof converges to one unified + one delegation proof.
     let (final_bin, final_text) = load_fsv_program(
         &fsv_dir,
         FsvProgram::UnifiedRecursionLayer,
         final_blake_mode(),
     );
 
-    let start = Instant::now();
-    let (mut final_proof, final_setups) = backend.prove(
-        batch_id,
-        &final_bin,
-        &final_text,
-        LadderKind::Unified,
-        LadderMachine::Reduced,
-        UNIFIED_CYCLES_BOUND,
-        build_unified_stream(&bridge_setups, &bridge_proof),
-    )?;
-    state.timings.unified_recursion_ms.push(elapsed_ms(start));
-    final_proof.set_recursion_chain(&chain);
-    let final_end_params = compute_end_params(&final_setups, final_proof.final_pc);
-    chain.extend(&final_end_params);
-    state.chain_end_params.push(final_end_params);
+    let mut proof = bridge_proof;
+    let mut setups = bridge_setups;
+    let mut rounds = 0usize;
+    loop {
+        let start = Instant::now();
+        let (mut new_proof, new_setups) = backend.prove(
+            batch_id,
+            &final_bin,
+            &final_text,
+            LadderKind::Unified,
+            LadderMachine::Reduced,
+            UNIFIED_CYCLES_BOUND,
+            build_unified_stream(&setups, &proof),
+        )?;
+        state.timings.unified_recursion_ms.push(elapsed_ms(start));
+        new_proof.set_recursion_chain(&chain);
+        let end_params = compute_end_params(&new_setups, new_proof.final_pc);
+        chain.extend(&end_params);
+        state.chain_end_params.push(end_params);
+        rounds += 1;
+        log::debug!(
+            "unified recursion round {rounds} proved ({} cycles)",
+            new_proof.executed_cycles()
+        );
+        proof = new_proof;
+        setups = new_setups;
+        if unified_recursion_has_converged(&proof) {
+            break;
+        }
+    }
     log::info!(
-        "final unified recursion proof done ({} cycles)",
-        final_proof.executed_cycles()
+        "unified recursion converged after {rounds} round(s) ({} cycles)",
+        proof.executed_cycles()
     );
 
-    state.proof = final_proof;
-    state.setups = final_setups;
+    state.proof = proof;
+    state.setups = setups;
     state.input_is_base = false;
     Ok(state)
+}
+
+/// Converged: the unified self-recursion fixed point of one unified proof and
+/// one delegation proof, at which every further round reproduces the same
+/// census.
+fn unified_recursion_has_converged(proof: &ProgramProof) -> bool {
+    let riscv: usize = proof.riscv_proofs.iter().map(|(_, v)| v.len()).sum();
+    let delegation: usize = proof.delegation_proofs.iter().map(|(_, v)| v.len()).sum();
+    riscv == 1 && delegation == 1
 }
 
 // ==============================================================================
@@ -648,11 +719,68 @@ impl ProgramProver {
                 }
             }
         };
-        Ok(Self {
+        let mut prover = Self {
             source,
             config,
             backend,
-        })
+        };
+        prover.register_ladder_binaries()?;
+        Ok(prover)
+    }
+
+    /// Register every binary the ladder can touch so backend precomputations
+    /// (GPU setups) run here, before any timed proving.
+    fn register_ladder_binaries(&mut self) -> Result<(), String> {
+        let start = Instant::now();
+        let loaded = load_program(&self.source)?;
+        let backend = self.backend.as_dyn();
+        backend.register(
+            LadderKind::Unrolled,
+            LadderMachine::FullUnsigned,
+            &loaded.bin_u32,
+            &loaded.text_u32,
+        )?;
+        let mut count = 1;
+        if self.config.target != ProofTarget::Base {
+            let fsv_dir = fsv_dir();
+            let programs = [
+                (
+                    FsvProgram::UnrolledBaseLayer,
+                    unrolled_blake_mode(),
+                    LadderKind::Unrolled,
+                ),
+                (
+                    FsvProgram::UnrolledRecursionLayer,
+                    unrolled_blake_mode(),
+                    LadderKind::Unrolled,
+                ),
+                (
+                    FsvProgram::UnrolledBaseLayer,
+                    bridge_blake_mode(),
+                    LadderKind::Unified,
+                ),
+                (
+                    FsvProgram::UnrolledRecursionLayer,
+                    bridge_blake_mode(),
+                    LadderKind::Unified,
+                ),
+                (
+                    FsvProgram::UnifiedRecursionLayer,
+                    final_blake_mode(),
+                    LadderKind::Unified,
+                ),
+            ];
+            for (program, mode, kind) in programs {
+                let (bin, text) = load_fsv_program(&fsv_dir, program, mode);
+                backend.register(kind, LadderMachine::Reduced, &bin, &text)?;
+                count += 1;
+            }
+        }
+        log::info!(
+            "registered {count} ladder binaries in {} ms",
+            elapsed_ms(start)
+        );
+        Ok(())
     }
 
     pub fn prove_words(
@@ -740,6 +868,13 @@ fn finalize_artifact(
     state.timings.total_ms = state.timings.base_ms
         + state.timings.unrolled_recursion_ms.iter().sum::<u64>()
         + state.timings.unified_recursion_ms.iter().sum::<u64>();
+    log::info!(
+        "proof complete in {} ms (base {} ms, unrolled {:?} ms, unified {:?} ms)",
+        state.timings.total_ms,
+        state.timings.base_ms,
+        state.timings.unrolled_recursion_ms,
+        state.timings.unified_recursion_ms
+    );
 
     let chain = rebuild_chain(&state.chain_end_params).expect("chain history is non-empty");
     ProofArtifact {
