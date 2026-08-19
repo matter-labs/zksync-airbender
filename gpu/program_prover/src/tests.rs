@@ -190,7 +190,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 
     // GPU flow.
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let (gpu_proof, _gpu_setups) = prove_on_gpu(
+    let (gpu_proof, gpu_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unified,
         MachineType::Reduced,
@@ -198,6 +198,20 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
         text_section,
         vec![50, 0xDEAD_BEEF],
     );
+
+    assert_eq!(
+        cpu_setups.keys().collect::<Vec<_>>(),
+        gpu_setups.keys().collect::<Vec<_>>(),
+        "setups family keys differ"
+    );
+    for (family_idx, cpu_params) in cpu_setups.iter() {
+        let gpu_params = &gpu_setups[family_idx];
+        assert_eq!(
+            cpu_params, gpu_params,
+            "setup params differ for family {family_idx}"
+        );
+    }
+    log::info!("setups match");
 
     serde_json::to_writer(
         std::fs::File::create("/tmp/pp_unified_cpu_proof.json").unwrap(),

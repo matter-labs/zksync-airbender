@@ -82,9 +82,9 @@ impl LazyGpuGKRSetupHost {
 }
 
 /// Per-circuit precomputations cached across `prove()` invocations.
-/// `setup_host` is a `LazyGpuGKRSetupHost` populated on first GPU-worker
-/// use; the decoder table is host-only and built eagerly in this
-/// constructor.
+/// `setup_host` is a `LazyGpuGKRSetupHost` initialized by the synchronous
+/// setup batches in `ExecutionProver::with_configuration` / `add_binary`;
+/// the decoder table is host-only and built eagerly in this constructor.
 #[derive(Clone)]
 pub(crate) struct CircuitPrecomputations {
     pub gkr_programs: Arc<GkrPrograms>,
@@ -94,8 +94,8 @@ pub(crate) struct CircuitPrecomputations {
 
 impl CircuitPrecomputations {
     /// Build the per-circuit precomputations. The GPU-side `GpuGKRSetupHost`
-    /// is *not* materialized here — `setup_host.get_or_init(context)` does
-    /// that on first use inside a GPU worker.
+    /// is *not* materialized here — the constructor/add_binary setup batch is
+    /// the sole initializer, filling `setup_host` synchronously afterward.
     pub fn new(
         circuit_type: CircuitType,
         compiled_circuit: GKRCircuitArtifact<BF>,

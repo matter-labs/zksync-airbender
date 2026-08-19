@@ -1,7 +1,7 @@
 use super::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, ProveResult};
 use crate::upstream::{read_binary, SecurityLevel};
 use gpu_core::primitives::machine_type::MachineType;
-use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
+use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType, UnrolledCircuitType};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {
@@ -207,6 +207,56 @@ fn cpu_all_security_levels_supported_in_configuration() {
         assert!(
             configuration.validate().is_ok(),
             "{level:?} must pass configuration validation"
+        );
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[ignore]
+fn test_setup_hosts_initialized_by_constructor_and_add_binary() {
+    init_test_logger();
+    let configuration = ExecutionProverConfiguration::default();
+    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    for (circuit_type, precomputations) in prover.common_precomputations.iter() {
+        assert!(
+            precomputations.setup_host.is_initialized(),
+            "{circuit_type:?} setup lock not filled by the constructor batch"
+        );
+        let expected_columns = match circuit_type {
+            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => false,
+            _ => true,
+        };
+        assert_eq!(
+            precomputations.setup_host.get_initialized().is_some(),
+            expected_columns,
+            "{circuit_type:?} initialized-absence state is wrong"
+        );
+    }
+    let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
+    let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
+    let handle = prover.add_binary(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        binary_image,
+        text_section,
+        None,
+    );
+    for (circuit_type, precomputations) in prover.binary_holders[&0].precomputations.iter() {
+        assert!(
+            precomputations
+                .setup_host
+                .get_initialized()
+                .is_some(),
+            "{circuit_type:?} family setup not initialized by add_binary"
+        );
+    }
+    let artifacts = prover.program_artifacts(&handle);
+    assert!(!artifacts.riscv_families.is_empty());
+    for (family_idx, artifact) in artifacts.riscv_families.iter() {
+        assert!(
+            !artifact.setup_cap.cap.is_empty(),
+            "family {family_idx} artifact carries an empty setup cap"
         );
     }
 }
