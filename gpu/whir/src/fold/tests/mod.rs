@@ -691,15 +691,15 @@ fn run_whir_initial_state_matches_cpu(
 
 #[test]
 #[cfg(not(no_cuda))]
-#[ignore = "GPU eq/fold side still MSB; unblocked by the GKR LSB plan"]
-fn whir_initial_state_matches_cpu_use_coset_0_for_batching_small() {
+#[should_panic(expected = "WHIR base batching from coset 0 evaluations is not supported")]
+fn whir_initial_state_rejects_coset_0_batching_small() {
     run_whir_initial_state_matches_cpu(3, false, false);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[ignore = "GPU eq/fold side still MSB; unblocked by the GKR LSB plan"]
-fn whir_initial_state_matches_cpu_use_coset_0_for_batching_large() {
+#[should_panic(expected = "WHIR base batching from coset 0 evaluations is not supported")]
+fn whir_initial_state_rejects_coset_0_batching_large() {
     run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, false, true);
 }
 

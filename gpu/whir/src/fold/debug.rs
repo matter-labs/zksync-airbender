@@ -260,6 +260,7 @@ pub(super) fn initialize_batched_forms_impl(
     ) -> CudaResult<Vec<DeviceAllocation<E4>>>,
     context: &ProverContext,
 ) -> CudaResult<[Vec<E4>; 3]> {
+    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = state.current_len;
     assert_eq!(
         memory_trace_holder.log_domain_size,

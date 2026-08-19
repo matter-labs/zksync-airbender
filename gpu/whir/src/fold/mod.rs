@@ -192,6 +192,14 @@ pub(super) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     index.reverse_bits() >> (usize::BITS - num_bits)
 }
 
+pub(super) fn assert_batching_source_supported(use_hypercube_evals_for_batching: bool) {
+    assert!(
+        use_hypercube_evals_for_batching,
+        "WHIR base batching from coset 0 evaluations is not supported: the committed base \
+         backing is stored in bitreversed row order, but this path requires natural row order"
+    );
+}
+
 pub(super) fn get_base_columns<'a>(
     trace_holder: &'a TraceHolder<BF>,
     rows: usize,
@@ -278,6 +286,7 @@ pub(super) fn schedule_initialize_batched_forms(
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = state.current_len;
     assert_eq!(
         memory_trace_holder.log_domain_size,
