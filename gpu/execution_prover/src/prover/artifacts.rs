@@ -12,7 +12,6 @@ use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 /// The cap is copied out of the family's initialized `GpuGKRSetupHost`
 /// (guaranteed by `add_binary`'s setup batch) — it is the exact digest
 /// sequence the GPU committed and every proof of this family binds.
-#[derive(Clone)]
 pub struct RiscvFamilyArtifact {
     pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub setup_cap: MerkleTreeCapVarLength,
@@ -33,23 +32,6 @@ impl RiscvFamilyArtifact {
     }
 }
 
-/// Compiled circuit for a binary-independent circuit (delegations,
-/// inits-and-teardowns). These carry no program-level setup cap: delegation
-/// setup params are compile-time constants in the fsv verifiers, and
-/// inits-and-teardowns has no setup columns at all.
-#[derive(Clone)]
-pub struct CommonCircuitArtifact {
-    pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
-}
-
-impl CommonCircuitArtifact {
-    fn from_precomputations(precomputations: &CircuitPrecomputations) -> Self {
-        Self {
-            compiled_circuit: Arc::clone(precomputations.gkr_programs.compiled_circuit()),
-        }
-    }
-}
-
 /// Everything program-level proof assembly needs beyond `ProveResult`:
 /// the per-binary RISC-V family circuits plus the binary-independent
 /// inits-and-teardowns and delegation circuits.
@@ -58,10 +40,12 @@ pub struct ProgramArtifacts {
     /// single unified (reduced-machine) family.
     pub riscv_families: BTreeMap<u32, RiscvFamilyArtifact>,
     /// `None` for `ExecutionKind::Unified` (inits and teardowns are inline in
-    /// the unified circuit).
-    pub inits_and_teardowns: Option<CommonCircuitArtifact>,
+    /// the unified circuit). Common circuits carry no program-level setup cap:
+    /// delegation setup params are compile-time constants in the fsv verifiers,
+    /// and inits-and-teardowns has no setup columns at all.
+    pub inits_and_teardowns: Option<Arc<GKRCircuitArtifact<BF>>>,
     /// Keyed by delegation type id.
-    pub delegations: BTreeMap<u32, CommonCircuitArtifact>,
+    pub delegations: BTreeMap<u32, Arc<GKRCircuitArtifact<BF>>>,
 }
 
 impl ExecutionProver {
@@ -84,12 +68,12 @@ impl ExecutionProver {
             match circuit_type {
                 CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                     inits_and_teardowns =
-                        Some(CommonCircuitArtifact::from_precomputations(precomputations));
+                        Some(Arc::clone(precomputations.gkr_programs.compiled_circuit()));
                 }
                 CircuitType::Delegation(delegation_type) => {
                     delegations.insert(
                         delegation_type.get_delegation_type_id() as u32,
-                        CommonCircuitArtifact::from_precomputations(precomputations),
+                        Arc::clone(precomputations.gkr_programs.compiled_circuit()),
                     );
                 }
                 _ => {}

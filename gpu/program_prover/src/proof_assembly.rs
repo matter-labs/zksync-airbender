@@ -63,12 +63,12 @@ pub fn assemble_program_proof(
     let compiled_delegation_circuits = artifacts
         .delegations
         .iter()
-        .map(|(delegation_type, artifact)| (*delegation_type, (*artifact.compiled_circuit).clone()))
+        .map(|(delegation_type, artifact)| (*delegation_type, (**artifact).clone()))
         .collect();
     let inits_and_teardowns_circuit = artifacts
         .inits_and_teardowns
         .as_ref()
-        .map(|artifact| (*artifact.compiled_circuit).clone());
+        .map(|artifact| (**artifact).clone());
 
     let end_params = compute_end_params(&setups, result.final_pc);
 

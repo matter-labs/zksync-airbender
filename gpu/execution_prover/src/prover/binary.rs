@@ -79,9 +79,6 @@ impl ExecutionProver {
                 .collect(),
         );
         pending_setup_initialization.wait();
-        for precomp in precomputations.values() {
-            assert!(precomp.setup_host.is_initialized());
-        }
         let binary_image = Arc::new(binary_image.into_boxed_slice());
         let text_section = Arc::new(text_section.into_boxed_slice());
         let jit_cache = Arc::new(Mutex::new(TypeMap::new()));

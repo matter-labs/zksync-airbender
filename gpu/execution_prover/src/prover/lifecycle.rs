@@ -96,9 +96,6 @@ impl ExecutionProver {
         });
         gpu_wait_group.wait();
         pending_setup_initialization.wait();
-        for precomputations in common_precomputations.values() {
-            assert!(precomputations.setup_host.is_initialized());
-        }
         info!("PROVER initialized");
         Ok(Self {
             configuration,

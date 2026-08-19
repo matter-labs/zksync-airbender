@@ -47,7 +47,6 @@ pub(crate) fn get_gpu_worker_func(
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
 enum RequestKind {
     MemoryCommitment,
     Proof,
@@ -272,7 +271,7 @@ fn schedule_phase_one<'a>(
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
-    let is_proof = state.kind == RequestKind::Proof;
+    let is_proof = matches!(state.kind, RequestKind::Proof);
 
     let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
         Some(DecoderTableTransfer::new(Arc::clone(host), context)?)

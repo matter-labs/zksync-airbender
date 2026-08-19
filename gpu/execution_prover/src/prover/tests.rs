@@ -219,10 +219,6 @@ fn test_setup_hosts_initialized_by_constructor_and_add_binary() {
     let configuration = ExecutionProverConfiguration::default();
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
     for (circuit_type, precomputations) in prover.common_precomputations.iter() {
-        assert!(
-            precomputations.setup_host.is_initialized(),
-            "{circuit_type:?} setup lock not filled by the constructor batch"
-        );
         let expected_columns = match circuit_type {
             CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => false,
             _ => true,

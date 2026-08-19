@@ -50,8 +50,8 @@ impl LazyGpuGKRSetupHost {
     /// `precompute_from_cpu_setup`) and fills the lock — with `None` when the
     /// CPU setup has no columns (e.g. InitsAndTeardowns), so "initialized as
     /// absent" is distinguishable from "never initialized". Subsequent calls
-    /// return the cached value.
-    pub fn get_or_init(&self, context: &ProverContext) -> CudaResult<Option<Arc<GpuGKRSetupHost>>> {
+    /// are no-ops.
+    pub fn get_or_init(&self, context: &ProverContext) -> CudaResult<()> {
         self.inner
             .get_or_try_init(|| {
                 if self.cpu_setup.hypercube_evals.is_empty() {
@@ -65,7 +65,7 @@ impl LazyGpuGKRSetupHost {
                     context,
                 )?)))
             })
-            .map(|opt| opt.clone())
+            .map(|_| ())
     }
 
     pub fn get_initialized(&self) -> Option<Arc<GpuGKRSetupHost>> {
@@ -75,10 +75,6 @@ impl LazyGpuGKRSetupHost {
                 "setup host must be initialized by a constructor/add_binary setup batch before use",
             )
             .clone()
-    }
-
-    pub fn is_initialized(&self) -> bool {
-        self.inner.get().is_some()
     }
 }
 
