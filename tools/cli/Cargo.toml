@@ -18,7 +18,9 @@ name = "cli"
 path = "src/main.rs"
 
 [dependencies]
-prover = { workspace = true, features = ["prover"] }
+# `deterministic_pow` is pinned here, not exposed as a cli feature: CI builds
+# this crate with `--no-default-features`.
+prover = { workspace = true, features = ["prover", "deterministic_pow"] }
 setups = { workspace = true }
 common_constants = { workspace = true }
 serde = { workspace = true }
@@ -43,8 +45,12 @@ sha3 = { package = "sha3", version = "*" }
 log = "0.4"
 
 # GPU proving stack (behind the `gpu` feature).
-gpu_execution_prover = { workspace = true, optional = true, default-features = false }
-gpu_program_prover = { workspace = true, optional = true, default-features = false }
+gpu_execution_prover = { workspace = true, optional = true, default-features = false, features = [
+    "deterministic_pow",
+] }
+gpu_program_prover = { workspace = true, optional = true, default-features = false, features = [
+    "deterministic_pow",
+] }
 
 env_logger = "0.11"
 base64 = "0.21.7"

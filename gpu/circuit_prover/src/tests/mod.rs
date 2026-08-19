@@ -290,11 +290,11 @@ impl BasicUnrolledFixture {
             .map(|host| InitsAndTeardownsTransfer::new(host, context))
             .transpose()?;
 
-        let canonical_top_bits = self
+        let top_bits = self
             .inits_and_teardowns_top_bits
             .clone()
             .unwrap_or_else(|| {
-                crate::proof::canonical_inits_and_teardowns_top_bits(&self.compiled_circuit)
+                (0..self.compiled_circuit.memory_layout.teardown_sets.len() as u32).collect()
             });
         BasicUnrolledTransfers::new(
             setup_transfer,
@@ -302,7 +302,7 @@ impl BasicUnrolledFixture {
             inits_and_teardowns_transfer,
             tracing_data_transfer,
             memory_transfer,
-            &canonical_top_bits,
+            &top_bits,
             self.external_challenges,
             context,
         )

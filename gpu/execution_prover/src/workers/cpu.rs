@@ -92,26 +92,20 @@ pub(crate) fn run_simulator<
         assert!(!is_aborted);
         let results = results.unwrap();
         let instant = Instant::now();
+        let ram_words = memory_holder.memory.len();
         let inits_and_teardowns = collect_inits_and_teardowns(memory_holder, worker);
         let elapsed = instant.elapsed();
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
         let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
         trace!("BATCH[{batch_id}] SIMULATOR collected INITS_AND_TEARDOWNS with {count} entries in {elapsed_ms:.3} ms");
         let mut instant = Instant::now();
-        let trace_len_log2 = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
-            .get_domain_size()
-            .trailing_zeros() as usize;
-        let num_sets = crate::upstream::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS;
-        // The inits-and-teardowns circuit's trace (2^24 rows, see
-        // `inits_and_teardowns::TRACE_LEN_LOG2`) is always page-granular:
-        // it is a fixed upstream constant far above the page size
-        // (2^`PAGE_SIZE_LOG2` = 2^10 rows), so this never underflows.
-        assert!(
-            trace_len_log2 >= PAGE_SIZE_LOG2 as usize,
-            "inits-and-teardowns trace_len_log2 {trace_len_log2} below page size log2 {PAGE_SIZE_LOG2}"
-        );
-        let pages_per_set_log2 = trace_len_log2 - PAGE_SIZE_LOG2 as usize;
-        let pages_per_partition: usize = num_sets << pages_per_set_log2;
+        let carrier = if T::IS_SPLIT {
+            UnrolledCircuitType::InitsAndTeardowns
+        } else {
+            UnrolledCircuitType::Unified
+        };
+        let geometry = InitsAndTeardownsGeometry::new(carrier, ram_words);
+        let partitioning = InitsAndTeardownsPartitioning::new(inits_and_teardowns, geometry);
         let (circuit_type, sequence_id_offset) = if T::IS_SPLIT {
             (UnrolledCircuitType::InitsAndTeardowns, 0usize)
         } else {
@@ -122,22 +116,23 @@ pub(crate) fn run_simulator<
             // prefill markers, sequence_ids would skip and the replayer's
             // tracing results would not pair up.
             // Under the `2^N`-row convention each unified circuit covers
-            // `domain_size` cycles (one cycle per usable row).
+            // `domain_size` cycles (one cycle per usable row), which is also
+            // where the tracing producer slices its circuits
+            // (`cycles_per_circuit_for`), so both sides agree on the count.
             let per_circuit_count = UnrolledCircuitType::Unified.get_domain_size();
             let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
             assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
             let total_cycles = (timestamp_diff / TIMESTAMP_STEP) as usize;
-            // `count` (distinct RAM words dirtied) is not guaranteed to be
-            // <= `total_cycles`: a delegation dirties many fresh words per
-            // cycle (a Blake2s-with-compression call touches ~40 words while
-            // advancing only `num_rounds` timestamp cycles), so a
-            // delegation-heavy run over disjoint, never-reused buffers can
-            // invert the two. Saturate to avoid a release-mode underflow into an
-            // unbounded empty-circuit marker loop; when no spare cycles remain
-            // this yields zero padding circuits (the real I&T chunks below still
-            // emit). Behavior-identical whenever count <= total_cycles.
-            let empty_cycles = total_cycles.saturating_sub(count);
-            let empty_circuits = empty_cycles / per_circuit_count;
+            let total_circuits = total_cycles.div_ceil(per_circuit_count);
+            // The i&t-carrying instances are the TRAILING ones, so the markers
+            // take the leading sequence_ids.
+            let it_circuits = partitioning.instances_count();
+            assert!(
+                it_circuits <= total_circuits,
+                "inits-and-teardowns needs {it_circuits} unified instances but the execution \
+                 only spans {total_circuits} ({total_cycles} cycles)"
+            );
+            let empty_circuits = total_circuits - it_circuits;
             for sequence_id in 0..empty_circuits {
                 let data = InitsAndTeardownsData {
                     circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
@@ -152,12 +147,8 @@ pub(crate) fn run_simulator<
             (UnrolledCircuitType::Unified, empty_circuits)
         };
         let circuit_type = CircuitType::Unrolled(circuit_type);
-        for (sequence_id, inits_and_teardowns_data) in get_inits_and_teardowns_chunks(
-            inits_and_teardowns,
-            pages_per_partition,
-            free_allocators,
-        )
-        .enumerate()
+        for (sequence_id, inits_and_teardowns_data) in
+            partitioning.into_chunks(free_allocators).enumerate()
         {
             let sequence_id = sequence_id + sequence_id_offset;
             let count = inits_and_teardowns_data.page_indices.len();
@@ -338,76 +329,183 @@ fn collect_inits_and_teardowns(
     chunks
 }
 
-/// Group sparse init-and-teardown records by page and produce one
-/// `InitsAndTeardownsTraceHost` per circuit-sized partition.
-///
-/// Each partition holds up to `pages_per_partition` touched pages. Touched
-/// pages are filled to `1 << PAGE_SIZE_LOG2` slots of `values_packed` and
-/// `timestamps_packed`, with untouched cells zero-padded (the GPU kernel
-/// relies on this contract). The three series are kept in lockstep at
-/// page granularity by allocating chunks aligned to the page boundary on the
-/// `values_packed` and `timestamps_packed` sides; `page_indices` carries one
-/// `u32` per page.
-///
-/// Pool allocators are pulled from `free_allocators` whenever the current
-/// chunk for a given series is full; the chunk's `Arc` is what eventually
-/// returns the allocator to the pool when the orchestrator drops the host
-/// after H2D has been scheduled.
-fn get_inits_and_teardowns_chunks(
-    values: Vec<Vec<InitAndTeardownRecord>>,
-    pages_per_partition: usize,
-    free_allocators: Receiver<A>,
-) -> impl Iterator<Item = InitsAndTeardownsTraceHost> {
-    assert!(pages_per_partition > 0);
-    let page_size = 1usize << PAGE_SIZE_LOG2;
-    // Aggregate sparse records into dense pages keyed by `page_idx`. The
-    // `BTreeMap` iteration order matches the test reference's ordering; the
-    // GPU kernel does not require sorted page indices but emitting them in a
-    // canonical order keeps debugging deterministic.
-    let mut pages: BTreeMap<u32, (Vec<u32>, Vec<TimestampScalar>)> = BTreeMap::new();
-    for chunk in values {
-        for record in chunk {
-            let word_idx = record.address >> 2;
-            let page_idx = word_idx >> PAGE_SIZE_LOG2;
-            let word_in_page = (word_idx & ((1u32 << PAGE_SIZE_LOG2) - 1)) as usize;
-            let entry = pages
-                .entry(page_idx)
-                .or_insert_with(|| (vec![0u32; page_size], vec![0u64; page_size]));
-            entry.0[word_in_page] = record.teardown_value;
-            entry.1[word_in_page] = record.teardown_timestamp;
+/// Address geometry of the circuit carrying the inits-and-teardowns data: each
+/// of its `num_sets` sets covers one *window* of `1 << trace_len_log2`
+/// consecutive RAM words, named in the proof by its global window index
+/// (`top_bits`).
+#[derive(Clone, Copy)]
+struct InitsAndTeardownsGeometry {
+    pages_per_set_log2: u32,
+    num_sets: usize,
+    windows_in_ram: u32,
+}
+
+impl InitsAndTeardownsGeometry {
+    fn new(carrier: UnrolledCircuitType, ram_words: usize) -> Self {
+        let trace_len_log2 = carrier.get_domain_size_log2();
+        assert!(
+            trace_len_log2 >= PAGE_SIZE_LOG2,
+            "inits-and-teardowns trace_len_log2 {trace_len_log2} below page size log2 {PAGE_SIZE_LOG2}"
+        );
+        Self {
+            pages_per_set_log2: trace_len_log2 - PAGE_SIZE_LOG2,
+            num_sets: carrier.get_num_inits_and_teardowns_sets(),
+            windows_in_ram: ram_words.div_ceil(1usize << trace_len_log2) as u32,
         }
     }
-    let total_pages = pages.len();
-    let partitions_count = total_pages.div_ceil(pages_per_partition).max(1);
-    // Drain pages from the BTreeMap partition by partition. The *first*
-    // partition absorbs the remainder and later partitions are full-sized;
-    // keeps sequence_id assignment stable.
-    let mut pages_iter = pages.into_iter();
-    (0..partitions_count).map(move |index| {
-        let take = if index == 0 {
-            total_pages - (partitions_count - 1) * pages_per_partition
+}
+
+/// Rebase a global page index onto the local geometry the kernel decodes: set
+/// index in the high bits, page within that set's window in the low ones (see
+/// `process_inits_and_teardowns_pages` in `memory_unrolled.cu`). `slots` is one
+/// instance's slice of the window schedule.
+#[inline]
+fn local_page_index(page_idx: u32, slots: &[(u32, usize)], pages_per_set_log2: u32) -> u32 {
+    let window = page_idx >> pages_per_set_log2;
+    let set_idx = slots
+        .iter()
+        .position(|(w, _)| *w == window)
+        .expect("page window must be scheduled in its own instance");
+    ((set_idx as u32) << pages_per_set_log2) | (page_idx & ((1u32 << pages_per_set_log2) - 1))
+}
+
+/// Sparse init-and-teardown records aggregated into dense pages, plus the
+/// window schedule that assigns those pages to circuit instances.
+struct InitsAndTeardownsPartitioning {
+    pages: BTreeMap<u32, (Vec<u32>, Vec<TimestampScalar>)>,
+    /// `(global window index, touched pages in that window)` per set slot,
+    /// ascending, `num_sets` slots per instance. The counts let `into_chunks`
+    /// pre-size its payload buffers exactly.
+    window_schedule: Vec<(u32, usize)>,
+    geometry: InitsAndTeardownsGeometry,
+}
+
+impl InitsAndTeardownsPartitioning {
+    fn new(values: Vec<Vec<InitAndTeardownRecord>>, geometry: InitsAndTeardownsGeometry) -> Self {
+        let InitsAndTeardownsGeometry {
+            pages_per_set_log2,
+            num_sets,
+            windows_in_ram,
+        } = geometry;
+        let page_size = 1usize << PAGE_SIZE_LOG2;
+        // Keyed by GLOBAL page index: that order is also window-major, which is
+        // what lets `into_chunks` group by window in one streaming pass without
+        // re-scanning or sorting the page payloads.
+        let mut pages: BTreeMap<u32, (Vec<u32>, Vec<TimestampScalar>)> = BTreeMap::new();
+        for chunk in values {
+            for record in chunk {
+                let word_idx = record.address >> 2;
+                let page_idx = word_idx >> PAGE_SIZE_LOG2;
+                let word_in_page = (word_idx & ((1u32 << PAGE_SIZE_LOG2) - 1)) as usize;
+                let entry = pages
+                    .entry(page_idx)
+                    .or_insert_with(|| (vec![0u32; page_size], vec![0u64; page_size]));
+                entry.0[word_in_page] = record.teardown_value;
+                entry.1[word_in_page] = record.teardown_timestamp;
+            }
+        }
+        let mut touched: Vec<(u32, usize)> = Vec::new();
+        for &page_idx in pages.keys() {
+            let window = page_idx >> pages_per_set_log2;
+            match touched.last_mut() {
+                Some((last, count)) if *last == window => *count += 1,
+                _ => touched.push((window, 1)),
+            }
+        }
+        let window_schedule = if num_sets as u32 >= windows_in_ram {
+            // The sets already span the whole address space (split mode), and
+            // `full_statement_verifier::unrolled_proof_statement` asserts
+            // `top_bits[i] == i`, so every window is present touched or not.
+            (0..num_sets as u32)
+                .map(|window| {
+                    let count = touched
+                        .binary_search_by_key(&window, |(w, _)| *w)
+                        .map_or(0, |i| touched[i].1);
+                    (window, count)
+                })
+                .collect()
         } else {
-            pages_per_partition
+            // Pad to whole instances, and to at least one since the unified
+            // verifier requires `num_it_circuits >= 1`. A padded set's rows are
+            // all zero, so its init and teardown contributions cancel and its
+            // window only has to keep the concatenated `top_bits` strictly
+            // increasing; the choice of which mirrors the CPU reference.
+            let instances = (touched.len().max(1)).div_ceil(num_sets);
+            let missing = instances * num_sets - touched.len();
+            if missing > 0 {
+                let below = min(missing, touched.first().map_or(0, |(w, _)| *w) as usize);
+                let mut padded = Vec::with_capacity(touched.len() + missing);
+                padded.extend((0..below as u32).map(|w| (w, 0)));
+                padded.append(&mut touched);
+                padded.extend((0..(missing - below) as u32).map(|i| (windows_in_ram + i, 0)));
+                touched = padded;
+            }
+            touched
         };
-        let mut page_indices_flat: Vec<u32> = Vec::with_capacity(take);
-        let mut values_flat: Vec<u32> = Vec::with_capacity(take * page_size);
-        let mut timestamps_flat: Vec<TimestampScalar> = Vec::with_capacity(take * page_size);
-        for _ in 0..take {
-            let (idx, (vals, ts)) = pages_iter.next().unwrap();
-            page_indices_flat.push(idx);
-            values_flat.extend_from_slice(&vals);
-            timestamps_flat.extend_from_slice(&ts);
+        Self {
+            pages,
+            window_schedule,
+            geometry,
         }
-        let page_indices = chunk_into_pinned::<u32>(&page_indices_flat, &free_allocators, 1);
-        let values_packed = chunk_into_pinned::<u32>(&values_flat, &free_allocators, page_size);
-        let timestamps_packed =
-            chunk_into_pinned::<TimestampScalar>(&timestamps_flat, &free_allocators, page_size);
-        InitsAndTeardownsTraceHost {
-            page_indices,
-            values_packed,
-            timestamps_packed,
-        }
-    })
+    }
+
+    fn instances_count(&self) -> usize {
+        self.window_schedule.len() / self.geometry.num_sets
+    }
+
+    /// One `InitsAndTeardownsTraceHost` per instance, in ascending window order.
+    /// Touched pages are filled to `1 << PAGE_SIZE_LOG2` slots of
+    /// `values_packed` / `timestamps_packed` with untouched cells zero-padded
+    /// (the GPU kernel relies on this), which is why the chunks handed to
+    /// `chunk_into_pinned` are page-aligned.
+    ///
+    /// Pool allocators are pulled from `free_allocators` whenever the current
+    /// chunk for a given series is full; the chunk's `Arc` is what eventually
+    /// returns the allocator to the pool when the orchestrator drops the host
+    /// after H2D has been scheduled.
+    fn into_chunks(
+        self,
+        free_allocators: Receiver<A>,
+    ) -> impl Iterator<Item = InitsAndTeardownsTraceHost> {
+        let Self {
+            pages,
+            window_schedule,
+            geometry:
+                InitsAndTeardownsGeometry {
+                    pages_per_set_log2,
+                    num_sets,
+                    ..
+                },
+        } = self;
+        let page_size = 1usize << PAGE_SIZE_LOG2;
+        let instances_count = window_schedule.len() / num_sets;
+        let mut pages_iter = pages.into_iter();
+        (0..instances_count).map(move |instance_idx| {
+            let slots = &window_schedule[instance_idx * num_sets..][..num_sets];
+            let take: usize = slots.iter().map(|(_, count)| *count).sum();
+            let mut page_indices_flat: Vec<u32> = Vec::with_capacity(take);
+            let mut values_flat: Vec<u32> = Vec::with_capacity(take * page_size);
+            let mut timestamps_flat: Vec<TimestampScalar> = Vec::with_capacity(take * page_size);
+            // Page and schedule order agree, so this instance's pages are
+            // exactly the next `take` at the front of the iterator.
+            for _ in 0..take {
+                let (page_idx, (vals, ts)) = pages_iter.next().unwrap();
+                page_indices_flat.push(local_page_index(page_idx, slots, pages_per_set_log2));
+                values_flat.extend_from_slice(&vals);
+                timestamps_flat.extend_from_slice(&ts);
+            }
+            let page_indices = chunk_into_pinned::<u32>(&page_indices_flat, &free_allocators, 1);
+            let values_packed = chunk_into_pinned::<u32>(&values_flat, &free_allocators, page_size);
+            let timestamps_packed =
+                chunk_into_pinned::<TimestampScalar>(&timestamps_flat, &free_allocators, page_size);
+            InitsAndTeardownsTraceHost {
+                page_indices,
+                values_packed,
+                timestamps_packed,
+                top_bits: slots.iter().map(|(w, _)| *w).collect(),
+            }
+        })
+    }
 }
 
 /// Pack a flat slice of `T` into pinned-allocator chunks of size at most
@@ -458,4 +556,125 @@ fn chunk_into_pinned<T: Copy + 'static>(
         written += take;
     }
     ChunkedTraceHolder { chunks }
+}
+
+#[cfg(test)]
+mod cpu_partitioning_tests {
+    use super::*;
+
+    const UNIFIED_RAM_WORDS: usize = (1usize << 30) / 4;
+
+    fn unified_geometry() -> InitsAndTeardownsGeometry {
+        InitsAndTeardownsGeometry::new(UnrolledCircuitType::Unified, UNIFIED_RAM_WORDS)
+    }
+
+    /// One record in `window`, at `page_in_window`, word 0 of that page.
+    fn record_in(
+        geometry: &InitsAndTeardownsGeometry,
+        window: u32,
+        page_in_window: u32,
+    ) -> InitAndTeardownRecord {
+        let page_idx = (window << geometry.pages_per_set_log2) | page_in_window;
+        InitAndTeardownRecord {
+            address: (page_idx << PAGE_SIZE_LOG2) << 2,
+            teardown_value: 7,
+            teardown_timestamp: 11,
+        }
+    }
+
+    fn partition(
+        geometry: InitsAndTeardownsGeometry,
+        records: Vec<InitAndTeardownRecord>,
+    ) -> InitsAndTeardownsPartitioning {
+        InitsAndTeardownsPartitioning::new(vec![records], geometry)
+    }
+
+    fn windows_of(p: &InitsAndTeardownsPartitioning) -> Vec<u32> {
+        p.window_schedule.iter().map(|(w, _)| *w).collect()
+    }
+
+    #[test]
+    fn cpu_unified_geometry_comes_from_the_unified_circuit() {
+        let geometry = unified_geometry();
+        // The dedicated i&t circuit's 16 sets x 2^24 words must not leak in.
+        assert_eq!(geometry.num_sets, 2);
+        assert_eq!(geometry.pages_per_set_log2, 23 - PAGE_SIZE_LOG2);
+        assert_eq!(geometry.windows_in_ram, 32);
+    }
+
+    #[test]
+    fn cpu_unified_carries_touched_windows_and_rebases_pages() {
+        let geometry = unified_geometry();
+        let p = partition(
+            geometry,
+            vec![record_in(&geometry, 0, 3), record_in(&geometry, 2, 5)],
+        );
+        assert_eq!(windows_of(&p), vec![0, 2]);
+        assert_eq!(p.instances_count(), 1);
+
+        let slots = p.window_schedule.clone();
+        let pages_per_set = 1u32 << geometry.pages_per_set_log2;
+        assert_eq!(local_page_index(3, &slots, geometry.pages_per_set_log2), 3);
+        assert_eq!(
+            local_page_index(
+                (2 << geometry.pages_per_set_log2) | 5,
+                &slots,
+                geometry.pages_per_set_log2
+            ),
+            pages_per_set | 5
+        );
+    }
+
+    #[test]
+    fn cpu_unified_pads_and_groups_into_whole_instances() {
+        let geometry = unified_geometry();
+        let beyond = geometry.windows_in_ram;
+
+        // Window 0 free -> pad below it; window 0 taken -> pad past RAM.
+        assert_eq!(
+            windows_of(&partition(geometry, vec![record_in(&geometry, 3, 0)])),
+            vec![0, 3]
+        );
+        assert_eq!(
+            windows_of(&partition(geometry, vec![record_in(&geometry, 0, 0)])),
+            vec![0, beyond]
+        );
+        // No dirtied word still needs one instance.
+        assert_eq!(
+            windows_of(&partition(geometry, vec![])),
+            vec![beyond, beyond + 1]
+        );
+
+        let many = partition(
+            geometry,
+            vec![
+                record_in(&geometry, 5, 0),
+                record_in(&geometry, 1, 0),
+                record_in(&geometry, 9, 0),
+                record_in(&geometry, 4, 0),
+            ],
+        );
+        assert_eq!(windows_of(&many), vec![1, 4, 5, 9]);
+        assert_eq!(many.instances_count(), 2);
+    }
+
+    #[test]
+    fn cpu_split_keeps_canonical_windows_and_page_indices() {
+        let geometry = InitsAndTeardownsGeometry::new(
+            UnrolledCircuitType::InitsAndTeardowns,
+            UNIFIED_RAM_WORDS,
+        );
+        let p = partition(
+            geometry,
+            vec![record_in(&geometry, 0, 1), record_in(&geometry, 7, 2)],
+        );
+        assert_eq!(windows_of(&p), (0..16).collect::<Vec<_>>());
+        assert_eq!(p.instances_count(), 1);
+        // Set index == window, so the rebase is the identity.
+        let global = (7 << geometry.pages_per_set_log2) | 2;
+        assert_eq!(
+            local_page_index(global, &p.window_schedule, geometry.pages_per_set_log2),
+            global
+        );
+    }
 }

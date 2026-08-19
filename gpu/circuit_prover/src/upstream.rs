@@ -84,6 +84,8 @@ pub(crate) use field::{FieldExtension, PrimeField};
 #[cfg(test)]
 pub(crate) use prover::definitions::produce_initial_permutation_product_contribution;
 #[cfg(test)]
+pub(crate) use prover::gkr::prover::backend::NaiveBackend;
+#[cfg(test)]
 pub(crate) use prover::gkr::prover::prove_configured_with_gkr;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;

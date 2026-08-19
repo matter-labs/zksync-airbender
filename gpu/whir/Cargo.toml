@@ -16,7 +16,6 @@ gpu_core = { workspace = true }
 gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
 gpu_hash = { workspace = true }
-gpu_cub = { workspace = true }
 gpu_prover_context = { workspace = true }
 gpu_trace = { workspace = true }
 gpu_gkr = { workspace = true }

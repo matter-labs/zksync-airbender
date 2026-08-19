@@ -4,20 +4,16 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 
 use super::backward::{
-    eq_group_tables_len, launch_build_eq_values_from_point, launch_trace_holder_block_partials,
-    GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
+    get_eq_high_constant_device_ptr, launch_build_eq_high_and_low_groups_from_point,
+    launch_trace_holder_block_partials_eq_inline, launch_trace_holder_column_sums, make_eq_sizes,
+    GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN, GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
 };
 use crate::proof_layout::{ProofLayout, WhirBaseLayerKind};
 use crate::upstream::{GKRAddress, GKRLayerDescription, VirtualSetupPoly};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeAccessor};
-use gpu_core::primitives::device_structures::DeviceMatrix;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_cub::cub::device_reduce::{
-    batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
-};
-use gpu_cub::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
 
@@ -209,19 +205,18 @@ impl GpuGKRBaseLayerClaimsScheduledExecution {
 fn schedule_reduce_trace_holder_claims(
     label: &str,
     trace_holder: &TraceHolder<BF>,
-    eq_values: &DeviceSlice<E4>,
-    // B3: `batch_reduce` writes straight into the slab's `whir.{kind}.evals`
-    // range (raw `(ptr, len)` resolved by the caller via
-    // `proof_layout.whir_base_evals_device_mut`). Eliminates the standalone
-    // `claims_device` allocation and the post-D2H slab H2D-back loop.
+    eq_low: &DeviceSlice<E4>,
+    eq_sizes: GkrEqSizes,
+    // The column-sums kernel writes straight into the slab's
+    // `whir.{kind}.evals` range (raw `(ptr, len)` resolved by the caller via
+    // `proof_layout.whir_base_evals_device_mut`).
     slab_claims_dst: (*mut E4, usize),
     tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let trace_len = 1usize << trace_holder.log_domain_size;
-    assert_eq!(eq_values.len(), trace_len);
+    assert_eq!(eq_low.len(), GKR_EQ_GROUP_TABLE_LEN);
     assert!(trace_len <= u32::MAX as usize);
-    assert!(trace_len <= i32::MAX as usize);
     assert_eq!(
         trace_len % 4,
         0,
@@ -229,28 +224,18 @@ fn schedule_reduce_trace_holder_claims(
     );
     let columns_count = trace_holder.columns_count;
     assert!(columns_count <= u32::MAX as usize);
-    assert!(columns_count <= i32::MAX as usize);
     if columns_count == 0 {
         return Ok(());
     }
 
-    let blocks_count = context.get_device_properties().sm_count;
+    // 2 blocks/SM (the register-file cap): 1 block/SM leaves the inline-eq
+    // latency uncovered.
+    let blocks_count = 2 * context.get_device_properties().sm_count;
     assert!(blocks_count > 0, "device must expose at least one SM");
     assert!(blocks_count <= u32::MAX as usize);
-    assert!(blocks_count <= i32::MAX as usize);
 
     let mut block_partials =
         context.alloc(columns_count * blocks_count, AllocationPlacement::BestFit)?;
-    let reduction_temp_bytes = get_batch_reduce_temp_storage_bytes::<E4>(
-        ReduceOperation::Sum,
-        columns_count as i32,
-        blocks_count as i32,
-    )?;
-    let mut reduction_temp = context
-        .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
-            reduction_temp_bytes,
-            AllocationPlacement::BestFit,
-        )?;
     let stream = context.get_exec_stream();
     let reduction_range = Range::new(format!("gkr.base_layer_claims.reduce.{label}"))?;
     reduction_range.start(stream)?;
@@ -258,9 +243,10 @@ fn schedule_reduce_trace_holder_claims(
     for column_start in (0..columns_count).step_by(GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK) {
         let chunk_cols =
             (columns_count - column_start).min(GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK);
-        launch_trace_holder_block_partials(
+        launch_trace_holder_block_partials_eq_inline(
             raw_values.as_ptr(),
-            eq_values.as_ptr(),
+            eq_low.as_ptr(),
+            eq_sizes,
             block_partials.as_mut_ptr(),
             trace_len,
             column_start,
@@ -269,25 +255,20 @@ fn schedule_reduce_trace_holder_claims(
             context,
         )?;
     }
-    let block_partials_matrix = DeviceMatrix::new(&block_partials, blocks_count);
 
-    // `batch_reduce` writes its output through the slab's `whir.{kind}.evals`
-    // range (B3). The slab is held alive by `_proof_slab` keepalive across
+    // The slab destination is held alive by the `_proof_slab` keepalive across
     // all base-layer reductions and the subsequent terminal D2H.
     let (slab_ptr, slab_len) = slab_claims_dst;
     assert_eq!(
         slab_len, columns_count,
         "slab whir.{label}.evals length must match trace_holder.columns_count",
     );
-    // SAFETY: the slab destination memory outlives both the `batch_reduce`
-    // kernel and the subsequent terminal D2H; `columns_count` is in-bounds.
-    let claims_dst_slice = unsafe { DeviceSlice::from_raw_parts_mut(slab_ptr, columns_count) };
-    batch_reduce(
-        ReduceOperation::Sum,
-        &mut reduction_temp,
-        &block_partials_matrix,
-        claims_dst_slice,
-        stream,
+    launch_trace_holder_column_sums(
+        block_partials.as_ptr(),
+        slab_ptr,
+        columns_count,
+        blocks_count,
+        context,
     )?;
     reduction_range.end(stream)?;
     tracing_ranges.push(reduction_range);
@@ -341,26 +322,24 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
     let schedule_range = Range::new("gkr.base_layer_claims.schedule")?;
     schedule_range.start(stream)?;
 
-    let mut eq_group_tables = context.alloc(
-        eq_group_tables_len(claim_point_len).max(1),
-        AllocationPlacement::BestFit,
-    )?;
-    let mut eq_values = context.alloc(trace_len, AllocationPlacement::BestFit)?;
-    launch_build_eq_values_from_point(
+    // Overwriting the shared `ab_gkr_eq_high` `__constant__` slabs is safe:
+    // backward's last read of them precedes this schedule.
+    let mut eq_low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::BestFit)?;
+    launch_build_eq_high_and_low_groups_from_point(
         claim_point_device.as_ptr(),
         0,
         claim_point_len,
-        eq_group_tables.as_mut_ptr(),
-        eq_values.as_mut_ptr(),
-        trace_len,
+        get_eq_high_constant_device_ptr(),
+        eq_low.as_mut_ptr(),
         context,
     )?;
+    let eq_sizes = make_eq_sizes(claim_point_len);
 
-    // Route `batch_reduce`'s output of each base-layer column reduction
-    // straight into the slab's `whir.{kind}.evals` range. Production does not
-    // mirror those dense vectors here; cached relation extras are gathered
-    // from the slab on device below, and final proof parsing reads the same
-    // slab ranges after the terminal D2H.
+    // Route each column reduction's output straight into the slab's
+    // `whir.{kind}.evals` range. Production does not mirror those dense
+    // vectors here; cached relation extras are gathered from the slab on
+    // device below, and final proof parsing reads the same slab ranges after
+    // the terminal D2H.
     let slab_claims_dst = |kind: WhirBaseLayerKind| -> (*mut E4, usize) {
         let (ptr, len) = unsafe {
             proof_layout.whir_base_evals_device_mut(proof_slab.as_ptr() as *mut u8, kind)
@@ -370,7 +349,8 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
     schedule_reduce_trace_holder_claims(
         "memory",
         memory_trace_holder,
-        &eq_values,
+        &eq_low,
+        eq_sizes,
         slab_claims_dst(WhirBaseLayerKind::Memory),
         &mut tracing_ranges,
         context,
@@ -378,7 +358,8 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
     schedule_reduce_trace_holder_claims(
         "witness",
         witness_trace_holder,
-        &eq_values,
+        &eq_low,
+        eq_sizes,
         slab_claims_dst(WhirBaseLayerKind::Witness),
         &mut tracing_ranges,
         context,
@@ -386,7 +367,8 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
     schedule_reduce_trace_holder_claims(
         "setup",
         setup_trace_holder,
-        &eq_values,
+        &eq_low,
+        eq_sizes,
         slab_claims_dst(WhirBaseLayerKind::Setup),
         &mut tracing_ranges,
         context,

@@ -43,7 +43,6 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
     - ntt/ (`gpu_ntt`) - the NTT subsystem (launchers + twiddles + CUDA kernels)
     - ops/ (`gpu_ops`) - generic math/transform kernels (simple, powers, squaring, transpose, bit-reverse, batch-inverse)
     - hash/ (`gpu_hash`) - blake2s hashing + Merkle trees + gather + the Fiat-Shamir transcript (commit/squeeze/PoW)
-    - cub/ (`gpu_cub`) - CUB-library wrappers (reduce, radix sort, run-length encode); isolates the compile-heavy CUB template instantiations
     - prover_context/ (`gpu_prover_context`) - shared device/host allocators, CUDA streams, and transfer coordination
     - trace/ (`gpu_trace`) - GPU witness generation and trace commitment
     - gkr/ (`gpu_gkr`) - GKR forward/backward execution, proof layout, setup, and protocol kernels

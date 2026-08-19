@@ -3,29 +3,30 @@
 `gpu_trace` owns witness generation (`witness/**`) and trace commit/holder
 (`trace/**`): the machinery that turns a compiled circuit + captured
 non-determinism into a device-resident trace and commits it (LDE, leaf
-transform, Merkle-tree build). It carries the `gpu_trace_native` CUDA archive
-(the tree that used to live under `circuit_prover/native/witness/`).
+transform, Merkle-tree build). Recursive-WHIR oracle commitment is owned by
+`gpu_whir/src/oracle_commit.rs`. This crate carries the `gpu_trace_native`
+CUDA archive (the tree that used to live under
+`circuit_prover/native/witness/`).
 
 ## Layer position
 
-`gpu_core < { gpu_ntt, gpu_ops, gpu_hash, gpu_cub } < gpu_prover_context <
+`gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
 gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
 gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. Dependencies point only down: this crate depends on `gpu_core`,
-`gpu_ntt`, `gpu_ops`, `gpu_hash`, `gpu_cub`, and `gpu_prover_context`, plus
+`gpu_ntt`, `gpu_ops`, `gpu_hash`, and `gpu_prover_context`, plus
 the upstream crates below; `gpu_gkr`/`gpu_whir`/`gpu_circuit_prover` depend on
 it, never the reverse.
 
 ## GPU Scheduling Contract
 
-`trace::holder` schedules GPU work directly (LDE, leaf-transform, and
-leaf-commit kernels; the Merkle-tree build; the trace holder's parallel-commit
-use of `side_stream`). Before editing anything under `src/trace/` or
+`trace::holder` schedules GPU work directly (LDE, leaf-transform and
+leaf-commit kernels, and Merkle-tree builds). Before editing anything under `src/trace/` or
 `src/witness/` that launches kernels, schedules host callbacks, or manages
 streams, read [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md)
-in full — in particular the *Side stream* section, which documents this
-crate's `commit_trace_from_ntt_single_tree` (`src/trace/holder/mod.rs`) as the
-only current consumer of `ProverContext::get_side_stream()`.
+in full. The contract's *Side stream* section now belongs to `gpu_whir`'s
+recursive-oracle scheduler; `gpu_trace` does not call
+`ProverContext::get_side_stream()`.
 
 ## Upstream imports
 
@@ -64,12 +65,11 @@ because the witness CUDA it guards moved here.
 - **Archive / `links` key**: `gpu_trace_native` (`build.rs` is a one-line
   `gpu_native_build::CudaArchive::new("gpu_trace_native", "GPU_TRACE").build()`
   call — no `export_include`, no `deterministic_pow`).
-- **Kernel count**: 28 (`__global__` kernels, verified by grep) — 17 literal
-  (`memory_delegation.cu` 8, `memory_unrolled.cu` 7, `multiplicities.cu` 2)
-  plus 11 token-pasted `ab_generate_witness_values_<NAME>_kernel` symbols
-  (never appear as literals in native — formed by the `KERNEL_NAME(NAME)`
-  macro in `witness_generation.cuh`, one per circuit under
-  `witness/circuits/`). No `__device__ __constant__` symbols in this archive
+- **Kernel count**: 40 — 18 literal (`memory_delegation.cu` 8,
+  `memory_unrolled.cu` 7, `multiplicities.cu` 3) plus 22 token-pasted witness
+  and fused stage-1 kernels (two per circuit under `witness/circuits/`). The
+  three macro declarations make a source-level `__global__` grep report 21.
+  No `__device__ __constant__` symbols in this archive
   (all 8 cluster-wide ones live in `gpu_gkr`).
 - **Namespace**: `airbender::trace::witness::*` (sub-namespaces per concern:
   `memory`, `memory::delegation`, `memory::unrolled`, `multiplicities`,

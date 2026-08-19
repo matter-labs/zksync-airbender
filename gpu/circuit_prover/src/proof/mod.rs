@@ -19,7 +19,7 @@ use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::GkrPrograms;
 use gpu_prover_context::ProverContext;
 
-pub use orchestration::{canonical_inits_and_teardowns_top_bits, GpuGKRProofJob};
+pub use orchestration::GpuGKRProofJob;
 use orchestration::{
     prepare_backward_handoff, prepare_stage1_and_forward_setup, schedule_backward_phase,
     schedule_terminal_proof_assembly, schedule_whir_phase, stage1_forward::BundleDeviceRefs,
@@ -84,7 +84,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         inits_and_teardowns,
         tracing_data,
         memory,
-        canonical_top_bits,
+        top_bits,
         top_bits_host,
         external_challenges,
     } = inputs;
@@ -106,7 +106,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
 
     // Single fork/join from h2d_stream → exec_stream covering every pre-prove
     // H2D bundled by `inputs` (setup, decoder, inits_and_teardowns, tracing_data,
-    // memory caps, canonical_top_bits, external_challenges).
+    // memory caps, top_bits, external_challenges).
     transfer.ensure_transferred(context)?;
 
     let stream = context.get_exec_stream();
@@ -136,7 +136,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
             decoder: decoder.as_ref(),
             inits_and_teardowns: inits_and_teardowns.as_ref(),
             memory: &memory,
-            canonical_top_bits_device: canonical_top_bits.as_ref().map(|t| &t.device),
+            top_bits_device: top_bits.as_ref().map(|t| &t.device),
             external_challenges_device: &external_challenges.device,
         },
         tracing_data.as_ref(),
@@ -305,7 +305,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         inits_and_teardowns,
         tracing_data,
         memory,
-        canonical_top_bits,
+        top_bits,
         top_bits_host,
         external_challenges,
     }

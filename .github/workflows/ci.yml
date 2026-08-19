@@ -12,7 +12,8 @@ permissions: read-all
 jobs:
   tests:
     name: tests
-    runs-on: [matterlabs-ci-runner-highmem]
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1

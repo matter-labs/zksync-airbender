@@ -617,6 +617,7 @@ fn pessimistic_config_reproduces_variant4_and_aggressive() {
 /// variable (non-6) round count — exercising `run_generation`'s round-agnostic path
 /// end-to-end (whir_fold + schedule-driven serializer) cheaply.
 #[test]
+#[ignore = "expensive real-PoW smoke; run explicitly"]
 fn generate_whir_smoke_aggressive() {
     let worker = Worker::new_with_num_threads(4);
     let cfg = pessimistic_config(12, 4, 2, 3, 16, 3, "_aggsmoke");

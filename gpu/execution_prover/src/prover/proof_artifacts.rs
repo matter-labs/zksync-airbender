@@ -1,5 +1,4 @@
 use super::*;
-use gpu_circuit_prover::proof::canonical_inits_and_teardowns_top_bits;
 
 /// `(pow_challenge, external_challenges, proof_caps)`, as derived from a
 /// completed memory commitment and consumed by `prove_inner`.
@@ -23,6 +22,7 @@ impl ExecutionProver {
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
             num_trivial_unified_circuits,
+            unified_inits_and_teardowns_top_bits,
             binary_handle: _,
         } = memory_commitment;
         let execution_kind = self.binary_holders[&binary_key].execution_kind;
@@ -61,21 +61,20 @@ impl ExecutionProver {
                     .get(&unified_family_idx)
                     .map(|v| v.as_slice())
                     .unwrap_or(&[]);
-                // The GPU prove path derives i&t top bits canonically from the
-                // compiled circuit (`canonical_inits_and_teardowns_top_bits`);
-                // the FS seed must be built from the same top bits to stay
-                // self-consistent.
+                // The seed must absorb the same per-instance windows the proofs
+                // bind.
                 let compiled_circuit = self.binary_holders[&binary_key].precomputations
                     [&UnrolledCircuitType::Unified]
                     .gkr_programs
                     .compiled_circuit()
                     .as_ref();
-                let canonical_top_bits = canonical_inits_and_teardowns_top_bits(compiled_circuit);
+                let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
                 fs_transform_unified(
                     final_register_values,
                     *final_pc,
                     *final_timestamp,
-                    &canonical_top_bits,
+                    num_teardown_sets,
+                    unified_inits_and_teardowns_top_bits,
                     *num_trivial_unified_circuits,
                     unified_memory_caps,
                     &delegation_circuits_memory_caps
@@ -290,12 +289,10 @@ fn fs_transform_unified(
     final_register_values: &[FinalRegisterValue; 32],
     final_pc: u32,
     final_timestamp: TimestampScalar,
-    canonical_top_bits: &[u32],
+    num_teardown_sets: usize,
+    top_bits_by_sequence_id: &BTreeMap<usize, Vec<u32>>,
     // Number of LEADING unified circuits (by sequence id) with trivial
-    // (dummy) inits-and-teardowns. Those must contribute all-zero top bits to
-    // the FS seed — the CPU reference uses `vec![0u32; num_teardown_sets]`
-    // for dummies — while the trailing real circuits use the canonical top
-    // bits (== the real ones in the supported regime).
+    // (dummy) inits-and-teardowns, which contribute all-zero top bits.
     num_trivial_unified_circuits: usize,
     unified_memory_caps: &[Vec<MerkleTreeCapVarLength>],
     delegation_circuits_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
@@ -311,9 +308,9 @@ fn fs_transform_unified(
                     .collect_vec(),
             };
             let top_bits = if sequence_id < num_trivial_unified_circuits {
-                vec![0u32; canonical_top_bits.len()]
+                vec![0u32; num_teardown_sets]
             } else {
-                canonical_top_bits.to_vec()
+                top_bits_by_sequence_id[&sequence_id].clone()
             };
             (top_bits, cap)
         })

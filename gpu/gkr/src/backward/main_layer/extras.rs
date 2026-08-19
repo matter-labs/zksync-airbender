@@ -12,12 +12,7 @@ use super::super::kernels::*;
 use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::device_structures::DeviceMatrix;
 use gpu_core::primitives::field::BF;
-use gpu_cub::cub::device_reduce::{
-    batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
-};
-use gpu_cub::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use gpu_prover_context::ProverContext;
 
 /// Stream-ordered keepalive for the main-layer extras eval scratch
@@ -29,7 +24,6 @@ pub(crate) struct MainLayerExtrasKeepalive {
     _eq_group_tables: DeviceAllocation<E4>,
     _eq_values: DeviceAllocation<E4>,
     _block_partials: DeviceAllocation<E4>,
-    _reduction_temp: DeviceAllocation<u8>,
     /// Per-extra resolved views over the consolidated
     /// `base_class_backings`. Holding the views keeps the underlying
     /// `Arc<DeviceAllocation<B>>` backings alive until kernels reading
@@ -51,8 +45,8 @@ pub(crate) struct MainLayerExtrasKeepalive {
 /// `extra_evaluations_from_caching_relations` mechanism (see
 /// [`prover/src/gkr/prover/sumcheck_loop/mod.rs:293-395`]). Returns a
 /// keepalive that the caller drops at the end of the scheduler — the
-/// keepalive owns the temporaries (`eq_values`, `block_partials`,
-/// `reduction_temp`) and the extra-polynomial view Arc-clones.
+/// keepalive owns the temporaries (`eq_values`, `block_partials`) and the
+/// extra-polynomial view Arc-clones.
 ///
 /// Operates entirely on `exec_stream`. No host blocking. Compatible
 /// with the GPU scheduling contract (`gpu/docs/gpu_scheduling_contract.md`).
@@ -131,16 +125,6 @@ pub(crate) fn schedule_main_layer_extras_eval(
     assert!(blocks_count <= u32::MAX as usize);
     let mut block_partials: DeviceAllocation<E4> =
         context.alloc(extra_count * blocks_count, AllocationPlacement::Top)?;
-    let reduction_temp_bytes = get_batch_reduce_temp_storage_bytes::<E4>(
-        ReduceOperation::Sum,
-        extra_count as i32,
-        blocks_count as i32,
-    )?;
-    let mut reduction_temp = context
-        .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
-            reduction_temp_bytes,
-            AllocationPlacement::Top,
-        )?;
 
     for (extra_i, view) in extra_views.iter().enumerate() {
         // SAFETY: block_partials buffer is sized [extra_count *
@@ -160,19 +144,14 @@ pub(crate) fn schedule_main_layer_extras_eval(
         )?;
     }
 
-    let block_partials_matrix = DeviceMatrix::new(&block_partials, blocks_count);
-    // SAFETY: `extras_dst_ptr` is a tail slot in `device_new_claims`,
-    // sized to fit `extra_count` `E` values by the caller.
-    let extras_dst_slice = unsafe { DeviceSlice::from_raw_parts_mut(extras_dst_ptr, extra_count) };
-    let reduction_temp_slice = unsafe {
-        DeviceSlice::from_raw_parts_mut(reduction_temp.as_mut_ptr(), reduction_temp.len())
-    };
-    batch_reduce(
-        ReduceOperation::Sum,
-        reduction_temp_slice,
-        &block_partials_matrix,
-        extras_dst_slice,
-        stream,
+    // `extras_dst_ptr` is a tail slot in `device_new_claims`, sized to fit
+    // `extra_count` `E` values by the caller.
+    launch_trace_holder_column_sums(
+        block_partials.as_ptr(),
+        extras_dst_ptr,
+        extra_count,
+        blocks_count,
+        context,
     )?;
 
     // 4. Copy the extra claim values from the `device_new_claims` tail into
@@ -201,12 +180,11 @@ pub(crate) fn schedule_main_layer_extras_eval(
         _eq_group_tables: eq_group_tables,
         _eq_values: eq_values,
         _block_partials: block_partials,
-        _reduction_temp: reduction_temp,
         _extra_views: extra_views,
     })
 }
 
-/// Structural variant of [`schedule_dimension_reduction_forward`]'s
+/// Structural variant of `prepare_dimension_reduction_forward`'s
 /// `dimension_reduction_description` output: replicates the address-only
 /// portion of the per-round lowering in
 /// `gpu/gkr/src/forward/dimension_reducing.rs`'s

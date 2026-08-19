@@ -21,6 +21,9 @@ pub struct CommitMemoryResult {
     /// derivation, which must use all-zero top bits for the trivial circuits
     /// (CPU reference: `prover_examples::unified`).
     pub num_trivial_unified_circuits: usize,
+    /// Unified mode only: the i&t address windows each real i&t-carrying
+    /// instance was assigned. Trivial (leading) instances are absent.
+    pub unified_inits_and_teardowns_top_bits: BTreeMap<usize, Vec<u32>>,
     /// Set by [`ExecutionProver::commit_memory`] from the binary handle passed
     /// in. Read back in `prove`/`commit_memory_and_prove` to recover the binary
     /// associated with this commitment. Defaults to a placeholder for the inner

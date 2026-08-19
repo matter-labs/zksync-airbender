@@ -1,7 +1,28 @@
 use std::mem::{align_of, offset_of, size_of};
 
 use super::*;
+use crate::upstream::OutputType;
 use gpu_core::primitives::field::E4;
+
+const ALL_OUTPUT_TYPES: [OutputType; GKR_DIM_REDUCING_SLOTS] = [
+    OutputType::PermutationProduct,
+    OutputType::Lookup16Bits,
+    OutputType::LookupTimestamps,
+    OutputType::GenericLookup,
+    OutputType::InitsAndTeardownsProduct,
+];
+
+/// Exponents are packed densely in slot order, while the generated verifier packs
+/// them in `OutputType` `Ord` order. The two must agree, or a circuit that skips
+/// an output type gets exponents the verifier does not expect.
+#[test]
+fn cpu_slot_index_follows_output_type_ord() {
+    let mut by_ord = ALL_OUTPUT_TYPES;
+    by_ord.sort();
+    let mut by_slot = ALL_OUTPUT_TYPES;
+    by_slot.sort_by_key(|output_type| dim_reducing_slot_index(*output_type));
+    assert_eq!(by_ord, by_slot);
+}
 
 #[inline]
 pub(crate) const fn unpack_source_u16(packed: u16) -> (bool, u8, u16) {
@@ -40,68 +61,35 @@ fn pack_source_u16_layout_bits() {
 #[test]
 fn compact_descriptor_sizes_under_kernel_arg_ceiling() {
     const KERNEL_ARG_CEILING_BYTES: usize = gpu_gkr_compiler::KERNEL_ARGUMENT_CEILING_BYTES;
-    let r0 = size_of::<GpuGKRDimensionReducingRound0BatchCompact<E4>>();
-    let cont = size_of::<GpuGKRDimensionReducingContinuationBatchCompact<E4>>();
-    assert_eq!(r0, 456);
-    assert_eq!(cont, 456);
-    assert!(r0 + size_of::<u32>() <= KERNEL_ARG_CEILING_BYTES);
-    assert!(cont + 2 * size_of::<u32>() <= KERNEL_ARG_CEILING_BYTES);
+    let batch = size_of::<GpuGKRDimensionReducingBatch<E4>>();
+    assert_eq!(batch, 336);
+    // The continuation kernel carries the widest trailing scalars (acc_size, step).
+    assert!(batch + 2 * size_of::<u32>() <= KERNEL_ARG_CEILING_BYTES);
 
     assert_eq!(size_of::<GkrEqSizes>(), 12);
     assert_eq!(align_of::<GkrEqSizes>(), 4);
     assert_eq!(offset_of!(GkrEqSizes, high), 0);
     assert_eq!(offset_of!(GkrEqSizes, low), 8);
 
-    macro_rules! assert_layout {
-        ($ty:ty) => {
-            assert_eq!(align_of::<$ty>(), 8);
-            assert_eq!(offset_of!($ty, record_count), 0);
-            assert_eq!(offset_of!($ty, _reserved0), 4);
-            assert_eq!(offset_of!($ty, eq_low), 8);
-            assert_eq!(offset_of!($ty, eq_sizes), 16);
-            assert_eq!(offset_of!($ty, _eq_sizes_pad), 28);
-            assert_eq!(offset_of!($ty, contributions), 32);
-            assert_eq!(offset_of!($ty, tables), 40);
-            assert_eq!(offset_of!($ty, records), 232);
-            assert_eq!(offset_of!($ty, inline_payload), 344);
-        };
-    }
-    assert_layout!(GpuGKRDimensionReducingRound0BatchCompact<E4>);
-    assert_layout!(GpuGKRDimensionReducingContinuationBatchCompact<E4>);
+    type Batch = GpuGKRDimensionReducingBatch<E4>;
+    assert_eq!(align_of::<Batch>(), 8);
+    assert_eq!(offset_of!(Batch, enabled_mask), 0);
+    assert_eq!(offset_of!(Batch, _reserved0), 4);
+    assert_eq!(offset_of!(Batch, eq_low), 8);
+    assert_eq!(offset_of!(Batch, eq_sizes), 16);
+    assert_eq!(offset_of!(Batch, _eq_sizes_pad), 28);
+    assert_eq!(offset_of!(Batch, contributions), 32);
+    assert_eq!(offset_of!(Batch, tables), 40);
+    assert_eq!(offset_of!(Batch, slots), 232);
+    assert_eq!(offset_of!(Batch, _slots_pad), 332);
 }
 
 #[test]
-fn compact_record_is_16_bytes() {
-    assert_eq!(size_of::<PayloadRange16>(), 4);
-    assert_eq!(align_of::<PayloadRange16>(), 2);
-    assert_eq!(offset_of!(PayloadRange16, offset), 0);
-    assert_eq!(offset_of!(PayloadRange16, count), 2);
-
-    assert_eq!(size_of::<GpuGKRDimensionReducingBatchRecordCompact>(), 16);
-    assert_eq!(align_of::<GpuGKRDimensionReducingBatchRecordCompact>(), 4);
-    assert_eq!(
-        offset_of!(GpuGKRDimensionReducingBatchRecordCompact, kind),
-        0
-    );
-    assert_eq!(
-        offset_of!(GpuGKRDimensionReducingBatchRecordCompact, inputs),
-        4
-    );
-    assert_eq!(
-        offset_of!(GpuGKRDimensionReducingBatchRecordCompact, outputs),
-        8
-    );
-    assert_eq!(
-        offset_of!(
-            GpuGKRDimensionReducingBatchRecordCompact,
-            batch_challenge_offset
-        ),
-        12
-    );
-    assert_eq!(
-        offset_of!(GpuGKRDimensionReducingBatchRecordCompact, _reserved),
-        14
-    );
+fn compact_slot_is_20_bytes() {
+    assert_eq!(size_of::<GpuGKRDimensionReducingSlot>(), 20);
+    assert_eq!(align_of::<GpuGKRDimensionReducingSlot>(), 2);
+    assert_eq!(offset_of!(GpuGKRDimensionReducingSlot, io), 0);
+    assert_eq!(offset_of!(GpuGKRDimensionReducingSlot, batch_exp), 16);
 
     assert_eq!(size_of::<GpuGKRDimensionReducingTables>(), 192);
     assert_eq!(align_of::<GpuGKRDimensionReducingTables>(), 8);
@@ -118,12 +106,10 @@ fn compact_record_is_16_bytes() {
 fn compact_cuda_constants_match_rust() {
     let header = include_str!("../../../native/gkr/support/descriptors.cuh");
     for declaration in [
-        "GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER = 7;",
-        "GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN = 10;",
-        "GKR_DIM_REDUCING_INLINE_RECORD_CAP = 28;",
+        "GKR_DIM_REDUCING_SLOTS = 5;",
+        "GKR_DIM_REDUCING_INPUTS_PER_SLOT = 2;",
+        "GKR_DIM_REDUCING_OUTPUTS_PER_SLOT = 2;",
         "GKR_DIM_REDUCING_BASE_SLOTS = 16;",
-        "GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD = 2;",
-        "GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD = 2;",
         "GKR_BACKWARD_MAX_TRACE_LEN_LOG2 = 24;",
         "GKR_DIM_REDUCING_LAYER_CLAIM_POINT_LEN = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 2;",
         "GKR_MAIN_LAYER_CLAIM_POINT_LEN = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 1;",
@@ -136,12 +122,11 @@ fn compact_cuda_constants_match_rust() {
             "missing CUDA declaration: {declaration}"
         );
     }
-    assert_eq!(GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER, 7);
+    assert_eq!(GKR_DIM_REDUCING_SLOTS, 5);
+    assert_eq!(GKR_DIM_REDUCING_INPUTS_PER_SLOT, 2);
+    assert_eq!(GKR_DIM_REDUCING_OUTPUTS_PER_SLOT, 2);
     assert_eq!(GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN, 10);
-    assert_eq!(GKR_DIM_REDUCING_INLINE_RECORD_CAP, 28);
     assert_eq!(GKR_DIM_REDUCING_BASE_SLOTS, 16);
-    assert_eq!(GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD, 2);
-    assert_eq!(GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD, 2);
     assert_eq!(GKR_BACKWARD_MAX_TRACE_LEN_LOG2, 24);
     assert_eq!(GKR_EQ_GROUP_SIZE, 8);
     assert_eq!(GKR_EQ_HIGH_SLOTS, 2);

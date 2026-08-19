@@ -96,8 +96,10 @@ pub(super) fn build_inits_and_teardowns_trace_host_for_test(
     page_indices: &[u32],
     values_packed: &[u32],
     timestamps_packed: &[common_constants::TimestampScalar],
+    top_bits: &[u32],
 ) -> InitsAndTeardownsTraceHost {
     InitsAndTeardownsTraceHost {
+        top_bits: top_bits.to_vec(),
         page_indices: ChunkedTraceHolder {
             chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(page_indices))],
         },
@@ -245,7 +247,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
         permutation_argument_additive_part,
         _marker: std::marker::PhantomData,
     };
-    let canonical_top_bits: Vec<u32> = (0..num_sets as u32).collect();
+    let top_bits: Vec<u32> = (0..num_sets as u32).collect();
 
     let prover_config = crate::config::prover_config(
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
@@ -294,7 +296,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             &twiddles,
             &prover_config,
             CommitmentMode::SeparateMemoryAndWitness,
-            canonical_top_bits.clone(),
+            top_bits.clone(),
             trace_len,
             &worker,
         ))
@@ -317,7 +319,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             .collect::<Vec<_>>()
     } else {
         let (mem_oracle, _wit_oracle) =
-            commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+            commit_separate_memory_and_witness_subtrees::<BF, BF, DefaultTreeConstructor>(
+                &NaiveBackend,
                 &make_full_trace(),
                 &twiddles,
                 whir_schedule.base_lde_factor,
@@ -327,7 +330,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 &worker,
             );
         stage1_subcaps_from_cap(
-            &mem_oracle.tree.get_cap(),
+            &mem_oracle.get_cap(),
             whir_schedule.cap_size / whir_schedule.base_lde_factor,
         )
     };
@@ -348,6 +351,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
         &page_indices,
         &values_packed,
         &timestamps_packed,
+        &top_bits,
     );
     // Standalone i/t proves no per-cycle witness: empty non-memory tracing host,
     // and no decoder lookup (the default guard keeps the pinned alloc non-empty).
