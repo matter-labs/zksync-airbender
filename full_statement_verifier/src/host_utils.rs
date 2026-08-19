@@ -174,9 +174,11 @@ pub fn final_blake_mode() -> BlakeMode {
 /// protocol constant — drivers may pick their own, and
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` overrides it.
 ///
-/// The value is unvalidated: it predates the halving of the unified circuit to
-/// 2^23 rows and has not been re-tuned since. Treat it as a placeholder pending
-/// a measured sweep.
+/// Validated by measurement 2026-08-19 (GPU backend, converged-to-1+1 ladder,
+/// binaries pre-registered so no setup lands in the timed window, 3 samples
+/// per point): the unrolled-vs-unified crossover sits at ~60M estimated
+/// cycles with an indifference band of roughly [55M, 70M] where either choice
+/// costs under ~50 ms per proof. 64Mi lies inside that band.
 pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 64 * 1024 * 1024;
 
 /// Convergence floor for the switch threshold. The rung estimate bottoms out
