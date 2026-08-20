@@ -26,7 +26,7 @@ use gpu_hash::blake2s::{
 use gpu_ntt::ntt::{
     bitreversed_monomials_to_natural_evals_multi_coset, hypercube_x1_msb_evals_to_x1_msb_monomials,
     log_size_supports_natural_to_bitrev_lde, log_size_supports_transposed_monomials,
-    natural_monomials_to_bitreversed_evals_multi_coset,
+    natural_monomials_to_bitreversed_evals_multi_coset, MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
 };
 use gpu_ops::bit_reverse::bit_reverse_in_place;
 use gpu_prover_context::ProverContext;
@@ -355,12 +355,27 @@ impl TraceHolder<BF> {
 
         let log_n = self.log_domain_size as usize;
         // The committed backing is the BITREVERSED-order codeword the LSB
-        // commitment layer's Merkle builders and query gathers consume. The
-        // natural->bitrev LDE produces it directly; below its dispatch range the
-        // natural LDE plus an explicit row permutation reaches the same layout.
+        // commitment layer's Merkle builders and query gathers consume, and the
+        // natural->bitrev LDE produces it directly.
+        //
+        // Below that family's dispatch floor the natural LDE plus an explicit row
+        // permutation gives the same ROW ORDER but a DIFFERENT CODEWORD. Both
+        // arms read the same Mobius coefficient array; the natural->bitrev family
+        // labels it naturally (the LSB convention, pinned against the live CPU),
+        // while the natural family labels it bitreversed. So the sub-floor arm
+        // commits the OLD MSB-convention polynomial in bitreversed row order --
+        // right row order, wrong polynomial. It exists only because test-suite
+        // holders live below the floor; no production base shape reaches it, and
+        // the assert below keeps a future floor change from shipping it.
+        //
         // `hypercube_to_multi_coset_evals_fused` is deliberately not called on
         // either arm: it emits natural-order evaluations.
         let natural_to_bitrev = log_size_supports_natural_to_bitrev_lde(log_n);
+        assert!(
+            natural_to_bitrev || log_n < MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
+            "log_n {log_n} is above the natural->bitrev LDE range: the sub-floor arm \
+             commits the OLD MSB-convention codeword and must not serve it",
+        );
 
         let mut coeff_scratch = context.alloc(domain_size, AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
@@ -369,7 +384,7 @@ impl TraceHolder<BF> {
         // path, keeping it enqueue-only per the GPU scheduling contract. The
         // natural->bitrev families have no DIT arm and ignore the scratch.
         let mut d_scratch;
-        let mut scratch_opt = if !natural_to_bitrev && log_n <= 13 {
+        let mut scratch_opt = if !natural_to_bitrev {
             d_scratch = context.alloc::<BF>(domain_size, AllocationPlacement::BestFit)?;
             Some(&mut d_scratch[..])
         } else {
@@ -437,7 +452,7 @@ impl TraceHolder<BF> {
                 }
             }
         }
-        if !natural_to_bitrev {
+        if !natural_to_bitrev && self.columns_count != 0 {
             match &mut self.cosets {
                 CosetsHolder::Full(backing) => {
                     let mut rows = DeviceMatrixMut::new(&mut backing[..], domain_size);
