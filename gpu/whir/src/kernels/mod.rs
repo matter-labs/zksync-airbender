@@ -1496,13 +1496,17 @@ pub(crate) fn launch_split_accumulate_eq_samples(
     assert!(acc_size <= u32::MAX as usize);
     let (high_bits, low_bits) = split_eq_bits(log_n);
 
+    // The accumulator serves `gid` bits `low_bits..log_n` from the high slab
+    // and bits `0..low_bits` from the low slab, so LSB pairing (coordinate `j`
+    // on bit `j`) puts coordinates `low_bits..log_n` on the high slab and
+    // `0..low_bits` on the low slab.
     // High slab: no challenge scaling.
     launch_build_split_eq_table(
         claim_points,
         std::ptr::null(),
         log_n,
         high_bits,
-        0,
+        low_bits,
         num_queries,
         eq_high_array,
         context,
@@ -1514,7 +1518,7 @@ pub(crate) fn launch_split_accumulate_eq_samples(
         challenges,
         log_n,
         low_bits,
-        high_bits,
+        0,
         num_queries,
         eq_low_array,
         context,

@@ -51,8 +51,10 @@ EXTERN __global__ void ab_whir_accumulate_eq_samples_batched_e4_kernel(const e4 
 // For each query `q` (gridDim.y), emits a table of size `1 << bits` E4 entries:
 //   out[q][idx] = product_{i in 0..bits} (bit_i(idx) ? claim_point[q][claim_offset + i]
 //                                                    : 1 - claim_point[q][claim_offset + i])
-// where bit_i(idx) is the i-th bit of `idx` MSB-first, matching the GKR
-// builder convention (claim_point[0] -> high-order bit). If `scales` is
+// where bit_i(idx) is the i-th LOW bit of `idx`, matching the GKR builder
+// convention (claim coordinate `j` -> index bit `j`). The host pairs
+// `claim_offset` with the slab that serves the matching `gid` bits, so the
+// high slab is called with `claim_offset = low_bits`. If `scales` is
 // non-null, every entry is additionally multiplied by `scales[q]`; this is
 // how we fold `challenges[q]` into the low slab so the accumulator's inner
 // loop drops to one mul per query.
@@ -74,7 +76,7 @@ EXTERN __global__ void ab_whir_build_split_eq_table_e4_kernel(const e4 *claim_po
   e4 acc;
   for (unsigned i = 0; i < bits; ++i) {
     const unsigned bit_set = (out_idx >> (bits - 1u - i)) & 1u;
-    const e4 p = load<e4, ld_modifier::ca>(claim_q, i);
+    const e4 p = load<e4, ld_modifier::ca>(claim_q, bits - 1u - i);
     const e4 factor = bit_set ? p : e4::sub(e4::ONE(), p);
     acc = (i == 0) ? factor : e4::mul(acc, factor);
   }

@@ -793,3 +793,5 @@ use crate::fold::debug::{
 mod query_tests;
 
 mod recursive_commitment_convention;
+
+mod sampled_eq_tests;
