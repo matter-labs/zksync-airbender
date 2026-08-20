@@ -44,6 +44,10 @@ fn base_query_paths_match_cpu_tree() {
     );
 
     let lde_factor = 1usize << log_lde_factor;
+    let log_domain_size = trace_holder.log_domain_size;
+    // The committed backing is the bitreversed-order codeword; the CPU tree
+    // constructor takes natural-order columns, so undo the row permutation
+    // instead of blessing the physical layout as natural.
     let cosets_host = (0..lde_factor)
         .map(|coset_index| copy_back(trace_holder.get_coset_evaluations(coset_index), &context))
         .collect::<Vec<_>>();
@@ -53,12 +57,18 @@ fn base_query_paths_match_cpu_tree() {
             (0..columns.len())
                 .map(|column| {
                     let start = column * rows;
-                    &host[start..start + rows]
+                    (0..rows)
+                        .map(|row| host[start + bitreverse_index(row, log_domain_size)])
+                        .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let source_refs = source_storage
+    let source_refs_storage = source_storage
+        .iter()
+        .map(|coset| coset.iter().map(|column| &column[..]).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let source_refs = source_refs_storage
         .iter()
         .map(|columns| columns.as_slice())
         .collect::<Vec<_>>();

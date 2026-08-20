@@ -408,7 +408,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
             ],
             slab_ptrs,
         );
-        gpu_hash::blake2s::gather_leaves_for_queries(
+        gpu_hash::blake2s::gather_leaves_for_queries_physical(
             &leaves_descs,
             3,
             log_lde_factor_base,
@@ -422,7 +422,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let base_layers_count = memory_trace_holder.log_domain_size
             - memory_trace_holder.log_rows_per_leaf
             - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor);
-        gpu_hash::blake2s::gather_merkle_paths_partial_for_queries(
+        gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_physical(
             &paths_descs,
             3,
             log_lde_factor_base,
