@@ -301,52 +301,85 @@ pub fn default_workload_weights() -> WorkloadWeightsV1 {
     }
 }
 
-fn commitment_counts(log: &str) -> Result<BTreeMap<(u32, String), u64>, CensusError> {
-    let marker = "produced memory commitment for circuit ";
-    let mut counts = BTreeMap::new();
-    for line in log.lines().filter(|line| line.contains(marker)) {
-        let batch_start = line
-            .find("BATCH[")
-            .ok_or_else(|| CensusError(format!("memory-commitment line has no batch: {line}")))?
-            + "BATCH[".len();
-        let batch_end = line[batch_start..]
-            .find(']')
-            .map(|offset| batch_start + offset)
-            .ok_or_else(|| {
-                CensusError(format!(
-                    "memory-commitment line has malformed batch: {line}"
-                ))
+struct ObservedLayer {
+    identity: String,
+    binary_key: u32,
+    counts: BTreeMap<String, u64>,
+}
+
+fn observed_layers(log: &str) -> Result<Vec<ObservedLayer>, CensusError> {
+    const START: &str = "PROVER producing memory commitments for binary with key ";
+    const MARKER: &str = "produced memory commitment for circuit ";
+    if let Some(line) = log.lines().find(|line| line.contains("proving stages took")) {
+        let unrolled_start = line.find("unrolled [").map(|offset| offset + "unrolled [".len());
+        if let Some(begin) = unrolled_start {
+            let end = line[begin..].find(']').map(|offset| begin + offset).ok_or_else(|| {
+                CensusError(format!("proving-stages line has malformed unrolled list: {line}"))
             })?;
-        let batch = line[batch_start..batch_end]
-            .parse::<u32>()
-            .map_err(|error| CensusError(format!("invalid batch in {line}: {error}")))?;
-        let circuit_start = line.find(marker).unwrap() + marker.len();
-        let suffix = &line[circuit_start..];
-        let index_start = suffix.rfind('[').ok_or_else(|| {
-            CensusError(format!("memory-commitment line has no instance: {line}"))
-        })?;
-        let circuit = suffix[..index_start].to_owned();
-        *counts.entry((batch, circuit)).or_default() += 1;
+            if !line[begin..end].trim().is_empty() {
+                return Err(CensusError(format!(
+                    "log reports unrolled recursion stages, which this census cannot label: {line}"
+                )));
+            }
+        }
     }
-    if counts.is_empty() {
+    let mut layers: Vec<ObservedLayer> = Vec::new();
+    let mut unified = 0u32;
+    for line in log.lines() {
+        if let Some(offset) = line.find(START) {
+            let binary_key = line[offset + START.len()..]
+                .split_whitespace()
+                .next()
+                .ok_or_else(|| CensusError(format!("layer line has no binary key: {line}")))?
+                .parse::<u32>()
+                .map_err(|error| CensusError(format!("invalid binary key in {line}: {error}")))?;
+            let identity = if layers.is_empty() {
+                "base".to_owned()
+            } else {
+                unified += 1;
+                format!("recursion_unified_{unified}")
+            };
+            layers.push(ObservedLayer {
+                identity,
+                binary_key,
+                counts: BTreeMap::new(),
+            });
+            continue;
+        }
+        if let Some(offset) = line.find(MARKER) {
+            let suffix = &line[offset + MARKER.len()..];
+            let index_start = suffix.rfind('[').ok_or_else(|| {
+                CensusError(format!("memory-commitment line has no instance: {line}"))
+            })?;
+            let circuit = suffix[..index_start].to_owned();
+            let layer = layers.last_mut().ok_or_else(|| {
+                CensusError(format!("memory commitment precedes any layer marker: {line}"))
+            })?;
+            *layer.counts.entry(circuit).or_default() += 1;
+        }
+    }
+    if layers.is_empty() || layers.iter().all(|layer| layer.counts.is_empty()) {
         return Err(CensusError(
             "workload log has no memory-commitment listings".to_owned(),
         ));
     }
-    Ok(counts)
+    Ok(layers)
 }
 
-fn required_count(
-    counts: &mut BTreeMap<(u32, String), u64>,
-    circuit: &str,
-) -> Result<u64, CensusError> {
+fn required_count(counts: &mut BTreeMap<String, u64>, circuit: &str) -> Result<u64, CensusError> {
     counts
-        .remove(&(0, circuit.to_owned()))
-        .ok_or_else(|| CensusError(format!("current-base log is missing {circuit}")))
+        .remove(circuit)
+        .ok_or_else(|| CensusError(format!("current-base layer is missing {circuit}")))
 }
 
-fn current_base_counts(log: &str) -> Result<BaseInvocationCounts, CensusError> {
-    let mut counts = commitment_counts(log)?;
+fn current_base_counts(base: &ObservedLayer) -> Result<BaseInvocationCounts, CensusError> {
+    if base.identity != "base" || base.binary_key != 0 {
+        return Err(CensusError(format!(
+            "first observed layer is not the base layer: identity={} key={}",
+            base.identity, base.binary_key
+        )));
+    }
+    let mut counts = base.counts.clone();
     let result = BaseInvocationCounts {
         add_sub: required_count(&mut counts, "Unrolled(NonMemory(AddSubLuiAuipcMop))")?,
         jump: required_count(&mut counts, "Unrolled(NonMemory(JumpBranchSlt))")?,
@@ -360,7 +393,7 @@ fn current_base_counts(log: &str) -> Result<BaseInvocationCounts, CensusError> {
     };
     if !counts.is_empty() {
         return Err(CensusError(format!(
-            "current-base log has unexpected circuit listings: {:?}",
+            "current-base layer has unexpected circuit listings: {:?}",
             counts.keys().collect::<Vec<_>>()
         )));
     }
@@ -383,18 +416,10 @@ fn workload_circuit(circuit: &str) -> Option<&'static str> {
         "Delegation(KeccakSpecial5)" => Some("keccak_special5"),
         "Unrolled(Memory(LoadStoreSubwordOnly))" => Some("mem_subword_only"),
         "Unrolled(Memory(LoadStoreWordOnly))" => Some("mem_word_only"),
-        "Unrolled(NonMemory(ShiftBinaryCsr))" => Some("shift_binop"),
+        "Unrolled(NonMemory(ShiftBinary))" => Some("shift_binop"),
         "Unrolled(NonMemory(MulDivUnsigned))" => Some("unsigned_mul_div"),
         "Unrolled(Unified)" => Some("unified_reduced_machine"),
         _ => None,
-    }
-}
-
-fn workload_layer_identity(batch: u32) -> String {
-    match batch {
-        0 => "base".to_owned(),
-        1..=3 => format!("recursion_unrolled_{batch}"),
-        _ => format!("recursion_unified_{}", batch - 3),
     }
 }
 
@@ -413,45 +438,39 @@ fn corpus_trace_lengths() -> Result<BTreeMap<String, u64>, CensusError> {
         .collect()
 }
 
-pub fn workload_weights_from_logs(
-    current_log: &Path,
-    development_log: &Path,
-) -> Result<WorkloadWeightsV1, CensusError> {
-    let current_text = std::fs::read_to_string(current_log)
-        .map_err(|error| CensusError(format!("read {}: {error}", current_log.display())))?;
-    let current_base = current_base_counts(&current_text)?;
-    let development_text = std::fs::read_to_string(development_log)
-        .map_err(|error| CensusError(format!("read {}: {error}", development_log.display())))?;
-    let counts = commitment_counts(&development_text)?;
+pub fn workload_weights_from_log(log_path: &Path) -> Result<WorkloadWeightsV1, CensusError> {
+    let text = std::fs::read_to_string(log_path)
+        .map_err(|error| CensusError(format!("read {}: {error}", log_path.display())))?;
+    let observed = observed_layers(&text)?;
+    let current_base = current_base_counts(&observed[0])?;
     let trace_lengths = corpus_trace_lengths()?;
-    let mut layers = Vec::with_capacity(counts.len());
-    for ((batch, raw_circuit), invocations) in counts {
-        let circuit = workload_circuit(&raw_circuit).ok_or_else(|| {
-            CensusError(format!(
-                "development log has unmapped circuit {raw_circuit}"
-            ))
-        })?;
-        let domain_rows = trace_lengths.get(circuit).copied().ok_or_else(|| {
-            CensusError(format!("workload circuit {circuit} has no census layout"))
-        })?;
-        layers.push(WorkloadLayer {
-            identity: workload_layer_identity(batch),
-            circuit: circuit.to_owned(),
-            invocations,
-            domain_rows,
-            estimated_passes: 1,
-        });
+    let mut layers = Vec::new();
+    for observed_layer in &observed {
+        for (raw_circuit, invocations) in &observed_layer.counts {
+            let circuit = workload_circuit(raw_circuit).ok_or_else(|| {
+                CensusError(format!("workload log has unmapped circuit {raw_circuit}"))
+            })?;
+            let domain_rows = trace_lengths.get(circuit).copied().ok_or_else(|| {
+                CensusError(format!("workload circuit {circuit} has no census layout"))
+            })?;
+            layers.push(WorkloadLayer {
+                identity: observed_layer.identity.clone(),
+                circuit: circuit.to_owned(),
+                invocations: *invocations,
+                domain_rows,
+                estimated_passes: 1,
+            });
+        }
     }
     let weights = WorkloadWeightsV1 {
         schema_version: CENSUS_SCHEMA_VERSION,
         profiles: WorkloadProfiles {
             current_base,
-            development_recursion_proxy: DevelopmentRecursionProfile::Available {
-                source: "development-recursion.debug.log".to_owned(),
-                log_sha256: sha256(development_log)?,
-                layers,
+            development_recursion_proxy: DevelopmentRecursionProfile::Unavailable {
+                reason: "superseded by the single-log current recursion profile".to_owned(),
+                log_sha256: "retired".to_owned(),
             },
-            future_current_recursion: None,
+            future_current_recursion: Some(layers),
         },
     };
     weights
@@ -1473,6 +1492,9 @@ mod tests {
             ("Delegation(BigIntWithControl)", 3),
         ];
         let mut log = String::new();
+        log.push_str(
+            "[INFO ] BATCH[0] PROVER producing memory commitments for binary with key 0\n",
+        );
         for (circuit, count) in circuits {
             for instance in 0..count {
                 log.push_str(&format!(
@@ -1480,8 +1502,10 @@ mod tests {
                 ));
             }
         }
+        let observed = observed_layers(&log).unwrap();
+        assert_eq!(observed.len(), 1);
         assert_eq!(
-            current_base_counts(&log).unwrap(),
+            current_base_counts(&observed[0]).unwrap(),
             default_workload_weights().profiles.current_base
         );
     }

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use gpu_gkr_windowed_bench::census::{
-    generate_corpus_census, workload_weights_from_logs, WorkloadWeightsV1,
+    generate_corpus_census, workload_weights_from_log, WorkloadWeightsV1,
 };
 
 fn json_bytes<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
@@ -31,10 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::from_slice::<WorkloadWeightsV1>(&std::fs::read(&weights_path)?)?
     } else {
         let campaign = manifest.join("../../target/windowed-gkr-decode-compact-program/workloads");
-        workload_weights_from_logs(
-            &campaign.join("current-base.debug.log"),
-            &campaign.join("development-recursion.debug.log"),
-        )?
+        workload_weights_from_log(&campaign.join("current-recursion.debug.log"))?
     };
     weights.validate()?;
     let census = generate_corpus_census(weights.clone())?;
