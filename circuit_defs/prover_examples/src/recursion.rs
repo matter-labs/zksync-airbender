@@ -210,12 +210,13 @@ mod tests {
             } else {
                 FsvProgram::UnrolledRecursionLayer
             };
-            let estimated = full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles(
-                &proof,
-                program,
-                unrolled_blake,
-            )
-            .expect("cannot estimate verifier cycles");
+            let estimated =
+                full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles(
+                    &proof,
+                    program,
+                    unrolled_blake,
+                )
+                .expect("cannot estimate verifier cycles");
             println!("running the layer-{layer} verifier would take ~{estimated} cycles");
             if estimated < switch_cycles {
                 println!("... below {switch_cycles} — switching to the unified machine");

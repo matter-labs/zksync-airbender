@@ -263,11 +263,12 @@ fn census_estimate_matches_measurement_on_every_fixture() {
             let measured = t.total_census[d];
             let err = (*est_v as i64 - measured as i64).unsigned_abs();
             // Family dims get 2x slack; see CENSUS_REL_DIV in trace/calibrate.rs.
-            let rel = if d < full_statement_verifier::host_utils::cost_model::census::NUM_FAMILY_DIMS {
-                measured / 1000
-            } else {
-                measured / 2000
-            };
+            let rel =
+                if d < full_statement_verifier::host_utils::cost_model::census::NUM_FAMILY_DIMS {
+                    measured / 1000
+                } else {
+                    measured / 2000
+                };
             let budget = rel.max(8);
             assert!(
                 err <= budget,
