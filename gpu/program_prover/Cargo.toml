@@ -40,12 +40,12 @@ default = ["security_80", "deterministic_pow"]
 security_80 = [
     "gpu_execution_prover/security_80",
     "gpu_circuit_prover/security_80",
-    "prover_examples/security_80",
+    "program_prover/security_80",
 ]
 security_100 = [
     "gpu_execution_prover/security_100",
     "gpu_circuit_prover/security_100",
-    "prover_examples/security_100",
+    "program_prover/security_100",
 ]
 deterministic_pow = ["gpu_execution_prover/deterministic_pow"]
 eval_leaves = ["gpu_execution_prover/eval_leaves", "gpu_circuit_prover/eval_leaves"]
@@ -62,7 +62,7 @@ env_logger = "0.11"
 serde_json = "*"
 worker = { workspace = true }
 # CPU reference prover, used only by the GPU-vs-CPU proof-diff test.
-prover_examples = { workspace = true, default-features = false, features = [
+program_prover = { workspace = true, default-features = false, features = [
     "timing_logs",
     "gkr_self_checks",
 ] }
