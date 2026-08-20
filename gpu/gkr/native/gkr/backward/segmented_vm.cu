@@ -152,14 +152,15 @@ template <u32 MAX_DEPTH, typename Raw> DEVICE_FORCEINLINE e4 seg_fold(const Raw 
 // Both target-depth endpoints of one folded source in ONE pass over q: same
 // loads as two seg_fold_flat calls, each weight consumed once, two
 // independent fma chains for ILP. This is also the prologue's shape — fold
-// then publish both endpoints — so it is written once here. The endpoints are
-// `u = 2 * row` and `u = 2 * row + 1`, so their leaf blocks are adjacent and one
-// row owns the 2^(DELTA + 1) leaves at `row << (DELTA + 1)`.
-template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE void seg_fold_endpoints_flat(const Raw &raw, const u32 row, e4 &s0, e4 &s1) {
+// then publish both endpoints — so it is written once here. It takes the EVEN
+// endpoint `u` (`u | 1` is the odd one), the same index `seg_fold_flat` takes, so
+// the two leaf-address expressions cannot drift apart; the odd endpoint's leaf
+// block is the even one's plus `2^DELTA`.
+template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE void seg_fold_endpoints_flat(const Raw &raw, const u32 u, e4 &s0, e4 &s1) {
   static_assert(DELTA >= 1 && DELTA <= BWD_SEG_MAX_FOLD_DEPTH, "fold outside 1..BWD_SEG_MAX_FOLD_DEPTH");
   constexpr u32 BASE = DELTA == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : DELTA == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
   constexpr u32 LEAVES = 1u << DELTA;
-  const u32 leaf = row << (DELTA + 1);
+  const u32 leaf = u << DELTA;
   const auto leaf0_lo = raw(leaf);
   const auto leaf0_hi = raw(leaf + LEAVES);
   s0 = seg_lift(leaf0_lo);
@@ -172,18 +173,18 @@ template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE void seg_fold_endpoints_fl
   }
 }
 
-template <u32 MAX_DEPTH, typename Raw> DEVICE_FORCEINLINE void seg_fold_endpoints(const Raw &raw, const u32 row, const u32 delta, e4 &s0, e4 &s1) {
+template <u32 MAX_DEPTH, typename Raw> DEVICE_FORCEINLINE void seg_fold_endpoints(const Raw &raw, const u32 u, const u32 delta, e4 &s0, e4 &s1) {
   if constexpr (MAX_DEPTH >= 3)
     if (delta == 3)
-      return seg_fold_endpoints_flat<3>(raw, row, s0, s1);
+      return seg_fold_endpoints_flat<3>(raw, u, s0, s1);
   if constexpr (MAX_DEPTH >= 2)
     if (delta == 2)
-      return seg_fold_endpoints_flat<2>(raw, row, s0, s1);
+      return seg_fold_endpoints_flat<2>(raw, u, s0, s1);
   if constexpr (MAX_DEPTH >= 1)
     if (delta == 1)
-      return seg_fold_endpoints_flat<1>(raw, row, s0, s1);
-  s0 = seg_lift(raw(row << 1));
-  s1 = seg_lift(raw((row << 1) | 1));
+      return seg_fold_endpoints_flat<1>(raw, u, s0, s1);
+  s0 = seg_lift(raw(u));
+  s1 = seg_lift(raw(u | 1));
 }
 
 // ── Projections ─────────────────────────────────────────────────────────────
@@ -227,15 +228,16 @@ template <seg_projection P, typename Value> DEVICE_FORCEINLINE auto seg_project(
 // once for both chains. `seg_project` above serves the DIRECT sources, where a
 // leaf read already IS the target-depth value.
 template <seg_projection P, u32 MAX_DEPTH, typename Raw> DEVICE_FORCEINLINE seg_value<e4> seg_project_folded(const Raw &raw, const u32 row, const u32 delta) {
+  const u32 u = row << 1;
   if constexpr (P == SEG_PROJ_ENDPOINT0) {
-    return seg_value<e4>{seg_fold<MAX_DEPTH>(raw, row << 1, delta), e4::ZERO()};
+    return seg_value<e4>{seg_fold<MAX_DEPTH>(raw, u, delta), e4::ZERO()};
   } else if constexpr (P == SEG_PROJ_DELTA) {
     static_assert(MAX_DEPTH == 0, "delta projection is R0-only");
-    return seg_value<e4>{e4::ZERO(), e4::sub(seg_lift(raw((row << 1) | 1)), seg_lift(raw(row << 1)))};
+    return seg_value<e4>{e4::ZERO(), e4::sub(seg_lift(raw(u | 1)), seg_lift(raw(u)))};
   } else {
     e4 s0;
     e4 s1;
-    seg_fold_endpoints<MAX_DEPTH>(raw, row, delta, s0, s1);
+    seg_fold_endpoints<MAX_DEPTH>(raw, u, delta, s0, s1);
     return seg_value<e4>{s0, e4::sub(s1, s0)};
   }
 }
@@ -309,18 +311,19 @@ DEVICE_FORCEINLINE void seg_fold_and_publish(const bwd_seg_desc &desc, const u16
   const bwd_seg_source_record record = desc.source[slot];
   const bwd_seg_addr_slot &addr = desc.slot[bwd_seg_lane_slot(record.src)];
   const u32 delta = u32{record.delta};
+  const u32 u = row << 1;
 
   e4 s0;
   e4 s1;
   if (addr.origin == BWD_COEFF_ORIGIN_READ_EXT) {
     const seg_raw_e4_column<ld_modifier::cs> raw{seg_lane_column<e4>(desc, record.src)};
-    seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, delta, s0, s1);
+    seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, u, delta, s0, s1);
   } else if (addr.origin == BWD_COEFF_ORIGIN_PROCEDURAL) {
     const seg_raw_synthesized raw{bwd_coeff_procedural_source_kind(addr.procedural_kind)};
-    seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, delta, s0, s1);
+    seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, u, delta, s0, s1);
   } else {
     const seg_raw_bf_column<ld_modifier::cs> raw{seg_lane_column<bf>(desc, record.src)};
-    seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, delta, s0, s1);
+    seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, u, delta, s0, s1);
   }
 
   // Only a live row publishes. A dead lane of the last tile folded a CLAMPED row
@@ -330,11 +333,17 @@ DEVICE_FORCEINLINE void seg_fold_and_publish(const bwd_seg_desc &desc, const u16
     return;
   e4 *publish = seg_lane_column_mut(desc, record.cache);
   // Blocks own disjoint row ranges and exactly one warp folds a given source, so
-  // the adjacent pair `2 * row`, `2 * row + 1` has a single writer, and host
-  // lowering rejects a destination that overlaps anything this launch reads
-  // (`check_alias`), so the fold is never in place. `wb` keeps the pair in L1 for
-  // the eval loop's same-block `ld.ca` re-reads.
-  const u32 u = row << 1;
+  // the adjacent pair `2 * row`, `2 * row + 1` has a single writer. The fold is
+  // never in place either: `schedule_bwd_vm_ext_round` allocates THIS round's
+  // buffer just in time and retires round r - 1's only after this launch is
+  // enqueued, so the destination and every leaf this launch reads are distinct
+  // live allocations. `check_alias` covers only slots lowered with a real
+  // address; a production destination is a deferred (null-base) slot and is
+  // SKIPPED there, so it is the allocation discipline that carries this, not a
+  // lowering check. A surface that genuinely does overlap needs the
+  // register/`__syncthreads`/store shape instead — see `mega_finalize.cuh`'s eq
+  // fold. `wb` keeps the pair in L1 for the eval loop's same-block `ld.ca`
+  // re-reads.
   store<e4, st_modifier::wb>(publish, s0, u);
   store<e4, st_modifier::wb>(publish, s1, u | 1);
 }

@@ -353,12 +353,11 @@ EXTERN __device__ __constant__ e4 ab_gkr_bwd_seg_coeff_bank[airbender::gkr::BWD_
 EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
 
 // The flat fold's weight table: one entry per (delta, q >= 1) pair, indexed by
-// the leaf offset q the fold walks. Built ONCE per
-// round from the claim point by `ab_gkr_bwd_seg_build_fold_weights_kernel`
-// below, which writes it through this symbol's own address — device code cannot
-// name a `__constant__` as a store target. Declared at global scope for the same
-// reason the coefficient bank is: the fold names the symbol directly, which is
-// what LDC emission requires.
+// the leaf offset q the fold walks. Built ONCE per round from the claim point by
+// `ab_gkr_bwd_seg_build_fold_weights_kernel` below, which writes it through this
+// symbol's own address — device code cannot name a `__constant__` as a store
+// target. Declared at global scope for the same reason the coefficient bank is:
+// the fold names the symbol directly, which is what LDC emission requires.
 EXTERN __device__ __constant__ e4 ab_gkr_bwd_seg_fold_weights[airbender::gkr::BWD_SEG_FOLD_WEIGHT_SLOTS];
 
 // ── Kernels ─────────────────────────────────────────────────────────────────
