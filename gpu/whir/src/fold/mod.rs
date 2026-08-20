@@ -340,7 +340,7 @@ pub(super) fn schedule_initialize_batched_forms(
     let (device_witness_weights, device_setup_weights) = rest.split_at_mut(wit_polys_claims_len);
     assert_eq!(device_setup_weights.len(), setup_polys_claims_len);
 
-    let rows = state.sumchecked_poly_evaluation_form.len();
+    let rows = state.original_trace_len;
     let memory_values =
         get_base_columns(memory_trace_holder, rows, use_hypercube_evals_for_batching);
     let witness_values =
@@ -376,10 +376,11 @@ pub(super) fn schedule_initialize_batched_forms(
 }
 
 /// Computes the three sumcheck reductions needed per WHIR fold round into
-/// `state.reduce_out[0..3]`. Output layout:
-///   [0] = ⟨eval_low, eq_low⟩          = f(0)
-///   [1] = ⟨eval_high, eq_high⟩        = f(1)
-///   [2] = ⟨eval_low+eval_high, eq_low+eq_high⟩   (callers scale by 1/4 to get f(1/2))
+/// `state.reduce_out[0..3]`. LSB binding pairs ADJACENT entries, so "even" and
+/// "odd" below are the two halves of each pair `(2i, 2i + 1)`. Output layout:
+///   [0] = ⟨eval_even, eq_even⟩        = f(0)
+///   [1] = ⟨eval_odd, eq_odd⟩          = f(1)
+///   [2] = ⟨eval_even+eval_odd, eq_even+eq_odd⟩   (callers scale by 1/4 to get f(1/2))
 ///
 /// Leaves the result on the device; callers that need a host copy must follow
 /// up with `schedule_reduce_outputs_readback(3, ...)`.

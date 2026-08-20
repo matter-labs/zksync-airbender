@@ -54,12 +54,12 @@ EXTERN __global__ void ab_whir_fold_adjacent_pair_e4_kernel(const e4 *src_a, e4 
     return;
 
   const e4 c = *challenge;
-  const e4 a_lo = load<e4, ld_modifier::cs>(src_a, 2 * gid);
-  const e4 a_hi = load<e4, ld_modifier::cs>(src_a, 2 * gid + 1);
-  store<e4, st_modifier::cs>(dst_a, e4::fma(c, e4::sub(a_hi, a_lo), a_lo), gid);
-  const e4 b_lo = load<e4, ld_modifier::cs>(src_b, 2 * gid);
-  const e4 b_hi = load<e4, ld_modifier::cs>(src_b, 2 * gid + 1);
-  store<e4, st_modifier::cs>(dst_b, e4::fma(c, e4::sub(b_hi, b_lo), b_lo), gid);
+  const e4 a_even = load<e4, ld_modifier::cs>(src_a, 2 * gid);
+  const e4 a_odd = load<e4, ld_modifier::cs>(src_a, 2 * gid + 1);
+  store<e4, st_modifier::cs>(dst_a, e4::fma(c, e4::sub(a_odd, a_even), a_even), gid);
+  const e4 b_even = load<e4, ld_modifier::cs>(src_b, 2 * gid);
+  const e4 b_odd = load<e4, ld_modifier::cs>(src_b, 2 * gid + 1);
+  store<e4, st_modifier::cs>(dst_b, e4::fma(c, e4::sub(b_odd, b_even), b_even), gid);
 }
 
 // WHIR sumcheck three-point partials. Each block stride-reduces its slice of
@@ -85,13 +85,13 @@ EXTERN __global__ void ab_whir_three_point_partials_e4_kernel(const e4 *__restri
   e4 acc2 = e4::ZERO();
 
   for (unsigned i = blockIdx.x * blockDim.x + tid; i < half; i += stride) {
-    const e4 ev_lo = load<e4, ld_modifier::cs>(eval, 2 * i);
-    const e4 ev_hi = load<e4, ld_modifier::cs>(eval, 2 * i + 1);
-    const e4 eq_lo = load<e4, ld_modifier::cs>(eq, 2 * i);
-    const e4 eq_hi = load<e4, ld_modifier::cs>(eq, 2 * i + 1);
-    acc0 = e4::add(acc0, e4::mul(ev_lo, eq_lo));
-    acc1 = e4::add(acc1, e4::mul(ev_hi, eq_hi));
-    acc2 = e4::add(acc2, e4::mul(e4::add(ev_lo, ev_hi), e4::add(eq_lo, eq_hi)));
+    const e4 ev_even = load<e4, ld_modifier::cs>(eval, 2 * i);
+    const e4 ev_odd = load<e4, ld_modifier::cs>(eval, 2 * i + 1);
+    const e4 eq_even = load<e4, ld_modifier::cs>(eq, 2 * i);
+    const e4 eq_odd = load<e4, ld_modifier::cs>(eq, 2 * i + 1);
+    acc0 = e4::add(acc0, e4::mul(ev_even, eq_even));
+    acc1 = e4::add(acc1, e4::mul(ev_odd, eq_odd));
+    acc2 = e4::add(acc2, e4::mul(e4::add(ev_even, ev_odd), e4::add(eq_even, eq_odd)));
   }
 
   smem_p0[tid] = acc0;
