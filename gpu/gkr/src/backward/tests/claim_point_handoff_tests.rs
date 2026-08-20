@@ -345,3 +345,86 @@ fn claim_point_survives_a_layer_transition() {
         }
     }
 }
+
+/// The point a dimension-reducing layer hands on must be in plain variable
+/// order — the end-of-layer challenge (which binds the gate bit, coordinate 0
+/// of the polys the next layer reads) FIRST, then the round challenges, then
+/// the batching challenge. CPU authority:
+/// `prover/src/gkr/prover/sumcheck_loop/mod.rs:306-310`.
+///
+/// The layer's own scratch (the `__constant__` symbol) stays in DRAW order
+/// because the continuation kernels index it by round
+/// (`native/gkr/support/lookup_helpers.cuh:288`), so this reorder happens on
+/// the way out and must not disturb the symbol.
+#[test]
+#[cfg(not(no_cuda))]
+fn dim_reducing_next_layer_claim_point_is_variable_order() {
+    use crate::backward::dim_reducing_sumcheck_plan::schedule_dim_reducing_next_layer_claim_point;
+
+    let context = make_test_context(256, 64);
+    let mut rng = StdRng::seed_from_u64(0x0c_1a_10_5b);
+
+    for folding_steps in [2usize, 4, 9] {
+        let len = folding_steps + 2;
+        // Draw order, as the layer's rounds and end-of-layer squeeze write it.
+        let draw_order: Vec<E4> = (0..len).map(|_| random_e4(&mut rng)).collect();
+        let mut symbol_host = vec![poison(); MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN];
+        symbol_host[..len].copy_from_slice(&draw_order);
+        // SAFETY: the symbol is MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN E4 long.
+        let symbol_view = unsafe {
+            DeviceSlice::from_raw_parts_mut(
+                get_dim_reducing_layer_claim_point_device_ptr(),
+                symbol_host.len(),
+            )
+        };
+        memory_copy_async(symbol_view, &symbol_host, context.get_exec_stream()).unwrap();
+        // SAFETY: `len <= MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN`.
+        let layer_out = unsafe {
+            DeviceClaimPointAndBatching::from_raw_symbol_parts(
+                get_dim_reducing_layer_claim_point_device_ptr(),
+                len,
+            )
+        };
+
+        let next =
+            schedule_dim_reducing_next_layer_claim_point(&layer_out, folding_steps, &context)
+                .unwrap();
+        let mut actual = vec![poison(); len];
+        memory_copy_async(&mut actual[..], &next[..], context.get_exec_stream()).unwrap();
+        let mut symbol_after = vec![poison(); MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN];
+        // SAFETY: same symbol extent as above.
+        let symbol_read = unsafe {
+            DeviceSlice::from_raw_parts(
+                get_dim_reducing_layer_claim_point_device_ptr(),
+                symbol_after.len(),
+            )
+        };
+        memory_copy_async(
+            &mut symbol_after[..],
+            symbol_read,
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        let mut expected = Vec::with_capacity(len);
+        expected.push(draw_order[folding_steps]);
+        expected.extend_from_slice(&draw_order[..folding_steps]);
+        expected.push(draw_order[folding_steps + 1]);
+        assert_eq!(
+            actual, expected,
+            "folding_steps={folding_steps}: handed-on point is not in variable order",
+        );
+        // Non-vacuity: the reorder must not be a no-op at these widths, and the
+        // layer's own draw-order scratch must survive it.
+        assert_ne!(
+            actual, draw_order,
+            "folding_steps={folding_steps}: the reorder degenerated to a copy",
+        );
+        assert_eq!(
+            &symbol_after[..len],
+            &draw_order[..],
+            "folding_steps={folding_steps}: the layer's draw-order symbol was disturbed",
+        );
+    }
+}

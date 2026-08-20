@@ -111,11 +111,13 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
 
     let main_layers = compiled_circuit.layers.len();
     for (&layer_idx, layer) in proof.sumcheck_intermediate_values.iter().rev() {
-        let mut claim_point = Vec::with_capacity(layer.sumcheck_num_rounds + 1);
+        let mut round_challenges = Vec::with_capacity(layer.sumcheck_num_rounds);
         for coefficients in &layer.internal_round_coefficients {
             commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, coefficients.as_multilinear());
-            claim_point.push(draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 1)[0]);
+            round_challenges
+                .push(draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 1)[0]);
         }
+        let mut claim_point = Vec::with_capacity(layer.sumcheck_num_rounds + 1);
 
         let (batching_challenge, claims) = if layer_idx >= main_layers {
             let transcript_values = layer
@@ -126,7 +128,12 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
                 .collect::<Vec<_>>();
             commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, &transcript_values);
             let challenges = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 2);
+            // Plain variable order, per the CPU authority
+            // prover/src/gkr/prover/sumcheck_loop/mod.rs:306-310: the
+            // end-of-layer challenge binds the gate bit, which is coordinate 0
+            // of the polys the next layer reads, so it LEADS the point.
             claim_point.push(challenges[0]);
+            claim_point.extend_from_slice(&round_challenges);
             let claims = layer
                 .final_step_evaluations
                 .iter()
@@ -162,6 +169,7 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
             commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, &transcript_values);
             let batching_challenge =
                 draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 1)[0];
+            claim_point.extend_from_slice(&round_challenges);
             (batching_challenge, claims)
         };
         expected.push(ExpectedStageSnapshot {
@@ -215,6 +223,7 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
     );
 
     let expected_snapshots = replay_expected_snapshots(fixture);
+
     assert_eq!(actual_snapshots.len(), expected_snapshots.len());
     for (actual, expected) in actual_snapshots.iter().zip(&expected_snapshots) {
         assert_eq!(actual.layer_idx, expected.layer_idx);
