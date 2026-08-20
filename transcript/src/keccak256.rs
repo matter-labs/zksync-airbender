@@ -257,7 +257,10 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
 
 #[cfg(test)]
 mod test {
+    extern crate alloc;
+
     use super::*;
+    use alloc::vec::Vec;
 
     // keccak256("") known vector.
     const KECCAK_EMPTY: [u8; 32] = [
