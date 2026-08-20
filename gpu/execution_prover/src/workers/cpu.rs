@@ -2,7 +2,8 @@ use crate::messages::{InitsAndTeardownsData, SimulationResult, WorkerResult};
 use crate::tracing::{Tracer, TracingType};
 use crate::upstream::FinalRegisterValue;
 use crate::workers::simulation_runner::{
-    LockedBoxedMemoryHolder, LockedBoxedTraceChunk, SimulationRunner, Snapshot,
+    EmptyInitsAndTeardownsStreamer, LockedBoxedMemoryHolder, LockedBoxedTraceChunk,
+    SimulationRunner, Snapshot,
 };
 use crate::A;
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
@@ -59,6 +60,18 @@ pub(crate) fn run_simulator<
         .lock()
         .expect("simulation worker non-determinism mutex poisoned");
     let non_determinism_source = non_determinism_guard.take().unwrap();
+    let ram_words = memory_holder.memory.len();
+    let carrier = if T::IS_SPLIT {
+        UnrolledCircuitType::InitsAndTeardowns
+    } else {
+        UnrolledCircuitType::Unified
+    };
+    let geometry = InitsAndTeardownsGeometry::new(carrier, ram_words);
+    let empty_it_streamer = (!T::IS_SPLIT).then(|| EmptyInitsAndTeardownsStreamer {
+        cycles_per_circuit: UnrolledCircuitType::Unified.get_domain_size(),
+        max_it_instances: geometry.max_instances(),
+        next_sequence_id: 0,
+    });
     let runner = SimulationRunner::<_, T>::new(
         batch_id,
         machine_type,
@@ -69,6 +82,7 @@ pub(crate) fn run_simulator<
         results,
         free_allocators.clone(),
         abort,
+        empty_it_streamer,
     );
     let runner = runner.run(
         binary_image,
@@ -84,6 +98,7 @@ pub(crate) fn run_simulator<
         abort,
         state,
         is_aborted,
+        empty_it_streamer,
         ..
     } = runner;
     *non_determinism_guard = Some(non_determinism_source);
@@ -92,33 +107,21 @@ pub(crate) fn run_simulator<
         assert!(!is_aborted);
         let results = results.unwrap();
         let instant = Instant::now();
-        let ram_words = memory_holder.memory.len();
         let inits_and_teardowns = collect_inits_and_teardowns(memory_holder, worker);
         let elapsed = instant.elapsed();
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
         let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
         trace!("BATCH[{batch_id}] SIMULATOR collected INITS_AND_TEARDOWNS with {count} entries in {elapsed_ms:.3} ms");
         let mut instant = Instant::now();
-        let carrier = if T::IS_SPLIT {
-            UnrolledCircuitType::InitsAndTeardowns
-        } else {
-            UnrolledCircuitType::Unified
-        };
-        let geometry = InitsAndTeardownsGeometry::new(carrier, ram_words);
         let partitioning = InitsAndTeardownsPartitioning::new(inits_and_teardowns, geometry);
         let (circuit_type, sequence_id_offset) = if T::IS_SPLIT {
             (UnrolledCircuitType::InitsAndTeardowns, 0usize)
         } else {
-            // Unified mode: emit empty-circuit markers up-front so
-            // sequence_ids span the full circuit count. The orchestrator
-            // and replayer assume `sequence_id` runs `0..total_circuits`
-            // even for circuits that have no I&T data; without these
-            // prefill markers, sequence_ids would skip and the replayer's
-            // tracing results would not pair up.
-            // Under the `2^N`-row convention each unified circuit covers
-            // `domain_size` cycles (one cycle per usable row), which is also
-            // where the tracing producer slices its circuits
-            // (`cycles_per_circuit_for`), so both sides agree on the count.
+            // Unified mode: sequence_ids must span the full circuit count even
+            // for circuits with no I&T data, or the replayer's tracing results
+            // would not pair up. Each unified circuit covers `domain_size`
+            // cycles, matching where the tracing producer slices
+            // (`cycles_per_circuit_for`).
             let per_circuit_count = UnrolledCircuitType::Unified.get_domain_size();
             let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
             assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
@@ -133,7 +136,8 @@ pub(crate) fn run_simulator<
                  only spans {total_circuits} ({total_cycles} cycles)"
             );
             let empty_circuits = total_circuits - it_circuits;
-            for sequence_id in 0..empty_circuits {
+            let streamed = empty_it_streamer.map_or(0, |s| s.next_sequence_id);
+            for sequence_id in streamed..empty_circuits {
                 let data = InitsAndTeardownsData {
                     circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
                     sequence_id,
@@ -341,6 +345,11 @@ struct InitsAndTeardownsGeometry {
 }
 
 impl InitsAndTeardownsGeometry {
+    /// Upper bound on `instances_count()` of any partitioning: every window touched.
+    fn max_instances(&self) -> usize {
+        (self.windows_in_ram as usize).div_ceil(self.num_sets)
+    }
+
     fn new(carrier: UnrolledCircuitType, ram_words: usize) -> Self {
         let trace_len_log2 = carrier.get_domain_size_log2();
         assert!(
@@ -591,6 +600,20 @@ mod cpu_partitioning_tests {
 
     fn windows_of(p: &InitsAndTeardownsPartitioning) -> Vec<u32> {
         p.window_schedule.iter().map(|(w, _)| *w).collect()
+    }
+
+    #[test]
+    fn cpu_unified_geometry_max_instances_bounds_any_partitioning() {
+        let geometry = unified_geometry();
+        assert_eq!(geometry.max_instances(), 16);
+        let records: Vec<_> = (0..geometry.windows_in_ram)
+            .map(|w| record_in(&geometry, w, 0))
+            .collect();
+        let all_windows_touched = partition(geometry, records);
+        assert_eq!(
+            all_windows_touched.instances_count(),
+            geometry.max_instances()
+        );
     }
 
     #[test]

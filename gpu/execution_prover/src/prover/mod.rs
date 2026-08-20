@@ -12,8 +12,9 @@ mod non_determinism_wrapper;
 mod pipeline;
 mod proof_artifacts;
 mod result;
+mod setup_init;
 
-pub use artifacts::{CircuitArtifact, ProgramArtifacts};
+pub use artifacts::{ProgramArtifacts, RiscvFamilyArtifact};
 pub use config::{ExecutionKind, ExecutionProverConfiguration};
 pub use result::{CommitMemoryResult, ProveResult};
 
@@ -29,6 +30,7 @@ use cache::{TraceCache, TraceCacheEntry};
 use config::BinaryHolder;
 use non_determinism_wrapper::NonDeterminismWrapper;
 use result::ExecutionProverResult;
+use setup_init::request_setup_initialization;
 
 use crate::messages::{
     GpuWorkBatch, GpuWorkRequest, GpuWorkResult, InitsAndTeardownsData, MemoryCommitmentRequest,
@@ -70,7 +72,7 @@ use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use riscv_transpiler::vm::{NonDeterminismCSRSource, SimpleTape};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -80,6 +82,9 @@ use worker::Worker;
 
 pub struct ExecutionProver {
     configuration: ExecutionProverConfiguration,
+    // Field order is load-bearing: `gpu_manager` must be declared (and thus
+    // dropped) before the precomputation maps so workers finish before the
+    // pinned setup hosts drop.
     gpu_manager: GpuManager,
     worker: Arc<Worker>,
     memory_holders_cache: Arc<Mutex<Vec<LockedBoxedMemoryHolder>>>,

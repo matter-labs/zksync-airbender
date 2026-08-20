@@ -167,6 +167,8 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
 mod tests {
     use super::*;
 
+    type T = Blake2sTranscript;
+
     fn test_seeds() -> [Seed; 3] {
         [
             Seed([0, 1, 2, 3, 4, 5, 6, 7]),
@@ -182,16 +184,12 @@ mod tests {
     fn deterministic_parallel_matches_serial_baseline() {
         for seed in test_seeds() {
             for pow_bits in [17, 18, 20] {
-                let (initial_state, base_input) = Blake2sTranscript::prepare_pow_search(&seed);
-                let expected = Blake2sTranscript::search_pow_serial_from_prepared(
-                    &seed,
-                    pow_bits,
-                    initial_state,
-                    base_input,
-                );
+                let (initial_state, base_input) = T::prepare_pow_search(&seed);
+                let expected =
+                    T::search_pow_serial_from_prepared(&seed, pow_bits, initial_state, base_input);
                 for threads in [1, 2, 4] {
                     let worker = Worker::new_with_num_threads(threads);
-                    let actual = Blake2sTranscript::search_pow(&seed, pow_bits, &worker);
+                    let actual = T::search_pow(&seed, pow_bits, &worker);
                     assert_eq!(
                         actual, expected,
                         "seed={seed:?}, pow_bits={pow_bits}, threads={threads}"
@@ -205,17 +203,13 @@ mod tests {
     fn deterministic_parallel_result_is_invariant_across_worker_counts() {
         let seed = Seed([0xdeadbeef; 8]);
         let pow_bits = 19;
-        let (initial_state, base_input) = Blake2sTranscript::prepare_pow_search(&seed);
-        let expected = Blake2sTranscript::search_pow_serial_from_prepared(
-            &seed,
-            pow_bits,
-            initial_state,
-            base_input,
-        );
+        let (initial_state, base_input) = T::prepare_pow_search(&seed);
+        let expected =
+            T::search_pow_serial_from_prepared(&seed, pow_bits, initial_state, base_input);
 
         for threads in [1, 2, 4, 8] {
             let worker = Worker::new_with_num_threads(threads);
-            let actual = Blake2sTranscript::search_pow(&seed, pow_bits, &worker);
+            let actual = T::search_pow(&seed, pow_bits, &worker);
             assert_eq!(actual, expected, "threads={threads}");
         }
     }

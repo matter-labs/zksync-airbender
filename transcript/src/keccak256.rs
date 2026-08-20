@@ -1,6 +1,5 @@
 use crate::Transcript;
 use field::proth120::Proth120;
-use field::PrimeField;
 use sha3::{Digest, Keccak256};
 
 // ---------------------------------------------------------------------------
@@ -257,7 +256,10 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
 
 #[cfg(test)]
 mod test {
+    extern crate alloc;
+
     use super::*;
+    use alloc::vec::Vec;
 
     // keccak256("") known vector.
     const KECCAK_EMPTY: [u8; 32] = [

@@ -1,10 +1,9 @@
-#![feature(allocator_api)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
 use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
-use cli_lib::prover_utils::{
+use prover_pipeline::{
     default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
     CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
     ProofTarget, ProverBackend,
@@ -139,6 +138,8 @@ enum Commands {
         output_file: String,
         #[arg(long, value_enum, default_value = "recursion-unified")]
         target: ProofTarget,
+        #[arg(long, value_enum)]
+        backend: Option<ProverBackend>,
         #[arg(long, default_value_t = 1 << 31)]
         cpu_cycles_bound: usize,
         #[arg(long, default_value_t = 1 << 30)]
@@ -397,6 +398,7 @@ fn run_cli() {
             output_dir,
             output_file,
             target,
+            backend,
             cpu_cycles_bound,
             cpu_ram_bound,
             cpu_worker_threads,
@@ -405,7 +407,7 @@ fn run_cli() {
             let source = ProgramSource::from_paths(bin, text);
             let prover_config = make_prover_config(
                 target,
-                Some(ProverBackend::Cpu),
+                backend,
                 cpu_cycles_bound,
                 cpu_ram_bound,
                 cpu_worker_threads,
@@ -423,7 +425,7 @@ fn run_cli() {
         Commands::Verify { proof, bin, text } => {
             let artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = ProgramSource::from_paths(bin, text);
-            let output = cli_lib::prover_utils::verify_artifact(&artifact, &source)
+            let output = prover_pipeline::verify_artifact(&artifact, &source)
                 .unwrap_or_else(|e| panic!("Verification failed: {}", e));
             println!("PROOF IS VALID. output={:?}", output);
         }

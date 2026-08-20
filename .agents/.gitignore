@@ -1,6 +1,7 @@
-# Agent-generated artifacts (plans, specs, audits, reviews) — see ../AGENTS.md "Agent Artifact Locations".
-# Paths are relative to this .agents/ directory.
-.bus/
-/plans/
-/specs/
-/audits/
+# Agent-generated artifacts (plans, specs, audits, sdd ledgers, bus) are never committed —
+# see ../AGENTS.md "Agent Artifact Locations". Everything here is ignored except the
+# explicitly tracked entries below. Paths are relative to this .agents/ directory.
+/*
+!/bin
+!/.gitignore
+!/gpu_work.md

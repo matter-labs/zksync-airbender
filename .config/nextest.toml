@@ -62,5 +62,5 @@ filter = 'package(riscv_transpiler)'
 test-group = 'riscv-transpiler-serial'
 
 [[profile.default.overrides]]
-filter = 'package(prover_examples)'
+filter = 'package(prover_examples) | package(program_prover)'
 test-group = 'prover-examples-serial'

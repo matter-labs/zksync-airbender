@@ -390,6 +390,11 @@ impl ResultAccumulator {
                     },
                 };
             }
+            GpuWorkResult::SetupInitialization(_) => {
+                panic!(
+                    "setup initialization results must be consumed by the synchronous setup batch"
+                )
+            }
         }
     }
 }

@@ -56,12 +56,11 @@ fn prove_on_gpu(
     binary_image: Vec<u32>,
     text_section: Vec<u32>,
     reads: Vec<u32>,
-    (security_level, worker): (crate::upstream::SecurityLevel, &worker::Worker),
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
     let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
     let result = prover.commit_memory_and_prove(0, &handle, QuasiUARTSource::new_with_reads(reads));
     let artifacts = prover.program_artifacts(&handle);
-    assemble_program_proof(&artifacts, result, security_level, worker)
+    assemble_program_proof(&artifacts, result)
 }
 
 /// Prove `hashed_fibonacci` (blake2_with_compression build — fires the
@@ -74,9 +73,7 @@ fn prove_on_gpu(
 fn test_program_prover_base_layer_verify() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let worker = worker::Worker::new();
     let (binary_image, text_section) = load_workload("hashed_fibonacci");
     let (proof, setups) = prove_on_gpu(
         &mut prover,
@@ -85,7 +82,6 @@ fn test_program_prover_base_layer_verify() {
         binary_image,
         text_section,
         vec![100, 5],
-        (security_level, &worker),
     );
     log::info!(
         "assembled ProgramProof: {} cycles, {} riscv families, {} delegation types",
@@ -124,9 +120,7 @@ fn test_program_prover_base_layer_verify() {
 fn test_program_prover_unified_base_layer_verify() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let worker = worker::Worker::new();
     let (binary_image, text_section) = load_workload("multi_family_smoke");
     let (proof, setups) = prove_on_gpu(
         &mut prover,
@@ -135,7 +129,6 @@ fn test_program_prover_unified_base_layer_verify() {
         binary_image,
         text_section,
         vec![50, 0xDEAD_BEEF],
-        (security_level, &worker),
     );
     log::info!(
         "assembled unified ProgramProof: {} cycles, {} unified circuits, num_it_circuits {:?}, {} delegation types",
@@ -156,7 +149,7 @@ fn test_program_prover_unified_base_layer_verify() {
 
 /// Unified counterpart of `test_program_prover_cpu_gpu_proof_diff`: prove
 /// multi_family_smoke on the CPU reference
-/// (`prover_examples::unified::prove_unified_execution_with_replayer`, which
+/// (`program_prover::unified::prove_unified_execution_with_replayer`, which
 /// asserts internal closure to ONE), verify it natively, then prove on GPU and
 /// diff the two `ProgramProof`s field by field.
 #[test]
@@ -177,7 +170,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
     let security_level = configuration.security_level;
 
     let (cpu_proof, cpu_setups) =
-        prover_examples::unified::prove_unified_execution_with_replayer::<std::alloc::Global>(
+        program_prover::unified::prove_unified_execution_with_replayer::<std::alloc::Global>(
             1 << 31,
             &padded_binary_image,
             &padded_text_section,
@@ -197,15 +190,28 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 
     // GPU flow.
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let (gpu_proof, _gpu_setups) = prove_on_gpu(
+    let (gpu_proof, gpu_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unified,
         MachineType::Reduced,
         binary_image,
         text_section,
         vec![50, 0xDEAD_BEEF],
-        (security_level, &worker),
     );
+
+    assert_eq!(
+        cpu_setups.keys().collect::<Vec<_>>(),
+        gpu_setups.keys().collect::<Vec<_>>(),
+        "setups family keys differ"
+    );
+    for (family_idx, cpu_params) in cpu_setups.iter() {
+        let gpu_params = &gpu_setups[family_idx];
+        assert_eq!(
+            cpu_params, gpu_params,
+            "setup params differ for family {family_idx}"
+        );
+    }
+    log::info!("setups match");
 
     serde_json::to_writer(
         std::fs::File::create("/tmp/pp_unified_cpu_proof.json").unwrap(),
@@ -261,7 +267,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 }
 
 /// Diagnostic: prove the same binary + ND inputs on the CPU reference
-/// (`prover_examples::prove_unrolled_execution_with_replayer`), sanity-verify
+/// (`program_prover::prove_unrolled_execution_with_replayer`), sanity-verify
 /// the CPU proof natively, then diff the CPU-assembled `(ProgramProof, Setups)`
 /// against the GPU-assembled pair field by field to localize any divergence.
 #[test]
@@ -280,7 +286,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         &artifact_root().join("examples/hashed_fibonacci/app_blake2_with_compression.text"),
     );
     let worker = worker::Worker::new_with_num_threads(8);
-    let (cpu_proof, cpu_setups) = prover_examples::unrolled::prove_unrolled_execution_with_replayer::<
+    let (cpu_proof, cpu_setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
         riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
         std::alloc::Global,
     >(
@@ -303,7 +309,6 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 
     // GPU flow.
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
     let (gpu_proof, gpu_setups) = prove_on_gpu(
         &mut prover,
@@ -312,7 +317,6 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         binary_image,
         text_section,
         vec![100, 5],
-        (security_level, &worker),
     );
 
     // Diff setups.
@@ -475,9 +479,7 @@ fn test_program_prover_recursion_layer_verify() {
 
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let worker = worker::Worker::new();
 
     // Stage 1: base layer (identical to test_program_prover_base_layer_verify).
     let (binary_image, text_section) = load_workload("hashed_fibonacci");
@@ -488,7 +490,6 @@ fn test_program_prover_recursion_layer_verify() {
         binary_image,
         text_section,
         vec![100, 5],
-        (security_level, &worker),
     );
     native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
     log::info!(
@@ -516,7 +517,6 @@ fn test_program_prover_recursion_layer_verify() {
         fsv_binary,
         fsv_text,
         stream,
-        (security_level, &worker),
     );
     recursion_proof.set_recursion_chain(&chain);
     log::info!(
@@ -531,7 +531,7 @@ fn test_program_prover_recursion_layer_verify() {
     log::info!("recursion layer verified natively; output registers: {output:?}");
 }
 
-/// Full GPU recursion ladder, mirroring `prover_examples::recursion`'s
+/// Full GPU recursive pipeline, mirroring `prover_examples::recursion`'s
 /// `test_recursive_proving_pipeline_zksync_os` but with our test workload
 /// (hashed_fibonacci) and every proof produced by the GPU `ExecutionProver`:
 ///
@@ -540,11 +540,11 @@ fn test_program_prover_recursion_layer_verify() {
 ///   → bridge (the unrolled verifier proved in UNIFIED mode)
 ///   → final (fsv_unified_recursion_layer, unified mode)
 ///
-/// with the recursion hash chain threaded through and every rung verified
+/// with the recursion hash chain threaded through and every layer verified
 /// natively. Deviation from the CPU pipeline: the base workload is tiny
-/// (~1.7k cycles), so the layer-0 verifier measures far below the unified
+/// (~1.7k cycles), so the layer-0 verifier estimates far below the unified
 /// switch threshold and the CPU flow would bridge immediately; we force one
-/// unrolled rung first so the loop machinery (measure → prove → chain) is
+/// unrolled layer first so the loop machinery (estimate → prove → chain) is
 /// exercised, then bridge over the recursion proof. Blake modes are
 /// env-selectable like the CPU pipeline (default blake2_with_compression;
 /// the g-function variants need a JIT delegation that doesn't exist).
@@ -557,11 +557,11 @@ fn test_program_prover_recursive_pipeline() {
     run_gpu_recursive_pipeline(binary_image, text_section, vec![100, 5], true);
 }
 
-/// The real thing: the recursion ladder over the zksync_os block workload —
+/// The real thing: the recursive pipeline over the zksync_os block workload —
 /// the GPU analogue of `test_recursive_proving_pipeline_zksync_os` (heavy;
-/// the base layer proves a full zksync_os block). The base measures well
+/// the base layer proves a full zksync_os block). The base estimates well
 /// above the unified-switch threshold, so the unrolled recursion loop runs
-/// its natural course (no forced rung). Threshold overridable via
+/// its natural course (no forced layer). Threshold overridable via
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` like the CPU pipeline.
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
@@ -592,63 +592,18 @@ fn run_gpu_recursive_pipeline(
     base_binary_image: Vec<u32>,
     base_text_section: Vec<u32>,
     base_non_determinism: Vec<u32>,
-    force_first_rung: bool,
+    force_first_layer: bool,
 ) {
     use crate::upstream::{
-        bridge_blake_mode, build_unified_stream, compute_end_params, final_blake_mode,
-        load_fsv_program, native_verify_unified, native_verify_unrolled, unified_switch_cycles,
-        unrolled_blake_mode, FsvProgram, FsvRecursionChain,
+        bridge_blake_mode, build_unified_stream, compute_end_params, estimate_verifier_cycles,
+        final_blake_mode, load_fsv_program, native_verify_unified, native_verify_unrolled,
+        unified_switch_cycles, unrolled_blake_mode, FsvProgram, FsvRecursionChain,
     };
-    use crate::upstream::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
-
-    // Mirrors prover_examples::recursion's private bounds.
-    const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 28;
-    const RAM_BOUND: usize = 1 << 30;
-
-    // Mirrors prover_examples::recursion::measure_verifier_cycles (which wraps
-    // run_unrolled_machine_in_full — calling that across crates trips a rustc
-    // E0391 normalization cycle on its const-generic return type, so the
-    // reduced-machine VM run is inlined here).
-    fn measure_verifier_cycles(bin: &[u32], text: &[u32], stream: Vec<u32>) -> u64 {
-        use prover::field::baby_bear::base::BabyBearField;
-        use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
-        use riscv_transpiler::ir::ReducedMachineDecoderConfig;
-        use riscv_transpiler::vm::{
-            DelegationsAndUnifiedCounters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State,
-            VM,
-        };
-        const ROM_BITS: usize = common_constants::ROM_SECOND_WORD_BITS;
-
-        let instructions: Vec<Instruction> =
-            preprocess_bytecode::<ReducedMachineDecoderConfig, true>(text);
-        let tape = SimpleTape::new(&instructions);
-        let mut ram = RamWithRomRegion::<ROM_BITS>::from_rom_content(bin, RAM_BOUND);
-        let mut state = State::initial_with_counters(DelegationsAndUnifiedCounters::default());
-        let mut snapshotter =
-            SimpleSnapshotter::<DelegationsAndUnifiedCounters, ROM_BITS>::new_with_cycle_limit(
-                UNROLLED_RECURSION_CYCLES_BOUND,
-                state,
-            );
-        let mut non_determinism = QuasiUARTSource::new_with_reads(stream);
-        let finished =
-            VM::<DelegationsAndUnifiedCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
-                &mut state,
-                &mut ram,
-                &mut snapshotter,
-                &tape,
-                UNROLLED_RECURSION_CYCLES_BOUND,
-                &mut non_determinism,
-            );
-        assert!(finished, "verifier program must reach its end state");
-        (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
-    }
 
     let switch_cycles = unified_switch_cycles();
 
     let configuration = ExecutionProverConfiguration::default();
-    let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let worker = worker::Worker::new();
 
     // === Stage 1: base layer. ===
     let (base_proof, base_setups) = prove_on_gpu(
@@ -658,7 +613,6 @@ fn run_gpu_recursive_pipeline(
         base_binary_image,
         base_text_section,
         base_non_determinism,
-        (security_level, &worker),
     );
     native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
     log::info!(
@@ -695,17 +649,26 @@ fn run_gpu_recursive_pipeline(
     let mut layer = 0u32;
 
     loop {
-        let (bin, text) = if input_is_base {
-            (&unrolled_base_bin, &unrolled_base_text)
+        let (program, bin, text) = if input_is_base {
+            (
+                FsvProgram::UnrolledBaseLayer,
+                &unrolled_base_bin,
+                &unrolled_base_text,
+            )
         } else {
-            (&unrolled_rec_bin, &unrolled_rec_text)
+            (
+                FsvProgram::UnrolledRecursionLayer,
+                &unrolled_rec_bin,
+                &unrolled_rec_text,
+            )
         };
-        let measured = measure_verifier_cycles(bin, text, build_unrolled_stream(&setups, &proof));
-        log::info!("layer-{layer} verifier measures {measured} cycles");
-        // Forced first rung (small workloads only): run one unrolled
-        // recursion layer even when the base already measures below the
+        let estimated = estimate_verifier_cycles(&proof, program, unrolled_blake)
+            .expect("cannot estimate verifier cycles");
+        log::info!("layer-{layer} verifier estimates ~{estimated} cycles");
+        // Forced first layer (small workloads only): run one unrolled
+        // recursion layer even when the base already estimates below the
         // threshold, so the loop machinery is exercised (see caller doc).
-        if (layer > 0 || !force_first_rung) && measured < switch_cycles {
+        if (layer > 0 || !force_first_layer) && estimated < switch_cycles {
             log::info!("... below {switch_cycles} — switching to the unified machine");
             break;
         }
@@ -717,7 +680,6 @@ fn run_gpu_recursive_pipeline(
             bin.clone(),
             text.clone(),
             build_unrolled_stream(&setups, &proof),
-            (security_level, &worker),
         );
         new_proof.set_recursion_chain(&chain);
         native_verify_unrolled(build_unrolled_stream(&new_setups, &new_proof), false);
@@ -750,7 +712,6 @@ fn run_gpu_recursive_pipeline(
         bridge_bin.clone(),
         bridge_text.clone(),
         build_unrolled_stream(&setups, &proof),
-        (security_level, &worker),
     );
     bridge_proof.set_recursion_chain(&chain);
     native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof), false);
@@ -772,7 +733,6 @@ fn run_gpu_recursive_pipeline(
         final_bin.clone(),
         final_text.clone(),
         build_unified_stream(&bridge_setups, &bridge_proof),
-        (security_level, &worker),
     );
     final_proof.set_recursion_chain(&chain);
     let output = native_verify_unified(build_unified_stream(&final_setups, &final_proof), false);
@@ -800,7 +760,6 @@ fn run_gpu_recursive_pipeline(
             final_bin.clone(),
             final_text.clone(),
             build_unified_stream(&setups, &proof),
-            (security_level, &worker),
         );
         new_proof.set_recursion_chain(&chain);
         native_verify_unified(build_unified_stream(&new_setups, &new_proof), false);

@@ -1,3 +1,5 @@
+pub mod cost_model;
+
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
 use setups::Setups;
@@ -169,16 +171,32 @@ pub fn final_blake_mode() -> BlakeMode {
 
 /// Default for the unrolled-to-unified switch threshold.
 ///
-/// Once a single verifier invocation runs in fewer cycles than this, it is
-/// small enough to be proven on the unified machine (a few 1<<24 instances),
-/// so unrolled recursion can stop and bridge to unified. A scheduling
-/// heuristic, not a protocol constant — drivers may pick their own threshold.
+/// Unrolled recursion stops once the *estimated* cycle count of the next
+/// verifier invocation drops below this. A scheduling heuristic, not a
+/// protocol constant — drivers may pick their own, and
+/// `RECURSION_UNIFIED_SWITCH_CYCLES` overrides it.
+///
+/// Measured crossover ~60M cycles, indifferent within [55M, 70M].
 pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 64 * 1024 * 1024;
+
+/// The estimated verifier cost never drops below ~6.55M cycles (past the first
+/// layer, each unrolled recursion layer verifies another such layer), so lower
+/// thresholds never stop the unrolled recursion loop. 16Mi leaves
+/// recalibration margin.
+pub const MIN_UNIFIED_SWITCH_CYCLES: u64 = 16 * 1024 * 1024;
 
 #[must_use]
 pub fn unified_switch_cycles() -> u64 {
-    std::env::var("RECURSION_UNIFIED_SWITCH_CYCLES")
+    let cycles = std::env::var("RECURSION_UNIFIED_SWITCH_CYCLES")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_UNIFIED_SWITCH_CYCLES)
+        .unwrap_or(DEFAULT_UNIFIED_SWITCH_CYCLES);
+    assert!(
+        cycles >= MIN_UNIFIED_SWITCH_CYCLES,
+        "unified switch threshold {cycles} is below the convergence floor \
+         {MIN_UNIFIED_SWITCH_CYCLES}: the estimated verifier cost never drops \
+         below ~6.55M cycles, so lower thresholds never stop the unrolled \
+         recursion loop"
+    );
+    cycles
 }
