@@ -8,7 +8,7 @@ use fft::{bitreverse_enumeration_inplace, Twiddles};
 use crate::e4_coeffs_to_vectorized;
 use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_ntt::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
+use gpu_ntt::ntt::{MIN_LOG_N_FOR_MULTISTAGE_KERNELS, MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE};
 use gpu_trace::trace::holder::TreesCacheMode;
 
 use crate::upstream::{
@@ -634,6 +634,11 @@ fn run_whir_initial_state_matches_cpu(
         }
     }
 
+    // `get_evaluations()` is the committed codeword, which both materialization
+    // arms emit in BITREVERSED row order; the reference NTT below consumes
+    // natural order, so undo the row permutation first.
+    bitreverse_enumeration_inplace(&mut expected_evals);
+
     let twiddles = Twiddles::<BF, Global>::new(expected_evals.len(), &worker);
     let mut expected_monomials = expected_evals.clone();
     let expected_log_n = expected_monomials.len().trailing_zeros();
@@ -650,15 +655,18 @@ fn run_whir_initial_state_matches_cpu(
     }
     bitreverse_enumeration_inplace(&mut expected_monomials);
 
+    let natural_to_bitrev = log_count >= MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
+
+    // The eval-form chain consumes the MSB-labeled coefficient array, which is
+    // the labeling the sub-floor arm's codeword already carries; the
+    // natural->bitrev arm's naturally-labeled array is relabeled for it.
     let mut expected_eval_form = expected_monomials.clone();
+    if natural_to_bitrev {
+        bitreverse_enumeration_inplace(&mut expected_eval_form);
+    }
     let expected_eval_log_n = expected_eval_form.len().trailing_zeros();
     multivariate_coeffs_into_hypercube_evals(&mut expected_eval_form, expected_eval_log_n);
     bitreverse_enumeration_inplace(&mut expected_eval_form);
-
-    let expected_eq = make_eq_poly_in_full_lsb::<E4>(&original_evaluation_point, &worker)
-        .pop()
-        .unwrap()
-        .into_vec();
 
     let mut expected_claim = E4::ZERO;
     for (weights, claims) in [
@@ -680,13 +688,19 @@ fn run_whir_initial_state_matches_cpu(
         state.original_trace_len,
         state.current_len,
     );
-    bitreverse_enumeration_inplace(&mut monomial_from_gpu);
+    // Arm split: only the sub-floor compat arm labels the shared Mobius
+    // coefficient array bitreversed (it commits the OLD MSB-convention
+    // polynomial), so only there does the reconstructed expectation need the GPU
+    // array relabeled — see the compat-arm note in
+    // `gpu/trace/src/trace/holder/mod.rs::materialize_cosets_from_owned_hypercube`.
+    if !natural_to_bitrev {
+        bitreverse_enumeration_inplace(&mut monomial_from_gpu);
+    }
     assert_eq!(monomial_from_gpu, expected_monomials);
     assert_eq!(
         copy_back(&state.sumchecked_poly_evaluation_form[..count], &context),
         expected_eval_form
     );
-    assert_eq!(copy_back(&state.eq_poly[..count], &context), expected_eq);
 }
 
 #[test]
@@ -715,11 +729,65 @@ fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
     run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true, true);
 }
 
+/// Standalone guard for the initial state's eq leg. `build_initial_state` builds
+/// `state.eq_poly` with `launch_build_eq_values_from_point` over the whole claim
+/// point, and the LSB engines require `eq[i] = prod_b (bit_b(i) ? p_b : 1 - p_b)`.
+/// Split out of `run_whir_initial_state_matches_cpu` because it depends on
+/// neither the monomial nor the eval-form chain, so it keeps guarding the
+/// orientation whatever those asserts do.
+#[cfg(not(no_cuda))]
+fn run_whir_initial_state_eq_matches_cpu_lsb(log_count: usize, is_large: bool) {
+    let context = if is_large {
+        make_test_context(64 * 1024, 1024)
+    } else {
+        make_test_context(256, 32)
+    };
+    let worker = Worker::new();
+    let count = 1usize << log_count;
+    let point = (0..log_count)
+        .map(|i| sample_ext(10 * i as u32))
+        .collect::<Vec<_>>();
+
+    let mut state = GpuWhirState::new(count, &context).unwrap();
+    let mut point_device: DeviceAllocation<E4> = context
+        .alloc(point.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    copy_small_to_device(&mut point_device[..], &point, &context).unwrap();
+    launch_build_eq_values_from_point(
+        point_device.as_ptr(),
+        0,
+        point.len(),
+        state.eq_group_tables.as_mut_ptr(),
+        state.eq_poly.as_mut_ptr(),
+        count,
+        &context,
+    )
+    .unwrap();
+
+    let expected = make_eq_poly_in_full_lsb::<E4>(&point, &worker)
+        .pop()
+        .unwrap()
+        .into_vec();
+    assert_eq!(copy_back(&state.eq_poly[..count], &context), expected);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn whir_initial_state_eq_matches_cpu_lsb_small() {
+    run_whir_initial_state_eq_matches_cpu_lsb(3, false);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn whir_initial_state_eq_matches_cpu_lsb_large() {
+    run_whir_initial_state_eq_matches_cpu_lsb(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true);
+}
+
 use crate::fold::debug::{
-    build_initial_state, copy_back, evaluate_monomial_form_device, fold_eq_poly_in_place_device,
-    fold_evaluation_form_in_place_device, fold_monomial_form_in_place_device,
-    schedule_special_three_point_eval_device, special_three_point_eval_device,
-    vectorized_to_e4_coeffs,
+    build_initial_state, copy_back, copy_small_to_device, evaluate_monomial_form_device,
+    fold_eq_poly_in_place_device, fold_evaluation_form_in_place_device,
+    fold_monomial_form_in_place_device, schedule_special_three_point_eval_device,
+    special_three_point_eval_device, vectorized_to_e4_coeffs,
 };
 
 mod query_tests;
