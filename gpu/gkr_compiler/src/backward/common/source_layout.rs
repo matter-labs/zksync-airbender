@@ -6,7 +6,9 @@ use super::model::CoeffSource;
 use super::source::OriginLeaf;
 
 /// Logical backing identity used by the backward source-window binder.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum WindowFamily {
     BaseLayerMemory,
     BaseLayerWitness,

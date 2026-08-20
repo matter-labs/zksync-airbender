@@ -156,6 +156,7 @@ fn lean_category(regime: crate::BwdRegime, class: u16) -> Option<TermCategory> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeanProgram {
     pub words: Vec<u16>,
+    pub term_count: usize,
 }
 
 /// One decoded record, exactly as the words spell it: no class table, no source
@@ -283,7 +284,10 @@ pub(crate) fn encode_program(
         let coeff = CoeffField::Recipe(term.coefficient());
         encode_term(&mut words, layer, index, term, coeff)?;
     }
-    Ok(LeanProgram { words })
+    Ok(LeanProgram {
+        words,
+        term_count: layer.terms.len(),
+    })
 }
 
 /// Encode plain terms and grouped atoms in their committed order.
@@ -312,7 +316,10 @@ pub(crate) fn encode_program_atoms(
             }
         }
     }
-    Ok(LeanProgram { words })
+    Ok(LeanProgram {
+        words,
+        term_count: layer.terms.len(),
+    })
 }
 
 /// Append one group header followed by its members.

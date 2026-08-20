@@ -481,7 +481,7 @@ fn source_of(leaf: ExprId, layer: &DagLayer) -> Option<&SourceKind> {
 ///
 /// Returns `Err(String)` describing the first violation found, `Ok(())` if the
 /// circuit is well-formed.
-pub(crate) fn validate(dag: &DagCircuit) -> Result<(), String> {
+pub fn validate(dag: &DagCircuit) -> Result<(), String> {
     // Accumulated cross-layer sink fields, keyed by the `ReadPlace` a later layer
     // would use to read the producing sink.
     let mut cross_layer: HashMap<ReadPlace, FieldKind> = HashMap::new();

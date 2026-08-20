@@ -4,7 +4,6 @@ use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace};
 
 use super::common::distill::distill;
 use super::common::group::group_coeff_layer;
-#[cfg(test)]
 use super::common::interp::{interpret_lean_program, CoeffResolver, LeanInterpError};
 use super::common::lean::{encode_program_atoms, validate_program, LeanCodecError, LeanProgram};
 use super::common::lean_bind::{bind_lean_sources, LeanBindError, LeanSourceBinding};
@@ -13,7 +12,6 @@ use super::common::limits::{
     LEAN_MAX_SOURCES,
 };
 use super::common::lower::lower_coeff_layer;
-#[cfg(test)]
 use super::common::model::CoeffLayer;
 use super::common::model::{CoeffError, CoefficientRecipeId, NormalizedCoefficientRecipe};
 use super::common::order::{flatten_atoms, order_atoms};
@@ -26,15 +24,13 @@ pub struct ContinuationProgramBundle {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContinuationLayerProgram {
-    #[cfg(test)]
     pub layer: usize,
     pub coefficient_recipes: Vec<NormalizedCoefficientRecipe>,
     pub c_init: Option<CoefficientRecipeId>,
     pub immediates: Vec<u32>,
     pub program: LeanProgram,
     pub binding: LeanSourceBinding,
-    #[cfg(test)]
-    pub(crate) semantic: CoeffLayer,
+    pub coefficients: CoeffLayer,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -141,24 +137,16 @@ fn compile_layer(
         require(layer_index, resource, required, maximum)?;
     }
 
-    #[cfg(test)]
     let coefficient_recipes = coefficients.coefficients.clone();
-    #[cfg(not(test))]
-    let coefficient_recipes = coefficients.coefficients;
-    #[cfg(test)]
     let immediates = coefficients.immediates.clone();
-    #[cfg(not(test))]
-    let immediates = coefficients.immediates;
     Ok(ContinuationLayerProgram {
-        #[cfg(test)]
         layer: layer_index,
         coefficient_recipes,
         c_init: coefficients.c_init,
         immediates,
         program,
         binding,
-        #[cfg(test)]
-        semantic: coefficients,
+        coefficients,
     })
 }
 
@@ -175,12 +163,11 @@ pub fn compile_continuations(
     Ok(ContinuationProgramBundle { layers })
 }
 
-#[cfg(test)]
-pub(crate) fn interpret_continuation_program(
+pub fn interpret_continuation_program(
     program: &ContinuationLayerProgram,
     row: usize,
     resolver: &impl CoeffResolver,
     k: usize,
 ) -> Result<(super::common::Ext, super::common::Ext), LeanInterpError> {
-    interpret_lean_program(&program.program, &program.semantic, row, resolver, k)
+    interpret_lean_program(&program.program, &program.coefficients, row, resolver, k)
 }

@@ -1,8 +1,10 @@
 //! Canonical traversal of the expressions that contribute to claim-bearing roots.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use crate::{DagLayer, ExprId, FieldKind, ReadPlace, RootGroup, RootId, SinkKind};
+use crate::{
+    DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootGroup, RootId, SinkKind, SourceKind,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CacheBoundary {
@@ -12,18 +14,43 @@ pub struct CacheBoundary {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClaimCone {
+    reachable: BTreeSet<ExprId>,
     cache_boundaries: BTreeMap<ExprId, CacheBoundary>,
 }
 
 impl ClaimCone {
+    pub fn is_reachable(&self, expr: ExprId) -> bool {
+        self.reachable.contains(&expr)
+    }
+
     pub fn cache_boundary(&self, expr: ExprId) -> Option<&CacheBoundary> {
         self.cache_boundaries.get(&expr)
     }
 }
 
 pub fn analyze_claim_cone(layer: &DagLayer) -> ClaimCone {
+    let cache_boundaries = cache_boundaries(layer);
+    let mut reachable = BTreeSet::new();
+    let mut stack: Vec<_> = claim_roots(layer)
+        .iter()
+        .map(|root| layer.roots[root.0 as usize].expr)
+        .collect();
+    while let Some(expr) = stack.pop() {
+        if !reachable.insert(expr) || cache_boundaries.contains_key(&expr) {
+            continue;
+        }
+        match &layer.exprs[expr.0 as usize] {
+            Expr::Source(source) => {
+                if let SourceKind::LookupValue { query, .. } = layer.sources[source.0 as usize] {
+                    stack.push(query);
+                }
+            }
+            Expr::Add(children) | Expr::Mul(children) => stack.extend(children.iter().copied()),
+        }
+    }
     ClaimCone {
-        cache_boundaries: cache_boundaries(layer),
+        reachable,
+        cache_boundaries,
     }
 }
 

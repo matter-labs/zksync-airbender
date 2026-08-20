@@ -20,7 +20,7 @@ pub(crate) const LEAN_PROCEDURAL_KINDS: u8 = 4;
 ///
 /// The source is artifactized as a `u32` slot: [`SourceId`] carries no serde
 /// derives and this struct nests inside the serialized coordinate.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LeanBoundColumn {
     /// The backing's OWN column, not the window-relative offset.
     pub column: usize,
@@ -33,7 +33,7 @@ pub struct LeanBoundColumn {
 /// addressable.
 ///
 /// [`SOURCE_WINDOW_COLUMNS`]: super::limits::SOURCE_WINDOW_COLUMNS
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LeanBoundWindow {
     pub family: WindowFamily,
     pub first_column: usize,
@@ -44,6 +44,10 @@ pub struct LeanBoundWindow {
 }
 
 impl LeanBoundWindow {
+    pub fn is_procedural(&self) -> bool {
+        self.procedural_kind().is_some()
+    }
+
     /// The backing matrix's own field. Only a cross-layer output or cache can be
     /// `Ext`; base storage and procedural setup polynomials are base-valued.
     pub fn backing_field(&self) -> FieldKind {
@@ -73,10 +77,28 @@ impl LeanBoundWindow {
 /// Carries no fold depth: the depth a program is bound for is a property of the
 /// typed layer program, and duplicating it here would create a second place for
 /// it to be wrong.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LeanSourceSlot {
+    pub window: u8,
+    pub column: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LeanSourceBinding {
     pub windows: Vec<LeanBoundWindow>,
-    pub source_count: usize,
+    pub source_slots: Vec<LeanSourceSlot>,
+}
+
+impl LeanSourceBinding {
+    pub fn resolve(&self, window: u8, column: u16) -> Option<SourceId> {
+        let entry = self.windows.get(window as usize)?;
+        let absolute = entry.first_column.checked_add(usize::from(column))?;
+        entry
+            .columns
+            .binary_search_by_key(&absolute, |candidate| candidate.column)
+            .ok()
+            .map(|index| SourceId(entry.columns[index].source))
+    }
 }
 
 // ── Errors ───────────────────────────────────────────────────────────────────
@@ -288,9 +310,26 @@ pub(crate) fn bind_lean_sources(
 
     validate_windows(&windows, layer, cross_fields, SOURCE_WINDOW_COLUMNS)?;
 
+    let mut source_slots = vec![
+        LeanSourceSlot {
+            window: 0,
+            column: 0
+        };
+        layer.sources.len()
+    ];
+    for (window_index, window) in windows.iter().enumerate() {
+        for column in &window.columns {
+            source_slots[column.source as usize] = LeanSourceSlot {
+                window: window_index as u8,
+                column: u16::try_from(column.column - window.first_column)
+                    .expect("a bound source offset fits the fixed window"),
+            };
+        }
+    }
+
     Ok(LeanSourceBinding {
         windows,
-        source_count: layer.sources.len(),
+        source_slots,
     })
 }
 
