@@ -19,12 +19,13 @@ pub fn config_for_security_level_under_pessimistic_conjecture(
 /// (a larger domain does not exist — `BabyBearField::TWO_ADICITY = 27`; a
 /// uniform x8 ladder was tried first and produced invalid 2^29 domains).
 /// Base 2 -> 16 (2^23 x 16 = 2^27); intermediate ladder
-/// [16, 512, 16384, 524288, 524288] -> [32, 1024, 32768, 1048576, 16777216]
-/// for the post-fold poly sizes [2^22, 2^17, 2^12, 2^7, 2^3]. Under
-/// [`PessimisticConjectureMode`] accounting
-/// (`queries = ceil(1.2 * floor((100 - pow) / rate_bits))`, which reproduces
-/// each committed schedule) the query ladder drops
-/// [87, 23, 10, 7, 5, 5] -> [22, 18, 9, 6, 4, 4]. Purpose: make proofs of the
+/// [16, 512, 16384, 524288] -> [32, 1024, 32768, 1048576] for the post-fold
+/// poly sizes [2^22, 2^17, 2^12, 2^7]; the schedule stops at the 2^3
+/// polynomial (plain-text tail). Under [`PessimisticConjectureMode`]
+/// accounting (`queries = ceil(1.2 * floor((100 - pow) / rate_bits))`, which
+/// reproduces each committed schedule) with per-round PoW pushed to the next
+/// query-count boundary (grinds capped at 2^30), the query ladder drops
+/// [87, 23, 10, 7, 5] -> [21, 17, 9, 5, 4]. Purpose: make proofs of the
 /// LAST BabyBear recursion layer(s) maximally cheap to VERIFY (fewer Merkle
 /// paths + leaf hashes in every round) so the verification run fits the L1
 /// (Proth120) wrapper's 2^22-cycle unified circuit; the LDE prover overhead
@@ -36,6 +37,7 @@ pub fn config_for_security_level_under_pessimistic_conjecture(
 pub fn l1_feeder_config_for_2_23() -> ProverConfig {
     const L1_FEEDER_BASE_LDE_FACTOR: usize = 16;
     ProverConfig {
+        trace_len_log2: 23,
         same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(23),
         dimension_reducing_sumcheck_schedule: Default::default(),
         lde_factor: L1_FEEDER_BASE_LDE_FACTOR,
@@ -69,6 +71,7 @@ pub fn l1_feeder_config_for_2_23() -> ProverConfig {
 pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -> ProverConfig {
     match trace_len_log_2 {
         20 => ProverConfig {
+            trace_len_log2: trace_len_log_2,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -88,6 +91,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             },
         },
         22 => ProverConfig {
+            trace_len_log2: trace_len_log_2,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -107,6 +111,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             },
         },
         23 => ProverConfig {
+            trace_len_log2: trace_len_log_2,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -119,13 +124,19 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
-                whir_steps_schedule: vec![1, 5, 5, 5, 4, 2],
-                whir_queries_schedule: vec![87, 23, 10, 7, 5, 5],
-                whir_steps_lde_factors: vec![16, 512, 16384, 524288, 524288],
-                whir_pow_schedule: vec![28, 24, 25, 19, 21, 21],
+                // Stops at the 2^3 polynomial (plain-text tail): the former
+                // sixth round folded 2^3 -> 2^1 through ANOTHER committed
+                // oracle — an LDE of a degree-8 polynomial, below the
+                // 2^DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2 floor now enforced by
+                // `ProverConfig::validate_for_whir_message_size`.
+                whir_steps_schedule: vec![1, 5, 5, 5, 4],
+                whir_queries_schedule: vec![87, 23, 10, 7, 5],
+                whir_steps_lde_factors: vec![16, 512, 16384, 524288],
+                whir_pow_schedule: vec![28, 24, 25, 19, 21],
             },
         },
         24 => ProverConfig {
+            trace_len_log2: trace_len_log_2,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),

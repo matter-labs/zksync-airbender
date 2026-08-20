@@ -323,6 +323,8 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let prover_config = ProverConfig {
+        // circuit trace length; the WHIR message is 2^(22 + pack_log2) = 2^26
+        trace_len_log2: TRACE_LEN_LOG2,
         // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
         // keep these tests on the windowed schedule (transcript-identical
         // to naive)

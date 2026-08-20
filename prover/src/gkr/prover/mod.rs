@@ -768,6 +768,21 @@ where
 {
     let rs_codeword_source = storage.base_rs_source;
     assert_eq!(compiled_circuit.trace_len, trace_len);
+    assert!(trace_len.is_power_of_two());
+    assert_eq!(
+        prover_config.trace_len_log2,
+        trace_len.trailing_zeros() as usize,
+        "the prover config was computed for trace length 2^{} but this circuit's \
+         trace length is {trace_len}",
+        prover_config.trace_len_log2,
+    );
+    // The WHIR run starts from the (possibly packed) committed message size.
+    let whir_message_size_log2 = prover_config.trace_len_log2
+        + match &commitment_mode {
+            CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2, .. } => *pack_log2,
+            CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => 0,
+        };
+    prover_config.validate_for_whir_message_size(whir_message_size_log2);
     if witness_eval_data.column_major_memory_trace.len() > 0 {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
@@ -784,11 +799,6 @@ where
     assert_eq!(
         inits_and_teardowns_top_bits.len(),
         compiled_circuit.memory_layout.teardown_sets.len()
-    );
-
-    assert_eq!(
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.whir_schedule.whir_steps_schedule[0]
     );
 
     let mut external_challenges = *external_challenges;

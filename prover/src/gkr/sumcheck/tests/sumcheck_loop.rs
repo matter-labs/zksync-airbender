@@ -25,6 +25,9 @@ type E = BabyBearExt4;
 /// directly (the WHIR fields are never read by the sumcheck path).
 fn test_prover_config() -> prover_config::ProverConfig {
     prover_config::ProverConfig {
+        // FOLDING_STEPS of the tests below; never checked — this config
+        // drives `evaluate_sumcheck_for_layer` directly, not a prove entry
+        trace_len_log2: 4,
         lde_factor: 2,
         cap_size: 64,
         base_oracles_values_per_leaf: 2,
