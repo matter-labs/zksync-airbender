@@ -5,6 +5,7 @@
 #![feature(iter_advance_by)]
 #![feature(option_zip)]
 #![feature(allocator_api)]
+#![feature(ptr_as_ref_unchecked)]
 
 pub mod definitions;
 

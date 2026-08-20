@@ -3,6 +3,7 @@
 #![feature(slice_from_ptr_range)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
+#![feature(ptr_as_ref_unchecked)]
 
 pub mod security_100;
 pub mod security_80;

@@ -3,13 +3,14 @@
 #![feature(generic_const_exprs)]
 #![feature(vec_push_within_capacity)]
 #![feature(allocator_api)]
-#![feature(widening_mul)]
+#![feature(bigint_helper_methods)]
 #![feature(maybe_uninit_array_assume_init)]
 #![feature(likely_unlikely)]
 #![feature(pointer_is_aligned_to)]
 #![feature(const_cmp)]
 #![feature(const_trait_impl)]
 #![feature(core_intrinsics)]
+#![feature(ptr_as_ref_unchecked)]
 
 // In the first take over the compiler and the corresponding simulator we will first
 // preprocess the bytecode into fixed-width format, and then will do very simple and execution loop
