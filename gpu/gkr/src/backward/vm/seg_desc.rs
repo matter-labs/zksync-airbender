@@ -338,7 +338,10 @@ const _: () = {
 ///
 /// `log2_stride` is in elements of the lane's requested type. A raw
 /// column stride is the poly length and a fold region stride is `2 *
-/// size_after_one_fold`.
+/// size_after_one_fold`. Every backing is LSB-dense at its own depth: a column
+/// holds the target-depth value of logical index `u = 2 * row + b` at `u`, so a
+/// row's two endpoints are adjacent and the `2^delta` leaves a depth-`delta`
+/// fold consumes sit adjacently at `(u << delta) + q`.
 ///
 /// `origin` is the BACKING field, not the width of the values read through the
 /// slot: a continuation program folds a base matrix into E4, and operand width

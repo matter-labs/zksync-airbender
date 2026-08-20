@@ -250,9 +250,10 @@ static_assert(BWD_SEG_MAX_FOLD_DEPTH == BWD_COEFF_PUBLISH_TARGET_DEPTH,
               "the publication threshold is what bounds the inline depth: at and past it the prologue materializes");
 static_assert(BWD_SEG_MAX_INLINE_FOLD_DEPTH + 1 == BWD_SEG_MAX_FOLD_DEPTH, "the inline depth cap must be one below the publication threshold");
 
-// Fold-weight slots hold q >= 1 per delta; q = 0 is the implicit coefficient 1. In
-// PHYSICAL-offset order (challenge j on bit (delta-1-j) of q; the bit reversal
-// is baked in by the prelude's store permutation, never applied in a kernel).
+// Fold-weight slots hold q >= 1 per delta; q = 0 is the implicit coefficient 1.
+// Slot q is the weight of leaf q, which the LSB-dense backing holds at
+// `(u << delta) + q`: challenge `round - delta + j` sits on bit j of q, so no
+// permutation stands between the table and the leaf offsets.
 constexpr u32 BWD_SEG_FOLD_WEIGHT_SLOTS = 11;
 constexpr u32 BWD_SEG_FOLD_WEIGHT_BASE_D1 = 0;
 constexpr u32 BWD_SEG_FOLD_WEIGHT_BASE_D2 = 1;
@@ -351,8 +352,8 @@ EXTERN __device__ __constant__ e4 ab_gkr_bwd_seg_coeff_bank[airbender::gkr::BWD_
 // Main-layer fold challenges, defined in `segmented_vm.cu`.
 EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
 
-// The flat fold's weight table: one entry per (delta, q >= 1) pair, in the
-// physical-offset order the prelude's store permutation fixes. Built ONCE per
+// The flat fold's weight table: one entry per (delta, q >= 1) pair, indexed by
+// the leaf offset q the fold walks. Built ONCE per
 // round from the claim point by `ab_gkr_bwd_seg_build_fold_weights_kernel`
 // below, which writes it through this symbol's own address — device code cannot
 // name a `__constant__` as a store target. Declared at global scope for the same

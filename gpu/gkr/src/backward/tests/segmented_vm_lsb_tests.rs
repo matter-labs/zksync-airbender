@@ -1229,7 +1229,6 @@ fn continuation_chain(context: &ProverContext, report: &mut Vec<String>) {
 }
 
 #[test]
-#[ignore = "6B lands the conversion"]
 fn segmented_vm_matches_lsb_address_algebra() {
     let context = make_test_context(256, 64);
     let mut report: Vec<String> = Vec::new();
