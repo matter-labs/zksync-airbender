@@ -1,7 +1,7 @@
 use super::plan::{plan_unrolled_stream, RegionPlan, Section, StreamPlan};
 use super::{fsv_dir, load_calibration_proof, trace_verifier, Trace};
-use full_statement_verifier::cost_model::census::{CensusVec, NUM_CENSUS_DIMS};
-use full_statement_verifier::cost_model::{compiled_circuits, CircuitId};
+use full_statement_verifier::host_utils::cost_model::census::{CensusVec, NUM_CENSUS_DIMS};
+use full_statement_verifier::host_utils::cost_model::{compiled_circuits, CircuitId};
 use std::collections::BTreeMap;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 

@@ -527,7 +527,7 @@ fn advance_to_target(
                 &unrolled_rec_text,
             )
         };
-        let estimated = full_statement_verifier::cost_model::estimate_verifier_cycles(
+        let estimated = full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles(
             &state.proof,
             program,
             unrolled_blake,

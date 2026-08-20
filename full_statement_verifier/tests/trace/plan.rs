@@ -1,4 +1,4 @@
-use full_statement_verifier::cost_model::{riscv_order, CircuitId, DELEGATION_TYPES};
+use full_statement_verifier::host_utils::cost_model::{riscv_order, CircuitId, DELEGATION_TYPES};
 use full_statement_verifier::program_proof::ProgramProof;
 use setups::Setups;
 use verifier_common::fsv_binaries::FsvProgram;

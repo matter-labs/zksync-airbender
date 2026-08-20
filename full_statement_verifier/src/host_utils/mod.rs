@@ -1,3 +1,5 @@
+pub mod cost_model;
+
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
 use setups::Setups;

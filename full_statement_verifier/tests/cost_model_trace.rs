@@ -113,7 +113,7 @@ fn stream_plan_matches_the_actual_stream() {
             .collect();
         assert_eq!(
             riscv.len(),
-            full_statement_verifier::cost_model::riscv_order(*program).len(),
+            full_statement_verifier::host_utils::cost_model::riscv_order(*program).len(),
             "{fixture}: one region per compiled RISC-V family"
         );
         assert_eq!(
@@ -142,7 +142,7 @@ fn stream_plan_matches_the_actual_stream() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn proof_counts_matches_the_planned_regions() {
-    use full_statement_verifier::cost_model::proof_counts;
+    use full_statement_verifier::host_utils::cost_model::proof_counts;
     for Fixture {
         name: fixture,
         program,
@@ -186,7 +186,7 @@ fn every_fixture_verifies_natively() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn estimate_matches_measurement_on_every_fixture() {
-    use full_statement_verifier::cost_model::estimate_verifier_cycles;
+    use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles;
 
     for Fixture { name, program, .. } in trace::calibrate::ALL_FIXTURES {
         let (bin, text) = full_statement_verifier::host_utils::load_fsv_program(
@@ -232,7 +232,7 @@ fn census_family_cycles_sum_to_total() {
     for Fixture { name, program, .. } in trace::calibrate::ALL_FIXTURES {
         let (t, _) = trace::calibrate::trace_fixture(name, *program);
         let family_sum: u64 = t.total_census
-            [..full_statement_verifier::cost_model::census::NUM_FAMILY_DIMS]
+            [..full_statement_verifier::host_utils::cost_model::census::NUM_FAMILY_DIMS]
             .iter()
             .sum();
         assert_eq!(
@@ -245,7 +245,7 @@ fn census_family_cycles_sum_to_total() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn census_estimate_matches_measurement_on_every_fixture() {
-    use full_statement_verifier::cost_model::census::{
+    use full_statement_verifier::host_utils::cost_model::census::{
         estimate_verifier_census, CENSUS_DIMS, NUM_CENSUS_DIMS,
     };
 
@@ -263,7 +263,7 @@ fn census_estimate_matches_measurement_on_every_fixture() {
             let measured = t.total_census[d];
             let err = (*est_v as i64 - measured as i64).unsigned_abs();
             // Family dims get 2x slack; see CENSUS_REL_DIV in trace/calibrate.rs.
-            let rel = if d < full_statement_verifier::cost_model::census::NUM_FAMILY_DIMS {
+            let rel = if d < full_statement_verifier::host_utils::cost_model::census::NUM_FAMILY_DIMS {
                 measured / 1000
             } else {
                 measured / 2000
@@ -281,7 +281,7 @@ fn census_estimate_matches_measurement_on_every_fixture() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn per_proof_census_spans_agree_within_a_circuit() {
-    use full_statement_verifier::cost_model::census::NUM_CENSUS_DIMS;
+    use full_statement_verifier::host_utils::cost_model::census::NUM_CENSUS_DIMS;
 
     for Fixture {
         name: fixture,

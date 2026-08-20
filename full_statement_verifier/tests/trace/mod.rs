@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, ROM_SECOND_WORD_BITS, TIMESTAMP_STEP};
-use full_statement_verifier::cost_model::census::{CensusVec, NUM_CENSUS_DIMS, NUM_FAMILY_DIMS};
+use full_statement_verifier::host_utils::cost_model::census::{CensusVec, NUM_CENSUS_DIMS, NUM_FAMILY_DIMS};
 use full_statement_verifier::program_proof::ProgramProof;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
