@@ -1058,7 +1058,7 @@ cuda_kernel!(
   src: PtrAndStride<BF>,
   dst: *mut E4,
   z: *const E4,
-  z_adjustment_ptr: *const E4,
+  z_stride_ptr: *const E4,
   count: i32,
 );
 
@@ -1096,17 +1096,20 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
         .launch(&config, &args)?;
         return Ok(count);
     }
-    let z_chunk_adjustment = &mut scratch1[..1];
-    pow(&point[..1], VALS_PER_THREAD, z_chunk_adjustment, stream)?;
-    let z_adjustment_ptr = z_chunk_adjustment.as_ptr();
-    let (grid_dim, block_dim) =
-        get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32 / VALS_PER_THREAD);
+    // Each thread Horners its own `gmem_stride`-strided slice of the natural-order
+    // coefficients, so its Horner multiplier is `z^gmem_stride` and the grid is
+    // exact (`count / VALS_PER_THREAD` is a power of two >= BLOCK_DIM).
+    let gmem_stride = count as u32 / VALS_PER_THREAD;
+    let z_stride = &mut scratch1[..1];
+    pow(&point[..1], gmem_stride, z_stride, stream)?;
+    let z_stride_ptr = z_stride.as_ptr();
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, gmem_stride);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = PartiallyEvaluateMonomialFormByRefArguments::new(
         monomials,
         partial_evals,
         z_ptr,
-        z_adjustment_ptr,
+        z_stride_ptr,
         log_count,
     );
     PartiallyEvaluateMonomialFormByRefFunction(ab_partially_evaluate_monomial_form_by_ref_kernel)

@@ -447,9 +447,7 @@ fn run_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool) {
         .collect::<Vec<_>>();
     let point = sample_ext(999);
     state.current_len = coeffs.len();
-    let mut monomial_bitreversed = coeffs.clone();
-    bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-    let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
+    let monomial_vectorized = e4_coeffs_to_vectorized(&coeffs);
     state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
         alloc_and_copy(&monomial_vectorized, &context),
         state.current_len,
@@ -490,9 +488,7 @@ fn run_scheduled_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool
         .collect::<Vec<_>>();
     let point = sample_ext(999);
     state.current_len = coeffs.len();
-    let mut monomial_bitreversed = coeffs.clone();
-    bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-    let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
+    let monomial_vectorized = e4_coeffs_to_vectorized(&coeffs);
     state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
         alloc_and_copy(&monomial_vectorized, &context),
         state.current_len,

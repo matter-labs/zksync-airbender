@@ -226,6 +226,9 @@ EXTERN __global__ void ab_whir_sum_e4_kernel(const e4 *__restrict__ values, cons
     out[blockIdx.x] = smem[0];
 }
 
+// One term per thread of `sum_i c_i z^i` over NATURAL-order monomial
+// coefficients -- CPU authority `evaluate_monomial_form`,
+// prover/src/gkr/whir/mod.rs:3030-3095 (`coeffs[i]` carries `point^i`).
 DEVICE_FORCEINLINE void partially_evaluate_monomial_form_small_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 z,
                                                                     const unsigned log_count) {
   const int count = 1 << log_count;
@@ -234,8 +237,7 @@ DEVICE_FORCEINLINE void partially_evaluate_monomial_form_small_impl(vectorized_e
     return;
 
   e4 result{src.get_at_row(gid)};
-  const unsigned power = bitreverse_low_bits(gid, log_count);
-  const e4 adjustment = e4::pow(z, power);
+  const e4 adjustment = e4::pow(z, gid);
   dst[gid] = e4::mul(result, adjustment);
 }
 
@@ -244,36 +246,40 @@ EXTERN __global__ void ab_partially_evaluate_monomial_form_by_ref_small_kernel(v
   partially_evaluate_monomial_form_small_impl(src, dst, *z, log_count);
 }
 
-// Partially evaluates a polynomial at a single random point using Horner rule applied to bitreversed monomials.
+// Partial sums of `sum_i c_i z^i` over NATURAL-order monomial coefficients
+// (CPU authority `evaluate_monomial_form`, prover/src/gkr/whir/mod.rs:3030-3095),
+// one per thread. Thread `gid` owns the coefficients at `gid + k * gmem_stride`
+// for k in [0, VALS_PER_THREAD), so its contribution is
+// `z^gid * sum_k c_{gid + k * S} * (z^S)^k` -- a Horner rule in `z_stride =
+// z^gmem_stride` walking k downwards, scaled by `z^gid`.
 // Output size will be count / VALS_PER_THREAD.
-DEVICE_FORCEINLINE void partially_evaluate_monomial_form_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 z,
-                                                              const e4 z_chunk_adjustment, const unsigned log_count) {
+DEVICE_FORCEINLINE void partially_evaluate_monomial_form_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 z, const e4 z_stride,
+                                                              const unsigned log_count) {
   constexpr int VALS_PER_THREAD = 32;
-  constexpr int BITREV_ORDER[VALS_PER_THREAD] = {0, 16, 8, 24, 4, 20, 12, 28, 2, 18, 10, 26, 6, 22, 14, 30,
-                                                 1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31};
 
   const int count = 1 << log_count;
   const int gid = blockIdx.x * blockDim.x + threadIdx.x;
   const int gmem_stride = gridDim.x * blockDim.x;
+  if (gid >= count / VALS_PER_THREAD)
+    return;
 
   src.add_row(gid);
 
   // Horner rule works backwards from highest powers
-  e4 result{src.get_at_row(count - gmem_stride)};
+  e4 result{src.get_at_row(gmem_stride * (VALS_PER_THREAD - 1))};
 #pragma unroll
-  for (int i{1}; i < VALS_PER_THREAD; i++) {
-    result = e4::mul(result, z);
-    result = e4::add(result, src.get_at_row(gmem_stride * BITREV_ORDER[VALS_PER_THREAD - 1 - i]));
+  for (int k{VALS_PER_THREAD - 2}; k >= 0; k--) {
+    result = e4::mul(result, z_stride);
+    result = e4::add(result, src.get_at_row(gmem_stride * k));
   }
 
-  const unsigned power = bitreverse_low_bits(gid, log_count - 5);
-  const e4 adjustment = e4::pow(z_chunk_adjustment, power);
+  const e4 adjustment = e4::pow(z, gid);
   dst[gid] = e4::mul(result, adjustment);
 }
 
 EXTERN __global__ void ab_partially_evaluate_monomial_form_by_ref_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 *z_ref,
-                                                                         const e4 *z_chunk_adjustment_ref, const unsigned log_count) {
-  partially_evaluate_monomial_form_impl(src, dst, *z_ref, *z_chunk_adjustment_ref, log_count);
+                                                                         const e4 *z_stride_ref, const unsigned log_count) {
+  partially_evaluate_monomial_form_impl(src, dst, *z_ref, *z_stride_ref, log_count);
 }
 
 } // namespace airbender::whir

@@ -13,9 +13,12 @@ use gpu_core::primitives::device_structures::DeviceMatrix;
 use itertools::Itertools;
 use rand::{rng, Rng};
 
+/// `partially_evaluate_monomials_by_ref` evaluates NATURAL-order monomial
+/// coefficients: coefficient `i` carries `z^i`, matching the CPU authority
+/// `evaluate_monomial_form` (prover/src/gkr/whir/mod.rs:3030-3095). The Horner
+/// loop below is that definition, so the device array is loaded with the same
+/// order production stores.
 fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
-    use fft::utils::bitreverse_enumeration_inplace;
-
     let count = 1 << log_count;
     let stride = 2 * count;
     let bf_elems = 4 * stride;
@@ -23,13 +26,12 @@ fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
         .map(|_| BF::random_element(&mut rng()))
         .collect_vec();
 
-    let mut h_monomials = (0..count)
+    let h_monomials = (0..count)
         .map(|i| {
             let coeffs = std::array::from_fn(|j| bitreversed_vectorized_src[i + stride * j]);
             E4::from_array_of_base(coeffs)
         })
         .collect_vec();
-    bitreverse_enumeration_inplace(&mut h_monomials);
     let z = E4::random_element(&mut rng());
     let mut cpu_result = h_monomials[count - 1];
     for i in 2..=count {
