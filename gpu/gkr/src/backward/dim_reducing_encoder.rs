@@ -18,12 +18,9 @@ use super::super::storage_layout::address_storage_layer;
 use super::super::GpuGKRStorage;
 use super::kernels::FoldingArenaBinding;
 use super::kernels::{
-    pack_cache_u16, pack_source_u16, GpuGKRDimensionReducingBatchRecordCompact,
-    GpuGKRDimensionReducingContinuationBatchCompact, GpuGKRDimensionReducingKernelPlan,
-    GpuGKRDimensionReducingRound0BatchCompact, GpuGKRDimensionReducingTables, GpuGKRSourceRecord,
-    PayloadRange16, GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_INLINE_RECORD_CAP,
-    GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD, GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD,
-    GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
+    pack_cache_u16, pack_source_u16, GpuGKRDimensionReducingBatch,
+    GpuGKRDimensionReducingLayerSlots, GpuGKRDimensionReducingSlot, GpuGKRDimensionReducingTables,
+    GpuGKRSourceRecord, GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_IO_PER_SLOT,
 };
 use crate::upstream::{Field, GKRAddress};
 
@@ -114,27 +111,6 @@ fn resolve_ext_consolidated<B, E: Field>(
     )
 }
 
-/// `PayloadRange16`.
-fn push_payload_record(
-    inline_payload: &mut [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_RECORD_CAP],
-    cursor: &mut usize,
-    value: GpuGKRSourceRecord,
-) {
-    assert!(
-        *cursor < GKR_DIM_REDUCING_INLINE_RECORD_CAP,
-        "compact dim-reducing inline_payload overflow at cursor {cursor} (cap {GKR_DIM_REDUCING_INLINE_RECORD_CAP})",
-    );
-    inline_payload[*cursor] = value;
-    *cursor += 1;
-}
-
-fn check_record_count(blueprints_len: usize) {
-    assert!(
-        blueprints_len <= GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
-        "compact dim-reducing encoder: {blueprints_len} blueprints exceeds GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER={GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER}",
-    );
-}
-
 fn folding_index<B, E>(
     storage: &GpuGKRStorage<B, E>,
     folding_addresses: &[GKRAddress],
@@ -153,53 +129,38 @@ fn folding_index<B, E>(
         .expect("folding source index exceeds u16")
 }
 
+/// Step-1 descriptor: `src` names the original poly in consolidated ext storage,
+/// where later steps name a prior folding arena. Both feed the same continuation
+/// kernel.
 pub(in crate::backward) fn build_round1_batch_compact_for_arena<B, E: Field>(
-    kernel_plans: &[GpuGKRDimensionReducingKernelPlan],
+    layer_slots: &GpuGKRDimensionReducingLayerSlots,
     storage: &GpuGKRStorage<B, E>,
     folding_addresses: &[GKRAddress],
     destination: FoldingArenaBinding,
-) -> GpuGKRDimensionReducingContinuationBatchCompact<E> {
-    check_record_count(kernel_plans.len());
-    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E> {
-        record_count: kernel_plans.len() as u32,
+) -> GpuGKRDimensionReducingBatch<E> {
+    let mut batch = GpuGKRDimensionReducingBatch::<E> {
+        enabled_mask: layer_slots.enabled_mask(),
         ..Default::default()
     };
     let mut tables = SlotTableBuilder::new();
     let destination_slot = tables.get_or_create(destination.base, destination.log2_stride);
-    let mut payload_cursor = 0usize;
     let mut first_access_seen = BTreeSet::new();
 
-    for (idx, kernel) in kernel_plans.iter().enumerate() {
-        let inputs_offset = payload_cursor as u16;
-        let mut inputs_count = 0u16;
-        for address in kernel.inputs.inputs_in_extension.iter().copied() {
-            if address == GKRAddress::placeholder() {
-                continue;
-            }
+    for (slot_idx, slot) in layer_slots.iter_enabled() {
+        let mut io = [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_IO_PER_SLOT];
+        for (k, address) in slot.inputs.iter().copied().enumerate() {
             let (input_ptr, input_stride, input_idx) = resolve_ext_consolidated(storage, address);
             let input_slot = tables.get_or_create(input_ptr, input_stride);
             let cache_idx = folding_index(storage, folding_addresses, address);
             let first_access = first_access_seen.insert(cache_idx);
-            push_payload_record(
-                &mut batch.inline_payload,
-                &mut payload_cursor,
-                GpuGKRSourceRecord::new(
-                    pack_source_u16(first_access, input_slot, input_idx),
-                    pack_cache_u16(destination_slot, cache_idx),
-                ),
+            io[k] = GpuGKRSourceRecord::new(
+                pack_source_u16(first_access, input_slot, input_idx),
+                pack_cache_u16(destination_slot, cache_idx),
             );
-            inputs_count += 1;
         }
-        assert!(usize::from(inputs_count) <= GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD);
-        batch.records[idx] = GpuGKRDimensionReducingBatchRecordCompact {
-            kind: kernel.kind.as_u32(),
-            inputs: PayloadRange16 {
-                offset: inputs_offset,
-                count: inputs_count,
-            },
-            outputs: PayloadRange16::default(),
-            batch_challenge_offset: kernel.batch_challenge_offset as u16,
-            _reserved: 0,
+        batch.slots[slot_idx] = GpuGKRDimensionReducingSlot {
+            io,
+            batch_exp: slot.batch_exp,
         };
     }
     batch.tables = tables.into_tables();
@@ -207,60 +168,42 @@ pub(in crate::backward) fn build_round1_batch_compact_for_arena<B, E: Field>(
 }
 
 pub(in crate::backward) fn build_continuation_batch_compact_for_arenas<B, E: Field>(
-    kernel_plans: &[GpuGKRDimensionReducingKernelPlan],
+    layer_slots: &GpuGKRDimensionReducingLayerSlots,
     storage: &GpuGKRStorage<B, E>,
     folding_addresses: &[GKRAddress],
     current: FoldingArenaBinding,
     destination: FoldingArenaBinding,
-) -> GpuGKRDimensionReducingContinuationBatchCompact<E> {
-    check_record_count(kernel_plans.len());
-    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E> {
-        record_count: kernel_plans.len() as u32,
+) -> GpuGKRDimensionReducingBatch<E> {
+    let mut batch = GpuGKRDimensionReducingBatch::<E> {
+        enabled_mask: layer_slots.enabled_mask(),
         ..Default::default()
     };
     let mut tables = SlotTableBuilder::new();
     let current_slot = tables.get_or_create(current.base, current.log2_stride);
     let destination_slot = tables.get_or_create(destination.base, destination.log2_stride);
-    let mut payload_cursor = 0usize;
     let mut first_access_seen = BTreeSet::new();
 
-    for (idx, kernel) in kernel_plans.iter().enumerate() {
-        let inputs_offset = payload_cursor as u16;
-        let mut inputs_count = 0u16;
-        for address in kernel.inputs.inputs_in_extension.iter().copied() {
-            if address == GKRAddress::placeholder() {
-                continue;
-            }
+    for (slot_idx, slot) in layer_slots.iter_enabled() {
+        let mut io = [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_IO_PER_SLOT];
+        for (k, address) in slot.inputs.iter().copied().enumerate() {
             let poly_idx = folding_index(storage, folding_addresses, address);
             let first_access = first_access_seen.insert(poly_idx);
-            push_payload_record(
-                &mut batch.inline_payload,
-                &mut payload_cursor,
-                GpuGKRSourceRecord::new(
-                    pack_source_u16(first_access, current_slot, poly_idx),
-                    pack_cache_u16(destination_slot, poly_idx),
-                ),
+            io[k] = GpuGKRSourceRecord::new(
+                pack_source_u16(first_access, current_slot, poly_idx),
+                pack_cache_u16(destination_slot, poly_idx),
             );
-            inputs_count += 1;
         }
-        assert!(usize::from(inputs_count) <= GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD);
-        batch.records[idx] = GpuGKRDimensionReducingBatchRecordCompact {
-            kind: kernel.kind.as_u32(),
-            inputs: PayloadRange16 {
-                offset: inputs_offset,
-                count: inputs_count,
-            },
-            outputs: PayloadRange16::default(),
-            batch_challenge_offset: kernel.batch_challenge_offset as u16,
-            _reserved: 0,
+        batch.slots[slot_idx] = GpuGKRDimensionReducingSlot {
+            io,
+            batch_exp: slot.batch_exp,
         };
     }
     batch.tables = tables.into_tables();
     batch
 }
 
-/// Build the compact round-0 batch descriptor. Both inputs and outputs
-/// resolve through the consolidated `ext_class_backings`; the kernel uses
+/// Build the round-0 batch descriptor. Both inputs and outputs resolve through
+/// the consolidated `ext_class_backings`; the kernel uses
 /// `gkr_resolve_dim_reducing_initial_source` which simply reads
 /// `bases[ptr_idx] + (poly_idx << log2_stride[ptr_idx])`.
 ///
@@ -268,72 +211,26 @@ pub(in crate::backward) fn build_continuation_batch_compact_for_arenas<B, E: Fie
 /// `contributions`) left null — the launcher fills these from the round
 /// scratch.
 pub(in crate::backward) fn build_round0_batch_compact<B, E: Field>(
-    blueprints: &[GpuGKRDimensionReducingKernelPlan],
+    layer_slots: &GpuGKRDimensionReducingLayerSlots,
     storage: &GpuGKRStorage<B, E>,
-) -> GpuGKRDimensionReducingRound0BatchCompact<E> {
-    check_record_count(blueprints.len());
-
-    let mut batch = GpuGKRDimensionReducingRound0BatchCompact::<E> {
-        record_count: blueprints.len() as u32,
+) -> GpuGKRDimensionReducingBatch<E> {
+    let mut batch = GpuGKRDimensionReducingBatch::<E> {
+        enabled_mask: layer_slots.enabled_mask(),
         ..Default::default()
     };
     let mut tables = SlotTableBuilder::new();
-    let mut payload_cursor = 0usize;
 
-    for (idx, blueprint) in blueprints.iter().enumerate() {
-        debug_assert!(blueprint.inputs.inputs_in_base.is_empty());
-        debug_assert!(blueprint.inputs.outputs_in_base.is_empty());
-
-        // Inputs.
-        let inputs_offset = payload_cursor as u16;
-        let mut inputs_count = 0u16;
-        for addr in blueprint.inputs.inputs_in_extension.iter().copied() {
-            if addr == GKRAddress::placeholder() {
-                continue;
-            }
-            let (ptr, log2_stride, poly_idx) = resolve_ext_consolidated(storage, addr);
-            let slot = tables.get_or_create(ptr, log2_stride);
-            let packed = pack_source_u16(false, slot, poly_idx);
-            push_payload_record(
-                &mut batch.inline_payload,
-                &mut payload_cursor,
-                GpuGKRSourceRecord::source_only(packed),
-            );
-            inputs_count += 1;
+    for (slot_idx, slot) in layer_slots.iter_enabled() {
+        let mut io = [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_IO_PER_SLOT];
+        let addresses = slot.inputs.iter().chain(slot.outputs.iter()).copied();
+        for (k, address) in addresses.enumerate() {
+            let (ptr, log2_stride, poly_idx) = resolve_ext_consolidated(storage, address);
+            let table_slot = tables.get_or_create(ptr, log2_stride);
+            io[k] = GpuGKRSourceRecord::source_only(pack_source_u16(false, table_slot, poly_idx));
         }
-        assert!(usize::from(inputs_count) <= GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD);
-
-        // Outputs.
-        let outputs_offset = payload_cursor as u16;
-        let mut outputs_count = 0u16;
-        for addr in blueprint.inputs.outputs_in_extension.iter().copied() {
-            if addr == GKRAddress::placeholder() {
-                continue;
-            }
-            let (ptr, log2_stride, poly_idx) = resolve_ext_consolidated(storage, addr);
-            let slot = tables.get_or_create(ptr, log2_stride);
-            let packed = pack_source_u16(false, slot, poly_idx);
-            push_payload_record(
-                &mut batch.inline_payload,
-                &mut payload_cursor,
-                GpuGKRSourceRecord::source_only(packed),
-            );
-            outputs_count += 1;
-        }
-        assert!(usize::from(outputs_count) <= GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD);
-
-        batch.records[idx] = GpuGKRDimensionReducingBatchRecordCompact {
-            kind: blueprint.kind.as_u32(),
-            inputs: PayloadRange16 {
-                offset: inputs_offset,
-                count: inputs_count,
-            },
-            outputs: PayloadRange16 {
-                offset: outputs_offset,
-                count: outputs_count,
-            },
-            batch_challenge_offset: blueprint.batch_challenge_offset as u16,
-            _reserved: 0,
+        batch.slots[slot_idx] = GpuGKRDimensionReducingSlot {
+            io,
+            batch_exp: slot.batch_exp,
         };
     }
 

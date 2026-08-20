@@ -1,3 +1,4 @@
+use super::vm::desc::{REDUCTION_PAIR_CAP, REDUCTION_PAIR_LOOKUP, REDUCTION_PAIR_PAIRWISE2};
 use super::*;
 
 #[derive(Clone, Copy)]
@@ -26,65 +27,52 @@ pub(super) struct LoweredDimReducingForwardRound<E> {
     pub(super) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
 }
 
-/// `(final_layer_idx, per-layer layer_description map)`.
-pub(super) type DimensionReductionForwardResult = (
-    usize,
-    BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
-);
+pub(super) struct PreparedDimensionReductionForward<E> {
+    pub(super) initial_trace_log_2: u32,
+    pub(super) total_rounds: u32,
+    pub(super) final_layer_idx: usize,
+    pub(super) dimension_reduction_description:
+        BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
+    pub(super) slot_initial_inputs: Vec<LoweredSlotInitialInput<E>>,
+    pub(super) slot_output_types: Vec<OutputType>,
+    pub(super) per_round_slot_outputs: Vec<Vec<LoweredSlotOutput<E>>>,
+}
 
-pub(super) fn schedule_dimension_reduction_forward<E>(
+pub(super) fn prepare_dimension_reduction_forward<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     initial_layer_idx: usize,
     initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
     initial_trace_log_2: u32,
     final_trace_log_2: u32,
     output_evaluations_slab: Option<&ForwardOutputSlabTarget<E>>,
-    tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
-) -> CudaResult<DimensionReductionForwardResult>
+) -> CudaResult<PreparedDimensionReductionForward<E>>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal,
-    E: crate::ForwardKernels,
-    Add: BinaryOp<E, E, E>,
-    Add: BinaryOp<BF, E, E>,
-    Add: BinaryOp<E, BF, E>,
-    Mul: BinaryOp<E, E, E>,
-    Mul: BinaryOp<BF, E, E>,
-    Mul: BinaryOp<E, BF, E>,
-    Sub: BinaryOp<E, E, E>,
-    Sub: BinaryOp<E, BF, E>,
-    Sub: BinaryOp<BF, BF, BF>,
+    E: FieldExtension<BF> + Field + 'static,
 {
+    let total_rounds = initial_trace_log_2
+        .checked_sub(final_trace_log_2)
+        .expect("final trace size must not exceed the initial trace size");
+    assert!(total_rounds >= vm::desc::FUSED_REDUCTION_ROUNDS as u32);
     let mut dimension_reduction_description = BTreeMap::new();
+    let mut per_round_slot_outputs = Vec::with_capacity(total_rounds as usize);
+    let mut slot_initial_inputs = None;
+    let mut slot_output_types = None;
     let mut current_layer_idx = initial_layer_idx;
-    let stream = context.get_exec_stream();
-    let total_rounds = initial_trace_log_2.saturating_sub(final_trace_log_2);
-    if total_rounds == 0 {
-        return Ok((current_layer_idx, dimension_reduction_description));
-    }
-
-    // Phase 1: lower + commit every round sequentially so subsequent rounds can resolve inputs
-    // from storage. Collect per-round per-slot output pointers for the later tower assembly.
-    let mut per_round_slot_outputs: Vec<Vec<LoweredSlotOutput<E>>> =
-        Vec::with_capacity(total_rounds as usize);
-    let mut slot_initial_inputs: Option<Vec<LoweredSlotInitialInput<E>>> = None;
-    let mut slot_output_types: Option<Vec<OutputType>> = None;
 
     for round_idx in 0..total_rounds {
         let input_size_log_2 = initial_trace_log_2 - round_idx;
         let output_trace_len = 1usize << (input_size_log_2 - 1);
         let is_final_round = round_idx + 1 == total_rounds;
-
-        let layer_inputs = if current_layer_idx != initial_layer_idx {
+        let layer_inputs = if current_layer_idx == initial_layer_idx {
+            initial_output_map.clone()
+        } else {
             let previous: &BTreeMap<OutputType, DimensionReducingInputOutput> =
                 dimension_reduction_description
                     .get(&(current_layer_idx - 1))
                     .expect("dimension reduction input layer must exist");
-            BTreeMap::from_iter(previous.iter().map(|(k, v)| (*k, v.output.clone())))
-        } else {
-            initial_output_map.clone()
+            BTreeMap::from_iter(previous.iter().map(|(kind, io)| (*kind, io.output.clone())))
         };
-
         let lowered = lower_dimension_reducing_forward_round(
             &layer_inputs,
             current_layer_idx,
@@ -103,7 +91,6 @@ where
             slot_output_types = Some(lowered.slot_output_types.clone());
         }
         per_round_slot_outputs.push(lowered.slot_outputs.clone());
-
         for (address, poly) in lowered.computed_extension_outputs {
             storage.insert_extension_at_layer(current_layer_idx + 1, address, poly);
         }
@@ -111,139 +98,148 @@ where
         current_layer_idx += 1;
     }
 
-    // Phase 2: slot-major dispatch, all launches on exec_stream. Each slot's full reduction
-    // chain (every tower chunk) runs contiguously before the next slot starts. One NVTX range
-    // per OutputType wraps all slots belonging to that type — PermutationProduct covers both
-    // read_set and write_set chains; each lookup type covers its single (num, den) chain.
-    let slot_initial_inputs =
-        slot_initial_inputs.expect("non-zero rounds implies we captured initial inputs");
-    let slot_output_types =
-        slot_output_types.expect("non-zero rounds implies we captured slot output types");
-    let slot_count = slot_initial_inputs.len();
-    let log_block = GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK;
-
-    let mut slot_idx = 0usize;
-    while slot_idx < slot_count {
-        let range_type = slot_output_types[slot_idx];
-        let range_end = slot_output_types[slot_idx..]
-            .iter()
-            .position(|t| *t != range_type)
-            .map(|offset| slot_idx + offset)
-            .unwrap_or(slot_count);
-
-        let range = Range::new(format!(
-            "gkr.forward.dimension_reduction.tower.{:?}",
-            range_type
-        ))?;
-        range.start(stream)?;
-
-        for s in slot_idx..range_end {
-            let mut cur_input = slot_initial_inputs[s];
-            let mut cur_input_log_2 = initial_trace_log_2;
-            let mut r = 0u32;
-            while r < total_rounds {
-                let remaining = total_rounds - r;
-                let chunk_rounds = remaining.min(log_block);
-                let chunk_input_len = 1u32 << cur_input_log_2;
-                dispatch_tower_slot_launch(
-                    cur_input,
-                    s,
-                    r,
-                    chunk_rounds,
-                    chunk_input_len,
-                    &per_round_slot_outputs,
-                    stream,
-                )?;
-                r += chunk_rounds;
-                cur_input_log_2 -= chunk_rounds;
-                if r < total_rounds {
-                    let last_round = (r - 1) as usize;
-                    cur_input = match per_round_slot_outputs[last_round][s] {
-                        LoweredSlotOutput::PairwiseProduct { output } => {
-                            LoweredSlotInitialInput::PairwiseProduct {
-                                input: output as *const E,
-                            }
-                        }
-                        LoweredSlotOutput::LookupPair {
-                            output_num,
-                            output_den,
-                        } => LoweredSlotInitialInput::LookupPair {
-                            num: output_num as *const E,
-                            den: output_den as *const E,
-                        },
-                    };
-                }
-            }
-        }
-
-        range.end(stream)?;
-        tracing_ranges.push(range);
-
-        slot_idx = range_end;
-    }
-
-    Ok((current_layer_idx - 1, dimension_reduction_description))
+    Ok(PreparedDimensionReductionForward {
+        initial_trace_log_2,
+        total_rounds,
+        final_layer_idx: current_layer_idx - 1,
+        dimension_reduction_description,
+        slot_initial_inputs: slot_initial_inputs.expect("dimension reduction inputs must exist"),
+        slot_output_types: slot_output_types.expect("dimension reduction output types must exist"),
+        per_round_slot_outputs,
+    })
 }
 
-fn dispatch_tower_slot_launch<E>(
-    slot_input: LoweredSlotInitialInput<E>,
-    slot_idx: usize,
-    chunk_start_round: u32,
-    chunk_rounds: u32,
-    chunk_input_len: u32,
-    per_round_slot_outputs: &[Vec<LoweredSlotOutput<E>>],
-    stream: &era_cudart::stream::CudaStream,
+pub(super) fn schedule_prepared_dimension_reduction_forward<E>(
+    prepared: &PreparedDimensionReductionForward<E>,
+    start_round: u32,
+    context: &ProverContext,
 ) -> CudaResult<()>
 where
     E: crate::ForwardKernels,
 {
-    match slot_input {
-        LoweredSlotInitialInput::PairwiseProduct { input } => {
-            let mut batch = GpuGKRDimensionReducingForwardTowerPairwiseBatch::<E> {
-                input,
-                input_len: chunk_input_len,
-                round_count: chunk_rounds,
-                ..Default::default()
-            };
-            for local_r in 0..chunk_rounds as usize {
-                let round_idx = chunk_start_round as usize + local_r;
-                match per_round_slot_outputs[round_idx][slot_idx] {
-                    LoweredSlotOutput::PairwiseProduct { output } => {
-                        batch.round_outputs[local_r] = output;
-                    }
-                    LoweredSlotOutput::LookupPair { .. } => panic!(
-                        "tower slot {} changed kind between round 0 and round {}",
-                        slot_idx, round_idx
-                    ),
-                }
+    assert!(start_round <= prepared.total_rounds);
+    if start_round == prepared.total_rounds {
+        return Ok(());
+    }
+
+    let stream = context.get_exec_stream();
+    let slot_count = prepared.slot_initial_inputs.len();
+    assert_eq!(prepared.slot_output_types.len(), slot_count);
+
+    // A pairwise OutputType contributes its two slots as one pair's (a, b)
+    // streams; a lookup slot contributes its (num, den).
+    let mut pair_slots: Vec<(u32, [usize; 2])> = Vec::new();
+    let mut slot_idx = 0usize;
+    while slot_idx < slot_count {
+        match prepared.slot_initial_inputs[slot_idx] {
+            LoweredSlotInitialInput::PairwiseProduct { .. } => {
+                let partner = slot_idx + 1;
+                assert!(
+                    partner < slot_count
+                        && prepared.slot_output_types[partner]
+                            == prepared.slot_output_types[slot_idx]
+                        && matches!(
+                            prepared.slot_initial_inputs[partner],
+                            LoweredSlotInitialInput::PairwiseProduct { .. }
+                        ),
+                    "pairwise reduction type must own exactly two adjacent slots"
+                );
+                pair_slots.push((REDUCTION_PAIR_PAIRWISE2, [slot_idx, partner]));
+                slot_idx += 2;
             }
-            launch_dimension_reducing_forward_tower_pairwise(&batch, stream)
+            LoweredSlotInitialInput::LookupPair { .. } => {
+                pair_slots.push((REDUCTION_PAIR_LOOKUP, [slot_idx, slot_idx]));
+                slot_idx += 1;
+            }
         }
-        LoweredSlotInitialInput::LookupPair { num, den } => {
-            let mut batch = GpuGKRDimensionReducingForwardTowerLookupBatch::<E> {
-                input_num: num,
-                input_den: den,
-                input_len: chunk_input_len,
-                round_count: chunk_rounds,
-                ..Default::default()
-            };
+    }
+    assert!(pair_slots.len() <= REDUCTION_PAIR_CAP);
+
+    let pairwise_mask = pair_slots
+        .iter()
+        .enumerate()
+        .filter(|(_, (kind, _))| *kind == REDUCTION_PAIR_PAIRWISE2)
+        .fold(0u32, |mask, (idx, _)| mask | (1u32 << idx));
+
+    let mut round = start_round;
+    let mut input_log_2 = prepared.initial_trace_log_2 - start_round;
+    while round < prepared.total_rounds {
+        let chunk_rounds =
+            (prepared.total_rounds - round).min(GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK);
+        let mut batch = GpuGKRDimensionReducingForwardTowerBatch::<E> {
+            pair_count: pair_slots.len() as u32,
+            input_len: 1u32 << input_log_2,
+            round_count: chunk_rounds,
+            pairwise_mask,
+            ..Default::default()
+        };
+        for (pair, &(kind, slots)) in batch.pairs.iter_mut().zip(&pair_slots) {
+            pair.input = pair_input_streams(prepared, round, kind, slots);
             for local_r in 0..chunk_rounds as usize {
-                let round_idx = chunk_start_round as usize + local_r;
-                match per_round_slot_outputs[round_idx][slot_idx] {
-                    LoweredSlotOutput::LookupPair {
-                        output_num,
-                        output_den,
-                    } => {
-                        batch.round_outputs_num[local_r] = output_num;
-                        batch.round_outputs_den[local_r] = output_den;
-                    }
-                    LoweredSlotOutput::PairwiseProduct { .. } => panic!(
-                        "tower slot {} changed kind between round 0 and round {}",
-                        slot_idx, round_idx
-                    ),
-                }
+                pair.round_outputs[local_r] =
+                    pair_output_streams(prepared, round as usize + local_r, kind, slots);
             }
-            launch_dimension_reducing_forward_tower_lookup(&batch, stream)
+        }
+        launch_dimension_reducing_forward_tower(batch, stream)?;
+        round += chunk_rounds;
+        input_log_2 -= chunk_rounds;
+    }
+    Ok(())
+}
+
+fn pair_input_streams<E>(
+    prepared: &PreparedDimensionReductionForward<E>,
+    round: u32,
+    kind: u32,
+    slots: [usize; 2],
+) -> [*const E; 2] {
+    if round == 0 {
+        match kind {
+            REDUCTION_PAIR_PAIRWISE2 => slots.map(|slot| {
+                let LoweredSlotInitialInput::PairwiseProduct { input } =
+                    prepared.slot_initial_inputs[slot]
+                else {
+                    panic!("tower slot {slot} changed kind");
+                };
+                input
+            }),
+            _ => {
+                let LoweredSlotInitialInput::LookupPair { num, den } =
+                    prepared.slot_initial_inputs[slots[0]]
+                else {
+                    panic!("tower slot {} changed kind", slots[0]);
+                };
+                [num, den]
+            }
+        }
+    } else {
+        pair_output_streams(prepared, round as usize - 1, kind, slots).map(|ptr| ptr as *const E)
+    }
+}
+
+fn pair_output_streams<E>(
+    prepared: &PreparedDimensionReductionForward<E>,
+    round: usize,
+    kind: u32,
+    slots: [usize; 2],
+) -> [*mut E; 2] {
+    let round_outputs = &prepared.per_round_slot_outputs[round];
+    match kind {
+        REDUCTION_PAIR_PAIRWISE2 => slots.map(|slot| {
+            let LoweredSlotOutput::PairwiseProduct { output } = round_outputs[slot] else {
+                panic!("tower slot {slot} changed kind at round {round}");
+            };
+            output
+        }),
+        _ => {
+            let LoweredSlotOutput::LookupPair {
+                output_num,
+                output_den,
+            } = round_outputs[slots[0]]
+            else {
+                panic!("tower slot {} changed kind at round {round}", slots[0]);
+            };
+            [output_num, output_den]
         }
     }
 }

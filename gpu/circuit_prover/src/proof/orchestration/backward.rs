@@ -147,8 +147,8 @@ pub(in crate::proof) fn prepare_backward_handoff(
 
 pub(in crate::proof) fn schedule_backward_phase(
     backward_state: GpuGKRDimensionReducingBackwardState,
-    // ACTUAL per-circuit i&t top bits: canonical for real i&t data, all
-    // zeros for trivial (dummy) unified chunks (CPU-reference parity).
+    // The global address window each of this circuit's i&t sets holds; all
+    // zeros for trivial (dummy) unified chunks.
     inits_and_teardowns_top_bits: Vec<u32>,
     gkr_programs: std::sync::Arc<gpu_gkr::GkrPrograms>,
     d_external_challenges_ptr: *const E4,

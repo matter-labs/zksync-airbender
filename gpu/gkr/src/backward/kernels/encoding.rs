@@ -1,7 +1,9 @@
 use std::ffi::c_void;
 use std::ptr::{null, null_mut};
 
-use super::dim_reducing::GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER;
+use super::dim_reducing::{
+    GKR_DIM_REDUCING_IO_PER_SLOT, GKR_DIM_REDUCING_OUTPUTS_PER_SLOT, GKR_DIM_REDUCING_SLOTS,
+};
 use super::launchers::GkrEqSizes;
 use crate::upstream::Field;
 use era_cudart::result::CudaResultWrap;
@@ -46,32 +48,17 @@ pub(crate) fn get_main_layer_claim_point_device_ptr() -> *mut E4 {
 // halves resolve against the same per-launch `bases` / `log2_stride` tables.
 // ---------------------------------------------------------------------------
 
-pub(crate) const GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD: usize = 2;
-pub(crate) const GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD: usize = 2;
-pub(crate) const GKR_DIM_REDUCING_INLINE_RECORD_CAP: usize = GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER
-    * (GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD + GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD);
-
 /// Number of base pointers addressable by the 4-bit source pointer index.
 pub(crate) const GKR_DIM_REDUCING_BASE_SLOTS: usize = 16;
 
-/// `(offset, count)` over the `inline_payload[GpuGKRSourceRecord]` array.
-/// 4 B per range record.
+/// One dim-reducing slot: `io[0..2]` inputs then `io[2..4]` outputs, plus the
+/// batch-challenge table index for each output. Mirrors
+/// `gkr_dim_reducing_slot` in `native/gkr/support/descriptors.cuh`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PayloadRange16 {
-    pub(crate) offset: u16,
-    pub(crate) count: u16,
-}
-
-/// One dim-reducing record (kernel-batch entry).
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct GpuGKRDimensionReducingBatchRecordCompact {
-    pub(crate) kind: u32,
-    pub(crate) inputs: PayloadRange16,
-    pub(crate) outputs: PayloadRange16,
-    pub(crate) batch_challenge_offset: u16,
-    pub(crate) _reserved: u16,
+pub(crate) struct GpuGKRDimensionReducingSlot {
+    pub(crate) io: [GpuGKRSourceRecord; GKR_DIM_REDUCING_IO_PER_SLOT],
+    pub(crate) batch_exp: [u16; GKR_DIM_REDUCING_OUTPUTS_PER_SLOT],
 }
 
 /// Per-launch pointer + stride tables.
@@ -115,66 +102,34 @@ impl GpuGKRSourceRecord {
     }
 }
 
+/// Mirrors `gkr_dim_reducing_batch<E>`, shared by both dim-reducing round
+/// kernels.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct GpuGKRDimensionReducingRound0BatchCompact<E> {
-    pub(crate) record_count: u32,
+pub(crate) struct GpuGKRDimensionReducingBatch<E> {
+    pub(crate) enabled_mask: u32,
     pub(crate) _reserved0: u32,
     pub(crate) eq_low: *const E,
     pub(crate) eq_sizes: GkrEqSizes,
     pub(crate) _eq_sizes_pad: u32,
     pub(crate) contributions: *mut E,
     pub(crate) tables: GpuGKRDimensionReducingTables,
-    pub(crate) records:
-        [GpuGKRDimensionReducingBatchRecordCompact; GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
-    pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_RECORD_CAP],
+    pub(crate) slots: [GpuGKRDimensionReducingSlot; GKR_DIM_REDUCING_SLOTS],
+    pub(crate) _slots_pad: u32,
 }
 
-impl<E: Field> Default for GpuGKRDimensionReducingRound0BatchCompact<E> {
+impl<E: Field> Default for GpuGKRDimensionReducingBatch<E> {
     fn default() -> Self {
         Self {
-            record_count: 0,
+            enabled_mask: 0,
             _reserved0: 0,
             eq_low: null(),
             eq_sizes: GkrEqSizes::zeroed(),
             _eq_sizes_pad: 0,
             contributions: null_mut(),
             tables: GpuGKRDimensionReducingTables::default(),
-            records: [GpuGKRDimensionReducingBatchRecordCompact::default();
-                GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
-            inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_RECORD_CAP],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(crate) struct GpuGKRDimensionReducingContinuationBatchCompact<E> {
-    pub(crate) record_count: u32,
-    pub(crate) _reserved0: u32,
-    pub(crate) eq_low: *const E,
-    pub(crate) eq_sizes: GkrEqSizes,
-    pub(crate) _eq_sizes_pad: u32,
-    pub(crate) contributions: *mut E,
-    pub(crate) tables: GpuGKRDimensionReducingTables,
-    pub(crate) records:
-        [GpuGKRDimensionReducingBatchRecordCompact; GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
-    pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_RECORD_CAP],
-}
-
-impl<E: Field> Default for GpuGKRDimensionReducingContinuationBatchCompact<E> {
-    fn default() -> Self {
-        Self {
-            record_count: 0,
-            _reserved0: 0,
-            eq_low: null(),
-            eq_sizes: GkrEqSizes::zeroed(),
-            _eq_sizes_pad: 0,
-            contributions: null_mut(),
-            tables: GpuGKRDimensionReducingTables::default(),
-            records: [GpuGKRDimensionReducingBatchRecordCompact::default();
-                GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
-            inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_RECORD_CAP],
+            slots: [GpuGKRDimensionReducingSlot::default(); GKR_DIM_REDUCING_SLOTS],
+            _slots_pad: 0,
         }
     }
 }

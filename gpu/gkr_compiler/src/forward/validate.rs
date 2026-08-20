@@ -168,12 +168,12 @@ fn check_field_storage_agreement(compiled: &CompiledLayerBuild) -> Result<(), Co
             _ => Ok(()),
         }
     };
-    let check_source = |window: u8, column: u8, field: OperandField| -> Result<(), CompileError> {
+    let check_source = |window: u8, column: u16, field: OperandField| -> Result<(), CompileError> {
         match compiled.ctx.source_windows.source_field(window) {
             Some(source_field) if source_field != field => {
                 Err(CompileError::FieldStorageMismatch {
                     slot: window,
-                    col: column as u16,
+                    col: column,
                 })
             }
             _ => Ok(()),

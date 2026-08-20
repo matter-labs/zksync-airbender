@@ -9,7 +9,7 @@ pub enum EncodeError {
     ColOutOfRange(u16),
     CellOutOfRange(u16),
     SourceWindowOutOfRange(u8),
-    SourceColumnOutOfRange(u8),
+    SourceColumnOutOfRange(u16),
     UnboundLogicalSource {
         slot: u8,
         col: u16,

@@ -39,7 +39,7 @@ pub(in crate::proof) struct BundleDeviceRefs<'b, 'a> {
     pub decoder: Option<&'b DecoderTableTransfer<'a>>,
     pub inits_and_teardowns: Option<&'b InitsAndTeardownsTransfer<'a>>,
     pub memory: &'b GpuGKRMemoryTransfer<'a>,
-    pub canonical_top_bits_device: Option<&'b DeviceAllocation<u32>>,
+    pub top_bits_device: Option<&'b DeviceAllocation<u32>>,
     pub external_challenges_device: &'b DeviceAllocation<E4>,
 }
 
@@ -87,10 +87,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             log_tree_cap_size: prover_config.cap_size.trailing_zeros(),
         });
 
-    let canonical_top_bits_len = bundle
-        .canonical_top_bits_device
-        .map(|d| d.len())
-        .unwrap_or(0);
+    let top_bits_len = bundle.top_bits_device.map(|d| d.len()).unwrap_or(0);
     let external_challenges_u32_len = EXTERNAL_CHALLENGES_E4_LEN * 4;
     debug_assert_eq!(
         bundle.memory.host.log_lde_factor, setup_geometry.log_lde_factor,
@@ -204,8 +201,8 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     );
 
     let mut chunks: Vec<(*const u32, u32)> = Vec::with_capacity(5);
-    if let Some(d_canonical_top_bits) = bundle.canonical_top_bits_device {
-        chunks.push((d_canonical_top_bits.as_ptr(), canonical_top_bits_len as u32));
+    if let Some(d_top_bits) = bundle.top_bits_device {
+        chunks.push((d_top_bits.as_ptr(), top_bits_len as u32));
     }
     {
         let external_u32 = unsafe { bundle.external_challenges_device.transmute::<u32>() };

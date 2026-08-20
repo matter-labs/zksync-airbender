@@ -42,6 +42,10 @@ const LOAD_STORE_WORD_DOMAIN_SIZE_LOG2: u32 =
 const LOAD_STORE_SUBWORD_DOMAIN_SIZE_LOG2: u32 =
     <LoadStoreSubwordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
 const INITS_AND_TEARDOWNS_DOMAIN_SIZE_LOG2: u32 = inits_and_teardowns::TRACE_LEN_LOG2;
+const INITS_AND_TEARDOWNS_NUM_SETS: usize = inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS;
+// One inline i&t "pair" allocates two sets (`allocate_inline_inits_and_teardowns_sets`).
+const UNIFIED_REDUCED_MACHINE_NUM_INIT_AND_TEARDOWN_SETS: usize =
+    2 * <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::NUM_INIT_AND_TEARDOWN_PAIRS;
 const MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2: u32 =
     <UnsignedMulDivCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
 
@@ -197,6 +201,17 @@ impl UnrolledCircuitType {
             Self::Memory(circuit_type) => circuit_type.get_family_idx(),
             Self::NonMemory(circuit_type) => circuit_type.get_family_idx(),
             Self::Unified => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+        }
+    }
+
+    /// Length of this circuit's `memory_layout.teardown_sets`. Each set covers
+    /// one `get_domain_size()`-word address window.
+    #[inline(always)]
+    pub const fn get_num_inits_and_teardowns_sets(&self) -> usize {
+        match self {
+            Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_NUM_SETS,
+            Self::Memory(_) | Self::NonMemory(_) => 0,
+            Self::Unified => UNIFIED_REDUCED_MACHINE_NUM_INIT_AND_TEARDOWN_SETS,
         }
     }
 }

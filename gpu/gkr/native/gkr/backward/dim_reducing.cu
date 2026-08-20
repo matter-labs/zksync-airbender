@@ -51,20 +51,25 @@ EXTERN __global__ void ab_gkr_dim_reducing_build_eq_values_from_group_tables_e4_
 EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_e4_kernel(const bf *raw_values, const e4 *eq_values, e4 *block_partials,
                                                                                  const unsigned trace_len, const unsigned column_start,
                                                                                  const unsigned chunk_cols, const unsigned blocks_count) {
-  gkr_trace_holder_block_partials(raw_values, eq_values, block_partials, trace_len, column_start, chunk_cols, blocks_count);
+  gkr_trace_holder_block_partials(raw_values, gkr_trace_holder_eq_dense<e4>{eq_values}, block_partials, trace_len, column_start, chunk_cols, blocks_count);
 }
 
-EXTERN __global__ void ab_gkr_dim_reducing_round0_batched_compact_e4_kernel(const __grid_constant__ gkr_dim_reducing_round0_batch_compact<e4> batch,
-                                                                            const unsigned acc_size) {
+EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline_e4_kernel(const bf *raw_values, const e4 *eq_low, const gkr_eq_sizes sizes,
+                                                                                           e4 *block_partials, const unsigned trace_len,
+                                                                                           const unsigned column_start, const unsigned chunk_cols,
+                                                                                           const unsigned blocks_count) {
+  gkr_trace_holder_block_partials(raw_values, gkr_eq_inline_reader<e4>{eq_low, sizes}, block_partials, trace_len, column_start, chunk_cols, blocks_count);
+}
+
+EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_column_sums_e4_kernel(const e4 *block_partials, e4 *column_sums, const unsigned blocks_count) {
+  gkr_trace_holder_column_sums(block_partials, column_sums, blocks_count);
+}
+
+EXTERN __global__ void ab_gkr_dim_reducing_round0_batched_compact_e4_kernel(const __grid_constant__ gkr_dim_reducing_batch<e4> batch, const unsigned acc_size) {
   gkr_dim_reducing_round0_batched_compact(batch, acc_size);
 }
 
-EXTERN __global__ void ab_gkr_dim_reducing_round1_batched_compact_e4_kernel(const __grid_constant__ gkr_dim_reducing_continuation_batch_compact<e4> batch,
-                                                                            const unsigned acc_size) {
-  gkr_dim_reducing_round1_batched_compact_inner<e4>(batch, acc_size);
-}
-
-EXTERN __global__ void ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel(const __grid_constant__ gkr_dim_reducing_continuation_batch_compact<e4> batch,
+EXTERN __global__ void ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel(const __grid_constant__ gkr_dim_reducing_batch<e4> batch,
                                                                                   const unsigned acc_size, const unsigned step) {
   gkr_dim_reducing_continuation_batched_compact_inner<e4>(batch, acc_size, step);
 }

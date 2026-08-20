@@ -16,13 +16,14 @@ pub use forward::artifact::{
 pub use forward::compile::CompiledCircuit as ForwardProgramBundle;
 pub use forward::context::CompiledLayer;
 pub use forward::encode::encode as encode_forward_program;
+pub use forward::encode::encode_runtime as encode_forward_runtime_program;
 pub use forward::error::CompileError as ForwardCompileError;
 pub use forward::error::EncodeError as ForwardEncodeError;
 pub use forward::isa::{
     DstLine as ForwardDstLine, Instr as ForwardInstr, LdcSub as ForwardLdcSub,
-    OperandField as ForwardOperandField, OperandLine as ForwardOperandLine,
-    Program as ForwardProgram, MAX_COLS as FORWARD_MAX_COLS,
-    SOURCE_WINDOW_COLUMNS as FORWARD_SOURCE_WINDOW_COLUMNS,
+    MovDir as ForwardMovDir, OperandField as ForwardOperandField,
+    OperandLine as ForwardOperandLine, Program as ForwardProgram, Sign as ForwardSign,
+    MAX_COLS as FORWARD_MAX_COLS,
 };
 pub use forward::source::{
     virtual_setup_kind_code, SpecialStrategy as ForwardSpecialStrategy, KIND_ORDER,

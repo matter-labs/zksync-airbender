@@ -443,10 +443,9 @@ pub(super) fn special_three_point_eval_device(
         let (eq_low, _) = state.eq_poly[..state.current_len].split_at(half);
         mul(eval_low, eq_low, &mut state.scratch0[..half], stream)?;
     }
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
+    whir_sum(
         &state.scratch0[..half],
+        &mut state.scratch1[..],
         &mut state.reduce_out[0],
         stream,
     )?;
@@ -457,10 +456,9 @@ pub(super) fn special_three_point_eval_device(
         let (_, eq_high) = state.eq_poly[..state.current_len].split_at(half);
         mul(eval_high, eq_high, &mut state.scratch0[..half], stream)?;
     }
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
+    whir_sum(
         &state.scratch0[..half],
+        &mut state.scratch1[..],
         &mut state.reduce_out[1],
         stream,
     )?;
@@ -473,10 +471,11 @@ pub(super) fn special_three_point_eval_device(
         add(eq_low, eq_high, &mut state.scratch1[..half], stream)?;
     }
     mul_into_x(&mut state.scratch0[..half], &state.scratch1[..half], stream)?;
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
+    // `scratch1`'s eq sums were consumed by the stream-ordered `mul_into_x`
+    // above, so it is free to serve as the sum's partials buffer.
+    whir_sum(
         &state.scratch0[..half],
+        &mut state.scratch1[..],
         &mut state.reduce_out[2],
         stream,
     )?;
@@ -549,7 +548,7 @@ pub(super) fn evaluate_monomial_form_device(
 
     // SAFETY: `state.reduce_out[0]` is a live, disjoint single-`E4` slot inside
     // `state.reduce_out`. The impl below only mutably borrows
-    // `state.{reduce_temp, scratch0, scratch1, sumchecked_poly_monomial_form,
+    // `state.{scratch0, scratch1, sumchecked_poly_monomial_form,
     // current_len}`, none of which overlap with `state.reduce_out`. Aliasing
     // through a raw pointer here sidesteps the borrow checker's inability to
     // split-borrow disjoint fields across a method call; the downstream

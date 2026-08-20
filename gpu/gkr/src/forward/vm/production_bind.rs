@@ -1,7 +1,4 @@
 //! Binds compiled forward layers to prover storage and runtime challenge data.
-//!
-//! Host-known challenges ride in the descriptor. Device-resident constants
-//! and the decoder fill are copied into the constant bank before launch.
 
 use std::ffi::c_void;
 use std::ptr::{null, null_mut};
@@ -10,19 +7,24 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart_sys::cudaGetSymbolAddress;
-use gpu_gkr_compiler::{CompiledLayer, ForwardSpecialStrategy as SpecialStrategy};
+use gpu_gkr_compiler::CompiledLayer;
 
-use super::desc::FwdVmDesc;
-use super::desc::CONST_DERIVED_E4_CAP;
-use super::lower::{FwdVmHeaderInputs, FwdVmLowerError, ResolvedColumn};
+use super::desc::{
+    FwdVmDesc, FwdVmReductionPair, CONST_DERIVED_E4_CAP, FUSED_REDUCTION_ROUNDS,
+    REDUCTION_PAIR_CAP, REDUCTION_PAIR_LOOKUP, REDUCTION_PAIR_PAIRWISE2,
+};
+use super::lower::{lower_desc, FwdVmInputs, LoweredFwdVm, ResolvedColumn};
 use super::output::{materialize_output_slot, register_layer_copy_aliases};
-use super::{ab_gkr_fwd_vm_const_derived_e4, lower::lower_layer_desc};
+use super::{ab_gkr_fwd_vm_const_derived_e4, launch_fwd_vm};
+use crate::forward::dimension_reducing::{
+    LoweredSlotInitialInput, LoweredSlotOutput, PreparedDimensionReductionForward,
+};
 use crate::gkr_address_audit::AddressClass;
 use crate::setup::GpuGKRForwardSetup;
 use crate::stage1::GpuGKRStage1Output;
 use crate::upstream::{
-    ChallengeKey, ChallengePower, ChallengeRef, Field, GKRAddress, GKRExternalChallenges,
-    GKRLayerDescription, PermutationSlot, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    ChallengeKey, ChallengePower, ChallengeRef, Field, GKRAddress, GKRCircuitArtifact,
+    GKRExternalChallenges, PermutationSlot, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
@@ -106,53 +108,40 @@ fn const_derived_e4_bank_device_ptr() -> *mut E4 {
     ptr.cast()
 }
 
-/// Fill this layer's `ConstDerivedE4` bank **from device memory**, on
-/// `exec_stream`, so no challenge value ever passes through the host.
-///
-/// Ordering contract (`lower_layer_desc`): every slot must be written before
-/// any launch of this layer's descriptor. Both copies are enqueued on
-/// `exec_stream`, and so is the launch, so the ordering is the stream's.
-pub(crate) fn stage_const_derived_e4_bank(
-    cl: &CompiledLayer,
-    forward_setup: &GpuGKRForwardSetup,
-    context: &ProverContext,
-) -> Result<(), BindError> {
-    let bank = const_derived_e4_bank_device_ptr();
-    if cl.derived_e4.uses_lookup_additive() {
-        let src = forward_setup.lookup_additive_part_device();
-        copy_one_e4_into_bank(bank, 0, src, context).map_err(BindError::Cuda)?;
-    }
-
-    if cl
-        .specials
-        .iter()
-        .any(|special| matches!(special, SpecialStrategy::PeekDecoder { .. }))
-    {
-        let src = forward_setup.decoder_lookup_fill_value_device();
-        copy_one_e4_into_bank(bank, CONST_DERIVED_E4_CAP - 1, &src[..1], context)
-            .map_err(BindError::Cuda)?;
-    }
-    Ok(())
-}
-
-/// One 16-byte D2D copy into bank slot `idx`.
 fn copy_one_e4_into_bank(
     bank: *mut E4,
     idx: usize,
     src: &DeviceSlice<E4>,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    // SAFETY: `bank` is the device address of an `e4[CONST_DERIVED_E4_CAP]`
-    // `__constant__` symbol and `idx < CONST_DERIVED_E4_CAP` (checked by the
-    // caller against `CONST_DERIVED_E4_CAP`), so `bank.add(idx)` is one valid
-    // E4 slot. `src` is one device-resident E4.
+    assert!(idx < CONST_DERIVED_E4_CAP);
+    // SAFETY: `bank` addresses the constant array and `idx` is in bounds.
     let dst = unsafe { DeviceSlice::from_raw_parts_mut(bank.add(idx), 1) };
     memory_copy_async(dst, src, context.get_exec_stream())
 }
 
-/// One resolved storage column, through the production storage accessors.
-///
-/// Resolve a column through the production storage accessors.
+fn stage_const_derived_e4_bank(
+    lowered: &LoweredFwdVm,
+    forward_setup: &GpuGKRForwardSetup,
+    context: &ProverContext,
+) -> Result<(), BindError> {
+    let bank = const_derived_e4_bank_device_ptr();
+    if let Some(slot) = lowered.lookup_additive_slot {
+        copy_one_e4_into_bank(
+            bank,
+            slot,
+            forward_setup.lookup_additive_part_device(),
+            context,
+        )
+        .map_err(BindError::Cuda)?;
+    }
+    if let Some(slot) = lowered.decoder_fill_slot {
+        let src = forward_setup.decoder_lookup_fill_value_device();
+        copy_one_e4_into_bank(bank, slot, &src[..1], context).map_err(BindError::Cuda)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn resolve_storage_column<E>(
     storage: &GpuGKRStorage<BF, E>,
     addr: GKRAddress,
@@ -176,20 +165,12 @@ where
     })
 }
 
-/// Per-layer header inputs from the production prover buffers: the three
-/// stage-1 mapping arenas, the decoder mapping column, and the shared
-/// α-folded generic-lookup table.
-///
-/// The generic-lookup table is released once no later layer needs it
-/// (`release_forward_lookup_resources_after_layer`), so read it through the
-/// length accessor, which reports 0 after release, rather than the panicking
-/// one.
 pub(crate) fn production_header<'a>(
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup,
     trace_len: usize,
     inits_and_teardowns_top_bits: &'a [u32],
-) -> FwdVmHeaderInputs<'a> {
+) -> FwdVmInputs<'a> {
     let m = &stage1.lookup_mappings;
     assert_eq!(
         m.trace_len, trace_len,
@@ -203,7 +184,7 @@ pub(crate) fn production_header<'a>(
     } else {
         (null(), 0)
     };
-    FwdVmHeaderInputs {
+    FwdVmInputs {
         mapping_arena: [
             if m.has_generic_family() {
                 m.generic_family().as_ptr()
@@ -246,37 +227,116 @@ pub(crate) fn prepare_layer_destinations(
     Ok(())
 }
 
-/// Lower one layer against the production prover state.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn bind_layer(
-    cl: &CompiledLayer,
-    storage: &GpuGKRStorage<BF, E4>,
-    stage1: &GpuGKRStage1Output,
-    forward_setup: &GpuGKRForwardSetup,
-    external_challenges: &GKRExternalChallenges<BF, E4>,
-    trace_len: usize,
-    inits_and_teardowns_top_bits: &[u32],
-) -> Result<FwdVmDesc, FwdVmLowerError> {
-    let header = production_header(
-        stage1,
-        forward_setup,
-        trace_len,
-        inits_and_teardowns_top_bits,
+fn bind_fused_reduction_prefix(
+    desc: &mut FwdVmDesc,
+    prepared: &PreparedDimensionReductionForward<E4>,
+) {
+    assert!(desc.count > 0 && desc.count % 128 == 0);
+    assert_eq!(desc.count.trailing_zeros(), prepared.initial_trace_log_2);
+    assert_eq!(
+        prepared.per_round_slot_outputs.len(),
+        prepared.total_rounds as usize
     );
-    let resolve = |addr: GKRAddress| resolve_storage_column(storage, addr);
-    // The infallible callback contract makes a missing challenge a hard error.
-    let challenge = |r: &ChallengeRef| {
-        arg_derived_e4_value(external_challenges, r).unwrap_or_else(|e| panic!("{e}"))
-    };
-    lower_layer_desc(cl, &header, &resolve, &challenge)
+    assert_eq!(
+        prepared.slot_initial_inputs.len(),
+        prepared.slot_output_types.len()
+    );
+    assert!(!prepared.slot_initial_inputs.is_empty());
+    assert!(
+        prepared
+            .slot_output_types
+            .windows(2)
+            .all(|pair| pair[0] <= pair[1]),
+        "reduction slots must follow OutputType order"
+    );
+    for outputs in &prepared.per_round_slot_outputs {
+        assert_eq!(outputs.len(), prepared.slot_initial_inputs.len());
+    }
+
+    let mut slot = 0usize;
+    let mut pair = 0usize;
+    while slot < prepared.slot_output_types.len() {
+        assert!(pair < REDUCTION_PAIR_CAP);
+        let output_type = prepared.slot_output_types[slot];
+        let range_end = prepared.slot_output_types[slot..]
+            .iter()
+            .position(|kind| *kind != output_type)
+            .map(|offset| slot + offset)
+            .unwrap_or(prepared.slot_output_types.len());
+        let arity = range_end - slot;
+        let record = match output_type {
+            crate::upstream::OutputType::PermutationProduct
+            | crate::upstream::OutputType::InitsAndTeardownsProduct => {
+                assert_eq!(arity, 2);
+                let input = [slot, slot + 1].map(|slot| {
+                    let LoweredSlotInitialInput::PairwiseProduct { input } =
+                        prepared.slot_initial_inputs[slot]
+                    else {
+                        panic!("pairwise reduction input changed kind")
+                    };
+                    assert!(!input.is_null());
+                    input
+                });
+                let mut round_outputs = [[null_mut(); 2]; FUSED_REDUCTION_ROUNDS];
+                for (round, outputs) in round_outputs.iter_mut().enumerate() {
+                    for (output, slot) in outputs.iter_mut().zip([slot, slot + 1]) {
+                        let LoweredSlotOutput::PairwiseProduct { output: pointer } =
+                            prepared.per_round_slot_outputs[round][slot]
+                        else {
+                            panic!("pairwise reduction output changed kind")
+                        };
+                        assert!(!pointer.is_null());
+                        *output = pointer;
+                    }
+                }
+                FwdVmReductionPair {
+                    input,
+                    round_outputs,
+                    kind: REDUCTION_PAIR_PAIRWISE2,
+                    reserved: 0,
+                }
+            }
+            crate::upstream::OutputType::Lookup16Bits
+            | crate::upstream::OutputType::LookupTimestamps
+            | crate::upstream::OutputType::GenericLookup => {
+                assert_eq!(arity, 1);
+                let LoweredSlotInitialInput::LookupPair { num, den } =
+                    prepared.slot_initial_inputs[slot]
+                else {
+                    panic!("lookup reduction input changed kind")
+                };
+                assert!(!num.is_null() && !den.is_null());
+                let mut round_outputs = [[null_mut(); 2]; FUSED_REDUCTION_ROUNDS];
+                for (round, outputs) in round_outputs.iter_mut().enumerate() {
+                    let LoweredSlotOutput::LookupPair {
+                        output_num,
+                        output_den,
+                    } = prepared.per_round_slot_outputs[round][slot]
+                    else {
+                        panic!("lookup reduction output changed kind")
+                    };
+                    assert!(!output_num.is_null() && !output_den.is_null());
+                    *outputs = [output_num, output_den];
+                }
+                FwdVmReductionPair {
+                    input: [num, den],
+                    round_outputs,
+                    kind: REDUCTION_PAIR_LOOKUP,
+                    reserved: 0,
+                }
+            }
+        };
+        desc.reduction_pairs[pair] = record;
+        pair += 1;
+        slot = range_end;
+    }
+    desc.reduction_pair_count = pair as u32;
 }
 
-/// Materialize destinations, bind the descriptor, stage constants, and launch.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn schedule_vm_layer(
-    layer_idx: usize,
-    layer: &GKRLayerDescription,
-    cl: &CompiledLayer,
+pub(in crate::forward) fn prepare_vm(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    compiled_layers: &[CompiledLayer],
     storage: &mut GpuGKRStorage<BF, E4>,
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup,
@@ -284,35 +344,203 @@ pub(crate) fn schedule_vm_layer(
     trace_len: usize,
     inits_and_teardowns_top_bits: &[u32],
     context: &ProverContext,
-) -> CudaResult<()> {
-    prepare_layer_destinations(layer_idx, storage, trace_len, context)?;
+) -> CudaResult<LoweredFwdVm> {
+    assert!(!compiled_circuit.layers.is_empty());
+    assert_eq!(compiled_layers.len(), compiled_circuit.layers.len());
+    for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+        // Hydrate scratch aliases before output allocation can reuse their addresses.
+        super::super::hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
+        prepare_layer_destinations(layer_idx, storage, trace_len, context)?;
 
-    let setup = bind_layer(
-        cl,
-        storage,
+        register_layer_copy_aliases(layer_idx, layer, storage);
+    }
+
+    let header = production_header(
         stage1,
         forward_setup,
-        external_challenges,
         trace_len,
         inits_and_teardowns_top_bits,
-    )
-    .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e:?}"));
+    );
+    let resolve = |address: GKRAddress| resolve_storage_column(storage, address);
+    let challenge = |reference: &ChallengeRef| {
+        arg_derived_e4_value(external_challenges, reference)
+            .unwrap_or_else(|error| panic!("{error}"))
+    };
+    let lowered = lower_desc(compiled_layers, &header, &resolve, &challenge)
+        .unwrap_or_else(|error| panic!("forward VM lowering failed: {error:?}"));
+    assert_eq!(lowered.desc.count, trace_len as u32);
+    Ok(lowered)
+}
 
-    stage_const_derived_e4_bank(cl, forward_setup, context)
-        .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e:?}"));
-
-    super::launch_fwd_vm(&setup, context)?;
-
-    // Pure copy gates alias existing storage instead of materializing output.
-    register_layer_copy_aliases(layer_idx, layer, storage);
-    Ok(())
+pub(in crate::forward) fn schedule_vm(
+    lowered: &mut LoweredFwdVm,
+    reductions: &PreparedDimensionReductionForward<E4>,
+    forward_setup: &GpuGKRForwardSetup,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    bind_fused_reduction_prefix(&mut lowered.desc, reductions);
+    stage_const_derived_e4_bank(&lowered, forward_setup, context)
+        .unwrap_or_else(|error| panic!("forward VM constant staging failed: {error:?}"));
+    launch_fwd_vm(&lowered.desc, context)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use std::collections::BTreeMap;
+
+    use crate::forward::dimension_reducing::{
+        LoweredSlotInitialInput, LoweredSlotOutput, PreparedDimensionReductionForward,
+    };
+    use crate::forward::vm::desc::{REDUCTION_PAIR_LOOKUP, REDUCTION_PAIR_PAIRWISE2};
     use crate::upstream::{ChallengeKey, ChallengePower, ChallengeRef, PermutationSlot};
+
+    fn pointer(value: usize) -> *mut E4 {
+        value as *mut E4
+    }
+
+    fn prepared_for_types(
+        types: Vec<crate::upstream::OutputType>,
+    ) -> PreparedDimensionReductionForward<E4> {
+        let slot_initial_inputs = types
+            .iter()
+            .enumerate()
+            .map(|(slot, kind)| {
+                let base = (slot + 1) * 0x1000;
+                match kind {
+                    crate::upstream::OutputType::PermutationProduct
+                    | crate::upstream::OutputType::InitsAndTeardownsProduct => {
+                        LoweredSlotInitialInput::PairwiseProduct {
+                            input: pointer(base),
+                        }
+                    }
+                    _ => LoweredSlotInitialInput::LookupPair {
+                        num: pointer(base),
+                        den: pointer(base + 0x80),
+                    },
+                }
+            })
+            .collect();
+        let per_round_slot_outputs = (0..7)
+            .map(|round| {
+                types
+                    .iter()
+                    .enumerate()
+                    .map(|(slot, kind)| {
+                        let base = (round + 1) * 0x10000 + (slot + 1) * 0x1000;
+                        match kind {
+                            crate::upstream::OutputType::PermutationProduct
+                            | crate::upstream::OutputType::InitsAndTeardownsProduct => {
+                                LoweredSlotOutput::PairwiseProduct {
+                                    output: pointer(base),
+                                }
+                            }
+                            _ => LoweredSlotOutput::LookupPair {
+                                output_num: pointer(base),
+                                output_den: pointer(base + 0x80),
+                            },
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        PreparedDimensionReductionForward {
+            initial_trace_log_2: 10,
+            total_rounds: 7,
+            final_layer_idx: 0,
+            dimension_reduction_description: BTreeMap::new(),
+            slot_initial_inputs,
+            slot_output_types: types,
+            per_round_slot_outputs,
+        }
+    }
+
+    #[test]
+    fn add_sub_reduction_prefix_packs_four_pairs() {
+        use crate::upstream::OutputType::*;
+
+        let prepared = prepared_for_types(vec![
+            PermutationProduct,
+            PermutationProduct,
+            Lookup16Bits,
+            LookupTimestamps,
+            GenericLookup,
+        ]);
+        let mut desc: FwdVmDesc = unsafe { core::mem::zeroed() };
+        desc.count = 1024;
+
+        bind_fused_reduction_prefix(&mut desc, &prepared);
+
+        assert_eq!(desc.reduction_pair_count, 4);
+        assert_eq!(desc.reduction_pairs[0].kind, REDUCTION_PAIR_PAIRWISE2);
+        assert_eq!(
+            desc.reduction_pairs[0].input.map(|ptr| ptr as usize),
+            [0x1000, 0x2000]
+        );
+        assert_eq!(
+            desc.reduction_pairs[0].round_outputs[0].map(|ptr| ptr as usize),
+            [0x11000, 0x12000]
+        );
+        assert_eq!(desc.reduction_pairs[1].kind, REDUCTION_PAIR_LOOKUP);
+        assert_eq!(
+            desc.reduction_pairs[1].input.map(|ptr| ptr as usize),
+            [0x3000, 0x3080]
+        );
+        assert_eq!(
+            desc.reduction_pairs[3].round_outputs[6].map(|ptr| ptr as usize),
+            [0x75000, 0x75080]
+        );
+    }
+
+    #[test]
+    fn unified_reduction_prefix_packs_five_pairs() {
+        use crate::upstream::OutputType::*;
+
+        let prepared = prepared_for_types(vec![
+            PermutationProduct,
+            PermutationProduct,
+            Lookup16Bits,
+            LookupTimestamps,
+            GenericLookup,
+            InitsAndTeardownsProduct,
+            InitsAndTeardownsProduct,
+        ]);
+        let mut desc: FwdVmDesc = unsafe { core::mem::zeroed() };
+        desc.count = 1024;
+
+        bind_fused_reduction_prefix(&mut desc, &prepared);
+
+        assert_eq!(desc.reduction_pair_count, 5);
+        assert_eq!(desc.reduction_pairs[4].kind, REDUCTION_PAIR_PAIRWISE2);
+        assert_eq!(
+            desc.reduction_pairs[4].input.map(|ptr| ptr as usize),
+            [0x6000, 0x7000]
+        );
+        assert_eq!(
+            desc.reduction_pairs[4].round_outputs[6].map(|ptr| ptr as usize),
+            [0x76000, 0x77000]
+        );
+    }
+
+    #[test]
+    fn malformed_reduction_shapes_are_rejected() {
+        use crate::upstream::OutputType::*;
+
+        for types in [
+            vec![PermutationProduct],
+            vec![Lookup16Bits, Lookup16Bits],
+            vec![GenericLookup, Lookup16Bits],
+        ] {
+            let prepared = prepared_for_types(types);
+            let mut desc: FwdVmDesc = unsafe { core::mem::zeroed() };
+            desc.count = 1024;
+            assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                bind_fused_reduction_prefix(&mut desc, &prepared);
+            }))
+            .is_err());
+        }
+    }
 
     /// The permutation challenges ride the descriptor by value, so their
     /// mapping onto `GKRExternalChallenges` must match the upstream slot

@@ -43,6 +43,7 @@ pub struct Generator {
     // Conditional-only witness columns whose first write has already been
     // emitted (as `SET_WITNESS_PLACE_OR_ZERO`). Subsequent writes stay `IF`.
     witness_zero_default_emitted: BTreeSet<usize>,
+    written_lookup_mapping_indices: BTreeSet<usize>,
 }
 
 impl Generator {
@@ -69,6 +70,7 @@ impl Generator {
             fn_indexes: Vec::new(),
             conditional_only_witness: BTreeSet::new(),
             witness_zero_default_emitted: BTreeSet::new(),
+            written_lookup_mapping_indices: BTreeSet::new(),
         }
     }
 
@@ -252,12 +254,16 @@ impl Generator {
                     lookup_mapping_idx,
                     self.num_lookup_mappings
                 );
+                self.written_lookup_mapping_indices
+                    .insert(lookup_mapping_idx);
                 let new_ident = self.create_var();
                 let num_inputs = input_subexpr_idxes.len();
                 let num_outputs = *num_outputs;
                 let table_id = *table_id_subexpr_idx;
                 if num_outputs > 0 {
-                    self.push(&format!("LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {lookup_mapping_idx}"));
+                    self.push(&format!(
+                        "LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {lookup_mapping_idx}"
+                    ));
                 } else {
                     self.push(&format!(
                         "LOOKUP_ENFORCE({num_inputs}, {table_id}, {lookup_mapping_idx}"
@@ -310,12 +316,7 @@ impl Generator {
                         let source_ident = self.expression_into_var(source_subexpr);
                         if let Some(condition) = condition_subexpr_idx {
                             let condition_ident = *condition;
-                            // For a column that is ONLY ever written under a guard, fold the
-                            // zero-default into its FIRST write (in evaluation order): emit a
-                            // branchless `cond ? source : 0` store instead of an `IF`, so rows
-                            // whose guard is false get a definite zero with no separate prologue.
-                            // Later writes (mutually-exclusive opcode branches) stay `IF` and
-                            // overwrite where they fire.
+                            // Initialize conditionally written columns when their first guard is false.
                             if self.conditional_only_witness.contains(&idx)
                                 && self.witness_zero_default_emitted.insert(idx)
                             {
@@ -446,7 +447,7 @@ impl Generator {
         circuit: &GKRCircuitArtifact<F>,
         perform_assignments_to_memory: bool,
     ) -> String {
-        let num_lookup_mappings = circuit.num_generic_lookups;
+        let num_lookup_mappings = circuit.generic_lookups.len();
         let mut layout = BTreeMap::new();
         let mut next_scratch_slot = 0usize;
         for (var, pos) in circuit.placement_data.iter() {
@@ -483,6 +484,11 @@ impl Generator {
         generator.collect_conditional_only_witness(graph);
         generator.generate_functions(graph, &layout);
         generator.generate_footer();
+        let expected_lookup_mapping_indices: BTreeSet<_> = (0..num_lookup_mappings).collect();
+        assert_eq!(
+            generator.written_lookup_mapping_indices, expected_lookup_mapping_indices,
+            "generated generic lookup mappings must cover every generic lookup set"
+        );
         generator.output
     }
 }

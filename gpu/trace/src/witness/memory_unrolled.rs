@@ -121,11 +121,7 @@ pub(crate) struct UnrolledMemoryLayout {
 }
 
 impl UnrolledMemoryLayout {
-    // Private, not `pub`: `UnrolledMemoryLayout` is `pub(crate)` and every
-    // caller (the `From` impl below, the `generate_memory_and_witness_*`
-    // launchers, and the test module) lives in this same file — grepped
-    // across `gpu/` for Task 14, no consumer elsewhere.
-    fn from_parts(value: &GKRMemoryLayout, decoder_lookup_offset: u32) -> Self {
+    pub(crate) fn from_parts(value: &GKRMemoryLayout, decoder_lookup_offset: u32) -> Self {
         let (shuffle_ram_access_sets_count, shuffle_ram_access_sets) = {
             let ram_access_sets = &value.ram_access_sets;
             let len = ram_access_sets.len();

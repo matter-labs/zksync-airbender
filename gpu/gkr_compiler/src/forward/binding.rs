@@ -41,7 +41,7 @@ impl SourceWindowTable {
             .map(|entry| entry.backing.field())
     }
 
-    pub fn resolve_read_place(&self, window: u8, column: u8) -> Option<ReadPlace> {
+    pub fn resolve_read_place(&self, window: u8, column: u16) -> Option<ReadPlace> {
         let entry = self.windows.get(window as usize)?;
         let absolute = entry.first_column.checked_add(column as usize)?;
         Some(backing_to_read_place(&entry.backing, absolute))
@@ -245,7 +245,10 @@ pub(crate) fn bind_final_sources(
         let &BoundSourceUse { window, column } = bound
             .next()
             .expect("one bound coordinate per logical operand");
-        *operand = OperandLine::Source { window, column };
+        *operand = OperandLine::Source {
+            window,
+            column: column.into(),
+        };
         Ok(())
     })?;
     debug_assert!(

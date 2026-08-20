@@ -9,10 +9,6 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[lib]
-name = "cli_lib"
-path = "src/lib.rs"
-
 [[bin]]
 name = "cli"
 path = "src/main.rs"
@@ -23,28 +19,16 @@ setups = { workspace = true }
 common_constants = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
-prover_examples = { path = "../../circuit_defs/prover_examples", default-features = false }
+prover_pipeline = { workspace = true, default-features = false }
 worker = { path = "../../worker" }
 clap = { workspace = true }
 riscv_transpiler = { path = "../../riscv_transpiler" }
-riscv_common = { path = "../../riscv_common", default-features = false }
 field = { workspace = true }
 
 verifier_common = { workspace = true }
 
-# Recursion protocol helpers (ND streams, chain, fsv binaries) + native
-# verification (`verifiers` comes in via the security_* feature blocks).
-full_statement_verifier = { path = "../../full_statement_verifier", default-features = false, features = [
-    "proof_utils",
-    "host_utils",
-] }
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
-sha3 = { package = "sha3", version = "*" }
 log = "0.4"
-
-# GPU proving stack (behind the `gpu` feature).
-gpu_execution_prover = { workspace = true, optional = true, default-features = false }
-gpu_program_prover = { workspace = true, optional = true, default-features = false }
 
 env_logger = "0.11"
 base64 = "0.21.7"
@@ -54,27 +38,21 @@ base64 = "0.21.7"
 default = ["security_80"]
 
 security_80 = [
-    "prover_examples/security_80",
+    "prover_pipeline/security_80",
     "verifier_common/security_80",
-    "full_statement_verifier/security_80",
     "verifier_common/proof_utils",
     "field/no_inline",
-    "gpu_execution_prover?/security_80",
-    "gpu_program_prover?/security_80",
 ]
 security_100 = [
-    "prover_examples/security_100",
+    "prover_pipeline/security_100",
     "verifier_common/security_100",
-    "full_statement_verifier/security_100",
     "verifier_common/proof_utils",
     "field/no_inline",
-    "gpu_execution_prover?/security_100",
-    "gpu_program_prover?/security_100",
 ]
 
-debug_logs = ["prover/debug_logs", "prover_examples/debug_logs"]
+debug_logs = ["prover/debug_logs", "prover_pipeline/debug_logs"]
 # if enabled - allow GPU for proving.
-gpu = ["dep:gpu_execution_prover", "dep:gpu_program_prover"]
+gpu = ["prover_pipeline/gpu"]
 # Commit recursive WHIR oracle leaves in eval form (see gpu_circuit_prover); the
 # verifier must be generated with the matching encoding. No-op without `gpu`.
-eval_leaves = ["gpu_execution_prover?/eval_leaves", "gpu_program_prover?/eval_leaves"]
+eval_leaves = ["prover_pipeline/eval_leaves"]

@@ -14,7 +14,7 @@ use crate::kernels::{
     deserialize_whir_e4_columns, launch_batched_accumulate_eq_samples,
     launch_split_accumulate_eq_samples, launch_whir_three_point_partials,
     partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens,
-    whir_fold_split_half_in_place_pair, whir_fold_split_half_in_place_vectorized,
+    whir_fold_split_half_in_place_pair, whir_fold_split_half_in_place_vectorized, whir_sum,
 };
 use crate::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 #[cfg(test)]
@@ -32,8 +32,6 @@ use gpu_core::primitives::device_structures::{
 };
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_cub::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
-use gpu_cub::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use gpu_gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use gpu_gkr::proof_layout::ProofLayout;
 use gpu_ntt::ntt::{
@@ -62,7 +60,6 @@ pub(super) struct GpuWhirState {
     scratch1: DeviceAllocation<E4>,
     #[cfg(test)]
     scalar: DeviceAllocation<E4>,
-    reduce_temp: DeviceAllocation<u8>,
     reduce_out: DeviceAllocation<E4>,
     current_len: usize,
     original_trace_len: usize,
@@ -144,8 +141,6 @@ impl GpuWhirState {
         assert!(trace_len >= 2);
         let half_len = trace_len / 2;
         let max_log_n = trace_len.trailing_zeros() as usize;
-        let reduce_temp_bytes =
-            get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, half_len as i32)?;
         Ok(Self {
             sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation::new(
                 context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?,
@@ -162,11 +157,6 @@ impl GpuWhirState {
             scratch1: context.alloc(half_len, AllocationPlacement::BestFit)?,
             #[cfg(test)]
             scalar: context.alloc(1, AllocationPlacement::BestFit)?,
-            reduce_temp: context
-                .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
-                    reduce_temp_bytes,
-                    AllocationPlacement::BestFit,
-                )?,
             reduce_out: context.alloc(3, AllocationPlacement::BestFit)?,
             current_len: trace_len,
             original_trace_len: trace_len,
@@ -405,14 +395,12 @@ pub(super) fn schedule_monomial_eval_device_impl(
         stream,
     )?;
 
-    let reduce_temp_bytes =
-        get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, partials_count as i32)?;
-    assert!(state.reduce_temp.len() >= reduce_temp_bytes);
-
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
+    // `scratch1` is free again here: its only prior use this round
+    // (`z_chunk_adjustment`) has been consumed by the stream-ordered
+    // monomial-eval kernel above.
+    whir_sum(
         &state.scratch0[..partials_count],
+        &mut state.scratch1[..],
         out,
         stream,
     )
@@ -426,7 +414,7 @@ pub(super) fn schedule_monomial_eval_device(
 ) -> CudaResult<Vec<HostAllocation<[E4]>>> {
     // SAFETY: `state.reduce_out[0]` is a live, disjoint single-`E4` slot inside
     // `state.reduce_out`. The impl below only mutably borrows
-    // `state.{reduce_temp, scratch0, scratch1, sumchecked_poly_monomial_form,
+    // `state.{scratch0, scratch1, sumchecked_poly_monomial_form,
     // current_len}`, none of which overlap with `state.reduce_out`. Aliasing
     // through a raw pointer here sidesteps the borrow checker's inability to
     // split-borrow disjoint fields across a method call; the schedule-time

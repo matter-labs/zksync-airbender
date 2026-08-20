@@ -1,4 +1,4 @@
-use crate::messages::WorkerResult;
+use crate::messages::{InitsAndTeardownsData, WorkerResult};
 use crate::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
 use crate::A;
 use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
@@ -7,6 +7,7 @@ use era_cudart::memory::{CudaHostAllocFlags, CudaHostRegisterFlags, HostAllocati
 use era_cudart::result::CudaResultWrap;
 use era_cudart_sys::{cudaHostRegister, cudaHostUnregister};
 use gpu_core::primitives::machine_type::MachineType;
+use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;
@@ -128,6 +129,38 @@ pub(crate) struct Snapshot<R: DataTraceRanges> {
 // guarantee is documented on those types.
 unsafe impl<R: DataTraceRanges> Send for Snapshot<R> {}
 
+/// Streams the leading empty unified i&t markers during the run so tracing
+/// data can pair and dispatch instead of pinning host allocators until
+/// simulation ends. Sound without a guard: the i&t instances are the trailing
+/// `it_final <= max_it_instances` — an architectural bound no cycle or
+/// delegation burst can violate — so anything `max_it_instances` circuits
+/// behind the run front is provably empty.
+pub(crate) struct EmptyInitsAndTeardownsStreamer {
+    pub cycles_per_circuit: usize,
+    pub max_it_instances: usize,
+    pub next_sequence_id: usize,
+}
+
+impl EmptyInitsAndTeardownsStreamer {
+    fn release(&mut self, cycles_so_far: usize, results: &Sender<WorkerResult<A>>) {
+        let completed_circuits = cycles_so_far / self.cycles_per_circuit;
+        let frontier = completed_circuits.saturating_sub(self.max_it_instances);
+        while self.next_sequence_id < frontier {
+            let data = InitsAndTeardownsData {
+                circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                sequence_id: self.next_sequence_id,
+                inits_and_teardowns: None,
+            };
+            results
+                .send(WorkerResult::InitsAndTeardownsData(data))
+                .expect(
+                    "simulation runner results channel closed while streaming empty init/teardown markers",
+                );
+            self.next_sequence_id += 1;
+        }
+    }
+}
+
 pub(crate) struct SimulationRunner<
     ND: NonDeterminismCSRSource + Send + 'static,
     T: TracingType + 'static,
@@ -144,6 +177,7 @@ pub(crate) struct SimulationRunner<
     pub trace: Option<LockedBoxedTraceChunk>,
     pub snapshot_index: usize,
     pub tracing_data_producers: Option<T::Producers>,
+    pub empty_it_streamer: Option<EmptyInitsAndTeardownsStreamer>,
     pub instant: Option<Instant>,
     pub total_elapsed: Duration,
     pub is_aborted: bool,
@@ -162,6 +196,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         results: Sender<WorkerResult<A>>,
         free_allocators: Receiver<A>,
         abort: Arc<AtomicBool>,
+        empty_it_streamer: Option<EmptyInitsAndTeardownsStreamer>,
     ) -> Self {
         let tracing_data_producers =
             T::Producers::new(machine_type, free_allocators, results.clone());
@@ -179,6 +214,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             trace: None,
             snapshot_index: 0,
             tracing_data_producers,
+            empty_it_streamer,
             instant: None,
             total_elapsed: Default::default(),
             is_aborted: false,
@@ -307,6 +343,12 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             self.is_aborted = true;
             return;
         }
+        if let (Some(streamer), Some(results)) =
+            (self.empty_it_streamer.as_mut(), self.results.as_ref())
+        {
+            let cycles_so_far = ((timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP) as usize;
+            streamer.release(cycles_so_far, results);
+        }
         let trace = self.trace.take().unwrap();
         let result = WorkerResult::SnapshotProduced;
         self.results
@@ -411,5 +453,44 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType> ContextImpl
 
     fn final_state_ref(&'_ self) -> Option<&'_ MachineState> {
         unreachable!()
+    }
+}
+
+#[cfg(test)]
+mod cpu_streamer_tests {
+    use super::*;
+
+    #[test]
+    fn cpu_streamer_releases_only_provably_empty_markers() {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let mut streamer = EmptyInitsAndTeardownsStreamer {
+            cycles_per_circuit: 1000,
+            max_it_instances: 3,
+            next_sequence_id: 0,
+        };
+        streamer.release(2999, &tx);
+        assert_eq!(streamer.next_sequence_id, 0);
+        streamer.release(4000, &tx);
+        assert_eq!(streamer.next_sequence_id, 1);
+        streamer.release(4000, &tx);
+        assert_eq!(streamer.next_sequence_id, 1);
+        streamer.release(10500, &tx);
+        assert_eq!(streamer.next_sequence_id, 7);
+        drop(tx);
+        let ids: Vec<usize> = rx
+            .iter()
+            .map(|result| match result {
+                WorkerResult::InitsAndTeardownsData(data) => {
+                    assert_eq!(
+                        data.circuit_type,
+                        CircuitType::Unrolled(UnrolledCircuitType::Unified)
+                    );
+                    assert!(data.inits_and_teardowns.is_none());
+                    data.sequence_id
+                }
+                _ => panic!("streamer sent an unexpected worker result"),
+            })
+            .collect();
+        assert_eq!(ids, (0..7).collect::<Vec<_>>());
     }
 }

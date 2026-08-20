@@ -16,6 +16,7 @@
 
 pub mod fold;
 pub(crate) mod kernels;
+mod oracle_commit;
 pub mod pow;
 pub(crate) mod upstream;
 
@@ -31,7 +32,9 @@ use crate::upstream::FieldExtension;
 use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
+use gpu_trace::trace::holder::{
+    TraceHolder, TreesCacheMode, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
+};
 
 #[cfg(test)]
 use crate::upstream::PathQueriable;
@@ -45,7 +48,9 @@ use fft::bitreverse_enumeration_inplace;
 use gpu_core::allocator::tracker::AllocationPlacement;
 #[cfg(test)]
 use gpu_core::primitives::{
-    callbacks::Callbacks, context::HostAllocation, device_structures::DeviceMatrix,
+    callbacks::Callbacks,
+    context::HostAllocation,
+    device_structures::{DeviceMatrix, DeviceMatrixMut},
     static_host::alloc_static_pinned_box_from_slice,
 };
 #[cfg(test)]
@@ -74,6 +79,7 @@ pub(crate) struct GpuWhirExtensionOracle {
     lde_factor: usize,
     trace_len_log2: u32,
     packed_leaf_count: usize,
+    transform_leaves_to_multilinear_coeffs: bool,
 }
 
 /// Holds the retired oracle's trace holder (and therefore its unified device
@@ -125,6 +131,7 @@ impl GpuWhirExtensionOracle {
             tree_cap_size,
             transform_leaves_to_multilinear_coeffs,
             CapTarget::OwnAllocation,
+            None,
             context,
         )
     }
@@ -154,6 +161,7 @@ impl GpuWhirExtensionOracle {
             tree_cap_size,
             transform_leaves_to_multilinear_coeffs,
             CapTarget::Slab(cap_dst_u32),
+            None,
             context,
         )
     }
@@ -166,6 +174,7 @@ impl GpuWhirExtensionOracle {
         tree_cap_size: usize,
         transform_leaves_to_multilinear_coeffs: bool,
         cap_target: CapTarget<'_>,
+        trees_cache_mode_override: Option<TreesCacheMode>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         assert!(!monomial_coeffs.slice().is_empty());
@@ -186,8 +195,9 @@ impl GpuWhirExtensionOracle {
         let packed_leaf_count = trace_len / values_per_leaf;
         let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
-        let trees_cache_mode =
-            Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size);
+        let trees_cache_mode = trees_cache_mode_override.unwrap_or_else(|| {
+            Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size)
+        });
 
         let mut trace_holder = TraceHolder::new(
             total_leaf_count_log2,
@@ -209,8 +219,20 @@ impl GpuWhirExtensionOracle {
         match cap_target {
             #[cfg(test)]
             CapTarget::OwnAllocation => {
-                trace_holder.whir_lde_and_commit_all(
+                let mut unified_cap = context.alloc(
+                    tree_cap_size,
+                    gpu_core::allocator::tracker::AllocationPlacement::BestFit,
+                )?;
+                let cap_dst_u32 = unsafe {
+                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                        unified_cap.as_mut_ptr() as *mut u32,
+                        tree_cap_size * gpu_hash::blake2s::STATE_SIZE,
+                    )
+                };
+                oracle_commit::schedule_recursive_oracle_commit(
+                    &mut trace_holder,
                     &inputs_matrix,
+                    cap_dst_u32,
                     trace_len_log2,
                     log_lde_factor,
                     log_values_per_leaf,
@@ -218,9 +240,11 @@ impl GpuWhirExtensionOracle {
                     transform_leaves_to_multilinear_coeffs,
                     context,
                 )?;
+                trace_holder.install_unified_device_cap(unified_cap);
             }
             CapTarget::Slab(dst_u32) => {
-                trace_holder.whir_lde_and_commit_all_into(
+                oracle_commit::schedule_recursive_oracle_commit(
+                    &mut trace_holder,
                     &inputs_matrix,
                     dst_u32,
                     trace_len_log2,
@@ -240,6 +264,7 @@ impl GpuWhirExtensionOracle {
             lde_factor,
             trace_len_log2,
             packed_leaf_count,
+            transform_leaves_to_multilinear_coeffs,
         })
     }
 
@@ -255,6 +280,108 @@ impl GpuWhirExtensionOracle {
         let Self { trace_holder, .. } = self;
         GpuWhirExtensionOracleKeepalive {
             _trace_holder: trace_holder,
+        }
+    }
+
+    fn schedule_query_leaves_and_paths_into_from_ntt(
+        &mut self,
+        tree_indexes: &era_cudart::slice::DeviceSlice<u32>,
+        leaves_dst: &mut era_cudart::slice::DeviceSlice<BF>,
+        paths_dst: &mut era_cudart::slice::DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let queries_count = tree_indexes.len();
+        let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
+        let log_lde_factor = self.lde_factor.trailing_zeros();
+        let log_packed_leaf_count = self.packed_leaf_count.trailing_zeros();
+        let log_total_leaves = log_packed_leaf_count + log_lde_factor;
+        let layers_count = self.trace_holder.log_domain_size
+            - self.trace_holder.log_rows_per_leaf
+            - (self.trace_holder.log_tree_cap_size - self.trace_holder.log_lde_factor);
+        assert_eq!(
+            leaves_dst.len(),
+            queries_count * self.values_per_leaf * EXT4_DEGREE,
+        );
+        assert_eq!(
+            paths_dst.len(),
+            queries_count * layers_count as usize * gpu_hash::blake2s::STATE_SIZE,
+        );
+
+        if !self.transform_leaves_to_multilinear_coeffs {
+            self.trace_holder.schedule_query_leaves_into_from_ntt(
+                tree_indexes,
+                leaves_dst,
+                self.trace_len_log2,
+                log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                context,
+            )?;
+            return self.trace_holder.schedule_query_merkle_paths_into_from_ntt(
+                tree_indexes,
+                paths_dst,
+                self.trace_len_log2,
+                log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                context,
+            );
+        }
+
+        let transform_params = context
+            .ntt_device_context()
+            .whir_leaf_transform_params(log_values_per_leaf);
+        if matches!(&self.trace_holder.trees, TreesHolder::Full(_)) {
+            kernels::gather_coefficient_leaves_for_queries_from_ntt(
+                self.trace_holder.get_consolidated_cosets(),
+                leaves_dst,
+                self.trace_len_log2,
+                log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                transform_params,
+                tree_indexes,
+                context.get_exec_stream(),
+            )?;
+            return self.trace_holder.schedule_query_merkle_paths_into_from_ntt(
+                tree_indexes,
+                paths_dst,
+                self.trace_len_log2,
+                log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                context,
+            );
+        }
+
+        let evaluations = self.trace_holder.get_consolidated_cosets();
+        match &self.trace_holder.trees {
+            TreesHolder::Partial(tree) => {
+                let tree_u32 = unsafe {
+                    era_cudart::slice::DeviceSlice::from_raw_parts(
+                        tree.as_ptr() as *const u32,
+                        tree.len() * gpu_hash::blake2s::STATE_SIZE,
+                    )
+                };
+                kernels::gather_coefficient_leaves_and_merkle_paths_partial_for_queries_from_ntt(
+                    evaluations,
+                    tree_u32,
+                    leaves_dst,
+                    paths_dst,
+                    self.trace_len_log2,
+                    log_lde_factor,
+                    log_values_per_leaf,
+                    LOG_SRC_COLS_PER_COSET,
+                    log_packed_leaf_count,
+                    log_total_leaves,
+                    layers_count,
+                    transform_params,
+                    tree_indexes,
+                    context.get_exec_stream(),
+                )
+            }
+            TreesHolder::Full(_) => unreachable!(),
+            TreesHolder::None => panic!("recursive WHIR oracle has no Merkle tree"),
         }
     }
 
@@ -296,31 +423,48 @@ impl GpuWhirExtensionOracle {
         // (read-only) and run after the kernel above on the same stream, so
         // they observe the tree-indexes that were just written.
         let slab_indices_view: &era_cudart::slice::DeviceSlice<u32> = slab_indices_dst;
-        // Recursive WHIR trace holders use `log_lde_factor = 0`, so only
-        // coset 0 exists; the consolidated gather kernels resolve every
-        // query into that single coset (lde_mask == 0).
-        let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-        let natural_log_lde_factor = log_lde_factor;
-        self.trace_holder.schedule_query_leaves_into_from_ntt(
+        self.schedule_query_leaves_and_paths_into_from_ntt(
             slab_indices_view,
             slab_leaves_dst_bf,
-            self.trace_len_log2,
-            natural_log_lde_factor,
-            log_values_per_leaf,
-            LOG_SRC_COLS_PER_COSET,
+            slab_paths_dst,
+            context,
+        )
+    }
+
+    #[cfg(test)]
+    fn schedule_query_outputs_to_host(
+        &mut self,
+        tree_indexes: &era_cudart::slice::DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<(HostAllocation<[BF]>, HostAllocation<[Digest]>)> {
+        let queries_count = tree_indexes.len();
+        let leaf_len = queries_count * self.values_per_leaf * EXT4_DEGREE;
+        let layers_count = self.trace_holder.log_domain_size
+            - self.trace_holder.log_rows_per_leaf
+            - (self.trace_holder.log_tree_cap_size - self.trace_holder.log_lde_factor);
+        let paths_len = queries_count * layers_count as usize;
+        let mut device_leaves = context.alloc(leaf_len, AllocationPlacement::BestFit)?;
+        let mut device_paths: gpu_core::primitives::context::DeviceAllocation<Digest> =
+            context.alloc(paths_len, AllocationPlacement::BestFit)?;
+        let device_paths_u32 = unsafe {
+            era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                device_paths.as_mut_ptr() as *mut u32,
+                paths_len * gpu_hash::blake2s::STATE_SIZE,
+            )
+        };
+        self.schedule_query_leaves_and_paths_into_from_ntt(
+            tree_indexes,
+            &mut device_leaves,
+            device_paths_u32,
             context,
         )?;
-        self.trace_holder
-            .schedule_query_merkle_paths_into_from_ntt(
-                slab_indices_view,
-                slab_paths_dst,
-                self.trace_len_log2,
-                natural_log_lde_factor,
-                log_values_per_leaf,
-                LOG_SRC_COLS_PER_COSET,
-                context,
-            )?;
-        Ok(())
+
+        let stream = context.get_exec_stream();
+        let mut leaves = unsafe { context.alloc_host_uninit_slice(leaf_len) };
+        let mut paths = unsafe { context.alloc_host_uninit_slice(paths_len) };
+        memory_copy_async(&mut leaves, &device_leaves, stream)?;
+        memory_copy_async(&mut paths, &device_paths, stream)?;
+        Ok((leaves, paths))
     }
 
     #[cfg(test)]
@@ -356,37 +500,8 @@ impl GpuWhirExtensionOracle {
             context.get_exec_stream(),
         )?;
         drop(tree_index_host);
-        // Use the NTT-aware query path (same reason as `schedule_query_for_folded_index`).
-        let leaf_len = self.values_per_leaf * EXT4_DEGREE;
-        let mut d_leafs = context.alloc(leaf_len, AllocationPlacement::BestFit)?;
-        {
-            let natural_log_lde_factor = self.lde_factor.trailing_zeros();
-            let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            self.trace_holder.schedule_query_leaves_into_from_ntt(
-                &device_tree_index,
-                &mut d_leafs[..],
-                self.trace_len_log2,
-                natural_log_lde_factor,
-                log_values_per_leaf,
-                LOG_SRC_COLS_PER_COSET,
-                context,
-            )?;
-        }
-        let stream_ref = context.get_exec_stream();
-        let mut value_query = unsafe { context.alloc_host_uninit_slice(leaf_len) };
-        memory_copy_async(&mut value_query, &d_leafs[..], stream_ref)?;
-        let path_query = {
-            let natural_log_lde_factor = self.lde_factor.trailing_zeros();
-            let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            self.trace_holder.get_query_merkle_paths_from_ntt(
-                &device_tree_index,
-                self.trace_len_log2,
-                natural_log_lde_factor,
-                log_values_per_leaf,
-                LOG_SRC_COLS_PER_COSET,
-                context,
-            )?
-        };
+        let (value_query, path_query) =
+            self.schedule_query_outputs_to_host(&device_tree_index, context)?;
         Ok(GpuWhirScheduledExtensionQuery {
             index: 0,
             coset_index: 0,
@@ -461,6 +576,27 @@ impl GpuWhirExtensionOracle {
         transform_leaves_to_multilinear_coeffs: bool,
         context: &ProverContext,
     ) -> CudaResult<Self> {
+        Self::from_monomial_coeffs_with_cache_mode(
+            monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            transform_leaves_to_multilinear_coeffs,
+            None,
+            context,
+        )
+    }
+
+    #[cfg(test)]
+    fn from_monomial_coeffs_with_cache_mode(
+        monomial_coeffs: &[E4],
+        lde_factor: usize,
+        values_per_leaf: usize,
+        tree_cap_size: usize,
+        transform_leaves_to_multilinear_coeffs: bool,
+        trees_cache_mode_override: Option<TreesCacheMode>,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let trace_len = monomial_coeffs.len();
         let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
         bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
@@ -473,35 +609,15 @@ impl GpuWhirExtensionOracle {
         let host = alloc_static_pinned_box_from_slice(&vectorized_monomial_coeffs[..])?;
         memory_copy_async(&mut monomial_coeffs_device_alloc, &host[..], stream)?;
         let monomial_coeffs_device = DeviceMatrix::new(&monomial_coeffs_device_alloc, trace_len);
-        Self::from_device_monomial_coeffs(
+        let oracle = Self::from_device_monomial_coeffs_impl(
             &monomial_coeffs_device,
             trace_len,
             lde_factor,
             values_per_leaf,
             tree_cap_size,
             transform_leaves_to_multilinear_coeffs,
-            context,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn from_device_monomial_coeffs(
-        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
-        trace_len: usize,
-        lde_factor: usize,
-        values_per_leaf: usize,
-        tree_cap_size: usize,
-        transform_leaves_to_multilinear_coeffs: bool,
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
-        let oracle = Self::from_device_monomial_coeffs_impl(
-            monomial_coeffs,
-            trace_len,
-            lde_factor,
-            values_per_leaf,
-            tree_cap_size,
-            transform_leaves_to_multilinear_coeffs,
             CapTarget::OwnAllocation,
+            trees_cache_mode_override,
             context,
         )?;
         context.get_exec_stream().synchronize()?;
@@ -538,40 +654,8 @@ impl GpuWhirExtensionOracle {
             context.get_exec_stream(),
         )?;
         drop(host_tree_index);
-        // Use the NTT-aware query path: the trace holder's cosets backing
-        // now holds the natural multi-coset NTT output, which `get_query_leafs`
-        // (packed-layout reader) would misinterpret. Switch to the new
-        // `schedule_query_leaves_into_from_ntt` path used by production.
-        let leaf_len = self.values_per_leaf * EXT4_DEGREE;
-        let mut d_leafs = context.alloc(leaf_len, AllocationPlacement::BestFit)?;
-        {
-            let natural_log_lde_factor = self.lde_factor.trailing_zeros();
-            let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            self.trace_holder.schedule_query_leaves_into_from_ntt(
-                &device_tree_index,
-                &mut d_leafs[..],
-                self.trace_len_log2,
-                natural_log_lde_factor,
-                log_values_per_leaf,
-                LOG_SRC_COLS_PER_COSET,
-                context,
-            )?;
-        }
-        let stream_ref = context.get_exec_stream();
-        let mut value_query = unsafe { context.alloc_host_uninit_slice(leaf_len) };
-        memory_copy_async(&mut value_query, &d_leafs[..], stream_ref)?;
-        let path_query = {
-            let natural_log_lde_factor = self.lde_factor.trailing_zeros();
-            let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            self.trace_holder.get_query_merkle_paths_from_ntt(
-                &device_tree_index,
-                self.trace_len_log2,
-                natural_log_lde_factor,
-                log_values_per_leaf,
-                LOG_SRC_COLS_PER_COSET,
-                context,
-            )?
-        };
+        let (value_query, path_query) =
+            self.schedule_query_outputs_to_host(&device_tree_index, context)?;
         Ok(GpuWhirScheduledExtensionQuery {
             index: tree_index,
             coset_index,
@@ -674,6 +758,83 @@ pub(crate) mod tests {
                 ])
             })
             .collect()
+    }
+
+    fn copy_tree(oracle: &GpuWhirExtensionOracle, context: &ProverContext) -> Vec<Digest> {
+        let tree = match &oracle.trace_holder.trees {
+            TreesHolder::Full(tree) | TreesHolder::Partial(tree) => tree,
+            TreesHolder::None => panic!("recursive oracle has no tree backing"),
+        };
+        let mut host = vec![Digest::default(); tree.len()];
+        memory_copy_async(&mut host, &tree[..], context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        host
+    }
+
+    fn assert_partial_tree_prefix_matches_full(
+        log_trace_len: u32,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        cap_size: usize,
+        transform: bool,
+    ) {
+        let context = make_test_context(512, 32);
+        let monomial_coeffs = sample_monomial_coeffs(1 << log_trace_len);
+        let mut full = GpuWhirExtensionOracle::from_monomial_coeffs_with_cache_mode(
+            &monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            cap_size,
+            transform,
+            Some(TreesCacheMode::CacheFull),
+            &context,
+        )
+        .unwrap();
+        let mut partial = GpuWhirExtensionOracle::from_monomial_coeffs_with_cache_mode(
+            &monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            cap_size,
+            transform,
+            Some(TreesCacheMode::CachePartial),
+            &context,
+        )
+        .unwrap();
+
+        let leaves = (1usize << log_trace_len) * lde_factor / values_per_leaf;
+        let partial_len = leaves / 16;
+        let initialized_len = partial_len - cap_size;
+        let full_start = 2 * leaves - partial_len;
+        let full_tree = copy_tree(&full, &context);
+        let partial_tree = copy_tree(&partial, &context);
+        assert_eq!(partial_tree.len(), partial_len);
+        assert_eq!(
+            &partial_tree[..initialized_len],
+            &full_tree[full_start..full_start + initialized_len],
+        );
+        assert_eq!(
+            partial.get_tree_cap(&context).unwrap(),
+            full.get_tree_cap(&context).unwrap(),
+        );
+
+        let mut query_indexes = vec![
+            0,
+            31.min(leaves - 1),
+            32.min(leaves - 1),
+            leaves / 2,
+            leaves - 1,
+        ];
+        query_indexes.sort_unstable();
+        query_indexes.dedup();
+        for query_index in query_indexes {
+            assert_eq!(
+                partial
+                    .query_for_folded_index(query_index, &context)
+                    .unwrap(),
+                full.query_for_folded_index(query_index, &context).unwrap(),
+                "query {query_index} differs between partial and full cache",
+            );
+        }
     }
 
     fn compute_column_major_lde_from_monomial_form_for_test(
@@ -806,6 +967,411 @@ pub(crate) mod tests {
         }
     }
 
+    fn assert_coefficient_query_kernels_from_evaluation_backing_match_cpu(
+        log_coeff_size: u32,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        tree_cap_size: usize,
+        expected_partial_cache: bool,
+    ) {
+        let worker = Worker::new();
+        let context = make_test_context(256, 32);
+        let monomial_coeffs = sample_monomial_coeffs(1 << log_coeff_size);
+        let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
+        let cpu = cpu_extension_oracle_from_monomial_form(
+            &monomial_coeffs,
+            &twiddles,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            true,
+            &worker,
+        );
+        let mut coefficient = GpuWhirExtensionOracle::from_monomial_coeffs(
+            &monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            true,
+            &context,
+        )
+        .unwrap();
+
+        match (&coefficient.trace_holder.trees, expected_partial_cache) {
+            (TreesHolder::Partial(_), true) | (TreesHolder::Full(_), false) => {}
+            _ => panic!("unexpected recursive cache mode"),
+        }
+
+        let total_leaves = monomial_coeffs.len() * lde_factor / values_per_leaf;
+        let mut folded_indexes = vec![0, total_leaves - 1, total_leaves / 2];
+        folded_indexes.push(31.min(total_leaves - 1));
+        folded_indexes.push(32.min(total_leaves - 1));
+        folded_indexes.sort_unstable();
+        folded_indexes.dedup();
+
+        let mut tree_indexes = Vec::with_capacity(folded_indexes.len());
+        let mut expected_values = Vec::with_capacity(folded_indexes.len());
+        let mut expected_paths = Vec::with_capacity(folded_indexes.len());
+        for folded_index in folded_indexes {
+            let (_, values, query) = cpu.query_for_folded_index(folded_index);
+            tree_indexes.push(query.index as u32);
+            expected_values.push(values);
+            expected_paths.push(query.path);
+        }
+        let queries_count = tree_indexes.len();
+        let layers_count = expected_paths[0].len();
+        assert!(expected_paths.iter().all(|path| path.len() == layers_count));
+
+        let stream = context.get_exec_stream();
+        let mut device_indexes = context
+            .alloc::<u32>(tree_indexes.len(), AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy_async(&mut device_indexes, &tree_indexes, stream).unwrap();
+        let (host_leaves, host_paths) = coefficient
+            .schedule_query_outputs_to_host(&device_indexes, &context)
+            .unwrap();
+        stream.synchronize().unwrap();
+        let host_leaves_accessor = host_leaves.get_accessor();
+        let host_paths_accessor = host_paths.get_accessor();
+        let host_leaves = unsafe { host_leaves_accessor.get() };
+        let host_paths = unsafe { host_paths_accessor.get() };
+
+        for query_index in 0..queries_count {
+            let leaf_start = query_index * values_per_leaf * EXT4_DEGREE;
+            let leaf_end = leaf_start + values_per_leaf * EXT4_DEGREE;
+            assert_eq!(
+                decode_leaf_values(&host_leaves[leaf_start..leaf_end], values_per_leaf),
+                expected_values[query_index],
+                "query {query_index} coefficient leaf mismatch",
+            );
+            let path_start = query_index * layers_count;
+            let path_end = path_start + layers_count;
+            assert_eq!(
+                &host_paths[path_start..path_end],
+                expected_paths[query_index].as_slice(),
+                "query {query_index} Merkle path mismatch",
+            );
+        }
+    }
+
+    #[test]
+    fn coefficient_query_kernels_from_evaluation_backing_match_cpu() {
+        assert_coefficient_query_kernels_from_evaluation_backing_match_cpu(6, 4, 2, 4, false);
+        assert_coefficient_query_kernels_from_evaluation_backing_match_cpu(7, 4, 2, 4, true);
+        assert_coefficient_query_kernels_from_evaluation_backing_match_cpu(6, 32, 32, 1, true);
+    }
+
+    fn assert_coefficient_leaf_hash_natural_staging_matches_materialized_reference(
+        log_trace_len: u32,
+        lde_factor: usize,
+        coset_index_base: u32,
+        cosets_in_tile: u32,
+    ) {
+        const TREE_CAP_SIZE: usize = 16;
+        const VALUES_PER_LEAF: usize = 32;
+
+        let context = make_test_context(256, 64);
+        let trace_len = 1usize << log_trace_len;
+        let log_lde_factor = lde_factor.trailing_zeros();
+        let log_values_per_leaf = VALUES_PER_LEAF.trailing_zeros();
+        let packed_leaf_count = trace_len / VALUES_PER_LEAF;
+        let total_leaves = packed_leaf_count * lde_factor;
+        let tile_leaves = packed_leaf_count * cosets_in_tile as usize;
+        let monomial_coeffs = sample_monomial_coeffs(trace_len);
+        let evaluation = GpuWhirExtensionOracle::from_monomial_coeffs(
+            &monomial_coeffs,
+            lde_factor,
+            VALUES_PER_LEAF,
+            TREE_CAP_SIZE,
+            false,
+            &context,
+        )
+        .unwrap();
+        let evaluations = evaluation.trace_holder.get_consolidated_cosets();
+        let stream = context.get_exec_stream();
+        let mut materialized = context
+            .alloc::<BF>(evaluations.len(), AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy_async(&mut materialized, evaluations, stream).unwrap();
+        {
+            let mut materialized_matrix = DeviceMatrixMut::new(&mut materialized, trace_len);
+            gpu_ntt::ntt::transform_whir_leaves_from_ntt_in_place_multi_coset(
+                &mut materialized_matrix,
+                log_trace_len,
+                log_lde_factor,
+                log_values_per_leaf,
+                0,
+                lde_factor as u32,
+                stream,
+            )
+            .unwrap();
+        }
+
+        let tile_bf_offset = coset_index_base as usize * trace_len * EXT4_DEGREE;
+        let mut reference_digests = context
+            .alloc::<Digest>(total_leaves, AllocationPlacement::BestFit)
+            .unwrap();
+        gpu_hash::blake2s::hash_leaves_from_ntt_multi_coset(
+            &materialized[tile_bf_offset..],
+            &mut reference_digests,
+            log_values_per_leaf,
+            EXT4_DEGREE as u32,
+            log_lde_factor,
+            coset_index_base,
+            cosets_in_tile as usize,
+            packed_leaf_count,
+            trace_len as u32,
+            stream,
+        )
+        .unwrap();
+
+        let mut staging = context
+            .alloc::<Digest>(tile_leaves, AllocationPlacement::BestFit)
+            .unwrap();
+        kernels::transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging(
+            &evaluations[tile_bf_offset..],
+            &mut staging,
+            log_trace_len,
+            log_lde_factor,
+            log_values_per_leaf,
+            coset_index_base,
+            cosets_in_tile,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params(log_values_per_leaf),
+            stream,
+        )
+        .unwrap();
+
+        let mut reference_host = vec![Digest::default(); total_leaves];
+        let mut staging_host = vec![Digest::default(); tile_leaves];
+        memory_copy_async(&mut reference_host, &reference_digests, stream).unwrap();
+        memory_copy_async(&mut staging_host, &staging, stream).unwrap();
+        stream.synchronize().unwrap();
+
+        for (gid, actual) in staging_host.iter().enumerate() {
+            let coset_in_tile = gid / packed_leaf_count;
+            let leaf_in_coset = gid % packed_leaf_count;
+            let natural_coset = coset_index_base as usize + coset_in_tile;
+            let bitrev_coset = super::bitreverse_index(natural_coset, log_lde_factor);
+            let reference_idx = bitrev_coset * packed_leaf_count + leaf_in_coset;
+            assert_eq!(
+                actual, &reference_host[reference_idx],
+                "natural staging mismatch for coset_index_base={coset_index_base}, gid={gid}",
+            );
+        }
+    }
+
+    #[test]
+    fn coefficient_leaf_hash_natural_staging_matches_materialized_reference() {
+        assert_coefficient_leaf_hash_natural_staging_matches_materialized_reference(17, 32, 0, 16);
+        assert_coefficient_leaf_hash_natural_staging_matches_materialized_reference(
+            9, 8192, 17, 4097,
+        );
+    }
+
+    #[test]
+    fn fused_coefficient_leaf_hash_matches_materialized_reference() {
+        let context = make_test_context(256, 32);
+        let monomial_coeffs = sample_monomial_coeffs(1 << 8);
+        const LDE_FACTOR: usize = 4;
+        const TREE_CAP_SIZE: usize = 16;
+
+        for log_values_per_leaf in 1..=5 {
+            let values_per_leaf = 1usize << log_values_per_leaf;
+            let evaluation = GpuWhirExtensionOracle::from_monomial_coeffs(
+                &monomial_coeffs,
+                LDE_FACTOR,
+                values_per_leaf,
+                TREE_CAP_SIZE,
+                false,
+                &context,
+            )
+            .unwrap();
+
+            let evaluations = evaluation.trace_holder.get_consolidated_cosets();
+            let stream = context.get_exec_stream();
+            let mut backing_before = vec![BF::ZERO; evaluations.len()];
+            memory_copy_async(&mut backing_before, evaluations, stream).unwrap();
+
+            let leaves_count = monomial_coeffs.len() * LDE_FACTOR / values_per_leaf;
+            let mut materialized = context
+                .alloc::<BF>(evaluations.len(), AllocationPlacement::BestFit)
+                .unwrap();
+            memory_copy_async(&mut materialized, evaluations, stream).unwrap();
+            {
+                let mut materialized_matrix =
+                    DeviceMatrixMut::new(&mut materialized, monomial_coeffs.len());
+                gpu_ntt::ntt::transform_whir_leaves_from_ntt_in_place_multi_coset(
+                    &mut materialized_matrix,
+                    8,
+                    LDE_FACTOR.trailing_zeros(),
+                    log_values_per_leaf,
+                    0,
+                    LDE_FACTOR as u32,
+                    stream,
+                )
+                .unwrap();
+            }
+            let mut reference_digests = context
+                .alloc::<Digest>(leaves_count, AllocationPlacement::BestFit)
+                .unwrap();
+            gpu_hash::blake2s::hash_leaves_from_ntt_multi_coset(
+                &materialized,
+                &mut reference_digests,
+                log_values_per_leaf,
+                EXT4_DEGREE as u32,
+                LDE_FACTOR.trailing_zeros(),
+                0,
+                LDE_FACTOR,
+                monomial_coeffs.len() / values_per_leaf,
+                monomial_coeffs.len() as u32,
+                stream,
+            )
+            .unwrap();
+
+            let mut fused_digests = context
+                .alloc::<Digest>(leaves_count, AllocationPlacement::BestFit)
+                .unwrap();
+            let transform_params = context
+                .ntt_device_context()
+                .whir_leaf_transform_params(log_values_per_leaf);
+            kernels::transform_and_hash_whir_leaves_from_ntt_multi_coset(
+                evaluations,
+                &mut fused_digests,
+                8,
+                LDE_FACTOR.trailing_zeros(),
+                log_values_per_leaf,
+                0,
+                LDE_FACTOR as u32,
+                transform_params,
+                stream,
+            )
+            .unwrap();
+
+            let mut actual_digests = vec![[0u32; gpu_hash::blake2s::STATE_SIZE]; leaves_count];
+            let mut expected_digests = vec![[0u32; gpu_hash::blake2s::STATE_SIZE]; leaves_count];
+            let mut backing_after = vec![BF::ZERO; evaluations.len()];
+            memory_copy_async(&mut actual_digests, &fused_digests, stream).unwrap();
+            memory_copy_async(&mut expected_digests, &reference_digests, stream).unwrap();
+            memory_copy_async(&mut backing_after, evaluations, stream).unwrap();
+            stream.synchronize().unwrap();
+
+            assert_eq!(
+                actual_digests, expected_digests,
+                "fused digest mismatch for values_per_leaf={values_per_leaf}",
+            );
+            assert_eq!(
+                backing_after, backing_before,
+                "fused commit mutated evaluation backing for values_per_leaf={values_per_leaf}",
+            );
+        }
+    }
+
+    fn assert_fused_coefficient_leaf_hash_matches_materialized_reference_under_load(
+        log_trace_len: u32,
+        lde_factor: usize,
+        values_per_leaf: usize,
+    ) {
+        const TREE_CAP_SIZE: usize = 16;
+
+        let context = make_test_context(256, 64);
+        let monomial_coeffs = sample_monomial_coeffs(1 << log_trace_len);
+        let oracle = GpuWhirExtensionOracle::from_monomial_coeffs(
+            &monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            TREE_CAP_SIZE,
+            false,
+            &context,
+        )
+        .unwrap();
+
+        let stream = context.get_exec_stream();
+        let evaluations = oracle.trace_holder.get_consolidated_cosets();
+        let mut materialized = context
+            .alloc::<BF>(evaluations.len(), AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy_async(&mut materialized, evaluations, stream).unwrap();
+        {
+            let mut materialized_matrix =
+                DeviceMatrixMut::new(&mut materialized, 1 << log_trace_len);
+            gpu_ntt::ntt::transform_whir_leaves_from_ntt_in_place_multi_coset(
+                &mut materialized_matrix,
+                log_trace_len,
+                lde_factor.trailing_zeros(),
+                values_per_leaf.trailing_zeros(),
+                0,
+                lde_factor as u32,
+                stream,
+            )
+            .unwrap();
+        }
+
+        let total_leaves = (1usize << log_trace_len) * lde_factor / values_per_leaf;
+        let mut reference_leaves = context
+            .alloc::<Digest>(total_leaves, AllocationPlacement::BestFit)
+            .unwrap();
+        gpu_hash::blake2s::hash_leaves_from_ntt_multi_coset(
+            &materialized,
+            &mut reference_leaves,
+            values_per_leaf.trailing_zeros(),
+            EXT4_DEGREE as u32,
+            lde_factor.trailing_zeros(),
+            0,
+            lde_factor,
+            (1usize << log_trace_len) / values_per_leaf,
+            1 << log_trace_len,
+            stream,
+        )
+        .unwrap();
+        let mut fused_leaves = context
+            .alloc::<Digest>(total_leaves, AllocationPlacement::BestFit)
+            .unwrap();
+        let transform_params = context
+            .ntt_device_context()
+            .whir_leaf_transform_params(values_per_leaf.trailing_zeros());
+        kernels::transform_and_hash_whir_leaves_from_ntt_multi_coset(
+            evaluations,
+            &mut fused_leaves,
+            log_trace_len,
+            lde_factor.trailing_zeros(),
+            values_per_leaf.trailing_zeros(),
+            0,
+            lde_factor as u32,
+            transform_params,
+            stream,
+        )
+        .unwrap();
+        let mut reference_leaves_host = vec![Digest::default(); total_leaves];
+        let mut fused_leaves_host = vec![Digest::default(); total_leaves];
+        memory_copy_async(&mut reference_leaves_host, &reference_leaves, stream).unwrap();
+        memory_copy_async(&mut fused_leaves_host, &fused_leaves, stream).unwrap();
+        stream.synchronize().unwrap();
+        if let Some((leaf_idx, (fused, reference))) = fused_leaves_host
+            .iter()
+            .zip(&reference_leaves_host)
+            .enumerate()
+            .find(|(_, (fused, reference))| fused != reference)
+        {
+            panic!(
+                "fused coefficient leaf mismatch at leaf {leaf_idx} for log_trace_len={log_trace_len}, lde_factor={lde_factor}, values_per_leaf={values_per_leaf}: fused={fused:?}, reference={reference:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn fused_coefficient_leaf_hash_matches_materialized_reference_under_load() {
+        for _ in 0..8 {
+            assert_fused_coefficient_leaf_hash_matches_materialized_reference_under_load(
+                11, 2048, 32,
+            );
+            assert_fused_coefficient_leaf_hash_matches_materialized_reference_under_load(
+                3, 65536, 4,
+            );
+        }
+    }
+
     fn recursive_oracle_lde_matches_cpu_impl(
         log_coeff_sizes: &[usize],
         values_per_leafs: &[usize],
@@ -835,7 +1401,18 @@ pub(crate) mod tests {
                     transform_leaves_to_multilinear_coeffs,
                     &worker,
                 );
-                let gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
+                let evaluation_cpu = transform_leaves_to_multilinear_coeffs.then(|| {
+                    cpu_extension_oracle_from_monomial_form(
+                        &monomial_coeffs,
+                        &twiddles,
+                        LDE_FACTOR,
+                        values_per_leaf,
+                        4,
+                        false,
+                        &worker,
+                    )
+                });
+                let mut gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
                     &monomial_coeffs,
                     LDE_FACTOR,
                     values_per_leaf,
@@ -846,12 +1423,38 @@ pub(crate) mod tests {
                 .unwrap();
 
                 for coset_index in 0..LDE_FACTOR {
+                    let retained_backing_reference = evaluation_cpu.as_ref().unwrap_or(&cpu);
                     assert_eq!(
                         gpu.copy_coset_values(coset_index, &context),
-                        cpu.cosets[coset_index].values_normal_order.column.to_vec(),
+                        retained_backing_reference.cosets[coset_index]
+                            .values_normal_order
+                            .column
+                            .to_vec(),
                         "coset {} diverged",
                         coset_index
                     );
+                }
+
+                if transform_leaves_to_multilinear_coeffs {
+                    assert_eq!(
+                        gpu.get_tree_cap(&context).unwrap(),
+                        PathQueriable::get_cap(&cpu.tree),
+                    );
+                    let leaves_count = monomial_coeffs.len() * LDE_FACTOR / values_per_leaf;
+                    for query_index in [0, leaves_count / 2, leaves_count - 1] {
+                        let (_, cpu_values, cpu_query) = cpu.query_for_folded_index(query_index);
+                        let (_, gpu_values, gpu_query) =
+                            gpu.query_for_folded_index(query_index, &context).unwrap();
+                        assert_eq!(gpu_values, cpu_values);
+                        assert_eq!(
+                            gpu_query,
+                            GpuWhirExtensionQuery {
+                                index: cpu_query.index,
+                                leaf_values_concatenated: cpu_query.leaf_values_concatenated,
+                                path: cpu_query.path,
+                            }
+                        );
+                    }
                 }
             }
         }
@@ -1142,5 +1745,26 @@ pub(crate) mod tests {
                 "query {query_index} path helper diverged"
             );
         }
+    }
+
+    #[test]
+    fn partial_tree_prefix_matches_full_tree() {
+        let shapes = [
+            (11u32, 2048usize, 32usize),
+            (8u32, 8192usize, 16usize),
+            (6u32, 32usize, 32usize),
+        ];
+        for transform in [false, true] {
+            for (log_trace_len, lde_factor, values_per_leaf) in shapes {
+                assert_partial_tree_prefix_matches_full(
+                    log_trace_len,
+                    lde_factor,
+                    values_per_leaf,
+                    1,
+                    transform,
+                );
+            }
+        }
+        assert_partial_tree_prefix_matches_full(14, 256, 32, 1, false);
     }
 }

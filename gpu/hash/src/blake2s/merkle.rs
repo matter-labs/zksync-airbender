@@ -1,6 +1,6 @@
-//! Blake2s Merkle-tree construction: node (2→1 digest) hashing and the
-//! single-launch-per-layer multi-coset tree builders used by the prover's
-//! commit paths.
+//! Blake2s Merkle-tree construction: the fused node tower (many Merkle layers
+//! per launch) and the multi-coset tree builders used by the prover's commit
+//! paths.
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -8,184 +8,93 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::BF;
-use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use gpu_core::primitives::utils::WARP_SIZE;
 
 use super::hash::{hash_leaves, hash_leaves_multi_coset};
 use super::{checked_u32, Digest};
 
 cuda_kernel!(
-    Nodes,
-    ab_blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32)
-);
-
-pub(super) fn hash_nodes(
-    values: &DeviceSlice<Digest>,
-    results: &mut DeviceSlice<Digest>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let values_len = values.len();
-    let results_len = results.len();
-    assert_eq!(values_len, results_len * 2);
-    let values = values.as_ptr();
-    let results = results.as_mut_ptr();
-    let count = checked_u32(results_len);
-    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = NodesArguments::new(values, results, count);
-    NodesFunction::default().launch(&config, &args)
-}
-
-/// Hash `layers_count` node layers up from the `values` layer, writing each
-/// successive (halving) layer contiguously into `results`.
-pub fn build_merkle_tree_nodes(
-    values: &DeviceSlice<Digest>,
-    results: &mut DeviceSlice<Digest>,
-    layers_count: u32,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    if layers_count == 0 {
-        Ok(())
-    } else {
-        let values_len = values.len();
-        let results_len = results.len();
-        let layer = values_len.trailing_zeros();
-        assert_eq!(values_len, 1 << layer);
-        assert_eq!(values_len, results_len);
-        let (nodes, nodes_remaining) = results.split_at_mut(results_len >> 1);
-        hash_nodes(values, nodes, stream)?;
-        build_merkle_tree_nodes(nodes, nodes_remaining, layers_count - 1, stream)
-    }
-}
-
-cuda_kernel!(
-    NodesMultiCoset,
-    ab_blake2s_nodes_multi_coset_kernel(
-        values: *const Digest,
-        results: *mut Digest,
-        log_per_coset_count: u32,
-        per_coset_values_stride_digests: u32,
-        per_coset_results_stride_digests: u32,
-        count: u32,
+    NodesTower,
+    ab_blake2s_nodes_tower_multi_coset_kernel(
+        src: *const Digest,
+        dst: *mut Digest,
+        layers: u32,
+        log_blocks_per_coset: u32,
+        stride_digests: u32,
+        src_count_per_coset: u32,
     )
 );
 
-/// Shared tail of the two multi-coset node launchers below: grid/args
-/// construction from already-derived raw pointers. The entry points exist
-/// solely because the borrow checker cannot express both the separate-backing
-/// and same-backing (offset-aliased) cases with one safe signature.
-fn launch_nodes_kernel_multi_coset_raw(
-    src_ptr: *const Digest,
-    dst_ptr: *mut Digest,
-    cosets_in_tile: usize,
-    per_coset_src_stride_digests: usize,
-    per_coset_dst_stride_digests: usize,
-    output_per_coset_count: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(cosets_in_tile >= 1);
-    assert!(
-        output_per_coset_count.is_power_of_two(),
-        "output_per_coset_count must be a power of two (got {output_per_coset_count})"
-    );
-    let log_per_coset_count = output_per_coset_count.trailing_zeros();
-    let total_count = checked_u32(
-        output_per_coset_count
-            .checked_mul(cosets_in_tile)
-            .expect("nodes total count overflow"),
-    );
-    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, total_count);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = NodesMultiCosetArguments::new(
-        src_ptr,
-        dst_ptr,
-        log_per_coset_count,
-        checked_u32(per_coset_src_stride_digests),
-        checked_u32(per_coset_dst_stride_digests),
-        total_count,
-    );
-    NodesMultiCosetFunction::default().launch(&config, &args)
+/// Layers one tower launch folds. A block owns one subtree and emits one digest
+/// per thread at layer 0, so it runs `1 << (LAYERS - 1)` threads over
+/// `1 << LAYERS` source digests, with that many digests of shared memory.
+const NODES_TOWER_MAX_LAYERS: u32 = 10;
+
+/// Digests a `layers`-deep tower writes over a `src_count`-digest source layer.
+fn tower_output_count(src_count: usize, layers: u32) -> usize {
+    src_count - (src_count >> layers)
 }
 
-/// Launch the multi-coset nodes kernel reading from `src_backing` (at
-/// `src_offset_in_coset` within each coset's slab of stride
-/// `per_coset_src_stride_digests`) and writing to `dst_backing` (at
-/// `dst_offset_in_coset` within each coset's slab of stride
-/// `per_coset_dst_stride_digests`). When src and dst are the same allocation,
-/// use `launch_nodes_kernel_multi_coset_at_offsets` to avoid the aliased
-/// `&mut` borrow.
-fn launch_nodes_kernel_multi_coset_separate(
-    src_backing: &DeviceSlice<Digest>,
-    dst_backing: &mut DeviceSlice<Digest>,
-    cosets_in_tile: usize,
-    per_coset_src_stride_digests: usize,
-    per_coset_dst_stride_digests: usize,
-    src_offset_in_coset: usize,
-    dst_offset_in_coset: usize,
-    output_per_coset_count: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    // Per-coset containment: each coset's read/write window must fit inside
-    // its own slab — the aggregate end checks below cannot see a window that
-    // spills into the next coset's slab.
-    let src_window_end = src_offset_in_coset
-        .checked_add(output_per_coset_count * 2)
-        .expect("src window overflow");
-    let dst_window_end = dst_offset_in_coset
-        .checked_add(output_per_coset_count)
-        .expect("dst window overflow");
-    assert!(src_window_end <= per_coset_src_stride_digests);
-    assert!(dst_window_end <= per_coset_dst_stride_digests);
-    let last_src_end = (cosets_in_tile - 1)
-        .checked_mul(per_coset_src_stride_digests)
-        .and_then(|x| x.checked_add(src_window_end))
-        .expect("src extent overflow");
-    let last_dst_end = (cosets_in_tile - 1)
-        .checked_mul(per_coset_dst_stride_digests)
-        .and_then(|x| x.checked_add(dst_window_end))
-        .expect("dst extent overflow");
-    assert!(src_backing.len() >= last_src_end);
-    assert!(dst_backing.len() >= last_dst_end);
-    let src_ptr = unsafe { src_backing.as_ptr().add(src_offset_in_coset) };
-    let dst_ptr = unsafe { dst_backing.as_mut_ptr().add(dst_offset_in_coset) };
-    launch_nodes_kernel_multi_coset_raw(
-        src_ptr,
-        dst_ptr,
-        cosets_in_tile,
-        per_coset_src_stride_digests,
-        per_coset_dst_stride_digests,
-        output_per_coset_count,
-        stream,
-    )
+/// Offset, relative to the tower's first output layer, of the last layer it
+/// writes — i.e. where the next tower's source layer begins.
+fn tower_last_layer_offset(src_count: usize, layers: u32) -> usize {
+    tower_output_count(src_count, layers - 1)
 }
 
-/// Launch the multi-coset nodes kernel against a single backing slab using
-/// per-coset src/dst offsets (in digests, relative to each coset's
-/// `per_coset_stride_digests` slab). Callers express a virtual src/dst view
-/// inside the per-coset slabs without re-slicing the backing buffer (which
-/// would violate Rust aliasing rules when src and dst sit in the same
-/// allocation).
-fn launch_nodes_kernel_multi_coset_at_offsets(
+fn launch_nodes_tower(
+    src: *const Digest,
+    dst: *mut Digest,
+    layers: u32,
+    cosets_in_tile: usize,
+    stride_digests: usize,
+    src_count_per_coset: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(src_count_per_coset.is_power_of_two());
+    assert!((1..=src_count_per_coset.trailing_zeros()).contains(&layers));
+    let threads = 1u32 << (layers - 1);
+    let blocks_per_coset = src_count_per_coset >> layers;
+    let grid = checked_u32(blocks_per_coset * cosets_in_tile);
+    let mut config = CudaLaunchConfig::basic(grid, threads, stream);
+    config.dynamic_smem_bytes = threads as usize * core::mem::size_of::<Digest>();
+    let args = NodesTowerArguments::new(
+        src,
+        dst,
+        layers,
+        blocks_per_coset.trailing_zeros(),
+        checked_u32(stride_digests),
+        checked_u32(src_count_per_coset),
+    );
+    NodesTowerFunction::default().launch(&config, &args)
+}
+
+/// Tower launch against a single backing slab, using per-coset src/dst offsets.
+/// Callers express a virtual src/dst view inside the per-coset slabs without
+/// re-slicing the backing buffer (which would violate Rust aliasing rules when
+/// src and dst sit in the same allocation).
+fn launch_nodes_tower_in_backing(
     backing: &mut DeviceSlice<Digest>,
     cosets_in_tile: usize,
     per_coset_stride_digests: usize,
     src_offset_in_coset: usize,
     dst_offset_in_coset: usize,
-    output_per_coset_count: usize,
+    src_count_per_coset: usize,
+    layers: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Per-coset containment: each coset's read/write window must fit inside
     // its own slab — the aggregate end checks below cannot see a window that
     // spills into the next coset's slab.
     let src_window_end = src_offset_in_coset
-        .checked_add(output_per_coset_count * 2)
+        .checked_add(src_count_per_coset)
         .expect("src window overflow");
     let dst_window_end = dst_offset_in_coset
-        .checked_add(output_per_coset_count)
+        .checked_add(tower_output_count(src_count_per_coset, layers))
         .expect("dst window overflow");
     assert!(src_window_end <= per_coset_stride_digests);
     assert!(dst_window_end <= per_coset_stride_digests);
-    // Same-backing launch: the write window must not overlap the read window
-    // within a slab (containment above already separates distinct cosets).
+    // The write window must not overlap the read window within a slab
+    // (containment above already separates distinct cosets).
     assert!(
         dst_offset_in_coset >= src_window_end || src_offset_in_coset >= dst_window_end,
         "src/dst windows overlap within the per-coset slab"
@@ -209,15 +118,76 @@ fn launch_nodes_kernel_multi_coset_at_offsets(
     let base = backing.as_mut_ptr();
     let src_ptr = unsafe { base.add(src_offset_in_coset) } as *const Digest;
     let dst_ptr = unsafe { base.add(dst_offset_in_coset) };
-    launch_nodes_kernel_multi_coset_raw(
+    launch_nodes_tower(
         src_ptr,
         dst_ptr,
+        layers,
         cosets_in_tile,
         per_coset_stride_digests,
-        per_coset_stride_digests,
-        output_per_coset_count,
+        src_count_per_coset,
         stream,
     )
+}
+
+fn tower_step_layers(remaining: u32, src_count: usize) -> u32 {
+    let layers = remaining
+        .min(NODES_TOWER_MAX_LAYERS)
+        .min(src_count.trailing_zeros());
+    assert!(
+        layers >= 1,
+        "source layer too small for another Merkle layer"
+    );
+    layers
+}
+
+/// Hash `layers_count` node layers up from the `values` layer, writing each
+/// successive (halving) layer contiguously into `results`.
+pub fn build_merkle_tree_nodes(
+    values: &DeviceSlice<Digest>,
+    results: &mut DeviceSlice<Digest>,
+    layers_count: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    if layers_count == 0 {
+        return Ok(());
+    }
+    let values_len = values.len();
+    let results_len = results.len();
+    assert!(values_len.is_power_of_two());
+    assert_eq!(values_len, results_len);
+    // The first tower's source layer lives outside `results`; every later one
+    // reads a layer it already wrote.
+    let layers = tower_step_layers(layers_count, values_len);
+    launch_nodes_tower(
+        values.as_ptr(),
+        results.as_mut_ptr(),
+        layers,
+        1,
+        0,
+        values_len,
+        stream,
+    )?;
+    let mut src_offset = tower_last_layer_offset(values_len, layers);
+    let mut src_count = values_len >> layers;
+    let mut remaining = layers_count - layers;
+    while remaining > 0 {
+        let layers = tower_step_layers(remaining, src_count);
+        let dst_offset = src_offset + src_count;
+        launch_nodes_tower_in_backing(
+            results,
+            1,
+            results_len,
+            src_offset,
+            dst_offset,
+            src_count,
+            layers,
+            stream,
+        )?;
+        src_offset = dst_offset + tower_last_layer_offset(src_count, layers);
+        src_count >>= layers;
+        remaining -= layers;
+    }
+    Ok(())
 }
 
 /// Iteratively hash up `layers_count` Merkle layers across `cosets_in_tile`
@@ -236,63 +206,101 @@ fn build_merkle_tree_nodes_multi_coset(
 ) -> CudaResult<()> {
     let mut src_offset = initial_src_offset_in_coset;
     let mut src_count = initial_src_layer_count_per_coset;
-    for _ in 0..layers_count {
-        assert_eq!(src_count % 2, 0);
-        let output_count_per_coset = src_count / 2;
+    let mut remaining = layers_count;
+    while remaining > 0 {
+        let layers = tower_step_layers(remaining, src_count);
         let dst_offset = src_offset + src_count;
-        launch_nodes_kernel_multi_coset_at_offsets(
+        launch_nodes_tower_in_backing(
             tree_backing,
             cosets_in_tile,
             per_coset_tree_stride_digests,
             src_offset,
             dst_offset,
-            output_count_per_coset,
+            src_count,
+            layers,
             stream,
         )?;
-        src_offset = dst_offset;
-        src_count = output_count_per_coset;
+        src_offset = dst_offset + tower_last_layer_offset(src_count, layers);
+        src_count >>= layers;
+        remaining -= layers;
     }
     Ok(())
 }
 
-/// Multi-coset variant of `build_merkle_tree_nodes` for the partial-tree
-/// bottom-hashing case: the first layer's input lives in `src_backing` (a
-/// separate allocation, typically the tree_tops slab); subsequent layers hash
-/// up inside `dst_backing` (the tree_bottoms slab) starting at offset 0.
-pub fn build_merkle_tree_nodes_multi_coset_from_external_src(
-    src_backing: &DeviceSlice<Digest>,
-    dst_backing: &mut DeviceSlice<Digest>,
+cuda_kernel!(
+    PartialTreeMultiCoset,
+    ab_blake2s_partial_tree_multi_coset_kernel(
+        values: *const BF,
+        tree_backing: *mut Digest,
+        log_rows_per_hash: u32,
+        cols_count: u32,
+        log_per_coset_count: u32,
+        per_coset_values_stride_bf: u32,
+        per_coset_tree_stride_digests: u32,
+        count: u32,
+    )
+);
+
+/// `values` is exact `[coset][column][row]` storage without padding. Each tree
+/// slab has `leaves / 16` digests and is filled `[level 5 | level 6 | ...]`.
+pub fn build_partial_merkle_tree_multi_coset(
+    values: &DeviceSlice<BF>,
+    tree_backing: &mut DeviceSlice<Digest>,
+    log_rows_per_hash: u32,
     layers_count: u32,
     cosets_in_tile: usize,
-    per_coset_src_stride_digests: usize,
-    per_coset_dst_stride_digests: usize,
-    src_offset_in_coset: usize,
-    src_layer_count_per_coset: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    if layers_count == 0 {
-        return Ok(());
-    }
-    assert_eq!(src_layer_count_per_coset % 2, 0);
-    let first_output_per_coset = src_layer_count_per_coset / 2;
-    launch_nodes_kernel_multi_coset_separate(
-        src_backing,
-        dst_backing,
-        cosets_in_tile,
-        per_coset_src_stride_digests,
-        per_coset_dst_stride_digests,
-        src_offset_in_coset,
-        /*dst_offset_in_coset=*/ 0,
-        first_output_per_coset,
+    const THREADS_PER_BLOCK: u32 = 256;
+    const LEAVES_PER_BLOCK: u32 = 512;
+    const REDUCTION_LAYERS: u32 = WARP_SIZE.trailing_zeros();
+
+    assert_ne!(layers_count, 0);
+    assert!(cosets_in_tile >= 1);
+    assert!(log_rows_per_hash < 32);
+    assert_eq!(tree_backing.len() % cosets_in_tile, 0);
+    let per_coset_tree_stride_digests = tree_backing.len() / cosets_in_tile;
+    assert!(per_coset_tree_stride_digests.is_power_of_two());
+    let per_coset_leaves_count = per_coset_tree_stride_digests << (REDUCTION_LAYERS - 1);
+    assert!(layers_count <= per_coset_tree_stride_digests.trailing_zeros());
+    let boundary_roots_per_coset = per_coset_leaves_count >> REDUCTION_LAYERS;
+    assert_eq!(values.len() % cosets_in_tile, 0);
+    let per_coset_values_stride_bf = values.len() / cosets_in_tile;
+    let rows_per_coset = per_coset_leaves_count
+        .checked_mul(1usize << log_rows_per_hash)
+        .expect("partial tree rows count overflow");
+    assert_eq!(per_coset_values_stride_bf % rows_per_coset, 0);
+    let cols_count = per_coset_values_stride_bf / rows_per_coset;
+
+    let total_leaves = checked_u32(
+        per_coset_leaves_count
+            .checked_mul(cosets_in_tile)
+            .expect("partial tree leaves count overflow"),
+    );
+    let mut config = CudaLaunchConfig::basic(
+        total_leaves.div_ceil(LEAVES_PER_BLOCK),
+        THREADS_PER_BLOCK,
         stream,
-    )?;
+    );
+    config.dynamic_smem_bytes = LEAVES_PER_BLOCK as usize * core::mem::size_of::<Digest>();
+    let args = PartialTreeMultiCosetArguments::new(
+        values.as_ptr(),
+        tree_backing.as_mut_ptr(),
+        log_rows_per_hash,
+        checked_u32(cols_count),
+        per_coset_leaves_count.trailing_zeros(),
+        checked_u32(per_coset_values_stride_bf),
+        checked_u32(per_coset_tree_stride_digests),
+        total_leaves,
+    );
+    PartialTreeMultiCosetFunction::default().launch(&config, &args)?;
     build_merkle_tree_nodes_multi_coset(
-        dst_backing,
+        tree_backing,
         layers_count - 1,
         cosets_in_tile,
-        per_coset_dst_stride_digests,
-        /*initial_src_offset_in_coset=*/ 0,
-        /*initial_src_layer_count_per_coset=*/ first_output_per_coset,
+        per_coset_tree_stride_digests,
+        0,
+        boundary_roots_per_coset,
         stream,
     )
 }

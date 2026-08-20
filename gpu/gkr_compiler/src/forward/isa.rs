@@ -1,15 +1,18 @@
 //! Instruction and operand types for the forward-eval VM.
 //!
-//! These constants define the Rust side of the 16-bit wire format;
-//! `eval_vm_isa.cuh` mirrors them for CUDA.
+//! These constants define the compiler's 16-bit instruction format. Runtime
+//! lowering repacks source coordinates for the CUDA descriptor.
 
 pub(crate) const TYPE_BITS: u32 = 2;
 pub(crate) const SOURCE_WINDOW_SHIFT: u32 = TYPE_BITS;
 pub(crate) const SOURCE_WINDOW_BITS: u32 = 6;
+#[cfg(test)]
 pub(crate) const SOURCE_COLUMN_SHIFT: u32 = SOURCE_WINDOW_SHIFT + SOURCE_WINDOW_BITS;
 pub(crate) const SOURCE_COLUMN_BITS: u32 = 7;
 pub(crate) const MAX_SOURCE_WINDOWS: u32 = 1 << SOURCE_WINDOW_BITS;
 pub const SOURCE_WINDOW_COLUMNS: u32 = 1 << SOURCE_COLUMN_BITS;
+pub(crate) const RUNTIME_SOURCE_WINDOW_BITS: u32 = 4;
+pub(crate) const RUNTIME_SOURCE_COLUMN_BITS: u32 = 9;
 // Compiler-private backing and destination coordinates. These are not source-lane fields.
 pub(crate) const SLOT_BITS: u32 = 4; // ≤16 logical backings/layer
 pub(crate) const COL_BITS: u32 = 10; // ≤1024 logical cols/backing
@@ -122,7 +125,7 @@ pub enum OperandLine {
     /// Final physical source coordinate carried by the 16-bit program lane.
     Source {
         window: u8,
-        column: u8,
+        column: u16,
     },
     Smem {
         cell: u16,
@@ -181,9 +184,10 @@ mod tests {
     use super::*;
 
     const CUDA_ISA: &str = include_str!("../../../gkr/native/gkr/eval_vm_isa.cuh");
+    const CUDA_FORWARD_DESC: &str = include_str!("../../../gkr/native/gkr/forward/fwd_vm.cuh");
 
-    fn cpp_expr(name: &str) -> &str {
-        CUDA_ISA
+    fn cpp_expr<'a>(source: &'a str, name: &str) -> &'a str {
+        source
             .lines()
             .find_map(|line| {
                 let line = line.trim();
@@ -196,7 +200,7 @@ mod tests {
     }
 
     fn assert_literal(name: &str, value: u32) {
-        assert_eq!(cpp_expr(name), value.to_string(), "{name}");
+        assert_eq!(cpp_expr(CUDA_ISA, name), value.to_string(), "{name}");
     }
 
     #[test]
@@ -206,8 +210,6 @@ mod tests {
             ("FWD_VM_HDR_ARITY_BITS", ARITY_BITS),
             ("FWD_VM_MOV_DIR_BITS", MOV_DIR_BITS),
             ("FWD_VM_OPERAND_TAG_BITS", TYPE_BITS),
-            ("FWD_VM_SOURCE_WINDOW_BITS", SOURCE_WINDOW_BITS),
-            ("FWD_VM_SOURCE_COLUMN_BITS", SOURCE_COLUMN_BITS),
             ("FWD_VM_LDC_SUB_BITS", LDC_SUB_BITS),
             ("FWD_VM_DST_TAG_BITS", DST_TAG_BITS),
             ("FWD_VM_DST_SLOT_BITS", SLOT_BITS),
@@ -242,10 +244,6 @@ mod tests {
                 "FWD_VM_MOV_DIR_SHIFT + FWD_VM_MOV_DIR_BITS",
             ),
             ("FWD_VM_SOURCE_WINDOW_SHIFT", "FWD_VM_OPERAND_TAG_BITS"),
-            (
-                "FWD_VM_SOURCE_COLUMN_SHIFT",
-                "FWD_VM_SOURCE_WINDOW_SHIFT + FWD_VM_SOURCE_WINDOW_BITS",
-            ),
             ("FWD_VM_OPERAND_CELL_SHIFT", "FWD_VM_OPERAND_TAG_BITS"),
             ("FWD_VM_OPERAND_DESC_SHIFT", "FWD_VM_OPERAND_TAG_BITS"),
             ("FWD_VM_LDC_SUB_SHIFT", "FWD_VM_OPERAND_TAG_BITS"),
@@ -260,8 +258,21 @@ mod tests {
                 "FWD_VM_DST_SLOT_SHIFT + FWD_VM_DST_SLOT_BITS",
             ),
         ] {
-            assert_eq!(cpp_expr(name), expression, "{name}");
+            assert_eq!(cpp_expr(CUDA_ISA, name), expression, "{name}");
         }
+
+        assert_eq!(
+            cpp_expr(CUDA_FORWARD_DESC, "FWD_VM_SOURCE_WINDOW_BITS"),
+            RUNTIME_SOURCE_WINDOW_BITS.to_string()
+        );
+        assert_eq!(
+            cpp_expr(CUDA_FORWARD_DESC, "FWD_VM_SOURCE_COLUMN_BITS"),
+            RUNTIME_SOURCE_COLUMN_BITS.to_string()
+        );
+        assert_eq!(
+            cpp_expr(CUDA_FORWARD_DESC, "FWD_VM_SOURCE_COLUMN_SHIFT"),
+            "FWD_VM_SOURCE_WINDOW_SHIFT + FWD_VM_SOURCE_WINDOW_BITS"
+        );
 
         assert_eq!(ARITY_SHIFT, OPCODE_BITS);
         assert_eq!(F0_SHIFT, ARITY_SHIFT + ARITY_BITS);

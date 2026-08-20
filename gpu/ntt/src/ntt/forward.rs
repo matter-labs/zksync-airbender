@@ -9,6 +9,7 @@ use super::kernels::*;
 use super::shared;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
+    MutPtrAndStride, PtrAndStride,
 };
 use gpu_core::primitives::field::BaseField;
 use gpu_core::primitives::utils::GetChunksCount;
@@ -16,6 +17,53 @@ use gpu_core::primitives::utils::GetChunksCount;
 use std::mem::size_of;
 
 type BF = BaseField;
+
+/// The two forward noninitial passes for one (column-chunk, coset-tile). The
+/// LAST pass uses the evict variant: its inputs are dead after the read and
+/// its output is not re-read within the LDE phase.
+fn launch_noninitial_pair(
+    output_matrix_const: PtrAndStride<BF>,
+    output_matrix_mut: MutPtrAndStride<BF>,
+    log_n: usize,
+    ntts_in_launch: usize,
+    num_cols_per_coset: usize,
+    log_cosets_in_tile: i32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = 1usize << log_n;
+    let bf_vals_per_block = 1usize << 13; // 8192
+    let mut start_stage = log_n - 16;
+    for _ in 0..2 {
+        let num_block_exchg_regions = n >> (start_stage + 8);
+        let block_exchg_region_size = 1 << (start_stage + 8);
+        let blocks_per_exchg_region = block_exchg_region_size / bf_vals_per_block;
+        debug_assert_eq!(
+            blocks_per_exchg_region * num_block_exchg_regions,
+            n / bf_vals_per_block
+        );
+        let grid_dim: Dim3 = (blocks_per_exchg_region as u32
+            * num_block_exchg_regions as u32
+            * ntts_in_launch as u32)
+            .into();
+        let config = CudaLaunchConfig::basic(grid_dim, 256, stream);
+        let args = StridedTilesStagesArguments::new(
+            output_matrix_const,
+            output_matrix_mut,
+            log_n as i32,
+            start_stage as i32,
+            shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+            log_cosets_in_tile,
+        );
+        let noninitial = if start_stage == log_n - 8 {
+            ab_monomials_to_evals_noninitial_8_stages_evict_kernel
+        } else {
+            ab_monomials_to_evals_noninitial_8_stages_kernel
+        };
+        StridedTilesStagesFunction(noninitial).launch(&config, &args)?;
+        start_stage += 8;
+    }
+    Ok(())
+}
 
 pub(crate) fn monomials_to_evals_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -123,40 +171,87 @@ pub(crate) fn monomials_to_evals_3_pass(
                 log_cosets_in_tile,
             );
             initial_function.launch(&config, &args_initial)?;
-            // Two noninitial_8 passes with start_stage = log_n - 16, log_n - 8.
-            let threads = 512;
-            let mut start_stage = log_n - 16;
-            for _ in 0..2 {
-                let num_block_exchg_regions = n >> (start_stage + 8);
-                let block_exchg_region_size = 1 << (start_stage + 8);
-                let blocks_per_exchg_region = block_exchg_region_size / bf_vals_per_block;
-                debug_assert_eq!(
-                    blocks_per_exchg_region * num_block_exchg_regions,
-                    n / bf_vals_per_block
-                );
-                let grid_dim: Dim3 = (blocks_per_exchg_region as u32
-                    * num_block_exchg_regions as u32
-                    * cosets_in_tile as u32
-                    * cols_in_chunk as u32)
-                    .into();
-                let config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
-                let args = StridedTilesStagesArguments::new(
-                    output_matrix_const,
-                    output_matrix_mut,
-                    log_n as i32,
-                    start_stage as i32,
-                    shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
-                    log_cosets_in_tile,
-                );
-                StridedTilesStagesFunction(ab_monomials_to_evals_noninitial_8_stages_kernel)
-                    .launch(&config, &args)?;
-                start_stage += 8;
-            }
+            launch_noninitial_pair(
+                output_matrix_const,
+                output_matrix_mut,
+                log_n,
+                cosets_in_tile * cols_in_chunk,
+                num_cols_per_coset,
+                log_cosets_in_tile,
+                stream,
+            )?;
             coset_tile_start += cosets_in_tile;
         }
         col_start += cols_in_chunk;
     }
     Ok(())
+}
+
+/// First-coset arm of the fused-boundary LDE: the fused kernel (iNTT final +
+/// in-place monomial writeback + coset scale + forward initial) followed by
+/// the two noninitial passes. Transposed-monomial layout only.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn fused_writeback_single_coset_3_pass(
+    scratch_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_n: usize,
+    coset_index_base: usize,
+    coset_factor_shift: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = 1 << log_n;
+    assert_eq!(scratch_matrix.rows(), n);
+    assert_eq!(outputs_matrix.rows(), n);
+    shared::assert_ntt_16b_aligned(scratch_matrix, outputs_matrix);
+    let num_ntts = scratch_matrix.cols();
+    assert_eq!(outputs_matrix.cols(), num_ntts);
+    let fused_function = match log_n {
+        21 => LdeFusedWritebackFunction(ab_lde_fused_boundary_writeback_5_stages_kernel),
+        22 => LdeFusedWritebackFunction(ab_lde_fused_boundary_writeback_6_stages_kernel),
+        23 => LdeFusedWritebackFunction(ab_lde_fused_boundary_writeback_7_stages_kernel),
+        24 => LdeFusedWritebackFunction(ab_lde_fused_boundary_writeback_8_stages_kernel),
+        _ => unreachable!("fused LDE boundary kernels are only generated for log_n in 21..=24"),
+    };
+    let scratch = scratch_matrix.as_mut_ptr_and_stride();
+    let output_matrix_const = {
+        let output_slice_const = unsafe {
+            DeviceSlice::from_raw_parts(
+                outputs_matrix.slice().as_ptr(),
+                outputs_matrix.slice().len(),
+            )
+        };
+        DeviceMatrixChunk::new(
+            output_slice_const,
+            outputs_matrix.stride(),
+            outputs_matrix.offset(),
+            n,
+        )
+        .as_ptr_and_stride()
+    };
+    let output_matrix_mut = outputs_matrix.as_mut_ptr_and_stride();
+    let bf_vals_per_block = 1 << 13; // 8192
+    let blocks = n.get_chunks_count(bf_vals_per_block);
+    let grid_dim: Dim3 = (blocks as u32 * num_ntts as u32).into();
+    let config = CudaLaunchConfig::basic(grid_dim, 256, stream);
+    let args = LdeFusedWritebackArguments::new(
+        scratch,
+        output_matrix_mut,
+        log_n as i32,
+        shared::checked_i32(coset_index_base, "coset_index_base"),
+        shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+        shared::checked_i32(num_ntts, "num_cols_per_coset"),
+        0,
+    );
+    fused_function.launch(&config, &args)?;
+    launch_noninitial_pair(
+        output_matrix_const,
+        output_matrix_mut,
+        log_n,
+        num_ntts,
+        num_ntts,
+        0,
+        stream,
+    )
 }
 
 pub(crate) fn monomials_to_evals_compact_1_pass(
@@ -607,7 +702,7 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
             );
             pass1_function.launch(&config, &args)?;
             // Pass 2: noninitial_8 with start_stage = log_k.
-            let threads_pass2 = 512;
+            let threads_pass2 = 256;
             let bf_vals_per_block_pass2 = 1 << 13;
             let start_stage = log_k;
             let num_block_exchg_regions = n >> (start_stage + 8);

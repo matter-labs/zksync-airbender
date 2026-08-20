@@ -67,6 +67,20 @@ pub(crate) struct MemoryCommitmentResult<A: GoodAllocator> {
     pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
 }
 
+pub(crate) struct SetupInitializationRequest {
+    pub batch_id: u64,
+    pub circuit_type: CircuitType,
+    pub sequence_id: usize,
+    pub precomputations: CircuitPrecomputations,
+    pub security_level: SecurityLevel,
+}
+
+pub(crate) struct SetupInitializationResult {
+    pub batch_id: u64,
+    pub circuit_type: CircuitType,
+    pub sequence_id: usize,
+}
+
 pub(crate) struct ProofRequest<A: GoodAllocator> {
     pub batch_id: u64,
     pub circuit_type: CircuitType,
@@ -94,6 +108,7 @@ pub(crate) struct ProofResult<A: GoodAllocator> {
 pub(crate) enum GpuWorkRequest<A: GoodAllocator> {
     MemoryCommitment(MemoryCommitmentRequest<A>),
     Proof(ProofRequest<A>),
+    SetupInitialization(SetupInitializationRequest),
 }
 
 impl<A: GoodAllocator> GpuWorkRequest<A> {
@@ -101,6 +116,7 @@ impl<A: GoodAllocator> GpuWorkRequest<A> {
         match self {
             GpuWorkRequest::MemoryCommitment(request) => request.batch_id,
             GpuWorkRequest::Proof(request) => request.batch_id,
+            GpuWorkRequest::SetupInitialization(request) => request.batch_id,
         }
     }
 
@@ -108,6 +124,7 @@ impl<A: GoodAllocator> GpuWorkRequest<A> {
         match self {
             GpuWorkRequest::MemoryCommitment(request) => request.circuit_type,
             GpuWorkRequest::Proof(request) => request.circuit_type,
+            GpuWorkRequest::SetupInitialization(request) => request.circuit_type,
         }
     }
 
@@ -115,6 +132,7 @@ impl<A: GoodAllocator> GpuWorkRequest<A> {
         match self {
             GpuWorkRequest::MemoryCommitment(request) => request.sequence_id,
             GpuWorkRequest::Proof(request) => request.sequence_id,
+            GpuWorkRequest::SetupInitialization(request) => request.sequence_id,
         }
     }
 }
@@ -126,6 +144,7 @@ impl<A: GoodAllocator> GpuWorkRequest<A> {
 pub(crate) enum GpuWorkResult<A: GoodAllocator> {
     MemoryCommitment(MemoryCommitmentResult<A>),
     Proof(ProofResult<A>),
+    SetupInitialization(SetupInitializationResult),
 }
 
 impl<A: GoodAllocator> GpuWorkResult<A> {
@@ -133,6 +152,7 @@ impl<A: GoodAllocator> GpuWorkResult<A> {
         match self {
             GpuWorkResult::MemoryCommitment(result) => result.circuit_type,
             GpuWorkResult::Proof(result) => result.circuit_type,
+            GpuWorkResult::SetupInitialization(result) => result.circuit_type,
         }
     }
 
@@ -140,6 +160,7 @@ impl<A: GoodAllocator> GpuWorkResult<A> {
         match self {
             GpuWorkResult::MemoryCommitment(result) => result.sequence_id,
             GpuWorkResult::Proof(result) => result.sequence_id,
+            GpuWorkResult::SetupInitialization(result) => result.sequence_id,
         }
     }
 }

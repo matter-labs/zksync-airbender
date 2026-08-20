@@ -29,7 +29,7 @@ pub use stage_snapshots::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink
 pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 
 use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
-use main_layer::blueprints::build_dimension_reducing_kernel_blueprints_static;
+use main_layer::blueprints::build_dimension_reducing_slots_static;
 impl GpuGKRDimensionReducingBackwardState {
     pub(super) fn new(
         forward_tracing_ranges: Vec<Range>,
@@ -91,38 +91,25 @@ impl GpuGKRDimensionReducingBackwardState {
 }
 
 impl GpuGKRDimensionReducingBackwardState {
-    fn prepare_layer_from_blueprints(
+    fn prepare_layer_from_slots(
         &mut self,
         layer_idx: usize,
-        blueprints: &[GpuGKRDimensionReducingKernelPlan],
+        layer_slots: GpuGKRDimensionReducingLayerSlots,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingSumcheckLayerPlan> {
         let trace_len_after_reduction = self.next_trace_len_after_reduction;
         assert!(trace_len_after_reduction.is_power_of_two());
         let folding_steps = trace_len_after_reduction.trailing_zeros() as usize;
         assert!(folding_steps >= 2);
-        assert!(
-            blueprints.len() <= GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
-            "fused dimension-reducing backward supports at most {} kernels per layer, got {}",
-            GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
-            blueprints.len()
-        );
-        let batch_challenge_count = blueprints
-            .iter()
-            .map(|blueprint| blueprint.kind.challenge_count())
-            .sum::<usize>();
-        assert!(
-            batch_challenge_count <= GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
-            "fused dimension-reducing backward supports at most {} batch challenges per layer, got {}",
-            GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
-            batch_challenge_count
+        assert_ne!(
+            layer_slots.enabled_mask(),
+            0,
+            "dimension-reducing layer must enable at least one slot"
         );
 
         let aliases = self.storage.layout.as_ref().map(|layout| &layout.aliases);
-        let dim_reducing_ext_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
-            .iter()
-            .flat_map(|bp| bp.inputs.inputs_in_extension.iter().copied())
-            .filter(|addr| *addr != GKRAddress::placeholder())
+        let dim_reducing_ext_inputs: std::collections::BTreeSet<GKRAddress> = layer_slots
+            .input_addresses()
             .map(|address| {
                 aliases
                     .and_then(|aliases| aliases.get(&address))
@@ -130,10 +117,9 @@ impl GpuGKRDimensionReducingBackwardState {
                     .unwrap_or(address)
             })
             .collect();
-        let kernel_plans = blueprints.to_vec();
 
         let round0_batch_template_compact =
-            self::dim_reducing_encoder::build_round0_batch_compact(blueprints, &self.storage);
+            self::dim_reducing_encoder::build_round0_batch_compact(&layer_slots, &self.storage);
         let max_acc_size = trace_len_after_reduction / 2;
         let partials_len = kernels::max_partials_len(max_acc_size);
         let partials = context.alloc(partials_len, AllocationPlacement::Top)?;
@@ -150,7 +136,7 @@ impl GpuGKRDimensionReducingBackwardState {
             layer_idx,
             trace_len_after_reduction,
             folding_steps,
-            kernel_plans,
+            layer_slots,
             folding_addresses: dim_reducing_ext_inputs.into_iter().collect(),
             round0_batch_template_compact,
             round_scratch,
@@ -165,10 +151,10 @@ impl GpuGKRDimensionReducingBackwardState {
         let Some((layer_idx, layer)) = self.pending_layers.pop_front() else {
             return Ok(None);
         };
-        let blueprints = build_dimension_reducing_kernel_blueprints_static(&layer);
-        Ok(Some(self.prepare_layer_from_blueprints(
+        let layer_slots = build_dimension_reducing_slots_static(&layer);
+        Ok(Some(self.prepare_layer_from_slots(
             layer_idx,
-            &blueprints,
+            layer_slots,
             context,
         )?))
     }

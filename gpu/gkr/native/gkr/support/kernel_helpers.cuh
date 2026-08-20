@@ -204,8 +204,17 @@ struct __align__(16) gkr_trace_holder_bf4 {
   bf values[4];
 };
 
-template <typename E>
-DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, const E *eq_values, E *block_partials, const unsigned trace_len,
+template <typename E> struct gkr_trace_holder_eq_dense {
+  const E *eq_values;
+  DEVICE_FORCEINLINE void load4(const unsigned row, E (&eq)[4]) const {
+#pragma unroll
+    for (unsigned i = 0; i < 4; ++i)
+      eq[i] = load<E, ld_modifier::cs>(eq_values, row + i);
+  }
+};
+
+template <typename E, typename EqFn>
+DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, const EqFn eq_fn, E *block_partials, const unsigned trace_len,
                                                         const unsigned column_start, const unsigned chunk_cols, const unsigned blocks_count) {
   static_assert(GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK % GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE == 0);
   static_assert(sizeof(gkr_trace_holder_bf4) == 4 * sizeof(bf));
@@ -225,10 +234,8 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
 
   for (unsigned packed_row = packed_gid; packed_row < packed_trace_len; packed_row += packed_stride) {
     const unsigned row = packed_row << 2;
-    const E eq0 = load<E, ld_modifier::cs>(eq_values, row);
-    const E eq1 = load<E, ld_modifier::cs>(eq_values, row + 1);
-    const E eq2 = load<E, ld_modifier::cs>(eq_values, row + 2);
-    const E eq3 = load<E, ld_modifier::cs>(eq_values, row + 3);
+    E eq[4];
+    eq_fn.load4(row, eq);
 #pragma unroll
     for (unsigned local_col = 0; local_col < GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK; ++local_col) {
       if (local_col >= chunk_cols)
@@ -236,10 +243,10 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
       const unsigned column = column_start + local_col;
       const size_t row_offset = static_cast<size_t>(column) * trace_len + row;
       const auto values = load<gkr_trace_holder_bf4, ld_modifier::cs>(reinterpret_cast<const gkr_trace_holder_bf4 *>(raw_values), row_offset >> 2);
-      E partial = E::mul(values.values[0], eq0);
-      partial = E::fma(eq1, values.values[1], partial);
-      partial = E::fma(eq2, values.values[2], partial);
-      partial = E::fma(eq3, values.values[3], partial);
+      E partial = E::mul(values.values[0], eq[0]);
+      partial = E::fma(eq[1], values.values[1], partial);
+      partial = E::fma(eq[2], values.values[2], partial);
+      partial = E::fma(eq[3], values.values[3], partial);
       accumulators[local_col] = E::add(accumulators[local_col], partial);
     }
   }
@@ -269,6 +276,18 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
       store<E, st_modifier::cs>(block_partials, block_sum, partial_offset);
     }
   }
+}
+
+// Launch contract: blockDim = one warp, blockIdx.x = column.
+template <typename E> DEVICE_FORCEINLINE void gkr_trace_holder_column_sums(const E *block_partials, E *column_sums, const unsigned blocks_count) {
+  const unsigned lane_id = threadIdx.x;
+  const size_t column_base = static_cast<size_t>(blockIdx.x) * blocks_count;
+  E acc = E::ZERO();
+  for (unsigned i = lane_id; i < blocks_count; i += GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE)
+    acc = E::add(acc, load<E, ld_modifier::cs>(block_partials, column_base + i));
+  acc = gkr_trace_holder_partials_warp_reduce_sum(acc);
+  if (lane_id == 0)
+    store<E, st_modifier::cs>(column_sums, acc, blockIdx.x);
 }
 
 } // namespace airbender::gkr

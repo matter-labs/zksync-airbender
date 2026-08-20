@@ -1,55 +1,49 @@
 use std::collections::BTreeMap;
 
-use crate::upstream::{DimensionReducingInputOutput, GKRAddress, GKRInputs, OutputType};
+use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 
-use super::super::kernels::{GpuGKRDimensionReducingKernelKind, GpuGKRDimensionReducingKernelPlan};
+use super::super::kernels::{
+    dim_reducing_slot_index, GpuGKRDimensionReducingLayerSlots, GpuGKRDimensionReducingSlotPlan,
+    GKR_DIM_REDUCING_INPUTS_PER_SLOT, GKR_DIM_REDUCING_OUTPUTS_PER_SLOT,
+};
 
-pub(in crate::backward) fn build_dimension_reducing_kernel_blueprints_static(
+/// Lowers a layer's `OutputType`-keyed IO map onto the fixed slot table; absent
+/// output types leave their slot disabled.
+///
+/// Exponents are packed densely, two per enabled slot. `BTreeMap` iterates in
+/// `OutputType` `Ord` order and slot index is monotonic in that order, so this
+/// reproduces the numbering the generated verifier derives by walking its own
+/// present output groups.
+pub(in crate::backward) fn build_dimension_reducing_slots_static(
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
-) -> Vec<GpuGKRDimensionReducingKernelPlan> {
-    let mut next_batch_challenge_offset = 0;
-    let mut blueprints = Vec::new();
+) -> GpuGKRDimensionReducingLayerSlots {
+    let mut layer_slots = GpuGKRDimensionReducingLayerSlots::default();
+    let mut next_batch_exp = 0u16;
+
     for (output_type, reduced) in layer {
-        match output_type {
-            OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
-                for (input, output) in reduced.inputs.iter().zip(&reduced.output) {
-                    blueprints.push(GpuGKRDimensionReducingKernelPlan {
-                        kind: GpuGKRDimensionReducingKernelKind::Pairwise,
-                        inputs: GKRInputs {
-                            inputs_in_base: Vec::new(),
-                            inputs_in_extension: vec![*input],
-                            outputs_in_base: Vec::new(),
-                            outputs_in_extension: vec![*output],
-                        },
-                        batch_challenge_offset: next_batch_challenge_offset,
-                    });
-                    next_batch_challenge_offset += 1;
-                }
-            }
-            OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
-                let inputs: [GKRAddress; 2] = reduced
-                    .inputs
-                    .clone()
-                    .try_into()
-                    .expect("dimension-reducing lookup expects two inputs");
-                let outputs: [GKRAddress; 2] = reduced
-                    .output
-                    .clone()
-                    .try_into()
-                    .expect("dimension-reducing lookup expects two outputs");
-                blueprints.push(GpuGKRDimensionReducingKernelPlan {
-                    kind: GpuGKRDimensionReducingKernelKind::Lookup,
-                    inputs: GKRInputs {
-                        inputs_in_base: Vec::new(),
-                        inputs_in_extension: inputs.to_vec(),
-                        outputs_in_base: Vec::new(),
-                        outputs_in_extension: outputs.to_vec(),
-                    },
-                    batch_challenge_offset: next_batch_challenge_offset,
-                });
-                next_batch_challenge_offset += 2;
-            }
-        }
+        let inputs: [GKRAddress; GKR_DIM_REDUCING_INPUTS_PER_SLOT] =
+            reduced.inputs.clone().try_into().unwrap_or_else(|_| {
+                panic!("dimension-reducing {output_type:?} expects two inputs")
+            });
+        let outputs: [GKRAddress; GKR_DIM_REDUCING_OUTPUTS_PER_SLOT] =
+            reduced.output.clone().try_into().unwrap_or_else(|_| {
+                panic!("dimension-reducing {output_type:?} expects two outputs")
+            });
+
+        let batch_exp = [next_batch_exp, next_batch_exp + 1];
+        next_batch_exp += GKR_DIM_REDUCING_OUTPUTS_PER_SLOT as u16;
+
+        let slot_idx = dim_reducing_slot_index(*output_type);
+        let previous = layer_slots.slots[slot_idx].replace(GpuGKRDimensionReducingSlotPlan {
+            inputs,
+            outputs,
+            batch_exp,
+        });
+        assert!(
+            previous.is_none(),
+            "duplicate dimension-reducing slot for {output_type:?}"
+        );
     }
-    blueprints
+
+    layer_slots
 }
