@@ -69,7 +69,8 @@ cuda_kernel!(
 /// LSB sibling of [`hash_leaves`]: `values` is the BITREVERSED-order codeword,
 /// so each leaf is one physically contiguous block of `1 << log_rows_per_hash`
 /// rows and digest `j` is the old logical leaf `bitreverse(j)`.
-pub fn hash_leaves_physical(
+#[allow(dead_code)]
+pub(super) fn hash_leaves_physical(
     values: &DeviceSlice<BF>,
     results: &mut DeviceSlice<Digest>,
     log_rows_per_hash: u32,
@@ -350,6 +351,10 @@ cuda_kernel!(
 /// contiguous run of `1 << log_values_per_leaf` rows and per-coset digest `j` is
 /// the old logical leaf `bitreverse(j)`. The bit-reversed coset placement of the
 /// destination is unchanged.
+/// Digests land in PHYSICAL order within each coset and no companion builder
+/// canonicalizes them: a future caller must apply the strided digest
+/// bit-reverse (as `gpu_trace::build_full_trees_from_physical` does) or hash
+/// logical leaves via the partial-style builder.
 pub fn hash_leaves_from_ntt_multi_coset_physical(
     ntt_output: &DeviceSlice<BF>,
     results: &mut DeviceSlice<Digest>,
@@ -489,6 +494,10 @@ cuda_kernel!(
 /// LSB sibling of [`hash_leaves_from_ntt_multi_coset_to_staging`]: `ntt_output`
 /// holds the BITREVERSED-order codeword per column, so per-coset staging digest
 /// `j` is the old logical leaf `bitreverse(j)`.
+/// Digests land in PHYSICAL order within each coset and no companion builder
+/// canonicalizes them: a future caller must apply the strided digest
+/// bit-reverse (as `gpu_trace::build_full_trees_from_physical` does) or hash
+/// logical leaves via the partial-style builder.
 pub fn hash_leaves_from_ntt_multi_coset_to_staging_physical(
     ntt_output: &DeviceSlice<BF>,
     staging: &mut DeviceSlice<Digest>,
@@ -614,6 +623,10 @@ cuda_kernel!(
 /// holds the BITREVERSED-order codeword per column, so per-coset staging digest
 /// `j` is the old logical leaf `bitreverse(j)`. The flat-range → coset/leaf
 /// decomposition of the destination is unchanged.
+/// Digests land in PHYSICAL order within each coset and no companion builder
+/// canonicalizes them: a future caller must apply the strided digest
+/// bit-reverse (as `gpu_trace::build_full_trees_from_physical` does) or hash
+/// logical leaves via the partial-style builder.
 pub fn hash_leaves_from_ntt_flat_range_to_staging_physical(
     ntt_output: &DeviceSlice<BF>,
     staging: &mut DeviceSlice<Digest>,

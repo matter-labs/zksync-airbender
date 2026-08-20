@@ -227,11 +227,11 @@ fn build_merkle_tree_nodes_multi_coset(
     Ok(())
 }
 
-/// Node-only seam over an ALREADY-POPULATED source layer in `tree_backing`,
-/// forwarding verbatim to [`build_merkle_tree_nodes_multi_coset`]. Callers that
-/// write (and permute) their own leaves layer cannot use
-/// [`build_merkle_tree_multi_coset`], which re-hashes leaves first and would
-/// overwrite it.
+/// Node-only entry point over an ALREADY-POPULATED source layer in
+/// `tree_backing`, forwarding verbatim to
+/// [`build_merkle_tree_nodes_multi_coset`]. Callers that write (and permute)
+/// their own leaves layer cannot use [`build_merkle_tree_multi_coset`], which
+/// re-hashes leaves first and would overwrite it.
 #[doc(hidden)]
 pub fn build_merkle_tree_nodes_multi_coset_over_existing_layer(
     tree_backing: &mut DeviceSlice<Digest>,

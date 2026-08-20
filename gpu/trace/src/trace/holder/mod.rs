@@ -365,8 +365,10 @@ impl TraceHolder<BF> {
         // while the natural family labels it bitreversed. So the sub-floor arm
         // commits the OLD MSB-convention polynomial in bitreversed row order --
         // right row order, wrong polynomial. It exists only because test-suite
-        // holders live below the floor; no production base shape reaches it, and
-        // the assert below keeps a future floor change from shipping it.
+        // holders live below the floor; no production base shape reaches it. The
+        // assert below catches only the above-range direction; whoever raises
+        // `MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE` must retire this arm (true
+        // equivalence), never widen it.
         //
         // `hypercube_to_multi_coset_evals_fused` is deliberately not called on
         // either arm: it emits natural-order evaluations.
