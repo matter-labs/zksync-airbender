@@ -249,8 +249,7 @@ pub enum MachineType {
 /// need) in the given machine/kind with `nd_words` as the non-determinism
 /// stream, returning the assembled `(ProgramProof, Setups)` pair.
 pub trait ProveBackend {
-    /// Pre-register a binary so backend precomputations (GPU setups) run at
-    /// startup instead of inside the first timed prove call.
+    /// Backend precomputations (GPU setups) run here, before any timed prove.
     fn register(
         &mut self,
         _kind: ExecutionKind,
@@ -621,9 +620,8 @@ fn advance_to_target(
         new_proof.set_recursion_chain(&chain);
         let end_params = compute_end_params(&new_setups, new_proof.final_pc);
         chain.extend(&end_params);
-        // One chain entry per distinct-program layer: every final round runs
-        // the same binary to the same end state, and artifact verification
-        // models the tail as exactly one final layer.
+        // One chain entry per distinct-program layer: verification models the
+        // tail as exactly one final layer.
         if state.chain_end_params.last() != Some(&end_params) {
             state.chain_end_params.push(end_params);
         }
@@ -649,9 +647,8 @@ fn advance_to_target(
     Ok(state)
 }
 
-/// Converged: the unified self-recursion fixed point — one unified proof plus
-/// one blake delegation proof, except under `BlakeSpecialOpcodes`, whose
-/// verifier hashes with inline MOP instructions and makes no delegation calls.
+/// One unified + one blake delegation proof; `BlakeSpecialOpcodes` hashes with
+/// inline MOPs, so its fixed point has no delegation proof.
 fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) -> bool {
     let riscv: usize = proof.riscv_proofs.iter().map(|(_, v)| v.len()).sum();
     let delegation: usize = proof.delegation_proofs.iter().map(|(_, v)| v.len()).sum();
@@ -712,8 +709,7 @@ impl ProgramProver {
         Ok(prover)
     }
 
-    /// Register every binary the selected target's pipeline can touch so backend
-    /// precomputations (GPU setups) run here, before any timed proving.
+    /// Register every binary the selected target's pipeline can touch.
     fn register_pipeline_binaries(&mut self) -> Result<(), String> {
         let start = Instant::now();
         let loaded = load_program(&self.source)?;

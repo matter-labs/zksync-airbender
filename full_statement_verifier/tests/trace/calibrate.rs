@@ -173,12 +173,9 @@ pub struct PooledCensus {
     pub c0: Vec<(FsvProgram, CensusVec)>,
 }
 
-/// Census guard bounds. Relative slack is 1/64 (~1.6%), not the cycle model's
-/// 0.5%: family-cycle dims carry data-dependent jitter (pow loop, challenge
-/// branches) that shifts cycles between families while the total stays within
-/// 0.05%. The absolute floor keeps tiny counts from demanding exactness. These
-/// are sanity bounds on the fit's premises; the binding accuracy gate is
-/// census_estimate_matches_measurement_on_every_fixture.
+/// Sanity bounds on the fit's premises (the acceptance test is the binding
+/// gate). 1/64 slack: data-dependent jitter shifts cycles between families
+/// while the total holds 0.05%. The floor spares tiny counts exactness.
 const CENSUS_REL_DIV: u64 = 64;
 const CENSUS_ABS_FLOOR: u64 = 8;
 

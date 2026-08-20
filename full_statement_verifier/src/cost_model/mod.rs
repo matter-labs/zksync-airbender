@@ -47,21 +47,15 @@ impl core::fmt::Display for EstimateError {
     }
 }
 
-/// Estimated cycles for verifying `proof` with the given fsv binary.
-///
-/// **Domain: valid canonical proofs only.** The generated verifier returns early
-/// on content checks, so this is a scheduling estimate and never a bound on the
-/// cost of a malformed proof. Affine in the per-circuit proof counts, and held to
-/// 0.05% of the measured cycle count on every calibration fixture by
-/// `estimate_matches_measurement_on_every_fixture` in `tests/cost_model_trace.rs`.
+/// Estimated cycles for verifying `proof` with the given fsv binary. Valid
+/// canonical proofs only (the verifier returns early on content checks).
+/// Held to 0.05% of measurement on every calibration fixture.
 pub fn estimate_verifier_cycles(
     proof: &ProgramProof,
     program: FsvProgram,
     mode: BlakeMode,
 ) -> Result<u64, EstimateError> {
-    // The census family dims partition the cycle count (the calibration test
-    // `census_family_cycles_sum_to_total` asserts it), so total cycles are the
-    // family sum of the same fit.
+    // Family dims partition the cycle count (census_family_cycles_sum_to_total).
     let totals = census::census_totals(proof, program, mode)?;
     Ok(totals[..census::NUM_FAMILY_DIMS].iter().sum())
 }
