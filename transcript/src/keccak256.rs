@@ -1,6 +1,5 @@
 use crate::Transcript;
 use field::proth120::Proth120;
-use field::PrimeField;
 use sha3::{Digest, Keccak256};
 
 // ---------------------------------------------------------------------------
