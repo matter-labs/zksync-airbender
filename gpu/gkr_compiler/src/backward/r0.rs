@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace};
 
 use super::common::distill::distill;
-#[cfg(test)]
 use super::common::interp::{interpret_lean_program, CoeffResolver, LeanInterpError};
 use super::common::lean::{encode_program, validate_program, LeanCodecError, LeanProgram};
 use super::common::lean_bind::{bind_lean_sources, LeanBindError, LeanSourceBinding};
@@ -11,7 +10,6 @@ use super::common::limits::{
     LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_COEFFICIENT_RECIPES, LEAN_MAX_SOURCES,
 };
 use super::common::lower::lower_coeff_layer;
-#[cfg(test)]
 use super::common::model::CoeffLayer;
 use super::common::model::{CoeffError, NormalizedCoefficientRecipe};
 use super::common::order::order_terms;
@@ -24,13 +22,11 @@ pub struct R0ProgramBundle {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R0LayerProgram {
-    #[cfg(test)]
     pub layer: usize,
     pub coefficient_recipes: Vec<NormalizedCoefficientRecipe>,
     pub program: LeanProgram,
     pub binding: LeanSourceBinding,
-    #[cfg(test)]
-    pub(crate) semantic: CoeffLayer,
+    pub coefficients: CoeffLayer,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -123,18 +119,13 @@ fn compile_layer(
         require(layer_index, resource, required, maximum)?;
     }
 
-    #[cfg(test)]
     let coefficient_recipes = coefficients.coefficients.clone();
-    #[cfg(not(test))]
-    let coefficient_recipes = coefficients.coefficients;
     Ok(R0LayerProgram {
-        #[cfg(test)]
         layer: layer_index,
         coefficient_recipes,
         program,
         binding,
-        #[cfg(test)]
-        semantic: coefficients,
+        coefficients,
     })
 }
 
@@ -149,12 +140,11 @@ pub fn compile_r0(dag: &DagCircuit) -> Result<R0ProgramBundle, R0CompileError> {
     Ok(R0ProgramBundle { layers })
 }
 
-#[cfg(test)]
-pub(crate) fn interpret_r0_program(
+pub fn interpret_r0_program(
     program: &R0LayerProgram,
     row: usize,
     resolver: &impl CoeffResolver,
     k: usize,
 ) -> Result<(super::common::Ext, super::common::Ext), LeanInterpError> {
-    interpret_lean_program(&program.program, &program.semantic, row, resolver, k)
+    interpret_lean_program(&program.program, &program.coefficients, row, resolver, k)
 }

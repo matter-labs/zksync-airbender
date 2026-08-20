@@ -1,9 +1,10 @@
 //! CPU-only offline search and symbolic compiler for GPU GKR evaluation.
 
-mod analysis;
-mod backward;
+pub mod analysis;
+pub mod backward;
 mod forward;
 mod interval_pack;
+mod profile;
 #[cfg(feature = "search")]
 mod search;
 mod source_bind;
@@ -28,6 +29,7 @@ pub use forward::isa::{
 pub use forward::source::{
     virtual_setup_kind_code, SpecialStrategy as ForwardSpecialStrategy, KIND_ORDER,
 };
+pub use profile::{ContinuationResourceProfile, GpuResourceProfile, R0ResourceProfile};
 #[cfg(feature = "search")]
 pub use search::{search_forward, ForwardSearchError, ForwardSearchRequest, SearchConfig};
 

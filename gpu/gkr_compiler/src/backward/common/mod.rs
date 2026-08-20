@@ -1,7 +1,6 @@
 pub(crate) mod distill;
 pub(crate) mod fragment;
 pub(crate) mod group;
-#[cfg(test)]
 pub(crate) mod interp;
 pub(crate) mod lean;
 pub(crate) mod lean_bind;

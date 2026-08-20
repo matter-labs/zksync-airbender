@@ -6,7 +6,7 @@ use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace, SinkInfo};
 ///
 /// This is circuit analysis shared by the forward and backward compilers; it
 /// carries no GPU scheduling policy.
-pub(crate) fn build_cross_layer_field_map(circuit: &DagCircuit) -> HashMap<ReadPlace, FieldKind> {
+pub fn build_cross_layer_field_map(circuit: &DagCircuit) -> HashMap<ReadPlace, FieldKind> {
     let mut map = HashMap::new();
     for layer in &circuit.layers {
         for root in &layer.roots {
