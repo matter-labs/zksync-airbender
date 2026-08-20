@@ -64,9 +64,9 @@ fn cpu_commit_path_labeling_is_natural() {
         &prover::gkr::prover::backend::NaiveBackend,
         &inputs,
         &twiddles,
-        2,      // lde_factor
-        1,      // whir_first_fold_step_log2 -> 2 values per leaf
-        4,      // tree cap size
+        2, // lde_factor
+        1, // whir_first_fold_step_log2 -> 2 values per leaf
+        4, // tree cap size
         log_n,
         &worker,
     );

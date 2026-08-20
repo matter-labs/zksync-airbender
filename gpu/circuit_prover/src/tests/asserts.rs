@@ -23,8 +23,11 @@ pub(super) fn assert_sumcheck_intermediate_values_eq_for_test_with_layer<
         .zip(expected.internal_round_coefficients.iter())
         .enumerate()
     {
-        for (coeff_idx, (&actual_coeff, &expected_coeff)) in
-            actual_coeffs.as_multilinear().iter().zip(expected_coeffs.as_multilinear().iter()).enumerate()
+        for (coeff_idx, (&actual_coeff, &expected_coeff)) in actual_coeffs
+            .as_multilinear()
+            .iter()
+            .zip(expected_coeffs.as_multilinear().iter())
+            .enumerate()
         {
             assert_eq!(
                 actual_coeff, expected_coeff,
@@ -71,89 +74,176 @@ pub(super) fn assert_whir_proof_eq_for_test(
     actual: &prover::gkr::whir::WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>,
     expected: &prover::gkr::whir::WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>,
 ) {
+    // Committed-state values and lengths first: they gate the whole WHIR phase
+    // and a length mismatch would make the per-round ladder below misalign.
+    assert_eq!(
+        actual.batching_challenge, expected.batching_challenge,
+        "WHIR batching challenge diverged"
+    );
+    assert_eq!(
+        actual.original_evaluation_point, expected.original_evaluation_point,
+        "WHIR original evaluation point diverged"
+    );
+    assert_eq!(
+        actual.batched_opening, expected.batched_opening,
+        "WHIR batched opening diverged"
+    );
+    assert_eq!(
+        actual.whir_schedule, expected.whir_schedule,
+        "WHIR schedule diverged"
+    );
     assert_eq!(
         actual.sumcheck_polys.len(),
         expected.sumcheck_polys.len(),
         "WHIR sumcheck round count diverged",
     );
-    for (round_idx, (actual_poly, expected_poly)) in actual
-        .sumcheck_polys
+    assert_eq!(
+        actual.intermediate_whir_oracles.len(),
+        expected.intermediate_whir_oracles.len(),
+        "WHIR intermediate oracle count diverged",
+    );
+    assert_eq!(
+        actual.ood_samples.len(),
+        expected.ood_samples.len(),
+        "WHIR OOD sample count diverged",
+    );
+    assert_eq!(
+        actual.pow_nonces.len(),
+        expected.pow_nonces.len(),
+        "WHIR PoW nonce count diverged",
+    );
+    assert_eq!(
+        actual.final_monomials.len(),
+        expected.final_monomials.len(),
+        "WHIR final monomial count diverged",
+    );
+
+    // Base-layer commitments: their caps are absorbed before the first fold
+    // round, and their evals are the batched-opening inputs.
+    for (name, actual_commitment, expected_commitment) in [
+        (
+            "setup",
+            &actual.setup_commitment,
+            &expected.setup_commitment,
+        ),
+        (
+            "memory",
+            &actual.memory_commitment,
+            &expected.memory_commitment,
+        ),
+        (
+            "witness",
+            &actual.witness_commitment,
+            &expected.witness_commitment,
+        ),
+    ] {
+        assert_eq!(
+            actual_commitment.commitment.cap, expected_commitment.commitment.cap,
+            "WHIR {name} base cap diverged",
+        );
+        assert_eq!(
+            actual_commitment.num_columns, expected_commitment.num_columns,
+            "WHIR {name} base column count diverged",
+        );
+        assert_eq!(
+            actual_commitment.evals, expected_commitment.evals,
+            "WHIR {name} base evals diverged",
+        );
+    }
+
+    // Per-fold-group ladder, in the order `whir_fold`
+    // (prover/src/gkr/whir/mod.rs) commits to the transcript: the group's
+    // sumcheck polynomials, then either the next intermediate oracle's cap plus
+    // its OOD sample or (last group) the final monomials, then the group's PoW
+    // nonce. Comparing in transcript order is what makes the FIRST failing
+    // assert name the cause: everything after a diverged commitment is
+    // downstream of it, so e.g. a wrong intermediate cap must not be reported
+    // as the next group's sumcheck-polynomial divergence.
+    let mut round_idx = 0usize;
+    let group_count = expected.whir_schedule.whir_steps_schedule.len();
+    for (group_idx, &steps) in expected
+        .whir_schedule
+        .whir_steps_schedule
         .iter()
-        .zip(expected.sumcheck_polys.iter())
         .enumerate()
     {
+        for _ in 0..steps {
+            assert_eq!(
+                actual.sumcheck_polys[round_idx], expected.sumcheck_polys[round_idx],
+                "WHIR sumcheck polynomial diverged at round {round_idx}",
+            );
+            round_idx += 1;
+        }
+        if group_idx + 1 < group_count {
+            assert_eq!(
+                actual.intermediate_whir_oracles[group_idx].commitment.cap,
+                expected.intermediate_whir_oracles[group_idx].commitment.cap,
+                "WHIR intermediate oracle cap diverged at oracle {group_idx}",
+            );
+            assert_eq!(
+                actual.ood_samples[group_idx], expected.ood_samples[group_idx],
+                "WHIR OOD sample diverged at oracle {group_idx}",
+            );
+        } else {
+            assert_eq!(
+                actual.final_monomials, expected.final_monomials,
+                "WHIR final monomials diverged",
+            );
+        }
         assert_eq!(
-            actual_poly, expected_poly,
-            "WHIR sumcheck polynomial diverged at round {round_idx}",
+            actual.pow_nonces[group_idx], expected.pow_nonces[group_idx],
+            "WHIR PoW nonce diverged at round {group_idx}",
         );
     }
     assert_eq!(
-        actual.ood_samples, expected.ood_samples,
-        "WHIR OOD samples diverged"
-    );
-    assert_eq!(
-        actual.pow_nonces, expected.pow_nonces,
-        "WHIR PoW nonces diverged"
-    );
-    assert_eq!(
-        actual.final_monomials, expected.final_monomials,
-        "WHIR final monomials diverged",
-    );
-    assert_eq!(
-        actual.batching_challenge, expected.batching_challenge,
-        "WHIR batching challenge diverged",
-    );
-    assert_eq!(
-        actual.original_evaluation_point, expected.original_evaluation_point,
-        "WHIR original evaluation point diverged",
-    );
-    assert_eq!(
-        actual.batched_opening, expected.batched_opening,
-        "WHIR batched opening diverged",
-    );
-    assert_eq!(
-        actual.whir_schedule, expected.whir_schedule,
-        "WHIR schedule diverged",
+        round_idx,
+        expected.sumcheck_polys.len(),
+        "WHIR schedule does not account for every sumcheck round",
     );
 
-    for (actual_commitment, expected_commitment) in [
-        (&actual.memory_commitment, &expected.memory_commitment),
-        (&actual.witness_commitment, &expected.witness_commitment),
-        (&actual.setup_commitment, &expected.setup_commitment),
+    // Queries are answered from already-committed oracles, so they sit after
+    // the transcript ladder above.
+    for (name, actual_commitment, expected_commitment) in [
+        (
+            "setup",
+            &actual.setup_commitment,
+            &expected.setup_commitment,
+        ),
+        (
+            "memory",
+            &actual.memory_commitment,
+            &expected.memory_commitment,
+        ),
+        (
+            "witness",
+            &actual.witness_commitment,
+            &expected.witness_commitment,
+        ),
     ] {
         assert_eq!(
-            actual_commitment.commitment.cap,
-            expected_commitment.commitment.cap
-        );
-        assert_eq!(
-            actual_commitment.num_columns,
-            expected_commitment.num_columns
-        );
-        assert_eq!(actual_commitment.evals, expected_commitment.evals);
-        assert_eq!(
             actual_commitment.queries.len(),
-            expected_commitment.queries.len()
+            expected_commitment.queries.len(),
+            "WHIR {name} base query count diverged",
         );
-        for (actual_query, expected_query) in actual_commitment
+        for actual_query in actual_commitment
             .queries
             .iter()
             .zip(expected_commitment.queries.iter())
         {
-            assert_base_field_query_eq_for_test(actual_query, expected_query);
+            assert_base_field_query_eq_for_test(actual_query.0, actual_query.1);
         }
     }
-
-    assert_eq!(
-        actual.intermediate_whir_oracles.len(),
-        expected.intermediate_whir_oracles.len()
-    );
-    for (actual_oracle, expected_oracle) in actual
+    for (oracle_idx, (actual_oracle, expected_oracle)) in actual
         .intermediate_whir_oracles
         .iter()
         .zip(expected.intermediate_whir_oracles.iter())
+        .enumerate()
     {
-        assert_eq!(actual_oracle.commitment.cap, expected_oracle.commitment.cap);
-        assert_eq!(actual_oracle.queries.len(), expected_oracle.queries.len());
+        assert_eq!(
+            actual_oracle.queries.len(),
+            expected_oracle.queries.len(),
+            "WHIR intermediate query count diverged at oracle {oracle_idx}",
+        );
         for (actual_query, expected_query) in actual_oracle
             .queries
             .iter()
