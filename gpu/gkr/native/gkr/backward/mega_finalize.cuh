@@ -50,9 +50,9 @@ DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, cons
   }
 
   // Thread 0: run the round-update algebra against the reduced
-  // (e_partial, c_partial). Reads `smem_c0[0]` / `smem_c1[0]` before any
-  // other thread overwrites them — the active eq slot is disjoint memory,
-  // so no extra barrier is needed.
+  // (e_partial, c_partial). The tree reduction's trailing barrier already
+  // published `smem_c0[0]` / `smem_c1[0]`, and nothing below writes shared
+  // memory.
   if (tid == 0) {
     const e4 e_partial = smem_c0[0];
     const e4 c_partial = smem_c1[0];
@@ -64,14 +64,19 @@ DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, cons
   // bit count before the fold. The largest fold
   // (eq_low / GKR_EQ_GROUP_TABLE_LEN / 2 = 128) fits in any
   // block with BLOCK_THREADS >= 128.
-  if (active_eq_size_before_fold >= 1) {
-    const unsigned new_g_len = 1u << (active_eq_size_before_fold - 1);
-    if (tid < new_g_len) {
-      const e4 low = active_eq_slot_base[tid];
-      const e4 high = active_eq_slot_base[tid + new_g_len];
-      active_eq_slot_base[tid] = e4::add(low, high);
-    }
-  }
+  //
+  // LSB draining eliminates the slot's LOWEST bit, so the read range
+  // [0, 2 * new_g_len) overlaps the write range [0, new_g_len): thread 0 reads
+  // element 1, which thread 1 would otherwise overwrite. Load into a register,
+  // barrier across the WHOLE block, then store.
+  const unsigned new_g_len = active_eq_size_before_fold >= 1 ? 1u << (active_eq_size_before_fold - 1) : 0u;
+  const bool folds = tid < new_g_len;
+  e4 folded = e4::ZERO();
+  if (folds)
+    folded = e4::add(active_eq_slot_base[2 * tid], active_eq_slot_base[2 * tid + 1]);
+  __syncthreads();
+  if (folds)
+    active_eq_slot_base[tid] = folded;
   // Implicit kernel-exit sync makes both updates visible to subsequent
   // launches on the same stream.
 }

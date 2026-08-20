@@ -231,3 +231,487 @@ fn eq_builder_matches_cpu_lsb_table() {
         );
     }
 }
+
+// ── Low-first factored-eq drain ─────────────────────────────────────────────
+
+#[cfg(not(no_cuda))]
+const EQ_DRAIN_CHALLENGE_COUNTS: [usize; 7] = [1, 2, 7, 8, 9, 16, 17];
+
+/// Which fused-tail finalize launcher drives the fold.
+#[cfg(not(no_cuda))]
+#[derive(Clone, Copy, Debug)]
+enum FinalizeVariant {
+    /// Main-layer path: `launch_backward_dual_finalize_from_partials` over the
+    /// warp-partial buffer (`main_layer/sumcheck_plan.rs`).
+    FromPartials,
+    /// Dimension-reducing single-launch path
+    /// (`dual_reduce_num_stage1_blocks == 0`).
+    FromAcc,
+    /// Dimension-reducing two-stage path: blockwise reduce, then finalize.
+    BlockwiseThenPartials,
+}
+
+#[cfg(not(no_cuda))]
+struct EqSlabs {
+    high: [Vec<E4>; GKR_EQ_HIGH_SLOTS],
+    low: Vec<E4>,
+}
+
+/// Copies both factored-eq slot slabs back to the host. The high slabs are read
+/// straight out of the `ab_gkr_eq_high` `__constant__` symbol through the
+/// `cudaGetSymbolAddress` device pointer; the low slab is a plain global
+/// `DeviceAllocation`.
+#[cfg(not(no_cuda))]
+fn read_eq_slabs(
+    d_eq_low: &gpu_core::primitives::context::DeviceAllocation<E4>,
+    context: &gpu_prover_context::ProverContext,
+) -> EqSlabs {
+    use era_cudart::memory::memory_copy_async;
+    use era_cudart::slice::DeviceSlice;
+
+    use crate::upstream::Field;
+
+    let stream = context.get_exec_stream();
+    let high_len = GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN;
+    let mut high_flat = vec![E4::ZERO; high_len];
+    // SAFETY: `ab_gkr_eq_high` is exactly `high_len` E4 elements.
+    let high_view = unsafe {
+        DeviceSlice::from_raw_parts(get_eq_high_constant_device_ptr() as *const E4, high_len)
+    };
+    memory_copy_async(&mut high_flat, high_view, stream).unwrap();
+    let mut low = vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN];
+    memory_copy_async(&mut low, d_eq_low, stream).unwrap();
+    stream.synchronize().unwrap();
+
+    EqSlabs {
+        high: std::array::from_fn(|slot| {
+            high_flat[slot * GKR_EQ_GROUP_TABLE_LEN..(slot + 1) * GKR_EQ_GROUP_TABLE_LEN].to_vec()
+        }),
+        low,
+    }
+}
+
+/// Asserts the factored-eq state after `round` folds. `slice` is the eq
+/// coordinate slice (`claim_point[1..]`), so the remaining suffix point is
+/// `slice[round..]` with protocol coordinate `round + b` on physical row bit
+/// `b`. Physical bit order is `[high[0] | high[1] | low]` from the top, so the
+/// low slab owns the FIRST remaining coordinates.
+#[cfg(not(no_cuda))]
+fn assert_eq_state_matches_cpu(
+    label: &str,
+    round: usize,
+    slice: &[E4],
+    sizes: &GkrEqSizes,
+    slabs: &EqSlabs,
+    suffix_tables: &[Box<[E4]>],
+    worker: &worker::Worker,
+) {
+    use crate::upstream::Field;
+
+    let remaining = slice.len() - round;
+    assert_eq!(
+        sizes.low as usize + sizes.high[1] as usize + sizes.high[0] as usize,
+        remaining,
+        "{label} round {round}: slot widths {sizes:?} must sum to the {remaining} remaining coordinates",
+    );
+
+    let groups: [(&str, usize, &[E4]); 3] = [
+        ("low", sizes.low as usize, &slabs.low),
+        ("high[1]", sizes.high[1] as usize, &slabs.high[1]),
+        ("high[0]", sizes.high[0] as usize, &slabs.high[0]),
+    ];
+    let mut consumed = round;
+    for (name, size, slab) in groups {
+        let coords = &slice[consumed..consumed + size];
+        let expected =
+            prover::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E4>(coords, worker);
+        let actual = &slab[..1usize << size];
+        assert_eq!(expected.len(), actual.len());
+        let divergence = actual
+            .iter()
+            .zip(expected.iter())
+            .position(|(gpu, cpu)| gpu != cpu);
+        assert!(
+            divergence.is_none(),
+            "{label} round {round}: {name} slab (width {size}, coordinates {consumed}..{}) \
+             diverges from the CPU LSB table at entry {}",
+            consumed + size,
+            divergence.unwrap_or(0),
+        );
+        consumed += size;
+    }
+
+    // The three slabs must multiply back to the full remaining-suffix table
+    // under exactly the index decomposition `gkr_compute_eq_inline` uses.
+    let full = &suffix_tables[remaining];
+    assert_eq!(full.len(), 1usize << remaining);
+    let shift1 = sizes.low;
+    let shift0 = sizes.low + sizes.high[1];
+    for (gid, expected) in full.iter().enumerate() {
+        let hi0 = (gid >> shift0) & ((1usize << sizes.high[0]) - 1);
+        let hi1 = (gid >> shift1) & ((1usize << sizes.high[1]) - 1);
+        let lo = gid & ((1usize << sizes.low) - 1);
+        let mut product = slabs.high[0][hi0];
+        product.mul_assign(&slabs.high[1][hi1]);
+        product.mul_assign(&slabs.low[lo]);
+        assert_eq!(
+            product, *expected,
+            "{label} round {round}: factored product disagrees with the CPU suffix table at gid {gid}",
+        );
+    }
+}
+
+/// Runs the real `gkr_eq_inline_reader` over the live slabs and compares the
+/// weighted row sum against the CPU suffix table — the read-side half of the
+/// contract (the slab checks cover the write side).
+#[cfg(not(no_cuda))]
+#[allow(clippy::too_many_arguments)]
+fn assert_eq_inline_reads_match_cpu(
+    label: &str,
+    round: usize,
+    remaining: usize,
+    sizes: GkrEqSizes,
+    eq_low: *const E4,
+    raw_values: *const gpu_core::primitives::field::BF,
+    weights: &[gpu_core::primitives::field::BF],
+    d_block_partials: &mut gpu_core::primitives::context::DeviceAllocation<E4>,
+    suffix_tables: &[Box<[E4]>],
+    context: &gpu_prover_context::ProverContext,
+) {
+    use era_cudart::memory::memory_copy_async;
+
+    use crate::upstream::{Field, FieldExtension};
+
+    let trace_len = 1usize << remaining;
+    launch_trace_holder_block_partials_eq_inline(
+        raw_values,
+        eq_low,
+        sizes,
+        d_block_partials.as_mut_ptr(),
+        trace_len,
+        0,
+        1,
+        1,
+        context,
+    )
+    .unwrap();
+    let mut from_gpu = vec![E4::ZERO; 1];
+    memory_copy_async(&mut from_gpu, d_block_partials, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let mut expected = E4::ZERO;
+    for (eq, weight) in suffix_tables[remaining]
+        .iter()
+        .zip(weights[..trace_len].iter())
+    {
+        let mut term = *eq;
+        term.mul_assign_by_base(weight);
+        expected.add_assign(&term);
+    }
+    assert_eq!(
+        from_gpu[0], expected,
+        "{label} round {round}: inline-eq weighted row sum diverges (sizes {sizes:?})",
+    );
+}
+
+/// Walks the whole simulated round loop for one `challenge_count` and one
+/// finalize launcher, asserting EVERY intermediate eq state (including the
+/// fresh build) against the CPU LSB oracle, that the dynamic drain matches the
+/// static `drained_eq_sizes` mirror, and that un-drained high slabs stay
+/// byte-identical in constant memory.
+#[cfg(not(no_cuda))]
+fn drive_low_first_eq_drain(
+    challenge_count: usize,
+    variant: FinalizeVariant,
+    probe_eq_inline: bool,
+) {
+    use era_cudart::memory::memory_copy_async;
+    use era_cudart::slice::DeviceSlice;
+    use gpu_core::allocator::tracker::AllocationPlacement;
+    use gpu_core::primitives::context::DeviceAllocation;
+    use gpu_core::primitives::field::BF;
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+    use worker::Worker;
+
+    use crate::backward::vm::production_bind::drained_eq_sizes;
+    use crate::test_utils::make_test_context;
+    use crate::upstream::{Field, PrimeField};
+
+    let label = &format!("{variant:?} challenge_count={challenge_count}");
+    let context = make_test_context(256, 64);
+    let stream = context.get_exec_stream();
+    let worker = Worker::new();
+    let mut rng = StdRng::seed_from_u64(0x4e71_d004 ^ challenge_count as u64);
+    let mut random_e4 = move || {
+        E4::from_array_of_base(std::array::from_fn(|_| {
+            BF::from_u32_with_reduction(rng.random())
+        }))
+    };
+
+    // `challenge_offset = 1` mirrors both production callers.
+    let point: Vec<E4> = (0..challenge_count + 1).map(|_| random_e4()).collect();
+    let slice = &point[1..];
+    let suffix_tables =
+        prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb::<E4>(slice, &worker);
+    assert_eq!(suffix_tables.len(), challenge_count + 1);
+
+    let mut d_point: DeviceAllocation<E4> = context
+        .alloc(point.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut d_point, &point, stream).unwrap();
+    let mut d_eq_low: DeviceAllocation<E4> = context
+        .alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)
+        .unwrap();
+
+    let mut d_seed: DeviceAllocation<u32> = context.alloc(8, AllocationPlacement::Top).unwrap();
+    let seed_host = vec![0x1234_5678u32; 8];
+    memory_copy_async(&mut d_seed, &seed_host, stream).unwrap();
+    let mut d_claim: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::Top).unwrap();
+    let mut d_eq_prefactor: DeviceAllocation<E4> =
+        context.alloc(1, AllocationPlacement::Top).unwrap();
+    let mut d_coeffs: DeviceAllocation<E4> = context.alloc(4, AllocationPlacement::Top).unwrap();
+    let mut d_challenge: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::Top).unwrap();
+    let mut d_prev_coord: DeviceAllocation<E4> =
+        context.alloc(1, AllocationPlacement::Top).unwrap();
+    memory_copy_async(&mut d_prev_coord, &point[..1], stream).unwrap();
+    let one = vec![E4::ONE];
+
+    // Source pairs for the round-update reduction; the eq fold ignores them,
+    // but they must be finite so `e4::inv(eq_prefactor)` stays defined.
+    let (acc_size, num_partials) = match variant {
+        FinalizeVariant::FromPartials => (0usize, 8usize),
+        FinalizeVariant::FromAcc => (64usize, 0usize),
+        FinalizeVariant::BlockwiseThenPartials => (1024usize, 0usize),
+    };
+    let source_len = 2 * acc_size.max(num_partials);
+    let mut d_source: DeviceAllocation<E4> =
+        context.alloc(source_len, AllocationPlacement::Top).unwrap();
+    let source_host: Vec<E4> = (0..source_len).map(|_| random_e4()).collect();
+    memory_copy_async(&mut d_source, &source_host, stream).unwrap();
+    let stage1_blocks = dual_reduce_num_stage1_blocks(acc_size);
+    let mut d_partials: DeviceAllocation<E4> = context
+        .alloc(2 * stage1_blocks.max(1), AllocationPlacement::Top)
+        .unwrap();
+
+    // Inline-eq probe inputs: index-derived DISTINCT base-field weights, held
+    // in an E4-aligned allocation for the kernel's 16-byte `bf4` loads.
+    let probe_rows = 1usize << challenge_count;
+    let weights: Vec<BF> = (0..probe_rows)
+        .map(|row| {
+            BF::from_u32_with_reduction((row as u32).wrapping_mul(2_654_435_761).wrapping_add(7))
+        })
+        .collect();
+    let mut d_weights: DeviceAllocation<E4> = context
+        .alloc((probe_rows / 4).max(1), AllocationPlacement::Top)
+        .unwrap();
+    // SAFETY: the E4 allocation covers `probe_rows` BF elements and is
+    // 16-byte aligned.
+    let d_weights_bf =
+        unsafe { DeviceSlice::from_raw_parts_mut(d_weights.as_mut_ptr() as *mut BF, probe_rows) };
+    memory_copy_async(d_weights_bf, &weights, stream).unwrap();
+    let weights_ptr = d_weights_bf.as_ptr();
+    let mut d_block_partials: DeviceAllocation<E4> =
+        context.alloc(1, AllocationPlacement::Top).unwrap();
+
+    launch_build_eq_high_and_low_groups_from_point(
+        d_point.as_ptr(),
+        1,
+        challenge_count,
+        get_eq_high_constant_device_ptr(),
+        d_eq_low.as_mut_ptr(),
+        &context,
+    )
+    .unwrap();
+    let mut eq_sizes = make_eq_sizes(challenge_count);
+
+    let mut previous: Option<(GkrEqSizes, EqSlabs)> = None;
+    for round in 0..=challenge_count {
+        if round > 0 {
+            memory_copy_async(&mut d_claim, &one, stream).unwrap();
+            memory_copy_async(&mut d_eq_prefactor, &one, stream).unwrap();
+            let (slot_base, size_before) = resolve_active_eq_slot(&eq_sizes, d_eq_low.as_mut_ptr());
+            assert!(
+                size_before >= 1,
+                "{label} round {round}: the active slot must still hold a coordinate",
+            );
+            match variant {
+                FinalizeVariant::FromPartials => launch_backward_dual_finalize_from_partials(
+                    d_source.as_ptr(),
+                    num_partials,
+                    d_prev_coord.as_ptr(),
+                    d_seed.as_mut_ptr(),
+                    d_claim.as_mut_ptr(),
+                    d_eq_prefactor.as_mut_ptr(),
+                    d_coeffs.as_mut_ptr(),
+                    d_challenge.as_mut_ptr(),
+                    slot_base,
+                    size_before,
+                    &context,
+                )
+                .unwrap(),
+                FinalizeVariant::FromAcc => launch_backward_dual_finalize_from_acc(
+                    d_source.as_ptr(),
+                    acc_size,
+                    d_prev_coord.as_ptr(),
+                    d_seed.as_mut_ptr(),
+                    d_claim.as_mut_ptr(),
+                    d_eq_prefactor.as_mut_ptr(),
+                    d_coeffs.as_mut_ptr(),
+                    d_challenge.as_mut_ptr(),
+                    slot_base,
+                    size_before,
+                    &context,
+                )
+                .unwrap(),
+                FinalizeVariant::BlockwiseThenPartials => {
+                    assert!(stage1_blocks > 0);
+                    launch_backward_dual_reduce_blockwise(
+                        d_source.as_ptr(),
+                        acc_size,
+                        d_partials.as_mut_ptr(),
+                        &context,
+                    )
+                    .unwrap();
+                    launch_backward_dual_finalize_from_partials(
+                        d_partials.as_ptr(),
+                        stage1_blocks,
+                        d_prev_coord.as_ptr(),
+                        d_seed.as_mut_ptr(),
+                        d_claim.as_mut_ptr(),
+                        d_eq_prefactor.as_mut_ptr(),
+                        d_coeffs.as_mut_ptr(),
+                        d_challenge.as_mut_ptr(),
+                        slot_base,
+                        size_before,
+                        &context,
+                    )
+                    .unwrap();
+                }
+            }
+            record_active_eq_slot_fold(&mut eq_sizes);
+        }
+
+        assert_eq!(
+            eq_sizes,
+            drained_eq_sizes(make_eq_sizes(challenge_count), round as u8),
+            "{label} round {round}: the dynamic drain and the static descriptor mirror disagree",
+        );
+
+        let slabs = read_eq_slabs(&d_eq_low, &context);
+        assert_eq_state_matches_cpu(
+            label,
+            round,
+            slice,
+            &eq_sizes,
+            &slabs,
+            &suffix_tables,
+            &worker,
+        );
+
+        if round == 0 {
+            // Non-vacuity: a half-sum substitution or a lost store is only
+            // detectable while the slab entries are pairwise distinct.
+            for (slot, width) in [
+                (&slabs.low, eq_sizes.low),
+                (&slabs.high[1], eq_sizes.high[1]),
+                (&slabs.high[0], eq_sizes.high[0]),
+            ] {
+                let entries = &slot[..1usize << width];
+                for (i, left) in entries.iter().enumerate() {
+                    for right in &entries[i + 1..] {
+                        assert_ne!(left, right, "{label}: fresh slab entries must be distinct");
+                    }
+                }
+            }
+        }
+
+        let remaining = challenge_count - round;
+        if probe_eq_inline && remaining >= 2 {
+            assert_eq_inline_reads_match_cpu(
+                label,
+                round,
+                remaining,
+                eq_sizes,
+                d_eq_low.as_ptr(),
+                weights_ptr,
+                &weights,
+                &mut d_block_partials,
+                &suffix_tables,
+                &context,
+            );
+        }
+
+        if let Some((previous_sizes, previous_slabs)) = previous.as_ref() {
+            for slot in 0..GKR_EQ_HIGH_SLOTS {
+                if eq_sizes.high[slot] == previous_sizes.high[slot] {
+                    assert_eq!(
+                        slabs.high[slot], previous_slabs.high[slot],
+                        "{label} round {round}: un-drained constant-memory high slab {slot} \
+                         must stay byte-identical across rounds",
+                    );
+                }
+            }
+        }
+        previous = Some((eq_sizes, slabs));
+    }
+
+    assert_eq!(eq_sizes, GkrEqSizes::zeroed());
+}
+
+/// Main-layer finalize launcher: the factored eq must drain LOW slot first,
+/// then `high[1]`, then `high[0]`, each round contracting the ACTIVE slot's
+/// lowest bit (`dst[i] = src[2i] + src[2i+1]`). Oracle is the live CPU
+/// `make_eq_poly_in_full_lsb` / `make_eq_table_lsb_first` pair.
+#[test]
+#[cfg(not(no_cuda))]
+fn factored_eq_drains_low_first_through_from_partials() {
+    for challenge_count in EQ_DRAIN_CHALLENGE_COUNTS {
+        drive_low_first_eq_drain(challenge_count, FinalizeVariant::FromPartials, true);
+    }
+}
+
+/// Dimension-reducing single-launch finalize path.
+#[test]
+#[cfg(not(no_cuda))]
+fn factored_eq_drains_low_first_through_from_acc() {
+    for challenge_count in EQ_DRAIN_CHALLENGE_COUNTS {
+        drive_low_first_eq_drain(challenge_count, FinalizeVariant::FromAcc, false);
+    }
+}
+
+/// Dimension-reducing two-stage finalize path.
+#[test]
+#[cfg(not(no_cuda))]
+fn factored_eq_drains_low_first_through_blockwise_partials() {
+    for challenge_count in EQ_DRAIN_CHALLENGE_COUNTS {
+        drive_low_first_eq_drain(
+            challenge_count,
+            FinalizeVariant::BlockwiseThenPartials,
+            false,
+        );
+    }
+}
+
+/// The segmented VM stamps its descriptors from `drained_eq_sizes`, a pure
+/// function of the round index. Walk it against the dynamic drain the fused
+/// tail applies, for every challenge count the 3-slot layout can hold.
+#[test]
+fn drained_eq_sizes_mirrors_the_dynamic_drain() {
+    use crate::backward::vm::production_bind::drained_eq_sizes;
+
+    for challenge_count in 1..=(GKR_EQ_GROUP_SIZE * (GKR_EQ_HIGH_SLOTS + 1)) {
+        let mut dynamic = make_eq_sizes(challenge_count);
+        for round in 0..=challenge_count {
+            assert_eq!(
+                dynamic,
+                drained_eq_sizes(make_eq_sizes(challenge_count), round as u8),
+                "challenge_count={challenge_count} round={round}",
+            );
+            if round < challenge_count {
+                record_active_eq_slot_fold(&mut dynamic);
+            }
+        }
+        assert_eq!(dynamic, GkrEqSizes::zeroed());
+    }
+}
