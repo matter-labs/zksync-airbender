@@ -99,12 +99,15 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_poin
     const unsigned chunk_len = 1u << chunk_size;
     if (chunk_table_idx < chunk_len) {
       const unsigned variable_idx = group_start + variable_offset;
+      // LSB relabeling: coordinate j pairs with table bit j, so the variable at
+      // group/chunk slot `variable_idx` reads coordinate `challenge_count - 1 - variable_idx`.
+      const unsigned first_idx = challenge_offset + challenge_count - 1 - variable_idx;
       const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
-      const E first_challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + variable_idx);
+      const E first_challenge = load<E, ld_modifier::cs>(claim_point, first_idx);
       E value = first_bit ? first_challenge : E::sub(E::ONE(), first_challenge);
       if (chunk_size == 2) {
         const unsigned low_bit = chunk_table_idx & 1u;
-        const E second_challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + variable_idx + 1);
+        const E second_challenge = load<E, ld_modifier::cs>(claim_point, first_idx - 1);
         const E second_term = low_bit ? second_challenge : E::sub(E::ONE(), second_challenge);
         value = E::mul(value, second_term);
       }

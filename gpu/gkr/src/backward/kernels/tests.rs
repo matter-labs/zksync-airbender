@@ -137,3 +137,82 @@ fn compact_cuda_constants_match_rust() {
     assert_eq!(MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN, 26);
     assert_eq!(MAX_MAIN_LAYER_CLAIM_POINT_LEN, 25);
 }
+
+/// The shared one-shot eq builder must produce the LSB-first orientation:
+/// `eq[i] = prod_b (bit_b(i) ? point[b] : 1 - point[b])`, i.e. claim
+/// coordinate `b` pairs with table bit `b`. Oracle is the live CPU
+/// `make_eq_table_lsb_first`. Challenge counts cover the group boundaries
+/// (`GKR_EQ_GROUP_SIZE = 8`) and both chunk sizes inside a group.
+#[test]
+#[cfg(not(no_cuda))]
+fn eq_builder_matches_cpu_lsb_table() {
+    use era_cudart::memory::memory_copy_async;
+    use gpu_core::allocator::tracker::AllocationPlacement;
+    use gpu_core::primitives::context::DeviceAllocation;
+    use gpu_core::primitives::field::BF;
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+    use worker::Worker;
+
+    use crate::test_utils::make_test_context;
+    use crate::upstream::{Field, PrimeField};
+
+    let context = make_test_context(256, 64);
+    let worker = Worker::new();
+    let mut rng = StdRng::seed_from_u64(0x1b_5f_ab_20);
+
+    for challenge_count in [1usize, 2, 7, 8, 9, 16, 17] {
+        let point: Vec<E4> = (0..challenge_count)
+            .map(|_| {
+                E4::from_array_of_base(std::array::from_fn(|_| {
+                    BF::from_u32_with_reduction(rng.random())
+                }))
+            })
+            .collect();
+
+        let acc_size = 1usize << challenge_count;
+        let mut d_point: DeviceAllocation<E4> = context
+            .alloc(challenge_count, AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy_async(&mut d_point, &point, context.get_exec_stream()).unwrap();
+        let mut d_group_tables: DeviceAllocation<E4> = context
+            .alloc(
+                eq_group_tables_len(challenge_count),
+                AllocationPlacement::Top,
+            )
+            .unwrap();
+        let mut d_eq_values: DeviceAllocation<E4> =
+            context.alloc(acc_size, AllocationPlacement::Top).unwrap();
+
+        launch_build_eq_values_from_point(
+            d_point.as_ptr(),
+            0,
+            challenge_count,
+            d_group_tables.as_mut_ptr(),
+            d_eq_values.as_mut_ptr(),
+            acc_size,
+            &context,
+        )
+        .unwrap();
+
+        let mut from_gpu = vec![E4::ZERO; acc_size];
+        memory_copy_async(&mut from_gpu, &d_eq_values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        let expected =
+            prover::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E4>(&point, &worker);
+        assert_eq!(expected.len(), from_gpu.len());
+        let first_divergence = from_gpu
+            .iter()
+            .zip(expected.iter())
+            .position(|(gpu, cpu)| gpu != cpu);
+        assert!(
+            first_divergence.is_none(),
+            "challenge_count={challenge_count}: first divergent index {:?} \
+             (bits {:0width$b})",
+            first_divergence,
+            first_divergence.unwrap_or(0),
+            width = challenge_count,
+        );
+    }
+}
