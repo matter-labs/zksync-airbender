@@ -5,7 +5,12 @@ use super::dimension_reducing::{
     prepare_dimension_reduction_forward, schedule_prepared_dimension_reduction_forward,
     LoweredSlotOutput,
 };
+use super::vm::desc::FUSED_REDUCTION_ROUNDS;
+use super::vm::lower::LoweredFwdVm;
+use super::vm::production_bind::schedule_vm;
+use crate::setup::schedule_forward_setup_for_shape;
 use crate::test_utils::make_test_context;
+use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::E4;
 
 #[test]
@@ -202,6 +207,178 @@ fn dimension_reducing_forward_tower_matches_reference() {
                 expected.1,
                 "{argument:?} den chain mismatch at round {round_idx}"
             );
+        }
+    }
+}
+
+const PROBE_LAYER_IDX: usize = 3;
+const PROBE_TRACE_LOG_2: u32 = 11;
+
+/// Probe indices spread over the low and high coordinates. Each one separates
+/// the adjacent-pair descent (`index >> (round + 1)`) from a high-coordinate
+/// descent (`index % round_len`) at round zero.
+const PROBE_INDICES: [usize; 6] = [1, 2, 7, 129, 1_500, (1 << PROBE_TRACE_LOG_2) - 2];
+
+/// The standalone dimension-reducing tower binds adjacent pairs: every round's
+/// output cell `j` is the CPU value for the input pair `(2 * j, 2 * j + 1)`, and
+/// a probe's distinguished cell descends to `index >> (round + 1)`.
+#[test]
+fn forward_tower_binds_adjacent_pairs_vs_cpu() {
+    let context = make_test_context(1024, 32);
+    let initial_trace_len = 1usize << PROBE_TRACE_LOG_2;
+
+    let mut probes = PROBE_INDICES
+        .into_iter()
+        .map(|index| {
+            let probe = distinguished_cell_probe(initial_trace_len, index);
+            (format!("distinguished[{index}]"), Some(probe))
+        })
+        .collect::<Vec<_>>();
+    probes.push(("random".to_string(), None));
+
+    for (label, probe) in &probes {
+        let columns = match probe {
+            Some(probe) => probe.columns.clone(),
+            None => random_probe(initial_trace_len, 0x1eaf_f00d),
+        };
+
+        let mut storage = GpuGKRStorage::<BF, E4>::default();
+        let output_map = install_probe_columns(&mut storage, PROBE_LAYER_IDX, &columns, &context);
+        attach_test_dim_reducing_tower_layout(
+            &mut storage,
+            PROBE_LAYER_IDX,
+            &output_map,
+            PROBE_TRACE_LOG_2,
+            0,
+        );
+
+        let prepared = prepare_dimension_reduction_forward::<E4>(
+            &mut storage,
+            PROBE_LAYER_IDX,
+            &output_map,
+            PROBE_TRACE_LOG_2,
+            0,
+            None,
+            &context,
+        )
+        .unwrap();
+        schedule_prepared_dimension_reduction_forward(&prepared, 0, &context).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        let mut expected = columns;
+        for round_idx in 0..prepared.total_rounds {
+            expected = expected_round_reduction(&expected);
+            let round_len = 1usize << (PROBE_TRACE_LOG_2 - round_idx - 1);
+            let outputs = read_and_pin_round_outputs(
+                &storage,
+                &prepared.dimension_reduction_description,
+                PROBE_LAYER_IDX + round_idx as usize,
+                round_len,
+                &context,
+                label,
+            );
+            assert_eq!(outputs, expected, "{label}: round {round_idx}");
+            if let Some(probe) = probe {
+                assert_distinguished_cell_at_lsb_position(probe, &outputs, round_idx, label);
+            }
+        }
+    }
+}
+
+/// The production forward VM's fused reduction prefix binds adjacent pairs: its
+/// round zero reads `(2 * j, 2 * j + 1)` of the layer inputs and its in-shared-
+/// memory rounds keep halving on the low coordinate.
+#[test]
+fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
+    let context = make_test_context(1024, 32);
+    let initial_trace_len = 1usize << PROBE_TRACE_LOG_2;
+    // The VM owns exactly the fused rounds, so no round is left unwritten.
+    let final_trace_log_2 = PROBE_TRACE_LOG_2 - FUSED_REDUCTION_ROUNDS as u32;
+
+    let mut probes = PROBE_INDICES
+        .into_iter()
+        .map(|index| {
+            let probe = distinguished_cell_probe(initial_trace_len, index);
+            (format!("distinguished[{index}]"), Some(probe))
+        })
+        .collect::<Vec<_>>();
+    probes.push(("random".to_string(), None));
+
+    for (label, probe) in &probes {
+        let columns = match probe {
+            Some(probe) => probe.columns.clone(),
+            None => random_probe(initial_trace_len, 0xfeed_face),
+        };
+
+        let mut storage = GpuGKRStorage::<BF, E4>::default();
+        let output_map = install_probe_columns(&mut storage, PROBE_LAYER_IDX, &columns, &context);
+        attach_test_dim_reducing_tower_layout(
+            &mut storage,
+            PROBE_LAYER_IDX,
+            &output_map,
+            PROBE_TRACE_LOG_2,
+            final_trace_log_2,
+        );
+
+        let prepared = prepare_dimension_reduction_forward::<E4>(
+            &mut storage,
+            PROBE_LAYER_IDX,
+            &output_map,
+            PROBE_TRACE_LOG_2,
+            final_trace_log_2,
+            None,
+            &context,
+        )
+        .unwrap();
+        assert_eq!(prepared.total_rounds, FUSED_REDUCTION_ROUNDS as u32);
+
+        let forward_setup = schedule_forward_setup_for_shape(
+            None,
+            initial_trace_len,
+            0,
+            0,
+            false,
+            context
+                .alloc::<E4>(2, AllocationPlacement::BestFit)
+                .unwrap(),
+            &context,
+        )
+        .unwrap();
+
+        // A single empty layer program keeps the VM's own arithmetic out of the
+        // way; the reduction prefix under test runs after `vm_body` regardless.
+        let mut lowered = LoweredFwdVm {
+            // SAFETY: the descriptor is plain data and all pointer fields may be null.
+            desc: unsafe { core::mem::zeroed() },
+            lookup_additive_slot: None,
+            decoder_fill_slot: None,
+        };
+        lowered.desc.count = initial_trace_len as u32;
+        lowered.desc.layer_count = 1;
+        schedule_vm(&mut lowered, &prepared, &forward_setup, &context).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        assert_eq!(
+            lowered.desc.reduction_pair_count as usize,
+            PROBE_OUTPUT_TYPES.len(),
+            "{label}: every probe output type must ride the descriptor"
+        );
+
+        let mut expected = columns;
+        for round_idx in 0..FUSED_REDUCTION_ROUNDS as u32 {
+            expected = expected_round_reduction(&expected);
+            let round_len = 1usize << (PROBE_TRACE_LOG_2 - round_idx - 1);
+            let outputs = read_and_pin_round_outputs(
+                &storage,
+                &prepared.dimension_reduction_description,
+                PROBE_LAYER_IDX + round_idx as usize,
+                round_len,
+                &context,
+                label,
+            );
+            assert_eq!(outputs, expected, "{label}: round {round_idx}");
+            if let Some(probe) = probe {
+                assert_distinguished_cell_at_lsb_position(probe, &outputs, round_idx, label);
+            }
         }
     }
 }
