@@ -40,17 +40,12 @@ use gpu_trace::trace::holder::{
 use crate::upstream::PathQueriable;
 #[cfg(test)]
 use crate::upstream::{extension_field_from_base_coeffs, Field, MerkleTreeCapVarLength};
-#[cfg(test)]
 use era_cudart::memory::memory_copy_async;
-#[cfg(test)]
-use fft::bitreverse_enumeration_inplace;
-#[cfg(test)]
 use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::device_structures::DeviceMatrixMut;
 #[cfg(test)]
 use gpu_core::primitives::{
-    callbacks::Callbacks,
-    context::HostAllocation,
-    device_structures::{DeviceMatrix, DeviceMatrixMut},
+    callbacks::Callbacks, context::HostAllocation, device_structures::DeviceMatrix,
     static_host::alloc_static_pinned_box_from_slice,
 };
 #[cfg(test)]
@@ -113,6 +108,10 @@ impl GpuWhirExtensionOracle {
         }
     }
 
+    /// `monomial_coeffs` is the vectorized (4 BF columns) multilinear monomial
+    /// form in NATURAL coefficient order — the order the CPU's
+    /// `build_intermediate_oracle` consumes
+    /// (`monomial_form_normal_order`, prover/src/gkr/prover/backend/mod.rs:182-192).
     #[cfg(test)]
     pub(crate) fn schedule_from_device_monomial_coeffs(
         monomial_coeffs: &impl DeviceMatrixImpl<BF>,
@@ -211,10 +210,40 @@ impl GpuWhirExtensionOracle {
         // Multi-coset NTT writes the natural multi-coset evaluations directly into
         // the WHIR oracle's cosets backing; the blake-leaves-from-NTT kernel (via
         // `commit_all_into_from_ntt`) reads the natural layout in place.
+        //
+        // The caller hands over NATURAL-order monomial coefficients (the CPU's
+        // `monomial_form_normal_order`), but the multi-coset forward NTT this
+        // commit runs is the `bitreversed_monomials_to_natural_evals` family: it
+        // reads BITREVERSED coefficients and writes natural-order evaluations.
+        // Relabel into a compact scratch so the LDE sees the order it expects
+        // and the caller's array keeps the order every other consumer (the
+        // folds, the OOD evaluation, `final_monomials`) needs. The scratch is
+        // released when this function returns, while the kernels reading it are
+        // still queued — same lifetime the `d_scratch` / staging allocations in
+        // `oracle_commit` already have: the pool hands the range to a later
+        // allocation, whose writers are enqueued behind these readers on the
+        // exec stream (`commit_trace_from_ntt_*` joins the side stream back
+        // into exec before returning).
         let monomial_coeffs_slice = monomial_coeffs.slice();
         let monomial_coeffs_stride = monomial_coeffs.stride();
+        let stream = context.get_exec_stream();
+        let mut bitreversed_coeffs: gpu_core::primitives::context::DeviceAllocation<BF> =
+            context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+        for column in 0..EXT4_DEGREE {
+            let src_start = column * monomial_coeffs_stride;
+            memory_copy_async(
+                &mut bitreversed_coeffs[column * trace_len..(column + 1) * trace_len],
+                &monomial_coeffs_slice[src_start..src_start + trace_len],
+                stream,
+            )?;
+        }
+        {
+            let mut bitreversed_matrix =
+                DeviceMatrixMut::new(&mut bitreversed_coeffs[..], trace_len);
+            gpu_ops::bit_reverse::bit_reverse_in_place::<BF>(&mut bitreversed_matrix, stream)?;
+        }
         let inputs_matrix =
-            DeviceMatrixChunk::new(monomial_coeffs_slice, monomial_coeffs_stride, 0, trace_len);
+            DeviceMatrixChunk::new(&bitreversed_coeffs[..], trace_len, 0, trace_len);
 
         match cap_target {
             #[cfg(test)]
@@ -598,9 +627,7 @@ impl GpuWhirExtensionOracle {
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = monomial_coeffs.len();
-        let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
-        bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
-        let vectorized_monomial_coeffs = e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
+        let vectorized_monomial_coeffs = e4_coeffs_to_vectorized(monomial_coeffs);
         let mut monomial_coeffs_device_alloc = context.alloc(
             vectorized_monomial_coeffs.len(),
             AllocationPlacement::BestFit,
@@ -1378,14 +1405,26 @@ pub(crate) mod tests {
         transform_leaves_to_multilinear_coeffs: bool,
         is_small: bool,
     ) {
-        let worker = Worker::new();
-        let context = if is_small {
-            make_test_context(256, 32)
-        } else {
-            make_test_context(2048, 64)
-        };
+        recursive_oracle_lde_matches_cpu_with_shape(
+            log_coeff_sizes,
+            values_per_leafs,
+            4,
+            4,
+            transform_leaves_to_multilinear_coeffs,
+            if is_small { (256, 32) } else { (2048, 64) },
+        )
+    }
 
-        const LDE_FACTOR: usize = 4;
+    fn recursive_oracle_lde_matches_cpu_with_shape(
+        log_coeff_sizes: &[usize],
+        values_per_leafs: &[usize],
+        lde_factor: usize,
+        tree_cap_size: usize,
+        transform_leaves_to_multilinear_coeffs: bool,
+        context_shape: (usize, usize),
+    ) {
+        let worker = Worker::new();
+        let context = make_test_context(context_shape.0, context_shape.1);
 
         // Tests a range of parameters.
         for &log_coeff_size in log_coeff_sizes.iter() {
@@ -1395,9 +1434,9 @@ pub(crate) mod tests {
                 let cpu = cpu_extension_oracle_from_monomial_form(
                     &monomial_coeffs,
                     &twiddles,
-                    LDE_FACTOR,
+                    lde_factor,
                     values_per_leaf,
-                    4,
+                    tree_cap_size,
                     transform_leaves_to_multilinear_coeffs,
                     &worker,
                 );
@@ -1405,24 +1444,24 @@ pub(crate) mod tests {
                     cpu_extension_oracle_from_monomial_form(
                         &monomial_coeffs,
                         &twiddles,
-                        LDE_FACTOR,
+                        lde_factor,
                         values_per_leaf,
-                        4,
+                        tree_cap_size,
                         false,
                         &worker,
                     )
                 });
                 let mut gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
                     &monomial_coeffs,
-                    LDE_FACTOR,
+                    lde_factor,
                     values_per_leaf,
-                    4,
+                    tree_cap_size,
                     transform_leaves_to_multilinear_coeffs,
                     &context,
                 )
                 .unwrap();
 
-                for coset_index in 0..LDE_FACTOR {
+                for coset_index in 0..lde_factor {
                     let retained_backing_reference = evaluation_cpu.as_ref().unwrap_or(&cpu);
                     assert_eq!(
                         gpu.copy_coset_values(coset_index, &context),
@@ -1440,7 +1479,7 @@ pub(crate) mod tests {
                         gpu.get_tree_cap(&context).unwrap(),
                         PathQueriable::get_cap(&cpu.tree),
                     );
-                    let leaves_count = monomial_coeffs.len() * LDE_FACTOR / values_per_leaf;
+                    let leaves_count = monomial_coeffs.len() * lde_factor / values_per_leaf;
                     for query_index in [0, leaves_count / 2, leaves_count - 1] {
                         let (_, cpu_values, cpu_query) = cpu.query_for_folded_index(query_index);
                         let (_, gpu_values, gpu_query) =
@@ -1474,6 +1513,17 @@ pub(crate) mod tests {
     #[ignore]
     fn recursive_oracle_lde_matches_cpu_large() {
         recursive_oracle_lde_matches_cpu_impl(&[23], &[32], false, false);
+    }
+
+    /// Production shape of the first intermediate WHIR oracle on the add_sub
+    /// stagewise fixture: `poly 2^23, lde 16`, `values_per_leaf = 1 <<
+    /// whir_steps_schedule[1] = 32`, `tree_cap_size = DEFAULT_CAP_SIZE = 16`.
+    /// The `_large` cases above run log 23 with `lde 4 / cap 4`, so nothing
+    /// covered the coset-range tiling and cap gather at the widths production
+    /// actually asks for.
+    #[test]
+    fn recursive_oracle_lde_matches_cpu_production_shape() {
+        recursive_oracle_lde_matches_cpu_with_shape(&[23], &[32], 16, 16, true, (16384, 256));
     }
 
     #[test]
@@ -1534,9 +1584,7 @@ pub(crate) mod tests {
         );
         let trace_len = monomial_coeffs.len();
 
-        let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
-        bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
-        let monomial_coeffs_vectorized = e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
+        let monomial_coeffs_vectorized = e4_coeffs_to_vectorized(&monomial_coeffs);
         let mut monomial_coeffs_device = context
             .alloc(
                 trace_len * super::EXT4_DEGREE,
