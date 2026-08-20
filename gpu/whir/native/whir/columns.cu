@@ -19,20 +19,6 @@ EXTERN __global__ void ab_serialize_whir_e4_columns_kernel(const e4 *src, bf *ds
   store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(3), 3 * count + gid);
 }
 
-EXTERN __global__ void ab_deserialize_whir_e4_columns_kernel(const bf *src, e4 *dst, const unsigned count) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= count)
-    return;
-
-  const bf coeffs[4] = {
-      load<bf, ld_modifier::cs>(src, gid),
-      load<bf, ld_modifier::cs>(src, count + gid),
-      load<bf, ld_modifier::cs>(src, 2 * count + gid),
-      load<bf, ld_modifier::cs>(src, 3 * count + gid),
-  };
-  store<e4, st_modifier::cs>(dst, e4(coeffs), gid);
-}
-
 constexpr unsigned TRACE_CHUNKS = 3;
 
 struct BaseColumnsBatchingMetadata {

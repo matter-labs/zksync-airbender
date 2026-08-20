@@ -11,10 +11,9 @@ use fft::materialize_powers_serial_starting_with_one;
 use crate::kernels::whir_fold_adjacent;
 use crate::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
-    deserialize_whir_e4_columns, launch_batched_accumulate_eq_samples,
-    launch_split_accumulate_eq_samples, launch_whir_three_point_partials,
-    partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens, whir_fold_adjacent_pair,
-    whir_fold_adjacent_vectorized, whir_sum,
+    launch_batched_accumulate_eq_samples, launch_split_accumulate_eq_samples,
+    launch_whir_three_point_partials, partially_evaluate_monomials_by_ref,
+    split_eq_factor_scratch_lens, whir_fold_adjacent_pair, whir_fold_adjacent_vectorized, whir_sum,
 };
 use crate::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 #[cfg(test)]
@@ -34,10 +33,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use gpu_gkr::proof_layout::ProofLayout;
-use gpu_ntt::ntt::{
-    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
-    natural_evals_to_bitreversed_monomials,
-};
+use gpu_ntt::ntt::hypercube_x1_msb_evals_to_x1_msb_monomials;
 #[cfg(test)]
 use gpu_ops::simple::{add, mul, mul_into_x};
 use gpu_ops::transpose::transpose;
@@ -206,6 +202,14 @@ pub(super) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     index.reverse_bits() >> (usize::BITS - num_bits)
 }
 
+/// The WHIR fold only supports batching the base oracles from their hypercube
+/// evaluations. A coset-0 source would need more than a different column
+/// reader: the committed base backing is stored in bitreversed row order while
+/// this path needs natural row order, and the monomial form derived from a
+/// coset-0 batch is the univariate IFFT of a codeword, which does not carry the
+/// natural-order multilinear coefficient labeling the sumcheck folds, the
+/// out-of-domain evaluation and `final_monomials` all read. Whoever implements
+/// it owns converting all four of those, not just this assert.
 pub(super) fn assert_batching_source_supported(use_hypercube_evals_for_batching: bool) {
     assert!(
         use_hypercube_evals_for_batching,
@@ -236,7 +240,12 @@ pub(super) fn get_base_columns<'a>(
     values
 }
 
-// Also initializes evaluation form if use_hypercube_evals_for_batching was false.
+/// Derives the monomial form from the batched evaluation form.
+///
+/// Only the hypercube-evals batching source is supported (see
+/// `assert_batching_source_supported`, which every caller runs first), so the
+/// evaluation form is already the batched base hypercube columns and this only
+/// has to transform it.
 pub(super) fn initialize_batched_monomial_form(
     log_domain_size: usize,
     use_hypercube_evals_for_batching: bool,
@@ -244,6 +253,7 @@ pub(super) fn initialize_batched_monomial_form(
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = 1 << log_domain_size;
     assert_eq!(vectorized_scratch.len(), trace_len * EXT4_DEGREE);
     let stream = context.get_exec_stream();
@@ -252,38 +262,14 @@ pub(super) fn initialize_batched_monomial_form(
     // `state.sumchecked_poly_evaluation_form`, so no separate serialize pass.
     let vectorized_batched_evals_matrix = DeviceMatrix::new(&*vectorized_scratch, trace_len);
 
-    if use_hypercube_evals_for_batching {
-        hypercube_x1_msb_evals_to_x1_msb_monomials(
-            &vectorized_batched_evals_matrix,
-            &mut state.sumchecked_poly_monomial_form,
-            log_domain_size,
-            false, // transpsoed_monomials,
-            stream,
-            context.get_device_properties(),
-        )?;
-        // If we're in this branch, it means state.sumchecked_poly_evaluation_form was
-        // directly created by batching base hypercube evaluation columns, so we're done.
-    } else {
-        natural_evals_to_bitreversed_monomials(
-            &vectorized_batched_evals_matrix,
-            &mut state.sumchecked_poly_monomial_form,
-            log_domain_size,
-            false, // transposed_monomials
-            stream,
-            context.get_device_properties(),
-        )?;
-        let monomials_slice = state.sumchecked_poly_monomial_form.slice();
-        for column in 0..EXT4_DEGREE {
-            let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
-            let dst = &mut vectorized_scratch[column * trace_len..(column + 1) * trace_len];
-            hypercube_coeffs_bitrev_to_bitrev_evals(src, dst, log_domain_size, stream)?;
-        }
-        deserialize_whir_e4_columns(
-            &*vectorized_scratch,
-            &mut state.sumchecked_poly_evaluation_form[..trace_len],
-            stream,
-        )?;
-    }
+    hypercube_x1_msb_evals_to_x1_msb_monomials(
+        &vectorized_batched_evals_matrix,
+        &mut state.sumchecked_poly_monomial_form,
+        log_domain_size,
+        false, // transposed_monomials
+        stream,
+        context.get_device_properties(),
+    )?;
 
     Ok(())
 }

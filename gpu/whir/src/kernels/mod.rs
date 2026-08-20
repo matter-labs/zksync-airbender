@@ -58,35 +58,6 @@ pub(crate) fn serialize_whir_e4_columns(
     SerializeWhirE4ColumnsFunction(ab_serialize_whir_e4_columns_kernel).launch(&config, &args)
 }
 
-cuda_kernel_signature_arguments_and_function!(
-    DeserializeWhirE4Columns,
-    src: *const BF,
-    dst: *mut E4,
-    count: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_deserialize_whir_e4_columns_kernel(
-        src: *const BF,
-        dst: *mut E4,
-        count: u32,
-    )
-);
-
-pub(crate) fn deserialize_whir_e4_columns(
-    src: &DeviceSlice<BF>,
-    dst: &mut DeviceSlice<E4>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert_eq!(src.len(), dst.len() * <E4 as FieldExtension<BF>>::DEGREE);
-    assert!(dst.len() <= u32::MAX as usize);
-    let count = dst.len() as u32;
-    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, count);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = DeserializeWhirE4ColumnsArguments::new(src.as_ptr(), dst.as_mut_ptr(), count);
-    DeserializeWhirE4ColumnsFunction(ab_deserialize_whir_e4_columns_kernel).launch(&config, &args)
-}
-
 const TRACE_CHUNKS: usize = 3;
 
 #[repr(C)]
