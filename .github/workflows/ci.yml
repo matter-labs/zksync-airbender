@@ -53,7 +53,15 @@ jobs:
           rustup set profile minimal
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
+      # rustup switches to the 1.97.1 pinned by this directory's rust-toolchain.toml,
+      # and the setup action only installed rustfmt for the default toolchain.
+      - name: Install rustfmt for the gkr_verifier toolchain
+        if: always()
+        working-directory: tools/gkr_verifier
+        run: rustup component add rustfmt
+      # `if: always()` so this is not silently skipped whenever the root check above fails.
       - name: Rustfmt Check (gkr_verifier sub-workspace)
+        if: always()
         working-directory: tools/gkr_verifier
         env:
           RUSTC_BOOTSTRAP: "1"
@@ -91,6 +99,11 @@ jobs:
             --exclude gpu_witness_eval_generator \
             --lib --tests --bins \
             -- -D warnings
+      # Same reason as the rustfmt install in the formatting job: this directory
+      # pins 1.97.1 and the setup action only added clippy to the default toolchain.
+      - name: Install clippy for the gkr_verifier toolchain
+        working-directory: tools/gkr_verifier
+        run: rustup component add clippy
       - name: Clippy (gkr_verifier sub-workspace)
         working-directory: tools/gkr_verifier
         env:
