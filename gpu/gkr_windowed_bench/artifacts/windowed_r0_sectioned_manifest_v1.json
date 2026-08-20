@@ -1,0 +1,562 @@
+{
+  "schema_version": 1,
+  "universal_shape": 4095,
+  "specialized_shapes": [
+    1,
+    32,
+    433,
+    439,
+    1015,
+    1019,
+    1120,
+    1136,
+    1270,
+    2495,
+    3067,
+    3071,
+    3192,
+    3194
+  ],
+  "symbols": [
+    {
+      "candidate_id": "r0-sectioned/shape_001/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_001_serial3_high_kernel",
+      "shape_bits": 1,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_001.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_001/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_001_serial3_low_kernel",
+      "shape_bits": 1,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_001.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_001/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_001_split3_kernel",
+      "shape_bits": 1,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_001.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_001/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_001_wide9_kernel",
+      "shape_bits": 1,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_001.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_020/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_020_serial3_high_kernel",
+      "shape_bits": 32,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_020.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_020/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_020_serial3_low_kernel",
+      "shape_bits": 32,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_020.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_020/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_020_split3_kernel",
+      "shape_bits": 32,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_020.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_020/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_020_wide9_kernel",
+      "shape_bits": 32,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_020.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_1b1/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b1_serial3_high_kernel",
+      "shape_bits": 433,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b1.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_1b1/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b1_serial3_low_kernel",
+      "shape_bits": 433,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b1.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_1b1/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b1_split3_kernel",
+      "shape_bits": 433,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b1.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_1b1/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b1_wide9_kernel",
+      "shape_bits": 433,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b1.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_1b7/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b7_serial3_high_kernel",
+      "shape_bits": 439,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_1b7/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b7_serial3_low_kernel",
+      "shape_bits": 439,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_1b7/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b7_split3_kernel",
+      "shape_bits": 439,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_1b7/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b7_wide9_kernel",
+      "shape_bits": 439,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_3f7/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3f7_serial3_high_kernel",
+      "shape_bits": 1015,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_3f7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_3f7/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3f7_serial3_low_kernel",
+      "shape_bits": 1015,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_3f7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_3f7/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3f7_split3_kernel",
+      "shape_bits": 1015,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_3f7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_3f7/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3f7_wide9_kernel",
+      "shape_bits": 1015,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_3f7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_3fb/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3fb_serial3_high_kernel",
+      "shape_bits": 1019,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_3fb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_3fb/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3fb_serial3_low_kernel",
+      "shape_bits": 1019,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_3fb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_3fb/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3fb_split3_kernel",
+      "shape_bits": 1019,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_3fb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_3fb/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3fb_wide9_kernel",
+      "shape_bits": 1019,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_3fb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_460/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_460_serial3_high_kernel",
+      "shape_bits": 1120,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_460.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_460/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_460_serial3_low_kernel",
+      "shape_bits": 1120,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_460.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_460/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_460_split3_kernel",
+      "shape_bits": 1120,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_460.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_460/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_460_wide9_kernel",
+      "shape_bits": 1120,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_460.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_470/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_470_serial3_high_kernel",
+      "shape_bits": 1136,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_470.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_470/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_470_serial3_low_kernel",
+      "shape_bits": 1136,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_470.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_470/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_470_split3_kernel",
+      "shape_bits": 1136,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_470.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_470/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_470_wide9_kernel",
+      "shape_bits": 1136,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_470.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_4f6/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_4f6_serial3_high_kernel",
+      "shape_bits": 1270,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_4f6.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_4f6/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_4f6_serial3_low_kernel",
+      "shape_bits": 1270,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_4f6.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_4f6/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_4f6_split3_kernel",
+      "shape_bits": 1270,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_4f6.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_4f6/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_4f6_wide9_kernel",
+      "shape_bits": 1270,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_4f6.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_9bf/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_9bf_serial3_high_kernel",
+      "shape_bits": 2495,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_9bf.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_9bf/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_9bf_serial3_low_kernel",
+      "shape_bits": 2495,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_9bf.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_9bf/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_9bf_split3_kernel",
+      "shape_bits": 2495,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_9bf.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_9bf/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_9bf_wide9_kernel",
+      "shape_bits": 2495,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_9bf.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_bfb/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bfb_serial3_high_kernel",
+      "shape_bits": 3067,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_bfb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_bfb/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bfb_serial3_low_kernel",
+      "shape_bits": 3067,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_bfb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_bfb/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bfb_split3_kernel",
+      "shape_bits": 3067,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_bfb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_bfb/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bfb_wide9_kernel",
+      "shape_bits": 3067,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_bfb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_bff/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bff_serial3_high_kernel",
+      "shape_bits": 3071,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_bff.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_bff/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bff_serial3_low_kernel",
+      "shape_bits": 3071,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_bff.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_bff/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bff_split3_kernel",
+      "shape_bits": 3071,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_bff.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_bff/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bff_wide9_kernel",
+      "shape_bits": 3071,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_bff.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_c78/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c78_serial3_high_kernel",
+      "shape_bits": 3192,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_c78.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_c78/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c78_serial3_low_kernel",
+      "shape_bits": 3192,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_c78.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_c78/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c78_split3_kernel",
+      "shape_bits": 3192,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_c78.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_c78/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c78_wide9_kernel",
+      "shape_bits": 3192,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_c78.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_c7a/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c7a_serial3_high_kernel",
+      "shape_bits": 3194,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_c7a.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_c7a/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c7a_serial3_low_kernel",
+      "shape_bits": 3194,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_shape_c7a.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_c7a/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c7a_split3_kernel",
+      "shape_bits": 3194,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_c7a.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/shape_c7a/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c7a_wide9_kernel",
+      "shape_bits": 3194,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_c7a.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/universal/serial3_high",
+      "symbol": "ab_gkr_windowed_r0_sectioned_universal_serial3_high_kernel",
+      "shape_bits": null,
+      "geometry": "serial3_high",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_universal.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/universal/serial3_low",
+      "symbol": "ab_gkr_windowed_r0_sectioned_universal_serial3_low_kernel",
+      "shape_bits": null,
+      "geometry": "serial3_low",
+      "ownership": "fixed_x0",
+      "translation_unit": "native/generated/r0_sectioned_universal.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/universal/split3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_universal_split3_kernel",
+      "shape_bits": null,
+      "geometry": "split3",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_universal.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned/universal/wide9",
+      "symbol": "ab_gkr_windowed_r0_sectioned_universal_wide9_kernel",
+      "shape_bits": null,
+      "geometry": "wide9",
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_universal.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    }
+  ]
+}
