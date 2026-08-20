@@ -1,5 +1,5 @@
 use clap::Parser;
-use gpu_gkr_windowed_bench::abi::E4;
+use gpu_gkr_windowed_bench::abi::{E4, THREADS_PER_BLOCK};
 use gpu_gkr_windowed_bench::harness::{estimated_source_bytes, WindowedHarness};
 
 #[derive(Parser)]
@@ -33,11 +33,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("allocation: {:?}", harness.allocation_report());
     println!(
-        "launch: vm_grid={} vm_block=288 finalize_grid=27 finalize_block=256 warmup={} iterations={} profile={}",
-        harness.plan().num_blocks,
-        args.warmup,
-        timings.samples_ms.len(),
-        args.profile,
+        "{}",
+        format_launch_diagnostic(
+            harness.plan().num_blocks,
+            THREADS_PER_BLOCK,
+            args.warmup,
+            timings.samples_ms.len(),
+            args.profile,
+        )
     );
     println!(
         "timing_ms: min={:.6} median={:.6} samples={:?}",
@@ -54,6 +57,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn format_launch_diagnostic(
+    vm_grid: u32,
+    vm_block: u32,
+    warmup: u32,
+    iterations: usize,
+    profile: bool,
+) -> String {
+    format!(
+        "launch: vm_grid={} vm_block={} finalize_grid=27 finalize_block=256 warmup={} iterations={} profile={}",
+        vm_grid,
+        vm_block,
+        warmup,
+        iterations,
+        profile,
+    )
+}
+
 fn output_checksum(output: &[E4; 27]) -> u64 {
     output.iter().fold(0xcbf29ce484222325, |hash, value| {
         [
@@ -67,4 +87,16 @@ fn output_checksum(output: &[E4; 27]) -> u64 {
             (hash ^ u64::from(limb)).wrapping_mul(0x100000001b3)
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpu_default_launch_formatter_uses_the_supplied_thread_count() {
+        let output = format_launch_diagnostic(7, 123, 10, 100, false);
+        assert!(output.contains("vm_grid=7 vm_block=123"));
+        assert!(!output.contains("vm_block=288"));
+    }
 }

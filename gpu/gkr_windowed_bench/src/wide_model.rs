@@ -1,16 +1,16 @@
-const P: u128 = 0x7800_0001;
+pub(crate) const P: u128 = 0x7800_0001;
 const MONT_K: u32 = 0x77ff_ffff;
 const R: u128 = 1u128 << 32;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct U96 {
+pub(crate) struct U96 {
     lo: u32,
     mid: u32,
     hi: u32,
 }
 
 impl U96 {
-    fn add_product(&mut self, a: u32, b: u32) {
+    pub(crate) fn add_product(&mut self, a: u32, b: u32) {
         let before = self.as_u128();
         let product = u64::from(a) * u64::from(b);
         let (lo, carry_lo) = self.lo.overflowing_add(product as u32);
@@ -25,12 +25,16 @@ impl U96 {
         assert_eq!(self.as_u128(), before + u128::from(a) * u128::from(b));
     }
 
-    fn as_u128(self) -> u128 {
+    pub(crate) fn as_u128(self) -> u128 {
         u128::from(self.lo) | (u128::from(self.mid) << 32) | (u128::from(self.hi) << 64)
+    }
+
+    pub(crate) const fn high_word(self) -> u32 {
+        self.hi
     }
 }
 
-fn red_wide_model(low: u64) -> u32 {
+pub(crate) fn red_wide_model(low: u64) -> u32 {
     let m = (low as u32).wrapping_mul(MONT_K);
     let quotient = (u128::from(low) + u128::from(m) * P) >> 32;
     let mut quotient = if quotient >= R {
@@ -48,7 +52,7 @@ fn red_wide_model(low: u64) -> u32 {
     quotient as u32
 }
 
-fn reduce_u96_raw(value: U96) -> u32 {
+pub(crate) fn reduce_u96_raw(value: U96) -> u32 {
     let low = u64::from(value.lo) | (u64::from(value.mid) << 32);
     ((u128::from(red_wide_model(low)) + u128::from(value.hi) * (R % P)) % P) as u32
 }
@@ -65,7 +69,7 @@ fn mod_pow(mut base: u128, mut exponent: u128) -> u128 {
     result
 }
 
-fn redc_reference(value: u128) -> u32 {
+pub(crate) fn redc_reference(value: u128) -> u32 {
     (value % P * mod_pow(R % P, P - 2) % P) as u32
 }
 
@@ -73,7 +77,7 @@ fn non_residue_raw(value: u32) -> u32 {
     (u128::from(value) * 11 % P) as u32
 }
 
-fn accumulate_e4_product(out: &mut [U96; 4], a: [u32; 4], b: [u32; 4]) {
+pub(crate) fn accumulate_e4_product(out: &mut [U96; 4], a: [u32; 4], b: [u32; 4]) {
     let a1n = non_residue_raw(a[1]);
     let a2n = non_residue_raw(a[2]);
     let a3n = non_residue_raw(a[3]);
