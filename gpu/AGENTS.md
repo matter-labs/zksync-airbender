@@ -143,8 +143,8 @@ crates, and **no `native/` tree at all**: its `build.rs` only emits the
 `program_prover` is the program-level driver on top of `execution_prover`: it
 assembles `ProveResult` into `full_statement_verifier::ProgramProof`, builds the
 non-determinism streams the `fsv_*` verifier binaries consume, and (behind its
-non-default `verifiers` feature) verifies proofs natively. It replaces the dead
-`execution_utils` GPU recursion driver; the recursion protocol helpers come
+non-default `verifiers` feature) verifies proofs natively. It replaces the old prover's
+GPU recursion driver; the recursion protocol helpers come
 from upstream library code (`full_statement_verifier::host_utils` /
 `recursion_chain`, `verifier_common::fsv_binaries`) via its `upstream.rs` shim.
 

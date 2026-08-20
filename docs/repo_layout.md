@@ -7,7 +7,6 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - circuit_defs/ - cpu to gpu circuit glue code, RiscV ISA circuit tests, cpu prover chunking implementation, core stark verifier logic
 - cs/ - all air circuit apis and implementations
 - examples/ - simple mock cpu "kernel" programs used for testing
-- execution_utils/ - utility code to test the prover
 - fft/ - native and verifier fft implementations in multiple layout formats to mirror various gpu layouts
 - field/ - native optimised cpu prover and verifier Mersenne31 basic and extension field implementations
 - full_statement_verifier/ - full stark verifier logic, with support for chunking
