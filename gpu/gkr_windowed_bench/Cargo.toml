@@ -20,6 +20,7 @@ artifact-gen = [
     "dep:gpu_gkr_compiler",
     "dep:serde_json",
 ]
+r0-prototype-bank = ["artifact-gen"]
 
 [dependencies]
 bincode = "1.3.3"
@@ -41,3 +42,33 @@ gpu_native_build = { workspace = true }
 name = "generate_add_sub_layer0"
 path = "src/bin/generate_add_sub_layer0.rs"
 required-features = ["artifact-gen"]
+
+[[bin]]
+name = "generate_windowed_corpus_census"
+path = "src/bin/generate_windowed_corpus_census.rs"
+required-features = ["artifact-gen"]
+
+[[bin]]
+name = "generate_windowed_accumulator_census"
+path = "src/bin/generate_windowed_accumulator_census.rs"
+required-features = ["artifact-gen"]
+
+[[bin]]
+name = "generate_windowed_r0_corpus"
+path = "src/bin/generate_windowed_r0_corpus.rs"
+required-features = ["artifact-gen"]
+
+[[bin]]
+name = "run_windowed_r0_corpus"
+path = "src/bin/run_windowed_r0_corpus.rs"
+required-features = ["artifact-gen"]
+
+[[bin]]
+name = "generate_windowed_r0_prototype_bank"
+path = "src/bin/generate_windowed_r0_prototype_bank.rs"
+required-features = ["r0-prototype-bank"]
+
+[[bin]]
+name = "run_windowed_r0_prototype_bank"
+path = "src/bin/run_windowed_r0_prototype_bank.rs"
+required-features = ["r0-prototype-bank"]

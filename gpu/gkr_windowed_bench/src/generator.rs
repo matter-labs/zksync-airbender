@@ -4,9 +4,10 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 use gkr_eval_ir::FieldKind;
 use gpu_gkr_compiler::backward::{
-    decode_continuation_program, LeanAtom, LeanSourceBinding, LeanTerm, WindowFamily,
+    decode_continuation_program, ContinuationLayerProgram, LeanAtom, LeanSourceBinding, LeanTerm,
+    WindowFamily,
 };
-use gpu_gkr_compiler::{compile_continuations, GpuResourceProfile};
+use gpu_gkr_compiler::compile_continuations;
 
 use crate::abi::WindowInstruction;
 use crate::artifact::{
@@ -16,6 +17,7 @@ use crate::artifact::{
     ARTIFACT_MAGIC, ARTIFACT_VERSION, GROUP_HAS_PRODUCT, IMMEDIATE_ID_MASK, REDUCE_AFTER,
     SOURCE_NONE,
 };
+use crate::lazy_segments::plan_lazy_segments;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GeneratorError(String);
@@ -185,9 +187,12 @@ impl EncodedAtom {
         if product_count == 1 {
             return;
         }
+        let segment_plan = plan_lazy_segments(product_count)
+            .expect("validated BF group arity fits the shared segment planner");
+        let reduction_ends = &segment_plan.segment_ends[..segment_plan.segment_ends.len() - 1];
         for (product, member) in members[..product_count].iter_mut().enumerate() {
             member.factor &= IMMEDIATE_ID_MASK;
-            if (product + 1) % 4 == 0 && product + 1 < product_count {
+            if reduction_ends.contains(&u16::try_from(product + 1).unwrap()) {
                 member.factor |= REDUCE_AFTER;
             }
         }
@@ -464,13 +469,21 @@ pub fn generate_add_sub_layer0_with_options(
         .map_err(|error| GeneratorError::context("lower circuit DAG", error))?;
     gkr_eval_ir::validate(&dag)
         .map_err(|error| GeneratorError::context("validate circuit DAG", error))?;
-    let bundle = compile_continuations(&dag, &GpuResourceProfile::production())
+    let bundle = compile_continuations(&dag)
         .map_err(|error| GeneratorError::context("compile full continuation relation", error))?;
     let layer = bundle
         .layers
         .into_iter()
         .find(|layer| layer.layer == 0)
         .ok_or_else(|| GeneratorError("compiled program has no layer 0".to_owned()))?;
+    frozen_artifact_from_continuation_layer(&layer, schedule, lazy_bf_reduction)
+}
+
+pub(crate) fn frozen_artifact_from_continuation_layer(
+    layer: &ContinuationLayerProgram,
+    schedule: ProgramSchedule,
+    lazy_bf_reduction: bool,
+) -> Result<FrozenArtifact, GeneratorError> {
     let atoms = decode_continuation_program(&layer.program)
         .map_err(|error| GeneratorError(format!("decode continuation program: {error:?}")))?;
 
@@ -590,7 +603,7 @@ pub fn generate_add_sub_layer0_with_options(
         coefficient_count,
         c_init_coeff: layer.coefficients.c_init.map(|coefficient| coefficient.0),
         program,
-        immediates: layer.coefficients.immediates,
+        immediates: layer.coefficients.immediates.clone(),
         windows,
         source_slots,
     };
@@ -1058,6 +1071,43 @@ mod tests {
                 .count(),
             11
         );
+    }
+
+    #[test]
+    fn lazy_bf_reduction_matches_shared_segment_boundaries() {
+        let artifact =
+            generate_add_sub_layer0_with_options(&add_sub_layout(), ProgramSchedule::Source, true)
+                .unwrap();
+        let (atoms, _) = decode_program(&artifact).unwrap();
+        let mut record = 0usize;
+
+        for atom in atoms {
+            match atom {
+                WindowAtom::Term(_) => record += 1,
+                WindowAtom::GroupBf {
+                    lazy_product_count,
+                    members,
+                    ..
+                } => {
+                    if lazy_product_count >= 2 {
+                        let plan = plan_lazy_segments(usize::from(lazy_product_count)).unwrap();
+                        let observed = artifact.program[record + 1..record + 1 + members.len()]
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, member)| {
+                                (member.factor & REDUCE_AFTER != 0)
+                                    .then_some(u16::try_from(index + 1).unwrap())
+                            })
+                            .collect::<Vec<_>>();
+                        assert_eq!(observed, plan.segment_ends[..plan.segment_ends.len() - 1]);
+                    }
+                    record += members.len() + 1;
+                }
+                WindowAtom::GroupE4 { members, .. } => record += members.len() + 1,
+            }
+        }
+        assert_eq!(record, artifact.program.len());
+        assert_eq!(encode_artifact(&artifact).unwrap(), ADD_SUB_LAYER0_BYTES);
     }
 
     #[test]

@@ -7,6 +7,11 @@ use crate::artifact::{
     validate_artifact, ArtifactError, FrozenArtifact, FrozenField, FrozenWindowFamily,
 };
 
+#[cfg(feature = "artifact-gen")]
+use gkr_eval_ir::FieldKind;
+#[cfg(feature = "artifact-gen")]
+use gpu_gkr_compiler::backward::{LeanSourceBinding, WindowFamily};
+
 pub const MAX_LOG_TRACE: u32 = 27;
 const EQ_GROUP_BITS: u32 = 8;
 
@@ -73,12 +78,53 @@ pub struct AllocationPlan {
     pub windows: Vec<WindowPlan>,
 }
 
+#[cfg(feature = "artifact-gen")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeanBackingPlan {
+    pub family: WindowFamily,
+    pub field: FieldKind,
+    pub columns: usize,
+    pub stride_elements: usize,
+    pub stride_bytes: usize,
+    pub bytes: usize,
+}
+
+#[cfg(feature = "artifact-gen")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeanWindowPlan {
+    pub family: WindowFamily,
+    pub field: FieldKind,
+    pub backing: Option<usize>,
+    pub base_element: usize,
+    pub base_offset_bytes: usize,
+    pub log2_stride: u8,
+    pub origin: u8,
+    pub procedural_kind: Option<u8>,
+}
+
+#[cfg(feature = "artifact-gen")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeanAllocationPlan {
+    pub log_trace: u32,
+    pub log_rows: u32,
+    pub trace_len: usize,
+    pub logical_rows: u32,
+    pub num_blocks: u32,
+    pub eq_sizes: WindowEqSizes,
+    pub eq_low_elements: usize,
+    pub partial_elements: usize,
+    pub final_elements: usize,
+    pub backings: Vec<LeanBackingPlan>,
+    pub windows: Vec<LeanWindowPlan>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GeometryError {
     Artifact(ArtifactError),
     UnsupportedLogTrace { log_trace: u32 },
     SizeOverflow { resource: &'static str },
     MissingBacking { window: usize },
+    BackingFieldMismatch { window: usize },
 }
 
 impl core::fmt::Display for GeometryError {
@@ -112,59 +158,100 @@ pub fn make_eq_sizes(log_trace: u32) -> Result<WindowEqSizes, GeometryError> {
     Ok(WindowEqSizes { high, low })
 }
 
-pub fn build_allocation_plan(
-    artifact: &FrozenArtifact,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StorageField {
+    Base,
+    Ext,
+}
+
+impl StorageField {
+    const fn bytes(self) -> usize {
+        match self {
+            Self::Base => 4,
+            Self::Ext => 16,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct BindingWindowSpec<Family> {
+    family: Family,
+    field: StorageField,
+    first_column: usize,
+    columns: usize,
+    procedural_kind: Option<u8>,
+}
+
+struct GenericBackingPlan<Family> {
+    family: Family,
+    field: StorageField,
+    columns: usize,
+    stride_elements: usize,
+    stride_bytes: usize,
+    bytes: usize,
+}
+
+struct GenericWindowPlan<Family> {
+    family: Family,
+    field: StorageField,
+    backing: Option<usize>,
+    base_element: usize,
+    base_offset_bytes: usize,
+    procedural_kind: Option<u8>,
+}
+
+struct GenericBindingPlan<Family> {
+    trace_len: usize,
+    backings: Vec<GenericBackingPlan<Family>>,
+    windows: Vec<GenericWindowPlan<Family>>,
+}
+
+fn build_binding_allocation_core<Family: Copy + Ord>(
+    windows: &[BindingWindowSpec<Family>],
     log_trace: u32,
-) -> Result<AllocationPlan, GeometryError> {
-    validate_artifact(artifact).map_err(GeometryError::Artifact)?;
-    let eq_sizes = make_eq_sizes(log_trace)?;
+) -> Result<GenericBindingPlan<Family>, GeometryError> {
+    if !(3..=MAX_LOG_TRACE).contains(&log_trace) {
+        return Err(GeometryError::UnsupportedLogTrace { log_trace });
+    }
     let trace_len = 1usize
         .checked_shl(log_trace)
         .ok_or(GeometryError::SizeOverflow {
             resource: "trace length",
         })?;
-    let logical_rows = u32::try_from(trace_len / 8).map_err(|_| GeometryError::SizeOverflow {
-        resource: "logical rows",
-    })?;
-    let num_blocks = logical_rows.div_ceil(32);
-
-    let mut aggregate = BTreeMap::<FrozenWindowFamily, (FrozenField, u32)>::new();
-    for window in &artifact.windows {
-        if window.family.is_procedural() {
+    let mut aggregate = BTreeMap::<Family, (StorageField, usize)>::new();
+    for (window, spec) in windows.iter().enumerate() {
+        if spec.procedural_kind.is_some() {
             continue;
         }
-        let columns = window
-            .columns
-            .last()
-            .map(|column| column.column + 1)
-            .unwrap_or(window.first_column);
-        aggregate
-            .entry(window.family)
-            .and_modify(|(_, maximum)| *maximum = (*maximum).max(columns))
-            .or_insert((window.field, columns));
+        match aggregate.entry(spec.family) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert((spec.field, spec.columns));
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                if entry.get().0 != spec.field {
+                    return Err(GeometryError::BackingFieldMismatch { window });
+                }
+                entry.get_mut().1 = entry.get().1.max(spec.columns);
+            }
+        }
     }
 
     let mut backing_index = BTreeMap::new();
     let mut backings = Vec::with_capacity(aggregate.len());
     for (family, (field, columns)) in aggregate {
-        let field_bytes = match field {
-            FrozenField::Base => 4,
-            FrozenField::Ext => 16,
-        };
         let stride_bytes =
             trace_len
-                .checked_mul(field_bytes)
+                .checked_mul(field.bytes())
                 .ok_or(GeometryError::SizeOverflow {
                     resource: "backing stride",
                 })?;
-        let bytes = usize::try_from(columns)
-            .ok()
-            .and_then(|columns| columns.checked_mul(stride_bytes))
+        let bytes = columns
+            .checked_mul(stride_bytes)
             .ok_or(GeometryError::SizeOverflow {
                 resource: "backing allocation",
             })?;
         backing_index.insert(family, backings.len());
-        backings.push(BackingPlan {
+        backings.push(GenericBackingPlan {
             family,
             field,
             columns,
@@ -174,47 +261,138 @@ pub fn build_allocation_plan(
         });
     }
 
-    let mut windows = Vec::with_capacity(artifact.windows.len());
-    for (window_index, window) in artifact.windows.iter().enumerate() {
-        if let FrozenWindowFamily::VirtualSetup { kind } = window.family {
-            windows.push(WindowPlan {
-                family: window.family,
-                field: window.field,
-                backing: None,
-                base_offset_bytes: 0,
-                log2_stride: log_trace as u8,
-                origin: ORIGIN_PROCEDURAL,
-                procedural_kind: kind,
-            });
-            continue;
-        }
-        let index =
-            backing_index
-                .get(&window.family)
+    let mut planned_windows = Vec::with_capacity(windows.len());
+    for (window, spec) in windows.iter().enumerate() {
+        let (backing, base_element, base_offset_bytes) = if spec.procedural_kind.is_some() {
+            (None, 0, 0)
+        } else {
+            let backing = backing_index
+                .get(&spec.family)
                 .copied()
-                .ok_or(GeometryError::MissingBacking {
-                    window: window_index,
+                .ok_or(GeometryError::MissingBacking { window })?;
+            let base_element =
+                spec.first_column
+                    .checked_mul(trace_len)
+                    .ok_or(GeometryError::SizeOverflow {
+                        resource: "window base element",
+                    })?;
+            let base_offset_bytes = spec
+                .first_column
+                .checked_mul(backings[backing].stride_bytes)
+                .ok_or(GeometryError::SizeOverflow {
+                    resource: "window base offset",
                 })?;
-        let base_offset_bytes = usize::try_from(window.first_column)
-            .ok()
-            .and_then(|column| column.checked_mul(backings[index].stride_bytes))
-            .ok_or(GeometryError::SizeOverflow {
-                resource: "window base offset",
-            })?;
-        let origin = match window.field {
-            FrozenField::Base => ORIGIN_READ_BASE,
-            FrozenField::Ext => ORIGIN_READ_EXT,
+            (Some(backing), base_element, base_offset_bytes)
         };
-        windows.push(WindowPlan {
-            family: window.family,
-            field: window.field,
-            backing: Some(index),
+        planned_windows.push(GenericWindowPlan {
+            family: spec.family,
+            field: spec.field,
+            backing,
+            base_element,
             base_offset_bytes,
-            log2_stride: log_trace as u8,
-            origin,
-            procedural_kind: u8::MAX,
+            procedural_kind: spec.procedural_kind,
         });
     }
+    Ok(GenericBindingPlan {
+        trace_len,
+        backings,
+        windows: planned_windows,
+    })
+}
+
+pub fn build_allocation_plan(
+    artifact: &FrozenArtifact,
+    log_trace: u32,
+) -> Result<AllocationPlan, GeometryError> {
+    validate_artifact(artifact).map_err(GeometryError::Artifact)?;
+    let eq_sizes = make_eq_sizes(log_trace)?;
+    let specs = artifact
+        .windows
+        .iter()
+        .map(|window| {
+            let columns = window
+                .columns
+                .last()
+                .map(|column| {
+                    usize::try_from(column.column)
+                        .ok()
+                        .and_then(|column| column.checked_add(1))
+                        .ok_or(GeometryError::SizeOverflow {
+                            resource: "backing columns",
+                        })
+                })
+                .transpose()?
+                .unwrap_or(usize::try_from(window.first_column).map_err(|_| {
+                    GeometryError::SizeOverflow {
+                        resource: "backing columns",
+                    }
+                })?);
+            Ok(BindingWindowSpec {
+                family: window.family,
+                field: match window.field {
+                    FrozenField::Base => StorageField::Base,
+                    FrozenField::Ext => StorageField::Ext,
+                },
+                first_column: window.first_column as usize,
+                columns,
+                procedural_kind: match window.family {
+                    FrozenWindowFamily::VirtualSetup { kind } => Some(kind),
+                    _ => None,
+                },
+            })
+        })
+        .collect::<Result<Vec<_>, GeometryError>>()?;
+    let binding = build_binding_allocation_core(&specs, log_trace)?;
+    let trace_len = binding.trace_len;
+    let logical_rows = u32::try_from(trace_len / 8).map_err(|_| GeometryError::SizeOverflow {
+        resource: "logical rows",
+    })?;
+    let num_blocks = logical_rows.div_ceil(32);
+
+    let backings = binding
+        .backings
+        .into_iter()
+        .map(|backing| {
+            Ok(BackingPlan {
+                family: backing.family,
+                field: match backing.field {
+                    StorageField::Base => FrozenField::Base,
+                    StorageField::Ext => FrozenField::Ext,
+                },
+                columns: u32::try_from(backing.columns).map_err(|_| {
+                    GeometryError::SizeOverflow {
+                        resource: "backing columns",
+                    }
+                })?,
+                stride_elements: backing.stride_elements,
+                stride_bytes: backing.stride_bytes,
+                bytes: backing.bytes,
+            })
+        })
+        .collect::<Result<Vec<_>, GeometryError>>()?;
+    let windows = binding
+        .windows
+        .into_iter()
+        .map(|window| WindowPlan {
+            family: window.family,
+            field: match window.field {
+                StorageField::Base => FrozenField::Base,
+                StorageField::Ext => FrozenField::Ext,
+            },
+            backing: window.backing,
+            base_offset_bytes: window.base_offset_bytes,
+            log2_stride: log_trace as u8,
+            origin: if window.procedural_kind.is_some() {
+                ORIGIN_PROCEDURAL
+            } else {
+                match window.field {
+                    StorageField::Base => ORIGIN_READ_BASE,
+                    StorageField::Ext => ORIGIN_READ_EXT,
+                }
+            },
+            procedural_kind: window.procedural_kind.unwrap_or(u8::MAX),
+        })
+        .collect();
 
     let partial_elements = usize::try_from(num_blocks)
         .ok()
@@ -239,6 +417,110 @@ pub fn build_allocation_plan(
         final_elements: WINDOW_CELLS as usize,
         backings,
         windows,
+    })
+}
+
+#[cfg(feature = "artifact-gen")]
+pub fn build_lean_allocation_plan(
+    binding: &LeanSourceBinding,
+    log_trace: u32,
+) -> Result<LeanAllocationPlan, GeometryError> {
+    let eq_sizes = make_eq_sizes(log_trace)?;
+    let specs = binding
+        .windows
+        .iter()
+        .map(|window| {
+            let columns =
+                window
+                    .columns
+                    .iter()
+                    .try_fold(window.first_column, |highest, column| {
+                        column
+                            .column
+                            .checked_add(1)
+                            .map(|end| highest.max(end))
+                            .ok_or(GeometryError::SizeOverflow {
+                                resource: "backing columns",
+                            })
+                    })?;
+            Ok(BindingWindowSpec {
+                family: window.family,
+                field: match window.backing_field() {
+                    FieldKind::Base => StorageField::Base,
+                    FieldKind::Ext => StorageField::Ext,
+                },
+                first_column: window.first_column,
+                columns,
+                procedural_kind: window.procedural_kind(),
+            })
+        })
+        .collect::<Result<Vec<_>, GeometryError>>()?;
+    let plan = build_binding_allocation_core(&specs, log_trace)?;
+    let logical_rows =
+        u32::try_from(plan.trace_len / 8).map_err(|_| GeometryError::SizeOverflow {
+            resource: "logical rows",
+        })?;
+    let num_blocks = logical_rows.div_ceil(32);
+    let partial_elements = usize::try_from(num_blocks)
+        .ok()
+        .and_then(|blocks| blocks.checked_mul(WINDOW_CELLS as usize))
+        .ok_or(GeometryError::SizeOverflow {
+            resource: "partial output",
+        })?;
+    let eq_low_elements = 1usize
+        .checked_shl(eq_sizes.low)
+        .ok_or(GeometryError::SizeOverflow {
+            resource: "low equality table",
+        })?;
+    Ok(LeanAllocationPlan {
+        log_trace,
+        log_rows: log_trace - 3,
+        trace_len: plan.trace_len,
+        logical_rows,
+        num_blocks,
+        eq_sizes,
+        eq_low_elements,
+        partial_elements,
+        final_elements: WINDOW_CELLS as usize,
+        backings: plan
+            .backings
+            .into_iter()
+            .map(|backing| LeanBackingPlan {
+                family: backing.family,
+                field: match backing.field {
+                    StorageField::Base => FieldKind::Base,
+                    StorageField::Ext => FieldKind::Ext,
+                },
+                columns: backing.columns,
+                stride_elements: backing.stride_elements,
+                stride_bytes: backing.stride_bytes,
+                bytes: backing.bytes,
+            })
+            .collect(),
+        windows: plan
+            .windows
+            .into_iter()
+            .map(|window| LeanWindowPlan {
+                family: window.family,
+                field: match window.field {
+                    StorageField::Base => FieldKind::Base,
+                    StorageField::Ext => FieldKind::Ext,
+                },
+                backing: window.backing,
+                base_element: window.base_element,
+                base_offset_bytes: window.base_offset_bytes,
+                log2_stride: log_trace as u8,
+                origin: if window.procedural_kind.is_some() {
+                    ORIGIN_PROCEDURAL
+                } else {
+                    match window.field {
+                        StorageField::Base => ORIGIN_READ_BASE,
+                        StorageField::Ext => ORIGIN_READ_EXT,
+                    }
+                },
+                procedural_kind: window.procedural_kind,
+            })
+            .collect(),
     })
 }
 
@@ -450,5 +732,35 @@ pub(crate) mod tests {
         );
         assert_eq!(plan.windows[3].backing, None);
         assert_eq!(plan.windows[3].base_offset_bytes, 0);
+    }
+
+    #[cfg(feature = "artifact-gen")]
+    #[test]
+    fn lean_allocation_uses_the_highest_column_independent_of_input_order() {
+        use gpu_gkr_compiler::backward::{
+            LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, WindowFamily,
+        };
+
+        let binding = LeanSourceBinding {
+            windows: vec![LeanBoundWindow {
+                family: WindowFamily::BaseLayerMemory,
+                first_column: 0,
+                columns: vec![
+                    LeanBoundColumn {
+                        column: 5,
+                        source: 0,
+                    },
+                    LeanBoundColumn {
+                        column: 2,
+                        source: 1,
+                    },
+                ],
+            }],
+            source_slots: Vec::new(),
+        };
+
+        let plan = build_lean_allocation_plan(&binding, 3).unwrap();
+        assert_eq!(plan.backings.len(), 1);
+        assert_eq!(plan.backings[0].columns, 6);
     }
 }

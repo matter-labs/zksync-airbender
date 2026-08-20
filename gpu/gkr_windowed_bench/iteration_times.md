@@ -1453,3 +1453,228 @@ launch bound eight, 79 registers, and zero stack/local/shared memory. It is the
 fastest repeatable complete arm and materially beats both its contemporaneous
 retained control and its exact canonical parent. The E4 suffix stays canonical;
 the optional inner-prefix riders were not retained.
+
+## Compact-program decode campaign
+
+The 2026-08-13 follow-up kept `bf-u96-reg-96x8` as the universal parent and
+asked whether a denser, cheaper-to-decode instruction stream could remove a
+meaningful part of the VM's control work. A reconciled per-address profile
+assigned all `10,716,774,400` dynamic warp instructions exactly once. Program
+fetch/decode/control owns 31.20%, source resolution/load owns 26.58%, arithmetic
+owns 40.12%, and the explicit setup/equality/output residual is 2.11%. These
+are ownership shares, not independently removable time estimates.
+
+The permanent CPU-only census covers every layer of all 12 primary circuits:
+57 discovered layers and 114 continuation/extension coordinates. It records
+semantic structure, the compiler's actual greedy binding, and the benchmark's
+six-slot/350-word encoding separately. Workload weights are preserved as four
+profiles: raw corpus, current-branch base layer, development-branch recursion
+proxy, and an explicitly unavailable current-branch recursion profile.
+
+### Calibration and selector sharing
+
+The instruction-inflation campaign preserved 102 attempts. The first 32 seed
+points and two replacement-sink points optimized away; 32 shared-sink points
+changed residency; two scratch-ABI attempts did not compile; and 32 final
+zero-spill/eight-block points were fit-eligible. Eight fits split by atom/member,
+serial/ILP, and requested instruction family yield an all-pair interval of
+`0.494936` to `0.795720` ms per billion added warp instructions. The raw points,
+exclusions, actual generated instruction currency, and fits remain in
+`target/windowed-gkr-decode-compact-program/calibration-{attempts,fits}.tsv`.
+
+Two selector-replay probes showed why straightforward fusion is unattractive.
+Canonical-E4 replay used 163 registers and 12 active warps/SM, regressing
+79.99%; full-u96 replay used 171 registers and eight active warps/SM,
+regressing 115.05%. Full-u96 did execute 10.15% fewer instructions, but issue
+activity collapsed. These probes replayed per-selector decode and therefore
+do not reject a genuinely shared decoder; they quantify the compiler/state
+cost of the obvious fully inlined implementations.
+
+### Compact and scheduling arms
+
+All executable arms passed zero-error log-8 memcheck, literal log-8/20/24
+checksums, canonical-map checks, and zero-spill static gates.
+
+| Exact-parent comparison | Program words | REG | Dynamic instruction delta | Paired timing | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| parent → structural segmentation | 350 | 78 | +1.069 B | -7.868817% | regression |
+| parent → direct specialized compact | 326 | 79 | +1.027 B | -6.290436% | regression |
+| direct compact → same-window compact | 312 | 79 | +1.252 B | -8.170728% | regression |
+| direct compact → direct permutation | 326 | 79 | 0 | -0.200880% repeat | unstable |
+| same-window → same-window permutation | 311 | 79 | -0.001 B | -0.016772% repeat | unstable |
+
+The direct format saves about 183.50 million uniform program-load instructions
+versus structural segmentation, but its shifts, masks, and Boolean unpacking
+still leave it 1.027 billion instructions above the retained parent. The
+same-window decoder saves only 28.90 million plain `LDC` executions while
+adding 1.252 billion instructions, led by `LOP3`, moves, shifts, integer MADs,
+branches, and predicates. Occupancy stays at eight blocks/SM; the loss is
+decode arithmetic and control, with additional L2 traffic, not a new register
+or source-load bottleneck.
+
+The permutation policy could legally reorder 71 product records inside lazy
+segments, but the retained schedule was already nearly in that order. Only
+eight records moved, as four adjacent swaps. Its neutral timing is therefore
+evidence about this small realized perturbation only.
+
+Null-versus-source-identical-control observations in the five compact sessions
+ranged from -0.356938% to +0.220842% and had mixed signs. The much larger
+structural/direct/same-window regressions are outside that band; the
+permutation effects are not.
+
+### Projection and interpretation
+
+Projection joins use canonical record IDs and apply nine selectors to product
+prefixes and four selectors to tails. Under raw, current-base, and development
+proxy weights, the three fully projectable arms all add instructions and have
+positive calibrated time intervals. For example, direct specialized compact
+projects +3.424 B instructions / 2.017–2.725 ms for the raw profile,
++25.955 B / 15.289–20.653 ms for current base, and +31.305 B /
+18.441–24.910 ms for the development proxy. These totals are comparative
+weighted work units, not an end-to-end prover forecast. Permutation projections
+remain partial because the corpus census knows where movement is legal but not
+what movement a future scheduler would actually realize. Current-branch full
+recursion remains unavailable.
+
+The historical direct-coordinate experiment is an important counterexample:
+removing 17 `LDC` sites and 16 static instructions made the materialized path
+about 0.10 ms slower. Likewise, the earlier canonical-to-BF-u96 boundary shows
+that a large coherent arithmetic change can win: -10.23% dynamic instructions,
+-16.14% duration-weighted FMA work, and +7.394% timing versus the exact parent
+at unchanged eight-block residency. Instruction count is useful currency only
+within a matched mechanism and resource envelope.
+
+No permanent compact GPU decoder is selected. The retained live kernel remains
+`bf-u96-reg-96x8`; only the deterministic census, compact-codec, and host-oracle
+tooling is kept. Plausible next experiments are a broader BF/E4-specialized
+codec, direct source/address work, a truly shared non-replayed selector decoder,
+combined mechanisms, or a separately controlled program-storage change.
+Program storage is still inline uniform kernel-parameter data, large circuits
+still need typed escape/capacity handling, and static-size/instruction-cache
+results are pessimistic while 42 singleton BF atoms, untargeted tails, and all
+seven E4 atoms remain on escape paths.
+
+## R0 prototype-bank broad screen
+
+The 2026-08-15 prototype bank moved from one-at-a-time experiments to a single
+fat executable containing the complete legal R0 cross-product: eight by-value
+program encodings, six legal inner/outer accumulator pairs, five selector
+geometries, and ordinary or capacity-8/16/32 materialized-source policies where
+defined. This is broad-search evidence, not a production selection or a
+launch-bound/max-register tuning campaign.
+
+All 245 symbols and 425 runtime configurations linked into one immutable
+Blackwell executable. Correctness covered all 57 R0 coordinates at log 3 and
+log 12. The production screen then exercised 13 typed real-domain coordinates,
+giving 5,525 dispositions: 4,895 launchable exact-cell/checksum passes and 630
+pre-launch shared-capacity facts. It retained 26,448 measured CUDA-event samples
+(5–21 per launchable configuration after a two-warmup/three-measured-event pilot)
+plus 9,790 retained-session warmups. Schema v1 reduced each pilot to its median;
+its raw five events were not preserved. Post-review schema v2 fixes that evidence
+gap and uses distinct pilot/retained candidate-pass rotations, but no v2 GPU run
+exists; every timing number below remains exploratory v1 evidence from runner
+SHA `9c8f615c...6472`.
+The pairwise sanitizer cover exercised all 23 primitive factors with zero-error
+memcheck, and every cooperative materialized cover row also passed racecheck.
+
+Percentages below use `(candidate / controlled baseline - 1) × 100`; negative
+is faster and positive is slower. Each paired row changes only the named factor.
+
+| Controlled factor | Pairs | Median | p10 to p90 | Faster / slower |
+| --- | ---: | ---: | ---: | ---: |
+| compact R0 port vs current fixed slot, canonical ordinary | 65 | -1.732% | -17.143% to +3.012% | 41 / 24 |
+| split-fixed slot vs current fixed slot, canonical ordinary | 65 | -10.645% | -20.190% to -0.143% | 59 / 6 |
+| split-fixed direct vs current fixed slot, canonical ordinary | 65 | -6.316% | -28.536% to +2.998% | 46 / 19 |
+| homogeneous direct vs current fixed slot, canonical ordinary | 65 | +5.101% | -10.619% to +16.527% | 19 / 46 |
+| grouped direct vs current fixed slot, canonical ordinary | 65 | -3.352% | -20.486% to +4.202% | 46 / 19 |
+| whole-BF u64 vs canonical outer accumulation | 1,276 | +23.679% | +11.494% to +79.865% | 16 / 1,260 |
+| whole-BF u96 vs canonical outer accumulation | 1,276 | +30.108% | +4.803% to +87.645% | 15 / 1,261 |
+| inner-u64 vs canonical inner, canonical outer | 334 | -0.987% | -6.076% to +10.424% | 202 / 132 |
+| partitioned 96-thread vs wide 288-thread, ordinary sources | 390 | -32.417% | -42.608% to -1.713% | 357 / 33 |
+| capacity-8 materialization vs ordinary, wide 288-thread | 390 | -33.467% | -57.2% to -1.3% | 354 / 36 |
+| capacity-8 materialization vs ordinary, partitioned 96-thread | 390 | +105.773% | +56.1% to +153.7% | 0 / 390 |
+| capacity-8 materialization vs ordinary, x2-major 96-thread | 390 | +0.732% | -28.3% to +30.8% | 190 / 200 |
+
+The representation result is especially useful. Across these 13 coordinates,
+compact R0 uses a median 0.886× the current logical program-plus-slot bytes and
+requires no escape word anywhere in the full 57-coordinate R0 corpus, but its
+controlled timing improvement is only 1.7%. Homogeneous direct is denser still
+(median 0.767×) yet slower and statically spills in the five canonical ordinary
+geometry symbols. Split-fixed slot uses the same median bytes as current fixed
+slot but improves timing by 10.6%, showing that BF/E4 phase separation and
+cheaper class dispatch matter more here than density alone. Direct source fields
+are nearly neutral against their slot equivalents at the corpus aggregate, so
+the extra slot lookup is not the dominant cost.
+
+The accumulator and source-policy interactions are equally strong. Current
+whole-BF u64/u96 prototypes raise the ordinary-symbol median register count from
+100 to about 166/239 and lose accordingly; this diagnoses these implementations,
+not the arithmetic idea in isolation. Inner-u64 is much cheaper and mildly
+helpful overall, but the E4-heavy `unsigned_mul_div:2` coordinate reverses the
+sign. For ordinary sources, partitioned 96-thread CTAs usually exploit their
+greater block granularity. Once source values are cooperatively materialized,
+the wide block instead amortizes one tile across all nine warps; partitioning
+repeats the staging and is uniformly slower. Capacity 16/32 commonly restrict
+residency to one block/SM and are correspondingly expensive.
+
+The full normalized rows, static/program/tile joins, controlled global and
+per-coordinate factor tables, and Pareto inputs are under
+`target/windowed-gkr-r0-prototype-bank/report/`. They intentionally contain no
+winner, score, threshold, rejection, or selected-implementation field. The next
+search stage should retain multiple mechanisms—especially split-fixed slot,
+ordinary partitioned geometry, and wide capacity-8 materialization—and explore
+implementation variants before any launch-bound or max-register fine tuning.
+
+## Sectioned three-warp launch-bound sweep
+
+The 2026-08-17 sweep compiled all 225 sectioned schema-v2 candidates into one
+executable and did not rebuild between candidates. For each of 15 corpus shape
+masks it retained fixed wide-9 at three blocks and natural plus
+7/8/9/10/12/16-block split-3 and low-register serial-3 variants. The heavy
+three-warp variant was retained only in the compile canary. Static inspection
+covered 226 symbols including the unchanged generic reference; correctness was
+1,740/1,740 rows across the exact all-57 log-3/log-12 matrix and a 30-row
+universal compatibility check.
+
+The table below keeps geometry choice and launch-bound effect separate. “Best
+bound” is descriptive within that geometry and coordinate, and its final
+percentage is relative to the same geometry's natural sectioned arm. Generic
+is the same-session generic interpreter, not the historical prototype.
+
+| Coordinate | Generic ms | Wide-9 b3 ms | Split-3 natural ms | Split-3 best bound / ms / vs natural | Low-3 natural ms | Low-3 best bound / ms / vs natural |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| add_sub_lui_auipc_mop:0 | 17.095920 | 9.435376 | 10.019712 | b12 / 9.641776 / -3.772% | 13.723904 | b7 / 13.705472 / -0.134% |
+| bigint_with_extended_control:0 | 57.066463 | 28.573153 | 34.679680 | b12 / 30.307728 / -12.607% | 41.975519 | b7 / 41.861025 / -0.273% |
+| blake2_with_extended_control:0 | 17.343392 | 13.080432 | 15.275504 | natural / 15.275504 / 0.000% | 25.276257 | b7 / 25.247056 / -0.116% |
+| inits_and_teardowns:3 | 1.234048 | 1.235424 | 1.341888 | b8 / 1.328576 / -0.992% | 1.282848 | b7 / 1.273152 / -0.756% |
+| shift_binop:0 | 13.355488 | 12.230112 | 14.121392 | b12 / 10.066304 / -28.716% | 18.681776 | b7 / 18.681264 / -0.003% |
+
+Aggregate launch-bound effects across those five coordinates are:
+
+| Geometry / bound | Median vs same-geometry natural | Range | Actual register range | Shapes with stack bytes |
+| --- | ---: | ---: | ---: | ---: |
+| serial3_low natural | 0.000% | 0.000% to 0.000% | 61–80 | 0/5 |
+| serial3_low b7 | -0.134% | -0.756% to -0.003% | 70–80 | 0/5 |
+| serial3_low b8 | +0.006% | -0.755% to +0.090% | 70–80 | 0/5 |
+| serial3_low b9 | +2.992% | +0.612% to +10.026% | 62–72 | 2/5 |
+| serial3_low b10 | +3.728% | +0.076% to +21.128% | 61–64 | 2/5 |
+| serial3_low b12 | +15.603% | +2.461% to +38.240% | 56 | 4/5 |
+| serial3_low b16 | +91.209% | +42.317% to +259.233% | 40 | 5/5 |
+| split3 natural | 0.000% | 0.000% to 0.000% | 61–84 | 0/5 |
+| split3 b7 | -0.983% | -11.061% to +0.418% | 64–80 | 2/5 |
+| split3 b8 | -0.992% | -11.081% to +1.349% | 64–80 | 2/5 |
+| split3 b9 | -3.674% | -15.170% to +1.866% | 66–72 | 2/5 |
+| split3 b10 | -0.005% | -5.612% to +3.278% | 61–64 | 2/5 |
+| split3 b12 | -3.772% | -28.716% to +9.364% | 56 | 4/5 |
+| split3 b16 | +79.074% | +30.906% to +213.744% | 40 | 5/5 |
+| wide9 b3 | 0.000% | 0.000% to 0.000% | 64–72 | 2/5 |
+
+Percentages use `(candidate / baseline - 1) × 100`, so negative means faster.
+The complete 80-row table includes registers, theoretical register bucket,
+stack/local/shared bytes, instruction count, SASS hash, exact natural identity,
+and both primary and secondary denominators at
+`target/windowed-gkr-r0-sectioned-launch-bounds/report/sectioned-screen-normalized.{jsonl,tsv}`.
+The 15-row aggregate is
+`target/windowed-gkr-r0-sectioned-launch-bounds/report/sectioned-bound-summary.{json,tsv}`.
+These are coarse search data, not a production selection or a claim that one
+geometry/bound should serve every circuit.
