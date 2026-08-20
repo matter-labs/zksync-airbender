@@ -233,7 +233,7 @@ fn top_claim_eq_matches_cpu_lsb() {
         memory_copy_async(&mut d_point, &point, context.get_exec_stream()).unwrap();
         let mut d_group_tables: DeviceAllocation<E4> = context
             .alloc(
-                eq_group_tables_len(challenge_count).max(1),
+                eq_group_tables_len(challenge_count),
                 AllocationPlacement::Top,
             )
             .unwrap();
@@ -257,6 +257,7 @@ fn top_claim_eq_matches_cpu_lsb() {
 
         let expected =
             prover::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E4>(&point, &worker);
+        assert_eq!(expected.len(), from_gpu.len());
         let first_divergence = from_gpu
             .iter()
             .zip(expected.iter())

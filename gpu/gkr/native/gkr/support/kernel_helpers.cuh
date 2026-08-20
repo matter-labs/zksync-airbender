@@ -100,7 +100,8 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_poin
     if (chunk_table_idx < chunk_len) {
       const unsigned variable_idx = group_start + variable_offset;
       // LSB relabeling: coordinate j pairs with table bit j, so the variable at
-      // group/chunk slot `variable_idx` reads coordinate `challenge_count - 1 - variable_idx`.
+      // group/chunk slot `variable_idx` reads coordinate `challenge_count - 1 - variable_idx`,
+      // reversed WITHIN `[challenge_offset, challenge_offset + challenge_count)`.
       const unsigned first_idx = challenge_offset + challenge_count - 1 - variable_idx;
       const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
       const E first_challenge = load<E, ld_modifier::cs>(claim_point, first_idx);

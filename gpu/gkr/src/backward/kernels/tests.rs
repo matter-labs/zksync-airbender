@@ -142,7 +142,10 @@ fn compact_cuda_constants_match_rust() {
 /// `eq[i] = prod_b (bit_b(i) ? point[b] : 1 - point[b])`, i.e. claim
 /// coordinate `b` pairs with table bit `b`. Oracle is the live CPU
 /// `make_eq_table_lsb_first`. Challenge counts cover the group boundaries
-/// (`GKR_EQ_GROUP_SIZE = 8`) and both chunk sizes inside a group.
+/// (`GKR_EQ_GROUP_SIZE = 8`) and both chunk sizes inside a group; the
+/// `challenge_offset = 1` cases pin that the reversal happens WITHIN
+/// `[challenge_offset, challenge_offset + challenge_count)` — the factored-eq
+/// callers in both sumcheck plans pass offset 1.
 #[test]
 #[cfg(not(no_cuda))]
 fn eq_builder_matches_cpu_lsb_table() {
@@ -161,8 +164,18 @@ fn eq_builder_matches_cpu_lsb_table() {
     let worker = Worker::new();
     let mut rng = StdRng::seed_from_u64(0x1b_5f_ab_20);
 
-    for challenge_count in [1usize, 2, 7, 8, 9, 16, 17] {
-        let point: Vec<E4> = (0..challenge_count)
+    for (challenge_offset, challenge_count) in [
+        (0usize, 1usize),
+        (0, 2),
+        (0, 7),
+        (0, 8),
+        (0, 9),
+        (0, 16),
+        (0, 17),
+        (1, 2),
+        (1, 9),
+    ] {
+        let point: Vec<E4> = (0..challenge_offset + challenge_count)
             .map(|_| {
                 E4::from_array_of_base(std::array::from_fn(|_| {
                     BF::from_u32_with_reduction(rng.random())
@@ -172,7 +185,7 @@ fn eq_builder_matches_cpu_lsb_table() {
 
         let acc_size = 1usize << challenge_count;
         let mut d_point: DeviceAllocation<E4> = context
-            .alloc(challenge_count, AllocationPlacement::BestFit)
+            .alloc(point.len(), AllocationPlacement::BestFit)
             .unwrap();
         memory_copy_async(&mut d_point, &point, context.get_exec_stream()).unwrap();
         let mut d_group_tables: DeviceAllocation<E4> = context
@@ -186,7 +199,7 @@ fn eq_builder_matches_cpu_lsb_table() {
 
         launch_build_eq_values_from_point(
             d_point.as_ptr(),
-            0,
+            challenge_offset,
             challenge_count,
             d_group_tables.as_mut_ptr(),
             d_eq_values.as_mut_ptr(),
@@ -199,8 +212,10 @@ fn eq_builder_matches_cpu_lsb_table() {
         memory_copy_async(&mut from_gpu, &d_eq_values, context.get_exec_stream()).unwrap();
         context.get_exec_stream().synchronize().unwrap();
 
-        let expected =
-            prover::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E4>(&point, &worker);
+        let expected = prover::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E4>(
+            &point[challenge_offset..],
+            &worker,
+        );
         assert_eq!(expected.len(), from_gpu.len());
         let first_divergence = from_gpu
             .iter()
@@ -208,8 +223,8 @@ fn eq_builder_matches_cpu_lsb_table() {
             .position(|(gpu, cpu)| gpu != cpu);
         assert!(
             first_divergence.is_none(),
-            "challenge_count={challenge_count}: first divergent index {:?} \
-             (bits {:0width$b})",
+            "challenge_offset={challenge_offset} challenge_count={challenge_count}: \
+             first divergent index {:?} (bits {:0width$b})",
             first_divergence,
             first_divergence.unwrap_or(0),
             width = challenge_count,
