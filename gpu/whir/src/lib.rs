@@ -1510,7 +1510,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[ignore]
     fn recursive_oracle_lde_matches_cpu_large() {
         recursive_oracle_lde_matches_cpu_impl(&[23], &[32], false, false);
     }
@@ -1537,7 +1536,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[ignore]
     fn recursive_oracle_lde_with_transform_matches_cpu_large() {
         recursive_oracle_lde_matches_cpu_impl(&[23], &[32], true, false);
     }
