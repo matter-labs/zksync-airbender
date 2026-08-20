@@ -22,38 +22,47 @@ EXTERN __global__ void ab_whir_fold_split_half_vectorized_e4_kernel(vectorized_e
   dst.set_at_row(gid, folded);
 }
 
-EXTERN __global__ void ab_whir_fold_split_half_e4_kernel(e4 *values, const e4 *challenge, const unsigned half_len) {
+// LSB binding: the round eliminates coordinate 0, so the pair is ADJACENT
+// (2*gid, 2*gid + 1) -- `prover/src/gkr/whir/mod.rs` `fold_evaluation_form` /
+// `fold_eq_poly`. The read range [0, 2*half_len) covers the write range
+// [0, half_len), and thread `gid` writes a cell thread `gid / 2` reads, so the
+// destination is a SEPARATE buffer (cross-block overlap admits no in-place
+// form without a global barrier).
+EXTERN __global__ void ab_whir_fold_adjacent_e4_kernel(const e4 *src, e4 *dst, const e4 *challenge, const unsigned half_len) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= half_len)
     return;
 
-  const e4 a = load<e4, ld_modifier::cs>(values, gid);
-  const e4 b = load<e4, ld_modifier::cs>(values, half_len + gid);
+  const e4 a = load<e4, ld_modifier::cs>(src, 2 * gid);
+  const e4 b = load<e4, ld_modifier::cs>(src, 2 * gid + 1);
   const e4 diff = e4::sub(b, a);
   const e4 folded = e4::fma(*challenge, diff, a);
-  store<e4, st_modifier::cs>(values, folded, gid);
+  store<e4, st_modifier::cs>(dst, folded, gid);
 }
 
-// Paired (eval_form, eq_poly) split-half fold sharing a single challenge.
-EXTERN __global__ void ab_whir_fold_split_half_pair_e4_kernel(e4 *values_a, e4 *values_b, const e4 *challenge, const unsigned half_len) {
+// Paired (eval_form, eq_poly) adjacent-pair fold sharing a single challenge.
+EXTERN __global__ void ab_whir_fold_adjacent_pair_e4_kernel(const e4 *src_a, e4 *dst_a, const e4 *src_b, e4 *dst_b, const e4 *challenge,
+                                                            const unsigned half_len) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= half_len)
     return;
 
   const e4 c = *challenge;
-  const e4 a_lo = load<e4, ld_modifier::cs>(values_a, gid);
-  const e4 a_hi = load<e4, ld_modifier::cs>(values_a, half_len + gid);
-  store<e4, st_modifier::cs>(values_a, e4::fma(c, e4::sub(a_hi, a_lo), a_lo), gid);
-  const e4 b_lo = load<e4, ld_modifier::cs>(values_b, gid);
-  const e4 b_hi = load<e4, ld_modifier::cs>(values_b, half_len + gid);
-  store<e4, st_modifier::cs>(values_b, e4::fma(c, e4::sub(b_hi, b_lo), b_lo), gid);
+  const e4 a_lo = load<e4, ld_modifier::cs>(src_a, 2 * gid);
+  const e4 a_hi = load<e4, ld_modifier::cs>(src_a, 2 * gid + 1);
+  store<e4, st_modifier::cs>(dst_a, e4::fma(c, e4::sub(a_hi, a_lo), a_lo), gid);
+  const e4 b_lo = load<e4, ld_modifier::cs>(src_b, 2 * gid);
+  const e4 b_hi = load<e4, ld_modifier::cs>(src_b, 2 * gid + 1);
+  store<e4, st_modifier::cs>(dst_b, e4::fma(c, e4::sub(b_hi, b_lo), b_lo), gid);
 }
 
 // WHIR sumcheck three-point partials. Each block stride-reduces its slice of
 // [0, half) into three block-local sums; the finalize kernel sums across blocks.
-//   p0 = sum_i eval[i] * eq[i]
-//   p1 = sum_i eval[half+i] * eq[half+i]
-//   p2 = sum_i (eval[i] + eval[half+i]) * (eq[i] + eq[half+i])
+// LSB binding pairs ADJACENT entries, matching `three_point_partial` in
+// `prover/src/gkr/whir/mod.rs` (`a.as_chunks::<2>()`):
+//   p0 = sum_i eval[2i]   * eq[2i]
+//   p1 = sum_i eval[2i+1] * eq[2i+1]
+//   p2 = sum_i (eval[2i] + eval[2i+1]) * (eq[2i] + eq[2i+1])
 constexpr unsigned WHIR_THREE_POINT_BLOCK_THREADS = 256;
 
 EXTERN __global__ void ab_whir_three_point_partials_e4_kernel(const e4 *__restrict__ eval, const e4 *__restrict__ eq, e4 *__restrict__ partials,
@@ -70,10 +79,10 @@ EXTERN __global__ void ab_whir_three_point_partials_e4_kernel(const e4 *__restri
   e4 acc2 = e4::ZERO();
 
   for (unsigned i = blockIdx.x * blockDim.x + tid; i < half; i += stride) {
-    const e4 ev_lo = load<e4, ld_modifier::cs>(eval, i);
-    const e4 ev_hi = load<e4, ld_modifier::cs>(eval, half + i);
-    const e4 eq_lo = load<e4, ld_modifier::cs>(eq, i);
-    const e4 eq_hi = load<e4, ld_modifier::cs>(eq, half + i);
+    const e4 ev_lo = load<e4, ld_modifier::cs>(eval, 2 * i);
+    const e4 ev_hi = load<e4, ld_modifier::cs>(eval, 2 * i + 1);
+    const e4 eq_lo = load<e4, ld_modifier::cs>(eq, 2 * i);
+    const e4 eq_hi = load<e4, ld_modifier::cs>(eq, 2 * i + 1);
     acc0 = e4::add(acc0, e4::mul(ev_lo, eq_lo));
     acc1 = e4::add(acc1, e4::mul(ev_hi, eq_hi));
     acc2 = e4::add(acc2, e4::mul(e4::add(ev_lo, ev_hi), e4::add(eq_lo, eq_hi)));
@@ -153,10 +162,10 @@ EXTERN __global__ void ab_whir_three_point_combined_e4_kernel(const e4 *__restri
   e4 acc1 = e4::ZERO();
   e4 acc2 = e4::ZERO();
   if (tid < half) {
-    const e4 ev_lo = load<e4, ld_modifier::cs>(eval, tid);
-    const e4 ev_hi = load<e4, ld_modifier::cs>(eval, half + tid);
-    const e4 eq_lo = load<e4, ld_modifier::cs>(eq, tid);
-    const e4 eq_hi = load<e4, ld_modifier::cs>(eq, half + tid);
+    const e4 ev_lo = load<e4, ld_modifier::cs>(eval, 2 * tid);
+    const e4 ev_hi = load<e4, ld_modifier::cs>(eval, 2 * tid + 1);
+    const e4 eq_lo = load<e4, ld_modifier::cs>(eq, 2 * tid);
+    const e4 eq_hi = load<e4, ld_modifier::cs>(eq, 2 * tid + 1);
     acc0 = e4::mul(ev_lo, eq_lo);
     acc1 = e4::mul(ev_hi, eq_hi);
     acc2 = e4::mul(e4::add(ev_lo, ev_hi), e4::add(eq_lo, eq_hi));

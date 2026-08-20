@@ -8,13 +8,13 @@ use fft::domain_generator_for_size;
 use fft::materialize_powers_serial_starting_with_one;
 
 #[cfg(test)]
-use crate::kernels::whir_fold_split_half_in_place;
+use crate::kernels::whir_fold_adjacent;
 use crate::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
     deserialize_whir_e4_columns, launch_batched_accumulate_eq_samples,
     launch_split_accumulate_eq_samples, launch_whir_three_point_partials,
-    partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens,
-    whir_fold_split_half_in_place_pair, whir_fold_split_half_in_place_vectorized, whir_sum,
+    partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens, whir_fold_adjacent_pair,
+    whir_fold_split_half_in_place_vectorized, whir_sum,
 };
 use crate::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 #[cfg(test)]
@@ -55,6 +55,12 @@ pub(super) struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation<BF>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,
+    /// Fold destinations for the LSB (adjacent-pair) evaluation-form and eq
+    /// folds. The pairing makes the read range overlap the write range across
+    /// blocks, so each round folds out of place and swaps the buffers; a
+    /// half-length partner suffices because the live length halves every round.
+    eval_form_fold_dst: DeviceAllocation<E4>,
+    eq_poly_fold_dst: DeviceAllocation<E4>,
     eq_group_tables: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
     scratch1: DeviceAllocation<E4>,
@@ -149,6 +155,8 @@ impl GpuWhirState {
             sumchecked_poly_evaluation_form: context
                 .alloc(trace_len, AllocationPlacement::BestFit)?,
             eq_poly: context.alloc(trace_len, AllocationPlacement::BestFit)?,
+            eval_form_fold_dst: context.alloc(half_len, AllocationPlacement::BestFit)?,
+            eq_poly_fold_dst: context.alloc(half_len, AllocationPlacement::BestFit)?,
             eq_group_tables: context.alloc(
                 eq_group_tables_len(max_log_n).max(1),
                 AllocationPlacement::BestFit,

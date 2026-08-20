@@ -44,31 +44,31 @@ fn fold_monomial_form_for_test(input: &mut Vec<E4>, challenge: E4) {
     *input = buffer;
 }
 
+/// Mirrors the CPU authority `fold_evaluation_form` / `fold_eq_poly`
+/// (prover/src/gkr/whir/mod.rs): LSB binding folds ADJACENT pairs (2i, 2i+1).
 fn fold_evaluation_form_for_test(input: &mut Vec<E4>, challenge: E4) {
     let half_len = input.len() / 2;
-    let (first_half, second_half) = input.split_at_mut(half_len);
-    for (a, b) in first_half.iter_mut().zip(second_half.iter()) {
+    let mut folded = Vec::with_capacity(half_len);
+    for [a, b] in input.as_chunks::<2>().0.iter() {
         let mut t = *b;
         t.sub_assign(a);
         t.mul_assign(&challenge);
-        a.add_assign(&t);
+        let mut v = *a;
+        v.add_assign(&t);
+        folded.push(v);
     }
-    input.truncate(half_len);
+    *input = folded;
 }
 
+/// Mirrors the CPU authority `three_point_partial`
+/// (prover/src/gkr/whir/mod.rs): the round's three evaluations pair ADJACENT
+/// entries (`a.as_chunks::<2>()`), matching LSB binding.
 fn special_three_point_eval_for_test(a: &[E4], b: &[E4]) -> (E4, E4, E4) {
-    let half = a.len() / 2;
     let quart = BF::from_u32_unchecked(4).inverse().unwrap();
-    let (a_low, a_high) = a.split_at(half);
-    let (b_low, b_high) = b.split_at(half);
     let mut f0 = E4::ZERO;
     let mut f1 = E4::ZERO;
     let mut f_half = E4::ZERO;
-    for ((a0, a1), (b0, b1)) in a_low
-        .iter()
-        .zip(a_high.iter())
-        .zip(b_low.iter().zip(b_high.iter()))
-    {
+    for ([a0, a1], [b0, b1]) in a.as_chunks::<2>().0.iter().zip(b.as_chunks::<2>().0.iter()) {
         let mut t0 = *a0;
         t0.mul_assign(b0);
         f0.add_assign(&t0);

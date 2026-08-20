@@ -290,34 +290,46 @@ pub(crate) fn whir_fold_split_half_in_place_vectorized(
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldSplitHalf,
-    values: *mut E4,
+    WhirFoldAdjacent,
+    src: *const E4,
+    dst: *mut E4,
     challenge: *const E4,
     half_len: u32,
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_split_half_e4_kernel(
-        values: *mut E4,
+    ab_whir_fold_adjacent_e4_kernel(
+        src: *const E4,
+        dst: *mut E4,
         challenge: *const E4,
         half_len: u32,
     )
 );
 
+/// LSB-binding fold of one evaluation-form leg: `dst[i] = src[2i] + r * (src[2i+1] - src[2i])`.
+/// Out of place — the adjacent pairing makes the read and write ranges overlap
+/// across blocks.
 #[cfg(test)]
-pub(crate) fn whir_fold_split_half_in_place(
-    values: &mut DeviceSlice<E4>,
+pub(crate) fn whir_fold_adjacent(
+    src: &DeviceSlice<E4>,
+    dst: &mut DeviceSlice<E4>,
     challenge: &DeviceVariable<E4>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(values.len().is_power_of_two());
-    assert!(values.len() >= 2);
-    assert!(values.len() / 2 <= u32::MAX as usize);
-    let half_len = (values.len() / 2) as u32;
+    assert!(src.len().is_power_of_two());
+    assert!(src.len() >= 2);
+    assert!(src.len() / 2 <= u32::MAX as usize);
+    let half_len = (src.len() / 2) as u32;
+    assert!(dst.len() >= half_len as usize);
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldSplitHalfArguments::new(values.as_mut_ptr(), challenge.as_ptr(), half_len);
-    WhirFoldSplitHalfFunction(ab_whir_fold_split_half_e4_kernel).launch(&config, &args)
+    let args = WhirFoldAdjacentArguments::new(
+        src.as_ptr(),
+        dst.as_mut_ptr(),
+        challenge.as_ptr(),
+        half_len,
+    );
+    WhirFoldAdjacentFunction(ab_whir_fold_adjacent_e4_kernel).launch(&config, &args)
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -1096,41 +1108,53 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldSplitHalfPair,
-    values_a: *mut E4,
-    values_b: *mut E4,
+    WhirFoldAdjacentPair,
+    src_a: *const E4,
+    dst_a: *mut E4,
+    src_b: *const E4,
+    dst_b: *mut E4,
     challenge: *const E4,
     half_len: u32,
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_split_half_pair_e4_kernel(
-        values_a: *mut E4,
-        values_b: *mut E4,
+    ab_whir_fold_adjacent_pair_e4_kernel(
+        src_a: *const E4,
+        dst_a: *mut E4,
+        src_b: *const E4,
+        dst_b: *mut E4,
         challenge: *const E4,
         half_len: u32,
     )
 );
 
-pub(crate) fn whir_fold_split_half_in_place_pair(
-    values_a: &mut DeviceSlice<E4>,
-    values_b: &mut DeviceSlice<E4>,
+/// LSB-binding fold of the (evaluation form, eq) pair. Both legs are read at
+/// `2i` / `2i + 1` and written densely at `i` into SEPARATE destinations.
+pub(crate) fn whir_fold_adjacent_pair(
+    src_a: &DeviceSlice<E4>,
+    dst_a: &mut DeviceSlice<E4>,
+    src_b: &DeviceSlice<E4>,
+    dst_b: &mut DeviceSlice<E4>,
     challenge: &DeviceVariable<E4>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert_eq!(values_a.len(), values_b.len());
-    assert!(values_a.len().is_power_of_two());
-    assert!(values_a.len() >= 2);
-    let half_len = (values_a.len() / 2) as u32;
+    assert_eq!(src_a.len(), src_b.len());
+    assert!(src_a.len().is_power_of_two());
+    assert!(src_a.len() >= 2);
+    let half_len = (src_a.len() / 2) as u32;
+    assert!(dst_a.len() >= half_len as usize);
+    assert!(dst_b.len() >= half_len as usize);
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldSplitHalfPairArguments::new(
-        values_a.as_mut_ptr(),
-        values_b.as_mut_ptr(),
+    let args = WhirFoldAdjacentPairArguments::new(
+        src_a.as_ptr(),
+        dst_a.as_mut_ptr(),
+        src_b.as_ptr(),
+        dst_b.as_mut_ptr(),
         challenge.as_ptr(),
         half_len,
     );
-    WhirFoldSplitHalfPairFunction(ab_whir_fold_split_half_pair_e4_kernel).launch(&config, &args)
+    WhirFoldAdjacentPairFunction(ab_whir_fold_adjacent_pair_e4_kernel).launch(&config, &args)
 }
 
 const WHIR_THREE_POINT_BLOCK_THREADS: u32 = 256;
