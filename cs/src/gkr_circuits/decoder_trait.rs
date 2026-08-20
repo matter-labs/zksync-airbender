@@ -5,7 +5,11 @@ use fft::GoodAllocator;
 use field::PrimeField;
 use riscv_transpiler::ir::DecodingOptions;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+// The derived Default (all-zero indices/imm, no funct3/funct7, empty family bits) is
+// deliberately a self-consistent, family-agnostic value.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[repr(C)]
 pub struct ExecutorFamilyDecoderData {
     pub imm: u32,
@@ -15,21 +19,6 @@ pub struct ExecutorFamilyDecoderData {
     pub opcode_family_bits: u32,
     pub funct3: Option<u8>,
     pub funct7: Option<u8>,
-}
-
-impl Default for ExecutorFamilyDecoderData {
-    fn default() -> Self {
-        // We make a value that is self-consistent, and as family-agnostic as possible
-        ExecutorFamilyDecoderData {
-            imm: 0,
-            rs1_index: 0,
-            rs2_index: 0,
-            rd_index: 0,
-            funct3: None,
-            funct7: None,
-            opcode_family_bits: 0,
-        }
-    }
 }
 
 pub struct DecoderTable {
@@ -120,9 +109,7 @@ impl<F: PrimeField> DecoderTableEntry<F> {
                 .funct3
                 .map(|el| F::from_u32_unchecked(el as u32)),
             funct7: None,
-            circuit_family_extra_mask: F::from_u32_unchecked(
-                executor_data.opcode_family_bits as u32,
-            ),
+            circuit_family_extra_mask: F::from_u32_unchecked(executor_data.opcode_family_bits),
         }
     }
 
@@ -155,6 +142,9 @@ pub trait OpcodeFamilyDecoder: 'static + std::fmt::Debug {
 
     fn instruction_family_index(&self) -> u8;
 
+    // `Err(())` carries exactly one meaning — "opcode not supported by this circuit
+    // family" — a dedicated error type would add nothing.
+    #[expect(clippy::result_unit_err)]
     fn define_decoder_subspace(
         &self,
         preprocessed_opcode: Instruction,
@@ -163,7 +153,7 @@ pub trait OpcodeFamilyDecoder: 'static + std::fmt::Debug {
     #[inline(always)]
     fn parse_for_oracle(&self, preprocessed_opcode: Instruction) -> ExecutorFamilyDecoderData {
         self.define_decoder_subspace(preprocessed_opcode)
-            .unwrap_or(Default::default())
+            .unwrap_or_default()
     }
 }
 
@@ -216,8 +206,12 @@ pub fn process_binary_into_separate_tables_ext<
     let mut result = HashMap::with_capacity(families.len());
     for family in families.iter() {
         let family_type = family.instruction_family_index();
-        let witness_eval_data =
-            preprocess_bytecode::<F, OPT, A>(&binary, bytecode_size_words, &family, supported_csrs);
+        let witness_eval_data = preprocess_bytecode::<F, OPT, A>(
+            binary,
+            bytecode_size_words,
+            family.as_ref(),
+            supported_csrs,
+        );
         assert_eq!(witness_eval_data.len(), bytecode_size_words);
         for (idx, entry) in witness_eval_data.iter().enumerate() {
             if entry.is_some() {
@@ -229,20 +223,19 @@ pub fn process_binary_into_separate_tables_ext<
         result.insert(family_type, witness_eval_data);
     }
 
-    if ALLOW_UNSUPPORTED == false {
-        if pc_set.len() != binary.len() {
-            for i in 0..binary.len() {
-                if pc_set.contains(&i) == false {
-                    println!(
-                        "PC = 0x{:08x}, opcode = 0x{:08x} is not supported",
-                        i << 2,
-                        binary[i]
-                    );
-                }
+    if !ALLOW_UNSUPPORTED && pc_set.len() != binary.len() {
+        #[expect(clippy::needless_range_loop)]
+        for i in 0..binary.len() {
+            if !pc_set.contains(&i) {
+                println!(
+                    "PC = 0x{:08x}, opcode = 0x{:08x} is not supported",
+                    i << 2,
+                    binary[i]
+                );
             }
-
-            panic!("Not all the opcodes are supported");
         }
+
+        panic!("Not all the opcodes are supported");
     }
 
     result
@@ -271,7 +264,7 @@ pub fn materialize_flattened_decoder_table_with_bitmask<F: PrimeField>(
             let row =
                 DecoderTableEntry::<F>::from_executor_family_data(pc as u32, supported).flatten();
             let mut selected_row = arrayvec::ArrayVec::new();
-            for (mask, value) in fields_bitmask.iter().zip(row.into_iter()) {
+            for (mask, value) in fields_bitmask.iter().zip(row) {
                 if *mask {
                     selected_row.push(value);
                 }
@@ -297,7 +290,7 @@ pub fn materialize_flattened_decoder_table_with_bitmask<F: PrimeField>(
 pub fn preprocess_bytecode<F: PrimeField, OPT: DecodingOptions, A: GoodAllocator>(
     binary: &[u32],
     bytecode_size_words: usize,
-    family: &Box<dyn OpcodeFamilyDecoder>,
+    family: &dyn OpcodeFamilyDecoder,
     supported_csrs: &[u16],
 ) -> Vec<Option<ExecutorFamilyDecoderData>, A> {
     assert!(binary.len() <= bytecode_size_words);
@@ -313,7 +306,7 @@ pub fn preprocess_bytecode<F: PrimeField, OPT: DecodingOptions, A: GoodAllocator
         };
         if opcode.name == InstructionName::ZicsrDelegation {
             assert!(
-                supported_csrs.contains(&(opcode.imm as u32 as u16)),
+                supported_csrs.contains(&(opcode.imm as u16)),
                 "unsupported CSR 0x{:04x} at PC = 0x{:08x}",
                 opcode.imm,
                 i * core::mem::size_of::<u32>()
@@ -348,7 +341,7 @@ mod test {
         let binary: Vec<u32> = buffer
             .as_chunks::<4>()
             .0
-            .into_iter()
+            .iter()
             .map(|el| u32::from_le_bytes(*el))
             .collect();
 

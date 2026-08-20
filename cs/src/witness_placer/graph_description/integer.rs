@@ -163,11 +163,7 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
 
                 rhs_width
             }
-            Self::WrappingShl { lhs, .. } | Self::WrappingShr { lhs, .. } => {
-                let lhs_width = lhs.bit_width();
-
-                lhs_width
-            }
+            Self::WrappingShl { lhs, .. } | Self::WrappingShr { lhs, .. } => lhs.bit_width(),
             Self::DivAssumeNonzero { lhs, rhs }
             | Self::RemAssumeNonzero { lhs, rhs }
             | Self::SignedDivAssumeNonzeroNoOverflowBits { lhs, rhs }
@@ -385,13 +381,11 @@ impl<F: PrimeField> WitnessComputationCore for FixedWidthIntegerNodeExpression<F
         *self = new_node;
     }
     fn select(mask: &Self::Mask, a: &Self, b: &Self) -> Self {
-        let new_node = Self::Select {
+        Self::Select {
             selector: mask.clone(),
             if_true: Box::new(a.clone()),
             if_false: Box::new(b.clone()),
-        };
-
-        new_node
+        }
     }
     fn select_into(dst: &mut Self, mask: &Self::Mask, a: &Self, b: &Self) {
         *dst = Self::select(mask, a, b);

@@ -26,6 +26,10 @@ LEAFS = "LEAFS"
 INOT = "INOT"
 inot = "inot"
 ot = "ot"
+# `transcriptNto1` in the generated Yul verifier is "transcript N-to-1", not a
+# misspelling of "Not". Renaming it would desync the generator from the committed
+# verifier_evm/generated_contracts/gkr/src/GkrVerifier.sol.
+Nto = "Nto"
 
 [type.asm.extend-words]
 Wich = "Wich"

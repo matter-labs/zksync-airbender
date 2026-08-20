@@ -9,6 +9,7 @@ use fft::{
     parallel_bitreverse_enumeration_inplace, GoodAllocator,
 };
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
+use std::mem::MaybeUninit;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -84,6 +85,10 @@ pub(crate) fn compute_column_major_lde_from_main_domain_inner<
 
     #[cfg(feature = "timing_logs")]
     let now = std::time::Instant::now();
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+    )]
     for i in 0..(lde_factor - 1) {
         let mut source = if i == (lde_factor - 2) {
             ifft.take().unwrap()
@@ -110,81 +115,6 @@ pub(crate) fn compute_column_major_lde_from_main_domain_inner<
     assert_eq!(result.len(), lde_factor - 1);
 
     result
-}
-
-pub(crate) fn compute_column_major_lde_from_main_domain_and_output_monomial_form<
-    F: PrimeField + TwoAdicField,
-    E: FieldExtension<F> + Field,
-    A: GoodAllocator,
->(
-    source_domain: &[E],
-    twiddles: &Twiddles<F, A>,
-    lde_factor: usize,
-) -> (Vec<(Box<[E]>, F)>, Vec<E>) {
-    assert!(lde_factor.is_power_of_two());
-
-    assert!(lde_factor > 1, "No reason to call this function");
-
-    let trace_len_log2 = source_domain.len().trailing_zeros();
-
-    let mut ifft: Vec<E> = source_domain.to_vec();
-    let size_inv = F::from_u32_unchecked(1 << trace_len_log2)
-        .inverse()
-        .unwrap();
-    fft::naive::cache_friendly_ntt_natural_to_bitreversed(
-        &mut ifft[..],
-        trace_len_log2,
-        &twiddles.inverse_twiddles[..],
-    );
-    for el in ifft.iter_mut() {
-        el.mul_assign_by_base(&size_inv);
-    }
-    bitreverse_enumeration_inplace(&mut ifft[..]);
-
-    let next_root = domain_generator_for_size::<F>(((1 << trace_len_log2) * lde_factor) as u64);
-    let root_powers =
-        materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
-    assert_eq!(root_powers[0], F::ONE);
-
-    let mut result = Vec::with_capacity(lde_factor - 1);
-
-    {
-        let offset = root_powers[0];
-        let mut source = ifft.clone();
-        // TODO: very stupid and slow...
-        distribute_powers_serial(&mut source[..], F::ONE, offset);
-        bitreverse_enumeration_inplace(&mut source[..]);
-        fft::naive::serial_ct_ntt_bitreversed_to_natural(
-            &mut source[..],
-            trace_len_log2,
-            &twiddles.forward_twiddles,
-        );
-        assert_eq!(source, source_domain);
-    }
-
-    let roots = &root_powers[1..];
-
-    #[cfg(feature = "timing_logs")]
-    let now = std::time::Instant::now();
-    for i in 0..(lde_factor - 1) {
-        let mut source = ifft.clone();
-        // TODO: very stupid and slow...
-        let offset = roots[i];
-        distribute_powers_serial(&mut source[..], F::ONE, offset);
-        bitreverse_enumeration_inplace(&mut source[..]);
-        fft::naive::serial_ct_ntt_bitreversed_to_natural(
-            &mut source[..],
-            trace_len_log2,
-            &twiddles.forward_twiddles,
-        );
-        result.push((source.into_boxed_slice(), offset));
-    }
-    #[cfg(feature = "timing_logs")]
-    dbg!(now.elapsed());
-
-    assert_eq!(result.len(), lde_factor - 1);
-
-    (result, ifft)
 }
 
 pub(crate) fn compute_column_major_lde_from_monomial_form<
@@ -232,26 +162,34 @@ pub(crate) fn compute_column_major_lde_from_monomial_form<
 
     let result = if let Some(worker) = worker {
         let mut result: Vec<(Box<[E]>, F)> = Vec::with_capacity(lde_factor);
-        unsafe { result.set_len(lde_factor) };
-        let base_ptr = result.as_mut_ptr();
-        worker.scope(lde_factor, |scope, geometry| {
-            (0..geometry.len())
-                .map(|chunk_idx| {
-                    let start = geometry.get_chunk_start_pos(chunk_idx);
-                    let size = geometry.get_chunk_size(chunk_idx);
-                    let dst = unsafe { base_ptr.add(start) } as usize;
-                    (start, size, dst, chunk_idx == geometry.len() - 1)
-                })
-                .for_each(|(chunk_start, chunk_size, dst, is_last)| {
-                    Worker::smart_spawn(scope, is_last, move |_| {
-                        let mut dst = dst as *mut (Box<[E]>, F);
-                        for i in chunk_start..(chunk_start + chunk_size) {
-                            unsafe { dst.write(compute_coset(i)) };
-                            dst = unsafe { dst.add(1) };
-                        }
+        {
+            // Write into the reserved-but-uninitialized tail. `spare_capacity_mut()` hands out
+            // `MaybeUninit` slots, so no uninitialized `(Box<[E]>, F)` is ever materialized, and
+            // the `set_len` below runs only after the scope has filled every slot.
+            let base_ptr = result.spare_capacity_mut().as_mut_ptr();
+            worker.scope(lde_factor, |scope, geometry| {
+                (0..geometry.len())
+                    .map(|chunk_idx| {
+                        let start = geometry.get_chunk_start_pos(chunk_idx);
+                        let size = geometry.get_chunk_size(chunk_idx);
+                        let dst = unsafe { base_ptr.add(start) } as usize;
+                        (start, size, dst, chunk_idx == geometry.len() - 1)
+                    })
+                    .for_each(|(chunk_start, chunk_size, dst, is_last)| {
+                        Worker::smart_spawn(scope, is_last, move |_| {
+                            let mut dst = dst as *mut MaybeUninit<(Box<[E]>, F)>;
+                            for i in chunk_start..(chunk_start + chunk_size) {
+                                unsafe { (*dst).write(compute_coset(i)) };
+                                dst = unsafe { dst.add(1) };
+                            }
+                        });
                     });
-                });
-        });
+            });
+        }
+        // SAFETY: `worker.scope(lde_factor, ..)` partitions `0..lde_factor` into disjoint
+        // chunks that together cover it exactly, and the body writes slot `i` for every `i`
+        // in its chunk, so all `lde_factor` slots are initialized once the scope returns.
+        unsafe { result.set_len(lde_factor) };
         result
     } else {
         (0..lde_factor).map(compute_coset).collect()
@@ -360,6 +298,7 @@ pub fn compute_column_major_lde_single_coset_with_offset_serial<
     evals.into_boxed_slice()
 }
 
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) fn compute_column_major_monomial_form_from_main_domain<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -443,9 +382,13 @@ pub(crate) fn lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
     assert_eq!(root_powers[0], F::ONE);
 
     let mut cosets = Vec::with_capacity(lde_factor);
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+    )]
     for i in 0..lde_factor {
         let mut sources = if i == lde_factor - 1 {
-            core::mem::replace(&mut monomials, vec![])
+            core::mem::take(&mut monomials)
         } else {
             monomials.clone()
         };
@@ -493,7 +436,7 @@ pub(crate) fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdi
         cosets.push(Vec::with_capacity(evals.len()));
     }
 
-    if evals.len() == 0 {
+    if evals.is_empty() {
         return cosets;
     }
 
@@ -542,6 +485,10 @@ pub(crate) fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdi
     cosets
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn commit_trace_part<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -565,6 +512,10 @@ where
         let root_powers =
             materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
         assert_eq!(root_powers[0], F::ONE);
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for i in 0..lde_factor {
             let offset = root_powers[i];
             let trace_part = ColumnMajorBaseOracleForCoset {
@@ -594,9 +545,9 @@ where
     let t_lde = t_lde.elapsed();
     let mut cosets = Vec::with_capacity(lde_factor);
     for coset in evals.into_iter() {
-        assert!(coset.len() > 0);
+        assert!(!coset.is_empty());
         for el in coset.iter() {
-            assert!(el.column.len() > 0);
+            assert!(!el.column.is_empty());
         }
         let offset = coset[0].offset;
         let trace_part = ColumnMajorBaseOracleForCoset {
@@ -658,6 +609,10 @@ where
 /// i.e. `input_column_vars + pack_log2`; `twiddles` must be sized for that enlarged
 /// domain. All input columns must have `2^(packed_trace_len_log2 - pack_log2)`
 /// elements.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn commit_trace_part_packed<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -689,6 +644,10 @@ where
     // empty cosets with a dummy tree.
     if input_on_hypercube.is_empty() {
         let mut cosets = Vec::with_capacity(lde_factor);
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for i in 0..lde_factor {
             cosets.push(ColumnMajorBaseOracleForCoset {
                 original_values_normal_order: Vec::new(),
@@ -752,7 +711,7 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
     pack_log2: usize,
     worker: &Worker,
 ) -> Vec<Vec<F>> {
-    assert!(evals.len() > 0);
+    assert!(!evals.is_empty());
     let trace_len = evals[0].len();
     let num_packed = evals.len().div_ceil(1 << pack_log2);
 
@@ -766,7 +725,7 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
         for _ in 0..(1 << pack_log2) {
             if let Some(to_pack) = it.next() {
                 assert_eq!(to_pack.len(), trace_len);
-                packed.extend_from_slice(*to_pack);
+                packed.extend_from_slice(to_pack);
             } else {
                 packed.resize(packed.len() + trace_len, F::ZERO);
             }

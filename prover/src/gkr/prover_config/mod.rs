@@ -38,7 +38,7 @@ impl WhirSchedule {
 
         let mut poly_size = trace_len_log_2 - self.whir_steps_schedule[0];
 
-        if self.whir_steps_lde_factors.len() > 0 {
+        if !self.whir_steps_lde_factors.is_empty() {
             for i in 0..self.whir_steps_lde_factors.len() {
                 let num_queries = self.whir_queries_schedule[i + 1];
                 whir_sumcheck_terms += num_queries;
@@ -54,7 +54,7 @@ impl WhirSchedule {
                 let cost = num_queries
                     .saturating_mul(cost_model.whir_leaf_hashing_and_folding_cost(fold_by as u32));
                 total_cost = total_cost.saturating_add(cost);
-                poly_size -= fold_by as usize;
+                poly_size -= fold_by;
             }
         }
         // final sumcheck
@@ -93,13 +93,17 @@ impl CostModel for BlakeHashBabyBearExt4CostModel {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn compute_best_prover_config_guess(
     trace_len_log_2: usize,
     lde_factor: usize,
     cap_size: usize,
     base_oracles_values_per_leaf: usize,
-    sumcheck_explicit_output_size_log_2: usize,
-    security_bits: u32,
+    _sumcheck_explicit_output_size_log_2: usize,
+    _security_bits: u32,
     first_round_pow_bits: u32,
     other_rounds_pow_bits: u32,
     min_pow_bits: u32,
@@ -173,6 +177,18 @@ pub fn compute_best_prover_config_guess(
     // }
 }
 
+// NOTE: `min_rate_log_2` is currently only threaded through the recursion and never read. It is
+// deliberately NOT removed: this is the WHIR schedule search, and a minimum-rate floor is a
+// soundness-relevant constraint, so an unused parameter here more likely means a forgotten check
+// than dead plumbing. Flagged for review rather than deleted.
+#[expect(
+    clippy::only_used_in_recursion,
+    reason = "min_rate_log_2 looks like a forgotten schedule-search constraint; see NOTE above"
+)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 fn whir_folding_step(
     candidates: &mut BTreeMap<usize, WhirSchedule>,
     trace_len_log_2: usize,

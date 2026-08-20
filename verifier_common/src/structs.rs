@@ -15,6 +15,14 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         }
     }
 
+    /// Returns the (read, write) halves of the double buffer for `round`, alternating which
+    /// physical buffer plays which role.
+    ///
+    /// # Safety
+    ///
+    /// `src_len` and `dst_len` must both be `<= N`, and the first `src_len` elements of the
+    /// source buffer for this round must already have been initialized (the very first round
+    /// must therefore be preceded by a [`Self::dst_a`] fill).
     #[inline(always)]
     pub unsafe fn src_dst(
         &mut self,
@@ -22,7 +30,7 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         src_len: usize,
         dst_len: usize,
     ) -> (&[E], &mut [E]) {
-        if round % 2 == 0 {
+        if round.is_multiple_of(2) {
             let src = core::slice::from_raw_parts(self.buf_b.as_ptr().cast::<E>(), src_len);
             let dst = core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), dst_len);
             (src, dst)
@@ -33,11 +41,23 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         }
     }
 
+    /// Returns the first `len` elements of buffer A as a writable slice, for the initial fill.
+    ///
+    /// # Safety
+    ///
+    /// `len` must be `<= N`. The returned slice aliases uninitialized memory, so the caller
+    /// must write every element before reading any of them.
     #[inline(always)]
     pub unsafe fn dst_a(&mut self, len: usize) -> &mut [E] {
         core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), len)
     }
 
+    /// Returns the single remaining folded element after `num_rounds` rounds.
+    ///
+    /// # Safety
+    ///
+    /// Exactly `num_rounds` rounds must have been run through [`Self::src_dst`], so that
+    /// element 0 of the buffer this round count lands on is initialized.
     #[inline(always)]
     pub unsafe fn result(&self, num_rounds: usize) -> E {
         if num_rounds % 2 == 1 {
@@ -45,6 +65,13 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         } else {
             *self.buf_b.get_unchecked(0).assume_init_ref()
         }
+    }
+}
+
+impl<E: Copy, const N: usize> Default for FoldBuffers<E, N> {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
     }
 }
 

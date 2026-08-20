@@ -8,6 +8,10 @@ pub const NUM_DELEGATION_CIRCUIT_TYPES: usize =
     crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS.len();
 
 // NOTE: order here must match the setups
+#[expect(
+    clippy::type_complexity,
+    reason = "verifier fn-pointer array is the stable ABI between the generated per-circuit verifiers and the statement verifiers; a type alias would hide the shape callers must match"
+)]
 pub fn all_delegation_circuit_verifiers_sec_80<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -24,6 +28,10 @@ pub fn all_delegation_circuit_verifiers_sec_80<
 }
 
 // NOTE: order here must match the setups
+#[expect(
+    clippy::type_complexity,
+    reason = "verifier fn-pointer array is the stable ABI between the generated per-circuit verifiers and the statement verifiers; a type alias would hide the shape callers must match"
+)]
 pub fn all_delegation_circuit_verifiers_sec_100<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,

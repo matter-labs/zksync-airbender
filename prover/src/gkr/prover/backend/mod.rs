@@ -18,7 +18,11 @@ use super::commitment_utils::{
     pack_polys_parallel_from_hypercubes_to_monomials, ColumnMajorCosetBoundTracePart,
 };
 use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
-use fft::{GoodAllocator, Twiddles};
+use fft::Twiddles;
+// Only reachable from the aarch64/NEON backend items below; on every other
+// target `DefaultBabyBearBackend` is the generic WorkStealingBackend and these
+// names go unused. (The test module has its own import.)
+#[cfg(target_arch = "aarch64")]
 use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use field::{Field, FieldExtension, PrimeField, Proth120, TwoAdicField};
 use std::alloc::Global;
@@ -589,6 +593,10 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
         (hi, lo)
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     let ood: Vec<(E, Box<[E]>, Box<[E]>)> = ood_samples
         .iter()
         .map(|(point, ch)| {
@@ -596,6 +604,10 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
             (*ch, hi, lo)
         })
         .collect();
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     let base: Vec<(E, Box<[F]>, Box<[F]>)> = in_domain_samples
         .iter()
         .map(|(point, ch)| {

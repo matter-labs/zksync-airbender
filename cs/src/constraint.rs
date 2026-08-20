@@ -46,7 +46,7 @@ impl<F: PrimeField> std::fmt::Display for Term<F> {
                     }
                 }
                 if coeff != 0 {
-                    for &Variable(var) in inner.into_iter().take(*degree) {
+                    for &Variable(var) in inner.iter().take(*degree) {
                         write!(f, "(v{var})")?;
                     }
                 }
@@ -188,7 +188,7 @@ impl<F: PrimeField> Term<F> {
             ) => {
                 assert_eq!(*s_d, *o_d);
 
-                &s_inner[..*s_d] == &o_inner[..*o_d]
+                s_inner[..*s_d] == o_inner[..*o_d]
             }
         }
     }
@@ -200,7 +200,7 @@ impl<F: PrimeField> Term<F> {
 
         match (self, other) {
             (Term::Constant(c), Term::Constant(o)) => {
-                c.add_assign(&*o);
+                c.add_assign(o);
 
                 true
             }
@@ -226,8 +226,8 @@ impl<F: PrimeField> Term<F> {
             ) => {
                 assert_eq!(*s_d, *o_d);
 
-                if &s_inner[..*s_d] == &o_inner[..*o_d] {
-                    s_coeff.add_assign(&*o_coeff);
+                if s_inner[..*s_d] == o_inner[..*o_d] {
+                    s_coeff.add_assign(o_coeff);
 
                     true
                 } else {
@@ -340,7 +340,7 @@ impl<F: PrimeField> std::fmt::Display for Constraint<F> {
         for term in self.terms.iter() {
             write!(f, "{term}")?;
         }
-        writeln!(f, "")
+        writeln!(f)
     }
 }
 
@@ -414,6 +414,7 @@ impl<F: PrimeField> Constraint<F> {
         Self { terms: vec![term] }
     }
 
+    #[expect(clippy::type_complexity)]
     pub fn split_max_quadratic(mut self) -> (Vec<(F, Variable, Variable)>, Vec<(F, Variable)>, F) {
         self.normalize();
         let mut quadratic_terms = Vec::with_capacity(self.terms.len());
@@ -447,11 +448,11 @@ impl<F: PrimeField> Constraint<F> {
                     linear_terms.push((coeff, inner[0]));
                 }
                 0 => {
-                    assert!(constant_used == false);
+                    assert!(!constant_used);
                     constant_term = term.get_coef();
                     constant_used = true;
                 }
-                a @ _ => {
+                a => {
                     panic!("Degree {} is not supported", a);
                 }
             }
@@ -521,10 +522,7 @@ impl<F: PrimeField> Constraint<F> {
             }
         }
 
-        self.terms = combined
-            .into_iter()
-            .filter(|el| el.is_zero() == false)
-            .collect();
+        self.terms = combined.into_iter().filter(|el| !el.is_zero()).collect();
         let final_degree = self.degree();
         assert!(final_degree <= 2);
 
@@ -571,7 +569,7 @@ impl<F: PrimeField> Constraint<F> {
         self.dump_variables(&mut tmp);
         let mut stable_set = BTreeSet::new();
         for el in tmp.into_iter() {
-            assert!(el.is_placeholder() == false);
+            assert!(!el.is_placeholder());
             stable_set.insert(el);
         }
 
@@ -589,7 +587,7 @@ impl<F: PrimeField> Constraint<F> {
                 assert!(term.degree_for_var(&variable) == 1);
                 prefactor = term.prefactor_for_var(&variable);
             } else {
-                new_terms.push(term.clone());
+                new_terms.push(*term);
             }
         }
         let mut prefactor = prefactor.inverse().unwrap();
@@ -635,17 +633,17 @@ impl<F: PrimeField> Constraint<F> {
                     } else {
                         unreachable!()
                     };
-                    assert!(other_var.is_placeholder() == false);
+                    assert!(!other_var.is_placeholder());
                     let term = Term::from((*coeff, other_var));
                     extra_constraints_to_add.push(expression.clone() * term);
                 }
             } else {
-                new_terms.push(term.clone());
+                new_terms.push(*term);
             }
         }
         let mut new = Self { terms: new_terms };
         for el in extra_constraints_to_add.into_iter() {
-            new = new + el;
+            new += el;
             assert!(new.degree() <= 2);
         }
         new.normalize();
@@ -735,7 +733,7 @@ impl<F: PrimeField> std::ops::Mul for Constraint<F> {
     fn mul(self, rhs: Self) -> Self::Output {
         let mut ans = Constraint::empty();
         for term in self.terms {
-            ans = ans + term * rhs.clone();
+            ans += term * rhs.clone();
         }
         ans
     }
@@ -790,9 +788,29 @@ impl<F: PrimeField> std::ops::Sub<Term<F>> for Constraint<F> {
 
 impl<F: PrimeField> std::ops::SubAssign<Term<F>> for Constraint<F> {
     fn sub_assign(&mut self, rhs: Term<F>) {
-        let minus_one: Term<F> = Term::from_field(F::MINUS_ONE);
-        let t: Constraint<F> = rhs * minus_one;
-        self.terms.push(t.terms[0]);
+        // Negate the term inline, mirroring `Sub<Term>` above (equivalent to the previous
+        // `rhs * Term::from_field(F::MINUS_ONE)` route, without the temporary Constraint).
+        let inv_term = match rhs {
+            Term::Expression {
+                coeff,
+                inner,
+                degree,
+            } => {
+                let mut v = coeff;
+                v.mul_assign(&F::MINUS_ONE);
+                Term::Expression {
+                    coeff: v,
+                    inner,
+                    degree,
+                }
+            }
+            Term::Constant(coeff) => {
+                let mut v = coeff;
+                v.mul_assign(&F::MINUS_ONE);
+                Term::Constant(v)
+            }
+        };
+        self.terms.push(inv_term);
     }
 }
 
@@ -803,7 +821,7 @@ impl<F: PrimeField> std::ops::Mul<Term<F>> for Constraint<F> {
         let mut ans = Constraint::empty();
         for existing in self.terms.into_iter() {
             let intermediate_constraint = existing * rhs;
-            ans = ans + intermediate_constraint;
+            ans += intermediate_constraint;
         }
         ans.normalize();
 
@@ -887,9 +905,7 @@ impl<F: PrimeField> std::ops::Mul for Term<F> {
                     degree2
                 );
                 let mut res_inner = inner;
-                for i in 0..degree2 {
-                    res_inner[degree + i] = inner2[i];
-                }
+                res_inner[degree..degree + degree2].copy_from_slice(&inner2[..degree2]);
                 let mut res_coeff = coeff;
                 res_coeff.mul_assign(&coeff2);
                 let mut constraint = Constraint::empty();
@@ -1025,8 +1041,7 @@ impl<F: PrimeField> Term<F> {
                 let arrays_are_equal = inner_left[0..*degree_left]
                     .iter()
                     .zip(inner_right[0..*degree_right].iter())
-                    .map(|(left_var, right_var)| left_var.0 == right_var.0)
-                    .all(|x| x);
+                    .all(|(left_var, right_var)| left_var.0 == right_var.0);
                 degrees_are_equalt && arrays_are_equal
             }
             _ => false,

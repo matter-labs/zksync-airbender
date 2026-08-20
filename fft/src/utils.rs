@@ -53,7 +53,7 @@ pub(crate) const MEDIUM_BITREVERSE_LOOKUP_TABLE: [u8; 1
 
 // This operation is so cache-unfriendly, that parallelism is not used here
 pub const fn bitreverse_enumeration_inplace<T>(input: &mut [T]) {
-    if input.len() == 0 {
+    if input.is_empty() {
         return;
     }
     assert!(input.len().is_power_of_two());
@@ -198,7 +198,7 @@ const fn simple_bitreverse_enumeration_inplace<T>(input: &mut [T]) {
 
 use worker::Worker;
 pub fn parallel_bitreverse_enumeration_inplace<T>(input: &mut [T], worker: &Worker) {
-    if input.len() == 0 {
+    if input.is_empty() {
         return;
     }
     assert!(input.len().is_power_of_two());
@@ -313,12 +313,12 @@ pub fn allocate_in_with_alignment_of<T: Sized, U: Sized, A: GoodAllocator>(
 ) -> Vec<T, A> {
     debug_assert!(std::mem::size_of::<T>() > 0);
     debug_assert!(std::mem::size_of::<U>() > 0);
-    debug_assert!(std::mem::size_of::<U>() % std::mem::size_of::<T>() == 0);
+    debug_assert!(std::mem::size_of::<U>().is_multiple_of(std::mem::size_of::<T>()));
     let size_factor = std::mem::size_of::<U>() / std::mem::size_of::<T>();
     if size_factor == 0 {
         return Vec::with_capacity_in(capacity, allocator);
     }
-    debug_assert!(capacity % size_factor == 0);
+    debug_assert!(capacity.is_multiple_of(size_factor));
     let modified_capacity = capacity / size_factor;
     let (ptr, len, _, allocator) =
         Vec::<U, A>::with_capacity_in(modified_capacity, allocator).into_raw_parts_with_alloc();
@@ -355,11 +355,11 @@ pub fn initialize_with_alignment_of<T: Sized + Copy, U: Sized>(value: T, length:
 
 #[inline]
 pub fn clone_respecting_alignment<T: Sized + Clone, U: Sized, A: GoodAllocator>(
-    input: &Vec<T, A>,
+    input: &[T],
 ) -> Vec<T, A> {
     // we can not just use alignment of pointer in the input because it can be larger
     let mut result = allocate_in_with_alignment_of::<T, U, _>(input.len(), A::default());
-    result.extend_from_slice(&input[..]);
+    result.extend_from_slice(input);
 
     result
 }
@@ -370,13 +370,13 @@ pub fn clone_respecting_alignment<T: Sized + Clone, U: Sized, A: GoodAllocator>(
 pub fn cast_check_alignment<T: Sized, U: Sized, A: GoodAllocator>(a: Vec<T, A>) -> Vec<U, A> {
     debug_assert!(std::mem::size_of::<T>() > 0);
     debug_assert!(std::mem::size_of::<U>() > 0);
-    debug_assert!(std::mem::size_of::<U>() % std::mem::size_of::<T>() == 0);
+    debug_assert!(std::mem::size_of::<U>().is_multiple_of(std::mem::size_of::<T>()));
     let size_factor = std::mem::size_of::<U>() / std::mem::size_of::<T>();
     debug_assert!(size_factor > 0);
     let (ptr, len, capacity, allocator) = a.into_raw_parts_with_alloc();
-    debug_assert!(len % size_factor == 0);
-    debug_assert!(capacity % size_factor == 0);
-    debug_assert!(ptr.addr() % std::mem::align_of::<U>() == 0);
+    debug_assert!(len.is_multiple_of(size_factor));
+    debug_assert!(capacity.is_multiple_of(size_factor));
+    debug_assert!(ptr.addr().is_multiple_of(std::mem::align_of::<U>()));
     let modified_len = len / size_factor;
     let modified_capacity = capacity / size_factor;
     unsafe {
@@ -390,13 +390,13 @@ pub fn cast_check_alignment<T: Sized, U: Sized, A: GoodAllocator>(a: Vec<T, A>) 
 pub fn cast_check_alignment_ref_mut_pack<T: Sized, U: Sized>(a: &mut [T]) -> &mut [U] {
     debug_assert!(std::mem::size_of::<T>() > 0);
     debug_assert!(std::mem::size_of::<U>() > 0);
-    debug_assert!(std::mem::size_of::<U>() % std::mem::size_of::<T>() == 0);
+    debug_assert!(std::mem::size_of::<U>().is_multiple_of(std::mem::size_of::<T>()));
     let size_factor = std::mem::size_of::<U>() / std::mem::size_of::<T>();
     debug_assert!(size_factor > 0);
     let len = a.len();
     let ptr = a.as_mut_ptr();
-    debug_assert!(len % size_factor == 0);
-    debug_assert!(ptr.addr() % std::mem::align_of::<U>() == 0);
+    debug_assert!(len.is_multiple_of(size_factor));
+    debug_assert!(ptr.addr().is_multiple_of(std::mem::align_of::<U>()));
     let modified_len = len / size_factor;
     unsafe { std::slice::from_raw_parts_mut(ptr as *mut U, modified_len) }
 }
@@ -407,12 +407,12 @@ pub fn cast_check_alignment_ref_mut_pack<T: Sized, U: Sized>(a: &mut [T]) -> &mu
 pub fn cast_check_alignment_ref_mut_unpack<T: Sized, U: Sized>(a: &mut [T]) -> &mut [U] {
     debug_assert!(std::mem::size_of::<T>() > 0);
     debug_assert!(std::mem::size_of::<U>() > 0);
-    debug_assert!(std::mem::size_of::<T>() % std::mem::size_of::<U>() == 0);
+    debug_assert!(std::mem::size_of::<T>().is_multiple_of(std::mem::size_of::<U>()));
     let size_factor = std::mem::size_of::<T>() / std::mem::size_of::<U>();
     debug_assert!(size_factor > 0);
     let len = a.len();
     let ptr = a.as_mut_ptr();
-    debug_assert!(ptr.addr() % std::mem::align_of::<U>() == 0);
+    debug_assert!(ptr.addr().is_multiple_of(std::mem::align_of::<U>()));
     let modified_len = len * size_factor;
     unsafe { std::slice::from_raw_parts_mut(ptr as *mut U, modified_len) }
 }

@@ -127,8 +127,7 @@ where
 {
     let (new_seed, pow_challenge) = TR::search_pow(seed, pow_bits, worker);
     *seed = new_seed;
-    let num_required_words =
-        num_bits_for_queries.next_multiple_of(u32::BITS as usize) / (u32::BITS as usize);
+    let num_required_words = num_bits_for_queries.div_ceil(u32::BITS as usize);
     // we used 1 top word for PoW
     let num_required_words_padded =
         (num_required_words + 1).next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS);

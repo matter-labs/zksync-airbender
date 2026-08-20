@@ -306,6 +306,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             buffers[0].add_assign(&self.constant_offset);
             buffers[1].add_assign(&self.constant_offset);
 
+            #[expect(
+                clippy::needless_range_loop,
+                reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+            )]
             for i in 0..2 {
                 let part = if i == 0 { "low" } else { "high" };
                 assert_eq!(

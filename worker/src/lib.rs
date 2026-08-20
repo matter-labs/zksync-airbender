@@ -40,19 +40,22 @@ impl WorkerGeometry {
         );
         if self.remainder == 0 {
             self.ordinary_chunk_size
+        } else if chunk_idx == self.num_chunks - 1 {
+            // last one
+            self.remainder
         } else {
-            if chunk_idx == self.num_chunks - 1 {
-                // last one
-                self.remainder
-            } else {
-                self.ordinary_chunk_size
-            }
+            self.ordinary_chunk_size
         }
     }
 
     #[inline]
     pub fn len(&self) -> usize {
         self.num_chunks
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.num_chunks == 0
     }
 
     #[inline]
@@ -343,6 +346,12 @@ impl<'a, T> Iterator for GeometryAwareChunksRev<'a, T> {
     }
 }
 
+impl Default for Worker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Worker {
     /// Workers can be used in context where too much threads can cause overflow,
     /// e.g. in the context of airbender we have several places that assert
@@ -417,7 +426,7 @@ impl Worker {
         } else {
             assert!(num_chunks > 1);
             // we will first try simple heuristics, and if it doesn't work - then degrade to default
-            if ordinary_chunk_size.is_power_of_two() == false {
+            if !ordinary_chunk_size.is_power_of_two() {
                 let difference = ordinary_chunk_size.next_power_of_two() - ordinary_chunk_size;
                 if difference < 32 {
                     ordinary_chunk_size = ordinary_chunk_size.next_power_of_two();
@@ -433,29 +442,27 @@ impl Worker {
                     ordinary_chunk_size,
                     remainder: new_remainder,
                 }
+            } else if !work_size.is_multiple_of(num_chunks - 1) {
+                ordinary_chunk_size = work_size / (num_chunks - 1);
+                let main_part = (num_chunks - 1) * ordinary_chunk_size;
+                assert!(main_part < work_size);
+                let new_remainder = work_size - main_part;
+
+                WorkerGeometry {
+                    num_chunks,
+                    ordinary_chunk_size,
+                    remainder: new_remainder,
+                }
             } else {
-                if work_size % (num_chunks - 1) != 0 {
-                    ordinary_chunk_size = work_size / (num_chunks - 1);
-                    let main_part = (num_chunks - 1) * ordinary_chunk_size;
-                    assert!(main_part < work_size);
-                    let new_remainder = work_size - main_part;
+                ordinary_chunk_size = work_size / num_chunks;
+                let main_part = (num_chunks - 1) * ordinary_chunk_size;
+                assert!(main_part < work_size);
+                let new_remainder = work_size - main_part;
 
-                    WorkerGeometry {
-                        num_chunks,
-                        ordinary_chunk_size,
-                        remainder: new_remainder,
-                    }
-                } else {
-                    ordinary_chunk_size = work_size / num_chunks;
-                    let main_part = (num_chunks - 1) * ordinary_chunk_size;
-                    assert!(main_part < work_size);
-                    let new_remainder = work_size - main_part;
-
-                    WorkerGeometry {
-                        num_chunks,
-                        ordinary_chunk_size,
-                        remainder: new_remainder,
-                    }
+                WorkerGeometry {
+                    num_chunks,
+                    ordinary_chunk_size,
+                    remainder: new_remainder,
                 }
             }
         };
@@ -514,7 +521,7 @@ impl Worker {
     where
         BODY: FnOnce(&rayon::Scope<'scope>) + Send + 'scope,
     {
-        if is_last_thread == false {
+        if !is_last_thread {
             scope.spawn(body);
         } else {
             body(scope);

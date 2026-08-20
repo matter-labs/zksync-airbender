@@ -4,7 +4,7 @@
 //! commitment-mode data — nothing here reads a fixture. The serialization mirrors
 //! the reference assembler in `prover/src/tests/gkr/large_field.rs`.
 
-use field::{Field, PrimeField, Proth120};
+use field::{Field, Proth120};
 use prover::gkr::prover::CommitmentMode;
 
 use crate::seed::{Circuit, Proof};
@@ -27,7 +27,7 @@ fn dig32(d: &[u32; 8]) -> [u8; 32] {
 /// every element as its 16-byte big-endian u128.
 fn output_evals_blob(proof: &Proof) -> Vec<u8> {
     let mut blob = Vec::new();
-    for (_t, v) in proof.final_explicit_evaluations.iter() {
+    for v in proof.final_explicit_evaluations.values() {
         for e in v[0].iter().chain(v[1].iter()) {
             blob.extend_from_slice(&be16(*e));
         }

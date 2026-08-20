@@ -13,9 +13,11 @@ use super::*;
 // - state.timestamp is 3 mod 4
 
 mod bigint;
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
 mod blake;
 mod keccak;
 
 pub use self::bigint::*;
-pub use self::blake::*;
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+pub(crate) use self::blake::*;
 pub use self::keccak::*;

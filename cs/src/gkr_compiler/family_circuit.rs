@@ -38,7 +38,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             memory_queries,
             range_check_expressions,
             boolean_vars,
-            substitutions,
+            substitutions: _,
             register_and_indirect_memory_accesses,
             executor_machine_state,
             delegation_circuit_state,
@@ -98,7 +98,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 generic_lookups.push((row.to_vec(), table));
             }
 
-            let mut decoder_lookup_pair = None;
+            let decoder_lookup_pair;
             let mut decoder_table_width;
             // and decoder - we tightly pack it, and will need to do the same in the setup generator
             {
@@ -159,10 +159,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             }
 
             assert_eq!(
-                decode_table_columns_mask
-                    .iter()
-                    .filter(|el| **el == true)
-                    .count(),
+                decode_table_columns_mask.iter().filter(|el| **el).count(),
                 decoder_table_width
             );
 
@@ -486,7 +483,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             });
         };
 
-        let machine_state = layout_machine_state_for_preprocessed_bytecode(
+        layout_machine_state_for_preprocessed_bytecode(
             &mut graph,
             &mut all_variables_to_place,
             &executor_machine_state,
@@ -537,6 +534,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         );
 
         // Build the inline inits/teardowns grand product
+        #[expect(clippy::type_complexity)]
         let inline_it_output: Option<(
             (GKRAddress, NoFieldGKRRelation<F>),
             (GKRAddress, NoFieldGKRRelation<F>),
@@ -611,7 +609,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // placing lookup is move involved
         {
-            if range_check_16_expressions.len() > 0 {
+            if !range_check_16_expressions.is_empty() {
                 let (multiplicity, final_pair, final_rel, rels_for_witness_eval) =
                     layout_width_1_lookup_expressions(
                         &mut graph,
@@ -628,7 +626,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 lookup_outputs.insert(LookupType::RangeCheck16, (final_pair, final_rel));
             }
 
-            if timestamp_range_check_expressions_to_compile.len() > 0 {
+            if !timestamp_range_check_expressions_to_compile.is_empty() {
                 let (multiplicity, final_pair, final_rel, rels_for_witness_eval) =
                     layout_width_1_lookup_expressions(
                         &mut graph,
@@ -645,7 +643,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 lookup_outputs.insert(LookupType::TimestampRangeCheck, (final_pair, final_rel));
             }
 
-            if generic_lookups.len() > 0 || decoder_lookup_pair.is_some() {
+            if !generic_lookups.is_empty() || decoder_lookup_pair.is_some() {
                 let decoder_lookup_is_present = decoder_lookup_pair.is_some();
                 num_generic_lookups += decoder_lookup_is_present as usize;
                 num_generic_lookups += generic_lookups.len();
@@ -766,11 +764,10 @@ impl<F: PrimeField> GKRCompiler<F> {
                 .decoder_data
                 .imm
                 .map(|el| graph.get_address_for_variable(el));
-            let funct3 = if let Some(funct3) = executor_machine_state.decoder_data.funct3 {
-                Some(graph.get_address_for_variable(funct3))
-            } else {
-                None
-            };
+            let funct3 = executor_machine_state
+                .decoder_data
+                .funct3
+                .map(|funct3| graph.get_address_for_variable(funct3));
             let mut circuit_family_mask_bits = vec![];
             for el in circuit_family_bitmask.iter() {
                 let pos = graph.get_address_for_variable(*el);
@@ -891,14 +888,11 @@ impl<F: PrimeField> GKRCompiler<F> {
         let mut scratch_space_mapping = BTreeMap::new();
         let mut scratch_space_mapping_rev = BTreeMap::new();
         let mut scratch_space_counter = 0usize;
-        for (_var, pos) in placement_data.iter() {
-            match pos {
-                GKRAddress::InnerLayer { .. } => {
-                    scratch_space_mapping.insert(*pos, scratch_space_counter);
-                    scratch_space_mapping_rev.insert(scratch_space_counter, *pos);
-                    scratch_space_counter += 1;
-                }
-                _ => {}
+        for pos in placement_data.values() {
+            if let GKRAddress::InnerLayer { .. } = pos {
+                scratch_space_mapping.insert(*pos, scratch_space_counter);
+                scratch_space_mapping_rev.insert(scratch_space_counter, *pos);
+                scratch_space_counter += 1;
             }
         }
 
@@ -916,8 +910,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             .chain(
                 generic_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldVectorLookupRelation<F>| el.columns.iter_mut())
-                    .flatten(),
+                    .flat_map(|el: &mut NoFieldVectorLookupRelation<F>| el.columns.iter_mut()),
             )
         {
             for (_, addr) in rel.linear_terms.iter_mut() {
@@ -958,7 +951,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             range_check_16_lookup_expressions: range_check_16_lookups_compiled,
             timestamp_range_check_lookup_expressions: timestamp_range_check_lookups_compiled,
 
-            variable_names: BTreeMap::from_iter(variable_names.into_iter()),
+            variable_names: BTreeMap::from_iter(variable_names),
             scratch_space_mapping,
             scratch_space_mapping_rev,
 
@@ -1000,7 +993,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 }
 
 pub(crate) fn place_variables_from_constraints<F: PrimeField>(
-    structured_statements: &Vec<StructuredStatement<F>>,
+    structured_statements: &[StructuredStatement<F>],
     variables_from_constraints: &mut BTreeMap<Variable, usize>,
     layers_mapping: &HashMap<Variable, usize>,
     graph: &mut GKRGraph<F>,
@@ -1013,8 +1006,8 @@ pub(crate) fn place_variables_from_constraints<F: PrimeField>(
     // NOTE: `variables_from_constraints` only contain variables to place into intermediate layer
 
     let mut used_definitions = BTreeSet::new();
-    if variables_from_constraints.len() > 0 {
-        assert!(all_variables_to_place.len() > 0);
+    if !variables_from_constraints.is_empty() {
+        assert!(!all_variables_to_place.is_empty());
 
         // put all variables into base layer that are not defined via constraints
         for var in all_variables_to_place.clone().iter() {
@@ -1038,7 +1031,7 @@ pub(crate) fn place_variables_from_constraints<F: PrimeField>(
             let initial_len = variables_from_constraints.len();
             for (var, expression_idx) in variables_from_constraints.clone().into_iter() {
                 let StructuredStatement::Define {
-                    dst,
+                    dst: _,
                     compiled_constraint,
                     expr,
                     output_layer,
@@ -1094,7 +1087,7 @@ pub(crate) fn place_variables_from_constraints<F: PrimeField>(
     for (idx, expr) in structured_statements.iter().enumerate() {
         match expr {
             StructuredStatement::AssertZero { .. } => {
-                assert!(used_definitions.contains(&idx) == false);
+                assert!(!used_definitions.contains(&idx));
             }
             StructuredStatement::Define { .. } => {
                 assert!(used_definitions.contains(&idx));
@@ -1114,7 +1107,7 @@ pub(crate) fn add_boolean_constraints<F: PrimeField>(
         expr.validate_degree_at_most(2);
         let compiled_constraint = expr.to_max_quadratic_constraint();
         structured_statements.push(StructuredStatement::AssertZero {
-            expr: expr,
+            expr,
             compiled_constraint,
             prevent_optimizations: true,
         });

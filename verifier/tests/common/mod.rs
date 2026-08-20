@@ -1,3 +1,11 @@
+// This module is `mod common;`-included by five separate integration-test binaries (native,
+// corruption, malicious, transpiler, mop_montgomery). Every item below is used by at least one
+// of them, but each binary only links the subset it calls, so rustc reports the rest as dead in
+// that binary. `#[expect(dead_code)]` is wrong here — it would be *unfulfilled* in the binaries
+// that do use the item — so this is one of the rare places where a blanket `allow` is the
+// correct tool rather than a suppression of a real finding.
+#![allow(dead_code)]
+
 use prover::definitions::GKRExternalChallenges;
 pub use verifier_common::test_circuits::{CircuitData, CIRCUITS};
 
@@ -302,16 +310,16 @@ pub fn assert_rejects_corrupted_nds(
     }
 }
 
+/// `_level` is unused: NDS flattening depends only on the compiled circuit artifact (which is
+/// level-independent), but the parameter is kept so this helper has the same shape as the
+/// sibling `assert_rejects_*` helpers that do dispatch on the level.
 pub fn proof_to_nds(
     name: &str,
-    level: SecurityLevel,
+    _level: SecurityLevel,
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
 ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
     let circuit_data = circuit_by_name(name);
     let compiled = circuit_data.compiled_circuit();
-    let inits_and_teardowns_top_bits: Vec<u32> = (0..compiled.memory_layout.teardown_sets.len())
-        .map(|i| i as u32)
-        .collect();
     let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
         proof, &compiled,
     );
@@ -390,9 +398,11 @@ pub fn load_binary_section(path: &str) -> Vec<u32> {
             path
         )
     });
-    assert!(bytes.len() % 4 == 0);
+    assert!(bytes.len().is_multiple_of(4));
     bytes
-        .chunks_exact(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| u32::from_le_bytes(*c))
         .collect()
 }

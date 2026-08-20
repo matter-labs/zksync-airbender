@@ -144,6 +144,12 @@ impl Instruction {
     }
 }
 
+// The Zimop MOP.R.n masks/tests below (`MOP_FUNCT7_*`, `MOP_I_FUNCT12_*` and the inline
+// `mop_number` extraction masks) group their binary digits on the RISC-V encoding-field
+// boundaries — fixed bits, the `00` pair, and the `n4`/`n3 n2`/`n1 n0` operand-number bits are
+// each their own group — so the literals read like the spec's encoding table. Regrouping them
+// into uniform nibbles would erase that structure, so the grouping is deliberate, not arbitrary.
+#[expect(clippy::unusual_byte_groupings)]
 pub fn preprocess_bytecode<
     OPT: DecodingOptions,
     const PROTECT_AGAINST_MID_DELEGATION_JUMPS: bool,
@@ -498,72 +504,64 @@ pub fn preprocess_bytecode<
                 sign_extend(&mut imm, 12);
 
                 match funct3 {
-                    a @ 0 | a @ 1 | a @ 2 | a @ 4 | a @ 5 => {
-                        let instr = match a {
-                            0 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lb,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                    a @ 0 | a @ 1 | a @ 2 | a @ 4 | a @ 5 => match a {
+                        0 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lb,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            1 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lh,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                        }
+                        1 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lh,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            2 => Instruction::pure_from_imm(
-                                InstructionName::Lw,
-                                formal_rs1,
-                                0,
-                                rd,
-                                imm,
-                            ),
-                            4 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lbu,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                        }
+                        2 => {
+                            Instruction::pure_from_imm(InstructionName::Lw, formal_rs1, 0, rd, imm)
+                        }
+                        4 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lbu,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            5 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lhu,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                        }
+                        5 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lhu,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            _ => unreachable!(),
-                        };
-
-                        instr
-                    }
+                        }
+                        _ => unreachable!(),
+                    },
                     _ => {
                         panic!(
                             "Unknown LOAD opcode 0x{:08x} at PC = 0x{:08x}",

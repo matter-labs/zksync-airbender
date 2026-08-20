@@ -1,8 +1,18 @@
 use super::*;
 
+impl Default for Blake2RoundFunctionEvaluator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Blake2RoundFunctionEvaluator {
     pub const SUPPORT_SPEC_SINGLE_ROUND: bool = false;
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. This variant is unsupported and always
+    /// panics.
     #[unroll::unroll_for_loops]
     #[inline(always)]
     pub unsafe fn spec_run_single_round_into_destination<const REDUCED_ROUNDS: bool>(
@@ -38,6 +48,12 @@ impl Blake2RoundFunctionEvaluator {
 
     /// caller must fill the buffer (do not forget to zero-pad),
     /// and then specify the parameters of the input block
+    ///
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. `input_buffer` must be fully
+    /// initialized (zero-padded) and `input_size_words` must not exceed the
+    /// block size.
     #[inline(always)]
     pub unsafe fn run_round_function_with_input<const REDUCED_ROUNDS: bool>(
         &mut self,
@@ -52,6 +68,11 @@ impl Blake2RoundFunctionEvaluator {
         );
     }
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. `input_buffer` must be fully
+    /// initialized (zero-padded) and `input_size_bytes` must not exceed the block
+    /// size in bytes.
     #[inline]
     #[unroll::unroll_for_loops]
     pub unsafe fn run_round_function_with_input_and_byte_len<const REDUCED_ROUNDS: bool>(
@@ -95,6 +116,11 @@ impl Blake2RoundFunctionEvaluator {
         }
     }
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. The internal input buffer must have
+    /// been filled (zero-padded) and `input_size_words` must not exceed the block
+    /// size.
     #[inline(always)]
     pub unsafe fn run_round_function<const REDUCED_ROUNDS: bool>(
         &mut self,
@@ -107,6 +133,11 @@ impl Blake2RoundFunctionEvaluator {
         );
     }
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. The internal input buffer must have
+    /// been filled (zero-padded) and `input_size_bytes` must not exceed the block
+    /// size in bytes.
     #[inline]
     #[unroll::unroll_for_loops]
     pub unsafe fn run_round_function_with_byte_len<const REDUCED_ROUNDS: bool>(

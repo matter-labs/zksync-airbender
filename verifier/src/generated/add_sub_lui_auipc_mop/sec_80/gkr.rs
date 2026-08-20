@@ -4006,12 +4006,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
         state.batching_challenge = draw_single_field_el_after_pow(ts);
-        let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
-        let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_read_product: BabyBearExt4 = BabyBearExt4::ONE;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_write_product: BabyBearExt4 = BabyBearExt4::ONE;
+        let permutation_read_product: BabyBearExt4;
+        let permutation_write_product: BabyBearExt4;
+        let inits_and_teardowns_read_product: BabyBearExt4 = BabyBearExt4::ONE;
+        let inits_and_teardowns_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
             let mut read_product = BabyBearExt4::ONE;
             for i in 0..16usize {

@@ -1,4 +1,3 @@
-#![feature(allocator_api)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
@@ -33,16 +32,11 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Clone, Debug, ValueEnum, Parser)]
+#[derive(Clone, Debug, Default, ValueEnum, Parser)]
 enum InputType {
+    #[default]
     Hex,
     ProverInputJson,
-}
-
-impl Default for InputType {
-    fn default() -> Self {
-        InputType::Hex
-    }
 }
 
 #[derive(Clone, Debug, Parser, Default)]
@@ -229,8 +223,10 @@ fn parse_input_data(
                     .expect("Failed to decode base64 input");
 
                 let prover_input: Vec<u32> = decoded
-                    .chunks_exact(4)
-                    .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|chunk| u32::from_le_bytes(*chunk))
                     .collect();
                 Ok(Some(prover_input))
             } else {

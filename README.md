@@ -29,8 +29,6 @@ The most recent documentation can be found here:
   - `CI=1 cargo test --profile cli`
 - Ignored-test sweep (runs all ignored tests across the workspace, including manual fixture/debug tests):
   - `cargo test --profile cli -- --ignored`
-- Targeted current-pipeline proving regressions:
-  - `cargo test --profile cli -p execution_utils test_prove_unrolled -- --ignored`
 
 ## Policies
 

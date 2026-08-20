@@ -305,6 +305,15 @@ pub fn batch_inverse_inplace_parallel<F: Field>(
     });
 }
 
+// RoundFunction knows nothing about rate and capacity, it only operates on the state as a wholw
+pub trait AlgebraicRoundFunction<F: PrimeField, const STATE_WIDTH: usize>:
+    Clone + Send + Sync
+{
+    fn round_function(&self, state: &mut [F; STATE_WIDTH]);
+    fn initial_state(&self) -> [F; STATE_WIDTH];
+    fn specialize_for_depth(&self, depth: u32, state: &mut [F; STATE_WIDTH]);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,13 +365,4 @@ mod tests {
         run_test(4096, initial, step);
         run_test(1 << 16, initial, step);
     }
-}
-
-// RoundFunction knows nothing about rate and capacity, it only operates on the state as a wholw
-pub trait AlgebraicRoundFunction<F: PrimeField, const STATE_WIDTH: usize>:
-    Clone + Send + Sync
-{
-    fn round_function(&self, state: &mut [F; STATE_WIDTH]);
-    fn initial_state(&self) -> [F; STATE_WIDTH];
-    fn specialize_for_depth(&self, depth: u32, state: &mut [F; STATE_WIDTH]);
 }

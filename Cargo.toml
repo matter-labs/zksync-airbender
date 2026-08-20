@@ -43,10 +43,7 @@ members = [
     "gpu/gkr_compiler",
     "gkr_eval_ir",
 
-    "reduced_keccak",
-
     "tools/cli",
-    "tools/pow_config_generator",
 
     "circuit_defs/blake2_g_function",
     "circuit_defs/blake2_with_compression",
@@ -69,8 +66,11 @@ members = [
 ]
 
 exclude = [
-    # Temporarily disabled until legacy generator dependencies are removed.
-    "tools/generator",
+    # Needed for the PoW/security-level work (last real touch: #297), but does not
+    # compile against the current tree (references pre-#223 legacy verifier crates
+    # and removed verifier_common constants). Excluded until it is ported to the
+    # GKR-era layout; do NOT delete.
+    "tools/pow_config_generator",
 ]
 
 default-members = [
@@ -90,7 +90,6 @@ default-members = [
     # "full_statement_verifier",
     "non_determinism_source",
     "prover",
-    "reduced_keccak",
     "riscv_transpiler",
     # "tools/cli",
     "transcript",

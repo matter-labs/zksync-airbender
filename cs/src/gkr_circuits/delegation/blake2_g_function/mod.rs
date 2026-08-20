@@ -14,7 +14,7 @@ const TOTAL_TABLE_WIDTH: usize =
 // ABI:
 // - registers x10-x12 are used to pass the parameters
 // - x10 and x11 are pointers: x10 is a pointer to 16 words of extended state (aligned at 64 bytes), x11 is a pointer to the input to mix (aligned at 64 bytes)
-// - x12 is a control register, with lower bits starting from 0 if full blake absorbtion round is needed. One bit marks if we are running reduced or not rounds,
+// - x12 is a control register, with lower bits starting from 0 if full blake absorption round is needed. One bit marks if we are running reduced or not rounds,
 // but such bit is only needed for witness gen for now and doesn't affect selection of inputs
 
 pub fn all_table_types() -> Vec<TableType> {
@@ -131,7 +131,7 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
         );
         let inputs: [_; TOTAL_TABLE_WIDTH] = inputs.try_into().unwrap();
         cs.enforce_lookup_tuple_for_fixed_table(
-            &inputs.map(|el| LookupInput::from(el)),
+            &inputs,
             TableType::BlakeGFunctionControlLookup,
             false,
         );
@@ -305,7 +305,7 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
     // v[c] = v[c].wrapping_add(v[d]);
     // v[b] = rotate_right::<7>(v[b] ^ v[c]);
 
-    // and in our implementation even though we chunk `a` and `c` using extra witness, they are immediatelly fed into XOR + rotate lookups,
+    // and in our implementation even though we chunk `a` and `c` using extra witness, they are immediately fed into XOR + rotate lookups,
     // so `a`/`c` chunks and constraints are range checked
 
     let _output_decompositions = g_function::g_function(
@@ -380,15 +380,10 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::circuit_impl::BasicAssembly;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
-    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
-    use field::Field;
-
-    type F = ::field::Mersenne31Field;
 
     // fn is_scaled_variable(expr: &Expr<F>) -> bool {
     //     let Expr::Product(factors) = expr else {

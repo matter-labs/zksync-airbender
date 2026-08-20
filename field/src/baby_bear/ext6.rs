@@ -7,7 +7,7 @@ use crate::field::{Field, FieldExtension, PrimeField};
 use rand::Rng;
 
 #[cfg(not(target_arch = "riscv32"))]
-#[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(C, align(8))]
 pub struct BabyBearExt6 {
     pub c0: BabyBearExt2,
@@ -16,7 +16,7 @@ pub struct BabyBearExt6 {
 }
 
 #[cfg(target_arch = "riscv32")]
-#[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
 pub struct BabyBearExt6 {
     pub c0: BabyBearExt2,
@@ -32,8 +32,6 @@ const _: () = const {
 
     #[cfg(target_arch = "riscv32")]
     assert!(core::mem::align_of::<BabyBearExt6>() == 4);
-
-    ()
 };
 
 impl BabyBearExt6 {
@@ -60,11 +58,20 @@ impl BabyBearExt6 {
         }
     }
 
+    /// # Safety
+    ///
+    /// `base_ptr` must be valid for reads of 6 consecutive `BabyBearField`s and
+    /// must be aligned to `align_of::<BabyBearField>()` (4). The body performs an
+    /// aligned `ptr::read`, so a misaligned pointer is UB.
+    ///
+    /// "unaligned" in the name refers to `Self`, not to the base field: `Self` is
+    /// `repr(C, align(8))` off riscv32, and this constructor deliberately does NOT
+    /// require the source to meet that stronger alignment.
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub unsafe fn read_unaligned(base_ptr: *const BabyBearField) -> Self {
         let [c0, c1, c2, c3, c4, c5] = base_ptr.cast::<[BabyBearField; 6]>().read();
         Self {
-            c0: BabyBearExt2 { c0: c0, c1: c1 },
+            c0: BabyBearExt2 { c0, c1 },
             c1: BabyBearExt2 { c0: c2, c1: c3 },
             c2: BabyBearExt2 { c0: c4, c1: c5 },
         }
@@ -77,7 +84,7 @@ impl BabyBearExt6 {
             && core::mem::size_of::<Self>() == core::mem::size_of::<BabyBearField>() * 6
         {
             // alignments and expected sized match, so we can just cast pointer
-            unsafe { core::mem::transmute(els) }
+            unsafe { core::mem::transmute::<&[BabyBearField; 6], &Self>(els) }
         } else {
             unimplemented!()
         }
@@ -99,6 +106,14 @@ impl core::cmp::PartialEq for BabyBearExt6 {
 }
 
 impl core::cmp::Eq for BabyBearExt6 {}
+
+impl core::hash::Hash for BabyBearExt6 {
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.c0.hash(state);
+        self.c1.hash(state);
+    }
+}
 
 impl core::default::Default for BabyBearExt6 {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]

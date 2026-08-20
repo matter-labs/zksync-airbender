@@ -6,8 +6,8 @@ fn test_memcopy() {
     let mut rng = rand::rng();
 
     let mut input = vec![0u8; 2 * MAX_SIZE];
-    for i in 0..2 * MAX_SIZE {
-        input[i] = rng.random();
+    for el in input.iter_mut() {
+        *el = rng.random();
     }
 
     for size in 0..MAX_SIZE {
@@ -48,7 +48,7 @@ fn test_memcopy() {
                     );
                 }
 
-                if output_buffer[..dst_offset].iter().all(|el| *el == 0) == false {
+                if !output_buffer[..dst_offset].iter().all(|el| *el == 0) {
                     // dbg!(&output_buffer[..dst_offset]);
                     panic!(
                         "Failed for size {}, with source unalignmnet {}, dest unalignment {}: output before destination is touched",
@@ -56,10 +56,9 @@ fn test_memcopy() {
                     );
                 }
 
-                if output_buffer[dst_offset..][size..]
+                if !output_buffer[dst_offset..][size..]
                     .iter()
                     .all(|el| *el == 0)
-                    == false
                 {
                     // dbg!(&output_buffer[dst_offset..][size..]);
                     panic!(

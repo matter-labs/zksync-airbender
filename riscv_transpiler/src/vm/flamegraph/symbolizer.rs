@@ -17,7 +17,7 @@ impl<'a> Addr2LineContext<'a> {
                 format!("while attempting to parse symbols object file: {error}"),
             )
         })?;
-        if object.is_little_endian() == false {
+        if !object.is_little_endian() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "symbols file must be little-endian",

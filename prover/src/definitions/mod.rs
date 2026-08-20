@@ -258,12 +258,12 @@ pub fn produce_initial_permutation_product_separate_contributions<
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-        t.mul_assign_by_base(&F::from_u32_unchecked(value_low as u32));
+        t.mul_assign_by_base(&F::from_u32_unchecked(value_low));
         contribution.add_assign(&t);
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
-        t.mul_assign_by_base(&F::from_u32_unchecked(value_high as u32));
+        t.mul_assign_by_base(&F::from_u32_unchecked(value_high));
         contribution.add_assign(&t);
 
         contribution.add_assign(&external_challenges.permutation_argument_additive_part);
@@ -272,7 +272,7 @@ pub fn produce_initial_permutation_product_separate_contributions<
 
     for (dst, (pc, (ts_low, ts_high))) in [&mut write_set_contribution, &mut read_set_contribution]
         .into_iter()
-        .zip([(initial_pc, initial_timestamp), (final_pc, final_timestamp)].into_iter())
+        .zip([(initial_pc, initial_timestamp), (final_pc, final_timestamp)])
     {
         let (pc_low, pc_high) = split_u32_into_pair_u16(pc);
 

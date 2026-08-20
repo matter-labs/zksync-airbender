@@ -1,6 +1,5 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
-#![feature(allocator_api)]
 
 //! GKR wiring for the unified reduced-machine circuit.
 //!
@@ -99,6 +98,9 @@ pub fn get_table_driver(binary: &[u32]) -> TableDriver<BabyBearField> {
     // prover::gkr::witness_gen::family_circuits::build_unified_table_driver::<BabyBearField>(binary)
 }
 
+// Generated witness-eval code; lint noise suppressed at the include site so
+// the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod sealed {
     use super::*;
     use prover::cs::oracle::Placeholder;

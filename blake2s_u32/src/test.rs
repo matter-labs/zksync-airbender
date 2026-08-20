@@ -23,10 +23,9 @@ fn check_single_round_consistency() {
     let mut input_as_u32_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     for (dst, src) in input_as_u32_block
         .iter_mut()
-        .zip(input_bytes.chunks_exact(4))
+        .zip(input_bytes.as_chunks::<4>().0)
     {
-        let t: [u8; 4] = src.try_into().unwrap();
-        *dst = u32::from_le_bytes(t);
+        *dst = u32::from_le_bytes(*src);
     }
 
     let naive_result = Blake2s256::digest(&input_bytes);
@@ -37,11 +36,10 @@ fn check_single_round_consistency() {
 
     for (i, (a, b)) in u32_result
         .iter()
-        .zip(naive_result.as_slice().chunks_exact(4))
+        .zip(naive_result.as_slice().as_chunks::<4>().0)
         .enumerate()
     {
-        let t: [u8; 4] = b.try_into().unwrap();
-        let b = u32::from_le_bytes(t);
+        let b = u32::from_le_bytes(*b);
         assert_eq!(*a, b, "failed at word {}", i);
     }
 }
@@ -63,10 +61,9 @@ fn check_two_rounds_consistency() {
     let mut input_as_u32_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     for (dst, src) in input_as_u32_block
         .iter_mut()
-        .zip(input_bytes.chunks_exact(4))
+        .zip(input_bytes.as_chunks::<4>().0)
     {
-        let t: [u8; 4] = src.try_into().unwrap();
-        *dst = u32::from_le_bytes(t);
+        *dst = u32::from_le_bytes(*src);
     }
 
     hasher.absorb::<false>(&input_as_u32_block);
@@ -75,21 +72,19 @@ fn check_two_rounds_consistency() {
     let mut input_as_u32_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     for (dst, src) in input_as_u32_block
         .iter_mut()
-        .zip(input_bytes[BLAKE2S_BLOCK_SIZE_BYTES..].chunks_exact(4))
+        .zip(input_bytes[BLAKE2S_BLOCK_SIZE_BYTES..].as_chunks::<4>().0)
     {
-        let t: [u8; 4] = src.try_into().unwrap();
-        *dst = u32::from_le_bytes(t);
+        *dst = u32::from_le_bytes(*src);
     }
     let mut u32_result = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
     hasher.absorb_final_block::<false>(&input_as_u32_block, tail, &mut u32_result);
 
     for (i, (a, b)) in u32_result
         .iter()
-        .zip(naive_result.as_slice().chunks_exact(4))
+        .zip(naive_result.as_slice().as_chunks::<4>().0)
         .enumerate()
     {
-        let t: [u8; 4] = b.try_into().unwrap();
-        let b = u32::from_le_bytes(t);
+        let b = u32::from_le_bytes(*b);
         assert_eq!(*a, b, "failed at word {}", i);
     }
 }
@@ -105,10 +100,9 @@ fn check_compress_two_into_one_consistency() {
     let mut input_as_u32_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     for (dst, src) in input_as_u32_block
         .iter_mut()
-        .zip(input_bytes.chunks_exact(4))
+        .zip(input_bytes.as_chunks::<4>().0)
     {
-        let t: [u8; 4] = src.try_into().unwrap();
-        *dst = u32::from_le_bytes(t);
+        *dst = u32::from_le_bytes(*src);
     }
 
     let naive_result = Blake2s256::digest(&input_bytes);
@@ -118,11 +112,10 @@ fn check_compress_two_into_one_consistency() {
 
     for (i, (a, b)) in u32_result
         .iter()
-        .zip(naive_result.as_slice().chunks_exact(4))
+        .zip(naive_result.as_slice().as_chunks::<4>().0)
         .enumerate()
     {
-        let t: [u8; 4] = b.try_into().unwrap();
-        let b = u32::from_le_bytes(t);
+        let b = u32::from_le_bytes(*b);
         assert_eq!(*a, b, "failed at word {}", i);
     }
 }

@@ -9,15 +9,13 @@ use core::ops::{Add, Sub};
 // If we use divisions for reduction (that makes sense on M1 family and in proved environment),
 // then representation of the field element is always canonical, other wise it's <= MODULUS (so zero has two representations)
 
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
 pub struct Mersenne31Field(pub u32);
 
 const _: () = const {
     assert!(core::mem::size_of::<Mersenne31Field>() == core::mem::size_of::<u32>());
     assert!(core::mem::align_of::<Mersenne31Field>() == core::mem::align_of::<u32>());
-
-    ()
 };
 
 impl Mersenne31Field {
@@ -118,12 +116,6 @@ impl Mersenne31Field {
         let result = ops::add_mod(product_low, product_high);
 
         Self(result)
-    }
-}
-
-impl Default for Mersenne31Field {
-    fn default() -> Self {
-        Self(0u32)
     }
 }
 
@@ -423,7 +415,6 @@ impl Sub for Mersenne31Field {
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn sub(self, rhs: Self) -> Self {
         let lhs = self;
-        let rhs = rhs;
         let mut res = lhs;
         res.sub_assign(&rhs);
         res

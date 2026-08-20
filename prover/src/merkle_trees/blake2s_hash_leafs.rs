@@ -98,11 +98,11 @@ where
                                         write_into,
                                     );
                                 } else {
-                                    hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
+                                    hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
                                 }
                             }
 
-                            if only_full_rounds == false {
+                            if !only_full_rounds {
                                 let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
                                 let len = remainder.len();
                                 block[..len].copy_from_slice(remainder);
@@ -175,6 +175,10 @@ impl LeafHashScratch {
 /// Blake2s dependency chain (measured 19.1 ns/leaf — below the single-chain
 /// hash-only ceiling). Digests are untouched: each leaf's absorb sequence is
 /// exactly the scalar one, only independent leaves are reordered in time.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 unsafe fn hash_coset_leaf_range<
     F: PrimeField,
     E: FieldExtension<F>,
@@ -211,8 +215,8 @@ unsafe fn hash_coset_leaf_range<
                 }
             }
         }
-        for w in 0..WAYS {
-            debug_assert_eq!(buffers[w].len(), leaf_width_in_field_elements);
+        for buffer in buffers.iter() {
+            debug_assert_eq!(buffer.len(), leaf_width_in_field_elements);
         }
 
         for round in 0..num_full_roudns {
@@ -235,7 +239,7 @@ unsafe fn hash_coset_leaf_range<
             }
         }
 
-        if only_full_rounds == false {
+        if !only_full_rounds {
             let len = leaf_width_in_field_elements % BLAKE2S_BLOCK_SIZE_U32_WORDS;
             for w in 0..WAYS {
                 let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
@@ -281,11 +285,11 @@ unsafe fn hash_coset_leaf_range<
                     write_into,
                 );
             } else {
-                hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
+                hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
             }
         }
 
-        if only_full_rounds == false {
+        if !only_full_rounds {
             let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             let len = remainder.len();
             block[..len].copy_from_slice(remainder);
@@ -385,7 +389,7 @@ where
                         idx_rest = rest;
                         Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                             let mut scratch = LeafHashScratch::new(leaf_width_in_field_elements);
-                            for (coset_index, dest) in idx_chunk.iter().zip(dests.into_iter()) {
+                            for (coset_index, dest) in idx_chunk.iter().zip(dests) {
                                 let coset = &trace[*coset_index];
                                 hash_coset_leaf_range::<F, E, USE_REDUCED_BLAKE2_ROUNDS>(
                                     coset,
@@ -415,7 +419,7 @@ where
 
                         let mut dests = Vec::with_capacity(num_cosets);
                         let mut new_dests = Vec::with_capacity(num_cosets);
-                        for el in coset_destinations.drain(..).into_iter() {
+                        for el in coset_destinations.drain(..) {
                             let (chunk, rest) = el.split_at_mut(chunk_size);
                             dests.push(chunk);
                             new_dests.push(rest);
@@ -425,9 +429,7 @@ where
 
                         Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                             let mut scratch = LeafHashScratch::new(leaf_width_in_field_elements);
-                            for (coset_index, dest) in
-                                coset_indexes_ref.iter().zip(dests.into_iter())
-                            {
+                            for (coset_index, dest) in coset_indexes_ref.iter().zip(dests) {
                                 let coset = &trace[*coset_index];
                                 hash_coset_leaf_range::<F, E, USE_REDUCED_BLAKE2_ROUNDS>(
                                     coset,

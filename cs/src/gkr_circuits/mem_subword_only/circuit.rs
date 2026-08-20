@@ -532,7 +532,7 @@ pub fn mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr<
     let (input, bitmask) =
         cs.allocate_machine_state(false, false, SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS);
     let bitmask: [_; SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS] = bitmask.try_into().unwrap();
-    let bitmask = bitmask.map(|el| Boolean::Is(el));
+    let bitmask = bitmask.map(Boolean::Is);
     let decoder = SubwordOnlyMemoryFamilyCircuitMask::from_mask(bitmask);
     apply_mem_subword_only_inner(cs, input, decoder);
 }
@@ -542,16 +542,11 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::circuit_impl::BasicAssembly;
-    use crate::cs::circuit_output::CircuitOutput;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::{
         compile_unrolled_circuit_state_transition_into_gkr, dump_ssa_witness_eval_form,
     };
-    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
-
-    type F = ::field::Mersenne31Field;
 
     // fn named_variable(output: &CircuitOutput<F>, expected_name: &str) -> Variable {
     //     output

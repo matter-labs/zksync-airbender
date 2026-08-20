@@ -1,7 +1,8 @@
 // NOTE: here we need struct definition for external crates, but we will panic in implementations instead
 use super::*;
 use crate::aligned_array::AlignedArray64;
-#[cfg(feature = "blake2_g_function")]
+// Matches the cfg on the `_aligner` field below, the only consumer.
+#[cfg(all(target_arch = "riscv32", feature = "blake2_g_function"))]
 use crate::aligned_array::A64;
 
 #[cfg(all(

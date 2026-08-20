@@ -51,14 +51,20 @@ use self::verifier_imports::*;
 use verifier_common::cs::definitions::{
     NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP, NUM_TIMESTAMP_COLUMNS_FOR_RAM, TIMESTAMP_COLUMNS_NUM_BITS,
 };
+// Re-exported as `crate::prover` purely for the statement modules above, which
+// are all gated on these same two features; `host_utils` and `program_proof`
+// reach the same items through the full `verifier_common::prover::` path. Gate
+// it to match its consumers, otherwise every build without `verifiers` /
+// `unified_verifier_only` (e.g. `--no-default-features --features proof_utils`)
+// reports it unused.
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::prover;
 
 pub const MAX_CYCLES: u64 = const {
     let max_unique_timestamps =
         1u64 << (TIMESTAMP_COLUMNS_NUM_BITS as usize * NUM_TIMESTAMP_COLUMNS_FOR_RAM);
-    let max_cycles = max_unique_timestamps >> NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
 
-    max_cycles
+    max_unique_timestamps >> NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP
 };
 
 // Single source of truth lives in `verifier_common` so the prover and verifier provably

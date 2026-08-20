@@ -141,7 +141,13 @@ mod memory_delegation_pow_tests {
     }
 }
 
-// Stable reimpl of standard library
+/// Stable reimpl of standard library
+///
+/// # Safety
+///
+/// Same contract as the unstable `core::slice::from_ptr_range`: `range.start` and `range.end`
+/// must bound a single, contiguous, live allocation of initialized `T` (with `start <= end`
+/// and both suitably aligned), and that allocation must stay valid and un-mutated for `'a`.
 #[inline(always)]
 pub const unsafe fn slice_from_ptr_range<'a, T>(range: core::ops::Range<*const T>) -> &'a [T] {
     unsafe { core::slice::from_raw_parts(range.start, range.end.offset_from(range.start) as usize) }

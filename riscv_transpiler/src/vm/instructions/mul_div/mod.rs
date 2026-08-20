@@ -39,11 +39,8 @@ pub(crate) fn divu<C: Counters, S: Snapshotter<C>, R: RAM>(
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
     let rs2_value = read_register::<C, 1>(state, instr.rs2);
-    let rd = if rs2_value == 0 {
-        0xffffffff
-    } else {
-        rs1_value / rs2_value
-    };
+    // RISC-V DIVU yields all-ones on division by zero.
+    let rd = rs1_value.checked_div(rs2_value).unwrap_or(0xffffffff);
     write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
     default_increase_pc::<C>(state);
     increment_family_counter::<C, MUL_DIV_CIRCUIT_FAMILY_IDX>(state);

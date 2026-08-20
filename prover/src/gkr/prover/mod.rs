@@ -26,6 +26,8 @@ use crate::gkr::prover::transcript_utils::{
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use crate::gkr::prover_config::{pow_bits, ProverConfig};
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
+// Only used by `gkr_self_checks` claim-consistency blocks in this module.
+#[cfg(feature = "gkr_self_checks")]
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 use crate::gkr::whir::queries::BaseFieldQuery;
@@ -34,8 +36,8 @@ use crate::gkr::whir::{
 };
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueriable,
-    RSQueriable,
+    ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueryable,
+    RSQueryable,
 };
 use crate::worker::Worker;
 use common_constants::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
@@ -54,6 +56,13 @@ pub mod transcript_utils;
 pub mod utils;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+// reason: boxing the large variant would put an allocation behind a `Copy`-ish config enum that is
+// threaded through every prover stage; the size difference is deliberate and the enum is only ever
+// held once per proof, so the real fix is not worth the API churn in a lint pass.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "config enum held once per proof; boxing would churn the prover API"
+)]
 pub enum CommitmentMode {
     SeparateMemoryAndWitness,
     MergedMemoryAndWitness,
@@ -127,9 +136,9 @@ impl WhirOracleStorage {
 /// Wraps the setup commitment, decoupling how its RS codewords and Merkle tree are
 /// stored from the prover configuration. `InMemory` is the representation used
 /// today (RS codewords + tree both in RAM). `OnDisk` anticipates serving RS
-/// codewords from a [`RSQueriable`] source and Merkle paths from an mmap'd on-disk
+/// codewords from a [`RSQueryable`] source and Merkle paths from an mmap'd on-disk
 /// tree (`ColumnMajorMerkleTreeConstructor::open_disk_artifacts`); there is no on-disk
-/// `RSQueriable` implementation yet, so that variant is not yet usable end-to-end.
+/// `RSQueryable` implementation yet, so that variant is not yet usable end-to-end.
 pub enum SetupCommitment<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> {
     /// RS codewords + Merkle tree both in memory (owned).
     InMemory(ColumnMajorBaseOracleForLDE<F, T>),
@@ -137,7 +146,7 @@ pub enum SetupCommitment<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeC
     /// mmap'd on-disk tree — either a single monolithic tree file or per-coset
     /// subtree files ([`OnDiskTree`](crate::merkle_trees::on_disk::OnDiskTree)).
     OnDisk {
-        rs: Box<dyn RSQueriable<F>>,
+        rs: Box<dyn RSQueryable<F>>,
         tree: crate::merkle_trees::on_disk::OnDiskTree<T>,
         values_per_leaf: usize,
         coset_size_log2: usize,
@@ -149,7 +158,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     pub fn get_cap(&self) -> MerkleTreeCapVarLength {
         match self {
             SetupCommitment::InMemory(oracle) => oracle.get_cap(),
-            SetupCommitment::OnDisk { tree, .. } => PathQueriable::get_cap(tree),
+            SetupCommitment::OnDisk { tree, .. } => PathQueryable::get_cap(tree),
         }
     }
 
@@ -181,6 +190,10 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     }
 
     /// log2 of a single LDE coset (per-coset polynomial length).
+    #[expect(
+        dead_code,
+        reason = "accessor kept alongside the other SetupCommitment getters; no caller yet"
+    )]
     pub(crate) fn coset_size_log2(&self) -> usize {
         match self {
             SetupCommitment::InMemory(oracle) => oracle.coset_size_log2(),
@@ -195,6 +208,10 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     /// oracle enum (which batches over cosets when it recomputes); `OnDisk` reads
     /// each query's leaf values from the on-disk RS source and its Merkle path from
     /// the mmap'd on-disk tree (both cheap, so per-query serving is fine).
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     pub(crate) fn query_many(
         &self,
         query_indices: &[usize],
@@ -227,7 +244,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
                     let coset_dest_index =
                         crate::fft::bitreverse_index(coset_index, num_cosets.trailing_zeros());
                     let tree_index = coset_dest_index * coset_tree_size + internal_index;
-                    let (_leaf_hash, path) = PathQueriable::get_proof(tree, tree_index);
+                    let (_leaf_hash, path) = PathQueryable::get_proof(tree, tree_index);
                     let leaf_values_concatenated = values.iter().flatten().copied().collect();
                     let query = BaseFieldQuery::<F, T> {
                         index: tree_index,
@@ -265,8 +282,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValue
         self.internal_round_coefficients.len() * E::DEGREE * 4 * core::mem::size_of::<u32>()
             + self
                 .final_step_evaluations
-                .iter()
-                .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * v.len())
+                .values()
+                .map(|v| E::DEGREE * core::mem::size_of::<u32>() * v.len())
                 .sum::<usize>()
             + self.extra_evaluations_from_caching_relations.len()
                 * E::DEGREE
@@ -303,13 +320,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
 {
     pub fn estimate_size(&self) -> usize {
         self.final_explicit_evaluations
-            .iter()
-            .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
+            .values()
+            .map(|v| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
             .sum::<usize>()
             + self
                 .sumcheck_intermediate_values
-                .iter()
-                .map(|(_, v)| v.estimate_size())
+                .values()
+                .map(|v| v.estimate_size())
                 .sum::<usize>()
             + self.whir_proof.estimate_size()
     }
@@ -345,6 +362,10 @@ pub(crate) fn split_destinations<T: Sized>(
         result.push(Vec::with_capacity(len));
     }
     for mut dest in dest.into_iter() {
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for chunk_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(chunk_idx);
             let (chunk, rest) = dest.split_at_mut(chunk_size);
@@ -373,9 +394,9 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
     let ext_d_len = extension_destination.len();
     worker.scope(trace_len, |scope, geometry| {
         let mut destination_chunks = split_destinations(destination, geometry);
-        let mut destination_chunks = destination_chunks.drain(..).into_iter();
+        let mut destination_chunks = destination_chunks.drain(..);
         let mut extension_destination_chunks = split_destinations(extension_destination, geometry);
-        let mut extension_destination_chunks = extension_destination_chunks.drain(..).into_iter();
+        let mut extension_destination_chunks = extension_destination_chunks.drain(..);
         let func_ref = &func;
         for thread_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(thread_idx);
@@ -399,6 +420,10 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
 /// and selects the RS-codeword storage policy that reproduces the historical,
 /// mode-dependent behavior (packed mode recomputes; the others materialize). Use
 /// [`prove_configured_with_gkr_with_storage`] to override the storage policy.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn prove_configured_with_gkr<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -572,13 +597,13 @@ where
 {
     let rs_codeword_source = storage.base_rs_source;
     assert_eq!(compiled_circuit.trace_len, trace_len);
-    if witness_eval_data.column_major_memory_trace.len() > 0 {
+    if !witness_eval_data.column_major_memory_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
             trace_len
         );
     }
-    if witness_eval_data.column_major_witness_trace.len() > 0 {
+    if !witness_eval_data.column_major_witness_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_witness_trace[0].len(),
             trace_len
@@ -642,7 +667,7 @@ where
             external_challenges.flatten_into_buffer(&mut transcript_input);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -729,7 +754,7 @@ where
             external_challenges.flatten_into_buffer(&mut transcript_input);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -844,7 +869,7 @@ where
             transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -932,7 +957,7 @@ where
                 TIMESTAMP_COLUMNS_NUM_BITS,
             >(trace_len.trailing_zeros())),
         );
-        if inits_and_teardowns_top_bits.is_empty() == false {
+        if !inits_and_teardowns_top_bits.is_empty() {
             use crate::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
             let (low, high) = materialize_virtual_inits_and_teardowns_base_address_setup_poly::<
                 F,
@@ -999,7 +1024,7 @@ where
         worker
     ));
 
-    println!("Forward sumcheck loop is done, outputing explicit small polynomials");
+    println!("Forward sumcheck loop is done, outputting explicit small polynomials");
 
     // get final evaluations
     let mut final_explicit_evaluations = BTreeMap::new();
@@ -1114,7 +1139,7 @@ where
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
-    let address_high_bits_shift = if inits_and_teardowns_top_bits.len() > 0 {
+    let address_high_bits_shift = if !inits_and_teardowns_top_bits.is_empty() {
         high_bits_offset_for_inits_and_teardowns::<2>(trace_len)
     } else {
         // not important
@@ -1459,9 +1484,10 @@ where
         let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
             prover::definitions::produce_initial_permutation_product_separate_contributions(
                 unsafe {
-                    core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(
-                        &registers_buffer,
-                    )
+                    core::mem::transmute::<
+                        &[u32; NUM_REGISTERS * 3],
+                        &[(u32, (u32, u32)); NUM_REGISTERS],
+                    >(&registers_buffer)
                 },
                 INITIAL_PC,
                 split_timestamp(INITIAL_TIMESTAMP),
@@ -1482,7 +1508,7 @@ where
     }
 
     GKRProof {
-        external_challenges: external_challenges,
+        external_challenges,
         whir_proof,
         final_explicit_evaluations,
         sumcheck_intermediate_values,
@@ -1507,8 +1533,8 @@ fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
             padded
         };
         let mut buffer = vec![];
-        // note `rev` on the coordiantes - we will later on concatenate
-        // coordiantes, so first coordiante is MSB
+        // note `rev` on the coordinates - we will later on concatenate
+        // coordinates, so first coordinate is MSB
         for merge_point in extra_coordinates.iter().rev() {
             for [a, b] in input.as_chunks::<2>().0 {
                 // canonical interpolation a + (b - a) * r', consistent with the packing
@@ -1536,7 +1562,7 @@ mod packing_merge_tests {
     use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
-    use field::{Field, FieldExtension, PrimeField};
+    use field::{FieldExtension, PrimeField};
     use rand::RngCore;
     use worker::Worker;
 

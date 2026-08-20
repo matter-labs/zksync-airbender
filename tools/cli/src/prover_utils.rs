@@ -248,6 +248,10 @@ pub enum LadderMachine {
 /// need) in the given machine/kind with `nd_words` as the non-determinism
 /// stream, returning the assembled `(ProgramProof, Setups)` pair.
 pub trait ProveBackend {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one proving op needs the full program + machine + ND-stream description; bundling it into a params struct would only move the same fields behind an extra type"
+    )]
     fn prove(
         &mut self,
         batch_id: u64,
@@ -951,6 +955,10 @@ fn trusted_end_params(
     worker: &worker::Worker,
 ) -> Result<[u32; 8], String> {
     use std::sync::{Mutex, OnceLock};
+    #[expect(
+        clippy::type_complexity,
+        reason = "one-off local memo table; a type alias would sit further from its single use site than the type it names"
+    )]
     static CACHE: OnceLock<Mutex<std::collections::HashMap<(SetupMachine, [u8; 32]), [u32; 8]>>> =
         OnceLock::new();
 
@@ -1216,7 +1224,7 @@ pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> 
 }
 
 pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
-    if hex_string.len() % 8 != 0 {
+    if !hex_string.len().is_multiple_of(8) {
         panic!("Hex string length is not a multiple of 8");
     }
 

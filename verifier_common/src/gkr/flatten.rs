@@ -61,7 +61,7 @@ where
     result.push(lookup_nonce as u32);
     result.push((lookup_nonce >> 32) as u32);
 
-    for (_output_type, pair) in &proof.final_explicit_evaluations {
+    for pair in proof.final_explicit_evaluations.values() {
         flatten_field_els::<F, E>(&pair[0], &mut result);
         flatten_field_els::<F, E>(&pair[1], &mut result);
     }
@@ -89,11 +89,14 @@ where
             flatten_field_els::<F, E>(coeffs, &mut result);
         }
 
-        for (_addr, evals) in &proof_values.final_step_evaluations {
+        for evals in proof_values.final_step_evaluations.values() {
             flatten_field_els::<F, E>(evals, &mut result);
         }
 
-        for (_addr, eval) in &proof_values.extra_evaluations_from_caching_relations {
+        for eval in proof_values
+            .extra_evaluations_from_caching_relations
+            .values()
+        {
             flatten_field_els::<F, E>(&[*eval], &mut result);
         }
     }

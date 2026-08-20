@@ -246,7 +246,7 @@ pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core<
     let (input, bitmask) =
         cs.allocate_machine_state(true, false, UNIFIED_REDUCED_MACHINE_NUM_FLAGS);
     let bitmask: [_; UNIFIED_REDUCED_MACHINE_NUM_FLAGS] = bitmask.try_into().unwrap();
-    let bitmask = bitmask.map(|el| Boolean::Is(el));
+    let bitmask = bitmask.map(Boolean::Is);
 
     apply_unified_reduced_machine_inner::<F, MopF, _>(cs, input, bitmask);
 }
@@ -340,13 +340,13 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, MopF: PrimeField, CS: Circ
     let WordRepresentation::U16Limbs(rs1_limbs) = rs1_access.read_value else {
         unreachable!()
     };
-    let WordRepresentation::U16Limbs(rs2_limbs) = rs2_access.read_value.clone() else {
+    let WordRepresentation::U16Limbs(rs2_limbs) = rs2_access.read_value else {
         unreachable!()
     };
-    let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value.clone() else {
+    let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value else {
         unreachable!()
     };
-    let WordRepresentation::U16Limbs(rd_read_limbs) = rd_access.read_value.clone() else {
+    let WordRepresentation::U16Limbs(rd_read_limbs) = rd_access.read_value else {
         unreachable!()
     };
     let rs2_read_timestamp = rs2_access.read_timestamp;

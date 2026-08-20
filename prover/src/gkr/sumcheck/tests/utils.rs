@@ -36,8 +36,10 @@ pub(super) fn setup_storage<F: PrimeField, E: FieldExtension<F> + Field>(
 ) -> GKRStorage<F, E> {
     let mut storage = GKRStorage::<F, E>::default();
 
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     for (addr, poly) in inputs {
         layer_0
             .extension_field_inputs
@@ -45,8 +47,10 @@ pub(super) fn setup_storage<F: PrimeField, E: FieldExtension<F> + Field>(
     }
     storage.layers.push(layer_0);
 
-    let mut layer_1 = GKRLayerSource::default();
-    layer_1.layer_idx = 1;
+    let mut layer_1 = GKRLayerSource {
+        layer_idx: 1,
+        ..Default::default()
+    };
     for (addr, poly) in outputs {
         layer_1
             .extension_field_inputs
@@ -64,8 +68,10 @@ pub(super) fn setup_mixed_storage<F: PrimeField, E: FieldExtension<F> + Field>(
 ) -> GKRStorage<F, E> {
     let mut storage = GKRStorage::<F, E>::default();
 
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     for (addr, poly) in base_inputs {
         layer_0
             .base_field_inputs
@@ -78,8 +84,10 @@ pub(super) fn setup_mixed_storage<F: PrimeField, E: FieldExtension<F> + Field>(
     }
     storage.layers.push(layer_0);
 
-    let mut layer_1 = GKRLayerSource::default();
-    layer_1.layer_idx = 1;
+    let mut layer_1 = GKRLayerSource {
+        layer_idx: 1,
+        ..Default::default()
+    };
     for (addr, poly) in outputs {
         layer_1
             .extension_field_inputs
@@ -151,6 +159,10 @@ pub(super) fn compute_product<F: PrimeField, E: FieldExtension<F> + Field>(
         .collect()
 }
 
+#[expect(
+    dead_code,
+    reason = "reference kernel for sumcheck tests not yet wired up"
+)]
 pub(super) fn compute_mask_identity<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     m: &[E],
@@ -168,6 +180,10 @@ pub(super) fn compute_mask_identity<F: PrimeField, E: FieldExtension<F> + Field>
         .collect()
 }
 
+#[expect(
+    dead_code,
+    reason = "reference kernel for sumcheck tests not yet wired up"
+)]
 pub(super) fn compute_lookup_sub<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
@@ -356,7 +372,7 @@ pub(super) fn run_sumcheck_test<
                 &worker,
             );
 
-            assert!(last_evaluations.len() > 0);
+            assert!(!last_evaluations.is_empty());
 
             let previous_round_last_challenge =
                 previous_round_challenges.last().expect("must be present");

@@ -2,7 +2,9 @@ use super::*;
 use crate::structured_expr::Expr;
 
 pub(crate) struct GFunctionIntermediateValues<F: PrimeField> {
+    #[expect(clippy::type_complexity)]
     pub(crate) a_var_chunks_and_constraint: [([(i32, Variable); 1], Expr<F>); 2],
+    #[expect(clippy::type_complexity)]
     pub(crate) c_var_chunks_and_constraint: [([(i32, Variable); 1], Expr<F>); 2],
 }
 
@@ -668,12 +670,10 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
         ];
     }
 
-    let output = GFunctionIntermediateValues {
+    GFunctionIntermediateValues {
         a_var_chunks_and_constraint: a_chunks_and_constraints.try_into().unwrap(),
         c_var_chunks_and_constraint: c_chunks_and_constraints.try_into().unwrap(),
-    };
-
-    output
+    }
 }
 
 /// Adds chunk variables as little-endian limbs, weighted by their bit offsets.
@@ -689,10 +689,8 @@ fn add_chunks_into_expr<F: PrimeField>(mut expr: Expr<F>, chunks: &[(usize, Vari
 
 /// Adds incoming carry bits at consecutive low bit positions.
 fn add_carries_into_expr<F: PrimeField>(mut expr: Expr<F>, carries: &[Variable]) -> Expr<F> {
-    let mut shift = 0;
-    for var in carries.iter() {
+    for (shift, var) in carries.iter().enumerate() {
         expr = expr + Expr::var(*var) * F::from_u32_unchecked(1u32 << shift);
-        shift += 1;
     }
 
     expr
@@ -700,10 +698,8 @@ fn add_carries_into_expr<F: PrimeField>(mut expr: Expr<F>, carries: &[Variable])
 
 /// Subtracts outgoing carry bits starting above the 16-bit limb.
 fn sub_carries_from_expr<F: PrimeField>(mut expr: Expr<F>, carries: &[Variable]) -> Expr<F> {
-    let mut shift = 16;
-    for var in carries.iter() {
-        expr = expr - Expr::var(*var) * F::from_u32_unchecked(1u32 << shift);
-        shift += 1;
+    for (i, var) in carries.iter().enumerate() {
+        expr = expr - Expr::var(*var) * F::from_u32_unchecked(1u32 << (16 + i));
     }
 
     expr
@@ -732,7 +728,7 @@ fn witness_eval_addition_with_expr<
     let constraint = expr.to_max_quadratic_constraint();
     let (quadratic, linear, constant_coeff) = constraint.split_max_quadratic();
     assert!(quadratic.is_empty());
-    if linear.len() == 0 {
+    if linear.is_empty() {
         assert!(constant_coeff.is_zero());
     }
 
@@ -746,7 +742,7 @@ fn witness_eval_addition_with_expr<
             let mut shift = 0u32;
             for (chunk_width, variable) in input_decomposition.iter() {
                 let value = placer.get_u16(*variable);
-                let value = value.shl(shift as u32);
+                let value = value.shl(shift);
                 let value = value.widen();
                 // we have enough capacity to never overflow
                 input_value.add_assign(&value);
@@ -764,12 +760,10 @@ fn witness_eval_addition_with_expr<
         let constraint_eval_result = constraint_eval_result.as_integer();
         input_value.add_assign(&constraint_eval_result);
 
-        let mut shift = 0;
-        for carry_in in carries_in.iter() {
+        for (shift, carry_in) in carries_in.iter().enumerate() {
             let carry_in = placer.get_boolean(*carry_in);
             let carry_in = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(carry_in);
-            let carry_in = carry_in.shl(shift);
-            shift += 1;
+            let carry_in = carry_in.shl(shift as u32);
             input_value.add_assign(&carry_in);
         }
 

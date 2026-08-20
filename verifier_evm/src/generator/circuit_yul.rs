@@ -15,7 +15,6 @@ use cs::{
     },
 };
 // use cs::gkr_compiler::NoFieldStructuredExpression;
-use field::baby_bear::base::BabyBearField;
 use field::Proth120;
 
 /// Proth120 modulus P = 7*2^120 + 1 (same as gkr.sol / whir.sol once migrated).
@@ -26,7 +25,6 @@ const PROTH120_P: u128 = 0x7000000000000000000000000000001;
 /// `generic_lookup_tables_width` in `emit_circuit_yul`, then used for every lookup-tuple length
 /// check so the magic `10` never appears inline.
 const LOOKUP_TABLES_WIDTH: usize = 10;
-use field::PrimeField;
 
 trait EachRefRev<T, const N: usize> {
     fn each_ref_rev(&self) -> [&T; N];
@@ -38,8 +36,8 @@ impl<T, const N: usize> EachRefRev<T, N> for [T; N] {
         std::array::from_fn(|i| &self[N - 1 - i])
     }
 
-    fn each_ref_revmap<U>(&self, mut f: impl FnMut(&T) -> U) -> [U; N] {
-        let mut out = self.each_ref_rev().map(|x| f(x));
+    fn each_ref_revmap<U>(&self, f: impl FnMut(&T) -> U) -> [U; N] {
+        let mut out = self.each_ref_rev().map(f);
         out.reverse();
         out
     }
@@ -210,27 +208,6 @@ fn superscript(idx: usize) -> String {
         })
         .collect()
 }
-fn const_to_evm(c: &u32) -> Dual {
-    assert!(
-        *c < BabyBearField::ORDER,
-        "we don't expect circuits with unreduced constants"
-    );
-    // first check if negative
-    let (sign, modc, yul) = if *c > BabyBearField::ORDER / 2 {
-        let modc = BabyBearField::ORDER - c;
-        ("-", modc, yul_format!("sub(P, {modc})"))
-    } else {
-        ("", *c, yul_format!("{c}"))
-    };
-    let normal = match modc {
-        modc if modc.is_power_of_two() && !(0..=2).contains(&modc) => {
-            let power = modc.trailing_zeros();
-            format!("{sign}2^{power}")
-        }
-        _ => format!("{sign}{modc}"),
-    };
-    Dual(normal, yul)
-}
 fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
     Dual(format!("-{input}"), yul_format!("sub(mul(2, P), {yul:x})"))
 }
@@ -320,6 +297,13 @@ struct QTerm {
 /// heap, so only nonzero gate constants need an explicit seed.
 /// `gate_constant_terms`: the additive constant of each quadratic relation `(gate slot, value)`,
 /// only for gates whose constant is nonzero (it seeds `GATEVAL[slot]` before the term loops add).
+/// Bucket key for the layer-0 quadratic-gate table: `(is_quad, is_negative, coeff_width_bytes)`.
+type QuadBucketKey = (bool, bool, usize);
+
+/// One bucket's placement in the concatenated record stream:
+/// `(key, start_offset, record_count, stride)`.
+type QuadBucketLayout = (QuadBucketKey, usize, usize, usize);
+
 fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) -> String {
     use std::collections::BTreeMap;
     // canonical coeff -> (byte width, is_negative, stored value). Small +ve: store as-is.
@@ -344,7 +328,7 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
         }
     }
     // bucket key (is_quad, is_neg, width) -> packed record bytes
-    let mut buckets: BTreeMap<(bool, bool, usize), Vec<u8>> = BTreeMap::new();
+    let mut buckets: BTreeMap<QuadBucketKey, Vec<u8>> = BTreeMap::new();
     for t in terms {
         let (width, neg, stored) = classify(t.coeff);
         let is_quad = t.b.is_some();
@@ -358,14 +342,14 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
     }
     // concatenate buckets into one byte stream; record (key, start, count, stride)
     let mut stream: Vec<u8> = vec![];
-    let mut layout: Vec<((bool, bool, usize), usize, usize, usize)> = vec![];
+    let mut layout: Vec<QuadBucketLayout> = vec![];
     for (key, bytes) in &buckets {
         let (is_quad, _neg, width) = *key;
         let stride = if is_quad { 3 } else { 2 } + width;
         layout.push((*key, stream.len(), bytes.len() / stride, stride));
         stream.extend_from_slice(bytes);
     }
-    while stream.len() % 32 != 0 {
+    while !stream.len().is_multiple_of(32) {
         stream.push(0); // pad: the loop mload reads 32 B; trailing bytes are never consumed
     }
 
@@ -534,18 +518,18 @@ fn memrel_to_calldata(
         CompiledAddressStrict::Constant(c) => {
             assert!(*c < (1 << 16), "with {address:?} we expect c < 2^16");
             let c = u32_lit(*c);
-            let zero = Dual(format!("0"), yul_format!("0"));
+            let zero = Dual("0".to_string(), yul_format!("0"));
             [c, zero]
         }
         CompiledAddressStrict::ConstantU16(c) => {
             let c = u32_lit(*c as u32);
-            let zero = Dual(format!("0"), yul_format!("0"));
+            let zero = Dual("0".to_string(), yul_format!("0"));
             [c, zero]
         }
         CompiledAddressStrict::U16Space(idx) => {
             *running_max_memvar = *idx.max(running_max_memvar);
             let var = Dual(format!("[{idx}]"), Yul::calldataload(idx));
-            let zero = Dual(format!("0"), yul_format!("0"));
+            let zero = Dual("0".to_string(), yul_format!("0"));
             [var, zero]
         }
         CompiledAddressStrict::U32Space([low, high]) => {
@@ -563,8 +547,8 @@ fn memrel_to_calldata(
                 *timestamp_offset, 0,
                 "with {timestamp:?} we expect timestamp_offset == 0"
             );
-            let zero1 = Dual(format!("0"), yul_format!("0"));
-            let zero2 = Dual(format!("0"), yul_format!("0"));
+            let zero1 = Dual("0".to_string(), yul_format!("0"));
+            let zero2 = Dual("0".to_string(), yul_format!("0"));
             [zero1, zero2]
         }
         CompiledMemoryTimestamp::Normal([low, high]) => {
@@ -584,8 +568,8 @@ fn memrel_to_calldata(
     };
     let [val_low, val_high] = match value {
         RamWordRepresentation::Zero => {
-            let zero1 = Dual(format!("0"), yul_format!("0"));
-            let zero2 = Dual(format!("0"), yul_format!("0"));
+            let zero1 = Dual("0".to_string(), yul_format!("0"));
+            let zero2 = Dual("0".to_string(), yul_format!("0"));
             [zero1, zero2]
         }
         RamWordRepresentation::U16Limbs([low, high]) => {
@@ -615,13 +599,13 @@ fn memrel_to_calldata(
             [low, high]
         }
     };
-    let memory_gamma = Dual(format!("γ"), Yul::memory_gamma());
-    let memory_alpha1 = Dual(format!("α"), Yul::memory_alpha(0));
-    let memory_alpha2 = Dual(format!("α²"), Yul::memory_alpha(1));
-    let memory_alpha3 = Dual(format!("α³"), Yul::memory_alpha(2));
-    let memory_alpha4 = Dual(format!("α⁴"), Yul::memory_alpha(3));
-    let memory_alpha5 = Dual(format!("α⁵"), Yul::memory_alpha(4));
-    let memory_alpha6 = Dual(format!("α⁶"), Yul::memory_alpha(5));
+    let memory_gamma = Dual("γ".to_string(), Yul::memory_gamma());
+    let memory_alpha1 = Dual("α".to_string(), Yul::memory_alpha(0));
+    let memory_alpha2 = Dual("α²".to_string(), Yul::memory_alpha(1));
+    let memory_alpha3 = Dual("α³".to_string(), Yul::memory_alpha(2));
+    let memory_alpha4 = Dual("α⁴".to_string(), Yul::memory_alpha(3));
+    let memory_alpha5 = Dual("α⁵".to_string(), Yul::memory_alpha(4));
+    let memory_alpha6 = Dual("α⁶".to_string(), Yul::memory_alpha(5));
     Dual(
         format!("({memory_gamma} + {address_space} + {memory_alpha1}{addr_low} + {memory_alpha2}{addr_high} + {memory_alpha3}{ts_low} + {memory_alpha4}{ts_high} + {memory_alpha5}{val_low} + {memory_alpha6}{val_high})"),
         yul_format!("add(gkr_memrel_compress_low({address_space:x}, {addr_low:x}, {addr_high:x}), gkr_memrel_compress_high({ts_low:x}, {ts_high:x}, {val_low:x}, {val_high:x}))")
@@ -979,7 +963,6 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                _ => todo!("could not match (cached) {cached_relation:?} at layer {i}"),
             }
         }
         // INJECT VIRTUAL POLY CACHES
@@ -1362,8 +1345,8 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 ) = running_max_group_offsets;
                 match timestamp_and_value {
                     InitsOrTeardownsTimestampAndValue::Init => {
-                        let zero1 = Dual(format!("0"), yul_format!("0"));
-                        let zero2 = Dual(format!("0"), yul_format!("0"));
+                        let zero1 = Dual("0".to_string(), yul_format!("0"));
+                        let zero2 = Dual("0".to_string(), yul_format!("0"));
                         [zero1, zero2]
                     }
                     InitsOrTeardownsTimestampAndValue::Teardown {
@@ -2066,13 +2049,13 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                         let high_bits_shift = prover::gkr::high_bits_offset_for_inits_and_teardowns::<
                             2,
                         >(circuit.trace_len);
-                        let memory_alpha2 = Dual(format!("α²"), Yul::memory_alpha(1));
+                        let memory_alpha2 = Dual("α²".to_string(), Yul::memory_alpha(1));
                         // The set-window is `top_bits[set_idx] << high_bits_shift`, NOT `set_idx << shift`.
                         // `top_bits` (the RAM-set base chunk indices) are data-dependent and cannot be
                         // derived from the circuit, so read them from the transcript preimage in calldata:
                         // layout is registers ‖ final_pc/ts then top_bits[..] as LE u32.
                         set_idxes.map(|c| {
-                            let byteoff = super::PREIMAGE_TOP_BITS_BYTE_OFFSET + (c as usize) * 4;
+                            let byteoff = super::PREIMAGE_TOP_BITS_BYTE_OFFSET + c * 4;
                             Dual(
                                 format!("{memory_alpha2}({setup_high} + (topbits[{c}]<<{high_bits_shift}))"),
                                 yul_format!("mulmod({memory_alpha2:x}, add({setup_high:x}, shl({high_bits_shift}, gkr_inits_teardowns_topbits({byteoff}))), P)")
@@ -2089,8 +2072,8 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     claim_slots.push(Some(output));
                     let shared = {
                         let address_space = AddressSpaceType::RAM as u32;
-                        let memory_gamma = Dual(format!("γ"), Yul::memory_gamma());
-                        let memory_alpha1 = Dual(format!("α"), Yul::memory_alpha(0));
+                        let memory_gamma = Dual("γ".to_string(), Yul::memory_gamma());
+                        let memory_alpha1 = Dual("α".to_string(), Yul::memory_alpha(0));
                         Dual(format!("{memory_gamma} + {address_space} + {memory_alpha1}{setup_low}"), yul_format!("add(add({memory_gamma:x}, {address_space}), mulmod({memory_alpha1:x}, {setup_low:x}, P))"))
                     };
                     // println!("{relation_name}: ({shared} + {lhs_addr_high} + {lhs_timestamp_and_value}) * ({shared} + {rhs_addr_high} + {rhs_timestamp_and_value}) = {output}");
@@ -2512,20 +2495,10 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
 
     // INTRODUCE EXTERNAL HELPER FNS
     // GREAT FOR BYTECODE REDUCTION!!
-    let check = if DEBUG_ENABLE_DUMMY_CHECKS {
-        yul_format!(
-            "
-        let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
-        \t\tmstore(GKR_CIRCUIT_CACHE_PTR(), dummy_check)
-        "
-        )
-    } else {
-        yul_format!(
-            "
-        if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
-        "
-        )
-    };
+    // NB: the per-round claim check for `sumcheck_rounds_circuit` is emitted inline in the
+    // template below against the hoisted `modulus` local (one mload per layer instead of per
+    // round), which superseded the `P`-based snippet that used to be built here. As a result
+    // DEBUG_ENABLE_DUMMY_CHECKS does not affect this site — it still always reverts.
     let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
     let gate_mload_inner = Yul::mload(&123).0.replace("123", "idx");
     yul_println!("

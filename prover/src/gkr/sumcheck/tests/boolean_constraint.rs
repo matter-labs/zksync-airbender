@@ -24,7 +24,7 @@ fn test_boolean_constraints() {
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
     let worker = Worker::new_with_num_threads(1);
 
-    let a: Vec<F> = (0..POLY_SIZE)
+    let _a: Vec<F> = (0..POLY_SIZE)
         .map(|el| F::from_u32_with_reduction(((el % 2) == 1) as u32))
         .collect();
 
@@ -37,8 +37,10 @@ fn test_boolean_constraints() {
     //     .collect();
 
     let mut storage = GKRStorage::<F, E>::default();
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     layer_0.base_field_inputs.insert(
         GKRAddress::BaseLayerMemory(0),
         BaseFieldPoly::new(a.into_boxed_slice()),
@@ -69,7 +71,7 @@ fn test_boolean_constraints() {
         .collect();
     // dbg!(&previous_round_challenges);
 
-    let eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges, &worker);
+    let _eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges, &worker);
     // dbg!(&eq_precomputed);
 
     let batching_challenges = vec![E::ONE];
@@ -111,7 +113,7 @@ fn test_boolean_constraints() {
 
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
-                &eq,
+                eq,
                 &worker,
             );
 
@@ -176,7 +178,7 @@ fn test_boolean_constraints() {
             );
 
             // we would commit those values
-            assert!(last_evaluations.len() > 0);
+            assert!(!last_evaluations.is_empty());
 
             // in the accumulator we should have kernel(X(b), Y(b)) (batched), and now we can just multiply corresponding coordinates
             // over (1 - previous_round_challenges[last]) and previous_round_challenges[last], and add them up to verify that they match the claim
@@ -188,7 +190,7 @@ fn test_boolean_constraints() {
 
             // [eq(r_last, 0) * A(r'.., 0) * B(r'..., 0) + eq(r_last, 1) * A(r'..., 1) * B(r'..., 1)] of the example above
             let [[f0, f1]] = accumulator;
-            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(&previous_round_last_challenge);
+            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(previous_round_last_challenge);
 
             dbg!([f0, f1]);
             dbg!([eq0, eq1]);
@@ -205,7 +207,8 @@ fn test_boolean_constraints() {
             // derive new claims
 
             let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges, &worker);
-            for poly in [GKRAddress::BaseLayerMemory(0)] {
+            {
+                let poly = GKRAddress::BaseLayerMemory(0);
                 let evals = &storage.layers[0]
                     .base_field_inputs
                     .get(&poly)

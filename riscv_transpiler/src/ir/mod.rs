@@ -4,8 +4,6 @@ pub(crate) mod instructions;
 pub mod simple_instruction_set;
 
 use self::decode::*;
-use self::encoding_types::*;
-use self::instructions::*;
 
 pub trait DecodingOptions: 'static + Sized {
     const SUPPORT_SUBWORD_MEM_ACCESS: bool;

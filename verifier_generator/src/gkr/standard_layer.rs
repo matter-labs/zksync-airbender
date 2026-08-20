@@ -1340,7 +1340,7 @@ fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
         };
 
         let field_struct_local = MW::field_struct();
-        let ram_constant = MW::coeff_to_internal_repr(1) as u32;
+        let ram_constant = MW::coeff_to_internal_repr(1);
         val_comp.extend(quote! {
             let mut #var = {
                 let mut result = permutation_argument_additive_part;

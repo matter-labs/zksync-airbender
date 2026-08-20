@@ -43,11 +43,11 @@ impl MerkleTreeCapVarLength {
 /// The RS-codeword values of a SINGLE LDE coset: serves the packed leaf values
 /// for a folded-domain index within that coset (offset-major `[offset][column]`,
 /// exactly as WHIR builds a Merkle leaf).
-pub trait SingleCosetRSQueriable<T: 'static + Sized> {
+pub trait SingleCosetRSQueryable<T: 'static + Sized> {
     fn values_for_folded_index(&self, index: usize, values_per_leaf: usize) -> Vec<Vec<T>>;
 }
 
-/// A main-domain (LDE coset 0) column as served by an [`RSQueriable`] source, in
+/// A main-domain (LDE coset 0) column as served by an [`RSQueryable`] source, in
 /// whichever representation that source holds cheaply.
 ///
 /// `whir_fold` batches these columns down to the monomial (multilinear
@@ -89,14 +89,14 @@ impl<'a, T: Clone> MainDomainColumn<'a, T> {
 }
 
 /// A full RS codeword (all LDE cosets) viewed as a value source, decoupled from
-/// how the accompanying Merkle tree/paths are stored (see [`PathQueriable`]).
+/// how the accompanying Merkle tree/paths are stored (see [`PathQueryable`]).
 ///
 /// Implementors may hold every coset materialized in RAM
 /// ([`MaterializedCosets`](crate::gkr::whir::MaterializedCosets)) or keep only a
 /// compact form and recompute the coset a query lands in
 /// (`CosetByCosetBaseCommitment`). Later prover configurations pick the policy per
 /// oracle; call sites talk to this trait rather than a concrete owner.
-pub trait RSQueriable<T: 'static + Sized + Clone>: core::fmt::Debug + Send + Sync {
+pub trait RSQueryable<T: 'static + Sized + Clone>: core::fmt::Debug + Send + Sync {
     /// Number of committed columns.
     fn num_columns(&self) -> usize;
     /// Number of LDE cosets (= LDE factor).
@@ -119,7 +119,7 @@ pub trait RSQueriable<T: 'static + Sized + Clone>: core::fmt::Debug + Send + Syn
     /// `whir_fold` reads in full, for the batched proximity poly.
     fn main_domain_column(&self, column_index: usize) -> MainDomainColumn<'_, T>;
     /// Downcast bridge: lets a boxed source recover its concrete type (e.g. to reach
-    /// `MaterializedCosets::serialize_to_disk` through a `Box<dyn RSQueriable>`).
+    /// `MaterializedCosets::serialize_to_disk` through a `Box<dyn RSQueryable>`).
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
@@ -129,7 +129,7 @@ pub trait RSQueriable<T: 'static + Sized + Clone>: core::fmt::Debug + Send + Syn
 /// A single Merkle digest (`DIGEST_SIZE_U32_WORDS` u32 words).
 pub type Digest = [u32; DIGEST_SIZE_U32_WORDS];
 
-pub trait PathQueriable: core::fmt::Debug + Send + Sync {
+pub trait PathQueryable: core::fmt::Debug + Send + Sync {
     fn get_cap(&self) -> MerkleTreeCapVarLength;
     fn get_proof(&self, idx: usize) -> (Digest, Vec<Digest>);
 }
@@ -145,7 +145,7 @@ where
     E: Clone;
 
 pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
-    Sized + Send + Sync + core::fmt::Debug + PathQueriable + 'static
+    Sized + Send + Sync + core::fmt::Debug + PathQueryable + 'static
 {
     type Verifier: LeafInclusionVerifier;
 
@@ -200,6 +200,10 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     /// then dropped, so a recomputing producer keeps only one coset in memory. Each
     /// concrete tree implements this (the per-field leaf hashing lives here);
     /// [`Self::construct_from_cosets`] is a materialized-input wrapper over it.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+    )]
     fn construct_from_coset_producer<'a, E: FieldExtension<F> + 'a>(
         num_cosets: usize,
         producer: CosetColumnsProducer<'a, E>,
@@ -224,6 +228,10 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     /// Implementations delegate to [`on_disk::write_disk_artifacts`], supplying an
     /// accessor for their concrete [`SerializableTreeLayers`](on_disk::SerializableTreeLayers);
     /// that free function holds the shared layout orchestration.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+    )]
     fn write_disk_artifacts<'a, E: FieldExtension<F> + 'a>(
         base_path: &str,
         layout: on_disk::OnDiskTreeLayout,

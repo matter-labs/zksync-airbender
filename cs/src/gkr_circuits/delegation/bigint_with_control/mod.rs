@@ -54,7 +54,7 @@ pub fn bigint_with_extended_control_delegation_circuit_table_addition_fn<
 pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) -> (Vec<[Variable; 2]>, [Variable; REGISTER_SIZE]) {
-    let (_execute, _invication_ts) =
+    let (_execute, _invocation_ts) =
         cs.allocate_delegation_state(BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16);
 
     let dst_accesses = (0..8)
@@ -563,7 +563,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     let full_product: [Variable; 32] = product_low
         .into_iter()
-        .chain(product_high.into_iter())
+        .chain(product_high)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
@@ -573,6 +573,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     for (i, product_word) in full_product.iter().enumerate() {
         let mut product_expr = carry_expr.clone();
         let mut product_range = carry_range;
+        #[expect(clippy::needless_range_loop)]
         for a_byte_idx in 0..32 {
             for b_byte_idx in 0..32 {
                 if a_byte_idx + b_byte_idx == 2 * i {
@@ -652,11 +653,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // merge range checks between additive results and multiplicative result low,
     // and we can push it into intermediate layer
     {
-        for (i, (a, b)) in additive_ops_result
-            .into_iter()
-            .zip(product_low.into_iter())
-            .enumerate()
-        {
+        for (i, (a, b)) in additive_ops_result.into_iter().zip(product_low).enumerate() {
             let expr = Expr::var(a).mask(perform_add_boolean)
                 + Expr::var(a).mask(perform_sub_boolean)
                 + Expr::var(a).mask(perform_sub_negate_boolean)
@@ -693,7 +690,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
                 let b = LookupInput::from(b.clone());
                 cs.enforce_lookup_tuple_for_fixed_table(&[a, b], table_type, false);
             }
-            if remainder.len() > 0 {
+            if !remainder.is_empty() {
                 let a = &remainder[0];
                 let a = LookupInput::from(a.clone());
                 cs.enforce_lookup_tuple_for_fixed_table(
@@ -766,7 +763,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
         let mut accumulation_expr = Expr::<F>::zero();
         for (comparison_output, product_high) in eq_operation_words_for_zero_check
             .into_iter()
-            .zip(product_high.into_iter())
+            .zip(product_high)
         {
             accumulation_expr = accumulation_expr
                 + Expr::var(comparison_output).mask(perform_eq_boolean)

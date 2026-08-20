@@ -13,7 +13,11 @@
 //!
 //! Env knobs: `BENCH_THREADS` caps the worker pool.
 
-use field::{Field, FieldExtension, PrimeField, Proth120, Rand, TwoAdicField};
+use field::{Field, Proth120, Rand};
+// Only needed to bring the trait methods into scope for the aarch64/NEON
+// code paths below; unused on every other target.
+#[cfg(target_arch = "aarch64")]
+use field::{FieldExtension, PrimeField};
 use std::alloc::Global;
 use std::time::Instant;
 use worker::Worker;
@@ -159,7 +163,16 @@ fn parallel_over_chunks<T: Sync, R: Send + std::iter::Sum>(
     let chunk = data.len().div_ceil(worker.get_num_cores());
     worker
         .pool
-        .install(|| data.par_chunks(chunk).map(|c| f(c)).sum())
+        // The closure is NOT redundant: `f` is `Sync` but not `Send`, so it can
+        // only cross into rayon by reference. Passing `f` itself moves it and
+        // fails the `Send` bound on `ParallelIterator::map`.
+        .install(
+            #[expect(
+                clippy::redundant_closure,
+                reason = "captures `f` by reference; `f: Sync` is not `Send`"
+            )]
+            || data.par_chunks(chunk).map(|c| f(c)).sum(),
+        )
 }
 
 fn parallel_over_chunks_mut<T: Send>(data: &mut [T], worker: &Worker, f: impl Fn(&mut [T]) + Sync) {
@@ -167,7 +180,14 @@ fn parallel_over_chunks_mut<T: Send>(data: &mut [T], worker: &Worker, f: impl Fn
     let chunk = data.len().div_ceil(worker.get_num_cores());
     worker
         .pool
-        .install(|| data.par_chunks_mut(chunk).for_each(|c| f(c)));
+        // See `parallel_over_chunks`: `f` is `Sync` but not `Send`.
+        .install(
+            #[expect(
+                clippy::redundant_closure,
+                reason = "captures `f` by reference; `f: Sync` is not `Send`"
+            )]
+            || data.par_chunks_mut(chunk).for_each(|c| f(c)),
+        );
 }
 
 fn parallel_copy(src: &[u64], dst: &mut [u64], worker: &Worker) {
@@ -710,7 +730,7 @@ fn bench_bb(worker: &Worker) {
                     // serial reference of the ADD (coeffs -> hypercube evals)
                     // transform + bitrev, as whir_fold effectively does today
                     for [a, b] in v.as_chunks_mut::<2>().0.iter_mut() {
-                        b.add_assign(&a);
+                        b.add_assign(a);
                     }
                     let mut stride = 2usize;
                     for _round in 1..24 {
@@ -1441,7 +1461,7 @@ fn bench_gather(worker: &Worker, log_t: u32) {
     let num_full = leaf_w / BLAKE2S_BLOCK_SIZE_U32_WORDS; // 3
     let rem = leaf_w % BLAKE2S_BLOCK_SIZE_U32_WORDS; // 4
 
-    let run = |f: &(dyn Fn(usize, usize) + Sync)| -> f64 {
+    let _run = |f: &(dyn Fn(usize, usize) + Sync)| -> f64 {
         let t0 = Instant::now();
         worker.pool.install(|| {
             (0..tree_size)
@@ -1505,30 +1525,27 @@ fn bench_gather(worker: &Worker, log_t: u32) {
             (0..tree_size)
                 .into_par_iter()
                 .with_min_len(1 << 14)
-                .for_each_init(
-                    || blake2s_u32::Blake2sState::new(),
-                    |hasher, i| {
-                        hasher.reset();
-                        let mut buf = [0u32; 64];
-                        let mut w = 0usize;
-                        for column in cols.iter() {
-                            unsafe {
-                                *buf.get_unchecked_mut(w) = column.get_unchecked(i).raw_u32_value();
-                                *buf.get_unchecked_mut(w + 1) =
-                                    column.get_unchecked(i + tree_size).raw_u32_value();
-                            }
-                            w += 2;
+                .for_each_init(blake2s_u32::Blake2sState::new, |hasher, i| {
+                    hasher.reset();
+                    let mut buf = [0u32; 64];
+                    let mut w = 0usize;
+                    for column in cols.iter() {
+                        unsafe {
+                            *buf.get_unchecked_mut(w) = column.get_unchecked(i).raw_u32_value();
+                            *buf.get_unchecked_mut(w + 1) =
+                                column.get_unchecked(i + tree_size).raw_u32_value();
                         }
-                        let mut dst = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
-                        let blocks: &[[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]; 4] =
-                            unsafe { &*(buf.as_ptr() as *const _) };
-                        for b in blocks.iter().take(num_full) {
-                            hasher.absorb::<true>(b);
-                        }
-                        hasher.absorb_final_block::<true>(&blocks[num_full], rem, &mut dst);
-                        std::hint::black_box(dst);
-                    },
-                );
+                        w += 2;
+                    }
+                    let mut dst = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+                    let blocks: &[[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]; 4] =
+                        unsafe { &*(buf.as_ptr() as *const _) };
+                    for b in blocks.iter().take(num_full) {
+                        hasher.absorb::<true>(b);
+                    }
+                    hasher.absorb_final_block::<true>(&blocks[num_full], rem, &mut dst);
+                    std::hint::black_box(dst);
+                });
         });
         t0.elapsed().as_secs_f64()
     };
@@ -1565,7 +1582,7 @@ fn bench_gather(worker: &Worker, log_t: u32) {
                     .into_par_iter()
                     .with_min_len(1 << 14)
                     .for_each_init(
-                        || blake2s_u32::vectorized_impls::arm_neon::Blake2sState::new(),
+                        blake2s_u32::vectorized_impls::arm_neon::Blake2sState::new,
                         |hasher, i| {
                             hasher.reset();
                             let mut buf = [0u32; 64];
@@ -1606,21 +1623,18 @@ fn bench_gather(worker: &Worker, log_t: u32) {
             (0..tree_size)
                 .into_par_iter()
                 .with_min_len(1 << 14)
-                .for_each_init(
-                    || blake2s_u32::Blake2sState::new(),
-                    |hasher, i| {
-                        hasher.reset();
-                        let buf = [i as u32; 64];
-                        let blocks: &[[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]; 4] =
-                            unsafe { &*(buf.as_ptr() as *const _) };
-                        let mut dst = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
-                        for b in blocks.iter().take(num_full) {
-                            hasher.absorb::<true>(b);
-                        }
-                        hasher.absorb_final_block::<true>(&blocks[num_full], rem, &mut dst);
-                        std::hint::black_box(dst);
-                    },
-                );
+                .for_each_init(blake2s_u32::Blake2sState::new, |hasher, i| {
+                    hasher.reset();
+                    let buf = [i as u32; 64];
+                    let blocks: &[[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]; 4] =
+                        unsafe { &*(buf.as_ptr() as *const _) };
+                    let mut dst = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+                    for b in blocks.iter().take(num_full) {
+                        hasher.absorb::<true>(b);
+                    }
+                    hasher.absorb_final_block::<true>(&blocks[num_full], rem, &mut dst);
+                    std::hint::black_box(dst);
+                });
         });
         t0.elapsed().as_secs_f64()
     };
@@ -1682,6 +1696,10 @@ fn bench_gather(worker: &Worker, log_t: u32) {
                     // gather: column-major outer loop, ways inner
                     let mut wpos = 0usize;
                     for column in cols.iter() {
+                        #[expect(
+                            clippy::needless_range_loop,
+                            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                        )]
                         for w in 0..WAYS {
                             unsafe {
                                 bufs[w][wpos] = column.get_unchecked(base + w).raw_u32_value();
@@ -1766,30 +1784,27 @@ fn bench_gather(worker: &Worker, log_t: u32) {
             (0..tree_size)
                 .into_par_iter()
                 .with_min_len(1 << 14)
-                .for_each_init(
-                    || blake2s_u32::Blake2sState::new(),
-                    |hasher, i| {
-                        hasher.reset();
-                        let mut buf = [0u32; 64];
-                        let mut w = 0usize;
-                        for column in cols.iter() {
-                            unsafe {
-                                let p = column.as_ptr().add(2 * i) as *const u32;
-                                *buf.get_unchecked_mut(w) = *p;
-                                *buf.get_unchecked_mut(w + 1) = *p.add(1);
-                            }
-                            w += 2;
+                .for_each_init(blake2s_u32::Blake2sState::new, |hasher, i| {
+                    hasher.reset();
+                    let mut buf = [0u32; 64];
+                    let mut w = 0usize;
+                    for column in cols.iter() {
+                        unsafe {
+                            let p = column.as_ptr().add(2 * i) as *const u32;
+                            *buf.get_unchecked_mut(w) = *p;
+                            *buf.get_unchecked_mut(w + 1) = *p.add(1);
                         }
-                        let mut dst = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
-                        let blocks: &[[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]; 4] =
-                            unsafe { &*(buf.as_ptr() as *const _) };
-                        for b in blocks.iter().take(num_full) {
-                            hasher.absorb::<true>(b);
-                        }
-                        hasher.absorb_final_block::<true>(&blocks[num_full], rem, &mut dst);
-                        std::hint::black_box(dst);
-                    },
-                );
+                        w += 2;
+                    }
+                    let mut dst = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+                    let blocks: &[[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]; 4] =
+                        unsafe { &*(buf.as_ptr() as *const _) };
+                    for b in blocks.iter().take(num_full) {
+                        hasher.absorb::<true>(b);
+                    }
+                    hasher.absorb_final_block::<true>(&blocks[num_full], rem, &mut dst);
+                    std::hint::black_box(dst);
+                });
         });
         t0.elapsed().as_secs_f64()
     };
@@ -1815,6 +1830,10 @@ fn bench_gather(worker: &Worker, log_t: u32) {
                     for column in cols.iter() {
                         unsafe {
                             let p = column.as_ptr().add(base) as *const u32;
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for w in 0..4 {
                                 *bufs[w].get_unchecked_mut(wpos) = *p.add(2 * w);
                                 *bufs[w].get_unchecked_mut(wpos + 1) = *p.add(2 * w + 1);
@@ -1853,6 +1872,7 @@ fn bench_gather(worker: &Worker, log_t: u32) {
 fn bench_ext4_diag() {
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
+    #[cfg(target_arch = "aarch64")]
     use worker::rayon::prelude::*;
 
     println!("\n== Ext4 2^18 x 512 diagnostic ==");
@@ -1950,7 +1970,7 @@ fn bench_ext4_diag() {
     }
     #[cfg(not(target_arch = "aarch64"))]
     {
-        let _ = (poly, tw);
+        let _ = (poly, tw, cosets);
         println!("  (aarch64 only)");
     }
 }

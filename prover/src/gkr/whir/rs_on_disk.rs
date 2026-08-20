@@ -1,4 +1,4 @@
-//! On-disk storage for base RS codewords (the `RSQueriable` side of a base/setup
+//! On-disk storage for base RS codewords (the `RSQueryable` side of a base/setup
 //! commitment, mirroring the tree-side [`on_disk`](crate::merkle_trees::on_disk)).
 //!
 //! A single LDE coset serializes to a small header plus its columns concatenated
@@ -23,7 +23,7 @@
 
 use super::offsets_vec_for_leaf_construction;
 use super::{ColumnMajorBaseOracleForCoset, MaterializedCosets};
-use crate::merkle_trees::{MainDomainColumn, RSQueriable};
+use crate::merkle_trees::{MainDomainColumn, RSQueryable};
 use field::{PrimeField, TwoAdicField};
 use mmap_io::MemoryMappedFile;
 use std::borrow::Cow;
@@ -74,7 +74,7 @@ fn read_field_le<F: PrimeField>(bytes: &[u8]) -> F {
 }
 
 fn mmap_io_err(e: impl core::fmt::Debug) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::Other, format!("mmap-io: {e:?}"))
+    std::io::Error::other(format!("mmap-io: {e:?}"))
 }
 
 /// Serialize a coset's RS codewords straight from its column slices (header +
@@ -167,7 +167,7 @@ impl<F: PrimeField + TwoAdicField> MaterializedCosets<F> {
     }
 }
 
-/// A [`RSQueriable`] backed by per-coset memory-mapped files ([`mmap_io`], as
+/// A [`RSQueryable`] backed by per-coset memory-mapped files ([`mmap_io`], as
 /// written by [`MaterializedCosets::serialize_to_disk`]). Reads are lazy and
 /// positioned via the OS page cache — only the queried leaf elements (or the one
 /// coset-0 column for `main_domain_column`) are ever touched, so the full codeword
@@ -251,7 +251,7 @@ impl<F: PrimeField + TwoAdicField> OnDiskRsCodewords<F> {
     }
 }
 
-impl<F: PrimeField + TwoAdicField> RSQueriable<F> for OnDiskRsCodewords<F> {
+impl<F: PrimeField + TwoAdicField> RSQueryable<F> for OnDiskRsCodewords<F> {
     fn num_columns(&self) -> usize {
         self.num_columns
     }
@@ -360,17 +360,17 @@ mod test {
 
         let reader = OnDiskRsCodewords::<BabyBearField>::open(paths.clone()).expect("open");
 
-        assert_eq!(RSQueriable::num_columns(&reader), num_columns);
-        assert_eq!(RSQueriable::num_cosets(&reader), num_cosets);
-        assert_eq!(RSQueriable::coset_size_log2(&reader), coset_size_log2);
+        assert_eq!(RSQueryable::num_columns(&reader), num_columns);
+        assert_eq!(RSQueryable::num_cosets(&reader), num_cosets);
+        assert_eq!(RSQueryable::coset_size_log2(&reader), coset_size_log2);
 
         for vpl in [2usize, 4, 8, 16] {
             let leaves = coset_len / vpl;
             for coset in 0..num_cosets {
                 for index in 0..leaves {
                     let expected =
-                        RSQueriable::values_for_coset_and_index(&materialized, coset, index, vpl);
-                    let got = RSQueriable::values_for_coset_and_index(&reader, coset, index, vpl);
+                        RSQueryable::values_for_coset_and_index(&materialized, coset, index, vpl);
+                    let got = RSQueryable::values_for_coset_and_index(&reader, coset, index, vpl);
                     assert_eq!(got, expected, "vpl={vpl} coset={coset} index={index}");
                 }
             }
@@ -378,7 +378,7 @@ mod test {
 
         for col in 0..num_columns {
             let expected = materialized.main_domain_column(col).into_owned();
-            let got = RSQueriable::main_domain_column(&reader, col).into_owned();
+            let got = RSQueryable::main_domain_column(&reader, col).into_owned();
             assert_eq!(got, expected, "main_domain_column col={col}");
         }
 

@@ -22,6 +22,7 @@ use field::PrimeField;
 /// `is_fam4` is inlined as `(is_lw + is_sw)` everywhere it appears; no
 /// committed Boolean column.
 #[allow(non_snake_case)]
+#[expect(clippy::too_many_arguments)]
 pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: &OpcodeFamilyCircuitState<F>,
@@ -168,7 +169,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     cs.add_constraint_expr(Expr::from(is_lw) * (Expr::var(ram_addr[1]) - Expr::from(readaddr_hi)));
     cs.add_constraint_expr(Expr::from(is_sw) * (Expr::var(ram_addr[1]) - Expr::from(writeaddr_hi)));
 
-    let is_fam4: Constraint<F> = Constraint::from(is_lw) + Constraint::from(is_sw);
+    let _is_fam4: Constraint<F> = Constraint::from(is_lw) + Constraint::from(is_sw);
     let is_fam4_expr = Expr::from(is_lw) + Expr::from(is_sw);
 
     let (is_rom_base_layer, rom_addr_constraint) = {
@@ -272,7 +273,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     // LW from ROM reads the word from the AlignedRomRead table (mask-gated lookup:
     // on non-ROM rows the pooled address holds junk and must not be looked up).
     // Gated on is_lw | is_sw.
-    if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+    if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
         let [r_lo_var, r_hi_var] = rs2_read_or_lw_mem_value_u16;
         let [w_lo_var, w_hi_var] = rd_write_or_sw_mem_value_u16;
         // ROM-read predicate is the committed `gate_fam4_rom_read` (= is_lw AND is_rom).
@@ -330,7 +331,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         let input = Expr::from(gate_fam4_rom_read) * rom_addr_constraint;
         // we want a constraint such that it's if we do ROM read then it's equal to destination value
         // (what we write to RD), otherwise (RAM read or SW) - it's 0. We need in mind that SW * is_ROM is
-        // unreachable combiantion, so we freely treat is as 0. We also want to ensure that
+        // unreachable combination, so we freely treat is as 0. We also want to ensure that
         // if we do RAM read or SW, then source and destination values are the same
 
         // ROM read case

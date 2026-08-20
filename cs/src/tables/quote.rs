@@ -82,7 +82,7 @@ impl quote::ToTokens for TableType {
             TableType::DynamicPlaceholder => {
                 unimplemented!("should not appear in final circuits")
             }
-            a @ _ => {
+            a => {
                 panic!("{:?} is not supported", a);
             }
         };

@@ -52,7 +52,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionDescription<F, W> for 
     }
 
     fn box_clone(&self) -> Box<dyn WitnessResolutionDescription<F, W>> {
-        Box::new(self.clone()) as Box<dyn WitnessResolutionDescription<F, W>>
+        Box::new(*self) as Box<dyn WitnessResolutionDescription<F, W>>
     }
 
     fn clone_self(&self) -> Self
@@ -104,12 +104,14 @@ impl<
 }
 
 pub struct WitnessResolutionGraph<F: PrimeField, W: WitnessPlacer<F>> {
+    #[expect(clippy::type_complexity)]
     inner: WitnessResolutionNode<
         F,
         W,
         Box<dyn WitnessResolutionDescription<F, W>>,
         Box<dyn WitnessResolutionDescription<F, W>>,
     >,
+    #[expect(clippy::type_complexity)]
     reorder_fn: Box<
         dyn FnOnce(
             Box<dyn WitnessResolutionDescription<F, W>>,
@@ -123,6 +125,12 @@ pub struct WitnessResolutionGraph<F: PrimeField, W: WitnessPlacer<F>> {
         >,
     >,
     _marker: std::marker::PhantomData<(F, W)>,
+}
+
+impl<F: PrimeField, W: WitnessPlacer<F>> Default for WitnessResolutionGraph<F, W> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
@@ -165,13 +173,11 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
                     b,
                     _marker: core::marker::PhantomData,
                 };
-                let full_node = WitnessResolutionNode {
+                WitnessResolutionNode {
                     a: Box::new(new_a) as Box<dyn WitnessResolutionDescription<F, W>>,
                     b: next,
                     _marker: core::marker::PhantomData,
-                };
-
-                full_node
+                }
             },
         );
 
@@ -207,13 +213,11 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
                     b,
                     _marker: core::marker::PhantomData,
                 };
-                let full_node = WitnessResolutionNode {
+                WitnessResolutionNode {
                     a: Box::new(new_a) as Box<dyn WitnessResolutionDescription<F, W>>,
                     b: next,
                     _marker: core::marker::PhantomData,
-                };
-
-                full_node
+                }
             },
         );
 
@@ -226,7 +230,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
 }
 
 // default implementation for any closure (and only closures are possible as implementing `Fn` is not yet allowed)
-impl<F: PrimeField, W: WitnessPlacer<F>, T: 'static + Clone + Fn(&mut W) -> ()>
+impl<F: PrimeField, W: WitnessPlacer<F>, T: 'static + Clone + Fn(&mut W)>
     WitnessResolutionDescription<F, W> for T
 {
     fn evaluate(&self, placer: &mut W) {
@@ -467,6 +471,9 @@ pub trait WitnessComputationalField<F: PrimeField>: 'static + Sized + Clone + De
     fn equal(&self, other: &Self) -> Self::Mask;
     fn inverse(&self) -> Self;
     fn inverse_or_zero(&self) -> Self;
+    // By-value is deliberate: witness scalars are Copy and consumed at conversion sites;
+    // switching to `&self` churns every impl (incl. generated witness-eval code) for nothing.
+    #[expect(clippy::wrong_self_convention)]
     fn as_integer(self) -> Self::IntegerRepresentation;
     fn from_integer(value: Self::IntegerRepresentation) -> Self;
 
@@ -517,7 +524,7 @@ pub trait WitnessComputationalU16: WitnessComputationalInteger<u16> {
     fn truncate(&self) -> Self::Narrow;
     #[inline(always)]
     fn wrapping_product(&self, other: &Self) -> Self {
-        Self::split_widening_product(&self, other).0
+        Self::split_widening_product(self, other).0
     }
     fn widening_product(&self, other: &Self) -> Self::Wide;
     fn split_widening_product(&self, other: &Self) -> (Self, Self);
@@ -529,7 +536,7 @@ pub trait WitnessComputationalU8: WitnessComputationalInteger<u8> {
     fn widen(&self) -> Self::Wide;
     #[inline(always)]
     fn wrapping_product(&self, other: &Self) -> Self {
-        Self::split_widening_product(&self, other).0
+        Self::split_widening_product(self, other).0
     }
     fn widening_product(&self, other: &Self) -> Self::Wide;
     fn split_widening_product(&self, other: &Self) -> (Self, Self);
@@ -539,6 +546,7 @@ pub trait WitnessComputationalU8: WitnessComputationalInteger<u8> {
 pub trait WitnessComputationalI32: 'static + Sized + Clone + Debug {
     type UnsignedRepresentation: WitnessComputationalU32;
     fn from_unsigned(value: Self::UnsignedRepresentation) -> Self;
+    #[expect(clippy::wrong_self_convention)]
     fn as_unsigned(self) -> Self::UnsignedRepresentation;
     fn widening_product_bits(
         &self,
@@ -695,11 +703,10 @@ impl<F: PrimeField> WitnessComputationalField<F> for F {
     #[inline(always)]
     #[track_caller]
     fn from_integer(value: Self::IntegerRepresentation) -> Self {
-        if F::CHAR_BITS > 32 {
-            Self::from_u32_with_reduction(value)
-        } else {
-            Self::from_u32_with_reduction(value)
-        }
+        // Same path for both CHAR_BITS regimes (unlike the sibling raw-repr
+        // conversions below, which branch): the integer representation here is
+        // u32 either way, so reduction handles both.
+        Self::from_u32_with_reduction(value)
     }
 
     #[inline(always)]

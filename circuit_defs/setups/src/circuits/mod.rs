@@ -86,8 +86,6 @@ fn produce_verifier_setup_for_circuit(
     security_level: SecurityLevel,
     worker: &Worker,
 ) -> verifier_common::DelegationCircuitSetupData<{ prover::definitions::DEFAULT_CAP_SIZE }> {
-    use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
-
     let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(circuit.trace_len.trailing_zeros() as usize, security_level);
     let twiddles: Twiddles<BabyBearField, Global> = Twiddles::new(circuit.trace_len, worker);
     let setup_commitment = circuit.setup.commit::<DefaultTreeConstructor>(

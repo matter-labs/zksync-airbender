@@ -13,6 +13,7 @@ use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 /// that fire for every family, gated on the per-family bits:
 ///   - `(NOT is_lw) * (readaddr  - rs2_index) = 0`,  `(NOT is_lw) * readaddr_hi  = 0`
 ///   - `(NOT is_sw) * (writeaddr - rd_index)  = 0`,  `(NOT is_sw) * writeaddr_hi = 0`
+///
 /// then hands off to [`apply_unified_mem_word_only_lw_sw_data_path`] for the
 /// Family-4-only data path (rs1+imm RAM address, ROM check, ROM-or-data
 /// lookup, SW alignment trap).
@@ -29,6 +30,7 @@ use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 /// Caller (unified body) owns the `memread_addr` / `memwrite_addr` witness
 /// vars and passes them inside the access objects.
 #[allow(non_snake_case)]
+#[expect(clippy::too_many_arguments)]
 pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,

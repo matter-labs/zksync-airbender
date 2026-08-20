@@ -29,7 +29,7 @@ impl<F: PrimeField> BaseFieldFoldedOnceRepresentationProduct<F> {
     }
 }
 
-impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F, E>
+impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentationBase<F, E>
     for BaseFieldFoldedOnceRepresentation<F>
 {
     type Product = BaseFieldFoldedOnceRepresentationProduct<F>;
@@ -65,8 +65,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
     fn mul_by_base(self, other: &F) -> Self {
         let mut c0 = self.c0;
         let mut c1 = self.c1;
-        c0.mul_assign(&other);
-        c1.mul_assign(&other);
+        c0.mul_assign(other);
+        c1.mul_assign(other);
 
         Self { c0, c1 }
     }
@@ -78,7 +78,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
     }
 }
 
-impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionExt<F, E>
+impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentationExt<F, E>
     for BaseFieldFoldedOnceRepresentationProduct<F>
 {
     type Base = BaseFieldFoldedOnceRepresentation<F>;

@@ -70,7 +70,7 @@ impl<F: PrimeField> GKRGate<F> for OneStepConstraintsEvaluationNode<F> {
                 a.assert_as_layer(output_layer - 1);
                 linear_sorted.entry(a).or_insert(vec![]).push((*coeff, i));
             }
-            if c.is_zero() == false {
+            if !c.is_zero() {
                 constant_sorted.push((*c, i));
             }
         }
@@ -107,25 +107,21 @@ pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bo
     expressions: &Vec<StructuredStatement<F>>,
     layers_mapping: &HashMap<Variable, usize>,
 ) -> (Vec<Degree2Constraint<F>>, Vec<Degree1Constraint<F>>) {
-    assert!(USE_BATCHING == false);
+    assert!(!USE_BATCHING);
 
     // sort constraints by layers
     let mut layers = BTreeMap::new();
     let mut compiled_quadratic = vec![];
     let mut compiled_linear = vec![];
 
-    for statement in expressions.into_iter() {
+    for statement in expressions {
         // let mut expected_output_layer = None;
         let constraint = match statement {
             StructuredStatement::AssertZero {
                 compiled_constraint,
                 ..
             } => compiled_constraint,
-            StructuredStatement::Define {
-                compiled_constraint,
-                output_layer,
-                ..
-            } => {
+            StructuredStatement::Define { .. } => {
                 continue;
                 // expected_output_layer = Some(*output_layer);
                 // compiled_constraint
@@ -164,7 +160,7 @@ pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bo
             let (q, l, c) = compiled_constraint.split_max_quadratic();
 
             if q.is_empty() {
-                assert!(l.is_empty() == false);
+                assert!(!l.is_empty());
                 let compiled = Degree1Constraint {
                     linear_terms: l.clone().into_boxed_slice(),
                     constant_term: c,
@@ -205,7 +201,7 @@ impl<F: PrimeField> GKRGate<F> for SingleConstraintEvaluationNode<F> {
     type Output = ();
 
     fn short_name(&self) -> String {
-        format!("Constraint evaluation node",)
+        "Constraint evaluation node".to_string()
     }
 
     fn add_at_layer(

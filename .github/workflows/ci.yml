@@ -53,7 +53,63 @@ jobs:
           rustup set profile minimal
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
+      # rustup switches to the 1.97.1 pinned by this directory's rust-toolchain.toml,
+      # and the setup action only installed rustfmt for the default toolchain.
+      - name: Install rustfmt for the gkr_verifier toolchain
+        if: always()
+        working-directory: tools/gkr_verifier
+        run: rustup component add rustfmt
+      # `if: always()` so this is not silently skipped whenever the root check above fails.
+      - name: Rustfmt Check (gkr_verifier sub-workspace)
+        if: always()
+        working-directory: tools/gkr_verifier
+        env:
+          RUSTC_BOOTSTRAP: "1"
+        run: cargo fmt --all -- --check
 
+  clippy:
+    name: cargo clippy
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+          rustflags: ""
+      - name: Setup
+        run: rustup set profile minimal
+      - name: Clippy (CPU workspace)
+        run: |
+          cargo clippy --workspace \
+            --exclude gpu_circuit_prover \
+            --exclude gpu_core \
+            --exclude gpu_execution_prover \
+            --exclude gpu_gkr \
+            --exclude gpu_gkr_compiler \
+            --exclude gpu_gkr_model \
+            --exclude gpu_hash \
+            --exclude gpu_native_build \
+            --exclude gpu_ntt \
+            --exclude gpu_ops \
+            --exclude gpu_program_prover \
+            --exclude gpu_prover_context \
+            --exclude gpu_trace \
+            --exclude gpu_whir \
+            --exclude gpu_witness_eval_generator \
+            --lib --tests --bins \
+            -- -D warnings
+      # Same reason as the rustfmt install in the formatting job: this directory
+      # pins 1.97.1 and the setup action only added clippy to the default toolchain.
+      - name: Install clippy for the gkr_verifier toolchain
+        working-directory: tools/gkr_verifier
+        run: rustup component add clippy
+      - name: Clippy (gkr_verifier sub-workspace)
+        working-directory: tools/gkr_verifier
+        env:
+          RUSTC_BOOTSTRAP: "1"
+        run: cargo clippy --bins -- -D warnings
+  
   circuits_generated:
     name: circuits_generated
     runs-on: [matterlabs-ci-runner-c3d]
@@ -166,6 +222,7 @@ jobs:
     needs:
       - tests
       - formatting
+      - clippy
       - circuits_generated
       - check_verifiers
       - build_cli

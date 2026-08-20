@@ -114,6 +114,13 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
     /// already laid out in 16-word aligned blocks. Avoids the memcopy that `commit_with_seed`
     /// performs. Unused words in the last block must be zeroed by the caller.
     /// `total_words` is the number of meaningful words (seed + data, excluding padding).
+    ///
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. `buf` must hold at least
+    /// `total_words.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS)` initialized
+    /// words, with every word past `total_words` in the final block zeroed, and
+    /// `total_words` must be non-zero.
     #[inline(always)]
     pub unsafe fn commit_initial_using_hasher_and_aligned_buffer(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
@@ -153,12 +160,12 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         input: &[u32],
         offset: &mut usize,
     ) {
-        debug_assert!(input.len() > 0);
+        debug_assert!(!input.is_empty());
         // hasher is in the proper state, and we just need to drive it effectively computing blake2s hash over input sequence
         let input_len_words = input.len();
         let effective_input_len = *offset + input_len_words;
         let mut num_rounds = effective_input_len / BLAKE2S_BLOCK_SIZE_U32_WORDS;
-        if effective_input_len % BLAKE2S_BLOCK_SIZE_U32_WORDS > 0 {
+        if !effective_input_len.is_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS) {
             num_rounds += 1;
         }
         let mut remaining = input_len_words;
@@ -319,7 +326,7 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
             pow_bits,
             nonce,
             hasher.state[0],
-            &hasher.state,
+            hasher.state,
         );
 
         // copy it out
@@ -382,10 +389,16 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
         self.buffer_offset = 0;
     }
 
-    // Pad whatever is in the buffer by 0s and run round function. This
-    // works as-if we absorbed enough zeroes, but allows to only keep the state
-    // and `t` and not buffer state if we want to propagate it into another
-    // computation
+    /// Pad whatever is in the buffer by 0s and run round function. This
+    /// works as-if we absorbed enough zeroes, but allows to only keep the state
+    /// and `t` and not buffer state if we want to propagate it into another
+    /// computation
+    ///
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. The buffer tail `buffer_offset..` is
+    /// overwritten with zeroes, so `buffer_offset` must be within the input
+    /// buffer and the words below it must already be initialized.
     pub unsafe fn pad(&mut self) {
         crate::spec_memzero_u32(
             self.state
@@ -437,6 +450,13 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
         self.buffer_offset = 0;
 
         seed
+    }
+}
+
+impl<const REDUCED_ROUNDS: bool> Default for Blake2sBufferingTranscript<REDUCED_ROUNDS> {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -559,15 +579,31 @@ impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
         }
     }
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. The caller must have written enough
+    /// data words to cover `count` elements of `T`, and `T`'s alignment/layout
+    /// must be compatible with the underlying `u32` storage.
     #[inline(always)]
     pub unsafe fn data_as<T>(&self, count: usize) -> &[T] {
         self.inner
             .transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, count)
     }
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. Same requirements as
+    /// [`Self::data_as`] with `count == 1`.
     #[inline(always)]
     pub unsafe fn read_one<T: Copy>(&self) -> T {
         *self.data_as::<T>(1).get_unchecked(0)
+    }
+}
+
+impl<const N: usize, const REDUCED_ROUNDS: bool> Default for CommitBuf<N, REDUCED_ROUNDS> {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -815,7 +851,7 @@ mod test {
             .as_chunks::<DEGREE>()
             .0
             .iter()
-            .map(|chunk| make_el(chunk.map(|w| Base::from_raw_repr_with_reduction(w))))
+            .map(|chunk| make_el(chunk.map(Base::from_raw_repr_with_reduction)))
             .collect();
         out.truncate(num);
         out

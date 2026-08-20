@@ -1,4 +1,5 @@
 #[allow(unused)]
+#[expect(clippy::type_complexity)]
 pub const DEBUG_INFO: &[(
     u16,
     u16,

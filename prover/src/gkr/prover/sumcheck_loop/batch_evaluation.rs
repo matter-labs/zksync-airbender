@@ -82,7 +82,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
             //     dbg!(&terms);
             // }
 
-            for (batch_challege, term) in challenges.iter().zip(terms.iter()) {
+            for (batch_challenge, term) in challenges.iter().zip(terms.iter()) {
                 for (a, other_terms) in term.quadratic_part_base_by_base.iter() {
                     for (b, c) in other_terms.iter() {
                         assert!(
@@ -92,7 +92,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                             b
                         );
                         let mut c = *c;
-                        c.mul_assign(batch_challege);
+                        c.mul_assign(batch_challenge);
                         let existing_coeff = draft
                             .quadratic_part_base_by_base
                             .entry(*a)
@@ -106,7 +106,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 for (a, other_terms) in term.quadratic_part_base_by_ext.iter() {
                     for (b, c) in other_terms.iter() {
                         let mut c = *c;
-                        c.mul_assign(batch_challege);
+                        c.mul_assign(batch_challenge);
                         let existing_coeff = draft
                             .quadratic_part_base_by_ext
                             .entry(*a)
@@ -126,7 +126,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                             b
                         );
                         let mut c = *c;
-                        c.mul_assign(batch_challege);
+                        c.mul_assign(batch_challenge);
                         let existing_coeff = draft
                             .quadratic_part_ext_by_ext
                             .entry(*a)
@@ -139,7 +139,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
                 for (b, c) in term.linear_part_base.iter() {
                     let mut c = *c;
-                    c.mul_assign(batch_challege);
+                    c.mul_assign(batch_challenge);
                     let existing_coeff = draft
                         .linear_part_base_by_everything
                         .entry(*b)
@@ -149,7 +149,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
                 for (b, c) in term.linear_part_ext.iter() {
                     let mut c = *c;
-                    c.mul_assign(batch_challege);
+                    c.mul_assign(batch_challenge);
                     let existing_coeff = draft
                         .linear_part_ext_by_everything
                         .entry(*b)
@@ -159,20 +159,20 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
                 if let Some(b) = term.output_in_base {
                     let mut c = E::ONE;
-                    c.mul_assign(batch_challege);
+                    c.mul_assign(batch_challenge);
                     let existing_coeff = draft.outputs_in_base.entry(b).or_insert(E::ZERO);
                     existing_coeff.add_assign(&c);
                 }
 
                 if let Some(b) = term.output_in_extension {
                     let mut c = E::ONE;
-                    c.mul_assign(batch_challege);
+                    c.mul_assign(batch_challenge);
                     let existing_coeff = draft.outputs_in_ext.entry(b).or_insert(E::ZERO);
                     existing_coeff.add_assign(&c);
                 }
 
                 let mut c = term.constant_term;
-                c.mul_assign(batch_challege);
+                c.mul_assign(batch_challenge);
                 draft.constant_term.add_assign(&c);
             }
         }
@@ -181,6 +181,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub(crate) fn evaluate_batched_gkr_description<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -483,11 +487,15 @@ fn evaluate_quadratic_term<
             let accumulator = ext_dest.pop().unwrap();
             let a_ctx = a_s.get_collapse_context();
             let b_ctx = b_s.get_collapse_context();
+            #[expect(
+                clippy::needless_range_loop,
+                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+            )]
             for index in 0..chunk_size {
                 let absolute_index = chunk_start + index;
                 if FIRST_ROUND {
                     // we do not need first half
-                    debug_assert!(EXPLICIT_FORM == false);
+                    debug_assert!(!EXPLICIT_FORM);
                     let a1 = a_s.get_f1_minus_f0_only(absolute_index);
                     let b1 = b_s.get_f1_minus_f0_only(absolute_index);
 
@@ -541,12 +549,16 @@ fn evaluate_linear_term<
             let accumulator = ext_dest.pop().unwrap();
 
             let a_ctx = a_s.get_collapse_context();
+            #[expect(
+                clippy::needless_range_loop,
+                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+            )]
             for index in 0..chunk_size {
                 let absolute_index = chunk_start + index;
 
                 if FIRST_ROUND {
                     // we do not need first half that we get from outputs
-                    debug_assert!(EXPLICIT_FORM == false);
+                    debug_assert!(!EXPLICIT_FORM);
                 } else {
                     if EXPLICIT_FORM {
                         let [a0, a1] = a_s.get_two_points::<EXPLICIT_FORM>(absolute_index);
@@ -594,6 +606,10 @@ fn add_output_term<
             let accumulator = ext_dest.pop().unwrap();
 
             let a_ctx = a_s.get_collapse_context();
+            #[expect(
+                clippy::needless_range_loop,
+                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+            )]
             for index in 0..chunk_size {
                 let absolute_index = chunk_start + index;
 
@@ -622,6 +638,10 @@ fn fill_constant_term<F: PrimeField, E: FieldExtension<F> + Field, const EXPLICI
         |_, mut ext_dest, _chunk_start, chunk_size| {
             assert_eq!(ext_dest.len(), 1);
             let accumulator = ext_dest.pop().unwrap();
+            #[expect(
+                clippy::needless_range_loop,
+                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+            )]
             for index in 0..chunk_size {
                 accumulator[index][0] = c;
                 if EXPLICIT_FORM {

@@ -19,7 +19,7 @@ pub struct MerkleTreeCap<const N: usize> {
 const _: () = const {
     assert!(
         core::mem::size_of::<MerkleTreeCap::<1>>()
-            == core::mem::size_of::<[u32; DIGEST_SIZE_U32_WORDS]>() * 1
+            == core::mem::size_of::<[u32; DIGEST_SIZE_U32_WORDS]>()
     );
     assert!(
         core::mem::size_of::<MerkleTreeCap::<16>>()
@@ -28,8 +28,6 @@ const _: () = const {
 
     assert!(core::mem::align_of::<MerkleTreeCap::<1>>() == core::mem::align_of::<u32>());
     assert!(core::mem::align_of::<MerkleTreeCap::<16>>() == core::mem::align_of::<u32>());
-
-    ()
 };
 
 impl<const N: usize> MerkleTreeCap<N> {
@@ -56,6 +54,11 @@ impl<const N: usize> MerkleTreeCap<N> {
         }
     }
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. `dst` must be valid for writes of
+    /// `[Self; M]` and suitably aligned, and `nd_source` must be able to supply
+    /// the full cap encoding.
     #[inline(always)]
     pub unsafe fn read_caps_into<I: U32WordNonDeterminismSource, const M: usize>(
         dst: *mut [Self; M],
@@ -86,7 +89,7 @@ impl<const N: usize> MerkleTreeCap<N> {
         }
     }
 
-    pub fn from_ref<'a>(src: &'a [[u32; DIGEST_SIZE_U32_WORDS]; N]) -> &'a Self {
+    pub fn from_ref(src: &[[u32; DIGEST_SIZE_U32_WORDS]; N]) -> &Self {
         unsafe { core::mem::transmute(src) }
     }
 

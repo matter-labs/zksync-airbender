@@ -182,8 +182,9 @@ mod tests {
     fn deterministic_parallel_matches_serial_baseline() {
         for seed in test_seeds() {
             for pow_bits in [17, 18, 20] {
-                let (initial_state, base_input) = Blake2sTranscript::prepare_pow_search(&seed);
-                let expected = Blake2sTranscript::search_pow_serial_from_prepared(
+                let (initial_state, base_input) =
+                    Blake2sTranscript::<true>::prepare_pow_search(&seed);
+                let expected = Blake2sTranscript::<true>::search_pow_serial_from_prepared(
                     &seed,
                     pow_bits,
                     initial_state,
@@ -191,7 +192,7 @@ mod tests {
                 );
                 for threads in [1, 2, 4] {
                     let worker = Worker::new_with_num_threads(threads);
-                    let actual = Blake2sTranscript::search_pow(&seed, pow_bits, &worker);
+                    let actual = Blake2sTranscript::<true>::search_pow(&seed, pow_bits, &worker);
                     assert_eq!(
                         actual, expected,
                         "seed={seed:?}, pow_bits={pow_bits}, threads={threads}"
@@ -205,8 +206,8 @@ mod tests {
     fn deterministic_parallel_result_is_invariant_across_worker_counts() {
         let seed = Seed([0xdeadbeef; 8]);
         let pow_bits = 19;
-        let (initial_state, base_input) = Blake2sTranscript::prepare_pow_search(&seed);
-        let expected = Blake2sTranscript::search_pow_serial_from_prepared(
+        let (initial_state, base_input) = Blake2sTranscript::<true>::prepare_pow_search(&seed);
+        let expected = Blake2sTranscript::<true>::search_pow_serial_from_prepared(
             &seed,
             pow_bits,
             initial_state,
@@ -215,7 +216,7 @@ mod tests {
 
         for threads in [1, 2, 4, 8] {
             let worker = Worker::new_with_num_threads(threads);
-            let actual = Blake2sTranscript::search_pow(&seed, pow_bits, &worker);
+            let actual = Blake2sTranscript::<true>::search_pow(&seed, pow_bits, &worker);
             assert_eq!(actual, expected, "threads={threads}");
         }
     }

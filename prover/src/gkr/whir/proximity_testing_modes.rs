@@ -1,5 +1,3 @@
-use super::*;
-
 pub trait ProximityTestingMode: 'static + Clone + Copy + std::fmt::Debug + PartialEq + Eq {
     fn num_queries_for_rate_and_bits_of_security(
         &self,
@@ -23,7 +21,7 @@ impl ProximityTestingMode for UniqueDecodingMode {
         let delta = (1f64 - (1f64 / 2f64.powi(neg_rate_log_2 as i32))) / 2f64;
         assert!(delta < 1f64);
         let one_minus_delta = 1f64 - delta;
-        let bits_per_query = one_minus_delta.log2() * -1f64;
+        let bits_per_query = -one_minus_delta.log2();
         let num_queries = (security_bits as f64) / bits_per_query;
 
         num_queries.ceil() as u32
@@ -40,12 +38,12 @@ impl ProximityTestingMode for PessimisticConjectureMode {
         neg_rate_log_2: u32,
     ) -> u32 {
         // Even though the conjecture doesn't hold, the correction terms are O(1/q) and O(1/log(q)),
-        // and for ~31 bit field those yeild in 10% more queries. So we do extra 20% more queries to have a margin.
+        // and for ~31 bit field those yield in 10% more queries. So we do extra 20% more queries to have a margin.
 
         let bits_per_query = neg_rate_log_2;
         let num_queries = security_bits / bits_per_query;
 
-        (num_queries * 120).div_ceil(100) as u32
+        (num_queries * 120).div_ceil(100)
     }
 }
 
@@ -63,7 +61,7 @@ impl ProximityTestingMode for JohnsonBoundMode {
         let delta = 1f64 - f64::sqrt(1f64 / 2f64.powi(neg_rate_log_2 as i32));
         assert!(delta < 1f64);
         let one_minus_delta = 1f64 - delta;
-        let bits_per_query = one_minus_delta.log2() * -1f64;
+        let bits_per_query = -one_minus_delta.log2();
         let num_queries = (security_bits as f64) / bits_per_query;
 
         num_queries.ceil() as u32

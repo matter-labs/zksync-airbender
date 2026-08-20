@@ -2,6 +2,10 @@ use super::*;
 use crate::gkr::prover::commitment_utils::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn commit_separate_memory_and_witness_subtrees<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -57,6 +61,10 @@ where
     (mem, wit)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn commit_merged_memory_and_witness_subtrees<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -94,6 +102,10 @@ where
     merged
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn commit_packed_merged_memory_and_witness_subtrees<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -112,9 +124,6 @@ pub fn commit_packed_merged_memory_and_witness_subtrees<
 where
     [(); F::DEGREE]: Sized,
 {
-    use fft::*;
-    use std::sync::Arc;
-
     // our packing relies on the observation that one can make multilinear poly m(Y, X) such
     // that m(0, X) = a(X) and m(1, X) = b(X), and same trick would work about deriving evaluations
     // on random point m(r', r) = a(r) + (b(r) - a(r)) * r'. We just need to have the matching
@@ -308,6 +317,10 @@ where
 /// commits them coset-by-coset, keeping only the packed monomial forms + the
 /// small top tree. The packed LDE codeword (2^(N + pack_log2) x lde_factor) is
 /// never materialized whole.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn commit_packed_merged_memory_and_witness_recompute<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,

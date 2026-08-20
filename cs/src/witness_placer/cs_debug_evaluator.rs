@@ -15,6 +15,12 @@ pub struct CSDebugWitnessEvaluator<F: PrimeField> {
     pub(crate) preprocessed_decoder_table: Option<Vec<ExecutorFamilyDecoderData>>,
 }
 
+impl<F: PrimeField> Default for CSDebugWitnessEvaluator<F> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
     pub fn new() -> Self {
         Self {
@@ -332,11 +338,11 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
                 .trailing_zeros()
                 < F::CHAR_BITS as u32
         );
-        if decoder_data.circuit_family_extra_mask.is_placeholder() == false {
+        if !decoder_data.circuit_family_extra_mask.is_placeholder() {
             assert!(decoder_data.circuit_family_mask_bits.is_empty());
             self.assign_field(
                 decoder_data.circuit_family_extra_mask,
-                &F::from_u32_unchecked(entry.opcode_family_bits as u32),
+                &F::from_u32_unchecked(entry.opcode_family_bits),
             );
         } else {
             let mut t = entry.opcode_family_bits;

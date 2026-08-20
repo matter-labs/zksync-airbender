@@ -2,6 +2,10 @@ use cs::definitions::gkr::NoFieldVectorLookupRelation;
 
 use super::*;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub(crate) fn materialize_decoder_lookup_minus_setup<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -14,10 +18,10 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
-    lookup_challenges_multiplicative_part: E,
+    _lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
     decoder_lookup_fill_value: E,
-    offset_for_decoder_table: u32,
+    _offset_for_decoder_table: u32,
     worker: &Worker,
 ) {
     assert_eq!(
@@ -27,10 +31,10 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
     let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
     let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
     let mapping_ref = {
-        assert!(witness_trace.generic_lookup_mapping.len() > 0);
+        assert!(!witness_trace.generic_lookup_mapping.is_empty());
         witness_trace.generic_lookup_mapping.pop().unwrap()
     };
-    assert!(mapping_ref.len() > 0);
+    assert!(!mapping_ref.is_empty());
     let decoder_predicate = gkr_storage.get_base_layer(decoder_predicate_address);
     let multiplicity = gkr_storage.get_base_layer(multiplicity_address);
 
@@ -84,7 +88,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
                 #[cfg(feature = "gkr_self_checks")]
                 {
                     if decoder_mask_value {
-                        assert!(mapping_index >= offset_for_decoder_table, "decoder lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
+                        assert!(mapping_index >= _offset_for_decoder_table, "decoder lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, _offset_for_decoder_table);
                     } else {
                         assert_eq!(
                             mapping_index, 0,
@@ -98,7 +102,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
                             gkr_storage,
                             row,
                         ));
-                        let mut challenge = lookup_challenges_multiplicative_part;
+                        let mut challenge = _lookup_challenges_multiplicative_part;
                         for rel in decoder_relation.columns[1..].iter() {
                             let mut t = challenge;
                             t.mul_assign_by_base(&evaluate_linear_relation_at_row(
@@ -108,7 +112,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
                             ));
                             result.add_assign(&t);
 
-                            challenge.mul_assign(&lookup_challenges_multiplicative_part);
+                            challenge.mul_assign(&_lookup_challenges_multiplicative_part);
                         }
 
                         result
@@ -144,16 +148,17 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         let destination = unsafe { destination.assume_init() };
         output.assert_as_layer(1);
         gkr_storage.insert_extension_at_layer(1, output, ExtensionFieldPoly::new(destination));
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     inputs: &[NoFieldVectorLookupRelation<F>; 2],
     outputs: [GKRAddress; 2],
@@ -162,25 +167,21 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
     expected_output_layer: usize,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
-    lookup_challenges_multiplicative_part: E,
+    _lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
-    offset_for_decoder_table: u32,
+    _offset_for_decoder_table: u32,
     worker: &Worker,
 ) {
     assert_ne!(inputs[0].lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
     assert_ne!(inputs[1].lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
     let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
     let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let lhs_mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[inputs[0].lookup_set_index],
-        Vec::new(),
-    );
-    let rhs_mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[inputs[1].lookup_set_index],
-        Vec::new(),
-    );
-    assert!(lhs_mapping.len() > 0);
-    assert!(rhs_mapping.len() > 0);
+    let lhs_mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[inputs[0].lookup_set_index]);
+    let rhs_mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[inputs[1].lookup_set_index]);
+    assert!(!lhs_mapping.is_empty());
+    assert!(!rhs_mapping.is_empty());
 
     apply_row_wise::<F, _>(
         vec![],
@@ -220,7 +221,7 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
                         (lhs_mapping_index, lhs_mapped_value, &inputs[0]),
                         (rhs_mapping_index, rhs_mapped_value, &inputs[1]),
                     ] {
-                        assert!(mapping_index < offset_for_decoder_table, "generic lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
+                        assert!(mapping_index < _offset_for_decoder_table, "generic lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, _offset_for_decoder_table);
 
                         let naive_eval = {
                             let mut result = E::from_base(evaluate_linear_relation_at_row(
@@ -228,7 +229,7 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
                                 gkr_storage,
                                 row,
                             ));
-                            let mut challenge = lookup_challenges_multiplicative_part;
+                            let mut challenge = _lookup_challenges_multiplicative_part;
                             for rel in rel.columns[1..].iter() {
                                 let mut t = challenge;
                                 t.mul_assign_by_base(&evaluate_linear_relation_at_row(
@@ -238,7 +239,7 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
                                 ));
                                 result.add_assign(&t);
 
-                                challenge.mul_assign(&lookup_challenges_multiplicative_part);
+                                challenge.mul_assign(&_lookup_challenges_multiplicative_part);
                             }
 
                             result
@@ -261,10 +262,7 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         let destination = unsafe { destination.assume_init() };
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(
@@ -275,6 +273,10 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -287,19 +289,17 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
     expected_output_layer: usize,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
-    lookup_challenges_multiplicative_part: E,
+    _lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
-    offset_for_decoder_table: u32,
+    _offset_for_decoder_table: u32,
     worker: &Worker,
 ) {
     assert_ne!(remainder.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
     let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
     let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[remainder.lookup_set_index],
-        Vec::new(),
-    );
-    assert!(mapping.len() > 0);
+    let mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[remainder.lookup_set_index]);
+    assert!(!mapping.is_empty());
     let mapping_ref = &mapping;
     let num = gkr_storage.get_ext_poly(inputs[0]);
     let den = gkr_storage.get_ext_poly(inputs[1]);
@@ -337,7 +337,7 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
 
                 #[cfg(feature = "gkr_self_checks")]
                 {
-                    assert!(mapping_index < offset_for_decoder_table, "generic lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
+                    assert!(mapping_index < _offset_for_decoder_table, "generic lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, _offset_for_decoder_table);
 
                     let naive_eval = {
                         let mut result = E::from_base(evaluate_linear_relation_at_row(
@@ -345,7 +345,7 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
                             gkr_storage,
                             row,
                         ));
-                        let mut challenge = lookup_challenges_multiplicative_part;
+                        let mut challenge = _lookup_challenges_multiplicative_part;
                         for rel in remainder.columns[1..].iter() {
                             let mut t = challenge;
                             t.mul_assign_by_base(&evaluate_linear_relation_at_row(
@@ -355,7 +355,7 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
                             ));
                             result.add_assign(&t);
 
-                            challenge.mul_assign(&lookup_challenges_multiplicative_part);
+                            challenge.mul_assign(&_lookup_challenges_multiplicative_part);
                         }
 
                         result
@@ -377,10 +377,7 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         let destination = unsafe { destination.assume_init() };
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(
@@ -391,6 +388,10 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub(crate) fn materialize_lookup_expression_minus_setup<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -402,19 +403,16 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
-    lookup_challenges_multiplicative_part: E,
+    _lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
-    offset_for_decoder_table: u32,
+    _offset_for_decoder_table: u32,
     worker: &Worker,
 ) {
     assert_ne!(input.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
     let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
     let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[input.lookup_set_index],
-        Vec::new(),
-    );
-    assert!(mapping.len() > 0);
+    let mapping = std::mem::take(&mut witness_trace.generic_lookup_mapping[input.lookup_set_index]);
+    assert!(!mapping.is_empty());
     let mapping_ref = &mapping;
     let multiplicity = gkr_storage.get_base_layer(multiplicity_address);
 
@@ -460,7 +458,7 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
 
                 #[cfg(feature = "gkr_self_checks")]
                 {
-                    assert!(mapping_index < offset_for_decoder_table, "generic lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
+                    assert!(mapping_index < _offset_for_decoder_table, "generic lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, _offset_for_decoder_table);
 
                     let naive_eval = {
                         let mut result = E::from_base(evaluate_linear_relation_at_row(
@@ -468,7 +466,7 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
                             gkr_storage,
                             row,
                         ));
-                        let mut challenge = lookup_challenges_multiplicative_part;
+                        let mut challenge = _lookup_challenges_multiplicative_part;
                         for rel in input.columns[1..].iter() {
                             let mut t = challenge;
                             t.mul_assign_by_base(&evaluate_linear_relation_at_row(
@@ -478,7 +476,7 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
                             ));
                             result.add_assign(&t);
 
-                            challenge.mul_assign(&lookup_challenges_multiplicative_part);
+                            challenge.mul_assign(&_lookup_challenges_multiplicative_part);
                         }
 
                         result
@@ -500,10 +498,7 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         let destination = unsafe { destination.assume_init() };
         output.assert_as_layer(1);
         gkr_storage.insert_extension_at_layer(1, output, ExtensionFieldPoly::new(destination));

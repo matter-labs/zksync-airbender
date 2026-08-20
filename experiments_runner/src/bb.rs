@@ -25,7 +25,7 @@
 #![allow(dead_code)]
 
 use field::baby_bear::base::BabyBearField;
-use field::{Field, PrimeField, Rand, TwoAdicField};
+use field::{Field, Rand};
 use std::alloc::Global;
 
 pub const P: u32 = 0x78000001;
@@ -825,7 +825,7 @@ pub fn lde_six_step_neon(
             i2t += 4;
         }
     }
-    if let Some(s) = stages.as_deref_mut() {
+    if let Some(s) = stages {
         s.scatter = t0.elapsed().as_secs_f64();
     }
 
@@ -857,7 +857,7 @@ pub fn hc_to_monomial_ref<F: Field>(input: &mut [F], size_log2: u32) {
         iterations /= 2;
     }
     for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
-        b.sub_assign(&a);
+        b.sub_assign(a);
     }
 }
 
@@ -905,7 +905,7 @@ pub fn hc_to_monomial_radix4<F: Field>(input: &mut [F], size_log2: u32) {
     }
     if remaining == 1 {
         for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
-            b.sub_assign(&a);
+            b.sub_assign(a);
         }
     }
 }
@@ -968,7 +968,7 @@ pub fn hc_to_monomial_radix8<F: Field>(input: &mut [F], size_log2: u32) {
     }
     if remaining == 1 {
         for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
-            b.sub_assign(&a);
+            b.sub_assign(a);
         }
     }
 }

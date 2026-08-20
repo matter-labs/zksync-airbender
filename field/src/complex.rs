@@ -6,7 +6,7 @@ use super::*;
 use core::ops::{Add, Mul, Sub};
 
 #[cfg(not(target_arch = "riscv32"))]
-#[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(C, align(8))]
 pub struct Mersenne31Complex {
     pub c0: Mersenne31Field,
@@ -14,7 +14,7 @@ pub struct Mersenne31Complex {
 }
 
 #[cfg(target_arch = "riscv32")]
-#[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
 pub struct Mersenne31Complex {
     pub c0: Mersenne31Field,
@@ -29,8 +29,6 @@ const _: () = const {
 
     #[cfg(target_arch = "riscv32")]
     assert!(core::mem::align_of::<Mersenne31Complex>() == 4);
-
-    ()
 };
 
 impl Mersenne31Complex {
@@ -266,6 +264,14 @@ impl core::cmp::PartialEq for Mersenne31Complex {
 }
 
 impl core::cmp::Eq for Mersenne31Complex {}
+
+impl core::hash::Hash for Mersenne31Complex {
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.c0.hash(state);
+        self.c1.hash(state);
+    }
+}
 
 impl core::default::Default for Mersenne31Complex {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]

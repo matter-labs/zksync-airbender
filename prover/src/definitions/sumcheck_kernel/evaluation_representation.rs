@@ -34,9 +34,7 @@ pub trait EvaluationRepresentation<F: PrimeField, E: FieldExtension<F> + Field>:
 impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E> for () {
     type CollapseContext = ();
     #[inline(always)]
-    fn from_base_constant(_value: F) -> Self {
-        ()
-    }
+    fn from_base_constant(_value: F) -> Self {}
     #[inline(always)]
     fn collapse_as_ext_field_element(self, _ctx: &Self::CollapseContext) -> E {
         E::ZERO
@@ -209,7 +207,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
     fn repr_add_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, other: &Self) {
         self.c0.add_assign(&other.c0);
         self.c1.add_assign(&other.c1);
-        if ASSUME_NO_PRODUCTS_BEFORE == false {
+        if !ASSUME_NO_PRODUCTS_BEFORE {
             self.computed_r2_coeff.add_assign(&other.computed_r2_coeff);
         }
     }
@@ -217,13 +215,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
     fn repr_sub_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, other: &Self) {
         self.c0.sub_assign(&other.c0);
         self.c1.sub_assign(&other.c1);
-        if ASSUME_NO_PRODUCTS_BEFORE == false {
+        if !ASSUME_NO_PRODUCTS_BEFORE {
             self.computed_r2_coeff.sub_assign(&other.computed_r2_coeff);
         }
     }
     #[inline(always)]
     fn repr_mul_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, other: &Self) {
-        if ASSUME_NO_PRODUCTS_BEFORE == false {
+        if !ASSUME_NO_PRODUCTS_BEFORE {
             panic!();
         }
         self.computed_r2_coeff = self.c1;
@@ -242,7 +240,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
         other: &E,
         ctx: &Self::CollapseContext,
     ) -> E {
-        if ASSUME_NO_PRODUCTS_BEFORE == false {
+        if !ASSUME_NO_PRODUCTS_BEFORE {
             panic!();
         }
         assert_eq!(self.computed_r2_coeff, F::ZERO);
@@ -260,7 +258,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
         other: &E,
         ctx: &Self::CollapseContext,
     ) -> E {
-        if ASSUME_NO_PRODUCTS_BEFORE == false {
+        if !ASSUME_NO_PRODUCTS_BEFORE {
             panic!();
         }
         assert_eq!(self.computed_r2_coeff, F::ZERO);
@@ -292,7 +290,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
         let mut result = *self;
         result.c0.mul_assign(other);
         result.c1.mul_assign(other);
-        if ASSUME_NO_PRODUCTS_BEFORE == false {
+        if !ASSUME_NO_PRODUCTS_BEFORE {
             result.computed_r2_coeff.mul_assign(other);
         }
 

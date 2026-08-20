@@ -45,8 +45,6 @@ const _: () = const {
         not(target_arch = "riscv32")
     ))]
     compile_error!("`modular_fma` and `modular ops` features are intended for simulated (provable) machines and should not be activated otherwise");
-
-    ()
 };
 
 pub fn batch_inverse_checked<F: Field>(input: &mut [F], tmp_buffer: &mut [F]) -> bool {
@@ -86,7 +84,7 @@ pub fn batch_inverse_checked<F: Field>(input: &mut [F], tmp_buffer: &mut [F]) ->
     for (tmp, original) in tmp_buffer.iter().rev().zip(input.iter_mut().rev()) {
         let mut tmp = *tmp; // abc
         tmp.mul_assign(&grand_inverse); // d^-1
-        if original.is_zero() == false {
+        if !original.is_zero() {
             grand_inverse.mul_assign(original); // e.g. it's now a^-1 b^-1 c^-1
             *original = tmp;
         }

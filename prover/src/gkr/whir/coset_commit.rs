@@ -28,17 +28,18 @@ use crate::gkr::prover::stages::commitment_utils::{
     compute_column_major_lde_single_coset_with_offset_serial,
     pack_polys_parallel_from_hypercubes_to_monomials,
 };
-use crate::merkle_trees::keccak256_for_everything_tree::{Digest32, Keccak256MerkleTreeWithCap};
-use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_cosets;
-use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueriable,
-};
+use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
+#[cfg(test)]
+use crate::merkle_trees::PathQueryable;
+use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength};
 use core::marker::PhantomData;
 use fft::{
     bitreverse_enumeration_inplace, bitreverse_index, domain_generator_for_size,
     materialize_powers_serial_starting_with_one, Twiddles,
 };
-use field::{Field, FieldExtension, PrimeField, Proth120, TwoAdicField};
+#[cfg(test)]
+use field::Proth120;
+use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::alloc::Global;
 use worker::Worker;
 
@@ -201,6 +202,10 @@ where
     /// coset-by-coset. `trace_len_log2` is the per-column (base) size; the committed
     /// packed polynomials have `trace_len_log2 + pack_log2` variables (so `twiddles`
     /// must be sized for the enlarged `2^(trace_len_log2 + pack_log2)` domain).
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+    )]
     pub fn commit_packed(
         input_on_hypercube: &[&[F]],
         twiddles: &Twiddles<F, Global>,
@@ -402,6 +407,10 @@ where
     /// values reshaped into offset-major `[offset][column]` form (matching
     /// `ColumnMajorBaseOracleForLDE::query_for_folded_index`), as consumed by
     /// `whir_fold`'s round-0 batching. Results are in input order.
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     pub fn query_many_structured(
         &self,
         query_indices: &[usize],
@@ -460,6 +469,10 @@ where
 /// [`OnDiskCosetTree`](crate::merkle_trees::on_disk::OnDiskCosetTree); the
 /// resulting commitment is byte-identical to the monolithic packed commitment
 /// (`commit_packed`), so proofs are unchanged.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn serialize_packed_base_commitment_split_to_disk<F, T>(
     input_on_hypercube: &[&[F]],
     twiddles: &Twiddles<F, Global>,
@@ -899,6 +912,10 @@ where
     /// they land in and recompute each touched group's LDE columns + subtree
     /// exactly once for all its queries. Per query the result tuple is identical
     /// to [`query`](Self::query); results are in input order.
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     pub fn query_many(
         &self,
         query_indices: &[usize],
@@ -931,6 +948,10 @@ where
         let offsets =
             offsets_vec_for_leaf_construction(1usize << self.trace_len_log2, self.values_per_leaf);
 
+        #[expect(
+            clippy::type_complexity,
+            reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+        )]
         let mut out: Vec<Option<(usize, Vec<E>, ExtensionFieldQuery<F, E, T>)>> =
             (0..query_indices.len()).map(|_| None).collect();
 
@@ -1005,7 +1026,7 @@ mod test {
     use super::*;
     use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
     use crate::gkr::whir::ColumnMajorBaseOracleForLDE;
-    use field::PrimeField;
+
     use rand::{Rng, SeedableRng};
 
     fn rand_proth<R: Rng>(rng: &mut R) -> Proth120 {
@@ -1035,7 +1056,7 @@ mod test {
         use crate::merkle_trees::on_disk::{
             subtree_file_path, top_tree_file_path, OnDiskTreeLayout,
         };
-        use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueriable, RSQueriable};
+        use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable, RSQueryable};
 
         let worker = Worker::new_with_num_threads(4);
         // 16 columns, base 2^4, pack by 2 -> packed 2^5; LDE 8 cosets, cap 2, vpl 2.
@@ -1100,16 +1121,16 @@ mod test {
 
         // Cap must match.
         assert_eq!(
-            PathQueriable::get_cap(&split_tree),
-            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            PathQueryable::get_cap(&split_tree),
+            crate::merkle_trees::PathQueryable::get_cap(mono_tree(&mono)),
             "split cap != monolithic cap"
         );
 
         let tree_size = lde_factor * coset_tree_size;
         for idx in 0..tree_size {
             let (mono_leaf, mono_path) =
-                crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), idx);
-            let (split_leaf, split_path) = PathQueriable::get_proof(&split_tree, idx);
+                crate::merkle_trees::PathQueryable::get_proof(mono_tree(&mono), idx);
+            let (split_leaf, split_path) = PathQueryable::get_proof(&split_tree, idx);
             assert_eq!(split_leaf, mono_leaf, "leaf @ idx={idx}");
             assert_eq!(split_path, mono_path, "path @ idx={idx}");
         }
@@ -1178,7 +1199,7 @@ mod test {
         );
 
         assert_eq!(
-            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            crate::merkle_trees::PathQueryable::get_cap(mono_tree(&mono)),
             coset.get_cap(),
             "cap mismatch"
         );
@@ -1275,7 +1296,7 @@ mod test {
             &worker,
         );
         assert_eq!(
-            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            crate::merkle_trees::PathQueryable::get_cap(mono_tree(&mono)),
             coset.get_cap(),
             "cap mismatch"
         );
@@ -1299,7 +1320,7 @@ mod test {
         for qi in 0..tree_size {
             let q = coset.query(qi, &twiddles, &worker);
             let (leaf_h, expected_path) =
-                crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), q.index);
+                crate::merkle_trees::PathQueryable::get_proof(mono_tree(&mono), q.index);
             assert_eq!(q.path, expected_path, "path @ q={qi}");
             assert_eq!(
                 leaf_hash(&q.leaf_values_concatenated),

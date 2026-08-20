@@ -3,7 +3,7 @@
 //! [`Keccak256MerkleTreeWithCap`](super::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap)).
 //!
 //! Both trees share the same shape — a leaf-hash layer plus internal node layers
-//! of `[u32; DIGEST_SIZE_U32_WORDS]` digests — and their [`PathQueriable`] logic
+//! of `[u32; DIGEST_SIZE_U32_WORDS]` digests — and their [`PathQueryable`] logic
 //! only ever *reads* stored digests (it never re-hashes). So one field-agnostic
 //! reader, [`MmapMerkleTree`], serves inclusion proofs for either tree.
 //!
@@ -31,7 +31,7 @@
 //! added later without touching the trait surface.
 
 use super::{
-    ColumnMajorMerkleTreeConstructor, CosetColumnsProducer, MerkleTreeCapVarLength, PathQueriable,
+    ColumnMajorMerkleTreeConstructor, CosetColumnsProducer, MerkleTreeCapVarLength, PathQueryable,
 };
 use crate::definitions::DIGEST_SIZE_U32_WORDS;
 use fft::bitreverse_index;
@@ -43,7 +43,7 @@ use std::path::{Path, PathBuf};
 use worker::Worker;
 
 fn mmap_io_err(e: impl core::fmt::Debug) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::Other, format!("mmap-io: {e:?}"))
+    std::io::Error::other(format!("mmap-io: {e:?}"))
 }
 
 /// Which on-disk tree layout an artifact uses: a single monolithic tree file, or
@@ -288,7 +288,7 @@ impl TreeLayout {
 }
 
 /// A single serialized merkle tree, memory-mapped and OWNING its mapping — a
-/// self-contained [`PathQueriable`] (no borrows). Digests are read lazily through
+/// self-contained [`PathQueryable`] (no borrows). Digests are read lazily through
 /// the OS page cache; nothing is loaded eagerly.
 pub struct MmapMerkleTree {
     mmap: MemoryMappedFile,
@@ -330,7 +330,7 @@ impl core::fmt::Debug for MmapMerkleTree {
     }
 }
 
-impl PathQueriable for MmapMerkleTree {
+impl PathQueryable for MmapMerkleTree {
     fn get_cap(&self) -> MerkleTreeCapVarLength {
         self.layout.get_cap(self.bytes())
     }
@@ -356,7 +356,7 @@ pub fn top_tree_file_path(prefix: &str) -> PathBuf {
     PathBuf::from(format!("{prefix}.toptree.tree"))
 }
 
-/// A [`PathQueriable`] assembled from one memory-mapped subtree file per coset plus
+/// A [`PathQueryable`] assembled from one memory-mapped subtree file per coset plus
 /// a small top-tree over their roots (the "second" on-disk tree layout). Owns all
 /// its mappings. It serves an inclusion path as the within-coset subtree path
 /// stitched to the top-tree path, which is byte-identical to a monolithic tree's
@@ -400,9 +400,9 @@ impl core::fmt::Debug for OnDiskCosetTree {
     }
 }
 
-impl PathQueriable for OnDiskCosetTree {
+impl PathQueryable for OnDiskCosetTree {
     fn get_cap(&self) -> MerkleTreeCapVarLength {
-        PathQueriable::get_cap(&self.top_tree)
+        PathQueryable::get_cap(&self.top_tree)
     }
 
     fn get_proof(
@@ -418,8 +418,8 @@ impl PathQueriable for OnDiskCosetTree {
         let internal_index = idx % self.coset_tree_size;
         let natural_coset = bitreverse_index(physical_slot, self.cosets_log2);
         let (leaf, mut path) =
-            PathQueriable::get_proof(&self.subtrees[natural_coset], internal_index);
-        let (_root, top_path) = PathQueriable::get_proof(&self.top_tree, physical_slot);
+            PathQueryable::get_proof(&self.subtrees[natural_coset], internal_index);
+        let (_root, top_path) = PathQueryable::get_proof(&self.top_tree, physical_slot);
         path.extend_from_slice(&top_path);
         (leaf, path)
     }
@@ -428,7 +428,7 @@ impl PathQueriable for OnDiskCosetTree {
 /// The on-disk tree layout backing an on-disk commitment: either one monolithic
 /// tree file ([`MmapMerkleTree`]) or per-coset subtree files plus a top-tree
 /// ([`OnDiskCosetTree`]). Owns all its mappings and is a self-contained
-/// [`PathQueriable`]. Covariant over the tree constructor `T` it was produced by.
+/// [`PathQueryable`]. Covariant over the tree constructor `T` it was produced by.
 pub enum OnDiskTree<T> {
     Monolithic {
         tree: MmapMerkleTree,
@@ -480,11 +480,11 @@ impl<T> core::fmt::Debug for OnDiskTree<T> {
     }
 }
 
-impl<T> PathQueriable for OnDiskTree<T> {
+impl<T> PathQueryable for OnDiskTree<T> {
     fn get_cap(&self) -> MerkleTreeCapVarLength {
         match self {
-            OnDiskTree::Monolithic { tree, .. } => PathQueriable::get_cap(tree),
-            OnDiskTree::CosetSubtrees { tree, .. } => PathQueriable::get_cap(tree),
+            OnDiskTree::Monolithic { tree, .. } => PathQueryable::get_cap(tree),
+            OnDiskTree::CosetSubtrees { tree, .. } => PathQueryable::get_cap(tree),
         }
     }
 
@@ -496,8 +496,8 @@ impl<T> PathQueriable for OnDiskTree<T> {
         Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
     ) {
         match self {
-            OnDiskTree::Monolithic { tree, .. } => PathQueriable::get_proof(tree, idx),
-            OnDiskTree::CosetSubtrees { tree, .. } => PathQueriable::get_proof(tree, idx),
+            OnDiskTree::Monolithic { tree, .. } => PathQueryable::get_proof(tree, idx),
+            OnDiskTree::CosetSubtrees { tree, .. } => PathQueryable::get_proof(tree, idx),
         }
     }
 }
@@ -640,12 +640,12 @@ mod test {
     use super::*;
     use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
     use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
-    use field::{PrimeField, Proth120};
+    use field::Proth120;
     use std::alloc::Global;
     use worker::Worker;
 
     /// Serialize a keccak tree, reparse it from the byte image, and require the
-    /// mmap-backed `PathQueriable` to reproduce the in-memory tree's `get_cap` and,
+    /// mmap-backed `PathQueryable` to reproduce the in-memory tree's `get_cap` and,
     /// for every leaf, `get_proof` (leaf hash + full sibling path) exactly.
     fn roundtrip(num_columns: usize, trace_len_log2: usize, cap_size: usize) {
         let worker = Worker::new_with_num_threads(2);
@@ -705,14 +705,14 @@ mod test {
         >>::open_disk_artifacts(&prefix, OnDiskTreeLayout::Monolithic, 1);
 
         assert_eq!(
-            PathQueriable::get_cap(&disk),
-            PathQueriable::get_cap(&tree),
+            PathQueryable::get_cap(&disk),
+            PathQueryable::get_cap(&tree),
             "cap mismatch (cols={num_columns}, tl={trace_len_log2}, cap={cap_size})"
         );
 
         for idx in 0..trace_len {
-            let (want_leaf, want_path) = PathQueriable::get_proof(&tree, idx);
-            let (got_leaf, got_path) = PathQueriable::get_proof(&disk, idx);
+            let (want_leaf, want_path) = PathQueryable::get_proof(&tree, idx);
+            let (got_leaf, got_path) = PathQueryable::get_proof(&disk, idx);
             assert_eq!(got_leaf, want_leaf, "leaf hash @ {idx}");
             assert_eq!(got_path, want_path, "path @ {idx}");
         }

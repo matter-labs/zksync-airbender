@@ -134,29 +134,37 @@ pub enum SingleAssignment<F: PrimeField> {
     },
 }
 
+/// One lookup query captured during graph construction:
+/// (input expressions, table-id expression, query index).
+pub type LookupQuery<F> = (
+    Box<[FieldNodeExpression<F>]>,
+    FixedWidthIntegerNodeExpression<F>,
+    usize,
+);
+
+/// A conditional lookup query: a [`LookupQuery`] plus the predicate under which
+/// its outputs are assigned.
+pub type MaybeLookupQuery<F> = (
+    Box<[FieldNodeExpression<F>]>,
+    FixedWidthIntegerNodeExpression<F>,
+    BoolNodeExpression<F>,
+    usize,
+);
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ResolverDetails<F: PrimeField> {
     pub inputs: BTreeMap<Variable, Expression<F>>,
-    pub lookup_inputs: BTreeMap<
-        usize,
-        (
-            Box<[FieldNodeExpression<F>]>,
-            FixedWidthIntegerNodeExpression<F>,
-            usize,
-        ),
-    >,
-    pub maybe_lookup_inputs: BTreeMap<
-        usize,
-        (
-            Box<[FieldNodeExpression<F>]>,
-            FixedWidthIntegerNodeExpression<F>,
-            BoolNodeExpression<F>,
-            usize,
-        ),
-    >,
+    pub lookup_inputs: BTreeMap<usize, LookupQuery<F>>,
+    pub maybe_lookup_inputs: BTreeMap<usize, MaybeLookupQuery<F>>,
     pub oracles: Vec<Expression<F>>,
     pub quasi_outputs_for_lookup_enforcements: Vec<usize>, // index into self.lookups
     pub outputs: BTreeMap<Variable, SingleAssignment<F>>,
+}
+
+impl<F: PrimeField> Default for ResolverDetails<F> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<F: PrimeField> ResolverDetails<F> {
@@ -176,18 +184,9 @@ impl<F: PrimeField> ResolverDetails<F> {
 pub struct WitnessGraphCreator<F: PrimeField> {
     pub values: Vec<Option<AssignedExpression<F>>>,
     // a sequence of lookup expressions that are unconditional (would be used for multiplicity counting)
-    pub lookups: Vec<(
-        Box<[FieldNodeExpression<F>]>,
-        FixedWidthIntegerNodeExpression<F>,
-        usize,
-    )>,
+    pub lookups: Vec<LookupQuery<F>>,
     // a sequence of the lookups that are conditional and will be used to only assign values
-    pub maybe_lookups: Vec<(
-        Box<[FieldNodeExpression<F>]>,
-        FixedWidthIntegerNodeExpression<F>,
-        BoolNodeExpression<F>,
-        usize,
-    )>,
+    pub maybe_lookups: Vec<MaybeLookupQuery<F>>,
     current_stats_resolver: Option<ResolverDetails<F>>,
     variables_considered_assigned: BTreeSet<Variable>, // We will consider some variables as assigned by external source
     pub variable_names: HashMap<Variable, String>,
@@ -198,23 +197,8 @@ pub struct WitnessGraphCreator<F: PrimeField> {
 pub struct SubexpressionsMapper<F: PrimeField> {
     ssa_expr_set: HashMap<RawExpression<F>, usize>,
     ssa_form: Vec<RawExpression<F>>,
-    known_lookups: BTreeMap<
-        usize,
-        (
-            Box<[FieldNodeExpression<F>]>,
-            FixedWidthIntegerNodeExpression<F>,
-            usize,
-        ),
-    >,
-    known_maybe_lookups: BTreeMap<
-        usize,
-        (
-            Box<[FieldNodeExpression<F>]>,
-            FixedWidthIntegerNodeExpression<F>,
-            BoolNodeExpression<F>,
-            usize,
-        ),
-    >,
+    known_lookups: BTreeMap<usize, LookupQuery<F>>,
+    known_maybe_lookups: BTreeMap<usize, MaybeLookupQuery<F>>,
 }
 
 impl<F: PrimeField> SubexpressionsMapper<F> {
@@ -253,10 +237,10 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
         let t = RawExpression::PerformLookup {
             input_subexpr_idxes: input_subexpr_idxes.into_boxed_slice(),
             table_id_subexpr_idx,
-            num_outputs: num_outputs,
+            num_outputs,
             lookup_mapping_idx: lookup_idx,
         };
-        let subexpr_idx = if self.ssa_expr_set.contains_key(&t) == false {
+        let subexpr_idx = if !self.ssa_expr_set.contains_key(&t) {
             let subexpr_idx = self.ssa_form.len();
             self.ssa_form.push(t.clone());
             self.ssa_expr_set.insert(t, subexpr_idx);
@@ -285,7 +269,7 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
 
             let subexpr_idx = self.enforce_lookup_relation_inner(
                 lookup_idx,
-                &mut *lookup_inputs,
+                &mut lookup_inputs,
                 &mut table_id,
                 num_outputs,
             );
@@ -294,7 +278,7 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
                 subindex: subexpr_idx,
                 output_index: output_idx,
             };
-            if self.ssa_expr_set.contains_key(&t) == false {
+            if !self.ssa_expr_set.contains_key(&t) {
                 let idx = self.ssa_form.len();
                 self.ssa_form.push(t.clone());
                 self.ssa_expr_set.insert(t, idx);
@@ -343,7 +327,7 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
                 mask_id_subexpr_idx: condition_subexpr_idx,
                 num_outputs,
             };
-            let subexpr_idx = if self.ssa_expr_set.contains_key(&t) == false {
+            let subexpr_idx = if !self.ssa_expr_set.contains_key(&t) {
                 let subexpr_idx = self.ssa_form.len();
                 self.ssa_form.push(t.clone());
                 self.ssa_expr_set.insert(t, subexpr_idx);
@@ -359,7 +343,7 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
                 subindex: subexpr_idx,
                 output_index: output_idx,
             };
-            if self.ssa_expr_set.contains_key(&t) == false {
+            if !self.ssa_expr_set.contains_key(&t) {
                 let idx = self.ssa_form.len();
                 self.ssa_form.push(t.clone());
                 self.ssa_expr_set.insert(t, idx);
@@ -376,7 +360,7 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
             return;
         }
         let t = RawExpression::Field(el.clone());
-        if self.ssa_expr_set.contains_key(&t) == false {
+        if !self.ssa_expr_set.contains_key(&t) {
             let idx = self.ssa_form.len();
             self.ssa_form.push(t.clone());
             self.ssa_expr_set.insert(t, idx);
@@ -393,7 +377,7 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
             return;
         }
         let t = RawExpression::Bool(el.clone());
-        if self.ssa_expr_set.contains_key(&t) == false {
+        if !self.ssa_expr_set.contains_key(&t) {
             let idx = self.ssa_form.len();
             self.ssa_form.push(t.clone());
             self.ssa_expr_set.insert(t, idx);
@@ -414,7 +398,7 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
         }
         let original_width = el.bit_width();
         let t = RawExpression::Integer(el.clone());
-        if self.ssa_expr_set.contains_key(&t) == false {
+        if !self.ssa_expr_set.contains_key(&t) {
             let idx = self.ssa_form.len();
             self.ssa_form.push(t.clone());
             self.ssa_expr_set.insert(t, idx);
@@ -453,6 +437,12 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
     }
 }
 
+impl<F: PrimeField> Default for WitnessGraphCreator<F> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField> WitnessGraphCreator<F> {
     pub fn new() -> Self {
         Self {
@@ -479,6 +469,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
         idx
     }
 
+    #[expect(clippy::type_complexity)]
     pub fn compute_resolution_order(
         &self,
     ) -> (
@@ -491,7 +482,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
 
         for var in self.variables_considered_assigned.iter() {
             assert!(
-                var.is_placeholder() == false,
+                !var.is_placeholder(),
                 "placeholder variable is in the list of considered resolved"
             );
         }
@@ -522,14 +513,12 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                     temporary_assignments,
                     final_assignment,
                 } => {
-                    if let Some(_) = final_assignment {
+                    if final_assignment.is_some() {
                         unconditionally_resolved_variables.insert(variable);
                         conditional_with_unconditional_overwrites.insert(variable);
                     } else {
-                        assert!(unconditionally_resolved_variables.contains(&variable) == false);
-                        assert!(
-                            conditional_with_unconditional_overwrites.contains(&variable) == false
-                        );
+                        assert!(!unconditionally_resolved_variables.contains(&variable));
+                        assert!(!conditional_with_unconditional_overwrites.contains(&variable));
 
                         let entry = conditionally_resolved_variables
                             .entry(variable)
@@ -583,7 +572,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                     continue;
                 }
 
-                let has_outputs = details.outputs.len() > 0;
+                let has_outputs = !details.outputs.is_empty();
 
                 // check if all outputs will be eventually overwritten
                 let can_skip_due_to_overwrite = details
@@ -593,7 +582,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
 
                 if has_outputs && can_skip_due_to_overwrite {
                     let mut skip_as_only_temporary_assignments = true;
-                    for (_variable, expr) in details.outputs.iter() {
+                    for expr in details.outputs.values() {
                         // quick check if this resolver can be skipped completely as it only assignments
                         // into variables, that are unconditionally overwritten at some point
                         match expr {
@@ -624,7 +613,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                 // we should give preference to the last one
 
                 let mut can_resolve = true;
-                for (variable, _) in details.inputs.iter() {
+                for variable in details.inputs.keys() {
                     if resolved_variables.contains(variable) {
                         continue;
                     } else {
@@ -645,7 +634,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                     }
                 }
 
-                if can_resolve == false {
+                if !can_resolve {
                     // try next resolver
                     continue;
                 }
@@ -653,7 +642,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                 for (variable, expr) in details.outputs.iter() {
                     // There can be some re-assignments, but all those should be conditional only at worst
 
-                    if unresolved_variables.contains(variable) == false {
+                    if !unresolved_variables.contains(variable) {
                         // we allow re-assignments in rare cases
                         if self.variables_considered_assigned.contains(variable) {
                             // we allow re-assignments like this
@@ -715,7 +704,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                 || final_skipped > initial_skipped
                 || final_conditional_resolved > initial_conditional_resolved;
 
-            if made_progress == false {
+            if !made_progress {
                 println!("Left unresolved: {:?}", unresolved_variables);
                 for var in unresolved_variables.iter() {
                     if unconditionally_resolved_variables.contains(var) {
@@ -723,7 +712,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                     } else {
                         assert!(conditionally_resolved_variables.contains_key(var));
                         let set = &conditionally_resolved_variables[var];
-                        assert!(set.len() > 0);
+                        assert!(!set.is_empty());
                         println!("Variable {:?} should be conditionally resolved", var);
                     }
                     for (resolver_idx, resolver) in self.resolvers_data.iter().enumerate() {
@@ -745,15 +734,15 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
         // there may be some resolvers purely responsible for lookup enforcement,
         // when even the inputs are not generated
         if idxes_to_skip.len() != self.resolvers_data.len() {
-            let old_sequence = std::mem::replace(&mut resolution_sequence, BTreeMap::new());
+            let old_sequence = std::mem::take(&mut resolution_sequence);
             for (resolver_idx, resolver) in self.resolvers_data.iter().enumerate() {
                 if idxes_to_skip.contains(&resolver_idx) {
                     continue;
                 }
 
                 // we only try to handle a special case if it's lookup-enforce without outputs
-                if resolver.outputs.len() == 0
-                    && resolver.quasi_outputs_for_lookup_enforcements.len() > 0
+                if resolver.outputs.is_empty()
+                    && !resolver.quasi_outputs_for_lookup_enforcements.is_empty()
                 {
                     assert!(resolver.lookup_inputs.len() == 1);
                     assert!(resolver.maybe_lookup_inputs.is_empty());
@@ -775,7 +764,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
             let mut t = resolved_variables.clone();
             for i in 0..total_vars {
                 let var = Variable(i as u64);
-                if t.remove(&var) == false {
+                if !t.remove(&var) {
                     println!("resolved variables do not contain variable {:?}", var);
                 }
             }
@@ -797,7 +786,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
 
         let lookup_fn = |_, _| vec![];
 
-        for (_, exprs) in resolution_sequence.iter() {
+        for exprs in resolution_sequence.values() {
             // in general it is enough for us to:
             // - read inputs
             // - iterate between lookups and writes to get final values
@@ -854,7 +843,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                             unreachable!();
                         }
                     },
-                    a @ _ => {
+                    a => {
                         panic!("expression {:?} in oracle accesses", a);
                     }
                 }
@@ -918,7 +907,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                 }
             }
 
-            if exprs.outputs.len() > 0 {
+            if !exprs.outputs.is_empty() {
                 assert_eq!(exprs.quasi_outputs_for_lookup_enforcements.len(), 0);
                 // check that we do not have lookups that are just enforcements
                 for el in exprs.lookup_inputs.iter() {
@@ -938,7 +927,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                 // very basic logic for now
                 assert!(exprs.lookup_inputs.len() == 1);
                 assert!(exprs.maybe_lookup_inputs.is_empty());
-                assert!(exprs.quasi_outputs_for_lookup_enforcements.len() > 0);
+                assert!(!exprs.quasi_outputs_for_lookup_enforcements.is_empty());
                 assert_eq!(exprs.quasi_outputs_for_lookup_enforcements.len(), 1);
 
                 // in this case we should just record lookups
@@ -951,7 +940,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
 
                 let _ = mapper.enforce_lookup_relation_inner(
                     lookup_index,
-                    &mut *inputs,
+                    &mut inputs,
                     &mut table_type,
                     num_outputs,
                 );
@@ -985,8 +974,8 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                                 };
                                 mapper.ssa_form.push(write_expr)
                             }
-                            a @ _ => {
-                                println!("Full SSA:\n{:?}", &mapper.ssa_form);
+                            a => {
+                                println!("Full SSA:\n{:?}", mapper.ssa_form);
                                 panic!("Unexpected output expression {:?}", a);
                             }
                         }
@@ -1021,8 +1010,8 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                                 };
                                 mapper.ssa_form.push(write_expr)
                             }
-                            a @ _ => {
-                                println!("Full SSA:\n{:?}", &mapper.ssa_form);
+                            a => {
+                                println!("Full SSA:\n{:?}", mapper.ssa_form);
                                 panic!("Unexpected output expression {:?}", a);
                             }
                         }
@@ -1188,7 +1177,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
                     temporary_assignments,
                     final_assignment,
                 } => {
-                    assert!(temporary_assignments.len() > 0);
+                    assert!(!temporary_assignments.is_empty());
                     // NOTE: this is fine - we make it precise AFTER we potentially used all other temporaries
                     // for other intermediate witnesses. We can also postprocess such graph to only evaluate unconditional case
                     assert!(final_assignment.is_none());
@@ -1228,7 +1217,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
                     temporary_assignments,
                     final_assignment,
                 } => {
-                    assert!(temporary_assignments.len() > 0);
+                    assert!(!temporary_assignments.is_empty());
                     // NOTE: this is fine - we make it precise AFTER we potentially used all other temporaries
                     // for other intermediate witnesses. We can also postprocess such graph to only evaluate unconditional case
                     assert!(final_assignment.is_none());
@@ -1268,7 +1257,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
                     temporary_assignments,
                     final_assignment,
                 } => {
-                    assert!(temporary_assignments.len() > 0);
+                    assert!(!temporary_assignments.is_empty());
                     // NOTE: this is fine - we make it precise AFTER we potentially used all other temporaries
                     // for other intermediate witnesses. We can also postprocess such graph to only evaluate unconditional case
                     assert!(final_assignment.is_none());
@@ -1308,7 +1297,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
                     temporary_assignments,
                     final_assignment,
                 } => {
-                    assert!(temporary_assignments.len() > 0);
+                    assert!(!temporary_assignments.is_empty());
                     // NOTE: this is fine - we make it precise AFTER we potentially used all other temporaries
                     // for other intermediate witnesses. We can also postprocess such graph to only evaluate unconditional case
                     assert!(final_assignment.is_none());
@@ -1614,7 +1603,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
 
     #[track_caller]
     fn assume_assigned(&mut self, variable: Variable) {
-        assert!(variable.is_placeholder() == false);
+        assert!(!variable.is_placeholder());
         self.resize_to_assign(variable);
         self.variables_considered_assigned.insert(variable);
     }
@@ -1640,7 +1629,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
         if let Some(funct7) = decoder_data.funct7 {
             self.variables_considered_assigned.insert(funct7);
         }
-        if decoder_data.circuit_family_extra_mask.is_placeholder() == false {
+        if !decoder_data.circuit_family_extra_mask.is_placeholder() {
             self.variables_considered_assigned
                 .insert(decoder_data.circuit_family_extra_mask);
         }

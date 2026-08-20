@@ -7,6 +7,10 @@ use prover::gkr::prover::WhirSchedule;
 use prover::gkr::prover_config::ProverConfig;
 
 /// Base-layer packing factor from the prover's `CommitmentMode` (2^22 base trace -> 2^26 message).
+// `allow` rather than `expect`: this module is compiled into every integration-test binary that
+// declares `mod common`, but only `generate_contracts` reads this constant, so an `expect` would
+// be reported as unfulfilled there.
+#[allow(dead_code)]
 pub const PACK_LOG2: usize = 4;
 
 /// Mirrors `prover/src/tests/gkr/large_field.rs` (Sec100, 2^22, 6 WHIR rounds).

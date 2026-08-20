@@ -11,9 +11,9 @@ use crate::types::Boolean;
 
 use super::circuit::{
     FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
-    FAMILY_3_BINARY_OP_BIT, FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
-    FAMILY_4_LW_BIT as F4_LW_BIT, FAMILY_4_SW_BIT as F4_SW_BIT, UNIFIED_F1_NUM_FLAGS,
-    UNIFIED_F3_NUM_FLAGS, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    FAMILY_3_BINARY_OP_BIT, FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_LW_BIT as F4_LW_BIT,
+    FAMILY_4_SW_BIT as F4_SW_BIT, UNIFIED_F1_NUM_FLAGS, UNIFIED_F3_NUM_FLAGS,
+    UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 use crate::tables::TableType;
 
@@ -241,6 +241,7 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
 #[cfg(test)]
 mod tests {
     use super::super::circuit::UNIFIED_REDUCED_MACHINE_NUM_FLAGS;
+    use super::circuit::FAMILY_4_FLAG_OFFSET as F4_OFFSET;
     use super::*;
 
     /// The unified bitmask layout must accommodate every per-family bit plus the
@@ -262,12 +263,12 @@ mod tests {
         );
         // The tri-add bit is the last bit of the F1 region (just past the 9 standalone flags).
         assert_eq!(FAMILY_1_TRI_ADD_BIT, ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS);
-        assert!(FAMILY_1_TRI_ADD_BIT < F2_OFFSET);
+        const _: () = assert!(FAMILY_1_TRI_ADD_BIT < F2_OFFSET);
         // The F3 region is exactly the standalone shift/binop flags (no unified extra bit).
         assert_eq!(UNIFIED_F3_NUM_FLAGS, SHIFT_BINARY_FAMILY_NUM_FLAGS);
-        assert!(FAMILY_3_BINARY_OP_BIT < F4_OFFSET);
+        const _: () = assert!(FAMILY_3_BINARY_OP_BIT < F4_OFFSET);
         // 2-bit one-hot Family-4 region fits within the bitmask.
-        assert!(F4_SW_BIT < UNIFIED_REDUCED_MACHINE_NUM_FLAGS);
+        const _: () = assert!(F4_SW_BIT < UNIFIED_REDUCED_MACHINE_NUM_FLAGS);
     }
 
     #[test]

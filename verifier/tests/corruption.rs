@@ -23,8 +23,8 @@ fn test_rejects_garbage_proof(name: &str) {
         SecurityLevel::Sec80,
         "garbage proof",
         |nds| {
-            for i in 0..nds_len {
-                nds[i] = (i as u32).wrapping_mul(2654435761);
+            for (i, word) in nds[..nds_len].iter_mut().enumerate() {
+                *word = (i as u32).wrapping_mul(2654435761);
             }
         },
         |r| matches!(r, VerifyRejection::Error(..)),
@@ -118,8 +118,8 @@ fn test_rejects_zeroed_regions(name: &str) {
                 label,
                 |nds| {
                     let end = (start + count).min(nds.len());
-                    for i in start..end {
-                        nds[i] ^= 0xDEAD_BEEF;
+                    for word in &mut nds[start..end] {
+                        *word ^= 0xDEAD_BEEF;
                     }
                 },
                 |r| matches!(r, VerifyRejection::Error(..)),
@@ -398,10 +398,20 @@ fn test_rejects_corrupted_it_evals(name: &str) {
                 - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
         let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
 
-        assert!(
-            m::constants::GKR_EVALS >= 160,
-            "{name} must have the 160-eval layout (i/t evals at [128..160])"
-        );
+        // Layout guard: `GKR_EVALS` is a per-circuit generated constant, so for the circuits
+        // this helper is instantiated with the comparison folds to a constant — that is the
+        // point. Keep the assert so a regenerated layout that drops below 160 evals fails
+        // loudly here instead of silently corrupting an unrelated word below.
+        #[expect(
+            clippy::assertions_on_constants,
+            reason = "deliberate generated-layout guard; the constant folding is what makes it a guard"
+        )]
+        {
+            assert!(
+                m::constants::GKR_EVALS >= 160,
+                "{name} must have the 160-eval layout (i/t evals at [128..160])"
+            );
+        }
         // First word of the first inits/teardowns ext4 eval (evals_slice[128]).
         let it_eval_off = gkr_off + 128 * 4;
 

@@ -1,5 +1,4 @@
 use super::*;
-use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints_conditional;
 use crate::gkr_circuits::jump_branch_slt_family::JumpSltBranchFamilyCircuitMask;
@@ -48,6 +47,7 @@ pub fn jump_branch_slt_unified_table_driver_fn<F: PrimeField>(table_driver: &mut
 /// (1) the `JumpCleanupOffset` lookup is gated so non-Family-2 cycles route to
 /// `ZeroEntry`, and (2) the rd-write constraints are gated on per-opcode
 /// `is_X_writes_rd` Booleans so non-Family-2 cycles don't pin rd_write_limbs.
+#[expect(clippy::too_many_arguments)]
 pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
@@ -252,7 +252,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                     &mut intermedaite_of_value,
                     &is_jump,
                     &pc_low,
-                    &&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
                         core::mem::size_of::<u32>() as u16,
                     ),
                     None,
@@ -677,7 +677,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                     &mut intermedaite_of_value,
                     &is_slt,
                     &pc_low,
-                    &&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
                         core::mem::size_of::<u32>() as u16,
                     ),
                     None,
@@ -957,7 +957,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // Family 2's derivation mirrors the constraints below: jal/jalr →
     // saved_pc, slt → slt result (high limb 0), rd == x0 (incl. branches:
     // B-type has no rd field, decode forces rd_index = 0) → (0, 0).
-    if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+    if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
         let is_jal_var = is_jal.expect_variable();
         let is_jalr_var = is_jalr.expect_variable();
         let is_slt_var = is_slt.expect_variable();

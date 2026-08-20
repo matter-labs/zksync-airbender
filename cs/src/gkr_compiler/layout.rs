@@ -51,6 +51,9 @@ impl<F: PrimeField> GKRLayerDescription<F> {
 }
 
 #[derive(Clone, Debug)]
+// Variant sizes differ (Copied carries two relations) but values are short-lived
+// compiler-side temporaries — boxing would add indirection for no benefit.
+#[expect(clippy::large_enum_variant)]
 pub(crate) enum LookupOutput<F: PrimeField> {
     Direct(NoFieldGKRRelation<F>),
     Copied {
@@ -78,7 +81,7 @@ impl<F: PrimeField> GKRGraph<F> {
         Vec<GKRLayerDescription<F>>,
         BTreeMap<OutputType, Vec<GKRAddress>>,
     ) {
-        assert!(self.enforced_relations.len() > 0);
+        assert!(!self.enforced_relations.is_empty());
 
         // We put all external outputs to the same layer
 
@@ -125,7 +128,7 @@ impl<F: PrimeField> GKRGraph<F> {
                 }
             }
 
-            let max_output_layer = output_layers.iter().map(|(_k, v)| *v).max().unwrap();
+            let max_output_layer = output_layers.values().copied().max().unwrap();
             assert!(output_layers.len() <= 5);
 
             for (k, output_layer_idx) in output_layers.into_iter() {

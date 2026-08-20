@@ -10,6 +10,10 @@ use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use super::*;
 
 type F = BabyBearField;
+#[expect(
+    dead_code,
+    reason = "extension alias kept alongside `F` for the self-check helpers"
+)]
 type E = BabyBearExt4;
 
 fn evaluate_at_base_point_for_zero_infinity_basis<F: PrimeField, E: FieldExtension<F> + Field>(
@@ -37,7 +41,7 @@ fn make_eq_poly_for_zero_infinity_basis_impl<
 ) -> Vec<Box<[E]>> {
     // poly is 1 + xy formally, but it's 1 at 0, and y at infinity
 
-    assert!(coordinates.len() > 0);
+    assert!(!coordinates.is_empty());
     // challenges[0] is the challenge used to fold a variable, that is encoded as MSB in the values enumeration,
     // and we will produce the outputs in a same form. We also keep all intermediate forms for simplicity
     let mut result = Vec::with_capacity(coordinates.len() + 1);
@@ -85,6 +89,10 @@ fn make_eq_poly_for_zero_infinity_basis_impl<
     result
 }
 
+#[expect(
+    dead_code,
+    reason = "zero/one-basis variant kept for comparison in this self-check module"
+)]
 fn make_eq_poly_for_zero_infinity_basis_evaluated_at_zero_one_impl<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -94,7 +102,7 @@ fn make_eq_poly_for_zero_infinity_basis_evaluated_at_zero_one_impl<
 ) -> Vec<Box<[E]>> {
     // poly is 1 + xy, it's 1 at 0, and 1 + y at 1
 
-    assert!(coordinates.len() > 0);
+    assert!(!coordinates.is_empty());
     // challenges[0] is the challenge used to fold a variable, that is encoded as MSB in the values enumeration,
     // and we will produce the outputs in a same form. We also keep all intermediate forms for simplicity
     let mut result = Vec::with_capacity(coordinates.len() + 1);
@@ -163,11 +171,15 @@ fn quick_self_test() {
 
     let generator = domain_generator_for_size::<F>(domain_size as u64);
     bitreverse_enumeration_inplace(&mut monomial_form);
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "index is used to cross-index several arrays; iterator form would not read better here"
+    )]
     for i in 0..domain_size {
         let omega = generator.pow(i as u32);
         let pows = make_pows(omega, domain_size.trailing_zeros() as usize);
-        let domain: Vec<BabyBearField, Global> =
-            materialize_powers_serial_starting_with_one(omega, domain_size as usize);
+        let _domain: Vec<BabyBearField, Global> =
+            materialize_powers_serial_starting_with_one(omega, domain_size);
         let eval_from_multivariate =
             evaluate_at_base_point_for_zero_infinity_basis(&monomial_form, &pows);
 
@@ -180,14 +192,14 @@ fn quick_test_binding_poly_and_sumcheck() {
     let size = 8usize;
 
     let num_vars = size.trailing_zeros() as usize;
-    let challenge_coordiantes: Vec<_> = (1..=num_vars)
+    let challenge_coordinates: Vec<_> = (1..=num_vars)
         .map(|el| F::from_nonreduced_u32((el * 10) as u32))
         .collect();
-    // let challenge_coordiantes: Vec<_> = (1..=num_vars)
+    // let challenge_coordinates: Vec<_> = (1..=num_vars)
     //     .map(|el| F::from_nonreduced_u32(1 as u32))
     //     .collect();
     let mut eqs_at_zero_inf =
-        make_eq_poly_for_zero_infinity_basis_impl::<F, F, true>(&challenge_coordiantes);
+        make_eq_poly_for_zero_infinity_basis_impl::<F, F, true>(&challenge_coordinates);
 
     let a: Vec<_> = (1..=size)
         .map(|el| F::from_nonreduced_u32(el as u32))
@@ -202,7 +214,7 @@ fn quick_test_binding_poly_and_sumcheck() {
         .zip(b.iter())
         .map(|(a, b)| {
             let mut t = *a;
-            t.mul_assign(&b);
+            t.mul_assign(b);
 
             t
         })
@@ -239,7 +251,7 @@ fn quick_test_binding_poly_and_sumcheck() {
     // and prover will compute G(0) (because it's nice to compute), getting
     // `e` and then we get G(1) = (r0 + 1) * (c + d + e),
     // and then compute G(infinity) as it's also nice to compute, getting `c`, so we have enough points
-    // to get all the values. But such aproach only works for the first round,
+    // to get all the values. But such approach only works for the first round,
     // so we will have output(r) = claim = \sum_{x_0 = {0, 1}, x_{1,...} = {0, inf}^{N-1}} eq_{0/1}(x, r0) * eq_{0/inf}(x1, ..., r1, ...) * a(x) * b(x)
 
     // Here we self-check our second approach
@@ -324,9 +336,9 @@ fn quick_test_binding_poly_and_sumcheck() {
 
     // highest
     let mut c = g_at_inf;
-    c.mul_assign(&challenge_coordiantes[0].inverse().unwrap());
+    c.mul_assign(&challenge_coordinates[0].inverse().unwrap());
 
-    let mut t = challenge_coordiantes[0];
+    let mut t = challenge_coordinates[0];
     t.add_assign(&F::ONE);
     let mut d = g_at_1;
     d.mul_assign(&t.inverse().unwrap());
@@ -337,15 +349,15 @@ fn quick_test_binding_poly_and_sumcheck() {
     let mut coeffs = vec![];
     coeffs.push(e);
     let mut t = e;
-    t.mul_assign(&challenge_coordiantes[0]);
+    t.mul_assign(&challenge_coordinates[0]);
     t.add_assign(&d);
     coeffs.push(t);
     let mut t = d;
-    t.mul_assign(&challenge_coordiantes[0]);
+    t.mul_assign(&challenge_coordinates[0]);
     t.add_assign(&c);
     coeffs.push(t);
     let mut t = c;
-    t.mul_assign(&challenge_coordiantes[0]);
+    t.mul_assign(&challenge_coordinates[0]);
     assert_eq!(t, g_at_inf);
     coeffs.push(t);
 
@@ -378,10 +390,10 @@ fn quick_test_binding_poly_and_sumcheck() {
     dbg!(&new_a);
     dbg!(&new_b);
 
-    // we should bind equality poly, but we have evaluation table for eq(coordiantes except first)
-    // already, and eq(X, challenge_coordiantes[0]) at new_challenge is just 1 + new_challenge * challenge_coordiantes[0]
+    // we should bind equality poly, but we have evaluation table for eq(coordinates except first)
+    // already, and eq(X, challenge_coordinates[0]) at new_challenge is just 1 + new_challenge * challenge_coordinates[0]
 
-    let mut t0 = challenge_coordiantes[0];
+    let mut t0 = challenge_coordinates[0];
     t0.mul_assign(&challenge);
     t0.add_assign(&F::ONE);
 
@@ -485,9 +497,9 @@ fn quick_test_binding_poly_and_sumcheck() {
 
     // highest
     let mut c = g_at_inf;
-    c.mul_assign(&challenge_coordiantes[1].inverse().unwrap());
+    c.mul_assign(&challenge_coordinates[1].inverse().unwrap());
 
-    let mut t = challenge_coordiantes[1];
+    let mut t = challenge_coordinates[1];
     t.add_assign(&F::ONE);
     let mut d = g_at_1;
     d.mul_assign(&t.inverse().unwrap());
@@ -498,15 +510,15 @@ fn quick_test_binding_poly_and_sumcheck() {
     let mut coeffs = vec![];
     coeffs.push(e);
     let mut t = e;
-    t.mul_assign(&challenge_coordiantes[1]);
+    t.mul_assign(&challenge_coordinates[1]);
     t.add_assign(&d);
     coeffs.push(t);
     let mut t = d;
-    t.mul_assign(&challenge_coordiantes[1]);
+    t.mul_assign(&challenge_coordinates[1]);
     t.add_assign(&c);
     coeffs.push(t);
     let mut t = c;
-    t.mul_assign(&challenge_coordiantes[1]);
+    t.mul_assign(&challenge_coordinates[1]);
     assert_eq!(t, g_at_inf);
     coeffs.push(t);
 
@@ -539,7 +551,7 @@ fn quick_test_binding_poly_and_sumcheck() {
     dbg!(&new_new_a);
     dbg!(&new_new_b);
 
-    let mut t1 = challenge_coordiantes[1];
+    let mut t1 = challenge_coordinates[1];
     t1.mul_assign(&challenge);
     t1.add_assign(&F::ONE);
 

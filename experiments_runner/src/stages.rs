@@ -12,7 +12,7 @@
 //!     FFT-like stage the task notes as benefiting from generic FFT work)
 
 use super::{gbps, median};
-use field::{Field, PrimeField, Proth120, Rand, TwoAdicField};
+use field::{Field, Proth120, Rand};
 use std::alloc::Global;
 use std::time::Instant;
 use worker::Worker;
@@ -42,9 +42,8 @@ fn hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2: u32) {
         iterations /= 2;
     }
 
-    for pair in input.chunks_exact_mut(2) {
-        let (a, b) = pair.split_at_mut(1);
-        b[0].sub_assign(&a[0]);
+    for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
+        b.sub_assign(a);
     }
 }
 
@@ -82,10 +81,9 @@ pub fn bench_stages(worker: &Worker) {
         },
     );
     println!(
-        "  scaled copy               {:>9.1} ms  ({:>6.1} GB/s of {} touched)",
+        "  scaled copy               {:>9.1} ms  ({:>6.1} GB/s of 2x touched)",
         t * 1e3,
-        gbps(2 * bytes, t),
-        "2x"
+        gbps(2 * bytes, t)
     );
 
     // bitreverse
@@ -98,10 +96,9 @@ pub fn bench_stages(worker: &Worker) {
         },
     );
     println!(
-        "  bitreverse (in-place)     {:>9.1} ms  ({:>6.1} GB/s of {} touched)",
+        "  bitreverse (in-place)     {:>9.1} ms  ({:>6.1} GB/s of 2x touched)",
         t * 1e3,
-        gbps(2 * bytes, t),
-        "2x"
+        gbps(2 * bytes, t)
     );
 
     // serial DIT NTT: log n stages, each streaming the whole array (r+w)

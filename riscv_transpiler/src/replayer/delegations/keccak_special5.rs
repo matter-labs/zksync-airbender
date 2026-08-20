@@ -32,7 +32,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
 
     // we have absolutely happy case if we do NOT need any tracing data - just touch x0 enough times, bump PC + timestamp, and update x10
 
-    if needs_cycle_data == false && needs_delegation_data == false {
+    if !needs_cycle_data && !needs_delegation_data {
         ram.skip_if_replaying(31 * 2);
 
         state.timestamp +=
@@ -87,7 +87,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
                 state.pc = next_pc;
             }
 
-            if last_round == false {
+            if !last_round {
                 state.timestamp += TIMESTAMP_STEP;
             }
         }
@@ -145,7 +145,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
 
             for _call_round in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
                 let mut witness = KeccakSpecial5DelegationWitness::empty();
-                witness.write_timestamp = current_timestamp | DELEGATION_INVOCATION_OFFET;
+                witness.write_timestamp = current_timestamp | DELEGATION_INVOCATION_OFFSET;
 
                 let (precompile, iteration, round) =
                     keccak_special5_impl_decode_control(control_flow_reg);
@@ -168,6 +168,9 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
                 let state_indexes =
                     keccak_special5_impl_extract_indices(precompile, iteration, round);
 
+                // `i` indexes `witness.variables_offsets` and `state_indexes` in lockstep, with a
+                // `usize -> u16` narrowing per element.
+                #[expect(clippy::needless_range_loop)]
                 for i in 0..KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS {
                     witness.variables_offsets[i] = state_indexes[i] as u16;
                 }

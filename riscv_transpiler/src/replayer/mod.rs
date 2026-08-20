@@ -1,5 +1,4 @@
 use crate::ir::simple_instruction_set::*;
-use crate::ir::*;
 use crate::vm::Counters;
 use crate::vm::InstructionTape;
 use crate::vm::NonDeterminismCSRSource;
@@ -26,7 +25,7 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RamPeek
     #[inline(always)]
     fn peek_word(&self, address: u32) -> u32 {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.ram_log.len() > 0);
+        debug_assert!(!self.ram_log.is_empty());
         unsafe {
             let (value, _) = *self.ram_log.get_unchecked(0).get_unchecked(0);
 
@@ -44,15 +43,18 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
     #[inline(always)]
     fn read_word(&mut self, address: u32, timestamp: TimestampScalar) -> (TimestampScalar, u32) {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.ram_log.len() > 0);
+        debug_assert!(!self.ram_log.is_empty());
         unsafe {
             let src = self.ram_log.get_unchecked_mut(0);
             let (value, (low, high)) = *src.get_unchecked(0);
             let next = src.get_unchecked(1..);
-            if next.len() > 0 {
+            if !next.is_empty() {
                 *src = next;
             } else {
-                self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
+                self.ram_log = core::mem::transmute::<
+                    &mut [&[(u32, (u32, u32))]],
+                    &mut [&[(u32, (u32, u32))]],
+                >(self.ram_log.get_unchecked_mut(1..));
             }
 
             let read_timestamp = (low as TimestampScalar) | ((high as TimestampScalar) << 32);
@@ -82,15 +84,18 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
         timestamp: TimestampScalar,
     ) -> (TimestampScalar, u32) {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.ram_log.len() > 0);
+        debug_assert!(!self.ram_log.is_empty());
         unsafe {
             let src = self.ram_log.get_unchecked_mut(0);
             let (value, (low, high)) = *src.get_unchecked(0);
             let next = src.get_unchecked(1..);
-            if next.len() > 0 {
+            if !next.is_empty() {
                 *src = next;
             } else {
-                self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
+                self.ram_log = core::mem::transmute::<
+                    &mut [&[(u32, (u32, u32))]],
+                    &mut [&[(u32, (u32, u32))]],
+                >(self.ram_log.get_unchecked_mut(1..));
             }
 
             let read_timestamp = (low as TimestampScalar) | ((high as TimestampScalar) << 32);
@@ -107,10 +112,13 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
             let src = self.ram_log.get_unchecked_mut(0);
             debug_assert!(src.len() >= num_snapshots);
             let next = src.get_unchecked(num_snapshots..);
-            if next.len() > 0 {
+            if !next.is_empty() {
                 *src = next;
             } else {
-                self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
+                self.ram_log = core::mem::transmute::<
+                    &mut [&[(u32, (u32, u32))]],
+                    &mut [&[(u32, (u32, u32))]],
+                >(self.ram_log.get_unchecked_mut(1..));
             }
         }
     }
@@ -253,7 +261,7 @@ impl<C: Counters> ReplayerVM<C> {
                     "detected transpiler marker CSR during replay; programs containing development cycle markers must not be proved"
                 ),
 
-                a @ _ => {
+                a => {
                     panic!("Unknown instruction {:?}", a);
                 }
                 // _ => unsafe { core::hint::unreachable_unchecked() },
@@ -268,10 +276,8 @@ impl<C: Counters> ReplayerVM<C> {
 
 #[cfg(test)]
 mod test {
-    use crate::ir::simple_instruction_set::*;
     use crate::ir::FullUnsignedMachineDecoderConfig;
     use crate::vm::test::read_binary;
-    use crate::vm::Counters;
     use crate::vm::*;
     use crate::witness::NonMemDestinationHolder;
     use crate::witness::*;
@@ -286,8 +292,8 @@ mod test {
 
     // #[test]
     // fn test_replay_simple_fibonacci() {
-    //     let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
-    //     let (_, text) = read_binary(&Path::new("examples/fibonacci/app.text"));
+    //     let (_, binary) = read_binary(Path::new("examples/fibonacci/app.bin"));
+    //     let (_, text) = read_binary(Path::new("examples/fibonacci/app.text"));
     //     let instructions: Vec<Instruction> = text
     //         .into_iter()
     //         .map(|el| decode::<FullUnsignedMachineDecoderConfig>(el))
@@ -352,7 +358,7 @@ mod test {
     //     };
 
     //     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); (1 << 22) - 1];
-    //     let mut buffers = vec![&mut buffer[..]];
+    //     let mut buffers = [&mut buffer[..]];
     //     let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
     //         buffers: &mut buffers[..],
     //     };
@@ -545,8 +551,8 @@ mod test {
     #[test]
     #[serial_test::serial]
     fn test_replay_keccak_f1600() {
-        let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
-        let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
+        let (_, binary) = read_binary(Path::new("examples/keccak_f1600/app.bin"));
+        let (_, text) = read_binary(Path::new("examples/keccak_f1600/app.text"));
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
@@ -560,7 +566,6 @@ mod test {
             { common_constants::rom::ROM_SECOND_WORD_BITS },
         > = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, state);
 
-        let now = std::time::Instant::now();
         VM::<CountersT>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
             &mut state,
             &mut ram,
@@ -569,7 +574,6 @@ mod test {
             cycles_bound,
             &mut (),
         );
-        let elapsed = now.elapsed();
 
         let cycles_elapsed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
 
@@ -584,7 +588,7 @@ mod test {
         };
 
         let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); (1 << 22) - 1];
-        let mut buffers = vec![&mut buffer[..]];
+        let mut buffers = [&mut buffer[..]];
         let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
             buffers: &mut buffers[..],
         };

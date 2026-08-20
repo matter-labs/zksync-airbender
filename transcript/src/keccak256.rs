@@ -1,6 +1,5 @@
 use crate::Transcript;
 use field::proth120::Proth120;
-use field::PrimeField;
 use sha3::{Digest, Keccak256};
 
 // ---------------------------------------------------------------------------
@@ -258,6 +257,11 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
 #[cfg(test)]
 mod test {
     use super::*;
+    // The crate is `no_std` unless the `pow` feature is on, so neither `std` nor
+    // `Vec` is in scope here. The test harness always links `std`, so pull it in
+    // explicitly for the tests only.
+    extern crate std;
+    use std::vec::Vec;
 
     // keccak256("") known vector.
     const KECCAK_EMPTY: [u8; 32] = [

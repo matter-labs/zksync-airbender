@@ -17,7 +17,6 @@ macro_rules! make_circuits {
         vec![$(CircuitData {
             name: stringify!($name),
             production_path: $prod_path,
-            security_levels: [SecurityLevel::Sec80, SecurityLevel::Sec100],
             prover_configs_cache: [OnceLock::new(), OnceLock::new()],
             nds_cache: [OnceLock::new(), OnceLock::new()],
         }),*]
@@ -33,8 +32,11 @@ const NUM_SECURITY_LEVELS: usize = 2;
 pub struct CircuitData {
     pub name: &'static str,
     pub production_path: &'static str,
-    security_levels: [SecurityLevel; NUM_SECURITY_LEVELS],
     prover_configs_cache: [OnceLock<ProverConfig>; NUM_SECURITY_LEVELS],
+    #[expect(
+        clippy::type_complexity,
+        reason = "per-level cache of (flattened NDS words, drawn challenges); an alias would hide the pairing"
+    )]
     nds_cache: [OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
         NUM_SECURITY_LEVELS],
 }
@@ -112,7 +114,7 @@ impl CircuitData {
         let prod_layout_path = format!("{}/generated/layout.json", self.production_path);
         if let Ok(prod_layout) = try_deserialize_from_file(&prod_layout_path) {
             assert!(
-                &wip_layout == &prod_layout,
+                wip_layout == prod_layout,
                 "layouts differ in debug and production files, that may lead to subtle bugs: {} vs {}",
                 self.circuit_path(),
                 prod_layout_path,

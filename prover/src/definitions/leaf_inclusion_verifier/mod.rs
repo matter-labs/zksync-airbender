@@ -12,6 +12,11 @@ pub use self::blake2s_for_everything_with_alternative_compression::Blake2sForEve
 
 pub trait LeafInclusionVerifier: 'static + Send + Sync + Debug {
     fn new() -> Self;
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. Implementations read raw witness words
+    /// through `nd_source` and reinterpret `leaf_encoding` as aligned hasher blocks,
+    /// so the caller must supply a correctly sized/aligned encoding for `depth`.
     unsafe fn verify_leaf_inclusion<
         I: U32WordNonDeterminismSource,
         const CAP_SIZE: usize,

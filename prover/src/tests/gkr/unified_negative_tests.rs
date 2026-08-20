@@ -17,8 +17,12 @@ use riscv_transpiler::vm::*;
 use std::alloc::Global;
 use worker::Worker;
 
-const TRACE_LEN_LOG2: usize = 24;
-const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
+// NOTE: there is deliberately no local TRACE_LEN_LOG2 here. The unified circuit's
+// domain is 2^23 (`UnifiedReducedMachineCircuit::DOMAIN_SIZE_LOG2`), not the 2^24
+// the per-family circuits use, and a hardcoded copy of it here guarded
+// `build_unified_full_trace` against the WRONG bound: every `num_calls` in
+// [2^23, 2^24) passed the assert and was then written into a 2^23-row layout.
+// Bound against the loaded artifact (`circuit.trace_len`) instead.
 
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
 
@@ -80,10 +84,10 @@ fn build_satisfying_trace_with_mutation(
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    assert!(num_calls < NUM_CYCLES_PER_CHUNK);
+    assert!(num_calls < circuit.trace_len);
 
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
-    let (mut full_trace, _table_driver, _decoder_table) =
+    let (mut full_trace, _table_driver, _decoder_table, _top_bits) =
         super::orchestration::unified::build_unified_full_trace(
             &vm,
             &circuit,
@@ -954,12 +958,12 @@ fn select_trick_each_half_binds() {
 fn unified_mulmod_intermediate_forge_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let mul_bit = find_base_layer_address(circuit, &format!("family_bit[{MULMOD_BIT_INDEX}]"));
-        let interm = find_base_layer_address(circuit, "MULMOD intermediate value");
+        let interim = find_base_layer_address(circuit, "MULMOD intermediate value");
         let row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, mul_bit, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute MULMOD");
-        let cur = read_cell(trace, interm, row);
-        write_cell(trace, interm, row, cur + BabyBearField::ONE);
+        let cur = read_cell(trace, interim, row);
+        write_cell(trace, interim, row, cur + BabyBearField::ONE);
     });
     assert!(
         !check_satisfied(&circuit, &full_trace),
@@ -1085,6 +1089,7 @@ fn baseline_trace_is_memory_consistent() {
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+    assert!(num_calls < circuit.trace_len);
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
 
     // The `true` flag makes build_unified_full_trace run ensure_memory_trace_consistency on
@@ -1143,9 +1148,10 @@ fn generate_malicious_unified_proof(
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+    assert!(num_calls < circuit.trace_len);
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
 
-    let (mut full_trace, table_driver, decoder_table) = build_unified_full_trace(
+    let (mut full_trace, table_driver, decoder_table, top_bits) = build_unified_full_trace(
         &vm,
         &circuit,
         num_teardown_sets,
@@ -1183,7 +1189,7 @@ fn generate_malicious_unified_proof(
         full_trace,
         &table_driver,
         &decoder_table,
-        num_teardown_sets,
+        top_bits,
         &hardcoded_external_challenges(),
         SecurityLevel::Sec80,
         &worker,

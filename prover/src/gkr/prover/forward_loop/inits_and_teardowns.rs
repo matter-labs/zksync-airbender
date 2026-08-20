@@ -151,6 +151,10 @@ pub(crate) fn evaluate_init<F: PrimeField, E: FieldExtension<F> + Field>(
     result
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub(crate) fn evaluate_teardown<F: PrimeField, E: FieldExtension<F> + Field>(
     row: usize,
     address_high_bits: u32,

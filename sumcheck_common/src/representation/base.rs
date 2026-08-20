@@ -3,7 +3,7 @@ use super::*;
 #[derive(Clone, Copy, Debug)]
 pub struct BaseFieldRepresentation<F: PrimeField>(pub(crate) F);
 
-impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F, E>
+impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentationBase<F, E>
     for BaseFieldRepresentation<F>
 {
     type Product = Self;
@@ -28,7 +28,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
     #[inline(always)]
     fn mul_by_base(self, other: &F) -> Self {
         let mut t = self.0;
-        t.sub_assign(&other);
+        t.sub_assign(other);
         Self(t)
     }
     #[inline(always)]
@@ -39,7 +39,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
     }
 }
 
-impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionExt<F, E>
+impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentationExt<F, E>
     for BaseFieldRepresentation<F>
 {
     type Base = Self;
@@ -76,7 +76,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionExt<F, 
     #[inline(always)]
     fn mul_by_base(self, other: &F) -> Self {
         let mut t = self.0;
-        t.mul_assign(&other);
+        t.mul_assign(other);
         Self(t)
     }
     #[inline(always)]

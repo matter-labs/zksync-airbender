@@ -23,7 +23,7 @@ impl<F: PrimeField> Num<F> {
             Num::Constant(..) => {
                 panic!("this Num is not a variable")
             }
-            Num::Var(v) => v.clone(),
+            Num::Var(v) => *v,
         }
     }
 
@@ -125,13 +125,13 @@ impl Boolean {
     }
 
     pub fn get_terms<F: PrimeField>(&self) -> Term<F> {
-        match self {
-            &Boolean::Is(var) => var.into(),
-            &Boolean::Not(_var) => {
+        match *self {
+            Boolean::Is(var) => var.into(),
+            Boolean::Not(_var) => {
                 unreachable!()
                 // Term::from(1) - Term::from(var)
             }
-            &Boolean::Constant(var) => {
+            Boolean::Constant(var) => {
                 let var = var as u32;
                 var.into()
             }
@@ -157,7 +157,7 @@ impl Boolean {
             return [Boolean::Constant(false); N];
         }
 
-        assert!(N <= F::CHAR_BITS - 1);
+        assert!(N < F::CHAR_BITS);
 
         let type_bitmask: [Boolean; N] = std::array::from_fn(|_| Boolean::new(circuit));
 
@@ -172,6 +172,7 @@ impl Boolean {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let input_value = placer.get_field(input).as_integer();
 
+            #[expect(clippy::needless_range_loop)]
             for idx in 0..N {
                 let bit = input_value.get_bit(idx as u32);
                 placer.assign_mask(outputs[idx], &bit);
@@ -211,10 +212,10 @@ impl Boolean {
     }
 
     pub fn toggle(&self) -> Self {
-        match self {
-            &Boolean::Constant(c) => Boolean::Constant(!c),
-            &Boolean::Is(ref v) => Boolean::Not(v.clone()),
-            &Boolean::Not(ref v) => Boolean::Is(v.clone()),
+        match *self {
+            Boolean::Constant(c) => Boolean::Constant(!c),
+            Boolean::Is(v) => Boolean::Not(v),
+            Boolean::Not(v) => Boolean::Is(v),
         }
     }
 
@@ -285,7 +286,7 @@ impl Boolean {
                 Boolean::Constant(false)
             }
             // true AND x is always x
-            (&Boolean::Constant(true), x) | (x, &Boolean::Constant(true)) => x.clone(),
+            (&Boolean::Constant(true), x) | (x, &Boolean::Constant(true)) => *x,
             (a, b) => Self::apply_binary_op(
                 cs,
                 *a,
@@ -303,7 +304,7 @@ impl Boolean {
                 Boolean::Constant(true)
             }
             // false OR x is always x
-            (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => x.clone(),
+            (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => *x,
             (a, b) => {
                 Self::apply_binary_op(cs, *a, *b, Self::or_expr::<F>(*a, *b), BooleanBinaryOp::Or)
             }
@@ -313,7 +314,7 @@ impl Boolean {
     #[track_caller]
     pub fn xor<F: PrimeField, C: Circuit<F>>(a: &Self, b: &Self, cs: &mut C) -> Self {
         match (a, b) {
-            (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => x.clone(),
+            (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => *x,
             (&Boolean::Constant(true), x) | (x, &Boolean::Constant(true)) => x.toggle(),
             (a, b) if a == b => Boolean::Constant(false),
             (&Boolean::Is(a), &Boolean::Not(b)) | (&Boolean::Not(b), &Boolean::Is(a)) if a == b => {
@@ -357,13 +358,13 @@ impl Boolean {
                         panic!("multi_and contains constant false");
                     }
                 }
-                a @ _ => {
+                a => {
                     meaningful_terms.push(*a);
                 }
             }
         }
 
-        assert!(meaningful_terms.len() > 0);
+        assert!(!meaningful_terms.is_empty());
         if meaningful_terms.len() == 1 {
             return meaningful_terms[0];
         }
@@ -398,13 +399,13 @@ impl Boolean {
                         // nothing, do not add
                     }
                 }
-                a @ _ => {
+                a => {
                     meaningful_terms.push(*a);
                 }
             }
         }
 
-        assert!(meaningful_terms.len() > 0);
+        assert!(!meaningful_terms.is_empty());
         if meaningful_terms.len() == 1 {
             return meaningful_terms[0];
         }
@@ -531,7 +532,7 @@ impl<F: PrimeField> Register<F> {
 
         // set value
         let vars = new.0.map(|el| el.get_variable());
-        if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+        if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
             let value_fn = move |placer: &mut CS::WitnessPlacer| {
                 let value = placer.get_oracle_u32(placeholder);
 
@@ -559,7 +560,7 @@ impl<F: PrimeField> Register<F> {
         assert!(low <= u16::MAX as u32);
         assert!(high <= u16::MAX as u32);
 
-        Some(low as u32 | (high as u32) << 16)
+        Some(low | (high << 16))
     }
 
     pub fn get_value_signed<C: Circuit<F>>(self, cs: &C) -> Option<i32> {
@@ -570,7 +571,7 @@ impl<F: PrimeField> Register<F> {
 
     pub fn new_from_constant(value: u32) -> Self {
         let vars: [Num<F>; 2] = std::array::from_fn(|idx: usize| {
-            Num::Constant(F::from_u32_unchecked(((value >> idx * 16) & 0xffff) as u32))
+            Num::Constant(F::from_u32_unchecked((value >> (idx * 16)) & 0xffff))
         });
         Self(vars)
     }
@@ -601,8 +602,8 @@ impl<F: PrimeField> Register<F> {
     }
 
     pub fn equals_to<C: Circuit<F>>(&self, cs: &mut C, cnst: u32) -> Boolean {
-        let low_cnst = Num::Constant(F::from_u32_unchecked((cnst & 0xffff) as u32));
-        let high_cnst = Num::Constant(F::from_u32_unchecked((cnst >> 16) as u32));
+        let low_cnst = Num::Constant(F::from_u32_unchecked(cnst & 0xffff));
+        let high_cnst = Num::Constant(F::from_u32_unchecked(cnst >> 16));
 
         let low_eq_flag = cs.equals_to(self.0[0], low_cnst);
         let high_eq_flag = cs.equals_to(self.0[1], high_cnst);

@@ -29,7 +29,7 @@ pub fn make_eq_poly_impl<E: Field, const FULL: bool>(
     challenges: &[E],
     worker: &Worker,
 ) -> Vec<Box<[E]>> {
-    assert!(challenges.len() > 0);
+    assert!(!challenges.is_empty());
 
     let mut result = Vec::with_capacity(challenges.len() + 1);
     result.push(vec![E::ONE].into_boxed_slice());
@@ -99,7 +99,7 @@ fn make_domain_eq_poly_impl<
     // See WHIR comments: our equality poly is special here as we choose not the 0/1 hypercube, but 1/omega one.
     // So our equality is eq(X, Y) = 1 / (omega - 1) ^ 2 * (X - 1)(Y - 1) + (1 - (X - 1)/(omega - 1))(1 - (Y - 1)/(omega - 1))
 
-    assert!(challenges.len() > 0);
+    assert!(!challenges.is_empty());
     // challenges[0] is the challenge used to fold a variable, that is encoded as MSB in the values enumeration,
     // and we will produce the outputs in a same form. We also keep all intermediate forms for simplicity
     let mut result = Vec::with_capacity(challenges.len() + 1);
@@ -290,7 +290,7 @@ pub(crate) fn evaluate_constant_and_quadratic_coeffs_with_precomputed_eq_serial<
 
 #[cfg(test)]
 pub fn make_eq_poly_impl_serial<E: Field, const FULL: bool>(challenges: &[E]) -> Vec<Box<[E]>> {
-    assert!(challenges.len() > 0);
+    assert!(!challenges.is_empty());
     // challenges[0] is the challenge used to fold a variable, that is encoded as MSB in the values enumeration,
     // and we will produce the outputs in a same form. We also keep all intermediate forms for simplicity
     let mut result = Vec::with_capacity(challenges.len() + 1);

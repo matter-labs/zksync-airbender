@@ -1,6 +1,8 @@
 use super::*;
 use crate::gkr::prover::apply_row_wise;
 use cs::definitions::gkr::AddressSpaceType;
+// Only referenced by `evaluate_linear_relation_at_row`, which is `gkr_self_checks`-only.
+#[cfg(feature = "gkr_self_checks")]
 use cs::definitions::gkr::NoFieldLinearRelation;
 use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
 use cs::definitions::gkr::NoFieldVectorLookupRelation;
@@ -8,15 +10,19 @@ use cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation;
 use field::{Field, FieldExtension, PrimeField};
 use std::alloc::Global;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F> + Field>(
     rel: &NoFieldVectorLookupRelation<F>,
     gkr_storage: &GKRStorage<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
-    lookup_challenges_multiplicative_part: E,
+    _lookup_challenges_multiplicative_part: E,
     decoder_lookup_fill_value: E,
-    offset_for_decoder_table: u32,
+    _offset_for_decoder_table: u32,
     decoder_predicate_address: GKRAddress,
     worker: &Worker,
 ) -> Box<[E]> {
@@ -25,12 +31,12 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
     let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
     let ext_destination = vec![&mut destination[..]];
     let is_decoder_lookup = lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX;
-    let mapping_ref = if is_decoder_lookup == false {
+    let mapping_ref = if !is_decoder_lookup {
         // println!("Mapping lookup access number {}", lookup_set_index);
         &witness_trace.generic_lookup_mapping[lookup_set_index]
     } else {
         // println!("Mapping decoder lookup");
-        assert!(witness_trace.generic_lookup_mapping.len() > 0);
+        assert!(!witness_trace.generic_lookup_mapping.is_empty());
         witness_trace.generic_lookup_mapping.last().unwrap()
     };
     let decoder_predicate = if is_decoder_lookup {
@@ -47,6 +53,10 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
             assert_eq!(ext_dest.len(), 1);
             let mut ext_dest = ext_dest;
             let dest = ext_dest.pop().unwrap();
+            #[expect(
+                clippy::needless_range_loop,
+                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+            )]
             for i in 0..chunk_size {
                 let row = chunk_start + i;
                 let mapping_index = mapping_ref[row];
@@ -67,7 +77,7 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
                     if is_decoder_lookup {
                         let decoder_mask_value = decoder_predicate[row].as_boolean();
                         if decoder_mask_value {
-                            assert!(mapping_index >= offset_for_decoder_table, "decoder lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
+                            assert!(mapping_index >= _offset_for_decoder_table, "decoder lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, _offset_for_decoder_table);
                         } else {
                             assert_eq!(
                                 mapping_index, 0,
@@ -76,10 +86,10 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
                         }
                     } else {
                         assert!(
-                            mapping_index < offset_for_decoder_table,
+                            mapping_index < _offset_for_decoder_table,
                             "ordinary lookup should have mapping index {} < decoder table offset {}",
                             mapping_index,
-                            offset_for_decoder_table
+                            _offset_for_decoder_table
                         );
                     }
                 }
@@ -92,7 +102,7 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
                             gkr_storage,
                             row,
                         ));
-                        let mut challenge = lookup_challenges_multiplicative_part;
+                        let mut challenge = _lookup_challenges_multiplicative_part;
                         for rel in rel.columns[1..].iter() {
                             let mut t = challenge;
                             t.mul_assign_by_base(&evaluate_linear_relation_at_row(
@@ -102,7 +112,7 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
                             ));
                             result.add_assign(&t);
 
-                            challenge.mul_assign(&lookup_challenges_multiplicative_part);
+                            challenge.mul_assign(&_lookup_challenges_multiplicative_part);
                         }
 
                         result
@@ -153,9 +163,8 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
             }
         },
     );
-    let destination = unsafe { destination.assume_init() };
 
-    destination
+    unsafe { destination.assume_init() }
 }
 
 pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
@@ -215,6 +224,7 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
     }
 }
 
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) fn evaluate_linear_relation_at_row<F: PrimeField, E: FieldExtension<F> + Field>(
     rel: &NoFieldLinearRelation<F>,
     gkr_storage: &GKRStorage<F, E>,
@@ -224,8 +234,8 @@ pub(crate) fn evaluate_linear_relation_at_row<F: PrimeField, E: FieldExtension<F
     for (c, address) in rel.linear_terms.iter() {
         let mut t = gkr_storage
             .try_get_base_poly(*address)
-            .expect(&format!("base layer poly at address {:?}", address))[row];
-        t.mul_assign(&*c);
+            .unwrap_or_else(|| panic!("base layer poly at address {:?}", address))[row];
+        t.mul_assign(c);
         result.add_assign(&t);
     }
 
@@ -347,7 +357,7 @@ pub(crate) fn evaluate_memory_query<F: PrimeField, E: FieldExtension<F> + Field>
                 let mut t = external_challenges.permutation_argument_linearization_challenges
                     [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                 let mut el = mem_access_fn(base_layer_memory_sources, ts[0], row);
-                el.add_assign(&F::from_u32_unchecked(rel.timestamp_offset as u32));
+                el.add_assign(&F::from_u32_unchecked(rel.timestamp_offset));
                 t.mul_assign_by_base(&el);
                 result.add_assign(&t);
             }
@@ -493,7 +503,7 @@ pub(crate) fn memory_query_as_flattened_relation<F: PrimeField, E: FieldExtensio
                 assert!(result
                     .insert(GKRAddress::BaseLayerMemory(*low_base), t)
                     .is_none());
-                t.mul_assign_by_base(&F::from_u32_unchecked(*low_offset as u32));
+                t.mul_assign_by_base(&F::from_u32_unchecked(*low_offset));
                 constant_term.add_assign(&t);
             }
             {
@@ -516,7 +526,7 @@ pub(crate) fn memory_query_as_flattened_relation<F: PrimeField, E: FieldExtensio
                 assert!(result
                     .insert(GKRAddress::BaseLayerMemory(ts[0]), t)
                     .is_none());
-                t.mul_assign_by_base(&F::from_u32_unchecked(rel.timestamp_offset as u32));
+                t.mul_assign_by_base(&F::from_u32_unchecked(rel.timestamp_offset));
                 constant_term.add_assign(&t);
             }
             {
@@ -620,7 +630,7 @@ pub(crate) fn vector_lookup_as_flattened_relation<
     for column in rel.columns.iter() {
         for (coeff, a) in column.linear_terms.iter() {
             let mut t = challenge;
-            t.mul_assign_by_base(&*coeff);
+            t.mul_assign_by_base(coeff);
 
             assert!(result.insert(*a, t).is_none());
         }

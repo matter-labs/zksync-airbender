@@ -48,6 +48,10 @@ unsafe impl<F: PrimeField, E: FieldExtension<F> + Field> Sync
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionFieldPolyInitialSource<F, E> {
+    #[expect(
+        dead_code,
+        reason = "fold-state inspection accessor kept for API symmetry"
+    )]
     pub(crate) fn current_values(&'_ self) -> &'_ [E] {
         unsafe { core::slice::from_raw_parts(self.start, self.next_layer_size * 2) }
     }
@@ -176,6 +180,10 @@ unsafe impl<F: PrimeField, E: FieldExtension<F> + Field> Sync
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionFieldPolyContinuingSource<F, E> {
+    #[expect(
+        dead_code,
+        reason = "fold-state inspection accessor kept for API symmetry"
+    )]
     pub(crate) fn previous_values(&'_ self) -> &'_ [E] {
         unsafe { core::slice::from_raw_parts(self.previous_layer_start, self.this_layer_size * 2) }
     }

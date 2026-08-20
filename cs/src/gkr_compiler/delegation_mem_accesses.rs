@@ -1,8 +1,6 @@
 use super::*;
 use crate::constraint::{Constraint, Term};
-use crate::cs::circuit::{
-    IndirectAccessType, RangeCheckQuery, RegisterAccessType, RegisterAndIndirectAccesses,
-};
+use crate::cs::circuit::{RangeCheckQuery, RegisterAccessType, RegisterAndIndirectAccesses};
 use crate::cs::circuit_trait::{
     ConstantRegisterAccess, MemoryAccess, RegisterIndirectRamAccess, WordRepresentation,
 };
@@ -14,6 +12,7 @@ use crate::gkr_compiler::graph::GKRGraph;
 
 const LOCAL_TIMESTAMP_FOR_INDIRECTS: u32 = 2;
 
+#[expect(clippy::too_many_arguments)]
 pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
     graph: &mut GKRGraph<F>,
     num_variables: &mut u64,
@@ -65,7 +64,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
             variable_names.insert(
                 borrow_var,
                 format!(
-                    "indirect access query {}, register acccess interm ts borrow",
+                    "indirect access query {}, register access interim ts borrow",
                     query_idx
                 ),
             );
@@ -174,11 +173,10 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
         };
 
         ram_access_sets.push(query_columns);
-        drop(register_ram_query);
 
         if indirects_alignment_log2 != 0 {
             assert!(indirects_alignment_log2 < 16);
-            assert!(indirect_accesses.len() > 0);
+            assert!(!indirect_accesses.is_empty());
             // permutation check will ensure that the value is 16 bits, so we just need to shift it right and
             // range check again
             let constraint = Constraint::empty()
@@ -238,7 +236,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 variable_names.insert(
                     borrow_var,
                     format!(
-                        "indirect access query {}, indirect acccess {} interm ts borrow",
+                        "indirect access query {}, indirect access {} interim ts borrow",
                         query_idx, indirect_access_idx
                     ),
                 );
@@ -254,7 +252,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 indirect_read_value
             };
             let indirect_ram_query = MemoryAccess::RamIndirect(RegisterIndirectRamAccess {
-                variable_offset: variable_offset,
+                variable_offset,
                 base_address: register_read_value_vars,
                 constant_offset,
                 read_timestamp: [read_timestamp_low, read_timestamp_high],

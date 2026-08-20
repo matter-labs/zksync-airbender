@@ -22,11 +22,31 @@ const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 // invalid locations
 const TRACE_LEN_LOG2: usize = 24;
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
+#[expect(
+    dead_code,
+    reason = "per-delegation parity constant mirroring the cs-crate layout"
+)]
 const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
+#[expect(
+    dead_code,
+    reason = "per-delegation parity constant mirroring the cs-crate layout"
+)]
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+#[expect(
+    dead_code,
+    reason = "per-delegation parity constant mirroring the cs-crate layout"
+)]
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+#[expect(
+    dead_code,
+    reason = "per-delegation parity constant mirroring the cs-crate layout"
+)]
 const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const RAM_BOUND_BYTES: usize = 1 << 30;
+#[expect(
+    dead_code,
+    reason = "RAM-bound parity constant mirroring the cs-crate layout"
+)]
 const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
@@ -48,8 +68,8 @@ fn gkr_run_basic_unrolled_test_sec_100() {
 
 pub fn gkr_run_basic_unrolled_test_impl(
     level: SecurityLevel,
-    maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
-    maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
+    _maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
+    _maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
 ) {
     let proof_suffix = level.dir_suffix();
     type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
@@ -167,6 +187,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
     let mut delegation_read_set = BTreeSet::new();
     let mut delegation_write_set = BTreeSet::new();
 
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "index is used to cross-index several arrays; iterator form would not read better here"
+    )]
     for i in 0..32 {
         memory_write_set.insert((true, i as u32, 0, 0));
         memory_read_set.insert((
@@ -219,7 +243,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "add_sub_lui_auipc_mop",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             add_sub_lui_auipc_mop::witness_eval_fn,
         );
@@ -261,7 +285,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "jump_branch_slt",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             jump_branch_slt::witness_eval_fn,
         );
@@ -301,7 +325,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "shift_binop",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             shift_binary_ops::witness_eval_fn,
         );
@@ -341,7 +365,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "unsigned_mul_div",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             unsigned_mul_div::witness_eval_fn,
         );
@@ -391,7 +415,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "mem_word_only",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             mem_word_only::witness_eval_fn,
         );
@@ -441,7 +465,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "mem_subword_only",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             mem_subword_only::witness_eval_fn,
         );
@@ -466,13 +490,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
     // Machine state permutation ended
     {
         for (pc, ts) in write_set.iter().copied() {
-            if read_set.contains(&(pc, ts)) == false {
+            if !read_set.contains(&(pc, ts)) {
                 panic!("read set doesn't contain a pair {:?}", (pc, ts));
             }
         }
 
         for (pc, ts) in read_set.iter().copied() {
-            if write_set.contains(&(pc, ts)) == false {
+            if !write_set.contains(&(pc, ts)) {
                 panic!("write set doesn't contain a pair {:?}", (pc, ts));
             }
         }
@@ -487,7 +511,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
         );
         if let Some(proof) = &out.proof {
@@ -508,7 +532,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
             super::blake2_with_extended_control::witness_eval_fn,
         );
@@ -537,7 +561,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
             super::bigint_with_extended_control::witness_eval_fn,
         );
@@ -566,7 +590,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
             super::keccak_special5::witness_eval_fn,
         );
@@ -595,7 +619,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
             super::blake2_g_function::witness_eval_fn,
         );
@@ -639,23 +663,19 @@ pub fn gkr_run_basic_unrolled_test_impl(
         // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
         if flattened_inits_and_teardowns.len() != expected_init_set.len() {
-            for (idx, (address, (teardown_ts, teardown_value))) in
-                flattened_inits_and_teardowns.iter().enumerate()
-            {
+            for (address, (teardown_ts, teardown_value)) in flattened_inits_and_teardowns.iter() {
                 let mut init_set_el = None;
-                for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+                for (is_reg, addr, ts, init_value) in expected_init_set.iter() {
                     if *addr == *address {
                         init_set_el = Some((*is_reg, *addr, *ts, *init_value));
                     }
                 }
-                let Some(init_set_el) = init_set_el else {
+                let Some(_init_set_el) = init_set_el else {
                     panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
                 };
 
                 let mut teardown_set_el = None;
-                for (i, (is_reg, addr, ts, teardown_value)) in
-                    expected_teardown_set.iter().enumerate()
-                {
+                for (is_reg, addr, ts, teardown_value) in expected_teardown_set.iter() {
                     if *addr == *address {
                         teardown_set_el = Some((*is_reg, *addr, *ts, *teardown_value));
                     }
@@ -679,11 +699,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         for (idx, (is_register, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
             assert!(
-                *is_register == false,
+                !*is_register,
                 "found an unexpected init for register {} with value {} at timestamp {}",
-                *addr,
-                *init_value,
-                *ts
+                *addr, *init_value, *ts
             );
             assert_eq!(
                 *ts, 0,
@@ -703,11 +721,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
         for (idx, (is_register, addr, ts, value)) in expected_teardown_set.iter().enumerate() {
             assert!(
-                *is_register == false,
+                !*is_register,
                 "found an unexpected teardown for register {} with value {} at timestamp {}",
-                *addr,
-                *value,
-                *ts
+                *addr, *value, *ts
             );
             assert!(
                 *ts > INITIAL_TIMESTAMP,
@@ -735,7 +751,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         assert_eq!(total_unique_teardowns, expected_teardown_set.len());
     }
 
-    if CHECK_MEMORY_PERMUTATION_ONLY == false && circuits_filter.is_none() {
+    if !CHECK_MEMORY_PERMUTATION_ONLY && circuits_filter.is_none() {
         dbg!(permutation_argument_accumulator);
         assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
     }

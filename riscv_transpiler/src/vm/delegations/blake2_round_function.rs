@@ -31,8 +31,8 @@ pub(crate) fn blake2_round_function_call<
 
     assert!(x10 != x11);
 
-    assert!(x10 % 128 == 0, "state pointer is unaligned");
-    assert!(x11 % 64 == 0, "input pointer is unaligned");
+    assert!(x10.is_multiple_of(128), "state pointer is unaligned");
+    assert!(x11.is_multiple_of(64), "input pointer is unaligned");
 
     let control_bitmask = (x12 >> 16) & ((1 << BLAKE2S_NUM_CONTROL_BITS) - 1);
     let mode_compression =
@@ -59,10 +59,7 @@ pub(crate) fn blake2_round_function_call<
             (1 << 10) & ((1 << BLAKE2S_MAX_ROUNDS) - 1)
         };
 
-        let final_x12 =
-            (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16;
-
-        final_x12
+        (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16
     };
 
     let num_rounds = if reduced_rounds { 7 } else { 10 };
@@ -85,6 +82,9 @@ pub(crate) fn blake2_round_function_call<
         let mut blake_state_full: [MaybeUninit<u32>; 24] = [const { MaybeUninit::uninit() }; 24];
 
         let mut addr = x10;
+        // `i` writes into a `MaybeUninit` array while a separate `addr` cursor walks guest
+        // memory; an iterator over the array would not remove the manual cursor.
+        #[expect(clippy::needless_range_loop)]
         for i in 0..24 {
             let value = ram.peek_word(addr);
             addr += 4;
@@ -97,6 +97,9 @@ pub(crate) fn blake2_round_function_call<
         let mut input: [MaybeUninit<u32>; 16] = [const { MaybeUninit::uninit() }; 16];
 
         let mut addr = x11;
+        // `i` writes into a `MaybeUninit` array while a separate `addr` cursor walks guest
+        // memory; an iterator over the array would not remove the manual cursor.
+        #[expect(clippy::needless_range_loop)]
         for i in 0..16 {
             let value = ram.peek_word(addr);
             addr += 4;
@@ -111,27 +114,22 @@ pub(crate) fn blake2_round_function_call<
             .as_mut_ptr()
             .cast::<[u32; BLAKE2S_STATE_WIDTH_IN_U32_WORDS]>()
             .as_mut_unchecked();
-        let mut extended_state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS] =
-            extended_state
-                .as_mut_ptr()
-                .cast::<[u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS]>()
-                .as_mut_unchecked();
+        let extended_state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS] = extended_state
+            .as_mut_ptr()
+            .cast::<[u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS]>()
+            .as_mut_unchecked();
 
         // update the state if needed before rounds
 
         if mode_compression {
             // overwrite first 8 elements to the extended
-            for i in 0..8 {
-                extended_state[i] = CONFIGURED_IV[i];
-                extended_state[i + 8] = IV[i];
-            }
+            extended_state[..8].copy_from_slice(&CONFIGURED_IV);
+            extended_state[8..16].copy_from_slice(&IV);
             extended_state[12] ^= BLAKE2S_BLOCK_SIZE_BYTES as u32;
             extended_state[14] ^= 0xffffffff;
         } else {
             // overwrite first 8 elements of the extended with current state
-            for i in 0..8 {
-                extended_state[i] = blake_state[i];
-            }
+            extended_state[..8].copy_from_slice(blake_state);
             // overwrite elements 8-11, 13, 15
             extended_state[8] = IV[0];
             extended_state[9] = IV[1];
@@ -141,6 +139,9 @@ pub(crate) fn blake2_round_function_call<
             extended_state[15] = IV[7];
         }
 
+        // `round` is compared against `num_rounds - 1` and indexes `SIGMAS`, so it is a real
+        // loop counter and not just a slice cursor.
+        #[expect(clippy::needless_range_loop)]
         for round in 0..num_rounds {
             let last_round = round == num_rounds - 1;
 
@@ -154,10 +155,10 @@ pub(crate) fn blake2_round_function_call<
                     buffer[8..].copy_from_slice(&input[..8]);
                 }
                 let sigma = &SIGMAS[round];
-                mixing_function(&mut extended_state, &buffer, sigma);
+                mixing_function(extended_state, &buffer, sigma);
             } else {
                 let sigma = &SIGMAS[round];
-                mixing_function(&mut extended_state, &input, sigma);
+                mixing_function(extended_state, &input, sigma);
             }
 
             // update output the state if needed
@@ -179,6 +180,8 @@ pub(crate) fn blake2_round_function_call<
         let write_ts = write_ts | 3;
 
         let mut addr = x10;
+        // `i` reads `blake_state_full` while a separate `addr` cursor walks guest memory.
+        #[expect(clippy::needless_range_loop)]
         for i in 0..24 {
             let value = blake_state_full[i];
 

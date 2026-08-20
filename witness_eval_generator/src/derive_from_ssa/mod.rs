@@ -20,6 +20,12 @@ mod integer;
 enum ColumnAddress {
     WitnessSubtree(usize),
     MemorySubtree(usize),
+    // Mirrors the cs-side column-address shape; setup columns don't occur in
+    // witness-eval derivations today but the match arms keep the mapping total.
+    #[expect(
+        dead_code,
+        reason = "mirrors the cs column-address enum; matched but never built here"
+    )]
     SetupSubtree(usize),
     OptimizedOut(usize),
 }
@@ -91,7 +97,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
             FixedWidthIntegerNodeExpression::U8SubExpression(idx)
             | FixedWidthIntegerNodeExpression::U16SubExpression(idx)
             | FixedWidthIntegerNodeExpression::U32SubExpression(idx) => Self::ident_for_idx(*idx),
-            a @ _ => {
+            a => {
                 panic!("Trying to make variable from expression {:?}", a);
             }
         }
@@ -399,7 +405,7 @@ pub fn derive_from_gkr_ssa<F: PrimeField + ToTokens>(
 
     for (fn_idx, eval_fn) in ssa.iter().enumerate() {
         // quickly check that if all outputs are into memory, then we can skip such cases
-        if perform_assignments_to_memory == false {
+        if !perform_assignments_to_memory {
             let mut can_skip = true;
             for expr in eval_fn.iter() {
                 if let RawExpression::WriteVariable { into_variable, .. } = expr {
@@ -476,7 +482,8 @@ mod test {
     use std::io::Write;
 
     fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-        let src = std::fs::File::open(filename).expect(&format!("could not find {filename}"));
+        let src =
+            std::fs::File::open(filename).unwrap_or_else(|_| panic!("could not find {filename}"));
         serde_json::from_reader(src).unwrap()
     }
 
@@ -538,7 +545,8 @@ mod test {
         skip_if_ci!();
         use ::field::proth120::Proth120;
 
-        for prefix in ["unified_reduced_machine"] {
+        let prefixes = ["unified_reduced_machine"];
+        for prefix in prefixes {
             let compiled_circuit: GKRCircuitArtifact<Proth120> = deserialize_from_file(&format!(
                 "../cs/compiled_circuits/{}_layout_gkr_proth120.json",
                 prefix

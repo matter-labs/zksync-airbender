@@ -15,7 +15,6 @@
 use super::*;
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
-use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 

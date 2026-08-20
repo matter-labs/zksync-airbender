@@ -1,6 +1,10 @@
 use super::*;
 use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub(crate) fn evaluate_single_column_lookup_relation<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -16,9 +20,8 @@ pub(crate) fn evaluate_single_column_lookup_relation<
 ) {
     let mut destination = Box::<[F], Global>::new_uninit_slice(trace_len);
     if range_check_width == 16 {
-        let source = std::mem::replace(
+        let source = std::mem::take(
             &mut witness_trace.range_check_16_lookup_mapping[relation.lookup_set_index],
-            vec![],
         );
         let source_ref = &source;
         assert_eq!(source.len(), trace_len);
@@ -31,6 +34,10 @@ pub(crate) fn evaluate_single_column_lookup_relation<
                 assert_eq!(dest.len(), 1);
                 let mut dest = dest;
                 let dest = dest.pop().unwrap();
+                #[expect(
+                    clippy::needless_range_loop,
+                    reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                )]
                 for i in 0..chunk_size {
                     let row = chunk_start + i;
                     let mapping_index = source_ref[row];
@@ -66,9 +73,8 @@ pub(crate) fn evaluate_single_column_lookup_relation<
             },
         );
     } else if range_check_width == TIMESTAMP_COLUMNS_NUM_BITS {
-        let source = std::mem::replace(
+        let source = std::mem::take(
             &mut witness_trace.timestamp_range_check_lookup_mapping[relation.lookup_set_index],
-            vec![],
         );
         let source_ref = &source;
         assert_eq!(source.len(), trace_len);
@@ -81,6 +87,10 @@ pub(crate) fn evaluate_single_column_lookup_relation<
                 assert_eq!(dest.len(), 1);
                 let mut dest = dest;
                 let dest = dest.pop().unwrap();
+                #[expect(
+                    clippy::needless_range_loop,
+                    reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                )]
                 for i in 0..chunk_size {
                     let row = chunk_start + i;
                     let mapping_index = source_ref[row];

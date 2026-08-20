@@ -9,12 +9,10 @@ use merkle_trees::DefaultTreeConstructor;
 use prover::cs::gkr_compiler::GKRCircuitArtifact;
 use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
-use prover::field::*;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use prover::gkr::witness_gen::oracles::*;
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use prover::tracers::*;
 use prover::*;
 use riscv_transpiler::cycle::*;
 use std::alloc::Global;
@@ -116,7 +114,7 @@ pub fn make_setup_for_non_mem_circuit<
     let table_driver = circuit_common::risc_v_non_mem_get_table_driver::<BabyBearField, C>();
     let setup = GKRSetup::construct(
         &table_driver,
-        &decoder_table_data,
+        decoder_table_data,
         1 << C::DOMAIN_SIZE_LOG2,
         &circuit,
     );
@@ -160,7 +158,7 @@ pub fn make_setup_for_with_mem_circuit<
         circuit_common::risc_v_with_mem_get_table_driver::<BabyBearField, C>(bytecode);
     let setup = GKRSetup::construct(
         &table_driver,
-        &decoder_table_data,
+        decoder_table_data,
         1 << C::DOMAIN_SIZE_LOG2,
         &circuit,
     );
@@ -239,10 +237,10 @@ pub struct DelegationCircuitSetupParams {
 }
 
 pub fn compute_setup_commitment(
-    setup: GKRSetup<BabyBearField>,
-    cap_size: usize,
+    _setup: GKRSetup<BabyBearField>,
+    _cap_size: usize,
     lde_factor: usize,
-    worker: &Worker,
+    _worker: &Worker,
 ) -> MerkleTreeCapVarLength {
     assert!(lde_factor.is_power_of_two());
 

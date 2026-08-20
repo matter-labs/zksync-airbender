@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, Rand};
+use field::{Field, Mersenne31Field, Mersenne31Quartic, Rand};
 use rand::SeedableRng;
 use worker::Worker;
 
@@ -21,7 +21,6 @@ fn test_quadratic_constraint_with_constant() {
     type F = Mersenne31Field;
     type E = Mersenne31Quartic;
 
-    use rand::Rng;
     let mut seed = [0u8; 32];
     seed[0] = 42;
     let mut rng = rand::rngs::StdRng::from_seed(seed);
@@ -47,8 +46,10 @@ fn test_quadratic_constraint_with_constant() {
         .collect();
 
     let mut storage = GKRStorage::<F, E>::default();
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     layer_0.base_field_inputs.insert(
         GKRAddress::BaseLayerMemory(0),
         BaseFieldPoly::new(a.into_boxed_slice()),
@@ -106,7 +107,7 @@ fn test_quadratic_constraint_with_constant() {
     let kernel = BatchConstraintEvalGKRRelation::new(&constraint, E::random_element(&mut rng));
 
     let previous_round_challenges: Vec<E> = (0..FOLDING_STEPS)
-        .map(|el| E::random_element(&mut rng))
+        .map(|_el| E::random_element(&mut rng))
         .collect();
     // dbg!(&previous_round_challenges);
 
@@ -150,7 +151,7 @@ fn test_quadratic_constraint_with_constant() {
 
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
-                &eq,
+                eq,
                 &worker,
             );
 
@@ -216,7 +217,7 @@ fn test_quadratic_constraint_with_constant() {
             );
 
             // we would commit those values
-            assert!(last_evaluations.len() > 0);
+            assert!(!last_evaluations.is_empty());
 
             // in the accumulator we should have kernel(X(b), Y(b)) (batched), and now we can just multiply corresponding coordinates
             // over (1 - previous_round_challenges[last]) and previous_round_challenges[last], and add them up to verify that they match the claim
@@ -228,7 +229,7 @@ fn test_quadratic_constraint_with_constant() {
 
             // [eq(r_last, 0) * A(r'.., 0) * B(r'..., 0) + eq(r_last, 1) * A(r'..., 1) * B(r'..., 1)] of the example above
             let [[f0, f1]] = accumulator;
-            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(&previous_round_last_challenge);
+            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(previous_round_last_challenge);
 
             dbg!([f0, f1]);
             dbg!([eq0, eq1]);
@@ -246,7 +247,8 @@ fn test_quadratic_constraint_with_constant() {
             // derive new claims
 
             let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges, &worker);
-            for poly in [GKRAddress::BaseLayerMemory(0)] {
+            {
+                let poly = GKRAddress::BaseLayerMemory(0);
                 let evals = &storage.layers[0]
                     .base_field_inputs
                     .get(&poly)

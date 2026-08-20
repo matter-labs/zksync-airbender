@@ -32,7 +32,7 @@ pub fn multivariate_coeffs_into_hypercube_evals<F: Field>(input: &mut [F], size_
 
     // first round for simplicity
     for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
-        b.add_assign(&a);
+        b.add_assign(a);
     }
 
     let mut stride = 2;
@@ -102,7 +102,7 @@ pub fn multivariate_hypercube_evals_into_coeffs_radix4<F: Field>(input: &mut [F]
     }
     if remaining == 1 {
         for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
-            b.sub_assign(&a);
+            b.sub_assign(a);
         }
     }
 }
@@ -302,7 +302,7 @@ pub fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_
     }
 
     for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
-        b.sub_assign(&a);
+        b.sub_assign(a);
     }
 }
 

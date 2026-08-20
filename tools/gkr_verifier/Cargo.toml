@@ -28,6 +28,12 @@ mop_extension = ["verifier_common/mop_extension"]
 modular_fma = ["verifier_common/modular_fma", "field/modular_fma"]
 special_opcodes_extension = ["verifier_common/special_opcodes_extension"]
 no_caches = ["verifier_common/no_caches"]
+# The generated verifier code (pulled in by #[path] from
+# verifier/src/generated/) emits `#[cfg(feature = "verifier_stats")]`. Without
+# this passthrough the feature is undeclared here and every such site is an
+# `unexpected_cfgs` warning -- 716 of them across the bins. Same fix as
+# full_statement_verifier's.
+verifier_stats = ["verifier_common/verifier_stats"]
 default = ["blake2_with_compression"]
 
 [[bin]]

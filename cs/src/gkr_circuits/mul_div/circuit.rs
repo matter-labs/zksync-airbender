@@ -124,7 +124,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
     //     println!("RS2 value = 0x{:08x}", rs2_reg);
     // }
 
-    if SUPPORT_SIGNED == false {
+    if !SUPPORT_SIGNED {
         let is_mul = decoder.is_mul();
         let is_mulhu = decoder.is_mulhu();
         let is_divu = decoder.is_divu();
@@ -596,7 +596,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                 }
 
                 // actually assign
-                if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+                if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
                     placer.assign_u32_from_u16_parts(rd_write_limbs, &rd_value);
                 }
 
@@ -791,11 +791,12 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
 
             for i in 0..4 {
                 // `i` marks u16-ish chunks over which we accumulate
-                // schoolbook multplication terms
+                // schoolbook multiplication terms
                 // println!("Computing enforcement on limb {}", i);
 
                 let mut expr = Expr::<F>::zero();
 
+                #[expect(clippy::needless_range_loop)]
                 for j in 0..4 {
                     let q_byte = &quotient_bytes[j];
                     for k in 0..4 {
@@ -908,7 +909,7 @@ pub fn mul_div_circuit_with_preprocessed_bytecode_for_gkr<
         UNSIGNED_MUL_DIV_FAMILY_NUM_FLAGS
     };
     let (input, bitmask) = cs.allocate_machine_state(false, false, num_flags);
-    let bitmask: Vec<_> = bitmask.into_iter().map(|el| Boolean::Is(el)).collect();
+    let bitmask: Vec<_> = bitmask.into_iter().map(Boolean::Is).collect();
     let decoder = DivMulFamilyCircuitMask::<SUPPORT_SIGNED>::from_mask(&bitmask);
     apply_mul_div_inner::<F, CS, SUPPORT_SIGNED>(cs, input, decoder);
 }
@@ -918,15 +919,10 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::circuit_impl::BasicAssembly;
-    use crate::cs::circuit_output::CircuitOutput;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
-    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
-
-    type F = ::field::Mersenne31Field;
 
     // fn named_variable(output: &CircuitOutput<F>, expected_name: &str) -> Variable {
     //     output
