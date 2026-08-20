@@ -262,3 +262,65 @@ pub(super) fn stage1_subcaps_from_cap(
         })
         .collect_vec()
 }
+
+fn canonical_serialized_bytes_for_test<T: serde::Serialize>(value: &T) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    serde_json::to_writer_pretty(&mut bytes, value).unwrap();
+    bytes
+}
+
+pub(super) fn assert_serialized_bytes_eq_for_test<T: serde::Serialize>(
+    cpu: &T,
+    gpu: &T,
+    label: &str,
+) {
+    let cpu_bytes = canonical_serialized_bytes_for_test(cpu);
+    let gpu_bytes = canonical_serialized_bytes_for_test(gpu);
+    if cpu_bytes == gpu_bytes {
+        return;
+    }
+    let first_diff = cpu_bytes
+        .iter()
+        .zip(gpu_bytes.iter())
+        .position(|(cpu_byte, gpu_byte)| cpu_byte != gpu_byte)
+        .unwrap_or_else(|| cpu_bytes.len().min(gpu_bytes.len()));
+    let window = |bytes: &[u8]| {
+        let start = first_diff.saturating_sub(32);
+        let end = (first_diff + 32).min(bytes.len());
+        String::from_utf8_lossy(&bytes[start..end]).into_owned()
+    };
+    panic!(
+        "{label}: serialized bytes diverged at offset {first_diff} \
+         (cpu {} bytes, gpu {} bytes)\n  cpu: {}\n  gpu: {}",
+        cpu_bytes.len(),
+        gpu_bytes.len(),
+        window(&cpu_bytes),
+        window(&gpu_bytes),
+    );
+}
+
+// Deliberately not called from the structural oracles: full-proof serialized
+// equality cannot go green until the deferred GKR LSB plan lands, which owns
+// wiring this canary in.
+#[allow(dead_code)]
+pub(super) fn assert_serialized_proof_bytes_eq(
+    cpu: &GKRProof<BF, E4, DefaultTreeConstructor>,
+    gpu: &GKRProof<BF, E4, DefaultTreeConstructor>,
+) {
+    assert_serialized_bytes_eq_for_test(cpu, gpu, "GKR proof");
+}
+
+#[test]
+fn serialized_proof_bytes_canary_accepts_identical_values() {
+    let schedule = WhirSchedule::default();
+    assert_serialized_bytes_eq_for_test(&schedule, &schedule.clone(), "whir schedule");
+}
+
+#[test]
+#[should_panic(expected = "serialized bytes diverged at offset")]
+fn serialized_proof_bytes_canary_rejects_mutated_values() {
+    let schedule = WhirSchedule::default();
+    let mut mutated = schedule.clone();
+    mutated.cap_size += 1;
+    assert_serialized_bytes_eq_for_test(&schedule, &mutated, "whir schedule");
+}
