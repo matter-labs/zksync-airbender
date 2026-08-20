@@ -299,6 +299,7 @@ pub(super) fn assert_gkr_proof_eq_for_test(
         actual.batched_proximity_check_pow_nonce, expected.batched_proximity_check_pow_nonce,
         "batched-proximity-check PoW nonce diverged",
     );
+    assert_serialized_proof_bytes_eq(expected, actual);
 }
 
 pub(super) fn assert_gkr_proof_structure_for_test(
@@ -389,10 +390,9 @@ pub(super) fn assert_serialized_bytes_eq_for_test<T: serde::Serialize>(
     );
 }
 
-// Deliberately not called from the structural oracles: full-proof serialized
-// equality cannot go green until the deferred GKR LSB plan lands, which owns
-// wiring this canary in.
-#[allow(dead_code)]
+// The terminal gate of the MSB->LSB migration, and the last step of
+// `assert_gkr_proof_eq_for_test`: the field-by-field asserts above name a
+// diverging field, this one catches anything they do not walk.
 pub(super) fn assert_serialized_proof_bytes_eq(
     cpu: &GKRProof<BF, E4, DefaultTreeConstructor>,
     gpu: &GKRProof<BF, E4, DefaultTreeConstructor>,
