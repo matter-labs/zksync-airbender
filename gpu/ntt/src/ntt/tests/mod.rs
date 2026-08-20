@@ -6,7 +6,7 @@ use era_cudart::stream::CudaStream;
 use worker::Worker;
 
 use super::{
-    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_evals_natural_to_bitreversed_coeffs,
+    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_evals_to_monomial_coeffs,
     natural_evals_to_bitreversed_coeffs,
 };
 use crate::ntt_twiddles::DeviceContext;
@@ -94,7 +94,7 @@ fn cpu_characterize_hypercube_ordering() {
 
 #[test]
 #[cfg(not(no_cuda))]
-fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
+fn hypercube_evals_to_monomial_coeffs_matches_cpu() {
     let context = make_context();
     let stream = context.get_exec_stream();
 
@@ -111,7 +111,7 @@ fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
         let mut src = context.alloc(n).unwrap();
         let mut dst = context.alloc(n).unwrap();
         memory_copy_async(&mut src, &evals, stream).unwrap();
-        hypercube_evals_natural_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
+        hypercube_evals_to_monomial_coeffs(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
         memory_copy_async(&mut actual, &dst, stream).unwrap();
@@ -155,9 +155,10 @@ fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
 }
 
 // Independent host oracle for the FORWARD hypercube launcher family
-// (`hypercube_coeffs_bitrev_to_bitrev_evals`, consumed by gpu_circuit_prover's
-// whir fold). It is the exact inverse of the line-above
-// `hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu` oracle chain:
+// (`hypercube_coeffs_bitrev_to_bitrev_evals`; its only caller, gpu_whir's
+// coset-0 batching arm, was retired in 0969fb98, so this test is now its sole
+// guard). It is the exact inverse of the line-above
+// `hypercube_evals_to_monomial_coeffs_matches_cpu` oracle chain:
 // the input is bitreversed coefficients, and the pure-CPU expected side is
 // `bitrev(coeffs) -> multivariate_coeffs_into_hypercube_evals -> bitrev`
 // (using the FORWARD CPU reference, not the inverse one). No GPU kernel
@@ -1730,11 +1731,11 @@ fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2
 }
 
 // Pins the monomial LABELING of both halves of the sub-floor commit chain, on
-// coset 0 where no coset shift applies. `hypercube_x1_msb_evals_to_x1_msb_monomials`
+// coset 0 where no coset shift applies. `hypercube_evals_to_monomials`
 // is a Mobius transform, and Mobius commutes with bit-reversal (`P*M*P == M`,
 // one stage per bit with the same 2x2 matrix), so it PRESERVES its input's
-// labeling: its output equals the CPU coefficient array unpermuted, and its
-// name asserts a convention it does not impose. The legacy
+// labeling: its output equals the CPU coefficient array unpermuted, whatever
+// any name in this family claims. The legacy
 // `bitreversed_monomials_to_natural_evals_multi_coset` family then reads that
 // natural array as bitreversed, so coset 0 carries the BITREV labeling and is
 // NOT the CPU codeword — the sub-floor arm gpu_trace documents as right row
@@ -1745,10 +1746,7 @@ fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2
 #[test]
 #[cfg(not(no_cuda))]
 fn hypercube_monomials_are_natural_and_bitreversed_lde_relabels_them() {
-    use super::{
-        bitreversed_monomials_to_natural_evals_multi_coset,
-        hypercube_x1_msb_evals_to_x1_msb_monomials,
-    };
+    use super::{bitreversed_monomials_to_natural_evals_multi_coset, hypercube_evals_to_monomials};
     use gpu_core::primitives::device_structures::DeviceMatrixChunk;
 
     let ctx = make_context();
@@ -1808,7 +1806,7 @@ fn hypercube_monomials_are_natural_and_bitreversed_lde_relabels_them() {
         let mut d_mono = ctx.alloc::<BF>(n).unwrap();
         let mut d_out = ctx.alloc::<BF>(num_cosets * n).unwrap();
         memory_copy_async(&mut d_in, &evals[..], stream).unwrap();
-        hypercube_x1_msb_evals_to_x1_msb_monomials(
+        hypercube_evals_to_monomials(
             &d_in[..],
             &mut d_mono[..],
             log_n,

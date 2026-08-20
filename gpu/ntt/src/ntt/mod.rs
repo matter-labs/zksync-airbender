@@ -62,7 +62,7 @@ pub use lde::{
 pub(crate) use strategy::{select_ntt_strategy, NttDirection, NttKernelKind, NttStrategy};
 
 mod hypercube;
-pub use hypercube::hypercube_x1_msb_evals_to_x1_msb_monomials;
+pub use hypercube::hypercube_evals_to_monomials;
 #[cfg(test)]
 pub(crate) use hypercube::{
     hypercube_evals_to_monomials_2_pass, hypercube_evals_to_monomials_3_pass,
@@ -70,7 +70,7 @@ pub(crate) use hypercube::{
 
 cuda_kernel!(
     HypercubeStage,
-    ab_hypercube_evals_natural_to_bitreversed_coeffs_stage_kernel(
+    ab_hypercube_evals_to_monomial_coeffs_stage_kernel(
         values: *mut BF,
         log_n: u32,
         stage: u32,
@@ -143,7 +143,13 @@ fn launch_natural_evals_to_bitreversed_coeffs_ntt_stage(
     NaturalEvalsToBitreversedCoeffsNttStageFunction::default().launch(&config, &args)
 }
 
-pub(crate) fn hypercube_evals_natural_to_bitreversed_coeffs(
+/// Multilinear hypercube evaluations -> multilinear monomial coefficients, one
+/// butterfly stage per variable. This is the Mobius transform, and Mobius
+/// commutes with bit-reversal (`P*M*P == M`: every stage applies the same 2x2
+/// matrix to a distinct index bit, so conjugating by `P` only permutes the
+/// tensor factors). It therefore PRESERVES whatever labeling its input had —
+/// no name here can decide the labeling question, only measuring the array can.
+pub(crate) fn hypercube_evals_to_monomial_coeffs(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -157,8 +163,7 @@ pub(crate) fn hypercube_evals_natural_to_bitreversed_coeffs(
         return Ok(());
     }
 
-    // Run the inverse-hypercube butterflies directly on the source slice and land in
-    // bitreversed monomial order without any extra permutation pass.
+    // Butterflies run in place on the copy; no permutation pass.
     for stage in (0..log_n).rev() {
         launch_hypercube_stage(dst, log_n, stage, stream)?;
     }

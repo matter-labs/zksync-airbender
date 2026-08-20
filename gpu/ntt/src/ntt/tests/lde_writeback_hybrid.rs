@@ -6,8 +6,8 @@
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 
 use super::super::{
-    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_to_multi_coset_evals_fused,
-    hypercube_x1_msb_evals_to_x1_msb_monomials,
+    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_evals_to_monomials,
+    hypercube_to_multi_coset_evals_fused,
 };
 use super::make_context;
 use gpu_core::primitives::device_structures::DeviceMatrixChunk;
@@ -33,7 +33,7 @@ fn check_case(log_n: usize, log_lde_factor: usize) {
 
     // Old sequence: standalone hypercube final into scratch, then the
     // multi-coset initial path over the monomials.
-    hypercube_x1_msb_evals_to_x1_msb_monomials(
+    hypercube_evals_to_monomials(
         &d_in[..],
         &mut d_scratch_old[..],
         log_n,

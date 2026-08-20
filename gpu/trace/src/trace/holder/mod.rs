@@ -24,7 +24,7 @@ use gpu_hash::blake2s::{
     gather_leaf_rows_physical, gather_merkle_paths_device, gather_merkle_paths_from_rows_physical,
 };
 use gpu_ntt::ntt::{
-    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_x1_msb_evals_to_x1_msb_monomials,
+    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_evals_to_monomials,
     log_size_supports_natural_to_bitrev_lde, log_size_supports_transposed_monomials,
     natural_monomials_to_bitreversed_evals_multi_coset, MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
 };
@@ -407,7 +407,7 @@ impl TraceHolder<BF> {
                     // columns_count to write each coset's slab in one launch,
                     // replacing the per-coset NTT loop.
                     let backing_from_col = &mut backing[offset..];
-                    hypercube_x1_msb_evals_to_x1_msb_monomials(
+                    hypercube_evals_to_monomials(
                         source_column,
                         &mut coeff_scratch[0..domain_size],
                         log_n,

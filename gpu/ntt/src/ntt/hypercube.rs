@@ -7,7 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
 use super::shared;
-use super::{hypercube_evals_natural_to_bitreversed_coeffs, MIN_LOG_N_FOR_MULTISTAGE_KERNELS};
+use super::{hypercube_evals_to_monomial_coeffs, MIN_LOG_N_FOR_MULTISTAGE_KERNELS};
 
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::device_structures::{
@@ -289,7 +289,15 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
     Ok(())
 }
 
-pub fn hypercube_x1_msb_evals_to_x1_msb_monomials(
+/// Multilinear hypercube evaluations -> multilinear monomial coefficients, the
+/// multistage form of [`super::hypercube_evals_to_monomial_coeffs`] (which
+/// serves the sub-floor fallback below). Being a Mobius transform it PRESERVES
+/// its input's labeling; production feeds it the natural-order evaluation form
+/// and the coefficients come out natural too, matching the CPU's
+/// `multivariate_hypercube_evals_into_coeffs`
+/// (prover/src/gkr/whir/hypercube_to_monomial.rs). Pinned by gpu_ntt's
+/// `hypercube_monomials_are_natural_and_bitreversed_lde_relabels_them`.
+pub fn hypercube_evals_to_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -314,7 +322,7 @@ pub fn hypercube_x1_msb_evals_to_x1_msb_monomials(
         let inputs_slice = &(inputs_matrix.slice())[inputs_offset..];
         let outputs_slice = &mut (outputs_matrix.slice_mut())[outputs_offset..];
         for col in 0..cols {
-            hypercube_evals_natural_to_bitreversed_coeffs(
+            hypercube_evals_to_monomial_coeffs(
                 &inputs_slice[col * inputs_stride..col * inputs_stride + rows],
                 &mut outputs_slice[col * outputs_stride..col * outputs_stride + rows],
                 log_n,

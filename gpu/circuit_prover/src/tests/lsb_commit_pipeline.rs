@@ -15,7 +15,7 @@ use gpu_hash::blake2s::{
     gather_tree_caps_inline, Digest, OracleGatherDesc, OraclePartialPathDesc, STATE_SIZE,
 };
 use gpu_ntt::ntt::{
-    hypercube_x1_msb_evals_to_x1_msb_monomials, natural_monomials_to_bitreversed_evals_multi_coset,
+    hypercube_evals_to_monomials, natural_monomials_to_bitreversed_evals_multi_coset,
 };
 use gpu_trace::trace::holder::{
     build_full_trees_from_physical, TraceHolder, TreesCacheMode, TreesHolder,
@@ -229,7 +229,7 @@ fn gpu_commit_and_query(
     {
         let source = DeviceMatrix::new(holder.get_hypercube_evals(), rows);
         let mut destination = DeviceMatrixMut::new(&mut monomials, rows);
-        hypercube_x1_msb_evals_to_x1_msb_monomials(
+        hypercube_evals_to_monomials(
             &source,
             &mut destination,
             log_n as usize,

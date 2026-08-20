@@ -33,7 +33,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use gpu_gkr::proof_layout::ProofLayout;
-use gpu_ntt::ntt::hypercube_x1_msb_evals_to_x1_msb_monomials;
+use gpu_ntt::ntt::hypercube_evals_to_monomials;
 #[cfg(test)]
 use gpu_ops::simple::{add, mul, mul_into_x};
 use gpu_ops::transpose::transpose;
@@ -262,7 +262,7 @@ pub(super) fn initialize_batched_monomial_form(
     // `state.sumchecked_poly_evaluation_form`, so no separate serialize pass.
     let vectorized_batched_evals_matrix = DeviceMatrix::new(&*vectorized_scratch, trace_len);
 
-    hypercube_x1_msb_evals_to_x1_msb_monomials(
+    hypercube_evals_to_monomials(
         &vectorized_batched_evals_matrix,
         &mut state.sumchecked_poly_monomial_form,
         log_domain_size,
