@@ -1,13 +1,13 @@
 # Historical cross-circuit and global-composition examples
 
-These cases isolate failures in invariants that span proofs, chunks, circuit families, memory products, delegation streams, or machine-state transitions. Prover-only cases are included only when they construct data consumed by the global verifier relation.
+These cases isolate failures in invariants that span proofs, chunks, circuit families, memory products, delegation streams, or machine-state transitions. Each case distinguishes an accepted-proof soundness gap from prover/verifier parity, reachability, and honest-proof completeness. Prover-only cases are included only when they construct data consumed by the global verifier relation.
 
 | # | Example | Fix | Primary failure |
 |---:|---|---|---|
-| 1 | [Delegation setup was checked only once](01-delegation-setup-check-once.md) | `32edde7`, PR #21 | setup identity gap |
+| 1 | [Delegation setup was checked only for the first proof](01-delegation-setup-check-once.md) | `32edde7`, PR #21 | setup identity gap |
 | 2 | [Unified machine-state challenge was not compared](02-unified-machine-state-challenge.md) | `8ef06cf`, PR #225 | cross-proof challenge gap |
 | 3 | [A delegation chunk could be emitted before its circuit counter](03-delegation-counter-order.md) | `80e37e8` | chunk metadata/data mismatch |
-| 4 | [Timestamps were truncated through a legacy u16 parser](04-timestamp-u16-truncation.md) | `97dbacf`, PR #81 | state-domain truncation |
+| 4 | [Timestamp boundary checks reused a legacy u16-limb parser](04-timestamp-u16-truncation.md) | `97dbacf`, PR #81 | stale state-layout assumption |
 | 5 | [Unified circuit sequence used a dead legacy field](05-unified-circuit-sequence.md) | `85c4925` | wrong chunk identity check |
 | 6 | [Unified inits/teardowns used placeholder address windows](06-unified-it-address-windows.md) | `1581753`, PR #389 | wrong global RAM partition |
 | 7 | [Unified GPU permutation lost the prior accumulator](07-unified-permutation-prior-accumulator.md) | `361e73f`, PR #167 | grand-product chain break |

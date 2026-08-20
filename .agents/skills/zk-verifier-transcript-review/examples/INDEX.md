@@ -1,6 +1,6 @@
 # Historical transcript and proof-input examples
 
-These examples are confirmed transcript-state or prover-input bugs recovered from this repository's Git history. They are intentionally not loaded by `SKILL.md`: use them as a regression corpus, not as hints during a blind review.
+These examples are confirmed transcript-state or prover-input bugs recovered from this repository's Git history. Each case separates the protocol invariant, historical behavior, adversarial or honest-failure flow, security reachability, fix, and regression strategy. They are intentionally not loaded by `SKILL.md`: use them as a regression corpus, not as hints during a blind review.
 
 | # | Example | Fix | Primary failure |
 |---:|---|---|---|
@@ -10,8 +10,8 @@ These examples are confirmed transcript-state or prover-input bugs recovered fro
 | 4 | [Cached evaluations were absorbed in the wrong scope](04-cache-evaluations-loop-scope.md) | `c9d8620` | branch/loop transcript drift |
 | 5 | [Recursive WHIR cap was not absorbed](05-recursive-whir-cap-omitted.md) | `66ccc73` | missing commitment absorption |
 | 6 | [Recursive WHIR OOD value was not absorbed](06-recursive-whir-ood-omitted.md) | `1b2f74f` | missing prover-message absorption |
-| 7 | [Final WHIR monomials were not absorbed](07-final-whir-monomials-omitted.md) | `cb3787d` | challenge drawn before final message |
-| 8 | [GPU query draw advanced one digest too far](08-query-word-count-seed-drift.md) | `c1e0576` | squeeze-length mismatch |
+| 7 | [Final WHIR monomials were neither serialized nor absorbed](07-final-whir-monomials-omitted.md) | `cb3787d` | missing final message and absorption |
+| 8 | [GPU query drawing advanced the seed by one digest block too many](08-query-word-count-seed-drift.md) | `c1e0576` | squeeze-length mismatch |
 | 9 | [Zero-width base cap changed the GPU transcript](09-zero-width-cap-absorption.md) | `6bd4fdf` | empty/optional-path mismatch |
 | 10 | [Cache-dependency evaluations followed the batching challenge](10-extra-evals-after-batching-challenge.md) | `4e3142e` | wrong Fiat-Shamir order |
 | 11 | [Batching challenge lived inside an optional cache branch](11-batching-challenge-optional-scope.md) | `2df0dea` | optional-path challenge bug |

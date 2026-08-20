@@ -2,6 +2,8 @@
 
 These examples focus on acceptance boundaries: recursive public outputs, generated verifier identity, calldata consumption, Solidity/Yul checks, and proof-chain state. Generic transcript cases are not duplicated unless the failure is specific to the L1 handoff.
 
+Each card identifies the authenticated value, the untrusted representation or policy input crossing the boundary, the final rejecting predicate, and the relevant stage/program/configuration identity. The cards explicitly distinguish fail-open on-chain acceptance and cross-program replay from implementation mismatches that normally reject honest proofs unless another verifier shares the defect.
+
 | # | Example | Fix | Primary failure |
 |---:|---|---|---|
 | 1 | [EVM verifier omitted all LogUp identity checks](01-evm-logup-identities.md) | `bf9bd04` | missing acceptance gate |
@@ -21,4 +23,4 @@ These examples focus on acceptance boundaries: recursive public outputs, generat
 | 15 | [Unrolled recursion was not bound to the wrapped stage](15-unrolled-stage-binding.md) | `3e53f3f`, PR #329 | recursion-depth confusion |
 | 16 | [Unified recursion did not enforce terminal convergence](16-unified-convergence.md) | `3e53f3f`, PR #329 | intermediate-as-final acceptance |
 
-Early EVM work was prototype code, but each entry records a concrete pre-fix semantic failure rather than a generic unfinished feature.
+Early EVM work was prototype code, but each entry records a concrete pre-fix semantic failure rather than a generic unfinished feature. Reviewers should follow every predicate through compiled/generated control flow to all success exits and treat artifact metadata, calldata tags, and copied recursion hashes as prover-controlled until tied to trusted policy or authenticated verifier output.

@@ -2,6 +2,8 @@
 
 This repository's retained legacy history contains fewer confirmed FRI-specific fixes than GKR/WHIR fixes. These seven cases are the high-confidence legacy argument/verifier failures; no speculative WIP commits were added merely to reach a quota.
 
+The cards reconstruct the relevant quotient/AIR or generated-verifier boundary, state the intended expression/layout, and separate malformed honest-proof production from acceptance of a false claim. This is especially important for generator fixes: a bad quotient term usually causes a correct verifier to reject, while soundness impact requires the verifier or generated artifact to enforce the same wrong relation.
+
 | # | Example | Fix | Primary failure |
 |---:|---|---|---|
 | 1 | [Boundary check read the wrong grand-product column](01-grand-product-boundary-column.md) | `16b5aef` | quotient boundary index |
@@ -12,4 +14,4 @@ This repository's retained legacy history contains fewer confirmed FRI-specific 
 | 6 | [Cached lookup tables used the wrong row order](06-cached-table-row-order.md) | `b6142cd` | multiplicity/index mismatch |
 | 7 | [Circuit-sequence timestamp bound was hardcoded to u16](07-circuit-sequence-timestamp-bound.md) | `3f67e32`, PR #178 | large-trace completeness bug |
 
-Related circuit-owned cases, such as local AIR constraint omissions, remain in `zk-circuit-review/examples` to keep this corpus focused on the legacy argument and generated verifier.
+Related circuit-owned cases, such as local AIR constraint omissions, remain in `zk-circuit-review/examples` to keep this corpus focused on the legacy argument and generated verifier. Use the regression sections as cross-implementation oracles: direct AIR evaluation, quotient identities, serialized layout, and verifier evaluation should agree without sharing generated code.

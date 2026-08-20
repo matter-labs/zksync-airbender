@@ -2,6 +2,8 @@
 
 These examples concern protocol algebra, fold conventions, query geometry, or the immediate GKR-to-WHIR handoff. Transcript-only omissions and global-composition failures are indexed by their own specialists.
 
+Each card now records the bounded claim boundary, intended algebra/index convention, concrete failure flow, verifier-side acceptance consequences, and regression strategy. Several fixes repaired an honest prover or serializer; those cards explicitly distinguish producer parity/completeness from false acceptance and explain what additional shared-verifier defect would turn the mismatch into soundness impact.
+
 | # | Example | Fix | Primary failure |
 |---:|---|---|---|
 | 1 | [MaxQuadratic reused terms and polluted the quadratic coefficient](01-maxquadratic-coefficients.md) | `a514b2d` | wrong sumcheck polynomial |
@@ -17,4 +19,4 @@ These examples concern protocol algebra, fold conventions, query geometry, or th
 | 11 | [Unbalanced LogUp kernel added gamma twice](11-logup-additive-challenge-double-count.md) | `a1ae551` | wrong sumcheck gate polynomial |
 | 12 | [Dimension reduction confused output and input indices](12-dimension-reduction-index-space.md) | `5df7abb` | GKR layer index mismatch |
 
-The verifier-side audit lesson is the same for prover-parity cases: independently recompute the claimed polynomial, index, or fold relation; do not make acceptance track a shared buggy producer.
+The verifier-side audit lesson is the same for prover-parity cases: independently recompute the claimed polynomial, index, or fold relation; do not make acceptance track a shared buggy producer. During blind evaluation, the historical patch is evidence for the bug shape—not permission to report the producer defect as verifier soundness without tracing the accepting predicate.
