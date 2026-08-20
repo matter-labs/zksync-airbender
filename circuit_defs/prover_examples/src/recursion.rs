@@ -33,8 +33,6 @@
 #[cfg(all(test, feature = "verifiers"))]
 mod tests {
     use super::scripts::*;
-    use crate::unified::prove_unified_execution_with_replayer;
-    use crate::unrolled::prove_unrolled_execution_with_replayer;
     use crate::*;
     use full_statement_verifier::host_utils::{
         bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
@@ -42,6 +40,8 @@ mod tests {
         native_verify_unrolled, unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
     };
     use full_statement_verifier::program_proof::ProgramProof;
+    use program_prover::unified::prove_unified_execution_with_replayer;
+    use program_prover::unrolled::prove_unrolled_execution_with_replayer;
     use prover::definitions::SecurityLevel;
     use prover::worker::Worker;
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -440,7 +440,7 @@ mod scripts {
         type T = setups::Setups;
 
         let file_name = "recursion_layer_0_setups";
-        let data: T = crate::deserialize_from_file(&format!("{file_name}.json"));
+        let data: T = program_prover::deserialize_from_file(&format!("{file_name}.json"));
         serialize_compressed_to_file(&data, &format!("{file_name}.bin"));
     }
 }

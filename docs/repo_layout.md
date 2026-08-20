@@ -12,7 +12,9 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - full_statement_verifier/ - full stark verifier logic, with support for chunking
 - gpu/ - Rust->CUDA GPU prover crate stack (see the "gpu:" section under Prover Implementations)
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate
+- program_prover/ - CPU program proving engines (unrolled and unified execution)
 - prover/ - main cpu prover implementation with its 5 stages
+- prover_pipeline/ - production prove-to-artifact pipeline: base + recursion driver, CPU/GPU backends, proof artifact schema and verification
 - riscv_common/ - custom RiscV bytecode to be used by "kernel" OS programs
 - riscv_transpiler/ - bytecode preprocessing, transpiler VM execution, replay, and witness layouts used by the active proving path
 - tools/ - high-level shell programs used to conduct proving, gpu proving, and verification
@@ -32,6 +34,8 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - cpu:
     - circuit_defs/
         - trace_and_split/ - primary code to perform division of complex prover workload into batches
+    - program_prover/ - the CPU proving engines (unrolled and unified execution) that drive `prover`
+    - prover_pipeline/ - base + recursion driver over either backend, plus the proof artifact and its verification
     - prover/
         - prover_stages/ - contains all prover stages for a stark iop batch, stages 1-5 all feed into each other and output a final proof
         - merkle_trees/ - code optimised to perform merkle trees with trimmed tree root nodes and leaf packing of polynomials with shared columns
@@ -48,7 +52,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
     - whir/ (`gpu_whir`) - WHIR folding, query, and proof-of-work scheduling
     - circuit_prover/ (`gpu_circuit_prover`) - the CUDA-backed single-circuit proving pipeline over the trace, GKR, and WHIR crates
     - execution_prover/ (`gpu_execution_prover`) - the execution-level driver (`ExecutionProver`) that proves all of a program's circuits
-    - program_prover/ (`gpu_program_prover`) - the program-level driver + full recursion ladder; assembles proofs into `ProgramProof`, builds the non-determinism streams the `fsv_*` verifier binaries consume, and (behind a non-default `verifiers` feature) verifies proofs natively
+    - program_prover/ (`gpu_program_prover`) - the program-level driver + full recursion pipeline; assembles proofs into `ProgramProof`, builds the non-determinism streams the `fsv_*` verifier binaries consume, and (behind a non-default `verifiers` feature) verifies proofs natively
     - gkr_model/ (`gpu_gkr_model`) - pure-CPU model of the GKR layout (address audit, storage layout, circuit transform); no CUDA
     - gkr_compiler/ (`gpu_gkr_compiler`) - CPU-only compiler for committed forward schedules and backward VM programs; offline search is feature-gated
     - witness_eval_generator/ (`gpu_witness_eval_generator`) - pure-CPU Rust->CUDA codegen that emits the committed `witness_generation_fn.cuh` witness bodies

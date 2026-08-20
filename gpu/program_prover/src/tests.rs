@@ -149,7 +149,7 @@ fn test_program_prover_unified_base_layer_verify() {
 
 /// Unified counterpart of `test_program_prover_cpu_gpu_proof_diff`: prove
 /// multi_family_smoke on the CPU reference
-/// (`prover_examples::unified::prove_unified_execution_with_replayer`, which
+/// (`program_prover::unified::prove_unified_execution_with_replayer`, which
 /// asserts internal closure to ONE), verify it natively, then prove on GPU and
 /// diff the two `ProgramProof`s field by field.
 #[test]
@@ -170,7 +170,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
     let security_level = configuration.security_level;
 
     let (cpu_proof, cpu_setups) =
-        prover_examples::unified::prove_unified_execution_with_replayer::<std::alloc::Global>(
+        program_prover::unified::prove_unified_execution_with_replayer::<std::alloc::Global>(
             1 << 31,
             &padded_binary_image,
             &padded_text_section,
@@ -267,7 +267,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 }
 
 /// Diagnostic: prove the same binary + ND inputs on the CPU reference
-/// (`prover_examples::prove_unrolled_execution_with_replayer`), sanity-verify
+/// (`program_prover::prove_unrolled_execution_with_replayer`), sanity-verify
 /// the CPU proof natively, then diff the CPU-assembled `(ProgramProof, Setups)`
 /// against the GPU-assembled pair field by field to localize any divergence.
 #[test]
@@ -286,7 +286,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         &artifact_root().join("examples/hashed_fibonacci/app_blake2_with_compression.text"),
     );
     let worker = worker::Worker::new_with_num_threads(8);
-    let (cpu_proof, cpu_setups) = prover_examples::unrolled::prove_unrolled_execution_with_replayer::<
+    let (cpu_proof, cpu_setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
         riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
         std::alloc::Global,
     >(

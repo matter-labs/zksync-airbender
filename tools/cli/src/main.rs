@@ -3,7 +3,7 @@
 
 use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
-use cli_lib::prover_utils::{
+use prover_pipeline::{
     default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
     CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
     ProofTarget, ProverBackend,
@@ -425,7 +425,7 @@ fn run_cli() {
         Commands::Verify { proof, bin, text } => {
             let artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = ProgramSource::from_paths(bin, text);
-            let output = cli_lib::prover_utils::verify_artifact(&artifact, &source)
+            let output = prover_pipeline::verify_artifact(&artifact, &source)
                 .unwrap_or_else(|e| panic!("Verification failed: {}", e));
             println!("PROOF IS VALID. output={:?}", output);
         }

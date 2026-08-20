@@ -1,7 +1,11 @@
+#![feature(allocator_api)]
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
+
 //! Backend-generic recursion-pipeline driver for the CLI, built on the
 //! proving stack:
 //!
-//! - CPU proving: `prover_examples::{unrolled,unified}::prove_*_execution_with_replayer`.
+//! - CPU proving: `program_prover::{unrolled,unified}::prove_*_execution_with_replayer`.
 //! - GPU proving (behind the `gpu` feature): `gpu_execution_prover::ExecutionProver`
 //!   + `gpu_program_prover::assemble_program_proof`.
 //! - Protocol helpers (ND streams, end-params, recursion chain, fsv binaries,
@@ -312,7 +316,7 @@ impl ProveBackend for CpuBackend {
         let result = match kind {
             ExecutionKind::Unrolled => match machine {
                 MachineType::FullUnsigned => {
-                    prover_examples::unrolled::prove_unrolled_execution_with_replayer::<
+                    program_prover::unrolled::prove_unrolled_execution_with_replayer::<
                         IMStandardIsaConfigUnsignedMulDivOnly,
                         Global,
                     >(
@@ -328,7 +332,7 @@ impl ProveBackend for CpuBackend {
                     )
                 }
                 MachineType::Reduced => {
-                    prover_examples::unrolled::prove_unrolled_execution_with_replayer::<
+                    program_prover::unrolled::prove_unrolled_execution_with_replayer::<
                         ReducedMachineWithDelegation,
                         Global,
                     >(
@@ -348,7 +352,7 @@ impl ProveBackend for CpuBackend {
                 if machine != MachineType::Reduced {
                     return Err("unified proving supports only the reduced machine".to_string());
                 }
-                prover_examples::unified::prove_unified_execution_with_replayer::<Global>(
+                program_prover::unified::prove_unified_execution_with_replayer::<Global>(
                     cycles_bound,
                     &padded_bin,
                     &padded_text,
@@ -487,7 +491,7 @@ fn fsv_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("FSV_DIR") {
         return PathBuf::from(dir);
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../gkr_verifier")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier")
 }
 
 /// Advance a proof at some pipeline position to `target`. `state.proof` must be
@@ -1435,7 +1439,7 @@ mod recursion_binding_tests {
     #[test]
     fn find_binary_exit_point_on_real_binary() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/hashed_fibonacci/app_blake2_with_compression.bin");
+            .join("../examples/hashed_fibonacci/app_blake2_with_compression.bin");
         if !path.exists() {
             return; // repo layout changed; the synthetic test still covers the scan
         }
