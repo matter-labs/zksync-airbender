@@ -1,4 +1,3 @@
-#![feature(allocator_api)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
@@ -139,6 +138,8 @@ enum Commands {
         output_file: String,
         #[arg(long, value_enum, default_value = "recursion-unified")]
         target: ProofTarget,
+        #[arg(long, value_enum)]
+        backend: Option<ProverBackend>,
         #[arg(long, default_value_t = 1 << 31)]
         cpu_cycles_bound: usize,
         #[arg(long, default_value_t = 1 << 30)]
@@ -397,6 +398,7 @@ fn run_cli() {
             output_dir,
             output_file,
             target,
+            backend,
             cpu_cycles_bound,
             cpu_ram_bound,
             cpu_worker_threads,
@@ -405,7 +407,7 @@ fn run_cli() {
             let source = ProgramSource::from_paths(bin, text);
             let prover_config = make_prover_config(
                 target,
-                Some(ProverBackend::Cpu),
+                backend,
                 cpu_cycles_bound,
                 cpu_ram_bound,
                 cpu_worker_threads,

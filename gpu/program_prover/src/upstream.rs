@@ -1,6 +1,6 @@
 //! Single-file audit point for items this crate consumes from upstream crates
-//! (`full_statement_verifier`, `prover`, `setups`, `common_constants`,
-//! `verifier_common`). Same convention as `gpu_circuit_prover::upstream` /
+//! (`full_statement_verifier`, `prover`, `setups`, `verifier_common`). Same
+//! convention as `gpu_circuit_prover::upstream` /
 //! `gpu_execution_prover::upstream`: consumers import upstream items exclusively
 //! through `crate::upstream`.
 
@@ -23,10 +23,8 @@ pub use prover::definitions::SecurityLevel;
 // `setups` — the per-program setup-params entry the ND stream contract uses.
 pub use setups::UnrolledCircuitSetupParams;
 
-// `common_constants` — timestamp geometry for `proof_cycles`.
-pub use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
-
 // The recursion protocol helpers we asked upstream to export as library code.
+pub use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles;
 pub use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
     final_blake_mode, load_fsv_program, unified_switch_cycles, unrolled_blake_mode,
