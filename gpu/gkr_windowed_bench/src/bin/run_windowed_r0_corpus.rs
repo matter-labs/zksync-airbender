@@ -10,7 +10,6 @@ use clap::{Parser, Subcommand, ValueEnum};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Field;
 use gpu_gkr_compiler::backward::{compile_r0, R0LayerProgram, SOURCE_NONE};
-use gpu_gkr_compiler::GpuResourceProfile;
 use gpu_gkr_windowed_bench::abi::{BF, E4};
 use gpu_gkr_windowed_bench::census::CORPUS;
 use gpu_gkr_windowed_bench::r0_abi::{native_r0_abi_layout, rust_r0_abi_layout, R0AbiLayout};
@@ -1409,7 +1408,7 @@ fn load_cases() -> Result<Vec<R0Case>, Box<dyn std::error::Error>> {
         let artifact: GKRCircuitArtifact<BF> = serde_json::from_slice(&bytes)?;
         let dag = gkr_eval_ir::lower_dag(&artifact)?;
         gkr_eval_ir::validate(&dag).map_err(|error| format!("canonical DAG: {error}"))?;
-        let compiled = compile_r0(&dag, &GpuResourceProfile::production())?;
+        let compiled = compile_r0(&dag)?;
         for program in compiled.layers {
             let coordinate = bundle
                 .coordinates
