@@ -264,7 +264,13 @@ fn assert_trace_holder_materialization_and_caps_match_cpu(log_rows_per_leaf: u32
                 let mut gpu = vec![BF::ZERO; per_coset];
                 memory_copy_async(&mut gpu, segment, context.get_exec_stream()).unwrap();
                 context.get_exec_stream().synchronize().unwrap();
-                assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
+                let expected = bitreverse_coset_columns(
+                    &cpu_cosets[coset_idx],
+                    1,
+                    columns_count,
+                    log_domain_size,
+                );
+                assert_eq!(gpu, expected, "coset {}", coset_idx);
             }
         }
         CosetsHolder::None(_) => panic!("expected Full cosets in test"),
@@ -338,7 +344,13 @@ fn trace_holder_lazy_coset_materialization_matches_cpu() {
                 let mut gpu = vec![BF::ZERO; per_coset];
                 memory_copy_async(&mut gpu, segment, context.get_exec_stream()).unwrap();
                 context.get_exec_stream().synchronize().unwrap();
-                assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
+                let expected = bitreverse_coset_columns(
+                    &cpu_cosets[coset_idx],
+                    1,
+                    columns_count,
+                    log_domain_size,
+                );
+                assert_eq!(gpu, expected, "coset {}", coset_idx);
             }
         }
         CosetsHolder::None(_) => panic!("expected Full cosets in test"),
@@ -388,7 +400,9 @@ fn trace_holder_cosets_view_is_contiguous_in_coset_major_order() {
 
     for coset_index in 0..lde_factor {
         let segment = &concat[coset_index * per_coset_len..(coset_index + 1) * per_coset_len];
-        assert_eq!(segment, &cpu_cosets[coset_index][..], "coset {coset_index}");
+        let expected =
+            bitreverse_coset_columns(&cpu_cosets[coset_index], 1, columns_count, log_domain_size);
+        assert_eq!(segment, &expected[..], "coset {coset_index}");
     }
 }
 
@@ -452,7 +466,7 @@ fn trace_holder_consolidated_cosets_matches_per_coset_views() {
 fn trace_holder_full_tree_view_is_contiguous_in_coset_major_order() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -500,7 +514,7 @@ fn trace_holder_full_tree_view_is_contiguous_in_coset_major_order() {
 fn trace_holder_partial_tree_view_is_contiguous_in_coset_major_order() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -548,7 +562,7 @@ fn trace_holder_partial_tree_view_is_contiguous_in_coset_major_order() {
 fn trace_holder_consolidated_tree_matches_per_coset_views() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -647,7 +661,7 @@ fn trace_holder_get_evaluations_returns_coset_zero_subrange() {
 fn trace_holder_consolidated_partial_tree_matches_per_coset_views() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -716,7 +730,7 @@ fn trace_holder_materialization_matches_stage1_caps_for_grouped_leafs() {
 fn trace_holder_queries_match_across_tree_cache_modes() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -1109,6 +1123,99 @@ fn full_tree_from_physical_leaves_matches_natural_path() {
                         );
                     }
                 }
+            }
+        }
+    }
+}
+
+const PHYSICAL_PARTIAL_TREE_SHAPES: [(u32, u32); 2] = [(14, 1), (14, 5)];
+
+#[test]
+#[cfg(not(no_cuda))]
+fn partial_tree_from_physical_leaves_matches_natural_path() {
+    let stream = CudaStream::default();
+    let log_subtree_cap_size = 1u32;
+    for (log_domain_size, log_rows_per_leaf) in PHYSICAL_PARTIAL_TREE_SHAPES {
+        for log_lde_factor in [0u32, 1u32] {
+            for columns_count in [1usize, 3usize] {
+                let log_tree_cap_size = log_lde_factor + log_subtree_cap_size;
+                let cosets_in_tile = 1usize << log_lde_factor;
+                let rows_count = 1usize << log_domain_size;
+                let leaves_count = rows_count >> log_rows_per_leaf;
+                let per_coset_evals_stride = columns_count * rows_count;
+                let per_coset_tree_stride = (leaves_count << 1) >> PARTIAL_TREE_REDUCTION_LAYERS;
+                let trees_len = per_coset_tree_stride * cosets_in_tile;
+                let label = format!(
+                    "n={log_domain_size} b={log_rows_per_leaf} cosets={cosets_in_tile} \
+                     cols={columns_count}"
+                );
+
+                let natural = deterministic_values(per_coset_evals_stride * cosets_in_tile);
+                let physical = bitreverse_coset_columns(
+                    &natural,
+                    cosets_in_tile,
+                    columns_count,
+                    log_domain_size,
+                );
+
+                let mut natural_device = RawDeviceAllocation::alloc(natural.len()).unwrap();
+                let mut physical_device = RawDeviceAllocation::alloc(physical.len()).unwrap();
+                memory_copy_async(&mut natural_device, &natural, &stream).unwrap();
+                memory_copy_async(&mut physical_device, &physical, &stream).unwrap();
+
+                let sentinel = vec![[0xdead_beefu32; 8]; trees_len];
+                let mut old_tree = RawDeviceAllocation::<Digest>::alloc(trees_len).unwrap();
+                let mut new_tree = RawDeviceAllocation::<Digest>::alloc(trees_len).unwrap();
+                memory_copy_async(&mut old_tree, &sentinel, &stream).unwrap();
+                memory_copy_async(&mut new_tree, &sentinel, &stream).unwrap();
+
+                commit_trace_with_partial_tree_multi_coset(
+                    &natural_device,
+                    &mut old_tree,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                    columns_count,
+                    cosets_in_tile,
+                    &stream,
+                )
+                .unwrap();
+                build_partial_trees_from_physical(
+                    &physical_device,
+                    &mut new_tree,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                    columns_count,
+                    cosets_in_tile,
+                    &stream,
+                )
+                .unwrap();
+
+                let mut old_host = vec![Digest::default(); trees_len];
+                let mut new_host = vec![Digest::default(); trees_len];
+                memory_copy_async(&mut old_host, &old_tree, &stream).unwrap();
+                memory_copy_async(&mut new_host, &new_tree, &stream).unwrap();
+                stream.synchronize().unwrap();
+                assert_eq!(new_host, old_host, "{label}: partial tree backing");
+
+                let old_caps = gather_caps_synchronously(
+                    &old_tree,
+                    per_coset_tree_stride,
+                    log_lde_factor,
+                    log_subtree_cap_size,
+                    &stream,
+                );
+                let new_caps = gather_caps_synchronously(
+                    &new_tree,
+                    per_coset_tree_stride,
+                    log_lde_factor,
+                    log_subtree_cap_size,
+                    &stream,
+                );
+                assert_eq!(new_caps, old_caps, "{label}: unified cap");
             }
         }
     }

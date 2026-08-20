@@ -229,6 +229,13 @@ pub fn log_size_supports_transposed_monomials(log_n: usize) -> bool {
     log_n >= MIN_LOG_N_FOR_MULTISTAGE_KERNELS
 }
 
+/// `true` when [`natural_monomials_to_bitreversed_evals_multi_coset`] has a
+/// dispatch family for `log_n`. That entry panics outside its range, so callers
+/// that must also serve smaller domains probe here first.
+pub fn log_size_supports_natural_to_bitrev_lde(log_n: usize) -> bool {
+    (strategy::TWO_PASS_COMPACT_MIN_LOG_N..=strategy::NATURAL_TO_BITREV_MAX_LOG_N).contains(&log_n)
+}
+
 cuda_kernel_signature_arguments_and_function!(
     TransformWhirLeavesFromNttMultiCoset,
     src: PtrAndStride<BF>,
