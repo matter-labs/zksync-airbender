@@ -58,7 +58,7 @@ type UnifiedProof = GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor
 /// Replay the captured execution into a single unified-circuit witness buffer.
 /// Mirrors `replay_non_mem_circuit_family` from the unrolled example but emits
 /// the unified tracing-data layout for the single reduced-machine circuit.
-fn replay_unified_circuit<C: Counters>(
+pub(crate) fn replay_unified_circuit<C: Counters>(
     initial_counters: C,
     snapshotter: &SimpleSnapshotter<
         C,

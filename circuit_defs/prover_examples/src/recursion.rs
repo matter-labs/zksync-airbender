@@ -655,24 +655,31 @@ mod tests {
         panic!("no fixed point within {MAX_LAYERS} special-opcodes layers");
     }
 
-    /// Stage-B research for the L1 feed: prove the final recursion layers
-    /// under the high-LDE "L1 feeder" config (base LDE 16, round-0 queries
-    /// 87 -> 22) so their verification gets cheap enough for the L1 (Proth120)
-    /// wrapper's 2^22-cycle unified circuit. Starting from the delegation-free
-    /// special-opcodes fixed point (`spec_layer_0`, 3 chunks at lde 2), each
-    /// iteration proves the previous proof's verification run WITH the feeder
-    /// config and measures how many cycles verifying the RESULT takes (with
-    /// the feeder special-opcodes fsv binary). Stops on success (fits 2^22) or
-    /// on a non-contracting fixed point. Prints cycles + chunk grids at every
-    /// stage. Needs the caches of `test_special_opcodes_convergence_research`
-    /// and the feeder fsv binary
+    /// Stage-B research for the L1 feed: prove the final recursion layers as
+    /// DELEGATION-FREE unified circuits committed in MERGED memory+witness
+    /// mode under the high-LDE "L1 feeder" config (every oracle domain at
+    /// BabyBear's 2^27 two-adicity cap, plain-text 2^3 tail, pow-tuned
+    /// queries), so their verification gets cheap enough for the L1 (Proth120)
+    /// wrapper's 2^22-cycle unified circuit. Layer 0 proves the STANDARD
+    /// special-opcodes verifier run over the converged pipeline proof
+    /// (1 unified + 1 blake — the feeder input); every later layer proves the
+    /// MERGED-mode feeder verifier run over the previous feeder proof. Each
+    /// iteration measures how many cycles verifying the result takes (the
+    /// measurement IS a full VM run of the feeder verifier, so it doubles as
+    /// the verification check). Stops on success (fits 2^22) or on a
+    /// non-contracting fixed point. Prints cycles + chunk grids at every
+    /// stage. Needs the caches of `test_recursive_proving_pipeline_zksync_os`
+    /// and the MERGED-mode feeder fsv binary
     /// (`dump_bin.sh --blake special_opcodes_extension
-    /// fsv_unified_recursion_layer_sec_100_l1_feeder`).
+    /// fsv_unified_recursion_layer_sec_100_l1_feeder`). Run once with
+    /// `--features gkr_self_checks` for the full self-checked validation of
+    /// the merged+feeder proving mode (layer caches then let a fast rerun
+    /// finish the convergence).
     #[test]
-    #[ignore = "manual research run (needs the special-opcodes convergence caches)"]
+    #[ignore = "manual research run (needs the converged pipeline caches)"]
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_l1_feeder_high_lde_research() {
-        use crate::unified::prove_unified_execution_with_replayer_with_unified_config;
+        use crate::unified_transition::prove_unified_transition_with_replayer;
         use verifier_common::fsv_binaries::BlakeMode;
         skip_if_ci!();
 
@@ -694,12 +701,13 @@ mod tests {
             (unified_chunks, delegations)
         }
 
-        // Input: the special-opcodes fixed point (delegation-free, lde 2).
+        // Input: the converged pipeline proof (1 unified chunk + 1 blake
+        // proof, standard schedule, separate commitment).
         let mut proof: ProgramProof =
-            try_deserialize_compressed_from_file(&format!("spec_layer_0_proof_{tags}.bin"))
-                .expect("run test_special_opcodes_convergence_research first");
+            try_deserialize_compressed_from_file(&format!("final_layer_0_proof_{tags}.bin"))
+                .expect("run test_recursive_proving_pipeline_zksync_os first");
         let mut setups: Setups =
-            try_deserialize_compressed_from_file(&format!("spec_layer_0_setups_{tags}.bin"))
+            try_deserialize_compressed_from_file(&format!("final_layer_0_setups_{tags}.bin"))
                 .unwrap();
 
         // Reconstruct the recursion chain through every cached stage.
@@ -721,18 +729,15 @@ mod tests {
                 format!("final_layer_0_proof_{tags}.bin"),
                 format!("final_layer_0_setups_{tags}.bin"),
             ),
-            (
-                format!("spec_layer_0_proof_{tags}.bin"),
-                format!("spec_layer_0_setups_{tags}.bin"),
-            ),
         ] {
             let p: ProgramProof = try_deserialize_compressed_from_file(&p_file).unwrap();
             let s: Setups = try_deserialize_compressed_from_file(&s_file).unwrap();
             chain.extend(&compute_end_params(&s, p.final_pc));
         }
 
-        // Layer-0 run verifies an lde-2 proof (standard special-opcodes fsv);
-        // all later runs verify feeder proofs (feeder special-opcodes fsv).
+        // Layer-0 run verifies the STANDARD separate-mode proof (standard
+        // special-opcodes fsv); all later runs verify MERGED feeder proofs
+        // (merged-mode feeder special-opcodes fsv).
         let (std_bin, std_text) = load_fsv_program(
             FSV_DIR,
             FsvProgram::UnifiedRecursionLayer,
@@ -777,21 +782,20 @@ mod tests {
                         try_deserialize_compressed_from_file(&s_file).unwrap(),
                     )
                 } else {
-                    let (mut np, ns) =
-                        prove_unified_execution_with_replayer_with_unified_config::<Global, _, _>(
-                            UNIFIED_CYCLES_BOUND,
-                            run_bin,
-                            run_text,
-                            use_caches,
-                            QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
-                            RAM_BOUND,
-                            &worker,
-                            SecurityLevel::Sec100,
-                            verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-                            &feeder_config,
-                            &DefaultBabyBearBackend::default(),
-                            &DefaultBabyBearGKRBackend::default(),
-                        );
+                    let (mut np, ns) = prove_unified_transition_with_replayer::<_, _>(
+                        UNIFIED_CYCLES_BOUND,
+                        run_bin,
+                        run_text,
+                        use_caches,
+                        QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
+                        RAM_BOUND,
+                        &worker,
+                        SecurityLevel::Sec100,
+                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                        &feeder_config,
+                        &DefaultBabyBearBackend::default(),
+                        &DefaultBabyBearGKRBackend::default(),
+                    );
                     np.set_recursion_chain(&chain);
                     serialize_compressed_to_file(&np, &p_file);
                     serialize_compressed_to_file(&ns, &s_file);

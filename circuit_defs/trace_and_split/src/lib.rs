@@ -13,6 +13,7 @@ use prover::cs::gkr_compiler::GKRCircuitArtifact;
 use prover::cs::utils::split_timestamp;
 use prover::definitions::FinalRegisterValue;
 use prover::gkr::prover::backend::{Backend, TwiddleSetOps};
+use setups::prover::field::baby_bear::base::BabyBearField;
 use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_memory_witness_for_delegation_circuit;
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
@@ -305,6 +306,86 @@ where
     let cap = mem.get_cap();
 
     println!("Unified memory commitment took {:?}", now.elapsed());
+
+    cap
+}
+
+/// [`commit_memory_tree_for_unified_circuits`] for the
+/// `CommitmentMode::MergedMemoryAndWitness` flow: commits the SINGLE merged
+/// memory+witness base tree (memory columns followed by witness columns —
+/// `commit_merged_memory_and_witness_subtrees`'s layout) whose cap seeds the
+/// permutation-argument Fiat-Shamir. Unlike the memory-only variant this needs
+/// the FULL witness, so it takes the whole [`setups::CircuitSetup`] and runs
+/// the unified witness evaluation internally.
+pub fn commit_merged_tree_for_unified_circuits<
+    EF: FieldExtension<BabyBearField> + Field,
+    T: ColumnMajorMerkleTreeConstructor<BabyBearField>,
+    A: GoodAllocator + 'static,
+    BE: Backend<BabyBearField, EF>,
+>(
+    backend: &BE,
+    unified_setup: &setups::CircuitSetup<A>,
+    witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
+    inits_and_teardowns: Vec<([Vec<BabyBearField>; 2], [Vec<BabyBearField>; 2])>,
+    twiddles: &BE::TwiddleSet,
+    prover_config: &ProverConfig,
+    worker: &Worker,
+) -> MerkleTreeCapVarLength {
+    use prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_subtrees;
+    use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
+    use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
+    use setups::UnrolledCircuitWitnessEvalFn;
+
+    let trace_len = twiddles.plain().domain_size;
+    assert_eq!(trace_len, unified_setup.trace_len);
+    assert!(witness_chunk.len() <= trace_len);
+    let now = std::time::Instant::now();
+
+    let Some(UnrolledCircuitWitnessEvalFn::Unified {
+        witness_fn,
+        decoder_table,
+    }) = unified_setup.witness_eval_fn.as_ref()
+    else {
+        panic!("the unified circuit setup must carry the unified witness eval fn")
+    };
+
+    let oracle = UnifiedRiscvCircuitOracle {
+        inner: witness_chunk,
+        decoder_table,
+    };
+
+    let witness_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
+        &unified_setup.compiled_circuit,
+        *witness_fn,
+        trace_len,
+        &oracle,
+        &unified_setup.table_driver,
+        worker,
+        Some(inits_and_teardowns),
+        Global,
+        Global,
+    );
+
+    println!(
+        "Materializing unified full witness for {} cycles took {:?}",
+        trace_len,
+        now.elapsed()
+    );
+
+    let merged = commit_merged_memory_and_witness_subtrees::<BabyBearField, EF, T, _>(
+        backend,
+        &witness_trace,
+        twiddles,
+        prover_config.lde_factor,
+        prover_config.whir_schedule.whir_steps_schedule[0],
+        prover_config.cap_size,
+        trace_len.trailing_zeros() as usize,
+        worker,
+    );
+
+    let cap = merged.get_cap();
+
+    println!("Unified merged commitment took {:?}", now.elapsed());
 
     cap
 }

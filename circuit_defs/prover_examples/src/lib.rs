@@ -5,4 +5,8 @@
 pub use ::prover;
 pub use ::setups;
 
+pub mod unified;
+pub mod unified_transition;
+pub mod unrolled;
+
 mod recursion;

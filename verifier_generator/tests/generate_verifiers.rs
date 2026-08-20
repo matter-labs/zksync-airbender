@@ -68,15 +68,17 @@ fn generate_common<MW: FieldWrapper>() {
 fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     prover_config: &prover::gkr::prover_config::ProverConfig,
+    commitment_mode: &prover::gkr::prover::CommitmentMode,
     dir: &str,
 ) -> GKRGeneratedFiles {
     let compiled_circuit = circuit.compiled_circuit();
 
-    let files = gkr::generate_gkr_inlined::<MW>(
+    let files = gkr::generate_gkr_inlined_for_commitment_mode::<MW>(
         &compiled_circuit,
         prover_config.sumcheck_explicit_output_size_log_2,
         &prover_config.whir_schedule,
         prover_config.security_level.security_bits() as u32,
+        commitment_mode,
     );
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
@@ -149,16 +151,25 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
     level: SecurityLevel,
 ) {
     let prover_config = circuit.prover_config_for(level);
-    generate_verifier_for_circuit_with_config::<MW>(circuit, prover_config, level.dir_suffix());
+    generate_verifier_for_circuit_with_config::<MW>(
+        circuit,
+        prover_config,
+        &prover::gkr::prover::CommitmentMode::SeparateMemoryAndWitness,
+        level.dir_suffix(),
+    );
 }
 
-/// Like [`generate_verifier_for_circuit`] but with an EXPLICIT prover config
-/// and output dir suffix — for special-purpose verifier variants whose
-/// LDE factor / WHIR schedule differ from the standard per-level configs
-/// (e.g. the high-LDE "L1 feeder" unified verifier).
+/// Like [`generate_verifier_for_circuit`] but with an EXPLICIT prover config,
+/// base [`CommitmentMode`] and output dir suffix — for special-purpose
+/// verifier variants whose LDE factor / WHIR schedule / base-commitment shape
+/// differ from the standard per-level configs (e.g. the high-LDE, merged-tree
+/// "L1 feeder" unified verifier).
+///
+/// [`CommitmentMode`]: prover::gkr::prover::CommitmentMode
 fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     prover_config: &prover::gkr::prover_config::ProverConfig,
+    commitment_mode: &prover::gkr::prover::CommitmentMode,
     dir_suffix: &str,
 ) {
     ensure_common();
@@ -170,7 +181,7 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
     let dir = format!("{}/{}", circuit.generated_dir(), dir_suffix);
     std::fs::create_dir_all(&dir).unwrap();
 
-    let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, &dir);
+    let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, commitment_mode, &dir);
     generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
 
     let mod_rs = quote::quote! {
@@ -211,9 +222,11 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
 }
 
 /// High-LDE "L1 feeder" unified verifier: same circuit and 100-bit target as
-/// `unified_reduced_machine` at sec_100, but the base oracle is committed at
-/// LDE factor 16 (round-0 queries 87 -> 22), making the proof maximally cheap
-/// to verify. Generated into `.../unified_reduced_machine/sec_100_l1_feeder`.
+/// `unified_reduced_machine` at sec_100, but every oracle domain sits at
+/// BabyBear's two-adicity cap (base LDE 16; round-0 queries 87 -> 21), the
+/// schedule terminates at a plain-text 2^3 tail, and the base commitment is
+/// the MERGED memory+witness tree (one Merkle path per round-0 query instead
+/// of two). Generated into `.../unified_reduced_machine/sec_100_l1_feeder`.
 #[test]
 fn unified_reduced_machine_l1_feeder() {
     let circuit = CIRCUITS
@@ -229,6 +242,7 @@ fn unified_reduced_machine_l1_feeder() {
     generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
         circuit,
         &prover_config,
+        &prover::gkr::prover::CommitmentMode::MergedMemoryAndWitness,
         "sec_100_l1_feeder",
     );
 }
