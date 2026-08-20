@@ -1,7 +1,6 @@
 use super::*;
 
 use gpu_hash::blake2s::transcript_commit;
-use gpu_ops::bit_reverse::bit_reverse_in_place;
 
 mod fold_round;
 mod round_phases;
@@ -678,11 +677,13 @@ pub fn schedule_gpu_whir_fold_with_sources(
 
         // Mirror CPU `prover/src/gkr/whir/mod.rs`: after the final fold
         // and before drawing the final PoW/query bits, CPU commits the remaining
-        // monomial-form coefficients into the transcript seed, and later stores them on the
-        // proof as `final_monomials`. This is kept entirely on the
-        // device: transpose writes the monomials directly into the slab
-        // `whir.final_monomials` range, then `bit_reverse_in_place` runs in
-        // place on the same slab range before the transcript commit.
+        // monomial-form coefficients into the transcript seed
+        // (`commit_field_els(&mut transcript_seed, &sumchecked_poly_monomial_form)`,
+        // :1931) and later stores that same array on the proof as
+        // `final_monomials` (:2035) — both in NATURAL coefficient order, with no
+        // reordering. This is kept entirely on the device: the transpose writes
+        // the monomials straight into the slab `whir.final_monomials` range,
+        // which the transcript commit then hashes.
         //
         // Cross-check: confirm that `state.current_len`
         // at the end of the final fold matches the slab-allocated
@@ -693,12 +694,10 @@ pub fn schedule_gpu_whir_fold_with_sources(
             1usize << (trace_len_log2 - total_sumcheck_polys as u32),
             "WHIR final-fold current_len must match slab final_monomials_len",
         );
-        // Transpose writes the pre-bitreverse
-        // monomials directly into the slab `whir.final_monomials` range, then
-        // `bit_reverse_in_place::<E4>` reorders them in place on the same
-        // range. The transcript commit hashes the bit-reversed slab range so
-        // the device-side seed advances identically to the CPU prover's
-        // `commit_field_els`.
+        // The transpose is row-order-preserving, so the slab range carries the
+        // monomials in the order `state.sumchecked_poly_monomial_form` holds
+        // them — natural, the CPU's order — and the transcript commit hashes
+        // exactly what `commit_field_els` hashes on the CPU side.
         {
             let (dst_ptr, dst_len) = unsafe {
                 proof_layout.whir_final_monomials_device_mut(proof_slab.as_ptr() as *mut u8)
@@ -728,16 +727,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
                 state.current_len,
             );
             transpose(&monomials_matrix_chunk, &mut transpose_dst_matrix, stream)?;
-            // SAFETY: same slab range viewed as `dst_len` E4 elements. The
-            // previous BF view above is dropped before this point, so the slab
-            // range is exclusively reborrowed here for the in-place
-            // `bit_reverse_in_place::<E4>` reorder.
-            let dst =
-                unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len) };
-            // Device-side bit-reverse in place on the slab range using the
-            // `BIT_REVERSE(e4, bf, 2)` instantiation of `bit_reverse_in_place`.
-            let mut dst_matrix = DeviceMatrixMut::<E4>::new(dst, dst_len);
-            bit_reverse_in_place::<E4>(&mut dst_matrix, stream)?;
             // SAFETY: same slab range, viewed as `state.current_len * EXT4_DEGREE`
             // LE u32 words for transcript_commit.
             let slot_as_u32 = unsafe {
