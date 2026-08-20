@@ -567,22 +567,22 @@ fn p0_mixed_layer(folding_steps: usize) -> P0MixedLayer {
     let size = 1usize << folding_steps;
     let mut rng = rand::rngs::StdRng::seed_from_u64(0x5000_0000 + folding_steps as u64);
 
-    let base: Vec<Vec<F>> = (0..4)
+    let base: Vec<Vec<F>> = (0..5)
         .map(|_| (0..size).map(|_| p0_random_base(&mut rng)).collect())
         .collect();
     let ext: Vec<Vec<E>> = (0..3)
         .map(|_| (0..size).map(|_| p0_random_ext(&mut rng)).collect())
         .collect();
 
-    let addr_base: [GKRAddress; 4] = core::array::from_fn(|i| GKRAddress::InnerLayer {
+    let addr_base: [GKRAddress; 5] = core::array::from_fn(|i| GKRAddress::InnerLayer {
         layer: 0,
         offset: i,
     });
     let addr_ext: [GKRAddress; 3] = core::array::from_fn(|i| GKRAddress::InnerLayer {
         layer: 0,
-        offset: 4 + i,
+        offset: 5 + i,
     });
-    let addr_out: [GKRAddress; 7] = core::array::from_fn(|i| GKRAddress::InnerLayer {
+    let addr_out: [GKRAddress; 9] = core::array::from_fn(|i| GKRAddress::InnerLayer {
         layer: 1,
         offset: i,
     });
@@ -595,6 +595,10 @@ fn p0_mixed_layer(folding_steps: usize) -> P0MixedLayer {
     let c7 = F::from_u32_with_reduction(7);
     let c2 = F::from_u32_with_reduction(2);
     let c11 = F::from_u32_with_reduction(11);
+    let mut neg_c3 = c3;
+    neg_c3.negate();
+    let mut neg_c11 = c11;
+    neg_c11.negate();
 
     let max_quadratic = cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation::<F> {
         quadratic_terms: vec![
@@ -669,8 +673,56 @@ fn p0_mixed_layer(folding_steps: usize) -> P0MixedLayer {
     }
 
     let out_base_copy = base[3].clone();
+    let out_linear_only_copy = base[4].clone();
     let out_product = compute_product::<F, E>(&ext[0], &ext[1]);
     let out_ext_copy = ext[2].clone();
+
+    // (11 + b0 + 3*b1) * (b2 - b3): a BRACKETED product, so the chain keeps
+    // both factors as forms instead of collapsing them to bare slots
+    let bracketed = cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation::<F> {
+        quadratic_terms: vec![
+            (
+                addr_base[0],
+                vec![(F::ONE, addr_base[2]), (F::MINUS_ONE, addr_base[3])].into_boxed_slice(),
+            ),
+            (
+                addr_base[1],
+                vec![(c3, addr_base[2]), (neg_c3, addr_base[3])].into_boxed_slice(),
+            ),
+        ]
+        .into_boxed_slice(),
+        linear_terms: vec![(c11, addr_base[2]), (neg_c11, addr_base[3])].into_boxed_slice(),
+        constant: F::ZERO,
+    };
+    let bracketed_expression = {
+        use cs::gkr_compiler::NoFieldStructuredExpression as X;
+        X::Product(vec![
+            X::Sum(vec![
+                X::Constant(c11),
+                X::Place(addr_base[0]),
+                X::Product(vec![X::Constant(c3), X::Place(addr_base[1])]),
+            ]),
+            X::Sum(vec![
+                X::Place(addr_base[2]),
+                X::Product(vec![X::Constant(F::MINUS_ONE), X::Place(addr_base[3])]),
+            ]),
+        ])
+    };
+
+    let mut out_bracketed = Vec::with_capacity(size);
+    for i in 0..size {
+        let mut left = c11;
+        left.add_assign(&base[0][i]);
+        let mut scaled = base[1][i];
+        scaled.mul_assign(&c3);
+        left.add_assign(&scaled);
+
+        let mut right = base[2][i];
+        right.sub_assign(&base[3][i]);
+
+        left.mul_assign(&right);
+        out_bracketed.push(left);
+    }
 
     let mut out_mask = Vec::with_capacity(size);
     for i in 0..size {
@@ -745,6 +797,22 @@ fn p0_mixed_layer(folding_steps: usize) -> P0MixedLayer {
                     output: addr_out[6],
                 },
             },
+            GateArtifacts {
+                output_layer: 1,
+                enforced_relation: NoFieldGKRRelation::MaxQuadratic {
+                    input: bracketed,
+                    expression: bracketed_expression,
+                    output: addr_out[7],
+                },
+            },
+            // b4 is referenced ONLY here, so its interpolation flag is false
+            GateArtifacts {
+                output_layer: 1,
+                enforced_relation: NoFieldGKRRelation::CopyInBaseField {
+                    input: addr_base[4],
+                    output: addr_out[8],
+                },
+            },
         ],
         gates_with_external_connections: vec![],
         cached_relations: BTreeMap::new(),
@@ -763,6 +831,8 @@ fn p0_mixed_layer(folding_steps: usize) -> P0MixedLayer {
         base_outputs: vec![
             (addr_out[0], out_max_quadratic),
             (addr_out[1], out_base_copy),
+            (addr_out[7], out_bracketed),
+            (addr_out[8], out_linear_only_copy),
         ],
         ext_outputs: vec![
             (addr_out[2], out_product),
@@ -1012,53 +1082,254 @@ fn p0_assert_legs_equal(label: &str, reference: &P0LegOutcome, other: &P0LegOutc
     );
 }
 
-fn p0_windowed_vs_naive_transcript(folding_steps: usize) {
-    let worker = Worker::new_with_num_threads(1);
-    let fixture = p0_mixed_layer(folding_steps);
+/// Same window schedule, driven through [`evaluate_sumcheck_for_layer`]
+/// directly so the `make_chain` hook can inspect the program the production
+/// compiler built for this layer before the chain consumes it.
+fn p0_run_chain_leg_inspecting_program(
+    fixture: &P0MixedLayer,
+    schedule: Vec<prover_config::SumcheckStep>,
+    worker: &Worker,
+) -> P0LegOutcome {
+    use crate::gkr::prover::sumcheck_loop::windowed_mode::lsb_chain::GenericSameSizeChain;
+    use crate::gkr::prover::sumcheck_loop::windowed_mode::program::FormOp;
+    use crate::gkr::prover::EvaluationPointEntry;
 
-    let naive_schedule = vec![prover_config::SumcheckStep::NaiveSumcheck; folding_steps];
-    let windowed_schedule = prover_config::windowed_same_size_schedule(folding_steps);
+    let folding_steps = fixture.prev_point.len();
+    let trace_len = 1usize << folding_steps;
+
+    let mut storage = fixture.storage();
+    let mut claims_storage = BTreeMap::new();
+    claims_storage.insert(1, fixture.output_claims(worker));
+    let mut claim_point_entries: BTreeMap<usize, Vec<EvaluationPointEntry<E>>> = BTreeMap::new();
+    claim_point_entries.insert(
+        1,
+        fixture
+            .prev_point
+            .iter()
+            .map(|point| EvaluationPointEntry::Coordinate { point: *point })
+            .collect(),
+    );
+    let mut batching_challenge = fixture.batching_challenge;
+    let mut seed = P0_INITIAL_SEED;
+    let inspected = std::cell::Cell::new(false);
+
+    p0_events_reset();
+    let values = evaluate_sumcheck_for_layer::<F, E, RecordingTranscript, _>(
+        0,
+        &fixture.layer,
+        &mut claim_point_entries,
+        &mut claims_storage,
+        &mut storage,
+        &mut batching_challenge,
+        trace_len,
+        fixture.lookup_multiplicative_part,
+        fixture.lookup_additive_part,
+        &[],
+        0,
+        &GKRExternalChallenges::default(),
+        &p0_prover_config(schedule),
+        &mut seed,
+        worker,
+        |_, _, _, _| Vec::new(),
+        |schedule, trace_len, num_base_polys, num_ext_polys| {
+            let capacity =
+                crate::gkr::prover::gkr_backend::same_size_chain_fold_capacity(schedule, trace_len);
+            (0..num_base_polys + num_ext_polys)
+                .map(|_| Box::new_uninit_slice(capacity))
+                .collect()
+        },
+        |prog| {
+            assert!(
+                !prog.forms.is_empty(),
+                "the layer must compile bracketed forms, else the factored form path is dead"
+            );
+            assert!(
+                prog.forms.iter().any(|form| !form.constant.is_zero()),
+                "a form must carry a mixed-degree constant"
+            );
+            let mut add = false;
+            let mut sub = false;
+            let mut mul = false;
+            for form in prog.forms.iter() {
+                for (op, _) in form.members.iter() {
+                    match op {
+                        FormOp::Add => add = true,
+                        FormOp::Sub => sub = true,
+                        FormOp::Mul(_) => mul = true,
+                    }
+                }
+            }
+            assert!(
+                add && sub && mul,
+                "forms must cover every member op, got add {add}, sub {sub}, mul {mul}"
+            );
+            assert!(
+                prog.base_interp.iter().any(|flag| *flag)
+                    && prog.base_interp.iter().any(|flag| !*flag),
+                "base interpolation flags must carry both values, got {:?}",
+                prog.base_interp
+            );
+            assert!(
+                prog.ext_interp.iter().any(|flag| *flag),
+                "at least one extension slot must participate in a product"
+            );
+            inspected.set(true);
+            GenericSameSizeChain::<F, E>::new(prog)
+        },
+    );
+    assert!(
+        inspected.get(),
+        "a chain schedule must build the layer program"
+    );
+    let events = p0_events_take();
+
+    let point = claim_point_entries
+        .get(&0)
+        .expect("the layer emits a claim point")
+        .iter()
+        .map(|entry| match entry {
+            EvaluationPointEntry::Coordinate { point } => *point,
+            other => panic!("both schedules emit scalar coordinates, got {other:?}"),
+        })
+        .collect();
+
+    P0LegOutcome {
+        events,
+        rounds: values
+            .internal_round_coefficients
+            .iter()
+            .map(|round| *round.as_multilinear())
+            .collect(),
+        point,
+        claims: claims_storage
+            .get(&0)
+            .expect("the layer emits claims")
+            .clone(),
+        final_step_evaluations: values.final_step_evaluations,
+        next_batching_challenge: batching_challenge,
+        seed,
+    }
+}
+
+fn p0_windowed_vs_naive_transcript(folding_steps: usize, num_threads: usize) {
+    use prover_config::SumcheckStep;
+
+    // The all-naive reference always runs on ONE thread: its lazy fold goes
+    // through `apply_row_wise`, whose `Worker::scope` carries no
+    // `PAR_THRESHOLD` guard, and the engine fails its own `gkr_self_checks`
+    // last-step identity as soon as the worker has two threads (reproduced on
+    // this file's own `test_sumcheck_loop_product` fixture). The chain
+    // engines thread-guard every sweep, so they carry the multi-threaded
+    // shapes here.
+    let single = Worker::new_with_num_threads(1);
+    let multi = Worker::new_with_num_threads(num_threads);
+    let fixture = p0_mixed_layer(folding_steps);
 
     let naive = p0_run_leg(
         &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
         &fixture,
-        naive_schedule,
-        &worker,
+        vec![SumcheckStep::NaiveSumcheck; folding_steps],
+        &single,
     );
     p0_assert_event_shape(&naive, folding_steps);
 
-    let windowed = p0_run_leg(
-        &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
-        &fixture,
-        windowed_schedule.clone(),
-        &worker,
-    );
-    p0_assert_legs_equal("naive backend, window schedule", &naive, &windowed);
+    // the full chain (a window pass while three variables remain), and a
+    // single-pass chain that leaves every remaining variable to the tail
+    let schedules = [
+        (
+            "full window chain",
+            prover_config::windowed_same_size_schedule(folding_steps),
+        ),
+        (
+            "single-pass chain",
+            vec![
+                SumcheckStep::WindowInitial { window: 3 },
+                SumcheckStep::FoldInitial { width: 3 },
+                SumcheckStep::Tail,
+            ],
+        ),
+    ];
 
-    // On aarch64 this alias is the NEON backend; on x86 it resolves back to
-    // NaiveGKRBackend, so the NEON chain needs its own aarch64 run.
-    let default_backend = p0_run_leg(
-        &crate::gkr::prover::gkr_backend::DefaultBabyBearGKRBackend::default(),
-        &fixture,
-        windowed_schedule,
-        &worker,
-    );
-    p0_assert_legs_equal("default backend, window schedule", &naive, &default_backend);
+    let mut workers: Vec<(String, &Worker)> = vec![("1 thread".to_string(), &single)];
+    if num_threads > 1 {
+        // pin the parallel coverage: the initial pass writes this many cells
+        // and each 8 -> 1 fold that many rows, so both sweeps must cross the
+        // worker threshold and split into per-chunk reduces
+        assert_eq!(multi.num_cores, num_threads);
+        assert!(
+            (1usize << (folding_steps - 3)) >= crate::gkr::PAR_THRESHOLD,
+            "the initial pass must cross the worker threshold, got {} cells",
+            1usize << (folding_steps - 3)
+        );
+        workers.push((format!("{num_threads} threads"), &multi));
+    }
+
+    for (schedule_name, schedule) in schedules {
+        for (worker_name, worker) in workers.iter() {
+            let case = format!("{schedule_name}, {worker_name}");
+
+            let windowed = p0_run_leg(
+                &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
+                &fixture,
+                schedule.clone(),
+                worker,
+            );
+            p0_assert_legs_equal(&format!("naive backend, {case}"), &naive, &windowed);
+
+            // On aarch64 this alias is the NEON backend; on x86 it resolves
+            // back to NaiveGKRBackend, so the NEON chain needs its own
+            // aarch64 run.
+            let default_backend = p0_run_leg(
+                &crate::gkr::prover::gkr_backend::DefaultBabyBearGKRBackend::default(),
+                &fixture,
+                schedule.clone(),
+                worker,
+            );
+            p0_assert_legs_equal(
+                &format!("default backend, {case}"),
+                &naive,
+                &default_backend,
+            );
+
+            let inspected = p0_run_chain_leg_inspecting_program(&fixture, schedule.clone(), worker);
+            p0_assert_legs_equal(&format!("direct driver, {case}"), &naive, &inspected);
+        }
+    }
 }
 
 #[test]
 fn p0_windowed_vs_naive_transcript_n6() {
-    p0_windowed_vs_naive_transcript(6);
+    p0_windowed_vs_naive_transcript(6, 1);
 }
 
 #[test]
 fn p0_windowed_vs_naive_transcript_n7() {
-    p0_windowed_vs_naive_transcript(7);
+    p0_windowed_vs_naive_transcript(7, 1);
 }
 
 #[test]
 fn p0_windowed_vs_naive_transcript_n8() {
-    p0_windowed_vs_naive_transcript(8);
+    p0_windowed_vs_naive_transcript(8, 1);
+}
+
+/// Multi-threaded shapes: the initial pass writes 1024 cells, so the chunked
+/// cell sweep and the 8 -> 1 folds run over real chunk boundaries with
+/// per-chunk reduces (`PAR_THRESHOLD` is 1024).
+#[test]
+fn p0_windowed_vs_naive_transcript_n13() {
+    p0_windowed_vs_naive_transcript(13, 4);
+}
+
+/// The single-pass chain here leaves an 11-variable tail whose first round
+/// weighs 1024 pairs, so the tail round message and the tail folds are also
+/// chunked.
+#[test]
+fn p0_windowed_vs_naive_transcript_n14() {
+    assert!(
+        (1usize << (14 - 4)) >= crate::gkr::PAR_THRESHOLD,
+        "the single-pass chain's first tail round must cross the worker threshold"
+    );
+    p0_windowed_vs_naive_transcript(14, 4);
 }
 
 /// Independent oracle for the plain-LSB round 0: a hand-rolled fold over the
@@ -1080,7 +1351,8 @@ fn p0_plain_lsb_round0_oracle() {
     basis_a[3] = E::ONE;
     let random_b: Vec<E> = (0..POLY_SIZE).map(|_| p0_random_ext(&mut rng)).collect();
     let mut basis_c = vec![E::ZERO; POLY_SIZE];
-    basis_c[5] = E::ONE;
+    // an EVEN row, so q0(0) is non-zero and coefficient 0 discriminates
+    basis_c[4] = E::ONE;
 
     let addr_a = GKRAddress::InnerLayer {
         layer: 0,
@@ -1308,6 +1580,11 @@ fn p0_plain_lsb_round0_oracle() {
             &worker,
         );
     let events = p0_events_take();
+
+    assert!(
+        !oracle_coefficients[0].is_zero(),
+        "coefficient 0 must discriminate, so a basis vector has to sit on an even row"
+    );
 
     let round_0 = *values.internal_round_coefficients[0].as_multilinear();
     for coeff in 0..4 {
