@@ -371,6 +371,22 @@ impl<'a> Fixture<'a> {
         self.slots.len() - 1
     }
 
+    /// A single-column E4 backing holding a basis vector. Basis probes are the
+    /// one place the distinctness rule does not apply: each probe isolates one
+    /// cell and the sweep over every cell determines the whole linear map, so
+    /// no address permutation can cancel.
+    fn add_e4_basis(&mut self, log2_stride: u32, hot: usize) -> usize {
+        let host: Vec<E4> = (0..1usize << log2_stride)
+            .map(|i| if i == hot { E4::ONE } else { E4::ZERO })
+            .collect();
+        let device = upload_e4(self.context, &host);
+        self.slots.push(Slot {
+            store: Store::Ext(host, device),
+            log2_stride,
+        });
+        self.slots.len() - 1
+    }
+
     fn add_procedural(&mut self) -> usize {
         self.slots.push(Slot {
             store: Store::Procedural,
@@ -822,6 +838,29 @@ impl<'a> Fixture<'a> {
         );
     }
 
+    /// The claim `ab_backward_new_claims_linear_kernel` derives from a
+    /// publication's two endpoint cells — the exact two E4 the final gather
+    /// hands it, read from the destination backing at the column base.
+    fn linear_claim(&self, cache: u16, r_last: E4) -> E4 {
+        let slot = &self.slots[lane_slot(cache)];
+        let base = lane_column(cache) << slot.log2_stride;
+        let device = match &slot.store {
+            Store::Ext(_, device) => device,
+            _ => panic!("{}: a publication destination must be E4", self.label),
+        };
+        let d_challenge = upload_e4(self.context, &[r_last]);
+        let mut d_claim: DeviceAllocation<E4> =
+            self.context.alloc(1, AllocationPlacement::Top).unwrap();
+        crate::gkr_ops::backward_new_claims_linear(
+            &device[base..base + 2],
+            &d_challenge[..],
+            &mut d_claim[..],
+            self.context.get_exec_stream(),
+        )
+        .unwrap();
+        download_e4(self.context, &d_claim)[0]
+    }
+
     fn compare(&self, from_gpu: &[E4], expected: &[E4], what: &str, report: &mut Vec<String>) {
         assert_eq!(from_gpu.len(), expected.len(), "{what}: length");
         let differing = from_gpu
@@ -1228,6 +1267,68 @@ fn continuation_chain(context: &ProverContext, report: &mut Vec<String>) {
     fixture.run(&second, report);
 }
 
+/// The producer boundary the final gather reads. At one row a publication
+/// writes the two endpoint cells `[0, 1]` that
+/// `ab_backward_new_claims_linear_kernel` consumes, and the endpoint bit sits
+/// directly above the `delta` leaf coordinates: leaf index bit `j` carries
+/// claim coordinate `round - delta + j` for `j = 0 ..= delta`, bit `delta`
+/// being the endpoint the round's own challenge binds. A basis vector at leaf
+/// `l` must therefore reach the consumer as the LSB weight product over the
+/// bits of `l`.
+fn final_evaluation_packing(context: &ProverContext, report: &mut Vec<String>) {
+    for delta in 0..=MAX_DELTA {
+        let round = delta as u32 + 1;
+        let leaves = 2usize << delta;
+        for hot in 0..leaves {
+            let mut fixture = Fixture::new(
+                context,
+                "final-evaluation packing",
+                0x5e_9a_00_20 + delta as u64,
+                round as usize + 1,
+            );
+            let source = fixture.add_e4_basis(1 + delta as u32, hot);
+            let dest = fixture.add_dest(1, 1);
+            let cache = fixture.lane(dest, 0);
+            let stage = Stage {
+                name: "final round rows=1",
+                r0: false,
+                rows: 1,
+                round,
+                sources: vec![Src {
+                    src: fixture.lane(source, 0),
+                    cache: Some(cache),
+                    class: CLASS_E4_DIRECT,
+                    delta: delta as u8,
+                }],
+                fold_order: vec![0],
+                warps: vec![vec![unary(ext_class(0), 3, 0)]],
+            };
+            fixture.run(&stage, report);
+
+            let r_last = fixture.claim[round as usize];
+            let claim = fixture.linear_claim(cache, r_last);
+            let mut expected = E4::ONE;
+            for j in 0..=delta {
+                let coordinate = fixture.claim[round as usize - delta + j];
+                expected = mul(
+                    expected,
+                    if (hot >> j) & 1 == 1 {
+                        coordinate
+                    } else {
+                        sub(E4::ONE, coordinate)
+                    },
+                );
+            }
+            if claim != expected {
+                report.push(format!(
+                    "final-evaluation packing delta={delta} leaf {hot}: the consumer read \
+                     {claim:?}, expected the LSB weight product {expected:?}",
+                ));
+            }
+        }
+    }
+}
+
 #[test]
 fn segmented_vm_matches_lsb_address_algebra() {
     let context = make_test_context(256, 64);
@@ -1243,6 +1344,7 @@ fn segmented_vm_matches_lsb_address_algebra() {
     continuation_depth3(&context, &mut report);
     continuation_partial_tile(&context, &mut report);
     continuation_chain(&context, &mut report);
+    final_evaluation_packing(&context, &mut report);
 
     assert!(
         report.is_empty(),

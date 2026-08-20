@@ -68,6 +68,15 @@ fn sub(a: &E4, b: &E4) -> E4 {
     v
 }
 
+/// `bit == 1 ? challenge : 1 - challenge`.
+fn weight(challenge: &E4, bit: usize) -> E4 {
+    if bit == 1 {
+        *challenge
+    } else {
+        sub(&E4::ONE, challenge)
+    }
+}
+
 fn mul(a: &E4, b: &E4) -> E4 {
     let mut v = *a;
     v.mul_assign(b);
@@ -680,6 +689,120 @@ fn dim_reducing_backward_final_evaluation_packing_is_lsb() {
             &dest_gpu[..dest_len],
             &expected,
             &format!("final-evaluation packing, ancestor {ancestor}"),
+        );
+    }
+}
+
+/// Composes the same producer with the two `gkr_ops` final-evaluation
+/// consumers. The gather hands one address the four arena cells `2Y + b`
+/// as `[00, 01, 10, 11]`, so a source basis vector at index `4y + 2t + b`
+/// must arrive as `w(r_before_last, y) * w(r_step, t) * w(r_last, b)`: source
+/// index bit 0 is the gate coordinate the layer binds last, bit 1 is this
+/// step's own coordinate, bit 2 is the coordinate the `[E4; 4]` reduction
+/// binds at `r_before_last`.
+///
+/// A basis sweep, not a random fill: each probe isolates one source cell and
+/// the whole sweep determines the producer's linear map, so no address
+/// permutation can cancel.
+#[test]
+fn dim_reducing_final_evaluation_consumers_read_lsb_order() {
+    let context = make_test_context(64, 16);
+    let stream = context.get_exec_stream();
+    let mut rng = StdRng::seed_from_u64(0x0f_1a_5b_10);
+
+    let acc_size = 1usize;
+    let source_len = 8;
+    let dest_len = 4;
+    let step = 2usize;
+    let slots = fixture_slots(false, false);
+    let r_step = random_e4(&mut rng);
+    let r_before_last = random_e4(&mut rng);
+    let r_last = random_e4(&mut rng);
+
+    let (_d_base, _batch_challenges) = install_batch_challenges(&context, E4::ONE);
+    let (eq_low, eq_sizes) = install_identity_eq(&context);
+    write_folding_challenge(&context, step, r_step);
+    let d_challenges = upload(&context, &[r_before_last, r_last]);
+
+    for hot in 0..source_len {
+        let source_flat: Vec<E4> = (0..(POLY_COUNT + 1) * source_len)
+            .map(|i| {
+                if i % source_len == hot {
+                    E4::ONE
+                } else {
+                    E4::ZERO
+                }
+            })
+            .collect();
+        let d_source = upload(&context, &source_flat);
+        let d_dest = upload(&context, &vec![poison(); (POLY_COUNT + 1) * dest_len]);
+        let mut d_contributions = upload(&context, &vec![poison(); 2 * acc_size]);
+        let batch = build_batch(
+            &slots,
+            d_source.as_ptr() as *const u8,
+            source_len.trailing_zeros(),
+            d_dest.as_ptr() as *const u8,
+            dest_len.trailing_zeros(),
+            false,
+            eq_low.as_ptr(),
+            eq_sizes,
+            d_contributions.as_mut_ptr(),
+        );
+        launch_dim_reducing_continuation_batched_compact(&batch, acc_size, step, &context).unwrap();
+
+        // The gather hands the consumers exactly `dest_len` cells of one arena
+        // poly, starting at the poly base.
+        let mut d_lines: DeviceAllocation<E4> = context.alloc(2, AllocationPlacement::Top).unwrap();
+        crate::gkr_ops::backward_dim_reducing_lsb_lines(
+            &d_dest[..dest_len],
+            &d_challenges[..1],
+            &mut d_lines[..],
+            stream,
+        )
+        .unwrap();
+        let mut d_from_lines: DeviceAllocation<E4> =
+            context.alloc(1, AllocationPlacement::Top).unwrap();
+        crate::gkr_ops::backward_new_claims_linear(
+            &d_lines[..],
+            &d_challenges[1..2],
+            &mut d_from_lines[..],
+            stream,
+        )
+        .unwrap();
+        let mut d_two_var: DeviceAllocation<E4> =
+            context.alloc(1, AllocationPlacement::Top).unwrap();
+        crate::gkr_ops::backward_new_claims_two_var(
+            &d_dest[..dest_len],
+            &d_challenges[..2],
+            &mut d_two_var[..],
+            stream,
+        )
+        .unwrap();
+
+        let lines = download(&context, &d_lines);
+        let from_lines = download(&context, &d_from_lines);
+        let two_var = download(&context, &d_two_var);
+
+        let (y, t, b) = (hot >> 2, (hot >> 1) & 1, hot & 1);
+        let line = mul(&weight(&r_before_last, y), &weight(&r_step, t));
+        let claim = mul(&line, &weight(&r_last, b));
+        assert_e4_slices_eq(
+            &lines,
+            &[
+                if b == 0 { line } else { E4::ZERO },
+                if b == 1 { line } else { E4::ZERO },
+            ],
+            &format!("proof-side LSB lines, source basis {hot}"),
+        );
+        assert_e4_slices_eq(
+            &from_lines,
+            &[claim],
+            &format!("lines-then-linear claim, source basis {hot}"),
+        );
+        assert_e4_slices_eq(
+            &two_var,
+            &[claim],
+            &format!("two-var claim, source basis {hot}"),
         );
     }
 }

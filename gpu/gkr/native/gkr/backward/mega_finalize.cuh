@@ -15,10 +15,15 @@ using ::airbender::gkr::ops::run_round_update_single_thread;
 // this cap.
 constexpr unsigned MEGA_FINALIZE_BLOCK_THREADS = 256;
 
+// `prev_claim_coord` and `challenge_out` are NOT restrict-qualified: both
+// per-layer schedulers build their output claim-point view over the same
+// symbol the input view reads, so round `step` reads and writes one address.
+// The store's value depends on the load through the transcript, which is what
+// keeps the in-place round well-ordered.
 template <unsigned BLOCK_THREADS, typename PartialsSource>
-DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, const unsigned num_partials, const e4 *__restrict__ prev_claim_coord,
-                                            u32 *__restrict__ seed_io, e4 *__restrict__ claim_io, e4 *__restrict__ eq_prefactor_io, e4 *__restrict__ coeffs_out,
-                                            e4 *__restrict__ challenge_out, e4 *__restrict__ active_eq_slot_base, const unsigned active_eq_size_before_fold) {
+DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, const unsigned num_partials, const e4 *prev_claim_coord, u32 *__restrict__ seed_io,
+                                            e4 *__restrict__ claim_io, e4 *__restrict__ eq_prefactor_io, e4 *__restrict__ coeffs_out, e4 *challenge_out,
+                                            e4 *__restrict__ active_eq_slot_base, const unsigned active_eq_size_before_fold) {
   static_assert(BLOCK_THREADS > 0 && (BLOCK_THREADS & (BLOCK_THREADS - 1)) == 0, "BLOCK_THREADS must be a power of two");
 
   __shared__ e4 smem_c0[BLOCK_THREADS];
