@@ -1,10 +1,16 @@
 //! Pins the CPU commit path's monomial LABELING, with no GPU involved.
 //!
 //! Runs the production `commit_trace_part` on a tiny hypercube column and
-//! compares coset 0's RS codeword against naive evaluations under both
-//! exponent labelings. Read together with gpu_ntt's
-//! `characterize_commit_chain_labeling_vs_cpu` (which pins the GPU side), this
-//! says whether the two agree, differ by a permutation, or differ in value.
+//! asserts coset 0's RS codeword equals naive evaluations under the NATURAL
+//! labeling — coefficient `i` carries `x^i`, in natural domain order. That is
+//! the authority the whole LSB track reads:
+//! `lde_multiple_polys_parallel_from_hypercubes`
+//! (prover/src/gkr/prover/stages/commitment_utils.rs:485-533, "natural
+//! convention: variable b <-> exponent bit b") hands the Mobius output to
+//! `compute_column_major_lde_from_monomial_form` (:190-231), whose parameter is
+//! named `monomial_form_normal_order`. gpu_ntt's
+//! `hypercube_monomials_are_natural_and_bitreversed_lde_relabels_them` pins the
+//! GPU side of the same question.
 
 use super::*;
 
@@ -76,11 +82,25 @@ fn cpu_commit_path_labeling_is_natural() {
     let coset0 = &in_mem.cosets.cosets[0];
     let cpu_codeword: Vec<BF> = coset0.original_values_normal_order[0].column.to_vec();
 
-    println!("coset0 offset == ONE: {}", coset0.offset == BF::ONE);
-    println!("cpu_codeword == NATURAL-labeling: {}", cpu_codeword == nat);
-    println!("cpu_codeword == BITREV-labeling:  {}", cpu_codeword == rev);
+    assert!(
+        coset0.offset == BF::ONE,
+        "coset 0 must be the unshifted domain",
+    );
+    assert!(
+        nat != rev,
+        "the fixture must distinguish the two labelings, or the pin below is vacuous",
+    );
+    assert!(
+        cpu_codeword == nat,
+        "the CPU commit path must evaluate coefficient i at exponent i; \
+         bitreversed-labeling match instead: {}",
+        cpu_codeword == rev,
+    );
     let mut cw_rev = cpu_codeword.clone();
     fft::bitreverse_enumeration_inplace(&mut cw_rev);
-    println!("bitrev(cpu_codeword) == NATURAL:  {}", cw_rev == nat);
-    println!("bitrev(cpu_codeword) == BITREV:   {}", cw_rev == rev);
+    assert!(
+        cw_rev != nat && cw_rev != rev,
+        "the codeword is in natural domain order, so bitreversing it must match \
+         neither labeling",
+    );
 }

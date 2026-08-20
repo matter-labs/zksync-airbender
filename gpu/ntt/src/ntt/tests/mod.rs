@@ -1729,13 +1729,22 @@ fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2
     }
 }
 
-// Characterizes which monomial LABELING the GPU commit chain implements, by
-// comparing coset 0 of the LDE (where no coset shift applies) against naive
-// CPU evaluations under both labelings. Answers: is the GPU output equal to
-// the CPU's, a bit-reversal of it, or neither?
+// Pins the monomial LABELING of both halves of the sub-floor commit chain, on
+// coset 0 where no coset shift applies. `hypercube_x1_msb_evals_to_x1_msb_monomials`
+// is a Mobius transform, and Mobius commutes with bit-reversal (`P*M*P == M`,
+// one stage per bit with the same 2x2 matrix), so it PRESERVES its input's
+// labeling: its output equals the CPU coefficient array unpermuted, and its
+// name asserts a convention it does not impose. The legacy
+// `bitreversed_monomials_to_natural_evals_multi_coset` family then reads that
+// natural array as bitreversed, so coset 0 carries the BITREV labeling and is
+// NOT the CPU codeword — the sub-floor arm gpu_trace documents as right row
+// order, wrong polynomial (gpu/trace/src/trace/holder/mod.rs:355-380). Above
+// the dispatch floor production uses
+// `natural_monomials_to_bitreversed_evals_multi_coset` instead; retiring the
+// sub-floor arm is expected to retire this test with it.
 #[test]
 #[cfg(not(no_cuda))]
-fn characterize_commit_chain_labeling_vs_cpu() {
+fn hypercube_monomials_are_natural_and_bitreversed_lde_relabels_them() {
     use super::{
         bitreversed_monomials_to_natural_evals_multi_coset,
         hypercube_x1_msb_evals_to_x1_msb_monomials,
@@ -1832,32 +1841,21 @@ fn characterize_commit_chain_labeling_vs_cpu() {
         let mut gpu_c0_rev = gpu_c0.to_vec();
         fft::bitreverse_enumeration_inplace(&mut gpu_c0_rev);
 
-        // Does the GPU's monomial scratch equal the CPU Mobius output?
-        println!(
-            "log_n={log_n}  gpu_monomials == cpu_coeffs: {}",
-            h_mono == coeffs
-        );
         let mut coeffs_rev = coeffs.clone();
         fft::bitreverse_enumeration_inplace(&mut coeffs_rev);
-        println!(
-            "log_n={log_n}  gpu_monomials == bitrev(cpu_coeffs): {}",
-            h_mono == coeffs_rev
+        assert!(
+            h_mono == coeffs && h_mono != coeffs_rev,
+            "log_n={log_n}: the Mobius transform must preserve its input's labeling",
         );
-        println!(
-            "log_n={log_n}  gpu_evals == cpu_NATURAL-labeling: {}",
-            gpu_c0 == &cpu_natural[..]
+        assert!(
+            gpu_c0 == &cpu_bitrev[..] && gpu_c0 != &cpu_natural[..],
+            "log_n={log_n}: the bitreversed-monomials LDE family must read the \
+             natural-order coefficients as bitreversed",
         );
-        println!(
-            "log_n={log_n}  gpu_evals == cpu_BITREV-labeling:  {}",
-            gpu_c0 == &cpu_bitrev[..]
-        );
-        println!(
-            "log_n={log_n}  bitrev(gpu_evals) == cpu_NATURAL:  {}",
-            gpu_c0_rev == cpu_natural
-        );
-        println!(
-            "log_n={log_n}  bitrev(gpu_evals) == cpu_BITREV:   {}",
-            gpu_c0_rev == cpu_bitrev
+        assert!(
+            gpu_c0_rev != cpu_natural && gpu_c0_rev != cpu_bitrev,
+            "log_n={log_n}: the codeword is already in natural domain order, so \
+             bitreversing it must match neither labeling",
         );
     }
 }
