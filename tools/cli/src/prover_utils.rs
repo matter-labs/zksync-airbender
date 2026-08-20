@@ -650,8 +650,8 @@ fn advance_to_target(
 /// One unified + one blake delegation proof; `BlakeSpecialOpcodes` hashes with
 /// inline MOPs, so its fixed point has no delegation proof.
 fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) -> bool {
-    let riscv: usize = proof.riscv_proofs.iter().map(|(_, v)| v.len()).sum();
-    let delegation: usize = proof.delegation_proofs.iter().map(|(_, v)| v.len()).sum();
+    let riscv: usize = proof.riscv_proofs.values().map(|v| v.len()).sum();
+    let delegation: usize = proof.delegation_proofs.values().map(|v| v.len()).sum();
     let expected_delegations = usize::from(final_mode != BlakeMode::BlakeSpecialOpcodes);
     riscv == 1 && delegation == expected_delegations
 }
