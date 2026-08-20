@@ -253,7 +253,7 @@ pub(crate) fn accumulate_whir_base_columns_with_serialized_bf(
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldSplitHalfVectorized,
+    WhirFoldAdjacentVectorized,
     src: PtrAndStride<BF>,
     dst: MutPtrAndStride<BF>,
     challenge: *const E4,
@@ -261,7 +261,7 @@ cuda_kernel_signature_arguments_and_function!(
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_split_half_vectorized_e4_kernel(
+    ab_whir_fold_adjacent_vectorized_e4_kernel(
         src: PtrAndStride<BF>,
         dst: MutPtrAndStride<BF>,
         challenge: *const E4,
@@ -269,23 +269,30 @@ cuda_kernel_declaration!(
     )
 );
 
-pub(crate) fn whir_fold_split_half_in_place_vectorized(
-    values: &mut impl DeviceMatrixChunkMutImpl<BF>,
+/// LSB-binding fold of the vectorized monomial form:
+/// `dst[i] = src[2i] + challenge * src[2i + 1]` (CPU `fold_monomial_form`).
+/// Out of place — the adjacent pairing makes the read range overlap the write
+/// range across blocks.
+pub(crate) fn whir_fold_adjacent_vectorized(
+    src: &impl DeviceMatrixChunkImpl<BF>,
+    dst: &mut impl DeviceMatrixChunkMutImpl<BF>,
     challenge: &DeviceVariable<E4>,
     half_len: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(values.rows().is_power_of_two());
-    assert_eq!(values.cols(), 4);
+    assert_eq!(src.cols(), 4);
+    assert_eq!(dst.cols(), 4);
+    assert!(2 * half_len <= src.stride());
+    assert!(half_len <= dst.stride());
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len as u32);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldSplitHalfVectorizedArguments::new(
-        values.as_ptr_and_stride(),
-        values.as_mut_ptr_and_stride(),
+    let args = WhirFoldAdjacentVectorizedArguments::new(
+        src.as_ptr_and_stride(),
+        dst.as_mut_ptr_and_stride(),
         challenge.as_ptr(),
         half_len as i32,
     );
-    WhirFoldSplitHalfVectorizedFunction(ab_whir_fold_split_half_vectorized_e4_kernel)
+    WhirFoldAdjacentVectorizedFunction(ab_whir_fold_adjacent_vectorized_e4_kernel)
         .launch(&config, &args)
 }
 

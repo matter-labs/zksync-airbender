@@ -9,15 +9,21 @@ using namespace ::airbender::primitives::vectorized;
 
 namespace airbender::whir {
 
-EXTERN __global__ void ab_whir_fold_split_half_vectorized_e4_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
-                                                                    vectorized_e4_matrix_setter<st_modifier::cg> dst, const e4 *challenge,
-                                                                    const unsigned half_len) {
+// Monomial-form fold, LSB binding: the round eliminates variable 0, which is
+// bit 0 of the NATURAL-order coefficient index, so the pair is ADJACENT
+// (2*gid, 2*gid + 1) and the combination is `c0 + r * c1` -- CPU authority
+// `fold_monomial_form`, prover/src/gkr/whir/mod.rs:2674-2714. Out of place:
+// thread `gid` writes a cell thread `gid / 2` reads, so the overlap is
+// cross-block.
+EXTERN __global__ void ab_whir_fold_adjacent_vectorized_e4_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                  vectorized_e4_matrix_setter<st_modifier::cg> dst, const e4 *challenge,
+                                                                  const unsigned half_len) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= half_len)
     return;
 
-  const e4 c0 = src.get_at_row(gid);
-  const e4 c1 = src.get_at_row(gid + half_len);
+  const e4 c0 = src.get_at_row(2 * gid);
+  const e4 c1 = src.get_at_row(2 * gid + 1);
   const e4 folded = e4::add(c0, e4::mul(c1, *challenge));
   dst.set_at_row(gid, folded);
 }

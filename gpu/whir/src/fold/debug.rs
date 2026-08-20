@@ -532,19 +532,24 @@ pub(super) fn schedule_special_three_point_eval_device(
     schedule_reduce_outputs_readback(3, state, context)
 }
 
-pub(super) fn fold_monomial_form_in_place_device(
+pub(super) fn fold_monomial_form_device(
     state: &mut GpuWhirState,
     challenge: E4,
     context: &ProverContext,
 ) -> CudaResult<()> {
     copy_scalar_to_device(challenge, state, context)?;
     let half = state.current_len / 2;
-    whir_fold_split_half_in_place_vectorized(
-        &mut state.sumchecked_poly_monomial_form,
+    whir_fold_adjacent_vectorized(
+        &state.sumchecked_poly_monomial_form,
+        &mut state.monomial_form_fold_dst,
         &state.scalar[0],
         half,
         context.get_exec_stream(),
     )?;
+    std::mem::swap(
+        &mut state.sumchecked_poly_monomial_form,
+        &mut state.monomial_form_fold_dst,
+    );
     Ok(())
 }
 

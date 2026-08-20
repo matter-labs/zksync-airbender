@@ -723,7 +723,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
             let mut transpose_dst_matrix = DeviceMatrixMut::new(slab_bf_view, EXT4_DEGREE);
             let monomials_matrix_chunk = DeviceMatrixChunk::new(
                 state.sumchecked_poly_monomial_form.slice(),
-                state.original_trace_len,
+                state.sumchecked_poly_monomial_form.stride(),
                 0,
                 state.current_len,
             );

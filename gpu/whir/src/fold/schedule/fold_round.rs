@@ -78,16 +78,15 @@ pub(super) fn schedule_fold_round(
 
         let current_len = state.current_len;
         let next_len = current_len / 2;
-        // The monomial form is stored bitreversed, so its split-half pairing IS
-        // the LSB (adjacent-pair) fold of the natural-order coefficients.
-        whir_fold_split_half_in_place_vectorized(
-            &mut state.sumchecked_poly_monomial_form,
+        // Monomial form, evaluation form and eq are all in natural order, so
+        // every LSB fold pairs ADJACENT entries and must run out of place.
+        whir_fold_adjacent_vectorized(
+            &state.sumchecked_poly_monomial_form,
+            &mut state.monomial_form_fold_dst,
             &d_challenge[0],
             next_len,
             stream,
         )?;
-        // Evaluation form and eq are in natural order, so the LSB fold pairs
-        // ADJACENT entries and must run out of place.
         whir_fold_adjacent_pair(
             &state.sumchecked_poly_evaluation_form[..current_len],
             &mut state.eval_form_fold_dst[..next_len],
@@ -96,6 +95,10 @@ pub(super) fn schedule_fold_round(
             &d_challenge[0],
             stream,
         )?;
+        std::mem::swap(
+            &mut state.sumchecked_poly_monomial_form,
+            &mut state.monomial_form_fold_dst,
+        );
         std::mem::swap(
             &mut state.sumchecked_poly_evaluation_form,
             &mut state.eval_form_fold_dst,

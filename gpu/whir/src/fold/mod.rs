@@ -14,7 +14,7 @@ use crate::kernels::{
     deserialize_whir_e4_columns, launch_batched_accumulate_eq_samples,
     launch_split_accumulate_eq_samples, launch_whir_three_point_partials,
     partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens, whir_fold_adjacent_pair,
-    whir_fold_split_half_in_place_vectorized, whir_sum,
+    whir_fold_adjacent_vectorized, whir_sum,
 };
 use crate::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 #[cfg(test)]
@@ -55,10 +55,12 @@ pub(super) struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation<BF>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,
-    /// Fold destinations for the LSB (adjacent-pair) evaluation-form and eq
-    /// folds. The pairing makes the read range overlap the write range across
-    /// blocks, so each round folds out of place and swaps the buffers; a
-    /// half-length partner suffices because the live length halves every round.
+    /// Fold destinations for the LSB (adjacent-pair) monomial-form,
+    /// evaluation-form and eq folds. The pairing makes the read range overlap
+    /// the write range across blocks, so each round folds out of place and
+    /// swaps the buffers; a half-length partner suffices because the live
+    /// length halves every round.
+    monomial_form_fold_dst: DeviceMatrixOwnsAllocation<BF>,
     eval_form_fold_dst: DeviceAllocation<E4>,
     eq_poly_fold_dst: DeviceAllocation<E4>,
     eq_group_tables: DeviceAllocation<E4>,
@@ -155,6 +157,10 @@ impl GpuWhirState {
             sumchecked_poly_evaluation_form: context
                 .alloc(trace_len, AllocationPlacement::BestFit)?,
             eq_poly: context.alloc(trace_len, AllocationPlacement::BestFit)?,
+            monomial_form_fold_dst: DeviceMatrixOwnsAllocation::new(
+                context.alloc(half_len * EXT4_DEGREE, AllocationPlacement::BestFit)?,
+                half_len,
+            ),
             eval_form_fold_dst: context.alloc(half_len, AllocationPlacement::BestFit)?,
             eq_poly_fold_dst: context.alloc(half_len, AllocationPlacement::BestFit)?,
             eq_group_tables: context.alloc(
