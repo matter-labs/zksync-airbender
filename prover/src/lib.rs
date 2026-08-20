@@ -6,7 +6,7 @@
 #![feature(raw_slice_split)]
 #![feature(slice_from_ptr_range)]
 #![feature(vec_push_within_capacity)]
-#![feature(lazy_type_alias)] // NECESSARY TO AVOID UGLY LIFETIME BOUND ISSUE
+#![feature(checked_type_aliases)] // NECESSARY TO AVOID UGLY LIFETIME BOUND ISSUE
 
 #[cfg(feature = "debug_satisfiable")]
 pub const DEBUG_QUOTIENT: bool = true;
