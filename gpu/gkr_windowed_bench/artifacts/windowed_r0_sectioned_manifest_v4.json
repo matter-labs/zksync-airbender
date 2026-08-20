@@ -1,0 +1,340 @@
+{
+  "schema_version": 4,
+  "universal_shape": 4095,
+  "specialized_shapes": [
+    1,
+    32,
+    433,
+    439,
+    1015,
+    1019,
+    1120,
+    1136,
+    1270,
+    2495,
+    3067,
+    3071,
+    3192,
+    3194
+  ],
+  "shape_dispatch": [
+    {
+      "input_shape": 1,
+      "compiled_shape": 1
+    },
+    {
+      "input_shape": 32,
+      "compiled_shape": 32
+    },
+    {
+      "input_shape": 433,
+      "compiled_shape": 433
+    },
+    {
+      "input_shape": 439,
+      "compiled_shape": 439
+    },
+    {
+      "input_shape": 1015,
+      "compiled_shape": 1015
+    },
+    {
+      "input_shape": 1019,
+      "compiled_shape": 1019
+    },
+    {
+      "input_shape": 1120,
+      "compiled_shape": 1120
+    },
+    {
+      "input_shape": 1136,
+      "compiled_shape": 1136
+    },
+    {
+      "input_shape": 1270,
+      "compiled_shape": 1270
+    },
+    {
+      "input_shape": 2495,
+      "compiled_shape": 3071
+    },
+    {
+      "input_shape": 3067,
+      "compiled_shape": 3067
+    },
+    {
+      "input_shape": 3071,
+      "compiled_shape": 3071
+    },
+    {
+      "input_shape": 3192,
+      "compiled_shape": 3194
+    },
+    {
+      "input_shape": 3194,
+      "compiled_shape": 3194
+    }
+  ],
+  "symbols": [
+    {
+      "candidate_id": "r0-sectioned-v4/universal/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_universal_wide9_b3_kernel",
+      "shape_bits": null,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_universal.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/universal/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_universal_wide9_b4_kernel",
+      "shape_bits": null,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_universal.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_001/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_001_wide9_b3_kernel",
+      "shape_bits": 1,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_001.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_001/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_001_wide9_b4_kernel",
+      "shape_bits": 1,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_001.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_020/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_020_wide9_b3_kernel",
+      "shape_bits": 32,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_020.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_020/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_020_wide9_b4_kernel",
+      "shape_bits": 32,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_020.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_1b1/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b1_wide9_b3_kernel",
+      "shape_bits": 433,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b1.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_1b1/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b1_wide9_b4_kernel",
+      "shape_bits": 433,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b1.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_1b7/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b7_wide9_b3_kernel",
+      "shape_bits": 439,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_1b7/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_1b7_wide9_b4_kernel",
+      "shape_bits": 439,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_1b7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_3f7/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3f7_wide9_b3_kernel",
+      "shape_bits": 1015,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_3f7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_3f7/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3f7_wide9_b4_kernel",
+      "shape_bits": 1015,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_3f7.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_3fb/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3fb_wide9_b3_kernel",
+      "shape_bits": 1019,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_3fb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_3fb/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_3fb_wide9_b4_kernel",
+      "shape_bits": 1019,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_3fb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_460/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_460_wide9_b3_kernel",
+      "shape_bits": 1120,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_460.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_460/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_460_wide9_b4_kernel",
+      "shape_bits": 1120,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_460.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_470/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_470_wide9_b3_kernel",
+      "shape_bits": 1136,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_470.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_470/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_470_wide9_b4_kernel",
+      "shape_bits": 1136,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_470.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_4f6/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_4f6_wide9_b3_kernel",
+      "shape_bits": 1270,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_4f6.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_4f6/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_4f6_wide9_b4_kernel",
+      "shape_bits": 1270,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_4f6.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_bfb/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bfb_wide9_b3_kernel",
+      "shape_bits": 3067,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_bfb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_bfb/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bfb_wide9_b4_kernel",
+      "shape_bits": 3067,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_bfb.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_bff/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bff_wide9_b3_kernel",
+      "shape_bits": 3071,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_bff.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_bff/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_bff_wide9_b4_kernel",
+      "shape_bits": 3071,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_bff.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_c7a/wide9-b3",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c7a_wide9_b3_kernel",
+      "shape_bits": 3194,
+      "geometry": "wide9",
+      "min_blocks": 3,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_c7a.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    },
+    {
+      "candidate_id": "r0-sectioned-v4/shape_c7a/wide9-b4",
+      "symbol": "ab_gkr_windowed_r0_sectioned_shape_c7a_wide9_b4_kernel",
+      "shape_bits": 3194,
+      "geometry": "wide9",
+      "min_blocks": 4,
+      "ownership": "selector_triplet",
+      "translation_unit": "native/generated/r0_sectioned_shape_c7a.cu",
+      "descriptor_kind": "r0_grouped_slot_ordinary"
+    }
+  ]
+}
