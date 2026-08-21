@@ -64,6 +64,7 @@ pub struct InnerStaticAllocator<B: StaticAllocationBackend> {
     log_chunk_size: u32,
     small: Option<SmallAllocator>,
     heaps: Vec<(usize, usize, nvtx::MemHeapHandle)>,
+    used_counter: u64,
 }
 
 impl<B: StaticAllocationBackend> Drop for InnerStaticAllocator<B> {
@@ -88,6 +89,10 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
             })
             .collect_vec();
         let tracker = AllocationsTracker::new(&ptrs_and_lens);
+        let used_counter = match B::nvtx_mem_heap_name() {
+            Some(name) => nvtx::mem_counter_register(&format!("{name} used bytes")),
+            None => 0,
+        };
         let heaps = match B::nvtx_mem_heap_name() {
             Some(name) => ptrs_and_lens
                 .iter()
@@ -104,6 +109,7 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
             log_chunk_size,
             small: None,
             heaps,
+            used_counter,
         }
     }
 
@@ -246,6 +252,16 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
             .find(|&&(base, len, _)| addr >= base && addr < base + len)
             .map(|&(_, _, heap)| heap)
             .unwrap_or_else(nvtx::MemHeapHandle::process_wide)
+    }
+
+    /// Reads the corrected bytes-in-use and, when the counter series is
+    /// registered, emits one sample of it.
+    fn used_mem_current_sampled(&self) -> usize {
+        let used = self.used_mem_current();
+        if self.used_counter != 0 {
+            nvtx::mem_counter_sample(self.used_counter, used as i64);
+        }
+        used
     }
 
     fn used_mem_current(&self) -> usize {
@@ -423,7 +439,7 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
                         data.alloc_len,
                     );
                 }
-                (data, inner.used_mem_current())
+                (data, inner.used_mem_current_sampled())
             })
         });
         self.finish_alloc(result, site, placement)
@@ -448,7 +464,7 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
                             data.alloc_len,
                         );
                     }
-                    (data, inner.used_mem_current())
+                    (data, inner.used_mem_current_sampled())
                 })
         });
         self.finish_alloc(result, site, placement)
@@ -457,7 +473,7 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
     unsafe fn free_using_data<T>(&self, data: StaticAllocationData<T>) -> usize {
         self.inner.execute(|inner| {
             inner.free(data);
-            inner.used_mem_current()
+            inner.used_mem_current_sampled()
         })
     }
 

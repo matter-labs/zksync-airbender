@@ -73,6 +73,8 @@ unsafe extern "C" {
         placement: u32,
     ) -> u64;
     fn gpu_core_nvtx_domain_range_end(domain: NvtxDomainHandle, id: u64);
+    fn gpu_core_nvtx_counter_register(domain: NvtxDomainHandle, name: *const c_char) -> u64;
+    fn gpu_core_nvtx_counter_sample_i64(domain: NvtxDomainHandle, counter_id: u64, value: i64);
 }
 
 // Without the CUDA Toolkit there is no `nvtx3/nvToolsExt.h`, so `build.rs` skips
@@ -192,11 +194,26 @@ mod stubs {
         _id: u64,
     ) {
     }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_counter_register(
+        _domain: NvtxDomainHandle,
+        _name: *const c_char,
+    ) -> u64 {
+        0
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_counter_sample_i64(
+        _domain: NvtxDomainHandle,
+        _counter_id: u64,
+        _value: i64,
+    ) {
+    }
 }
 
 #[cfg(no_cuda)]
 use stubs::{
-    gpu_core_nvtx_ascii_range_start, gpu_core_nvtx_domain_ascii_range_start,
+    gpu_core_nvtx_ascii_range_start, gpu_core_nvtx_counter_register,
+    gpu_core_nvtx_counter_sample_i64, gpu_core_nvtx_domain_ascii_range_start,
     gpu_core_nvtx_domain_create, gpu_core_nvtx_domain_range_end, gpu_core_nvtx_mem_heap_register,
     gpu_core_nvtx_mem_heap_unregister, gpu_core_nvtx_mem_mark, gpu_core_nvtx_mem_range_start,
     gpu_core_nvtx_mem_region_register, gpu_core_nvtx_mem_region_unregister,
@@ -534,4 +551,18 @@ pub fn mem_span_end(span: MemSpanId) {
     }
     // SAFETY: `span` came from `mem_span_start` in the `ab.mem.spans` domain.
     unsafe { gpu_core_nvtx_domain_range_end(mem_spans_domain(), span.0) }
+}
+
+/// Registers an int64 counter series in the `ab.mem` domain; nsys renders it
+/// as a chart row. Returns 0 (sampling disabled) when no tool assigns an id.
+pub fn mem_counter_register(name: &str) -> u64 {
+    let cstring = CString::new(name).expect("NVTX counter name must not contain NUL");
+    // SAFETY: valid domain handle; `cstring` is NUL-terminated for the call.
+    unsafe { gpu_core_nvtx_counter_register(mem_domain(), cstring.as_ptr()) }
+}
+
+/// Emits one sample of the counter registered by [`mem_counter_register`].
+pub fn mem_counter_sample(counter_id: u64, value: i64) {
+    // SAFETY: `counter_id` came from `mem_counter_register` in the same domain.
+    unsafe { gpu_core_nvtx_counter_sample_i64(mem_domain(), counter_id, value) }
 }

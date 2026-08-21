@@ -1,4 +1,5 @@
 #include <nvtx3/nvToolsExt.h>
+#include <nvtx3/nvToolsExtCounters.h>
 #include <nvtx3/nvToolsExtMem.h>
 #include <nvtx3/nvToolsExtPayload.h>
 #include <stddef.h>
@@ -136,3 +137,15 @@ uint64_t gpu_core_nvtx_mem_range_start(nvtxDomainHandle_t domain, uint64_t schem
 }
 
 void gpu_core_nvtx_domain_range_end(nvtxDomainHandle_t domain, uint64_t id) { nvtxDomainRangeEnd(domain, id); }
+
+uint64_t gpu_core_nvtx_counter_register(nvtxDomainHandle_t domain, const char *name) {
+  nvtxCounterAttr_t attr = {0};
+  attr.structSize = sizeof(attr);
+  attr.schemaId = NVTX_PAYLOAD_ENTRY_TYPE_INT64;
+  attr.name = name;
+  attr.scopeId = NVTX_SCOPE_NONE;
+  attr.counterId = NVTX_COUNTER_ID_NONE;
+  return nvtxCounterRegister(domain, &attr);
+}
+
+void gpu_core_nvtx_counter_sample_i64(nvtxDomainHandle_t domain, uint64_t counter_id, int64_t value) { nvtxCounterSampleInt64(domain, counter_id, value); }
