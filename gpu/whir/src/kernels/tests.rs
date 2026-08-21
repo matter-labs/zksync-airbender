@@ -507,3 +507,43 @@ fn split_eq_table_rejects_undersized_destination() {
     )
     .unwrap();
 }
+
+// `challenge_count == 0` leaves the 3-slot path's low eq buffer unwritten while
+// `make_eq_sizes(0)` still reports `low = 0`, so the accumulator loads
+// `eq_low[0]` out of a fresh pool allocation. Unreachable from any real
+// `whir_steps_schedule`; the guard is what keeps it that way.
+#[test]
+#[cfg(not(no_cuda))]
+#[should_panic(expected = "uninitialized device memory at eq_low[0]")]
+fn batched_accumulate_eq_rejects_zero_challenge_count() {
+    let context = crate::test_utils::make_test_context(256, 32);
+    let num_queries = 2usize;
+    let (high_len, low_len) = batched_eq_factor_scratch_lens(num_queries);
+    let challenges = context
+        .alloc::<E4>(num_queries, AllocationPlacement::BestFit)
+        .unwrap();
+    let claim_points = context
+        .alloc::<E4>(1, AllocationPlacement::BestFit)
+        .unwrap();
+    let mut eq_high = context
+        .alloc::<E4>(high_len, AllocationPlacement::BestFit)
+        .unwrap();
+    let mut eq_low = context
+        .alloc::<E4>(low_len, AllocationPlacement::BestFit)
+        .unwrap();
+    let mut eq_poly = context
+        .alloc::<E4>(16, AllocationPlacement::BestFit)
+        .unwrap();
+    launch_batched_accumulate_eq_samples(
+        claim_points.as_ptr(),
+        challenges.as_ptr(),
+        num_queries,
+        0,
+        eq_high.as_mut_ptr(),
+        eq_low.as_mut_ptr(),
+        eq_poly.as_mut_ptr(),
+        16,
+        &context,
+    )
+    .unwrap();
+}

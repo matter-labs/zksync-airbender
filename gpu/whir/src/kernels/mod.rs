@@ -1399,6 +1399,19 @@ pub(crate) fn launch_batched_accumulate_eq_samples(
     assert!(num_queries <= u32::MAX as usize);
     assert!(challenge_count <= u32::MAX as usize);
     assert!(acc_size <= u32::MAX as usize);
+    // `eq_group_count(0) == 0`, so at `challenge_count == 0` the build kernel
+    // writes only the degenerate-high-slot ONE sentinels and returns at its
+    // `blockIdx.x >= groups_count` guard, leaving the low buffer unwritten -
+    // while `make_eq_sizes(0)` reports `low = 0`, so the accumulator still
+    // loads `eq_low[0]` and RMWs `challenges[q] * uninitialized` into
+    // `eq_poly`. Nothing in a real `whir_steps_schedule` reaches
+    // `current_len == 1` before the final step, so this is unreachable today;
+    // the assert keeps it from becoming reachable silently.
+    assert!(
+        challenge_count >= 1,
+        "challenge_count >= 1: at 0 the low eq buffer is never written and the \
+         accumulator would read uninitialized device memory at eq_low[0]"
+    );
     let blocks_x = eq_group_count(challenge_count).max(GKR_EQ_HIGH_SLOTS);
     let build_config = CudaLaunchConfig::basic(
         (blocks_x as u32, num_queries as u32, 1u32),
