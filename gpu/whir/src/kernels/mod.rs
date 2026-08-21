@@ -1455,9 +1455,18 @@ fn launch_build_split_eq_table(
     bits: usize,
     claim_offset: usize,
     num_queries: usize,
-    out_array: *mut E4,
+    out_array: &mut DeviceSlice<E4>,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    // `bits` and `claim_offset` come from a bit split computed by the caller and
+    // must stay in lockstep with the slab it allocated: the kernel reads claim
+    // coordinates `claim_offset..claim_offset + bits` out of each query's
+    // `log_n`-coordinate point, and writes `num_queries` tables of `1 << bits`
+    // E4. Neither bound is observable at run time otherwise - an over-large
+    // `bits` writes past the destination while staying inside the pool, so no
+    // CUDA error is raised and only a value comparison would notice.
+    assert!(claim_offset + bits <= log_n);
+    assert!(out_array.len() >= num_queries << bits);
     let table_size = 1u32 << bits;
     let block = SPLIT_BUILD_BLOCK_THREADS.min(table_size);
     let grid_x = table_size.div_ceil(block);
@@ -1472,7 +1481,7 @@ fn launch_build_split_eq_table(
         log_n as u32,
         bits as u32,
         claim_offset as u32,
-        out_array,
+        out_array.as_mut_ptr(),
     );
     WhirBuildSplitEqTableFunction(ab_whir_build_split_eq_table_e4_kernel).launch(&config, &args)
 }
@@ -1489,8 +1498,8 @@ pub(crate) fn launch_split_accumulate_eq_samples(
     challenges: *const E4,
     num_queries: usize,
     log_n: usize,
-    eq_high_array: *mut E4,
-    eq_low_array: *mut E4,
+    eq_high_array: &mut DeviceSlice<E4>,
+    eq_low_array: &mut DeviceSlice<E4>,
     eq_poly: *mut E4,
     acc_size: usize,
     context: &ProverContext,
@@ -1531,8 +1540,8 @@ pub(crate) fn launch_split_accumulate_eq_samples(
 
     let acc_config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let acc_args = WhirAccumulateEqSplitArguments::new(
-        eq_high_array,
-        eq_low_array,
+        eq_high_array.as_ptr(),
+        eq_low_array.as_ptr(),
         high_bits as u32,
         low_bits as u32,
         eq_poly,
