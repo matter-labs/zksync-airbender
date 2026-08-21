@@ -1146,11 +1146,9 @@ mod tests {
 
         let mut coeffs = poly.clone();
         multivariate_hypercube_evals_into_coeffs(&mut coeffs, log_n);
-        let next_root =
-            fft::domain_generator_for_size::<BabyBearField>((n * LDE_FACTOR) as u64);
+        let next_root = fft::domain_generator_for_size::<BabyBearField>((n * LDE_FACTOR) as u64);
         let offsets = fft::materialize_powers_serial_starting_with_one::<BabyBearField, Global>(
-            next_root,
-            LDE_FACTOR,
+            next_root, LDE_FACTOR,
         );
         let selected_twiddles = &twiddles.forward_twiddles[..n / 2];
 
@@ -1179,5 +1177,4 @@ mod tests {
             "[parity] no-bitreverse LDE == naive LDE up to in-coset bitreversal (2^{N_LOG}, lde {LDE_FACTOR})"
         );
     }
-
 }
