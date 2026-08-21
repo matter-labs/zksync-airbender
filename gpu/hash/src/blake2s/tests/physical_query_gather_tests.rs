@@ -307,6 +307,12 @@ fn check_partial_path_gather(
         let physical_device = upload(&physical, stream);
         let mut old_tree = DeviceAllocation::<Digest>::alloc(tree_stride * cosets_count).unwrap();
         let mut new_tree = DeviceAllocation::<Digest>::alloc(tree_stride * cosets_count).unwrap();
+        // The partial backing's last slot per coset is deliberately unwritten
+        // (the tower stops at the cap); give both slabs identical contents so
+        // the whole-slab comparison below is deterministic.
+        let backing_fill = vec![Digest::default(); tree_stride * cosets_count];
+        memory_copy_async(&mut old_tree, &backing_fill, stream).unwrap();
+        memory_copy_async(&mut new_tree, &backing_fill, stream).unwrap();
         build_partial_merkle_tree_multi_coset(
             &natural_device[..natural.len()],
             &mut old_tree,
@@ -316,8 +322,10 @@ fn check_partial_path_gather(
             stream,
         )
         .unwrap();
+        let mut staging = DeviceAllocation::<Digest>::alloc(leaves_count * cosets_count).unwrap();
         build_partial_merkle_tree_multi_coset_physical(
             &physical_device[..physical.len()],
+            &mut staging,
             &mut new_tree,
             log_rows_per_hash,
             builder_layers_count,
@@ -588,8 +596,10 @@ fn check_paths_from_rows(
         stream,
     )
     .unwrap();
+    let mut staging = DeviceAllocation::<Digest>::alloc(leaves_count).unwrap();
     build_partial_merkle_tree_multi_coset_physical(
         &physical_device[..physical.len()],
+        &mut staging,
         &mut new_tree,
         log_rows_per_hash,
         builder_layers_count,

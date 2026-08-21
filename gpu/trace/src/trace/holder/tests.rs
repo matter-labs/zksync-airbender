@@ -1181,6 +1181,8 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                     &stream,
                 )
                 .unwrap();
+                let mut staging =
+                    RawDeviceAllocation::<Digest>::alloc(leaves_count * cosets_in_tile).unwrap();
                 build_partial_trees_from_physical(
                     &physical_device,
                     &mut new_tree,
@@ -1190,6 +1192,7 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                     log_tree_cap_size,
                     columns_count,
                     cosets_in_tile,
+                    &mut staging,
                     &stream,
                 )
                 .unwrap();

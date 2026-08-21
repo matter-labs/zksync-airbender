@@ -179,19 +179,23 @@ EXTERN __launch_bounds__(256) __global__
   }
 }
 
-// LSB sibling of `ab_blake2s_partial_tree_multi_coset_kernel`: reads the
-// BITREVERSED-order codeword. Each lane keeps the donor's LOGICAL leaf index
-// (so the reducer, the root placement and hence the whole tree backing are
-// byte-identical) and translates it to the physical block that holds that
-// leaf's values, `j = rev_a(l)` inside the lane's own coset. The resulting
-// scattered value reads are the accepted correctness-pass cost.
+// LSB sibling of the reduction half of `ab_blake2s_partial_tree_multi_coset_kernel`,
+// operating on leaf DIGESTS that `ab_blake2s_leaves_multi_coset_physical_kernel`
+// already hashed block-contiguously from the BITREVERSED-order codeword.
+// INVARIANT: a hashing kernel must never permute its lane->leaf axis over the
+// leaf VALUES (scattered value reads are catastrophic); the logical->physical
+// translation instead rides this 32-byte digest axis, where a scattered
+// sector-aligned load costs the same DRAM sectors as a coalesced one. Each
+// lane loads logical leaf `l` from physical digest slot `bitreverse(l)` inside
+// its own coset; the reducer and the root placement are byte-identical to the
+// natural-order builder's.
 //
 // Valid only while a CTA's 512 leaves stay inside one coset
 // (`log_per_coset_count >= 9`), which the launcher asserts.
 EXTERN __launch_bounds__(256) __global__
-    void ab_blake2s_partial_tree_multi_coset_physical_kernel(const bf *values, u32 *tree_backing, const unsigned log_rows_count, const unsigned cols_count,
-                                                             const unsigned log_per_coset_count, const unsigned per_coset_values_stride_bf,
-                                                             const unsigned per_coset_tree_stride_digests, const unsigned count) {
+    void ab_blake2s_partial_tree_from_physical_digests_kernel(const u32 *leaf_digests, u32 *tree_backing, const unsigned log_per_coset_count,
+                                                              const unsigned per_coset_digests_stride, const unsigned per_coset_tree_stride_digests,
+                                                              const unsigned count) {
   constexpr unsigned ROOTS_PER_BLOCK = 16;
   constexpr unsigned LEAVES_PER_BLOCK = ROOTS_PER_BLOCK << LOG_WARP_SIZE;
   const unsigned leaf_base = blockIdx.x * LEAVES_PER_BLOCK;
@@ -200,20 +204,18 @@ EXTERN __launch_bounds__(256) __global__
   auto shared_values = reinterpret_cast<digest *>(reducer_smem);
 
   const unsigned per_coset_count = 1u << log_per_coset_count;
-  auto physical_block = [=](const unsigned leaf_logical) {
+  auto load_logical = [=](const unsigned leaf_logical) {
     const unsigned coset = leaf_logical >> log_per_coset_count;
     const unsigned l = leaf_logical & (per_coset_count - 1u);
     const unsigned j = bitreverse_low_bits(l, log_per_coset_count);
-    return (coset << log_per_coset_count) | j;
+    return load_cs(reinterpret_cast<const digest *>(leaf_digests) + static_cast<size_t>(coset) * per_coset_digests_stride + j);
   };
 
   const unsigned leaf = leaf_base + threadIdx.x;
   if (threadIdx.x < valid_leaves)
-    shared_values[threadIdx.x] =
-        hash_leaf_multi_coset_physical(values, log_rows_count, cols_count, log_per_coset_count, per_coset_values_stride_bf, physical_block(leaf));
+    shared_values[threadIdx.x] = load_logical(leaf);
   if (threadIdx.x + blockDim.x < valid_leaves)
-    shared_values[threadIdx.x + blockDim.x] =
-        hash_leaf_multi_coset_physical(values, log_rows_count, cols_count, log_per_coset_count, per_coset_values_stride_bf, physical_block(leaf + blockDim.x));
+    shared_values[threadIdx.x + blockDim.x] = load_logical(leaf + blockDim.x);
   __syncthreads();
 
   reduce_merkle_subtrees_block(shared_values, valid_leaves >> 1);

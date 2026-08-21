@@ -97,8 +97,11 @@ fn check_partial_tree(
         stream,
     )
     .unwrap();
+    let mut staging_device =
+        DeviceAllocation::<Digest>::alloc(leaves_count * cosets_count).unwrap();
     build_partial_merkle_tree_multi_coset_physical(
         &physical_device[..physical.len()],
+        &mut staging_device,
         &mut new_device,
         log_rows_per_hash,
         layers_count,
@@ -194,8 +197,11 @@ fn physical_partial_tree_rejects_cta_spanning_cosets() {
     let values = random_values(cols_count * rows_count * cosets_count);
     let values_device = upload(&values, &stream);
     let mut tree_device = DeviceAllocation::<Digest>::alloc(tree_stride * cosets_count).unwrap();
+    let mut staging_device =
+        DeviceAllocation::<Digest>::alloc(leaves_count * cosets_count).unwrap();
     build_partial_merkle_tree_multi_coset_physical(
         &values_device[..values.len()],
+        &mut staging_device,
         &mut tree_device,
         log_rows_per_hash,
         log_rows_per_coset + 1 - LOG_WARP_SIZE,
