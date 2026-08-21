@@ -1741,7 +1741,8 @@ fn run_sectioned_matrix(
 
         let harness_setup_started = Instant::now();
         let matrix_policy = match r0_sectioned_shape_merge_policy() {
-            gpu_gkr_windowed_bench::r0_prototype_manifest::R0SectionedShapeMergePolicy::UnionBank => {
+            gpu_gkr_windowed_bench::r0_prototype_manifest::R0SectionedShapeMergePolicy::UnionBank
+            | gpu_gkr_windowed_bench::r0_prototype_manifest::R0SectionedShapeMergePolicy::BankV1 => {
                 R0SectionedShapePolicy::Compatible
             }
             gpu_gkr_windowed_bench::r0_prototype_manifest::R0SectionedShapeMergePolicy::Exact

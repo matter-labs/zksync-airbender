@@ -80,12 +80,32 @@ pub const R0_SECTIONED_SHAPE_DISPATCH_V4: [(u16, u16); 14] = [
     (3_192, 3_194),
     (3_194, 3_194),
 ];
+pub const R0_SECTIONED_BANK_SHAPES_V1: [u16; 9] = [
+    0x3ff, 0x471, 0x4f6, 0x5f7, 0x7f7, 0x7ff, 0xc78, 0xcfe, 0xfff,
+];
+pub const R0_SECTIONED_SHAPE_DISPATCH_BANK_V1: [(u16, u16); 14] = [
+    (0x001, 0x471),
+    (0x020, 0x4f6),
+    (0x1b1, 0x3ff),
+    (0x1b7, 0x5f7),
+    (0x3f7, 0x7ff),
+    (0x3fb, 0x3ff),
+    (0x460, 0xc78),
+    (0x470, 0x7f7),
+    (0x4f6, 0x4f6),
+    (0x9bf, 0xfff),
+    (0xbfb, 0xfff),
+    (0xbff, 0xfff),
+    (0xc78, 0xc78),
+    (0xc7a, 0xcfe),
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum R0SectionedShapeMergePolicy {
     Exact,
     Merged,
     UnionBank,
+    BankV1,
 }
 
 impl R0SectionedShapeMergePolicy {
@@ -94,6 +114,7 @@ impl R0SectionedShapeMergePolicy {
             "exact" => Ok(Self::Exact),
             "merged" => Ok(Self::Merged),
             "union_bank" => Ok(Self::UnionBank),
+            "bank_v1" => Ok(Self::BankV1),
             _ => Err(R0PrototypeManifestError(format!(
                 "invalid sectioned shape merge policy {value:?}"
             ))),
@@ -105,6 +126,7 @@ impl R0SectionedShapeMergePolicy {
             Self::Exact => "exact",
             Self::Merged => "merged",
             Self::UnionBank => "union_bank",
+            Self::BankV1 => "bank_v1",
         }
     }
 }
@@ -674,13 +696,16 @@ pub fn build_r0_sectioned_manifest_v4_for_merge_policy(
         R0SectionedShapeMergePolicy::Exact => R0_SECTIONED_SPECIALIZED_SHAPES.to_vec(),
         R0SectionedShapeMergePolicy::Merged => R0_SECTIONED_COMPILED_SHAPES_V4.to_vec(),
         R0SectionedShapeMergePolicy::UnionBank => R0_SECTIONED_UNION_SHAPES_V1.to_vec(),
+        R0SectionedShapeMergePolicy::BankV1 => R0_SECTIONED_BANK_SHAPES_V1.to_vec(),
     };
     let symbol_shapes = match merge_policy {
-        R0SectionedShapeMergePolicy::UnionBank => compiled_shapes
-            .iter()
-            .copied()
-            .map(Some)
-            .collect::<Vec<_>>(),
+        R0SectionedShapeMergePolicy::UnionBank | R0SectionedShapeMergePolicy::BankV1 => {
+            compiled_shapes
+                .iter()
+                .copied()
+                .map(Some)
+                .collect::<Vec<_>>()
+        }
         R0SectionedShapeMergePolicy::Exact | R0SectionedShapeMergePolicy::Merged => {
             core::iter::once(None)
                 .chain(compiled_shapes.iter().copied().map(Some))
@@ -736,6 +761,13 @@ pub fn build_r0_sectioned_manifest_v4_for_merge_policy(
                     compiled_shape: shape,
                 })
                 .collect(),
+            R0SectionedShapeMergePolicy::BankV1 => R0_SECTIONED_SHAPE_DISPATCH_BANK_V1
+                .into_iter()
+                .map(|(input_shape, compiled_shape)| R0SectionedShapeDispatchV4 {
+                    input_shape,
+                    compiled_shape,
+                })
+                .collect(),
         },
         symbols,
     };
@@ -774,6 +806,14 @@ pub fn validate_r0_sectioned_manifest_v4(
         (R0_SECTIONED_SPECIALIZED_SHAPES.to_vec(), 30)
     } else if observed_dispatch == merged_dispatch {
         (R0_SECTIONED_COMPILED_SHAPES_V4.to_vec(), 26)
+    } else if observed_dispatch == R0_SECTIONED_SHAPE_DISPATCH_BANK_V1.to_vec()
+        && observed_symbol_shapes
+            == R0_SECTIONED_BANK_SHAPES_V1
+                .into_iter()
+                .collect::<BTreeSet<_>>()
+        && !has_universal_symbol
+    {
+        (R0_SECTIONED_BANK_SHAPES_V1.to_vec(), 18)
     } else {
         return Err(R0PrototypeManifestError(
             "sectioned schema-v4 shape dispatch mismatch".to_owned(),
@@ -1316,9 +1356,10 @@ pub fn render_r0_prototype_generated_files_for_merge_policy(
         R0SectionedShapeMergePolicy::Exact => R0_SECTIONED_SPECIALIZED_SHAPES.to_vec(),
         R0SectionedShapeMergePolicy::Merged => R0_SECTIONED_COMPILED_SHAPES_V4.to_vec(),
         R0SectionedShapeMergePolicy::UnionBank => R0_SECTIONED_UNION_SHAPES_V1.to_vec(),
+        R0SectionedShapeMergePolicy::BankV1 => R0_SECTIONED_BANK_SHAPES_V1.to_vec(),
     };
     let symbol_shapes = match merge_policy {
-        R0SectionedShapeMergePolicy::UnionBank => {
+        R0SectionedShapeMergePolicy::UnionBank | R0SectionedShapeMergePolicy::BankV1 => {
             compiled_shapes.into_iter().map(Some).collect::<Vec<_>>()
         }
         R0SectionedShapeMergePolicy::Exact | R0SectionedShapeMergePolicy::Merged => {
@@ -1345,6 +1386,7 @@ pub fn render_r0_prototype_generated_files_for_merge_policy(
         R0SectionedShapeMergePolicy::Exact => 53,
         R0SectionedShapeMergePolicy::Merged => 51,
         R0SectionedShapeMergePolicy::UnionBank => 71,
+        R0SectionedShapeMergePolicy::BankV1 => 47,
     };
     if files.len() != expected_files {
         return Err(R0PrototypeManifestError(format!(
