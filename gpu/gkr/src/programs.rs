@@ -281,7 +281,7 @@ mod tests {
                     }],
                 },
             ],
-            source_count: 0,
+            source_slots: Vec::new(),
         };
         let inputs: BTreeSet<_> = binding
             .windows

@@ -608,9 +608,9 @@ fn lower_bwd_seg_view(
             cap: BWD_SEG_ADDR_SLOTS,
         });
     }
-    if binding.sources.len() != artifact.binding.source_count {
+    if binding.sources.len() != artifact.binding.source_slots.len() {
         return Err(BwdSegLowerError::SourceWindowCountMismatch {
-            compiled: artifact.binding.source_count,
+            compiled: artifact.binding.source_slots.len(),
             bound: binding.sources.len(),
         });
     }

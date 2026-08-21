@@ -299,7 +299,7 @@ fn bind_r0_sources<E: Copy>(
     coord: &R0LayerProgram,
 ) -> Result<BoundR0Sources, BwdVmBindError> {
     let mut table = SlotTable::default();
-    let mut sources: Vec<Option<ResolvedSourceAddr>> = vec![None; coord.binding.source_count];
+    let mut sources: Vec<Option<ResolvedSourceAddr>> = vec![None; coord.binding.source_slots.len()];
 
     for (index, artifact_window) in coord.binding.windows.iter().enumerate() {
         let window = index as u8;
@@ -416,7 +416,7 @@ fn bind_ext_round_sources<E: Copy>(
         };
         let mut table = SlotTable::default();
         let mut patches: BTreeMap<usize, FoldingBufferSlot> = BTreeMap::new();
-        let mut sources: Vec<Option<ResolvedSourceAddr>> = vec![None; coord.binding.source_count];
+        let mut sources: Vec<Option<ResolvedSourceAddr>> = vec![None; coord.binding.source_slots.len()];
 
         for (parent, artifact_window) in coord.binding.windows.iter().enumerate() {
             let window = parent as u8;
