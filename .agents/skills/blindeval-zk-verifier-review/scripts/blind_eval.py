@@ -268,6 +268,13 @@ def parse_example(path: Path, domain: str | None = None) -> dict[str, Any]:
     domain = domain or path.parent.name
     component = f"{domain} verifier/argument component"
     target = f"{component}; affected historical paths: {', '.join(paths)}"
+    failure = section("Failure") or section("Vulnerable relation")
+    impact_and_fix = section("Impact and fix")
+    if not impact_and_fix:
+        impact = section("Security impact")
+        fix = section("Fix")
+        impact_and_fix = "\n\n".join(part for part in (impact, fix) if part)
+
     return {
         "name": path.name,
         "domain": domain,
@@ -278,8 +285,8 @@ def parse_example(path: Path, domain: str | None = None) -> dict[str, Any]:
         "component": component,
         "paths": paths,
         "target": target,
-        "failure": section("Failure"),
-        "impact_and_fix": section("Impact and fix"),
+        "failure": failure,
+        "impact_and_fix": impact_and_fix,
     }
 
 

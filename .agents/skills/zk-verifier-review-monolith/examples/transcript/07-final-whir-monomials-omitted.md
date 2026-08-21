@@ -4,7 +4,8 @@
 
 - Confirmed historical final-round transcript and proof-serialization bug
 - Component: GPU WHIR terminal polynomial reveal
-- Security character: incomplete GPU proofs and transcript parity failure; a verifier omitting the same binding would weaken the terminal check
+- Security character: confirmed honest-proof rejection/completeness failure;
+  a verifier omitting the same binding would weaken the terminal check
 - Fixed by: [`cb3787d`](https://github.com/matter-labs/zksync-airbender/commit/cb3787df94900baed4b675b472c30b78c56d9b2e)
 - Vulnerable revision: `1b2f74fb8b2b2828954dd37f32cc2d69cf8734dc`
 
@@ -59,6 +60,14 @@ Audit every terminal reveal for four properties: canonical length, proof presenc
 
 ## Reproduction evidence
 
+At the vulnerable revision, the proof flattener serialized
+`proof.final_monomials`, while the generated final-round verifier read the
+protocol-fixed nonzero coefficient count, absorbed it, evaluated it, and only
+then processed final PoW/query data. The GPU proof left the vector empty and
+used the pre-reveal seed:
+
 ```sh
 git diff 1b2f74fb8b2b2828954dd37f32cc2d69cf8734dc cb3787df94900baed4b675b472c30b78c56d9b2e -- gpu_prover/src/prover/whir_fold.rs
+git show 1b2f74fb8b2b2828954dd37f32cc2d69cf8734dc:verifier_common/src/gkr/flatten.rs
+git show 1b2f74fb8b2b2828954dd37f32cc2d69cf8734dc:verifier_generator/src/whir/rounds.rs
 ```

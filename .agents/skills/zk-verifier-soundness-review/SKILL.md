@@ -129,6 +129,34 @@ and arithmetic are shown, and the resulting conservative bound materially fails
 the claim. Missing documentation or a theorem mismatch without a completed bound
 is a specification question. Do not turn asymptotic concerns into concrete bits.
 
+A security-level feature name alone is not a claim or a reachable instance.
+For a non-deployed historical example, require an end-to-end build/test or
+generation path that selects the level, constructs the proof, emits the matching
+verifier/artifact, and consumes the defective parameter. Record build
+reachability and deployment reachability separately. A later fix or PR statement
+is evidence of intent, not proof that the old configuration was usable.
+
+For grinding findings, identify the exact bad-challenge event and its single-shot
+probability before discussing PoW. Then state the adversarial work/attempt model
+under which the missing work is material. Never claim that `b` PoW bits
+information-theoretically add `b` soundness bits, add PoW counts from distinct
+phases, or infer a whole-system security level from a local retry-cost gap. If
+all reachable configurations derive zero bits, adding the mechanism is hardening
+or future support rather than a historical security failure.
+
+If an exact parameter defect exists only in an unselected or unbuilt
+configuration, preserve it as a separate **latent finding** with the precise
+feature/artifact activation condition and a symbolic or concrete budget for
+that configuration. Do not assign deployed severity or treat an advertised but
+unenforced future target as a current security claim. Reachable parameter
+failures and honest-proof failures are not latent.
+
+Classify an exact arithmetic or mechanism defect as **implementation-only** when
+no consuming acceptance path, honest-proof rejection, or concrete supported
+security claim is established. Preserve it as latent only when the violated
+invariant and a precise feature/artifact/caller activation condition are known;
+a TODO or hypothetical future parameter without that evidence remains a lead.
+
 ## Deliverable
 
 Return the exact configuration, theorem/version citations, parameter and error

@@ -2,8 +2,8 @@
 
 ## Classification
 
-- Confirmed historical verifier-policy soundness bug
-- Boundary: untrusted proof artifact → verifier selection of security level, recursion target, and binary/model
+- Confirmed historical CLI acceptance-policy bug
+- Boundary: untrusted proof artifact → `cli verify`/`continue-proof` selection of security level, recursion target, and binary/model
 - Component: CLI `verify` and `continue-proof` policy plumbing
 - Security character: policy downgrade and stage confusion before cryptographic verification
 - Fixed by: [`3e53f3f`](https://github.com/matter-labs/zksync-airbender/commit/3e53f3f3ac68fed1fbbcffbf28d4fcc425bd22e3), PR [#329](https://github.com/matter-labs/zksync-airbender/pull/329)
@@ -40,7 +40,16 @@ The proof need not be malformed. The bug is that “valid under some supported p
 
 ## Impact and fix
 
-An artifact could steer acceptance into a weaker security schedule or a different stage than the caller intended. The fix requires explicit trusted `--security-level` and `--target` inputs (and trusted security policy for proof continuation), chooses the configuration from those values, and rejects artifacts whose descriptive metadata disagrees.
+An artifact could steer the generic CLI success result into a weaker security
+schedule or a different stage than the relying caller intended. The fix requires
+explicit trusted `--security-level` and `--target` inputs (and trusted security
+policy for proof continuation), chooses the configuration from those values, and
+rejects artifacts whose descriptive metadata disagrees.
+
+The proof remains valid under the weaker policy it names; the unauthorized
+transition is the wrapper reporting success against an unstated stronger/final
+policy. This is a CLI/relying-party boundary finding, not evidence of a deployed
+L1 contract downgrade.
 
 The same rule applies to L1 deployments: contract address, verifier key, circuit/version identifier, recursion depth, and expected public-input schema are policy, not calldata-selected conveniences.
 

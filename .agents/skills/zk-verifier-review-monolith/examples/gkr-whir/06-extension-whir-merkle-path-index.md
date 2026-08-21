@@ -2,10 +2,10 @@
 
 ## Classification
 
-- Confirmed historical WHIR extension-oracle authentication bug
+- Confirmed historical GPU WHIR extension-opening construction bug
 - Component: GPU intermediate/extension oracle queries
 - Claim-chain location: folded query index → bit-reversed combined-tree leaf/path
-- Security character: GPU/canonical-verifier incompleteness; mirrored verifier logic could bind a query to the wrong committed leaf
+- Security character: GPU/canonical-verifier incompleteness
 - Fixed by: [`a07715f`](https://github.com/matter-labs/zksync-airbender/commit/a07715f105917ff9247e5d06049c3d41bceeef2f)
 - Vulnerable revision: `f2ce204b366b42175286cbc72077719a620c8307`
 

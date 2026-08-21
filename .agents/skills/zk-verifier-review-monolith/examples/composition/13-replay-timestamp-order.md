@@ -1,17 +1,24 @@
-# Replay early return skipped the terminal timestamp increment
+# Replay self-loop termination skipped the terminal timestamp increment
 
 ## Classification
 
 - Confirmed historical machine-state continuity bug
 - Invariant: replay, execution, and circuit traces charge the same timestamp step for every executed cycle
-- Component: replayer stop-at-PC loop
-- Security character: replay/proof-construction state mismatch, especially at chunk and delegation boundaries
+- Component: `replay_basic_unrolled` self-loop termination
+- Security character: confirmed honest-proof/replay completeness failure,
+  especially at chunk and delegation boundaries
 - Fixed by: [`6538ff5`](https://github.com/matter-labs/zksync-airbender/commit/6538ff5a4c58ace853d9c6b7eadc4199579d1097)
 - Vulnerable revision: `e30029fb28b99e2146652c746d2ece6fd4953919`
 
 ## Composition context
 
-Replay reconstructs machine state and memory events used by later circuit proving. Each executed instruction consumes one `TIMESTAMP_STEP`, including the instruction that reaches the requested stop PC. The resulting timestamp becomes the starting boundary for later replay segments/chunks and labels register/RAM events in the global memory argument.
+Replay reconstructs machine state and memory events used by later circuit
+proving. Each executed instruction consumes one `TIMESTAMP_STEP`, including the
+canonical terminal self-loop instruction. The loop saves the instruction's
+starting PC as `pc`, executes it, and treats `state.pc == pc` afterward as
+termination. The resulting timestamp becomes the starting boundary for later
+replay segments/chunks and labels register/RAM events in the global memory
+argument.
 
 Stopping is an observation made after a cycle completes; it must not cancel the state transition associated with that cycle.
 
@@ -23,7 +30,7 @@ For each loop iteration:
 execute instruction at current PC
 apply all register, memory, and PC effects
 timestamp += TIMESTAMP_STEP
-if resulting PC is stop PC:
+if resulting PC equals the instruction's starting PC:
     return completed post-state
 ```
 
@@ -31,13 +38,15 @@ After `n` executed cycles, `final_timestamp = initial_timestamp + n * TIMESTAMP_
 
 ## Failure
 
-The replayer tested `state.pc == pc` and returned before incrementing the timestamp. When the just-executed instruction reached the stop point—particularly if it left PC unchanged—the terminal cycle modified machine/memory state but consumed no global time.
+The replayer tested `state.pc == pc` and returned before incrementing the
+timestamp. On the terminal self-loop, the cycle modified machine/memory state
+but consumed no global time in `state.timestamp`.
 
 This produced a hybrid boundary: post-instruction PC/register values paired with a pre-instruction timestamp. Subsequent chunks could start at a timestamp already used by the terminal cycle, violating the uniqueness/ordering assumptions of state and RAM tuples.
 
 ## Failure flow
 
-1. Begin replay at timestamp `t` and execute the terminal instruction.
+1. Begin replay at timestamp `t` and execute the terminal self-loop instruction.
 2. Apply its PC, register, and memory effects, some labeled within cycle `t`.
 3. Observe the stop PC and return with `state.timestamp` still equal to `t`.
 4. Start the next replay/proof segment from `t` rather than `t + TIMESTAMP_STEP`.
@@ -53,14 +62,17 @@ Review every early return, break, exception, trap, and delegation handoff relati
 
 ## Regression
 
-- Test one-cycle and multi-cycle replay with terminal instructions that change PC and that leave it unchanged.
+- Test one-cycle and multi-cycle replay ending in the canonical self-loop, with
+  a non-self-loop instruction as a control.
 - Compare final timestamp and every register/RAM event with the canonical VM trace.
 - Concatenate two replay segments and assert the second starts at exactly the first's post-cycle timestamp.
-- Exercise stop, trap, delegation, and chunk-full exits at the same instruction.
+- Audit trap, delegation, chunk-full, and any other early exits separately
+  against the same complete-cycle rule.
 - Verify timestamp monotonicity and global memory closure over the concatenated proof chunks.
 
 ## Reproduction evidence
 
 ```sh
 git diff e30029fb28b99e2146652c746d2ece6fd4953919 6538ff5a4c58ace853d9c6b7eadc4199579d1097 -- riscv_transpiler/src/replayer/mod.rs
+git show e30029fb28b99e2146652c746d2ece6fd4953919:prover/src/witness_evaluator/unrolled/mod.rs
 ```

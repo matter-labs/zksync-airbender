@@ -4,7 +4,8 @@
 
 - Confirmed historical GPU transcript-omission bug
 - Component: recursive WHIR oracle commitment handoff
-- Security character: GPU prover/canonical-verifier transcript divergence; the canonical verifier still bound the cap
+- Security character: confirmed honest-proof rejection/completeness failure;
+  the canonical verifier still bound the cap
 - Fixed by: [`66ccc73`](https://github.com/matter-labs/zksync-airbender/commit/66ccc73e02d3913dec0298856cc334084836da9d)
 - Vulnerable revision: `e865551a08068caa4dc5be7e720a57198fe23622`
 
@@ -62,8 +63,13 @@ For asynchronous implementations, audit a three-way relation for every message: 
 
 ## Reproduction evidence
 
-The historical commit message records divergence in the next OOD, PoW/query indexes, and delinearization draws:
+At the vulnerable revision, generated `verify_whir` calls the internal-round
+verifier, which reads and commits the intermediate cap before drawing
+`ood_point`. The GPU prover skipped that commit. The historical commit message
+also records the resulting CPU/GPU divergence in the next OOD, PoW/query
+indexes, and delinearization draws:
 
 ```sh
 git diff e865551a08068caa4dc5be7e720a57198fe23622 66ccc73e02d3913dec0298856cc334084836da9d -- gpu_prover/src/prover/whir_fold.rs
+git show e865551a08068caa4dc5be7e720a57198fe23622:verifier_generator/src/whir/rounds.rs
 ```

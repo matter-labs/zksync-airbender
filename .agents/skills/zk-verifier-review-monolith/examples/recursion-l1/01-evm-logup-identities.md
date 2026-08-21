@@ -1,13 +1,17 @@
-# EVM verifier omitted all LogUp identity checks
+# Generated EVM verifier omitted all LogUp identity checks
 
 ## Classification
 
-- Confirmed historical L1 verifier soundness bug
-- Boundary: generated GKR proof acceptance → on-chain lookup-valid circuit statement
+- Confirmed soundness bug in the runnable `av_large_field` generated/test contract
+- Boundary: generated GKR proof acceptance → lookup-valid circuit statement in the two-transaction Foundry consumer
 - Component: terminal output checks in `GkrVerifier`
 - Security character: three lookup arguments were reduced through GKR but never required to close
 - Fixed by: [`bf9bd04`](https://github.com/matter-labs/zksync-airbender/commit/bf9bd04f2ac916eb8e65603cdba72f563b98351f)
 - Vulnerable revision: `33f2685b8e602eec323c4e470729db09e433f060`
+
+No production deployment or settlement consumer is established by this history;
+the finding applies to the generated contract exercised by the branch's Foundry
+two-transaction harness.
 
 ## Boundary context
 
@@ -53,7 +57,9 @@ This is a bounded false-statement flow: the prover need not break Sumcheck, WHIR
 
 ## Impact and fix
 
-The on-chain verifier could accept proofs whose 16-bit, timestamp, or generic lookup argument did not balance. That can invalidate range checks and table membership relied on by the machine circuit.
+The generated verifier could accept proofs whose 16-bit, timestamp, or generic
+lookup argument did not balance. That invalidates range checks and table
+membership relied on by the machine circuit within this test-contract boundary.
 
 The fix records the output-evaluation calldata base, accumulates each of the three fixed output pairs as a rational sum, rejects zero denominators, and invokes the checks before `assert_proof_empty` and registry notification.
 

@@ -4,7 +4,8 @@
 
 - Confirmed historical optional/empty-message transcript bug
 - Component: GKR base commitments and WHIR proof parsing for standalone inits/teardowns
-- Security character: GPU/CPU proof and transcript parity failure confined to a width-zero layout
+- Security character: confirmed honest-proof rejection/completeness failure
+  confined to a reachable width-zero layout
 - Fixed by: [`6bd4fdf`](https://github.com/matter-labs/zksync-airbender/commit/6bd4fdf42071903e8f3033b472ee20aee7bab180)
 - Vulnerable revision: `eac16fe5cf56dfdda86d44beccf2597a97b70cd6`
 
@@ -66,6 +67,13 @@ Optional messages must be specified as an explicit transcript grammar. Do not in
 
 ## Reproduction evidence
 
+The same-revision flattener and generated verifier both gate cap parsing on
+`num_columns > 0`; the standalone inits/teardowns witness layout has zero
+columns. The fix commit records byte-exact CPU/GPU proof-parity failure before
+the fix and passing parity afterward:
+
 ```sh
 git diff eac16fe5cf56dfdda86d44beccf2597a97b70cd6 6bd4fdf42071903e8f3033b472ee20aee7bab180 -- gpu/circuit_prover/src/prover/proof/orchestration/stage1_forward.rs gpu/circuit_prover/src/prover/proof_layout/accessors.rs
+git show eac16fe5cf56dfdda86d44beccf2597a97b70cd6:verifier_common/src/gkr/flatten.rs
+git show eac16fe5cf56dfdda86d44beccf2597a97b70cd6:verifier_generator/src/gkr/mod.rs
 ```

@@ -4,7 +4,8 @@
 
 - Confirmed historical GPU transcript-omission bug
 - Component: recursive WHIR OOD-claim handoff
-- Security character: GPU prover/canonical-verifier transcript divergence; a verifier sharing the omission would fail to bind a claimed evaluation
+- Security character: confirmed honest-proof rejection/completeness failure;
+  a verifier sharing the omission would fail to bind a claimed evaluation
 - Fixed by: [`1b2f74f`](https://github.com/matter-labs/zksync-airbender/commit/1b2f74fb8b2b2828954dd37f32cc2d69cf8734dc)
 - Vulnerable revision: `66ccc73e02d3913dec0298856cc334084836da9d`
 
@@ -52,6 +53,11 @@ Repeated protocol rounds deserve independent transcript tables. A correct base r
 
 ## Reproduction evidence
 
+The same-revision generated verifier reads the recursive OOD value, commits its
+four extension-field words, and only then verifies PoW and draws queries. The
+GPU producer performed those events in the opposite effective transcript:
+
 ```sh
 git diff 66ccc73e02d3913dec0298856cc334084836da9d 1b2f74fb8b2b2828954dd37f32cc2d69cf8734dc -- gpu_prover/src/prover/whir_fold.rs
+git show 66ccc73e02d3913dec0298856cc334084836da9d:verifier_generator/src/whir/rounds.rs
 ```

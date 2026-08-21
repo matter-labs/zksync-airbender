@@ -39,7 +39,11 @@ This does not mean the intermediate proof is cryptographically invalid. It means
 
 ## Impact and fix
 
-A partially compressed intermediate artifact could be accepted as a final verification/settlement artifact. The fix computes the proof-family count, maps the trusted security level to its declared terminal shape, and rejects unified targets that have not converged.
+A partially compressed intermediate artifact could be accepted by the CLI as a
+final verification artifact. The fix computes the proof-family count, maps the
+trusted security level to its declared terminal shape, and rejects unified
+targets that have not converged. The historical path does not establish an L1
+settlement consumer, so settlement impact is conditional rather than claimed.
 
 The terminal predicate belongs near the final acceptance boundary. Relying only on a producer loop to continue recursion is insufficient because artifacts can be submitted directly or workflows can be interrupted.
 

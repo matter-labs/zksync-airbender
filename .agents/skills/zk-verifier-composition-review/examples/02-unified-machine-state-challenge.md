@@ -33,17 +33,32 @@ The challenge equality must hold before the inner contribution and outer boundar
 
 The verifier compared the memory challenge—and conditionally the delegation challenge—but omitted equality between the externally expected machine-state permutation challenge and `proof_output_0.machine_state_permutation_challenges[0]`.
 
-It then combined a proof-reported machine-state accumulator with outer logic whose challenge provenance was not connected to the proof. The existence of a final product equality did not close this gap: a product computed under one random encoding has no sound relation to a boundary contribution computed under another.
+The honest prover derived all three challenge families from the global memory
+seed using
+`draw_from_transcript_seed_with_state_permutation`. The vulnerable verifier
+instead called the older derivation that produced only memory/delegation
+challenges. It then used the proof-reported machine-state challenge to encode
+the public initial/final PC/timestamp contribution. Thus prover and verifier
+could agree internally on an attacker-selected state challenge without that
+challenge being the Fiat-Shamir output bound to the global commitments.
 
 ## Adversarial flow
 
-1. Construct the inner unified proof and its machine-state accumulator under a chosen or otherwise different challenge value.
-2. Pass local verification under the challenge carried/derived inside that proof path.
-3. Let the outer verifier independently derive the expected challenge used for public state.
-4. Because no equality is enforced, both values can enter different sides of the composition.
-5. Exploit the extra freedom in the proof output/accumulator relation to target the outer closure without proving continuity under the public statement's challenge.
+1. Fix the unified proof's committed data.
+2. Choose the externally supplied machine-state linearization coefficients
+   instead of accepting the transcript-derived coefficients.
+3. For two distinct state tuples, choose one still-free coefficient so their
+   compressed encodings coincide; equivalently, set the coefficient of a
+   differing component to zero when the remaining components agree.
+4. Prove the local permutation product under that chosen challenge.
+5. The outer verifier uses the same proof-reported challenge for its public
+   boundary factor, so the final product can close even though the unequal
+   state tuples would be detected under a random transcript-derived challenge.
 
-The exact forgery depends on which proof outputs are constrained inside the unified verifier, but the missing cross-boundary equality invalidates the global-state soundness argument on its face.
+This is the ordinary failure mode of an unbound randomized multiset argument:
+the prover can tailor the compression challenge to the false relation rather
+than being challenged after commitments are fixed. No hash preimage or
+cross-implementation mismatch is needed.
 
 ## Impact and fix
 
@@ -62,4 +77,5 @@ Build a challenge-family ledger for composition audits: source seed, derivation 
 
 ```sh
 git diff c16b75d2df36af2608fb971c3a75af83cd1c997d 8ef06cf8dc63b04e4b309b501d54bb571e86a1a9 -- full_statement_verifier/src/unified_circuit_statement.rs
+git show c16b75d2df36af2608fb971c3a75af83cd1c997d:circuit_defs/prover_examples/src/unified.rs
 ```

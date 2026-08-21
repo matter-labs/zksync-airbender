@@ -5,7 +5,8 @@
 - Confirmed historical chunk-coverage bug
 - Invariant: every source inits/teardowns item belongs to exactly one correctly sized output chunk
 - Component: `SetupAndTeardownChunker` fill and skip paths
-- Security character: prover-side duplication/omission/mis-sizing; verifier consequence depends on independent global coverage checks
+- Security character: confirmed honest-proof generation/completeness failure in
+  the active GPU execution worker
 - Fixed by: [`9bb1607`](https://github.com/matter-labs/zksync-airbender/commit/9bb1607452baa6c1c018a47567fcbb4bb8cbbc38), PR [#85](https://github.com/matter-labs/zksync-airbender/pull/85)
 - Vulnerable revision: `d4fc8163d0d6934323af3bcef2b1bafa9064865d`
 
@@ -41,7 +42,11 @@ Because source position and logical chunk index could drift independently, simpl
 4. Repeat through a final partial region whose expected size is computed from the wrong index.
 5. Emit duplicated, omitted, or mis-sized boundary events into proofs that are later multiplied into global RAM closure.
 
-The canonical final memory product should expose most honest mismatches. A verifier relying on prover-declared chunk counts or failing to bind all boundary participants could turn the same defect class into missing coverage, so both producer and verifier sides must be mapped.
+`gpu_prover/src/execution/cpu_worker.rs` actively called both methods in the
+production chunk loop. Repeated first-chunk padding/consumption either exhausted
+the source incorrectly, emitted malformed boundary chunks, or prevented the
+canonical final memory product from closing. No accepting verifier bypass was
+established.
 
 ## Impact and fix
 
@@ -61,4 +66,5 @@ Every chunking state machine needs a conservation proof: source items in, paddin
 
 ```sh
 git diff d4fc8163d0d6934323af3bcef2b1bafa9064865d 9bb1607452baa6c1c018a47567fcbb4bb8cbbc38 -- gpu_prover/src/execution/tracer.rs
+git show d4fc8163d0d6934323af3bcef2b1bafa9064865d:gpu_prover/src/execution/cpu_worker.rs
 ```

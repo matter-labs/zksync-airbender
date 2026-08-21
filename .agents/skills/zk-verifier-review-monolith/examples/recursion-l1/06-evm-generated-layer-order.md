@@ -1,13 +1,16 @@
-# Generated EVM verifier hardcoded layer count and output order
+# Generated EVM verifier skipped layer 4 and used a stale output permutation
 
 ## Classification
 
-- Confirmed historical generated-artifact drift bug
+- Confirmed soundness bug in the runnable `av_large_field` generated/test contract
 - Boundary: `GKRCircuitArtifact` semantics → assembled Solidity/Yul verifier
 - Component: circuit layer call graph and dimension-reduction boundary permutation
-- Security character: omitted/stale layer or misowned global outputs; exact result ranges from honest rejection to wrong accepted circuit
+- Security character: the emitted artifact had five layers, but the driver called only layers 3 through 0; global-output offsets were also stale
 - Fixed by: [`5459c07`](https://github.com/matter-labs/zksync-airbender/commit/5459c07f94f5b6c843c0cb405ee797a4b2e93e7f)
 - Vulnerable revision: `1500f8ba394ecc320955493ac12d4030ffd20271`
+
+The vulnerable revision committed generated contracts, real calldata fixtures,
+and the Foundry two-transaction harness. No production deployment is established.
 
 ## Boundary context
 
@@ -28,19 +31,24 @@ Generation must fail if output addresses are not the expected layer kind/count o
 
 ## Failure
 
-The assembled contract hardcoded which `sumcheck_circuit_layer{i}` functions were called and hardcoded the boundary LSB reorder. Circuit depth and `global_output_map` ordering had changed independently.
-
-This could leave an emitted layer function uncalled, call a stale/nonexistent layer sequence, or route correct output values into the wrong global accumulator slots. A separate minor issue in the same update explicitly initialized the generated Horner accumulator to zero.
+The vulnerable generated contract contained
+`sumcheck_circuit_layer4`, but its driver called only layers `3, 2, 1, 0`.
+It therefore omitted a concrete emitted proof layer rather than merely risking
+future drift. Its boundary permutation was the stale
+`[6,7,0,1,2,3,4,5,8,9]`; regeneration from the artifact produced
+`[2,3,0,1,4,5,6,7,8,9]`.
 
 ## Adversarial or failure flow
 
-1. Modify/recompile the circuit artifact by adding/removing a layer or reassigning output offsets.
-2. Emit new per-layer Yul functions from that artifact.
-3. Assemble them with a driver retaining old hardcoded calls/permutation.
-4. Skip a layer's proof or interpret a lookup/memory output as another type.
-5. Reach global terminal checks for a circuit different from the artifact the deployment intends—or reject all honest proofs if inconsistency is detected later.
+1. Use the committed five-layer artifact and generated contract.
+2. Enter the hardcoded driver after the dimension-reduction claim.
+3. Skip layer 4 entirely and begin verification at layer 3.
+4. Route boundary values with the stale logical-output permutation.
+5. Reach the remaining GKR/WHIR and terminal checks for a reduction chain that is
+   not the five-layer artifact's claim chain.
 
-Reachability depends on the exact generated contract deployed. Source generator fixes do not repair already compiled runtime bytecode.
+This is a generated-verifier soundness failure at the branch's contract/test
+boundary. Source generator fixes do not repair any already compiled runtime.
 
 ## Impact and fix
 

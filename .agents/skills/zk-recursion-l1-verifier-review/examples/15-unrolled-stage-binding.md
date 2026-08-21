@@ -37,7 +37,11 @@ This is a boundary type-confusion bug: “same program” was used as a proxy fo
 
 ## Impact and fix
 
-The consumer could accept a proof as one recursion layer deeper than the chain actually attested. The fix centralizes an unrolled-target check requiring authenticated output to equal the supplied program's `unrolled_level.hash_chain`, regardless of whether the wrapper consumed base or prior-unrolled input.
+The CLI consumer could accept a proof as one recursion layer deeper than the
+chain actually attested. The fix centralizes an unrolled-target check requiring
+authenticated output to equal the supplied program's
+`unrolled_level.hash_chain`, regardless of whether the wrapper consumed base or
+prior-unrolled input. No L1 consumer is inferred from this CLI path.
 
 Stage tags in JSON do not repair this issue: they are untrusted. The stage must be derived from authenticated output and compared with trusted target policy.
 

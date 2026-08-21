@@ -2,7 +2,7 @@
 
 ## Classification
 
-- Confirmed historical recursive public-state bug
+- Confirmed historical producer/replayer completeness bug at a recursion-visible state boundary
 - Boundary: delegated Keccak execution → register-memory events and recursion-visible terminal machine state
 - Component: `keccak_special5` x10/x11 timestamp assignment
 - Security character: an implementation/replay transition disagreed with the zero-indexed internal-call schedule
@@ -33,7 +33,11 @@ The Keccak delegation VM placed the final x10/x11 events at `entry + NUM_CALLS *
 4. The outer machine applies its ordinary after-cycle update.
 5. Register last-access timestamps, global memory tuples, and the recursion-visible terminal state no longer describe the same execution boundary.
 
-With an independent circuit/verifier enforcing the canonical memory/state transition, this is normally an honest-prover/replay failure. A false-acceptance claim requires showing that all accepting implementations share the late timestamp while a settlement consumer interprets it canonically; do not infer that from producer parity alone.
+The witness replayer used the zero-indexed `NUM_CALLS-1` schedule while the VM
+snapshot assigned x10/x11 the later timestamp. The reachable snapshot/replay
+equality checks therefore reject an honest Keccak execution at this boundary.
+No false-accepting verifier path is established, so the card is completeness,
+not soundness.
 
 ## Impact and fix
 

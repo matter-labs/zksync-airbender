@@ -1,64 +1,93 @@
-# Unified circuit family was not transcript-bound
+# Unified prover and verifier disagreed on the family separator
 
 ## Classification
 
-- Confirmed historical Fiat-Shamir statement-binding bug
-- Component: unified full-statement verifier and universal verifier-binary dispatch
-- Security character: cross-context replay / semantic-aliasing risk, conditional on compatible proof layouts
+- Confirmed historical same-instance Fiat-Shamir parity/completeness bug
+- Component: unified full-statement external-challenge transcript
+- Direct consequence: the provided prover and verifier derived different
+  memory/delegation challenges for honest unified proofs
+- Additional security purpose: branch-specific domain separation for the
+  universal unrolled/unified dispatcher introduced by the same fix
 - Fixed by: [`7bfd63b`](https://github.com/matter-labs/zksync-airbender/commit/7bfd63b42fc56b5b44c0c24200e930259d4eb95b)
 - Vulnerable revision: `745cfa076989dbd1e430c422be9803c2bdb8c2d2`
 
-## Protocol context
+## Failure
 
-The full-statement verifier derives one rolling seed from public state and the commitment caps of every proof participant. Challenges derived from that seed are later used by the individual circuit verifiers and by the global memory/delegation closure. The universal verifier binary can dispatch to different statement families, so the same byte representation may acquire different semantics depending on the selected family.
+The unified prover used the shared unrolled-family transform. For each nonempty
+family, that transform absorbed a padded family identifier before the family's
+memory caps. The unified main family was therefore represented as:
 
-The family identifier is therefore part of the statement, not merely host-side dispatch metadata. It must enter the seed before any proof-family-dependent commitment or challenge is interpreted.
+```text
+pad16(REDUCED_MACHINE_CIRCUIT_FAMILY_IDX) || unified memory caps
+```
 
-## Intended transcript relation
+The matching full-statement verifier read `num_circuits > 0` and immediately
+entered the proof loop. It absorbed each returned memory cap, but never absorbed
+`REDUCED_MACHINE_CIRCUIT_FAMILY_IDX` first:
 
-For a unified statement the prefix should have the shape:
+```text
+prover:   public state || family tag || cap_0 || cap_1 || ...
+verifier: public state ||               cap_0 || cap_1 || ...
+```
+
+The later external-challenge equality check could not repair this mismatch:
+the two sides had already finalized different Blake2s inputs and therefore
+derived different challenges except with a hash collision. The directly
+established historical failure was honest-proof rejection.
+
+## Universal-dispatch qualification
+
+Before this commit, the `unified_reduced_machine` verifier workload directly
+called the unified recursion verifier. If the recursion chain authenticated that
+single-mode binary/setup, its program identity could already bind the verifier
+mode externally; the diff alone does not establish a pre-fix cross-family replay
+through that binary.
+
+Commit `7bfd63b` simultaneously changed the workload to a universal dispatcher
+that reads a prover-supplied `op_type` and selects the unrolled or unified
+recursion verifier. One binary hash authenticates the dispatcher code but does
+not by itself identify its runtime branch. The family tags used by the two
+branches then provide branch-specific transcript framing. A concrete replay
+still depends on compatible proof layouts, setup checks, and accepted relations;
+do not claim unconditional portability between families.
+
+## Required invariant
+
+For a same-instance prover and verifier, the complete pre-challenge transcript
+must match exactly:
 
 ```text
 seed_0 = H(public statement and final-state prefix)
-seed_1 = H(seed_0 || pad(REDUCED_MACHINE_CIRCUIT_FAMILY_IDX))
-seed_2 = H(seed_1 || first unified-circuit proof data)
+seed_1 = H(seed_0 || pad16(REDUCED_MACHINE_CIRCUIT_FAMILY_IDX))
+seed_2 = H(seed_1 || first unified memory cap)
 ...
 ```
 
-Changing only the family must change every challenge downstream of `seed_1`.
-
-## Failure
-
-The verifier entered the unified-circuit proof loop without first absorbing `REDUCED_MACHINE_CIRCUIT_FAMILY_IDX`. It bound the commitment and proof bytes, but not the circuit-family interpretation under which those bytes were parsed and verified. The selected verifier operation lived outside the Fiat-Shamir state.
-
-Consequently, two statement modes with a compatible serialized prefix could reach the same seed from the same public data and proof bytes. Local polynomial and Merkle checks do not repair this omission: they prove the claims associated with the challenges they receive, but they do not establish that those challenges were derived for the intended circuit family.
-
-## Adversarial flow
-
-1. Obtain or construct a proof stream accepted under family `A`.
-2. Present the same transcript-relevant bytes through family `B`'s entrypoint.
-3. If the two modes accept a compatible layout and parameters, both derive identical challenges because the family choice was never absorbed.
-4. The verifier then interprets the same commitments and claims under a different statement language without a cryptographic domain boundary.
-
-This example establishes the missing binding. Whether a concrete cross-family proof reaches acceptance additionally depends on parser, setup, and parameter compatibility; the bug should not be overstated as unconditional replay across every family.
+More generally, a verifier-selected mode must be bound either by the transcript
+or by authenticated enclosing context that uniquely determines it. A
+single-mode authenticated binary may close that obligation; a prover-selected
+branch in one multi-mode binary does not do so merely because the dispatcher is
+hashed.
 
 ## Impact and fix
 
-The omission made circuit-family identity unauthenticated transcript context and created a cross-mode replay surface. The fix absorbs a padded family identifier immediately before the per-circuit proof loop, so the first and all subsequent challenges differ across statement families.
+The fix absorbs the padded unified-family identifier once, immediately after
+checking that the main proof count is positive and before the first proof/cap.
 
-Audit every verifier entrypoint for circuit family, protocol/version, verifier-key or setup identity, security mode, program identity, and recursion role. A host-side branch or Rust enum comparison is not a transcript binding unless its canonical representation is absorbed before dependent randomness.
+Regression coverage should:
 
-## Regression
-
-- Hold public inputs, caps, and proof bytes fixed; mutate only the family/mode and require the pre-proof seed to differ.
-- Attempt a cross-mode replay using the most serialization-compatible pair of entrypoints and require rejection.
-- Assert the tag is absorbed exactly once and before the first family-dependent squeeze.
-- Include the zero-proof or empty-family path so an early return cannot bypass domain separation.
+- compare prover and verifier transcript events and seeds at the family marker
+  and after every cap;
+- assert the tag occurs exactly once before the first dependent challenge;
+- cover one and multiple unified chunks plus empty/nonempty delegation groups;
+- for a universal binary, change only the selected operation and require either
+  a different authenticated statement context or a different transcript prefix;
+  and
+- distinguish an honest parity failure from conditional cross-mode replay in
+  the reported impact.
 
 ## Reproduction evidence
 
-The scoped historical diff shows the missing padded tag being inserted before the proof loop:
-
 ```sh
-git diff 745cfa076989dbd1e430c422be9803c2bdb8c2d2 7bfd63b42fc56b5b44c0c24200e930259d4eb95b -- full_statement_verifier/src/unified_circuit_statement.rs
+git diff 745cfa076989dbd1e430c422be9803c2bdb8c2d2 7bfd63b42fc56b5b44c0c24200e930259d4eb95b -- full_statement_verifier/src/unified_circuit_statement.rs tools/verifier/src/main.rs
 ```

@@ -1,11 +1,13 @@
-# Unified GPU permutation lost the prior accumulator
+# Unified GPU permutation could not hand off the prior accumulator
 
 ## Classification
 
 - Confirmed historical global permutation implementation bug
 - Invariant: each argument segment starts from the terminal accumulator of the immediately preceding segment
-- Component: unified stage-3 CUDA grand-product construction
-- Security character: GPU/canonical relation mismatch in a combined machine-state-mask plus shuffle-RAM path
+- Component: unified stage-3 Rust metadata and CUDA grand-product handoff
+- Security character: confirmed fail-closed honest-proof/completeness failure;
+  the underlying CUDA handoff would also be wrong if the guard alone were
+  relaxed
 - Fixed by: [`361e73f`](https://github.com/matter-labs/zksync-airbender/commit/361e73f7d55ef3f630b13bb1b8c90992ce30e913), PR [#167](https://github.com/matter-labs/zksync-airbender/pull/167)
 - Vulnerable revision: `967362b4a3920b64e484ab62260cde096068da1a`
 
@@ -29,23 +31,44 @@ If no prior segment exists, only then may `B` begin from the protocol identity. 
 
 ## Failure
 
-The unified CUDA path processed machine-state masking and then shuffle-RAM initialization but did not set `arg_prev_is_initialized` or carry the current `e4_arg` into `e4_arg_prev`. The next recurrence therefore behaved as if no prior argument segment existed.
+The vulnerable implementation had two matching defects at the same handoff:
 
-Each segment's local factors could be correct while the concatenated product column was wrong at exactly one handoff. Final-accumulator-only debugging obscures this because the mismatch appears after many otherwise valid multiplications.
+1. Rust static-metadata construction asserted that an unrolled circuit with
+   any init/teardown set could not already have an initialized permutation
+   accumulator. The unified circuit is the counterexample: it has a prior
+   machine-state/mask segment and exactly one following init/teardown set, so
+   public GPU proof construction failed closed at this assertion.
+2. The CUDA path after machine-state masking did not set
+   `arg_prev_is_initialized` or copy `e4_arg` into `e4_arg_prev`. If the Rust
+   guard were merely relaxed, shuffle-RAM initialization would start from
+   identity/stale state instead of the prior segment's terminal accumulator.
+
+Thus the historical active impact was an honest proving failure, not an
+accepted malformed product. The kernel defect explains why removing only the
+guard would have been an incorrect repair.
 
 ## Failure flow
 
-1. Enable unified machine-state masking and multiple init/teardown/shuffle-RAM sets.
-2. Compute the terminal machine-state accumulator correctly.
-3. Enter shuffle-RAM initialization with predecessor metadata still unset.
-4. Initialize from identity/stale state instead of the machine-state terminal value.
-5. Produce a grand-product column and output contribution different from the canonical prover/verifier relation.
+1. Supply the repository's unified compiled circuit to the public
+   `gpu_prover::prover::proof::prove` path.
+2. Static metadata observes a prior machine-state accumulator and one
+   init/teardown set.
+3. The stale assertion requires the prior accumulator to be absent and panics,
+   so no proof is produced.
+4. Under a guard-only patch, CUDA would instead enter shuffle-RAM initialization
+   with predecessor metadata unset and construct the wrong product from
+   identity/stale state.
 
-The historical path causes honest GPU proof failure. If analogous state loss occurred in a verifier-side aggregation routine, it could omit an entire participant segment, so the same handoff audit applies at every implementation boundary.
+The canonical CPU relation and verifier retain the prior product. No historical
+false acceptance follows because the vulnerable Rust path stopped before
+producing that malformed proof.
 
 ## Impact and fix
 
-Unified GPU permutation columns and final contribution diverged only in the combined corner case. The fix explicitly marks the predecessor initialized and assigns the current extension-field accumulator before starting the following segment. A related Rust-side assertion was relaxed for the unified one-set layout to match valid geometry.
+Unified GPU proof construction failed in the combined corner case. The fix
+narrows the Rust assertion so the valid unified one-set layout proceeds, then
+explicitly marks the predecessor initialized and carries the current
+extension-field accumulator before starting the following segment.
 
 Composition audits should expand every accumulator into a participant sequence and check the recurrence at boundaries. A product-of-products is only equivalent to one global product if no transition resets, duplicates, or skips the carried value.
 
@@ -61,4 +84,5 @@ Composition audits should expand every accumulator into a participant sequence a
 
 ```sh
 git diff 967362b4a3920b64e484ab62260cde096068da1a 361e73f7d55ef3f630b13bb1b8c90992ce30e913 -- gpu_prover/native/stage3.cu gpu_prover/src/prover/stage_3_kernels.rs
+git show 967362b4a3920b64e484ab62260cde096068da1a:gpu_prover/src/prover/proof.rs
 ```

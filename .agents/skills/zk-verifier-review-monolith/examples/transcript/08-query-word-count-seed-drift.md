@@ -4,7 +4,8 @@
 
 - Confirmed historical Fiat-Shamir squeeze-length mismatch
 - Component: GPU WHIR query-index drawing and PoW seed evolution
-- Security character: CPU/GPU transcript parity failure at digest-block boundaries
+- Security character: confirmed parameter-dependent honest-proof
+  rejection/completeness failure at digest-block boundaries
 - Fixed by: [`c1e0576`](https://github.com/matter-labs/zksync-airbender/commit/c1e0576ec77ded9a2436dfe74475d97986527d94)
 - Vulnerable revision: `1b653f86adf8f6d2e12cba664f7ce10f085d381`
 
@@ -64,6 +65,13 @@ Audit sponge/hash expansion as a state machine. Comparing challenge outputs that
 
 ## Reproduction evidence
 
+The generated verifier computed `draw_words` from `query_bits + 32` exactly
+once, matching CPU `draw_query_bits`. The fix commit records the concrete
+`blake2_with_compression` failure and successful 12-circuit byte-exact parity
+matrix after repair:
+
 ```sh
 git diff 1b653f86adf8f6d2e12cba664f7ce10f085d381 c1e0576ec77ded9a2436dfe74475d97986527d94 -- gpu/circuit_prover/src/prover/pow.rs
+git show 1b653f86adf8f6d2e12cba664f7ce10f085d381:verifier_generator/src/whir/rounds.rs
+git show 1b653f86adf8f6d2e12cba664f7ce10f085d381:prover/src/gkr/prover/transcript_utils.rs
 ```

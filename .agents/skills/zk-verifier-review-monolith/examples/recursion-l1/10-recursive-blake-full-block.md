@@ -2,7 +2,7 @@
 
 ## Classification
 
-- Confirmed historical verifier-binary hash mismatch
+- Confirmed historical verifier-binary completeness bug
 - Boundary: Merkle leaf bytes → Blake2s digest inside the alternative-compression recursive verifier
 - Component: full-round/final-round scheduling for exact-block inputs
 - Security character: the recursive verifier implemented a different hash function on a boundary length
@@ -22,6 +22,11 @@ initial tail length = 0
 correct schedule    = 0 ordinary rounds + 1 final full block
 ```
 
+This boundary was reachable: generated unrolled circuit verifiers selected the
+alternative-compression implementation by default on RISC-V, and several
+committed setup-tree layouts had `total_width = 16` u32 words, exactly one
+Blake2s block.
+
 ## Failure
 
 When the tail length was zero, the implementation changed it to a full-block final round. It decremented `num_full_rounds`, however, only when the count was greater than one. At exactly one block the decrement was skipped, leaving both one ordinary full round and one full final round in the schedule.
@@ -36,7 +41,11 @@ The off-by-one is easy to miss because non-multiple inputs already have a distin
 4. The alternative-compression path hashes a schedule different from standard Blake2s/native commitment construction.
 5. A valid native authentication path fails recursive verification, or a path built under the alternate hash is interpreted differently at another verification boundary.
 
-This is principally an implementation-parity/completeness failure. It becomes a soundness boundary only if an outer consumer treats the recursive digest as the canonical native root without proving the two hash implementations agree; the historical diff alone does not establish a Blake collision or arbitrary invalid-path acceptance.
+This is an implementation-parity/completeness failure: canonical setup leaves of
+the affected width hash to a different digest and valid native authentication
+paths are rejected. The history does not establish a Blake collision or an
+invalid path accepted against a canonical native root, so it is not classified
+as soundness.
 
 ## Impact and fix
 

@@ -115,6 +115,22 @@ final accepted statement. A missing local circuit relation belongs in a circuit
 review unless it manifests as an unchecked composition interface. Keep
 unresolved participant coverage as a dependency, not a finding.
 
+If active producer or aggregation code is defective but no consuming proof
+path and no concrete honest-proof rejection path is established, classify it
+as an **implementation-only defect**, not soundness or completeness. If the
+broken value is observable only through a callback, feature, or participant
+with no connected consumer, classify it as **latent** and state the exact
+activation condition. Do not infer a missing participant merely because stale
+metadata could hypothetically control orchestration.
+
+Do not discard a concrete composition defect solely because its producer,
+aggregator, feature, or artifact is not currently connected. Report it
+separately as a **latent finding** when the broken invariant and activation
+condition are exact, while withholding deployed severity and present-acceptance
+claims. Mere missing integration evidence or a speculative future participant
+remains a dependency or lead. Do not misclassify reachable completeness or
+robustness failures as latent.
+
 ## Deliverable
 
 Report one invariant, its complete necessary participant set, confirmed

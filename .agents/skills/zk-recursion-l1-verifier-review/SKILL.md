@@ -118,6 +118,22 @@ reachable compiled/deployed path, and final false accepted statement or
 unauthorized state transition are established. A suspicious unused template is
 an unverified lead, not a production vulnerability.
 
+Confirm completeness only when the affected generated binary, contract, prover,
+or wrapper was actually buildable/reachable and a canonical honest artifact is
+shown to reject, panic, or fail to compose. A source fragment fixed before the
+first compiling verifier is not a historical completeness failure. Likewise,
+canonicalization or field-representation hardening is implementation-only unless
+an exact consumer distinguishes the old representation in a rejecting or
+accepting predicate.
+
+Do not discard a concrete defect merely because the affected source, template,
+binary, contract, or boundary is not deployed or called. Report it separately
+as a **latent finding** when the violated boundary contract and exact activation
+condition are established, but do not assign production severity or imply a
+deployed acceptance path. An unused template with only a suspected risk remains
+a lead; reachable prototype or test deployments must be labeled by their actual
+consumer rather than automatically called latent.
+
 ## Deliverable
 
 Report the single boundary, artifacts/deployment, confirmed findings, leads,

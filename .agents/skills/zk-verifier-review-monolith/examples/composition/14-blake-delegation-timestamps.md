@@ -5,7 +5,8 @@
 - Confirmed historical delegation/state-composition bug
 - Invariant: CPU state, artificial delegation reads, and specialized Blake work share one round-indexed timestamp schedule
 - Component: Blake2 replay and VM delegation implementations
-- Security character: cross-implementation boundary mismatch for reduced and full round modes
+- Security character: confirmed honest-proof/replay completeness failure for
+  reduced and full round modes
 - Fixed by: [`e30029f`](https://github.com/matter-labs/zksync-airbender/commit/e30029fb28b99e2146652c746d2ece6fd4953919)
 - Vulnerable revision: `26cde91b9446226414e73b12350d21e0195f80c4`
 
@@ -31,7 +32,12 @@ All artificial reads and final register values must compose at this same boundar
 
 ## Failure
 
-The replay path calculated `upper_bound_read_timestamp` using `NUM_DELEGATION_CALLS_FOR_KECCAK_F1600` instead of Blake's actual `num_rounds`. Separately, the VM placed final x10/x11/x12 timestamps at `t + num_rounds * TIMESTAMP_STEP + 3`, one full step after the zero-based final round.
+The replay path calculated `upper_bound_read_timestamp` using
+`NUM_DELEGATION_CALLS_FOR_KECCAK_F1600` instead of Blake's actual `num_rounds`.
+That value determined the artificial RAM-read timestamp, not merely a debug
+bound. Separately, the VM placed final x10/x11/x12 timestamps at
+`t + num_rounds * TIMESTAMP_STEP + 3`, one full step after the zero-based final
+round.
 
 The two errors made Blake's CPU-side final state, replay-generated delegation data, and specialized round schedule disagree. Reduced and full modes amplified the problem differently because their correct counts are seven and ten.
 

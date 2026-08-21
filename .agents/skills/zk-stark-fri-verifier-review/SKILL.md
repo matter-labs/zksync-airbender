@@ -111,6 +111,24 @@ freedom, all constraint/transcript/opening checks, reachable tag/configuration,
 and a bounded symbolic accepting flow for a false AIR or low-degree claim. Keep
 it non-executable. Separate completeness, stale-code, and specification issues.
 
+Preserve an exact defect in an unreachable historical helper, generator branch,
+feature, or artifact as a separate **latent finding** when its activation
+condition is concrete. Do not give it deployed severity or claim a present
+acceptance path. A stale name, TODO, or suspected migration risk without a
+demonstrated broken identity remains a lead, while a reachable honest-proof
+failure remains completeness rather than latent.
+
+For generator history, distinguish three separate states: a wrong generator
+branch, an emitted artifact containing that relation, and a compiled verifier
+selected by a caller. A wrong algebra branch is latent if another generation
+failure prevents artifact construction or if no affected artifact/caller is
+shown. A deterministic malformed-source or build failure may be reported as
+generator completeness, but it is not verifier false acceptance. Do not infer a
+runtime domain mismatch merely because a patch replaces a hardcoded capacity
+with a semantic parameter; show a reachable configuration where the old bounds
+omit, misindex, overflow, or reject nonzero protocol data. Commit titles and
+defensive assertions are supporting clues, not substitutes for that flow.
+
 ## Deliverable
 
 Report the selected historical version, phase, immediate handoffs, findings,

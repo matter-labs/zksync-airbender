@@ -1,17 +1,17 @@
-# L1 inits/teardowns product ratio was reversed
+# GKR inits/teardowns product ratio was reversed
 
 ## Classification
 
-- Confirmed historical recursive accumulator-orientation bug
-- Boundary: GKR-reduced I/T pair outputs → global memory product used by the L1-oriented proof
-- Component: merged-and-packed commitment mode and its `gkr_self_checks`
-- Security character: the two sides of a permutation ratio were assigned opposite semantic roles
+- Confirmed reachable prover/composition completeness bug
+- Boundary: GKR-reduced I/T pair outputs → global memory product used by unified/unrolled proof construction
+- Component: `grand_product_accumulator_computed`; the fix also added a merged-mode `gkr_self_checks` closure
+- Security character: active program-proof aggregation multiplied the inverse I/T factor and then required the global accumulator to equal one
 - Fixed by: [`f15c643`](https://github.com/matter-labs/zksync-airbender/commit/f15c64359f852837c9ffe4fe368a62f34b6e3c89)
 - Vulnerable revision: `b75be7bbecc17860dac85a6d875887a7e7fb1396`
 
 ## Boundary context
 
-The GKR output does not expose one self-describing “memory product.” It exposes a pair whose positions have protocol meaning. In this path the array order is:
+The GKR output does not expose one self-describing “memory product.” It exposes a pair whose positions have protocol meaning. The array order is:
 
 ```text
 [teardown/read-side evaluation, initialization/write-side evaluation]
@@ -44,13 +44,24 @@ This is a semantic interface bug, not a field-arithmetic bug. Every individual e
 2. The L1-oriented aggregation path assigns the positions the opposite names.
 3. It computes a locally well-formed ratio using those names.
 4. Public machine-state factors and other chunks use the canonical write/read convention.
-5. The final product is inverted for this participant and cannot represent the intended memory multiset equality.
+5. The active unified/unrolled proof builder reaches its final
+   `assert_eq!(permutation_argument_accumulator, ONE)` with the participant
+   factor inverted.
 
-If the terminal verifier independently reconstructs the canonical ratio, this normally rejects honest proofs. If a generated or recursive acceptance path shares the swapped convention or trusts a reported aggregate without re-deriving participant semantics, the defect can instead change the accepted global statement. The auditor must trace the ratio all the way to the rejecting equality before classifying reachability.
+The active unified and unrolled proof builders multiplied
+`proof.grand_product_accumulator_computed` into their global permutation
+accumulator and later asserted that accumulator equals one. For nontrivial I/T
+values, the inverted participant factor therefore causes honest proof generation
+or composition to fail. History does not establish a verifier that shared the
+swap and accepted a false memory statement, so this card does not claim
+soundness.
 
 ## Impact and fix
 
-Even individually valid recursion outputs combined into the inverse global product. The fix names the destructured values in their actual order, multiplies the initialization/write value, and then multiplies the inverse teardown/read value.
+Individually valid GKR outputs combined into the inverse global product on the
+reachable program-proof path. The fix names the destructured values in their
+actual order, multiplies the initialization/write value, and then multiplies the
+inverse teardown/read value.
 
 It also adds a merged-mode self-check that injects the initial and final public machine-state contributions and asserts that the resulting memory product is one. That check protects the boundary convention; it does not replace verifying each participant's claimed pair.
 

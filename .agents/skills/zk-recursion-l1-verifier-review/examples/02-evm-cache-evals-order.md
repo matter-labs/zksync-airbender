@@ -1,13 +1,17 @@
-# EVM batching challenge preceded cache-dependency evaluations
+# Generated EVM batching challenge preceded cache-dependency evaluations
 
 ## Classification
 
-- Confirmed historical L1 Fiat-Shamir ordering bug
+- Confirmed reachable Rust/EVM transcript-completeness bug in the generated/test verifier
 - Boundary: canonical Rust/GPU GKR transcript → generated Yul verifier transcript
 - Component: cache-bearing layer point-claim batching
-- Security character: next-layer batching coefficient did not bind every prover-supplied evaluation
+- Security character: generated verifier used a different transcript from the canonical prover; causal soundness risk exists, but no false-accepting assignment is established
 - Fixed by: [`4b0d431`](https://github.com/matter-labs/zksync-airbender/commit/4b0d43104b7a82b5b9bec7fc37a6d6bea0c94cb8)
 - Vulnerable revision: `585e7c9384f83e2d6b98023d8aa5bdd001686faa`
+
+The affected branch had generated contracts, real proof/calldata fixtures, and a
+Foundry two-transaction harness. No production deployment or settlement consumer
+is established.
 
 ## Boundary context
 
@@ -35,18 +39,27 @@ Generated Yul copied/absorbed ordinary final-step values, updated the seed, and 
 
 The challenge was therefore causally independent of part of the claim vector and the transcript state diverged from the prover's single-message framing.
 
-## Adversarial flow
+## Established failure and conditional soundness flow
 
-1. Fix ordinary final-step claims and let the contract derive `next_alpha`.
-2. Choose extra dependency evaluations after learning that coefficient.
-3. Use their remaining freedom to target the randomized next-layer relation.
-4. Absorb the chosen values only after the dependent challenge is fixed.
+1. The canonical prover absorbs `final_step || extras` in one message and draws
+   `next_alpha` from that state.
+2. The generated verifier absorbed `final_step`, drew, and only then absorbed
+   `extras` in a second state transition.
+3. Therefore a canonical honest proof reaches different challenges and cannot
+   verify under the generated contract.
 
-Even when an algebraic cancellation is not reachable for a particular cache graph, the L1 verifier did not implement the canonical proof transcript and rejected honest proofs. The ordering violation itself is soundness-critical because these are prover-controlled inputs to the batch.
+The old ordering also makes `next_alpha` independent of the extra
+prover-controlled evaluations. That is a protocol-level soundness concern, but
+history does not establish that the remaining cache equations and WHIR openings
+leave enough freedom for a bounded false-accepting assignment. The demonstrated
+classification is completeness/transcript incompatibility.
 
 ## Impact and fix
 
-The on-chain challenge did not bind all cache claims and failed Rust/EVM transcript parity. The generator now copies final-step and extra ranges contiguously into one buffer, performs one `keccak256(seed || all_values)`, updates the seed, and draws afterward.
+The generated challenge failed Rust/EVM transcript parity and did not causally
+bind all cache claims. The generator now copies final-step and extra ranges
+contiguously into one buffer, performs one
+`keccak256(seed || all_values)`, updates the seed, and draws afterward.
 
 Generated transcript code must be audited at the emitted Yul byte-range level. High-level Rust ordering is insufficient when generators split ranges or add hash calls for gas/stack reasons.
 

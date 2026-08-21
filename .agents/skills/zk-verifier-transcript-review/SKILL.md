@@ -62,6 +62,23 @@ Read only what the target needs:
 
 1. Fingerprint the statement, transcript implementation, parser, field API,
    serializer/flattener, features, generated output, and callers.
+   Before walking prover messages, build the semantic-context manifest below.
+   Enumerate every choice that changes the verified statement or the meaning of
+   later bytes: entrypoint, operation, circuit family, protocol/version,
+   verifier setup or key, security mode, recursion role, and participant order.
+   Hold the absorbed bytes fixed and change one such choice at a time. The seed
+   must differ before the first dependent challenge unless an authenticated
+   enclosing statement already binds that choice. Parser control flow, a Rust
+   enum match, or selecting a different verifier function is not by itself
+   transcript binding.
+
+   An authenticated program/setup hash can close this obligation when it
+   uniquely identifies a single-mode verifier, as can an authenticated public
+   branch selector. A hash of a multi-mode dispatcher authenticates its code,
+   but does not by itself bind a prover-controlled runtime branch. Record the
+   exact closure instead of demanding a redundant tag or assuming dispatch is
+   sufficient. Verifier-known constants may be absorbed directly; they need
+   not arrive in the proof.
 2. Reconstruct the public-coin interactive protocol before applying
    Fiat-Shamir. For every verifier challenge, identify the prover message that
    must precede it and the relation the challenge protects.
@@ -80,11 +97,22 @@ Read only what the target needs:
    trailing-data, noncanonical, and maximum-length paths symbolically.
 8. Finish the selected phase and its immediate incoming/outgoing transcript
    handoffs. List unreviewed prefixes, suffixes, and callers rather than silently
-   implying complete-proof coverage.
+   implying complete-proof coverage. Even after confirming another bug, finish
+   the semantic-context manifest and same-instance prefix-parity comparison for
+   the bounded phase.
 
 ## Required artifacts
 
 Produce:
+
+### Semantic-context manifest
+
+| Semantic choice | Selected by | Changes interpretation of | Bound by authenticated enclosing statement? | Absorbed before first dependent draw? |
+|---|---|---|---|---|
+
+For each row, test whether identical absorbed bytes can reach the same
+challenge seed while the verifier interprets them as a different relation,
+family, mode, or participant.
 
 ### Target fingerprint
 
@@ -116,6 +144,21 @@ the protocol-derived ordering/binding invariant, every direct and indirect
 closing check, reachable configuration, and a bounded symbolic accepting flow
 for a false statement. Keep it non-executable. Demote unresolved items to leads
 or specification questions. Distinguish completeness and robustness failures.
+
+If defective prover or verifier-source code is active but no consuming
+acceptance path and no concrete honest-proof rejection path exists, classify it
+as an **implementation-only defect**, not as soundness or completeness. State
+the conditional consequence of a future matching consumer separately. Do not
+promote a protocol violation merely because a hypothetical verifier could copy
+it.
+
+Do not discard a concrete defect solely because no current caller, feature, or
+artifact reaches it. Report it separately as a **latent finding** when the
+violated invariant and defective code are exact and the activation condition is
+known, but do not assign deployed severity or claim present false acceptance.
+A suspicious template, TODO, or hypothetical future misuse without a concrete
+defect remains a lead. Keep latent findings distinct from reachable
+completeness and robustness failures.
 
 ## Deliverable
 

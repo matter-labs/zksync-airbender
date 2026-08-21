@@ -123,6 +123,23 @@ check, establishing the generated/configured path is reachable, and giving a
 bounded symbolic accepting assignment for a false claim. Keep it non-executable.
 Separate completeness failures and parameter questions.
 
+Preserve an exact but unreachable algebraic or transcript defect as a separate
+**latent finding** when its activation condition—such as wiring a generator
+branch, emitted verifier, feature, or caller—is concrete. Do not assign deployed
+severity or claim present false acceptance. Speculative optimizations and
+unfinished ideas without a demonstrated violated identity remain leads; a
+reachable producer/completeness failure is not latent.
+
+An exercised kernel or component test does not by itself establish an
+end-to-end completeness failure. Check the enclosing prover path for earlier
+unconditional `todo!()`, `unimplemented!()`, panic, disabled dispatch, or absent
+proof assembly. If the affected value could not yet reach a proof consumer,
+preserve the exact defect as latent and name the event that would activate it.
+Likewise, a commit labelled `fix` is not evidence for a particular mechanism:
+derive the before/after semantics from the implementation contract and exclude
+semantically equivalent rewrites from the vulnerability corpus unless runtime
+failure evidence establishes a distinct defect.
+
 ## Deliverable
 
 Report only the selected component/phase and immediate handoffs. Include

@@ -2,10 +2,10 @@
 
 ## Classification
 
-- Confirmed historical WHIR query-authentication bug
+- Confirmed historical GPU WHIR opening-construction bug
 - Component: GPU base-oracle query value/path extraction
 - Claim-chain location: transcript query index → LDE coset leaf → Merkle cap authentication
-- Security character: honest GPU proof rejection after a CPU layout migration; a verifier sharing the mismatch could authenticate the wrong queried position
+- Security character: honest GPU proof rejection after a CPU layout migration
 - Fixed by: [`f2ce204`](https://github.com/matter-labs/zksync-airbender/commit/f2ce204b366b42175286cbc72077719a620c8307)
 - Vulnerable revision: `2961e73dfc92af87268006a1ea739e93d608653f`
 

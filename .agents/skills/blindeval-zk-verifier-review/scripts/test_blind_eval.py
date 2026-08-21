@@ -22,6 +22,11 @@ class CorpusTests(unittest.TestCase):
         selected = blind_eval.resolve_example(SPECIALISTS["gkr-whir"], "12")
         self.assertEqual(selected.name, "12-dimension-reduction-index-space.md")
 
+    def test_numeric_selector_finds_nested_latent_example(self) -> None:
+        selected = blind_eval.resolve_example(SPECIALISTS["transcript"], "2")
+        self.assertEqual(selected.parent.name, "latent")
+        self.assertEqual(selected.name, "02-memory-transcript-family-framing.md")
+
     def test_specialist_mapping(self) -> None:
         self.assertEqual(
             blind_eval.specialist_skill("transcript"),
@@ -36,7 +41,7 @@ class CorpusTests(unittest.TestCase):
             for domain, skill in SPECIALISTS.items()
             for path in blind_eval.example_files(skill)
         ]
-        self.assertEqual(len(examples), 65)
+        self.assertEqual(len(examples), 64)
         parsed = [blind_eval.parse_example(path, domain) for domain, path in examples]
         self.assertTrue(all(item["paths"] for item in parsed))
         self.assertTrue(all(item["failure"] for item in parsed))

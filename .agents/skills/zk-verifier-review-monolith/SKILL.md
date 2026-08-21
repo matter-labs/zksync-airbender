@@ -245,6 +245,40 @@ Confirm a soundness finding only when all conditions hold:
 
 Place incomplete candidates under unverified leads or specification questions. Do not inflate findings.
 
+For concrete-security findings, a security-level feature name alone is not a
+claim or a reachable instance. Require an end-to-end build/test or generation
+path that selects the level, constructs the proof, emits the matching verifier
+or artifact, and consumes the defective parameter; record build reachability and
+deployment reachability separately. A later fix or PR statement proves neither.
+
+For grinding findings, identify the exact bad-challenge event and single-shot
+probability, then state the adversarial work/attempt model. Never treat `b` PoW
+bits as `b` information-theoretic soundness bits, add PoW counts from distinct
+phases, or infer a system-wide level from one local retry-cost gap. If every
+reachable configuration derives zero bits, the new mechanism is hardening or
+future support rather than evidence of a historical security failure.
+
+Classify active defective protocol code as **implementation-only** when neither
+a consuming acceptance path nor a concrete honest-proof rejection path is
+established. A hypothetical future verifier copying a prover bug is not present
+soundness, and an intended transcript that no verifier implements is not by
+itself present completeness.
+
+Confirm completeness only when the affected generated binary, contract, prover,
+or wrapper was actually buildable/reachable and a canonical honest artifact is
+shown to reject, panic, or fail to compose. A source fragment fixed before the
+first compiling verifier is latent rather than historical completeness.
+Canonicalization or field-representation hardening is implementation-only unless
+an exact consumer distinguishes the old representation in an accepting or
+rejecting predicate.
+
+Maintain a separate latent-findings section. Preserve an exact defect when its
+violated invariant and activation condition are established but no current
+caller, feature, generated artifact, binary, contract, or deployment reaches
+it. Label it **latent**, withhold deployed severity and present false-acceptance
+claims, and state what would activate it. Speculative TODOs or missing evidence
+remain leads; reachable completeness and robustness failures are not latent.
+
 ## Independent validation
 
 When delegation is available and permitted, separate discovery into transcript, protocol algebra/PCS, composition, and parser/generator roles. Give each proposed finding to a fresh skeptical validator with source artifacts and the invariant, but not the desired conclusion. Ask it to locate a closing check or disprove reachability. Preserve the defensive boundary.

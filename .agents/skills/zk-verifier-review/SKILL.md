@@ -241,6 +241,14 @@ For every final claim:
    acceptance path.
 7. State which matrix cells remain partial or unreviewed.
 
+Keep a separate latent-findings register. An exact defect whose violated
+invariant and activation condition are established must not disappear merely
+because no current caller, feature, generated artifact, binary, contract, or
+deployment reaches it. Label it **latent**, state what would activate it, and
+withhold deployed severity and present false-acceptance claims. Do not use the
+label for speculative TODOs, missing evidence, or reachable completeness and
+robustness failures.
+
 Use [finding-format.md](references/finding-format.md) for the integrated report.
 Read [verifier-threat-model.md](references/verifier-threat-model.md) and
 [methodology.md](references/methodology.md) when planning or integrating a

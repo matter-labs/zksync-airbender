@@ -3,7 +3,7 @@
 ## Classification
 
 - Confirmed historical recursion-anchoring soundness bug
-- Boundary: cryptographically authenticated recursive output → CLI claim that the proof belongs to a supplied program
+- Boundary: cryptographically authenticated recursive output → `cli verify` claim that the proof belongs to the supplied `--bin`/`--text`
 - Component: `verify_artifact` across base, unrolled, and unified recursion targets
 - Security character: valid-proof replay/substitution across programs sharing a program-independent recursion verifier
 - Fixed by: [`a2d7ad1`](https://github.com/matter-labs/zksync-airbender/commit/a2d7ad19fc37e4ab90bd43ffe409269f591aa7a0), PR [#321](https://github.com/matter-labs/zksync-airbender/pull/321)
@@ -48,6 +48,10 @@ No cryptographic primitive is broken; the verifier proves one statement and the 
 ## Impact and fix
 
 A valid recursive proof for program Q could be relabeled and accepted for program P. The fix introduces a shared comparison of the verifier-derived output chain with the expected program-derived chain and invokes it in every base, unrolled, and unified target branch.
+
+This finding is established at the CLI verification boundary. The historical
+change does not by itself establish that an L1 settlement contract used the CLI
+or shared the same omission.
 
 The general review rule is to label every value by provenance: trusted caller input, prover-controlled artifact metadata, or authenticated verifier output. Equality between two prover-controlled copies does not anchor a recursive statement.
 
