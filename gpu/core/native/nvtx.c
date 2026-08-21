@@ -118,3 +118,21 @@ void gpu_core_nvtx_mem_region_unregister(nvtxDomainHandle_t domain, const void *
 }
 
 void gpu_core_nvtx_mem_heap_unregister(nvtxDomainHandle_t domain, void *heap) { nvtxMemHeapUnregister(domain, (nvtxMemHeapHandle_t)heap); }
+
+uint64_t gpu_core_nvtx_mem_range_start(nvtxDomainHandle_t domain, uint64_t schema_id, nvtxStringHandle_t site, uint32_t category, uint64_t id, uint64_t address,
+                                       uint64_t bytes, uint64_t pool_used_after, uint32_t placement) {
+  gpu_core_mem_event record = {id, address, bytes, pool_used_after, placement, 0};
+  nvtxPayloadData_t payload_data[] = {{schema_id, sizeof(record), &record}};
+  nvtxEventAttributes_t event_attrib = {0};
+  event_attrib.version = NVTX_VERSION;
+  event_attrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
+  event_attrib.messageType = NVTX_MESSAGE_TYPE_REGISTERED;
+  event_attrib.message.registered = site;
+  event_attrib.category = category;
+  event_attrib.payload.ullValue = NVTX_POINTER_AS_PAYLOAD_ULLVALUE(payload_data);
+  event_attrib.payloadType = NVTX_PAYLOAD_TYPE_EXT;
+  event_attrib.reserved0 = 1;
+  return nvtxDomainRangeStartEx(domain, &event_attrib);
+}
+
+void gpu_core_nvtx_domain_range_end(nvtxDomainHandle_t domain, uint64_t id) { nvtxDomainRangeEnd(domain, id); }

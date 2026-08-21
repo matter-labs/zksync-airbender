@@ -265,6 +265,7 @@ pub struct StaticAllocation<T, B: StaticAllocationBackend, W: InnerStaticAllocat
     nvtx_id: u64,
     nvtx_site: &'static Location<'static>,
     nvtx_placement: u8,
+    nvtx_span: nvtx::MemSpanId,
 }
 
 impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Drop
@@ -273,6 +274,7 @@ impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Drop
     fn drop(&mut self) {
         let address = self.data.ptr.cast::<u8>().as_ptr() as usize;
         let bytes = self.data.alloc_len;
+        nvtx::mem_span_end(self.nvtx_span);
         let used_after = unsafe { self.allocator.free_using_data(self.data) };
         if bytes != 0 {
             nvtx::mem_mark(
@@ -381,23 +383,25 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         result.map(|(data, used_after)| {
             let nvtx_placement = placement_tag(placement);
             let nvtx_id = NEXT_MEM_ALLOCATION_ID.fetch_add(1, Ordering::Relaxed);
-            if data.alloc_len != 0 {
-                nvtx::mem_mark(
-                    nvtx::MEM_MARK_CATEGORY_ALLOC,
+            let nvtx_span = if data.alloc_len != 0 {
+                nvtx::mem_span_start(
                     site,
                     nvtx_id,
                     data.ptr.cast::<u8>().as_ptr() as usize as u64,
                     data.alloc_len,
                     used_after,
                     nvtx_placement,
-                );
-            }
+                )
+            } else {
+                nvtx::MemSpanId::default()
+            };
             StaticAllocation {
                 allocator: self.clone(),
                 data,
                 nvtx_id,
                 nvtx_site: site,
                 nvtx_placement,
+                nvtx_span,
             }
         })
     }
