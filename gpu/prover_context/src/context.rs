@@ -169,6 +169,7 @@ impl ProverContext {
         &self.h2d_stream
     }
 
+    #[track_caller]
     pub fn alloc<T>(
         &self,
         size: usize,
@@ -195,6 +196,7 @@ impl ProverContext {
         result
     }
 
+    #[track_caller]
     pub fn alloc_with_extra_alignment<T, const EXTRA_ALIGNMENT_LOG2: u32>(
         &self,
         size: usize,

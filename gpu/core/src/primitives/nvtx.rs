@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::ffi::{c_char, CString};
+use std::panic::Location;
 use std::ptr;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 
 #[repr(C)]
 struct NvtxDomainRegistration {
@@ -33,6 +35,12 @@ unsafe extern "C" {
     ) -> u64;
     fn gpu_core_nvtx_ascii_range_start(message: *const c_char) -> u64;
     fn gpu_core_nvtx_range_end(id: u64);
+    fn gpu_core_nvtx_registered_range_start_with_payload(
+        domain: NvtxDomainHandle,
+        string: NvtxStringHandle,
+        payload: u64,
+    ) -> u64;
+    fn gpu_core_nvtx_domain_range_end(domain: NvtxDomainHandle, id: u64);
 }
 
 // Without the CUDA Toolkit there is no `nvtx3/nvToolsExt.h`, so `build.rs` skips
@@ -82,13 +90,28 @@ mod stubs {
     }
 
     pub(super) unsafe extern "C" fn gpu_core_nvtx_range_end(_id: u64) {}
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_registered_range_start_with_payload(
+        _domain: NvtxDomainHandle,
+        _string: NvtxStringHandle,
+        _payload: u64,
+    ) -> u64 {
+        0
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_domain_range_end(
+        _domain: NvtxDomainHandle,
+        _id: u64,
+    ) {
+    }
 }
 
 #[cfg(no_cuda)]
 use stubs::{
     gpu_core_nvtx_ascii_range_start, gpu_core_nvtx_domain_ascii_range_start,
-    gpu_core_nvtx_domain_create, gpu_core_nvtx_range_end, gpu_core_nvtx_register_string,
-    gpu_core_nvtx_registered_range_start,
+    gpu_core_nvtx_domain_create, gpu_core_nvtx_domain_range_end, gpu_core_nvtx_range_end,
+    gpu_core_nvtx_register_string, gpu_core_nvtx_registered_range_start,
+    gpu_core_nvtx_registered_range_start_with_payload,
 };
 
 #[derive(Clone, Copy)]
@@ -221,4 +244,80 @@ pub fn scoped_range(domain: Option<&str>, message: &str) -> ScopedRange {
     ScopedRange {
         id: start_range(domain, message),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Pool-allocation lifetime ranges (`ab.mem` domain).
+//
+// Each pool allocation is one NVTX range: started when the allocator hands the
+// buffer out (message = registered "<file>:<line> <placement>" of the
+// `#[track_caller]` call site, payload = reserved bytes), ended on drop. When
+// no profiler is attached the NVTX trampolines early-out, so the steady-state
+// hot-path cost is one read-locked hash lookup plus two cheap FFI calls — no
+// string formatting, no heap allocation.
+// ---------------------------------------------------------------------------
+
+/// NVTX range id for one pool allocation's lifetime; 0 when no profiler is
+/// attached (ending id 0 is a no-op).
+#[derive(Clone, Copy)]
+pub struct MemRangeId(u64);
+
+fn mem_domain() -> NvtxDomainHandle {
+    static DOMAIN: OnceLock<usize> = OnceLock::new();
+    *DOMAIN.get_or_init(|| get_or_create_domain("ab.mem") as usize) as NvtxDomainHandle
+}
+
+type MemSiteKey = (usize, u8);
+
+fn mem_site_registry() -> &'static RwLock<HashMap<MemSiteKey, usize>> {
+    static SITES: OnceLock<RwLock<HashMap<MemSiteKey, usize>>> = OnceLock::new();
+    SITES.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn get_or_register_mem_site(
+    site: &'static Location<'static>,
+    placement_name: &'static str,
+    placement_tag: u8,
+) -> NvtxStringHandle {
+    let key = (site as *const Location as usize, placement_tag);
+    if let Some(&handle) = mem_site_registry()
+        .read()
+        .expect("NVTX mem site registry poisoned")
+        .get(&key)
+    {
+        return handle as NvtxStringHandle;
+    }
+    let message = format!("{}:{} {}", site.file(), site.line(), placement_name);
+    let cstring = CString::new(message).expect("NVTX mem site message must not contain NUL");
+    // SAFETY: domain handle from NVTX; `cstring` is NUL-terminated for the call.
+    let handle = unsafe { gpu_core_nvtx_register_string(mem_domain(), cstring.as_ptr()) };
+    mem_site_registry()
+        .write()
+        .expect("NVTX mem site registry poisoned")
+        .entry(key)
+        .or_insert(handle as usize);
+    handle
+}
+
+/// Starts the lifetime range for one pool allocation of `bytes` reserved bytes.
+pub fn mem_range_start(
+    site: &'static Location<'static>,
+    placement_name: &'static str,
+    placement_tag: u8,
+    bytes: usize,
+) -> MemRangeId {
+    let string = get_or_register_mem_site(site, placement_name, placement_tag);
+    // SAFETY: domain and registered-string handles are valid process-global
+    // NVTX handles created above.
+    let id = unsafe {
+        gpu_core_nvtx_registered_range_start_with_payload(mem_domain(), string, bytes as u64)
+    };
+    MemRangeId(id)
+}
+
+/// Ends the lifetime range started by [`mem_range_start`].
+pub fn mem_range_end(id: MemRangeId) {
+    // SAFETY: `id` came from `mem_range_start` in the `ab.mem` domain (0, from
+    // a run without an attached profiler, ends nothing).
+    unsafe { gpu_core_nvtx_domain_range_end(mem_domain(), id.0) }
 }

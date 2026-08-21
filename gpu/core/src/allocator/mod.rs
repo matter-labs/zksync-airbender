@@ -14,6 +14,16 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use tracker::{AllocationPlacement, AllocationsTracker};
 
+use crate::primitives::nvtx;
+
+fn placement_label(placement: AllocationPlacement) -> (&'static str, u8) {
+    match placement {
+        AllocationPlacement::BestFit => ("BestFit", 0),
+        AllocationPlacement::Bottom => ("Bottom", 1),
+        AllocationPlacement::Top => ("Top", 2),
+    }
+}
+
 pub trait StaticAllocationBackend: Sized {
     fn as_non_null(&mut self) -> NonNull<u8>;
     fn len(&self) -> usize;
@@ -191,12 +201,14 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
 pub struct StaticAllocation<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> {
     allocator: StaticAllocator<B, W>,
     data: StaticAllocationData<T>,
+    nvtx_mem_range: nvtx::MemRangeId,
 }
 
 impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Drop
     for StaticAllocation<T, B, W>
 {
     fn drop(&mut self) {
+        nvtx::mem_range_end(self.nvtx_mem_range);
         unsafe { self.allocator.free_using_data(self.data) }
     }
 }
@@ -285,31 +297,47 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         self.inner.execute(|inner| inner.tracker.capacity())
     }
 
+    #[track_caller]
     pub fn alloc<T>(
         &self,
         len: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<StaticAllocation<T, B, W>> {
+        let site = std::panic::Location::caller();
         self.inner
             .execute(|inner| inner.alloc::<T>(len, placement))
-            .map(|data| StaticAllocation {
-                allocator: self.clone(),
-                data,
+            .map(|data| {
+                let (placement_name, placement_tag) = placement_label(placement);
+                let nvtx_mem_range =
+                    nvtx::mem_range_start(site, placement_name, placement_tag, data.alloc_len);
+                StaticAllocation {
+                    allocator: self.clone(),
+                    data,
+                    nvtx_mem_range,
+                }
             })
     }
 
+    #[track_caller]
     pub fn alloc_with_extra_alignment<T, const EXTRA_ALIGNMENT_LOG2: u32>(
         &self,
         len: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<StaticAllocation<T, B, W>> {
+        let site = std::panic::Location::caller();
         self.inner
             .execute(|inner| {
                 inner.alloc_with_extra_alignment::<T, EXTRA_ALIGNMENT_LOG2>(len, placement)
             })
-            .map(|data| StaticAllocation {
-                allocator: self.clone(),
-                data,
+            .map(|data| {
+                let (placement_name, placement_tag) = placement_label(placement);
+                let nvtx_mem_range =
+                    nvtx::mem_range_start(site, placement_name, placement_tag, data.alloc_len);
+                StaticAllocation {
+                    allocator: self.clone(),
+                    data,
+                    nvtx_mem_range,
+                }
             })
     }
 
