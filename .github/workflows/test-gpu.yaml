@@ -19,7 +19,7 @@ jobs:
       matrix:
         # matterlabs-ci-gpu-runner currently has CUDA 12.2 driver support only, so
         # CUDA 13-compiled binaries are not runnable there.
-        cuda: [ "12.9.1-devel-ubuntu22.04" ]
+        cuda: [ "13.0.3-devel-ubuntu22.04" ]
         security: [ "security_80", "security_100" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
@@ -82,7 +82,7 @@ jobs:
       matrix:
         # Keep this aligned with the build matrix because runner driver support is
         # currently limited to CUDA 12.2 (CUDA 13 artifacts fail at runtime).
-        cuda: [ "12.9.1-devel-ubuntu22.04" ]
+        cuda: [ "13.0.3-devel-ubuntu22.04" ]
         security: [ "security_80", "security_100" ]
 
     needs: zksync-airbender-build
