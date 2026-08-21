@@ -1,5 +1,4 @@
 #![cfg_attr(not(test), no_std)]
-#![feature(ptr_as_ref_unchecked)]
 
 // special purpose designated blake2s implementaition, that has no internal buffer,
 // and operates on u32 basis. Has options for reduced number of rounds

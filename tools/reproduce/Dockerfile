@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # The version of compiler must pinned and in sync with the one specified in `../verifier/rust-toolchain.toml`.
-ENV RUST_VERSION=nightly-2025-10-20
+ENV RUST_VERSION=nightly-2026-08-09
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 
