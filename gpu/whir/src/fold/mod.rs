@@ -109,10 +109,6 @@ pub struct GpuWhirFoldScheduledExecution {
     // so they outlive the kernels reading them.
     #[allow(dead_code)]
     _delinearization_ephemerals: Vec<DeviceAllocation<E4>>,
-    // Trace holders of retired intermediate WHIR oracles — kept alive so any
-    // scheduled D2D/D2H reads against their unified device cap remain valid.
-    #[allow(dead_code)]
-    _recursive_caps_keepalive: Vec<crate::GpuWhirExtensionOracleKeepalive>,
 }
 
 impl GpuWhirFoldScheduledExecution {
@@ -134,8 +130,6 @@ impl GpuWhirFoldScheduledExecution {
         self._delinearization_ephemerals.clear();
         // PoW raw-bits + assembled query-index device buffers.
         self._pow_round_state.clear();
-        // Retired intermediate-oracle trace holders (their unified device caps).
-        self._recursive_caps_keepalive.clear();
     }
 }
 

@@ -77,14 +77,6 @@ pub(crate) struct GpuWhirExtensionOracle {
     transform_leaves_to_multilinear_coeffs: bool,
 }
 
-/// Holds the retired oracle's trace holder (and therefore its unified device
-/// cap) alive on a downstream keepalive vector so scheduled D2H or D2D ops
-/// reading the cap remain valid until `prove()`'s `is_finished_event`
-/// completes.
-pub(crate) struct GpuWhirExtensionOracleKeepalive {
-    _trace_holder: TraceHolder<BF>,
-}
-
 #[cfg(test)]
 pub(crate) struct GpuWhirScheduledExtensionQuery {
     pub(crate) index: usize,
@@ -299,17 +291,6 @@ impl GpuWhirExtensionOracle {
 
     pub(crate) fn lde_factor(&self) -> usize {
         self.lde_factor
-    }
-
-    /// Hands the oracle's device unified cap (with the trace holder that
-    /// owns it) to the caller as a keepalive. Used by query-emitting paths
-    /// that retire the oracle but still need its cap to survive scheduled
-    /// downstream reads.
-    pub(crate) fn into_host_keepalive(self) -> GpuWhirExtensionOracleKeepalive {
-        let Self { trace_holder, .. } = self;
-        GpuWhirExtensionOracleKeepalive {
-            _trace_holder: trace_holder,
-        }
     }
 
     fn schedule_query_leaves_and_paths_into_from_ntt(

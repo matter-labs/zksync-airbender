@@ -140,7 +140,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
     // Per-WHIR-round device state for the device-side PoW verify +
     // query-index assembly. Later callbacks consume the nonce.
     let mut pow_round_state: Vec<PowAndQueryIndexesState> = Vec::new();
-    let mut recursive_caps_keepalive: Vec<crate::GpuWhirExtensionOracleKeepalive> = Vec::new();
     // Per-round device-resident OOD points produced by `schedule_ood_sample_phase`
     // and consumed by `schedule_delinearization_running_powers_phase`. Kept on
     // the orchestrator so the device buffers outlive all kernels reading them.
@@ -642,7 +641,12 @@ pub fn schedule_gpu_whir_fold_with_sources(
         )?;
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        recursive_caps_keepalive.push(oracle_to_query.into_host_keepalive());
+        // The oracle's cap was gathered into the slab at commit and every
+        // scheduled reader of its cosets/tree backings is enqueued above on
+        // the exec stream, so the retired oracle's device buffers drop here
+        // (stream-ordered, like other transients) instead of accumulating
+        // one oracle per round until the end of the schedule.
+        drop(oracle_to_query);
         delinearization_ephemerals.push(delinearization_device);
         delinearization_ephemerals.push(per_query_pows);
         delinearization_ephemerals.push(eq_high_scratch);
@@ -811,7 +815,12 @@ pub fn schedule_gpu_whir_fold_with_sources(
         }
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        recursive_caps_keepalive.push(oracle_to_query.into_host_keepalive());
+        // The oracle's cap was gathered into the slab at commit and every
+        // scheduled reader of its cosets/tree backings is enqueued above on
+        // the exec stream, so the retired oracle's device buffers drop here
+        // (stream-ordered, like other transients) instead of accumulating
+        // one oracle per round until the end of the schedule.
+        drop(oracle_to_query);
         round_range.end(stream)?;
         tracing_ranges.push(round_range);
     }
@@ -825,6 +834,5 @@ pub fn schedule_gpu_whir_fold_with_sources(
         _pow_round_state: pow_round_state,
         _ood_point_devices: ood_point_devices,
         _delinearization_ephemerals: delinearization_ephemerals,
-        _recursive_caps_keepalive: recursive_caps_keepalive,
     })
 }
