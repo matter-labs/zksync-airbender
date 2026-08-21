@@ -6,7 +6,7 @@ use era_cudart::stream::CudaStream;
 use worker::Worker;
 
 use super::{
-    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_evals_to_monomial_coeffs,
+    hypercube_coeffs_to_evals, hypercube_evals_to_monomial_coeffs,
     natural_evals_to_bitreversed_coeffs,
 };
 use crate::ntt_twiddles::DeviceContext;
@@ -154,18 +154,26 @@ fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
     }
 }
 
-// Independent host oracle for the FORWARD hypercube launcher family
-// (`hypercube_coeffs_bitrev_to_bitrev_evals`; its only caller, gpu_whir's
-// coset-0 batching arm, was retired in 0969fb98, so this test is now its sole
-// guard). It is the exact inverse of the line-above
-// `hypercube_evals_to_monomial_coeffs_matches_cpu` oracle chain:
-// the input is bitreversed coefficients, and the pure-CPU expected side is
-// `bitrev(coeffs) -> multivariate_coeffs_into_hypercube_evals -> bitrev`
-// (using the FORWARD CPU reference, not the inverse one). No GPU kernel
-// touches the expected side.
+// Sole guard for the FORWARD hypercube launcher family (its only caller,
+// gpu_whir's coset-0 batching arm, was retired in 0969fb98). It asserts two
+// independent facts:
+//
+// 1. ABSOLUTE labeling: the device output equals the pure-CPU forward
+//    reference applied to the SAME natural-order array, with no compensating
+//    permutation on either side, and is NOT that array's bitreversal. The
+//    previous version built its expectation as
+//    `bitrev -> multivariate_coeffs_into_hypercube_evals -> bitrev`, which by
+//    `P*M*P == M` is just `M` — the two hand-installed reversals cancelled, so
+//    it passed under either labeling and could not see the difference. The
+//    non-vacuity check and the negative control below are what close that.
+// 2. RELATIVE labeling-preservation, measured entirely on the device with no
+//    CPU oracle at all: `GPU(bitrev(x)) == bitrev(GPU(x))`. That is the
+//    property which makes a bitreversal flag on this family meaningless, so it
+//    is the guard against such a flag being reintroduced; a kernel that ever
+//    became labeling-changing reddens here.
 #[test]
 #[cfg(not(no_cuda))]
-fn hypercube_coeffs_bitrev_to_bitrev_evals_matches_cpu() {
+fn hypercube_coeffs_to_evals_is_natural_and_preserves_labeling() {
     let context = make_context();
     let stream = context.get_exec_stream();
 
@@ -174,20 +182,40 @@ fn hypercube_coeffs_bitrev_to_bitrev_evals_matches_cpu() {
         let coeffs = (0..n)
             .map(|idx| BF::new((17 + idx * 13) as u32))
             .collect::<Vec<_>>();
+
         let mut expected = coeffs.clone();
-        fft::bitreverse_enumeration_inplace(&mut expected);
         multivariate_coeffs_into_hypercube_evals(&mut expected, log_n as u32);
-        fft::bitreverse_enumeration_inplace(&mut expected);
+        let mut expected_bitrev = expected.clone();
+        fft::bitreverse_enumeration_inplace(&mut expected_bitrev);
+
+        let mut coeffs_bitrev = coeffs.clone();
+        fft::bitreverse_enumeration_inplace(&mut coeffs_bitrev);
 
         let mut src = context.alloc(n).unwrap();
         let mut dst = context.alloc(n).unwrap();
-        memory_copy_async(&mut src, &coeffs, stream).unwrap();
-        hypercube_coeffs_bitrev_to_bitrev_evals(&src, &mut dst, log_n, stream).unwrap();
 
+        memory_copy_async(&mut src, &coeffs, stream).unwrap();
+        hypercube_coeffs_to_evals(&src, &mut dst, log_n, stream).unwrap();
         let mut actual = vec![BF::ZERO; n];
         memory_copy_async(&mut actual, &dst, stream).unwrap();
+
+        memory_copy_async(&mut src, &coeffs_bitrev, stream).unwrap();
+        hypercube_coeffs_to_evals(&src, &mut dst, log_n, stream).unwrap();
+        let mut actual_from_bitrev = vec![BF::ZERO; n];
+        memory_copy_async(&mut actual_from_bitrev, &dst, stream).unwrap();
         stream.synchronize().unwrap();
+
         assert_eq!(actual, expected, "log_n={}", log_n);
+        if log_n >= 2 {
+            // Non-vacuity: the two candidate labelings differ on this data, so
+            // the negative control that follows is a real discrimination.
+            assert_ne!(expected, expected_bitrev, "log_n={}", log_n);
+            assert_ne!(actual, expected_bitrev, "log_n={}", log_n);
+        }
+
+        let mut actual_bitrev = actual.clone();
+        fft::bitreverse_enumeration_inplace(&mut actual_bitrev);
+        assert_eq!(actual_from_bitrev, actual_bitrev, "log_n={}", log_n);
     }
 }
 

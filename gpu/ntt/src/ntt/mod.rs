@@ -170,11 +170,18 @@ pub(crate) fn hypercube_evals_to_monomial_coeffs(
     Ok(())
 }
 
-pub(crate) fn hypercube_coeffs_to_evals(
+/// Multilinear monomial coefficients -> multilinear hypercube evaluations, one
+/// butterfly stage per variable. This is the inverse of
+/// [`hypercube_evals_to_monomial_coeffs`] and, like it, applies the same 2x2
+/// matrix to a distinct index bit in every stage: the stages act on distinct
+/// tensor factors, so they commute and conjugating the product by a bit
+/// permutation `P` leaves it unchanged (`P*T*P == T`). It therefore PRESERVES
+/// whatever labeling its input had, and there is no labeling-changing variant
+/// of it to select — which is why it takes no stage-order or bitreversal flag.
+pub fn hypercube_coeffs_to_evals(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
     log_n: usize,
-    bitrev: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert_eq!(src.len(), 1usize << log_n);
@@ -184,26 +191,10 @@ pub(crate) fn hypercube_coeffs_to_evals(
         return Ok(());
     }
 
-    if bitrev {
-        for stage in (0..log_n).rev() {
-            launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
-        }
-    } else {
-        for stage in 0..log_n {
-            launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
-        }
-    };
-
+    for stage in 0..log_n {
+        launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
+    }
     Ok(())
-}
-
-pub fn hypercube_coeffs_bitrev_to_bitrev_evals(
-    src: &DeviceSlice<BF>,
-    dst: &mut DeviceSlice<BF>,
-    log_n: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    hypercube_coeffs_to_evals(src, dst, log_n, true, stream)
 }
 
 pub(crate) fn natural_evals_to_bitreversed_coeffs(
