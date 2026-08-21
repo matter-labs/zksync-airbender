@@ -166,6 +166,11 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 next_claim_point_and_batching_len,
             )
         };
+        let mut first3_recorder = super::super::round_timing::First3Recorder::begin(
+            self.layer_idx,
+            self.folding_steps,
+            stream,
+        )?;
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
@@ -217,6 +222,16 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 challenge_slot.as_mut_ptr(),
                 context,
             )?;
+            if step < 3 {
+                if let Some(recorder) = first3_recorder.as_mut() {
+                    recorder.mark_round_end(stream)?;
+                }
+                if step == 2 {
+                    if let Some(recorder) = first3_recorder.take() {
+                        recorder.finish();
+                    }
+                }
+            }
         }
         super::super::vm::production_bind::schedule_bwd_vm_ext_round(
             &mut self.bwd_vm_ext,

@@ -37,6 +37,7 @@ log = "0.4"
 gpu_execution_prover = { workspace = true, optional = true, default-features = false, features = [
     "deterministic_pow",
 ] }
+gpu_gkr = { workspace = true, optional = true }
 gpu_program_prover = { workspace = true, optional = true, default-features = false, features = [
     "deterministic_pow",
 ] }
@@ -63,7 +64,7 @@ security_100 = [
 
 debug_logs = ["prover/debug_logs", "program_prover/debug_logs"]
 # if enabled - allow GPU for proving.
-gpu = ["dep:gpu_execution_prover", "dep:gpu_program_prover"]
+gpu = ["dep:gpu_execution_prover", "dep:gpu_program_prover", "dep:gpu_gkr"]
 # Commit recursive WHIR oracle leaves in eval form (see gpu_circuit_prover); the
 # verifier must be generated with the matching encoding. No-op without `gpu`.
 eval_leaves = ["gpu_execution_prover?/eval_leaves", "gpu_program_prover?/eval_leaves"]
