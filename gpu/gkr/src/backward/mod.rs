@@ -26,6 +26,13 @@ pub use kernels::{
 };
 #[doc(hidden)]
 pub use stage_snapshots::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink};
+#[doc(hidden)]
+pub use vm::continuation_golden::{
+    build_continuation_golden, continuation_golden_path, decode_golden, encode_golden,
+    ContinuationGoldenDto, GoldenEntry, CONTINUATION_GOLDEN_CORPUS,
+};
+#[doc(hidden)]
+pub use vm::production_bind::{continuation_snapshot, legacy_continuation_snapshot};
 
 pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 

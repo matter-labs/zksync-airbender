@@ -43,8 +43,10 @@ impl GpuGKRMainLayerBackwardState {
         let bwd_vm_ext = super::super::vm::production_bind::build_bwd_vm_ext_rounds(
             &self.storage,
             self.programs.continuation_layer(layer_idx),
+            1,
             folding_steps,
             round_scratch.eq_low_group.as_ptr(),
+            make_eq_sizes(folding_steps - 1),
             round_scratch.partials.as_mut_ptr(),
             &self.inits_and_teardowns_top_bits,
             context,
