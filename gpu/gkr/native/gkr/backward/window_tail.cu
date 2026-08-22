@@ -1,7 +1,8 @@
 // Tensor round tail: the three main-layer sumcheck rounds a width-3 window
 // replaces. `partials` is the window executor's row-tile-major
 // `27 * row_tiles` matrix (`bwd_window_publish`); the reduced 27-cell tensor is
-// indexed `9 * x0 + 3 * x1 + x2` over `{0, 1, infinity}`.
+// indexed `9 * a0 + 3 * a1 + a2` over `{0, 1, infinity}`, axis `r` being the
+// variable round `r` binds.
 //
 // Two reduction arms, identical semantics: the absorbed arm reduces the matrix
 // and plays the rounds in one block, the split arm reduces in 27 blocks and

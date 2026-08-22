@@ -4,47 +4,75 @@ use super::*;
 // Generic test bodies
 // ---------------------------------------------------------------------------
 
-/// Full GPU proof == CPU reference (single proof).
-pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
-    let proof_job = fixture.schedule_prove().unwrap();
-    let (gpu_proof, _ms) = proof_job.finish().unwrap();
-    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
-}
-
-/// Same, with main-layer rounds 0-2 on the window-3 executor. Asserts the
-/// fixture's config actually selects the windowed arm, so a schedule-class
-/// change cannot silently turn this into a second per-round run.
-pub(super) fn run_windowed_r0_proof_parity(fixture: &BasicUnrolledProofFixture) {
-    let options = GkrBackwardOptions {
+/// The windowed-arm options every both-arm wrapper requests.
+fn windowed_options() -> GkrBackwardOptions {
+    GkrBackwardOptions {
         windowed_r0: true,
         ..GkrBackwardOptions::default()
-    };
-    assert_eq!(
-        crate::proof::resolve_backward_execution_strategy(
-            &fixture.base.gkr_programs,
-            &fixture.base.prover_config,
-            options,
-        ),
-        gpu_gkr::BackwardExecutionStrategy::WindowedR0,
+    }
+}
+
+/// Full GPU proof == CPU reference, on BOTH backward arms in the same binary.
+///
+/// The per-round arm always runs. The windowed arm runs whenever this family's
+/// validated schedule class selects it, and is then compared against the CPU
+/// fixture AND, serialized, against the per-round arm's own bytes — the
+/// arm-vs-arm equality the windowed R0 integration is contracted on. A family
+/// whose config does not select the windowed arm must say so through
+/// `resolve_backward_execution_strategy`, so a schedule-class change cannot
+/// silently turn a both-arm row into a second per-round run.
+pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
+    let (per_round, _ms) = fixture.schedule_prove().unwrap().finish().unwrap();
+    assert_gkr_proof_eq_for_test(&per_round, &fixture.expected_cpu_proof);
+
+    let strategy = crate::proof::resolve_backward_execution_strategy(
+        &fixture.base.gkr_programs,
+        &fixture.base.prover_config,
+        windowed_options(),
     );
-    let proof_job = fixture.schedule_prove_with(options).unwrap();
-    let (gpu_proof, _ms) = proof_job.finish().unwrap();
-    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    eprintln!("proof_parity backward arms: per-round + {strategy:?}");
+    if strategy != gpu_gkr::BackwardExecutionStrategy::WindowedR0 {
+        assert_eq!(
+            strategy,
+            gpu_gkr::BackwardExecutionStrategy::PerRound,
+            "an arm this wrapper does not know how to gate",
+        );
+        return;
+    }
+    let (windowed, _ms) = fixture
+        .schedule_prove_with(windowed_options())
+        .unwrap()
+        .finish()
+        .unwrap();
+    assert_gkr_proof_eq_for_test(&windowed, &fixture.expected_cpu_proof);
+    assert_serialized_proof_bytes_eq(&per_round, &windowed);
 }
 
 /// Two concurrently-scheduled proofs on a recycled-block arena (the
 /// uninitialized-witness regression guard). schedule -> schedule -> finish -> finish.
+///
+/// The second job takes the windowed arm wherever the family selects it, so the
+/// arena-recycling guard covers both arms without a third proof: both are
+/// compared against the CPU fixture, and their serialized bytes against each
+/// other.
 pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
     let baseline = fixture.base.context.get_used_mem_current();
+    let strategy = crate::proof::resolve_backward_execution_strategy(
+        &fixture.base.gkr_programs,
+        &fixture.base.prover_config,
+        windowed_options(),
+    );
+    eprintln!("multi_schedule backward arms: per-round + {strategy:?}");
     let job0 = fixture.schedule_prove().unwrap();
-    let job1 = fixture.schedule_prove().unwrap();
+    let job1 = fixture.schedule_prove_with(windowed_options()).unwrap();
     let (p0, ms0) = job0.finish().unwrap();
     eprintln!("proof_job_0 proof time: {ms0} ms");
     assert_gkr_proof_eq_for_test(&p0, &fixture.expected_cpu_proof);
-    drop(p0);
     let (p1, ms1) = job1.finish().unwrap();
     eprintln!("proof_job_1 proof time: {ms1} ms");
     assert_gkr_proof_eq_for_test(&p1, &fixture.expected_cpu_proof);
+    assert_serialized_proof_bytes_eq(&p0, &p1);
+    drop(p0);
     drop(p1);
     assert_eq!(
         fixture.base.context.get_used_mem_current(),
@@ -251,14 +279,6 @@ fn run_blake2_compression_delegation_stage1_buffer_parity_test() {
 #[ignore]
 fn run_add_sub_proof_parity_test_sec100() {
     run_proof_parity(&prepare_basic_unrolled_proof_fixture_sec100());
-}
-
-/// Flag-on smoke: the windowed arm end to end on one fixture, byte-checked
-/// against the CPU proof. The full both-arm matrix is Task 9.
-#[test]
-#[ignore]
-fn run_add_sub_windowed_r0_proof_parity_test() {
-    run_windowed_r0_proof_parity(&prepare_basic_unrolled_proof_fixture());
 }
 
 #[test]

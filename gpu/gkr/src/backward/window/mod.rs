@@ -7,5 +7,7 @@ pub(crate) mod generated_registry;
 pub mod reference;
 pub(crate) mod tail;
 
+#[cfg(all(test, not(no_cuda)))]
+mod differential_tests;
 #[cfg(test)]
 mod tests;

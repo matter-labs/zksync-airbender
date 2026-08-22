@@ -525,7 +525,7 @@ mod cpu_window_binding {
     const EQ_LOW: *const E4 = 0x1_0000 as *const E4;
     const PARTIALS: *mut E4 = 0x2_0000 as *mut E4;
 
-    fn scratch(capacity: usize) -> WindowRuntimeScratch {
+    pub(super) fn scratch(capacity: usize) -> WindowRuntimeScratch {
         WindowRuntimeScratch {
             eq_low: EQ_LOW,
             partials: PARTIALS,
@@ -533,7 +533,7 @@ mod cpu_window_binding {
         }
     }
 
-    fn program(words: Vec<u16>, immediates: Vec<u32>) -> WindowProgram {
+    pub(super) fn program(words: Vec<u16>, immediates: Vec<u32>) -> WindowProgram {
         let mut sections = [0u32; 16];
         for (index, endpoint) in [4u32, 8, 12, 16].into_iter().enumerate() {
             sections[index] = endpoint;
@@ -555,7 +555,7 @@ mod cpu_window_binding {
 
     /// A hand-built runtime addressing: the binder normally interns these from
     /// storage pointers, which needs a live layer.
-    fn addressing(slots: &[BwdSegAddrSlot], lanes: &[Option<u16>]) -> WindowAddressing {
+    pub(super) fn addressing(slots: &[BwdSegAddrSlot], lanes: &[Option<u16>]) -> WindowAddressing {
         WindowAddressing {
             slots: slots.to_vec(),
             lanes: lanes.to_vec(),
@@ -958,5 +958,256 @@ mod cpu_window_binding {
                 windowed_r0_kernel_symbol(mask, min_blocks)
             );
         }
+    }
+}
+
+/// The corpus coverage matrix: one row per compiled main-layer coordinate at
+/// its RECORDED PRODUCTION geometry (the committed artifact's own `trace_len`),
+/// plus a named synthetic row for the `folding_steps == 4` minimum the corpus
+/// has no coordinate for.
+///
+/// GPU-free: the corpus is compiled and lowered on the CPU, and every column is
+/// either a lowering product or a dispatch lookup.
+#[cfg(test)]
+mod cpu_window_matrix {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::path::PathBuf;
+
+    use gpu_gkr_compiler::{compile_r0, lower_window_program, WindowFamily, WindowProgram};
+
+    use crate::backward::kernels::{make_eq_sizes, record_active_eq_slot_fold};
+    use crate::backward::vm::production_bind::drained_eq_sizes;
+    use crate::backward::window::binding::{
+        build_window_binding, resolve_window_kernel, window_partials_len, WindowBindError,
+        BWD_WINDOW_COORDINATES,
+    };
+    use crate::backward::window::generated_registry::WINDOWED_R0_DISPATCH;
+    use crate::backward::window::tests::cpu_window_binding::{addressing, program, scratch};
+    use crate::upstream::{FieldKind, GKRCircuitArtifact};
+    use gpu_core::primitives::field::BF;
+
+    /// The retained corpus, one layout per circuit family.
+    const CORPUS: &[&str] = &[
+        "add_sub_lui_auipc_mop_layout_gkr.json",
+        "bigint_with_extended_control_layout_gkr.json",
+        "blake2_g_function_layout_gkr.json",
+        "blake2_with_extended_control_layout_gkr.json",
+        "inits_and_teardowns_layout_gkr.json",
+        "jump_branch_slt_layout_gkr.json",
+        "keccak_special5_layout_gkr.json",
+        "mem_subword_only_layout_gkr.json",
+        "mem_word_only_layout_gkr.json",
+        "shift_binop_layout_gkr.json",
+        "unified_reduced_machine_layout_gkr.json",
+        "unsigned_mul_div_layout_gkr.json",
+    ];
+
+    /// Where a window's columns come from. `RawBase`/`RawExt` are the two
+    /// storage element widths; the other three are the origins the round-3
+    /// prologue has to keep reachable.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    enum Origin {
+        RawBase,
+        RawExt,
+        Procedural,
+        CacheOutput,
+        Materialized,
+    }
+
+    fn origins(program: &WindowProgram) -> BTreeSet<Origin> {
+        let mut origins = BTreeSet::new();
+        for window in &program.windows {
+            if window.is_procedural() {
+                origins.insert(Origin::Procedural);
+                continue;
+            }
+            origins.insert(if window.backing_field() == FieldKind::Ext {
+                Origin::RawExt
+            } else {
+                Origin::RawBase
+            });
+            match window.family {
+                WindowFamily::CacheOutput { .. } => {
+                    origins.insert(Origin::CacheOutput);
+                }
+                WindowFamily::LayerOutput { .. } => {
+                    origins.insert(Origin::Materialized);
+                }
+                _ => {}
+            }
+        }
+        origins
+    }
+
+    struct Row {
+        circuit: String,
+        layer: usize,
+        folding_steps: usize,
+        native: u16,
+        compiled: u16,
+        symbol: &'static str,
+        min_blocks: u32,
+        /// `(high[0], high[1], low)` of the window's own eq schedule — the
+        /// slot partition round 3's descriptor is lowered against.
+        eq_slots: (u32, u32, u32),
+        origins: BTreeSet<Origin>,
+    }
+
+    /// Lower the corpus and bind every coordinate at its production geometry.
+    fn matrix() -> Vec<Row> {
+        let directory =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+        let mut rows = Vec::new();
+        for layout in CORPUS {
+            let circuit = layout.strip_suffix("_layout_gkr.json").unwrap().to_owned();
+            let artifact: GKRCircuitArtifact<BF> =
+                serde_json::from_slice(&std::fs::read(directory.join(layout)).unwrap()).unwrap();
+            let folding_steps = artifact.trace_len.trailing_zeros() as usize;
+            let dag = gkr_eval_ir::lower_dag(&artifact)
+                .unwrap_or_else(|error| panic!("{layout}: {error}"));
+            let r0 = compile_r0(&dag).unwrap_or_else(|error| panic!("{layout} R0: {error:?}"));
+            for layer in &r0.layers {
+                let label = format!("{circuit}:{}", layer.layer);
+                let lowered = lower_window_program(layer)
+                    .unwrap_or_else(|error| panic!("{label} window lowering: {error}"));
+                let native = lowered.shape.bits();
+                let entry = resolve_window_kernel(native)
+                    .unwrap_or_else(|_| panic!("{label} mask {native:#05x} does not dispatch"));
+                // The geometry column is load-bearing: a coordinate that does
+                // not BIND at its production folding steps is not covered by
+                // anything downstream.
+                let eq = make_eq_sizes(folding_steps - BWD_WINDOW_COORDINATES);
+                // Lane rewriting needs live storage, so an unresolved lane is
+                // the expected rejection here; a capacity or geometry rejection
+                // at production shape is a real coverage failure.
+                match build_window_binding(
+                    &lowered,
+                    &addressing(&[], &vec![None; lowered.source_slots.len()]),
+                    folding_steps,
+                    scratch(window_partials_len(1usize << folding_steps)),
+                ) {
+                    Ok(_) | Err(WindowBindError::LaneSourceMissing { .. }) => {}
+                    Err(error) => {
+                        panic!("{label} at folding_steps {folding_steps}: {error:?}")
+                    }
+                }
+                rows.push(Row {
+                    circuit: circuit.clone(),
+                    layer: layer.layer,
+                    folding_steps,
+                    native,
+                    compiled: entry.mask,
+                    symbol: entry.symbol_name,
+                    min_blocks: entry.min_blocks,
+                    eq_slots: (eq.high[0], eq.high[1], eq.low),
+                    origins: origins(&lowered),
+                });
+            }
+        }
+        rows
+    }
+
+    #[test]
+    fn cpu_window_matrix_covers_every_corpus_coordinate_and_entry_point() {
+        let rows = matrix();
+        assert_eq!(rows.len(), 57, "the retained corpus is 57 coordinates");
+
+        let mut by_origin: BTreeMap<Origin, Vec<String>> = BTreeMap::new();
+        for row in &rows {
+            println!(
+                "{}:{} folding_steps={} native={:#05x} compiled={:#05x} bound={} symbol={} eq_slots={:?} origins={:?}",
+                row.circuit,
+                row.layer,
+                row.folding_steps,
+                row.native,
+                row.compiled,
+                row.min_blocks,
+                row.symbol,
+                row.eq_slots,
+                row.origins,
+            );
+            for origin in &row.origins {
+                by_origin
+                    .entry(*origin)
+                    .or_default()
+                    .push(format!("{}:{}", row.circuit, row.layer));
+            }
+        }
+
+        // Entry-point coverage, recorded from the dispatch lookup rather than
+        // assumed: the corpus is what the 14-row ruling was derived from, so
+        // every ruled row and every compiled entry point must appear.
+        let ruled: BTreeSet<u16> = WINDOWED_R0_DISPATCH
+            .iter()
+            .map(|(native, ..)| *native)
+            .collect();
+        let observed: BTreeSet<u16> = rows.iter().map(|row| row.native).collect();
+        assert_eq!(observed, ruled, "the corpus must exhibit every ruled mask");
+        let symbols: BTreeSet<&str> = rows.iter().map(|row| row.symbol).collect();
+        assert_eq!(
+            symbols.len(),
+            11,
+            "the compiled entry points the corpus uses"
+        );
+
+        // Every source origin the round-3 prologue must keep reachable appears,
+        // and the rows that carry it are named.
+        for origin in [
+            Origin::RawBase,
+            Origin::RawExt,
+            Origin::Procedural,
+            Origin::CacheOutput,
+            Origin::Materialized,
+        ] {
+            let carriers = by_origin.get(&origin).map(Vec::as_slice).unwrap_or(&[]);
+            assert!(!carriers.is_empty(), "no corpus row carries {origin:?}");
+            println!(
+                "origin {origin:?}: {} rows, e.g. {}",
+                carriers.len(),
+                carriers[0]
+            );
+        }
+
+        // Geometry: the production folding steps the corpus actually records,
+        // and the eq-slot partitions they produce.
+        let geometries: BTreeSet<usize> = rows.iter().map(|row| row.folding_steps).collect();
+        println!("production folding_steps: {geometries:?}");
+        let eq_classes: BTreeSet<(u32, u32, u32)> = rows.iter().map(|row| row.eq_slots).collect();
+        println!("eq slot partitions: {eq_classes:?}");
+        for row in &rows {
+            let built = make_eq_sizes(row.folding_steps - BWD_WINDOW_COORDINATES);
+            let mut after_tail = built;
+            record_active_eq_slot_fold(&mut after_tail);
+            assert_eq!(
+                after_tail,
+                drained_eq_sizes(built, 1),
+                "{}:{} eq handoff",
+                row.circuit,
+                row.layer
+            );
+        }
+    }
+
+    /// The `folding_steps == 4` minimum: the corpus records no such coordinate,
+    /// so the row is an explicit synthetic one — the smallest trace the window
+    /// arm admits, one row tile, and the eq schedule the tail hands round 3.
+    #[test]
+    fn cpu_window_matrix_synthetic_minimum_folding_steps_row() {
+        const SYNTHETIC_FOLDING_STEPS: usize = 4;
+        let binding = build_window_binding(
+            &program(Vec::new(), Vec::new()),
+            &addressing(&[], &[]),
+            SYNTHETIC_FOLDING_STEPS,
+            scratch(window_partials_len(1usize << SYNTHETIC_FOLDING_STEPS)),
+        )
+        .expect("the minimum geometry binds");
+        assert_eq!(binding.log_rows, 1);
+        assert_eq!(
+            binding.eq_sizes,
+            make_eq_sizes(SYNTHETIC_FOLDING_STEPS - BWD_WINDOW_COORDINATES)
+        );
+        let mut after_tail = binding.eq_sizes;
+        record_active_eq_slot_fold(&mut after_tail);
+        assert_eq!(after_tail, drained_eq_sizes(binding.eq_sizes, 1));
     }
 }

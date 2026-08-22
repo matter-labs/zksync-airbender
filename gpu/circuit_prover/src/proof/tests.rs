@@ -316,3 +316,68 @@ fn cpu_windowed_selector_preflight_reports_a_lowering_rejection() {
     );
     assert!(!programs.window_programs_ready());
 }
+
+/// Which corpus families the windowed arm is selected for, per supported
+/// security level. This is the both-arm byte gate's zero-selection guard: the
+/// gate's wrappers run the windowed arm only where
+/// `resolve_backward_execution_strategy` picks it, so the set of families that
+/// picks it has to be pinned somewhere the gate cannot silently shrink.
+///
+/// GPU-free: only the compiled artifact's `trace_len` and the canonical config's
+/// schedule grammar decide this.
+#[test]
+fn cpu_windowed_arm_selection_covers_every_corpus_family() {
+    use crate::config::prover_config;
+    use crate::proof::resolve_backward_execution_strategy;
+    use crate::upstream::SecurityLevel;
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+
+    /// One layout per family the proof matrix gates.
+    const FAMILIES: &[&str] = &[
+        "add_sub_lui_auipc_mop_layout_gkr.json",
+        "bigint_with_extended_control_layout_gkr.json",
+        "blake2_g_function_layout_gkr.json",
+        "blake2_with_extended_control_layout_gkr.json",
+        "inits_and_teardowns_layout_gkr.json",
+        "jump_branch_slt_layout_gkr.json",
+        "keccak_special5_layout_gkr.json",
+        "mem_subword_only_layout_gkr.json",
+        "mem_word_only_layout_gkr.json",
+        "shift_binop_layout_gkr.json",
+        "unified_reduced_machine_layout_gkr.json",
+        "unsigned_mul_div_layout_gkr.json",
+    ];
+
+    let windowed = GkrBackwardOptions {
+        windowed_r0: true,
+        ..GkrBackwardOptions::default()
+    };
+    let mut selected = Vec::new();
+    for layout in FAMILIES {
+        let (programs, _) = gpu_gkr::backward::compile_corpus_layout(layout);
+        for level in crate::config::GPU_SUPPORTED_SECURITY_LEVELS {
+            let config = prover_config(programs.circuit_type(), level).unwrap();
+            let strategy = resolve_backward_execution_strategy(&programs, &config, windowed);
+            println!("{layout} {level:?}: {strategy:?}");
+            assert_eq!(
+                resolve_backward_execution_strategy(
+                    &programs,
+                    &config,
+                    GkrBackwardOptions::default()
+                ),
+                BackwardExecutionStrategy::PerRound,
+                "{layout} {level:?} must stay per-round by default",
+            );
+            if strategy == BackwardExecutionStrategy::WindowedR0 {
+                selected.push(format!("{layout} {level:?}"));
+            }
+        }
+    }
+    assert_eq!(
+        selected.len(),
+        2 * FAMILIES.len(),
+        "every corpus family must select the windowed arm at both supported \
+         security levels, or the both-arm byte gate covers less than it claims; \
+         selected: {selected:?}",
+    );
+}
