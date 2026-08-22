@@ -35,17 +35,7 @@ pub enum ValueField {
     E4,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum SourceProjection {
-    Endpoint0,
-    Delta,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct SemanticSourceKey {
-    pub source: u32,
-    pub projection: SourceProjection,
-}
+pub use gpu_gkr_compiler::backward::{SemanticSourceKey, SourceProjection};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BoundSourceUse {

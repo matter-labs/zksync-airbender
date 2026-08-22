@@ -91,11 +91,7 @@ pub struct HomogeneousDirectProgram {
     pub order: Vec<u8>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StoredSource {
-    Slot(u16),
-    Direct(u16),
-}
+pub use gpu_gkr_compiler::backward::StoredSource;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupedMember {

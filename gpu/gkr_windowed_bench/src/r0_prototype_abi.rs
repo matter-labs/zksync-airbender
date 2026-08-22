@@ -5,6 +5,11 @@ use std::process::{Command, Stdio};
 
 use field::PrimeField;
 use gkr_eval_ir::Bf;
+use gpu_gkr_compiler::backward::{
+    derive_window_shape, lower_window_sections, window_operands, CoeffChallenge, CoeffProduct,
+    NormalizedCoefficientRecipe, WindowCoefficientPlan, WindowGroupedAtom, WindowGroupedMember,
+    WindowGroupedProgram, WindowLoweringError, WindowLoweringInputs, WindowPhase,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::abi::{WindowEqSizes, E4};
@@ -366,13 +371,13 @@ pub enum DedicatedCoefficientPlan {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DedicatedSectionedProgram {
-    pub(crate) words: Vec<u16>,
-    pub(crate) source_slots: Vec<u16>,
-    pub(crate) immediates: Vec<u32>,
-    pub(crate) sections: [u32; R0_PROTOTYPE_COMMON_SECTION_WORDS],
-    pub(crate) coefficient_plans: Vec<DedicatedCoefficientPlan>,
-    pub(crate) shape: R0DedicatedShape,
+pub struct DedicatedSectionedProgram {
+    pub words: Vec<u16>,
+    pub source_slots: Vec<u16>,
+    pub immediates: Vec<u32>,
+    pub sections: [u32; R0_PROTOTYPE_COMMON_SECTION_WORDS],
+    pub coefficient_plans: Vec<DedicatedCoefficientPlan>,
+    pub shape: R0DedicatedShape,
 }
 
 fn checked_u16(value: usize, resource: &'static str) -> Result<u16, R0PrototypeAbiError> {
@@ -622,7 +627,7 @@ fn push_dedicated_instruction(
     words.extend([term_class, factor, source_a, source_b]);
 }
 
-fn dedicated_slot_source(
+fn legacy_dedicated_slot_source(
     coordinate: &FrozenR0Coordinate,
     source: StoredSource,
 ) -> Result<(u16, Option<u16>), R0PrototypeAbiError> {
@@ -656,9 +661,20 @@ fn dedicated_operands(
     source_a: StoredSource,
     source_b: Option<StoredSource>,
 ) -> Result<(u16, u16, u16), R0PrototypeAbiError> {
-    let (slot_a, procedural_a) = dedicated_slot_source(coordinate, source_a)?;
+    window_operands(&coordinate.binding, term_class, source_a, source_b)
+        .map_err(abi_error_from_window)
+}
+
+#[doc(hidden)]
+pub fn legacy_dedicated_operands(
+    coordinate: &FrozenR0Coordinate,
+    term_class: u8,
+    source_a: StoredSource,
+    source_b: Option<StoredSource>,
+) -> Result<(u16, u16, u16), R0PrototypeAbiError> {
+    let (slot_a, procedural_a) = legacy_dedicated_slot_source(coordinate, source_a)?;
     let (slot_b, procedural_b) = source_b
-        .map(|source| dedicated_slot_source(coordinate, source))
+        .map(|source| legacy_dedicated_slot_source(coordinate, source))
         .transpose()?
         .unwrap_or((0, None));
     match (term_class, procedural_a, procedural_b) {
@@ -676,11 +692,25 @@ fn dedicated_operands(
     }
 }
 
+pub fn derive_dedicated_shape(
+    coordinate: &FrozenR0Coordinate,
+    program: &GroupedSlotProgram,
+) -> Result<R0DedicatedShape, R0PrototypeAbiError> {
+    let grouped = window_grouped_program(program);
+    derive_window_shape(&coordinate.binding, &grouped)
+        .map(|shape| R0DedicatedShape::from_bits(shape.bits()))
+        .map_err(abi_error_from_window)
+}
+
 /// Derive only those compile-time features that remove work from an active
 /// sectioned hot loop.  This is deliberately checked independently from the
 /// legacy dedicated flattener so future lowering cannot silently reinterpret
 /// a new grouped-program shape.
-pub fn derive_dedicated_shape(
+///
+/// Retained as the differential oracle for the compiler-owned lowering; it is
+/// never reached through [`derive_dedicated_shape`].
+#[doc(hidden)]
+pub fn legacy_derive_dedicated_shape(
     coordinate: &FrozenR0Coordinate,
     program: &GroupedSlotProgram,
 ) -> Result<R0DedicatedShape, R0PrototypeAbiError> {
@@ -696,7 +726,7 @@ pub fn derive_dedicated_shape(
                 ..
             } => {
                 let (class, _, _) =
-                    dedicated_operands(coordinate, *term_class, *source_a, *source_b)?;
+                    legacy_dedicated_operands(coordinate, *term_class, *source_a, *source_b)?;
                 if matches!(
                     class,
                     R0_DEDICATED_LINEAR_BF_PROCEDURAL
@@ -725,7 +755,7 @@ pub fn derive_dedicated_shape(
                 ..
             } => {
                 let (class, _, _) =
-                    dedicated_operands(coordinate, *term_class, *source_a, *source_b)?;
+                    legacy_dedicated_operands(coordinate, *term_class, *source_a, *source_b)?;
                 match class {
                     1 => {}
                     3 => shape.insert(R0DedicatedShape::E4_SINGLETON_CLASS_3),
@@ -772,7 +802,7 @@ pub fn derive_dedicated_shape(
                     if member.immediate == 2_013_265_920 {
                         shape.insert(R0DedicatedShape::BF_NEGATIVE_FACTOR);
                     }
-                    let (class, _, _) = dedicated_operands(
+                    let (class, _, _) = legacy_dedicated_operands(
                         coordinate,
                         member.term_class,
                         member.source_a,
@@ -828,7 +858,7 @@ pub fn derive_dedicated_shape(
                             product.immediate
                         )));
                     }
-                    let (class, _, _) = dedicated_operands(
+                    let (class, _, _) = legacy_dedicated_operands(
                         coordinate,
                         product.term_class,
                         product.source_a,
@@ -1052,7 +1082,184 @@ pub(crate) fn validate_sectioned_coefficient_ids(
     Ok(())
 }
 
+fn window_phase(phase: R0Phase) -> WindowPhase {
+    match phase {
+        R0Phase::Bf => WindowPhase::Bf,
+        R0Phase::E4 => WindowPhase::E4,
+    }
+}
+
+pub(crate) fn normalized_from_frozen(recipe: &FrozenR0Recipe) -> NormalizedCoefficientRecipe {
+    NormalizedCoefficientRecipe {
+        terms: recipe
+            .products
+            .iter()
+            .map(|product| CoeffProduct {
+                scalar: product.scalar,
+                challenges: product
+                    .challenges
+                    .iter()
+                    .map(|challenge| CoeffChallenge(challenge.reference.clone()))
+                    .collect(),
+                inits_and_teardowns_top_bits: product.inits_and_teardowns_top_bits.clone(),
+            })
+            .collect(),
+    }
+}
+
+pub(crate) fn frozen_from_normalized(recipe: &NormalizedCoefficientRecipe) -> FrozenR0Recipe {
+    FrozenR0Recipe {
+        products: recipe
+            .terms
+            .iter()
+            .map(|product| crate::r0_artifact::FrozenR0Product {
+                scalar: product.scalar,
+                challenges: product
+                    .challenges
+                    .iter()
+                    .map(|challenge| crate::r0_artifact::FrozenR0Challenge {
+                        reference: challenge.0.clone(),
+                    })
+                    .collect(),
+                inits_and_teardowns_top_bits: product.inits_and_teardowns_top_bits.clone(),
+            })
+            .collect(),
+    }
+}
+
+fn window_grouped_program(program: &GroupedSlotProgram) -> WindowGroupedProgram {
+    WindowGroupedProgram {
+        atoms: program
+            .atoms
+            .iter()
+            .map(|atom| match atom {
+                GroupedAtom::Singleton {
+                    phase,
+                    coefficient_id,
+                    term_class,
+                    source_a,
+                    source_b,
+                } => WindowGroupedAtom::Singleton {
+                    phase: window_phase(*phase),
+                    coefficient_id: *coefficient_id,
+                    term_class: *term_class,
+                    source_a: *source_a,
+                    source_b: *source_b,
+                },
+                GroupedAtom::Group {
+                    phase,
+                    group_id,
+                    core,
+                    members,
+                } => WindowGroupedAtom::Group {
+                    phase: window_phase(*phase),
+                    group_id: *group_id,
+                    core: normalized_from_frozen(core),
+                    members: members
+                        .iter()
+                        .map(|member| WindowGroupedMember {
+                            term_class: member.term_class,
+                            immediate: member.immediate,
+                            source_a: member.source_a,
+                            source_b: member.source_b,
+                        })
+                        .collect(),
+                },
+            })
+            .collect(),
+        source_slots: program.source_slots.clone(),
+    }
+}
+
+pub(crate) fn abi_error_from_window(error: WindowLoweringError) -> R0PrototypeAbiError {
+    match error {
+        WindowLoweringError::Capacity {
+            resource,
+            required,
+            capacity,
+        } => R0PrototypeAbiError::Capacity {
+            resource,
+            required,
+            capacity,
+        },
+        WindowLoweringError::Encoding(message) => R0PrototypeAbiError::Encoding(message),
+        other => R0PrototypeAbiError::Encoding(format!("{other:?}")),
+    }
+}
+
+pub(crate) fn dedicated_plan_from_window(plan: &WindowCoefficientPlan) -> DedicatedCoefficientPlan {
+    match plan {
+        WindowCoefficientPlan::Direct(recipe) => {
+            DedicatedCoefficientPlan::Direct(frozen_from_normalized(recipe))
+        }
+        WindowCoefficientPlan::Scaled { recipe, scalar } => DedicatedCoefficientPlan::Scaled {
+            recipe: frozen_from_normalized(recipe),
+            scalar: *scalar,
+        },
+        WindowCoefficientPlan::LinearBasis { recipe, limb } => {
+            DedicatedCoefficientPlan::LinearBasis {
+                recipe: frozen_from_normalized(recipe),
+                limb: *limb,
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn window_plan_from_dedicated(plan: &DedicatedCoefficientPlan) -> WindowCoefficientPlan {
+    match plan {
+        DedicatedCoefficientPlan::Direct(recipe) => {
+            WindowCoefficientPlan::Direct(normalized_from_frozen(recipe))
+        }
+        DedicatedCoefficientPlan::Scaled { recipe, scalar } => WindowCoefficientPlan::Scaled {
+            recipe: normalized_from_frozen(recipe),
+            scalar: *scalar,
+        },
+        DedicatedCoefficientPlan::LinearBasis { recipe, limb } => {
+            WindowCoefficientPlan::LinearBasis {
+                recipe: normalized_from_frozen(recipe),
+                limb: *limb,
+            }
+        }
+    }
+}
+
 pub(crate) fn lower_dedicated_sections(
+    coordinate: &FrozenR0Coordinate,
+    program: &GroupedSlotProgram,
+) -> Result<DedicatedSectionedProgram, R0PrototypeAbiError> {
+    let recipes = coordinate
+        .recipes
+        .iter()
+        .map(normalized_from_frozen)
+        .collect::<Vec<_>>();
+    let lowered = lower_window_sections(
+        &WindowLoweringInputs {
+            layer: coordinate.layer as usize,
+            binding: &coordinate.binding,
+            coefficient_recipes: &recipes,
+        },
+        &window_grouped_program(program),
+    )
+    .map_err(abi_error_from_window)?;
+    Ok(DedicatedSectionedProgram {
+        words: lowered.words,
+        source_slots: lowered.source_slots,
+        immediates: lowered.immediates,
+        sections: lowered.sections,
+        coefficient_plans: lowered
+            .coefficient_plans
+            .iter()
+            .map(dedicated_plan_from_window)
+            .collect(),
+        shape: R0DedicatedShape::from_bits(lowered.shape.bits()),
+    })
+}
+
+/// Retained as the differential oracle for the compiler-owned lowering; it is
+/// never reached through [`lower_dedicated_sections`].
+#[doc(hidden)]
+pub fn legacy_lower_dedicated_sections(
     coordinate: &FrozenR0Coordinate,
     program: &GroupedSlotProgram,
 ) -> Result<DedicatedSectionedProgram, R0PrototypeAbiError> {
@@ -1115,7 +1322,7 @@ pub(crate) fn lower_dedicated_sections(
                 let recipe = recipe_for_coefficient(coordinate, *coefficient_id)
                     .map_err(|error| R0PrototypeAbiError::Encoding(format!("{error:?}")))?;
                 let (class, source_a, source_b) =
-                    dedicated_operands(coordinate, *term_class, *source_a, *source_b)?;
+                    legacy_dedicated_operands(coordinate, *term_class, *source_a, *source_b)?;
                 push_dedicated_instruction(
                     &mut bf,
                     class,
@@ -1134,7 +1341,7 @@ pub(crate) fn lower_dedicated_sections(
                 let recipe = recipe_for_coefficient(coordinate, *coefficient_id)
                     .map_err(|error| R0PrototypeAbiError::Encoding(format!("{error:?}")))?;
                 let (class, source_a, source_b) =
-                    dedicated_operands(coordinate, *term_class, *source_a, *source_b)?;
+                    legacy_dedicated_operands(coordinate, *term_class, *source_a, *source_b)?;
                 if class == 1 {
                     let basis = push_linear_basis_plans(&mut plans, &mut plan_ids, &recipe)?;
                     push_dedicated_instruction(
@@ -1190,7 +1397,7 @@ pub(crate) fn lower_dedicated_sections(
                     {
                         factor |= R0_DEDICATED_REDUCE_AFTER;
                     }
-                    let (class, source_a, source_b) = dedicated_operands(
+                    let (class, source_a, source_b) = legacy_dedicated_operands(
                         coordinate,
                         member.term_class,
                         member.source_a,
@@ -1218,7 +1425,7 @@ pub(crate) fn lower_dedicated_sections(
                             .to_owned(),
                     ));
                 }
-                let (linear_class, linear_source, linear_source_b) = dedicated_operands(
+                let (linear_class, linear_source, linear_source_b) = legacy_dedicated_operands(
                     coordinate,
                     linear.term_class,
                     linear.source_a,
@@ -1241,7 +1448,7 @@ pub(crate) fn lower_dedicated_sections(
                 let products = &members[1..];
                 if products.len() == 1 {
                     let product = &products[0];
-                    let (class, source_a, source_b) = dedicated_operands(
+                    let (class, source_a, source_b) = legacy_dedicated_operands(
                         coordinate,
                         product.term_class,
                         product.source_a,
@@ -1282,7 +1489,7 @@ pub(crate) fn lower_dedicated_sections(
                     push_dedicated_instruction(&mut e4_pair, R0_DEDICATED_GROUP_E4, basis, 0, 0);
                     let mut pair_class = None;
                     for product in products {
-                        let (class, source_a, source_b) = dedicated_operands(
+                        let (class, source_a, source_b) = legacy_dedicated_operands(
                             coordinate,
                             product.term_class,
                             product.source_a,
@@ -1328,7 +1535,7 @@ pub(crate) fn lower_dedicated_sections(
     sections[1] = u32_section_end(linear_end, "dedicated linear E4 section")?;
     sections[2] = u32_section_end(singleton_end, "dedicated singleton E4 section")?;
     sections[3] = u32_section_end(pair_end, "dedicated pair E4 section")?;
-    let shape = derive_dedicated_shape(coordinate, program)?;
+    let shape = legacy_derive_dedicated_shape(coordinate, program)?;
     sections[4] = u32::from(shape.bits());
     let immediates = grouped
         .immediates
@@ -2812,6 +3019,96 @@ mod tests {
         let error = super::validate_sectioned_coefficient_ids(&invalid_linear_bank_span.unwrap())
             .unwrap_err();
         assert!(format!("{error:?}").contains("linear coefficient span"));
+    }
+
+    #[test]
+    fn cpu_window_program_port_matches_legacy_sectioned_lowering() {
+        use gpu_gkr_compiler::backward::{
+            lower_window_program, WindowCapacities, WindowProgram, WindowShape,
+        };
+
+        let bundle = decode_r0_bundle(R0_CORPUS_BYTES).unwrap();
+        let frozen = bundle
+            .coordinates
+            .iter()
+            .map(|coordinate| ((coordinate.circuit.as_str(), coordinate.layer), coordinate))
+            .collect::<BTreeMap<_, _>>();
+        let corpus = compile_corpus().unwrap();
+        let mut coordinates = 0usize;
+
+        for layer in &corpus.layers {
+            let coordinate = frozen[&(layer.circuit.as_str(), layer.layer as u32)];
+            let label = format!("{}:{}", layer.circuit, layer.layer);
+            let grouping = analyze_coeff_grouping(&layer.r0.coefficients).unwrap();
+            let schedules =
+                build_schedule_views(&layer.r0.coefficients, &layer.r0.binding, &grouping).unwrap();
+            let programs = build_r0_prototype_program_set(
+                coordinate,
+                &layer.r0.coefficients,
+                &schedules,
+                &grouping,
+            )
+            .unwrap();
+            let R0EncodedProgram::GroupedSlot(grouped) = &programs
+                .get(R0ProgramEncoding::GroupedSlot)
+                .expect("grouped-slot program")
+                .encoded
+            else {
+                unreachable!()
+            };
+            let legacy = super::legacy_lower_dedicated_sections(coordinate, grouped).unwrap();
+            assert_eq!(
+                super::lower_dedicated_sections(coordinate, grouped).unwrap(),
+                legacy,
+                "{label} delegating sectioned wrapper"
+            );
+            let expected = WindowProgram {
+                layer: layer.layer,
+                words: legacy.words.clone(),
+                source_slots: legacy.source_slots.clone(),
+                windows: coordinate.binding.windows.clone(),
+                immediates: legacy.immediates.clone(),
+                sections: legacy.sections,
+                coefficient_plans: legacy
+                    .coefficient_plans
+                    .iter()
+                    .map(super::window_plan_from_dedicated)
+                    .collect(),
+                shape: WindowShape::from_bits(legacy.shape.bits()).unwrap(),
+                capacities: WindowCapacities {
+                    records: legacy.words.len() / 4,
+                    program_words: legacy.words.len(),
+                    source_slots: legacy.source_slots.len(),
+                    windows: coordinate.binding.windows.len(),
+                    immediates: legacy.immediates.len(),
+                    coefficient_plans: legacy.coefficient_plans.len(),
+                },
+            };
+            let ported = lower_window_program(&layer.r0).unwrap();
+
+            assert_eq!(ported.layer, expected.layer, "{label} layer");
+            assert_eq!(ported.words, expected.words, "{label} wire words");
+            assert_eq!(
+                ported.source_slots, expected.source_slots,
+                "{label} source slots"
+            );
+            assert_eq!(
+                ported.windows, expected.windows,
+                "{label} window identities"
+            );
+            assert_eq!(ported.immediates, expected.immediates, "{label} immediates");
+            assert_eq!(ported.sections, expected.sections, "{label} sections");
+            assert_eq!(
+                ported.coefficient_plans, expected.coefficient_plans,
+                "{label} coefficient plans"
+            );
+            assert_eq!(ported.shape, expected.shape, "{label} shape mask");
+            assert_eq!(ported.capacities, expected.capacities, "{label} capacities");
+            assert_eq!(ported, expected, "{label} lowered window program");
+            coordinates += 1;
+        }
+
+        assert_eq!(coordinates, 57);
     }
 
     #[test]

@@ -39,6 +39,10 @@ impl R0DedicatedShape {
     pub const E4_PAIR_CLASS_5: Self = Self(1 << 10);
     pub const BF_SINGLE_PRODUCT_PREFIX: Self = Self(1 << 11);
 
+    pub const fn from_bits(bits: u16) -> Self {
+        Self(bits)
+    }
+
     pub const fn bits(self) -> u16 {
         self.0
     }

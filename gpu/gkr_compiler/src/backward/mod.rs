@@ -1,6 +1,7 @@
 pub(crate) mod common;
 pub(crate) mod continuation;
 pub(crate) mod r0;
+pub mod window;
 
 pub use common::group::{
     analyze_coeff_grouping, materialize_coeff_grouping_for_semantics, CoeffGroupingAnalysis,
@@ -43,6 +44,14 @@ pub use continuation::{
     ContinuationLayerProgram, ContinuationProgramBundle,
 };
 pub use r0::{compile_r0, interpret_r0_program, R0CompileError, R0LayerProgram, R0ProgramBundle};
+pub use window::{
+    build_window_grouped_program, derive_window_shape, lower_window_program, lower_window_sections,
+    validate_window_coefficient_ids, window_operands, window_source_slots, SemanticSourceKey,
+    SourceProjection, StoredSource, WindowCapacities, WindowCoefficientPlan, WindowGroupedAtom,
+    WindowGroupedMember, WindowGroupedProgram, WindowLoweringError, WindowLoweringInputs,
+    WindowPhase, WindowProgram, WindowShape, WINDOW_COEFFICIENT_BANK_BIAS,
+    WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS, WINDOW_SHAPE_DEFINED_BITS,
+};
 
 pub const MAX_BACKWARD_COEFFICIENT_RECIPES: usize = common::limits::LEAN_MAX_COEFFICIENT_RECIPES;
 pub const MAX_BACKWARD_SOURCES: usize = common::limits::LEAN_MAX_SOURCES;
