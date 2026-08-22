@@ -373,12 +373,20 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
         drop(device_claims_in);
         // Release extras scratch immediately after its last queued use.
         drop(extras_keepalive);
+        let coeff_bank_staging = [
+            self.bwd_vm_round0.take_bank_staging(),
+            self.bwd_vm_ext.take_bank_staging(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             device_seed: Some(device_seed),
             device_claim_point_for_next_layer: Some(device_claim_point_out),
             device_claims_for_next_layer: Some(device_new_claims),
             claim_layout_for_next_layer: Some(next_claim_layout),
+            coeff_bank_staging,
         })
     }
 }

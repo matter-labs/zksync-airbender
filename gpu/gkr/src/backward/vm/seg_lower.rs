@@ -12,8 +12,8 @@ use super::seg_desc::{
     bwd_seg_lane, bwd_seg_lane_slot, BwdSegAddrSlot, BwdSegDesc, BwdSegSourceRecord,
     BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
-    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_ADDR_NONE, BWD_SEG_ADDR_SLOTS, BWD_SEG_CONST_BANK,
-    BWD_SEG_C_INIT_NONE, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
+    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_ADDR_NONE, BWD_SEG_ADDR_SLOTS, BWD_SEG_C_INIT_NONE,
+    BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES, BWD_SEG_OUTPUT_BANK,
 };
 use crate::backward::GkrEqSizes;
 use crate::forward::vm::lower::ResolvedColumn;
@@ -526,10 +526,10 @@ fn lower_bwd_seg_view(
     let fold_depth = bwd_coeff_fold_depth(round);
 
     let coefficient_count = CoefficientRecipeId::RESERVED as usize + binding.coefficient_count;
-    if coefficient_count > BWD_SEG_CONST_BANK {
+    if coefficient_count > BWD_SEG_OUTPUT_BANK {
         return Err(BwdSegLowerError::CoefficientBankOverflow {
             coefficients: coefficient_count,
-            cap: BWD_SEG_CONST_BANK,
+            cap: BWD_SEG_OUTPUT_BANK,
         });
     }
 

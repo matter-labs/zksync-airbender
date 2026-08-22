@@ -11,6 +11,7 @@ use gpu_gkr_compiler::{
     LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES,
     MAX_BACKWARD_COEFFICIENT_RECIPES, MAX_BACKWARD_SOURCES, MAX_COEFFICIENT_ENCODINGS,
     MAX_SOURCE_WINDOWS, PUBLISH_TARGET_DEPTH, SOURCE_NONE, SOURCE_WINDOW_COLUMNS,
+    WINDOW_COEFFICIENT_BANK_BIAS, WINDOW_MAX_COEFFICIENT_PLANS,
 };
 
 use crate::backward::GkrEqSizes;
@@ -24,8 +25,10 @@ pub(crate) const BWD_SEG_DESC_ALIGN: usize = 16;
 
 pub(crate) const BWD_SEG_MAX_K: usize = 16;
 
-/// Slots in the device coefficient bank, including the reserved `±1` entries.
-pub(crate) const BWD_SEG_CONST_BANK: usize = 1_152;
+/// Slots in the device output coefficient bank, including the reserved `±1`
+/// entries. Sized for the widest arm — the windowed executor's interned plans —
+/// not for the per-round arm's recipe count.
+pub(crate) const BWD_SEG_OUTPUT_BANK: usize = 1_792;
 
 /// [`BwdSegDesc::c_init_coeff`] for a layer with no `acc_c0` seed.
 ///
@@ -64,16 +67,20 @@ const _: () = {
     // A live count rides the descriptor as a u16.
     assert!(BWD_SEG_MAX_IMMEDIATES <= u16::MAX as usize);
 
-    // The bank covers every reserved-inclusive coefficient id the corpus can
+    // The bank covers every reserved-inclusive coefficient id either arm can
     // name, stays inside the thirteen coefficient bits that name it, and fits the
     // per-module constant budget.
     assert!(
-        BWD_SEG_CONST_BANK
-            == MAX_BACKWARD_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize
+        BWD_SEG_OUTPUT_BANK
+            >= MAX_BACKWARD_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize
     );
-    assert!(BWD_SEG_CONST_BANK <= MAX_COEFFICIENT_ENCODINGS);
-    assert!(BWD_SEG_CONST_BANK * size_of::<E4>() == 18 * 1_024);
-    assert!(BWD_SEG_CONST_BANK * size_of::<E4>() <= 64 * 1_024);
+    assert!(
+        BWD_SEG_OUTPUT_BANK
+            >= WINDOW_MAX_COEFFICIENT_PLANS + WINDOW_COEFFICIENT_BANK_BIAS as usize
+    );
+    assert!(BWD_SEG_OUTPUT_BANK <= MAX_COEFFICIENT_ENCODINGS);
+    assert!(BWD_SEG_OUTPUT_BANK * size_of::<E4>() == 28 * 1_024);
+    assert!(BWD_SEG_OUTPUT_BANK * size_of::<E4>() <= 64 * 1_024);
 
     assert!(BWD_SEG_MAX_SOURCES == MAX_BACKWARD_SOURCES);
     assert!(BWD_SEG_MAX_SOURCES.is_multiple_of(16));
@@ -88,7 +95,10 @@ const _: () = {
 mod cuda_abi_tests {
     use super::*;
     use crate::backward::vm::seg_coeff_eval::{
-        BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_SLOTS, BWD_SEG_COEFF_MAX_MONOMIALS,
+        BWD_SEG_BLOB_BYTES, BWD_SEG_BLOB_MONOMIALS_OFFSET, BWD_SEG_BLOB_RECIPES_OFFSET,
+        BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_SLOTS, BWD_SEG_COEFF_PLAN_DIRECT,
+        BWD_SEG_COEFF_PLAN_LINEAR_BASIS, BWD_SEG_COEFF_PLAN_SCALED, BWD_SEG_EVAL_MONOMIALS,
+        BWD_SEG_EVAL_RECIPES, BWD_SEG_WINDOW_PLANS,
     };
     use crate::backward::vm::seg_lower::SourceClass;
     use gpu_gkr_compiler::{
@@ -150,7 +160,7 @@ mod cuda_abi_tests {
                 "BWD_SEG_FOLD_WEIGHT_SLOTS",
                 BWD_SEG_FOLD_WEIGHT_SLOTS as u64,
             ),
-            ("BWD_SEG_CONST_BANK", BWD_SEG_CONST_BANK as u64),
+            ("BWD_SEG_OUTPUT_BANK", BWD_SEG_OUTPUT_BANK as u64),
             ("BWD_SEG_C_INIT_NONE", BWD_SEG_C_INIT_NONE as u64),
             ("BWD_SEG_MAX_SOURCES", BWD_SEG_MAX_SOURCES as u64),
             (
@@ -260,9 +270,33 @@ mod cuda_abi_tests {
                 BWD_SEG_CHALLENGE_CLAIM_BATCHING as u64,
             ),
             ("BWD_SEG_CHALLENGE_SLOTS", BWD_SEG_CHALLENGE_SLOTS as u64),
+            ("BWD_SEG_EVAL_RECIPES", BWD_SEG_EVAL_RECIPES as u64),
+            ("BWD_SEG_EVAL_MONOMIALS", BWD_SEG_EVAL_MONOMIALS as u64),
+            ("BWD_SEG_WINDOW_PLANS", BWD_SEG_WINDOW_PLANS as u64),
             (
-                "BWD_SEG_COEFF_MAX_MONOMIALS",
-                BWD_SEG_COEFF_MAX_MONOMIALS as u64,
+                "BWD_SEG_WINDOW_BANK_BIAS",
+                WINDOW_COEFFICIENT_BANK_BIAS as u64,
+            ),
+            (
+                "BWD_SEG_BLOB_RECIPES_OFFSET",
+                BWD_SEG_BLOB_RECIPES_OFFSET as u64,
+            ),
+            (
+                "BWD_SEG_BLOB_MONOMIALS_OFFSET",
+                BWD_SEG_BLOB_MONOMIALS_OFFSET as u64,
+            ),
+            ("BWD_SEG_BLOB_BYTES", BWD_SEG_BLOB_BYTES as u64),
+            (
+                "BWD_SEG_COEFF_PLAN_DIRECT",
+                BWD_SEG_COEFF_PLAN_DIRECT as u64,
+            ),
+            (
+                "BWD_SEG_COEFF_PLAN_SCALED",
+                BWD_SEG_COEFF_PLAN_SCALED as u64,
+            ),
+            (
+                "BWD_SEG_COEFF_PLAN_LINEAR_BASIS",
+                BWD_SEG_COEFF_PLAN_LINEAR_BASIS as u64,
             ),
         ] {
             assert_eq!(cpp_literal(CUDA_COEFF, name), value, "{name}");

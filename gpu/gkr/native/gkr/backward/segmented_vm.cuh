@@ -98,8 +98,10 @@ static_assert(BWD_SEG_MAX_PLANE_SMEM_BYTES == 7680, "segmented VM shared-memory 
 static_assert(BWD_SEG_MAX_PLANE_SMEM_BYTES <= 48 * 1024, "segmented VM exceeds default shared-memory limit");
 static_assert(BWD_SEG_LANE_INDEX_MASK == 31, "warp lane index mask drift");
 
-// Coefficient-bank slots, including the two reserved literal ids.
-constexpr u32 BWD_SEG_CONST_BANK = 1152;
+// Output coefficient-bank slots, including the two reserved literal ids. Sized
+// for the widest arm — the windowed executor's interned plans — not for the
+// per-round arm's recipe count.
+constexpr u32 BWD_SEG_OUTPUT_BANK = 1792;
 
 // `bwd_seg_desc::c_init_coeff` for a layer with no `acc_c0` seed. A sentinel is
 // unavoidable: `0` is `ONE`, a perfectly legal seed id. `u32` max rather than the
@@ -118,11 +120,11 @@ constexpr u32 BWD_SEG_MAX_IMMEDIATES = 512;
 
 static_assert(BWD_SEG_PROGRAM_BYTE_CAP == 12944, "program array byte size drift");
 static_assert(BWD_SEG_PROGRAM_BYTE_CAP % BWD_SEG_DESC_ALIGN == 0, "the program array is not a whole number of 16-byte quanta");
-static_assert(BWD_SEG_CONST_BANK * sizeof(e4) == 18 * 1024, "coefficient bank size drift");
-static_assert(BWD_SEG_CONST_BANK * sizeof(e4) <= 64 * 1024, "the coefficient bank exceeds the per-module __constant__ budget");
+static_assert(BWD_SEG_OUTPUT_BANK * sizeof(e4) == 28 * 1024, "coefficient bank size drift");
+static_assert(BWD_SEG_OUTPUT_BANK * sizeof(e4) <= 64 * 1024, "the coefficient bank exceeds the per-module __constant__ budget");
 // Every bank slot must be nameable by the thirteen coefficient bits of the lean
 // header, reserved literals included.
-static_assert(BWD_SEG_CONST_BANK <= BWD_COEFF_MAX_COEFFICIENT_ENCODINGS, "a bank slot the wire cannot name");
+static_assert(BWD_SEG_OUTPUT_BANK <= BWD_COEFF_MAX_COEFFICIENT_ENCODINGS, "a bank slot the wire cannot name");
 static_assert(BWD_SEG_MAX_SOURCES % 16 == 0, "the source arrays are not whole 16-byte lines");
 static_assert(BWD_SEG_ADDR_SLOTS == 64, "address slot capacity drift");
 static_assert(BWD_SEG_MAX_IMMEDIATES == 512, "immediate table capacity drift");
@@ -344,7 +346,14 @@ static_assert(__builtin_offsetof(bwd_seg_desc, slot) - (__builtin_offsetof(bwd_s
 } // namespace airbender::gkr
 
 // Stream-ordered coefficient bank.
-EXTERN __device__ __constant__ e4 ab_gkr_bwd_seg_coeff_bank[airbender::gkr::BWD_SEG_CONST_BANK];
+EXTERN __device__ __constant__ e4 ab_gkr_bwd_seg_coeff_bank[airbender::gkr::BWD_SEG_OUTPUT_BANK];
+
+// The output bank's ONLY read path. Constant memory today; moving the bank to
+// global memory rewires this macro and nothing else, which is what lets the
+// generated window kernels commit to the indirection before that decision is
+// settled. Read-only by construction — the fill kernel writes the bank through
+// the symbol's device address, not through this accessor.
+#define AB_GKR_BWD_SEG_COEFF(slot) (::ab_gkr_bwd_seg_coeff_bank[(slot)])
 
 // Main-layer fold challenges, defined in `segmented_vm.cu`.
 EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];

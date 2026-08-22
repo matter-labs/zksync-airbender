@@ -12,11 +12,11 @@ use gpu_core::primitives::field::E4;
 use gpu_core::primitives::utils::WARP_SIZE;
 use gpu_prover_context::ProverContext;
 
-use super::seg_desc::{BwdSegDesc, BWD_SEG_CONST_BANK, BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K};
+use super::seg_desc::{BwdSegDesc, BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K, BWD_SEG_OUTPUT_BANK};
 use super::seg_lower::BwdSegSetup;
 
 cuda_struct_and_stub! {
-    static ab_gkr_bwd_seg_coeff_bank: [E4; BWD_SEG_CONST_BANK];
+    static ab_gkr_bwd_seg_coeff_bank: [E4; BWD_SEG_OUTPUT_BANK];
 }
 
 pub(crate) fn bwd_seg_coeff_bank_device_ptr() -> *mut E4 {

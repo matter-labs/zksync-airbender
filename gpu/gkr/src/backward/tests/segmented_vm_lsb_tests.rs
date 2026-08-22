@@ -39,7 +39,7 @@ use crate::backward::vm::seg_desc::{
     bwd_seg_lane, BwdSegAddrSlot, BwdSegDesc, BwdSegSourceRecord, BWD_COEFF_ORIGIN_PROCEDURAL,
     BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE,
     BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS, BWD_SEG_ADDR_COLUMN_BITS, BWD_SEG_ADDR_NONE,
-    BWD_SEG_CONST_BANK, BWD_SEG_C_INIT_NONE, BWD_SEG_MAX_K,
+    BWD_SEG_C_INIT_NONE, BWD_SEG_MAX_K, BWD_SEG_OUTPUT_BANK,
 };
 use crate::backward::vm::seg_lower::zeroed_box;
 use crate::test_utils::make_test_context;
@@ -163,7 +163,7 @@ fn download_e4(context: &ProverContext, device: &DeviceAllocation<E4>) -> Vec<E4
 
 fn write_symbol(context: &ProverContext, ptr: *mut E4, host: &[E4]) {
     // SAFETY: every symbol written here is at least `host.len()` E4 long, as
-    // pinned by MAX_MAIN_LAYER_CLAIM_POINT_LEN, BWD_SEG_CONST_BANK and the
+    // pinned by MAX_MAIN_LAYER_CLAIM_POINT_LEN, BWD_SEG_OUTPUT_BANK and the
     // eq-high shape.
     let view = unsafe { DeviceSlice::from_raw_parts_mut(ptr, host.len()) };
     memory_copy_async(view, host, context.get_exec_stream()).unwrap();
@@ -287,7 +287,7 @@ impl<'a> Fixture<'a> {
             &claim_symbol,
         );
 
-        let mut coeff = vec![E4::ZERO; BWD_SEG_CONST_BANK];
+        let mut coeff = vec![E4::ZERO; BWD_SEG_OUTPUT_BANK];
         for slot in coeff[..LIVE_BANK].iter_mut() {
             *slot = random_e4(&mut rng);
         }

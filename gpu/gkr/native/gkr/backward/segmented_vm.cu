@@ -8,7 +8,7 @@
 
 __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
 
-__device__ __constant__ e4 ab_gkr_bwd_seg_coeff_bank[airbender::gkr::BWD_SEG_CONST_BANK];
+__device__ __constant__ e4 ab_gkr_bwd_seg_coeff_bank[airbender::gkr::BWD_SEG_OUTPUT_BANK];
 
 __device__ __constant__ e4 ab_gkr_bwd_seg_fold_weights[airbender::gkr::BWD_SEG_FOLD_WEIGHT_SLOTS];
 
@@ -326,7 +326,7 @@ DEVICE_FORCEINLINE void seg_fold_and_publish(const bwd_seg_desc &desc, const u16
 DEVICE_FORCEINLINE e4 seg_c_init(const bwd_seg_desc &desc) {
   if (desc.c_init_coeff == BWD_SEG_C_INIT_NONE)
     return e4::ZERO();
-  return ::ab_gkr_bwd_seg_coeff_bank[static_cast<u16>(desc.c_init_coeff)];
+  return AB_GKR_BWD_SEG_COEFF(static_cast<u16>(desc.c_init_coeff));
 }
 
 DEVICE_FORCEINLINE void seg_store_row(const bwd_seg_desc &desc, const u32 row, const u32 lane, const bool active, const e4 &sum_c0, const e4 &sum_c2) {
@@ -383,7 +383,7 @@ template <bool IS_R0, u32 MAX_DEPTH>
 DEVICE_FORCEINLINE void seg_execute_term(const bwd_seg_desc &desc, const u16 term_class, const u16 coefficient_index, const u16 source_a, const u16 source_b,
                                          const u32 row, e4 &acc_c0, e4 &acc_c2) {
   // Reserved literals occupy the bank head, so every term uses one bank load.
-  const e4 coefficient = ::ab_gkr_bwd_seg_coeff_bank[coefficient_index];
+  const e4 coefficient = AB_GKR_BWD_SEG_COEFF(coefficient_index);
   if constexpr (IS_R0) {
     switch (term_class) {
     case BWD_SEG_R0_CLASS_C0_LINEAR_BF: {
@@ -565,7 +565,7 @@ template <bool IS_R0> DEVICE_FORCEINLINE void seg_body(const bwd_seg_desc &desc)
         }
         // ONE uniform bank load for the whole group, the header's core id indexed
         // raw exactly as a term's coefficient id is.
-        const e4 core = ::ab_gkr_bwd_seg_coeff_bank[coefficient_index];
+        const e4 core = AB_GKR_BWD_SEG_COEFF(coefficient_index);
         seg_apply_group_core(core, flags, s_c0, s_c2, acc_c0, acc_c2);
         continue;
       }

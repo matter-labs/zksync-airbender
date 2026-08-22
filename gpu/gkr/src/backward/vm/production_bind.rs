@@ -9,7 +9,8 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use gpu_gkr_compiler::{
-    ContinuationLayerProgram, R0LayerProgram, WindowFamily, KIND_ORDER, SOURCE_WINDOW_COLUMNS,
+    ContinuationLayerProgram, R0LayerProgram, WindowFamily, WindowProgram, KIND_ORDER,
+    SOURCE_WINDOW_COLUMNS,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -18,7 +19,7 @@ use super::seg::{
     launch_bwd_seg_continuation, launch_bwd_seg_r0,
 };
 use super::seg_coeff_eval::{
-    build_seg_coeff_eval_tables_with_top_bits, schedule_bwd_seg_coeff_bank_fill,
+    build_seg_coeff_eval_blob, build_seg_coeff_eval_window_blob, schedule_bwd_seg_coeff_bank_fill,
     SegCoeffEvalTables, BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE,
     BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE,
     BWD_SEG_CHALLENGE_SLOTS,
@@ -39,6 +40,7 @@ use crate::GpuGKRStorage;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
+use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_prover_context::ProverContext;
 
 // ── The separate `K` policies ────────────────────────────────────────────────
@@ -576,6 +578,12 @@ pub(crate) struct BwdVmRound0Launch {
     slab: DeviceAllocation<E4>,
 }
 
+impl BwdVmRound0Launch {
+    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
+        self.tables.take_host_staging()
+    }
+}
+
 pub(crate) fn build_bwd_vm_round0<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     program: &R0LayerProgram,
@@ -588,11 +596,10 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
 ) -> CudaResult<BwdVmRound0Launch> {
     let bound = bind_r0_sources(storage, program)
         .unwrap_or_else(|error| panic!("backward VM R0 source binding: {error:?}"));
-    let tables = build_seg_coeff_eval_tables_with_top_bits(
-        &program.coefficient_recipes,
-        inits_and_teardowns_top_bits,
-    )
-    .unwrap_or_else(|error| panic!("backward VM R0 bank translation: {error:?}"));
+    let blob =
+        build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
+            .unwrap_or_else(|error| panic!("backward VM R0 bank translation: {error:?}"));
+    let tables = SegCoeffEvalTables::stage(&blob, context)?;
 
     let bytes_per_row = seg_r0_bytes_per_row(&bound.slots, &bound.sources);
     let k = seg_r0_policy_k(bytes_per_row, seg_k_ceiling(BwdRegime::R0)?);
@@ -648,7 +655,7 @@ pub(crate) fn schedule_bwd_vm_round0(
         context,
     )?;
     schedule_bwd_seg_coeff_bank_fill(
-        &launch.tables,
+        &mut launch.tables,
         launch.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         stream,
@@ -735,6 +742,10 @@ struct ExtRoundLaunch {
 }
 
 impl BwdVmExtLaunch {
+    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
+        self.tables.take_host_staging()
+    }
+
     pub(crate) fn repoint_final_evaluations<E>(
         &self,
         sources: &mut BTreeMap<GKRAddress, *const E>,
@@ -772,11 +783,10 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
         rounds: bound_rounds,
         final_evaluations,
     } = bound;
-    let tables = build_seg_coeff_eval_tables_with_top_bits(
-        &program.coefficient_recipes,
-        inits_and_teardowns_top_bits,
-    )
-    .unwrap_or_else(|error| panic!("backward VM Ext bank translation: {error:?}"));
+    let blob =
+        build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
+            .unwrap_or_else(|error| panic!("backward VM Ext bank translation: {error:?}"));
+    let tables = SegCoeffEvalTables::stage(&blob, context)?;
 
     let ceiling = seg_k_ceiling(BwdRegime::Ext)?;
     let mut rounds = Vec::with_capacity(bound_rounds.len());
@@ -837,13 +847,77 @@ pub(crate) fn schedule_bwd_vm_ext_bank_fill(
         context,
     )?;
     schedule_bwd_seg_coeff_bank_fill(
-        &launch.tables,
+        &mut launch.tables,
         launch.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         context.get_exec_stream(),
     )?;
     launch.filled = true;
     Ok(())
+}
+
+// ── The windowed arm's bank ──────────────────────────────────────────────────
+
+/// The windowed arm's first fill: window-plan tables instead of R0 recipes. The
+/// arm's second fill is the shared [`schedule_bwd_vm_ext_bank_fill`] above, so
+/// both arms are two-fill and the ext refill is identical between them.
+pub(crate) struct BwdVmWindowBank {
+    tables: SegCoeffEvalTables,
+    slab: DeviceAllocation<E4>,
+}
+
+impl BwdVmWindowBank {
+    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
+        self.tables.take_host_staging()
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) fn build_bwd_vm_window_bank(
+    program: &WindowProgram,
+    inits_and_teardowns_top_bits: &[u32],
+    context: &ProverContext,
+) -> CudaResult<BwdVmWindowBank> {
+    let blob = build_seg_coeff_eval_window_blob(
+        &program.coefficient_plans,
+        inits_and_teardowns_top_bits,
+    )
+    .unwrap_or_else(|error| panic!("backward VM window bank translation: {error:?}"));
+    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
+    Ok(BwdVmWindowBank { tables, slab })
+}
+
+/// Fill the output bank with this layer's window plans.
+///
+/// Schedule position, fixed here and consumed by the windowed scheduler path:
+/// window blob H2D copy + window-plan bank fill (this call) -> window kernel ->
+/// ext blob copy + ext-recipe bank refill ([`schedule_bwd_vm_ext_bank_fill`]) ->
+/// `TensorRoundTail` -> round-3 VM. The window kernel's bank reads must all be
+/// enqueued before the ext refill overwrites the bank.
+#[allow(dead_code)]
+pub(crate) fn schedule_bwd_vm_window_bank_fill(
+    bank: &mut BwdVmWindowBank,
+    external_challenges: *const E4,
+    lookup_multiplicative: *const E4,
+    lookup_additive: *const E4,
+    claim_batching: *const E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    schedule_seg_challenge_slab(
+        &mut bank.slab,
+        external_challenges,
+        lookup_multiplicative,
+        lookup_additive,
+        claim_batching,
+        context,
+    )?;
+    schedule_bwd_seg_coeff_bank_fill(
+        &mut bank.tables,
+        bank.slab.as_ptr(),
+        bwd_seg_coeff_bank_device_ptr(),
+        context.get_exec_stream(),
+    )
 }
 
 pub(crate) fn schedule_bwd_vm_ext_round(
