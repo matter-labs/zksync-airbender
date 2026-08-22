@@ -6,6 +6,7 @@ target_sources(gpu_gkr_native PRIVATE
         segmented_vm.cu
         segmented_vm.cuh
         tail_fused.cu
+        window_tail.cu
         window/window_abi.cuh
         window/window_accumulator.cuh
         window/window_control.cuh
