@@ -96,3 +96,6 @@ pub mod r0_prototype_harness;
 pub mod r0_prototype_report;
 
 pub mod runtime_paths;
+
+#[cfg(all(test, feature = "artifact-gen"))]
+mod window_tail_cross;

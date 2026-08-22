@@ -15,6 +15,7 @@ mod main_layer;
 mod scheduled_execution;
 mod stage_snapshots;
 pub(crate) mod vm;
+pub mod window;
 
 pub(crate) use kernels::*;
 pub use kernels::{

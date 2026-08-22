@@ -35,6 +35,9 @@ gkr_eval_ir = { workspace = true, optional = true }
 gpu_gkr_compiler = { workspace = true, optional = true }
 serde_json = { version = "1", optional = true }
 
+[dev-dependencies]
+gpu_gkr = { workspace = true }
+
 [build-dependencies]
 gpu_native_build = { workspace = true }
 

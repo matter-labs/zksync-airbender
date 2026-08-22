@@ -50,13 +50,17 @@ pub(crate) use prover::definitions::GKRExternalChallenges;
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
+pub(crate) use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
 pub(crate) use prover::gkr::prover::{
     SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
+};
+pub(crate) use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
+pub(crate) use prover::gkr::sumcheck::{
+    evaluate_eq_poly, evaluate_small_univariate_poly, output_univariate_monomial_form_max_quadratic,
 };
 pub(crate) use prover::gkr::whir::{
     BaseFieldQuery, ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,
     WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
 };
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
-#[cfg(test)]
-pub(crate) use prover::transcript::Seed;
+pub(crate) use prover::transcript::{Blake2sTranscript, Seed};
