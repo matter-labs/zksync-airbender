@@ -238,6 +238,12 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         let mut folding_current: Option<DeviceAllocation<E4>> = None;
         let mut folding_current_len = 0usize;
 
+        let mut first3_recorder = super::round_timing::First3Recorder::begin(
+            "dim_reducing",
+            self.layer_idx,
+            self.folding_steps,
+            stream,
+        )?;
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
@@ -302,6 +308,9 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 true,
                 context,
             )?;
+            if let Some(recorder) = first3_recorder.as_mut() {
+                recorder.mark_round_end(stream)?;
+            }
         }
 
         let destination_len = self.trace_len_after_reduction >> (last_step - 1);
@@ -357,6 +366,9 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 false,
                 context,
             )?;
+        }
+        if let Some(recorder) = first3_recorder.take() {
+            recorder.finish(stream)?;
         }
 
         let transcript_input_sources = self.final_evaluation_sources_for_last_step(

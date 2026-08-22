@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd /home/rr/code/zksync-airbender/zksync-airbender-worktrees/av-gkr-first3-timing
-out=target/gkr-first3-baseline
+out=target/gkr-first3-baseline-v2
 mkdir -p $out
 export GPU_LOCK_OWNER=gkr-first3-baseline
 export GKR_BWD_FIRST3_TIMING_OUT=$PWD/$out/first3-rows.jsonl

@@ -167,6 +167,7 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             )
         };
         let mut first3_recorder = super::super::round_timing::First3Recorder::begin(
+            "main",
             self.layer_idx,
             self.folding_steps,
             stream,
@@ -222,15 +223,8 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 challenge_slot.as_mut_ptr(),
                 context,
             )?;
-            if step < 3 {
-                if let Some(recorder) = first3_recorder.as_mut() {
-                    recorder.mark_round_end(stream)?;
-                }
-                if step == 2 {
-                    if let Some(recorder) = first3_recorder.take() {
-                        recorder.finish();
-                    }
-                }
+            if let Some(recorder) = first3_recorder.as_mut() {
+                recorder.mark_round_end(stream)?;
             }
         }
         super::super::vm::production_bind::schedule_bwd_vm_ext_round(
@@ -257,6 +251,9 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 challenge_slot.as_mut_ptr(),
                 context,
             )?;
+        }
+        if let Some(recorder) = first3_recorder.take() {
+            recorder.finish(stream)?;
         }
 
         let mut transcript_input_sources: BTreeMap<GKRAddress, *const E4> = self
