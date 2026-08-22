@@ -7,14 +7,15 @@
 
 use gpu_core::primitives::field::BF;
 use gpu_gkr_compiler::{
-    compile_continuations, compile_forward, compile_r0, parse_forward_artifact,
-    ContinuationProgramBundle, ForwardProgramBundle, R0ProgramBundle, WindowFamily,
+    compile_continuations, compile_forward, compile_r0, lower_window_program,
+    parse_forward_artifact, ContinuationProgramBundle, ForwardProgramBundle, R0ProgramBundle,
+    WindowFamily, WindowProgram,
 };
 use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::transform::normalize_compiled_circuit_for_gpu;
 use crate::upstream::{GKRAddress, GKRCircuitArtifact, VirtualSetupPoly};
@@ -170,6 +171,32 @@ fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) 
     }
 }
 
+/// The window-3 lowering of every main layer's R0 program.
+pub struct WindowProgramBundle {
+    pub layers: Vec<WindowProgram>,
+}
+
+/// A window lowering the circuit's shape does not support. Carries the origin
+/// the apex crate reports: which circuit, which layer, which resource.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowLoweringRejection {
+    pub circuit: String,
+    pub layer: usize,
+    pub resource: String,
+}
+
+impl core::fmt::Display for WindowLoweringRejection {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            formatter,
+            "windowed R0 lowering rejected for {}/{}: {}",
+            self.circuit, self.layer, self.resource
+        )
+    }
+}
+
+impl std::error::Error for WindowLoweringRejection {}
+
 /// Symbolic programs compiled once with the circuit's other precomputations.
 ///
 /// R0 and continuation remain separate compiler products and separate runtime
@@ -182,6 +209,10 @@ pub struct GkrPrograms {
     pub(crate) r0: R0ProgramBundle,
     pub(crate) continuations: ContinuationProgramBundle,
     pub(crate) backward_layers: Vec<BackwardLayerPlan>,
+    /// Lowered on the first windowed proof request, never during compilation:
+    /// `GkrPrograms` is built in circuit precomputations, which have no prover
+    /// config to select an arm with.
+    window: OnceLock<Result<WindowProgramBundle, WindowLoweringRejection>>,
 }
 
 impl GkrPrograms {
@@ -224,7 +255,58 @@ impl GkrPrograms {
             r0,
             continuations,
             backward_layers,
+            window: OnceLock::new(),
         })
+    }
+
+    /// Lower every layer's window program, once per `GkrPrograms`. A rejection
+    /// is cached too: a circuit the sectioned lowering cannot express must fail
+    /// the same way on every later request, never fall back silently.
+    pub fn resolve_window_programs(
+        &self,
+    ) -> Result<&WindowProgramBundle, &WindowLoweringRejection> {
+        self.window
+            .get_or_init(|| {
+                let circuit = forward_artifact(self.circuit_type).1;
+                let mut layers = Vec::with_capacity(self.r0.layers.len());
+                for layer in &self.r0.layers {
+                    match lower_window_program(layer) {
+                        Ok(program) => layers.push(program),
+                        Err(error) => {
+                            return Err(WindowLoweringRejection {
+                                circuit: circuit.to_owned(),
+                                layer: layer.layer,
+                                resource: error.to_string(),
+                            })
+                        }
+                    }
+                }
+                Ok(WindowProgramBundle { layers })
+            })
+            .as_ref()
+    }
+
+    /// Whether a windowed proof may be scheduled: the bundle is resolved and
+    /// was accepted.
+    pub fn window_programs_ready(&self) -> bool {
+        matches!(self.window.get(), Some(Ok(_)))
+    }
+
+    /// Seat a rejection in the once-cell so the preflight boundary can be tested
+    /// on circuits the real lowering accepts. Returns whether it took effect.
+    #[doc(hidden)]
+    pub fn reject_window_programs_for_test(&self, rejection: WindowLoweringRejection) -> bool {
+        self.window.set(Err(rejection)).is_ok()
+    }
+
+    pub(crate) fn window_layer(&self, layer: usize) -> &WindowProgram {
+        let bundle = self
+            .window
+            .get()
+            .expect("windowed scheduling requires preflight_windowed_r0 before prove()")
+            .as_ref()
+            .expect("windowed scheduling requires an accepted window lowering");
+        &bundle.layers[layer]
     }
 
     pub fn circuit_type(&self) -> CircuitType {
@@ -256,6 +338,20 @@ mod tests {
     use super::*;
     use gpu_gkr_compiler::{LeanBoundColumn, LeanBoundWindow, LeanSourceBinding};
     use std::collections::BTreeSet;
+
+    #[test]
+    fn cpu_windowed_selector_lowers_one_window_program_per_layer() {
+        let (programs, layers) =
+            crate::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+        assert!(!programs.window_programs_ready());
+        let bundle = programs.resolve_window_programs().unwrap();
+        assert!(layers > 1);
+        assert_eq!(bundle.layers.len(), layers);
+        for (index, program) in bundle.layers.iter().enumerate() {
+            assert_eq!(program.layer, index);
+        }
+        assert!(programs.window_programs_ready());
+    }
 
     #[test]
     fn bound_inputs_include_cache_and_virtual_setup_sources() {

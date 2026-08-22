@@ -9,14 +9,17 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
-use crate::upstream::ProverConfig;
+use crate::upstream::{validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
-use gpu_gkr::GkrPrograms;
+use gpu_gkr::{
+    backward_execution_strategy, BackwardExecutionStrategy, GkrBackwardOptions, GkrPrograms,
+    WindowLoweringRejection,
+};
 use gpu_prover_context::ProverContext;
 
 pub use orchestration::GpuGKRProofJob;
@@ -27,11 +30,88 @@ use orchestration::{
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
+/// A proof request rejected before any GPU work is scheduled.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GpuProveError {
+    WindowLowering {
+        circuit: String,
+        layer: usize,
+        resource: String,
+    },
+}
+
+impl std::fmt::Display for GpuProveError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WindowLowering {
+                circuit,
+                layer,
+                resource,
+            } => write!(
+                formatter,
+                "windowed R0 lowering rejected for {circuit}/{layer}: {resource}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for GpuProveError {}
+
+impl From<&WindowLoweringRejection> for GpuProveError {
+    fn from(rejection: &WindowLoweringRejection) -> Self {
+        Self::WindowLowering {
+            circuit: rejection.circuit.clone(),
+            layer: rejection.layer,
+            resource: rejection.resource.clone(),
+        }
+    }
+}
+
+/// The main-layer arm this proof request runs, from the caller's options and the
+/// prover config's validated same-size schedule. Pure; `prove()` computes the
+/// same value and logs a requested-but-unavailable window once per proof.
+pub fn resolve_backward_execution_strategy(
+    gkr_programs: &GkrPrograms,
+    prover_config: &ProverConfig,
+    options: GkrBackwardOptions,
+) -> BackwardExecutionStrategy {
+    backward_execution_strategy(
+        options,
+        validated_schedule_class(gkr_programs, prover_config),
+    )
+}
+
+fn validated_schedule_class(
+    gkr_programs: &GkrPrograms,
+    prover_config: &ProverConfig,
+) -> Option<SumcheckScheduleClass> {
+    let folding_steps = gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize;
+    validate_sumcheck_schedule(&prover_config.same_size_sumcheck_schedule, folding_steps).ok()
+}
+
+/// Resolve the window program bundle before any of this proof's H2D work is
+/// scheduled, so a lowering rejection surfaces as an error rather than a panic
+/// with a half-enqueued proof. A per-round strategy never lowers and never
+/// rejects.
+pub fn preflight_windowed_r0(
+    gkr_programs: &GkrPrograms,
+    strategy: BackwardExecutionStrategy,
+) -> Result<(), GpuProveError> {
+    match strategy {
+        BackwardExecutionStrategy::PerRound => Ok(()),
+        BackwardExecutionStrategy::WindowedR0 => gkr_programs
+            .resolve_window_programs()
+            .map(|_| ())
+            .map_err(GpuProveError::from),
+    }
+}
+
 pub fn prove<'a, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
+    backward_options: GkrBackwardOptions,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     prove_inner(
@@ -39,6 +119,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         prover_config,
         final_trace_size_log_2,
         inputs,
+        backward_options,
         None,
         context,
     )
@@ -50,6 +131,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
+    backward_options: GkrBackwardOptions,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     prove_inner(
@@ -57,6 +139,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         prover_config,
         final_trace_size_log_2,
         inputs,
+        backward_options,
         Some(Box::default()),
         context,
     )
@@ -67,10 +150,25 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
+    backward_options: GkrBackwardOptions,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
+    let backward_strategy =
+        resolve_backward_execution_strategy(gkr_programs, prover_config, backward_options);
+    match backward_strategy {
+        BackwardExecutionStrategy::PerRound if backward_options.windowed_r0 => log::info!(
+            "windowed R0 was requested but the same-size sumcheck schedule validates as {:?}; \
+             proving with the per-round path",
+            validated_schedule_class(gkr_programs, prover_config)
+        ),
+        BackwardExecutionStrategy::WindowedR0 => assert!(
+            gkr_programs.window_programs_ready(),
+            "prove() with the windowed arm requires preflight_windowed_r0 first"
+        ),
+        BackwardExecutionStrategy::PerRound => {}
+    }
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -195,6 +293,8 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         backward_state,
         top_bits_host.clone(),
         Arc::clone(gkr_programs),
+        backward_options,
+        backward_strategy,
         external_challenges.device.as_ptr(),
         d_seed,
         d_evaluation_point_and_batching,

@@ -77,6 +77,10 @@ impl GpuGKRDimensionReducingBackwardState {
         // zeros for trivial (dummy) unified chunks (CPU-reference parity).
         inits_and_teardowns_top_bits: Vec<u32>,
         programs: std::sync::Arc<crate::GkrPrograms>,
+        // Resolved once per proof by `crate::backward_execution_strategy`; the
+        // options carry the tail arm the windowed path launches.
+        options: crate::GkrBackwardOptions,
+        strategy: crate::BackwardExecutionStrategy,
         device_external_challenges_ptr: *const E4,
         initial_d_seed: DeviceAllocation<u32>,
         initial_d_claim_point_and_batching: DeviceAllocation<E4>,
@@ -182,8 +186,12 @@ impl GpuGKRDimensionReducingBackwardState {
         dimension_reducing_layers_range.end(stream)?;
         tracing_ranges.push(dimension_reducing_layers_range);
 
-        let mut main_backward_state =
-            self.into_main_layer_backward_state_static(inits_and_teardowns_top_bits, programs);
+        let mut main_backward_state = self.into_main_layer_backward_state_static(
+            inits_and_teardowns_top_bits,
+            programs,
+            options,
+            strategy,
+        );
         let mut main_layers = Vec::new();
         let main_layers_range = Range::new("gkr.backward.main_layers")?;
         main_layers_range.start(stream)?;

@@ -1,4 +1,6 @@
-use crate::proof::{prove, GpuGKRProofJob};
+use crate::proof::{
+    preflight_windowed_r0, prove, resolve_backward_execution_strategy, GpuGKRProofJob,
+};
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -11,7 +13,7 @@ use gpu_core::primitives::nvtx::scoped_range;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use gpu_gkr::{
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
-    GkrPrograms,
+    GkrBackwardOptions, GkrPrograms,
 };
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
@@ -319,16 +321,41 @@ impl BasicUnrolledFixture {
         &self,
         transfers: BasicUnrolledTransfers<'static>,
     ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+        self.prove_with(transfers, GkrBackwardOptions::default())
+    }
+
+    /// Preflights the requested arm, then proves. Every fixture path goes
+    /// through here so a windowed run reaches `prove()` the way production
+    /// callers do.
+    fn prove_with(
+        &self,
+        transfers: BasicUnrolledTransfers<'static>,
+        backward_options: GkrBackwardOptions,
+    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+        let strategy = resolve_backward_execution_strategy(
+            &self.gkr_programs,
+            &self.prover_config,
+            backward_options,
+        );
+        preflight_windowed_r0(&self.gkr_programs, strategy).unwrap();
         prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
+            backward_options,
             &self.context,
         )
     }
 
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+        self.schedule_prove_with(GkrBackwardOptions::default())
+    }
+
+    fn schedule_prove_with(
+        &self,
+        backward_options: GkrBackwardOptions,
+    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
         let mut transfers = self.create_transfers()?;
 
         let h2d_stream = self.context.get_h2d_stream();
@@ -343,13 +370,7 @@ impl BasicUnrolledFixture {
         // it was called. The transfers above are allocated before this point
         // and ride on in the job's keepalive, so they appear on both sides.
         let mem_before_prove = self.context.get_used_mem_current();
-        let mut proof_job = prove::<Global>(
-            &self.gkr_programs,
-            &self.prover_config,
-            self.final_trace_size_log_2,
-            transfers,
-            &self.context,
-        )?;
+        let mut proof_job = self.prove_with(transfers, backward_options)?;
         let mem_after_prove = self.context.get_used_mem_current();
         assert_eq!(
             mem_after_prove,
@@ -367,6 +388,13 @@ impl BasicUnrolledFixture {
 impl BasicUnrolledProofFixture {
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
         self.base.schedule_prove()
+    }
+
+    fn schedule_prove_with(
+        &self,
+        backward_options: GkrBackwardOptions,
+    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+        self.base.schedule_prove_with(backward_options)
     }
 }
 

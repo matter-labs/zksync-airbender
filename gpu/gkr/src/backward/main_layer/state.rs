@@ -5,7 +5,10 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_prover_context::ProverContext;
 
 use super::super::kernels::*;
-use super::super::window::binding::window_partials_len;
+use super::super::window::binding::{
+    window_partials_len, WindowRuntimeScratch, BWD_WINDOW_COORDINATES,
+};
+use crate::BackwardExecutionStrategy;
 
 impl GpuGKRMainLayerBackwardState {
     fn prepare_layer(
@@ -30,23 +33,60 @@ impl GpuGKRMainLayerBackwardState {
             "the shared partials buffer cannot hold the window producer's tensor"
         );
 
-        let bwd_vm_round0 = super::super::vm::production_bind::build_bwd_vm_round0(
-            &self.storage,
-            self.programs.r0_layer(layer_idx),
-            1usize << (folding_steps - 1),
-            round_scratch.eq_low_group.as_ptr(),
-            make_eq_sizes(folding_steps - 1),
-            round_scratch.partials.as_mut_ptr(),
-            &self.inits_and_teardowns_top_bits,
-            context,
-        )?;
+        // The arm selects both the rounds-0-2 binding and where the
+        // continuation sequence starts: after round 0 for the per-round arm,
+        // after the window's three rounds for the windowed arm.
+        let (bwd_vm_r0, ext_start_round) = match self.strategy {
+            BackwardExecutionStrategy::PerRound => {
+                let round0 = super::super::vm::production_bind::build_bwd_vm_round0(
+                    &self.storage,
+                    self.programs.r0_layer(layer_idx),
+                    1usize << (folding_steps - 1),
+                    round_scratch.eq_low_group.as_ptr(),
+                    make_eq_sizes(folding_steps - 1),
+                    round_scratch.partials.as_mut_ptr(),
+                    &self.inits_and_teardowns_top_bits,
+                    context,
+                )?;
+                (MainLayerR0Binding::PerRound(round0), 1u8)
+            }
+            BackwardExecutionStrategy::WindowedR0 => {
+                let program = self.programs.window_layer(layer_idx);
+                let bank = super::super::vm::production_bind::build_bwd_vm_window_bank(
+                    program,
+                    &self.inits_and_teardowns_top_bits,
+                    context,
+                )?;
+                let window = super::super::window::binding::bind_window_launch(
+                    program,
+                    &self.storage,
+                    folding_steps,
+                    WindowRuntimeScratch {
+                        eq_low: round_scratch.eq_low_group.as_ptr(),
+                        partials: round_scratch.partials.as_mut_ptr(),
+                        partials_capacity: round_scratch.partials.len(),
+                    },
+                )
+                .unwrap_or_else(|error| {
+                    panic!("windowed R0 binding for layer {layer_idx}: {error:?}")
+                });
+                (
+                    MainLayerR0Binding::Windowed(WindowedR0Launch {
+                        bank,
+                        window,
+                        tail_arm: self.window_tail,
+                    }),
+                    BWD_WINDOW_COORDINATES as u8,
+                )
+            }
+        };
         let bwd_vm_ext = super::super::vm::production_bind::build_bwd_vm_ext_rounds(
             &self.storage,
             self.programs.continuation_layer(layer_idx),
-            1,
+            ext_start_round,
             folding_steps,
             round_scratch.eq_low_group.as_ptr(),
-            make_eq_sizes(folding_steps - 1),
+            make_eq_sizes(folding_steps - usize::from(ext_start_round)),
             round_scratch.partials.as_mut_ptr(),
             &self.inits_and_teardowns_top_bits,
             context,
@@ -83,7 +123,7 @@ impl GpuGKRMainLayerBackwardState {
             claim_terms,
             folding_evaluation_sources,
             round_scratch,
-            bwd_vm_round0,
+            bwd_vm_r0,
             bwd_vm_ext,
             eq_sizes: GkrEqSizes::zeroed(),
         })

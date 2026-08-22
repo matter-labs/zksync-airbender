@@ -165,11 +165,29 @@ pub struct WindowCapacities {
     pub coefficient_plans: usize,
 }
 
+/// One operand word that carries a source addressing lane.
+///
+/// The lowered lane is `(window << 7) | relative column`, which is the artifact's
+/// geometry, not storage's: production storage partitions a layer's columns into
+/// per-class backings, so one artifact window's columns can land in different
+/// matrices. The runtime binder therefore re-addresses each source and rewrites
+/// exactly these words. This table is what lets it do so without decoding the
+/// wire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WindowSourceLane {
+    /// Index into [`WindowProgram::words`].
+    pub word: u32,
+    /// The source slot this operand reads, indexing [`WindowProgram::source_slots`].
+    pub source: u16,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WindowProgram {
     pub layer: usize,
     pub words: Vec<u16>,
     pub source_slots: Vec<u16>,
+    /// Every lane-bearing operand word of `words`, in ascending word order.
+    pub source_lanes: Vec<WindowSourceLane>,
     pub windows: Vec<LeanBoundWindow>,
     pub immediates: Vec<u32>,
     pub sections: [u32; WINDOW_SECTION_WORDS],
@@ -642,10 +660,16 @@ fn push_linear_basis_plans(
     Ok(first)
 }
 
+struct WindowSlotSource {
+    slot: u16,
+    lane: u16,
+    procedural_kind: Option<u16>,
+}
+
 fn window_slot_source(
     binding: &LeanSourceBinding,
     source: StoredSource,
-) -> Result<(u16, Option<u16>), WindowLoweringError> {
+) -> Result<WindowSlotSource, WindowLoweringError> {
     let slot = match source {
         StoredSource::Slot(slot) => slot,
         StoredSource::Direct(_) => {
@@ -662,10 +686,88 @@ fn window_slot_source(
         .windows
         .get(usize::from(bound.window))
         .ok_or_else(|| WindowLoweringError::Encoding("dedicated source window absent".into()))?;
-    Ok((
-        (u16::from(bound.window) << WINDOW_SOURCE_COLUMN_BITS) | bound.column,
-        window.procedural_kind().map(u16::from),
-    ))
+    Ok(WindowSlotSource {
+        slot,
+        lane: (u16::from(bound.window) << WINDOW_SOURCE_COLUMN_BITS) | bound.column,
+        procedural_kind: window.procedural_kind().map(u16::from),
+    })
+}
+
+/// One instruction's operand words, with the source identity of each word that
+/// carries an addressing lane (a procedural operand carries a kind, not a lane).
+pub struct WindowOperandWords {
+    pub opcode: u16,
+    pub source_a: u16,
+    pub source_b: u16,
+    pub lane_source_a: Option<u16>,
+    pub lane_source_b: Option<u16>,
+}
+
+pub fn window_operand_words(
+    binding: &LeanSourceBinding,
+    term_class: u8,
+    source_a: StoredSource,
+    source_b: Option<StoredSource>,
+) -> Result<WindowOperandWords, WindowLoweringError> {
+    let a = window_slot_source(binding, source_a)?;
+    let b = source_b
+        .map(|source| window_slot_source(binding, source))
+        .transpose()?;
+    let slot_b = b.as_ref().map_or(0, |b| b.lane);
+    let unsupported = || {
+        WindowLoweringError::Encoding(
+            "dedicated procedural source appears in an unsupported term class".to_owned(),
+        )
+    };
+    let words = match (
+        term_class,
+        a.procedural_kind,
+        b.as_ref().and_then(|b| b.procedural_kind),
+    ) {
+        (0, Some(kind), None) => WindowOperandWords {
+            opcode: WINDOW_OPCODE_LINEAR_BF_PROCEDURAL,
+            source_a: kind,
+            source_b: 0,
+            lane_source_a: None,
+            lane_source_b: None,
+        },
+        // A procedural operand is normalized into the `source_b` word, so the
+        // addressed half of a mixed product always lands in `source_a`.
+        (2, Some(kind), None) => WindowOperandWords {
+            opcode: WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B,
+            source_a: slot_b,
+            source_b: kind,
+            lane_source_a: Some(b.as_ref().ok_or_else(unsupported)?.slot),
+            lane_source_b: None,
+        },
+        (2, None, Some(kind)) => WindowOperandWords {
+            opcode: WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B,
+            source_a: a.lane,
+            source_b: kind,
+            lane_source_a: Some(a.slot),
+            lane_source_b: None,
+        },
+        (2, Some(kind_a), Some(kind_b)) => WindowOperandWords {
+            opcode: WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB,
+            source_a: kind_a,
+            source_b: kind_b,
+            lane_source_a: None,
+            lane_source_b: None,
+        },
+        (class, None, None) => WindowOperandWords {
+            opcode: if class == 4 {
+                WINDOW_OPCODE_PRODUCT_E4_E4
+            } else {
+                u16::from(class)
+            },
+            source_a: a.lane,
+            source_b: slot_b,
+            lane_source_a: Some(a.slot),
+            lane_source_b: b.as_ref().map(|b| b.slot),
+        },
+        _ => return Err(unsupported()),
+    };
+    Ok(words)
 }
 
 pub fn window_operands(
@@ -674,24 +776,8 @@ pub fn window_operands(
     source_a: StoredSource,
     source_b: Option<StoredSource>,
 ) -> Result<(u16, u16, u16), WindowLoweringError> {
-    let (slot_a, procedural_a) = window_slot_source(binding, source_a)?;
-    let (slot_b, procedural_b) = source_b
-        .map(|source| window_slot_source(binding, source))
-        .transpose()?
-        .unwrap_or((0, None));
-    match (term_class, procedural_a, procedural_b) {
-        (0, Some(kind), None) => Ok((WINDOW_OPCODE_LINEAR_BF_PROCEDURAL, kind, 0)),
-        (2, Some(kind), None) => Ok((WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B, slot_b, kind)),
-        (2, None, Some(kind)) => Ok((WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B, slot_a, kind)),
-        (4, None, None) => Ok((WINDOW_OPCODE_PRODUCT_E4_E4, slot_a, slot_b)),
-        (_, None, None) => Ok((u16::from(term_class), slot_a, slot_b)),
-        (2, Some(kind_a), Some(kind_b)) => {
-            Ok((WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB, kind_a, kind_b))
-        }
-        _ => Err(WindowLoweringError::Encoding(
-            "dedicated procedural source appears in an unsupported term class".to_owned(),
-        )),
-    }
+    let words = window_operand_words(binding, term_class, source_a, source_b)?;
+    Ok((words.opcode, words.source_a, words.source_b))
 }
 
 /// Derive only those compile-time features that remove work from an active
@@ -928,6 +1014,62 @@ fn push_instruction(words: &mut Vec<u16>, class: u16, factor: u16, source_a: u16
     words.extend([class, factor, source_a, source_b]);
 }
 
+/// Push one term instruction, recording which of its two operand words carry
+/// addressing lanes. `word` positions are section-local and rebased when the
+/// sections are concatenated.
+fn push_term(
+    words: &mut Vec<u16>,
+    lanes: &mut Vec<WindowSourceLane>,
+    factor: u16,
+    operands: &WindowOperandWords,
+) {
+    let record = words.len() as u32;
+    if let Some(source) = operands.lane_source_a {
+        lanes.push(WindowSourceLane {
+            word: record + 2,
+            source,
+        });
+    }
+    if let Some(source) = operands.lane_source_b {
+        lanes.push(WindowSourceLane {
+            word: record + 3,
+            source,
+        });
+    }
+    push_instruction(
+        words,
+        operands.opcode,
+        factor,
+        operands.source_a,
+        operands.source_b,
+    );
+}
+
+/// Push the wide linear-E4 form of a term: one lane in `source_a`, an unused
+/// `source_b`.
+fn push_wide_linear(
+    words: &mut Vec<u16>,
+    lanes: &mut Vec<WindowSourceLane>,
+    basis: u16,
+    operands: &WindowOperandWords,
+) -> Result<(), WindowLoweringError> {
+    let source = operands.lane_source_a.ok_or_else(|| {
+        WindowLoweringError::Encoding("dedicated E4 linear member is not addressed".to_owned())
+    })?;
+    lanes.push(WindowSourceLane {
+        word: words.len() as u32 + 2,
+        source,
+    });
+    push_instruction(
+        words,
+        WINDOW_OPCODE_LINEAR_E4_WIDE,
+        basis,
+        operands.source_a,
+        0,
+    );
+    Ok(())
+}
+
 fn window_immediates(program: &WindowGroupedProgram) -> Vec<u32> {
     let mut values = BTreeSet::new();
     for atom in &program.atoms {
@@ -991,6 +1133,10 @@ pub fn lower_window_sections(
     let mut linear_e4 = Vec::<u16>::new();
     let mut e4_single = Vec::<u16>::new();
     let mut e4_pair = Vec::<u16>::new();
+    let mut bf_lanes = Vec::<WindowSourceLane>::new();
+    let mut linear_lanes = Vec::<WindowSourceLane>::new();
+    let mut single_lanes = Vec::<WindowSourceLane>::new();
+    let mut pair_lanes = Vec::<WindowSourceLane>::new();
 
     for atom in &program.atoms {
         match atom {
@@ -1002,14 +1148,12 @@ pub fn lower_window_sections(
                 source_b,
             } => {
                 let recipe = recipe_for_coefficient(recipes, *coefficient_id)?;
-                let (class, source_a, source_b) =
-                    window_operands(binding, *term_class, *source_a, *source_b)?;
-                push_instruction(
+                let operands = window_operand_words(binding, *term_class, *source_a, *source_b)?;
+                push_term(
                     &mut bf,
-                    class,
+                    &mut bf_lanes,
                     direct_id(&recipe, &mut plans, &mut plan_ids)?,
-                    source_a,
-                    source_b,
+                    &operands,
                 );
             }
             WindowGroupedAtom::Singleton {
@@ -1020,24 +1164,17 @@ pub fn lower_window_sections(
                 source_b,
             } => {
                 let recipe = recipe_for_coefficient(recipes, *coefficient_id)?;
-                let (class, source_a, source_b) =
-                    window_operands(binding, *term_class, *source_a, *source_b)?;
+                let operands = window_operand_words(binding, *term_class, *source_a, *source_b)?;
+                let class = operands.opcode;
                 if class == 1 {
                     let basis = push_linear_basis_plans(&mut plans, &mut plan_ids, &recipe)?;
-                    push_instruction(
-                        &mut linear_e4,
-                        WINDOW_OPCODE_LINEAR_E4_WIDE,
-                        basis,
-                        source_a,
-                        0,
-                    );
+                    push_wide_linear(&mut linear_e4, &mut linear_lanes, basis, &operands)?;
                 } else if matches!(class, 3 | WINDOW_OPCODE_PRODUCT_E4_E4) {
-                    push_instruction(
+                    push_term(
                         &mut e4_single,
-                        class,
+                        &mut single_lanes,
                         direct_id(&recipe, &mut plans, &mut plan_ids)?,
-                        source_a,
-                        source_b,
+                        &operands,
                     );
                 } else {
                     return Err(WindowLoweringError::Encoding(format!(
@@ -1066,13 +1203,13 @@ pub fn lower_window_sections(
                     {
                         factor |= WINDOW_FLAG_REDUCE_AFTER;
                     }
-                    let (class, source_a, source_b) = window_operands(
+                    let operands = window_operand_words(
                         binding,
                         member.term_class,
                         member.source_a,
                         member.source_b,
                     )?;
-                    push_instruction(&mut bf, class, factor, source_a, source_b);
+                    push_term(&mut bf, &mut bf_lanes, factor, &operands);
                 }
             }
             WindowGroupedAtom::Group {
@@ -1083,30 +1220,29 @@ pub fn lower_window_sections(
             } => {
                 let products = e4_group_products(members)?;
                 let linear = &members[0];
-                let (linear_class, linear_source, linear_source_b) =
-                    window_operands(binding, linear.term_class, linear.source_a, linear.source_b)?;
-                if linear_class != 1 || linear_source_b != 0 {
+                let linear_operands = window_operand_words(
+                    binding,
+                    linear.term_class,
+                    linear.source_a,
+                    linear.source_b,
+                )?;
+                if linear_operands.opcode != 1 || linear_operands.source_b != 0 {
                     return Err(WindowLoweringError::Encoding(
                         "dedicated E4 linear member has an invalid source shape".to_owned(),
                     ));
                 }
                 let basis = push_linear_basis_plans(&mut plans, &mut plan_ids, core)?;
-                push_instruction(
-                    &mut linear_e4,
-                    WINDOW_OPCODE_LINEAR_E4_WIDE,
-                    basis,
-                    linear_source,
-                    0,
-                );
+                push_wide_linear(&mut linear_e4, &mut linear_lanes, basis, &linear_operands)?;
 
                 if products.len() == 1 {
                     let product = &products[0];
-                    let (class, source_a, source_b) = window_operands(
+                    let operands = window_operand_words(
                         binding,
                         product.term_class,
                         product.source_a,
                         product.source_b,
                     )?;
+                    let class = operands.opcode;
                     if !matches!(product.immediate, 1 | WINDOW_NEG_ONE_IMMEDIATE) {
                         return Err(WindowLoweringError::Encoding(format!(
                             "unsupported sectioned singleton factor {}",
@@ -1124,9 +1260,9 @@ pub fn lower_window_sections(
                         2 | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B
                             | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB
                     ) {
-                        push_instruction(&mut bf, class, coefficient, source_a, source_b);
+                        push_term(&mut bf, &mut bf_lanes, coefficient, &operands);
                     } else if matches!(class, 3 | WINDOW_OPCODE_PRODUCT_E4_E4) {
-                        push_instruction(&mut e4_single, class, coefficient, source_a, source_b);
+                        push_term(&mut e4_single, &mut single_lanes, coefficient, &operands);
                     } else {
                         return Err(WindowLoweringError::Encoding(format!(
                             "unsupported sectioned E4 product class {class}"
@@ -1136,12 +1272,13 @@ pub fn lower_window_sections(
                     push_instruction(&mut e4_pair, WINDOW_OPCODE_GROUP_E4, basis, 0, 0);
                     let mut pair_class = None;
                     for product in products {
-                        let (class, source_a, source_b) = window_operands(
+                        let operands = window_operand_words(
                             binding,
                             product.term_class,
                             product.source_a,
                             product.source_b,
                         )?;
+                        let class = operands.opcode;
                         if !matches!(class, 3 | WINDOW_OPCODE_PRODUCT_E4_E4) {
                             return Err(WindowLoweringError::Encoding(format!(
                                 "unsupported sectioned E4 pair class {class}"
@@ -1156,12 +1293,11 @@ pub fn lower_window_sections(
                         } else {
                             pair_class = Some(class);
                         }
-                        push_instruction(
+                        push_term(
                             &mut e4_pair,
-                            class,
+                            &mut pair_lanes,
                             immediate_id(product.immediate)?,
-                            source_a,
-                            source_b,
+                            &operands,
                         );
                     }
                 }
@@ -1173,6 +1309,19 @@ pub fn lower_window_sections(
     let linear_end = bf_end + linear_e4.len() / 4;
     let singleton_end = linear_end + e4_single.len() / 4;
     let pair_end = singleton_end + e4_pair.len() / 4;
+    let mut source_lanes = bf_lanes;
+    for (base, lanes) in [
+        (bf.len(), linear_lanes),
+        (bf.len() + linear_e4.len(), single_lanes),
+        (bf.len() + linear_e4.len() + e4_single.len(), pair_lanes),
+    ] {
+        let base = u32::try_from(base)
+            .map_err(|_| WindowLoweringError::Encoding("window section base overflow".into()))?;
+        source_lanes.extend(lanes.into_iter().map(|lane| WindowSourceLane {
+            word: lane.word + base,
+            source: lane.source,
+        }));
+    }
     let mut words = bf;
     words.extend(linear_e4);
     words.extend(e4_single);
@@ -1200,6 +1349,7 @@ pub fn lower_window_sections(
         },
         words,
         source_slots: program.source_slots.clone(),
+        source_lanes,
         windows: binding.windows.clone(),
         immediates,
         sections,
@@ -1207,7 +1357,126 @@ pub fn lower_window_sections(
         shape,
     };
     validate_window_coefficient_ids(&lowered)?;
+    validate_window_source_lanes(&lowered)?;
     Ok(lowered)
+}
+
+/// Every recorded lane word must hold the lane its named source lowered to, and
+/// no other word may carry one. The second half is checked by
+/// [`walk_window_source_lanes`], the wire's own decoder.
+pub fn validate_window_source_lanes(program: &WindowProgram) -> Result<(), WindowLoweringError> {
+    for lane in &program.source_lanes {
+        let word = *program
+            .words
+            .get(lane.word as usize)
+            .ok_or_else(|| WindowLoweringError::Encoding("lane word out of range".into()))?;
+        let expected = *program
+            .source_slots
+            .get(usize::from(lane.source))
+            .ok_or_else(|| WindowLoweringError::Encoding("lane source out of range".into()))?;
+        if word != expected {
+            return Err(WindowLoweringError::Encoding(format!(
+                "lane word {} holds {word}, source {} lowered to {expected}",
+                lane.word, lane.source
+            )));
+        }
+    }
+    let walked = walk_window_source_lanes(program)?;
+    let recorded: Vec<u32> = program.source_lanes.iter().map(|lane| lane.word).collect();
+    if walked != recorded {
+        return Err(WindowLoweringError::Encoding(format!(
+            "the wire carries {} lane words, the side table lists {}",
+            walked.len(),
+            recorded.len()
+        )));
+    }
+    Ok(())
+}
+
+/// Walk the instruction stream and return every word position that carries an
+/// addressing lane, ascending. Independent of the emission's bookkeeping: this
+/// is the wire read the way the kernels read it (group headers reuse the operand
+/// words for arity and product prefix, procedural operands carry a kind).
+pub fn walk_window_source_lanes(program: &WindowProgram) -> Result<Vec<u32>, WindowLoweringError> {
+    let malformed =
+        || WindowLoweringError::Encoding("lane walk observed a malformed section".to_owned());
+    let read = |record: usize| -> Result<[u16; 4], WindowLoweringError> {
+        let base = record.checked_mul(4).ok_or_else(malformed)?;
+        let words = program.words.get(base..base + 4).ok_or_else(malformed)?;
+        Ok([words[0], words[1], words[2], words[3]])
+    };
+    let operand_words = |record: usize, a: bool, b: bool| {
+        let base = record as u32 * 4;
+        [(a, base + 2), (b, base + 3)]
+            .into_iter()
+            .filter_map(|(carries, word)| carries.then_some(word))
+    };
+    let term_lanes = |record: usize,
+                      opcode: u16|
+     -> Result<Box<dyn Iterator<Item = u32>>, WindowLoweringError> {
+        let (a, b) = match opcode {
+            0 => (true, false),
+            2 | 3 | WINDOW_OPCODE_PRODUCT_E4_E4 => (true, true),
+            WINDOW_OPCODE_LINEAR_BF_PROCEDURAL => (false, false),
+            WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B => (true, false),
+            WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB => (false, false),
+            WINDOW_OPCODE_LINEAR_E4_WIDE => (true, false),
+            _ => {
+                return Err(WindowLoweringError::Encoding(format!(
+                    "lane walk met unknown opcode {opcode}"
+                )))
+            }
+        };
+        Ok(Box::new(operand_words(record, a, b)))
+    };
+    let ends = program.sections.map(|end| end as usize);
+    let mut lanes = Vec::new();
+    let mut record = 0usize;
+    // BF section: a lone term, or a group header naming `arity` members.
+    while record < ends[0] {
+        let instruction = read(record)?;
+        if instruction[0] == WINDOW_OPCODE_GROUP_BF {
+            let arity = usize::from(instruction[2]);
+            record += 1;
+            for _ in 0..arity {
+                if record >= ends[0] {
+                    return Err(malformed());
+                }
+                let member = read(record)?;
+                lanes.extend(term_lanes(record, member[0])?);
+                record += 1;
+            }
+        } else {
+            lanes.extend(term_lanes(record, instruction[0])?);
+            record += 1;
+        }
+    }
+    // Wide linear-E4 and E4 singleton sections: one term per record.
+    for end in [ends[1], ends[2]] {
+        while record < end {
+            let instruction = read(record)?;
+            lanes.extend(term_lanes(record, instruction[0])?);
+            record += 1;
+        }
+    }
+    // E4 pair section: a header naming a shared core, then exactly two members.
+    while record < ends[3] {
+        let instruction = read(record)?;
+        if instruction[0] != WINDOW_OPCODE_GROUP_E4 {
+            return Err(malformed());
+        }
+        record += 1;
+        for _ in 0..2 {
+            if record >= ends[3] {
+                return Err(malformed());
+            }
+            let member = read(record)?;
+            lanes.extend(term_lanes(record, member[0])?);
+            record += 1;
+        }
+    }
+    lanes.sort_unstable();
+    Ok(lanes)
 }
 
 fn validate_coefficient_span(

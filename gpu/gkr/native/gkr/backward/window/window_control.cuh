@@ -24,9 +24,9 @@ DEVICE_FORCEINLINE bwd_window_instruction bwd_window_read(const u16 *program, co
 
 // ── BF section ──────────────────────────────────────────────────────────────
 
-DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_product(const bwd_window_pair<bf> source_a, const bwd_window_pair<bf> source_b) {
-  const bf product = bf::mul(bwd_window_sub(source_a.values[1], source_a.values[0]), bwd_window_sub(source_b.values[1], source_b.values[0]));
-  return {{bf::ZERO(), product, product}};
+DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_product(const bwd_window_pair<bf> source_a, const bwd_window_pair<bf> source_b,
+                                                                const bwd_window_selector_pair selector) {
+  return bwd_window_product_tensor<bf, bf>(source_a, source_b, selector);
 }
 
 DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_linear(const bwd_window_pair<bf> source, const bwd_window_selector_pair selector) {
@@ -45,13 +45,13 @@ DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_term(const bwd_window_de
       return bwd_window_bf_linear(bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector), selector);
     if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B)
       return bwd_window_bf_product(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
-                                   bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
+                                   bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector), selector);
     if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB)
       return bwd_window_bf_product(bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector),
-                                   bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
+                                   bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector), selector);
   }
   return bwd_window_bf_product(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
-                               bwd_window_pair_values(bwd_window_direct_bf(desc, source_b), row, selector));
+                               bwd_window_pair_values(bwd_window_direct_bf(desc, source_b), row, selector), selector);
 }
 
 DEVICE_FORCEINLINE void bwd_window_outer_add(bwd_window_u96_accumulator (&outer)[3][4], const e4 core, const bwd_window_triplet<bf> value) {
@@ -70,33 +70,44 @@ DEVICE_FORCEINLINE void bwd_window_reduce_outer(const bwd_window_u96_accumulator
     values[cell] = e4(e2(outer[cell][0].reduce(), outer[cell][1].reduce()), e2(outer[cell][2].reduce(), outer[cell][3].reduce()));
 }
 
+// The deferred-reduction form of `bwd_window_product_tensor`: one u64 segment
+// per cell, and the two Boolean cells only where an infinite axis makes them
+// live.
 template <bool MayHaveBanked = true, bool MayNegate = true>
 DEVICE_FORCEINLINE void bwd_window_accumulate_product_wide_sources(const bwd_window_desc &desc, const bwd_window_instruction instruction,
-                                                                   const bwd_window_pair<bf> a, const bwd_window_pair<bf> b, u64 &sum) {
+                                                                   const bwd_window_pair<bf> a, const bwd_window_pair<bf> b,
+                                                                   const bwd_window_selector_pair selector, u64 (&sums)[3]) {
   bf delta_a = bwd_window_sub(a.values[1], a.values[0]);
   const bf delta_b = bwd_window_sub(b.values[1], b.values[0]);
   delta_a = bwd_window_apply_immediate<MayHaveBanked, MayNegate>(desc, instruction.factor, delta_a);
-  sum = mad_wide(delta_a.limb, delta_b.limb, sum);
+  sums[2] = mad_wide(delta_a.limb, delta_b.limb, sums[2]);
+  if (!selector.has_infinity())
+    return;
+#pragma unroll
+  for (u32 cell = 0; cell < 2; ++cell) {
+    const bf scaled = bwd_window_apply_immediate<MayHaveBanked, MayNegate>(desc, instruction.factor, a.values[cell]);
+    sums[cell] = mad_wide(scaled.limb, b.values[cell].limb, sums[cell]);
+  }
 }
 
 template <bool MayUseProcedural = true, bool MayHaveBanked = true, bool MayNegate = true>
 DEVICE_FORCEINLINE void bwd_window_accumulate_product_wide(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
-                                                           const bwd_window_selector_pair selector, u64 &sum) {
+                                                           const bwd_window_selector_pair selector, u64 (&sums)[3]) {
   if constexpr (MayUseProcedural) {
     if (instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B) {
       return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
           desc, instruction, bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector),
-          bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), sum);
+          bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), selector, sums);
     }
     if (instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB) {
       return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
           desc, instruction, bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_a)}, row, selector),
-          bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), sum);
+          bwd_window_pair_values(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), selector, sums);
     }
   }
   return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
       desc, instruction, bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector),
-      bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_b), row, selector), sum);
+      bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_b), row, selector), selector, sums);
 }
 
 // Re-enter Montgomery form so the next products accumulate into a fresh u64
@@ -135,19 +146,27 @@ DEVICE_FORCEINLINE u32 bwd_window_execute_bf_atom(const bwd_window_desc &desc, c
 
   u16 member = 0;
   if (product_prefix >= 2) {
-    u64 wide_sum = 0;
+    u64 wide_sums[3]{0, 0, 0};
+    const bool infinite = selector.has_infinity();
 #pragma unroll 1
     for (; member < product_prefix; ++member) {
       const bwd_window_instruction instruction = bwd_window_read(program, pc++);
-      bwd_window_accumulate_product_wide<MayUseProcedural, MayHaveBanked, MayNegate>(desc, instruction, row, selector, wide_sum);
+      bwd_window_accumulate_product_wide<MayUseProcedural, MayHaveBanked, MayNegate>(desc, instruction, row, selector, wide_sums);
       if constexpr (MayReduce) {
-        if ((instruction.factor & BWD_WINDOW_FLAG) != 0)
-          bwd_window_reduce_and_rebase_wide(wide_sum);
+        if ((instruction.factor & BWD_WINDOW_FLAG) != 0) {
+          bwd_window_reduce_and_rebase_wide(wide_sums[2]);
+          if (infinite) {
+            bwd_window_reduce_and_rebase_wide(wide_sums[0]);
+            bwd_window_reduce_and_rebase_wide(wide_sums[1]);
+          }
+        }
       }
     }
-    const bf reduced = bf::red_wide(wide_sum);
-    sum.values[1] = reduced;
-    sum.values[2] = reduced;
+    sum.values[2] = bf::red_wide(wide_sums[2]);
+    if (infinite) {
+      sum.values[0] = bf::red_wide(wide_sums[0]);
+      sum.values[1] = bf::red_wide(wide_sums[1]);
+    }
   }
 
   if constexpr (MayHaveSingleProduct) {
@@ -195,30 +214,34 @@ DEVICE_FORCEINLINE void bwd_window_accumulate_linear_wide(const bwd_window_desc 
 
 // ── E4 product sections ─────────────────────────────────────────────────────
 
+// A negated factor negates every cell, so the sign rides one operand's
+// endpoints rather than the assembled triplet.
+template <typename T> DEVICE_FORCEINLINE bwd_window_pair<T> bwd_window_negate_pair(const bwd_window_pair<T> pair) {
+  return {{T::neg(pair.values[0]), T::neg(pair.values[1])}};
+}
+
 template <bool MayNegate>
 DEVICE_FORCEINLINE bwd_window_triplet<e4> bwd_window_mixed_product(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
                                                                    const bwd_window_selector_pair selector) {
-  const auto bf_pair = bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector);
-  bf delta_bf = bwd_window_sub(bf_pair.values[1], bf_pair.values[0]);
+  auto bf_pair = bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector);
   if constexpr (MayNegate) {
     if ((instruction.factor & BWD_WINDOW_ID_MASK) == BWD_SEG_IMMEDIATE_NEG_ONE)
-      delta_bf = bf::neg(delta_bf);
+      bf_pair = bwd_window_negate_pair(bf_pair);
   }
-  const e4 delta_e4 = bwd_window_x2_delta<e4>(bwd_window_direct_e4(desc, instruction.source_b), row, selector);
-  const e4 product = e4::mul(delta_e4, delta_bf);
-  return {{e4::ZERO(), product, product}};
+  const auto e4_pair = bwd_window_pair_values(bwd_window_direct_e4(desc, instruction.source_b), row, selector);
+  return bwd_window_product_tensor<e4, bf>(e4_pair, bf_pair, selector);
 }
 
 template <bool MayNegate>
 DEVICE_FORCEINLINE bwd_window_triplet<e4> bwd_window_full_product(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
                                                                   const bwd_window_selector_pair selector) {
-  e4 product = e4::mul(bwd_window_x2_delta<e4>(bwd_window_direct_e4(desc, instruction.source_a), row, selector),
-                       bwd_window_x2_delta<e4>(bwd_window_direct_e4(desc, instruction.source_b), row, selector));
+  auto a = bwd_window_pair_values(bwd_window_direct_e4(desc, instruction.source_a), row, selector);
+  const auto b = bwd_window_pair_values(bwd_window_direct_e4(desc, instruction.source_b), row, selector);
   if constexpr (MayNegate) {
     if ((instruction.factor & BWD_WINDOW_ID_MASK) == BWD_SEG_IMMEDIATE_NEG_ONE)
-      product = e4::neg(product);
+      a = bwd_window_negate_pair(a);
   }
-  return {{e4::ZERO(), product, product}};
+  return bwd_window_product_tensor<e4, e4>(a, b, selector);
 }
 
 template <u16 Shape>
@@ -331,14 +354,13 @@ DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc
 template <u16 Shape> DEVICE_FORCEINLINE void bwd_window_execute(const bwd_window_desc &desc) {
   const u32 lane = bwd_window_lane();
   const u32 row_tile = bwd_window_row_tile();
-  const u32 selector_id = bwd_window_selector_id();
-  const bwd_window_selector_pair selector = bwd_window_selector(selector_id);
+  const bwd_window_selector_pair selector = bwd_window_selector(bwd_window_selector_id());
   const u32 global_row = row_tile * BWD_WINDOW_ROWS_PER_TILE + lane;
   const bool active = global_row < (1u << desc.log_rows);
   const u32 row = active ? global_row : 0;
   e4 values[3]{e4::ZERO(), e4::ZERO(), e4::ZERO()};
   bwd_window_evaluate_selector<Shape>(desc, row, selector, values);
-  bwd_window_publish(desc, row_tile, lane, active, selector_id, values);
+  bwd_window_publish(desc, row_tile, lane, active, selector, values);
 }
 
 #define AB_GKR_BWD_WINDOW_DEFINE_KERNEL(Name, Shape, MinBlocks)                                                                                                \

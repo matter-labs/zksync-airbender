@@ -37,7 +37,9 @@ pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReduc
 pub(crate) use prover::gkr::prover::{GKRProof, WhirSchedule};
 pub(crate) use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
 pub(crate) use prover::gkr::prover_config::pow_bits;
-pub(crate) use prover::gkr::prover_config::ProverConfig;
+pub(crate) use prover::gkr::prover_config::{
+    validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass,
+};
 pub(crate) use prover::merkle_trees::DefaultTreeConstructor;
 
 // -----------------------------------------------------------------------

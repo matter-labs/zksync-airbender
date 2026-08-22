@@ -103,10 +103,17 @@ DEVICE_FORCEINLINE T bwd_window_xy_endpoint(const Source &source, const u32 row,
   return bwd_window_sub(at_x1_one, at_x1_zero);
 }
 
-template <typename T, typename Source> DEVICE_FORCEINLINE T bwd_window_x2_delta(const Source &source, const u32 row, const bwd_window_selector_pair selector) {
-  const T at_zero = bwd_window_xy_endpoint<T>(source, row, selector, 0);
-  const T at_one = bwd_window_xy_endpoint<T>(source, row, selector, 1);
-  return bwd_window_sub(at_one, at_zero);
+// The Boolean cells of a product term are already carried by the section's
+// linear atoms, which read the materialized values of the whole expression; a
+// product contributes only where at least one axis is the infinity endpoint,
+// and there its cell is the product of the two factors' own endpoints.
+template <typename T, typename Factor>
+DEVICE_FORCEINLINE bwd_window_triplet<T> bwd_window_product_tensor(const bwd_window_pair<T> a, const bwd_window_pair<Factor> b,
+                                                                   const bwd_window_selector_pair selector) {
+  const T leading = T::mul(bwd_window_sub(a.values[1], a.values[0]), bwd_window_sub(b.values[1], b.values[0]));
+  if (!selector.has_infinity())
+    return {{T::ZERO(), T::ZERO(), leading}};
+  return {{T::mul(a.values[0], b.values[0]), T::mul(a.values[1], b.values[1]), leading}};
 }
 
 // Both x2 endpoints of a materialized column in one vector load per corner pair:

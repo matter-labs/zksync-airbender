@@ -10,9 +10,8 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr_compiler::{
-    LeanBoundWindow, WindowProgram, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
-    LEAN_MAX_IMMEDIATES, MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS, WINDOW_SECTION_WORDS,
-    WINDOW_SHAPE_DEFINED_BITS,
+    WindowProgram, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_MAX_IMMEDIATES,
+    MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS, WINDOW_SECTION_WORDS, WINDOW_SHAPE_DEFINED_BITS,
 };
 use gpu_prover_context::ProverContext;
 
@@ -26,6 +25,7 @@ use crate::backward::vm::production_bind::family_read_place;
 use crate::backward::vm::seg_desc::{
     BwdSegAddrSlot, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
+    BWD_SEG_ADDR_COLUMN_BITS,
 };
 use crate::backward::vm::seg_lower::zeroed_box;
 use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_SIZE, GKR_EQ_HIGH_SLOTS};
@@ -54,7 +54,8 @@ pub(crate) const BWD_WINDOW_MAX_FOLDING_STEPS: usize =
 
 /// The complete by-value launch descriptor of a generated window kernel. Source
 /// operands are segmented-VM addressing lanes (`slot:6 << 7 | column:7`) carried
-/// directly by the wire, so the window needs no source-slot indirection table.
+/// directly by the wire — the binder rewrites the lowered lanes to the ones
+/// storage implies, so the kernel needs no source-slot indirection table.
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
 pub(crate) struct WindowLaunchBinding {
@@ -147,18 +148,22 @@ pub(crate) enum WindowBindError {
         window: u8,
         stride_bytes: u32,
     },
-    /// A referenced column does not sit at its wire-relative offset from the
-    /// window's base: storage packing disagrees with the lowered geometry.
-    NonContiguousWindow {
-        window: u8,
-        column: usize,
-    },
     UnknownProceduralKind {
         window: u8,
         kind: u8,
     },
     EmptyWindow {
         window: u8,
+    },
+    /// A column's address is not a whole number of strides into its matrix, so
+    /// it has no rank to address it by.
+    UnresolvableRank {
+        window: u8,
+    },
+    /// The wire reads a source the window identities never bound.
+    LaneSourceMissing {
+        word: u32,
+        source: u16,
     },
 }
 
@@ -171,7 +176,6 @@ impl core::fmt::Display for WindowBindError {
 impl std::error::Error for WindowBindError {}
 
 /// The layer-scoped runtime addresses a window launch binds.
-#[allow(dead_code)] // The windowed scheduler path is the consumer.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct WindowRuntimeScratch {
     /// Production factored-eq low table; the high tables stay in `ab_gkr_eq_high`.
@@ -182,7 +186,6 @@ pub(crate) struct WindowRuntimeScratch {
 }
 
 /// A launch-ready window producer.
-#[allow(dead_code)] // The windowed scheduler path is the consumer.
 pub(crate) struct WindowLaunch {
     pub binding: Box<WindowLaunchBinding>,
     pub kernel: &'static WindowKernelEntry,
@@ -219,101 +222,150 @@ pub(crate) fn resolve_window_kernel(
     Ok(entry)
 }
 
-/// Resolve one lowered window's storage address.
-///
-/// The wire carries the compiler's own `(window, relative column)` lanes, so a
-/// slot's base is the address of the window's first column and every referenced
-/// column must sit at its own relative offset from it. Storage packing that
-/// disagrees is rejected rather than mis-addressed.
-fn window_address_slot<E: Copy>(
-    storage: &GpuGKRStorage<BF, E>,
-    index: u8,
-    entry: &LeanBoundWindow,
-) -> Result<BwdSegAddrSlot, WindowBindError> {
-    if let Some(kind) = entry.procedural_kind() {
-        if usize::from(kind) >= BWD_COEFF_PROCEDURAL_KINDS {
-            return Err(WindowBindError::UnknownProceduralKind {
-                window: index,
-                kind,
+/// The window's runtime addressing: one slot per storage chunk actually read,
+/// and the lane each source slot resolved to.
+pub(super) struct WindowAddressing {
+    pub(super) slots: Vec<BwdSegAddrSlot>,
+    /// Indexed by source slot id; `None` for a source no window binds.
+    pub(super) lanes: Vec<Option<u16>>,
+}
+
+impl WindowAddressing {
+    fn intern(&mut self, slot: BwdSegAddrSlot) -> Result<usize, WindowBindError> {
+        if let Some(index) = self.slots.iter().position(|entry| {
+            entry.base == slot.base
+                && entry.log2_stride == slot.log2_stride
+                && entry.origin == slot.origin
+                && entry.procedural_kind == slot.procedural_kind
+        }) {
+            return Ok(index);
+        }
+        if self.slots.len() == BWD_WINDOW_ADDR_SLOTS {
+            return Err(WindowBindError::Capacity {
+                resource: "window address slots",
+                required: BWD_WINDOW_ADDR_SLOTS + 1,
+                capacity: BWD_WINDOW_ADDR_SLOTS,
             });
         }
-        return Ok(BwdSegAddrSlot {
-            base: std::ptr::null(),
-            log2_stride: 0,
-            origin: BWD_COEFF_ORIGIN_PROCEDURAL,
-            procedural_kind: kind,
-            reserved: [0; 5],
-        });
+        self.slots.push(slot);
+        Ok(self.slots.len() - 1)
     }
 
-    let expect_e4 = entry.backing_field() == FieldKind::Ext;
-    let element = if expect_e4 {
-        size_of::<E4>()
-    } else {
-        size_of::<BF>()
-    } as u32;
-    let mut bound: Option<(usize, *mut u8, u32)> = None;
-    for column in &entry.columns {
-        let relative = column
-            .column
-            .checked_sub(entry.first_column)
-            .filter(|relative| *relative < SOURCE_WINDOW_COLUMNS)
-            .ok_or(WindowBindError::NonContiguousWindow {
-                window: index,
-                column: column.column,
-            })?;
-        let place = family_read_place(entry.family, column.column)
-            .expect("an addressless window is procedural");
-        let address = read_place_to_gkr_address(&place);
-        let resolved =
-            resolve_storage_column(storage, address).ok_or(WindowBindError::UnresolvedWindow {
-                window: index,
-                address,
-            })?;
-        if resolved.is_e4 != expect_e4 {
-            return Err(WindowBindError::WindowFieldMismatch {
-                window: index,
-                expect_e4,
-            });
+    fn bind(&mut self, source: u32, lane: u16) {
+        let source = source as usize;
+        if source >= self.lanes.len() {
+            self.lanes.resize(source + 1, None);
         }
-        if resolved.ptr.is_null()
-            || !resolved.stride_bytes.is_multiple_of(element)
-            || !(resolved.stride_bytes / element).is_power_of_two()
-        {
-            return Err(WindowBindError::WindowStrideMismatch {
-                window: index,
-                stride_bytes: resolved.stride_bytes,
-            });
-        }
-        let base = (resolved.ptr as usize)
-            .checked_sub(relative * resolved.stride_bytes as usize)
-            .ok_or(WindowBindError::NonContiguousWindow {
-                window: index,
-                column: column.column,
-            })?;
-        match bound {
-            None => bound = Some((base, resolved.matrix_base, resolved.stride_bytes)),
-            Some(bound) if bound == (base, resolved.matrix_base, resolved.stride_bytes) => {}
-            Some(_) => {
-                return Err(WindowBindError::NonContiguousWindow {
-                    window: index,
-                    column: column.column,
-                })
+        self.lanes[source] = Some(lane);
+    }
+}
+
+fn window_lane(slot: usize, column: usize) -> u16 {
+    ((slot << BWD_SEG_ADDR_COLUMN_BITS) | column) as u16
+}
+
+/// The addressing rule a window slot expresses: a column's rank inside its
+/// matrix splits into the chunk of [`SOURCE_WINDOW_COLUMNS`] columns the slot
+/// bases at, and the column's index within that chunk. Same split as
+/// `production_bind::SlotTable::intern`, which is what makes two columns of one
+/// artifact window in different matrices simply two slots.
+pub(super) fn window_chunk_address(matrix: usize, pointer: usize, stride: usize) -> (usize, usize) {
+    let rank = (pointer - matrix) / stride;
+    let chunk = rank / SOURCE_WINDOW_COLUMNS;
+    (
+        matrix + chunk * SOURCE_WINDOW_COLUMNS * stride,
+        rank % SOURCE_WINDOW_COLUMNS,
+    )
+}
+
+/// Re-address every column the lowered windows reference, against production
+/// storage.
+///
+/// The lowered wire carries the ARTIFACT's `(window, relative column)` lanes,
+/// but a source's address is a fact about storage: a layer's columns are
+/// allocated per storage class, so one artifact window's columns can sit in
+/// different matrices. So each column is interned into the slot its own pointer
+/// implies — chunk base plus rank within the chunk, the same rule
+/// `production_bind::SlotTable::intern` applies for the segmented VM — and the
+/// binder rewrites the wire's lane words from the result.
+fn intern_window_addressing<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    program: &WindowProgram,
+) -> Result<WindowAddressing, WindowBindError> {
+    let mut addressing = WindowAddressing {
+        slots: Vec::new(),
+        lanes: vec![None; program.source_slots.len()],
+    };
+    for (index, entry) in program.windows.iter().enumerate() {
+        let window = index as u8;
+        if let Some(kind) = entry.procedural_kind() {
+            if usize::from(kind) >= BWD_COEFF_PROCEDURAL_KINDS {
+                return Err(WindowBindError::UnknownProceduralKind { window, kind });
             }
+            let slot = addressing.intern(BwdSegAddrSlot {
+                base: std::ptr::null(),
+                log2_stride: 0,
+                origin: BWD_COEFF_ORIGIN_PROCEDURAL,
+                procedural_kind: kind,
+                reserved: [0; 5],
+            })?;
+            let lane = window_lane(slot, 0);
+            for column in &entry.columns {
+                addressing.bind(column.source, lane);
+            }
+            continue;
+        }
+
+        if entry.columns.is_empty() {
+            return Err(WindowBindError::EmptyWindow { window });
+        }
+        let expect_e4 = entry.backing_field() == FieldKind::Ext;
+        let element = if expect_e4 {
+            size_of::<E4>()
+        } else {
+            size_of::<BF>()
+        } as u32;
+        for column in &entry.columns {
+            let place = family_read_place(entry.family, column.column)
+                .expect("an addressless window is procedural");
+            let address = read_place_to_gkr_address(&place);
+            let resolved = resolve_storage_column(storage, address)
+                .ok_or(WindowBindError::UnresolvedWindow { window, address })?;
+            if resolved.is_e4 != expect_e4 {
+                return Err(WindowBindError::WindowFieldMismatch { window, expect_e4 });
+            }
+            if resolved.ptr.is_null()
+                || resolved.matrix_base.is_null()
+                || !resolved.stride_bytes.is_multiple_of(element)
+                || !(resolved.stride_bytes / element).is_power_of_two()
+            {
+                return Err(WindowBindError::WindowStrideMismatch {
+                    window,
+                    stride_bytes: resolved.stride_bytes,
+                });
+            }
+            let stride = resolved.stride_bytes as usize;
+            let pointer = resolved.ptr as usize;
+            let matrix = resolved.matrix_base as usize;
+            if pointer < matrix || !(pointer - matrix).is_multiple_of(stride) {
+                return Err(WindowBindError::UnresolvableRank { window });
+            }
+            let (chunk_base, within) = window_chunk_address(matrix, pointer, stride);
+            let slot = addressing.intern(BwdSegAddrSlot {
+                base: chunk_base as *const u8,
+                log2_stride: (resolved.stride_bytes / element).trailing_zeros() as u8,
+                origin: if expect_e4 {
+                    BWD_COEFF_ORIGIN_READ_EXT
+                } else {
+                    BWD_COEFF_ORIGIN_READ_BASE
+                },
+                procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
+                reserved: [0; 5],
+            })?;
+            addressing.bind(column.source, window_lane(slot, within));
         }
     }
-    let (base, _, stride_bytes) = bound.ok_or(WindowBindError::EmptyWindow { window: index })?;
-    Ok(BwdSegAddrSlot {
-        base: base as *const u8,
-        log2_stride: (stride_bytes / element).trailing_zeros() as u8,
-        origin: if expect_e4 {
-            BWD_COEFF_ORIGIN_READ_EXT
-        } else {
-            BWD_COEFF_ORIGIN_READ_BASE
-        },
-        procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-        reserved: [0; 5],
-    })
+    Ok(addressing)
 }
 
 /// Assemble the descriptor from the static program, the resolved address slots,
@@ -324,10 +376,11 @@ fn window_address_slot<E: Copy>(
 /// `folding_steps - 3` for its row axis.
 pub(super) fn build_window_binding(
     program: &WindowProgram,
-    slots: &[BwdSegAddrSlot],
+    addressing: &WindowAddressing,
     folding_steps: usize,
     scratch: WindowRuntimeScratch,
 ) -> Result<Box<WindowLaunchBinding>, WindowBindError> {
+    let slots = addressing.slots.as_slice();
     if !(BWD_WINDOW_COORDINATES + 1..=BWD_WINDOW_MAX_FOLDING_STEPS).contains(&folding_steps) {
         return Err(WindowBindError::UnsupportedFoldingSteps { folding_steps });
     }
@@ -372,31 +425,42 @@ pub(super) fn build_window_binding(
     binding.eq_sizes = make_eq_sizes(folding_steps - BWD_WINDOW_COORDINATES);
     binding.sections = program.sections;
     binding.program[..program.words.len()].copy_from_slice(&program.words);
+    // The wire's lowered lanes are the artifact's geometry; the side table names
+    // every word that carries one, so each is rewritten to the lane storage
+    // actually implies.
+    for lane in &program.source_lanes {
+        let word = lane.word as usize;
+        let runtime = addressing
+            .lanes
+            .get(usize::from(lane.source))
+            .copied()
+            .flatten()
+            .ok_or(WindowBindError::LaneSourceMissing {
+                word: lane.word,
+                source: lane.source,
+            })?;
+        *binding
+            .program
+            .get_mut(word)
+            .ok_or(WindowBindError::LaneSourceMissing {
+                word: lane.word,
+                source: lane.source,
+            })? = runtime;
+    }
     binding.immediates[..program.immediates.len()].copy_from_slice(&program.immediates);
     Ok(binding)
 }
 
 /// Bind a lowered window program to production storage and the layer's scratch.
-#[allow(dead_code)] // The windowed scheduler path is the consumer.
 pub(crate) fn bind_window_launch<E: Copy>(
     program: &WindowProgram,
     storage: &GpuGKRStorage<BF, E>,
     folding_steps: usize,
     scratch: WindowRuntimeScratch,
 ) -> Result<WindowLaunch, WindowBindError> {
-    if program.windows.len() > BWD_WINDOW_ADDR_SLOTS {
-        return Err(WindowBindError::Capacity {
-            resource: "window address slots",
-            required: program.windows.len(),
-            capacity: BWD_WINDOW_ADDR_SLOTS,
-        });
-    }
-    let mut slots = Vec::with_capacity(program.windows.len());
-    for (index, entry) in program.windows.iter().enumerate() {
-        slots.push(window_address_slot(storage, index as u8, entry)?);
-    }
+    let addressing = intern_window_addressing(storage, program)?;
     let kernel = resolve_window_kernel(program.shape.bits())?;
-    let binding = build_window_binding(program, &slots, folding_steps, scratch)?;
+    let binding = build_window_binding(program, &addressing, folding_steps, scratch)?;
     let row_tiles = window_row_tiles(1usize << folding_steps);
     // SAFETY: the capacity check above covers the tensor past the partials.
     let reduced_tensor = unsafe { scratch.partials.add(WINDOW_TAIL_TENSOR_CELLS * row_tiles) };
@@ -420,7 +484,6 @@ impl KernelFunction for WindowKernelEntry {
 }
 
 /// Launch the window producer: one block per row tile, nine warps each.
-#[allow(dead_code)] // The windowed scheduler path is the consumer.
 pub(crate) fn launch_window_program(
     launch: &WindowLaunch,
     context: &ProverContext,

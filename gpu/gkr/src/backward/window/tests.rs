@@ -500,17 +500,20 @@ mod cpu_window_binding {
 
     use gpu_gkr_compiler::{
         resolve_windowed_r0_dispatch, windowed_r0_bank, windowed_r0_kernel_symbol,
-        WindowCapacities, WindowProgram, WindowShape, DESCRIPTOR_ALIGNMENT_BYTES,
-        KERNEL_ARGUMENT_CEILING_BYTES, WINDOWED_R0_KERNEL_COUNT, WINDOW_SHAPE_DEFINED_BITS,
+        WindowCapacities, WindowProgram, WindowShape, WindowSourceLane, DESCRIPTOR_ALIGNMENT_BYTES,
+        KERNEL_ARGUMENT_CEILING_BYTES, SOURCE_WINDOW_COLUMNS, WINDOWED_R0_KERNEL_COUNT,
+        WINDOW_SHAPE_DEFINED_BITS,
     };
 
-    use crate::backward::kernels::max_partials_len;
+    use crate::backward::kernels::{make_eq_sizes, max_partials_len, record_active_eq_slot_fold};
+    use crate::backward::vm::production_bind::drained_eq_sizes;
     use crate::backward::vm::seg_desc::{BwdSegAddrSlot, BWD_COEFF_PROCEDURAL_NONE};
     use crate::backward::window::binding::{
-        build_window_binding, resolve_window_kernel, window_log_rows, window_partials_len,
-        window_row_tiles, WindowBindError, WindowLaunchBinding, WindowRuntimeScratch,
-        BWD_WINDOW_ADDR_SLOTS, BWD_WINDOW_COORDINATES, BWD_WINDOW_MAX_FOLDING_STEPS,
-        BWD_WINDOW_MAX_IMMEDIATES, BWD_WINDOW_PROGRAM_WORD_CAP, BWD_WINDOW_ROWS_PER_TILE,
+        build_window_binding, resolve_window_kernel, window_chunk_address, window_log_rows,
+        window_partials_len, window_row_tiles, WindowAddressing, WindowBindError,
+        WindowLaunchBinding, WindowRuntimeScratch, BWD_WINDOW_ADDR_SLOTS, BWD_WINDOW_COORDINATES,
+        BWD_WINDOW_MAX_FOLDING_STEPS, BWD_WINDOW_MAX_IMMEDIATES, BWD_WINDOW_PROGRAM_WORD_CAP,
+        BWD_WINDOW_ROWS_PER_TILE,
     };
     use crate::backward::window::generated_registry::{
         WINDOWED_R0_BLOCK_THREADS, WINDOWED_R0_DISPATCH, WINDOWED_R0_FALLBACK_MASK,
@@ -540,12 +543,22 @@ mod cpu_window_binding {
             layer: 3,
             words,
             source_slots: vec![0, 129],
+            source_lanes: Vec::new(),
             windows: Vec::new(),
             immediates,
             sections,
             coefficient_plans: Vec::new(),
             shape: WindowShape::BF_PROCEDURAL,
             capacities: WindowCapacities::default(),
+        }
+    }
+
+    /// A hand-built runtime addressing: the binder normally interns these from
+    /// storage pointers, which needs a live layer.
+    fn addressing(slots: &[BwdSegAddrSlot], lanes: &[Option<u16>]) -> WindowAddressing {
+        WindowAddressing {
+            slots: slots.to_vec(),
+            lanes: lanes.to_vec(),
         }
     }
 
@@ -593,9 +606,13 @@ mod cpu_window_binding {
         let immediates = vec![7u32, 11, 13];
         let program = program(words.clone(), immediates.clone());
         let slots = [slot(0x10_0000, 21), slot(0x20_0000, 19)];
-        let binding =
-            build_window_binding(&program, &slots, 24, scratch(window_partials_len(1 << 24)))
-                .expect("the synthetic program fits every capacity");
+        let binding = build_window_binding(
+            &program,
+            &addressing(&slots, &[]),
+            24,
+            scratch(window_partials_len(1 << 24)),
+        )
+        .expect("the synthetic program fits every capacity");
 
         assert_eq!(binding.eq_low, EQ_LOW);
         assert_eq!(binding.partials, PARTIALS);
@@ -628,26 +645,149 @@ mod cpu_window_binding {
 
     #[test]
     fn binding_eq_schedule_tracks_the_smallest_trace() {
-        let binding =
-            build_window_binding(&program(Vec::new(), Vec::new()), &[], 4, scratch(1 << 10))
-                .expect("a log-4 trace is one row tile");
+        let binding = build_window_binding(
+            &program(Vec::new(), Vec::new()),
+            &addressing(&[], &[]),
+            4,
+            scratch(1 << 10),
+        )
+        .expect("a log-4 trace is one row tile");
         assert_eq!(binding.log_rows, 1);
         assert_eq!(binding.eq_sizes.high, [0, 0]);
         assert_eq!(binding.eq_sizes.low, 1);
         assert_eq!(window_log_rows(4), 1);
     }
 
+    /// The handoff the windowed arm depends on: the window kernel reads the
+    /// freshly built schedule, the tail applies exactly ONE physical fold, and
+    /// round 3's continuation descriptor is lowered against that same one-fold
+    /// drain. A tail that folded once per consumed round would break this.
+    #[test]
+    fn binding_eq_schedule_hands_the_round3_drain_its_own_state() {
+        for folding_steps in [4usize, 6, 20, 22, 23, 24] {
+            let binding = build_window_binding(
+                &program(Vec::new(), Vec::new()),
+                &addressing(&[], &[]),
+                folding_steps,
+                scratch(window_partials_len(1usize << folding_steps)),
+            )
+            .expect("the corpus folding steps are all bindable");
+            let built = make_eq_sizes(folding_steps - BWD_WINDOW_COORDINATES);
+            assert_eq!(binding.eq_sizes, built);
+            let mut after_tail = built;
+            record_active_eq_slot_fold(&mut after_tail);
+            assert_eq!(
+                after_tail,
+                drained_eq_sizes(built, 1),
+                "folding_steps {folding_steps}"
+            );
+            // What `build_bwd_vm_ext_rounds(start_round = 3, base = built)`
+            // lowers round 3 against.
+            assert_eq!(after_tail, drained_eq_sizes(built, 3 - 3 + 1));
+        }
+    }
+
+    /// Production storage allocates a layer's columns per storage class, so two
+    /// columns of one artifact window can sit in different matrices — and even a
+    /// contiguous pair addresses off its chunk base, not off the window's first
+    /// column. This is the add_sub layer-3 case that the wire's lowered lanes
+    /// cannot express: columns 4 and 5 of matrix A, column 6 of matrix B, where
+    /// B is A + 6 strides.
+    #[test]
+    fn binding_chunk_addressing_splits_a_window_across_matrices() {
+        const STRIDE: usize = 1 << 28;
+        let matrix_a = 0x1000_0000_0000usize;
+        let matrix_b = matrix_a + 6 * STRIDE;
+        assert_eq!(
+            window_chunk_address(matrix_a, matrix_a + 4 * STRIDE, STRIDE),
+            (matrix_a, 4)
+        );
+        assert_eq!(
+            window_chunk_address(matrix_a, matrix_a + 5 * STRIDE, STRIDE),
+            (matrix_a, 5)
+        );
+        assert_eq!(
+            window_chunk_address(matrix_b, matrix_b + 6 * STRIDE, STRIDE),
+            (matrix_b, 6)
+        );
+        // Past the first chunk the slot bases at the chunk, not at the matrix.
+        let columns = SOURCE_WINDOW_COLUMNS;
+        assert_eq!(
+            window_chunk_address(matrix_a, matrix_a + (columns + 3) * STRIDE, STRIDE),
+            (matrix_a + columns * STRIDE, 3)
+        );
+    }
+
+    /// The binder rewrites exactly the words the side table names, to the lanes
+    /// storage implies, and leaves every other word alone.
+    #[test]
+    fn binding_rewrites_lowered_lanes_to_storage_lanes() {
+        let words = vec![
+            2u16, 0, 0x0000, 0x0001, // BF product of window 0 columns 0 and 1
+            6, 0x8001, 1, 0x0080, // group header: arity and product prefix
+            2, 0, 0x0002, 0x0080, // member reading window 0 column 2 and window 1 column 0
+        ];
+        let mut program = program(words.clone(), Vec::new());
+        program.source_slots = vec![0x0000, 0x0001, 0x0002, 0x0080];
+        program.source_lanes = vec![
+            WindowSourceLane { word: 2, source: 0 },
+            WindowSourceLane { word: 3, source: 1 },
+            WindowSourceLane {
+                word: 10,
+                source: 2,
+            },
+            WindowSourceLane {
+                word: 11,
+                source: 3,
+            },
+        ];
+        let lanes = [Some(0x0104), Some(0x0105), Some(0x0206), Some(0x0300)];
+        let binding = build_window_binding(
+            &program,
+            &addressing(&[slot(0x10_0000, 21); 4], &lanes),
+            24,
+            scratch(window_partials_len(1 << 24)),
+        )
+        .expect("the synthetic program fits every capacity");
+
+        assert_eq!(
+            &binding.program[..words.len()],
+            &[2, 0, 0x0104, 0x0105, 6, 0x8001, 1, 0x0080, 2, 0, 0x0206, 0x0300]
+        );
+        assert!(binding.program[words.len()..].iter().all(|word| *word == 0));
+
+        // A lane word whose source never resolved is a rejection, not a silent
+        // stale address.
+        assert_eq!(
+            rejection(build_window_binding(
+                &program,
+                &addressing(
+                    &[slot(0x10_0000, 21); 4],
+                    &[Some(0x0104), None, Some(0x0206), Some(0x0300)]
+                ),
+                24,
+                scratch(window_partials_len(1 << 24))
+            )),
+            WindowBindError::LaneSourceMissing { word: 3, source: 1 }
+        );
+    }
+
     #[test]
     fn binding_rejects_what_the_descriptor_cannot_hold() {
         let empty = program(Vec::new(), Vec::new());
         assert_eq!(
-            rejection(build_window_binding(&empty, &[], 3, scratch(1 << 20))),
+            rejection(build_window_binding(
+                &empty,
+                &addressing(&[], &[]),
+                3,
+                scratch(1 << 20)
+            )),
             WindowBindError::UnsupportedFoldingSteps { folding_steps: 3 }
         );
         assert_eq!(
             rejection(build_window_binding(
                 &empty,
-                &[],
+                &addressing(&[], &[]),
                 BWD_WINDOW_MAX_FOLDING_STEPS + 1,
                 scratch(1 << 20)
             )),
@@ -658,7 +798,7 @@ mod cpu_window_binding {
         assert_eq!(
             rejection(build_window_binding(
                 &empty,
-                &vec![slot(0x1000, 4); BWD_WINDOW_ADDR_SLOTS + 1],
+                &addressing(&vec![slot(0x1000, 4); BWD_WINDOW_ADDR_SLOTS + 1], &[]),
                 12,
                 scratch(1 << 20)
             )),
@@ -671,7 +811,7 @@ mod cpu_window_binding {
         assert_eq!(
             rejection(build_window_binding(
                 &program(vec![0; BWD_WINDOW_PROGRAM_WORD_CAP + 1], Vec::new()),
-                &[],
+                &addressing(&[], &[]),
                 12,
                 scratch(1 << 20)
             )),
@@ -684,7 +824,7 @@ mod cpu_window_binding {
         assert_eq!(
             rejection(build_window_binding(
                 &program(Vec::new(), vec![0; BWD_WINDOW_MAX_IMMEDIATES + 1]),
-                &[],
+                &addressing(&[], &[]),
                 12,
                 scratch(1 << 20)
             )),
@@ -696,14 +836,19 @@ mod cpu_window_binding {
         );
         let required = window_partials_len(1 << 20);
         assert_eq!(
-            rejection(build_window_binding(&empty, &[], 20, scratch(required - 1))),
+            rejection(build_window_binding(
+                &empty,
+                &addressing(&[], &[]),
+                20,
+                scratch(required - 1)
+            )),
             WindowBindError::Capacity {
                 resource: "window partials",
                 required,
                 capacity: required - 1,
             }
         );
-        assert!(build_window_binding(&empty, &[], 20, scratch(required)).is_ok());
+        assert!(build_window_binding(&empty, &addressing(&[], &[]), 20, scratch(required)).is_ok());
     }
 
     #[test]

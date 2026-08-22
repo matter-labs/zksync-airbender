@@ -192,3 +192,127 @@ fn initial_transcript_input_matches_cpu_order_with_and_without_setup_caps() {
         <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&expected_without_setup_seed)
     );
 }
+/// Caller gate for the top-layer claim eq: `prepare_backward_handoff` builds
+/// `eq_values_for_init` with exactly this call shape (offset 0,
+/// `challenge_count = final_trace_size_log_2`, `acc_size = 1 << count`). Its
+/// orientation must be LSB-first — claim coordinate `b` on table bit `b`.
+#[test]
+#[cfg(not(no_cuda))]
+fn top_claim_eq_matches_cpu_lsb() {
+    use era_cudart::memory::memory_copy_async;
+    use gpu_core::allocator::tracker::AllocationPlacement;
+    use gpu_core::primitives::context::DeviceAllocation;
+    use gpu_gkr::backward::kernels::{eq_group_tables_len, launch_build_eq_values_from_point};
+
+    use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
+    use crate::upstream::{Field, PrimeField};
+
+    let context = make_test_context_with_device_allocator_block_log_size(4096, 256, 20);
+    let worker = Worker::new();
+
+    for final_trace_size_log_2 in [4u32, 20] {
+        let challenge_count = final_trace_size_log_2 as usize;
+        // Deterministic point with every coordinate distinct, so a permuted
+        // pairing cannot pass by coincidence.
+        let point: Vec<E4> =
+            (0..challenge_count)
+                .map(|i| {
+                    E4::from_array_of_base(std::array::from_fn(|limb| {
+                        BF::from_u32_with_reduction(0x9E37_79B9u32.wrapping_mul(
+                            (i as u32 + 1).wrapping_mul(4).wrapping_add(limb as u32 + 1),
+                        ))
+                    }))
+                })
+                .collect();
+        let poly_len = 1usize << challenge_count;
+
+        let mut d_point: DeviceAllocation<E4> = context
+            .alloc(challenge_count, AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy_async(&mut d_point, &point, context.get_exec_stream()).unwrap();
+        let mut d_group_tables: DeviceAllocation<E4> = context
+            .alloc(
+                eq_group_tables_len(challenge_count),
+                AllocationPlacement::Top,
+            )
+            .unwrap();
+        let mut d_eq_values: DeviceAllocation<E4> =
+            context.alloc(poly_len, AllocationPlacement::Top).unwrap();
+
+        launch_build_eq_values_from_point(
+            d_point.as_ptr(),
+            0,
+            challenge_count,
+            d_group_tables.as_mut_ptr(),
+            d_eq_values.as_mut_ptr(),
+            poly_len,
+            &context,
+        )
+        .unwrap();
+
+        let mut from_gpu = vec![E4::ZERO; poly_len];
+        memory_copy_async(&mut from_gpu, &d_eq_values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        let expected =
+            prover::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E4>(&point, &worker);
+        assert_eq!(expected.len(), from_gpu.len());
+        let first_divergence = from_gpu
+            .iter()
+            .zip(expected.iter())
+            .position(|(gpu, cpu)| gpu != cpu);
+        assert!(
+            first_divergence.is_none(),
+            "final_trace_size_log_2={final_trace_size_log_2}: first divergent index {:?} \
+             (bits {:0width$b})",
+            first_divergence,
+            first_divergence.unwrap_or(0),
+            width = challenge_count,
+        );
+    }
+}
+
+/// The preflight boundary: a windowed request whose lowering was rejected must
+/// fail before any H2D work, with the resource in the message; a per-round
+/// request must not even consult the bundle.
+#[test]
+fn cpu_windowed_selector_preflight_reports_a_lowering_rejection() {
+    use super::{preflight_windowed_r0, GpuProveError};
+    use gpu_gkr::{BackwardExecutionStrategy, WindowLoweringRejection};
+
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    assert!(preflight_windowed_r0(&programs, BackwardExecutionStrategy::PerRound).is_ok());
+    assert!(
+        !programs.window_programs_ready(),
+        "the per-round arm must not lower the window bundle"
+    );
+
+    assert!(
+        programs.reject_window_programs_for_test(WindowLoweringRejection {
+            circuit: "add_sub_lui_auipc_mop".to_owned(),
+            layer: 7,
+            resource:
+                "Capacity { resource: \"window program words\", required: 8192, capacity: 7040 }"
+                    .to_owned(),
+        })
+    );
+    let error =
+        preflight_windowed_r0(&programs, BackwardExecutionStrategy::WindowedR0).unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::WindowLowering {
+            circuit: "add_sub_lui_auipc_mop".to_owned(),
+            layer: 7,
+            resource:
+                "Capacity { resource: \"window program words\", required: 8192, capacity: 7040 }"
+                    .to_owned(),
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "windowed R0 lowering rejected for add_sub_lui_auipc_mop/7: \
+         Capacity { resource: \"window program words\", required: 8192, capacity: 7040 }"
+    );
+    assert!(!programs.window_programs_ready());
+}

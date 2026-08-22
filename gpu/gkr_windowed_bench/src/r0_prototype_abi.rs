@@ -3024,7 +3024,8 @@ mod tests {
     #[test]
     fn cpu_window_program_port_matches_legacy_sectioned_lowering() {
         use gpu_gkr_compiler::backward::{
-            lower_window_program, WindowCapacities, WindowProgram, WindowShape,
+            lower_window_program, walk_window_source_lanes, WindowCapacities, WindowProgram,
+            WindowShape,
         };
 
         let bundle = decode_r0_bundle(R0_CORPUS_BYTES).unwrap();
@@ -3035,6 +3036,7 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         let corpus = compile_corpus().unwrap();
         let mut coordinates = 0usize;
+        let mut lane_words = 0usize;
 
         for layer in &corpus.layers {
             let coordinate = frozen[&(layer.circuit.as_str(), layer.layer as u32)];
@@ -3066,6 +3068,9 @@ mod tests {
                 layer: layer.layer,
                 words: legacy.words.clone(),
                 source_slots: legacy.source_slots.clone(),
+                // The legacy oracle predates the lane side table, so it defines
+                // no expectation for it; the guards below stand in.
+                source_lanes: Vec::new(),
                 windows: coordinate.binding.windows.clone(),
                 immediates: legacy.immediates.clone(),
                 sections: legacy.sections,
@@ -3104,11 +3109,38 @@ mod tests {
             );
             assert_eq!(ported.shape, expected.shape, "{label} shape mask");
             assert_eq!(ported.capacities, expected.capacities, "{label} capacities");
-            assert_eq!(ported, expected, "{label} lowered window program");
+            let mut legacy_defined = ported.clone();
+            let lanes = std::mem::take(&mut legacy_defined.source_lanes);
+            assert_eq!(
+                legacy_defined, expected,
+                "{label} lowered window program (fields the legacy oracle defines)"
+            );
+
+            // Side-table self-consistency: every listed word holds the lane its
+            // named source lowered to, and the list covers EVERY lane-bearing
+            // word of the wire (the walker decodes the instruction stream the
+            // way the kernels do).
+            for lane in &lanes {
+                assert_eq!(
+                    ported.words[lane.word as usize],
+                    ported.source_slots[usize::from(lane.source)],
+                    "{label} lane word {}",
+                    lane.word
+                );
+            }
+            let recorded: Vec<u32> = lanes.iter().map(|lane| lane.word).collect();
+            assert_eq!(
+                walk_window_source_lanes(&ported).unwrap(),
+                recorded,
+                "{label} lane coverage"
+            );
+            assert!(!lanes.is_empty(), "{label} has no addressed source");
+            lane_words += lanes.len();
             coordinates += 1;
         }
 
         assert_eq!(coordinates, 57);
+        assert_eq!(lane_words, 13_509, "corpus lane-word total");
     }
 
     #[test]

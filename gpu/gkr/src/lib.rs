@@ -27,11 +27,12 @@ pub(crate) mod storage_types;
 pub(crate) mod support;
 pub(crate) mod upstream;
 
+pub use backward::window::tail::WindowTailArm;
 pub(crate) use forward::kernels::ForwardKernels;
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
 pub(crate) use gpu_gkr_model::storage_layout;
 pub(crate) use gpu_gkr_model::transform;
-pub use programs::GkrPrograms;
+pub use programs::{GkrPrograms, WindowLoweringRejection, WindowProgramBundle};
 pub(crate) use storage_types::*;
 // Keep the public path `gpu_gkr::gkr_initial_inner_products` (apex proof).
 pub use support::initial_inner_products as gkr_initial_inner_products;
@@ -40,3 +41,88 @@ pub use support::initial_inner_products as gkr_initial_inner_products;
 gpu_core::force_serial_libtest!();
 #[cfg(test)]
 pub(crate) mod test_utils;
+
+use crate::upstream::SumcheckScheduleClass;
+
+/// Caller-selected backward-phase behaviour, threaded from the apex `prove()`
+/// down to layer preparation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GkrBackwardOptions {
+    /// Request the window-3 sectioned executor for main-layer rounds 0-2. The
+    /// request is honoured only for a windowed sumcheck schedule; see
+    /// [`backward_execution_strategy`].
+    pub windowed_r0: bool,
+    pub window_tail: WindowTailArm,
+}
+
+/// The main-layer arm one proof runs. Resolved once per proof, never per layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackwardExecutionStrategy {
+    PerRound,
+    WindowedR0,
+}
+
+/// The selector: the windowed arm runs iff it was requested AND the prover
+/// config's same-size schedule validated as [`SumcheckScheduleClass::Windowed`]
+/// for the layer width. `validated_class` is `None` when the schedule failed
+/// validation, which is a mismatch like any other non-windowed class.
+pub fn backward_execution_strategy(
+    options: GkrBackwardOptions,
+    validated_class: Option<SumcheckScheduleClass>,
+) -> BackwardExecutionStrategy {
+    if options.windowed_r0 && validated_class == Some(SumcheckScheduleClass::Windowed) {
+        BackwardExecutionStrategy::WindowedR0
+    } else {
+        BackwardExecutionStrategy::PerRound
+    }
+}
+
+#[cfg(test)]
+mod cpu_windowed_selector_tests {
+    use super::*;
+
+    fn windowed_request() -> GkrBackwardOptions {
+        GkrBackwardOptions {
+            windowed_r0: true,
+            window_tail: WindowTailArm::Absorbed,
+        }
+    }
+
+    #[test]
+    fn cpu_windowed_selector_takes_the_window_only_for_a_windowed_schedule() {
+        assert_eq!(
+            backward_execution_strategy(windowed_request(), Some(SumcheckScheduleClass::Windowed)),
+            BackwardExecutionStrategy::WindowedR0
+        );
+        for class in [SumcheckScheduleClass::Naive, SumcheckScheduleClass::Uniskip] {
+            assert_eq!(
+                backward_execution_strategy(windowed_request(), Some(class)),
+                BackwardExecutionStrategy::PerRound,
+                "{class:?} must not take the windowed arm"
+            );
+        }
+        assert_eq!(
+            backward_execution_strategy(windowed_request(), None),
+            BackwardExecutionStrategy::PerRound
+        );
+    }
+
+    #[test]
+    fn cpu_windowed_selector_defaults_to_the_per_round_arm() {
+        let options = GkrBackwardOptions::default();
+        assert!(!options.windowed_r0);
+        assert_eq!(options.window_tail, WindowTailArm::Absorbed);
+        for class in [
+            Some(SumcheckScheduleClass::Windowed),
+            Some(SumcheckScheduleClass::Naive),
+            Some(SumcheckScheduleClass::Uniskip),
+            None,
+        ] {
+            assert_eq!(
+                backward_execution_strategy(options, class),
+                BackwardExecutionStrategy::PerRound,
+                "{class:?} must stay per-round without the request"
+            );
+        }
+    }
+}

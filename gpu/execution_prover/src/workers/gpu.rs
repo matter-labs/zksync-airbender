@@ -7,9 +7,12 @@ use crate::A;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
-use gpu_circuit_prover::proof::{prove, GpuGKRProofJob};
+use gpu_circuit_prover::proof::{
+    preflight_windowed_r0, prove, resolve_backward_execution_strategy, GpuGKRProofJob,
+};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
+use gpu_gkr::GkrBackwardOptions;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
@@ -46,6 +49,13 @@ pub(crate) fn get_gpu_worker_func(
         }
     }
 }
+
+/// The worker's backward-phase options. Single construction site for the
+/// windowed-R0 arm selection.
+const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
+    windowed_r0: false,
+    window_tail: gpu_gkr::WindowTailArm::Absorbed,
+};
 
 enum RequestKind {
     MemoryCommitment,
@@ -343,6 +353,17 @@ fn schedule_phase_one<'a>(
             num_teardown_sets,
             "inits-and-teardowns top bits must cover every teardown set of {circuit_type:?}"
         );
+        // Before any of this proof's H2D work is scheduled: a window lowering
+        // the circuit rejects must fail with nothing enqueued.
+        preflight_windowed_r0(
+            &state.precomputations.gkr_programs,
+            resolve_backward_execution_strategy(
+                &state.precomputations.gkr_programs,
+                &prover_config,
+                BACKWARD_OPTIONS,
+            ),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
         let mut bundle = gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
             setup_transfer,
             decoder_transfer,
@@ -401,6 +422,7 @@ fn enqueue_phase_two<'a>(
                 &prover_config,
                 final_trace_size_log_2,
                 bundle,
+                BACKWARD_OPTIONS,
                 context,
             )?;
             JobType::Proof(job)

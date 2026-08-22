@@ -47,11 +47,13 @@ pub use continuation::{
 pub use r0::{compile_r0, interpret_r0_program, R0CompileError, R0LayerProgram, R0ProgramBundle};
 pub use window::{
     build_window_grouped_program, derive_window_shape, lower_window_program, lower_window_sections,
-    validate_window_coefficient_ids, window_operands, window_source_slots, SemanticSourceKey,
+    validate_window_coefficient_ids, validate_window_source_lanes, walk_window_source_lanes,
+    window_operand_words, window_operands, window_source_slots, SemanticSourceKey,
     SourceProjection, StoredSource, WindowCapacities, WindowCoefficientPlan, WindowGroupedAtom,
     WindowGroupedMember, WindowGroupedProgram, WindowLoweringError, WindowLoweringInputs,
-    WindowPhase, WindowProgram, WindowShape, WINDOW_COEFFICIENT_BANK_BIAS,
-    WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS, WINDOW_SHAPE_DEFINED_BITS,
+    WindowOperandWords, WindowPhase, WindowProgram, WindowShape, WindowSourceLane,
+    WINDOW_COEFFICIENT_BANK_BIAS, WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS,
+    WINDOW_SHAPE_DEFINED_BITS,
 };
 pub use window_manifest::{
     render_windowed_r0_manifest, render_windowed_r0_registry, render_windowed_r0_translation_unit,

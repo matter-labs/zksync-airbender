@@ -1023,7 +1023,6 @@ impl BwdVmWindowBank {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn build_bwd_vm_window_bank(
     program: &WindowProgram,
     inits_and_teardowns_top_bits: &[u32],
@@ -1044,7 +1043,6 @@ pub(crate) fn build_bwd_vm_window_bank(
 /// ext blob copy + ext-recipe bank refill ([`schedule_bwd_vm_ext_bank_fill`]) ->
 /// `TensorRoundTail` -> round-3 VM. The window kernel's bank reads must all be
 /// enqueued before the ext refill overwrites the bank.
-#[allow(dead_code)]
 pub(crate) fn schedule_bwd_vm_window_bank_fill(
     bank: &mut BwdVmWindowBank,
     external_challenges: *const E4,

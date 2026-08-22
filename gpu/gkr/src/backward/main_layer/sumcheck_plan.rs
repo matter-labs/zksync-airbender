@@ -7,6 +7,8 @@ use era_cudart::slice::{CudaSlice, DeviceSlice};
 use crate::GpuGKRStorage;
 
 use super::super::kernels::*;
+use super::super::window::binding::{launch_window_program, BWD_WINDOW_COORDINATES};
+use super::super::window::tail::{launch_window_tensor_round_tail, WindowTailState};
 use super::extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
@@ -77,6 +79,79 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
         )
     }
 
+    /// The windowed arm's rounds 0-2, in the order Task 4 fixed: window-plan
+    /// bank fill -> window kernel -> ext-recipe bank refill -> tail. The window
+    /// kernel's coefficient reads must be enqueued before the refill overwrites
+    /// the shared output bank.
+    fn schedule_windowed_rounds_0_2(
+        &mut self,
+        external_challenges: *const E4,
+        lookup_multiplicative: *const E4,
+        lookup_additive: *const E4,
+        claim_batching: *const E4,
+        prev_claim_coords: *const E4,
+        seed: *mut u32,
+        claim: *mut E4,
+        eq_prefactor: *mut E4,
+        coeffs_out: *mut E4,
+        challenges_out: *mut E4,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let MainLayerR0Binding::Windowed(windowed) = &mut self.bwd_vm_r0 else {
+            panic!("the windowed prologue requires a windowed R0 binding");
+        };
+        super::super::vm::production_bind::schedule_bwd_vm_window_bank_fill(
+            &mut windowed.bank,
+            external_challenges,
+            lookup_multiplicative,
+            lookup_additive,
+            claim_batching,
+            context,
+        )?;
+        launch_window_program(&windowed.window, context)?;
+        let tail_arm = windowed.tail_arm;
+        let row_tiles = windowed.window.row_tiles;
+        let reduced_tensor = windowed.window.reduced_tensor;
+        super::super::vm::production_bind::schedule_bwd_vm_ext_bank_fill(
+            &mut self.bwd_vm_ext,
+            external_challenges,
+            lookup_multiplicative,
+            lookup_additive,
+            claim_batching,
+            context,
+        )?;
+        let eq_low_ptr_mut = self.round_scratch.eq_low_group.as_mut_ptr();
+        let (active_eq_slot_base, active_eq_size_before_fold) =
+            super::super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr_mut);
+        let state = WindowTailState {
+            partials: self.round_scratch.partials.as_ptr(),
+            row_tiles,
+            reduced_tensor,
+            prev_claim_coords,
+            seed,
+            claim,
+            eq_prefactor,
+            coeffs_out,
+            challenges_out,
+            active_eq_slot_base,
+            active_eq_size_before_fold,
+        };
+        launch_window_tensor_round_tail(tail_arm, &state, context)?;
+        // The tail folds the active slot exactly once, for the three rounds it
+        // played; round 3's descriptor was lowered against the same one-fold
+        // drain of the same built schedule.
+        super::super::kernels::record_active_eq_slot_fold(&mut self.eq_sizes);
+        assert_eq!(
+            self.eq_sizes,
+            super::super::vm::production_bind::drained_eq_sizes(
+                make_eq_sizes(self.folding_steps - BWD_WINDOW_COORDINATES),
+                1,
+            ),
+            "the tail's physical eq state must match the round-3 descriptor's drain"
+        );
+        Ok(())
+    }
+
     pub(crate) fn schedule_execute_main_layer(
         &mut self,
         mut device_seed: DeviceAllocation<u32>,
@@ -120,10 +195,20 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             claim_point_and_batching_len,
             "device claim_point input size must match this layer's folding_steps + 1",
         );
-        let challenge_count = self.folding_steps - 1;
+        // The eq table is built over the coordinates the arm's first sumcheck
+        // launch still carries: everything past round 0 for the per-round arm,
+        // everything past the window's three rounds for the windowed arm.
+        // `first_ext_round` is the first round the continuation VM plays;
+        // `first_round_in_loop` is the first round the per-round loop below
+        // plays, which for the per-round arm is round 0 on the R0 VM.
+        let (first_ext_round, first_round_in_loop) = match &self.bwd_vm_r0 {
+            MainLayerR0Binding::PerRound(_) => (1, 0),
+            MainLayerR0Binding::Windowed(_) => (BWD_WINDOW_COORDINATES, BWD_WINDOW_COORDINATES),
+        };
+        let challenge_count = self.folding_steps - first_ext_round;
         launch_build_eq_high_and_low_groups_from_point(
             device_claim_point_in.as_ptr(),
-            1,
+            first_ext_round,
             challenge_count,
             get_eq_high_constant_device_ptr() as *mut E4,
             self.round_scratch.eq_low_group.as_mut_ptr(),
@@ -166,11 +251,35 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 next_claim_point_and_batching_len,
             )
         };
-        for step in 0..last_step {
+        if matches!(self.bwd_vm_r0, MainLayerR0Binding::Windowed(_)) {
+            let coeffs_out = coeffs_buffer_ptr;
+            let challenges_out = device_claim_point_out
+                .slice_mut(0, BWD_WINDOW_COORDINATES)
+                .as_mut_ptr();
+            self.schedule_windowed_rounds_0_2(
+                device_external_challenges_ptr,
+                cont_lookup_mul_ptr,
+                cont_lookup_add_ptr,
+                cont_batch_base_ptr,
+                device_claim_point_in.as_ptr(),
+                device_seed.as_mut_ptr(),
+                device_claim.as_mut_ptr(),
+                device_eq_prefactor.as_mut_ptr(),
+                coeffs_out,
+                challenges_out,
+                context,
+            )?;
+            storage.purge_up_to_layer(self.layer_idx);
+        }
+
+        for step in first_round_in_loop..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
+                let MainLayerR0Binding::PerRound(round0) = &mut self.bwd_vm_r0 else {
+                    panic!("step 0 runs the per-round R0 VM");
+                };
                 super::super::vm::production_bind::schedule_bwd_vm_round0(
-                    &mut self.bwd_vm_round0,
+                    round0,
                     device_external_challenges_ptr,
                     cont_lookup_mul_ptr,
                     cont_lookup_add_ptr,
@@ -373,13 +482,14 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
         drop(device_claims_in);
         // Release extras scratch immediately after its last queued use.
         drop(extras_keepalive);
-        let coeff_bank_staging = [
-            self.bwd_vm_round0.take_bank_staging(),
-            self.bwd_vm_ext.take_bank_staging(),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
+        let r0_bank_staging = match &mut self.bwd_vm_r0 {
+            MainLayerR0Binding::PerRound(round0) => round0.take_bank_staging(),
+            MainLayerR0Binding::Windowed(windowed) => windowed.bank.take_bank_staging(),
+        };
+        let coeff_bank_staging = [r0_bank_staging, self.bwd_vm_ext.take_bank_staging()]
+            .into_iter()
+            .flatten()
+            .collect();
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             device_seed: Some(device_seed),

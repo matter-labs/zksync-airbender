@@ -28,8 +28,8 @@ pub use kernels::{
 pub use stage_snapshots::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink};
 #[doc(hidden)]
 pub use vm::continuation_golden::{
-    build_continuation_golden, continuation_golden_path, decode_golden, encode_golden,
-    ContinuationGoldenDto, GoldenEntry, CONTINUATION_GOLDEN_CORPUS,
+    build_continuation_golden, compile_corpus_layout, continuation_golden_path, decode_golden,
+    encode_golden, ContinuationGoldenDto, GoldenEntry, CONTINUATION_GOLDEN_CORPUS,
 };
 #[doc(hidden)]
 pub use vm::production_bind::{continuation_snapshot, legacy_continuation_snapshot};
@@ -71,6 +71,8 @@ impl GpuGKRDimensionReducingBackwardState {
         self,
         inits_and_teardowns_top_bits: Vec<u32>,
         programs: std::sync::Arc<crate::GkrPrograms>,
+        options: crate::GkrBackwardOptions,
+        strategy: crate::BackwardExecutionStrategy,
     ) -> GpuGKRMainLayerBackwardState {
         assert!(
             self.pending_layers.is_empty(),
@@ -80,6 +82,12 @@ impl GpuGKRDimensionReducingBackwardState {
         let num_layers = compiled_circuit.layers.len();
         let trace_len = compiled_circuit.trace_len;
         let teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
+        if strategy == crate::BackwardExecutionStrategy::WindowedR0 {
+            assert!(
+                programs.window_programs_ready(),
+                "the windowed arm requires a resolved window program bundle"
+            );
+        }
         GpuGKRMainLayerBackwardState {
             forward_tracing_ranges: self.forward_tracing_ranges,
             storage: self.storage,
@@ -94,6 +102,8 @@ impl GpuGKRDimensionReducingBackwardState {
                 inits_and_teardowns_top_bits
             },
             programs,
+            strategy,
+            window_tail: options.window_tail,
         }
     }
 }

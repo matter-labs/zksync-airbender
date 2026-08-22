@@ -189,6 +189,7 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
         &fixture.base.prover_config,
         fixture.base.final_trace_size_log_2,
         transfers,
+        gpu_gkr::GkrBackwardOptions::default(),
         &fixture.base.context,
     )
     .unwrap();

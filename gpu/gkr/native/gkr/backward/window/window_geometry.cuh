@@ -23,15 +23,22 @@ DEVICE_FORCEINLINE bwd_window_selector_pair bwd_window_selector(const u32 select
 
 // One row-tile-major group of 27 cells; this warp owns the three x2 cells of its
 // selector pair.
-DEVICE_FORCEINLINE void bwd_window_publish(const bwd_window_desc &desc, const u32 row_tile, const u32 lane, const bool active, const u32 selector_id,
-                                           const e4 (&values)[3]) {
+//
+// The tensor's axes are the rounds that bind them: the tail plays round 0 on
+// axis 0, and round `r` binds trace row bit `r`. A window's `x2` is the corner's
+// LOW bit — the pair axis the program's quadratic term is taken over — so the
+// cell index is `9 * x2 + 3 * x1 + x0`, not the selector-major order the
+// executor evaluates in.
+DEVICE_FORCEINLINE void bwd_window_publish(const bwd_window_desc &desc, const u32 row_tile, const u32 lane, const bool active,
+                                           const bwd_window_selector_pair selector, const e4 (&values)[3]) {
   const e4 equality = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, active ? row_tile * BWD_WINDOW_ROWS_PER_TILE + lane : 0);
+  const u32 cell_base = 3 * selector.x1 + selector.x0;
 #pragma unroll
   for (u32 x2 = 0; x2 < 3; ++x2) {
     e4 value = active ? e4::mul(equality, values[x2]) : e4::ZERO();
     value = bwd_window_warp_sum(value);
     if (lane == 0)
-      store<e4, st_modifier::cs>(desc.partials, value, static_cast<size_t>(row_tile) * BWD_WINDOW_TENSOR_CELLS + 3 * selector_id + x2);
+      store<e4, st_modifier::cs>(desc.partials, value, static_cast<size_t>(row_tile) * BWD_WINDOW_TENSOR_CELLS + 9 * x2 + cell_base);
   }
 }
 

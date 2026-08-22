@@ -61,9 +61,10 @@ cuda_kernel!(
 
 /// Which reduction the tail runs. Proof semantics are identical; the arm is a
 /// measured performance choice.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WindowTailArm {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WindowTailArm {
     /// One block reduces the partial matrix and plays the rounds.
+    #[default]
     Absorbed,
     /// 27 blocks reduce the partial matrix into `reduced_tensor`, then one
     /// block plays the rounds.

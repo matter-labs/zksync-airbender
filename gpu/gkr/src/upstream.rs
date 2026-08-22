@@ -54,6 +54,7 @@ pub(crate) use prover::gkr::prover::transcript_utils::{commit_field_els, draw_ra
 pub(crate) use prover::gkr::prover::{
     SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
 };
+pub(crate) use prover::gkr::prover_config::SumcheckScheduleClass;
 pub(crate) use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 pub(crate) use prover::gkr::sumcheck::{
     evaluate_eq_poly, evaluate_small_univariate_poly, output_univariate_monomial_form_max_quadratic,

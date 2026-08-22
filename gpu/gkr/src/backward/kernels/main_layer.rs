@@ -14,6 +14,21 @@ pub(crate) struct GpuGKRMainLayerRoundScratch {
     pub(crate) partials: DeviceAllocation<E4>,
 }
 
+/// The windowed arm's rounds 0-2: the window producer plus the bank fill that
+/// must precede it and the tail arm that consumes its partial tensor.
+pub(crate) struct WindowedR0Launch {
+    pub(crate) bank: super::super::vm::production_bind::BwdVmWindowBank,
+    pub(crate) window: super::super::window::binding::WindowLaunch,
+    pub(crate) tail_arm: crate::WindowTailArm,
+}
+
+/// How a prepared layer plays main-layer rounds 0-2. Selected once per proof by
+/// [`crate::backward_execution_strategy`], bound once per layer.
+pub(crate) enum MainLayerR0Binding {
+    PerRound(super::super::vm::production_bind::BwdVmRound0Launch),
+    Windowed(WindowedR0Launch),
+}
+
 #[doc(hidden)]
 pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan {
     pub layer_idx: usize,
@@ -21,7 +36,7 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan {
     pub(crate) claim_terms: Vec<(usize, GKRAddress)>,
     pub(crate) folding_evaluation_sources: Vec<crate::upstream::GKRAddress>,
     pub(crate) round_scratch: GpuGKRMainLayerRoundScratch,
-    pub(crate) bwd_vm_round0: super::super::vm::production_bind::BwdVmRound0Launch,
+    pub(crate) bwd_vm_r0: MainLayerR0Binding,
     pub(crate) bwd_vm_ext: super::super::vm::production_bind::BwdVmExtLaunch,
     pub(crate) eq_sizes: GkrEqSizes,
 }
@@ -39,6 +54,8 @@ pub(crate) struct GpuGKRMainLayerBackwardState {
     pub(crate) trace_len: usize,
     pub(crate) inits_and_teardowns_top_bits: Vec<u32>,
     pub(crate) programs: std::sync::Arc<crate::GkrPrograms>,
+    pub(crate) strategy: crate::BackwardExecutionStrategy,
+    pub(crate) window_tail: crate::WindowTailArm,
 }
 
 #[doc(hidden)]
