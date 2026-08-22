@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 pub(crate) mod binding;
 #[allow(dead_code)]
 pub(crate) mod generated_registry;

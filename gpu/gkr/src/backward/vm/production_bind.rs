@@ -99,7 +99,7 @@ enum BwdVmBindError {
     ChainWithoutPriorFold { window: u8, source: u32 },
 }
 
-fn family_read_place(family: WindowFamily, column: usize) -> Option<ReadPlace> {
+pub(crate) fn family_read_place(family: WindowFamily, column: usize) -> Option<ReadPlace> {
     match family {
         WindowFamily::BaseLayerMemory => Some(ReadPlace::BaseLayerMemory { column }),
         WindowFamily::BaseLayerWitness => Some(ReadPlace::BaseLayerWitness { column }),

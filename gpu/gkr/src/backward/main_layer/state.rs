@@ -5,6 +5,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_prover_context::ProverContext;
 
 use super::super::kernels::*;
+use super::super::window::binding::window_partials_len;
 
 impl GpuGKRMainLayerBackwardState {
     fn prepare_layer(
@@ -15,11 +16,19 @@ impl GpuGKRMainLayerBackwardState {
         let folding_steps = self.trace_len.trailing_zeros() as usize;
         let layer_plan = &self.programs.backward_layers[layer_idx];
 
-        let partials_len = super::super::kernels::max_partials_len(self.trace_len / 2);
+        // Both arms publish into the same buffer, so it holds whichever layout is
+        // larger: the per-round warp partials, or the window producer's row-tile-
+        // major tensor plus the split tail arm's reduction target.
+        let partials_len = super::super::kernels::max_partials_len(self.trace_len / 2)
+            .max(window_partials_len(self.trace_len));
         let mut round_scratch = GpuGKRMainLayerRoundScratch {
             eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
             partials: context.alloc(partials_len, AllocationPlacement::Top)?,
         };
+        assert!(
+            round_scratch.partials.len() >= window_partials_len(self.trace_len),
+            "the shared partials buffer cannot hold the window producer's tensor"
+        );
 
         let bwd_vm_round0 = super::super::vm::production_bind::build_bwd_vm_round0(
             &self.storage,

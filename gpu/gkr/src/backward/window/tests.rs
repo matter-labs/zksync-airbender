@@ -493,3 +493,325 @@ fn window_tail_gpu_absorbed_arm_matches_reference() {
 fn window_tail_gpu_split_arm_matches_reference() {
     drive_window_tail_arm(WindowTailArm::Split);
 }
+
+/// GPU-free probes of the launch ABI, the runtime binding, and dispatch.
+mod cpu_window_binding {
+    use core::mem::{align_of, offset_of, size_of};
+
+    use gpu_gkr_compiler::{
+        resolve_windowed_r0_dispatch, windowed_r0_bank, windowed_r0_kernel_symbol,
+        WindowCapacities, WindowProgram, WindowShape, DESCRIPTOR_ALIGNMENT_BYTES,
+        KERNEL_ARGUMENT_CEILING_BYTES, WINDOWED_R0_KERNEL_COUNT, WINDOW_SHAPE_DEFINED_BITS,
+    };
+
+    use crate::backward::kernels::max_partials_len;
+    use crate::backward::vm::seg_desc::{BwdSegAddrSlot, BWD_COEFF_PROCEDURAL_NONE};
+    use crate::backward::window::binding::{
+        build_window_binding, resolve_window_kernel, window_log_rows, window_partials_len,
+        window_row_tiles, WindowBindError, WindowLaunchBinding, WindowRuntimeScratch,
+        BWD_WINDOW_ADDR_SLOTS, BWD_WINDOW_COORDINATES, BWD_WINDOW_MAX_FOLDING_STEPS,
+        BWD_WINDOW_MAX_IMMEDIATES, BWD_WINDOW_PROGRAM_WORD_CAP, BWD_WINDOW_ROWS_PER_TILE,
+    };
+    use crate::backward::window::generated_registry::{
+        WINDOWED_R0_BLOCK_THREADS, WINDOWED_R0_DISPATCH, WINDOWED_R0_FALLBACK_MASK,
+        WINDOWED_R0_KERNELS,
+    };
+    use crate::backward::window::tail::WINDOW_TAIL_TENSOR_CELLS;
+    use gpu_core::primitives::field::E4;
+
+    const EQ_LOW: *const E4 = 0x1_0000 as *const E4;
+    const PARTIALS: *mut E4 = 0x2_0000 as *mut E4;
+
+    fn scratch(capacity: usize) -> WindowRuntimeScratch {
+        WindowRuntimeScratch {
+            eq_low: EQ_LOW,
+            partials: PARTIALS,
+            partials_capacity: capacity,
+        }
+    }
+
+    fn program(words: Vec<u16>, immediates: Vec<u32>) -> WindowProgram {
+        let mut sections = [0u32; 16];
+        for (index, endpoint) in [4u32, 8, 12, 16].into_iter().enumerate() {
+            sections[index] = endpoint;
+        }
+        sections[4] = u32::from(WindowShape::BF_PROCEDURAL.bits());
+        WindowProgram {
+            layer: 3,
+            words,
+            source_slots: vec![0, 129],
+            windows: Vec::new(),
+            immediates,
+            sections,
+            coefficient_plans: Vec::new(),
+            shape: WindowShape::BF_PROCEDURAL,
+            capacities: WindowCapacities::default(),
+        }
+    }
+
+    /// The rejection a binder call produced; neither the descriptor nor a kernel
+    /// entry is `Debug`, so `unwrap_err` is not available.
+    fn rejection<T>(result: Result<T, WindowBindError>) -> WindowBindError {
+        result.err().expect("the binder must reject this input")
+    }
+
+    fn slot(base: usize, log2_stride: u8) -> BwdSegAddrSlot {
+        BwdSegAddrSlot {
+            base: base as *const u8,
+            log2_stride,
+            origin: 0,
+            procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
+            reserved: [0; 5],
+        }
+    }
+
+    #[test]
+    fn descriptor_layout_matches_the_wire() {
+        assert_eq!(size_of::<WindowLaunchBinding>(), 17_248);
+        assert_eq!(
+            align_of::<WindowLaunchBinding>(),
+            DESCRIPTOR_ALIGNMENT_BYTES
+        );
+        assert!(size_of::<WindowLaunchBinding>() <= KERNEL_ARGUMENT_CEILING_BYTES);
+        assert_eq!(KERNEL_ARGUMENT_CEILING_BYTES, 32_764);
+        assert_eq!(offset_of!(WindowLaunchBinding, slot), 0);
+        assert_eq!(offset_of!(WindowLaunchBinding, eq_low), 1_024);
+        assert_eq!(offset_of!(WindowLaunchBinding, partials), 1_032);
+        assert_eq!(offset_of!(WindowLaunchBinding, log_rows), 1_040);
+        assert_eq!(offset_of!(WindowLaunchBinding, eq_sizes), 1_044);
+        assert_eq!(offset_of!(WindowLaunchBinding, sections), 1_056);
+        assert_eq!(offset_of!(WindowLaunchBinding, program), 1_120);
+        assert_eq!(offset_of!(WindowLaunchBinding, immediates), 15_200);
+        assert_eq!(BWD_WINDOW_ADDR_SLOTS, 64);
+        assert_eq!(BWD_WINDOW_PROGRAM_WORD_CAP, 7_040);
+        assert_eq!(BWD_WINDOW_MAX_IMMEDIATES, 512);
+    }
+
+    #[test]
+    fn binding_carries_the_program_the_scratch_and_the_row_shape() {
+        let words = vec![6u16, 0x8001, 3, 0x0080, 0, 1, 2, 3];
+        let immediates = vec![7u32, 11, 13];
+        let program = program(words.clone(), immediates.clone());
+        let slots = [slot(0x10_0000, 21), slot(0x20_0000, 19)];
+        let binding =
+            build_window_binding(&program, &slots, 24, scratch(window_partials_len(1 << 24)))
+                .expect("the synthetic program fits every capacity");
+
+        assert_eq!(binding.eq_low, EQ_LOW);
+        assert_eq!(binding.partials, PARTIALS);
+        assert_eq!(binding.log_rows, 21);
+        // The window peels three coordinates per launch, so its eq schedule is
+        // two groups shorter than round 0's per-round schedule.
+        assert_eq!(binding.eq_sizes.high, [8, 8]);
+        assert_eq!(binding.eq_sizes.low, 5);
+        assert_eq!(binding.sections, program.sections);
+        assert_eq!(&binding.program[..words.len()], words.as_slice());
+        assert!(binding.program[words.len()..].iter().all(|word| *word == 0));
+        assert_eq!(
+            &binding.immediates[..immediates.len()],
+            immediates.as_slice()
+        );
+        assert!(binding.immediates[immediates.len()..]
+            .iter()
+            .all(|immediate| *immediate == 0));
+        for (index, expected) in slots.iter().enumerate() {
+            assert_eq!(binding.slot[index].base, expected.base, "slot {index} base");
+            assert_eq!(
+                binding.slot[index].log2_stride, expected.log2_stride,
+                "slot {index} stride"
+            );
+        }
+        assert!(binding.slot[slots.len()..]
+            .iter()
+            .all(|slot| slot.base.is_null()));
+    }
+
+    #[test]
+    fn binding_eq_schedule_tracks_the_smallest_trace() {
+        let binding =
+            build_window_binding(&program(Vec::new(), Vec::new()), &[], 4, scratch(1 << 10))
+                .expect("a log-4 trace is one row tile");
+        assert_eq!(binding.log_rows, 1);
+        assert_eq!(binding.eq_sizes.high, [0, 0]);
+        assert_eq!(binding.eq_sizes.low, 1);
+        assert_eq!(window_log_rows(4), 1);
+    }
+
+    #[test]
+    fn binding_rejects_what_the_descriptor_cannot_hold() {
+        let empty = program(Vec::new(), Vec::new());
+        assert_eq!(
+            rejection(build_window_binding(&empty, &[], 3, scratch(1 << 20))),
+            WindowBindError::UnsupportedFoldingSteps { folding_steps: 3 }
+        );
+        assert_eq!(
+            rejection(build_window_binding(
+                &empty,
+                &[],
+                BWD_WINDOW_MAX_FOLDING_STEPS + 1,
+                scratch(1 << 20)
+            )),
+            WindowBindError::UnsupportedFoldingSteps {
+                folding_steps: BWD_WINDOW_MAX_FOLDING_STEPS + 1
+            }
+        );
+        assert_eq!(
+            rejection(build_window_binding(
+                &empty,
+                &vec![slot(0x1000, 4); BWD_WINDOW_ADDR_SLOTS + 1],
+                12,
+                scratch(1 << 20)
+            )),
+            WindowBindError::Capacity {
+                resource: "window address slots",
+                required: BWD_WINDOW_ADDR_SLOTS + 1,
+                capacity: BWD_WINDOW_ADDR_SLOTS,
+            }
+        );
+        assert_eq!(
+            rejection(build_window_binding(
+                &program(vec![0; BWD_WINDOW_PROGRAM_WORD_CAP + 1], Vec::new()),
+                &[],
+                12,
+                scratch(1 << 20)
+            )),
+            WindowBindError::Capacity {
+                resource: "window program words",
+                required: BWD_WINDOW_PROGRAM_WORD_CAP + 1,
+                capacity: BWD_WINDOW_PROGRAM_WORD_CAP,
+            }
+        );
+        assert_eq!(
+            rejection(build_window_binding(
+                &program(Vec::new(), vec![0; BWD_WINDOW_MAX_IMMEDIATES + 1]),
+                &[],
+                12,
+                scratch(1 << 20)
+            )),
+            WindowBindError::Capacity {
+                resource: "window immediates",
+                required: BWD_WINDOW_MAX_IMMEDIATES + 1,
+                capacity: BWD_WINDOW_MAX_IMMEDIATES,
+            }
+        );
+        let required = window_partials_len(1 << 20);
+        assert_eq!(
+            rejection(build_window_binding(&empty, &[], 20, scratch(required - 1))),
+            WindowBindError::Capacity {
+                resource: "window partials",
+                required,
+                capacity: required - 1,
+            }
+        );
+        assert!(build_window_binding(&empty, &[], 20, scratch(required)).is_ok());
+    }
+
+    #[test]
+    fn scratch_geometry_covers_both_partial_layouts() {
+        assert_eq!(WINDOW_TAIL_TENSOR_CELLS, 27);
+        assert_eq!(BWD_WINDOW_ROWS_PER_TILE, 32);
+        // A log-4 trace has two window rows, so one tile; the reserved tensor is
+        // the second 27-cell group.
+        assert_eq!(window_row_tiles(1 << 4), 1);
+        assert_eq!(window_partials_len(1 << 4), 54);
+        for log_trace in 4..=BWD_WINDOW_MAX_FOLDING_STEPS {
+            let trace_len = 1usize << log_trace;
+            let rows = trace_len >> BWD_WINDOW_COORDINATES;
+            let tiles = window_row_tiles(trace_len);
+            assert_eq!(tiles, rows.div_ceil(BWD_WINDOW_ROWS_PER_TILE).max(1));
+            assert_eq!(
+                window_partials_len(trace_len),
+                WINDOW_TAIL_TENSOR_CELLS * tiles + WINDOW_TAIL_TENSOR_CELLS,
+                "log {log_trace} partial layout"
+            );
+            let shared = max_partials_len(trace_len / 2).max(window_partials_len(trace_len));
+            assert!(shared >= window_partials_len(trace_len));
+            assert!(shared >= max_partials_len(trace_len / 2));
+        }
+        // The window layout is the larger of the two at production scale.
+        assert!(window_partials_len(1 << 24) > max_partials_len((1 << 24) / 2));
+    }
+
+    #[test]
+    fn dispatch_resolves_every_ruled_row_to_its_generated_kernel() {
+        assert_eq!(WINDOWED_R0_KERNELS.len(), WINDOWED_R0_KERNEL_COUNT);
+        assert_eq!(WINDOWED_R0_BLOCK_THREADS, 288);
+        for (native, compiled, min_blocks) in WINDOWED_R0_DISPATCH {
+            let entry = resolve_window_kernel(native).expect("a ruled mask dispatches");
+            assert_eq!(entry.mask, compiled, "native {native:#05x} compiled mask");
+            assert_eq!(entry.min_blocks, min_blocks, "native {native:#05x} bound");
+            assert_eq!(
+                entry.symbol_name,
+                windowed_r0_kernel_symbol(compiled, min_blocks),
+                "native {native:#05x} symbol"
+            );
+            assert_eq!(native & compiled, native, "native {native:#05x} subset");
+        }
+    }
+
+    #[test]
+    fn dispatch_falls_back_for_unruled_well_formed_masks() {
+        let ruled: Vec<u16> = WINDOWED_R0_DISPATCH
+            .iter()
+            .map(|(native, ..)| *native)
+            .collect();
+        let fallback = resolve_window_kernel(WINDOWED_R0_FALLBACK_MASK).expect("universal kernel");
+        assert_eq!(fallback.mask, WINDOWED_R0_FALLBACK_MASK);
+        let mut fallbacks = 0;
+        for mask in 0..=WINDOW_SHAPE_DEFINED_BITS {
+            let entry = resolve_window_kernel(mask).expect("a well-formed mask always dispatches");
+            let (compiled, min_blocks) =
+                resolve_windowed_r0_dispatch(mask).expect("the manifest agrees");
+            assert_eq!(entry.mask, compiled, "mask {mask:#05x}");
+            assert_eq!(entry.min_blocks, min_blocks, "mask {mask:#05x} bound");
+            if !ruled.contains(&mask) {
+                assert_eq!(entry.mask, WINDOWED_R0_FALLBACK_MASK, "mask {mask:#05x}");
+                assert!(mask & WINDOWED_R0_FALLBACK_MASK == mask);
+                fallbacks += 1;
+            }
+        }
+        assert_eq!(
+            fallbacks,
+            usize::from(WINDOW_SHAPE_DEFINED_BITS) + 1 - ruled.len()
+        );
+    }
+
+    #[test]
+    fn dispatch_rejects_undefined_feature_bits() {
+        for mask in [0x1000u16, 0x1001, 0x8000, 0xffff] {
+            assert_eq!(
+                rejection(resolve_window_kernel(mask)),
+                WindowBindError::UndefinedShapeBits { bits: mask },
+                "mask {mask:#06x}"
+            );
+        }
+        assert!(WindowShape::from_bits(0x1000).is_err());
+    }
+
+    #[test]
+    fn generated_registry_mirrors_the_compiler_manifest() {
+        assert_eq!(
+            WINDOWED_R0_DISPATCH,
+            gpu_gkr_compiler::WINDOWED_R0_DISPATCH,
+            "dispatch map drift"
+        );
+        assert_eq!(
+            WINDOWED_R0_FALLBACK_MASK,
+            gpu_gkr_compiler::WINDOWED_R0_FALLBACK_MASK
+        );
+        assert_eq!(
+            WINDOWED_R0_BLOCK_THREADS,
+            gpu_gkr_compiler::WINDOWED_R0_BLOCK_THREADS
+        );
+        let bank = windowed_r0_bank();
+        assert_eq!(bank.len(), WINDOWED_R0_KERNELS.len());
+        for ((mask, min_blocks), entry) in bank.into_iter().zip(WINDOWED_R0_KERNELS.iter()) {
+            assert_eq!(entry.mask, mask, "bank mask order");
+            assert_eq!(entry.min_blocks, min_blocks, "bank bound");
+            assert_eq!(
+                entry.symbol_name,
+                windowed_r0_kernel_symbol(mask, min_blocks)
+            );
+        }
+    }
+}
