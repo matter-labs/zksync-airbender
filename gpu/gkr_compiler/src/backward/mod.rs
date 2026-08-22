@@ -2,6 +2,7 @@ pub(crate) mod common;
 pub(crate) mod continuation;
 pub(crate) mod r0;
 pub mod window;
+pub mod window_manifest;
 
 pub use common::group::{
     analyze_coeff_grouping, materialize_coeff_grouping_for_semantics, CoeffGroupingAnalysis,
@@ -51,6 +52,13 @@ pub use window::{
     WindowGroupedMember, WindowGroupedProgram, WindowLoweringError, WindowLoweringInputs,
     WindowPhase, WindowProgram, WindowShape, WINDOW_COEFFICIENT_BANK_BIAS,
     WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS, WINDOW_SHAPE_DEFINED_BITS,
+};
+pub use window_manifest::{
+    render_windowed_r0_manifest, render_windowed_r0_registry, render_windowed_r0_translation_unit,
+    resolve_windowed_r0_dispatch, validate_windowed_r0_dispatch, windowed_r0_bank,
+    windowed_r0_generated_artifacts, windowed_r0_kernel_symbol, windowed_r0_translation_unit_name,
+    WINDOWED_R0_BLOCK_THREADS, WINDOWED_R0_DISPATCH, WINDOWED_R0_FALLBACK_MASK,
+    WINDOWED_R0_GENERATED_NATIVE_DIR, WINDOWED_R0_GENERATED_REGISTRY, WINDOWED_R0_KERNEL_COUNT,
 };
 
 pub const MAX_BACKWARD_COEFFICIENT_RECIPES: usize = common::limits::LEAN_MAX_COEFFICIENT_RECIPES;
