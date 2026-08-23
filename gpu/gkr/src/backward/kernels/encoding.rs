@@ -11,13 +11,13 @@ use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 use gpu_core::primitives::field::E4;
 
 #[derive(Clone, Copy)]
-pub(in crate::backward) struct FoldingArenaBinding {
+pub(crate) struct FoldingArenaBinding {
     pub(crate) base: *const u8,
     pub(crate) log2_stride: u32,
 }
 
 impl FoldingArenaBinding {
-    pub(in crate::backward) fn new(base: *const u8, log2_stride: u32) -> Self {
+    pub(crate) fn new(base: *const u8, log2_stride: u32) -> Self {
         assert!(!base.is_null());
         Self { base, log2_stride }
     }
@@ -50,6 +50,8 @@ pub(crate) fn get_main_layer_claim_point_device_ptr() -> *mut E4 {
 
 /// Number of base pointers addressable by the 4-bit source pointer index.
 pub(crate) const GKR_DIM_REDUCING_BASE_SLOTS: usize = 16;
+/// Number of polynomials addressable by the 11-bit polynomial index.
+pub(crate) const GKR_DIM_REDUCING_POLY_CAPACITY: usize = 1 << 11;
 
 /// One dim-reducing slot: `io[0..2]` inputs then `io[2..4]` outputs, plus the
 /// batch-challenge table index for each output. Mirrors
@@ -142,7 +144,7 @@ impl<E: Field> Default for GpuGKRDimensionReducingBatch<E> {
 pub(crate) const fn pack_source_u16(first_access: bool, ptr_idx: u8, poly_idx: u16) -> u16 {
     assert!(ptr_idx < 16, "pointer index exceeds 4-bit wire field");
     assert!(
-        poly_idx < 2048,
+        (poly_idx as usize) < GKR_DIM_REDUCING_POLY_CAPACITY,
         "polynomial index exceeds 11-bit wire field"
     );
     let fa = if first_access { 1u16 << 15 } else { 0 };
@@ -154,7 +156,7 @@ pub(crate) const fn pack_source_u16(first_access: bool, ptr_idx: u8, poly_idx: u
 pub(crate) const fn pack_cache_u16(ptr_idx: u8, poly_idx: u16) -> u16 {
     assert!(ptr_idx < 16, "pointer index exceeds 4-bit wire field");
     assert!(
-        poly_idx < 2048,
+        (poly_idx as usize) < GKR_DIM_REDUCING_POLY_CAPACITY,
         "polynomial index exceeds 11-bit wire field"
     );
     ((ptr_idx as u16) << 11) | poly_idx

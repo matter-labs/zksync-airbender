@@ -1,15 +1,23 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::field::E4;
 use gpu_gkr_compiler::{lower_dr_window_program, project_dr_window_inputs, DrWindowInputOutput};
 
+use super::binding::{DrCompactSourceTableBuilder, DrWindowBindError};
+use super::composition::{build_raw_input_owner, DrWindowRawInputKeepalive};
+use crate::backward::kernels::{pack_cache_u16, pack_source_u16, FoldingArenaBinding};
 use crate::backward::{
     derive_dimension_reducing_inputs, legacy_dimension_reducing_slots_for_test,
     GpuGKRDimensionReducingLayerSlots, CONTINUATION_GOLDEN_CORPUS,
 };
 use crate::gkr_address_audit::AddressClass;
-use crate::storage_layout::{address_storage_layer, FieldType, GpuGKRStorageLayout};
+use crate::storage_layout::{
+    address_storage_layer, FieldType, GpuGKRLayerLayout, GpuGKRStorageLayout,
+};
 use crate::upstream::{GKRAddress, OutputType};
-use crate::{DrWindowLayerProgram, DrWindowProgramBundle};
+use crate::{DrWindowLayerProgram, DrWindowProgramBundle, GpuGKRStorage};
 
 const CORPUS_FINAL_TRACE_LOG: u32 = 4;
 
@@ -64,6 +72,24 @@ struct LayerCensus {
 
 fn address(offset: usize) -> GKRAddress {
     GKRAddress::InnerLayer { layer: 7, offset }
+}
+
+fn test_storage_layout(
+    entries: impl IntoIterator<Item = (GKRAddress, AddressClass, FieldType, u32)>,
+    log2_stride: u32,
+) -> GpuGKRStorageLayout {
+    let mut layers = vec![GpuGKRLayerLayout::default(); 8];
+    for (address, class, field, poly_index) in entries {
+        layers[7].index.insert(address, (class, field, poly_index));
+    }
+    layers[7].log2_stride = log2_stride;
+    GpuGKRStorageLayout {
+        trace_len: 1 << log2_stride,
+        artifact_log2_stride: log2_stride,
+        layers,
+        aliases: BTreeMap::new(),
+        scratch_space_mapping_rev: BTreeMap::new(),
+    }
 }
 
 fn resolve_ext_lane(
@@ -369,6 +395,257 @@ fn assert_port_mutations_are_detected(expected: &PortMutationObservation) {
         compare_port_observations(expected, &exponent_mutation),
         Err(PortObservationMismatch::BatchExponent),
     );
+}
+
+#[test]
+fn cpu_dr_compact_source_table_emits_first_use_slots_and_arena_records() {
+    let first = FoldingArenaBinding::new(0x1000usize as *const u8, 6);
+    let second = FoldingArenaBinding::new(0x2000usize as *const u8, 4);
+    let mut builder = DrCompactSourceTableBuilder::new();
+
+    assert_eq!(
+        builder.intern_arena_e4(first, 17).unwrap(),
+        pack_cache_u16(0, 17)
+    );
+    assert_eq!(
+        builder.intern_arena_e4(first, 17).unwrap(),
+        pack_source_u16(false, 0, 17)
+    );
+    assert_eq!(
+        builder.intern_arena_e4(first, 17).unwrap() | (1u16 << 15),
+        pack_source_u16(true, 0, 17)
+    );
+    assert_eq!(
+        builder.intern_arena_e4(first, 3).unwrap(),
+        pack_cache_u16(0, 3)
+    );
+    assert_eq!(
+        builder.intern_arena_e4(second, 9).unwrap(),
+        pack_cache_u16(1, 9)
+    );
+
+    let tables = builder.finish();
+    assert_eq!(tables.bases[0], first.base);
+    assert_eq!(tables.log2_stride[0], first.log2_stride);
+    assert_eq!(tables.bases[1], second.base);
+    assert_eq!(tables.log2_stride[1], second.log2_stride);
+    assert!(tables.bases[2..].iter().all(|base| base.is_null()));
+    assert!(tables.log2_stride[2..].iter().all(|stride| *stride == 0));
+}
+
+#[test]
+fn cpu_dr_compact_source_table_rejects_every_typed_binding_failure() {
+    let source = address(0);
+    let mut builder = DrCompactSourceTableBuilder::new();
+    let storage = GpuGKRStorage::<(), E4>::default();
+    assert_eq!(
+        builder.intern_storage_e4(&storage, source),
+        Err(DrWindowBindError::MissingStorageLayout { address: source }),
+    );
+
+    let mut storage = GpuGKRStorage::<(), E4>::default();
+    storage.set_layout(Arc::new(test_storage_layout([], 4)));
+    assert_eq!(
+        builder.intern_storage_e4(&storage, source),
+        Err(DrWindowBindError::MissingSource {
+            address: source,
+            logical_layer: 7,
+        }),
+    );
+
+    let mut storage = GpuGKRStorage::<(), E4>::default();
+    storage.set_layout(Arc::new(test_storage_layout(
+        [(
+            source,
+            AddressClass::ThisLayerInnerLayerWrite,
+            FieldType::Base,
+            0,
+        )],
+        4,
+    )));
+    assert_eq!(
+        builder.intern_storage_e4(&storage, source),
+        Err(DrWindowBindError::NonE4Source {
+            address: source,
+            field: FieldType::Base,
+        }),
+    );
+
+    let class = AddressClass::ThisLayerCachedWrite;
+    let mut storage = GpuGKRStorage::<(), E4>::default();
+    storage.set_layout(Arc::new(test_storage_layout(
+        [(source, class, FieldType::Ext, 0)],
+        4,
+    )));
+    assert_eq!(
+        builder.intern_storage_e4(&storage, source),
+        Err(DrWindowBindError::MissingE4Backing {
+            address: source,
+            canonical_layer: 7,
+            class,
+        }),
+    );
+
+    let first = FoldingArenaBinding::new(0x3000usize as *const u8, 5);
+    let conflicting = FoldingArenaBinding::new(first.base, 6);
+    let mut builder = DrCompactSourceTableBuilder::new();
+    builder.intern_arena_e4(first, 0).unwrap();
+    assert_eq!(
+        builder.intern_arena_e4(conflicting, 0),
+        Err(DrWindowBindError::StrideMismatch {
+            backing: first.base as usize,
+            expected_log2_stride: 5,
+            observed_log2_stride: 6,
+        }),
+    );
+
+    let mut builder = DrCompactSourceTableBuilder::new();
+    assert_eq!(
+        builder.intern_arena_e4(first, 1 << 11),
+        Err(DrWindowBindError::PolyIndexOverflow {
+            poly_index: 1 << 11,
+            capacity: 1 << 11,
+        }),
+    );
+
+    let mut builder = DrCompactSourceTableBuilder::new();
+    for slot in 0..16usize {
+        let arena = FoldingArenaBinding::new((0x10_000 + slot * 0x1000) as *const u8, 4);
+        assert_eq!(
+            builder.intern_arena_e4(arena, slot).unwrap(),
+            pack_cache_u16(slot as u8, slot as u16),
+        );
+    }
+    let overflow = FoldingArenaBinding::new(0x20_000usize as *const u8, 4);
+    assert_eq!(
+        builder.intern_arena_e4(overflow, 0),
+        Err(DrWindowBindError::BaseSlotOverflow {
+            required: 17,
+            capacity: 16,
+        }),
+    );
+}
+
+#[test]
+fn cpu_dr_raw_input_keepalive_helper_deduplicates_inputs_and_excludes_outputs() {
+    let program = lower_dr_window_program(&BTreeMap::from([(
+        OutputType::PermutationProduct,
+        DrWindowInputOutput::new([address(2), address(0)], [address(1), address(3)]),
+    )]))
+    .unwrap();
+    let projection = project_dr_window_inputs(&program, &BTreeMap::new());
+    assert_eq!(projection.canonical_sources(), &[address(0), address(2)]);
+
+    let shared_input = Arc::new(vec![1u8, 2, 3]);
+    let output_only = Arc::new(vec![9u8]);
+    let shared_input_weak = Arc::downgrade(&shared_input);
+    let output_only_weak = Arc::downgrade(&output_only);
+    let shared_input_ptr = Arc::as_ptr(&shared_input);
+    let output_only_ptr = Arc::as_ptr(&output_only);
+    let mut storage_layers = vec![BTreeMap::new(); 8];
+    storage_layers[7] = BTreeMap::from([
+        (address(0), Arc::clone(&shared_input)),
+        (address(1), Arc::clone(&output_only)),
+        (address(2), Arc::clone(&shared_input)),
+        (address(3), Arc::clone(&output_only)),
+    ]);
+    let mut requested = Vec::new();
+    let owner = build_raw_input_owner(&projection, |source| {
+        requested.push(source);
+        Ok::<_, ()>(Arc::clone(&storage_layers[7][&source]))
+    })
+    .unwrap();
+    assert_eq!(owner.canonical_sources, projection.canonical_sources());
+    assert_eq!(requested, projection.canonical_sources());
+    assert_eq!(owner.backings.len(), 1);
+    assert_eq!(Arc::as_ptr(&owner.backings[0]), shared_input_ptr);
+    assert!(owner
+        .backings
+        .iter()
+        .all(|backing| Arc::as_ptr(backing) != output_only_ptr));
+
+    storage_layers.truncate(1);
+    assert_eq!(storage_layers.len(), 1);
+    drop(shared_input);
+    drop(output_only);
+
+    assert_eq!(
+        Arc::as_ptr(&shared_input_weak.upgrade().unwrap()),
+        shared_input_ptr
+    );
+    assert!(output_only_weak.upgrade().is_none());
+    assert_eq!(Arc::as_ptr(&owner.backings[0]), shared_input_ptr);
+}
+
+#[test]
+#[ignore = "requires CUDA allocation; run through .agents/bin/with_gpu_lock.sh"]
+fn gpu_dr_raw_input_keepalive_owns_actual_storage_backings_across_purge() {
+    let input = address(0);
+    let output_a = address(1);
+    let input_alias = address(2);
+    let output_b = address(3);
+    let program = lower_dr_window_program(&BTreeMap::from([(
+        OutputType::PermutationProduct,
+        DrWindowInputOutput::new([input_alias, input], [output_a, output_b]),
+    )]))
+    .unwrap();
+    let aliases = BTreeMap::from([(input_alias, input)]);
+    let projection = project_dr_window_inputs(&program, &aliases);
+    assert_eq!(projection.canonical_sources(), &[input]);
+    assert_eq!(projection.occurrences().len(), 2);
+    assert!(projection
+        .occurrences()
+        .iter()
+        .all(|occurrence| occurrence.publication_index() == 0));
+    assert!(!projection.canonical_sources().contains(&output_a));
+    assert!(!projection.canonical_sources().contains(&output_b));
+
+    let input_class = AddressClass::ThisLayerInnerLayerWrite;
+    let output_class = AddressClass::ThisLayerCachedWrite;
+    let mut layout = test_storage_layout(
+        [
+            (input, input_class, FieldType::Ext, 0),
+            (output_a, output_class, FieldType::Ext, 0),
+            (output_b, output_class, FieldType::Ext, 1),
+        ],
+        4,
+    );
+    layout.aliases = aliases;
+
+    let context = crate::test_utils::make_test_context(64, 16);
+    let input_backing = Arc::new(context.alloc::<E4>(16, AllocationPlacement::Top).unwrap());
+    let output_backing = Arc::new(context.alloc::<E4>(32, AllocationPlacement::Top).unwrap());
+    let input_pointer = input_backing.as_ptr();
+    let output_pointer = output_backing.as_ptr();
+    let input_weak = Arc::downgrade(&input_backing);
+    let output_weak = Arc::downgrade(&output_backing);
+
+    let mut storage = GpuGKRStorage::<(), E4>::default();
+    storage.set_layout(Arc::new(layout));
+    storage.layers.resize_with(8, Default::default);
+    storage.layers[7]
+        .ext_class_backings
+        .insert(input_class, Arc::clone(&input_backing));
+    storage.layers[7]
+        .ext_class_backings
+        .insert(output_class, Arc::clone(&output_backing));
+
+    let owner = DrWindowRawInputKeepalive::from_projection(&storage, &projection).unwrap();
+    assert_eq!(owner.canonical_sources, vec![input]);
+    assert_eq!(owner.backings.len(), 1);
+    assert_eq!(owner.backings[0].as_ptr(), input_pointer);
+    assert_ne!(owner.backings[0].as_ptr(), output_pointer);
+
+    storage.purge_up_to_layer(0);
+    assert_eq!(storage.layers.len(), 1);
+    drop(input_backing);
+    drop(output_backing);
+
+    assert_eq!(input_weak.upgrade().unwrap().as_ptr(), input_pointer);
+    assert!(output_weak.upgrade().is_none());
+    assert_eq!(owner.backings[0].as_ptr(), input_pointer);
+    drop(owner);
+    assert!(input_weak.upgrade().is_none());
 }
 
 #[test]
