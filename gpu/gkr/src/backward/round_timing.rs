@@ -6,7 +6,8 @@
 //! synchronized; it synchronizes each terminal event before reading.
 //!
 //! Per layer: a start event, one event per recorded segment (the first three
-//! round tails, plus the windowed arm's named prologue segments), and one
+//! round tails, plus the windowed arm's named prologue and continuation-window
+//! kernel/tail segments), and one
 //! event after the final round's tail. This yields the per-segment times and
 //! the layer's total backward time, tagged with the arm that ran.
 

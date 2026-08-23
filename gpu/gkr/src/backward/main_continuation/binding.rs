@@ -34,6 +34,7 @@ use crate::backward::vm::seg_desc::{
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_ADDR_SLOTS, BWD_SEG_C_INIT_NONE,
 };
 use crate::backward::vm::seg_lower::zeroed_box;
+use crate::backward::GkrEqSizes;
 use crate::forward::vm::lower::read_place_to_gkr_address;
 use crate::forward::vm::production_bind::resolve_storage_column;
 use crate::GpuGKRStorage;
@@ -167,6 +168,7 @@ pub(crate) struct MainContinuationWindowLaunched {
     published: ContinuationPublishedLevel,
     row_tiles: usize,
     reduced_tensor: *mut E4,
+    eq_sizes: GkrEqSizes,
 }
 
 impl MainContinuationWindowLaunched {
@@ -184,6 +186,12 @@ impl MainContinuationWindowLaunched {
 
     pub(crate) fn reduced_tensor(&self) -> *mut E4 {
         self.reduced_tensor
+    }
+
+    /// Exact pass-local Eq shape copied from the enqueued descriptor. The
+    /// physical tail advances this host mirror once before boundary checking.
+    pub(crate) fn eq_sizes(&self) -> GkrEqSizes {
+        self.eq_sizes
     }
 }
 
@@ -819,6 +827,7 @@ pub(crate) fn launch_main_continuation_window(
         MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
         context.get_exec_stream(),
     );
+    let eq_sizes = launch.binding.eq_sizes;
     launch.kernel.launch(
         &config,
         &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
@@ -827,6 +836,7 @@ pub(crate) fn launch_main_continuation_window(
         published: launch.published,
         row_tiles: launch.row_tiles,
         reduced_tensor: launch.reduced_tensor,
+        eq_sizes,
     })
 }
 

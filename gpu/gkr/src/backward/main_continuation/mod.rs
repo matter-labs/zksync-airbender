@@ -5,6 +5,7 @@ mod binding;
 mod generated_registry;
 mod publication;
 mod reference;
+mod sequence;
 
 #[allow(unused_imports)] // Task 6 consumes this staged production seam.
 pub(crate) use binding::{
@@ -20,6 +21,7 @@ pub(crate) use publication::{
 };
 #[doc(hidden)]
 pub use reference::{continuation_window_tensor_reference, ContinuationWindowReferenceError};
+pub(crate) use sequence::MainContinuationWindowSequence;
 
 #[cfg(test)]
 mod cpu_tests;
