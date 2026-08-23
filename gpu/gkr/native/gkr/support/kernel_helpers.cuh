@@ -80,10 +80,21 @@ DEVICE_FORCEINLINE unsigned gkr_eq_group_size(const unsigned challenge_count, co
   return remaining < GKR_EQ_GROUP_SIZE ? remaining : GKR_EQ_GROUP_SIZE;
 }
 
-template <typename E>
-DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count,
-                                                             E *eq_group_tables) {
-  const unsigned group_idx = blockIdx.x;
+template <typename E> struct gkr_global_eq_group_table_writer {
+  E *destination;
+
+  DEVICE_FORCEINLINE void operator()(const unsigned index, const E &value) const { store<E, st_modifier::cs>(destination, value, index); }
+};
+
+template <typename E> struct gkr_shared_eq_group_table_writer {
+  E *destination;
+
+  DEVICE_FORCEINLINE void operator()(const unsigned index, const E &value) const { destination[index] = value; }
+};
+
+template <typename E, typename DestinationWriter>
+DEVICE_FORCEINLINE void gkr_build_eq_group_table_from_point(const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count,
+                                                            const unsigned group_idx, const DestinationWriter &write_destination) {
   const unsigned group_size = gkr_eq_group_size(challenge_count, group_idx);
   if (group_size == 0)
     return;
@@ -134,7 +145,14 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_poin
     consumed_bits += chunk_size;
   }
 
-  store<E, st_modifier::cs>(eq_group_tables + group_idx * GKR_EQ_GROUP_TABLE_LEN, acc, tid);
+  write_destination(group_idx * GKR_EQ_GROUP_TABLE_LEN + tid, acc);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count,
+                                                             E *eq_group_tables) {
+  const gkr_global_eq_group_table_writer<E> write_destination{eq_group_tables};
+  gkr_build_eq_group_table_from_point<E>(claim_point, challenge_offset, challenge_count, blockIdx.x, write_destination);
 }
 
 template <typename E>
