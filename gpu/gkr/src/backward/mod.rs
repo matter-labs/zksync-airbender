@@ -10,6 +10,7 @@ use gpu_prover_context::ProverContext;
 
 mod dim_reducing_encoder;
 mod dim_reducing_sumcheck_plan;
+mod dr_tail;
 pub mod kernels;
 mod main_layer;
 pub mod round_timing;
@@ -17,6 +18,9 @@ mod scheduled_execution;
 mod stage_snapshots;
 pub(crate) mod vm;
 pub mod window;
+
+#[doc(hidden)]
+pub use dr_tail::dr_tail_first_order_mismatch;
 
 pub(crate) use kernels::*;
 pub use kernels::{
