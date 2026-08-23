@@ -2,6 +2,7 @@ pub(crate) mod common;
 pub(crate) mod continuation;
 pub(crate) mod r0;
 pub mod window;
+pub mod window_dr;
 pub mod window_manifest;
 
 pub use common::group::{
@@ -54,6 +55,11 @@ pub use window::{
     WindowOperandWords, WindowPhase, WindowProgram, WindowShape, WindowSourceLane,
     WINDOW_COEFFICIENT_BANK_BIAS, WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS,
     WINDOW_SHAPE_DEFINED_BITS,
+};
+pub use window_dr::{
+    lower_dr_window_program, project_dr_window_inputs, DrWindowInputOccurrence,
+    DrWindowInputOutput, DrWindowInputProjection, DrWindowLoweringError, DrWindowProgram,
+    DrWindowSlotPlan, DrWindowSourceLane,
 };
 pub use window_manifest::{
     render_windowed_r0_manifest, render_windowed_r0_registry, render_windowed_r0_translation_unit,
