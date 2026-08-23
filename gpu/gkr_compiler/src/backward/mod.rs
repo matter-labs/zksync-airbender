@@ -1,5 +1,6 @@
 pub(crate) mod common;
 pub(crate) mod continuation;
+pub mod main_continuation_window;
 pub(crate) mod r0;
 pub mod window;
 pub mod window_manifest;
@@ -43,6 +44,17 @@ pub fn decode_continuation_program(program: &LeanProgram) -> Result<Vec<LeanAtom
 pub use continuation::{
     compile_continuations, interpret_continuation_program, ContinuationCompileError,
     ContinuationLayerProgram, ContinuationProgramBundle,
+};
+pub use main_continuation_window::{
+    interpret_main_continuation_window_shape, lower_main_continuation_window_program,
+    MainContinuationWindowCapacities, MainContinuationWindowGroupRecord,
+    MainContinuationWindowLoweringError, MainContinuationWindowProgram,
+    MainContinuationWindowSection, MainContinuationWindowSections, MainContinuationWindowShape,
+    MainContinuationWindowShapeEvaluationError, MainContinuationWindowSource,
+    MAIN_CONTINUATION_WINDOW_COEFFICIENT_BANK_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY, MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY,
 };
 pub use r0::{compile_r0, interpret_r0_program, R0CompileError, R0LayerProgram, R0ProgramBundle};
 pub use window::{
