@@ -1,5 +1,6 @@
 use crate::proof::{
-    preflight_windowed_r0, prove, resolve_backward_execution_strategy, GpuGKRProofJob,
+    construct_after_windowed_backward_preflight, preflight_windowed_backward, prove,
+    resolve_backward_execution_strategy, GpuGKRProofJob,
 };
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
@@ -337,7 +338,13 @@ impl BasicUnrolledFixture {
             &self.prover_config,
             backward_options,
         );
-        preflight_windowed_r0(&self.gkr_programs, strategy).unwrap();
+        preflight_windowed_backward(
+            &self.gkr_programs,
+            strategy,
+            backward_options,
+            self.final_trace_size_log_2,
+        )
+        .unwrap();
         prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
@@ -356,7 +363,19 @@ impl BasicUnrolledFixture {
         &self,
         backward_options: GkrBackwardOptions,
     ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
-        let mut transfers = self.create_transfers()?;
+        let strategy = resolve_backward_execution_strategy(
+            &self.gkr_programs,
+            &self.prover_config,
+            backward_options,
+        );
+        let mut transfers = construct_after_windowed_backward_preflight(
+            &self.gkr_programs,
+            strategy,
+            backward_options,
+            self.final_trace_size_log_2,
+            || self.create_transfers(),
+        )
+        .unwrap()?;
 
         let h2d_stream = self.context.get_h2d_stream();
         let transfer_range = Range::new("gkr.proof.h2d_transfers")?;
