@@ -1,5 +1,8 @@
 pub(crate) mod capacity;
 mod census;
+mod kernels;
+
+pub(crate) use kernels::*;
 
 #[cfg(test)]
 mod reference;

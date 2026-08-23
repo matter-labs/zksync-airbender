@@ -1,5 +1,7 @@
 target_sources(gpu_gkr_native PRIVATE
         dim_reducing.cu
+        dr_tail_megakernel.cu
+        dr_tail_megakernel.cuh
         mega_finalize.cuh
         seg_coeff_eval.cu
         seg_coeff_eval.cuh
