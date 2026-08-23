@@ -2,6 +2,12 @@ mod binding;
 mod composition;
 mod generated_registry;
 
+#[cfg(test)]
+mod reference;
+
+#[cfg(all(test, not(no_cuda)))]
+mod differential_tests;
+
 // Task 5 directly exercises these stable producer names; Task 6 prepares them.
 #[allow(unused_imports)]
 pub(crate) use binding::{

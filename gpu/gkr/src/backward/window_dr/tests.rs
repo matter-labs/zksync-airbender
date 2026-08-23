@@ -1072,3 +1072,489 @@ fn cpu_dr_window_r0_native_source_pins_tensor_and_constant_eq_contracts() {
     }
     assert_eq!(seen, (0..27).collect());
 }
+
+mod cpu_dr_window_tensor_oracle {
+    use prover::gkr::prover::dimension_reduction::lsb_backward::{
+        lsb_dim_reducing_sumcheck_prove, LsbDimReducingRelation,
+    };
+
+    use super::*;
+    use crate::backward::window::reference::tensor_round_tail_reference;
+    use crate::backward::window_dr::reference::{
+        batch_challenge_power, compare_dr_tensors, dr_r0_tensor_reference, DrTensorMismatch,
+        DrTensorOracleError, DrTensorOracleProgram,
+    };
+    use crate::upstream::{BabyBearField, Field, FieldExtension, PrimeField};
+    use gpu_core::primitives::field::BF;
+
+    const OUTPUT_TYPES: [OutputType; 5] = [
+        OutputType::PermutationProduct,
+        OutputType::Lookup16Bits,
+        OutputType::LookupTimestamps,
+        OutputType::GenericLookup,
+        OutputType::InitsAndTeardownsProduct,
+    ];
+    const INERT_TAIL_CELL: usize = 13;
+
+    fn tensor_cell(low: usize, middle: usize, high: usize) -> usize {
+        9 * low + 3 * middle + high
+    }
+
+    fn add(mut left: E4, right: E4) -> E4 {
+        left.add_assign(&right);
+        left
+    }
+
+    fn mul(mut left: E4, right: E4) -> E4 {
+        left.mul_assign(&right);
+        left
+    }
+
+    fn eq_weight(bit: usize, coordinate: E4) -> E4 {
+        if bit == 0 {
+            let mut result = E4::ONE;
+            result.sub_assign(&coordinate);
+            result
+        } else {
+            coordinate
+        }
+    }
+
+    fn splitmix64(mut value: u64) -> u64 {
+        value = value.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        value ^ (value >> 31)
+    }
+
+    struct Rng(u64);
+
+    impl Rng {
+        fn next_u32(&mut self) -> u32 {
+            self.0 = splitmix64(self.0);
+            (self.0 >> 32) as u32
+        }
+
+        fn next_e4(&mut self) -> E4 {
+            E4::from_array_of_base(core::array::from_fn(|_| {
+                BF::from_u32_with_reduction(self.next_u32())
+            }))
+        }
+    }
+
+    fn input_address(slot: usize, operand: usize) -> GKRAddress {
+        GKRAddress::InnerLayer {
+            layer: 7,
+            offset: 2 * slot + operand,
+        }
+    }
+
+    fn output_address(slot: usize, operand: usize) -> GKRAddress {
+        GKRAddress::InnerLayer {
+            layer: 8,
+            offset: 2 * slot + operand,
+        }
+    }
+
+    struct Fixture {
+        program: DrTensorOracleProgram,
+        columns: BTreeMap<GKRAddress, Vec<E4>>,
+        batch_base: E4,
+        rho: [E4; 3],
+        suffix_point: Vec<E4>,
+        seed: [u32; 8],
+    }
+
+    impl Fixture {
+        fn new(suffix_bits: usize) -> Self {
+            let mut rng = Rng(splitmix64(
+                0xd12f_00d5_1ab5_0001 ^ ((suffix_bits as u64) << 48),
+            ));
+            let suffix_rows = 1usize << suffix_bits;
+            let mut rows = BTreeMap::new();
+            let mut columns = BTreeMap::<GKRAddress, Vec<E4>>::new();
+
+            for (slot, output_type) in OUTPUT_TYPES.into_iter().enumerate() {
+                let inputs = [input_address(slot, 0), input_address(slot, 1)];
+                let outputs = [output_address(slot, 0), output_address(slot, 1)];
+                rows.insert(output_type, DrWindowInputOutput::new(inputs, outputs));
+
+                for input in inputs {
+                    columns.insert(
+                        input,
+                        (0..16 * suffix_rows).map(|_| rng.next_e4()).collect(),
+                    );
+                }
+
+                if slot == 0 || slot == 4 {
+                    for tower in 0..2 {
+                        let input = &columns[&inputs[tower]];
+                        let output = (0..8 * suffix_rows)
+                            .map(|y| mul(input[2 * y], input[2 * y + 1]))
+                            .collect();
+                        columns.insert(outputs[tower], output);
+                    }
+                } else {
+                    let numerator = &columns[&inputs[0]];
+                    let denominator = &columns[&inputs[1]];
+                    let output_num = (0..8 * suffix_rows)
+                        .map(|y| {
+                            add(
+                                mul(numerator[2 * y], denominator[2 * y + 1]),
+                                mul(numerator[2 * y + 1], denominator[2 * y]),
+                            )
+                        })
+                        .collect();
+                    let output_den = (0..8 * suffix_rows)
+                        .map(|y| mul(denominator[2 * y], denominator[2 * y + 1]))
+                        .collect();
+                    columns.insert(outputs[0], output_num);
+                    columns.insert(outputs[1], output_den);
+                }
+            }
+
+            let lowered = lower_dr_window_program(&rows).expect("five-slot DR program lowers");
+            Self {
+                program: DrTensorOracleProgram::from_production(&lowered),
+                columns,
+                batch_base: rng.next_e4(),
+                rho: core::array::from_fn(|_| rng.next_e4()),
+                suffix_point: (0..suffix_bits).map(|_| rng.next_e4()).collect(),
+                seed: core::array::from_fn(|_| rng.next_u32()),
+            }
+        }
+
+        fn tensor(&self) -> [E4; 27] {
+            dr_r0_tensor_reference(
+                &self.program,
+                &self.columns,
+                self.batch_base,
+                &self.suffix_point,
+            )
+            .expect("valid oracle fixture")
+        }
+
+        fn gate_at_boolean(&self, y: usize) -> E4 {
+            let mut total = E4::ZERO;
+            for slot in &self.program.slots {
+                let addresses = slot
+                    .source_ids
+                    .map(|source_id| self.program.sources[usize::from(source_id)]);
+                let weights = slot
+                    .batch_exponents
+                    .map(|exponent| batch_challenge_power(self.batch_base, exponent));
+                if slot.slot == 0 || slot.slot == 4 {
+                    for tower in 0..2 {
+                        let input = &self.columns[&addresses[tower]];
+                        total.add_assign(&mul(weights[tower], mul(input[2 * y], input[2 * y + 1])));
+                    }
+                } else {
+                    let numerator = &self.columns[&addresses[0]];
+                    let denominator = &self.columns[&addresses[1]];
+                    let num = add(
+                        mul(numerator[2 * y], denominator[2 * y + 1]),
+                        mul(numerator[2 * y + 1], denominator[2 * y]),
+                    );
+                    let den = mul(denominator[2 * y], denominator[2 * y + 1]);
+                    total.add_assign(&mul(weights[0], num));
+                    total.add_assign(&mul(weights[1], den));
+                }
+            }
+            total
+        }
+
+        fn initial_claim(&self) -> E4 {
+            (0..8 * (1usize << self.suffix_point.len())).fold(E4::ZERO, |mut claim, y| {
+                let mut weight = (0..3).fold(E4::ONE, |weight, bit| {
+                    mul(weight, eq_weight((y >> bit) & 1, self.rho[bit]))
+                });
+                for (suffix_bit, coordinate) in self.suffix_point.iter().enumerate() {
+                    weight.mul_assign(&eq_weight((y >> (3 + suffix_bit)) & 1, *coordinate));
+                }
+                claim.add_assign(&mul(weight, self.gate_at_boolean(y)));
+                claim
+            })
+        }
+
+        fn relations(&self) -> Vec<LsbDimReducingRelation<E4>> {
+            let mut relations = Vec::new();
+            for slot in &self.program.slots {
+                let addresses = slot
+                    .source_ids
+                    .map(|source_id| self.program.sources[usize::from(source_id)]);
+                let weights = slot
+                    .batch_exponents
+                    .map(|exponent| batch_challenge_power(self.batch_base, exponent));
+                if slot.slot == 0 || slot.slot == 4 {
+                    for tower in 0..2 {
+                        relations.push(LsbDimReducingRelation::PairwiseProduct {
+                            input: addresses[tower],
+                            output: addresses[2 + tower],
+                            alpha: weights[tower],
+                        });
+                    }
+                } else {
+                    relations.push(LsbDimReducingRelation::LogupPair {
+                        num: addresses[0],
+                        den: addresses[1],
+                        num_output: addresses[2],
+                        den_output: addresses[3],
+                        alpha_num: weights[0],
+                        alpha_den: weights[1],
+                    });
+                }
+            }
+            relations
+        }
+    }
+
+    type TailObservation = ([E4; 12], [E4; 3], [u32; 8], E4, E4);
+
+    fn run_tail(fixture: &Fixture, tensor: [E4; 27]) -> TailObservation {
+        let mut seed = fixture.seed;
+        let mut claim = fixture.initial_claim();
+        let mut eq_prefactor = E4::ONE;
+        let (coefficients, challenges) = tensor_round_tail_reference(
+            tensor,
+            &fixture.rho,
+            &mut seed,
+            &mut claim,
+            &mut eq_prefactor,
+        );
+        (coefficients, challenges, seed, claim, eq_prefactor)
+    }
+
+    #[test]
+    fn cpu_dr_window_r0_tensor_oracle_matches_upstream_and_tail() {
+        let fixture = Fixture::new(0);
+        assert_eq!(fixture.program.enabled_mask, 0x1f);
+        assert_eq!(
+            fixture
+                .program
+                .slots
+                .iter()
+                .map(|slot| slot.batch_exponents)
+                .collect::<Vec<_>>(),
+            vec![[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]],
+        );
+
+        let tensor = fixture.tensor();
+        let tail = run_tail(&fixture, tensor);
+        let input_polys = fixture
+            .program
+            .slots
+            .iter()
+            .flat_map(|slot| slot.source_ids[..2].iter().copied())
+            .map(|source_id| {
+                let address = fixture.program.sources[usize::from(source_id)];
+                (address, fixture.columns[&address].as_slice())
+            })
+            .collect::<BTreeMap<_, _>>();
+        let worker = worker::Worker::new_with_num_threads(2);
+        let upstream = lsb_dim_reducing_sumcheck_prove::<BabyBearField, E4>(
+            &input_polys,
+            &fixture.relations(),
+            &fixture.rho,
+            fixture.initial_claim(),
+            &tail.1,
+            &worker,
+        );
+        let upstream_coefficients = upstream
+            .round_coefficients
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        assert_eq!(tail.0.as_slice(), upstream_coefficients.as_slice());
+        assert_eq!(tail.3, upstream.final_claim);
+        assert_eq!(tail.4, upstream.eq_factor);
+
+        for low in 0..2 {
+            for middle in 0..2 {
+                for high in 0..2 {
+                    let y = low | (middle << 1) | (high << 2);
+                    assert_eq!(
+                        tensor[tensor_cell(low, middle, high)],
+                        fixture.gate_at_boolean(y),
+                        "materialized output constant term at ({low},{middle},{high})",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cpu_dr_window_r0_tensor_oracle_contracts_suffix_eq_before_tail() {
+        let fixture = Fixture::new(2);
+        let tensor = fixture.tensor();
+        for low in 0..2 {
+            for middle in 0..2 {
+                for high in 0..2 {
+                    let low_y = low | (middle << 1) | (high << 2);
+                    let expected = (0..4).fold(E4::ZERO, |mut total, suffix_row| {
+                        let suffix_weight = fixture.suffix_point.iter().enumerate().fold(
+                            E4::ONE,
+                            |weight, (bit, coordinate)| {
+                                mul(weight, eq_weight((suffix_row >> bit) & 1, *coordinate))
+                            },
+                        );
+                        total.add_assign(&mul(
+                            suffix_weight,
+                            fixture.gate_at_boolean((suffix_row << 3) | low_y),
+                        ));
+                        total
+                    });
+                    assert_eq!(tensor[tensor_cell(low, middle, high)], expected);
+                }
+            }
+        }
+
+        let tail = run_tail(&fixture, tensor);
+        let input_polys = fixture
+            .program
+            .slots
+            .iter()
+            .flat_map(|slot| slot.source_ids[..2].iter().copied())
+            .map(|source_id| {
+                let address = fixture.program.sources[usize::from(source_id)];
+                (address, fixture.columns[&address].as_slice())
+            })
+            .collect::<BTreeMap<_, _>>();
+        let tau = fixture
+            .rho
+            .into_iter()
+            .chain(fixture.suffix_point.iter().copied())
+            .collect::<Vec<_>>();
+        let challenges = tail
+            .1
+            .into_iter()
+            .chain(fixture.suffix_point.iter().copied())
+            .collect::<Vec<_>>();
+        let worker = worker::Worker::new_with_num_threads(2);
+        let upstream = lsb_dim_reducing_sumcheck_prove::<BabyBearField, E4>(
+            &input_polys,
+            &fixture.relations(),
+            &tau,
+            fixture.initial_claim(),
+            &challenges,
+            &worker,
+        );
+        let first_three = upstream
+            .round_coefficients
+            .into_iter()
+            .take(3)
+            .flatten()
+            .collect::<Vec<_>>();
+        assert_eq!(tail.0.as_slice(), first_three.as_slice());
+    }
+
+    #[test]
+    fn cpu_dr_window_r0_tensor_oracle_rejects_wire_mutations() {
+        let fixture = Fixture::new(0);
+        let expected = fixture.tensor();
+
+        let mut section = fixture.program.clone();
+        section.section_endpoints[2] -= 1;
+        assert_eq!(
+            dr_r0_tensor_reference(&section, &fixture.columns, fixture.batch_base, &[]),
+            Err(DrTensorOracleError::SectionEndpointMismatch {
+                section: 2,
+                expected: 3,
+                observed: 2,
+            }),
+        );
+
+        let mut lane = fixture.program.clone();
+        lane.slots[0].source_ids[0] = lane.slots[0].source_ids[1];
+        lane.source_lanes[0].source_id = lane.slots[0].source_ids[0];
+        let observed = dr_r0_tensor_reference(&lane, &fixture.columns, fixture.batch_base, &[])
+            .expect("coherent lane mutation remains structurally valid");
+        assert!(matches!(
+            compare_dr_tensors(&expected, &observed),
+            Err(DrTensorMismatch::Cell { .. })
+        ));
+
+        let mut exponent = fixture.program.clone();
+        exponent.slots[0].batch_exponents[0] += 1;
+        let observed = dr_r0_tensor_reference(&exponent, &fixture.columns, fixture.batch_base, &[])
+            .expect("batch exponent mutation remains structurally valid");
+        assert!(matches!(
+            compare_dr_tensors(&expected, &observed),
+            Err(DrTensorMismatch::Cell { .. })
+        ));
+
+        let mut mask = fixture.program.clone();
+        mask.enabled_mask ^= 1;
+        assert_eq!(
+            dr_r0_tensor_reference(&mask, &fixture.columns, fixture.batch_base, &[]),
+            Err(DrTensorOracleError::EnabledMaskMismatch {
+                expected: 0x1f,
+                observed: 0x1e,
+            }),
+        );
+    }
+
+    #[test]
+    fn cpu_dr_window_r0_tensor_oracle_detects_value_axis_and_output_mutations() {
+        let fixture = Fixture::new(0);
+        let expected = fixture.tensor();
+
+        for index in 0..27 {
+            let mut one_cell = expected;
+            one_cell[index].add_assign(&E4::ONE);
+            assert!(matches!(
+                compare_dr_tensors(&expected, &one_cell),
+                Err(DrTensorMismatch::Cell {
+                    index: observed,
+                    ..
+                }) if observed == index
+            ));
+        }
+
+        let transposed: [E4; 27] = core::array::from_fn(|index| {
+            let low = index / 9;
+            let middle = (index / 3) % 3;
+            let high = index % 3;
+            expected[tensor_cell(high, middle, low)]
+        });
+        assert!(matches!(
+            compare_dr_tensors(&expected, &transposed),
+            Err(DrTensorMismatch::Cell { .. })
+        ));
+
+        let mut interleave = fixture.columns.clone();
+        let input = fixture.program.sources[usize::from(fixture.program.slots[0].source_ids[0])];
+        interleave.get_mut(&input).unwrap().swap(0, 1);
+        let observed =
+            dr_r0_tensor_reference(&fixture.program, &interleave, fixture.batch_base, &[])
+                .expect("2*Y+b mutation preserves shape");
+        assert!(matches!(
+            compare_dr_tensors(&expected, &observed),
+            Err(DrTensorMismatch::Cell { .. })
+        ));
+
+        let mut materialized_output = fixture.columns.clone();
+        let output = fixture.program.sources[usize::from(fixture.program.slots[1].source_ids[2])];
+        materialized_output.get_mut(&output).unwrap()[0].add_assign(&E4::ONE);
+        let observed = dr_r0_tensor_reference(
+            &fixture.program,
+            &materialized_output,
+            fixture.batch_base,
+            &[],
+        )
+        .expect("materialized-output mutation preserves shape");
+        assert!(matches!(
+            compare_dr_tensors(&expected, &observed),
+            Err(DrTensorMismatch::Cell { .. })
+        ));
+
+        let baseline_tail = run_tail(&fixture, expected);
+        let inert = (0..27)
+            .filter(|index| {
+                let mut perturbed = expected;
+                perturbed[*index].add_assign(&E4::ONE);
+                run_tail(&fixture, perturbed) == baseline_tail
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(inert, vec![INERT_TAIL_CELL]);
+    }
+}
