@@ -29,6 +29,10 @@ flate2 = "*"
 
 [features]
 verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
+# L1 wrap driver: prove a delegation-free run as ONE Proth120 packed unified
+# proof with the EVM-production parameters (pulls in prover's test harness for
+# the Proth120 witness path).
+l1 = ["prover/test", "prover/bincode"]
 # When enabled, the crate will print detailed debug logs.
 debug_logs = ["program_prover/debug_logs"]
 # Will perform satisfiability tests on witness

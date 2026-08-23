@@ -81,6 +81,46 @@ fn circuit_tester_config() -> ProgramConfig {
 
 const TRACE_LEN_LOG2: usize = 22;
 
+/// Base-trace packing factor of the EVM-production commitment: the 2^22 trace
+/// becomes a single 2^26-variate multilinear per packed column.
+pub const EVM_PRODUCTION_PACK_LOG2: usize = 4;
+/// PoW bits gating the self-derived external challenges of the packed mode.
+pub const EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
+
+/// The EVM-production prover config: a 2^22 base trace packed by
+/// [`EVM_PRODUCTION_PACK_LOG2`] into the `message_log2 = 26` WHIR input of
+/// `generate_whir_input_for_evm_production` — the exact parameters the
+/// deployed gkr.sol/whir.sol pair is generated for. Reused by the packed
+/// fibonacci fixture test AND the L1 wrap driver in `prover_examples`.
+pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig {
+    ProverConfig {
+        // circuit trace length; the WHIR message is 2^(22 + pack_log2) = 2^26
+        trace_len_log2: TRACE_LEN_LOG2,
+        // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
+        // keep these proofs on the windowed schedule (transcript-identical
+        // to naive)
+        same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
+            TRACE_LEN_LOG2,
+        ),
+        dimension_reducing_sumcheck_schedule: Default::default(),
+        lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)
+        cap_size: 8,
+        // round-0 values-per-leaf = 2^whir_steps_schedule[0] = 2^2
+        base_oracles_values_per_leaf: 1 << 2,
+        // final poly has 2^(26 - 22) = 2^4 monomials
+        sumcheck_explicit_output_size_log_2: 4,
+        security_level: level,
+        whir_schedule: WhirSchedule {
+            base_lde_factor: 1 << 5,
+            cap_size: 8,
+            whir_steps_schedule: vec![2, 4, 4, 4, 4, 4],
+            whir_queries_schedule: vec![17, 12, 8, 6, 5, 4],
+            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
+            whir_pow_schedule: vec![30, 30, 27, 25, 21, 24],
+        },
+    }
+}
+
 /// Load the serialized `CommitmentMode` aux data and build the transcript prefix the packed
 /// prover now prepends before the top-bits/caps: the 32 register final states as
 /// (value, ts_low, ts_high) u32 triples, then (final_pc, final_ts_low, final_ts_high).
@@ -322,32 +362,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    packed polynomials match that message size exactly, so the same folds /
     //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let prover_config = ProverConfig {
-        // circuit trace length; the WHIR message is 2^(22 + pack_log2) = 2^26
-        trace_len_log2: TRACE_LEN_LOG2,
-        // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
-        // keep these tests on the windowed schedule (transcript-identical
-        // to naive)
-        same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
-            TRACE_LEN_LOG2,
-        ),
-        dimension_reducing_sumcheck_schedule: Default::default(),
-        lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)
-        cap_size: 8,
-        // round-0 values-per-leaf = 2^whir_steps_schedule[0] = 2^2
-        base_oracles_values_per_leaf: 1 << 2,
-        // final poly has 2^(26 - 22) = 2^4 monomials
-        sumcheck_explicit_output_size_log_2: 4,
-        security_level: level,
-        whir_schedule: WhirSchedule {
-            base_lde_factor: 1 << 5,
-            cap_size: 8,
-            whir_steps_schedule: vec![2, 4, 4, 4, 4, 4],
-            whir_queries_schedule: vec![17, 12, 8, 6, 5, 4],
-            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
-            whir_pow_schedule: vec![30, 30, 27, 25, 21, 24],
-        },
-    };
+    let prover_config = evm_production_packed_prover_config(level);
 
     println!("Computing setup");
     // The proof function's twiddles are of unified circuit size * (1 << pack_log2):
@@ -2282,7 +2297,7 @@ fn inspect_circuit_layer_relations() {
 /// Inlined analogue of `orchestration::unified::build_unified_full_trace`, but with
 /// the delegation CSRs removed from the preprocessing supported-CSR set (precompiles
 /// disabled at preprocessing) and without the optional memory-consistency cross-check.
-fn build_unified_trace_without_precompiles<C, F: PrimeField>(
+pub fn build_unified_trace_without_precompiles<C, F: PrimeField>(
     vm: &VmRunOutput<C>,
     witness_eval_fn_ptr: fn(&mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, F>),
     unified_circuit: &GKRCircuitArtifact<F>,

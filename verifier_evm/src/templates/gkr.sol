@@ -66,7 +66,7 @@ contract GKRVerifier {
     // verifier hashes — [seed:32][batching:16][opening:16][z_initial:nz*16]
     // [witness_cap:CAP*32][setup_cap:CAP*32] — keccaks it, and marks it. WHIR
     // recomputes the same bytes32 in its own tx; the registry events must match.
-    uint256 constant REGISTRY          = 0xCAFE0001;
+    address constant __TEMPLATE_REGISTRY_ADDRESS          = 0x00000000000000000000000000000000caFe0001;
     uint256 constant MARK_GKR_SELECTOR = 0xef4f148a; // mark_gkr_verified(bytes32,bytes32,bytes32)
     uint256 constant __TEMPLATE_WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
     uint256 constant __TEMPLATE_WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
@@ -690,7 +690,7 @@ contract GKRVerifier {
             mstore(4, commitment)
             mstore(36, pubval)
             mstore(68, setupval)
-            pop(call(gas(), REGISTRY, 0, 0, 100, 0, 0))
+            pop(call(gas(), __TEMPLATE_REGISTRY_ADDRESS, 0, 0, 100, 0, 0))
         }
 
         // SPILL OVERWRITE PREVENTION

@@ -845,6 +845,64 @@ mod tests {
         panic!("no verdict within {MAX_LAYERS} feeder layers");
     }
 
+    /// The FINAL L1 step: prove the merged-mode feeder verifier's execution
+    /// over the converged single-chunk feeder proof (`feeder_layer_1`, ~2.8M
+    /// cycles <= 2^22) as ONE Proth120 packed unified-circuit proof with the
+    /// EVM-production parameters, writing the proof + commitment-mode aux
+    /// fixtures into `prover/` — exactly where the verifier_evm generation and
+    /// the two-transaction test (`generated_contracts/two_tx/run_two_tx.sh`)
+    /// pick them up. Requires `--features l1` and the caches of
+    /// `test_l1_feeder_high_lde_research`; the packed setup commitment is
+    /// served by coset recomputation (program-specific, nothing cached).
+    #[cfg(feature = "l1")]
+    #[test]
+    #[ignore = "manual heavy proving run (Proth120 packed 2^26 commitment)"]
+    #[serial_test::serial(prover_examples_proof_artifacts)]
+    fn test_l1_wrap_proth120() {
+        use prover::tests::gkr::orchestration::common::ProgramConfig;
+        skip_if_ci!();
+
+        let worker = Worker::new_with_num_threads(12);
+        let u_tag = unrolled_blake_mode().tag();
+        let bridge_tag = bridge_blake_mode().tag();
+        let final_tag = final_blake_mode().tag();
+        let tags = format!("{u_tag}_{bridge_tag}_{final_tag}");
+
+        let proof: ProgramProof =
+            try_deserialize_compressed_from_file(&format!("feeder_layer_1_proof_{tags}.bin"))
+                .expect("run test_l1_feeder_high_lde_research first");
+        let setups: Setups =
+            try_deserialize_compressed_from_file(&format!("feeder_layer_1_setups_{tags}.bin"))
+                .unwrap();
+        let stream = build_unified_stream(&setups, &proof);
+
+        let program = ProgramConfig {
+            binary_path: format!(
+                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin"
+            ),
+            text_section_path: format!(
+                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.text"
+            ),
+            non_determinism_reads: stream,
+            cycles_bound: 1 << 22,
+            ram_bound_bytes: 1 << 30,
+        };
+
+        let _l1_proof = crate::l1::prove_l1_wrap_in_recompute_mode(
+            &program,
+            Path::new(
+                "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            ),
+            Path::new("../../prover/unified_circuit_proof_proth120.json"),
+            Path::new("../../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json"),
+            &worker,
+        );
+        println!(
+            "L1 wrap complete: run the two-transaction cross-check with \
+             verifier_evm/generated_contracts/two_tx/run_two_tx.sh"
+        );
+    }
+
     /// Debug helper: host-side verification of the cached feeder-layer-0
     /// proof with the L1-feeder statement + DebugErrorCreator, so a rejection
     /// names the failing check instead of an opaque VM trap.

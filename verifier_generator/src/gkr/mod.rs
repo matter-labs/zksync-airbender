@@ -2052,8 +2052,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         // matching the [mem][wit][setup] layer-0 claim layout, so the gamma
         // batching offsets are unchanged relative to the separate mode).
         let num_columns = if merged_base_commitment {
-            compiled_circuit.memory_layout.total_width
-                + compiled_circuit.witness_layout.total_width
+            compiled_circuit.memory_layout.total_width + compiled_circuit.witness_layout.total_width
         } else {
             compiled_circuit.memory_layout.total_width
         };
