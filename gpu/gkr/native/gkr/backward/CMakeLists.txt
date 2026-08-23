@@ -27,3 +27,8 @@ target_sources(gpu_gkr_native PRIVATE
         generated/r0_window_shape_ffb.cu
         generated/r0_window_shape_fff.cu
 )
+
+option(GPU_GKR_DR_TAIL_TRACE "Compile the test-only DR-tail trace oracle" OFF)
+if (GPU_GKR_DR_TAIL_TRACE)
+    target_sources(gpu_gkr_native PRIVATE dr_tail_megakernel_trace.cu)
+endif ()

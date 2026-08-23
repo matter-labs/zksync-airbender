@@ -201,6 +201,138 @@ struct gkr_dr_tail_noop_recorder {
   DEVICE_FORCEINLINE void record_final(const gkr_dr_tail_megakernel_desc &, const e4 *, const unsigned) const {}
 };
 
+// Test-only recorder ABI. The production wrapper never instantiates this
+// policy; the feature-gated diagnostic TU supplies it to the same recursive
+// inner used above. Snapshot strides are fixed at the admitted maxima so the
+// host can validate every shared-memory index without duplicating device
+// layout arithmetic.
+struct gkr_dr_tail_trace_desc {
+  e4 *eq_groups;
+  e4 *eq_rows;
+  e4 *entry_levels;
+  e4 *source_levels;
+  e4 *transcript;
+  e4 *final_cells;
+  u32 *seeds;
+  u32 *metadata;
+};
+
+static_assert(alignof(gkr_dr_tail_trace_desc) == 8 && sizeof(gkr_dr_tail_trace_desc) == 64, "DR-tail trace descriptor ABI drift");
+static_assert(__builtin_offsetof(gkr_dr_tail_trace_desc, eq_groups) == 0 && __builtin_offsetof(gkr_dr_tail_trace_desc, eq_rows) == 8 &&
+                  __builtin_offsetof(gkr_dr_tail_trace_desc, entry_levels) == 16 && __builtin_offsetof(gkr_dr_tail_trace_desc, source_levels) == 24 &&
+                  __builtin_offsetof(gkr_dr_tail_trace_desc, transcript) == 32 && __builtin_offsetof(gkr_dr_tail_trace_desc, final_cells) == 40 &&
+                  __builtin_offsetof(gkr_dr_tail_trace_desc, seeds) == 48 && __builtin_offsetof(gkr_dr_tail_trace_desc, metadata) == 56,
+              "DR-tail trace descriptor offsets drift");
+static_assert(sizeof(gkr_dr_tail_megakernel_desc) + sizeof(gkr_dr_tail_trace_desc) <= 32764, "DR-tail trace kernel parameters exceed CUDA limit");
+
+struct gkr_dr_tail_global_recorder {
+  static constexpr bool ENABLED = true;
+  static constexpr unsigned EQ_GROUP_STRIDE = 2 * GKR_EQ_GROUP_TABLE_LEN;
+  static constexpr unsigned EQ_ROW_STRIDE = GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE;
+  static constexpr unsigned ENTRY_SOURCE_STRIDE = GKR_DR_TAIL_MAX_SOURCES * 16 * GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE;
+  static constexpr unsigned SOURCE_STRIDE = GKR_DR_TAIL_MAX_SOURCES * 4 * GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE;
+  static constexpr unsigned TRANSCRIPT_STRIDE = 3;
+  static constexpr unsigned METADATA_STRIDE = 8;
+
+  static_assert(SOURCE_STRIDE == 5120, "DR-tail trace source snapshot stride drift");
+  static_assert(ENTRY_SOURCE_STRIDE == 20480, "DR-tail trace entry snapshot stride drift");
+
+  gkr_dr_tail_trace_desc trace;
+
+  DEVICE_FORCEINLINE void record_snapshot(const gkr_dr_tail_megakernel_desc &desc, const unsigned snapshot, const e4 *state, const unsigned source_stride,
+                                          const unsigned current_cells, const e4 *eq_groups, const gkr_eq_sizes sizes, const unsigned group_count) const {
+    const unsigned tid = threadIdx.x;
+    const unsigned represented_bits = sizes.high[0] + sizes.high[1] + sizes.low;
+    const unsigned represented_rows = 1u << represented_bits;
+    const gkr_dr_tail_shared_eq_reader eq_reader{eq_groups, sizes, group_count};
+    for (unsigned cell = tid; cell < desc.source_count * current_cells; cell += GKR_DR_TAIL_BLOCK_THREADS) {
+      const unsigned source = cell / current_cells;
+      const unsigned source_cell = cell % current_cells;
+      trace.source_levels[static_cast<size_t>(snapshot) * SOURCE_STRIDE + static_cast<size_t>(source) * source_stride + source_cell] =
+          state[static_cast<size_t>(source) * source_stride + source_cell];
+    }
+    for (unsigned cell = tid; cell < group_count * GKR_EQ_GROUP_TABLE_LEN; cell += GKR_DR_TAIL_BLOCK_THREADS)
+      trace.eq_groups[static_cast<size_t>(snapshot) * EQ_GROUP_STRIDE + cell] = eq_groups[cell];
+    for (unsigned row = tid; row < represented_rows; row += GKR_DR_TAIL_BLOCK_THREADS)
+      trace.eq_rows[static_cast<size_t>(snapshot) * EQ_ROW_STRIDE + row] = eq_reader(row);
+    if (tid == 0) {
+      u32 *const metadata = trace.metadata + static_cast<size_t>(snapshot) * METADATA_STRIDE;
+      metadata[0] = sizes.high[0];
+      metadata[1] = sizes.high[1];
+      metadata[2] = sizes.low;
+      metadata[3] = represented_rows;
+      metadata[4] = current_cells;
+      metadata[5] = group_count;
+      metadata[6] = source_stride;
+      metadata[7] = desc.source_count * source_stride;
+    }
+  }
+
+  DEVICE_FORCEINLINE void record_entry(const gkr_dr_tail_megakernel_desc &desc, const e4 *state, const unsigned source_stride, const e4 *eq_groups,
+                                       const gkr_eq_sizes sizes, const unsigned group_count) const {
+    const unsigned first_level_cells = 4 * source_stride;
+    const unsigned second_level_cells = 2 * source_stride;
+    const e4 entry_challenge0 = desc.challenges_out[desc.entry_round - 3];
+    const e4 entry_challenge1 = desc.challenges_out[desc.entry_round - 2];
+    const e4 entry_challenge2 = desc.challenges_out[desc.entry_round - 1];
+    for (unsigned cell = threadIdx.x; cell < desc.source_count * first_level_cells; cell += GKR_DR_TAIL_BLOCK_THREADS) {
+      const unsigned source = cell / first_level_cells;
+      const unsigned destination = cell % first_level_cells;
+      const unsigned ancestor = gkr_dim_reducing_ancestor_index(destination);
+      const e4 *const input = desc.source_ptrs[source];
+      const e4 f0 = input[ancestor];
+      const e4 f1 = input[ancestor + GKR_DIM_REDUCING_PAIR_STRIDE];
+      trace.entry_levels[static_cast<size_t>(source) * first_level_cells + destination] = e4::fma(entry_challenge0, e4::sub(f1, f0), f0);
+    }
+    __syncthreads();
+    for (unsigned cell = threadIdx.x; cell < desc.source_count * second_level_cells; cell += GKR_DR_TAIL_BLOCK_THREADS) {
+      const unsigned source = cell / second_level_cells;
+      const unsigned destination = cell % second_level_cells;
+      const unsigned ancestor = gkr_dim_reducing_ancestor_index(destination);
+      const e4 *const input = trace.entry_levels + static_cast<size_t>(source) * first_level_cells;
+      const e4 f0 = input[ancestor];
+      const e4 f1 = input[ancestor + GKR_DIM_REDUCING_PAIR_STRIDE];
+      trace.entry_levels[ENTRY_SOURCE_STRIDE + static_cast<size_t>(source) * first_level_cells + destination] = e4::fma(entry_challenge1, e4::sub(f1, f0), f0);
+    }
+    __syncthreads();
+    for (unsigned cell = threadIdx.x; cell < desc.source_count * source_stride; cell += GKR_DR_TAIL_BLOCK_THREADS) {
+      const unsigned source = cell / source_stride;
+      const unsigned destination = cell % source_stride;
+      const unsigned ancestor = gkr_dim_reducing_ancestor_index(destination);
+      const e4 *const input = trace.entry_levels + ENTRY_SOURCE_STRIDE + static_cast<size_t>(source) * first_level_cells;
+      const e4 f0 = input[ancestor];
+      const e4 f1 = input[ancestor + GKR_DIM_REDUCING_PAIR_STRIDE];
+      trace.entry_levels[2 * ENTRY_SOURCE_STRIDE + static_cast<size_t>(source) * first_level_cells + destination] =
+          e4::fma(entry_challenge2, e4::sub(f1, f0), f0);
+    }
+    __syncthreads();
+    record_snapshot(desc, 0, state, source_stride, source_stride, eq_groups, sizes, group_count);
+  }
+
+  DEVICE_FORCEINLINE void record_round(const gkr_dr_tail_megakernel_desc &desc, const unsigned round, const e4 *state, const unsigned source_stride,
+                                       const unsigned current_cells, const e4 *eq_groups, const gkr_eq_sizes sizes, const unsigned group_count) const {
+    const unsigned round_index = round - desc.entry_round;
+    if (threadIdx.x == 0) {
+      e4 *const transcript = trace.transcript + static_cast<size_t>(round_index) * TRANSCRIPT_STRIDE;
+      transcript[0] = desc.challenges_out[round];
+      transcript[1] = *desc.claim;
+      transcript[2] = *desc.eq_prefactor;
+    }
+    if (threadIdx.x < 8)
+      trace.seeds[static_cast<size_t>(round_index) * 8 + threadIdx.x] = desc.seed[threadIdx.x];
+    if (round + 1 < desc.folding_steps)
+      record_snapshot(desc, round_index + 1, state, source_stride, current_cells, eq_groups, sizes, group_count);
+  }
+
+  DEVICE_FORCEINLINE void record_final(const gkr_dr_tail_megakernel_desc &desc, const e4 *state, const unsigned source_stride) const {
+    for (unsigned cell = threadIdx.x; cell < desc.source_count * 4; cell += GKR_DR_TAIL_BLOCK_THREADS) {
+      const unsigned source = cell / 4;
+      const unsigned source_cell = cell % 4;
+      trace.final_cells[cell] = state[static_cast<size_t>(source) * source_stride + source_cell];
+    }
+  }
+};
+
 template <typename Recorder> DEVICE_FORCEINLINE void gkr_dr_tail_megakernel_inner(const gkr_dr_tail_megakernel_desc &desc, const Recorder &recorder) {
   extern __shared__ __align__(32) unsigned char dynamic_smem[];
   e4 *const state = reinterpret_cast<e4 *>(dynamic_smem);
