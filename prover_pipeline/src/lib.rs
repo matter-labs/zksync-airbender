@@ -866,6 +866,13 @@ fn finalize_artifact(
         state.timings.unified_recursion_ms
     );
 
+    #[cfg(feature = "gpu")]
+    match gpu_gkr::backward::round_timing::dump_first3_timing() {
+        Ok(0) => {}
+        Ok(rows) => log::info!("backward round timing rows written: {rows}"),
+        Err(error) => panic!("backward round timing dump failed: {error}"),
+    }
+
     let chain = rebuild_chain(&state.chain_end_params).expect("chain history is non-empty");
     ProofArtifact {
         schema_version: ARTIFACT_SCHEMA_VERSION,

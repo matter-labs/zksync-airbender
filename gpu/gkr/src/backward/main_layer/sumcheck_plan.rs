@@ -95,8 +95,10 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
         eq_prefactor: *mut E4,
         coeffs_out: *mut E4,
         challenges_out: *mut E4,
+        mut recorder: Option<&mut super::super::round_timing::First3Recorder>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        let stream = context.get_exec_stream();
         let MainLayerR0Binding::Windowed(windowed) = &mut self.bwd_vm_r0 else {
             panic!("the windowed prologue requires a windowed R0 binding");
         };
@@ -108,7 +110,13 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             claim_batching,
             context,
         )?;
+        if let Some(recorder) = recorder.as_mut() {
+            recorder.mark("window_bank_fill", stream)?;
+        }
         launch_window_program(&windowed.window, context)?;
+        if let Some(recorder) = recorder.as_mut() {
+            recorder.mark("window_vm", stream)?;
+        }
         let tail_arm = windowed.tail_arm;
         let row_tiles = windowed.window.row_tiles;
         let reduced_tensor = windowed.window.reduced_tensor;
@@ -120,6 +128,9 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             claim_batching,
             context,
         )?;
+        if let Some(recorder) = recorder.as_mut() {
+            recorder.mark("ext_bank_fill", stream)?;
+        }
         let eq_low_ptr_mut = self.round_scratch.eq_low_group.as_mut_ptr();
         let (active_eq_slot_base, active_eq_size_before_fold) =
             super::super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr_mut);
@@ -137,6 +148,9 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             active_eq_size_before_fold,
         };
         launch_window_tensor_round_tail(tail_arm, &state, context)?;
+        if let Some(recorder) = recorder.as_mut() {
+            recorder.mark("window_tail", stream)?;
+        }
         // The tail folds the active slot exactly once, for the three rounds it
         // played; round 3's descriptor was lowered against the same one-fold
         // drain of the same built schedule.
@@ -206,6 +220,20 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             MainLayerR0Binding::Windowed(_) => (BWD_WINDOW_COORDINATES, BWD_WINDOW_COORDINATES),
         };
         let challenge_count = self.folding_steps - first_ext_round;
+        let arm = match &self.bwd_vm_r0 {
+            MainLayerR0Binding::PerRound(_) => "per_round",
+            MainLayerR0Binding::Windowed(windowed) => match windowed.tail_arm {
+                crate::WindowTailArm::Absorbed => "windowed_absorbed",
+                crate::WindowTailArm::Split => "windowed_split",
+            },
+        };
+        let mut recorder = super::super::round_timing::First3Recorder::begin(
+            "main",
+            arm,
+            self.layer_idx,
+            self.folding_steps,
+            stream,
+        )?;
         launch_build_eq_high_and_low_groups_from_point(
             device_claim_point_in.as_ptr(),
             first_ext_round,
@@ -232,6 +260,9 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 &mut device_eq_prefactor[..],
                 stream,
             )?;
+        }
+        if let Some(recorder) = recorder.as_mut() {
+            recorder.mark("prologue", stream)?;
         }
 
         let cont_batch_base_ptr = unsafe { device_claim_point_in.as_ptr().add(self.folding_steps) };
@@ -267,6 +298,7 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 device_eq_prefactor.as_mut_ptr(),
                 coeffs_out,
                 challenges_out,
+                recorder.as_mut(),
                 context,
             )?;
             storage.purge_up_to_layer(self.layer_idx);
@@ -326,6 +358,9 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 challenge_slot.as_mut_ptr(),
                 context,
             )?;
+            if let Some(recorder) = recorder.as_mut() {
+                recorder.mark_round_end(step, stream)?;
+            }
         }
         super::super::vm::production_bind::schedule_bwd_vm_ext_round(
             &mut self.bwd_vm_ext,
@@ -351,6 +386,9 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 challenge_slot.as_mut_ptr(),
                 context,
             )?;
+        }
+        if let Some(recorder) = recorder.take() {
+            recorder.finish(stream)?;
         }
 
         let mut transcript_input_sources: BTreeMap<GKRAddress, *const E4> = self

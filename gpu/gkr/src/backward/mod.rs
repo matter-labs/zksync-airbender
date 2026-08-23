@@ -12,6 +12,7 @@ mod dim_reducing_encoder;
 mod dim_reducing_sumcheck_plan;
 pub mod kernels;
 mod main_layer;
+pub mod round_timing;
 mod scheduled_execution;
 mod stage_snapshots;
 pub(crate) mod vm;
