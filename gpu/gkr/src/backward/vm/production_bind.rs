@@ -9,15 +9,16 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use gpu_gkr_compiler::{
-    ContinuationLayerProgram, R0LayerProgram, WindowFamily, WindowProgram, KIND_ORDER,
+    ContinuationLayerProgram, R0LayerProgram, SourceId, WindowFamily, WindowProgram, KIND_ORDER,
     SOURCE_WINDOW_COLUMNS,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::continuation_golden::{
     BoundSourceDto, CanonicalPtr, CanonicalSlot, ContinuationGoldenDto, ContinuationRoundDto,
-    FoldingBufferPatchDto, SourceRecordDto, GOLDEN_OFFSET_MASK, GOLDEN_REGION_CONTRIBUTIONS,
-    GOLDEN_REGION_EQ_LOW, GOLDEN_REGION_MATRIX, GOLDEN_REGION_SHIFT, GOLDEN_TAG_SHIFT, NO_PUBLISH,
+    ContinuationStartRoundSnapshot, FoldingBufferPatchDto, SourceRecordDto, GOLDEN_OFFSET_MASK,
+    GOLDEN_REGION_CONTRIBUTIONS, GOLDEN_REGION_EQ_LOW, GOLDEN_REGION_MATRIX, GOLDEN_REGION_SHIFT,
+    GOLDEN_TAG_SHIFT, NO_PUBLISH,
 };
 use super::seg::{
     bwd_seg_coeff_bank_device_ptr, bwd_seg_continuation_blocks_per_sm, bwd_seg_r0_blocks_per_sm,
@@ -33,6 +34,11 @@ use super::seg_desc::{BWD_COEFF_MAX_FOLD_DEPTH, BWD_SEG_ADDR_SLOTS};
 use super::seg_lower::{
     lower_bwd_seg_continuation, lower_bwd_seg_r0, materializes, BwdSegRoundBinding, BwdSegSetup,
     ResolvedAddrSlot, ResolvedSourceAddr, SourceOrigin,
+};
+use crate::backward::main_continuation::{
+    preserve_owned_on_validation_error, repoint_final_evaluations_from_raw,
+    validate_adoption_state, validate_canonical_publication, ContinuationPublicationError,
+    ContinuationPublishedLevel, ContinuationPublishedShape,
 };
 use crate::backward::{make_eq_sizes, record_active_eq_slot_fold, GkrEqSizes};
 use crate::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
@@ -54,6 +60,7 @@ const SEG_ALLOWED_K: [usize; 5] = [16, 8, 4, 2, 1];
 
 const SEG_R0_WIDE_BYTES_PER_ROW: usize = 4 * 1024;
 const SEG_CONTINUATION_WIDE_BYTES_PER_ROW: usize = 8 * 1024;
+const MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS: usize = 2;
 
 fn seg_r0_policy_k(bytes_per_row: usize, ceiling: usize) -> usize {
     let want = if bytes_per_row < SEG_R0_WIDE_BYTES_PER_ROW {
@@ -467,22 +474,45 @@ fn note_folding_buffer_slot(
 fn bind_ext_round_sources(
     resolver: &dyn ExtSourceResolver,
     coord: &ContinuationLayerProgram,
-    start_round: u8,
+    tail_start_round: u8,
     folding_steps: usize,
+    published_shape: Option<ContinuationPublishedShape>,
 ) -> Result<BoundExtSources, BwdVmBindError> {
     assert!(folding_steps >= 2, "a continuation sequence needs rounds");
-    assert!(start_round >= 1, "round 0 belongs to the R0 regime");
+    assert!(tail_start_round >= 1, "round 0 belongs to the R0 regime");
     let last_round = (folding_steps - 1) as u8;
     assert!(
-        start_round <= last_round,
-        "a continuation sequence starting at round {start_round} has no rounds \
+        tail_start_round <= last_round,
+        "a continuation sequence starting at round {tail_start_round} has no rounds \
          below the last round {last_round}"
     );
 
-    let mut rounds = Vec::with_capacity(usize::from(last_round - start_round) + 1);
+    let mut rounds = Vec::with_capacity(usize::from(last_round - tail_start_round) + 1);
     let mut final_evaluations: BTreeMap<GKRAddress, usize> = BTreeMap::new();
-    let mut previous_buffer: Option<(u8, FoldingBufferShape, BTreeMap<u32, usize>)> = None;
-    for round in start_round..=last_round {
+    let mut previous_buffer: Option<(u8, FoldingBufferShape, BTreeMap<u32, usize>)> =
+        published_shape.map(|shape| {
+            assert_eq!(
+                shape.columns,
+                coord.coefficients.sources.len(),
+                "the adopted continuation level must have one canonical column per semantic source"
+            );
+            let publication = canonical_source_columns(shape.columns);
+            validate_canonical_publication(shape, publication.iter().copied())
+                .expect("the semantic SourceId-derived publication map must be canonical");
+            let source_columns = publication
+                .into_iter()
+                .map(|(source, column)| (source.0, column))
+                .collect();
+            (
+                shape.depth,
+                FoldingBufferShape {
+                    columns: shape.columns,
+                    column_elems: shape.column_elems,
+                },
+                source_columns,
+            )
+        });
+    for round in tail_start_round..=last_round {
         let rows = 1usize << (folding_steps - usize::from(round) - 1);
         let mut folding_buffer = FoldingBufferShape {
             columns: 0,
@@ -638,6 +668,16 @@ fn bind_ext_round_sources(
         rounds,
         final_evaluations,
     })
+}
+
+fn canonical_source_columns(columns: usize) -> Vec<(SourceId, usize)> {
+    (0..columns)
+        .map(|source| {
+            let source = u32::try_from(source)
+                .expect("the compiler's semantic source count must fit SourceId");
+            (SourceId(source), source as usize)
+        })
+        .collect()
 }
 
 // ── The R0 launch ────────────────────────────────────────────────────────────
@@ -830,6 +870,8 @@ pub(crate) struct BwdVmExtLaunch {
     rounds: Vec<ExtRoundLaunch>,
     // The final buffer remains live for the layer's final gather.
     live: BTreeMap<u8, DeviceAllocation<E4>>,
+    #[allow(dead_code)] // Task 6 adopts the level after constructing the remainder.
+    expected_published_shape: Option<ContinuationPublishedShape>,
     final_evaluations: BTreeMap<GKRAddress, usize>,
     tables: SegCoeffEvalTables,
     slab: DeviceAllocation<E4>,
@@ -840,6 +882,26 @@ struct ExtRoundLaunch {
     setup: BwdSegSetup,
     elems: usize,
     slots: Vec<FoldingBufferSlot>,
+}
+
+pub(crate) fn repoint_final_evaluations_from_buffer<E>(
+    allocation: &DeviceAllocation<E4>,
+    elements_per_address: usize,
+    byte_offsets: &BTreeMap<GKRAddress, usize>,
+    destinations: &mut BTreeMap<GKRAddress, *const E>,
+) {
+    let allocation_bytes = allocation
+        .len()
+        .checked_mul(size_of::<E4>())
+        .expect("the final-evaluation allocation byte length must fit usize");
+    repoint_final_evaluations_from_raw(
+        allocation.as_ptr(),
+        allocation_bytes,
+        elements_per_address,
+        byte_offsets,
+        destinations,
+    )
+    .unwrap_or_else(|error| panic!("final-evaluation repoint: {error:?}"));
 }
 
 impl BwdVmExtLaunch {
@@ -856,16 +918,35 @@ impl BwdVmExtLaunch {
             .live
             .get(&last_round)
             .expect("the last round's folding buffer must outlive the final gather");
-        for (address, pointer) in sources.iter_mut() {
-            let offset = self.final_evaluations.get(address).unwrap_or_else(|| {
-                panic!(
-                    "the final gather reads {address:?}, which no VM-owned round folds \
-                     (the layer's lean coordinate is missing a source)"
-                )
-            });
-            // SAFETY: the binder sized `buffer` for every recorded offset.
-            *pointer = unsafe { buffer.as_ptr().cast::<u8>().add(*offset) }.cast::<E>();
-        }
+        repoint_final_evaluations_from_buffer(
+            buffer,
+            MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS,
+            &self.final_evaluations,
+            sources,
+        );
+    }
+
+    #[allow(dead_code)] // Task 6 wires the continuation producer to this consumer.
+    pub(crate) fn adopt_published_level(
+        &mut self,
+        level: ContinuationPublishedLevel,
+    ) -> Result<(), (ContinuationPublishedLevel, ContinuationPublicationError)> {
+        let level = preserve_owned_on_validation_error(level, |level| {
+            let expected_depth_is_live = self
+                .expected_published_shape
+                .is_some_and(|expected| self.live.contains_key(&expected.depth));
+            validate_adoption_state(
+                self.expected_published_shape,
+                level.shape(),
+                expected_depth_is_live,
+            )
+            .map(|_| ())
+        })?;
+        let expected = self
+            .expected_published_shape
+            .expect("successful validation proved the expected publication shape exists");
+        self.live.insert(expected.depth, level.into_allocation());
+        Ok(())
     }
 }
 
@@ -887,9 +968,16 @@ fn plan_ext_rounds(
     base_eq_sizes: GkrEqSizes,
     partials: *mut E4,
     ceiling: usize,
+    published_shape: Option<ContinuationPublishedShape>,
 ) -> (Vec<PlannedExtRound>, BTreeMap<GKRAddress, usize>) {
-    let bound = bind_ext_round_sources(resolver, program, start_round, folding_steps)
-        .unwrap_or_else(|error| panic!("backward VM Ext source binding: {error:?}"));
+    let bound = bind_ext_round_sources(
+        resolver,
+        program,
+        start_round,
+        folding_steps,
+        published_shape,
+    )
+    .unwrap_or_else(|error| panic!("backward VM Ext source binding: {error:?}"));
     let BoundExtSources {
         rounds: bound_rounds,
         final_evaluations,
@@ -899,11 +987,40 @@ fn plan_ext_rounds(
     for round in bound_rounds {
         let bytes_per_row = seg_ext_bytes_per_row(&round.slots, &round.sources, round.round);
         let k = seg_continuation_policy_k(bytes_per_row, ceiling);
+        // The segmented descriptor lowerer expresses the one exceptional
+        // delta-three prologue in its original local depth coordinates 0..3.
+        // Rebase only that first seeded round for lowering; the bound round and
+        // its snapshot retain absolute depths, and launch still receives the
+        // absolute sumcheck round.
+        let lowering_sources =
+            published_shape
+                .filter(|_| round.round == start_round)
+                .map(|shape| {
+                    round
+                        .sources
+                        .iter()
+                        .map(|source| ResolvedSourceAddr {
+                            backing_depth: source
+                                .backing_depth
+                                .checked_sub(shape.depth)
+                                .expect("the adopted source cannot precede its publication depth"),
+                            ..*source
+                        })
+                        .collect::<Vec<_>>()
+                });
+        let lowering_round = published_shape
+            .filter(|_| round.round == start_round)
+            .map_or(round.round, |shape| {
+                round
+                    .round
+                    .checked_sub(shape.depth)
+                    .expect("the tail start cannot precede its publication depth")
+            });
         let binding = BwdSegRoundBinding {
-            round: u32::from(round.round),
+            round: u32::from(lowering_round),
             rows: round.rows,
             slots: &round.slots,
-            sources: &round.sources,
+            sources: lowering_sources.as_deref().unwrap_or(&round.sources),
             claim_point_len: folding_steps,
             coefficient_count: program.coefficient_recipes.len(),
             c_init: program.c_init,
@@ -930,20 +1047,20 @@ fn plan_ext_rounds(
 /// Build the continuation launch sequence for absolute rounds
 /// `start_round..folding_steps`.
 ///
-/// `base_eq_sizes` is the eq schedule as the sequence's PRODUCER left it — the
-/// per-round arm hands over after round 0 (`make_eq_sizes(folding_steps - 1)`),
-/// the windowed arm after the tail's own fold (`make_eq_sizes(folding_steps -
-/// 3)`) — and each round drains it by its own position in the sequence.
-pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
+/// `base_eq_sizes` is the fresh Eq base at the sequence's consumer boundary:
+/// `make_eq_sizes(folding_steps - tail_start_round)`. Each descriptor drains
+/// that base by its own position in the sequence.
+fn build_bwd_vm_ext_rounds_inner<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     program: &ContinuationLayerProgram,
-    start_round: u8,
+    tail_start_round: u8,
     folding_steps: usize,
     eq_low: *const E4,
     base_eq_sizes: GkrEqSizes,
     partials: *mut E4,
     inits_and_teardowns_top_bits: &[u32],
     context: &ProverContext,
+    published_shape: Option<ContinuationPublishedShape>,
 ) -> CudaResult<BwdVmExtLaunch> {
     let blob =
         build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
@@ -954,12 +1071,13 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     let (planned, final_evaluations) = plan_ext_rounds(
         &StorageSourceResolver(storage),
         program,
-        start_round,
+        tail_start_round,
         folding_steps,
         eq_low,
         base_eq_sizes,
         partials,
         ceiling,
+        published_shape,
     );
     let rounds = planned
         .into_iter()
@@ -971,14 +1089,103 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
         .collect();
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
     Ok(BwdVmExtLaunch {
-        start_round,
+        start_round: tail_start_round,
         rounds,
         live: BTreeMap::new(),
+        expected_published_shape: published_shape,
         final_evaluations,
         tables,
         slab,
         filled: false,
     })
+}
+
+pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    program: &ContinuationLayerProgram,
+    start_round: u8,
+    folding_steps: usize,
+    eq_low: *const E4,
+    base_eq_sizes: GkrEqSizes,
+    partials: *mut E4,
+    inits_and_teardowns_top_bits: &[u32],
+    context: &ProverContext,
+) -> CudaResult<BwdVmExtLaunch> {
+    build_bwd_vm_ext_rounds_inner(
+        storage,
+        program,
+        start_round,
+        folding_steps,
+        eq_low,
+        base_eq_sizes,
+        partials,
+        inits_and_teardowns_top_bits,
+        context,
+        None,
+    )
+}
+
+fn expected_published_shape(
+    program: &ContinuationLayerProgram,
+    tail_start_round: u8,
+    folding_steps: usize,
+) -> ContinuationPublishedShape {
+    // This guard describes width-three geometry only. The execution-plan
+    // policy derives the currently legal corpus starts {15,18,21}; keeping the
+    // binder generic admits new folding widths without hardcoding that census.
+    assert!(
+        tail_start_round >= 6 && tail_start_round.is_multiple_of(3),
+        "a continuation remainder must follow at least one complete width-three continuation window"
+    );
+    let depth = tail_start_round
+        .checked_sub(BWD_COEFF_MAX_FOLD_DEPTH)
+        .expect("a continuation remainder must follow a full width-three window");
+    let remaining = folding_steps
+        .checked_sub(usize::from(depth))
+        .expect("the published depth must be inside the layer's folding width");
+    let column_elems = 1usize
+        .checked_shl(remaining as u32)
+        .expect("the published column length must fit usize");
+    ContinuationPublishedShape {
+        depth,
+        columns: program.coefficients.sources.len(),
+        column_elems,
+    }
+}
+
+/// Build the legacy remainder that consumes an owned canonical continuation
+/// level. Its Eq base is always a fresh build at the consumer boundary.
+#[allow(dead_code)] // Task 6 wires the continuation producer to this consumer.
+pub(crate) fn build_bwd_vm_ext_rounds_after_continuations<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    program: &ContinuationLayerProgram,
+    tail_start_round: u8,
+    folding_steps: usize,
+    eq_low: *const E4,
+    partials: *mut E4,
+    inits_and_teardowns_top_bits: &[u32],
+    context: &ProverContext,
+) -> CudaResult<BwdVmExtLaunch> {
+    let published_shape = expected_published_shape(program, tail_start_round, folding_steps);
+    let suffix_len = folding_steps
+        .checked_sub(usize::from(tail_start_round))
+        .expect("the tail start must be inside the layer's folding width");
+    assert!(
+        suffix_len > 0,
+        "the tail start must leave a legacy consumer"
+    );
+    build_bwd_vm_ext_rounds_inner(
+        storage,
+        program,
+        tail_start_round,
+        folding_steps,
+        eq_low,
+        make_eq_sizes(suffix_len),
+        partials,
+        inits_and_teardowns_top_bits,
+        context,
+        Some(published_shape),
+    )
 }
 
 pub(crate) fn schedule_bwd_vm_ext_bank_fill(
@@ -1228,6 +1435,7 @@ pub fn continuation_snapshot(
         make_eq_sizes(folding_steps - usize::from(start_round)),
         (GOLDEN_REGION_CONTRIBUTIONS << GOLDEN_REGION_SHIFT) as *mut E4,
         GOLDEN_K_CEILING,
+        None,
     );
     ContinuationGoldenDto {
         layer: layer as u32,
@@ -1239,6 +1447,108 @@ pub fn continuation_snapshot(
             .collect(),
         final_evaluations: ContinuationGoldenDto::final_evaluations_from(&final_evaluations),
     }
+}
+
+/// Snapshot the first legacy round after a width-three continuation producer.
+/// The committed start-round-1 golden deliberately does not call this path.
+#[doc(hidden)]
+pub fn continuation_start_round_snapshot(
+    programs: &crate::GkrPrograms,
+    layer: usize,
+    tail_start_round: u8,
+) -> ContinuationStartRoundSnapshot {
+    let circuit = programs.runtime_circuit();
+    assert!(
+        circuit.trace_len.is_power_of_two(),
+        "trace_len must be a power of two"
+    );
+    let folding_steps = circuit.trace_len.trailing_zeros() as usize;
+    let resolver = GoldenSourceResolver {
+        trace_len: circuit.trace_len,
+        scratch_space_mapping_rev: circuit.scratch_space_mapping_rev.clone(),
+    };
+    let program = programs.continuation_layer(layer);
+    let published_shape = expected_published_shape(program, tail_start_round, folding_steps);
+    let canonical_source_columns = canonical_source_columns(published_shape.columns);
+    validate_canonical_publication(published_shape, canonical_source_columns.iter().copied())
+        .expect("the semantic SourceId-derived seed map must be canonical");
+    let suffix_len = folding_steps
+        .checked_sub(usize::from(tail_start_round))
+        .expect("the tail start must leave at least one legacy round");
+    assert!(
+        suffix_len > 0,
+        "the tail start must leave a legacy consumer"
+    );
+    let fresh_eq = make_eq_sizes(suffix_len);
+    let (planned, _) = plan_ext_rounds(
+        &resolver,
+        program,
+        tail_start_round,
+        folding_steps,
+        (GOLDEN_REGION_EQ_LOW << GOLDEN_REGION_SHIFT) as *const E4,
+        fresh_eq,
+        (GOLDEN_REGION_CONTRIBUTIONS << GOLDEN_REGION_SHIFT) as *mut E4,
+        GOLDEN_K_CEILING,
+        Some(published_shape),
+    );
+    let first = planned
+        .first()
+        .expect("a legal tail start must leave at least one legacy round");
+    ContinuationStartRoundSnapshot {
+        layer: layer as u32,
+        folding_steps: folding_steps as u32,
+        tail_start_round,
+        published_depth: published_shape.depth,
+        published_columns: u32::try_from(published_shape.columns)
+            .expect("the publication source count must fit the snapshot DTO"),
+        published_column_elems: u64::try_from(published_shape.column_elems)
+            .expect("the publication column length must fit the snapshot DTO"),
+        canonical_source_columns: canonical_source_columns
+            .into_iter()
+            .map(|(source, column)| {
+                (
+                    source.0,
+                    u32::try_from(column)
+                        .expect("the canonical publication column must fit the snapshot DTO"),
+                )
+            })
+            .collect(),
+        fresh_eq_high: fresh_eq.high.to_vec(),
+        fresh_eq_low: fresh_eq.low,
+        first_round: golden_round_dto(first, program.immediates.len()),
+        retired_after_first_round: retired_buffer_depths_after_round(
+            tail_start_round,
+            &first.bound.folding_buffer_slots,
+        ),
+    }
+}
+
+/// CPU-only pointer arithmetic probe for consumers that own a final buffer but
+/// have no legacy `rounds` vector.
+#[cfg(test)]
+pub(crate) fn final_evaluation_repoint_probe(
+    allocation_bytes: usize,
+    elements_per_address: usize,
+    byte_offsets: &BTreeMap<GKRAddress, usize>,
+    addresses: impl IntoIterator<Item = GKRAddress>,
+) -> Result<BTreeMap<GKRAddress, usize>, String> {
+    let base = 0x10_000usize as *const E4;
+    let mut destinations: BTreeMap<GKRAddress, *const E4> = addresses
+        .into_iter()
+        .map(|address| (address, std::ptr::null()))
+        .collect();
+    repoint_final_evaluations_from_raw(
+        base,
+        allocation_bytes,
+        elements_per_address,
+        byte_offsets,
+        &mut destinations,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    Ok(destinations
+        .into_iter()
+        .map(|(address, pointer)| (address, pointer as usize - base as usize))
+        .collect())
 }
 
 /// The golden's construction: the sequence as the per-round arm builds it.
@@ -1265,6 +1575,7 @@ pub(crate) fn schedule_bwd_vm_ext_round(
         round >= start_round,
         "round {round} is below the sequence's first round {start_round}"
     );
+    let expected_published_shape = launch.expected_published_shape;
     let BwdVmExtLaunch { rounds, live, .. } = launch;
     let round_index = (round - start_round) as usize;
     let ExtRoundLaunch {
@@ -1272,6 +1583,22 @@ pub(crate) fn schedule_bwd_vm_ext_round(
         elems,
         slots,
     } = &mut rounds[round_index];
+    let consumed_depths = retired_buffer_depths_after_round(round as u8, slots);
+    let seeded_expected_depth = (round == start_round)
+        .then_some(expected_published_shape)
+        .flatten()
+        .map(|shape| shape.depth);
+    if let Some(expected_depth) = seeded_expected_depth {
+        assert_eq!(
+            consumed_depths,
+            vec![expected_depth],
+            "the first seeded round {round} must consume exactly its adopted depth"
+        );
+        assert!(
+            live.contains_key(&expected_depth),
+            "round {round} requires an adopted continuation publication at depth {expected_depth}"
+        );
+    }
 
     // ── This round's folding buffer, created JUST IN TIME ────────────────────
     // Allocation, launch, and reuse are ordered on the execution stream.
@@ -1303,10 +1630,30 @@ pub(crate) fn schedule_bwd_vm_ext_round(
     );
     launch_bwd_seg_continuation(round, setup, context)?;
 
-    // ── Retire the buffer this launch just consumed ──────────────────────────
-    // Retire the consumed buffer only after its reader is enqueued.
-    if round > start_round {
-        live.remove(&(round as u8 - 1));
+    // ── Retire every buffer this launch just consumed ────────────────────────
+    // The first seeded remainder round consumes depth `start_round - 3`, while
+    // later rounds consume `round - 1`. In both cases the owner is released
+    // only after the reader above has been enqueued.
+    for depth in consumed_depths {
+        assert!(
+            live.remove(&depth).is_some(),
+            "round {round} consumed depth {depth}, but that publication was not live"
+        );
+    }
+    if let Some(expected_depth) = seeded_expected_depth {
+        assert!(
+            !live.contains_key(&expected_depth),
+            "round {round} must retire adopted depth {expected_depth} after enqueue"
+        );
     }
     Ok(())
+}
+
+fn retired_buffer_depths_after_round(round: u8, slots: &[FoldingBufferSlot]) -> Vec<u8> {
+    slots
+        .iter()
+        .filter_map(|slot| (slot.buffer_round < round).then_some(slot.buffer_round))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }

@@ -31,10 +31,19 @@ pub use stage_snapshots::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink
 #[doc(hidden)]
 pub use vm::continuation_golden::{
     build_continuation_golden, compile_corpus_layout, continuation_golden_path, decode_golden,
-    encode_golden, ContinuationGoldenDto, GoldenEntry, CONTINUATION_GOLDEN_CORPUS,
+    encode_golden, ContinuationGoldenDto, ContinuationStartRoundSnapshot, GoldenEntry,
+    CONTINUATION_GOLDEN_CORPUS,
 };
 #[doc(hidden)]
-pub use vm::production_bind::{continuation_snapshot, legacy_continuation_snapshot};
+pub use vm::production_bind::{
+    continuation_snapshot, continuation_start_round_snapshot, legacy_continuation_snapshot,
+};
+
+#[cfg(test)]
+pub(crate) use vm::production_bind::final_evaluation_repoint_probe;
+
+#[cfg(test)]
+pub(crate) use main_continuation::ContinuationPublishedShape;
 
 pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 

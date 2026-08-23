@@ -187,6 +187,24 @@ pub struct ContinuationGoldenDto {
     pub final_evaluations: Vec<(CanonicalAddress, u64)>,
 }
 
+/// Structural view of the legacy remainder's first round after it adopts a
+/// canonical continuation publication. Kept separate from the committed
+/// start-round-1 golden so that golden's bytes cannot change.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContinuationStartRoundSnapshot {
+    pub layer: u32,
+    pub folding_steps: u32,
+    pub tail_start_round: u8,
+    pub published_depth: u8,
+    pub published_columns: u32,
+    pub published_column_elems: u64,
+    pub canonical_source_columns: Vec<(u32, u32)>,
+    pub fresh_eq_high: Vec<u32>,
+    pub fresh_eq_low: u32,
+    pub first_round: ContinuationRoundDto,
+    pub retired_after_first_round: Vec<u8>,
+}
+
 impl ContinuationGoldenDto {
     pub(crate) fn final_evaluations_from(
         evaluations: &BTreeMap<GKRAddress, usize>,
@@ -727,10 +745,13 @@ impl<'a> Reader<'a> {
 /// the round-3 construction the windowed arm will drive.
 #[cfg(test)]
 mod cpu_continuation_rebase {
-    use super::super::production_bind::{continuation_snapshot, drained_eq_sizes};
-    use super::super::seg_desc::BWD_COEFF_ORIGIN_READ_BASE;
+    use super::super::production_bind::{
+        continuation_snapshot, continuation_start_round_snapshot, drained_eq_sizes,
+    };
+    use super::super::seg_desc::{BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT};
     use super::*;
     use crate::backward::make_eq_sizes;
+    use gpu_gkr_compiler::SOURCE_WINDOW_COLUMNS;
 
     /// Round 3 is the windowed arm's handoff: `BWD_SEG_MAX_FOLD_DEPTH`.
     const WINDOW_START_ROUND: u8 = 3;
@@ -777,23 +798,23 @@ mod cpu_continuation_rebase {
         }
     }
 
-    fn assert_round_three_start(layout: &str, expected_folding_steps: u32) {
+    fn assert_unseeded_start(layout: &str, expected_folding_steps: u32, start_round: u8) {
         let (programs, layers) = compile_corpus_layout(layout);
         let mut saw_raw_base_read = false;
         for layer in 0..layers {
-            let dto = continuation_snapshot(&programs, layer, WINDOW_START_ROUND);
+            let dto = continuation_snapshot(&programs, layer, start_round);
             let label = format!("{layout} layer {layer}");
             assert_eq!(dto.folding_steps, expected_folding_steps, "{label}");
-            assert_eq!(dto.start_round, WINDOW_START_ROUND, "{label}");
+            assert_eq!(dto.start_round, start_round, "{label}");
             assert_eq!(
                 dto.rounds.len(),
-                (expected_folding_steps - u32::from(WINDOW_START_ROUND)) as usize,
+                (expected_folding_steps - u32::from(start_round)) as usize,
                 "{label}: rounds run [start_round, folding_steps)"
             );
 
-            let base = make_eq_sizes(dto.folding_steps as usize - usize::from(WINDOW_START_ROUND));
+            let base = make_eq_sizes(dto.folding_steps as usize - usize::from(start_round));
             for (index, round) in dto.rounds.iter().enumerate() {
-                let absolute = WINDOW_START_ROUND + index as u8;
+                let absolute = start_round + index as u8;
                 assert_eq!(round.absolute_round, absolute, "{label}: absolute round");
                 assert_eq!(
                     round.rows,
@@ -807,7 +828,7 @@ mod cpu_continuation_rebase {
 
                 // Eq metadata: the producer's base, drained by this round's
                 // position in the sequence.
-                let drained = drained_eq_sizes(base, absolute - WINDOW_START_ROUND + 1);
+                let drained = drained_eq_sizes(base, absolute - start_round + 1);
                 assert_eq!(
                     round.eq_high,
                     drained.high.to_vec(),
@@ -821,7 +842,7 @@ mod cpu_continuation_rebase {
                 // Deltas: round 3 reads every source straight out of storage at
                 // the publication depth; every later round reads the preceding
                 // round's buffer at depth 1.
-                let expected_depth = if absolute == WINDOW_START_ROUND {
+                let expected_depth = if absolute == start_round {
                     0
                 } else {
                     absolute - 1
@@ -855,13 +876,12 @@ mod cpu_continuation_rebase {
                 for patch in &round.folding_buffer_patches {
                     assert!(
                         patch.buffer_round == absolute
-                            || (absolute > WINDOW_START_ROUND
-                                && patch.buffer_round == absolute - 1),
+                            || (absolute > start_round && patch.buffer_round == absolute - 1),
                         "{label} round {absolute}: patch names buffer round {}",
                         patch.buffer_round
                     );
                 }
-                if absolute == WINDOW_START_ROUND {
+                if absolute == start_round {
                     assert!(
                         round
                             .folding_buffer_patches
@@ -926,12 +946,135 @@ mod cpu_continuation_rebase {
 
     #[test]
     fn round_three_start_constructs_for_a_log_24_layer() {
-        assert_round_three_start("add_sub_lui_auipc_mop_layout_gkr.json", 24);
+        assert_unseeded_start(
+            "add_sub_lui_auipc_mop_layout_gkr.json",
+            24,
+            WINDOW_START_ROUND,
+        );
     }
 
     #[test]
     fn round_three_start_constructs_for_a_log_20_layer() {
-        assert_round_three_start("blake2_with_extended_control_layout_gkr.json", 20);
+        assert_unseeded_start(
+            "blake2_with_extended_control_layout_gkr.json",
+            20,
+            WINDOW_START_ROUND,
+        );
+    }
+
+    #[test]
+    fn seeded_remainder_starts_cover_every_legal_ruled_boundary() {
+        let mut coordinate_count = 0usize;
+        let mut seen_starts = std::collections::BTreeSet::new();
+        for (layout, _) in CONTINUATION_GOLDEN_CORPUS {
+            let (programs, layers) = compile_corpus_layout(layout);
+            coordinate_count += layers;
+            let folding_steps = programs.runtime_circuit().trace_len.trailing_zeros();
+            for tail_start_round in [15u8, 18, 21]
+                .into_iter()
+                .filter(|start| u32::from(*start) < folding_steps)
+            {
+                seen_starts.insert(tail_start_round);
+                for layer in 0..layers {
+                    let snapshot =
+                        continuation_start_round_snapshot(&programs, layer, tail_start_round);
+                    let label = format!(
+                        "{layout} layer {layer} fs {folding_steps} start {tail_start_round}"
+                    );
+                    let published_depth = tail_start_round - 3;
+                    assert_eq!(snapshot.layer, layer as u32, "{label}");
+                    assert_eq!(snapshot.folding_steps, folding_steps, "{label}");
+                    assert_eq!(snapshot.tail_start_round, tail_start_round, "{label}");
+                    assert_eq!(snapshot.published_depth, published_depth, "{label}");
+                    assert_eq!(
+                        snapshot.published_column_elems,
+                        1u64 << (folding_steps - u32::from(published_depth)),
+                        "{label}: adopted column length"
+                    );
+                    assert_eq!(
+                        snapshot.canonical_source_columns,
+                        (0..snapshot.published_columns)
+                            .map(|source| (source, source))
+                            .collect::<Vec<_>>(),
+                        "{label}: publication is dense in semantic SourceId order"
+                    );
+
+                    let fresh =
+                        make_eq_sizes(folding_steps as usize - usize::from(tail_start_round));
+                    assert_eq!(snapshot.fresh_eq_high, fresh.high.to_vec(), "{label}");
+                    assert_eq!(snapshot.fresh_eq_low, fresh.low, "{label}");
+                    let first_eq = drained_eq_sizes(fresh, 1);
+                    let first = &snapshot.first_round;
+                    assert_eq!(first.absolute_round, tail_start_round, "{label}");
+                    assert_eq!(
+                        first.rows,
+                        1u64 << (folding_steps - u32::from(tail_start_round) - 1),
+                        "{label}: first legacy row count"
+                    );
+                    assert_eq!(first.logical_rows as u64, first.rows, "{label}");
+                    assert_eq!(first.eq_high, first_eq.high.to_vec(), "{label}");
+                    assert_eq!(first.eq_low_size, first_eq.low, "{label}");
+                    assert_eq!(
+                        snapshot.retired_after_first_round,
+                        vec![published_depth],
+                        "{label}: the adopted owner is retired after its reader is enqueued"
+                    );
+                    assert_eq!(
+                        first.sources.len(),
+                        snapshot.published_columns as usize,
+                        "{label}: every semantic source consumes one adopted column"
+                    );
+                    assert!(
+                        first
+                            .sources
+                            .iter()
+                            .all(|source| source.backing_depth == published_depth),
+                        "{label}: every source reads the adopted depth"
+                    );
+                    assert!(
+                        first.records.iter().all(|record| record.delta == 3),
+                        "{label}: the first legacy round folds the adopted level by delta 3"
+                    );
+
+                    let stride_bytes = snapshot.published_column_elems as usize
+                        * size_of::<gpu_core::primitives::field::E4>();
+                    for (semantic_source, source) in first.sources.iter().enumerate() {
+                        let slot = &first.slots[source.read_slot as usize];
+                        assert_eq!(slot.base, CanonicalPtr::Null, "{label}: no raw storage");
+                        assert!(slot.deferred_base, "{label}: adopted pointer is deferred");
+                        assert_eq!(
+                            slot.origin, BWD_COEFF_ORIGIN_READ_EXT,
+                            "{label}: adopted values are E4"
+                        );
+                        let patch = first
+                            .folding_buffer_patches
+                            .iter()
+                            .find(|patch| patch.slot == source.read_slot)
+                            .unwrap_or_else(|| {
+                                panic!("{label}: adopted read slot has no ownership patch")
+                            });
+                        assert_eq!(patch.buffer_round, published_depth, "{label}");
+                        let chunk =
+                            patch.byte_offset as usize / (SOURCE_WINDOW_COLUMNS * stride_bytes);
+                        let canonical_column =
+                            chunk * SOURCE_WINDOW_COLUMNS + source.read_column as usize;
+                        assert_eq!(
+                            canonical_column, semantic_source,
+                            "{label}: the read map must not inherit traversal publication order"
+                        );
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            coordinate_count, 57,
+            "the ruled continuation corpus changed"
+        );
+        assert_eq!(
+            seen_starts,
+            std::collections::BTreeSet::from([15, 18, 21]),
+            "the structural oracle must cover the union of ruled tail starts"
+        );
     }
 }
 
