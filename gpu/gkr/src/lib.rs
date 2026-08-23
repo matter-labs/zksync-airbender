@@ -46,13 +46,23 @@ use crate::upstream::SumcheckScheduleClass;
 
 /// Caller-selected backward-phase behaviour, threaded from the apex `prove()`
 /// down to layer preparation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GkrBackwardOptions {
     /// Request the window-3 sectioned executor for main-layer rounds 0-2. The
     /// request is honoured only for a windowed sumcheck schedule; see
-    /// [`backward_execution_strategy`].
+    /// [`backward_execution_strategy`]. Clearing it is the escape hatch back to
+    /// the per-round arm.
     pub windowed_r0: bool,
     pub window_tail: WindowTailArm,
+}
+
+impl Default for GkrBackwardOptions {
+    fn default() -> Self {
+        Self {
+            windowed_r0: true,
+            window_tail: WindowTailArm::Split,
+        }
+    }
 }
 
 /// The main-layer arm one proof runs. Resolved once per proof, never per layer.
@@ -82,10 +92,7 @@ mod cpu_windowed_selector_tests {
     use super::*;
 
     fn windowed_request() -> GkrBackwardOptions {
-        GkrBackwardOptions {
-            windowed_r0: true,
-            window_tail: WindowTailArm::Absorbed,
-        }
+        GkrBackwardOptions::default()
     }
 
     #[test]
@@ -108,10 +115,22 @@ mod cpu_windowed_selector_tests {
     }
 
     #[test]
-    fn cpu_windowed_selector_defaults_to_the_per_round_arm() {
+    fn cpu_windowed_selector_defaults_to_the_windowed_arm() {
         let options = GkrBackwardOptions::default();
-        assert!(!options.windowed_r0);
-        assert_eq!(options.window_tail, WindowTailArm::Absorbed);
+        assert!(options.windowed_r0);
+        assert_eq!(options.window_tail, WindowTailArm::Split);
+        assert_eq!(
+            backward_execution_strategy(options, Some(SumcheckScheduleClass::Windowed)),
+            BackwardExecutionStrategy::WindowedR0
+        );
+    }
+
+    #[test]
+    fn cpu_windowed_selector_honours_the_per_round_escape_hatch() {
+        let options = GkrBackwardOptions {
+            windowed_r0: false,
+            ..GkrBackwardOptions::default()
+        };
         for class in [
             Some(SumcheckScheduleClass::Windowed),
             Some(SumcheckScheduleClass::Naive),

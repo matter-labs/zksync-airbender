@@ -26,7 +26,7 @@ use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLev
 use std::ffi::CStr;
 use std::mem;
 use std::process::exit;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 pub(crate) fn get_gpu_worker_func(
     device_id: i32,
@@ -51,33 +51,12 @@ pub(crate) fn get_gpu_worker_func(
 }
 
 /// The worker's backward-phase options. Single construction site for the
-/// windowed-R0 arm selection.
-///
-/// Measurement-only overrides, read exactly once per process so both arms run
-/// from one release binary: `AB_GKR_WINDOWED_R0=0|1` and
-/// `AB_GKR_WINDOW_TAIL=absorbed|split`. They are removed once the defaults are
-/// flipped; the typed fields remain the escape hatch.
-fn backward_options() -> GkrBackwardOptions {
-    static OPTIONS: OnceLock<GkrBackwardOptions> = OnceLock::new();
-    *OPTIONS.get_or_init(|| {
-        let windowed_r0 = match std::env::var("AB_GKR_WINDOWED_R0").as_deref() {
-            Ok("1") => true,
-            Ok("0") | Err(_) => false,
-            Ok(other) => panic!("AB_GKR_WINDOWED_R0 must be 0 or 1, got {other:?}"),
-        };
-        let window_tail = match std::env::var("AB_GKR_WINDOW_TAIL").as_deref() {
-            Ok("split") => WindowTailArm::Split,
-            Ok("absorbed") | Err(_) => WindowTailArm::Absorbed,
-            Ok(other) => panic!("AB_GKR_WINDOW_TAIL must be absorbed or split, got {other:?}"),
-        };
-        let options = GkrBackwardOptions {
-            windowed_r0,
-            window_tail,
-        };
-        info!("GKR backward options: {options:?}");
-        options
-    })
-}
+/// windowed-R0 arm selection; clearing `windowed_r0` is the escape hatch back
+/// to the per-round arm.
+const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
+    windowed_r0: true,
+    window_tail: WindowTailArm::Split,
+};
 
 enum RequestKind {
     MemoryCommitment,
@@ -382,7 +361,7 @@ fn schedule_phase_one<'a>(
             resolve_backward_execution_strategy(
                 &state.precomputations.gkr_programs,
                 &prover_config,
-                backward_options(),
+                BACKWARD_OPTIONS,
             ),
         )
         .unwrap_or_else(|error| panic!("{error}"));
@@ -444,7 +423,7 @@ fn enqueue_phase_two<'a>(
                 &prover_config,
                 final_trace_size_log_2,
                 bundle,
-                backward_options(),
+                BACKWARD_OPTIONS,
                 context,
             )?;
             JobType::Proof(job)

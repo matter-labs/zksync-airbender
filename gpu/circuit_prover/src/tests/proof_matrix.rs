@@ -12,6 +12,15 @@ fn windowed_options() -> GkrBackwardOptions {
     }
 }
 
+/// The per-round arm, pinned so a both-arm wrapper keeps comparing two arms
+/// regardless of which one the defaults select.
+fn per_round_options() -> GkrBackwardOptions {
+    GkrBackwardOptions {
+        windowed_r0: false,
+        ..GkrBackwardOptions::default()
+    }
+}
+
 /// Full GPU proof == CPU reference, on BOTH backward arms in the same binary.
 ///
 /// The per-round arm always runs. The windowed arm runs whenever this family's
@@ -22,7 +31,11 @@ fn windowed_options() -> GkrBackwardOptions {
 /// `resolve_backward_execution_strategy`, so a schedule-class change cannot
 /// silently turn a both-arm row into a second per-round run.
 pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
-    let (per_round, _ms) = fixture.schedule_prove().unwrap().finish().unwrap();
+    let (per_round, _ms) = fixture
+        .schedule_prove_with(per_round_options())
+        .unwrap()
+        .finish()
+        .unwrap();
     assert_gkr_proof_eq_for_test(&per_round, &fixture.expected_cpu_proof);
 
     let strategy = crate::proof::resolve_backward_execution_strategy(
@@ -63,7 +76,7 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
         windowed_options(),
     );
     eprintln!("multi_schedule backward arms: per-round + {strategy:?}");
-    let job0 = fixture.schedule_prove().unwrap();
+    let job0 = fixture.schedule_prove_with(per_round_options()).unwrap();
     let job1 = fixture.schedule_prove_with(windowed_options()).unwrap();
     let (p0, ms0) = job0.finish().unwrap();
     eprintln!("proof_job_0 proof time: {ms0} ms");

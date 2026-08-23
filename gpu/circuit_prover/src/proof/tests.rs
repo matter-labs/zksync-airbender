@@ -363,10 +363,13 @@ fn cpu_windowed_arm_selection_covers_every_corpus_family() {
                 resolve_backward_execution_strategy(
                     &programs,
                     &config,
-                    GkrBackwardOptions::default()
+                    GkrBackwardOptions {
+                        windowed_r0: false,
+                        ..GkrBackwardOptions::default()
+                    }
                 ),
                 BackwardExecutionStrategy::PerRound,
-                "{layout} {level:?} must stay per-round by default",
+                "{layout} {level:?} must honour the per-round escape hatch",
             );
             if strategy == BackwardExecutionStrategy::WindowedR0 {
                 selected.push(format!("{layout} {level:?}"));

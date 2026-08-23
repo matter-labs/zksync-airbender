@@ -65,10 +65,10 @@ cuda_kernel!(
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WindowTailArm {
     /// One block reduces the partial matrix and plays the rounds.
-    #[default]
     Absorbed,
     /// 27 blocks reduce the partial matrix into `reduced_tensor`, then one
     /// block plays the rounds.
+    #[default]
     Split,
 }
 
