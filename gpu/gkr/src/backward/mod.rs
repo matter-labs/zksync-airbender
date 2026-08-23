@@ -11,6 +11,7 @@ use gpu_prover_context::ProverContext;
 mod dim_reducing_encoder;
 mod dim_reducing_sumcheck_plan;
 pub mod kernels;
+pub mod main_continuation;
 mod main_layer;
 pub mod round_timing;
 mod scheduled_execution;
