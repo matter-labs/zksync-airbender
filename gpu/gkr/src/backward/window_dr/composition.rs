@@ -1,4 +1,4 @@
-// Task 4 consumes the R0 eq/keepalive owners; D1/DR-cont extends composition.
+// Task 6 consumes the R0 hook; D1/DR-cont extends it with continuation state.
 #![allow(dead_code)]
 
 use std::collections::BTreeSet;
@@ -15,7 +15,7 @@ use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN};
 use crate::upstream::GKRAddress;
 use crate::GpuGKRStorage;
 
-use super::binding::{resolve_storage_e4, DrWindowBindError};
+use super::binding::{resolve_storage_e4, DrWindowBindError, DrWindowLaunch};
 
 pub(crate) struct DrWindowPassEqState {
     pub(crate) eq_low: DeviceAllocation<E4>,
@@ -79,4 +79,43 @@ pub(super) fn build_raw_input_owner<T, Error>(
         canonical_sources,
         backings,
     })
+}
+
+pub(crate) fn continuation_window_count(folding_steps: usize) -> usize {
+    (folding_steps.saturating_sub(4) / 3).min(4)
+}
+
+pub(crate) fn megakernel_entry_round(folding_steps: usize) -> usize {
+    3 + 3 * continuation_window_count(folding_steps)
+}
+
+/// Whole-layer owner handed to D1/DR-cont after the R0 producer is prepared.
+/// R0's Eq state remains pass-local: later continuation evaluators allocate a
+/// distinct Eq view and do not mutate this persistent tail state.
+pub(crate) struct DrWindowLayerCompositionHook {
+    pub(crate) r0_launch: DrWindowLaunch,
+    pub(crate) continuation_window_count: usize,
+    pub(crate) megakernel_entry_round: usize,
+    pub(crate) r0_eq: DrWindowPassEqState,
+    pub(crate) raw_inputs: DrWindowRawInputKeepalive,
+    pub(crate) partials_capacity: usize,
+}
+
+impl DrWindowLayerCompositionHook {
+    pub(crate) fn new(
+        r0_launch: DrWindowLaunch,
+        r0_eq: DrWindowPassEqState,
+        raw_inputs: DrWindowRawInputKeepalive,
+        partials_capacity: usize,
+    ) -> Self {
+        let folding_steps = r0_launch.folding_steps;
+        Self {
+            r0_launch,
+            continuation_window_count: continuation_window_count(folding_steps),
+            megakernel_entry_round: megakernel_entry_round(folding_steps),
+            r0_eq,
+            raw_inputs,
+            partials_capacity,
+        }
+    }
 }

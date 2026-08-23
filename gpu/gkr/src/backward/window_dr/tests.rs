@@ -1,13 +1,28 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::mem::{align_of, offset_of, size_of};
 use std::sync::Arc;
 
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::E4;
-use gpu_gkr_compiler::{lower_dr_window_program, project_dr_window_inputs, DrWindowInputOutput};
+use gpu_gkr_compiler::{
+    lower_dr_window_program, project_dr_window_inputs, DrWindowInputOutput,
+    DR_WINDOWED_R0_BLOCK_THREADS, DR_WINDOWED_R0_KERNEL_SYMBOL, KERNEL_ARGUMENT_CEILING_BYTES,
+};
 
-use super::binding::{DrCompactSourceTableBuilder, DrWindowBindError};
-use super::composition::{build_raw_input_owner, DrWindowRawInputKeepalive};
-use crate::backward::kernels::{pack_cache_u16, pack_source_u16, FoldingArenaBinding};
+use super::binding::{
+    dr_window_partials_len, dr_window_row_tiles, resolve_dr_window_kernel,
+    validate_dr_r0_eq_contract, validate_dr_window_folding_steps, DrCompactSourceTableBuilder,
+    DrWindowBindError, DrWindowLaunchBinding,
+};
+use super::composition::{
+    build_raw_input_owner, continuation_window_count, megakernel_entry_round,
+    DrWindowRawInputKeepalive,
+};
+use super::generated_registry::{DR_WINDOWED_R0_DEFINED_MASK, DR_WINDOWED_R0_UNIVERSAL_KERNEL};
+use crate::backward::kernels::{
+    make_eq_sizes, pack_cache_u16, pack_source_u16, FoldingArenaBinding,
+    GpuGKRDimensionReducingBatch, GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
+};
 use crate::backward::{
     derive_dimension_reducing_inputs, legacy_dimension_reducing_slots_for_test,
     GpuGKRDimensionReducingLayerSlots, CONTINUATION_GOLDEN_CORPUS,
@@ -880,4 +895,180 @@ fn cpu_dr_window_legacy_port_corpus() {
             .as_ref()
             .expect("the production corpus must contain a mutation baseline"),
     );
+}
+
+#[test]
+fn cpu_dr_window_r0_abi_and_linked_symbol_contract() {
+    assert_eq!(size_of::<GpuGKRDimensionReducingBatch<E4>>(), 336);
+    assert_eq!(size_of::<DrWindowLaunchBinding>(), 352);
+    assert_eq!(align_of::<DrWindowLaunchBinding>(), 16);
+    assert_eq!(KERNEL_ARGUMENT_CEILING_BYTES, 32_764);
+    assert!(size_of::<DrWindowLaunchBinding>() <= KERNEL_ARGUMENT_CEILING_BYTES);
+    assert_eq!(offset_of!(DrWindowLaunchBinding, batch), 0);
+    assert_eq!(offset_of!(DrWindowLaunchBinding, partials), 336);
+    assert_eq!(offset_of!(DrWindowLaunchBinding, log_rows), 344);
+    assert_eq!(offset_of!(DrWindowLaunchBinding, reserved), 348);
+
+    let binding = DrWindowLaunchBinding {
+        batch: GpuGKRDimensionReducingBatch::default(),
+        partials: std::ptr::null_mut(),
+        log_rows: 1,
+        reserved: 0,
+    };
+    assert!(binding.batch.contributions.is_null());
+    assert_eq!(DR_WINDOWED_R0_BLOCK_THREADS, 288);
+    assert_eq!(DR_WINDOWED_R0_BLOCK_THREADS / 32, 9);
+    assert_eq!(GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN, 10);
+    assert_eq!(
+        DR_WINDOWED_R0_UNIVERSAL_KERNEL.symbol_name,
+        DR_WINDOWED_R0_KERNEL_SYMBOL
+    );
+}
+
+#[test]
+fn cpu_dr_window_r0_dispatch_is_universal_and_typed() {
+    for mask in 1..=DR_WINDOWED_R0_DEFINED_MASK {
+        assert_eq!(
+            resolve_dr_window_kernel(mask).unwrap().symbol_name,
+            DR_WINDOWED_R0_KERNEL_SYMBOL,
+            "mask {mask:#04x}",
+        );
+    }
+    assert_eq!(
+        resolve_dr_window_kernel(0).err().unwrap(),
+        DrWindowBindError::ZeroMask,
+    );
+    for bit in 5..32 {
+        let undefined = 1u32 << bit;
+        assert_eq!(
+            resolve_dr_window_kernel(undefined).err().unwrap(),
+            DrWindowBindError::UndefinedMaskBits { bits: undefined },
+        );
+    }
+}
+
+#[test]
+fn cpu_dr_window_r0_geometry_eq_and_composition_policy_are_pass_local() {
+    assert_eq!(
+        validate_dr_window_folding_steps(3),
+        Err(DrWindowBindError::UnsupportedFoldingSteps { folding_steps: 3 }),
+    );
+    assert_eq!(validate_dr_window_folding_steps(4), Ok(()));
+    assert_eq!(validate_dr_window_folding_steps(24), Ok(()));
+    assert_eq!(
+        validate_dr_window_folding_steps(25),
+        Err(DrWindowBindError::UnsupportedFoldingSteps { folding_steps: 25 }),
+    );
+    assert_eq!(dr_window_row_tiles(4), 1);
+    assert_eq!(dr_window_partials_len(4), 54);
+    assert_eq!(dr_window_row_tiles(8), 1);
+    assert_eq!(dr_window_row_tiles(9), 2);
+    assert_eq!(dr_window_row_tiles(24), 65_536);
+    assert_eq!(dr_window_partials_len(24), 27 * (65_536 + 1));
+
+    for folding_steps in 4..=24 {
+        let sizes = make_eq_sizes(folding_steps - 3);
+        assert_eq!(validate_dr_r0_eq_contract(folding_steps, 3, sizes), Ok(()),);
+        assert_eq!(
+            validate_dr_r0_eq_contract(folding_steps, 2, sizes),
+            Err(DrWindowBindError::EqBuildOffset {
+                expected: 3,
+                observed: 2,
+            }),
+        );
+        assert_eq!(
+            validate_dr_r0_eq_contract(folding_steps, 3, make_eq_sizes(folding_steps - 4)),
+            Err(DrWindowBindError::EqSizeMismatch),
+        );
+    }
+
+    let expected = [
+        (4, 0, 3),
+        (7, 1, 6),
+        (10, 2, 9),
+        (13, 3, 12),
+        (16, 4, 15),
+        (24, 4, 15),
+    ];
+    for (folding_steps, count, entry) in expected {
+        assert_eq!(continuation_window_count(folding_steps), count);
+        assert_eq!(megakernel_entry_round(folding_steps), entry);
+    }
+}
+
+#[test]
+fn cpu_dr_window_r0_native_source_pins_tensor_and_constant_eq_contracts() {
+    const R0: &str = include_str!("../../../native/gkr/backward/window_dr/r0.cuh");
+    const WINDOW_GEOMETRY: &str =
+        include_str!("../../../native/gkr/backward/window/window_geometry.cuh");
+    const TU: &str =
+        include_str!("../../../native/gkr/backward/generated/dr_r0_window_universal.cu");
+    const BINDING: &str = include_str!("binding.rs");
+
+    assert!(R0.contains("2u * y_index + gate_bit"));
+    assert!(R0.contains("load<e4, ld_modifier::ca>"));
+    assert!(!R0.contains("load<e4, ld_modifier::cs>(column"));
+    assert!(R0.contains("bwd_window_product_tensor"));
+    assert!(R0.contains("gkr_load_slot_batch_challenges"));
+    assert!(R0.contains("tower < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT"));
+    assert!(!R0.contains("tower < GKR_DIM_REDUCING_INPUTS_PER_SLOT"));
+    assert!(R0.contains("if (!selector.has_infinity())"));
+    assert!(R0.contains("9 * x2 + cell_base"));
+    assert_eq!(R0.matches("gkr_compute_eq_inline<e4>").count(), 1);
+    assert_eq!(
+        WINDOW_GEOMETRY.matches("gkr_compute_eq_inline<e4>").count(),
+        1
+    );
+    assert!(!R0.contains("store<e4, st_modifier::cs>(inputs"));
+    assert!(!R0.contains("batch.contributions"));
+    assert!(!R0.contains("ab_gkr_eq_high"));
+    assert!(R0.contains("gkr_compute_eq_inline_global"));
+    assert_eq!(
+        TU.matches("ab_gkr_dr_r0_window3_universal_kernel").count(),
+        1,
+    );
+    assert_eq!(
+        BINDING
+            .matches("launch_build_eq_high_and_low_groups_from_point(")
+            .count(),
+        1,
+    );
+    assert!(!BINDING.contains("launch_build_eq_values_from_point("));
+
+    // DR owns a different descriptor, so it cannot call bwd_window_publish
+    // directly. Keep the shared publish tail byte-for-byte identical from the
+    // cell index through inactive-row zeroing, warp reduction, and row-tile
+    // store. The Eq expressions above are separately pinned to one call each.
+    fn publish_tail(source: &str) -> &str {
+        let start = source
+            .find(PUBLISH_TAIL_START)
+            .expect("publish tail starts at the canonical cell index");
+        let end = source[start..]
+            .find(PUBLISH_TAIL_END)
+            .map(|offset| start + offset + PUBLISH_TAIL_END.len())
+            .expect("publish tail ends after the row-tile store");
+        &source[start..end]
+    }
+
+    const PUBLISH_TAIL_START: &str = "  const u32 cell_base = 3 * selector.x1 + selector.x0;";
+    const PUBLISH_TAIL_END: &str = "  }\n}";
+    assert_eq!(publish_tail(R0), publish_tail(WINDOW_GEOMETRY));
+    assert!(R0.contains("const u32 row = row_tile * BWD_WINDOW_ROWS_PER_TILE + lane;",));
+    assert!(R0.contains("const u32 safe_row = active ? row : 0;"));
+    assert!(
+        R0.contains("gkr_compute_eq_inline<e4>(desc.batch.eq_low, desc.batch.eq_sizes, safe_row)",)
+    );
+    assert!(WINDOW_GEOMETRY.contains(
+        "gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, active ? row_tile * BWD_WINDOW_ROWS_PER_TILE + lane : 0)",
+    ));
+
+    let mut seen = BTreeSet::new();
+    for x0 in 0..3usize {
+        for x1 in 0..3usize {
+            for x2 in 0..3usize {
+                seen.insert(9 * x2 + 3 * x1 + x0);
+            }
+        }
+    }
+    assert_eq!(seen, (0..27).collect());
 }
