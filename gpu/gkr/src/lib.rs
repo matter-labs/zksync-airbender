@@ -32,7 +32,10 @@ pub(crate) use forward::kernels::ForwardKernels;
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
 pub(crate) use gpu_gkr_model::storage_layout;
 pub(crate) use gpu_gkr_model::transform;
-pub use programs::{GkrPrograms, WindowLoweringRejection, WindowProgramBundle};
+pub use programs::{
+    DrWindowLayerProgram, DrWindowLoweringRejection, DrWindowProgramBundle, GkrPrograms,
+    WindowLoweringRejection, WindowProgramBundle,
+};
 pub(crate) use storage_types::*;
 // Keep the public path `gpu_gkr::gkr_initial_inner_products` (apex proof).
 pub use support::initial_inner_products as gkr_initial_inner_products;
