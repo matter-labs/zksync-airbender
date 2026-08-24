@@ -23,7 +23,7 @@ mod binding {
 
     pub(crate) use super::binding_impl::{
         bind_first_main_continuation_window, bind_later_main_continuation_window,
-        MainContinuationWindowBindError, MainContinuationWindowLaunchBinding,
+        task8_window_spans, MainContinuationWindowBindError, MainContinuationWindowLaunchBinding,
         MainContinuationWindowLaunched, MainContinuationWindowRuntimeScratch,
     };
 

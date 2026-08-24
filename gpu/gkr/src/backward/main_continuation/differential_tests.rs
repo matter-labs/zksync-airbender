@@ -276,35 +276,48 @@ impl Task8OwnerGenerationLedger {
         }))
     }
 
-    /// The open generation that owns `range`: the narrowest declared range
+    /// The generation that owns `range`: the most specific declaration
     /// containing it, so a sub-buffer such as the reduced tensor takes the spans
-    /// inside it from the allocation it lives in. Two candidates of the same
-    /// width are a ledger fault, not a choice.
+    /// inside it from the allocation it lives in.
+    ///
+    /// The most specific declaration stays authoritative after it binds `Final`.
+    /// A span inside a finalized narrow owner is a use after that owner's last
+    /// enqueue even while a broader owner is still live, until an explicit
+    /// successor generation is admitted at the same address. Two live
+    /// candidates of the same width are a ledger fault, not a choice.
     fn owner_of(&self, range: &std::ops::Range<usize>) -> Result<usize, Task8LedgerError> {
-        let mut retired = false;
-        let mut found: Option<(usize, usize)> = None;
+        let mut narrowest: Option<usize> = None;
+        let mut live: Option<usize> = None;
+        let mut ambiguous = false;
         for (slot, entry) in self.generations.iter().enumerate() {
-            if entry.superseded_by.is_some() || entry.final_enqueue.is_some() {
-                retired |= entry.within(range);
-                continue;
-            }
             if !entry.within(range) {
                 continue;
             }
             let width = entry.covered.end - entry.covered.start;
-            match found {
-                Some((_, best)) if best < width => {}
-                Some((_, best)) if best == width => {
-                    return Err(Task8LedgerError::AmbiguousLiveGeneration)
+            let open = entry.superseded_by.is_none() && entry.final_enqueue.is_none();
+            match narrowest {
+                Some(best) if best < width => continue,
+                Some(best) if best == width => {
+                    if open {
+                        ambiguous |= live.is_some();
+                        live = Some(slot);
+                    }
                 }
-                _ => found = Some((slot, width)),
+                _ => {
+                    narrowest = Some(width);
+                    ambiguous = false;
+                    live = open.then_some(slot);
+                }
             }
         }
-        found.map(|(slot, _)| slot).ok_or(if retired {
-            Task8LedgerError::UseAfterFinal
-        } else {
-            Task8LedgerError::UnownedSpan
-        })
+        if ambiguous {
+            return Err(Task8LedgerError::AmbiguousLiveGeneration);
+        }
+        match (narrowest, live) {
+            (_, Some(slot)) => Ok(slot),
+            (Some(_), None) => Err(Task8LedgerError::UseAfterFinal),
+            (None, None) => Err(Task8LedgerError::UnownedSpan),
+        }
     }
 
     fn open(
@@ -1617,7 +1630,6 @@ fn retain_in_callback<T: Send + Sync + 'static>(
 /// addressed through its owner, so the mutation copy and the readback copy are
 /// both recorded against the exact element they name.
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_arguments)]
 fn schedule_live_device_mutation<T>(
     family: &'static str,
     target: Task8LiveMutationTarget,
@@ -1751,6 +1763,25 @@ fn open_bank_owners(
     (slab, tables)
 }
 
+/// The device symbols a differential arm must name that only another arm's
+/// enqueue resolved. Each arm installs them into its own probe, so a fresh
+/// probe never loses an address a finished arm had already computed, and no
+/// site resolves a symbol twice.
+#[derive(Clone, Copy, Debug)]
+struct Task8CarriedSymbols {
+    eq_high: (usize, usize),
+    coefficient_bank: Option<(usize, usize)>,
+}
+
+impl Task8CarriedSymbols {
+    fn install(&self) {
+        task8_register_symbol("ab_gkr_eq_high", self.eq_high.0, self.eq_high.1);
+        if let Some((base, bytes)) = self.coefficient_bank {
+            task8_register_symbol("ab_gkr_bwd_seg_coeff_bank", base, bytes);
+        }
+    }
+}
+
 /// The owners one arm holds open across its passes.
 #[derive(Clone, Debug)]
 struct Task8ArmOwners {
@@ -1785,35 +1816,32 @@ struct Task8TranscriptOwners {
 /// Opens the two device symbols whose addresses only a production enqueue
 /// argument carries, once the enqueue that used them has reported them.
 fn open_reported_symbols(ledger: &mut Task8OwnerGenerationLedger, owners: &mut Task8ArmOwners) {
-    for (symbol, label, slot) in [
-        (
-            "bwd_seg_fold_weights",
-            "fold_weights_symbol",
-            &mut owners.fold_weights as *mut Option<Task8LedgerOwner>,
-        ),
-        (
-            "ab_gkr_bwd_seg_coeff_bank",
-            "coefficient_bank",
-            &mut owners.coefficient_bank as *mut Option<Task8LedgerOwner>,
-        ),
-    ] {
-        // SAFETY: the two slots are distinct fields of `owners`, taken one at a
-        // time inside this loop.
-        let slot = unsafe { &mut *slot };
+    let arm = owners.arm;
+    let mut open = |slot: &mut Option<Task8LedgerOwner>, symbol, label| {
         if slot.is_some() {
-            continue;
+            return;
         }
         if let Some((base, bytes)) = task8_symbol(symbol) {
             *slot = Some(ledger_open(
                 ledger,
-                owners.arm,
+                arm,
                 label,
                 Task8OwnerOrigin::ArmOwned,
                 base,
                 bytes,
             ));
         }
-    }
+    };
+    open(
+        &mut owners.fold_weights,
+        "bwd_seg_fold_weights",
+        "fold_weights_symbol",
+    );
+    open(
+        &mut owners.coefficient_bank,
+        "ab_gkr_bwd_seg_coeff_bank",
+        "coefficient_bank",
+    );
 }
 
 /// The bytes of an arm's Eq owners the readback observes, split into what this
@@ -2047,10 +2075,22 @@ fn run_window_arm(
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
     ledger: &mut Task8OwnerGenerationLedger,
-) -> CudaResult<ScheduledPreparedObservation> {
+) -> CudaResult<(ScheduledPreparedObservation, Task8CarriedSymbols)> {
     let interval_entry = context.get_device_memory_usage();
     let observer = context.observe_device_memory_high_water();
     let probe = Task8ProbeGuard::install();
+    // The one Eq-high pointer this arm resolves, registered with its own probe
+    // so the launches that read the symbol without naming it can record an
+    // exact range against it. No site resolves the symbol again.
+    let eq_high = get_eq_high_constant_device_ptr() as usize;
+    let mut carried = Task8CarriedSymbols {
+        eq_high: (
+            eq_high,
+            GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN * size_of::<E4>(),
+        ),
+        coefficient_bank: None,
+    };
+    carried.install();
     let (mut observation, allocations) = {
         let mut allocations = Vec::new();
         let sources = open_source_owners(ledger, TASK8_WINDOW_ARM, storage, window_program);
@@ -2131,8 +2171,8 @@ fn run_window_arm(
                 TASK8_WINDOW_ARM,
                 "eq_high_symbol",
                 Task8OwnerOrigin::FactoredEq,
-                get_eq_high_constant_device_ptr() as usize,
-                GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN * std::mem::size_of::<E4>(),
+                carried.eq_high.0,
+                carried.eq_high.1,
             ),
             partials: ledger_open_allocation(ledger, TASK8_WINDOW_ARM, "partials", &partials),
             sources,
@@ -2148,6 +2188,7 @@ fn run_window_arm(
         )?;
         assert_eq!(bank_spans.slab.0, bank.challenge_slab().as_ptr() as usize);
         let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
+        carried.coefficient_bank = Some(bank_spans.bank);
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
 
         let before_prior = context.get_device_memory_usage();
@@ -2547,7 +2588,7 @@ fn run_window_arm(
     assert_eq!(observation.memory.start, interval_entry);
     assert_eq!(observation.memory.return_to_entry, interval_entry);
     observation.allocations = allocations;
-    Ok(observation)
+    Ok((observation, carried))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2563,6 +2604,7 @@ fn run_legacy_arm(
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
     ledger: &mut Task8OwnerGenerationLedger,
+    carried: &Task8CarriedSymbols,
 ) -> CudaResult<(
     ScheduledPreparedObservation,
     Vec<(SourceId, usize)>,
@@ -2572,6 +2614,10 @@ fn run_legacy_arm(
     let interval_entry = context.get_device_memory_usage();
     let observer = context.observe_device_memory_high_water();
     let probe = Task8ProbeGuard::install();
+    // The window arm's probe is gone, so its Eq-high pointer and the address and
+    // exact active prefix its bank fill already computed are re-registered here.
+    // Neither is resolved again.
+    carried.install();
     let (mut observation, source_columns, shape, adoption, allocations) = {
         let mut allocations = Vec::new();
         let sources = open_source_owners(ledger, TASK8_LEGACY_ARM, storage, window_program);
@@ -2646,8 +2692,8 @@ fn run_legacy_arm(
                 TASK8_LEGACY_ARM,
                 "eq_high_symbol",
                 Task8OwnerOrigin::FactoredEq,
-                get_eq_high_constant_device_ptr() as usize,
-                GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN * std::mem::size_of::<E4>(),
+                carried.eq_high.0,
+                carried.eq_high.1,
             ),
             partials: ledger_open_allocation(ledger, TASK8_LEGACY_ARM, "partials", &partials),
             sources,
@@ -3684,17 +3730,30 @@ fn build_corpus_census() -> CorpusCensus {
 mod cpu_tests {
     use gpu_prover_context::{PoolMemoryHighWaterReport, PoolMemoryUsage};
 
+    use super::super::abi::{
+        MainContinuationWindowDesc as MainContinuationWindowLaunchBinding,
+        MainContinuationWindowSourceRecord,
+    };
+    use super::super::binding::task8_window_spans;
+    use super::E4;
     use super::{
         allocation_group_record, bind_arm_owners_final, bind_challenge_owners_final,
         bind_transcript_owners_final, build_corpus_census, eq_readback_spans,
-        expected_arm_owner_labels, ledger_bind_final, ledger_open, signed_snapshot_delta,
-        task8_enqueue, task8_register_symbol, validate_owner_generation_ledger,
-        validate_single_owner_topology, BTreeSet, Task8AllocationRecord, Task8ArmOwners,
-        Task8ChallengeOwners, Task8EnqueueKind, Task8LedgerOwner, Task8LedgerRecord,
+        expected_arm_owner_labels, ledger_bind_final, ledger_open, make_eq_sizes,
+        signed_snapshot_delta, task8_enqueue, task8_register_symbol,
+        validate_owner_generation_ledger, validate_single_owner_topology, BTreeSet,
+        Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols, Task8ChallengeOwners,
+        Task8EnqueueKind, Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord,
         Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard, Task8QueuedUse, Task8Span,
         Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
         MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
         TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
+    };
+    use crate::backward::task8_probe::task8_register_descriptor_sources;
+    use crate::backward::vm::seg::task8_seg_spans;
+    use crate::backward::vm::seg_desc::{
+        bwd_seg_fold_weight_run, bwd_seg_lane, BwdSegAddrSlot, BwdSegDesc, BwdSegSourceRecord,
+        BWD_COEFF_ORIGIN_READ_EXT, BWD_SEG_ADDR_NONE,
     };
 
     fn record(
@@ -4673,8 +4732,349 @@ mod cpu_tests {
             .unwrap_or_else(|| panic!("no {site} enqueue"))
     }
 
+    const TASK8_TEST_SOURCE_STRIDE_LOG2: u8 = 3;
+    const TASK8_TEST_PUBLISH_STRIDE_LOG2: u8 = 1;
+    const TASK8_TEST_SEG_ROWS: u32 = 64;
+
+    fn task8_test_window_descriptor() -> Box<MainContinuationWindowLaunchBinding> {
+        // SAFETY: the descriptor is `repr(C)` plain data whose pointer fields
+        // accept null, exactly as the production binder's zeroed box does.
+        let mut desc: Box<MainContinuationWindowLaunchBinding> =
+            unsafe { Box::new(std::mem::zeroed()) };
+        desc.slot[0] = BwdSegAddrSlot {
+            base: TASK8_TEST_SOURCE as *const u8,
+            log2_stride: TASK8_TEST_SOURCE_STRIDE_LOG2,
+            origin: BWD_COEFF_ORIGIN_READ_EXT,
+            procedural_kind: 0,
+            reserved: [0; 5],
+        };
+        desc.slot[1] = BwdSegAddrSlot {
+            base: TASK8_TEST_PUBLICATION as *const u8,
+            log2_stride: TASK8_TEST_PUBLISH_STRIDE_LOG2,
+            origin: BWD_COEFF_ORIGIN_READ_EXT,
+            procedural_kind: 0,
+            reserved: [0; 5],
+        };
+        desc.source[0] = MainContinuationWindowSourceRecord {
+            src: bwd_seg_lane(0, 0).unwrap(),
+            publish: BWD_SEG_ADDR_NONE,
+        };
+        desc.source[1] = MainContinuationWindowSourceRecord {
+            src: bwd_seg_lane(0, 1).unwrap(),
+            publish: bwd_seg_lane(1, 0).unwrap(),
+        };
+        desc.source_count = 2;
+        desc.eq_low = TASK8_TEST_EQ_LOW as *const E4;
+        desc.partials = TASK8_TEST_PARTIALS as *mut E4;
+        desc.row_tiles = TASK8_TEST_ROW_TILES as u32;
+        desc.eq_sizes = make_eq_sizes(11);
+        desc
+    }
+
+    fn task8_test_segmented_descriptor() -> Box<BwdSegDesc> {
+        // SAFETY: as above; the segmented descriptor is the same plain data.
+        let mut desc: Box<BwdSegDesc> = unsafe { Box::new(std::mem::zeroed()) };
+        desc.slot[0] = BwdSegAddrSlot {
+            base: TASK8_TEST_SOURCE as *const u8,
+            log2_stride: TASK8_TEST_SOURCE_STRIDE_LOG2,
+            origin: BWD_COEFF_ORIGIN_READ_EXT,
+            procedural_kind: 0,
+            reserved: [0; 5],
+        };
+        desc.slot[1] = BwdSegAddrSlot {
+            base: TASK8_TEST_PUBLICATION as *const u8,
+            log2_stride: TASK8_TEST_PUBLISH_STRIDE_LOG2,
+            origin: BWD_COEFF_ORIGIN_READ_EXT,
+            procedural_kind: 0,
+            reserved: [0; 5],
+        };
+        desc.source[0] = BwdSegSourceRecord {
+            src: bwd_seg_lane(0, 0).unwrap(),
+            cache: BWD_SEG_ADDR_NONE,
+            class: 0,
+            delta: 1,
+        };
+        desc.source[1] = BwdSegSourceRecord {
+            src: bwd_seg_lane(0, 1).unwrap(),
+            cache: bwd_seg_lane(1, 0).unwrap(),
+            class: 0,
+            delta: 3,
+        };
+        desc.eq_low = TASK8_TEST_EQ_LOW as *const E4;
+        desc.contributions = TASK8_TEST_PARTIALS as *mut E4;
+        desc.logical_rows = TASK8_TEST_SEG_ROWS;
+        desc.eq_sizes = make_eq_sizes(11);
+        desc
+    }
+
+    fn task8_test_carried() -> Task8CarriedSymbols {
+        Task8CarriedSymbols {
+            eq_high: (
+                TASK8_TEST_EQ_HIGH,
+                GKR_EQ_HIGH_SLOTS * TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
+            ),
+            coefficient_bank: Some((TASK8_TEST_BANK, TASK8_TEST_BANK_ELEMS * TASK8_TEST_ELEMENT)),
+        }
+    }
+
+    fn task8_test_register_fold_weights() {
+        task8_register_symbol(
+            "bwd_seg_fold_weights",
+            TASK8_TEST_FOLD_WEIGHTS,
+            TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
+        );
+    }
+
+    /// Opens one scope around a production span builder and returns the spans
+    /// the probe resolved and stored, or reports that it could not resolve them.
+    fn probe_spans<F>(
+        probe: &Task8ProbeGuard,
+        site: &'static str,
+        build: F,
+    ) -> Option<Vec<Task8Span>>
+    where
+        F: FnOnce() -> Vec<Task8Span>,
+    {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _scope = task8_enqueue(site, Task8EnqueueKind::Kernel, build);
+        }));
+        std::panic::set_hook(previous);
+        outcome.ok()?;
+        Some(probe.drain().pop()?.spans)
+    }
+
+    fn find_span(spans: &[Task8Span], role: &str, address: usize) -> Task8Span {
+        *spans
+            .iter()
+            .find(|span| span.role == role && span.address == address)
+            .unwrap_or_else(|| panic!("no {role} span at {address:#x}"))
+    }
+
+    /// Drives the production span builders under a probe that carries only what
+    /// a real arm would have registered, and checks the ranges they derive
+    /// against the native geometry computed here independently.
+    fn assert_real_span_builders_bind_carried_symbols() {
+        let sizes = make_eq_sizes(11);
+        let window = task8_test_window_descriptor();
+        let segmented = task8_test_segmented_descriptor();
+        let carried = task8_test_carried();
+
+        // A fresh probe holds no symbol a finished arm resolved, so neither
+        // launch can record its reads.
+        {
+            let probe = Task8ProbeGuard::install();
+            assert!(
+                probe_spans(&probe, "window-launch", || task8_window_spans(
+                    &window,
+                    TASK8_TEST_ROW_TILES
+                ))
+                .is_none(),
+                "a fresh probe must not invent an Eq-high address"
+            );
+        }
+        {
+            let probe = Task8ProbeGuard::install();
+            task8_register_symbol("ab_gkr_eq_high", carried.eq_high.0, carried.eq_high.1);
+            task8_test_register_fold_weights();
+            assert!(
+                probe_spans(&probe, "window-launch", || task8_window_spans(
+                    &window,
+                    TASK8_TEST_ROW_TILES
+                ))
+                .is_none(),
+                "a later-start arm must not invent a coefficient bank"
+            );
+        }
+
+        // The later-start legacy arm re-registers the Eq-high pointer and the
+        // address and exact active prefix the finished window arm's fill already
+        // computed. Both builders then resolve.
+        let probe = Task8ProbeGuard::install();
+        carried.install();
+        task8_test_register_fold_weights();
+        task8_register_descriptor_sources(&*segmented as *const BwdSegDesc as usize, 2);
+        let window_spans = probe_spans(&probe, "window-launch", || {
+            task8_window_spans(&window, TASK8_TEST_ROW_TILES)
+        })
+        .expect("the carried symbols resolve the window launch");
+        let segmented_spans =
+            probe_spans(&probe, "segmented-round", || task8_seg_spans(&segmented))
+                .expect("the carried symbols resolve the segmented round");
+
+        let source_stride = TASK8_TEST_ELEMENT << TASK8_TEST_SOURCE_STRIDE_LOG2;
+        let publish_stride = TASK8_TEST_ELEMENT << TASK8_TEST_PUBLISH_STRIDE_LOG2;
+        assert_eq!(
+            find_span(&window_spans, "source_column", TASK8_TEST_SOURCE).bytes,
+            source_stride
+        );
+        assert_eq!(
+            find_span(
+                &window_spans,
+                "source_column",
+                TASK8_TEST_SOURCE + source_stride
+            )
+            .bytes,
+            source_stride
+        );
+        let published: Vec<_> = window_spans
+            .iter()
+            .filter(|span| span.role == "published_column")
+            .collect();
+        assert_eq!(
+            published.len(),
+            2,
+            "a published column is written then read"
+        );
+        assert!(published[0].write && !published[1].write);
+        assert_eq!(published[0].address, TASK8_TEST_PUBLICATION);
+        assert_eq!(published[0].bytes, publish_stride);
+        assert_eq!(published[1].address, published[0].address);
+        assert_eq!(published[1].bytes, published[0].bytes);
+        assert_eq!(
+            find_span(&window_spans, "eq_low", TASK8_TEST_EQ_LOW).bytes,
+            (1usize << sizes.low) * TASK8_TEST_ELEMENT
+        );
+        assert_eq!(
+            find_span(&window_spans, "ab_gkr_eq_high", TASK8_TEST_EQ_HIGH).bytes,
+            (1usize << sizes.high[0]) * TASK8_TEST_ELEMENT
+        );
+        assert_eq!(
+            find_span(&window_spans, "ab_gkr_bwd_seg_coeff_bank", TASK8_TEST_BANK).bytes,
+            carried.coefficient_bank.unwrap().1,
+            "the bank read is the prefix the fill wrote, not the whole symbol"
+        );
+        let d3 = bwd_seg_fold_weight_run(3);
+        assert_eq!(
+            find_span(
+                &window_spans,
+                "bwd_seg_fold_weights",
+                TASK8_TEST_FOLD_WEIGHTS + d3.start * TASK8_TEST_ELEMENT
+            )
+            .bytes,
+            (d3.end - d3.start) * TASK8_TEST_ELEMENT,
+            "a width-3 window reads the D3 run only"
+        );
+        assert!(
+            window_spans
+                .iter()
+                .all(|span| span.role != "bwd_seg_fold_weights"
+                    || span.bytes < TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT),
+            "the whole eleven-slot bank is never recorded as read"
+        );
+        assert_eq!(
+            find_span(&window_spans, "partials", TASK8_TEST_PARTIALS).bytes,
+            MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * TASK8_TEST_ROW_TILES * TASK8_TEST_ELEMENT
+        );
+
+        let rows = TASK8_TEST_SEG_ROWS as usize;
+        assert_eq!(
+            find_span(&segmented_spans, "source_column", TASK8_TEST_SOURCE).bytes,
+            2 * rows * 2 * TASK8_TEST_ELEMENT,
+            "a depth-one source reads two leaves per row pair"
+        );
+        assert_eq!(
+            find_span(
+                &segmented_spans,
+                "source_column",
+                TASK8_TEST_SOURCE + source_stride
+            )
+            .bytes,
+            2 * rows * 8 * TASK8_TEST_ELEMENT,
+            "a depth-three source reads eight"
+        );
+        for delta in [1u8, 3] {
+            let run = bwd_seg_fold_weight_run(delta);
+            assert_eq!(
+                find_span(
+                    &segmented_spans,
+                    "bwd_seg_fold_weights",
+                    TASK8_TEST_FOLD_WEIGHTS + run.start * TASK8_TEST_ELEMENT
+                )
+                .bytes,
+                (run.end - run.start) * TASK8_TEST_ELEMENT
+            );
+        }
+        assert!(
+            !segmented_spans
+                .iter()
+                .any(|span| span.role == "bwd_seg_fold_weights"
+                    && span.address
+                        == TASK8_TEST_FOLD_WEIGHTS
+                            + bwd_seg_fold_weight_run(2).start * TASK8_TEST_ELEMENT),
+            "no live source folds at depth two, so its run is not read"
+        );
+        let cached: Vec<_> = segmented_spans
+            .iter()
+            .filter(|span| span.role == "published_column")
+            .collect();
+        assert_eq!(cached.len(), 2);
+        assert!(cached[0].write && !cached[1].write);
+        assert_eq!(cached[0].bytes, 2 * rows * TASK8_TEST_ELEMENT);
+        assert!(probe.finish().is_empty());
+    }
+
+    /// The most specific declaration stays authoritative after it binds `Final`,
+    /// even while the allocation it lives in is still live.
+    fn assert_finalized_narrow_owner_is_authoritative() {
+        const BROAD: usize = 0xc0_0000;
+        const NARROW: usize = BROAD + 64;
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        let probe = Task8ProbeGuard::install();
+        let arm = TASK8_WINDOW_ARM;
+        let broad = ledger_open(
+            &mut ledger,
+            arm,
+            "partials",
+            Task8OwnerOrigin::ArmOwned,
+            BROAD,
+            256,
+        );
+        let narrow = ledger_open(
+            &mut ledger,
+            arm,
+            "reduced_tensor",
+            Task8OwnerOrigin::ArmOwned,
+            NARROW,
+            64,
+        );
+        enqueue(
+            &mut ledger,
+            &probe,
+            arm,
+            "window-tail-reduce",
+            Task8EnqueueKind::Kernel,
+            vec![
+                Task8Span::write("partials", BROAD, 64),
+                Task8Span::write("reduced_tensor", NARROW, 64),
+            ],
+        );
+        ledger_bind_final(&mut ledger, &narrow);
+        assert_eq!(
+            ledger.owner_of(&(NARROW..NARROW + 64)),
+            Err(Task8LedgerError::UseAfterFinal),
+            "a finalized sub-buffer must not fall back to the allocation it lives in"
+        );
+        assert!(ledger.owner_of(&(BROAD..BROAD + 64)).is_ok());
+        // An explicit successor generation takes the address back.
+        let successor = ledger
+            .open(
+                TASK8_LEGACY_ARM,
+                "reduced_tensor",
+                Task8OwnerOrigin::ArmOwned,
+                NARROW,
+                64,
+            )
+            .expect("the retired sub-buffer admits a successor");
+        assert_eq!(ledger.owner_of(&(NARROW..NARROW + 64)), Ok(successor.slot));
+        ledger_bind_final(&mut ledger, &broad);
+        assert!(probe.finish().is_empty());
+    }
+
     #[test]
     fn cpu_main_continuation_owner_generation_accepts_both_real_arm_orders() {
+        assert_real_span_builders_bind_carried_symbols();
         for (first_arm, second_arm) in arm_orders() {
             let ledger = replay_both_orders(first_arm, second_arm);
             assert_eq!(
@@ -4811,6 +5211,7 @@ mod cpu_tests {
 
     #[test]
     fn cpu_main_continuation_owner_generation_validator_rejects_coverage_and_final_mutations() {
+        assert_finalized_narrow_owner_is_authoritative();
         for (first_arm, second_arm) in arm_orders() {
             let base = replay_both_orders(first_arm, second_arm);
             let mut families = BTreeSet::new();
@@ -5315,7 +5716,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
         for pass_index in 0..usize::from(plan) {
             let start_round = 3 * (pass_index + 1);
             let mut owner_ledger = Task8OwnerGenerationLedger::default();
-            let window = run_window_arm(
+            let (window, carried) = run_window_arm(
                 storage,
                 window_program,
                 continuation_program,
@@ -5340,6 +5741,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                 callbacks,
                 context,
                 &mut owner_ledger,
+                &carried,
             )?;
             let callback_accumulator = Arc::clone(&accumulator);
             let callback_source_table = Arc::clone(&source_table);

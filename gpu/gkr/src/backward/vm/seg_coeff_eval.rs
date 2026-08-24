@@ -656,6 +656,75 @@ pub(crate) struct SegCoeffEvalTables {
     desc: SegCoeffEvalDesc,
     host: Option<StaticPinnedBox<u8>>,
     device: DeviceAllocation<E4>,
+    /// The exact table bytes and challenge slots one fill's evaluation reads,
+    /// computed from the blob it stages.
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    task8_reads: Task8CoeffEvalReads,
+}
+
+/// The byte ranges of the staged blob, and the challenge slots, that
+/// `bwd_seg_eval_coefficient` reads for one staged program: the recipe record
+/// of every live coefficient, each monomial those recipes reference, and the
+/// batching slot plus the challenge indices those monomials name.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Task8CoeffEvalReads {
+    pub(crate) table_ranges: Vec<std::ops::Range<usize>>,
+    pub(crate) challenge_slots: Vec<usize>,
+}
+
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_coeff_eval_reads(blob: &SegCoeffEvalBlob) -> Task8CoeffEvalReads {
+    let recipe_bytes = std::mem::size_of::<SegCoeffRecipe>();
+    let monomial_bytes = std::mem::size_of::<SegCoeffMonomial>();
+    let mut table_ranges = Vec::new();
+    if !blob.recipes.is_empty() {
+        table_ranges.push(
+            BWD_SEG_BLOB_RECIPES_OFFSET
+                ..BWD_SEG_BLOB_RECIPES_OFFSET + blob.recipes.len() * recipe_bytes,
+        );
+    }
+    let mut challenge_slots =
+        std::collections::BTreeSet::from([BWD_SEG_CHALLENGE_CLAIM_BATCHING as usize]);
+    let mut monomials: Vec<std::ops::Range<usize>> = Vec::new();
+    for recipe in &blob.recipes {
+        let start = recipe.monomial_offset as usize;
+        let end = start + recipe.monomial_count as usize;
+        if start == end {
+            continue;
+        }
+        monomials.push(
+            BWD_SEG_BLOB_MONOMIALS_OFFSET + start * monomial_bytes
+                ..BWD_SEG_BLOB_MONOMIALS_OFFSET + end * monomial_bytes,
+        );
+        for monomial in &blob.monomials[start..end] {
+            for index in [monomial.challenge_idx_0, monomial.challenge_idx_1] {
+                if index != BWD_SEG_CHALLENGE_ABSENT {
+                    challenge_slots.insert(index as usize);
+                }
+            }
+        }
+    }
+    monomials.sort_by_key(|range| range.start);
+    for range in monomials {
+        match table_ranges.last_mut() {
+            Some(last) if last.end >= range.start => last.end = last.end.max(range.end),
+            _ => table_ranges.push(range),
+        }
+    }
+    Task8CoeffEvalReads {
+        table_ranges,
+        challenge_slots: challenge_slots.into_iter().collect(),
+    }
 }
 
 impl SegCoeffEvalTables {
@@ -678,6 +747,11 @@ impl SegCoeffEvalTables {
             desc,
             host: Some(host),
             device,
+            #[cfg(all(
+                any(test, feature = "task8_continuation_differential_test"),
+                not(no_cuda)
+            ))]
+            task8_reads: task8_coeff_eval_reads(blob),
         })
     }
 
@@ -727,7 +801,14 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
     bank: *mut E4,
     stream: &CudaStream,
 ) -> CudaResult<BwdSegCoeffBankFillSpans> {
-    let SegCoeffEvalTables { desc, host, device } = tables;
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let task8_reads = tables.task8_reads.clone();
+    let SegCoeffEvalTables {
+        desc, host, device, ..
+    } = tables;
     let host = host
         .as_ref()
         .expect("the coefficient blob's host staging must outlive its H2D copy");
@@ -770,15 +851,28 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
     let function = GkrBwdSegEvalCoefficientsFunction(ab_gkr_bwd_seg_eval_coefficients_kernel);
     crate::backward::task8_enqueue_scope!(_task8, "coefficient-bank-fill", Kernel, {
         use crate::backward::task8_probe::Task8Span;
-        vec![
-            Task8Span::read("coefficient_tables", tables_base, BWD_SEG_BLOB_BYTES),
-            Task8Span::read(
+        let element = std::mem::size_of::<E4>();
+        let mut spans = Vec::with_capacity(task8_reads.table_ranges.len() + 8);
+        for range in &task8_reads.table_ranges {
+            spans.push(Task8Span::read(
+                "coefficient_tables",
+                tables_base + range.start,
+                range.end - range.start,
+            ));
+        }
+        for slot in &task8_reads.challenge_slots {
+            spans.push(Task8Span::read(
                 "challenge_slab",
-                slab as usize,
-                BWD_SEG_CHALLENGE_SLOTS * std::mem::size_of::<E4>(),
-            ),
-            Task8Span::write("coefficient_bank", bank as usize, bank_bytes),
-        ]
+                slab as usize + slot * element,
+                element,
+            ));
+        }
+        spans.push(Task8Span::write(
+            "coefficient_bank",
+            bank as usize,
+            bank_bytes,
+        ));
+        spans
     });
     function.launch(
         &config,

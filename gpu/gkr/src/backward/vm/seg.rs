@@ -99,11 +99,14 @@ pub(crate) fn launch_bwd_seg_build_fold_weights(
     );
     crate::backward::task8_enqueue_scope!(_task8, "fold-weight-build", Kernel, {
         use crate::backward::task8_probe::Task8Span;
+        // `seg_build_fold_weights` reads `round - delta + j` for `j < delta`
+        // and `delta <= 3`, so the union is the three coordinates below `round`.
+        let first = (round as usize).saturating_sub(3);
         vec![
             Task8Span::symbol_read(
                 "ab_gkr_main_layer_claim_point",
-                0,
-                round as usize * size_of::<E4>(),
+                first * size_of::<E4>(),
+                (round as usize - first) * size_of::<E4>(),
             ),
             Task8Span::write(
                 "bwd_seg_fold_weights",
@@ -152,9 +155,10 @@ fn launch_config<'a>(desc: &BwdSegDesc, context: &'a ProverContext) -> CudaLaunc
     any(test, feature = "task8_continuation_differential_test"),
     not(no_cuda)
 ))]
-fn task8_seg_spans(desc: &BwdSegDesc) -> Vec<crate::backward::task8_probe::Task8Span> {
+pub(crate) fn task8_seg_spans(desc: &BwdSegDesc) -> Vec<crate::backward::task8_probe::Task8Span> {
     use super::seg_desc::{
-        bwd_seg_lane_slot, BWD_COEFF_ORIGIN_READ_EXT, BWD_SEG_ADDR_COLUMN_BITS, BWD_SEG_ADDR_NONE,
+        bwd_seg_fold_weight_run, bwd_seg_lane_slot, BWD_COEFF_ORIGIN_READ_EXT,
+        BWD_SEG_ADDR_COLUMN_BITS, BWD_SEG_ADDR_NONE,
     };
     use crate::backward::task8_probe::{task8_descriptor_sources, Task8Span};
     use crate::backward::{GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS};
@@ -171,7 +175,8 @@ fn task8_seg_spans(desc: &BwdSegDesc) -> Vec<crate::backward::task8_probe::Task8
             size_of::<gpu_core::primitives::field::BF>()
         }
     };
-    let mut spans = Vec::with_capacity(2 * sources + 8);
+    let mut spans = Vec::with_capacity(3 * sources + 8);
+    let mut deltas = std::collections::BTreeSet::new();
     for record in &desc.source[..sources] {
         let slot = &desc.slot[bwd_seg_lane_slot(record.src)];
         if !slot.base.is_null() {
@@ -186,13 +191,16 @@ fn task8_seg_spans(desc: &BwdSegDesc) -> Vec<crate::backward::task8_probe::Task8
             let slot = &desc.slot[bwd_seg_lane_slot(record.cache)];
             if !slot.base.is_null() {
                 let width = width_of(slot);
-                spans.push(Task8Span::write(
-                    "published_column",
-                    slot.base as usize + column_of(record.cache) * (width << slot.log2_stride),
-                    2 * rows * element,
-                ));
+                let address =
+                    slot.base as usize + column_of(record.cache) * (width << slot.log2_stride);
+                let bytes = 2 * rows * element;
+                // `seg_fold_and_publish` writes the pair, then `seg_resolve_e4`
+                // reads it back after the block barrier.
+                spans.push(Task8Span::write("published_column", address, bytes));
+                spans.push(Task8Span::read("published_column", address, bytes));
             }
         }
+        deltas.insert(record.delta);
     }
     if !desc.eq_low.is_null() {
         spans.push(Task8Span::read(
@@ -214,7 +222,17 @@ fn task8_seg_spans(desc: &BwdSegDesc) -> Vec<crate::backward::task8_probe::Task8
         ));
     }
     spans.push(Task8Span::symbol_region("ab_gkr_bwd_seg_coeff_bank"));
-    spans.push(Task8Span::symbol_region("bwd_seg_fold_weights"));
+    for delta in deltas {
+        let run = bwd_seg_fold_weight_run(delta);
+        if run.is_empty() {
+            continue;
+        }
+        spans.push(Task8Span::symbol_read(
+            "bwd_seg_fold_weights",
+            run.start * element,
+            (run.end - run.start) * element,
+        ));
+    }
     spans.push(Task8Span::write(
         "contributions",
         desc.contributions as usize,

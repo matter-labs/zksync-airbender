@@ -23,8 +23,8 @@ pub(crate) enum Task8EnqueueKind {
 
 /// One pointer argument of one enqueue: the exact address it names and the
 /// exact bytes that argument's geometry fixes. A descriptor address slot is
-/// carried in its own strided form, so a launch that reads `count` columns of
-/// `bytes` at `stride` records exactly those `count` ranges.
+/// recorded as one span per column it names, at the base and stride that slot
+/// fixes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Task8Span {
     pub(crate) role: &'static str,
@@ -201,8 +201,8 @@ impl Drop for Task8EnqueueScope {
 
 /// Names a device symbol by the address an enqueue argument or the harness's
 /// own copy already carried, so a launch that reads the symbol without naming
-/// it can still record an exact range. Re-registering the same address is a
-/// no-op; a different address for the same symbol is a fault.
+/// it can still record an exact range. A later fill may register a different
+/// live extent at the same address; a different address is a fault.
 pub(crate) fn task8_register_symbol(symbol: &'static str, address: usize, bytes: usize) {
     PROBE.with(|probe| {
         let mut probe = probe.borrow_mut();
@@ -211,8 +211,8 @@ pub(crate) fn task8_register_symbol(symbol: &'static str, address: usize, bytes:
         };
         let previous = state.symbols.insert(symbol, (address, bytes));
         assert!(
-            previous.is_none_or(|previous| previous == (address, bytes)),
-            "the Task 8 symbol {symbol} moved or resized between enqueues"
+            previous.is_none_or(|(previous, _)| previous == address),
+            "the Task 8 symbol {symbol} moved between enqueues"
         );
     });
 }

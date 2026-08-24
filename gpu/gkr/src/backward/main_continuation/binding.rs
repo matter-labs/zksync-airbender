@@ -833,13 +833,14 @@ impl KernelFunction for MainContinuationWindowKernelEntry {
     any(test, feature = "task8_continuation_differential_test"),
     not(no_cuda)
 ))]
-fn task8_window_spans(
+pub(crate) fn task8_window_spans(
     binding: &MainContinuationWindowLaunchBinding,
     row_tiles: usize,
 ) -> Vec<crate::backward::task8_probe::Task8Span> {
     use crate::backward::task8_probe::Task8Span;
     use crate::backward::vm::seg_desc::{
-        bwd_seg_lane_slot, BWD_COEFF_ORIGIN_READ_EXT, BWD_SEG_ADDR_COLUMN_BITS, BWD_SEG_ADDR_NONE,
+        bwd_seg_fold_weight_run, bwd_seg_lane_slot, BWD_COEFF_ORIGIN_READ_EXT,
+        BWD_SEG_ADDR_COLUMN_BITS, BWD_SEG_ADDR_NONE,
     };
     use crate::backward::{GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS};
 
@@ -853,7 +854,7 @@ fn task8_window_spans(
             size_of::<BF>()
         }
     };
-    let mut spans = Vec::with_capacity(2 * sources + 8);
+    let mut spans = Vec::with_capacity(3 * sources + 8);
     for record in &binding.source[..sources] {
         if record.src != BWD_SEG_ADDR_NONE {
             let slot = &binding.slot[bwd_seg_lane_slot(record.src)];
@@ -872,11 +873,11 @@ fn task8_window_spans(
             if !slot.base.is_null() {
                 let width = width_of(slot);
                 let stride = width << slot.log2_stride;
-                spans.push(Task8Span::write(
-                    "published_column",
-                    slot.base as usize + column_of(record.publish) * stride,
-                    stride,
-                ));
+                let address = slot.base as usize + column_of(record.publish) * stride;
+                // The fold prologue writes the corner, then
+                // `bwd_main_cont_resolve_source` reads it after the barrier.
+                spans.push(Task8Span::write("published_column", address, stride));
+                spans.push(Task8Span::read("published_column", address, stride));
             }
         }
     }
@@ -900,7 +901,13 @@ fn task8_window_spans(
         ));
     }
     spans.push(Task8Span::symbol_region("ab_gkr_bwd_seg_coeff_bank"));
-    spans.push(Task8Span::symbol_region("bwd_seg_fold_weights"));
+    // A width-3 window folds at depth three only, so it reads the D3 run.
+    let run = bwd_seg_fold_weight_run(3);
+    spans.push(Task8Span::symbol_read(
+        "bwd_seg_fold_weights",
+        run.start * element,
+        (run.end - run.start) * element,
+    ));
     spans.push(Task8Span::write(
         "partials",
         binding.partials as usize,
