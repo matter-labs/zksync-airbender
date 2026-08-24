@@ -38,7 +38,6 @@ base64 = "0.21.7"
 default = [
     "verifier_common/proof_utils",
     "field/no_inline",
-    "full_statement_verifier/verifiers",
 ]
 
 debug_logs = ["prover/debug_logs", "prover_pipeline/debug_logs"]
