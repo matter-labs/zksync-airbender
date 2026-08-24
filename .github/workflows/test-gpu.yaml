@@ -17,11 +17,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The minimum supported toolkit: the NVTX 3.2 headers the pool
-        # instrumentation compiles against ship with CUDA 13.
-        cuda: [ "13.0.3-devel-ubuntu22.04" ]
+        cuda: [ "13.0.3" ]
+        ubuntu: [ "ubuntu24.04" ]
     container:
-      image: nvidia/cuda:${{ matrix.cuda }}
+      image: nvidia/cuda:${{ matrix.cuda }}-devel-${{ matrix.ubuntu }}
     env:
       RUST_TOOLCHAIN: nightly-2026-08-09
       RUST_MIN_STACK: 16777216
@@ -67,14 +66,10 @@ jobs:
           test -n "$test_binary"
           cp "$test_binary" artifacts/gpu_circuit_prover-tests
 
-          # The runner host has the CUDA 13 driver but not the toolkit; bundle
-          # the runtime library next to the binaries.
-          cp -L /usr/local/cuda/lib64/libcudart.so.13 artifacts/
-
       - name: Upload GPU artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-gpu
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.ubuntu }}-gpu
           path: artifacts/
           if-no-files-found: error
 
@@ -83,8 +78,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Keep this aligned with the build matrix; artifact names embed it.
-        cuda: [ "13.0.3-devel-ubuntu22.04" ]
+        cuda: [ "13.0.3" ]
+        ubuntu: [ "ubuntu24.04" ]
+    container:
+      image: nvidia/cuda:${{ matrix.cuda }}-runtime-${{ matrix.ubuntu }}
+      options: --gpus all
 
     needs: zksync-airbender-build
     steps:
@@ -122,12 +120,8 @@ jobs:
       - name: Download GPU artifacts
         uses: actions/download-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-gpu
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.ubuntu }}-gpu
           path: zksync-airbender-gpu/
-
-      - name: Expose the bundled CUDA runtime
-        run: |
-          echo "LD_LIBRARY_PATH=${{ github.workspace }}/zksync-airbender-gpu" >> "$GITHUB_ENV"
 
       - name: Test GKR VM parity
         env:
