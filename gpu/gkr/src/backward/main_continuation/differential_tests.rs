@@ -57,6 +57,85 @@ const TASK8_READBACK_CHUNK_BYTES: usize = 16 << 20;
 const TASK8_NON_PUBLICATION_COMPARISONS: usize =
     12 + 3 + 8 + 1 + 1 + 2 * GKR_EQ_GROUP_TABLE_LEN * (1 + GKR_EQ_HIGH_SLOTS) + 3;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Task8QueuedUse {
+    Write,
+    Read,
+    Mutation,
+    Final,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Task8OwnerGeneration {
+    owner: usize,
+    address: usize,
+    generation: u64,
+    initialized: bool,
+    uses: Vec<(u64, Task8QueuedUse)>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Task8OwnerGenerationLedger {
+    next_sequence: u64,
+    next_generation: u64,
+    owners: Vec<Task8OwnerGeneration>,
+}
+
+impl Task8OwnerGenerationLedger {
+    fn enqueue(&mut self, owner: usize, address: usize, use_kind: Task8QueuedUse) -> u64 {
+        let sequence = self.next_sequence;
+        self.next_sequence += 1;
+        let entry = self
+            .owners
+            .iter_mut()
+            .find(|entry| entry.owner == owner && entry.address == address)
+            .expect("Task 8 owner must be registered before enqueue");
+        entry.uses.push((sequence, use_kind));
+        sequence
+    }
+
+    fn register(&mut self, owner: usize, address: usize) {
+        self.next_generation += 1;
+        self.owners.push(Task8OwnerGeneration {
+            owner,
+            address,
+            generation: self.next_generation,
+            initialized: false,
+            uses: Vec::new(),
+        });
+    }
+
+    fn initialize(&mut self, owner: usize, address: usize) {
+        let entry = self
+            .owners
+            .iter_mut()
+            .find(|entry| entry.owner == owner && entry.address == address)
+            .expect("Task 8 owner must be registered before initialization");
+        entry.initialized = true;
+    }
+
+    fn reuse_after_final(&mut self, owner: usize, address: usize) -> Result<(), &'static str> {
+        let entry = self
+            .owners
+            .iter()
+            .rev()
+            .find(|entry| entry.address == address)
+            .ok_or("unknown owner address")?;
+        if !entry
+            .uses
+            .iter()
+            .any(|(_, use_kind)| *use_kind == Task8QueuedUse::Final)
+        {
+            return Err("owner reused before final queued use");
+        }
+        if !entry.initialized {
+            return Err("owner reused without full reinitialization");
+        }
+        self.register(owner, address);
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Task8AllocationRecord {
     kind: &'static str,
@@ -2149,7 +2228,8 @@ mod cpu_tests {
 
     use super::{
         allocation_group_record, build_corpus_census, signed_snapshot_delta,
-        validate_single_owner_topology, Task8AllocationRecord, Task8TopologyError,
+        validate_single_owner_topology, Task8AllocationRecord, Task8OwnerGenerationLedger,
+        Task8QueuedUse, Task8TopologyError,
     };
 
     fn record(
@@ -2261,6 +2341,44 @@ mod cpu_tests {
         );
         assert!(i128::try_from(growth_record.size_bytes).unwrap() >= 0);
         assert_eq!(signed_snapshot_delta(7, 7), 0);
+    }
+
+    #[test]
+    fn cpu_main_continuation_owner_generation_rejects_stale_reads_both_orders() {
+        for reverse in [false, true] {
+            let mut ledger = Task8OwnerGenerationLedger::default();
+            ledger.register(1, 0x1000);
+            ledger.initialize(1, 0x1000);
+            if reverse {
+                ledger.enqueue(1, 0x1000, Task8QueuedUse::Read);
+                assert_eq!(
+                    ledger.reuse_after_final(2, 0x1000),
+                    Err("owner reused before final queued use")
+                );
+            } else {
+                ledger.enqueue(1, 0x1000, Task8QueuedUse::Write);
+                assert_eq!(
+                    ledger.reuse_after_final(2, 0x1000),
+                    Err("owner reused before final queued use")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_owner_generation_accepts_reinitialized_reuse() {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        ledger.register(1, 0x2000);
+        ledger.initialize(1, 0x2000);
+        ledger.enqueue(1, 0x2000, Task8QueuedUse::Write);
+        ledger.enqueue(1, 0x2000, Task8QueuedUse::Read);
+        ledger.enqueue(1, 0x2000, Task8QueuedUse::Mutation);
+        ledger.enqueue(1, 0x2000, Task8QueuedUse::Final);
+        ledger.reuse_after_final(2, 0x2000).unwrap();
+        ledger.initialize(2, 0x2000);
+        ledger.enqueue(2, 0x2000, Task8QueuedUse::Write);
+        assert_eq!(ledger.owners.len(), 2);
+        assert!(ledger.owners[1].initialized);
     }
 }
 
