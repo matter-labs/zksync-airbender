@@ -864,6 +864,16 @@ fn seg_ext_bytes_per_row(
     bytes
 }
 
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Task8LivePublicationEvent {
+    pub(crate) round: u8,
+    pub(crate) owners: Vec<(u8, usize, usize)>,
+}
+
 pub(crate) struct BwdVmExtLaunch {
     /// The absolute sumcheck round `rounds[0]` plays.
     start_round: u8,
@@ -876,6 +886,26 @@ pub(crate) struct BwdVmExtLaunch {
     tables: SegCoeffEvalTables,
     slab: DeviceAllocation<E4>,
     filled: bool,
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    task8_scheduled_rounds: usize,
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    task8_peak_live_publication_owners: usize,
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    task8_peak_live_publication_bytes: usize,
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    task8_live_publication_events: Vec<Task8LivePublicationEvent>,
 }
 
 struct ExtRoundLaunch {
@@ -905,6 +935,25 @@ pub(crate) fn repoint_final_evaluations_from_buffer<E>(
 }
 
 impl BwdVmExtLaunch {
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    pub(crate) fn task8_scheduled_rounds(&self) -> usize {
+        self.task8_scheduled_rounds
+    }
+
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    pub(crate) fn task8_peak_live_publications(&self) -> (usize, usize) {
+        (
+            self.task8_peak_live_publication_owners,
+            self.task8_peak_live_publication_bytes,
+        )
+    }
+
     pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
         self.tables.take_host_staging()
     }
@@ -1097,6 +1146,26 @@ fn build_bwd_vm_ext_rounds_inner<E: Copy>(
         tables,
         slab,
         filled: false,
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
+        task8_scheduled_rounds: 0,
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
+        task8_peak_live_publication_owners: 0,
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
+        task8_peak_live_publication_bytes: 0,
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
+        task8_live_publication_events: Vec::new(),
     })
 }
 
@@ -1212,6 +1281,65 @@ pub(crate) fn schedule_bwd_vm_ext_bank_fill(
     )?;
     launch.filled = true;
     Ok(())
+}
+
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+pub(crate) struct PreparedContinuationDifferentialBank {
+    tables: SegCoeffEvalTables,
+    slab: DeviceAllocation<E4>,
+}
+
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+impl PreparedContinuationDifferentialBank {
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    pub(crate) fn challenge_slab(&self) -> &DeviceAllocation<E4> {
+        &self.slab
+    }
+
+    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
+        self.tables.take_host_staging()
+    }
+
+    pub(crate) fn schedule(
+        &mut self,
+        external_challenges: *const E4,
+        lookup_multiplicative: *const E4,
+        lookup_additive: *const E4,
+        claim_batching: *const E4,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        schedule_seg_challenge_slab(
+            &mut self.slab,
+            external_challenges,
+            lookup_multiplicative,
+            lookup_additive,
+            claim_batching,
+            context,
+        )?;
+        schedule_bwd_seg_coeff_bank_fill(
+            &mut self.tables,
+            self.slab.as_ptr(),
+            bwd_seg_coeff_bank_device_ptr(),
+            context.get_exec_stream(),
+        )
+    }
+}
+
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+pub(crate) fn prepare_continuation_differential_bank(
+    program: &ContinuationLayerProgram,
+    inits_and_teardowns_top_bits: &[u32],
+    context: &ProverContext,
+) -> CudaResult<PreparedContinuationDifferentialBank> {
+    let blob =
+        build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
+            .unwrap_or_else(|error| panic!("Task 8 Ext bank translation: {error:?}"));
+    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
+    Ok(PreparedContinuationDifferentialBank { tables, slab })
 }
 
 // ── The windowed arm's bank ──────────────────────────────────────────────────
@@ -1560,6 +1688,330 @@ pub fn legacy_continuation_snapshot(
     continuation_snapshot(programs, layer, 1)
 }
 
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum LegacyPublicationCanonicalizationError {
+    ZeroColumnElements,
+    ColumnCount {
+        expected: usize,
+        actual: usize,
+    },
+    SourceOutOfRange {
+        source: usize,
+        sources: usize,
+    },
+    ColumnOutOfRange {
+        source: usize,
+        column: usize,
+        columns: usize,
+    },
+    DuplicateSource {
+        source: usize,
+    },
+    DuplicateColumn {
+        column: usize,
+    },
+    MissingSource {
+        source: usize,
+    },
+    MissingColumn {
+        column: usize,
+    },
+    InputLength {
+        expected: usize,
+        actual: usize,
+    },
+}
+
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+pub(crate) fn canonicalize_legacy_publication<T: Copy>(
+    input: &[T],
+    source_columns: &[(SourceId, usize)],
+    source_count: usize,
+    column_elems: usize,
+) -> Result<Vec<T>, LegacyPublicationCanonicalizationError> {
+    if column_elems == 0 {
+        return Err(LegacyPublicationCanonicalizationError::ZeroColumnElements);
+    }
+    if source_columns.len() > source_count {
+        return Err(LegacyPublicationCanonicalizationError::ColumnCount {
+            expected: source_count,
+            actual: source_columns.len(),
+        });
+    }
+    let expected_len = source_count
+        .checked_mul(column_elems)
+        .expect("Task 8 legacy publication length must fit usize");
+    if input.len() != expected_len {
+        return Err(LegacyPublicationCanonicalizationError::InputLength {
+            expected: expected_len,
+            actual: input.len(),
+        });
+    }
+    let mut seen_sources = vec![false; source_count];
+    let mut seen_columns = vec![false; source_count];
+    let mut columns_by_source = vec![0usize; source_count];
+    for &(source, column) in source_columns {
+        let source = source.0 as usize;
+        if source >= source_count {
+            return Err(LegacyPublicationCanonicalizationError::SourceOutOfRange {
+                source,
+                sources: source_count,
+            });
+        }
+        if column >= source_count {
+            return Err(LegacyPublicationCanonicalizationError::ColumnOutOfRange {
+                source,
+                column,
+                columns: source_count,
+            });
+        }
+        if std::mem::replace(&mut seen_sources[source], true) {
+            return Err(LegacyPublicationCanonicalizationError::DuplicateSource { source });
+        }
+        if std::mem::replace(&mut seen_columns[column], true) {
+            return Err(LegacyPublicationCanonicalizationError::DuplicateColumn { column });
+        }
+        columns_by_source[source] = column;
+    }
+    if let Some(source) = seen_sources.iter().position(|seen| !seen) {
+        return Err(LegacyPublicationCanonicalizationError::MissingSource { source });
+    }
+    if let Some(column) = seen_columns.iter().position(|seen| !seen) {
+        return Err(LegacyPublicationCanonicalizationError::MissingColumn { column });
+    }
+    let mut output = Vec::with_capacity(expected_len);
+    for column in columns_by_source {
+        let start = column * column_elems;
+        output.extend_from_slice(&input[start..start + column_elems]);
+    }
+    Ok(output)
+}
+
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+pub(crate) struct PreparedContinuationDifferentialRounds {
+    launch: BwdVmExtLaunch,
+    comparison_round: u8,
+    publication_shape: ContinuationPublishedShape,
+    source_columns: Vec<(SourceId, usize)>,
+    adopted_depth: Option<u8>,
+    first_deltas: Vec<u8>,
+    first_reads_only_published: bool,
+}
+
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+impl PreparedContinuationDifferentialRounds {
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    pub(crate) fn challenge_slab(&self) -> &DeviceAllocation<E4> {
+        &self.launch.slab
+    }
+
+    pub(crate) fn schedule_bank_fill(
+        &mut self,
+        external_challenges: *const E4,
+        lookup_multiplicative: *const E4,
+        lookup_additive: *const E4,
+        claim_batching: *const E4,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        schedule_bwd_vm_ext_bank_fill(
+            &mut self.launch,
+            external_challenges,
+            lookup_multiplicative,
+            lookup_additive,
+            claim_batching,
+            context,
+        )
+    }
+
+    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
+        self.launch.take_bank_staging()
+    }
+
+    pub(crate) fn schedule_round(
+        &mut self,
+        round: u32,
+        acc_size: u32,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        schedule_bwd_vm_ext_round(&mut self.launch, round, acc_size, context)
+    }
+
+    pub(crate) fn live_publication(&self) -> &DeviceAllocation<E4> {
+        self.launch
+            .live
+            .get(&self.comparison_round)
+            .expect("Task 8 comparison publication must be live after its producer round")
+    }
+
+    pub(crate) fn expected_input_is_live(&self) -> bool {
+        self.adopted_depth
+            .is_none_or(|depth| self.launch.live.contains_key(&depth))
+    }
+
+    pub(crate) fn publication_shape(&self) -> ContinuationPublishedShape {
+        self.publication_shape
+    }
+
+    pub(crate) fn source_columns(&self) -> &[(SourceId, usize)] {
+        &self.source_columns
+    }
+
+    pub(crate) fn first_deltas(&self) -> &[u8] {
+        &self.first_deltas
+    }
+
+    pub(crate) fn first_reads_only_published(&self) -> bool {
+        self.first_reads_only_published
+    }
+
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    pub(crate) fn peak_live_publications(&self) -> (usize, usize) {
+        self.launch.task8_peak_live_publications()
+    }
+
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    pub(crate) fn live_publication_events(&self) -> &[Task8LivePublicationEvent] {
+        &self.launch.task8_live_publication_events
+    }
+}
+
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+pub(crate) fn prepare_continuation_differential_rounds<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    program: &ContinuationLayerProgram,
+    comparison_round: u8,
+    folding_steps: usize,
+    eq_low: *const E4,
+    partials: *mut E4,
+    prior: Option<ContinuationPublishedLevel>,
+    inits_and_teardowns_top_bits: &[u32],
+    context: &ProverContext,
+) -> CudaResult<PreparedContinuationDifferentialRounds> {
+    assert!(comparison_round >= 3);
+    assert!(usize::from(comparison_round) + 2 < folding_steps);
+    let adopted_shape = prior.as_ref().map(ContinuationPublishedLevel::shape);
+    assert_eq!(
+        adopted_shape.is_some(),
+        comparison_round > 3,
+        "Task 8 later-start legacy arms require exactly one adopted prior"
+    );
+    let legacy_start = comparison_round;
+    let bound = bind_ext_round_sources(
+        &StorageSourceResolver(storage),
+        program,
+        legacy_start,
+        folding_steps,
+        adopted_shape,
+    )
+    .unwrap_or_else(|error| panic!("Task 8 legacy source binding: {error:?}"));
+    let publication = bound
+        .rounds
+        .iter()
+        .find(|round| round.round == comparison_round)
+        .expect("Task 8 legacy sequence must contain the comparison round");
+    let mut source_columns = Vec::with_capacity(publication.sources.len());
+    for (source, binding) in publication.sources.iter().enumerate() {
+        let (slot, local_column) = binding.publish.unwrap_or_else(|| {
+            panic!("Task 8 source {source} did not publish at legacy round {comparison_round}")
+        });
+        let patch = publication
+            .folding_buffer_slots
+            .iter()
+            .find(|patch| patch.slot == slot)
+            .unwrap_or_else(|| {
+                panic!("Task 8 source {source} publish slot {slot} has no folding-buffer patch")
+            });
+        assert_eq!(patch.buffer_round, comparison_round);
+        let stride_bytes = publication.folding_buffer.stride_bytes() as usize;
+        let chunk_bytes = SOURCE_WINDOW_COLUMNS
+            .checked_mul(stride_bytes)
+            .expect("Task 8 folding-buffer chunk bytes must fit usize");
+        assert_eq!(patch.byte_offset % chunk_bytes, 0);
+        let chunk = patch.byte_offset / chunk_bytes;
+        let column = chunk
+            .checked_mul(SOURCE_WINDOW_COLUMNS)
+            .and_then(|base| base.checked_add(local_column))
+            .expect("Task 8 absolute legacy publication column must fit usize");
+        assert!(
+            column < publication.folding_buffer.columns,
+            "Task 8 source {source} resolved publication column {column} outside {} columns",
+            publication.folding_buffer.columns
+        );
+        source_columns.push((SourceId(source as u32), column));
+    }
+    let publication_shape = ContinuationPublishedShape {
+        depth: comparison_round,
+        columns: publication.folding_buffer.columns,
+        column_elems: publication.folding_buffer.column_elems,
+    };
+    let first = bound
+        .rounds
+        .first()
+        .expect("Task 8 legacy sequence must contain a first round");
+    let first_deltas = first
+        .sources
+        .iter()
+        .map(|source| first.round - source.backing_depth)
+        .collect();
+    let first_reads_only_published = first.sources.iter().all(|source| {
+        first.slots[source.read_slot].deferred_base
+            && first.slots[source.read_slot].procedural_kind.is_none()
+    });
+    let mut launch = if let Some(prior) = prior {
+        let mut launch = build_bwd_vm_ext_rounds_after_continuations(
+            storage,
+            program,
+            comparison_round,
+            folding_steps,
+            eq_low,
+            partials,
+            inits_and_teardowns_top_bits,
+            context,
+        )?;
+        if let Err((_prior, error)) = launch.adopt_published_level(prior) {
+            panic!("Task 8 legacy prior adoption failed: {error:?}");
+        }
+        launch
+    } else {
+        build_bwd_vm_ext_rounds_inner(
+            storage,
+            program,
+            comparison_round,
+            folding_steps,
+            eq_low,
+            make_eq_sizes(folding_steps - usize::from(comparison_round)),
+            partials,
+            inits_and_teardowns_top_bits,
+            context,
+            None,
+        )?
+    };
+    let adopted_depth = adopted_shape.map(|shape| shape.depth);
+    assert!(
+        adopted_depth.is_none_or(|depth| launch.live.contains_key(&depth)),
+        "Task 8 adopted prior must be live before its first legacy reader"
+    );
+    Ok(PreparedContinuationDifferentialRounds {
+        launch,
+        comparison_round,
+        publication_shape,
+        source_columns,
+        adopted_depth,
+        first_deltas,
+        first_reads_only_published,
+    })
+}
+
 pub(crate) fn schedule_bwd_vm_ext_round(
     launch: &mut BwdVmExtLaunch,
     round: u32,
@@ -1576,6 +2028,23 @@ pub(crate) fn schedule_bwd_vm_ext_round(
         "round {round} is below the sequence's first round {start_round}"
     );
     let expected_published_shape = launch.expected_published_shape;
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let BwdVmExtLaunch {
+        rounds,
+        live,
+        task8_scheduled_rounds,
+        task8_peak_live_publication_owners,
+        task8_peak_live_publication_bytes,
+        task8_live_publication_events,
+        ..
+    } = launch;
+    #[cfg(not(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    )))]
     let BwdVmExtLaunch { rounds, live, .. } = launch;
     let round_index = (round - start_round) as usize;
     let ExtRoundLaunch {
@@ -1604,6 +2073,26 @@ pub(crate) fn schedule_bwd_vm_ext_round(
     // Allocation, launch, and reuse are ordered on the execution stream.
     let buffer: DeviceAllocation<E4> = context.alloc((*elems).max(1), AllocationPlacement::Top)?;
     live.insert(round as u8, buffer);
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let task8_live_publication_event = Task8LivePublicationEvent {
+        round: round as u8,
+        owners: live
+            .iter()
+            .map(|(depth, allocation)| {
+                (
+                    *depth,
+                    allocation.as_ptr() as usize,
+                    allocation
+                        .len()
+                        .checked_mul(size_of::<E4>())
+                        .expect("Task 8 live publication byte count overflowed usize"),
+                )
+            })
+            .collect(),
+    };
 
     // ── Fill in the addresses lowering deferred ──────────────────────────────
     for patch in slots {
@@ -1630,6 +2119,24 @@ pub(crate) fn schedule_bwd_vm_ext_round(
     );
     launch_bwd_seg_continuation(round, setup, context)?;
 
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    {
+        let live_bytes = task8_live_publication_event
+            .owners
+            .iter()
+            .try_fold(0usize, |bytes, (_, _, owner_bytes)| {
+                bytes.checked_add(*owner_bytes)
+            })
+            .expect("Task 8 live publication byte sum overflowed usize");
+        *task8_peak_live_publication_owners =
+            (*task8_peak_live_publication_owners).max(task8_live_publication_event.owners.len());
+        *task8_peak_live_publication_bytes = (*task8_peak_live_publication_bytes).max(live_bytes);
+        task8_live_publication_events.push(task8_live_publication_event);
+    }
+
     // ── Retire every buffer this launch just consumed ────────────────────────
     // The first seeded remainder round consumes depth `start_round - 3`, while
     // later rounds consume `round - 1`. In both cases the owner is released
@@ -1645,6 +2152,13 @@ pub(crate) fn schedule_bwd_vm_ext_round(
             !live.contains_key(&expected_depth),
             "round {round} must retire adopted depth {expected_depth} after enqueue"
         );
+    }
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    {
+        *task8_scheduled_rounds += 1;
     }
     Ok(())
 }
