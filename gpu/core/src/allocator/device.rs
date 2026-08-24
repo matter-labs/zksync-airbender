@@ -1,6 +1,6 @@
 use crate::allocator::{
-    InnerStaticAllocatorWrapper, NonConcurrentInnerStaticAllocatorWrapper, StaticAllocation,
-    StaticAllocationBackend, StaticAllocator,
+    InnerStaticAllocatorWrapper, MemoryHighWaterObserver, NonConcurrentInnerStaticAllocatorWrapper,
+    StaticAllocation, StaticAllocationBackend, StaticAllocator,
 };
 use era_cudart::memory::DeviceAllocation;
 use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
@@ -62,6 +62,13 @@ pub type NonConcurrentStaticDeviceAllocator =
 
 pub type NonConcurrentStaticDeviceAllocation<T> =
     StaticDeviceAllocation<T, NonConcurrentInnerStaticDeviceAllocatorWrapper>;
+
+#[doc(hidden)]
+pub type NonConcurrentStaticDeviceMemoryHighWaterObserver<'a> = MemoryHighWaterObserver<
+    'a,
+    StaticDeviceAllocationBackend,
+    NonConcurrentInnerStaticAllocatorWrapper<StaticDeviceAllocationBackend>,
+>;
 
 impl<T, W: InnerStaticDeviceAllocatorWrapper> Deref for StaticDeviceAllocation<T, W> {
     type Target = DeviceSlice<T>;

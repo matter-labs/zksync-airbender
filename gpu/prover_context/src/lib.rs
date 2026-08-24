@@ -9,7 +9,10 @@ mod context;
 pub mod transfer;
 pub(crate) mod upstream;
 
-pub use context::{ProverContext, ProverContextConfig};
+pub use context::{
+    DeviceMemoryHighWaterObserver, PoolMemoryHighWaterReport, PoolMemoryHighWaterSnapshot,
+    PoolMemoryUsage, ProverContext, ProverContextConfig,
+};
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();
