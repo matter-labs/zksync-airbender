@@ -160,6 +160,11 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     pub(crate) layer_slots: GpuGKRDimensionReducingLayerSlots,
     pub(crate) folding_addresses: Vec<GKRAddress>,
     pub(crate) round0_batch_template_compact: GpuGKRDimensionReducingBatch<E4>,
+    /// Preparation-only owner for the future complete DR window chain. The
+    /// Task 6 scheduler deliberately leaves this hook untouched and executes
+    /// the accepted legacy per-round layer.
+    #[allow(dead_code)]
+    pub(crate) dr_window: Option<crate::backward::window_dr::DrWindowLayerCompositionHook>,
     pub(crate) round_scratch: GpuGKRDimensionReducingRoundScratch,
     /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
     /// `make_eq_sizes(folding_steps - 1)`, updated between sumcheck rounds,

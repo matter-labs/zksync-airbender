@@ -63,6 +63,10 @@ pub struct GkrBackwardOptions {
     /// window. This stays default-off until the continuation execution path has
     /// passed its proof-byte and performance gates.
     pub windowed_main_continuations: bool,
+    /// Prepare the dimension-reducing windowed-R0 bundle and per-layer
+    /// composition hooks. Task 6 does not use this as an execution selector:
+    /// the accepted legacy scheduler remains the only DR execution path.
+    pub windowed_dr: bool,
     pub window_tail: WindowTailArm,
 }
 
@@ -71,6 +75,7 @@ impl Default for GkrBackwardOptions {
         Self {
             windowed_r0: true,
             windowed_main_continuations: false,
+            windowed_dr: false,
             window_tail: WindowTailArm::Split,
         }
     }
@@ -178,11 +183,36 @@ mod cpu_windowed_selector_tests {
         let options = GkrBackwardOptions::default();
         assert!(options.windowed_r0);
         assert!(!options.windowed_main_continuations);
+        assert!(!options.windowed_dr);
         assert_eq!(options.window_tail, WindowTailArm::Split);
         assert_eq!(
             backward_execution_strategy(options, Some(SumcheckScheduleClass::Windowed)),
             BackwardExecutionStrategy::WindowedR0
         );
+    }
+
+    #[test]
+    fn cpu_dr_window_preparation_option_is_not_a_backward_execution_selector() {
+        let enabled = GkrBackwardOptions {
+            windowed_dr: true,
+            ..GkrBackwardOptions::default()
+        };
+        let disabled = GkrBackwardOptions {
+            windowed_dr: false,
+            ..enabled
+        };
+        for class in [
+            Some(SumcheckScheduleClass::Windowed),
+            Some(SumcheckScheduleClass::Naive),
+            Some(SumcheckScheduleClass::Uniskip),
+            None,
+        ] {
+            assert_eq!(
+                backward_execution_strategy(enabled, class),
+                backward_execution_strategy(disabled, class),
+                "DR preparation must not select a production execution arm"
+            );
+        }
     }
 
     #[test]

@@ -18,8 +18,8 @@ use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::{
     backward_execution_strategy, main_continuation_window_count, BackwardExecutionStrategy,
-    GkrBackwardOptions, GkrPrograms, MainContinuationWindowLoweringRejection,
-    MainLayerExecutionPlanError, WindowLoweringRejection,
+    DrWindowLoweringRejection, GkrBackwardOptions, GkrPrograms,
+    MainContinuationWindowLoweringRejection, MainLayerExecutionPlanError, WindowLoweringRejection,
 };
 use gpu_prover_context::ProverContext;
 
@@ -40,6 +40,11 @@ pub enum GpuProveError {
         resource: String,
     },
     MainContinuationWindowLowering {
+        circuit: String,
+        layer: usize,
+        resource: String,
+    },
+    DrWindowLowering {
         circuit: String,
         layer: usize,
         resource: String,
@@ -68,6 +73,14 @@ impl std::fmt::Display for GpuProveError {
                 formatter,
                 "main continuation window lowering rejected for {circuit}/{layer}: {resource}"
             ),
+            Self::DrWindowLowering {
+                circuit,
+                layer,
+                resource,
+            } => write!(
+                formatter,
+                "dimension-reducing windowed R0 lowering rejected for {circuit}/{layer}: {resource}"
+            ),
             Self::MainLayerExecutionPlan { error } => {
                 write!(formatter, "main-layer execution plan rejected: {error:?}")
             }
@@ -93,6 +106,16 @@ impl From<&MainContinuationWindowLoweringRejection> for GpuProveError {
             circuit: rejection.circuit.clone(),
             layer: rejection.layer,
             resource: rejection.resource.clone(),
+        }
+    }
+}
+
+impl From<&DrWindowLoweringRejection> for GpuProveError {
+    fn from(rejection: &DrWindowLoweringRejection) -> Self {
+        Self::DrWindowLowering {
+            circuit: rejection.circuit().to_owned(),
+            layer: rejection.layer(),
+            resource: rejection.resource().to_owned(),
         }
     }
 }
@@ -135,9 +158,6 @@ pub fn preflight_windowed_backward(
     options: GkrBackwardOptions,
     final_trace_size_log_2: u32,
 ) -> Result<(), GpuProveError> {
-    // Reserved for later DR bundle checks. Main-layer geometry belongs to the
-    // compiled circuit and must not be inferred from the final reduced trace.
-    let _ = final_trace_size_log_2;
     match strategy {
         BackwardExecutionStrategy::PerRound => {}
         BackwardExecutionStrategy::WindowedR0 => gkr_programs
@@ -153,6 +173,12 @@ pub fn preflight_windowed_backward(
             .resolve_main_continuation_window_programs()
             .map(|_| ())
             .map_err(GpuProveError::from)?;
+    }
+    if options.windowed_dr {
+        gkr_programs
+            .resolve_dr_window_programs(final_trace_size_log_2)
+            .map(|_| ())
+            .map_err(|rejection| GpuProveError::from(&rejection))?;
     }
     Ok(())
 }
@@ -242,6 +268,12 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         assert!(
             gkr_programs.main_continuation_window_programs_ready(),
             "continuation scheduling requires preflight_windowed_backward first"
+        );
+    }
+    if backward_options.windowed_dr {
+        assert!(
+            gkr_programs.dr_window_programs_ready(final_trace_size_log_2),
+            "DR window preparation requires preflight_windowed_backward first"
         );
     }
     assert_eq!(
@@ -370,6 +402,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         Arc::clone(gkr_programs),
         backward_options,
         backward_strategy,
+        final_trace_size_log_2,
         external_challenges.device.as_ptr(),
         d_seed,
         d_evaluation_point_and_batching,

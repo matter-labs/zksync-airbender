@@ -81,6 +81,7 @@ impl GpuGKRDimensionReducingBackwardState {
         // options carry the tail arm the windowed path launches.
         options: crate::GkrBackwardOptions,
         strategy: crate::BackwardExecutionStrategy,
+        final_trace_size_log_2: u32,
         device_external_challenges_ptr: *const E4,
         initial_d_seed: DeviceAllocation<u32>,
         initial_d_claim_point_and_batching: DeviceAllocation<E4>,
@@ -113,6 +114,22 @@ impl GpuGKRDimensionReducingBackwardState {
             DeviceClaimPointAndBatching::from_allocation(initial_d_claim_point_and_batching);
         let mut shared_device_claims = initial_d_claims;
         let mut shared_claim_layout = initial_claim_layout;
+        // Preflight has already seated this exact final-log result. Clone its
+        // canonical Arc once before the DR loop; layer preparation must never
+        // resolve or lower independently.
+        let dr_window_programs = if options.windowed_dr {
+            assert!(
+                programs.dr_window_programs_ready(final_trace_size_log_2),
+                "DR window preparation requires an accepted preflight result"
+            );
+            Some(
+                programs
+                    .resolve_dr_window_programs(final_trace_size_log_2)
+                    .expect("preflighted DR window bundle must remain accepted"),
+            )
+        } else {
+            None
+        };
         if let Some(output) = stage_snapshots {
             let initial_layer_idx = self
                 .pending_layers
@@ -131,7 +148,9 @@ impl GpuGKRDimensionReducingBackwardState {
             )?;
         }
         let mut backward_layer_slot: usize = 0;
-        while let Some(mut prepared_layer) = self.prepare_next_layer_static(context)? {
+        while let Some(mut prepared_layer) =
+            self.prepare_next_layer_static(dr_window_programs.as_deref(), context)?
+        {
             let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer.schedule_execute_dimension_reducing_layer(
                 shared_device_seed,

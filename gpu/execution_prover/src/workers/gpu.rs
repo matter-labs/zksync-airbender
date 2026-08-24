@@ -56,6 +56,7 @@ pub(crate) fn get_gpu_worker_func(
 const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
     windowed_r0: true,
     windowed_main_continuations: false,
+    windowed_dr: false,
     window_tail: WindowTailArm::Split,
 };
 
