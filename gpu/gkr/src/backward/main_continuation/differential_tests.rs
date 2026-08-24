@@ -2145,9 +2145,11 @@ fn build_corpus_census() -> CorpusCensus {
 
 #[cfg(test)]
 mod cpu_tests {
+    use gpu_prover_context::{PoolMemoryHighWaterReport, PoolMemoryUsage};
+
     use super::{
-        build_corpus_census, signed_snapshot_delta, validate_single_owner_topology,
-        Task8AllocationRecord, Task8TopologyError,
+        allocation_group_record, build_corpus_census, signed_snapshot_delta,
+        validate_single_owner_topology, Task8AllocationRecord, Task8TopologyError,
     };
 
     fn record(
@@ -2223,7 +2225,41 @@ mod cpu_tests {
 
     #[test]
     fn cpu_main_continuation_snapshot_growth_and_zero_are_preserved() {
-        assert_eq!(signed_snapshot_delta(11, 7), 4);
+        let raw_requested_bytes = 128usize;
+        let growth_record = allocation_group_record(
+            "growth",
+            7,
+            0,
+            1,
+            0,
+            "test",
+            1,
+            &PoolMemoryHighWaterReport {
+                start: PoolMemoryUsage {
+                    physical_backing_bytes: 7,
+                    logical_live_bytes: 11,
+                },
+                physical_backing_peak_bytes: 19,
+                logical_live_peak_bytes: 25,
+                summed_requested_bytes: raw_requested_bytes,
+                peak_window_end: PoolMemoryUsage {
+                    physical_backing_bytes: 31,
+                    logical_live_bytes: 41,
+                },
+                return_to_entry: PoolMemoryUsage {
+                    physical_backing_bytes: 19,
+                    logical_live_bytes: 25,
+                },
+            },
+        );
+        assert_eq!(growth_record.physical_backing_delta_bytes, 12);
+        assert_eq!(growth_record.logical_live_delta_bytes, 14);
+        assert_eq!(growth_record.size_bytes, raw_requested_bytes);
+        assert_eq!(
+            growth_record.successful_requested_bytes,
+            raw_requested_bytes
+        );
+        assert!(i128::try_from(growth_record.size_bytes).unwrap() >= 0);
         assert_eq!(signed_snapshot_delta(7, 7), 0);
     }
 }
