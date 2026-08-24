@@ -108,12 +108,17 @@ pub fn load_fsv_program(
 ) -> (Vec<u32>, Vec<u32>) {
     let dir = dir.as_ref();
     let stem = program.file_stem(blake);
+    println!("Trying to load `{}` verifier", &stem);
     if dir.join(format!("{stem}.bin")).exists() {
         load_program(
             &dir.join(format!("{stem}.bin")),
             &dir.join(format!("{stem}.text")),
         )
     } else {
+        println!(
+            "Verifier binary `{}` doesn't exist, using fallback naming mode",
+            &stem
+        );
         assert!(
             blake == BlakeMode::Compression,
             "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`",
