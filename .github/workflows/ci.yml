@@ -13,7 +13,10 @@ jobs:
   tests:
     name: tests
     runs-on: [matterlabs-ci-runner-high-performance]
-    timeout-minutes: 20
+    # The non-ignored GKR e2e tests (prover tests::gkr::*) run for tens of
+    # minutes under `--profile cli` (opt-level 3 but dev-based, so debug
+    # assertions stay on in the prover hot loops).
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -126,7 +129,15 @@ jobs:
     name: cli_smoke_verify
     runs-on: [matterlabs-ci-runner-c3d]
     needs: [build_cli]
+    env:
+      # `continue-proof` loads the fsv_* verifier programs from disk at run
+      # time; its built-in default is the compile-time source path, so point
+      # it at this job's checkout explicitly.
+      FSV_DIR: ${{ github.workspace }}/tools/gkr_verifier
     steps:
+      # The recursion targets need the committed fsv verifier binaries from
+      # tools/gkr_verifier, not just the cli artifact.
+      - uses: actions/checkout@v3
       - uses: actions/download-artifact@v4
         with:
           name: cli
