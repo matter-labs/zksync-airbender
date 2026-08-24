@@ -22,7 +22,7 @@ use super::continuation_golden::{
 };
 use super::seg::{
     bwd_seg_coeff_bank_device_ptr, bwd_seg_continuation_blocks_per_sm, bwd_seg_r0_blocks_per_sm,
-    launch_bwd_seg_continuation, launch_bwd_seg_r0,
+    launch_bwd_seg_continuation, launch_bwd_seg_r0, BwdSegFoldWeightSpan,
 };
 use super::seg_coeff_eval::{
     build_seg_coeff_eval_blob, build_seg_coeff_eval_window_blob, schedule_bwd_seg_coeff_bank_fill,
@@ -1257,6 +1257,21 @@ pub(crate) fn build_bwd_vm_ext_rounds_after_continuations<E: Copy>(
     )
 }
 
+/// What one bank fill touches: the challenge slab it fills and then reads, plus
+/// the staged tables and the bank prefix its coefficient evaluation uses.
+/// Returned so a caller that must account for the fill's pointer arguments
+/// reuses the addresses and extents this fill used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BwdSegBankFillSpans {
+    pub(crate) slab: (usize, usize),
+    pub(crate) tables: (usize, usize),
+    pub(crate) bank: (usize, usize),
+}
+
+fn slab_span(slab: &DeviceAllocation<E4>) -> (usize, usize) {
+    (slab.as_ptr() as usize, slab.len() * size_of::<E4>())
+}
+
 pub(crate) fn schedule_bwd_vm_ext_bank_fill(
     launch: &mut BwdVmExtLaunch,
     external_challenges: *const E4,
@@ -1264,7 +1279,7 @@ pub(crate) fn schedule_bwd_vm_ext_bank_fill(
     lookup_additive: *const E4,
     claim_batching: *const E4,
     context: &ProverContext,
-) -> CudaResult<()> {
+) -> CudaResult<BwdSegBankFillSpans> {
     schedule_seg_challenge_slab(
         &mut launch.slab,
         external_challenges,
@@ -1273,14 +1288,18 @@ pub(crate) fn schedule_bwd_vm_ext_bank_fill(
         claim_batching,
         context,
     )?;
-    schedule_bwd_seg_coeff_bank_fill(
+    let spans = schedule_bwd_seg_coeff_bank_fill(
         &mut launch.tables,
         launch.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         context.get_exec_stream(),
     )?;
     launch.filled = true;
-    Ok(())
+    Ok(BwdSegBankFillSpans {
+        slab: slab_span(&launch.slab),
+        tables: spans.tables,
+        bank: spans.bank,
+    })
 }
 
 #[cfg(any(test, feature = "task8_continuation_differential_test"))]
@@ -1310,7 +1329,7 @@ impl PreparedContinuationDifferentialBank {
         lookup_additive: *const E4,
         claim_batching: *const E4,
         context: &ProverContext,
-    ) -> CudaResult<()> {
+    ) -> CudaResult<BwdSegBankFillSpans> {
         schedule_seg_challenge_slab(
             &mut self.slab,
             external_challenges,
@@ -1319,12 +1338,17 @@ impl PreparedContinuationDifferentialBank {
             claim_batching,
             context,
         )?;
-        schedule_bwd_seg_coeff_bank_fill(
+        let spans = schedule_bwd_seg_coeff_bank_fill(
             &mut self.tables,
             self.slab.as_ptr(),
             bwd_seg_coeff_bank_device_ptr(),
             context.get_exec_stream(),
-        )
+        )?;
+        Ok(BwdSegBankFillSpans {
+            slab: slab_span(&self.slab),
+            tables: spans.tables,
+            bank: spans.bank,
+        })
     }
 }
 
@@ -1399,7 +1423,8 @@ pub(crate) fn schedule_bwd_vm_window_bank_fill(
         bank.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         context.get_exec_stream(),
-    )
+    )?;
+    Ok(())
 }
 
 // ── The continuation golden snapshot ─────────────────────────────────────────
@@ -1788,6 +1813,24 @@ pub(crate) fn canonicalize_legacy_publication<T: Copy>(
     Ok(output)
 }
 
+/// The pointer arguments one differential segmented-VM round enqueue names.
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Task8RoundEnqueue {
+    pub(crate) fold_weights: BwdSegFoldWeightSpan,
+    pub(crate) published: (usize, usize),
+    pub(crate) reads: Vec<(u8, usize, usize)>,
+    pub(crate) retired: Vec<u8>,
+}
+
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+fn publication_span(allocation: &DeviceAllocation<E4>) -> (usize, usize) {
+    (
+        allocation.as_ptr() as usize,
+        allocation.len() * size_of::<E4>(),
+    )
+}
+
 #[cfg(any(test, feature = "task8_continuation_differential_test"))]
 pub(crate) struct PreparedContinuationDifferentialRounds {
     launch: BwdVmExtLaunch,
@@ -1816,7 +1859,7 @@ impl PreparedContinuationDifferentialRounds {
         lookup_additive: *const E4,
         claim_batching: *const E4,
         context: &ProverContext,
-    ) -> CudaResult<()> {
+    ) -> CudaResult<BwdSegBankFillSpans> {
         schedule_bwd_vm_ext_bank_fill(
             &mut self.launch,
             external_challenges,
@@ -1831,13 +1874,56 @@ impl PreparedContinuationDifferentialRounds {
         self.launch.take_bank_staging()
     }
 
+    /// The pointer arguments one segmented-VM round enqueue names: the
+    /// fold-weight bank it rebuilds and reads, the level it publishes, the live
+    /// publications its descriptor slots resolve against, and the depths it
+    /// retires only after that launch is enqueued.
     pub(crate) fn schedule_round(
         &mut self,
         round: u32,
         acc_size: u32,
         context: &ProverContext,
-    ) -> CudaResult<()> {
-        schedule_bwd_vm_ext_round(&mut self.launch, round, acc_size, context)
+    ) -> CudaResult<Task8RoundEnqueue> {
+        let before: BTreeMap<u8, (usize, usize)> = self
+            .launch
+            .live
+            .iter()
+            .map(|(depth, allocation)| (*depth, publication_span(allocation)))
+            .collect();
+        let fold_weights = schedule_bwd_vm_ext_round(&mut self.launch, round, acc_size, context)?;
+        let published = publication_span(
+            self.launch
+                .live
+                .get(&(round as u8))
+                .expect("Task 8 round must leave its own publication live"),
+        );
+        let round_index = (round - u32::from(self.launch.start_round)) as usize;
+        let reads = self.launch.rounds[round_index]
+            .slots
+            .iter()
+            .map(|patch| patch.buffer_round)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(|depth| {
+                let span = before
+                    .get(&depth)
+                    .copied()
+                    .or_else(|| self.launch.live.get(&depth).map(publication_span))
+                    .expect("Task 8 round read a publication that was never live");
+                (depth, span.0, span.1)
+            })
+            .collect();
+        let retired = before
+            .keys()
+            .copied()
+            .filter(|depth| !self.launch.live.contains_key(depth))
+            .collect();
+        Ok(Task8RoundEnqueue {
+            fold_weights,
+            published,
+            reads,
+            retired,
+        })
     }
 
     pub(crate) fn live_publication(&self) -> &DeviceAllocation<E4> {
@@ -2017,7 +2103,7 @@ pub(crate) fn schedule_bwd_vm_ext_round(
     round: u32,
     acc_size: u32,
     context: &ProverContext,
-) -> CudaResult<()> {
+) -> CudaResult<BwdSegFoldWeightSpan> {
     assert!(
         launch.filled,
         "the Ext bank fill must be scheduled before any round launch"
@@ -2117,7 +2203,7 @@ pub(crate) fn schedule_bwd_vm_ext_round(
         lowered_rows, acc_size,
         "the Ext descriptor for round {round} was lowered for {lowered_rows} rows but runs at {acc_size}"
     );
-    launch_bwd_seg_continuation(round, setup, context)?;
+    let fold_weights = launch_bwd_seg_continuation(round, setup, context)?;
 
     #[cfg(all(
         any(test, feature = "task8_continuation_differential_test"),
@@ -2160,7 +2246,7 @@ pub(crate) fn schedule_bwd_vm_ext_round(
     {
         *task8_scheduled_rounds += 1;
     }
-    Ok(())
+    Ok(fold_weights)
 }
 
 fn retired_buffer_depths_after_round(round: u8, slots: &[FoldingBufferSlot]) -> Vec<u8> {

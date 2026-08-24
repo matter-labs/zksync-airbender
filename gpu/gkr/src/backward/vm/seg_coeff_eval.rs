@@ -702,6 +702,16 @@ cuda_kernel_declaration!(
     )
 );
 
+/// What one coefficient-bank fill touches: the staged table blob it copies up,
+/// and the bank prefix its evaluation writes. Returned so a caller that must
+/// account for the fill's pointer arguments reuses the addresses and extents
+/// this fill used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BwdSegCoeffBankFillSpans {
+    pub(crate) tables: (usize, usize),
+    pub(crate) bank: (usize, usize),
+}
+
 /// Copy one arm's table blob to device and fill the coefficient bank from the
 /// round's challenges, on `stream`.
 ///
@@ -716,7 +726,7 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
     slab: *const E4,
     bank: *mut E4,
     stream: &CudaStream,
-) -> CudaResult<()> {
+) -> CudaResult<BwdSegCoeffBankFillSpans> {
     let SegCoeffEvalTables { desc, host, device } = tables;
     let host = host
         .as_ref()
@@ -734,7 +744,11 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
     function.launch(
         &config,
         &GkrBwdSegEvalCoefficientsArguments::new(*desc, slab, bank),
-    )
+    )?;
+    Ok(BwdSegCoeffBankFillSpans {
+        tables: (device.as_ptr() as usize, BWD_SEG_BLOB_BYTES),
+        bank: (bank as usize, count as usize * std::mem::size_of::<E4>()),
+    })
 }
 
 
