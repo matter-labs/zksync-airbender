@@ -4,6 +4,7 @@
 // target depth holds `u`'s 2^delta leaves at `V[(u << delta) + q]`, `q` carrying this round's bound coordinates on its low bits. Fold level d uses
 // claim_point[d]. Pre-fold reads use ld.cs, publish stores st.wb, and eval reads ld.ca.
 
+#include "continuation_eval.cuh"
 #include "segmented_vm.cuh"
 
 __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
@@ -319,15 +320,7 @@ DEVICE_FORCEINLINE void seg_fold_and_publish(const bwd_seg_desc &desc, const u16
   store<e4, st_modifier::wb>(publish, s1, u | 1);
 }
 
-// ── Seed and contribution store ─────────────────────────────────────────────
-
-// The `acc_c0` seed, resolved through the launch's own coefficient bank.
-//
-DEVICE_FORCEINLINE e4 seg_c_init(const bwd_seg_desc &desc) {
-  if (desc.c_init_coeff == BWD_SEG_C_INIT_NONE)
-    return e4::ZERO();
-  return AB_GKR_BWD_SEG_COEFF(static_cast<u16>(desc.c_init_coeff));
-}
+// ── Contribution store ──────────────────────────────────────────────────────
 
 DEVICE_FORCEINLINE void seg_store_row(const bwd_seg_desc &desc, const u32 row, const u32 lane, const bool active, const e4 &sum_c0, const e4 &sum_c2) {
   e4 row_c0 = e4::ZERO();
@@ -378,123 +371,73 @@ DEVICE_FORCEINLINE void seg_epilogue(const bwd_seg_desc &desc, const u32 k, cons
 
 // ── One term ────────────────────────────────────────────────────────────────
 
-// Squared products resolve both operands through the same path.
-template <bool IS_R0, u32 MAX_DEPTH>
-DEVICE_FORCEINLINE void seg_execute_term(const bwd_seg_desc &desc, const u16 term_class, const u16 coefficient_index, const u16 source_a, const u16 source_b,
-                                         const u32 row, e4 &acc_c0, e4 &acc_c2) {
+// Squared products resolve both operands through the same path. Continuation
+// evaluation lives in `continuation_eval.cuh`; R0 retains its distinct base/E4
+// class table here.
+DEVICE_FORCEINLINE void seg_execute_r0_term(const bwd_seg_desc &desc, const u16 term_class, const u16 coefficient_index, const u16 source_a, const u16 source_b,
+                                            const u32 row, e4 &acc_c0, e4 &acc_c2) {
   // Reserved literals occupy the bank head, so every term uses one bank load.
   const e4 coefficient = AB_GKR_BWD_SEG_COEFF(coefficient_index);
-  if constexpr (IS_R0) {
-    switch (term_class) {
-    case BWD_SEG_R0_CLASS_C0_LINEAR_BF: {
-      const bf a = seg_resolve_bf<SEG_PROJ_ENDPOINT0>(desc, source_a, row).endpoint0;
-      // `e4::fma(e4, bf, e4)` is four fused `bf::fma`s: a base-field operand never
-      // gets lifted just to be multiplied.
-      acc_c0 = e4::fma(coefficient, a, acc_c0);
-      break;
-    }
-    case BWD_SEG_R0_CLASS_C0_LINEAR_E4: {
-      const e4 a = seg_resolve_e4<SEG_PROJ_ENDPOINT0, MAX_DEPTH>(desc, source_a, row).endpoint0;
-      acc_c0 = e4::fma(coefficient, a, acc_c0);
-      break;
-    }
-    case BWD_SEG_R0_CLASS_C2_PRODUCT_BF_BF: {
-      const bf a = seg_resolve_bf<SEG_PROJ_DELTA>(desc, source_a, row).delta;
-      const bf b = seg_resolve_bf<SEG_PROJ_DELTA>(desc, source_b, row).delta;
-      acc_c2 = e4::fma(coefficient, bf::mul(a, b), acc_c2);
-      break;
-    }
-    case BWD_SEG_R0_CLASS_C2_PRODUCT_BF_E4: {
-      // The wire normalizes a mixed product to BF-FIRST, so `source_a` is always
-      // the base-field factor (an encoder invariant, pinned by
-      // `a_mixed_product_puts_the_bf_factor_first`).
-      const bf a = seg_resolve_bf<SEG_PROJ_DELTA>(desc, source_a, row).delta;
-      const e4 b = seg_resolve_e4<SEG_PROJ_DELTA, MAX_DEPTH>(desc, source_b, row).delta;
-      // Keep the base-field factor on the fused multiply-add.
-      acc_c2 = e4::fma(e4::mul(coefficient, b), a, acc_c2);
-      break;
-    }
-    case BWD_SEG_R0_CLASS_C2_PRODUCT_E4_E4: {
-      const e4 a = seg_resolve_e4<SEG_PROJ_DELTA, MAX_DEPTH>(desc, source_a, row).delta;
-      const e4 b = seg_resolve_e4<SEG_PROJ_DELTA, MAX_DEPTH>(desc, source_b, row).delta;
-      acc_c2 = e4::fma(coefficient, e4::mul(a, b), acc_c2);
-      break;
-    }
-    default:
-      // Classes 5..7 are deliberately dead and a validated program has none. A
-      // release kernel has no error channel, so an invalid record contributes
-      // nothing rather than resolving an undefined operand shape.
-      break;
-    }
-    return;
-  }
   switch (term_class) {
-  case BWD_SEG_EXT_CLASS_C0_LINEAR_E4: {
-    const e4 a = seg_resolve_e4<SEG_PROJ_ENDPOINT0, MAX_DEPTH>(desc, source_a, row).endpoint0;
+  case BWD_SEG_R0_CLASS_C0_LINEAR_BF: {
+    const bf a = seg_resolve_bf<SEG_PROJ_ENDPOINT0>(desc, source_a, row).endpoint0;
+    // `e4::fma(e4, bf, e4)` is four fused `bf::fma`s: a base-field operand never
+    // gets lifted just to be multiplied.
     acc_c0 = e4::fma(coefficient, a, acc_c0);
     break;
   }
-  case BWD_SEG_EXT_CLASS_DUAL_PRODUCT_E4: {
-    // ONE coefficient and ONE pair resolution per factor feed BOTH accumulators;
-    // splitting this into a C0 and a C2 term would resolve every endpoint twice,
-    // which is the whole reason the class is native.
-    const seg_value<e4> a = seg_resolve_e4<SEG_PROJ_PAIR, MAX_DEPTH>(desc, source_a, row);
-    const seg_value<e4> b = seg_resolve_e4<SEG_PROJ_PAIR, MAX_DEPTH>(desc, source_b, row);
-    acc_c0 = e4::fma(coefficient, e4::mul(a.endpoint0, b.endpoint0), acc_c0);
-    acc_c2 = e4::fma(coefficient, e4::mul(a.delta, b.delta), acc_c2);
+  case BWD_SEG_R0_CLASS_C0_LINEAR_E4: {
+    const e4 a = seg_resolve_e4<SEG_PROJ_ENDPOINT0, 0>(desc, source_a, row).endpoint0;
+    acc_c0 = e4::fma(coefficient, a, acc_c0);
+    break;
+  }
+  case BWD_SEG_R0_CLASS_C2_PRODUCT_BF_BF: {
+    const bf a = seg_resolve_bf<SEG_PROJ_DELTA>(desc, source_a, row).delta;
+    const bf b = seg_resolve_bf<SEG_PROJ_DELTA>(desc, source_b, row).delta;
+    acc_c2 = e4::fma(coefficient, bf::mul(a, b), acc_c2);
+    break;
+  }
+  case BWD_SEG_R0_CLASS_C2_PRODUCT_BF_E4: {
+    // The wire normalizes a mixed product to BF-FIRST, so `source_a` is always
+    // the base-field factor (an encoder invariant, pinned by
+    // `a_mixed_product_puts_the_bf_factor_first`).
+    const bf a = seg_resolve_bf<SEG_PROJ_DELTA>(desc, source_a, row).delta;
+    const e4 b = seg_resolve_e4<SEG_PROJ_DELTA, 0>(desc, source_b, row).delta;
+    // Keep the base-field factor on the fused multiply-add.
+    acc_c2 = e4::fma(e4::mul(coefficient, b), a, acc_c2);
+    break;
+  }
+  case BWD_SEG_R0_CLASS_C2_PRODUCT_E4_E4: {
+    const e4 a = seg_resolve_e4<SEG_PROJ_DELTA, 0>(desc, source_a, row).delta;
+    const e4 b = seg_resolve_e4<SEG_PROJ_DELTA, 0>(desc, source_b, row).delta;
+    acc_c2 = e4::fma(coefficient, e4::mul(a, b), acc_c2);
     break;
   }
   default:
+    // Classes 5..7 are deliberately dead and a validated program has none. A
+    // release kernel has no error channel, so an invalid record contributes
+    // nothing rather than resolving an undefined operand shape.
     break;
   }
 }
 
-// ── One grouped member ──────────────────────────────────────────────────────
+// Adapt the segmented VM's source slots to the shared continuation evaluator.
+// Projection remains a template axis so an endpoint-only term keeps its single
+// load; pair terms retain the fused two-endpoint fold.
+template <u32 MAX_DEPTH> struct seg_continuation_source_pair_resolver {
+  const bwd_seg_desc &desc;
+  u32 row;
 
-// Add `immediate * value` to one of a group's per-side sums.
-DEVICE_FORCEINLINE void seg_apply_immediate(const bwd_seg_desc &desc, const u16 immediate_id, const e4 &value, e4 &sum) {
-  if (immediate_id == BWD_SEG_IMMEDIATE_ONE) {
-    sum = e4::add(sum, value);
-  } else if (immediate_id == BWD_SEG_IMMEDIATE_NEG_ONE) {
-    sum = e4::sub(sum, value);
-  } else {
-    sum = e4::fma(value, bf::from_reduced_raw_repr(desc.immediates[immediate_id - BWD_SEG_IMMEDIATE_RESERVED]), sum);
+  template <bwd_continuation_projection P> DEVICE_FORCEINLINE bwd_continuation_pair resolve(const u16 source) const {
+    if constexpr (P == BWD_CONTINUATION_PROJ_ENDPOINT0) {
+      const seg_value<e4> value = seg_resolve_e4<SEG_PROJ_ENDPOINT0, MAX_DEPTH>(desc, source, row);
+      return bwd_continuation_pair{value.endpoint0, e4::ZERO()};
+    } else {
+      const seg_value<e4> value = seg_resolve_e4<SEG_PROJ_PAIR, MAX_DEPTH>(desc, source, row);
+      return bwd_continuation_pair{value.endpoint0, value.delta};
+    }
   }
-}
-
-// Accumulate one continuation group member into its per-side sums.
-template <u32 MAX_DEPTH>
-DEVICE_FORCEINLINE void seg_execute_group_member(const bwd_seg_desc &desc, const u16 member_class, const u16 immediate_id, const u16 source_a,
-                                                 const u16 source_b, const u32 row, e4 &s_c0, e4 &s_c2) {
-  switch (member_class) {
-  case BWD_SEG_EXT_CLASS_C0_LINEAR_E4: {
-    const e4 a = seg_resolve_e4<SEG_PROJ_ENDPOINT0, MAX_DEPTH>(desc, source_a, row).endpoint0;
-    seg_apply_immediate(desc, immediate_id, a, s_c0);
-    break;
-  }
-  case BWD_SEG_EXT_CLASS_DUAL_PRODUCT_E4: {
-    const seg_value<e4> a = seg_resolve_e4<SEG_PROJ_PAIR, MAX_DEPTH>(desc, source_a, row);
-    const seg_value<e4> b = seg_resolve_e4<SEG_PROJ_PAIR, MAX_DEPTH>(desc, source_b, row);
-    seg_apply_immediate(desc, immediate_id, e4::mul(a.endpoint0, b.endpoint0), s_c0);
-    seg_apply_immediate(desc, immediate_id, e4::mul(a.delta, b.delta), s_c2);
-    break;
-  }
-  default:
-    // As in `seg_execute_term`: a validated program has no member at a dead class
-    // (`lean::validate_program`'s `ClassNotInRegime`, and `NestedGroupHeader` for
-    // the control code itself), and a release kernel has no error channel — so an
-    // invalid record contributes nothing rather than resolving an undefined operand
-    // shape.
-    break;
-  }
-}
-
-DEVICE_FORCEINLINE void seg_apply_group_core(const e4 &core, const u16 flags, const e4 &s_c0, const e4 &s_c2, e4 &acc_c0, e4 &acc_c2) {
-  if ((flags & BWD_SEG_GROUP_FLAG_C0) != 0)
-    acc_c0 = e4::fma(core, s_c0, acc_c0);
-  if ((flags & BWD_SEG_GROUP_FLAG_C2) != 0)
-    acc_c2 = e4::fma(core, s_c2, acc_c2);
-}
+};
 
 // ── The executor body ───────────────────────────────────────────────────────
 
@@ -525,52 +468,26 @@ template <bool IS_R0> DEVICE_FORCEINLINE void seg_body(const bwd_seg_desc &desc)
   // reduce to `k * c_init`. R0 has no seed path at all — R0 lowering drops the
   // spine's scalar addends, so seeding one would double-count it (enforced by
   // `lower_bwd_seg`'s `R0CarriesCInit`).
-  e4 acc_c0 = e4::ZERO();
-  e4 acc_c2 = e4::ZERO();
-  if constexpr (!IS_R0) {
-    if (warp_id == 0)
-      acc_c0 = seg_c_init(desc);
-  }
-
   // Warp `w` walks its own contiguous list. `blockDim == 32 * k`, so `warp_id < k`
   // and `warp_id + 1` is inside `list_offset`.
+  e4 acc_c0;
+  e4 acc_c2;
   const u32 pc_end = desc.list_offset[warp_id + 1];
+  if constexpr (IS_R0) {
+    acc_c0 = e4::ZERO();
+    acc_c2 = e4::ZERO();
 #pragma unroll 1
-  for (u32 pc = desc.list_offset[warp_id]; pc < pc_end; pc += BWD_SEG_WORDS_PER_TERM) {
-    const u16 header = desc.program[pc];
-    const u16 term_class = (header >> BWD_SEG_CLASS_SHIFT) & BWD_SEG_CLASS_MASK;
-    const u16 coefficient_index = (header >> BWD_SEG_COEFFICIENT_SHIFT) & BWD_SEG_COEFFICIENT_MASK;
-    const u16 source_a = desc.program[pc + 1];
-    const u16 source_b = desc.program[pc + 2];
-    if constexpr (!IS_R0) {
-      // Group headers carry the member count and accumulator-side flags.
-      if (term_class == BWD_SEG_EXT_CLASS_GROUP_HEADER) {
-        const u16 n_members = source_a;
-        const u16 flags = source_b;
-        e4 s_c0 = e4::ZERO();
-        e4 s_c2 = e4::ZERO();
-#pragma unroll 1
-        for (u16 member = 0; member < n_members; member++) {
-          // Members are contiguous after the header (host lowering deals whole
-          // atoms), so the sub-loop advances the WALK's own `pc`: it ends on the
-          // LAST member and the outer loop's `pc += BWD_SEG_WORDS_PER_TERM` steps to
-          // the record after the group. Nothing else adjusts `pc`.
-          pc += BWD_SEG_WORDS_PER_TERM;
-          const u16 member_header = desc.program[pc];
-          const u16 member_class = (member_header >> BWD_SEG_CLASS_SHIFT) & BWD_SEG_CLASS_MASK;
-          // The same thirteen bits a plain record spends on a recipe id are the
-          // member's IMMEDIATE id.
-          const u16 immediate_id = (member_header >> BWD_SEG_COEFFICIENT_SHIFT) & BWD_SEG_COEFFICIENT_MASK;
-          seg_execute_group_member<MAX_DEPTH>(desc, member_class, immediate_id, desc.program[pc + 1], desc.program[pc + 2], row, s_c0, s_c2);
-        }
-        // ONE uniform bank load for the whole group, the header's core id indexed
-        // raw exactly as a term's coefficient id is.
-        const e4 core = AB_GKR_BWD_SEG_COEFF(coefficient_index);
-        seg_apply_group_core(core, flags, s_c0, s_c2, acc_c0, acc_c2);
-        continue;
-      }
+    for (u32 pc = desc.list_offset[warp_id]; pc < pc_end; pc += BWD_SEG_WORDS_PER_TERM) {
+      const u16 header = desc.program[pc];
+      const u16 term_class = (header >> BWD_SEG_CLASS_SHIFT) & BWD_SEG_CLASS_MASK;
+      const u16 coefficient_index = (header >> BWD_SEG_COEFFICIENT_SHIFT) & BWD_SEG_COEFFICIENT_MASK;
+      seg_execute_r0_term(desc, term_class, coefficient_index, desc.program[pc + 1], desc.program[pc + 2], row, acc_c0, acc_c2);
     }
-    seg_execute_term<IS_R0, MAX_DEPTH>(desc, term_class, coefficient_index, source_a, source_b, row, acc_c0, acc_c2);
+  } else {
+    const seg_continuation_source_pair_resolver<MAX_DEPTH> resolver{desc, row};
+    const bool has_c_init = desc.c_init_coeff != BWD_SEG_C_INIT_NONE;
+    bwd_continuation_evaluate_list(desc.program, desc.immediates, desc.list_offset[warp_id], pc_end, warp_id == 0, has_c_init,
+                                   static_cast<u16>(desc.c_init_coeff), resolver, acc_c0, acc_c2);
   }
 
   seg_epilogue(desc, k, lane, warp_id, row, active, acc_c0, acc_c2);
