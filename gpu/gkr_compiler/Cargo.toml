@@ -35,6 +35,11 @@ name = "generate_dr_windowed_r0_production"
 path = "src/bin/generate_dr_windowed_r0_production.rs"
 required-features = ["codegen"]
 
+[[bin]]
+name = "generate_main_continuation_window_production"
+path = "src/bin/generate_main_continuation_window_production.rs"
+required-features = ["codegen"]
+
 [[test]]
 name = "forward_search"
 path = "tests/forward_search.rs"

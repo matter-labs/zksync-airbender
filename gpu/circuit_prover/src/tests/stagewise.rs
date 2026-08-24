@@ -182,15 +182,22 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
 }
 
 fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
-    let mut transfers = fixture.base.create_transfers().unwrap();
-    transfers.schedule(&fixture.base.context).unwrap();
     let backward_options = gpu_gkr::GkrBackwardOptions::default();
     let strategy = resolve_backward_execution_strategy(
         &fixture.base.gkr_programs,
         &fixture.base.prover_config,
         backward_options,
     );
-    preflight_windowed_r0(&fixture.base.gkr_programs, strategy).unwrap();
+    let mut transfers = crate::proof::construct_after_windowed_backward_preflight(
+        &fixture.base.gkr_programs,
+        strategy,
+        backward_options,
+        fixture.base.final_trace_size_log_2,
+        || fixture.base.create_transfers(),
+    )
+    .unwrap()
+    .unwrap();
+    transfers.schedule(&fixture.base.context).unwrap();
     let job = crate::proof::prove_stagewise(
         &fixture.base.gkr_programs,
         &fixture.base.prover_config,

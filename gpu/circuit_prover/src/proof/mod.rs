@@ -17,8 +17,9 @@ use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::{
-    backward_execution_strategy, BackwardExecutionStrategy, GkrBackwardOptions, GkrPrograms,
-    WindowLoweringRejection,
+    backward_execution_strategy, main_continuation_window_count, BackwardExecutionStrategy,
+    GkrBackwardOptions, GkrPrograms, MainContinuationWindowLoweringRejection,
+    MainLayerExecutionPlanError, WindowLoweringRejection,
 };
 use gpu_prover_context::ProverContext;
 
@@ -38,6 +39,14 @@ pub enum GpuProveError {
         layer: usize,
         resource: String,
     },
+    MainContinuationWindowLowering {
+        circuit: String,
+        layer: usize,
+        resource: String,
+    },
+    MainLayerExecutionPlan {
+        error: MainLayerExecutionPlanError,
+    },
 }
 
 impl std::fmt::Display for GpuProveError {
@@ -51,6 +60,17 @@ impl std::fmt::Display for GpuProveError {
                 formatter,
                 "windowed R0 lowering rejected for {circuit}/{layer}: {resource}"
             ),
+            Self::MainContinuationWindowLowering {
+                circuit,
+                layer,
+                resource,
+            } => write!(
+                formatter,
+                "main continuation window lowering rejected for {circuit}/{layer}: {resource}"
+            ),
+            Self::MainLayerExecutionPlan { error } => {
+                write!(formatter, "main-layer execution plan rejected: {error:?}")
+            }
         }
     }
 }
@@ -60,6 +80,16 @@ impl std::error::Error for GpuProveError {}
 impl From<&WindowLoweringRejection> for GpuProveError {
     fn from(rejection: &WindowLoweringRejection) -> Self {
         Self::WindowLowering {
+            circuit: rejection.circuit.clone(),
+            layer: rejection.layer,
+            resource: rejection.resource.clone(),
+        }
+    }
+}
+
+impl From<&MainContinuationWindowLoweringRejection> for GpuProveError {
+    fn from(rejection: &MainContinuationWindowLoweringRejection) -> Self {
+        Self::MainContinuationWindowLowering {
             circuit: rejection.circuit.clone(),
             layer: rejection.layer,
             resource: rejection.resource.clone(),
@@ -85,25 +115,58 @@ fn validated_schedule_class(
     gkr_programs: &GkrPrograms,
     prover_config: &ProverConfig,
 ) -> Option<SumcheckScheduleClass> {
-    let folding_steps = gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize;
-    validate_sumcheck_schedule(&prover_config.same_size_sumcheck_schedule, folding_steps).ok()
+    validate_sumcheck_schedule(
+        &prover_config.same_size_sumcheck_schedule,
+        main_folding_steps(gkr_programs),
+    )
+    .ok()
 }
 
-/// Resolve the window program bundle before any of this proof's H2D work is
-/// scheduled, so a lowering rejection surfaces as an error rather than a panic
-/// with a half-enqueued proof. A per-round strategy never lowers and never
-/// rejects.
-pub fn preflight_windowed_r0(
+fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
+    gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize
+}
+
+/// Resolve every lazy bundle selected by the full backward options before any
+/// proof H2D transfer is constructed or scheduled. A per-round strategy does
+/// not lower either main-window family.
+pub fn preflight_windowed_backward(
     gkr_programs: &GkrPrograms,
     strategy: BackwardExecutionStrategy,
+    options: GkrBackwardOptions,
+    final_trace_size_log_2: u32,
 ) -> Result<(), GpuProveError> {
+    // Reserved for later DR bundle checks. Main-layer geometry belongs to the
+    // compiled circuit and must not be inferred from the final reduced trace.
+    let _ = final_trace_size_log_2;
     match strategy {
-        BackwardExecutionStrategy::PerRound => Ok(()),
+        BackwardExecutionStrategy::PerRound => {}
         BackwardExecutionStrategy::WindowedR0 => gkr_programs
             .resolve_window_programs()
             .map(|_| ())
-            .map_err(GpuProveError::from),
+            .map_err(GpuProveError::from)?,
     }
+    let window_count =
+        main_continuation_window_count(options, strategy, main_folding_steps(gkr_programs))
+            .map_err(|error| GpuProveError::MainLayerExecutionPlan { error })?;
+    if window_count > 0 {
+        gkr_programs
+            .resolve_main_continuation_window_programs()
+            .map(|_| ())
+            .map_err(GpuProveError::from)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn construct_after_windowed_backward_preflight<T>(
+    gkr_programs: &GkrPrograms,
+    strategy: BackwardExecutionStrategy,
+    options: GkrBackwardOptions,
+    final_trace_size_log_2: u32,
+    construct_transfers: impl FnOnce() -> T,
+) -> Result<T, GpuProveError> {
+    preflight_windowed_backward(gkr_programs, strategy, options, final_trace_size_log_2)?;
+    Ok(construct_transfers())
 }
 
 pub fn prove<'a, A: GoodAllocator + 'a>(
@@ -165,9 +228,21 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         ),
         BackwardExecutionStrategy::WindowedR0 => assert!(
             gkr_programs.window_programs_ready(),
-            "prove() with the windowed arm requires preflight_windowed_r0 first"
+            "prove() with the windowed arm requires preflight_windowed_backward first"
         ),
         BackwardExecutionStrategy::PerRound => {}
+    }
+    let continuation_window_count = main_continuation_window_count(
+        backward_options,
+        backward_strategy,
+        main_folding_steps(gkr_programs),
+    )
+    .expect("prove() requires a main-layer execution plan accepted by preflight");
+    if continuation_window_count > 0 {
+        assert!(
+            gkr_programs.main_continuation_window_programs_ready(),
+            "continuation scheduling requires preflight_windowed_backward first"
+        );
     }
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,

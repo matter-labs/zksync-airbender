@@ -15,6 +15,17 @@ target_sources(gpu_gkr_native PRIVATE
         window_dr/r0.cuh
         generated/dr_windowed_r0_manifest.cuh
         generated/dr_r0_window_universal.cu
+        main_continuation_window/main_continuation_window_abi.cuh
+        main_continuation_window/fold_prologue.cuh
+        main_continuation_window/executor.cuh
+        main_continuation_window/generated/main_continuation_window_manifest.cuh
+        main_continuation_window/generated/main_continuation_window_shape_00.cu
+        main_continuation_window/generated/main_continuation_window_shape_01.cu
+        main_continuation_window/generated/main_continuation_window_shape_03.cu
+        main_continuation_window/generated/main_continuation_window_shape_07.cu
+        main_continuation_window/generated/main_continuation_window_shape_13.cu
+        main_continuation_window/generated/main_continuation_window_shape_17.cu
+        main_continuation_window/generated/main_continuation_window_shape_1f.cu
         generated/windowed_r0_manifest.cuh
         generated/r0_window_shape_1b1.cu
         generated/r0_window_shape_3ff.cu

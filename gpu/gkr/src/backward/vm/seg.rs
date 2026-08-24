@@ -71,7 +71,10 @@ cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_seg_build_fold_weights_kernel(fold_weights: *mut E4, round: u32)
 );
 
-fn launch_bwd_seg_build_fold_weights(round: u32, context: &ProverContext) -> CudaResult<()> {
+pub(crate) fn launch_bwd_seg_build_fold_weights(
+    round: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
     assert!(round >= 1, "fold weights are continuation-only");
     let config = CudaLaunchConfig::builder()
         .grid_dim(1)

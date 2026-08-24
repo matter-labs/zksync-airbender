@@ -196,7 +196,7 @@ impl GpuGKRDimensionReducingBackwardState {
         let main_layers_range = Range::new("gkr.backward.main_layers")?;
         main_layers_range.start(stream)?;
         while let Some(mut prepared_layer) =
-            main_backward_state.prepare_next_layer_static(context)?
+            main_backward_state.prepare_next_layer_static(options, context)?
         {
             let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer.schedule_execute_main_layer(
