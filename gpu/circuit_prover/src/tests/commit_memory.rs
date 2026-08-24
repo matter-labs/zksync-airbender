@@ -352,7 +352,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor>(
+    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor, _>(
         &NaiveBackend,
         &mem_inputs,
         &twiddles,
@@ -546,7 +546,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor>(
+    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor, _>(
         &NaiveBackend,
         &mem_inputs,
         &twiddles,
@@ -646,7 +646,7 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor>(
+    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor, _>(
         &NaiveBackend,
         &mem_inputs,
         &twiddles,

@@ -28,7 +28,7 @@ use super::seg_lower::{
     lower_bwd_seg_continuation, lower_bwd_seg_r0, materializes, BwdSegRoundBinding, BwdSegSetup,
     ResolvedAddrSlot, ResolvedSourceAddr, SourceOrigin,
 };
-use crate::backward::{make_eq_sizes, GkrEqSizes};
+use crate::backward::{make_eq_sizes, record_active_eq_slot_fold, GkrEqSizes};
 use crate::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
 use crate::forward::vm::production_bind::resolve_storage_column;
 use crate::transform::logical_protocol_address;
@@ -689,16 +689,9 @@ fn schedule_seg_challenge_slab(
 
 // ── The Ext launch sequence ──────────────────────────────────────────────────
 
-fn drained_eq_sizes(mut eq_sizes: GkrEqSizes, rounds: u8) -> GkrEqSizes {
+pub(crate) fn drained_eq_sizes(mut eq_sizes: GkrEqSizes, rounds: u8) -> GkrEqSizes {
     for _ in 0..rounds {
-        if eq_sizes.high[0] > 0 {
-            eq_sizes.high[0] -= 1;
-        } else if eq_sizes.high[1] > 0 {
-            eq_sizes.high[1] -= 1;
-        } else {
-            debug_assert!(eq_sizes.low >= 1, "the factored eq drained past empty");
-            eq_sizes.low -= 1;
-        }
+        record_active_eq_slot_fold(&mut eq_sizes);
     }
     eq_sizes
 }

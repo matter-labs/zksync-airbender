@@ -58,35 +58,6 @@ pub(crate) fn serialize_whir_e4_columns(
     SerializeWhirE4ColumnsFunction(ab_serialize_whir_e4_columns_kernel).launch(&config, &args)
 }
 
-cuda_kernel_signature_arguments_and_function!(
-    DeserializeWhirE4Columns,
-    src: *const BF,
-    dst: *mut E4,
-    count: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_deserialize_whir_e4_columns_kernel(
-        src: *const BF,
-        dst: *mut E4,
-        count: u32,
-    )
-);
-
-pub(crate) fn deserialize_whir_e4_columns(
-    src: &DeviceSlice<BF>,
-    dst: &mut DeviceSlice<E4>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert_eq!(src.len(), dst.len() * <E4 as FieldExtension<BF>>::DEGREE);
-    assert!(dst.len() <= u32::MAX as usize);
-    let count = dst.len() as u32;
-    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, count);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = DeserializeWhirE4ColumnsArguments::new(src.as_ptr(), dst.as_mut_ptr(), count);
-    DeserializeWhirE4ColumnsFunction(ab_deserialize_whir_e4_columns_kernel).launch(&config, &args)
-}
-
 const TRACE_CHUNKS: usize = 3;
 
 #[repr(C)]
@@ -253,7 +224,7 @@ pub(crate) fn accumulate_whir_base_columns_with_serialized_bf(
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldSplitHalfVectorized,
+    WhirFoldAdjacentVectorized,
     src: PtrAndStride<BF>,
     dst: MutPtrAndStride<BF>,
     challenge: *const E4,
@@ -261,7 +232,7 @@ cuda_kernel_signature_arguments_and_function!(
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_split_half_vectorized_e4_kernel(
+    ab_whir_fold_adjacent_vectorized_e4_kernel(
         src: PtrAndStride<BF>,
         dst: MutPtrAndStride<BF>,
         challenge: *const E4,
@@ -269,55 +240,71 @@ cuda_kernel_declaration!(
     )
 );
 
-pub(crate) fn whir_fold_split_half_in_place_vectorized(
-    values: &mut impl DeviceMatrixChunkMutImpl<BF>,
+/// Out of place — the adjacent pairing overlaps the read and write ranges
+/// across blocks.
+pub(crate) fn whir_fold_adjacent_vectorized(
+    src: &impl DeviceMatrixChunkImpl<BF>,
+    dst: &mut impl DeviceMatrixChunkMutImpl<BF>,
     challenge: &DeviceVariable<E4>,
     half_len: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(values.rows().is_power_of_two());
-    assert_eq!(values.cols(), 4);
+    assert_eq!(src.cols(), 4);
+    assert_eq!(dst.cols(), 4);
+    assert!(2 * half_len <= src.stride());
+    assert!(half_len <= dst.stride());
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len as u32);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldSplitHalfVectorizedArguments::new(
-        values.as_ptr_and_stride(),
-        values.as_mut_ptr_and_stride(),
+    let args = WhirFoldAdjacentVectorizedArguments::new(
+        src.as_ptr_and_stride(),
+        dst.as_mut_ptr_and_stride(),
         challenge.as_ptr(),
         half_len as i32,
     );
-    WhirFoldSplitHalfVectorizedFunction(ab_whir_fold_split_half_vectorized_e4_kernel)
+    WhirFoldAdjacentVectorizedFunction(ab_whir_fold_adjacent_vectorized_e4_kernel)
         .launch(&config, &args)
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldSplitHalf,
-    values: *mut E4,
+    WhirFoldAdjacent,
+    src: *const E4,
+    dst: *mut E4,
     challenge: *const E4,
     half_len: u32,
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_split_half_e4_kernel(
-        values: *mut E4,
+    ab_whir_fold_adjacent_e4_kernel(
+        src: *const E4,
+        dst: *mut E4,
         challenge: *const E4,
         half_len: u32,
     )
 );
 
+/// Out of place — the adjacent pairing overlaps the read and write ranges
+/// across blocks.
 #[cfg(test)]
-pub(crate) fn whir_fold_split_half_in_place(
-    values: &mut DeviceSlice<E4>,
+pub(crate) fn whir_fold_adjacent(
+    src: &DeviceSlice<E4>,
+    dst: &mut DeviceSlice<E4>,
     challenge: &DeviceVariable<E4>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(values.len().is_power_of_two());
-    assert!(values.len() >= 2);
-    assert!(values.len() / 2 <= u32::MAX as usize);
-    let half_len = (values.len() / 2) as u32;
+    assert!(src.len().is_power_of_two());
+    assert!(src.len() >= 2);
+    assert!(src.len() / 2 <= u32::MAX as usize);
+    let half_len = (src.len() / 2) as u32;
+    assert!(dst.len() >= half_len as usize);
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldSplitHalfArguments::new(values.as_mut_ptr(), challenge.as_ptr(), half_len);
-    WhirFoldSplitHalfFunction(ab_whir_fold_split_half_e4_kernel).launch(&config, &args)
+    let args = WhirFoldAdjacentArguments::new(
+        src.as_ptr(),
+        dst.as_mut_ptr(),
+        challenge.as_ptr(),
+        half_len,
+    );
+    WhirFoldAdjacentFunction(ab_whir_fold_adjacent_e4_kernel).launch(&config, &args)
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -1039,7 +1026,7 @@ cuda_kernel!(
   src: PtrAndStride<BF>,
   dst: *mut E4,
   z: *const E4,
-  z_adjustment_ptr: *const E4,
+  z_stride_ptr: *const E4,
   count: i32,
 );
 
@@ -1077,17 +1064,18 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
         .launch(&config, &args)?;
         return Ok(count);
     }
-    let z_chunk_adjustment = &mut scratch1[..1];
-    pow(&point[..1], VALS_PER_THREAD, z_chunk_adjustment, stream)?;
-    let z_adjustment_ptr = z_chunk_adjustment.as_ptr();
-    let (grid_dim, block_dim) =
-        get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32 / VALS_PER_THREAD);
+    // The grid is exact: `count / VALS_PER_THREAD` is a power of two >= BLOCK_DIM.
+    let gmem_stride = count as u32 / VALS_PER_THREAD;
+    let z_stride = &mut scratch1[..1];
+    pow(&point[..1], gmem_stride, z_stride, stream)?;
+    let z_stride_ptr = z_stride.as_ptr();
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, gmem_stride);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = PartiallyEvaluateMonomialFormByRefArguments::new(
         monomials,
         partial_evals,
         z_ptr,
-        z_adjustment_ptr,
+        z_stride_ptr,
         log_count,
     );
     PartiallyEvaluateMonomialFormByRefFunction(ab_partially_evaluate_monomial_form_by_ref_kernel)
@@ -1096,41 +1084,51 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldSplitHalfPair,
-    values_a: *mut E4,
-    values_b: *mut E4,
+    WhirFoldAdjacentPair,
+    src_a: *const E4,
+    dst_a: *mut E4,
+    src_b: *const E4,
+    dst_b: *mut E4,
     challenge: *const E4,
     half_len: u32,
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_split_half_pair_e4_kernel(
-        values_a: *mut E4,
-        values_b: *mut E4,
+    ab_whir_fold_adjacent_pair_e4_kernel(
+        src_a: *const E4,
+        dst_a: *mut E4,
+        src_b: *const E4,
+        dst_b: *mut E4,
         challenge: *const E4,
         half_len: u32,
     )
 );
 
-pub(crate) fn whir_fold_split_half_in_place_pair(
-    values_a: &mut DeviceSlice<E4>,
-    values_b: &mut DeviceSlice<E4>,
+pub(crate) fn whir_fold_adjacent_pair(
+    src_a: &DeviceSlice<E4>,
+    dst_a: &mut DeviceSlice<E4>,
+    src_b: &DeviceSlice<E4>,
+    dst_b: &mut DeviceSlice<E4>,
     challenge: &DeviceVariable<E4>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert_eq!(values_a.len(), values_b.len());
-    assert!(values_a.len().is_power_of_two());
-    assert!(values_a.len() >= 2);
-    let half_len = (values_a.len() / 2) as u32;
+    assert_eq!(src_a.len(), src_b.len());
+    assert!(src_a.len().is_power_of_two());
+    assert!(src_a.len() >= 2);
+    let half_len = (src_a.len() / 2) as u32;
+    assert!(dst_a.len() >= half_len as usize);
+    assert!(dst_b.len() >= half_len as usize);
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldSplitHalfPairArguments::new(
-        values_a.as_mut_ptr(),
-        values_b.as_mut_ptr(),
+    let args = WhirFoldAdjacentPairArguments::new(
+        src_a.as_ptr(),
+        dst_a.as_mut_ptr(),
+        src_b.as_ptr(),
+        dst_b.as_mut_ptr(),
         challenge.as_ptr(),
         half_len,
     );
-    WhirFoldSplitHalfPairFunction(ab_whir_fold_split_half_pair_e4_kernel).launch(&config, &args)
+    WhirFoldAdjacentPairFunction(ab_whir_fold_adjacent_pair_e4_kernel).launch(&config, &args)
 }
 
 const WHIR_THREE_POINT_BLOCK_THREADS: u32 = 256;
@@ -1394,6 +1392,14 @@ pub(crate) fn launch_batched_accumulate_eq_samples(
     assert!(num_queries <= u32::MAX as usize);
     assert!(challenge_count <= u32::MAX as usize);
     assert!(acc_size <= u32::MAX as usize);
+    // At `challenge_count == 0` the low eq buffer is never written but
+    // `make_eq_sizes(0)` still reports `low = 0`, so the accumulator would read
+    // uninitialized device memory.
+    assert!(
+        challenge_count >= 1,
+        "challenge_count >= 1: at 0 the low eq buffer is never written and the \
+         accumulator would read uninitialized device memory at eq_low[0]"
+    );
     let blocks_x = eq_group_count(challenge_count).max(GKR_EQ_HIGH_SLOTS);
     let build_config = CudaLaunchConfig::basic(
         (blocks_x as u32, num_queries as u32, 1u32),
@@ -1450,9 +1456,13 @@ fn launch_build_split_eq_table(
     bits: usize,
     claim_offset: usize,
     num_queries: usize,
-    out_array: *mut E4,
+    out_array: &mut DeviceSlice<E4>,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    // Both bounds fail silently: an over-large `bits` writes past the
+    // destination while staying inside the pool, so no CUDA error is raised.
+    assert!(claim_offset + bits <= log_n);
+    assert!(out_array.len() >= num_queries << bits);
     let table_size = 1u32 << bits;
     let block = SPLIT_BUILD_BLOCK_THREADS.min(table_size);
     let grid_x = table_size.div_ceil(block);
@@ -1467,7 +1477,7 @@ fn launch_build_split_eq_table(
         log_n as u32,
         bits as u32,
         claim_offset as u32,
-        out_array,
+        out_array.as_mut_ptr(),
     );
     WhirBuildSplitEqTableFunction(ab_whir_build_split_eq_table_e4_kernel).launch(&config, &args)
 }
@@ -1484,8 +1494,8 @@ pub(crate) fn launch_split_accumulate_eq_samples(
     challenges: *const E4,
     num_queries: usize,
     log_n: usize,
-    eq_high_array: *mut E4,
-    eq_low_array: *mut E4,
+    eq_high_array: &mut DeviceSlice<E4>,
+    eq_low_array: &mut DeviceSlice<E4>,
     eq_poly: *mut E4,
     acc_size: usize,
     context: &ProverContext,
@@ -1496,13 +1506,15 @@ pub(crate) fn launch_split_accumulate_eq_samples(
     assert!(acc_size <= u32::MAX as usize);
     let (high_bits, low_bits) = split_eq_bits(log_n);
 
+    // LSB pairing puts coordinates `low_bits..log_n` on the high slab and
+    // `0..low_bits` on the low slab.
     // High slab: no challenge scaling.
     launch_build_split_eq_table(
         claim_points,
         std::ptr::null(),
         log_n,
         high_bits,
-        0,
+        low_bits,
         num_queries,
         eq_high_array,
         context,
@@ -1514,7 +1526,7 @@ pub(crate) fn launch_split_accumulate_eq_samples(
         challenges,
         log_n,
         low_bits,
-        high_bits,
+        0,
         num_queries,
         eq_low_array,
         context,
@@ -1522,8 +1534,8 @@ pub(crate) fn launch_split_accumulate_eq_samples(
 
     let acc_config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let acc_args = WhirAccumulateEqSplitArguments::new(
-        eq_high_array,
-        eq_low_array,
+        eq_high_array.as_ptr(),
+        eq_low_array.as_ptr(),
         high_bits as u32,
         low_bits as u32,
         eq_poly,

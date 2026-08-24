@@ -6,7 +6,7 @@ use era_cudart::stream::CudaStream;
 use worker::Worker;
 
 use super::{
-    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_evals_natural_to_bitreversed_coeffs,
+    hypercube_coeffs_to_evals, hypercube_evals_to_monomial_coeffs,
     natural_evals_to_bitreversed_coeffs,
 };
 use crate::ntt_twiddles::DeviceContext;
@@ -94,7 +94,7 @@ fn cpu_characterize_hypercube_ordering() {
 
 #[test]
 #[cfg(not(no_cuda))]
-fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
+fn hypercube_evals_to_monomial_coeffs_matches_cpu() {
     let context = make_context();
     let stream = context.get_exec_stream();
 
@@ -111,7 +111,7 @@ fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
         let mut src = context.alloc(n).unwrap();
         let mut dst = context.alloc(n).unwrap();
         memory_copy_async(&mut src, &evals, stream).unwrap();
-        hypercube_evals_natural_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
+        hypercube_evals_to_monomial_coeffs(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
         memory_copy_async(&mut actual, &dst, stream).unwrap();
@@ -154,17 +154,20 @@ fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
     }
 }
 
-// Independent host oracle for the FORWARD hypercube launcher family
-// (`hypercube_coeffs_bitrev_to_bitrev_evals`, consumed by gpu_circuit_prover's
-// whir fold). It is the exact inverse of the line-above
-// `hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu` oracle chain:
-// the input is bitreversed coefficients, and the pure-CPU expected side is
-// `bitrev(coeffs) -> multivariate_coeffs_into_hypercube_evals -> bitrev`
-// (using the FORWARD CPU reference, not the inverse one). No GPU kernel
-// touches the expected side.
+// Sole guard for the forward hypercube launcher family; it has no
+// production caller. Asserts two independent facts:
+//
+// 1. ABSOLUTE labeling: the device output equals the pure-CPU forward
+//    reference applied to the SAME natural-order array, with no compensating
+//    permutation on either side, and is NOT that array's bitreversal.
+// 2. RELATIVE labeling-preservation, measured entirely on the device with no
+//    CPU oracle at all: `GPU(bitrev(x)) == bitrev(GPU(x))`. That is the
+//    property which makes a bitreversal flag on this family meaningless, so it
+//    is the guard against such a flag being reintroduced; a kernel that ever
+//    became labeling-changing reddens here.
 #[test]
 #[cfg(not(no_cuda))]
-fn hypercube_coeffs_bitrev_to_bitrev_evals_matches_cpu() {
+fn hypercube_coeffs_to_evals_is_natural_and_preserves_labeling() {
     let context = make_context();
     let stream = context.get_exec_stream();
 
@@ -173,20 +176,40 @@ fn hypercube_coeffs_bitrev_to_bitrev_evals_matches_cpu() {
         let coeffs = (0..n)
             .map(|idx| BF::new((17 + idx * 13) as u32))
             .collect::<Vec<_>>();
+
         let mut expected = coeffs.clone();
-        fft::bitreverse_enumeration_inplace(&mut expected);
         multivariate_coeffs_into_hypercube_evals(&mut expected, log_n as u32);
-        fft::bitreverse_enumeration_inplace(&mut expected);
+        let mut expected_bitrev = expected.clone();
+        fft::bitreverse_enumeration_inplace(&mut expected_bitrev);
+
+        let mut coeffs_bitrev = coeffs.clone();
+        fft::bitreverse_enumeration_inplace(&mut coeffs_bitrev);
 
         let mut src = context.alloc(n).unwrap();
         let mut dst = context.alloc(n).unwrap();
-        memory_copy_async(&mut src, &coeffs, stream).unwrap();
-        hypercube_coeffs_bitrev_to_bitrev_evals(&src, &mut dst, log_n, stream).unwrap();
 
+        memory_copy_async(&mut src, &coeffs, stream).unwrap();
+        hypercube_coeffs_to_evals(&src, &mut dst, log_n, stream).unwrap();
         let mut actual = vec![BF::ZERO; n];
         memory_copy_async(&mut actual, &dst, stream).unwrap();
+
+        memory_copy_async(&mut src, &coeffs_bitrev, stream).unwrap();
+        hypercube_coeffs_to_evals(&src, &mut dst, log_n, stream).unwrap();
+        let mut actual_from_bitrev = vec![BF::ZERO; n];
+        memory_copy_async(&mut actual_from_bitrev, &dst, stream).unwrap();
         stream.synchronize().unwrap();
+
         assert_eq!(actual, expected, "log_n={}", log_n);
+        if log_n >= 2 {
+            // Non-vacuity: the two candidate labelings differ on this data, so
+            // the negative control that follows is a real discrimination.
+            assert_ne!(expected, expected_bitrev, "log_n={}", log_n);
+            assert_ne!(actual, expected_bitrev, "log_n={}", log_n);
+        }
+
+        let mut actual_bitrev = actual.clone();
+        fft::bitreverse_enumeration_inplace(&mut actual_bitrev);
+        assert_eq!(actual_from_bitrev, actual_bitrev, "log_n={}", log_n);
     }
 }
 
@@ -1726,5 +1749,741 @@ fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2
     }
     for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
         b.sub_assign(&*a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Natural-order monomials -> bitreversed-order evals, multi-coset LDE.
+// `out_k[p] = f(g_k * omega^rev_n(p))` from NATURAL-labeled coefficients.
+// Three independent oracles:
+//   A: duality against the old bitrev-monomials -> natural-evals family,
+//   B: basis vectors (nothing GPU-derived on the expected side),
+//   C: the CPU naive natural->bitreversed CT NTT (`fft` crate).
+// ---------------------------------------------------------------------------
+#[cfg(not(no_cuda))]
+mod natural_to_bitrev {
+    use super::super::forward::{
+        monomials_to_evals_2_pass_compact_initial, monomials_to_evals_3_pass,
+        natural_monomials_to_bitrev_evals_2_pass, natural_monomials_to_bitrev_evals_2_pass_compact,
+        natural_monomials_to_bitrev_evals_3_pass,
+    };
+    use super::super::{
+        natural_monomials_to_bitreversed_evals_coset_range,
+        natural_monomials_to_bitreversed_evals_multi_coset,
+    };
+    use super::helpers::transpose_monomials;
+    use super::{make_context, NttTestContext};
+    use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+    use crate::upstream::{
+        bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,
+    };
+    use era_cudart::memory::memory_copy_async;
+    use era_cudart::stream::CudaStream;
+    use fft::precompute_twiddles_for_fft;
+    use gpu_core::primitives::context::DeviceProperties;
+    use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
+    use gpu_core::primitives::field::BF;
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+    use std::alloc::Global;
+    use worker::Worker;
+
+    /// One test case's geometry. `stride_cols` is the launcher's
+    /// `num_cols_per_coset_stride` (>= `num_cols`; larger leaves gaps between
+    /// coset slabs).
+    #[derive(Clone, Copy, Debug)]
+    struct Shape {
+        log_n: usize,
+        log_lde_factor: usize,
+        num_cosets: usize,
+        coset_index_base: usize,
+        num_cols: usize,
+        stride_cols: usize,
+        transposed: bool,
+    }
+
+    impl Shape {
+        fn n(&self) -> usize {
+            1usize << self.log_n
+        }
+
+        fn output_len(&self) -> usize {
+            ((self.num_cosets - 1) * self.stride_cols + self.num_cols) * self.n()
+        }
+
+        fn is_full_range(&self) -> bool {
+            self.coset_index_base == 0 && self.num_cosets == (1usize << self.log_lde_factor)
+        }
+
+        fn coset_factor_shift(&self) -> u32 {
+            (OMEGA_LOG_ORDER as usize - self.log_n - self.log_lde_factor) as u32
+        }
+
+        /// Coset shift `g_k = tau^k` of the full LDE domain.
+        fn coset_factor(&self, coset_offset: usize) -> BF {
+            let tau = domain_generator_for_size::<BF>(1u64 << (self.log_n + self.log_lde_factor));
+            tau.pow((self.coset_index_base + coset_offset) as u32)
+        }
+
+        fn slab(&self, coset_offset: usize, col: usize) -> std::ops::Range<usize> {
+            let start = (coset_offset * self.stride_cols + col) * self.n();
+            start..start + self.n()
+        }
+    }
+
+    /// Physical backing for a logical coefficient matrix: every column goes
+    /// through the SAME layout function both directions use (identity, or the
+    /// 32x32-chunk transposition for the transposed-monomial layout).
+    fn layout_columns(logical: &[Vec<BF>], transposed: bool) -> Vec<BF> {
+        let mut backing = Vec::with_capacity(logical.len() * logical[0].len());
+        for column in logical {
+            let mut column = column.clone();
+            if transposed {
+                transpose_monomials(&mut column);
+            }
+            backing.extend_from_slice(&column);
+        }
+        backing
+    }
+
+    fn random_columns(shape: &Shape, seed: u64) -> Vec<Vec<BF>> {
+        let mut rng = StdRng::seed_from_u64(seed);
+        (0..shape.num_cols)
+            .map(|_| {
+                (0..shape.n())
+                    .map(|_| BF::from_nonreduced_u32(rng.random()))
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn compare_slices(actual: &[BF], expected: &[BF], what: &str) {
+        assert_eq!(actual.len(), expected.len(), "{what}: length mismatch");
+        let first = (0..actual.len()).find(|&i| actual[i] != expected[i]);
+        if let Some(idx) = first {
+            let differing = (0..actual.len())
+                .filter(|&i| actual[i] != expected[i])
+                .count();
+            panic!(
+                "{what}: first divergence at row {idx} (0b{idx:b}): actual {:?}, expected {:?} \
+                 ({differing} of {} rows differ)",
+                actual[idx],
+                expected[idx],
+                actual.len(),
+            );
+        }
+    }
+
+    fn run_natural_to_bitrev(
+        context: &NttTestContext,
+        shape: &Shape,
+        logical: &[Vec<BF>],
+    ) -> Vec<BF> {
+        let stream = context.get_exec_stream();
+        let n = shape.n();
+        let inputs_host = layout_columns(logical, shape.transposed);
+        let mut inputs_device = context.alloc(inputs_host.len()).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+        let mut outputs_device = context.alloc(shape.output_len()).unwrap();
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+            if shape.is_full_range() {
+                natural_monomials_to_bitreversed_evals_multi_coset(
+                    &inputs_matrix,
+                    &mut outputs_device[..],
+                    shape.log_n,
+                    shape.log_lde_factor,
+                    shape.stride_cols,
+                    shape.transposed,
+                    context.device_context(),
+                    None,
+                    stream,
+                    context.get_device_properties(),
+                )
+                .unwrap();
+            } else {
+                natural_monomials_to_bitreversed_evals_coset_range(
+                    &inputs_matrix,
+                    &mut outputs_device[..],
+                    shape.log_n,
+                    shape.log_lde_factor,
+                    shape.num_cosets,
+                    shape.coset_index_base,
+                    shape.stride_cols,
+                    shape.transposed,
+                    context.device_context(),
+                    None,
+                    stream,
+                    context.get_device_properties(),
+                )
+                .unwrap();
+            }
+        }
+        let mut outputs_host = vec![BF::ZERO; shape.output_len()];
+        memory_copy_async(&mut outputs_host, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+        outputs_host
+    }
+
+    /// The old family (bitreversed monomials -> natural evals) fed the same
+    /// logical coefficients through the same layout function.
+    fn run_bitrev_to_natural(
+        context: &NttTestContext,
+        shape: &Shape,
+        logical: &[Vec<BF>],
+    ) -> Vec<BF> {
+        let stream = context.get_exec_stream();
+        let n = shape.n();
+        let bitrev_labeled: Vec<Vec<BF>> = logical
+            .iter()
+            .map(|column| {
+                let mut column = column.clone();
+                bitreverse_enumeration_inplace(&mut column);
+                column
+            })
+            .collect();
+        let inputs_host = layout_columns(&bitrev_labeled, shape.transposed);
+        let mut inputs_device = context.alloc(inputs_host.len()).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+        let mut outputs_device = context.alloc(shape.output_len()).unwrap();
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+            let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut outputs_device[..], n, 0, n);
+            monomials_to_evals_3_pass(
+                &inputs_matrix,
+                &mut outputs_matrix,
+                shape.log_n,
+                shape.coset_index_base,
+                shape.coset_factor_shift(),
+                shape.num_cosets,
+                shape.stride_cols,
+                shape.num_cosets,
+                shape.num_cols,
+                shape.transposed,
+                stream,
+            )
+            .unwrap();
+        }
+        let mut outputs_host = vec![BF::ZERO; shape.output_len()];
+        memory_copy_async(&mut outputs_host, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+        outputs_host
+    }
+
+    /// ORACLE A: `new(natural c)[p] == old(bitrev-labeled c)[rev_n(p)]`, i.e.
+    /// the new output is the row-bitreversal of the old one, per virtual
+    /// `[coset][column][n]` slice (never across the padded backing).
+    fn oracle_a_duality(shape: Shape, seed: u64) {
+        let context = make_context();
+        let logical = random_columns(&shape, seed);
+        let new_outputs = run_natural_to_bitrev(&context, &shape, &logical);
+        let old_outputs = run_bitrev_to_natural(&context, &shape, &logical);
+        for coset_offset in 0..shape.num_cosets {
+            for col in 0..shape.num_cols {
+                let range = shape.slab(coset_offset, col);
+                let mut expected = old_outputs[range.clone()].to_vec();
+                bitreverse_enumeration_inplace(&mut expected);
+                compare_slices(
+                    &new_outputs[range],
+                    &expected,
+                    &format!(
+                        "oracle A {shape:?} seed={seed:#x} coset_offset={coset_offset} col={col}"
+                    ),
+                );
+            }
+        }
+    }
+
+    /// ORACLE B: `c = e0` -> every output is ONE; `c = e1` -> `out_k[p] ==
+    /// g_k * omega^rev_n(p)`. Column 0 carries e0, column 1 carries e1.
+    fn oracle_b_basis_vectors(shape: Shape) {
+        assert_eq!(
+            shape.num_cols, 2,
+            "oracle B uses column 0 = e0, column 1 = e1"
+        );
+        let context = make_context();
+        let n = shape.n();
+        let mut e0 = vec![BF::ZERO; n];
+        e0[0] = BF::ONE;
+        let mut e1 = vec![BF::ZERO; n];
+        e1[1] = BF::ONE;
+        let outputs = run_natural_to_bitrev(&context, &shape, &[e0, e1]);
+
+        // omega^rev_n(p) for every output row p: natural powers, then
+        // bitreversed so index p reads the rev_n(p)-th power.
+        let omega = domain_generator_for_size::<BF>(n as u64);
+        let mut omega_powers = vec![BF::ONE; n];
+        distribute_powers_serial::<BF, BF>(&mut omega_powers, BF::ONE, omega);
+        bitreverse_enumeration_inplace(&mut omega_powers);
+
+        for coset_offset in 0..shape.num_cosets {
+            let ones = vec![BF::ONE; n];
+            compare_slices(
+                &outputs[shape.slab(coset_offset, 0)],
+                &ones,
+                &format!("oracle B (c = e0) {shape:?} coset_offset={coset_offset}"),
+            );
+            let coset_factor = shape.coset_factor(coset_offset);
+            let expected: Vec<BF> = omega_powers
+                .iter()
+                .map(|p| {
+                    let mut v = *p;
+                    v.mul_assign(&coset_factor);
+                    v
+                })
+                .collect();
+            compare_slices(
+                &outputs[shape.slab(coset_offset, 1)],
+                &expected,
+                &format!("oracle B (c = e1) {shape:?} coset_offset={coset_offset}"),
+            );
+        }
+    }
+
+    /// ORACLE C: pure-CPU ground truth. Scale `c[i] *= g_k^i`, then the naive
+    /// natural->bitreversed CT NTT; compare per coset and column.
+    fn oracle_c_cpu_naive(shape: Shape, seed: u64) {
+        let context = make_context();
+        let logical = random_columns(&shape, seed);
+        let outputs = run_natural_to_bitrev(&context, &shape, &logical);
+        check_vs_cpu_naive(
+            &shape,
+            &logical,
+            &outputs,
+            &format!("oracle C {shape:?} seed={seed:#x}"),
+        );
+    }
+
+    fn check_vs_cpu_naive(shape: &Shape, logical: &[Vec<BF>], outputs: &[BF], what: &str) {
+        let n = shape.n();
+        let worker = Worker::new();
+        let twiddles = precompute_twiddles_for_fft::<BF, Global, false>(n, &worker);
+        let twiddles = &twiddles[..(n >> 1)];
+        for coset_offset in 0..shape.num_cosets {
+            let mut coset_powers = vec![BF::ONE; n];
+            distribute_powers_serial::<BF, BF>(
+                &mut coset_powers,
+                BF::ONE,
+                shape.coset_factor(coset_offset),
+            );
+            for (col, column) in logical.iter().enumerate() {
+                let mut expected = column.clone();
+                for (value, power) in expected.iter_mut().zip(coset_powers.iter()) {
+                    value.mul_assign(power);
+                }
+                fft::column_major::naive::serial_ct_ntt_natural_to_bitreversed::<BF, BF>(
+                    &mut expected,
+                    shape.log_n as u32,
+                    twiddles,
+                );
+                compare_slices(
+                    &outputs[shape.slab(coset_offset, col)],
+                    &expected,
+                    &format!("{what} coset_offset={coset_offset} col={col}"),
+                );
+            }
+        }
+    }
+
+    const fn shape(
+        log_n: usize,
+        log_lde_factor: usize,
+        num_cosets: usize,
+        coset_index_base: usize,
+        num_cols: usize,
+        stride_cols: usize,
+        transposed: bool,
+    ) -> Shape {
+        Shape {
+            log_n,
+            log_lde_factor,
+            num_cosets,
+            coset_index_base,
+            num_cols,
+            stride_cols,
+            transposed,
+        }
+    }
+
+    #[test]
+    fn natural_to_bitrev_duality_matches_old_family() {
+        for (shape, seed) in [
+            (shape(21, 1, 2, 0, 3, 5, false), 0xa2),
+            (shape(21, 1, 2, 0, 3, 5, true), 0xa3),
+            (shape(22, 1, 2, 0, 1, 1, true), 0xa4),
+            (shape(21, 2, 2, 2, 3, 4, true), 0xa7),
+        ] {
+            oracle_a_duality(shape, seed);
+        }
+    }
+
+    #[test]
+    fn natural_to_bitrev_basis_vectors_log_n_21() {
+        oracle_b_basis_vectors(shape(21, 1, 2, 0, 2, 2, false));
+    }
+
+    #[test]
+    fn natural_to_bitrev_vs_cpu_naive() {
+        for (shape, seed) in [
+            (shape(21, 1, 2, 0, 1, 1, false), 0xc1),
+            (shape(21, 2, 2, 2, 1, 1, true), 0xc2),
+        ] {
+            oracle_c_cpu_naive(shape, seed);
+        }
+    }
+
+    fn forced_launch_tiling_vs_cpu_naive(
+        shape: Shape,
+        seed: u64,
+        what: &str,
+        launch: impl FnOnce(&DeviceMatrixChunk<BF>, &mut DeviceMatrixChunkMut<BF>, &CudaStream),
+    ) {
+        let context = make_context();
+        let stream = context.get_exec_stream();
+        let n = shape.n();
+        let logical = random_columns(&shape, seed);
+        let inputs_host = layout_columns(&logical, shape.transposed);
+        let mut inputs_device = context.alloc(inputs_host.len()).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+        let mut outputs_device = context.alloc(shape.output_len()).unwrap();
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+            let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut outputs_device[..], n, 0, n);
+            launch(&inputs_matrix, &mut outputs_matrix, stream);
+        }
+        let mut outputs = vec![BF::ZERO; shape.output_len()];
+        memory_copy_async(&mut outputs, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+        check_vs_cpu_naive(&shape, &logical, &outputs, what);
+    }
+
+    /// The launcher's column/coset tiling arithmetic, deterministically: the
+    /// strategy picks a single launch for every shape a test box can afford, so
+    /// drive the three-pass launcher directly at
+    /// `cosets_per_launch = columns_per_launch = 1` (one launch per (col, coset))
+    /// and oracle the result against the CPU naive NTT.
+    #[test]
+    fn natural_to_bitrev_forced_launch_tiling_vs_cpu_naive() {
+        let shape = shape(21, 1, 2, 0, 3, 5, false);
+        forced_launch_tiling_vs_cpu_naive(
+            shape,
+            0xc3,
+            "forced launch tiling",
+            |inputs_matrix, outputs_matrix, stream| {
+                natural_monomials_to_bitrev_evals_3_pass(
+                    inputs_matrix,
+                    outputs_matrix,
+                    shape.log_n,
+                    shape.coset_index_base,
+                    shape.coset_factor_shift(),
+                    shape.num_cosets,
+                    shape.stride_cols,
+                    1, // cosets_per_launch
+                    1, // columns_per_launch
+                    shape.transposed,
+                    stream,
+                )
+                .unwrap();
+            },
+        );
+    }
+
+    /// `Entry` routes through the public entry with a synthetic 16 MB L2 (the
+    /// real dev-box L2 would pick three-pass); `Direct` calls the two-pass
+    /// launcher with forced tiling.
+    #[derive(Clone, Copy, Debug)]
+    enum TwoPassRoute {
+        Entry,
+        Direct {
+            cosets_per_launch: usize,
+            columns_per_launch: usize,
+        },
+    }
+
+    fn synthetic_tiny_l2_props(context: &NttTestContext) -> DeviceProperties {
+        let live = context.get_device_properties();
+        DeviceProperties {
+            l2_cache_size_bytes: 16 * 1024 * 1024,
+            sm_count: live.sm_count,
+            compute_capability_major: live.compute_capability_major,
+            compute_capability_minor: live.compute_capability_minor,
+            max_dynamic_smem_per_block_optin: live.max_dynamic_smem_per_block_optin,
+        }
+    }
+
+    fn run_natural_to_bitrev_two_pass(
+        context: &NttTestContext,
+        shape: &Shape,
+        logical: &[Vec<BF>],
+        route: TwoPassRoute,
+    ) -> Vec<BF> {
+        let stream = context.get_exec_stream();
+        let n = shape.n();
+        let inputs_host = layout_columns(logical, shape.transposed);
+        let mut inputs_device = context.alloc(inputs_host.len()).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+        let mut outputs_device = context.alloc(shape.output_len()).unwrap();
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+            match route {
+                TwoPassRoute::Entry => {
+                    let props = synthetic_tiny_l2_props(context);
+                    let strategy = super::super::select_ntt_strategy(
+                        super::super::NttDirection::NaturalToBitrev,
+                        shape.log_n,
+                        shape.num_cols,
+                        shape.num_cosets,
+                        &props,
+                    )
+                    .unwrap();
+                    assert!(
+                        strategy.passes.len() == 2
+                            && matches!(
+                                strategy.passes[0].kernel,
+                                super::super::NttKernelKind::NaturalToBitrevFirst { .. }
+                            ),
+                        "synthetic 16 MB L2 must route {shape:?} to the two-pass plan, got {:?}",
+                        strategy.passes,
+                    );
+                    natural_monomials_to_bitreversed_evals_coset_range(
+                        &inputs_matrix,
+                        &mut outputs_device[..],
+                        shape.log_n,
+                        shape.log_lde_factor,
+                        shape.num_cosets,
+                        shape.coset_index_base,
+                        shape.stride_cols,
+                        shape.transposed,
+                        context.device_context(),
+                        None,
+                        stream,
+                        &props,
+                    )
+                    .unwrap();
+                }
+                TwoPassRoute::Direct {
+                    cosets_per_launch,
+                    columns_per_launch,
+                } => {
+                    let mut outputs_matrix =
+                        DeviceMatrixChunkMut::new(&mut outputs_device[..], n, 0, n);
+                    natural_monomials_to_bitrev_evals_2_pass(
+                        &inputs_matrix,
+                        &mut outputs_matrix,
+                        shape.log_n,
+                        shape.coset_index_base,
+                        shape.coset_factor_shift(),
+                        shape.num_cosets,
+                        shape.stride_cols,
+                        cosets_per_launch,
+                        columns_per_launch,
+                        shape.transposed,
+                        stream,
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        let mut outputs_host = vec![BF::ZERO; shape.output_len()];
+        memory_copy_async(&mut outputs_host, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+        outputs_host
+    }
+
+    /// ORACLE A for the two-pass regime: same duality as `oracle_a_duality`,
+    /// against the old bitrev-monomials -> natural-evals family.
+    fn two_pass_oracle_a_duality(shape: Shape, seed: u64, route: TwoPassRoute) {
+        let context = make_context();
+        let logical = random_columns(&shape, seed);
+        let new_outputs = run_natural_to_bitrev_two_pass(&context, &shape, &logical, route);
+        let old_outputs = run_bitrev_to_natural(&context, &shape, &logical);
+        for coset_offset in 0..shape.num_cosets {
+            for col in 0..shape.num_cols {
+                let range = shape.slab(coset_offset, col);
+                let mut expected = old_outputs[range.clone()].to_vec();
+                bitreverse_enumeration_inplace(&mut expected);
+                compare_slices(
+                    &new_outputs[range],
+                    &expected,
+                    &format!(
+                        "two-pass oracle A {shape:?} seed={seed:#x} route={route:?} \
+                         coset_offset={coset_offset} col={col}"
+                    ),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_duality_matches_old_family() {
+        for (shape, seed) in [
+            // Transposed monomials at log_n = 23 (pass-1 phase B): pass 1 resolves the
+            // layout on its output rows, so pass 2 sees natural row order.
+            (shape(23, 1, 2, 0, 1, 1, true), 0xb2),
+            // Transposed monomials at log_n = 24 (pass-1 phase A).
+            (shape(24, 1, 2, 0, 1, 1, true), 0xb4),
+        ] {
+            two_pass_oracle_a_duality(shape, seed, TwoPassRoute::Entry);
+        }
+    }
+
+    /// ORACLE C for the two-pass regime: pure-CPU ground truth, on the
+    /// transposed layout over a non-zero coset base.
+    #[test]
+    fn natural_to_bitrev_two_pass_vs_cpu_naive_log_n_23_range_base_2_transposed() {
+        let shape = shape(23, 2, 2, 2, 1, 1, true);
+        let context = make_context();
+        let logical = random_columns(&shape, 0xc5);
+        let outputs =
+            run_natural_to_bitrev_two_pass(&context, &shape, &logical, TwoPassRoute::Entry);
+        check_vs_cpu_naive(&shape, &logical, &outputs, "two-pass oracle C");
+    }
+
+    /// The two-pass launcher's column / coset tiling loops: one launch per
+    /// (column, coset) over a padded output stride and a non-zero coset base.
+    #[test]
+    fn natural_to_bitrev_two_pass_forced_launch_tiling_log_n_23() {
+        two_pass_oracle_a_duality(
+            shape(23, 2, 2, 2, 3, 5, true),
+            0xb5,
+            TwoPassRoute::Direct {
+                cosets_per_launch: 1,
+                columns_per_launch: 1,
+            },
+        );
+    }
+
+    /// ORACLE A leg for the two-pass-compact range: the OLD family's own
+    /// two-pass-compact plan (`first_K_stages_compact` + `noninitial_8`), which
+    /// is what covers log_n in [13, 20] on the bitrev-monomials side (the
+    /// three-pass forward kernels exist only for log_n in [21, 24]).
+    fn run_bitrev_to_natural_two_pass_compact(
+        context: &NttTestContext,
+        shape: &Shape,
+        logical: &[Vec<BF>],
+    ) -> Vec<BF> {
+        assert!(!shape.transposed);
+        let stream = context.get_exec_stream();
+        let n = shape.n();
+        let bitrev_labeled: Vec<Vec<BF>> = logical
+            .iter()
+            .map(|column| {
+                let mut column = column.clone();
+                bitreverse_enumeration_inplace(&mut column);
+                column
+            })
+            .collect();
+        let inputs_host = layout_columns(&bitrev_labeled, false);
+        let mut inputs_device = context.alloc(inputs_host.len()).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+        let mut outputs_device = context.alloc(shape.output_len()).unwrap();
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+            let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut outputs_device[..], n, 0, n);
+            monomials_to_evals_2_pass_compact_initial(
+                &inputs_matrix,
+                &mut outputs_matrix,
+                shape.log_n,
+                shape.coset_index_base,
+                shape.coset_factor_shift(),
+                shape.num_cosets,
+                shape.stride_cols,
+                shape.num_cosets,
+                shape.num_cols,
+                stream,
+            )
+            .unwrap();
+        }
+        let mut outputs_host = vec![BF::ZERO; shape.output_len()];
+        memory_copy_async(&mut outputs_host, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+        outputs_host
+    }
+
+    fn two_pass_compact_oracle_a_duality(shape: Shape, seed: u64) {
+        let context = make_context();
+        let logical = random_columns(&shape, seed);
+        let new_outputs = run_natural_to_bitrev(&context, &shape, &logical);
+        let old_outputs = run_bitrev_to_natural_two_pass_compact(&context, &shape, &logical);
+        for coset_offset in 0..shape.num_cosets {
+            for col in 0..shape.num_cols {
+                let range = shape.slab(coset_offset, col);
+                let mut expected = old_outputs[range.clone()].to_vec();
+                bitreverse_enumeration_inplace(&mut expected);
+                compare_slices(
+                    &new_outputs[range],
+                    &expected,
+                    &format!(
+                        "two-pass-compact oracle A {shape:?} seed={seed:#x} \
+                         coset_offset={coset_offset} col={col}"
+                    ),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_vs_cpu_naive() {
+        for (shape, seed) in [
+            // log_n = 20: the only sub-21 base size the commitment layer asks for.
+            (shape(20, 1, 2, 0, 1, 1, false), 0xd1),
+            (shape(20, 2, 2, 2, 3, 5, false), 0xd2),
+            // The bottom of the family's range (K = log_n - 8 = 5 pass-2 stages).
+            (shape(13, 1, 2, 0, 3, 3, false), 0xd3),
+        ] {
+            oracle_c_cpu_naive(shape, seed);
+        }
+    }
+
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_duality_matches_old_family() {
+        for (shape, seed) in [
+            (shape(20, 1, 2, 0, 1, 1, false), 0xd5),
+            (shape(20, 2, 2, 2, 3, 5, false), 0xd6),
+        ] {
+            two_pass_compact_oracle_a_duality(shape, seed);
+        }
+    }
+
+    /// The two-pass-compact launcher's column / coset tiling loops: one launch
+    /// per (column, coset) over a padded output stride and a non-zero coset
+    /// base, oracled against the CPU naive NTT.
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_forced_launch_tiling_log_n_20() {
+        let shape = shape(20, 2, 2, 2, 3, 5, false);
+        forced_launch_tiling_vs_cpu_naive(
+            shape,
+            0xd8,
+            "two-pass-compact forced launch tiling",
+            |inputs_matrix, outputs_matrix, stream| {
+                natural_monomials_to_bitrev_evals_2_pass_compact(
+                    inputs_matrix,
+                    outputs_matrix,
+                    shape.log_n,
+                    shape.coset_index_base,
+                    shape.coset_factor_shift(),
+                    shape.num_cosets,
+                    shape.stride_cols,
+                    1, // cosets_per_launch
+                    1, // columns_per_launch
+                    shape.transposed,
+                    stream,
+                )
+                .unwrap();
+            },
+        );
+    }
+
+    /// The transposed-monomial layout has no path in this range: pass 2
+    /// exchanges rows inside a 1024-row transposition chunk, and
+    /// `log_size_supports_transposed_monomials` is false below log_n = 21, so
+    /// the launcher rejects it instead of computing garbage.
+    #[test]
+    #[should_panic(expected = "transposed_monomials")]
+    fn natural_to_bitrev_two_pass_compact_rejects_transposed() {
+        let context = make_context();
+        let shape = shape(20, 1, 2, 0, 1, 1, true);
+        let logical = random_columns(&shape, 0xd7);
+        run_natural_to_bitrev(&context, &shape, &logical);
     }
 }

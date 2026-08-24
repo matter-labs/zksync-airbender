@@ -13,23 +13,21 @@ use gpu_core::primitives::device_structures::DeviceMatrix;
 use itertools::Itertools;
 use rand::{rng, Rng};
 
+/// Natural-order coefficients: coefficient `i` carries `z^i`.
 fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
-    use fft::utils::bitreverse_enumeration_inplace;
-
     let count = 1 << log_count;
     let stride = 2 * count;
     let bf_elems = 4 * stride;
-    let bitreversed_vectorized_src = (0..bf_elems)
+    let vectorized_src = (0..bf_elems)
         .map(|_| BF::random_element(&mut rng()))
         .collect_vec();
 
-    let mut h_monomials = (0..count)
+    let h_monomials = (0..count)
         .map(|i| {
-            let coeffs = std::array::from_fn(|j| bitreversed_vectorized_src[i + stride * j]);
+            let coeffs = std::array::from_fn(|j| vectorized_src[i + stride * j]);
             E4::from_array_of_base(coeffs)
         })
         .collect_vec();
-    bitreverse_enumeration_inplace(&mut h_monomials);
     let z = E4::random_element(&mut rng());
     let mut cpu_result = h_monomials[count - 1];
     for i in 2..=count {
@@ -42,7 +40,7 @@ fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
     let mut d_z = DeviceAllocation::alloc(1).unwrap();
     let mut scratch0 = DeviceAllocation::alloc(stride / 2).unwrap(); // like GpuWhirState
     let mut scratch1 = DeviceAllocation::alloc(1).unwrap();
-    memory_copy_async(&mut d_src, &bitreversed_vectorized_src[..], &stream).unwrap();
+    memory_copy_async(&mut d_src, &vectorized_src[..], &stream).unwrap();
     memory_copy_async(&mut d_z, &[z], &stream).unwrap();
     let d_src_matrix = DeviceMatrix::new(&d_src, stride);
     let partials_count = partially_evaluate_monomials_by_ref(

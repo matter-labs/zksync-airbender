@@ -18,6 +18,23 @@ EXTERN __global__ void ab_gather_leaf_rows_kernel(const unsigned *indexes, const
   results.set(dst_row, col, result);
 }
 
+// LSB sibling of `ab_gather_leaf_rows_kernel`: `values` is the BITREVERSED-order codeword, in which logical leaf `l`'s slot `s` sits at row
+// `(bitreverse(l) << log_rows_per_leaf) + s`. Destination rows are unchanged.
+EXTERN __global__ void ab_gather_leaf_rows_physical_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
+                                                           const unsigned log_leaves_count, const unsigned log_rows_per_leaf,
+                                                           const matrix_getter<bf, ld_modifier::cs> values, const matrix_setter<bf, st_modifier::cs> results) {
+  const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
+  if (idx >= indexes_count)
+    return;
+  const unsigned i = indexes[idx];
+  const unsigned leaf_index = bit_reverse_indexes ? bitreverse_low_bits(i, log_leaves_count) : i;
+  const unsigned src_row = (bitreverse_low_bits(leaf_index, log_leaves_count) << log_rows_per_leaf) + threadIdx.x;
+  const unsigned dst_row = (idx << log_rows_per_leaf) + threadIdx.x;
+  const unsigned col = blockIdx.y;
+  const bf result = values.get(src_row, col);
+  results.set(dst_row, col, result);
+}
+
 EXTERN __global__ void ab_gather_merkle_paths_kernel(const unsigned *indexes, const unsigned indexes_count, const u32 *values, const unsigned log_leaves_count,
                                                      u32 *results) {
   const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
@@ -51,6 +68,38 @@ EXTERN __global__ void ab_gather_merkle_paths_from_rows_kernel(const unsigned *i
     const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
     const unsigned col = offset >> log_rows_per_leaf;
     const unsigned row = leaf_index + bitreverse_low_bits(row_slot, log_rows_per_leaf) * leaves_count;
+    const auto address = values + row + (col << log_rows_count);
+    return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
+  };
+  u32 state[STATE_SIZE];
+  initialize(state);
+  u32 t = 0;
+  absorb_stream(state, t, cols_count << log_rows_per_leaf, read);
+  // Layer-major output layout: consecutive layers are indexes_count digests apart.
+  collect_merkle_path_warp(state, merkle_paths + idx * STATE_SIZE, indexes_count * STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count,
+                           layers_count, tree_bottom);
+}
+
+// LSB sibling of `ab_gather_merkle_paths_from_rows_kernel`: `values` is the BITREVERSED-order codeword. Each lane translates its reconstructed LOGICAL sibling
+// index into the physical block holding that leaf for the leaf read only; the warp reduction and the emitted node order stay logical.
+EXTERN __global__ void ab_gather_merkle_paths_from_rows_physical_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
+                                                                        const bf *values, const unsigned log_rows_per_leaf, const unsigned cols_count,
+                                                                        const unsigned log_total_leaves_count, const u32 *tree_bottom,
+                                                                        const unsigned layers_count, u32 *merkle_paths) {
+  const unsigned lane_idx = threadIdx.x;
+  const unsigned idx = blockIdx.x;
+  if (idx >= indexes_count)
+    return;
+  const unsigned query_index = indexes[idx];
+  const unsigned index_lane = (query_index & ~WARP_MASK) | lane_idx;
+  const bool is_output_lane = query_index == index_lane;
+  const unsigned leaf_index = bit_reverse_indexes ? bitreverse_low_bits(index_lane, log_total_leaves_count) : index_lane;
+  const unsigned block_index = bitreverse_low_bits(leaf_index, log_total_leaves_count);
+  const unsigned log_rows_count = log_total_leaves_count + log_rows_per_leaf;
+  auto read = [=](const unsigned offset) {
+    const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
+    const unsigned col = offset >> log_rows_per_leaf;
+    const unsigned row = (block_index << log_rows_per_leaf) + row_slot;
     const auto address = values + row + (col << log_rows_count);
     return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
   };
@@ -206,6 +255,42 @@ EXTERN __global__ void ab_gather_leaves_for_queries_kernel(const u32 num_oracles
   slab_dst[idx * (values_per_leaf * desc.columns_count) + v * desc.columns_count + col] = result;
 }
 
+// LSB sibling of `ab_gather_leaves_for_queries_kernel`: each per-coset segment of the cosets backing is the BITREVERSED-order codeword, in which logical leaf
+// `l`'s slot `v` sits at row `(bitreverse(l) << log_rows_per_leaf) + v`. Coset selection, column addressing and the slab destination are unchanged.
+EXTERN __global__ void ab_gather_leaves_for_queries_physical_kernel(const u32 num_oracles, __grid_constant__ const gpu_oracle_gather_desc desc0,
+                                                                    __grid_constant__ const gpu_oracle_gather_desc desc1,
+                                                                    __grid_constant__ const gpu_oracle_gather_desc desc2, const u32 log_lde_factor,
+                                                                    const u32 log_domain_size, const u32 log_rows_per_leaf, const u32 *query_indexes,
+                                                                    const u32 indexes_count) {
+  const unsigned oracle_idx = blockIdx.z;
+  if (oracle_idx >= num_oracles)
+    return;
+  const gpu_oracle_gather_desc desc = oracle_idx == 0u ? desc0 : (oracle_idx == 1u ? desc1 : desc2);
+  if (desc.columns_count == 0u)
+    return;
+  const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
+  if (idx >= indexes_count)
+    return;
+  const unsigned col = blockIdx.y;
+  if (col >= desc.columns_count)
+    return;
+  const unsigned q = query_indexes[idx];
+  const unsigned lde_mask = log_lde_factor == 0u ? 0u : ((1u << log_lde_factor) - 1u);
+  const unsigned coset = q & lde_mask;
+  const unsigned internal_index = q >> log_lde_factor;
+  const unsigned v = threadIdx.x;
+  const unsigned log_rows_count = log_domain_size;
+  const unsigned log_leaves_count = log_rows_count - log_rows_per_leaf;
+  const unsigned values_per_leaf = 1u << log_rows_per_leaf;
+  const unsigned src_row = (bitreverse_low_bits(internal_index, log_leaves_count) << log_rows_per_leaf) + v;
+  const unsigned domain_size = 1u << log_domain_size;
+  const unsigned stride_per_coset = desc.columns_count << log_domain_size;
+  const bf *base = reinterpret_cast<const bf *>(desc.cosets_ptr) + coset * stride_per_coset;
+  const bf result = load_cs(base + col * domain_size + src_row);
+  bf *slab_dst = reinterpret_cast<bf *>(desc.slab_dst_ptr);
+  slab_dst[idx * (values_per_leaf * desc.columns_count) + v * desc.columns_count + col] = result;
+}
+
 // Sibling of `ab_gather_leaves_for_queries_kernel` for the WHIR oracle's
 // natural-multi-coset NTT cosets backing. The existing kernel reads `cosets[q
 // & lde_mask * stride + col * domain_size + src_row]`; with WHIR's
@@ -348,6 +433,56 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u
     const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
     const unsigned col = offset >> log_rows_per_leaf;
     const unsigned row = leaf_index + bitreverse_low_bits(row_slot, log_rows_per_leaf) * leaves_count;
+    const auto address = values + row + (col << log_rows_count);
+    return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
+  };
+  u32 state[STATE_SIZE];
+  initialize(state);
+  u32 t = 0;
+  absorb_stream(state, t, cols_count << log_rows_per_leaf, read);
+  // Query-major output layout: consecutive layers are STATE_SIZE words apart.
+  collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, tree_bottom);
+}
+
+// LSB sibling of `ab_gather_merkle_paths_partial_for_queries_kernel`: each per-coset segment of the cosets backing is the BITREVERSED-order codeword. Each lane
+// translates its reconstructed LOGICAL sibling index into the physical block holding that leaf for the leaf read only; the warp reduction, the partial-tree
+// walk and the emitted node order stay logical.
+EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_physical_kernel(
+    const u32 num_oracles, __grid_constant__ const gpu_oracle_partial_path_desc desc0, __grid_constant__ const gpu_oracle_partial_path_desc desc1,
+    __grid_constant__ const gpu_oracle_partial_path_desc desc2, const u32 log_lde_factor, const u32 log_rows_per_leaf, const u32 log_total_leaves_count,
+    const u32 stride_per_coset_in_digests, const u32 layers_count, const u32 *query_indexes, const u32 indexes_count) {
+  const u32 oracle_idx = blockIdx.y;
+  if (oracle_idx >= num_oracles)
+    return;
+  const gpu_oracle_partial_path_desc desc = oracle_idx == 0u ? desc0 : (oracle_idx == 1u ? desc1 : desc2);
+  if (desc.columns_count == 0u)
+    return;
+
+  const unsigned lane_idx = threadIdx.x;
+  const unsigned idx = blockIdx.x;
+  if (idx >= indexes_count)
+    return;
+
+  const unsigned q = query_indexes[idx];
+  const unsigned lde_mask = log_lde_factor == 0u ? 0u : ((1u << log_lde_factor) - 1u);
+  const unsigned coset = q & lde_mask;
+  const unsigned query_index = q >> log_lde_factor;
+
+  const unsigned log_domain_size = log_total_leaves_count + log_rows_per_leaf;
+  const bf *values = reinterpret_cast<const bf *>(desc.cosets_ptr) + (size_t)coset * ((size_t)desc.columns_count << log_domain_size);
+  const u32 *tree_bottom = reinterpret_cast<const u32 *>(desc.partial_tree_ptr) + (size_t)coset * (size_t)stride_per_coset_in_digests * STATE_SIZE;
+  u32 *slab_dst = reinterpret_cast<u32 *>(desc.slab_dst_ptr);
+  const unsigned cols_count = desc.columns_count;
+
+  const unsigned index_lane = (query_index & ~WARP_MASK) | lane_idx;
+  const bool is_output_lane = query_index == index_lane;
+  const unsigned block_index = bitreverse_low_bits(index_lane, log_total_leaves_count);
+  const unsigned log_rows_count = log_total_leaves_count + log_rows_per_leaf;
+  u32 *merkle_paths = slab_dst + idx * layers_count * STATE_SIZE;
+  auto read = [=](const unsigned offset) {
+    const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
+    const unsigned col = offset >> log_rows_per_leaf;
+    const unsigned row = (block_index << log_rows_per_leaf) + row_slot;
     const auto address = values + row + (col << log_rows_count);
     return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
   };

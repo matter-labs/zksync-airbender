@@ -15,10 +15,11 @@ using ::airbender::gkr::ops::run_round_update_single_thread;
 // this cap.
 constexpr unsigned MEGA_FINALIZE_BLOCK_THREADS = 256;
 
+// NOT __restrict__: both schedulers build the output claim-point view over the same symbol the input view reads, so round `step` reads and writes one address.
 template <unsigned BLOCK_THREADS, typename PartialsSource>
-DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, const unsigned num_partials, const e4 *__restrict__ prev_claim_coord,
-                                            u32 *__restrict__ seed_io, e4 *__restrict__ claim_io, e4 *__restrict__ eq_prefactor_io, e4 *__restrict__ coeffs_out,
-                                            e4 *__restrict__ challenge_out, e4 *__restrict__ active_eq_slot_base, const unsigned active_eq_size_before_fold) {
+DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, const unsigned num_partials, const e4 *prev_claim_coord, u32 *__restrict__ seed_io,
+                                            e4 *__restrict__ claim_io, e4 *__restrict__ eq_prefactor_io, e4 *__restrict__ coeffs_out, e4 *challenge_out,
+                                            e4 *__restrict__ active_eq_slot_base, const unsigned active_eq_size_before_fold) {
   static_assert(BLOCK_THREADS > 0 && (BLOCK_THREADS & (BLOCK_THREADS - 1)) == 0, "BLOCK_THREADS must be a power of two");
 
   __shared__ e4 smem_c0[BLOCK_THREADS];
@@ -49,10 +50,7 @@ DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, cons
     __syncthreads();
   }
 
-  // Thread 0: run the round-update algebra against the reduced
-  // (e_partial, c_partial). Reads `smem_c0[0]` / `smem_c1[0]` before any
-  // other thread overwrites them — the active eq slot is disjoint memory,
-  // so no extra barrier is needed.
+  // Thread 0: run the round-update algebra against the reduced (e_partial, c_partial).
   if (tid == 0) {
     const e4 e_partial = smem_c0[0];
     const e4 c_partial = smem_c1[0];
@@ -64,14 +62,16 @@ DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, cons
   // bit count before the fold. The largest fold
   // (eq_low / GKR_EQ_GROUP_TABLE_LEN / 2 = 128) fits in any
   // block with BLOCK_THREADS >= 128.
-  if (active_eq_size_before_fold >= 1) {
-    const unsigned new_g_len = 1u << (active_eq_size_before_fold - 1);
-    if (tid < new_g_len) {
-      const e4 low = active_eq_slot_base[tid];
-      const e4 high = active_eq_slot_base[tid + new_g_len];
-      active_eq_slot_base[tid] = e4::add(low, high);
-    }
-  }
+  //
+  // LSB drain: reads [0, 2 * new_g_len) overlap writes [0, new_g_len), so load to a register, barrier across the whole block, then store.
+  const unsigned new_g_len = active_eq_size_before_fold >= 1 ? 1u << (active_eq_size_before_fold - 1) : 0u;
+  const bool folds = tid < new_g_len;
+  e4 folded = e4::ZERO();
+  if (folds)
+    folded = e4::add(active_eq_slot_base[2 * tid], active_eq_slot_base[2 * tid + 1]);
+  __syncthreads();
+  if (folds)
+    active_eq_slot_base[tid] = folded;
   // Implicit kernel-exit sync makes both updates visible to subsequent
   // launches on the same stream.
 }

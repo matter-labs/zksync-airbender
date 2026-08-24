@@ -187,6 +187,456 @@ pub(crate) fn monomials_to_evals_3_pass(
     Ok(())
 }
 
+/// The middle + final passes of the natural→bitrev plan for one
+/// (column-chunk, coset-tile). Both run in place on the coset tile's output
+/// slab (per-block read-set == write-set), so they take the same matrix as
+/// input and output.
+fn launch_natural_to_bitrev_tail(
+    output_matrix_const: PtrAndStride<BF>,
+    output_matrix_mut: MutPtrAndStride<BF>,
+    log_n: usize,
+    ntts_in_launch: usize,
+    num_cols_per_coset: usize,
+    log_cosets_in_tile: i32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = 1usize << log_n;
+    let bf_vals_per_block = 1usize << 13; // 8192
+    let num_cols_arg = shared::checked_i32(num_cols_per_coset, "num_cols_per_coset");
+    let start_stage = 8usize;
+    let num_exchg_regions = 1usize << start_stage;
+    let exchg_region_size = n >> start_stage;
+    let blocks_per_exchg_region = exchg_region_size / bf_vals_per_block;
+    debug_assert_eq!(
+        blocks_per_exchg_region * num_exchg_regions,
+        n / bf_vals_per_block
+    );
+    let grid_dim_middle: Dim3 =
+        (blocks_per_exchg_region as u32 * num_exchg_regions as u32 * ntts_in_launch as u32).into();
+    let config = CudaLaunchConfig::basic(grid_dim_middle, 256, stream);
+    let args = StridedTilesStagesArguments::new(
+        output_matrix_const,
+        output_matrix_mut,
+        log_n as i32,
+        start_stage as i32,
+        num_cols_arg,
+        log_cosets_in_tile,
+    );
+    StridedTilesStagesFunction(ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel)
+        .launch(&config, &args)?;
+    let final_function = match log_n {
+        21 => {
+            NaturalToBitrevFinalFunction(ab_natural_monomials_to_bitrev_evals_final_5_stages_kernel)
+        }
+        22 => {
+            NaturalToBitrevFinalFunction(ab_natural_monomials_to_bitrev_evals_final_6_stages_kernel)
+        }
+        23 => {
+            NaturalToBitrevFinalFunction(ab_natural_monomials_to_bitrev_evals_final_7_stages_kernel)
+        }
+        24 => {
+            NaturalToBitrevFinalFunction(ab_natural_monomials_to_bitrev_evals_final_8_stages_kernel)
+        }
+        _ => unreachable!(
+            "NTT 3-pass natural->bitrev kernels are only generated for log_n in 21..=24"
+        ),
+    };
+    let blocks = n.get_chunks_count(bf_vals_per_block);
+    let grid_dim_final: Dim3 = (blocks as u32 * ntts_in_launch as u32).into();
+    let config = CudaLaunchConfig::basic(grid_dim_final, 256, stream);
+    let args = NaturalToBitrevFinalArguments::new(
+        output_matrix_const,
+        output_matrix_mut,
+        log_n as i32,
+        num_cols_arg,
+        log_cosets_in_tile,
+    );
+    final_function.launch(&config, &args)
+}
+
+/// Natural-order monomials → bitreversed-order evals over a coset range:
+/// `out_k[p] = f(g_k * omega^rev_n(p))`. Same multi-coset geometry, column /
+/// coset launch tiling and output-slab layout as
+/// [`monomials_to_evals_3_pass`]; the initial pass reads ONE shared input
+/// column per launch and writes coset-specific output slabs.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_n: usize,
+    coset_index_base: usize,
+    coset_factor_shift: u32,
+    num_cosets: usize,
+    num_cols_per_coset: usize,
+    cosets_per_launch: usize,
+    columns_per_launch: usize,
+    transposed_monomials: bool,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = 1 << log_n;
+    assert_eq!(inputs_matrix.rows(), n);
+    assert_eq!(outputs_matrix.rows(), n);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
+    assert!(columns_per_launch >= 1);
+    assert!(cosets_per_launch >= 1 && cosets_per_launch <= num_cosets);
+    assert!(num_cosets.is_power_of_two());
+    assert!(cosets_per_launch.is_power_of_two());
+    let num_ntts = inputs_matrix.cols();
+    shared::assert_multi_coset_output_cols(
+        outputs_matrix.cols(),
+        num_cosets,
+        num_cols_per_coset,
+        num_ntts,
+    );
+    let log_cosets_in_tile = cosets_per_launch.trailing_zeros() as i32;
+    let initial_function = MonomialsToEvalsCompactFunction(
+        ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel,
+    );
+    let inputs_slice = inputs_matrix.slice();
+    let input_stride = inputs_matrix.stride();
+    let input_offset = inputs_matrix.offset();
+    let output_stride = outputs_matrix.stride();
+    let output_offset = outputs_matrix.offset();
+    let outputs_slice_const = unsafe {
+        DeviceSlice::from_raw_parts(
+            outputs_matrix.slice().as_ptr(),
+            outputs_matrix.slice().len(),
+        )
+    };
+    let outputs_slice_mut = outputs_matrix.slice_mut();
+    // col-tile outer so its monomial source stays L2-resident across the
+    // coset launches.
+    let mut col_start = 0usize;
+    while col_start < num_ntts {
+        let cols_in_chunk = (num_ntts - col_start).min(columns_per_launch);
+        let input_range = col_start * input_stride..(col_start + cols_in_chunk) * input_stride;
+        let input_slice = &inputs_slice[input_range];
+        let input_matrix = DeviceMatrixChunk::new(input_slice, input_stride, input_offset, n);
+        let input_matrix = input_matrix.as_ptr_and_stride();
+        let mut coset_tile_start = 0usize;
+        while coset_tile_start < num_cosets {
+            let cosets_in_tile = (num_cosets - coset_tile_start).min(cosets_per_launch);
+            debug_assert!(cosets_in_tile.is_power_of_two());
+            let tile_coset_base = coset_index_base + coset_tile_start;
+            let tile_base_in_cols = coset_tile_start * num_cols_per_coset + col_start;
+            let output_byte_start = tile_base_in_cols * output_stride;
+            let output_slice_const = &outputs_slice_const[output_byte_start..];
+            let output_slice_mut = &mut outputs_slice_mut[output_byte_start..];
+            let output_matrix_const =
+                DeviceMatrixChunk::new(output_slice_const, output_stride, output_offset, n);
+            let mut output_matrix_mut =
+                DeviceMatrixChunkMut::new(output_slice_mut, output_stride, output_offset, n);
+            let output_matrix_const = output_matrix_const.as_ptr_and_stride();
+            let output_matrix_mut = output_matrix_mut.as_mut_ptr_and_stride();
+            let threads = 256;
+            let bf_vals_per_block = 1 << 13; // 8192
+            let blocks = n.get_chunks_count(bf_vals_per_block);
+            let grid_dim_initial: Dim3 =
+                (blocks as u32 * cosets_in_tile as u32 * cols_in_chunk as u32).into();
+            let config = CudaLaunchConfig::basic(grid_dim_initial, threads as u32, stream);
+            let args_initial = MonomialsToEvalsCompactArguments::new(
+                input_matrix,
+                output_matrix_mut,
+                transposed_monomials,
+                log_n as i32,
+                shared::checked_i32(tile_coset_base, "tile_coset_base"),
+                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+                log_cosets_in_tile,
+            );
+            initial_function.launch(&config, &args_initial)?;
+            launch_natural_to_bitrev_tail(
+                output_matrix_const,
+                output_matrix_mut,
+                log_n,
+                cosets_in_tile * cols_in_chunk,
+                num_cols_per_coset,
+                log_cosets_in_tile,
+                stream,
+            )?;
+            coset_tile_start += cosets_in_tile;
+        }
+        col_start += cols_in_chunk;
+    }
+    Ok(())
+}
+
+/// Natural-order monomials → bitreversed-order evals over a coset range, in the
+/// two-pass regime (`log_n` in [23, 24], one column >= device L2). Same
+/// multi-coset geometry, launch tiling and output-slab layout as
+/// [`natural_monomials_to_bitrev_evals_3_pass`]; pass 1 reads ONE shared input
+/// column per launch and writes coset-specific output slabs, pass 2 runs in
+/// place on those slabs.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_n: usize,
+    coset_index_base: usize,
+    coset_factor_shift: u32,
+    num_cosets: usize,
+    num_cols_per_coset: usize,
+    cosets_per_launch: usize,
+    columns_per_launch: usize,
+    transposed_monomials: bool,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = 1 << log_n;
+    assert_eq!(inputs_matrix.rows(), n);
+    assert_eq!(outputs_matrix.rows(), n);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
+    assert!(columns_per_launch >= 1);
+    assert!(cosets_per_launch >= 1 && cosets_per_launch <= num_cosets);
+    assert!(num_cosets.is_power_of_two());
+    assert!(cosets_per_launch.is_power_of_two());
+    let num_ntts = inputs_matrix.cols();
+    shared::assert_multi_coset_output_cols(
+        outputs_matrix.cols(),
+        num_cosets,
+        num_cols_per_coset,
+        num_ntts,
+    );
+    let log_cosets_in_tile = cosets_per_launch.trailing_zeros() as i32;
+    let first_function = match log_n {
+        23 => MonomialsToEvalsCompactFunction(
+            ab_natural_monomials_to_bitrev_evals_first_9_stages_kernel,
+        ),
+        24 => MonomialsToEvalsCompactFunction(
+            ab_natural_monomials_to_bitrev_evals_first_10_stages_kernel,
+        ),
+        _ => unreachable!(
+            "NTT 2-pass natural->bitrev kernels are only generated for log_n in 23..=24"
+        ),
+    };
+    let last_function =
+        NaturalToBitrevFinalFunction(ab_natural_monomials_to_bitrev_evals_last_14_stages_kernel);
+    let bf_vals_per_block = 1usize << 14; // 16384
+    let smem_bytes_first = bf_vals_per_block * size_of::<BF>();
+    let smem_bytes_last = (bf_vals_per_block + (1usize << 13)) * size_of::<BF>();
+    shared::set_max_dynamic_smem(&first_function, smem_bytes_first)?;
+    shared::set_max_dynamic_smem(&last_function, smem_bytes_last)?;
+    let threads = 512u32;
+    let blocks = n.get_chunks_count(bf_vals_per_block);
+    let num_cols_arg = shared::checked_i32(num_cols_per_coset, "num_cols_per_coset");
+    let inputs_slice = inputs_matrix.slice();
+    let input_stride = inputs_matrix.stride();
+    let input_offset = inputs_matrix.offset();
+    let output_stride = outputs_matrix.stride();
+    let output_offset = outputs_matrix.offset();
+    let outputs_slice_const = unsafe {
+        DeviceSlice::from_raw_parts(
+            outputs_matrix.slice().as_ptr(),
+            outputs_matrix.slice().len(),
+        )
+    };
+    let outputs_slice_mut = outputs_matrix.slice_mut();
+    let mut col_start = 0usize;
+    while col_start < num_ntts {
+        let cols_in_chunk = (num_ntts - col_start).min(columns_per_launch);
+        let input_range = col_start * input_stride..(col_start + cols_in_chunk) * input_stride;
+        let input_slice = &inputs_slice[input_range];
+        let input_matrix = DeviceMatrixChunk::new(input_slice, input_stride, input_offset, n);
+        let input_matrix = input_matrix.as_ptr_and_stride();
+        let mut coset_tile_start = 0usize;
+        while coset_tile_start < num_cosets {
+            let cosets_in_tile = (num_cosets - coset_tile_start).min(cosets_per_launch);
+            debug_assert!(cosets_in_tile.is_power_of_two());
+            let tile_coset_base = coset_index_base + coset_tile_start;
+            let tile_base_in_cols = coset_tile_start * num_cols_per_coset + col_start;
+            let output_byte_start = tile_base_in_cols * output_stride;
+            let output_slice_const = &outputs_slice_const[output_byte_start..];
+            let output_slice_mut = &mut outputs_slice_mut[output_byte_start..];
+            let output_matrix_const =
+                DeviceMatrixChunk::new(output_slice_const, output_stride, output_offset, n);
+            let mut output_matrix_mut =
+                DeviceMatrixChunkMut::new(output_slice_mut, output_stride, output_offset, n);
+            let output_matrix_const = output_matrix_const.as_ptr_and_stride();
+            let output_matrix_mut = output_matrix_mut.as_mut_ptr_and_stride();
+            let ntts_in_launch = cosets_in_tile * cols_in_chunk;
+            let grid_dim: Dim3 = (blocks as u32 * ntts_in_launch as u32).into();
+            let mut config = CudaLaunchConfig::basic(grid_dim, threads, stream);
+            config.dynamic_smem_bytes = smem_bytes_first;
+            let args_first = MonomialsToEvalsCompactArguments::new(
+                input_matrix,
+                output_matrix_mut,
+                transposed_monomials,
+                log_n as i32,
+                shared::checked_i32(tile_coset_base, "tile_coset_base"),
+                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                num_cols_arg,
+                log_cosets_in_tile,
+            );
+            first_function.launch(&config, &args_first)?;
+            let mut config = CudaLaunchConfig::basic(grid_dim, threads, stream);
+            config.dynamic_smem_bytes = smem_bytes_last;
+            let args_last = NaturalToBitrevFinalArguments::new(
+                output_matrix_const,
+                output_matrix_mut,
+                log_n as i32,
+                num_cols_arg,
+                log_cosets_in_tile,
+            );
+            last_function.launch(&config, &args_last)?;
+            coset_tile_start += cosets_in_tile;
+        }
+        col_start += cols_in_chunk;
+    }
+    Ok(())
+}
+
+/// Natural-order monomials → bitreversed-order evals over a coset range, in the
+/// two-pass-compact regime (`log_n` in [13, 20]). Pass 1 is the three-pass
+/// initial kernel (stages 0..7, one shared input column per launch, coset
+/// pre-scale, coset-specific output slabs); pass 2 runs the remaining
+/// `K = log_n - 8` stages in place on those slabs, one chunk of `2^K`
+/// consecutive rows per block.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn natural_monomials_to_bitrev_evals_2_pass_compact(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_n: usize,
+    coset_index_base: usize,
+    coset_factor_shift: u32,
+    num_cosets: usize,
+    num_cols_per_coset: usize,
+    cosets_per_launch: usize,
+    columns_per_launch: usize,
+    transposed_monomials: bool,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(
+        (13..=20).contains(&log_n),
+        "2-pass-compact natural->bitrev NTT only supports log_n in [13, 20]"
+    );
+    // Pass 1's finest butterfly distance is 2^(log_n - 8), below the 1024-row
+    // transposition chunk for log_n < 18, and pass 2 exchanges rows WITHIN a
+    // chunk at every log_n, so pass 1 would have to resolve the layout on rows
+    // its own butterflies still straddle. No caller can ask for it:
+    // `log_size_supports_transposed_monomials` is false below log_n = 21.
+    assert!(
+        !transposed_monomials,
+        "2-pass-compact natural->bitrev NTT (log_n in [13, 20]) has no transposed_monomials path"
+    );
+    let n = 1 << log_n;
+    assert_eq!(inputs_matrix.rows(), n);
+    assert_eq!(outputs_matrix.rows(), n);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
+    assert!(columns_per_launch >= 1);
+    assert!(cosets_per_launch >= 1 && cosets_per_launch <= num_cosets);
+    assert!(num_cosets.is_power_of_two());
+    assert!(cosets_per_launch.is_power_of_two());
+    let num_ntts = inputs_matrix.cols();
+    shared::assert_multi_coset_output_cols(
+        outputs_matrix.cols(),
+        num_cosets,
+        num_cols_per_coset,
+        num_ntts,
+    );
+    let log_cosets_in_tile = cosets_per_launch.trailing_zeros() as i32;
+    let initial_function = MonomialsToEvalsCompactFunction(
+        ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel,
+    );
+    let log_k = log_n - 8;
+    let last_function = match log_k {
+        5 => NaturalToBitrevFinalFunction(
+            ab_natural_monomials_to_bitrev_evals_last_5_stages_compact_kernel,
+        ),
+        6 => NaturalToBitrevFinalFunction(
+            ab_natural_monomials_to_bitrev_evals_last_6_stages_compact_kernel,
+        ),
+        7 => NaturalToBitrevFinalFunction(
+            ab_natural_monomials_to_bitrev_evals_last_7_stages_compact_kernel,
+        ),
+        8 => NaturalToBitrevFinalFunction(
+            ab_natural_monomials_to_bitrev_evals_last_8_stages_compact_kernel,
+        ),
+        9 => NaturalToBitrevFinalFunction(
+            ab_natural_monomials_to_bitrev_evals_last_9_stages_compact_kernel,
+        ),
+        10 => NaturalToBitrevFinalFunction(
+            ab_natural_monomials_to_bitrev_evals_last_10_stages_compact_kernel,
+        ),
+        11 => NaturalToBitrevFinalFunction(
+            ab_natural_monomials_to_bitrev_evals_last_11_stages_compact_kernel,
+        ),
+        12 => NaturalToBitrevFinalFunction(
+            ab_natural_monomials_to_bitrev_evals_last_12_stages_compact_kernel,
+        ),
+        _ => unreachable!("log_k = log_n - 8 in [5, 12] for the 2-pass-compact range"),
+    };
+    let threads = 256u32;
+    let bf_vals_per_block_initial = 1usize << 13; // 8192
+    let blocks_initial = n.get_chunks_count(bf_vals_per_block_initial) as u32;
+    let k_vals = 1usize << log_k;
+    let blocks_last = (n / k_vals) as u32;
+    let smem_bytes_last = k_vals * size_of::<BF>();
+    let num_cols_arg = shared::checked_i32(num_cols_per_coset, "num_cols_per_coset");
+    let inputs_slice = inputs_matrix.slice();
+    let input_stride = inputs_matrix.stride();
+    let input_offset = inputs_matrix.offset();
+    let output_stride = outputs_matrix.stride();
+    let output_offset = outputs_matrix.offset();
+    let outputs_slice_const = unsafe {
+        DeviceSlice::from_raw_parts(
+            outputs_matrix.slice().as_ptr(),
+            outputs_matrix.slice().len(),
+        )
+    };
+    let outputs_slice_mut = outputs_matrix.slice_mut();
+    let mut col_start = 0usize;
+    while col_start < num_ntts {
+        let cols_in_chunk = (num_ntts - col_start).min(columns_per_launch);
+        let input_range = col_start * input_stride..(col_start + cols_in_chunk) * input_stride;
+        let input_slice = &inputs_slice[input_range];
+        let input_matrix = DeviceMatrixChunk::new(input_slice, input_stride, input_offset, n);
+        let input_matrix = input_matrix.as_ptr_and_stride();
+        let mut coset_tile_start = 0usize;
+        while coset_tile_start < num_cosets {
+            let cosets_in_tile = (num_cosets - coset_tile_start).min(cosets_per_launch);
+            debug_assert!(cosets_in_tile.is_power_of_two());
+            let tile_coset_base = coset_index_base + coset_tile_start;
+            let tile_base_in_cols = coset_tile_start * num_cols_per_coset + col_start;
+            let output_byte_start = tile_base_in_cols * output_stride;
+            let output_slice_const = &outputs_slice_const[output_byte_start..];
+            let output_slice_mut = &mut outputs_slice_mut[output_byte_start..];
+            let output_matrix_const =
+                DeviceMatrixChunk::new(output_slice_const, output_stride, output_offset, n);
+            let mut output_matrix_mut =
+                DeviceMatrixChunkMut::new(output_slice_mut, output_stride, output_offset, n);
+            let output_matrix_const = output_matrix_const.as_ptr_and_stride();
+            let output_matrix_mut = output_matrix_mut.as_mut_ptr_and_stride();
+            let ntts_in_launch = (cosets_in_tile * cols_in_chunk) as u32;
+            let grid_dim_initial: Dim3 = (blocks_initial * ntts_in_launch).into();
+            let config = CudaLaunchConfig::basic(grid_dim_initial, threads, stream);
+            let args_initial = MonomialsToEvalsCompactArguments::new(
+                input_matrix,
+                output_matrix_mut,
+                transposed_monomials,
+                log_n as i32,
+                shared::checked_i32(tile_coset_base, "tile_coset_base"),
+                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                num_cols_arg,
+                log_cosets_in_tile,
+            );
+            initial_function.launch(&config, &args_initial)?;
+            let grid_dim_last: Dim3 = (blocks_last * ntts_in_launch).into();
+            let mut config = CudaLaunchConfig::basic(grid_dim_last, threads, stream);
+            config.dynamic_smem_bytes = smem_bytes_last;
+            let args_last = NaturalToBitrevFinalArguments::new(
+                output_matrix_const,
+                output_matrix_mut,
+                log_n as i32,
+                num_cols_arg,
+                log_cosets_in_tile,
+            );
+            last_function.launch(&config, &args_last)?;
+            coset_tile_start += cosets_in_tile;
+        }
+        col_start += cols_in_chunk;
+    }
+    Ok(())
+}
+
 /// First-coset arm of the fused-boundary LDE: the fused kernel (iNTT final +
 /// in-place monomial writeback + coset scale + forward initial) followed by
 /// the two noninitial passes. Transposed-monomial layout only.

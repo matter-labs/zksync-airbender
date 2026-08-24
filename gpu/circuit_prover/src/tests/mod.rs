@@ -71,6 +71,7 @@ mod asserts;
 mod commit_memory;
 mod fixtures;
 mod inits_and_teardowns;
+mod lsb_commit_pipeline;
 mod proof_matrix;
 mod stagewise;
 

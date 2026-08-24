@@ -211,6 +211,18 @@ from upstream library code (`full_statement_verifier::host_utils` /
   change on both sides; make that dependency explicit and keep the two sides
   consistent in the same task. Launched kernels are `EXTERN` (= `extern "C"`), so
   the C++ namespace is organizational — the bare symbol name is the ABI.
+- **Never permute the lane→leaf axis of a bulk read or write.** A hashing or
+  commitment kernel must not translate its per-lane index through `bitreverse`
+  (or any other permutation) before addressing leaf VALUES — scattered per-lane
+  value access destroys coalescing (measured 12× on the LSB partial-tree
+  kernel). When an order conversion is required, move it to an axis where a
+  permutation is free: a warp-uniform index (row slot within a leaf, coset), a
+  32-byte digest slot (sector-aligned, same DRAM sectors scattered as
+  coalesced), or query/cap emission (tiny). Splitting one fused kernel into a
+  contiguous bulk pass plus a permuted digest pass is the accepted pattern
+  (`ab_blake2s_partial_tree_from_physical_digests_kernel`, the staged WHIR
+  leaf/reduce kernels). Review question for any new commitment kernel: does any
+  lane index feeding a VALUES pointer pass through `bitreverse_low_bits`?
 
 ## Profiling
 

@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::ffi::{c_char, CString};
+use std::panic::Location;
 use std::ptr;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 
 #[repr(C)]
 struct NvtxDomainRegistration {
@@ -33,6 +35,46 @@ unsafe extern "C" {
     ) -> u64;
     fn gpu_core_nvtx_ascii_range_start(message: *const c_char) -> u64;
     fn gpu_core_nvtx_range_end(id: u64);
+    fn gpu_core_nvtx_mem_schema_register(domain: NvtxDomainHandle) -> u64;
+    fn gpu_core_nvtx_mem_mark(
+        domain: NvtxDomainHandle,
+        schema_id: u64,
+        site: NvtxStringHandle,
+        category: u32,
+        id: u64,
+        address: u64,
+        bytes: u64,
+        pool_used_after: u64,
+        placement: u32,
+    );
+    fn gpu_core_nvtx_mem_heap_register(
+        domain: NvtxDomainHandle,
+        ptr: *const core::ffi::c_void,
+        size: usize,
+        name: *const c_char,
+    ) -> *mut core::ffi::c_void;
+    fn gpu_core_nvtx_mem_region_register(
+        domain: NvtxDomainHandle,
+        heap: *mut core::ffi::c_void,
+        ptr: *const core::ffi::c_void,
+        size: usize,
+    );
+    fn gpu_core_nvtx_mem_region_unregister(domain: NvtxDomainHandle, ptr: *const core::ffi::c_void);
+    fn gpu_core_nvtx_mem_heap_unregister(domain: NvtxDomainHandle, heap: *mut core::ffi::c_void);
+    fn gpu_core_nvtx_mem_range_start(
+        domain: NvtxDomainHandle,
+        schema_id: u64,
+        site: NvtxStringHandle,
+        category: u32,
+        id: u64,
+        address: u64,
+        bytes: u64,
+        pool_used_after: u64,
+        placement: u32,
+    ) -> u64;
+    fn gpu_core_nvtx_domain_range_end(domain: NvtxDomainHandle, id: u64);
+    fn gpu_core_nvtx_counter_register(domain: NvtxDomainHandle, name: *const c_char) -> u64;
+    fn gpu_core_nvtx_counter_sample_i64(domain: NvtxDomainHandle, counter_id: u64, value: i64);
 }
 
 // Without the CUDA Toolkit there is no `nvtx3/nvToolsExt.h`, so `build.rs` skips
@@ -82,12 +124,100 @@ mod stubs {
     }
 
     pub(super) unsafe extern "C" fn gpu_core_nvtx_range_end(_id: u64) {}
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_mem_schema_register(
+        _domain: NvtxDomainHandle,
+    ) -> u64 {
+        0
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_mem_mark(
+        _domain: NvtxDomainHandle,
+        _schema_id: u64,
+        _site: NvtxStringHandle,
+        _category: u32,
+        _id: u64,
+        _address: u64,
+        _bytes: u64,
+        _pool_used_after: u64,
+        _placement: u32,
+    ) {
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_mem_heap_register(
+        _domain: NvtxDomainHandle,
+        _ptr: *const core::ffi::c_void,
+        _size: usize,
+        _name: *const c_char,
+    ) -> *mut core::ffi::c_void {
+        core::ptr::null_mut()
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_mem_region_register(
+        _domain: NvtxDomainHandle,
+        _heap: *mut core::ffi::c_void,
+        _ptr: *const core::ffi::c_void,
+        _size: usize,
+    ) {
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_mem_region_unregister(
+        _domain: NvtxDomainHandle,
+        _ptr: *const core::ffi::c_void,
+    ) {
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_mem_heap_unregister(
+        _domain: NvtxDomainHandle,
+        _heap: *mut core::ffi::c_void,
+    ) {
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_mem_range_start(
+        _domain: NvtxDomainHandle,
+        _schema_id: u64,
+        _site: NvtxStringHandle,
+        _category: u32,
+        _id: u64,
+        _address: u64,
+        _bytes: u64,
+        _pool_used_after: u64,
+        _placement: u32,
+    ) -> u64 {
+        0
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_domain_range_end(
+        _domain: NvtxDomainHandle,
+        _id: u64,
+    ) {
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_counter_register(
+        _domain: NvtxDomainHandle,
+        _name: *const c_char,
+    ) -> u64 {
+        0
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_counter_sample_i64(
+        _domain: NvtxDomainHandle,
+        _counter_id: u64,
+        _value: i64,
+    ) {
+    }
 }
 
 #[cfg(no_cuda)]
 use stubs::{
-    gpu_core_nvtx_ascii_range_start, gpu_core_nvtx_domain_ascii_range_start,
-    gpu_core_nvtx_domain_create, gpu_core_nvtx_range_end, gpu_core_nvtx_register_string,
+    gpu_core_nvtx_ascii_range_start, gpu_core_nvtx_counter_register,
+    gpu_core_nvtx_counter_sample_i64, gpu_core_nvtx_domain_ascii_range_start,
+    gpu_core_nvtx_domain_create, gpu_core_nvtx_domain_range_end, gpu_core_nvtx_mem_heap_register,
+    gpu_core_nvtx_mem_heap_unregister, gpu_core_nvtx_mem_mark, gpu_core_nvtx_mem_range_start,
+    gpu_core_nvtx_mem_region_register, gpu_core_nvtx_mem_region_unregister,
+    gpu_core_nvtx_mem_schema_register, gpu_core_nvtx_range_end, gpu_core_nvtx_register_string,
     gpu_core_nvtx_registered_range_start,
 };
 
@@ -221,4 +351,205 @@ pub fn scoped_range(domain: Option<&str>, message: &str) -> ScopedRange {
     ScopedRange {
         id: start_range(domain, message),
     }
+}
+
+// Pool-allocation instrumentation (`ab.mem` domain), always on.
+// - Heap/region registration lets compute-sanitizer (whose --nvtx defaults
+//   to yes) bounds-check inside the pool's single backing allocation.
+// - Each allocation is one range in `ab.mem.spans` (nsys projects GPU work
+//   onto it); each free emits a mark, which keeps free-side data and
+//   pre-capture allocations visible under capture-range profiling.
+// With no tool attached every NVTX call early-outs.
+
+pub const MEM_MARK_CATEGORY_ALLOC: u32 = 1;
+pub const MEM_MARK_CATEGORY_FREE: u32 = 2;
+
+/// Opaque tool-side heap handle from [`mem_heap_register`] (null without an
+/// attached tool; the region calls below accept that).
+#[derive(Clone, Copy)]
+pub struct MemHeapHandle(*mut core::ffi::c_void);
+
+// SAFETY: the handle is an opaque tool-issued token, only ever passed back to
+// NVTX, which supports cross-thread use.
+unsafe impl Send for MemHeapHandle {}
+
+impl MemHeapHandle {
+    /// NVTX's process-wide pseudo-heap (a null handle) — the fallback when an
+    /// address cannot be matched to a registered backing range.
+    pub fn process_wide() -> Self {
+        Self(ptr::null_mut())
+    }
+}
+
+fn mem_domain() -> NvtxDomainHandle {
+    static DOMAIN: OnceLock<usize> = OnceLock::new();
+    *DOMAIN.get_or_init(|| get_or_create_domain("ab.mem") as usize) as NvtxDomainHandle
+}
+
+fn mem_schema_id() -> u64 {
+    static SCHEMA: OnceLock<u64> = OnceLock::new();
+    // SAFETY: valid process-global domain handle.
+    *SCHEMA.get_or_init(|| unsafe { gpu_core_nvtx_mem_schema_register(mem_domain()) })
+}
+
+fn mem_spans_domain() -> NvtxDomainHandle {
+    static DOMAIN: OnceLock<usize> = OnceLock::new();
+    *DOMAIN.get_or_init(|| get_or_create_domain("ab.mem.spans") as usize) as NvtxDomainHandle
+}
+
+fn mem_spans_schema_id() -> u64 {
+    static SCHEMA: OnceLock<u64> = OnceLock::new();
+    // SAFETY: valid process-global domain handle.
+    *SCHEMA.get_or_init(|| unsafe { gpu_core_nvtx_mem_schema_register(mem_spans_domain()) })
+}
+
+/// Per-site registered-string handles for the marks domain and the spans
+/// domain (registered strings are domain-scoped).
+fn mem_site_registry() -> &'static RwLock<HashMap<usize, (usize, usize)>> {
+    static SITES: OnceLock<RwLock<HashMap<usize, (usize, usize)>>> = OnceLock::new();
+    SITES.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn get_or_register_mem_site(
+    site: &'static Location<'static>,
+) -> (NvtxStringHandle, NvtxStringHandle) {
+    let key = site as *const Location as usize;
+    if let Some(&(marks, spans)) = mem_site_registry()
+        .read()
+        .expect("NVTX mem site registry poisoned")
+        .get(&key)
+    {
+        return (marks as NvtxStringHandle, spans as NvtxStringHandle);
+    }
+    let message = format!("{}:{}", site.file(), site.line());
+    let cstring = CString::new(message).expect("NVTX mem site message must not contain NUL");
+    // SAFETY: domain handles from NVTX; `cstring` is NUL-terminated for the calls.
+    let marks = unsafe { gpu_core_nvtx_register_string(mem_domain(), cstring.as_ptr()) };
+    // SAFETY: as above.
+    let spans = unsafe { gpu_core_nvtx_register_string(mem_spans_domain(), cstring.as_ptr()) };
+    mem_site_registry()
+        .write()
+        .expect("NVTX mem site registry poisoned")
+        .entry(key)
+        .or_insert((marks as usize, spans as usize));
+    (marks, spans)
+}
+
+/// Describes one pool backing range to memory tools as a sub-allocator heap.
+pub fn mem_heap_register(ptr: *const u8, size: usize, name: &str) -> MemHeapHandle {
+    let cstring = CString::new(name).expect("NVTX mem heap name must not contain NUL");
+    // SAFETY: `ptr`/`size` describe a live backing allocation; `cstring` is
+    // NUL-terminated for the call duration (NVTX copies ascii messages).
+    let handle = unsafe {
+        gpu_core_nvtx_mem_heap_register(mem_domain(), ptr.cast(), size, cstring.as_ptr())
+    };
+    MemHeapHandle(handle)
+}
+
+/// Registers one pool allocation as a region of its heap.
+pub fn mem_region_register(heap: MemHeapHandle, ptr: *const u8, size: usize) {
+    // SAFETY: `heap` came from `mem_heap_register`; `ptr`/`size` describe the
+    // suballocation just handed out.
+    unsafe { gpu_core_nvtx_mem_region_register(mem_domain(), heap.0, ptr.cast(), size) }
+}
+
+/// Unregisters a heap registered via [`mem_heap_register`].
+pub fn mem_heap_unregister(heap: MemHeapHandle) {
+    if heap.0.is_null() {
+        return;
+    }
+    // SAFETY: `heap` came from `mem_heap_register`.
+    unsafe { gpu_core_nvtx_mem_heap_unregister(mem_domain(), heap.0) }
+}
+
+/// Unregisters the region at `ptr` (referenced by address, per the NVTX
+/// virtual-address region contract).
+pub fn mem_region_unregister(ptr: *const u8) {
+    // SAFETY: `ptr` was registered via `mem_region_register` and not yet freed.
+    unsafe { gpu_core_nvtx_mem_region_unregister(mem_domain(), ptr.cast()) }
+}
+
+/// Emits one alloc/free mark carrying the allocation record.
+pub fn mem_mark(
+    category: u32,
+    site: &'static Location<'static>,
+    id: u64,
+    address: u64,
+    bytes: usize,
+    pool_used_after: usize,
+    placement_tag: u8,
+) {
+    let (string, _) = get_or_register_mem_site(site);
+    // SAFETY: domain, schema and registered-string handles are valid
+    // process-global NVTX handles created above.
+    unsafe {
+        gpu_core_nvtx_mem_mark(
+            mem_domain(),
+            mem_schema_id(),
+            string,
+            category,
+            id,
+            address,
+            bytes as u64,
+            pool_used_after as u64,
+            placement_tag as u32,
+        )
+    }
+}
+
+/// NVTX range id for one allocation's lifetime span; 0 when no profiler is
+/// attached (ending id 0 is a no-op).
+#[derive(Clone, Copy, Default)]
+pub struct MemSpanId(u64);
+
+/// Starts the allocation-lifetime span, carrying the alloc record on the
+/// range start.
+pub fn mem_span_start(
+    site: &'static Location<'static>,
+    id: u64,
+    address: u64,
+    bytes: usize,
+    pool_used_after: usize,
+    placement_tag: u8,
+) -> MemSpanId {
+    let (_, string) = get_or_register_mem_site(site);
+    // SAFETY: domain, schema and registered-string handles are valid
+    // process-global NVTX handles created above.
+    let span = unsafe {
+        gpu_core_nvtx_mem_range_start(
+            mem_spans_domain(),
+            mem_spans_schema_id(),
+            string,
+            MEM_MARK_CATEGORY_ALLOC,
+            id,
+            address,
+            bytes as u64,
+            pool_used_after as u64,
+            placement_tag as u32,
+        )
+    };
+    MemSpanId(span)
+}
+
+/// Ends the span started by [`mem_span_start`].
+pub fn mem_span_end(span: MemSpanId) {
+    if span.0 == 0 {
+        return;
+    }
+    // SAFETY: `span` came from `mem_span_start` in the `ab.mem.spans` domain.
+    unsafe { gpu_core_nvtx_domain_range_end(mem_spans_domain(), span.0) }
+}
+
+/// Registers an int64 counter series in the `ab.mem` domain; nsys renders it
+/// as a chart row. Returns 0 (sampling disabled) when no tool assigns an id.
+pub fn mem_counter_register(name: &str) -> u64 {
+    let cstring = CString::new(name).expect("NVTX counter name must not contain NUL");
+    // SAFETY: valid domain handle; `cstring` is NUL-terminated for the call.
+    unsafe { gpu_core_nvtx_counter_register(mem_domain(), cstring.as_ptr()) }
+}
+
+/// Emits one sample of the counter registered by [`mem_counter_register`].
+pub fn mem_counter_sample(counter_id: u64, value: i64) {
+    // SAFETY: `counter_id` came from `mem_counter_register` in the same domain.
+    unsafe { gpu_core_nvtx_counter_sample_i64(mem_domain(), counter_id, value) }
 }

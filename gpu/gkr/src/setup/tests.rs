@@ -601,7 +601,8 @@ fn forward_setup_generic_lookup_fused_kernel_matches_expected_for_max_width() {
 #[test]
 #[cfg(not(no_cuda))]
 fn forward_setup_generic_lookup_fused_kernel_handles_single_column() {
-    let trace_len = 1usize << 8;
+    // The partial-tree physical-leaf builder needs >= 512 leaves per coset.
+    let trace_len = 1usize << 10;
     let generic_lookup_width = 1;
     let generic_lookup_len = 32;
     let setup = make_test_cpu_setup(trace_len, generic_lookup_width, generic_lookup_len);

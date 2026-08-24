@@ -17,11 +17,13 @@ pub(crate) struct NttPass {
 }
 
 /// Direction the NTT plan runs in. Forward = bitreversed monomials → natural
-/// evals; Inverse = natural evals → bitreversed monomials.
+/// evals; Inverse = natural evals → bitreversed monomials; NaturalToBitrev =
+/// natural monomials → bitreversed evals (the LSB commitment layer's LDE).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NttDirection {
     Forward,
     Inverse,
+    NaturalToBitrev,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,6 +87,30 @@ pub(crate) enum NttKernelKind {
     EvalsToMonomialsFinal {
         stages: usize,
     },
+    /// -> `ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel`
+    NaturalToBitrevInitial {
+        stages: usize,
+    },
+    /// -> `ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel`
+    NaturalToBitrevMiddle {
+        stages: usize,
+    },
+    /// -> `ab_natural_monomials_to_bitrev_evals_final_K_stages_kernel`
+    NaturalToBitrevFinal {
+        stages: usize,
+    },
+    /// -> `ab_natural_monomials_to_bitrev_evals_first_{9,10}_stages_kernel`
+    NaturalToBitrevFirst {
+        stages: usize,
+    },
+    /// -> `ab_natural_monomials_to_bitrev_evals_last_14_stages_kernel`
+    NaturalToBitrevLast {
+        stages: usize,
+    },
+    /// -> `ab_natural_monomials_to_bitrev_evals_last_K_stages_compact_kernel`
+    NaturalToBitrevLastCompact {
+        stages: usize,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -97,6 +123,7 @@ pub(crate) struct NttStrategy {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NttStrategyError {
     LogNBelowSupported { log_n: usize, min_supported: usize },
+    LogNAboveSupported { log_n: usize, max_supported: usize },
 }
 
 /// Smallest `log_n` covered by any multistage NTT kernel family.
@@ -122,6 +149,9 @@ pub(crate) const COMPACT_MAX_LOG_N: usize = 12;
 pub(crate) const TWO_PASS_COMPACT_MIN_LOG_N: usize = 13;
 pub(crate) const TWO_PASS_COMPACT_MAX_LOG_N: usize = 20;
 pub(crate) const MULTIPASS_MIN_LOG_N: usize = 21;
+/// Largest `log_n` the natural→bitrev kernel family is generated for (the
+/// three-pass final kernels cover `log_n - 16` in [5, 8]).
+pub(crate) const NATURAL_TO_BITREV_MAX_LOG_N: usize = 24;
 
 pub(crate) fn select_ntt_strategy(
     direction: NttDirection,
@@ -136,6 +166,9 @@ pub(crate) fn select_ntt_strategy(
         }
         NttDirection::Inverse => {
             select_inverse_strategy(log_n, num_columns, num_cosets, device_props)
+        }
+        NttDirection::NaturalToBitrev => {
+            select_natural_to_bitrev_strategy(log_n, num_columns, num_cosets, device_props)
         }
     }
 }
@@ -609,6 +642,107 @@ fn select_forward_strategy(
     // `(cols_per_launch, cosets_per_launch)` selection from the unified
     // (K + 1) * cols * col_bytes <= L2 budget. See
     // `pick_cols_and_cosets_per_launch`.
+    let (columns_per_launch, cosets_per_launch) =
+        pick_cols_and_cosets_per_launch(log_n, num_columns, num_cosets, device_props);
+    Ok(NttStrategy {
+        passes,
+        columns_per_launch,
+        cosets_per_launch,
+    })
+}
+
+/// Natural-order monomials → bitreversed-order evals. Uses the FORWARD
+/// selector's joint `(columns_per_launch, cosets_per_launch)` tiling: the
+/// multi-coset input column is re-read once per coset, so the L2 budget is the
+/// forward one, not the inverse's single-coset one.
+///
+/// Below the multipass floor only the TWO_PASS_COMPACT range is covered; the
+/// other small-size families are unreachable from a production base size.
+fn select_natural_to_bitrev_strategy(
+    log_n: usize,
+    num_columns: usize,
+    num_cosets: usize,
+    device_props: &DeviceProperties,
+) -> Result<NttStrategy, NttStrategyError> {
+    if log_n < TWO_PASS_COMPACT_MIN_LOG_N {
+        return Err(NttStrategyError::LogNBelowSupported {
+            log_n,
+            min_supported: TWO_PASS_COMPACT_MIN_LOG_N,
+        });
+    }
+    if log_n > NATURAL_TO_BITREV_MAX_LOG_N {
+        return Err(NttStrategyError::LogNAboveSupported {
+            log_n,
+            max_supported: NATURAL_TO_BITREV_MAX_LOG_N,
+        });
+    }
+    if (TWO_PASS_COMPACT_MIN_LOG_N..=TWO_PASS_COMPACT_MAX_LOG_N).contains(&log_n) {
+        // Mirror of the forward TWO_PASS_COMPACT selection: the descending-stride
+        // network's decimated end is its FIRST 8 stages (the three-pass initial
+        // kernel, log_n-generic down to 13) and its consecutive-chunk end is the
+        // remaining K = log_n - 8 stages.
+        let last_stages = log_n - 8;
+        let (columns_per_launch, cosets_per_launch) =
+            pick_cols_and_cosets_per_launch(log_n, num_columns, num_cosets, device_props);
+        return Ok(NttStrategy {
+            passes: vec![
+                NttPass {
+                    start_stage: 0,
+                    stage_count: 8,
+                    kernel: NttKernelKind::NaturalToBitrevInitial { stages: 8 },
+                },
+                NttPass {
+                    start_stage: 8,
+                    stage_count: last_stages,
+                    kernel: NttKernelKind::NaturalToBitrevLastCompact {
+                        stages: last_stages,
+                    },
+                },
+            ],
+            columns_per_launch,
+            cosets_per_launch,
+        });
+    }
+    let column_bytes = (1usize << log_n) * size_of::<BF>();
+    let use_two_pass = column_bytes >= device_props.l2_cache_size_bytes && log_n >= 23;
+    let passes = if use_two_pass {
+        let first_stages = log_n - 14;
+        vec![
+            NttPass {
+                start_stage: 0,
+                stage_count: first_stages,
+                kernel: NttKernelKind::NaturalToBitrevFirst {
+                    stages: first_stages,
+                },
+            },
+            NttPass {
+                start_stage: first_stages,
+                stage_count: 14,
+                kernel: NttKernelKind::NaturalToBitrevLast { stages: 14 },
+            },
+        ]
+    } else {
+        let final_stages = log_n - 16;
+        vec![
+            NttPass {
+                start_stage: 0,
+                stage_count: 8,
+                kernel: NttKernelKind::NaturalToBitrevInitial { stages: 8 },
+            },
+            NttPass {
+                start_stage: 8,
+                stage_count: 8,
+                kernel: NttKernelKind::NaturalToBitrevMiddle { stages: 8 },
+            },
+            NttPass {
+                start_stage: 16,
+                stage_count: final_stages,
+                kernel: NttKernelKind::NaturalToBitrevFinal {
+                    stages: final_stages,
+                },
+            },
+        ]
+    };
     let (columns_per_launch, cosets_per_launch) =
         pick_cols_and_cosets_per_launch(log_n, num_columns, num_cosets, device_props);
     Ok(NttStrategy {
@@ -1468,5 +1602,131 @@ mod cpu_tests {
             max_dynamic_smem_per_block_optin: 32 * 1024,
         };
         assert_eq!(dit_is_applicable(12, 1, &small_smem), None);
+    }
+    /// Natural→bitrev routing, synthetic devices only: the two-pass multipass
+    /// regime is selected exactly when one column reaches the device L2 AND
+    /// `log_n >= 23`.
+    fn a100_like() -> DeviceProperties {
+        // A100-class: 40 MB L2, 108 SMs, sm_80 — the smallest L2 we build for,
+        // so log_n = 23 (32 MB column) fits and log_n = 24 (64 MB) does not.
+        DeviceProperties {
+            l2_cache_size_bytes: 40 * 1024 * 1024,
+            sm_count: 108,
+            compute_capability_major: 8,
+            compute_capability_minor: 0,
+            max_dynamic_smem_per_block_optin: 163 * 1024,
+        }
+    }
+
+    fn tiny_l2_like() -> DeviceProperties {
+        // Synthetic 16 MB L2: forces the two-pass gate at log_n = 23 too.
+        DeviceProperties {
+            l2_cache_size_bytes: 16 * 1024 * 1024,
+            ..a100_like()
+        }
+    }
+
+    #[test]
+    fn natural_to_bitrev_log_n_24_picks_two_pass_when_column_exceeds_l2() {
+        // 2^24 * 4 B = 64 MB > A100's 40 MB L2 -> First{10} + Last{14}.
+        for dev in [a100_like(), l4_like()] {
+            let l2 = dev.l2_cache_size_bytes;
+            let s = select_ntt_strategy(NttDirection::NaturalToBitrev, 24, 1, 2, &dev).unwrap();
+            assert_eq!(s.passes.len(), 2, "l2={l2}");
+            assert_eq!(s.passes[0].start_stage, 0);
+            assert!(matches!(
+                s.passes[0].kernel,
+                NttKernelKind::NaturalToBitrevFirst { stages: 10 }
+            ));
+            assert_eq!(s.passes[1].start_stage, 10);
+            assert!(matches!(
+                s.passes[1].kernel,
+                NttKernelKind::NaturalToBitrevLast { stages: 14 }
+            ));
+            assert_eq!(s.passes.iter().map(|p| p.stage_count).sum::<usize>(), 24);
+        }
+    }
+
+    #[test]
+    fn natural_to_bitrev_log_n_23_picks_two_pass_only_below_a_32_mb_l2() {
+        // 2^23 * 4 B = 32 MB: fits A100's 40 MB L2 (-> 3-pass), exceeds the
+        // synthetic 16 MB L2 (-> First{9} + Last{14}).
+        let s = select_ntt_strategy(NttDirection::NaturalToBitrev, 23, 1, 2, &a100_like()).unwrap();
+        assert_eq!(s.passes.len(), 3);
+        let s =
+            select_ntt_strategy(NttDirection::NaturalToBitrev, 23, 1, 2, &tiny_l2_like()).unwrap();
+        assert_eq!(s.passes.len(), 2);
+        assert!(matches!(
+            s.passes[0].kernel,
+            NttKernelKind::NaturalToBitrevFirst { stages: 9 }
+        ));
+        assert!(matches!(
+            s.passes[1].kernel,
+            NttKernelKind::NaturalToBitrevLast { stages: 14 }
+        ));
+        assert_eq!(s.passes.iter().map(|p| p.stage_count).sum::<usize>(), 23);
+    }
+
+    #[test]
+    fn natural_to_bitrev_log_n_21_22_stay_three_pass_on_any_l2() {
+        // The two-pass kernels only exist for log_n in {23, 24}; the gate's
+        // `log_n >= 23` clause keeps 21/22 on the three-pass plan even when a
+        // column dwarfs L2.
+        for log_n in 21..=22 {
+            let s =
+                select_ntt_strategy(NttDirection::NaturalToBitrev, log_n, 1, 2, &tiny_l2_like())
+                    .unwrap();
+            assert_eq!(s.passes.len(), 3, "log_n={log_n}");
+            assert!(matches!(
+                s.passes[2].kernel,
+                NttKernelKind::NaturalToBitrevFinal { stages } if stages == log_n - 16
+            ));
+        }
+    }
+
+    /// The two-pass-compact arm mirrors the forward TWO_PASS_COMPACT selection
+    /// over the same [13, 20] range, with the pass roles swapped: the decimated
+    /// 8-stage kernel leads and the consecutive-chunk kernel finishes.
+    #[test]
+    fn natural_to_bitrev_two_pass_compact_range_mirrors_the_forward_arm() {
+        let dev = a100_like();
+        for log_n in TWO_PASS_COMPACT_MIN_LOG_N..=TWO_PASS_COMPACT_MAX_LOG_N {
+            let s = select_ntt_strategy(NttDirection::NaturalToBitrev, log_n, 1, 2, &dev).unwrap();
+            assert_eq!(s.passes.len(), 2, "log_n={log_n}");
+            assert!(matches!(
+                s.passes[0].kernel,
+                NttKernelKind::NaturalToBitrevInitial { stages: 8 }
+            ));
+            assert_eq!(s.passes[1].start_stage, 8, "log_n={log_n}");
+            assert!(matches!(
+                s.passes[1].kernel,
+                NttKernelKind::NaturalToBitrevLastCompact { stages } if stages == log_n - 8
+            ));
+            let forward = select_ntt_strategy(NttDirection::Forward, log_n, 1, 2, &dev).unwrap();
+            assert_eq!(forward.passes.len(), 2, "log_n={log_n}");
+            assert!(matches!(
+                forward.passes[0].kernel,
+                NttKernelKind::MonomialsToEvalsFirstCompact { stages } if stages == log_n - 8
+            ));
+        }
+    }
+
+    #[test]
+    fn natural_to_bitrev_out_of_range_log_n_returns_errors_not_panics() {
+        let dev = a100_like();
+        assert_eq!(
+            select_ntt_strategy(NttDirection::NaturalToBitrev, 12, 1, 2, &dev).unwrap_err(),
+            NttStrategyError::LogNBelowSupported {
+                log_n: 12,
+                min_supported: TWO_PASS_COMPACT_MIN_LOG_N,
+            }
+        );
+        assert_eq!(
+            select_ntt_strategy(NttDirection::NaturalToBitrev, 25, 1, 2, &dev).unwrap_err(),
+            NttStrategyError::LogNAboveSupported {
+                log_n: 25,
+                max_supported: NATURAL_TO_BITREV_MAX_LOG_N,
+            }
+        );
     }
 }

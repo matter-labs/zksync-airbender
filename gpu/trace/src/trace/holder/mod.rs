@@ -9,22 +9,28 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_structures::DeviceMatrix;
+#[cfg(test)]
+use gpu_core::primitives::device_structures::DeviceMatrixImpl;
 use gpu_core::primitives::device_structures::{
-    DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
+    DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixMut,
 };
 use gpu_core::primitives::field::BF;
-use gpu_hash::blake2s::build_merkle_tree;
+#[cfg(test)]
+use gpu_hash::blake2s::{build_merkle_tree_multi_coset, build_partial_merkle_tree_multi_coset};
 use gpu_hash::blake2s::{
-    build_merkle_tree_multi_coset, build_partial_merkle_tree_multi_coset, gather_tree_caps_inline,
-    Digest,
+    build_merkle_tree_nodes_multi_coset_over_existing_layer,
+    build_partial_merkle_tree_multi_coset_physical, gather_tree_caps_inline,
+    hash_leaves_multi_coset_physical, Digest,
 };
 use gpu_hash::blake2s::{
-    gather_leaf_rows, gather_merkle_paths_device, gather_merkle_paths_from_rows,
+    gather_leaf_rows_physical, gather_merkle_paths_device, gather_merkle_paths_from_rows_physical,
 };
 use gpu_ntt::ntt::{
-    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_to_multi_coset_evals_fused,
-    hypercube_x1_msb_evals_to_x1_msb_monomials, log_size_supports_transposed_monomials,
+    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_evals_to_monomials,
+    log_size_supports_natural_to_bitrev_lde, log_size_supports_transposed_monomials,
+    natural_monomials_to_bitreversed_evals_multi_coset, MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
 };
+use gpu_ops::bit_reverse::bit_reverse_in_place;
 use gpu_prover_context::ProverContext;
 
 // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
@@ -349,24 +355,43 @@ impl TraceHolder<BF> {
         let source = self.raw_hypercube_backing();
         let domain_size = 1usize << self.log_domain_size;
 
+        let log_n = self.log_domain_size as usize;
+        // The committed backing is the BITREVERSED-order codeword the Merkle
+        // builders and query gathers consume; the natural->bitrev LDE produces
+        // it directly.
+        //
+        // Below that family's dispatch floor, the natural LDE plus a row
+        // permutation gives the same ROW ORDER but a DIFFERENT CODEWORD: both
+        // arms read the same Mobius coefficients, but the natural family labels
+        // them bitreversed, so the sub-floor arm commits the OLD MSB-convention
+        // polynomial. It exists only for sub-floor test holders. Whoever raises
+        // `MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE` must RETIRE this arm, never
+        // widen it.
+        //
+        // `hypercube_to_multi_coset_evals_fused` is not usable on either arm: it
+        // emits natural-order evaluations.
+        let natural_to_bitrev = log_size_supports_natural_to_bitrev_lde(log_n);
+        assert!(
+            natural_to_bitrev || log_n < MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
+            "log_n {log_n} is above the natural->bitrev LDE range: the sub-floor arm \
+             commits the OLD MSB-convention codeword and must not serve it",
+        );
+
         let mut coeff_scratch = context.alloc(domain_size, AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
         let ntt_ctx = context.ntt_device_context();
-        // The base-trace LDE log_domain_size is typically > 13 (→ compact /
-        // two-pass-compact, NO DIT, scratch unused), but allocate a pooled
-        // d-table scratch (len >= N) for the in-range case to keep the DIT path
-        // enqueue-only per the GPU scheduling contract. Avoid a multi-MB unused
-        // buffer for the large-log_n compact path by allocating only when in
-        // range; the handle outlives all per-column launches below.
+        // Pooled d-table scratch (len >= N) for the natural LDE's in-range DIT
+        // path, keeping it enqueue-only per the GPU scheduling contract. The
+        // natural->bitrev families have no DIT arm and ignore the scratch.
         let mut d_scratch;
-        let mut scratch_opt = if (self.log_domain_size as usize) <= 13 {
+        let mut scratch_opt = if !natural_to_bitrev {
             d_scratch = context.alloc::<BF>(domain_size, AllocationPlacement::BestFit)?;
             Some(&mut d_scratch[..])
         } else {
             None
         };
         let use_transposed_monomials =
-            log_size_supports_transposed_monomials(self.log_domain_size as usize);
+            !natural_to_bitrev && log_size_supports_transposed_monomials(log_n);
         for column in 0..self.columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
@@ -380,39 +405,38 @@ impl TraceHolder<BF> {
                     // columns_count to write each coset's slab in one launch,
                     // replacing the per-coset NTT loop.
                     let backing_from_col = &mut backing[offset..];
-                    // Hybrid fused-boundary path: the hypercube final pass runs
-                    // once, fused with coset 0's forward initial + in-place
-                    // monomial writeback (transposed 3-pass regime only; falls
-                    // back below).
-                    let fused = hypercube_to_multi_coset_evals_fused(
+                    hypercube_evals_to_monomials(
                         source_column,
                         &mut coeff_scratch[0..domain_size],
-                        backing_from_col,
-                        self.log_domain_size as usize,
-                        self.log_lde_factor as usize,
-                        self.columns_count,
+                        log_n,
+                        use_transposed_monomials,
                         stream,
                         context.get_device_properties(),
                     )?;
-                    if !fused {
-                        hypercube_x1_msb_evals_to_x1_msb_monomials(
-                            source_column,
-                            &mut coeff_scratch[0..domain_size],
-                            self.log_domain_size as usize,
-                            use_transposed_monomials,
+                    let monomials = DeviceMatrixChunk::new(
+                        &coeff_scratch[0..domain_size],
+                        domain_size,
+                        0,
+                        domain_size,
+                    );
+                    if natural_to_bitrev {
+                        natural_monomials_to_bitreversed_evals_multi_coset(
+                            &monomials,
+                            backing_from_col,
+                            log_n,
+                            self.log_lde_factor as usize,
+                            self.columns_count,
+                            false,
+                            ntt_ctx,
+                            None,
                             stream,
                             context.get_device_properties(),
                         )?;
-                        let monomials = DeviceMatrixChunk::new(
-                            &coeff_scratch[0..domain_size],
-                            domain_size,
-                            0,
-                            domain_size,
-                        );
+                    } else {
                         bitreversed_monomials_to_natural_evals_multi_coset(
                             &monomials,
                             backing_from_col,
-                            self.log_domain_size as usize,
+                            log_n,
                             self.log_lde_factor as usize,
                             self.columns_count,
                             use_transposed_monomials,
@@ -426,6 +450,15 @@ impl TraceHolder<BF> {
                 CosetsHolder::None(_) => {
                     panic!("cosets not allocated — call ensure_cosets_materialized first")
                 }
+            }
+        }
+        if !natural_to_bitrev && self.columns_count != 0 {
+            match &mut self.cosets {
+                CosetsHolder::Full(backing) => {
+                    let mut rows = DeviceMatrixMut::new(&mut backing[..], domain_size);
+                    bit_reverse_in_place(&mut rows, stream)?;
+                }
+                CosetsHolder::None(_) => unreachable!("the column loop above panics on None"),
             }
         }
         self.cosets_materialized = true;
@@ -522,7 +555,7 @@ impl TraceHolder<BF> {
 
         match &mut self.trees {
             TreesHolder::Full(backing) => {
-                commit_trace_multi_coset(
+                build_full_trees_from_physical(
                     evals_backing,
                     backing,
                     log_domain_size,
@@ -535,7 +568,12 @@ impl TraceHolder<BF> {
                 )?;
             }
             TreesHolder::Partial(backing) => {
-                commit_trace_with_partial_tree_multi_coset(
+                // Freed on scope exit, after all launches are enqueued.
+                let mut leaf_digests: DeviceAllocation<Digest> = context.alloc(
+                    lde_factor << (log_domain_size - log_rows_per_leaf),
+                    AllocationPlacement::BestFit,
+                )?;
+                build_partial_trees_from_physical(
                     evals_backing,
                     backing,
                     log_domain_size,
@@ -544,13 +582,14 @@ impl TraceHolder<BF> {
                     log_tree_cap_size,
                     columns_count,
                     lde_factor,
+                    &mut leaf_digests,
                     stream,
                 )?;
             }
             TreesHolder::None => {
                 let mut tree_tops =
                     allocate_trees(lde_factor, log_domain_size, log_rows_per_leaf, context)?;
-                commit_trace_multi_coset(
+                build_full_trees_from_physical(
                     evals_backing,
                     &mut tree_tops,
                     log_domain_size,
@@ -685,7 +724,11 @@ impl TraceHolder<BF> {
             TreesHolder::Partial(backing) => backing,
             _ => panic!("build_and_cache_partial_trees requires TreesHolder::Partial"),
         };
-        commit_trace_with_partial_tree_multi_coset(
+        let mut leaf_digests: DeviceAllocation<Digest> = context.alloc(
+            instances_count << (log_domain_size - log_rows_per_leaf),
+            AllocationPlacement::BestFit,
+        )?;
+        build_partial_trees_from_physical(
             evals_backing,
             trees_backing,
             log_domain_size,
@@ -694,6 +737,7 @@ impl TraceHolder<BF> {
             log_tree_cap_size,
             columns_count,
             instances_count,
+            &mut leaf_digests,
             stream,
         )?;
         Ok(())
@@ -862,7 +906,7 @@ impl TraceHolder<BF> {
         let mut d_leafs = context.alloc(leafs_len, AllocationPlacement::BestFit)?;
         let mut leafs_matrix =
             DeviceMatrixMut::new(&mut d_leafs, queries_count << self.log_rows_per_leaf);
-        gather_leaf_rows(
+        gather_leaf_rows_physical(
             indexes,
             false,
             self.log_rows_per_leaf,
@@ -906,7 +950,7 @@ impl TraceHolder<BF> {
                 let tree_bottom = self
                     .get_tree_slice(coset_index)
                     .expect("Partial mode has a tree slot");
-                gather_merkle_paths_from_rows(
+                gather_merkle_paths_from_rows_physical(
                     indexes,
                     false,
                     self.get_coset_evaluations(coset_index),
@@ -922,12 +966,16 @@ impl TraceHolder<BF> {
                 let values = self.get_coset_evaluations(coset_index);
                 let mut tree =
                     allocate_tree(self.log_domain_size, self.log_rows_per_leaf, context)?;
-                build_merkle_tree(
+                build_full_trees_from_physical(
                     values,
                     &mut tree,
+                    self.log_domain_size,
+                    0,
                     self.log_rows_per_leaf,
+                    self.log_tree_cap_size - self.log_lde_factor,
+                    self.columns_count,
+                    1,
                     stream,
-                    layers_count,
                 )?;
                 gather_merkle_paths_device(
                     indexes,
@@ -1000,6 +1048,9 @@ pub fn allocate_trees(
 /// `columns_count << log_domain_size` BFs); `trees_backing` holds the same
 /// shape with `tree_len = 2 << (log_domain_size - log_rows_per_leaf)` digests
 /// per coset.
+// Natural-order oracle for `build_full_trees_from_physical`; the LSB commit
+// path no longer calls it.
+#[cfg(test)]
 pub(crate) fn commit_trace_multi_coset(
     evals_backing: &DeviceSlice<BF>,
     trees_backing: &mut DeviceSlice<Digest>,
@@ -1034,6 +1085,68 @@ pub(crate) fn commit_trace_multi_coset(
     )
 }
 
+/// LSB sibling of [`commit_trace_multi_coset`]: each coset slab is the
+/// BITREVERSED-order codeword, so every leaf is one physically contiguous row
+/// block and leaf digests land in physical-block order. The strided bit-reverse
+/// canonicalizes them; the result is byte-identical to
+/// [`commit_trace_multi_coset`] over the natural-order codeword.
+#[doc(hidden)]
+pub fn build_full_trees_from_physical(
+    evals_backing: &DeviceSlice<BF>,
+    trees_backing: &mut DeviceSlice<Digest>,
+    log_domain_size: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    columns_count: usize,
+    cosets_in_tile: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_tree_cap_size >= log_lde_factor);
+    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    assert!(log_domain_size >= log_rows_per_leaf + log_coset_tree_cap_size);
+    let per_coset_evals_stride = columns_count << log_domain_size;
+    let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
+    let per_coset_tree_stride = per_coset_leaves_count << 1;
+    assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
+    assert_eq!(trees_backing.len(), per_coset_tree_stride * cosets_in_tile);
+    let layers_count = log_domain_size + 1 - log_rows_per_leaf - log_coset_tree_cap_size;
+    assert_ne!(layers_count, 0);
+    assert!(per_coset_leaves_count >= 1 << (layers_count - 1));
+    hash_leaves_multi_coset_physical(
+        evals_backing,
+        trees_backing,
+        log_rows_per_leaf,
+        cosets_in_tile,
+        per_coset_leaves_count,
+        per_coset_evals_stride,
+        per_coset_tree_stride,
+        columns_count,
+        stream,
+    )?;
+    {
+        let mut leaves = DeviceMatrixChunkMut::new(
+            trees_backing,
+            per_coset_tree_stride,
+            0,
+            per_coset_leaves_count,
+        );
+        bit_reverse_in_place(&mut leaves, stream)?;
+    }
+    build_merkle_tree_nodes_multi_coset_over_existing_layer(
+        trees_backing,
+        layers_count - 1,
+        cosets_in_tile,
+        per_coset_tree_stride,
+        /*initial_src_offset_in_coset=*/ 0,
+        /*initial_src_layer_count_per_coset=*/ per_coset_leaves_count,
+        stream,
+    )
+}
+
+// Natural-order oracle for `build_partial_trees_from_physical`; the LSB commit
+// path no longer calls it.
+#[cfg(test)]
 pub(crate) fn commit_trace_with_partial_tree_multi_coset(
     evals_backing: &DeviceSlice<BF>,
     tree_backing: &mut DeviceSlice<Digest>,
@@ -1062,6 +1175,51 @@ pub(crate) fn commit_trace_with_partial_tree_multi_coset(
         - log_coset_tree_cap_size;
     build_partial_merkle_tree_multi_coset(
         evals_backing,
+        tree_backing,
+        log_rows_per_leaf,
+        layers_count,
+        cosets_in_tile,
+        stream,
+    )
+}
+
+/// LSB sibling of [`commit_trace_with_partial_tree_multi_coset`]: each coset
+/// slab is the BITREVERSED-order codeword, so the warp-level bottom reduction
+/// reads logical leaf `l` from physical block `bitreverse(l)`. The result is
+/// byte-identical to [`commit_trace_with_partial_tree_multi_coset`] over the
+/// natural-order codeword.
+#[doc(hidden)]
+pub fn build_partial_trees_from_physical(
+    evals_backing: &DeviceSlice<BF>,
+    tree_backing: &mut DeviceSlice<Digest>,
+    log_domain_size: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    columns_count: usize,
+    cosets_in_tile: usize,
+    leaf_digests: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_tree_cap_size >= log_lde_factor);
+    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    assert!(
+        log_domain_size
+            > log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
+    );
+    let per_coset_evals_stride = columns_count << log_domain_size;
+    let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
+    let per_coset_tree_stride = (per_coset_leaves_count << 1) >> PARTIAL_TREE_REDUCTION_LAYERS;
+    assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
+    assert_eq!(tree_backing.len(), per_coset_tree_stride * cosets_in_tile);
+    let layers_count = log_domain_size + 1
+        - log_rows_per_leaf
+        - PARTIAL_TREE_REDUCTION_LAYERS
+        - log_coset_tree_cap_size;
+    assert_eq!(leaf_digests.len(), per_coset_leaves_count * cosets_in_tile);
+    build_partial_merkle_tree_multi_coset_physical(
+        evals_backing,
+        leaf_digests,
         tree_backing,
         log_rows_per_leaf,
         layers_count,

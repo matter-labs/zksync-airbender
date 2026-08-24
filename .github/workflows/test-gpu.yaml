@@ -17,11 +17,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # matterlabs-ci-gpu-runner currently has CUDA 12.2 driver support only, so
-        # CUDA 13-compiled binaries are not runnable there.
-        cuda: [ "12.9.1-devel-ubuntu22.04" ]
+        cuda: [ "13.0.3" ]
+        ubuntu: [ "ubuntu24.04" ]
     container:
-      image: nvidia/cuda:${{ matrix.cuda }}
+      image: nvidia/cuda:${{ matrix.cuda }}-devel-${{ matrix.ubuntu }}
     env:
       RUST_TOOLCHAIN: nightly-2026-08-09
       RUST_MIN_STACK: 16777216
@@ -63,14 +62,14 @@ jobs:
 
           CUDAARCHS="80;89;90" \
           cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --no-run
-          test_binary="$(find target/x86_64-unknown-linux-gnu/release/deps -maxdepth 1 -type f -executable -name 'gpu_circuit_prover-*' -print -quit)"
+          test_binary="$(find target/x86_64-unknown-linux-gnu/release -type f -executable -name 'gpu_circuit_prover-*' -print -quit)"
           test -n "$test_binary"
           cp "$test_binary" artifacts/gpu_circuit_prover-tests
 
       - name: Upload GPU artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-gpu
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.ubuntu }}-gpu
           path: artifacts/
           if-no-files-found: error
 
@@ -79,9 +78,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Keep this aligned with the build matrix because runner driver support is
-        # currently limited to CUDA 12.2 (CUDA 13 artifacts fail at runtime).
-        cuda: [ "12.9.1-devel-ubuntu22.04" ]
+        cuda: [ "13.0.3" ]
+        ubuntu: [ "ubuntu24.04" ]
+    container:
+      image: nvidia/cuda:${{ matrix.cuda }}-runtime-${{ matrix.ubuntu }}
+      options: --gpus all
 
     needs: zksync-airbender-build
     steps:
@@ -119,7 +120,7 @@ jobs:
       - name: Download GPU artifacts
         uses: actions/download-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-gpu
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.ubuntu }}-gpu
           path: zksync-airbender-gpu/
 
       - name: Test GKR VM parity

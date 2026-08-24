@@ -231,7 +231,7 @@ fn bind_fused_reduction_prefix(
     desc: &mut FwdVmDesc,
     prepared: &PreparedDimensionReductionForward<E4>,
 ) {
-    assert!(desc.count > 0 && desc.count % 128 == 0);
+    assert!(desc.count > 0 && desc.count.is_multiple_of(128));
     assert_eq!(desc.count.trailing_zeros(), prepared.initial_trace_log_2);
     assert_eq!(
         prepared.per_round_slot_outputs.len(),
@@ -379,7 +379,7 @@ pub(in crate::forward) fn schedule_vm(
     context: &ProverContext,
 ) -> CudaResult<()> {
     bind_fused_reduction_prefix(&mut lowered.desc, reductions);
-    stage_const_derived_e4_bank(&lowered, forward_setup, context)
+    stage_const_derived_e4_bank(lowered, forward_setup, context)
         .unwrap_or_else(|error| panic!("forward VM constant staging failed: {error:?}"));
     launch_fwd_vm(&lowered.desc, context)
 }

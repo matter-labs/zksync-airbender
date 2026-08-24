@@ -47,10 +47,13 @@ gpu_native_build = { workspace = true }
 
 [dev-dependencies]
 # The e2e suite (tests/) needs more upstream surface than production: it drives
-# fixtures through cs/prover/riscv_transpiler and hashes via gpu_ops.
+# fixtures through cs/prover/riscv_transpiler and hashes via gpu_ops. The
+# composed commitment-pipeline test additionally drives gpu_ntt's Mobius / LDE
+# entries directly.
 common_constants = { workspace = true }
 riscv_transpiler = { workspace = true, features = ["jit"] }
 worker = { workspace = true }
+gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
 itertools = "0.14"
 serde = { workspace = true }
