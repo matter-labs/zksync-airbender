@@ -8,7 +8,7 @@ use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::{
-    preflight_windowed_r0, prove, resolve_backward_execution_strategy, GpuGKRProofJob,
+    preflight_windowed_backward, prove, resolve_backward_execution_strategy, GpuGKRProofJob,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -55,8 +55,11 @@ pub(crate) fn get_gpu_worker_func(
 /// to the per-round arm.
 const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
     windowed_r0: true,
+    windowed_main_continuations: false,
     window_tail: WindowTailArm::Split,
 };
+
+const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
 enum RequestKind {
     MemoryCommitment,
@@ -284,6 +287,27 @@ fn schedule_phase_one<'a>(
     let sequence_id = state.sequence_id;
     let is_proof = matches!(state.kind, RequestKind::Proof);
 
+    let proof_prover_config = is_proof.then(|| {
+        gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
+            .expect("ExecutionProverConfiguration validated GPU security level before GPU work")
+    });
+    if let Some(prover_config) = proof_prover_config.as_ref() {
+        // Lower every selected window family before constructing any proof
+        // transfer. A cached rejection therefore leaves no H2D allocation or
+        // scheduling side effect behind.
+        preflight_windowed_backward(
+            &state.precomputations.gkr_programs,
+            resolve_backward_execution_strategy(
+                &state.precomputations.gkr_programs,
+                prover_config,
+                BACKWARD_OPTIONS,
+            ),
+            BACKWARD_OPTIONS,
+            FINAL_TRACE_SIZE_LOG_2,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+    }
+
     let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
         Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
     } else {
@@ -321,10 +345,9 @@ fn schedule_phase_one<'a>(
         // from `OPTIMAL_FOLDING_PROPERTIES` and can disagree with the
         // `prover_config` the commit phase actually used, so use the
         // prover_config geometry directly here.
-        let prover_config =
-            gpu_circuit_prover::config::prover_config(circuit_type, state.security_level).expect(
-                "ExecutionProverConfiguration validated GPU security level before GPU work",
-            );
+        let prover_config = proof_prover_config
+            .as_ref()
+            .expect("proof requests construct their prover config before transfers");
         let log_lde_factor = prover_config.lde_factor.trailing_zeros();
         let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
         let memory_caps = state
@@ -354,17 +377,6 @@ fn schedule_phase_one<'a>(
             num_teardown_sets,
             "inits-and-teardowns top bits must cover every teardown set of {circuit_type:?}"
         );
-        // Before any of this proof's H2D work is scheduled: a window lowering
-        // the circuit rejects must fail with nothing enqueued.
-        preflight_windowed_r0(
-            &state.precomputations.gkr_programs,
-            resolve_backward_execution_strategy(
-                &state.precomputations.gkr_programs,
-                &prover_config,
-                BACKWARD_OPTIONS,
-            ),
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
         let mut bundle = gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
             setup_transfer,
             decoder_transfer,
@@ -410,7 +422,7 @@ fn enqueue_phase_two<'a>(
     let prover_config =
         gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
             .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
-    let final_trace_size_log_2 = 4u32;
+    let final_trace_size_log_2 = FINAL_TRACE_SIZE_LOG_2;
     let compiled_circuit_arc = Arc::clone(state.precomputations.gkr_programs.compiled_circuit());
 
     let job = match inputs {

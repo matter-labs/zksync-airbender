@@ -8,9 +8,10 @@
 use gpu_core::primitives::field::BF;
 use gpu_gkr_compiler::{
     compile_continuations, compile_forward, compile_r0, lower_dr_window_program,
-    lower_window_program, parse_forward_artifact, project_dr_window_inputs,
-    ContinuationProgramBundle, DrWindowInputOutput, DrWindowInputProjection, DrWindowProgram,
-    ForwardProgramBundle, R0ProgramBundle, WindowFamily, WindowProgram,
+    lower_main_continuation_window_program, lower_window_program, parse_forward_artifact,
+    project_dr_window_inputs, ContinuationProgramBundle, DrWindowInputOutput,
+    DrWindowInputProjection, DrWindowProgram, ForwardProgramBundle, MainContinuationWindowProgram,
+    R0ProgramBundle, WindowFamily, WindowProgram,
 };
 use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
@@ -180,6 +181,12 @@ fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) 
 /// The window-3 lowering of every main layer's R0 program.
 pub struct WindowProgramBundle {
     pub layers: Vec<WindowProgram>,
+}
+
+/// The canonical window-3 lowering of every main-layer continuation program.
+#[derive(Debug)]
+pub struct MainContinuationWindowProgramBundle {
+    pub layers: Vec<MainContinuationWindowProgram>,
 }
 
 /// A window lowering the circuit's shape does not support. Carries the origin
@@ -375,6 +382,27 @@ impl core::fmt::Display for DrWindowLoweringRejection {
 
 impl std::error::Error for DrWindowLoweringRejection {}
 
+/// A continuation lowering the circuit's shape does not support. Rejections
+/// are cached with accepted bundles so repeated preflights are stable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MainContinuationWindowLoweringRejection {
+    pub circuit: String,
+    pub layer: usize,
+    pub resource: String,
+}
+
+impl core::fmt::Display for MainContinuationWindowLoweringRejection {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            formatter,
+            "main continuation window lowering rejected for {}/{}: {}",
+            self.circuit, self.layer, self.resource
+        )
+    }
+}
+
+impl std::error::Error for MainContinuationWindowLoweringRejection {}
+
 /// Symbolic programs compiled once with the circuit's other precomputations.
 ///
 /// R0 and continuation remain separate compiler products and separate runtime
@@ -395,6 +423,11 @@ pub struct GkrPrograms {
     /// precomputation may hold accepted or rejected results for several final
     /// trace logs. Values are owned outside the lock through `Arc`.
     dr_window: Mutex<BTreeMap<u32, Result<Arc<DrWindowProgramBundle>, DrWindowLoweringRejection>>>,
+    /// Lowered independently from R0 on the first proof whose per-layer plan
+    /// selects at least one continuation window.
+    main_continuation_window: OnceLock<
+        Result<MainContinuationWindowProgramBundle, MainContinuationWindowLoweringRejection>,
+    >,
 }
 
 impl GkrPrograms {
@@ -439,6 +472,7 @@ impl GkrPrograms {
             backward_layers,
             window: OnceLock::new(),
             dr_window: Mutex::new(BTreeMap::new()),
+            main_continuation_window: OnceLock::new(),
         })
     }
 
@@ -572,6 +606,39 @@ impl GkrPrograms {
         )))
     }
 
+    /// Lower every layer's continuation program once. A rejection is retained
+    /// in the same once-cell, so later calls return the identical failure.
+    pub fn resolve_main_continuation_window_programs(
+        &self,
+    ) -> Result<&MainContinuationWindowProgramBundle, &MainContinuationWindowLoweringRejection>
+    {
+        self.main_continuation_window
+            .get_or_init(|| {
+                let circuit = forward_artifact(self.circuit_type).1;
+                let mut layers = Vec::with_capacity(self.continuations.layers.len());
+                for layer in &self.continuations.layers {
+                    match lower_main_continuation_window_program(layer) {
+                        Ok(program) => layers.push(program),
+                        Err(error) => {
+                            return Err(MainContinuationWindowLoweringRejection {
+                                circuit: circuit.to_owned(),
+                                layer: layer.layer,
+                                resource: error.to_string(),
+                            });
+                        }
+                    }
+                }
+                Ok(MainContinuationWindowProgramBundle { layers })
+            })
+            .as_ref()
+    }
+
+    /// Whether continuation scheduling may begin: the bundle has been resolved
+    /// and every layer was accepted.
+    pub fn main_continuation_window_programs_ready(&self) -> bool {
+        matches!(self.main_continuation_window.get(), Some(Ok(_)))
+    }
+
     /// Seat a rejection in the once-cell so the preflight boundary can be tested
     /// on circuits the real lowering accepts. Returns whether it took effect.
     #[doc(hidden)]
@@ -579,13 +646,36 @@ impl GkrPrograms {
         self.window.set(Err(rejection)).is_ok()
     }
 
+    /// Seat a continuation rejection for pre-transfer preflight tests.
+    #[doc(hidden)]
+    pub fn reject_main_continuation_window_programs_for_test(
+        &self,
+        rejection: MainContinuationWindowLoweringRejection,
+    ) -> bool {
+        self.main_continuation_window.set(Err(rejection)).is_ok()
+    }
+
     pub(crate) fn window_layer(&self, layer: usize) -> &WindowProgram {
         let bundle = self
             .window
             .get()
-            .expect("windowed scheduling requires preflight_windowed_r0 before prove()")
+            .expect("windowed scheduling requires preflight_windowed_backward before prove()")
             .as_ref()
             .expect("windowed scheduling requires an accepted window lowering");
+        &bundle.layers[layer]
+    }
+
+    #[allow(dead_code)] // The Task 5 binder and Task 6 scheduler consume this accessor.
+    pub(crate) fn main_continuation_window_layer(
+        &self,
+        layer: usize,
+    ) -> &MainContinuationWindowProgram {
+        let bundle = self
+            .main_continuation_window
+            .get()
+            .expect("continuation scheduling requires preflight_windowed_backward before prove()")
+            .as_ref()
+            .expect("continuation scheduling requires an accepted continuation lowering");
         &bundle.layers[layer]
     }
 
