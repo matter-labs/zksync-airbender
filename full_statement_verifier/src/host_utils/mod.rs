@@ -128,8 +128,9 @@ pub fn load_fsv_program(
         )
     } else {
         println!(
-            "Verifier binary `{}` doesn't exist, using fallback naming mode",
-            &stem
+            "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
+            &stem,
+            bin_path.display(),
         );
         assert!(
             blake == BlakeMode::Compression,
