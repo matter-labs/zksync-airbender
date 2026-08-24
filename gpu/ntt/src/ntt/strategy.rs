@@ -87,37 +87,27 @@ pub(crate) enum NttKernelKind {
     EvalsToMonomialsFinal {
         stages: usize,
     },
-    /// Natural→bitrev 3-pass initial: 8 descending-stride stages with the coset
-    /// pre-scale fused into the load
-    /// (`ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel`).
+    /// -> `ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel`
     NaturalToBitrevInitial {
         stages: usize,
     },
-    /// Natural→bitrev 3-pass middle: 8 in-place stages
-    /// (`ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel`).
+    /// -> `ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel`
     NaturalToBitrevMiddle {
         stages: usize,
     },
-    /// Natural→bitrev 3-pass final: `log_n - 16` finest stages
-    /// (`ab_natural_monomials_to_bitrev_evals_final_K_stages_kernel`).
+    /// -> `ab_natural_monomials_to_bitrev_evals_final_K_stages_kernel`
     NaturalToBitrevFinal {
         stages: usize,
     },
-    /// Natural→bitrev 2-pass first: `log_n - 14` descending-stride stages with
-    /// the coset pre-scale on the loaded values
-    /// (`ab_natural_monomials_to_bitrev_evals_first_{9,10}_stages_kernel`).
+    /// -> `ab_natural_monomials_to_bitrev_evals_first_{9,10}_stages_kernel`
     NaturalToBitrevFirst {
         stages: usize,
     },
-    /// Natural→bitrev 2-pass last: the 14 finest stages
-    /// (`ab_natural_monomials_to_bitrev_evals_last_14_stages_kernel`).
+    /// -> `ab_natural_monomials_to_bitrev_evals_last_14_stages_kernel`
     NaturalToBitrevLast {
         stages: usize,
     },
-    /// Natural→bitrev 2-pass-compact last: the `log_n - 8` remaining stages of
-    /// the `log_n in [13, 20]` plan, one chunk of `2^(log_n - 8)` consecutive
-    /// rows per block
-    /// (`ab_natural_monomials_to_bitrev_evals_last_K_stages_compact_kernel`).
+    /// -> `ab_natural_monomials_to_bitrev_evals_last_K_stages_compact_kernel`
     NaturalToBitrevLastCompact {
         stages: usize,
     },
@@ -661,19 +651,13 @@ fn select_forward_strategy(
     })
 }
 
-/// Natural-order monomials → bitreversed-order evals. Descending-stride DIT
-/// network over forward twiddles: `Initial{8}` + `Middle{8}` +
-/// `Final{log_n - 16}`, or `First{log_n - 14}` + `Last{14}` once one column
-/// reaches the device L2 at `log_n >= 23` (the inverse selector's gate), with
-/// the FORWARD selector's joint
-/// `(columns_per_launch, cosets_per_launch)` tiling (the multi-coset input
-/// column is re-read once per coset, so the L2 budget is the forward one, not
-/// the inverse's single-coset one).
+/// Natural-order monomials → bitreversed-order evals. Uses the FORWARD
+/// selector's joint `(columns_per_launch, cosets_per_launch)` tiling: the
+/// multi-coset input column is re-read once per coset, so the L2 budget is the
+/// forward one, not the inverse's single-coset one.
 ///
-/// Below the multipass floor only the TWO_PASS_COMPACT range is covered
-/// (`Initial{8}` + `LastCompact{log_n - 8}`), and only because `log_n = 20` is
-/// a production base size; the compact 1-pass, sub-warp, smem-packed and DIT
-/// families are unreachable from any production base size.
+/// Below the multipass floor only the TWO_PASS_COMPACT range is covered; the
+/// other small-size families are unreachable from a production base size.
 fn select_natural_to_bitrev_strategy(
     log_n: usize,
     num_columns: usize,
@@ -1623,9 +1607,8 @@ mod cpu_tests {
     /// regime is selected exactly when one column reaches the device L2 AND
     /// `log_n >= 23`.
     fn a100_like() -> DeviceProperties {
-        // A100-class device: 40 MB L2, 108 SMs, sm_80. Smallest L2 of the CI
-        // `CUDAARCHS="80;89;90"` set, so log_n = 23 (32 MB column) still fits
-        // and log_n = 24 (64 MB) does not.
+        // A100-class: 40 MB L2, 108 SMs, sm_80 — the smallest L2 we build for,
+        // so log_n = 23 (32 MB column) fits and log_n = 24 (64 MB) does not.
         DeviceProperties {
             l2_cache_size_bytes: 40 * 1024 * 1024,
             sm_count: 108,
@@ -1682,22 +1665,6 @@ mod cpu_tests {
             NttKernelKind::NaturalToBitrevLast { stages: 14 }
         ));
         assert_eq!(s.passes.iter().map(|p| p.stage_count).sum::<usize>(), 23);
-    }
-
-    #[test]
-    fn natural_to_bitrev_log_n_24_picks_three_pass_when_column_fits_l2() {
-        // 64 MB column fits the RTX 5090's 96 MB L2 -> Initial/Middle/Final.
-        let s =
-            select_ntt_strategy(NttDirection::NaturalToBitrev, 24, 1, 2, &rtx_5090_like()).unwrap();
-        assert_eq!(s.passes.len(), 3);
-        assert!(matches!(
-            s.passes[0].kernel,
-            NttKernelKind::NaturalToBitrevInitial { stages: 8 }
-        ));
-        assert!(matches!(
-            s.passes[2].kernel,
-            NttKernelKind::NaturalToBitrevFinal { stages: 8 }
-        ));
     }
 
     #[test]

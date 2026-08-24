@@ -175,7 +175,7 @@ cuda_kernel!(
 /// LSB sibling of [`gather_leaves_for_queries`]: every per-coset segment of
 /// each oracle's cosets backing is the BITREVERSED-order codeword, so logical
 /// leaf `l`'s slot `v` is read from row `(bitreverse(l) << log_rows_per_leaf)
-/// + v`. Query indexes, coset selection and the slab layout are unchanged.
+/// + v`.
 pub fn gather_leaves_for_queries_physical(
     descs: &[OracleGatherDesc; 3],
     num_oracles: u32,
@@ -552,8 +552,7 @@ cuda_kernel!(
 /// LSB sibling of [`gather_merkle_paths_partial_for_queries`]: every per-coset
 /// segment of each oracle's cosets backing is the BITREVERSED-order codeword,
 /// so the on-the-fly bottom-layer hashing reads logical leaf `l` from the
-/// physical block `bitreverse(l)`. The partial-tree backing, the warp
-/// reduction and the emitted path node order stay logical.
+/// physical block `bitreverse(l)`.
 pub fn gather_merkle_paths_partial_for_queries_physical(
     descs: &[OraclePartialPathDesc; 3],
     num_oracles: u32,

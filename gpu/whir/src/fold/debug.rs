@@ -430,11 +430,9 @@ pub(super) fn build_initial_state(
     Ok((batch_challenges, batched_claim))
 }
 
-/// Elementwise-op composition of the round's three evaluations, kept as an
-/// independent cross-check of the fused production kernel. LSB binding pairs
-/// ADJACENT entries (`three_point_partial`, prover/src/gkr/whir/mod.rs), so the
-/// legs are deinterleaved first: `whir_fold_adjacent` at challenge 0 keeps
-/// `src[2i]`, at challenge 1 keeps `src[2i + 1]`.
+/// Elementwise-op composition of the round's three evaluations. The legs are
+/// deinterleaved first: `whir_fold_adjacent` at challenge 0 keeps `src[2i]`, at
+/// challenge 1 keeps `src[2i + 1]`.
 pub(super) fn special_three_point_eval_device(
     state: &mut GpuWhirState,
     context: &ProverContext,

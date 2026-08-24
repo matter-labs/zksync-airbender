@@ -353,26 +353,13 @@ pub fn scoped_range(domain: Option<&str>, message: &str) -> ScopedRange {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Pool-allocation instrumentation (`ab.mem` domain), always on.
-//
-// Two independent consumers share the domain:
-// - `nvtxMemHeapRegister`/regions describe the pool to memory tools — under
-//   `compute-sanitizer` (whose `--nvtx` defaults to yes) this enables
-//   per-allocation bounds checking inside the pool's single backing
-//   allocation.
-// - Each allocation's lifetime is one range in the `ab.mem.spans` sub-domain
-//   whose START carries the alloc record (correlation id, address, bytes,
-//   pool-used-after, placement; message = the `#[track_caller]` alloc site) —
-//   nsys projects these onto the GPU work launched during the lifetime — and
-//   each free emits one `ab.mem` mark carrying the same record with the
-//   post-free total, which keeps free-side data and pre-capture allocations
-//   visible under capture-range profiling.
-//
-// With no tool attached every NVTX call early-outs; the per-event cost on top
-// is one read-locked hash lookup for the cached site string — no string
-// formatting, no heap allocation.
-// ---------------------------------------------------------------------------
+// - Heap/region registration lets compute-sanitizer (whose --nvtx defaults
+//   to yes) bounds-check inside the pool's single backing allocation.
+// - Each allocation is one range in `ab.mem.spans` (nsys projects GPU work
+//   onto it); each free emits a mark, which keeps free-side data and
+//   pre-capture allocations visible under capture-range profiling.
+// With no tool attached every NVTX call early-outs.
 
 pub const MEM_MARK_CATEGORY_ALLOC: u32 = 1;
 pub const MEM_MARK_CATEGORY_FREE: u32 = 2;

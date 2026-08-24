@@ -51,13 +51,11 @@ EXTERN __global__ void ab_whir_accumulate_eq_samples_batched_e4_kernel(const e4 
 // For each query `q` (gridDim.y), emits a table of size `1 << bits` E4 entries:
 //   out[q][idx] = product_{i in 0..bits} (bit_i(idx) ? claim_point[q][claim_offset + i]
 //                                                    : 1 - claim_point[q][claim_offset + i])
-// where bit_i(idx) is the i-th LOW bit of `idx`, matching the GKR builder
-// convention (claim coordinate `j` -> index bit `j`). The host pairs
-// `claim_offset` with the slab that serves the matching `gid` bits, so the
-// high slab is called with `claim_offset = low_bits`. If `scales` is
-// non-null, every entry is additionally multiplied by `scales[q]`; this is
-// how we fold `challenges[q]` into the low slab so the accumulator's inner
-// loop drops to one mul per query.
+// where bit_i(idx) is the i-th LOW bit of `idx`. The host pairs `claim_offset`
+// with the slab serving the matching `gid` bits, so the high slab is called
+// with `claim_offset = low_bits`. If `scales` is non-null, every entry is
+// additionally multiplied by `scales[q]`; this is how we fold `challenges[q]`
+// into the low slab so the accumulator's inner loop drops to one mul per query.
 //
 // Build cost per query is `bits * (1 << bits)` E4 muls — trivial vs. the
 // accumulator workload (build is called once per WHIR round, accumulator runs

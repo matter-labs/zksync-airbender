@@ -1,4 +1,4 @@
-#![feature(allocator_api)]
+#![cfg_attr(all(test, feature = "verifiers"), feature(allocator_api))]
 //! Program-level GPU proving driver: the top of the `gpu/` crate stack.
 //!
 //! Converts `gpu_execution_prover::ProveResult` into

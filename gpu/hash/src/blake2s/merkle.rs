@@ -227,11 +227,9 @@ fn build_merkle_tree_nodes_multi_coset(
     Ok(())
 }
 
-/// Node-only entry point over an ALREADY-POPULATED source layer in
-/// `tree_backing`, forwarding verbatim to
-/// [`build_merkle_tree_nodes_multi_coset`]. Callers that write (and permute)
-/// their own leaves layer cannot use [`build_merkle_tree_multi_coset`], which
-/// re-hashes leaves first and would overwrite it.
+/// Node-only entry over an already-populated source layer in `tree_backing`.
+/// Callers that write their own leaves layer cannot use
+/// [`build_merkle_tree_multi_coset`], which re-hashes leaves and would overwrite it.
 #[doc(hidden)]
 pub fn build_merkle_tree_nodes_multi_coset_over_existing_layer(
     tree_backing: &mut DeviceSlice<Digest>,
@@ -343,14 +341,12 @@ cuda_kernel!(
     )
 );
 
-/// LSB sibling of [`build_partial_merkle_tree_multi_coset`]: `values` is the
-/// same exact `[coset][column][row]` storage, but in BITREVERSED row order.
-/// Leaf hashing reads each physically contiguous leaf block in storage order
-/// into `leaf_digests` (a transient buffer of `per_coset_leaves_count` digests
-/// per coset); the bottom reduction then pairs logical siblings by loading
-/// logical leaf `l` from physical digest slot `bitreverse(l)`, so no
-/// leaf-values read is ever permuted. The tree backing it writes is
-/// byte-identical to the natural-order builder's.
+/// LSB sibling of [`build_partial_merkle_tree_multi_coset`]: `values` is in
+/// BITREVERSED row order. Leaf hashing reads each physically contiguous leaf
+/// block in storage order into `leaf_digests` (a transient buffer of
+/// `per_coset_leaves_count` digests per coset); the bottom reduction then pairs
+/// logical siblings by loading logical leaf `l` from physical digest slot
+/// `bitreverse(l)`, so no leaf-values read is ever permuted.
 pub fn build_partial_merkle_tree_multi_coset_physical(
     values: &DeviceSlice<BF>,
     leaf_digests: &mut DeviceSlice<Digest>,

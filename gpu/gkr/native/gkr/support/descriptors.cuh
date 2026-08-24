@@ -18,12 +18,8 @@ enum gkr_base_source_kind : u32 {
   GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH = 5,
 };
 
-// A dim-reducing input poly is indexed `2*Y + b` with the gate's paired bit `b`
-// lowest, and the sumcheck binds `Y` LSB-first: a round pairs `Y = 2j` with
-// `Y = 2j + 1`, so row `j` owns the contiguous span
-// `[GKR_DIM_REDUCING_ROW_SPAN * j, ... + GKR_DIM_REDUCING_ROW_SPAN)` and the
-// round's f0/f1 pair is `GKR_DIM_REDUCING_PAIR_STRIDE` apart. Both are layout
-// constants, so neither source struct carries a size.
+// Input poly index is `2*Y + b`, gate bit `b` lowest; the sumcheck binds `Y` LSB-first, so row `j` spans GKR_DIM_REDUCING_ROW_SPAN cells and the f0/f1 pair
+// is GKR_DIM_REDUCING_PAIR_STRIDE apart.
 static constexpr unsigned GKR_DIM_REDUCING_ROW_SPAN = 4;
 static constexpr unsigned GKR_DIM_REDUCING_PAIR_STRIDE = 2;
 

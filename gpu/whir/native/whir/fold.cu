@@ -9,12 +9,9 @@ using namespace ::airbender::primitives::vectorized;
 
 namespace airbender::whir {
 
-// Monomial-form fold, LSB binding: the round eliminates variable 0, which is
-// bit 0 of the NATURAL-order coefficient index, so the pair is ADJACENT
-// (2*gid, 2*gid + 1) and the combination is `c0 + r * c1` -- CPU authority
-// `fold_monomial_form`, prover/src/gkr/whir/mod.rs:2674-2714. Out of place:
-// thread `gid` writes a cell thread `gid / 2` reads, so the overlap is
-// cross-block.
+// LSB binding: variable 0 is bit 0 of the NATURAL-order coefficient index. Out
+// of place -- thread `gid` writes a cell thread `gid / 2` reads, so no in-place
+// form exists without a global barrier.
 EXTERN __global__ void ab_whir_fold_adjacent_vectorized_e4_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
                                                                   vectorized_e4_matrix_setter<st_modifier::cg> dst, const e4 *challenge,
                                                                   const unsigned half_len) {
@@ -28,12 +25,8 @@ EXTERN __global__ void ab_whir_fold_adjacent_vectorized_e4_kernel(vectorized_e4_
   dst.set_at_row(gid, folded);
 }
 
-// LSB binding: the round eliminates coordinate 0, so the pair is ADJACENT
-// (2*gid, 2*gid + 1) -- `prover/src/gkr/whir/mod.rs` `fold_evaluation_form` /
-// `fold_eq_poly`. The read range [0, 2*half_len) covers the write range
-// [0, half_len), and thread `gid` writes a cell thread `gid / 2` reads, so the
-// destination is a SEPARATE buffer (cross-block overlap admits no in-place
-// form without a global barrier).
+// Out of place -- thread `gid` writes a cell thread `gid / 2` reads
+// (cross-block overlap).
 EXTERN __global__ void ab_whir_fold_adjacent_e4_kernel(const e4 *src, e4 *dst, const e4 *challenge, const unsigned half_len) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= half_len)
@@ -63,9 +56,7 @@ EXTERN __global__ void ab_whir_fold_adjacent_pair_e4_kernel(const e4 *src_a, e4 
 }
 
 // WHIR sumcheck three-point partials. Each block stride-reduces its slice of
-// [0, half) into three block-local sums; the finalize kernel sums across blocks.
-// LSB binding pairs ADJACENT entries, matching `three_point_partial` in
-// `prover/src/gkr/whir/mod.rs` (`a.as_chunks::<2>()`):
+// [0, half) into three block-local sums; the finalize kernel sums across blocks:
 //   p0 = sum_i eval[2i]   * eq[2i]
 //   p1 = sum_i eval[2i+1] * eq[2i+1]
 //   p2 = sum_i (eval[2i] + eval[2i+1]) * (eq[2i] + eq[2i+1])
@@ -226,9 +217,6 @@ EXTERN __global__ void ab_whir_sum_e4_kernel(const e4 *__restrict__ values, cons
     out[blockIdx.x] = smem[0];
 }
 
-// One term per thread of `sum_i c_i z^i` over NATURAL-order monomial
-// coefficients -- CPU authority `evaluate_monomial_form`,
-// prover/src/gkr/whir/mod.rs:3030-3095 (`coeffs[i]` carries `point^i`).
 DEVICE_FORCEINLINE void partially_evaluate_monomial_form_small_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 z,
                                                                     const unsigned log_count) {
   const int count = 1 << log_count;
@@ -246,10 +234,8 @@ EXTERN __global__ void ab_partially_evaluate_monomial_form_by_ref_small_kernel(v
   partially_evaluate_monomial_form_small_impl(src, dst, *z, log_count);
 }
 
-// Partial sums of `sum_i c_i z^i` over NATURAL-order monomial coefficients
-// (CPU authority `evaluate_monomial_form`, prover/src/gkr/whir/mod.rs:3030-3095),
-// one per thread. Thread `gid` owns the coefficients at `gid + k * gmem_stride`
-// for k in [0, VALS_PER_THREAD), so its contribution is
+// Thread `gid` owns the coefficients at `gid + k * gmem_stride` for k in
+// [0, VALS_PER_THREAD), so its contribution is
 // `z^gid * sum_k c_{gid + k * S} * (z^S)^k` -- a Horner rule in `z_stride =
 // z^gmem_stride` walking k downwards, scaled by `z^gid`.
 // Output size will be count / VALS_PER_THREAD.

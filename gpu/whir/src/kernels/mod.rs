@@ -240,10 +240,8 @@ cuda_kernel_declaration!(
     )
 );
 
-/// LSB-binding fold of the vectorized monomial form:
-/// `dst[i] = src[2i] + challenge * src[2i + 1]` (CPU `fold_monomial_form`).
-/// Out of place — the adjacent pairing makes the read range overlap the write
-/// range across blocks.
+/// Out of place — the adjacent pairing overlaps the read and write ranges
+/// across blocks.
 pub(crate) fn whir_fold_adjacent_vectorized(
     src: &impl DeviceMatrixChunkImpl<BF>,
     dst: &mut impl DeviceMatrixChunkMutImpl<BF>,
@@ -284,8 +282,7 @@ cuda_kernel_declaration!(
     )
 );
 
-/// LSB-binding fold of one evaluation-form leg: `dst[i] = src[2i] + r * (src[2i+1] - src[2i])`.
-/// Out of place — the adjacent pairing makes the read and write ranges overlap
+/// Out of place — the adjacent pairing overlaps the read and write ranges
 /// across blocks.
 #[cfg(test)]
 pub(crate) fn whir_fold_adjacent(
@@ -1067,9 +1064,7 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
         .launch(&config, &args)?;
         return Ok(count);
     }
-    // Each thread Horners its own `gmem_stride`-strided slice of the natural-order
-    // coefficients, so its Horner multiplier is `z^gmem_stride` and the grid is
-    // exact (`count / VALS_PER_THREAD` is a power of two >= BLOCK_DIM).
+    // The grid is exact: `count / VALS_PER_THREAD` is a power of two >= BLOCK_DIM.
     let gmem_stride = count as u32 / VALS_PER_THREAD;
     let z_stride = &mut scratch1[..1];
     pow(&point[..1], gmem_stride, z_stride, stream)?;
@@ -1109,8 +1104,6 @@ cuda_kernel_declaration!(
     )
 );
 
-/// LSB-binding fold of the (evaluation form, eq) pair. Both legs are read at
-/// `2i` / `2i + 1` and written densely at `i` into SEPARATE destinations.
 pub(crate) fn whir_fold_adjacent_pair(
     src_a: &DeviceSlice<E4>,
     dst_a: &mut DeviceSlice<E4>,
@@ -1399,14 +1392,9 @@ pub(crate) fn launch_batched_accumulate_eq_samples(
     assert!(num_queries <= u32::MAX as usize);
     assert!(challenge_count <= u32::MAX as usize);
     assert!(acc_size <= u32::MAX as usize);
-    // `eq_group_count(0) == 0`, so at `challenge_count == 0` the build kernel
-    // writes only the degenerate-high-slot ONE sentinels and returns at its
-    // `blockIdx.x >= groups_count` guard, leaving the low buffer unwritten -
-    // while `make_eq_sizes(0)` reports `low = 0`, so the accumulator still
-    // loads `eq_low[0]` and RMWs `challenges[q] * uninitialized` into
-    // `eq_poly`. Nothing in a real `whir_steps_schedule` reaches
-    // `current_len == 1` before the final step, so this is unreachable today;
-    // the assert keeps it from becoming reachable silently.
+    // At `challenge_count == 0` the low eq buffer is never written but
+    // `make_eq_sizes(0)` still reports `low = 0`, so the accumulator would read
+    // uninitialized device memory.
     assert!(
         challenge_count >= 1,
         "challenge_count >= 1: at 0 the low eq buffer is never written and the \
@@ -1471,13 +1459,8 @@ fn launch_build_split_eq_table(
     out_array: &mut DeviceSlice<E4>,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    // `bits` and `claim_offset` come from a bit split computed by the caller and
-    // must stay in lockstep with the slab it allocated: the kernel reads claim
-    // coordinates `claim_offset..claim_offset + bits` out of each query's
-    // `log_n`-coordinate point, and writes `num_queries` tables of `1 << bits`
-    // E4. Neither bound is observable at run time otherwise - an over-large
-    // `bits` writes past the destination while staying inside the pool, so no
-    // CUDA error is raised and only a value comparison would notice.
+    // Both bounds fail silently: an over-large `bits` writes past the
+    // destination while staying inside the pool, so no CUDA error is raised.
     assert!(claim_offset + bits <= log_n);
     assert!(out_array.len() >= num_queries << bits);
     let table_size = 1u32 << bits;
@@ -1523,9 +1506,7 @@ pub(crate) fn launch_split_accumulate_eq_samples(
     assert!(acc_size <= u32::MAX as usize);
     let (high_bits, low_bits) = split_eq_bits(log_n);
 
-    // The accumulator serves `gid` bits `low_bits..log_n` from the high slab
-    // and bits `0..low_bits` from the low slab, so LSB pairing (coordinate `j`
-    // on bit `j`) puts coordinates `low_bits..log_n` on the high slab and
+    // LSB pairing puts coordinates `low_bits..log_n` on the high slab and
     // `0..low_bits` on the low slab.
     // High slab: no challenge scaling.
     launch_build_split_eq_table(

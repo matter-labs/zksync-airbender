@@ -51,10 +51,7 @@ pub(super) struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation<BF>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,
-    /// Fold destinations for the LSB (adjacent-pair) monomial-form,
-    /// evaluation-form and eq folds. The pairing makes the read range overlap
-    /// the write range across blocks, so each round folds out of place and
-    /// swaps the buffers; a half-length partner suffices because the live
+    /// Out-of-place fold destinations. Half length suffices because the live
     /// length halves every round.
     monomial_form_fold_dst: DeviceMatrixOwnsAllocation<BF>,
     eval_form_fold_dst: DeviceAllocation<E4>,
@@ -197,13 +194,9 @@ pub(super) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
 }
 
 /// The WHIR fold only supports batching the base oracles from their hypercube
-/// evaluations. A coset-0 source would need more than a different column
-/// reader: the committed base backing is stored in bitreversed row order while
-/// this path needs natural row order, and the monomial form derived from a
-/// coset-0 batch is the univariate IFFT of a codeword, which does not carry the
-/// natural-order multilinear coefficient labeling the sumcheck folds, the
-/// out-of-domain evaluation and `final_monomials` all read. Whoever implements
-/// it owns converting all four of those, not just this assert.
+/// evaluations. A coset-0 source would also need the natural-order row layout
+/// and a monomial form carrying the multilinear coefficient labeling — the
+/// univariate IFFT of a codeword does not.
 pub(super) fn assert_batching_source_supported(use_hypercube_evals_for_batching: bool) {
     assert!(
         use_hypercube_evals_for_batching,
@@ -235,11 +228,6 @@ pub(super) fn get_base_columns<'a>(
 }
 
 /// Derives the monomial form from the batched evaluation form.
-///
-/// Only the hypercube-evals batching source is supported (see
-/// `assert_batching_source_supported`, which every caller runs first), so the
-/// evaluation form is already the batched base hypercube columns and this only
-/// has to transform it.
 pub(super) fn initialize_batched_monomial_form(
     log_domain_size: usize,
     use_hypercube_evals_for_batching: bool,

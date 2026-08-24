@@ -18,8 +18,7 @@ DEVICE_FORCEINLINE void gkr_pairwise_round0_accumulate(const gkr_ext_initial_sou
 
 #pragma unroll
   for (unsigned t = 0; t < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT; ++t) {
-    // Round 0 reads the forward tower's own output as the value at t = 0; the
-    // row's X = 0 half is coordinate 2 * gid.
+    // Round 0 reads the forward tower's own output as the value at t = 0.
     const E output_value = gkr_get_initial_value(outputs[t], output_index);
     const E delta_even = gkr_get_initial_delta(inputs[t], even_index);
     const E delta_odd = gkr_get_initial_delta(inputs[t], odd_index);
@@ -190,8 +189,6 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
   store<E, st_modifier::cs>(batch.output, value, gid);
 }
 
-// Round 0 addresses inputs and outputs by index alone: the f0/f1 pair stride is
-// the layout constant `GKR_DIM_REDUCING_PAIR_STRIDE`, not a span size.
 template <typename E>
 DEVICE_FORCEINLINE gkr_ext_initial_source<E> gkr_resolve_dim_reducing_initial_source(const gkr_dim_reducing_tables &tables, const gkr_source_record record) {
   bool first_access;
@@ -254,10 +251,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched_co
 // fold is written to. Both resolve through the same pointer table, so one kernel
 // serves every step past 0; only the host encoder distinguishes the two cases.
 //
-// The source and cache spans never overlap (the host allocates a fresh
-// destination arena per step), and each thread reads exactly the source cells it
-// alone folds into the cells it alone writes, so the pairing needs no size
-// bookkeeping: `gkr_dim_reducing_ancestor_index` maps a cache index to its
+// Source and cache spans never overlap: the host allocates a fresh destination arena per step. `gkr_dim_reducing_ancestor_index` maps a cache index to its
 // source pair.
 template <typename E>
 DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continuation_source(const gkr_dim_reducing_tables &tables,

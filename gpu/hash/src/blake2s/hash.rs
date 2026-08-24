@@ -184,7 +184,7 @@ cuda_kernel!(
 /// LSB sibling of [`hash_leaves_multi_coset`]: each coset slab of `values` is the
 /// BITREVERSED-order codeword, so each leaf is one physically contiguous block of
 /// `1 << log_rows_per_hash` rows and per-coset digest `j` is the old logical leaf
-/// `bitreverse(j)`. Coset strides and digest destinations are unchanged.
+/// `bitreverse(j)`.
 pub fn hash_leaves_multi_coset_physical(
     values: &DeviceSlice<BF>,
     results: &mut DeviceSlice<Digest>,
@@ -279,7 +279,7 @@ pub fn hash_leaves_from_ntt_multi_coset(
         "per_coset_leaves_count must be a power of two (got {per_coset_leaves_count})"
     );
     // The kernel decomposes read offsets with mask/shift (`__ffs`-derived log),
-    // which silently mis-maps inputs for non-power-of-two column counts.
+    // which silently maps inputs incorrectly for non-power-of-two column counts.
     assert!(
         src_cols_per_coset.is_power_of_two(),
         "src_cols_per_coset must be a power of two (got {src_cols_per_coset})"
@@ -349,12 +349,9 @@ cuda_kernel!(
 /// LSB sibling of [`hash_leaves_from_ntt_multi_coset`]: `ntt_output` holds the
 /// BITREVERSED-order codeword per column, so each leaf is one physically
 /// contiguous run of `1 << log_values_per_leaf` rows and per-coset digest `j` is
-/// the old logical leaf `bitreverse(j)`. The bit-reversed coset placement of the
-/// destination is unchanged.
-/// Digests land in PHYSICAL order within each coset and no companion builder
-/// canonicalizes them: a future caller must apply the strided digest
-/// bit-reverse (as `gpu_trace::build_full_trees_from_physical` does) or hash
-/// logical leaves via the partial-style builder.
+/// the old logical leaf `bitreverse(j)`.
+/// Digests land in PHYSICAL order; the caller must bit-reverse the digest
+/// axis or use the partial-style builder.
 pub fn hash_leaves_from_ntt_multi_coset_physical(
     ntt_output: &DeviceSlice<BF>,
     results: &mut DeviceSlice<Digest>,
@@ -494,10 +491,8 @@ cuda_kernel!(
 /// LSB sibling of [`hash_leaves_from_ntt_multi_coset_to_staging`]: `ntt_output`
 /// holds the BITREVERSED-order codeword per column, so per-coset staging digest
 /// `j` is the old logical leaf `bitreverse(j)`.
-/// Digests land in PHYSICAL order within each coset and no companion builder
-/// canonicalizes them: a future caller must apply the strided digest
-/// bit-reverse (as `gpu_trace::build_full_trees_from_physical` does) or hash
-/// logical leaves via the partial-style builder.
+/// Digests land in PHYSICAL order; the caller must bit-reverse the digest
+/// axis or use the partial-style builder.
 pub fn hash_leaves_from_ntt_multi_coset_to_staging_physical(
     ntt_output: &DeviceSlice<BF>,
     staging: &mut DeviceSlice<Digest>,
@@ -623,10 +618,8 @@ cuda_kernel!(
 /// holds the BITREVERSED-order codeword per column, so per-coset staging digest
 /// `j` is the old logical leaf `bitreverse(j)`. The flat-range → coset/leaf
 /// decomposition of the destination is unchanged.
-/// Digests land in PHYSICAL order within each coset and no companion builder
-/// canonicalizes them: a future caller must apply the strided digest
-/// bit-reverse (as `gpu_trace::build_full_trees_from_physical` does) or hash
-/// logical leaves via the partial-style builder.
+/// Digests land in PHYSICAL order; the caller must bit-reverse the digest
+/// axis or use the partial-style builder.
 pub fn hash_leaves_from_ntt_flat_range_to_staging_physical(
     ntt_output: &DeviceSlice<BF>,
     staging: &mut DeviceSlice<Digest>,

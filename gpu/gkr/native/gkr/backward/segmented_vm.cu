@@ -1,12 +1,8 @@
 // Segmented backward VM. Warps first publish required folds, synchronize, then
 // evaluate their assigned atom lists. Warp 0 reduces the partials and applies eq.
-// Every backing is LSB-dense at its own depth: the target-depth value of logical
-// index `u = 2 * row + b` sits at `V[u]`, so a row's endpoints are ADJACENT —
-// s0 = V[2 * row], s1 = V[2 * row + 1] — and a backing `delta` levels below the
-// target depth holds the 2^delta leaves of `u` adjacently at
-// `V[(u << delta) + q]`, `q` carrying the coordinates this round's fold binds on
-// its low bits. Fold level d uses claim_point[d]. Pre-fold reads use ld.cs,
-// publish stores st.wb, and eval reads ld.ca.
+// Every backing is LSB-dense at its own depth: logical index `u = 2 * row + b` sits at `V[u]` (endpoints ADJACENT), and a backing `delta` levels below the
+// target depth holds `u`'s 2^delta leaves at `V[(u << delta) + q]`, `q` carrying this round's bound coordinates on its low bits. Fold level d uses
+// claim_point[d]. Pre-fold reads use ld.cs, publish stores st.wb, and eval reads ld.ca.
 
 #include "segmented_vm.cuh"
 
@@ -66,11 +62,8 @@ DEVICE_FORCEINLINE e4 seg_lift(const e4 &value) { return value; }
 
 // ── Fold weights ────────────────────────────────────────────────────────────
 
-// One thread builds one slot. Challenges come from the claim-point constant —
-// the round's update is stream-ordered before this launch. Slot `q` carries the
-// weight of leaf `q`: the oldest coordinate this fold binds sits on bit 0 of `q`,
-// which is the same bit the leaf's backing index carries it on, so the table
-// needs no permutation and the folds walk `q` monotonically.
+// One thread builds one slot. The round's claim-point update is stream-ordered before this launch. Slot `q` is leaf `q`'s weight: `q`'s bit j is the same bit
+// the leaf's backing index carries, so no permutation and `q` walks monotonically.
 DEVICE_FORCEINLINE void seg_build_fold_weights(e4 *fold_weights, const u32 round) {
   const u32 slot = threadIdx.x;
   if (blockIdx.x != 0 || slot >= BWD_SEG_FOLD_WEIGHT_SLOTS)
@@ -101,13 +94,7 @@ DEVICE_FORCEINLINE void seg_build_fold_weights(e4 *fold_weights, const u32 round
 //
 //   fold(u) = leaf0 + sum_{q>=1} w_q * (raw((u << DELTA) + q) - leaf0)
 //
-// One accumulator, one common subtrahend, 2^DELTA - 1 mixed fmas, no interior
-// e4 x e4 nodes. The 2^DELTA leaves of the target-depth value `u` are ADJACENT,
-// `q` occupying the low DELTA bits of the backing index: the coordinates this
-// fold binds are the oldest ones, and they sit below `u`'s own bits. The weights
-// live in `ab_gkr_bwd_seg_fold_weights` in `q` order, so this loop walks q
-// monotonically and has no ordering convention left to violate. At DELTA == 1
-// this is the affine `fma(r, f1 - f0, f0)` form.
+// One accumulator, one common subtrahend, 2^DELTA - 1 mixed fmas, no interior e4 x e4 nodes. At DELTA == 1 this is the affine `fma(r, f1 - f0, f0)` form.
 template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_flat(const Raw &raw, const u32 u) {
   static_assert(DELTA >= 1 && DELTA <= BWD_SEG_MAX_FOLD_DEPTH, "fold outside 1..BWD_SEG_MAX_FOLD_DEPTH");
   constexpr u32 BASE = DELTA == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : DELTA == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
@@ -149,13 +136,8 @@ template <u32 MAX_DEPTH, typename Raw> DEVICE_FORCEINLINE e4 seg_fold(const Raw 
   return seg_lift(raw(u));
 }
 
-// Both target-depth endpoints of one folded source in ONE pass over q: same
-// loads as two seg_fold_flat calls, each weight consumed once, two
-// independent fma chains for ILP. This is also the prologue's shape — fold
-// then publish both endpoints — so it is written once here. It takes the EVEN
-// endpoint `u` (`u | 1` is the odd one), the same index `seg_fold_flat` takes, so
-// the two leaf-address expressions cannot drift apart; the odd endpoint's leaf
-// block is the even one's plus `2^DELTA`.
+// Both target-depth endpoints of one folded source in ONE pass over q: same loads as two seg_fold_flat calls, each weight consumed once, two independent fma
+// chains for ILP. Takes the EVEN endpoint `u`, the same index `seg_fold_flat` takes; the odd endpoint's leaf block is `+ 2^DELTA`.
 template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE void seg_fold_endpoints_flat(const Raw &raw, const u32 u, e4 &s0, e4 &s1) {
   static_assert(DELTA >= 1 && DELTA <= BWD_SEG_MAX_FOLD_DEPTH, "fold outside 1..BWD_SEG_MAX_FOLD_DEPTH");
   constexpr u32 BASE = DELTA == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : DELTA == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
@@ -203,9 +185,7 @@ template <typename T> struct seg_value {
   T delta;
 };
 
-// Resolve only the endpoints the projection needs: an Endpoint0 use reads ONE
-// cell. The unused component is returned as zero rather than left undefined;
-// every caller is fully inlined, so the dead component costs nothing.
+// The unused component is returned as zero rather than left undefined; every caller is fully inlined, so it costs nothing.
 template <seg_projection P, typename Value> DEVICE_FORCEINLINE auto seg_project(const Value &value, const u32 row) {
   const u32 u = row << 1;
   using T = decltype(value(u));
@@ -332,18 +312,9 @@ DEVICE_FORCEINLINE void seg_fold_and_publish(const bwd_seg_desc &desc, const u16
   if (!active)
     return;
   e4 *publish = seg_lane_column_mut(desc, record.cache);
-  // Blocks own disjoint row ranges and exactly one warp folds a given source, so
-  // the adjacent pair `2 * row`, `2 * row + 1` has a single writer. The fold is
-  // never in place either: `schedule_bwd_vm_ext_round` allocates THIS round's
-  // buffer just in time and retires round r - 1's only after this launch is
-  // enqueued, so the destination and every leaf this launch reads are distinct
-  // live allocations. `check_alias` covers only slots lowered with a real
-  // address; a production destination is a deferred (null-base) slot and is
-  // SKIPPED there, so it is the allocation discipline that carries this, not a
-  // lowering check. A surface that genuinely does overlap needs the
-  // register/`__syncthreads`/store shape instead — see `mega_finalize.cuh`'s eq
-  // fold. `wb` keeps the pair in L1 for the eval loop's same-block `ld.ca`
-  // re-reads.
+  // Blocks own disjoint row ranges and exactly one warp folds a given source, so the pair `2 * row`, `2 * row + 1` has a single writer. The destination is
+  // never a leaf this launch reads: the host allocates round r's buffer before retiring round r - 1's, and no lowering check enforces that. `wb` keeps the
+  // pair in L1 for the eval loop's `ld.ca` re-reads.
   store<e4, st_modifier::wb>(publish, s0, u);
   store<e4, st_modifier::wb>(publish, s1, u | 1);
 }

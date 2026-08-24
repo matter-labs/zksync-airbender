@@ -78,10 +78,10 @@ pub(crate) fn max_partials_len(max_acc_size: usize) -> usize {
 /// Resolves the active eq slot for the upcoming fold. Returns
 /// `(slot_base_ptr, slot_size_before_fold)` and the **next** size for the
 /// caller to write back into `eq_sizes` AFTER the kernel is scheduled.
-/// Priority is `low` > `high[1]` > `high[0]`: the eq build puts claim
-/// coordinate `b` on physical row bit `b`, and `gkr_compute_eq_inline` reads
-/// the slots as `[high[0] | high[1] | low]` from the top, so the coordinate the
-/// round eliminates is the lowest bit of the lowest non-empty slot.
+/// The eq build puts claim coordinate `b` on physical row bit `b`, and
+/// `gkr_compute_eq_inline` reads the slots as `[high[0] | high[1] | low]` from
+/// the top, so the coordinate the round eliminates is the lowest bit of the
+/// lowest non-empty slot.
 pub(crate) fn resolve_active_eq_slot(eq_sizes: &GkrEqSizes, eq_low: *mut E4) -> (*mut E4, u32) {
     if eq_sizes.low > 0 {
         (eq_low, eq_sizes.low)
@@ -102,9 +102,7 @@ pub(crate) fn resolve_active_eq_slot(eq_sizes: &GkrEqSizes, eq_low: *mut E4) -> 
 
 /// Applies the in-place size decrement to `eq_sizes` after the mega-finalize
 /// kernel has been scheduled. Stream ordering guarantees the next round's
-/// kernel sees the post-fold slot values. Also the single definition of the
-/// drain order: the segmented VM's static descriptor mirror
-/// (`production_bind::drained_eq_sizes`) replays this function.
+/// kernel sees the post-fold slot values.
 pub(crate) fn record_active_eq_slot_fold(eq_sizes: &mut GkrEqSizes) {
     if eq_sizes.low > 0 {
         eq_sizes.low -= 1;

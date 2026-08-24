@@ -78,8 +78,6 @@ pub(super) fn schedule_fold_round(
 
         let current_len = state.current_len;
         let next_len = current_len / 2;
-        // Monomial form, evaluation form and eq are all in natural order, so
-        // every LSB fold pairs ADJACENT entries and must run out of place.
         whir_fold_adjacent_vectorized(
             &state.sumchecked_poly_monomial_form,
             &mut state.monomial_form_fold_dst,

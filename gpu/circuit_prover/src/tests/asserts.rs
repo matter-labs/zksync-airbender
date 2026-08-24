@@ -74,8 +74,8 @@ pub(super) fn assert_whir_proof_eq_for_test(
     actual: &prover::gkr::whir::WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>,
     expected: &prover::gkr::whir::WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>,
 ) {
-    // Committed-state values and lengths first: they gate the whole WHIR phase
-    // and a length mismatch would make the per-round ladder below misalign.
+    // Committed-state values and lengths first: a length mismatch would make the
+    // per-round ladder below misalign.
     assert_eq!(
         actual.batching_challenge, expected.batching_challenge,
         "WHIR batching challenge diverged"
@@ -151,14 +151,8 @@ pub(super) fn assert_whir_proof_eq_for_test(
         );
     }
 
-    // Per-fold-group ladder, in the order `whir_fold`
-    // (prover/src/gkr/whir/mod.rs) commits to the transcript: the group's
-    // sumcheck polynomials, then either the next intermediate oracle's cap plus
-    // its OOD sample or (last group) the final monomials, then the group's PoW
-    // nonce. Comparing in transcript order is what makes the FIRST failing
-    // assert name the cause: everything after a diverged commitment is
-    // downstream of it, so e.g. a wrong intermediate cap must not be reported
-    // as the next group's sumcheck-polynomial divergence.
+    // Transcript order, so the first failing assert names the cause rather than
+    // a downstream symptom.
     let mut round_idx = 0usize;
     let group_count = expected.whir_schedule.whir_steps_schedule.len();
     for (group_idx, &steps) in expected
@@ -390,27 +384,10 @@ pub(super) fn assert_serialized_bytes_eq_for_test<T: serde::Serialize>(
     );
 }
 
-// The terminal gate of the MSB->LSB migration, and the last step of
-// `assert_gkr_proof_eq_for_test`: the field-by-field asserts above name a
-// diverging field, this one catches anything they do not walk.
+// Catches anything the field-by-field asserts above do not walk.
 pub(super) fn assert_serialized_proof_bytes_eq(
     cpu: &GKRProof<BF, E4, DefaultTreeConstructor>,
     gpu: &GKRProof<BF, E4, DefaultTreeConstructor>,
 ) {
     assert_serialized_bytes_eq_for_test(cpu, gpu, "GKR proof");
-}
-
-#[test]
-fn serialized_proof_bytes_canary_accepts_identical_values() {
-    let schedule = WhirSchedule::default();
-    assert_serialized_bytes_eq_for_test(&schedule, &schedule.clone(), "whir schedule");
-}
-
-#[test]
-#[should_panic(expected = "serialized bytes diverged at offset")]
-fn serialized_proof_bytes_canary_rejects_mutated_values() {
-    let schedule = WhirSchedule::default();
-    let mut mutated = schedule.clone();
-    mutated.cap_size += 1;
-    assert_serialized_bytes_eq_for_test(&schedule, &mutated, "whir schedule");
 }

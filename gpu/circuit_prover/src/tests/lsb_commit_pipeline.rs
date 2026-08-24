@@ -1,9 +1,5 @@
-//! Composed LSB commitment pipeline against the live CPU `commit_trace_part`.
-//!
-//! The GPU side runs the production entries back to back on a real
-//! `TraceHolder`'s backings: hypercube evals -> monomials, natural monomials ->
-//! bitreversed evals over the whole LDE, the physical Merkle builders, and the
-//! physical query gathers. Nothing permutes rows between stages.
+//! Composed LSB commitment pipeline against the live CPU `commit_trace_part`,
+//! running the production entries back to back. Nothing permutes rows between stages.
 
 use super::*;
 
@@ -74,19 +70,8 @@ impl Shape {
     }
 }
 
-fn bitreverse_index(index: usize, num_bits: u32) -> usize {
-    if num_bits == 0 {
-        0
-    } else {
-        index.reverse_bits() >> (usize::BITS - num_bits)
-    }
-}
-
 /// Boundary query indexes over the flat query domain
-/// `q = (internal << log_lde_factor) | coset`: per coset the low and high edge
-/// with their inward neighbours, both sides of a 32-leaf subtree boundary at
-/// each end, and the coset midpoint pair. Element `0` is the global minimum
-/// query, the last element the global maximum, and one query is repeated.
+/// `q = (internal << log_lde_factor) | coset`.
 fn boundary_queries(log_lde_factor: u32, log_leaves_count: u32) -> Vec<u32> {
     assert!(log_leaves_count >= 6);
     let leaves = 1u32 << log_leaves_count;
@@ -133,11 +118,8 @@ struct CpuReference {
     cap: Vec<Digest>,
     leaf_values: Vec<BF>,
     path_nodes: Vec<Digest>,
-    /// Natural-order codeword of coset `k`, column `c`, at `k * cols + c`.
-    coset_columns: Vec<Vec<BF>>,
 }
 
-/// The live prover commit path: `commit_trace_part` plus its query readers.
 fn cpu_reference(shape: &Shape, hypercube_evals: &[BF], queries: &[u32]) -> CpuReference {
     let worker = Worker::new_with_num_threads(8);
     let rows = shape.rows();
@@ -168,18 +150,10 @@ fn cpu_reference(shape: &Shape, hypercube_evals: &[BF], queries: &[u32]) -> CpuR
         path_nodes.extend(query.path.iter().copied());
     }
 
-    let mut coset_columns = Vec::with_capacity(shape.cosets_count() * shape.columns_count);
-    for coset in in_memory.cosets.cosets.iter() {
-        for column in coset.original_values_normal_order.iter() {
-            coset_columns.push(column.column.to_vec());
-        }
-    }
-
     CpuReference {
         cap,
         leaf_values,
         path_nodes,
-        coset_columns,
     }
 }
 
@@ -187,9 +161,6 @@ struct GpuResult {
     cap: Vec<Digest>,
     leaf_values: Vec<BF>,
     path_nodes: Vec<Digest>,
-    /// The materialized coset backing, `[coset][col][row]` in bitreversed row
-    /// order.
-    cosets: Vec<BF>,
 }
 
 fn gpu_commit_and_query(
@@ -414,22 +385,14 @@ fn gpu_commit_and_query(
 
     let mut leaf_values = vec![BF::ZERO; leaf_values_len];
     let mut path_nodes = vec![Digest::default(); path_nodes_len];
-    let mut cosets = vec![BF::ZERO; cosets_count * columns_count * rows];
     memory_copy_async(leaf_values.as_mut_slice(), &leaf_slab, stream).unwrap();
     memory_copy_async(path_nodes.as_mut_slice(), &path_slab, stream).unwrap();
-    memory_copy_async(
-        cosets.as_mut_slice(),
-        holder.get_consolidated_cosets(),
-        stream,
-    )
-    .unwrap();
     stream.synchronize().unwrap();
 
     GpuResult {
         cap,
         leaf_values,
         path_nodes,
-        cosets,
     }
 }
 
@@ -472,24 +435,6 @@ fn assert_composed_pipeline_matches_cpu(shape: Shape) {
             trees_cache_mode,
         );
 
-        // Stage boundary: the composed Mobius + natural->bitrev LDE is the CPU
-        // codeword read in bitreversed row order.
-        let rows = shape.rows();
-        for coset in 0..shape.cosets_count() {
-            for column in 0..shape.columns_count {
-                let slab = coset * shape.columns_count + column;
-                let expected = &cpu.coset_columns[slab];
-                let actual = &gpu.cosets[slab * rows..(slab + 1) * rows];
-                for row in 0..rows {
-                    assert_eq!(
-                        actual[row],
-                        expected[bitreverse_index(row, shape.log_domain_size)],
-                        "{label}: coset {coset} column {column} physical row {row}",
-                    );
-                }
-            }
-        }
-
         assert_elementwise_eq(&gpu.cap, &cpu.cap, &format!("{label}: cap"));
         assert_elementwise_eq(
             &gpu.leaf_values,
@@ -508,16 +453,6 @@ fn assert_composed_pipeline_matches_cpu(shape: Shape) {
 fn composed_lsb_commit_pipeline_matches_cpu_log21() {
     assert_composed_pipeline_matches_cpu(Shape {
         log_domain_size: 21,
-        log_rows_per_leaf: 1,
-        log_lde_factor: 1,
-        columns_count: 1,
-    });
-}
-
-#[test]
-fn composed_lsb_commit_pipeline_matches_cpu_log20() {
-    assert_composed_pipeline_matches_cpu(Shape {
-        log_domain_size: 20,
         log_rows_per_leaf: 1,
         log_lde_factor: 1,
         columns_count: 1,

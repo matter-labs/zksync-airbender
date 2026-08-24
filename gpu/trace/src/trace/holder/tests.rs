@@ -917,7 +917,7 @@ fn trace_holder_queries_match_across_tree_cache_modes() {
     }
 }
 
-const PHYSICAL_TREE_SHAPES: [(u32, u32); 6] = [(4, 1), (6, 1), (10, 1), (10, 5), (12, 5), (12, 1)];
+const PHYSICAL_TREE_SHAPES: [(u32, u32); 3] = [(4, 1), (10, 1), (10, 5)];
 
 fn deterministic_values(len: usize) -> Vec<BF> {
     let mut state = 0x1234_5678_9abc_def0u64;

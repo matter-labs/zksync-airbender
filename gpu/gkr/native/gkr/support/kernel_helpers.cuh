@@ -38,9 +38,6 @@ template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_value(const gkr_ext_i
   return load<E, ld_modifier::cs>(source.start, index);
 }
 
-// Current index `index` holds coordinate `Y = index / GKR_DIM_REDUCING_PAIR_STRIDE`
-// at gate bit `index % GKR_DIM_REDUCING_PAIR_STRIDE`; the pending fold produced it
-// from the ancestor coordinates `2*Y` and `2*Y + 1` at the same gate bit.
 DEVICE_FORCEINLINE unsigned gkr_dim_reducing_ancestor_index(const unsigned index) { return GKR_DIM_REDUCING_PAIR_STRIDE * (index & ~1u) + (index & 1u); }
 
 template <typename E>
@@ -105,9 +102,7 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_poin
     const unsigned chunk_len = 1u << chunk_size;
     if (chunk_table_idx < chunk_len) {
       const unsigned variable_idx = group_start + variable_offset;
-      // LSB relabeling: coordinate j pairs with table bit j, so the variable at
-      // group/chunk slot `variable_idx` reads coordinate `challenge_count - 1 - variable_idx`,
-      // reversed WITHIN `[challenge_offset, challenge_offset + challenge_count)`.
+      // LSB relabeling: the reversal is WITHIN `[challenge_offset, challenge_offset + challenge_count)`.
       const unsigned first_idx = challenge_offset + challenge_count - 1 - variable_idx;
       const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
       const E first_challenge = load<E, ld_modifier::cs>(claim_point, first_idx);

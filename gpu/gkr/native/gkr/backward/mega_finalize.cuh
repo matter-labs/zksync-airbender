@@ -15,11 +15,7 @@ using ::airbender::gkr::ops::run_round_update_single_thread;
 // this cap.
 constexpr unsigned MEGA_FINALIZE_BLOCK_THREADS = 256;
 
-// `prev_claim_coord` and `challenge_out` are NOT restrict-qualified: both
-// per-layer schedulers build their output claim-point view over the same
-// symbol the input view reads, so round `step` reads and writes one address.
-// The store's value depends on the load through the transcript, which is what
-// keeps the in-place round well-ordered.
+// NOT __restrict__: both schedulers build the output claim-point view over the same symbol the input view reads, so round `step` reads and writes one address.
 template <unsigned BLOCK_THREADS, typename PartialsSource>
 DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, const unsigned num_partials, const e4 *prev_claim_coord, u32 *__restrict__ seed_io,
                                             e4 *__restrict__ claim_io, e4 *__restrict__ eq_prefactor_io, e4 *__restrict__ coeffs_out, e4 *challenge_out,
@@ -54,10 +50,7 @@ DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, cons
     __syncthreads();
   }
 
-  // Thread 0: run the round-update algebra against the reduced
-  // (e_partial, c_partial). The tree reduction's trailing barrier already
-  // published `smem_c0[0]` / `smem_c1[0]`, and nothing below writes shared
-  // memory.
+  // Thread 0: run the round-update algebra against the reduced (e_partial, c_partial).
   if (tid == 0) {
     const e4 e_partial = smem_c0[0];
     const e4 c_partial = smem_c1[0];
@@ -70,10 +63,7 @@ DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, cons
   // (eq_low / GKR_EQ_GROUP_TABLE_LEN / 2 = 128) fits in any
   // block with BLOCK_THREADS >= 128.
   //
-  // LSB draining eliminates the slot's LOWEST bit, so the read range
-  // [0, 2 * new_g_len) overlaps the write range [0, new_g_len): thread 0 reads
-  // element 1, which thread 1 would otherwise overwrite. Load into a register,
-  // barrier across the WHOLE block, then store.
+  // LSB drain: reads [0, 2 * new_g_len) overlap writes [0, new_g_len), so load to a register, barrier across the whole block, then store.
   const unsigned new_g_len = active_eq_size_before_fold >= 1 ? 1u << (active_eq_size_before_fold - 1) : 0u;
   const bool folds = tid < new_g_len;
   e4 folded = e4::ZERO();

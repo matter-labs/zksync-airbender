@@ -48,11 +48,11 @@ typedef struct gpu_core_mem_event {
 
 uint64_t gpu_core_nvtx_mem_schema_register(nvtxDomainHandle_t domain) {
   static const nvtxPayloadSchemaEntry_t entries[] = {
-      {0, NVTX_PAYLOAD_ENTRY_TYPE_UINT64, "id", NULL, 0, offsetof(gpu_core_mem_event, id)},
-      {0, NVTX_PAYLOAD_ENTRY_TYPE_ADDRESS, "address", NULL, 0, offsetof(gpu_core_mem_event, address)},
-      {0, NVTX_PAYLOAD_ENTRY_TYPE_UINT64, "bytes", NULL, 0, offsetof(gpu_core_mem_event, bytes)},
-      {0, NVTX_PAYLOAD_ENTRY_TYPE_UINT64, "pool_used_after", NULL, 0, offsetof(gpu_core_mem_event, pool_used_after)},
-      {0, NVTX_PAYLOAD_ENTRY_TYPE_UINT32, "placement", NULL, 0, offsetof(gpu_core_mem_event, placement)},
+      {.type = NVTX_PAYLOAD_ENTRY_TYPE_UINT64, .name = "id", .offset = offsetof(gpu_core_mem_event, id)},
+      {.type = NVTX_PAYLOAD_ENTRY_TYPE_ADDRESS, .name = "address", .offset = offsetof(gpu_core_mem_event, address)},
+      {.type = NVTX_PAYLOAD_ENTRY_TYPE_UINT64, .name = "bytes", .offset = offsetof(gpu_core_mem_event, bytes)},
+      {.type = NVTX_PAYLOAD_ENTRY_TYPE_UINT64, .name = "pool_used_after", .offset = offsetof(gpu_core_mem_event, pool_used_after)},
+      {.type = NVTX_PAYLOAD_ENTRY_TYPE_UINT32, .name = "placement", .offset = offsetof(gpu_core_mem_event, placement)},
   };
   nvtxPayloadSchemaAttr_t attr = {0};
   attr.fieldMask = NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME | NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_TYPE | NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_ENTRIES |

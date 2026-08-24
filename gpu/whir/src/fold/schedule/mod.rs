@@ -641,11 +641,9 @@ pub fn schedule_gpu_whir_fold_with_sources(
         )?;
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        // The oracle's cap was gathered into the slab at commit and every
-        // scheduled reader of its cosets/tree backings is enqueued above on
-        // the exec stream, so the retired oracle's device buffers drop here
-        // (stream-ordered, like other transients) instead of accumulating
-        // one oracle per round until the end of the schedule.
+        // Cap already gathered into the slab; every scheduled reader of this
+        // oracle's backings is enqueued above on the exec stream, so the drop
+        // is stream-ordered.
         drop(oracle_to_query);
         delinearization_ephemerals.push(delinearization_device);
         delinearization_ephemerals.push(per_query_pows);
@@ -682,12 +680,12 @@ pub fn schedule_gpu_whir_fold_with_sources(
         // Mirror CPU `prover/src/gkr/whir/mod.rs`: after the final fold
         // and before drawing the final PoW/query bits, CPU commits the remaining
         // monomial-form coefficients into the transcript seed
-        // (`commit_field_els(&mut transcript_seed, &sumchecked_poly_monomial_form)`,
-        // :1931) and later stores that same array on the proof as
-        // `final_monomials` (:2035) — both in NATURAL coefficient order, with no
-        // reordering. This is kept entirely on the device: the transpose writes
-        // the monomials straight into the slab `whir.final_monomials` range,
-        // which the transcript commit then hashes.
+        // (`commit_field_els(&mut transcript_seed, &sumchecked_poly_monomial_form)`)
+        // and later stores that same array on the proof as `final_monomials` —
+        // both in NATURAL coefficient order, with no reordering. This is kept
+        // entirely on the device: the transpose writes the monomials straight
+        // into the slab `whir.final_monomials` range, which the transcript
+        // commit then hashes.
         //
         // Cross-check: confirm that `state.current_len`
         // at the end of the final fold matches the slab-allocated
@@ -698,10 +696,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
             1usize << (trace_len_log2 - total_sumcheck_polys as u32),
             "WHIR final-fold current_len must match slab final_monomials_len",
         );
-        // The transpose is row-order-preserving, so the slab range carries the
-        // monomials in the order `state.sumchecked_poly_monomial_form` holds
-        // them — natural, the CPU's order — and the transcript commit hashes
-        // exactly what `commit_field_els` hashes on the CPU side.
         {
             let (dst_ptr, dst_len) = unsafe {
                 proof_layout.whir_final_monomials_device_mut(proof_slab.as_ptr() as *mut u8)
@@ -815,11 +809,9 @@ pub fn schedule_gpu_whir_fold_with_sources(
         }
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        // The oracle's cap was gathered into the slab at commit and every
-        // scheduled reader of its cosets/tree backings is enqueued above on
-        // the exec stream, so the retired oracle's device buffers drop here
-        // (stream-ordered, like other transients) instead of accumulating
-        // one oracle per round until the end of the schedule.
+        // Cap already gathered into the slab; every scheduled reader of this
+        // oracle's backings is enqueued above on the exec stream, so the drop
+        // is stream-ordered.
         drop(oracle_to_query);
         round_range.end(stream)?;
         tracing_ranges.push(round_range);

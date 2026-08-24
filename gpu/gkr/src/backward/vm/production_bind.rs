@@ -689,9 +689,6 @@ fn schedule_seg_challenge_slab(
 
 // ── The Ext launch sequence ──────────────────────────────────────────────────
 
-/// Static mirror of the fused tail's per-round eq drain. Replays
-/// [`record_active_eq_slot_fold`] so the segmented VM's descriptors cannot
-/// disagree with what the finalize kernel actually folded.
 pub(crate) fn drained_eq_sizes(mut eq_sizes: GkrEqSizes, rounds: u8) -> GkrEqSizes {
     for _ in 0..rounds {
         record_active_eq_slot_fold(&mut eq_sizes);

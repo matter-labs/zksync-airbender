@@ -9,8 +9,10 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_structures::DeviceMatrix;
+#[cfg(test)]
+use gpu_core::primitives::device_structures::DeviceMatrixImpl;
 use gpu_core::primitives::device_structures::{
-    DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
+    DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixMut,
 };
 use gpu_core::primitives::field::BF;
 #[cfg(test)]
@@ -354,24 +356,20 @@ impl TraceHolder<BF> {
         let domain_size = 1usize << self.log_domain_size;
 
         let log_n = self.log_domain_size as usize;
-        // The committed backing is the BITREVERSED-order codeword the LSB
-        // commitment layer's Merkle builders and query gathers consume, and the
-        // natural->bitrev LDE produces it directly.
+        // The committed backing is the BITREVERSED-order codeword the Merkle
+        // builders and query gathers consume; the natural->bitrev LDE produces
+        // it directly.
         //
-        // Below that family's dispatch floor the natural LDE plus an explicit row
-        // permutation gives the same ROW ORDER but a DIFFERENT CODEWORD. Both
-        // arms read the same Mobius coefficient array; the natural->bitrev family
-        // labels it naturally (the LSB convention, pinned against the live CPU),
-        // while the natural family labels it bitreversed. So the sub-floor arm
-        // commits the OLD MSB-convention polynomial in bitreversed row order --
-        // right row order, wrong polynomial. It exists only because test-suite
-        // holders live below the floor; no production base shape reaches it. The
-        // assert below catches only the above-range direction; whoever raises
-        // `MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE` must retire this arm (true
-        // equivalence), never widen it.
+        // Below that family's dispatch floor, the natural LDE plus a row
+        // permutation gives the same ROW ORDER but a DIFFERENT CODEWORD: both
+        // arms read the same Mobius coefficients, but the natural family labels
+        // them bitreversed, so the sub-floor arm commits the OLD MSB-convention
+        // polynomial. It exists only for sub-floor test holders. Whoever raises
+        // `MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE` must RETIRE this arm, never
+        // widen it.
         //
-        // `hypercube_to_multi_coset_evals_fused` is deliberately not called on
-        // either arm: it emits natural-order evaluations.
+        // `hypercube_to_multi_coset_evals_fused` is not usable on either arm: it
+        // emits natural-order evaluations.
         let natural_to_bitrev = log_size_supports_natural_to_bitrev_lde(log_n);
         assert!(
             natural_to_bitrev || log_n < MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
@@ -570,9 +568,7 @@ impl TraceHolder<BF> {
                 )?;
             }
             TreesHolder::Partial(backing) => {
-                // Transient leaf-digest staging for the split leaf-hash /
-                // bottom-reduction build; freed on scope exit after all
-                // launches are enqueued, like `transient_tree_tops` below.
+                // Freed on scope exit, after all launches are enqueued.
                 let mut leaf_digests: DeviceAllocation<Digest> = context.alloc(
                     lde_factor << (log_domain_size - log_rows_per_leaf),
                     AllocationPlacement::BestFit,
@@ -1089,13 +1085,10 @@ pub(crate) fn commit_trace_multi_coset(
     )
 }
 
-/// LSB sibling of [`commit_trace_multi_coset`]: each coset slab of
-/// `evals_backing` is the BITREVERSED-order codeword, so every leaf is one
-/// physically contiguous row block. Leaf digest `j` lands in physical-block
-/// order; one strided bit-reverse over the `per_coset_leaves_count`-row leaves
-/// half of each `per_coset_tree_stride`-digest slab canonicalizes it back to
-/// logical order, leaving the internal-node half untouched, and only the node
-/// tower runs on top. The resulting backing is byte-identical to
+/// LSB sibling of [`commit_trace_multi_coset`]: each coset slab is the
+/// BITREVERSED-order codeword, so every leaf is one physically contiguous row
+/// block and leaf digests land in physical-block order. The strided bit-reverse
+/// canonicalizes them; the result is byte-identical to
 /// [`commit_trace_multi_coset`] over the natural-order codeword.
 #[doc(hidden)]
 pub fn build_full_trees_from_physical(
@@ -1191,11 +1184,10 @@ pub(crate) fn commit_trace_with_partial_tree_multi_coset(
 }
 
 /// LSB sibling of [`commit_trace_with_partial_tree_multi_coset`]: each coset
-/// slab of `evals_backing` is the BITREVERSED-order codeword, so the warp-level
-/// bottom reduction reads logical leaf `l` from physical block `bitreverse(l)`.
-/// The stored partial-tree backing stays logical, so it is byte-identical to
-/// [`commit_trace_with_partial_tree_multi_coset`] over the natural-order
-/// codeword.
+/// slab is the BITREVERSED-order codeword, so the warp-level bottom reduction
+/// reads logical leaf `l` from physical block `bitreverse(l)`. The result is
+/// byte-identical to [`commit_trace_with_partial_tree_multi_coset`] over the
+/// natural-order codeword.
 #[doc(hidden)]
 pub fn build_partial_trees_from_physical(
     evals_backing: &DeviceSlice<BF>,

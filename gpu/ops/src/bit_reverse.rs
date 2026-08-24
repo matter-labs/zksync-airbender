@@ -321,11 +321,8 @@ mod tests {
     }
 
     /// Cross-check `bit_reverse_in_place::<E4>` against host
-    /// `fft::bitreverse_enumeration_inplace` over a small E4 buffer. The E4
-    /// instantiation has no production caller today (the WHIR final-round
-    /// `final_monomials` reorder it was added for is gone: the CPU emits that
-    /// array unreordered), so this is the only guard that it stays equivalent
-    /// to the host helper.
+    /// `fft::bitreverse_enumeration_inplace`. The E4 instantiation has no
+    /// production caller, so this is its only guard.
     #[test]
     fn bit_reverse_e4_matches_host() {
         use fft::bitreverse_enumeration_inplace;

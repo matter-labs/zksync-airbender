@@ -291,12 +291,9 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
 
 /// Multilinear hypercube evaluations -> multilinear monomial coefficients, the
 /// multistage form of [`super::hypercube_evals_to_monomial_coeffs`] (which
-/// serves the sub-floor fallback below). Being a Mobius transform it PRESERVES
-/// its input's labeling; production feeds it the natural-order evaluation form
-/// and the coefficients come out natural too, matching the CPU's
-/// `multivariate_hypercube_evals_into_coeffs`
-/// (prover/src/gkr/whir/hypercube_to_monomial.rs). Pinned by gpu_ntt's
-/// `hypercube_monomials_are_natural_and_bitreversed_lde_relabels_them`.
+/// serves the sub-floor fallback below). Being a Mobius transform it preserves
+/// its input's labeling; production feeds it natural-order evaluations, so the
+/// coefficients come out natural.
 pub fn hypercube_evals_to_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),

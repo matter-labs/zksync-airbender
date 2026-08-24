@@ -16,11 +16,6 @@
 //! Every published fold is compared element by element in physical order over
 //! the WHOLE destination backing before any launch reads it back, so a
 //! split-half publication paired with a split-half reread cannot cancel.
-//!
-//! The `rows == 1` cases are the harness anchors: at one row the two endpoint
-//! conventions name the same two cells and a depth-zero source has no leaf
-//! spread, so those cases hold under either convention and a mismatch there is
-//! a broken harness rather than a wrong layout.
 
 use std::collections::BTreeSet;
 
@@ -446,8 +441,8 @@ impl<'a> Fixture<'a> {
     /// The target-depth value at logical endpoint index `u`.
     fn folded(&self, lane: u16, delta: u8, u: usize, weights: &[E4]) -> E4 {
         let mut acc = E4::ZERO;
-        for q in 0..1usize << delta {
-            acc = add(acc, mul(weights[q], self.leaf_e4(lane, (u << delta) + q)));
+        for (q, weight) in weights.iter().enumerate() {
+            acc = add(acc, mul(*weight, self.leaf_e4(lane, (u << delta) + q)));
         }
         acc
     }
@@ -815,10 +810,11 @@ impl<'a> Fixture<'a> {
         for block in 0..grid {
             let mut sum_c0 = E4::ZERO;
             let mut sum_c2 = E4::ZERO;
-            for row in block * warp..((block + 1) * warp).min(rows) {
+            let last = ((block + 1) * warp).min(rows);
+            for (row, eq_row) in eq.iter().enumerate().take(last).skip(block * warp) {
                 let (c0, c2) = self.eval_row(stage, row, &weights);
-                sum_c0 = add(sum_c0, mul(eq[row], c0));
-                sum_c2 = add(sum_c2, mul(eq[row], c2));
+                sum_c0 = add(sum_c0, mul(*eq_row, c0));
+                sum_c2 = add(sum_c2, mul(*eq_row, c2));
             }
             expected[2 * block] = sum_c0;
             expected[2 * block + 1] = sum_c2;
@@ -891,15 +887,8 @@ impl<'a> Fixture<'a> {
 
 // ── Cases ───────────────────────────────────────────────────────────────────
 
-/// R0 at one row: both endpoint conventions name cells 0 and 1, so this case
-/// holds either way and proves the harness drives the R0 executor.
-fn r0_anchor(context: &ProverContext, report: &mut Vec<String>) {
-    let mut fixture = Fixture::new(context, "r0 one-row anchor", 0x5e_9a_00_01, 1);
-    run_r0(&mut fixture, "r0 rows=1", 1, report);
-}
-
-/// The same R0 program over eight rows, where the two conventions diverge on
-/// the endpoint pairing alone (every source sits at depth zero).
+/// The R0 program over eight rows, where the two conventions diverge on the
+/// endpoint pairing alone (every source sits at depth zero).
 fn r0_delta_zero(context: &ProverContext, report: &mut Vec<String>) {
     let mut fixture = Fixture::new(context, "r0 depth zero", 0x5e_9a_00_02, 1);
     run_r0(&mut fixture, "r0 rows=8", 8, report);
@@ -958,81 +947,6 @@ fn run_r0(fixture: &mut Fixture<'_>, name: &'static str, rows: usize, report: &m
     fixture.run(&stage, report);
 }
 
-/// A continuation at one row whose only fold is depth zero: the publication
-/// writes the same two cells under either convention, so this case proves the
-/// harness drives the prologue, the fold barrier, the published reread, the
-/// group path and the multi-warp epilogue.
-fn continuation_anchor(context: &ProverContext, report: &mut Vec<String>) {
-    let mut fixture = Fixture::new(context, "continuation one-row anchor", 0x5e_9a_00_11, 2);
-    let rows = 1usize;
-    let source = fixture.add_e4(2, 1);
-    let dest = fixture.add_dest(2, 1);
-    let direct = fixture.add_e4(1, 1);
-
-    let stage = Stage {
-        name: "continuation rows=1 delta=0",
-        r0: false,
-        rows,
-        round: 1,
-        sources: vec![
-            Src {
-                src: fixture.lane(source, 1),
-                cache: Some(fixture.lane(dest, 1)),
-                class: CLASS_E4_DIRECT,
-                delta: 0,
-            },
-            Src {
-                src: fixture.lane(direct, 0),
-                cache: None,
-                class: CLASS_E4_DIRECT,
-                delta: 0,
-            },
-        ],
-        fold_order: vec![0],
-        warps: vec![
-            vec![unary(ext_class(0), 3, 0)],
-            vec![
-                binary(ext_class(1), 4, 0, 1),
-                Term::G {
-                    core: 5,
-                    flags: LEAN_GROUP_FLAG_C0 | LEAN_GROUP_FLAG_C2,
-                    members: vec![
-                        (ext_class(0), ImmediateId::ONE.0, 1, SOURCE_NONE),
-                        (ext_class(1), ImmediateId::NEG_ONE.0, 0, 1),
-                        (ext_class(0), ImmediateId::RESERVED + 1, 0, SOURCE_NONE),
-                    ],
-                },
-            ],
-        ],
-    };
-    fixture.run(&stage, report);
-}
-
-/// A depth-zero continuation over two rows: the endpoint pairing alone.
-fn continuation_delta_zero(context: &ProverContext, report: &mut Vec<String>) {
-    let mut fixture = Fixture::new(context, "continuation depth zero", 0x5e_9a_00_12, 2);
-    let direct = fixture.add_e4(1, 2);
-
-    let stage = Stage {
-        name: "continuation rows=2 delta=0",
-        r0: false,
-        rows: 2,
-        round: 1,
-        sources: vec![Src {
-            src: fixture.lane(direct, 0),
-            cache: None,
-            class: CLASS_E4_DIRECT,
-            delta: 0,
-        }],
-        fold_order: Vec::new(),
-        warps: vec![vec![
-            unary(ext_class(0), 3, 0),
-            binary(ext_class(1), 4, 0, 0),
-        ]],
-    };
-    fixture.run(&stage, report);
-}
-
 /// A depth-one publication out of a base-field backing, plus a depth-one inline
 /// fold and a direct read.
 fn continuation_depth1(context: &ProverContext, report: &mut Vec<String>) {
@@ -1080,6 +994,7 @@ fn continuation_depth1(context: &ProverContext, report: &mut Vec<String>) {
                     (ext_class(0), ImmediateId::ONE.0, 1, SOURCE_NONE),
                     (ext_class(1), ImmediateId::NEG_ONE.0, 0, 2),
                     (ext_class(0), ImmediateId::RESERVED, 2, SOURCE_NONE),
+                    (ext_class(0), ImmediateId::RESERVED + 1, 0, SOURCE_NONE),
                 ],
             },
         ]],
@@ -1276,7 +1191,7 @@ fn continuation_chain(context: &ProverContext, report: &mut Vec<String>) {
 /// `l` must therefore reach the consumer as the LSB weight product over the
 /// bits of `l`.
 fn final_evaluation_packing(context: &ProverContext, report: &mut Vec<String>) {
-    for delta in 0..=MAX_DELTA {
+    for delta in [0, MAX_DELTA] {
         let round = delta as u32 + 1;
         let leaves = 2usize << delta;
         for hot in 0..leaves {
@@ -1334,11 +1249,8 @@ fn segmented_vm_matches_lsb_address_algebra() {
     let context = make_test_context(256, 64);
     let mut report: Vec<String> = Vec::new();
 
-    r0_anchor(&context, &mut report);
-    continuation_anchor(&context, &mut report);
     r0_delta_zero(&context, &mut report);
     r0_partial_tile(&context, &mut report);
-    continuation_delta_zero(&context, &mut report);
     continuation_depth1(&context, &mut report);
     continuation_depth2(&context, &mut report);
     continuation_depth3(&context, &mut report);

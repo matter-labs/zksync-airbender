@@ -468,22 +468,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
     }
 }
 
-/// Materializes the claim point handed to the next backward layer in plain
-/// variable order (coordinate 0 first).
-///
-/// CPU authority: `prover/src/gkr/prover/sumcheck_loop/mod.rs:306-310` builds
-/// `folding_challenges` as `[r_last, r_0, .., r_{n-1}]` — the end-of-layer
-/// challenge `r_last` binds the gate bit, which is coordinate 0 of the polys
-/// the next layer reads ("r_last actually binds a bit 0 in enumeration"), so it
-/// LEADS the point and the round challenges follow. The next layer then consumes
-/// the point untouched (`let tau: &[E] = &prev_challenges[..]`, same file).
-///
-/// `layer_out` is the shared `ab_gkr_dim_reducing_layer_claim_point` view this
-/// layer wrote in DRAW order (`[r_0, .., r_{n-1}, r_last, batching]`), which is
-/// the layout the continuation kernels require — they read round `step`'s
-/// challenge from `ab_gkr_dim_reducing_layer_claim_point[step - 1]`
-/// (`native/gkr/support/lookup_helpers.cuh:288`). The coordinate order is
-/// therefore established on the way OUT, into a separate buffer no round writes.
+/// Materializes the next layer's claim point in variable order: the end-of-layer
+/// challenge binds the gate bit (coordinate 0 of the polys the next layer
+/// reads), so it LEADS, then the round challenges, then batching. The layer's
+/// own scratch stays in DRAW order because the continuation kernels index it by
+/// round.
 pub(crate) fn schedule_dim_reducing_next_layer_claim_point(
     layer_out: &DeviceClaimPointAndBatching,
     folding_steps: usize,

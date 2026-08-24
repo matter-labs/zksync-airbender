@@ -647,19 +647,16 @@ fn dispatch_forward_multi_coset(
 /// `out_k[p] = f(g_k * omega^rev_n(p))` where `f` is the polynomial whose
 /// NATURAL-labeled coefficients are `inputs_matrix` (physical row `i` holds
 /// `c_i`), `g_k` is coset `k`'s shift on the size-`2^(log_n + log_lde_factor)`
-/// LDE domain, and `p` runs over the output rows. This is the same set of
-/// values [`bitreversed_monomials_to_natural_evals_multi_coset`] produces, in
-/// bitreversed row order — the layout the LSB commitment layer's Merkle
-/// builders consume.
+/// LDE domain, and `p` runs over the output rows — the same values
+/// [`bitreversed_monomials_to_natural_evals_multi_coset`] produces, in
+/// bitreversed row order.
 ///
 /// Output layout matches the sibling entry: coset-major outer, column-major
 /// inner; coset `k`'s columns occupy
 /// `outputs[(k * num_cols_per_coset_stride + col) * trace_len ..]`.
 ///
-/// Covers `log_n` in `[13, 24]`: the multipass regimes (three-pass, or two-pass
-/// once one column reaches the device L2 at `log_n >= 23`) plus the
-/// two-pass-compact range below them. Smaller dispatch families are out of
-/// scope -- no production base size reaches them.
+/// Covers `log_n` in `[13, 24]`; smaller dispatch families are unreachable
+/// from a production base size.
 #[allow(clippy::too_many_arguments)]
 pub fn natural_monomials_to_bitreversed_evals_multi_coset(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -756,9 +753,8 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
     )
     .unwrap_or_else(|e| {
         unreachable!(
-            "natural->bitrev strategy unavailable for log_n {log_n}: {e:?} (verdict V-a scopes \
-             this entry to the multipass sizes plus the two-pass-compact range, log_n in \
-             [13, 24])"
+            "natural->bitrev strategy unavailable for log_n {log_n}: {e:?} (this entry only \
+             serves the multipass sizes plus the two-pass-compact range, log_n in [13, 24])"
         )
     });
     let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;

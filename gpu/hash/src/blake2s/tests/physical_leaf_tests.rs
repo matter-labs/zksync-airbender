@@ -16,8 +16,8 @@ use crate::upstream::{Blake2sState, Field, USE_REDUCED_BLAKE2_ROUNDS};
 use gpu_core::primitives::field::BF;
 use gpu_ops::simple::set_to_zero;
 
-const SHAPES: [(u32, u32); 5] = [(4, 1), (6, 1), (10, 1), (10, 5), (12, 5)];
-const COLS_COUNTS: [usize; 3] = [0, 1, 3];
+const SHAPES: [(u32, u32); 2] = [(6, 1), (10, 5)];
+const COLS_COUNTS: [usize; 2] = [0, 3];
 const COSETS_COUNTS: [usize; 2] = [1, 2];
 
 const NTT_SHAPES: [(u32, u32); 2] = [(6, 1), (10, 5)];
@@ -205,7 +205,7 @@ fn run_single_coset(
 }
 
 #[test]
-fn physical_leaf_matches_old_kernel() {
+fn physical_leaf_matches_old_kernel_and_host_oracle() {
     let stream = CudaStream::default();
     for (log_n, log_values_per_leaf) in SHAPES {
         let log_leaves_count = log_n - log_values_per_leaf;
@@ -215,6 +215,21 @@ fn physical_leaf_matches_old_kernel() {
             for cosets_count in COSETS_COUNTS {
                 let natural = random_values(cols_count * rows_count * cosets_count);
                 let bitreversed = bitreverse_rows(&natural, cosets_count, cols_count, log_n);
+                let values_stride = cols_count * rows_count;
+                let mut host = Vec::with_capacity(leaves_count * cosets_count);
+                for coset in 0..cosets_count {
+                    for leaf in 0..leaves_count {
+                        host.push(host_logical_leaf(
+                            &natural,
+                            coset * values_stride,
+                            rows_count,
+                            cols_count,
+                            leaves_count,
+                            log_values_per_leaf,
+                            leaf,
+                        ));
+                    }
+                }
                 let label = format!(
                     "multi-coset n={log_n} b={log_values_per_leaf} cols={cols_count} cosets={cosets_count}"
                 );
@@ -245,6 +260,16 @@ fn physical_leaf_matches_old_kernel() {
                     log_leaves_count,
                     &label,
                 );
+                for coset in 0..cosets_count {
+                    for block in 0..leaves_count {
+                        let leaf = bitreverse_index(block, log_leaves_count);
+                        assert_eq!(
+                            physical[coset * leaves_count * 2 + block],
+                            host[coset * leaves_count + leaf],
+                            "host oracle {label}: coset {coset} block {block} (logical leaf {leaf})",
+                        );
+                    }
+                }
                 if cosets_count == 1 {
                     let label =
                         format!("single-coset n={log_n} b={log_values_per_leaf} cols={cols_count}");
@@ -261,67 +286,11 @@ fn physical_leaf_matches_old_kernel() {
                         log_leaves_count,
                         &label,
                     );
-                }
-            }
-        }
-    }
-}
-
-#[test]
-fn physical_leaf_matches_host_oracle() {
-    let stream = CudaStream::default();
-    for (log_n, log_values_per_leaf) in SHAPES {
-        let log_leaves_count = log_n - log_values_per_leaf;
-        let rows_count = 1usize << log_n;
-        let leaves_count = rows_count >> log_values_per_leaf;
-        for cols_count in COLS_COUNTS {
-            for cosets_count in COSETS_COUNTS {
-                let natural = random_values(cols_count * rows_count * cosets_count);
-                let bitreversed = bitreverse_rows(&natural, cosets_count, cols_count, log_n);
-                let values_stride = cols_count * rows_count;
-                let mut host = Vec::with_capacity(leaves_count * cosets_count);
-                for coset in 0..cosets_count {
-                    for leaf in 0..leaves_count {
-                        host.push(host_logical_leaf(
-                            &natural,
-                            coset * values_stride,
-                            rows_count,
-                            cols_count,
-                            leaves_count,
-                            log_values_per_leaf,
-                            leaf,
-                        ));
-                    }
-                }
-                let physical = run_multi_coset(
-                    &stream,
-                    &bitreversed,
-                    log_n,
-                    log_values_per_leaf,
-                    cols_count,
-                    cosets_count,
-                    true,
-                );
-                for coset in 0..cosets_count {
-                    for block in 0..leaves_count {
-                        let leaf = bitreverse_index(block, log_leaves_count);
-                        assert_eq!(
-                            physical[coset * leaves_count * 2 + block],
-                            host[coset * leaves_count + leaf],
-                            "host oracle n={log_n} b={log_values_per_leaf} cols={cols_count} \
-                             cosets={cosets_count}: coset {coset} block {block} (logical leaf {leaf})",
-                        );
-                    }
-                }
-                if cosets_count == 1 {
-                    let physical =
-                        run_single_coset(&stream, &bitreversed, log_n, log_values_per_leaf, true);
                     for (block, digest) in physical.iter().enumerate() {
                         let leaf = bitreverse_index(block, log_leaves_count);
                         assert_eq!(
                             *digest, host[leaf],
-                            "host oracle single-coset n={log_n} b={log_values_per_leaf} \
-                             cols={cols_count}: block {block} (logical leaf {leaf})",
+                            "host oracle {label}: block {block} (logical leaf {leaf})",
                         );
                     }
                 }

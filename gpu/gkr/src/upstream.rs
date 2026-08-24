@@ -53,7 +53,6 @@ pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub(crate) use prover::gkr::prover::{
     SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
 };
-pub(crate) use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 pub(crate) use prover::gkr::whir::{
     BaseFieldQuery, ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,
     WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,

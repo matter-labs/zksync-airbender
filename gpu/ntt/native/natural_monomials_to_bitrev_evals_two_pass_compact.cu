@@ -17,8 +17,7 @@ namespace airbender::ntt {
 // descending-stride network's is its LAST K stages. The stage recipe follows
 // `serial_ct_ntt_natural_to_bitreversed`: descending distance, one twiddle per
 // contiguous exchange region, `(a + t*b, a - t*b)`, with the region twiddle
-// read at the bitreversed global region index -- the same indexing the compact
-// forward kernels use.
+// read at the bitreversed global region index.
 
 constexpr int LAST_COMPACT_THREADS = 256;
 

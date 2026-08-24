@@ -203,7 +203,6 @@ fn launch_natural_to_bitrev_tail(
     let n = 1usize << log_n;
     let bf_vals_per_block = 1usize << 13; // 8192
     let num_cols_arg = shared::checked_i32(num_cols_per_coset, "num_cols_per_coset");
-    // Middle pass: 8 in-place stages starting at stage 8.
     let start_stage = 8usize;
     let num_exchg_regions = 1usize << start_stage;
     let exchg_region_size = n >> start_stage;
@@ -225,7 +224,6 @@ fn launch_natural_to_bitrev_tail(
     );
     StridedTilesStagesFunction(ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel)
         .launch(&config, &args)?;
-    // Final pass: the remaining log_n - 16 finest stages.
     let final_function = match log_n {
         21 => {
             NaturalToBitrevFinalFunction(ab_natural_monomials_to_bitrev_evals_final_5_stages_kernel)
@@ -306,8 +304,8 @@ pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
         )
     };
     let outputs_slice_mut = outputs_matrix.slice_mut();
-    // Loop order: col-tile OUTER, coset-tile INNER, so the col-tile's monomial
-    // source stays resident in L2 across the coset launches.
+    // col-tile outer so its monomial source stays L2-resident across the
+    // coset launches.
     let mut col_start = 0usize;
     while col_start < num_ntts {
         let cols_in_chunk = (num_ntts - col_start).min(columns_per_launch);
@@ -432,8 +430,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
         )
     };
     let outputs_slice_mut = outputs_matrix.slice_mut();
-    // Loop order: col-tile OUTER, coset-tile INNER, so the col-tile's monomial
-    // source stays resident in L2 across the coset launches.
     let mut col_start = 0usize;
     while col_start < num_ntts {
         let cols_in_chunk = (num_ntts - col_start).min(columns_per_launch);
@@ -457,7 +453,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
             let output_matrix_const = output_matrix_const.as_ptr_and_stride();
             let output_matrix_mut = output_matrix_mut.as_mut_ptr_and_stride();
             let ntts_in_launch = cosets_in_tile * cols_in_chunk;
-            // Flat-blockIdx.x: gridDim.x = blocks * cosets_in_tile * cols_in_chunk.
             let grid_dim: Dim3 = (blocks as u32 * ntts_in_launch as u32).into();
             let mut config = CudaLaunchConfig::basic(grid_dim, threads, stream);
             config.dynamic_smem_bytes = smem_bytes_first;
@@ -588,8 +583,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass_compact(
         )
     };
     let outputs_slice_mut = outputs_matrix.slice_mut();
-    // Loop order: col-tile OUTER, coset-tile INNER, so the col-tile's monomial
-    // source stays resident in L2 across the coset launches.
     let mut col_start = 0usize;
     while col_start < num_ntts {
         let cols_in_chunk = (num_ntts - col_start).min(columns_per_launch);

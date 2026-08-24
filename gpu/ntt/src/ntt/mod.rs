@@ -163,7 +163,6 @@ pub(crate) fn hypercube_evals_to_monomial_coeffs(
         return Ok(());
     }
 
-    // Butterflies run in place on the copy; no permutation pass.
     for stage in (0..log_n).rev() {
         launch_hypercube_stage(dst, log_n, stage, stream)?;
     }
@@ -172,12 +171,10 @@ pub(crate) fn hypercube_evals_to_monomial_coeffs(
 
 /// Multilinear monomial coefficients -> multilinear hypercube evaluations, one
 /// butterfly stage per variable. This is the inverse of
-/// [`hypercube_evals_to_monomial_coeffs`] and, like it, applies the same 2x2
-/// matrix to a distinct index bit in every stage: the stages act on distinct
-/// tensor factors, so they commute and conjugating the product by a bit
-/// permutation `P` leaves it unchanged (`P*T*P == T`). It therefore PRESERVES
-/// whatever labeling its input had, and there is no labeling-changing variant
-/// of it to select — which is why it takes no stage-order or bitreversal flag.
+/// [`hypercube_evals_to_monomial_coeffs`]. Preserves its input's labeling
+/// (Mobius commutes with bit-reversal), and there is no labeling-changing
+/// variant of it to select — which is why it takes no stage-order or
+/// bitreversal flag.
 pub fn hypercube_coeffs_to_evals(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
@@ -226,13 +223,11 @@ pub fn log_size_supports_transposed_monomials(log_n: usize) -> bool {
 }
 
 /// Smallest `log_n` [`natural_monomials_to_bitreversed_evals_multi_coset`] has a
-/// dispatch family for. Consumers that route around the entry below this bound
-/// compare against this constant rather than a literal.
+/// dispatch family for.
 pub const MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE: usize = strategy::TWO_PASS_COMPACT_MIN_LOG_N;
 
 /// `true` when [`natural_monomials_to_bitreversed_evals_multi_coset`] has a
-/// dispatch family for `log_n`. That entry panics outside its range, so callers
-/// that must also serve smaller domains probe here first.
+/// dispatch family for `log_n` (it panics outside its range).
 pub fn log_size_supports_natural_to_bitrev_lde(log_n: usize) -> bool {
     (MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE..=strategy::NATURAL_TO_BITREV_MAX_LOG_N).contains(&log_n)
 }

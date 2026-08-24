@@ -128,10 +128,9 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
                 .collect::<Vec<_>>();
             commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, &transcript_values);
             let challenges = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 2);
-            // Plain variable order, per the CPU authority
-            // prover/src/gkr/prover/sumcheck_loop/mod.rs:306-310: the
-            // end-of-layer challenge binds the gate bit, which is coordinate 0
-            // of the polys the next layer reads, so it LEADS the point.
+            // Plain variable order: the end-of-layer challenge binds the gate
+            // bit, which is coordinate 0 of the polys the next layer reads, so
+            // it LEADS the point.
             claim_point.push(challenges[0]);
             claim_point.extend_from_slice(&round_challenges);
             let claims = layer
@@ -223,7 +222,6 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
     );
 
     let expected_snapshots = replay_expected_snapshots(fixture);
-
     assert_eq!(actual_snapshots.len(), expected_snapshots.len());
     for (actual, expected) in actual_snapshots.iter().zip(&expected_snapshots) {
         assert_eq!(actual.layer_idx, expected.layer_idx);

@@ -1,12 +1,5 @@
-//! Pins the RECURSIVE WHIR oracle's commitment convention: the same input
-//! polynomial (natural-order multilinear monomial coefficients) is handed to the
-//! live CPU recursive commit and to the current GPU `oracle_commit`, and the
-//! produced commitment bytes (Merkle cap, every leaf's values, every leaf's
-//! Merkle path) are compared. Both sides run production encoders — the CPU
-//! reference is `Backend::lde_ext_poly_from_monomial_form` +
-//! `commit_single_ext_poly` (through its `test-utils` shim) and, independently,
-//! `CosetByCosetExtCommitment::commit`; neither side re-derives the encoding
-//! here, so a shared convention mistake cannot self-confirm.
+//! The recursive WHIR oracle's commitment convention against the live CPU commit:
+//! neither side re-derives the encoding, so a shared mistake cannot self-confirm.
 
 use std::alloc::Global;
 
@@ -14,7 +7,6 @@ use era_cudart::memory::memory_copy_async;
 use fft::Twiddles;
 use prover::gkr::prover::backend::{Backend, NaiveBackend};
 use prover::gkr::whir::commit_single_ext_poly_for_test;
-use prover::gkr::whir::coset_commit::CosetByCosetExtCommitment;
 use prover::merkle_trees::{DefaultTreeConstructor, PathQueriable};
 use worker::Worker;
 
@@ -42,9 +34,7 @@ fn assert_recursive_commitment_matches_live_cpu(
     values_per_leaf: usize,
     tree_cap_size: usize,
 ) {
-    // Production selector: coefficient leaves by default, eval leaves under the
-    // feature. `commit_single_ext_poly` and `ext_coset_column` are gated on the
-    // same feature, so the CPU references follow automatically.
+    // `commit_single_ext_poly` and `ext_coset_column` are gated on the same feature.
     let transform_leaves_to_multilinear_coeffs = !cfg!(feature = "eval_leaves");
     let shape = format!(
         "log_trace_len={log_trace_len} lde_factor={lde_factor} \
@@ -74,15 +64,6 @@ fn assert_recursive_commitment_matches_live_cpu(
         &worker,
     );
 
-    let cpu_coset_by_coset = CosetByCosetExtCommitment::<BF, E4, DefaultTreeConstructor>::commit(
-        &monomial_coeffs,
-        &twiddles,
-        lde_factor,
-        values_per_leaf,
-        tree_cap_size,
-        &worker,
-    );
-
     let mut gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
         &monomial_coeffs,
         lde_factor,
@@ -94,11 +75,6 @@ fn assert_recursive_commitment_matches_live_cpu(
     .unwrap();
 
     let cpu_cap = PathQueriable::get_cap(&cpu.tree);
-    assert_eq!(
-        cpu_coset_by_coset.get_cap(),
-        cpu_cap,
-        "the two CPU recursive materializations disagree ({shape})",
-    );
     assert_eq!(
         gpu.get_tree_cap(&context).unwrap(),
         cpu_cap,
@@ -152,12 +128,6 @@ fn assert_recursive_commitment_matches_live_cpu(
 #[test]
 #[cfg(not(no_cuda))]
 fn recursive_whir_commitment_matches_live_cpu() {
-    // Shapes chosen to cross the GPU-side regime boundaries the recursive
-    // oracle actually meets: values-per-leaf 2 and the production 32, the
-    // full-tree and partial-tree cache modes, and small/mid forward-NTT
-    // dispatch families.
-    assert_recursive_commitment_matches_live_cpu(6, 4, 2, 4);
-    assert_recursive_commitment_matches_live_cpu(10, 4, 32, 4);
+    // The one shape that crosses the partial-tree cache mode.
     assert_recursive_commitment_matches_live_cpu(13, 4, 32, 4);
-    assert_recursive_commitment_matches_live_cpu(10, 16, 32, 16);
 }

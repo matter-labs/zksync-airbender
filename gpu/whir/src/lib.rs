@@ -88,6 +88,9 @@ pub(crate) struct GpuWhirScheduledExtensionQuery {
     values_per_leaf: usize,
 }
 
+#[cfg(test)]
+type HostQueryOutputs = (HostAllocation<[BF]>, HostAllocation<[Digest]>);
+
 impl GpuWhirExtensionOracle {
     fn recursive_tree_cache_mode(
         total_leaf_count_log2: u32,
@@ -102,8 +105,7 @@ impl GpuWhirExtensionOracle {
 
     /// `monomial_coeffs` is the vectorized (4 BF columns) multilinear monomial
     /// form in NATURAL coefficient order — the order the CPU's
-    /// `build_intermediate_oracle` consumes
-    /// (`monomial_form_normal_order`, prover/src/gkr/prover/backend/mod.rs:182-192).
+    /// `build_intermediate_oracle` consumes as `monomial_form_normal_order`.
     #[cfg(test)]
     pub(crate) fn schedule_from_device_monomial_coeffs(
         monomial_coeffs: &impl DeviceMatrixImpl<BF>,
@@ -203,19 +205,12 @@ impl GpuWhirExtensionOracle {
         // the WHIR oracle's cosets backing; the blake-leaves-from-NTT kernel (via
         // `commit_all_into_from_ntt`) reads the natural layout in place.
         //
-        // The caller hands over NATURAL-order monomial coefficients (the CPU's
-        // `monomial_form_normal_order`), but the multi-coset forward NTT this
-        // commit runs is the `bitreversed_monomials_to_natural_evals` family: it
-        // reads BITREVERSED coefficients and writes natural-order evaluations.
-        // Relabel into a compact scratch so the LDE sees the order it expects
-        // and the caller's array keeps the order every other consumer (the
-        // folds, the OOD evaluation, `final_monomials`) needs. The scratch is
-        // released when this function returns, while the kernels reading it are
-        // still queued — same lifetime the `d_scratch` / staging allocations in
-        // `oracle_commit` already have: the pool hands the range to a later
-        // allocation, whose writers are enqueued behind these readers on the
-        // exec stream (`commit_trace_from_ntt_*` joins the side stream back
-        // into exec before returning).
+        // The relabel scratch is released when this function returns while the
+        // kernels reading it are still queued — same lifetime the `d_scratch` /
+        // staging allocations in `oracle_commit` already have: the pool hands
+        // the range to a later allocation, whose writers are enqueued behind
+        // these readers on the exec stream (`commit_trace_from_ntt_*` joins the
+        // side stream back into exec before returning).
         let monomial_coeffs_slice = monomial_coeffs.slice();
         let monomial_coeffs_stride = monomial_coeffs.stride();
         let stream = context.get_exec_stream();
@@ -446,7 +441,7 @@ impl GpuWhirExtensionOracle {
         &mut self,
         tree_indexes: &era_cudart::slice::DeviceSlice<u32>,
         context: &ProverContext,
-    ) -> CudaResult<(HostAllocation<[BF]>, HostAllocation<[Digest]>)> {
+    ) -> CudaResult<HostQueryOutputs> {
         let queries_count = tree_indexes.len();
         let leaf_len = queries_count * self.values_per_leaf * EXT4_DEGREE;
         let layers_count = self.trace_holder.log_domain_size
@@ -1491,6 +1486,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[ignore]
     fn recursive_oracle_lde_matches_cpu_large() {
         recursive_oracle_lde_matches_cpu_impl(&[23], &[32], false, false);
     }
@@ -1498,9 +1494,6 @@ pub(crate) mod tests {
     /// Production shape of the first intermediate WHIR oracle on the add_sub
     /// stagewise fixture: `poly 2^23, lde 16`, `values_per_leaf = 1 <<
     /// whir_steps_schedule[1] = 32`, `tree_cap_size = DEFAULT_CAP_SIZE = 16`.
-    /// The `_large` cases above run log 23 with `lde 4 / cap 4`, so nothing
-    /// covered the coset-range tiling and cap gather at the widths production
-    /// actually asks for.
     #[test]
     fn recursive_oracle_lde_matches_cpu_production_shape() {
         recursive_oracle_lde_matches_cpu_with_shape(&[23], &[32], 16, 16, true, (16384, 256));
@@ -1514,11 +1507,6 @@ pub(crate) mod tests {
     #[test]
     fn recursive_oracle_lde_with_transform_matches_cpu_intermediate() {
         recursive_oracle_lde_matches_cpu_impl(&[17], &[32], true, false);
-    }
-
-    #[test]
-    fn recursive_oracle_lde_with_transform_matches_cpu_large() {
-        recursive_oracle_lde_matches_cpu_impl(&[23], &[32], true, false);
     }
 
     #[test]

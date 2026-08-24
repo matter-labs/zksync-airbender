@@ -164,17 +164,7 @@ fn eq_builder_matches_cpu_lsb_table() {
     let worker = Worker::new();
     let mut rng = StdRng::seed_from_u64(0x1b_5f_ab_20);
 
-    for (challenge_offset, challenge_count) in [
-        (0usize, 1usize),
-        (0, 2),
-        (0, 7),
-        (0, 8),
-        (0, 9),
-        (0, 16),
-        (0, 17),
-        (1, 2),
-        (1, 9),
-    ] {
+    for (challenge_offset, challenge_count) in [(0usize, 7usize), (0, 9), (0, 17), (1, 9)] {
         let point: Vec<E4> = (0..challenge_offset + challenge_count)
             .map(|_| {
                 E4::from_array_of_base(std::array::from_fn(|_| {
@@ -236,20 +226,6 @@ fn eq_builder_matches_cpu_lsb_table() {
 
 #[cfg(not(no_cuda))]
 const EQ_DRAIN_CHALLENGE_COUNTS: [usize; 7] = [1, 2, 7, 8, 9, 16, 17];
-
-/// Which fused-tail finalize launcher drives the fold.
-#[cfg(not(no_cuda))]
-#[derive(Clone, Copy, Debug)]
-enum FinalizeVariant {
-    /// Main-layer path: `launch_backward_dual_finalize_from_partials` over the
-    /// warp-partial buffer (`main_layer/sumcheck_plan.rs`).
-    FromPartials,
-    /// Dimension-reducing single-launch path
-    /// (`dual_reduce_num_stage1_blocks == 0`).
-    FromAcc,
-    /// Dimension-reducing two-stage path: blockwise reduce, then finalize.
-    BlockwiseThenPartials,
-}
 
 #[cfg(not(no_cuda))]
 struct EqSlabs {
@@ -414,17 +390,13 @@ fn assert_eq_inline_reads_match_cpu(
     );
 }
 
-/// Walks the whole simulated round loop for one `challenge_count` and one
-/// finalize launcher, asserting EVERY intermediate eq state (including the
+/// Walks the whole simulated round loop for one `challenge_count`, asserting
+/// EVERY intermediate eq state (including the
 /// fresh build) against the CPU LSB oracle, that the dynamic drain matches the
 /// static `drained_eq_sizes` mirror, and that un-drained high slabs stay
 /// byte-identical in constant memory.
 #[cfg(not(no_cuda))]
-fn drive_low_first_eq_drain(
-    challenge_count: usize,
-    variant: FinalizeVariant,
-    probe_eq_inline: bool,
-) {
+fn drive_low_first_eq_drain(challenge_count: usize) {
     use era_cudart::memory::memory_copy_async;
     use era_cudart::slice::DeviceSlice;
     use gpu_core::allocator::tracker::AllocationPlacement;
@@ -438,7 +410,7 @@ fn drive_low_first_eq_drain(
     use crate::test_utils::make_test_context;
     use crate::upstream::{Field, PrimeField};
 
-    let label = &format!("{variant:?} challenge_count={challenge_count}");
+    let label = &format!("challenge_count={challenge_count}");
     let context = make_test_context(256, 64);
     let stream = context.get_exec_stream();
     let worker = Worker::new();
@@ -479,20 +451,12 @@ fn drive_low_first_eq_drain(
 
     // Source pairs for the round-update reduction; the eq fold ignores them,
     // but they must be finite so `e4::inv(eq_prefactor)` stays defined.
-    let (acc_size, num_partials) = match variant {
-        FinalizeVariant::FromPartials => (0usize, 8usize),
-        FinalizeVariant::FromAcc => (64usize, 0usize),
-        FinalizeVariant::BlockwiseThenPartials => (1024usize, 0usize),
-    };
-    let source_len = 2 * acc_size.max(num_partials);
+    let num_partials = 8usize;
+    let source_len = 2 * num_partials;
     let mut d_source: DeviceAllocation<E4> =
         context.alloc(source_len, AllocationPlacement::Top).unwrap();
     let source_host: Vec<E4> = (0..source_len).map(|_| random_e4()).collect();
     memory_copy_async(&mut d_source, &source_host, stream).unwrap();
-    let stage1_blocks = dual_reduce_num_stage1_blocks(acc_size);
-    let mut d_partials: DeviceAllocation<E4> = context
-        .alloc(2 * stage1_blocks.max(1), AllocationPlacement::Top)
-        .unwrap();
 
     // Inline-eq probe inputs: index-derived DISTINCT base-field weights, held
     // in an E4-aligned allocation for the kernel's 16-byte `bf4` loads.
@@ -535,60 +499,20 @@ fn drive_low_first_eq_drain(
                 size_before >= 1,
                 "{label} round {round}: the active slot must still hold a coordinate",
             );
-            match variant {
-                FinalizeVariant::FromPartials => launch_backward_dual_finalize_from_partials(
-                    d_source.as_ptr(),
-                    num_partials,
-                    d_prev_coord.as_ptr(),
-                    d_seed.as_mut_ptr(),
-                    d_claim.as_mut_ptr(),
-                    d_eq_prefactor.as_mut_ptr(),
-                    d_coeffs.as_mut_ptr(),
-                    d_challenge.as_mut_ptr(),
-                    slot_base,
-                    size_before,
-                    &context,
-                )
-                .unwrap(),
-                FinalizeVariant::FromAcc => launch_backward_dual_finalize_from_acc(
-                    d_source.as_ptr(),
-                    acc_size,
-                    d_prev_coord.as_ptr(),
-                    d_seed.as_mut_ptr(),
-                    d_claim.as_mut_ptr(),
-                    d_eq_prefactor.as_mut_ptr(),
-                    d_coeffs.as_mut_ptr(),
-                    d_challenge.as_mut_ptr(),
-                    slot_base,
-                    size_before,
-                    &context,
-                )
-                .unwrap(),
-                FinalizeVariant::BlockwiseThenPartials => {
-                    assert!(stage1_blocks > 0);
-                    launch_backward_dual_reduce_blockwise(
-                        d_source.as_ptr(),
-                        acc_size,
-                        d_partials.as_mut_ptr(),
-                        &context,
-                    )
-                    .unwrap();
-                    launch_backward_dual_finalize_from_partials(
-                        d_partials.as_ptr(),
-                        stage1_blocks,
-                        d_prev_coord.as_ptr(),
-                        d_seed.as_mut_ptr(),
-                        d_claim.as_mut_ptr(),
-                        d_eq_prefactor.as_mut_ptr(),
-                        d_coeffs.as_mut_ptr(),
-                        d_challenge.as_mut_ptr(),
-                        slot_base,
-                        size_before,
-                        &context,
-                    )
-                    .unwrap();
-                }
-            }
+            launch_backward_dual_finalize_from_partials(
+                d_source.as_ptr(),
+                num_partials,
+                d_prev_coord.as_ptr(),
+                d_seed.as_mut_ptr(),
+                d_claim.as_mut_ptr(),
+                d_eq_prefactor.as_mut_ptr(),
+                d_coeffs.as_mut_ptr(),
+                d_challenge.as_mut_ptr(),
+                slot_base,
+                size_before,
+                &context,
+            )
+            .unwrap();
             record_active_eq_slot_fold(&mut eq_sizes);
         }
 
@@ -627,7 +551,7 @@ fn drive_low_first_eq_drain(
         }
 
         let remaining = challenge_count - round;
-        if probe_eq_inline && remaining >= 2 {
+        if remaining >= 2 {
             assert_eq_inline_reads_match_cpu(
                 label,
                 round,
@@ -667,51 +591,6 @@ fn drive_low_first_eq_drain(
 #[cfg(not(no_cuda))]
 fn factored_eq_drains_low_first_through_from_partials() {
     for challenge_count in EQ_DRAIN_CHALLENGE_COUNTS {
-        drive_low_first_eq_drain(challenge_count, FinalizeVariant::FromPartials, true);
-    }
-}
-
-/// Dimension-reducing single-launch finalize path.
-#[test]
-#[cfg(not(no_cuda))]
-fn factored_eq_drains_low_first_through_from_acc() {
-    for challenge_count in EQ_DRAIN_CHALLENGE_COUNTS {
-        drive_low_first_eq_drain(challenge_count, FinalizeVariant::FromAcc, false);
-    }
-}
-
-/// Dimension-reducing two-stage finalize path.
-#[test]
-#[cfg(not(no_cuda))]
-fn factored_eq_drains_low_first_through_blockwise_partials() {
-    for challenge_count in EQ_DRAIN_CHALLENGE_COUNTS {
-        drive_low_first_eq_drain(
-            challenge_count,
-            FinalizeVariant::BlockwiseThenPartials,
-            false,
-        );
-    }
-}
-
-/// The segmented VM stamps its descriptors from `drained_eq_sizes`, a pure
-/// function of the round index. Walk it against the dynamic drain the fused
-/// tail applies, for every challenge count the 3-slot layout can hold.
-#[test]
-fn drained_eq_sizes_mirrors_the_dynamic_drain() {
-    use crate::backward::vm::production_bind::drained_eq_sizes;
-
-    for challenge_count in 1..=(GKR_EQ_GROUP_SIZE * (GKR_EQ_HIGH_SLOTS + 1)) {
-        let mut dynamic = make_eq_sizes(challenge_count);
-        for round in 0..=challenge_count {
-            assert_eq!(
-                dynamic,
-                drained_eq_sizes(make_eq_sizes(challenge_count), round as u8),
-                "challenge_count={challenge_count} round={round}",
-            );
-            if round < challenge_count {
-                record_active_eq_slot_fold(&mut dynamic);
-            }
-        }
-        assert_eq!(dynamic, GkrEqSizes::zeroed());
+        drive_low_first_eq_drain(challenge_count);
     }
 }

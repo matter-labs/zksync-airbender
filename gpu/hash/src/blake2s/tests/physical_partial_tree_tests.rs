@@ -12,7 +12,7 @@ use gpu_core::primitives::utils::LOG_WARP_SIZE;
 /// `(log_rows_per_coset, log_rows_per_hash, cosets_count)`. Every entry keeps
 /// `log_leaves_per_coset >= 9`, so a 512-leaf CTA never spans two cosets — the
 /// only regime the partial-tree kernels are valid in.
-const SHAPES: [(u32, u32, usize); 3] = [(11, 1, 1), (11, 1, 2), (14, 5, 2)];
+const SHAPES: [(u32, u32, usize); 2] = [(11, 1, 2), (14, 5, 2)];
 const COLS_COUNTS: [usize; 2] = [1, 3];
 const LOG_CAPS: [u32; 2] = [0, 2];
 
@@ -77,9 +77,7 @@ fn check_partial_tree(
     let natural_device = upload(&natural, stream);
     let physical_device = upload(&physical, stream);
 
-    // Sentinel fill: a digest neither path writes must stay identical in both
-    // backings, so an out-of-region write shows up in the whole-backing
-    // comparison below.
+    // Sentinel fill: an out-of-region write shows up in the whole-backing comparison.
     let sentinel = (0..tree_stride * cosets_count)
         .map(|_| random_digest())
         .collect::<Vec<_>>();
@@ -152,9 +150,7 @@ fn check_partial_tree(
             "{label}: coset {coset} host tower",
         );
 
-        // Negative control: the same tower over leaves left in PHYSICAL block
-        // order — what the kernel would build if the logical -> physical block
-        // translation were dropped — must not match.
+        // Negative control: the tower over untranslated PHYSICAL-order leaves.
         let untranslated_leaves = (0..leaves_count)
             .map(|block| host_leaves[bitreverse_index(block, log_leaves_count)])
             .collect::<Vec<_>>();

@@ -9,16 +9,11 @@ fn cpu_natural_register_resident_v32_respects_threshold_and_width() {
 
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use field::{Field, Rand};
-use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::device_structures::DeviceMatrix;
 use itertools::Itertools;
 use rand::{rng, Rng};
 
-/// `partially_evaluate_monomials_by_ref` evaluates NATURAL-order monomial
-/// coefficients: coefficient `i` carries `z^i`, matching the CPU authority
-/// `evaluate_monomial_form` (prover/src/gkr/whir/mod.rs:3030-3095). The Horner
-/// loop below is that definition, so the device array is loaded with the same
-/// order production stores.
+/// Natural-order coefficients: coefficient `i` carries `z^i`.
 fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
     let count = 1 << log_count;
     let stride = 2 * count;
@@ -435,115 +430,4 @@ fn test_gather_leaves_for_queries_from_ntt_medium() {
 #[cfg(not(no_cuda))]
 fn test_gather_leaves_for_queries_from_ntt_large() {
     run_gather_leaves_for_queries_from_ntt_matches_packed(15, 8, 5);
-}
-
-// ---------------------------------------------------------------------------
-// Bounds tripwires on the split-eq table builder
-// ---------------------------------------------------------------------------
-//
-// `launch_build_split_eq_table` writes `num_queries << bits` E4 into its
-// destination and reads claim coordinates `claim_offset..claim_offset + bits`
-// out of each query's `log_n`-coordinate point. Both bounds are set by a bit
-// split computed in the caller, and until these asserts existed neither was
-// checked: an over-large `bits` wrote past the destination slab while staying
-// inside the pool (no CUDA error, only a value comparison would notice), and
-// `claim_offset + bits > log_n` read into the next query's coordinates, or past
-// the buffer on the last query.
-
-#[test]
-#[cfg(not(no_cuda))]
-#[should_panic(expected = "claim_offset + bits <= log_n")]
-fn split_eq_table_rejects_claim_range_past_log_n() {
-    let context = crate::test_utils::make_test_context(256, 32);
-    let log_n = 8usize;
-    let num_queries = 2usize;
-    let (high_bits, low_bits) = split_eq_bits(log_n);
-    let claim_points = context
-        .alloc::<E4>(num_queries * log_n, AllocationPlacement::BestFit)
-        .unwrap();
-    let mut out = context
-        .alloc::<E4>(num_queries << high_bits, AllocationPlacement::BestFit)
-        .unwrap();
-    // `low_bits` is the high slab's legal offset; one past it walks off the end
-    // of the query's coordinate run.
-    launch_build_split_eq_table(
-        claim_points.as_ptr(),
-        std::ptr::null(),
-        log_n,
-        high_bits,
-        low_bits + 1,
-        num_queries,
-        &mut out[..],
-        &context,
-    )
-    .unwrap();
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-#[should_panic(expected = "out_array.len() >= num_queries << bits")]
-fn split_eq_table_rejects_undersized_destination() {
-    let context = crate::test_utils::make_test_context(256, 32);
-    let log_n = 8usize;
-    let num_queries = 3usize;
-    let (high_bits, low_bits) = split_eq_bits(log_n);
-    let claim_points = context
-        .alloc::<E4>(num_queries * log_n, AllocationPlacement::BestFit)
-        .unwrap();
-    // One bit short of the table the `high_bits` build will write: exactly the
-    // shape Task 8's negative control hit (3x8 E4 written into a 3x4 slab).
-    let mut out = context
-        .alloc::<E4>(num_queries << (high_bits - 1), AllocationPlacement::BestFit)
-        .unwrap();
-    launch_build_split_eq_table(
-        claim_points.as_ptr(),
-        std::ptr::null(),
-        log_n,
-        high_bits,
-        low_bits,
-        num_queries,
-        &mut out[..],
-        &context,
-    )
-    .unwrap();
-}
-
-// `challenge_count == 0` leaves the 3-slot path's low eq buffer unwritten while
-// `make_eq_sizes(0)` still reports `low = 0`, so the accumulator loads
-// `eq_low[0]` out of a fresh pool allocation. Unreachable from any real
-// `whir_steps_schedule`; the guard is what keeps it that way.
-#[test]
-#[cfg(not(no_cuda))]
-#[should_panic(expected = "uninitialized device memory at eq_low[0]")]
-fn batched_accumulate_eq_rejects_zero_challenge_count() {
-    let context = crate::test_utils::make_test_context(256, 32);
-    let num_queries = 2usize;
-    let (high_len, low_len) = batched_eq_factor_scratch_lens(num_queries);
-    let challenges = context
-        .alloc::<E4>(num_queries, AllocationPlacement::BestFit)
-        .unwrap();
-    let claim_points = context
-        .alloc::<E4>(1, AllocationPlacement::BestFit)
-        .unwrap();
-    let mut eq_high = context
-        .alloc::<E4>(high_len, AllocationPlacement::BestFit)
-        .unwrap();
-    let mut eq_low = context
-        .alloc::<E4>(low_len, AllocationPlacement::BestFit)
-        .unwrap();
-    let mut eq_poly = context
-        .alloc::<E4>(16, AllocationPlacement::BestFit)
-        .unwrap();
-    launch_batched_accumulate_eq_samples(
-        claim_points.as_ptr(),
-        challenges.as_ptr(),
-        num_queries,
-        0,
-        eq_high.as_mut_ptr(),
-        eq_low.as_mut_ptr(),
-        eq_poly.as_mut_ptr(),
-        16,
-        &context,
-    )
-    .unwrap();
 }

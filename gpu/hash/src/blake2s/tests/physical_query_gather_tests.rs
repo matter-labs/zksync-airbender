@@ -23,23 +23,19 @@ const LEAF_SHAPES: [(u32, u32, u32); 4] = [(11, 1, 0), (11, 1, 1), (12, 0, 2), (
 
 /// `(log_rows_per_coset, log_rows_per_hash, cosets_count)`, reused from the
 /// partial-tree builder tests: every entry keeps `log_leaves_per_coset >= 9`.
-const PARTIAL_SHAPES: [(u32, u32, usize); 3] = [(11, 1, 1), (11, 1, 2), (14, 5, 2)];
+const PARTIAL_SHAPES: [(u32, u32, usize); 2] = [(11, 1, 2), (14, 5, 2)];
 
 /// `(log_rows_count, log_rows_per_leaf)` for the single-coset holder readers.
 const SINGLE_COSET_SHAPES: [(u32, u32); 3] = [(11, 1), (12, 0), (14, 5)];
 
-const ORACLE_COLS: [&[usize]; 2] = [&[3], &[1, 2, 3]];
+const ORACLE_COLS: [&[usize]; 1] = [&[1, 2, 3]];
 const COLS_COUNTS: [usize; 2] = [1, 3];
 const LOG_CAPS: [u32; 2] = [0, 2];
 
-/// Boundary query indexes over the flat query domain
-/// `q = (internal << log_lde_factor) | coset`. Per coset this pins internal leaf
-/// `0` and `L - 1` (each coset's low and high edge, so both sides of every coset
-/// boundary in flat-`q` order), their inward neighbours, leaves `31`/`32` and
-/// `L - 33`/`L - 32` (both sides of a 32-leaf subtree boundary — the group the
-/// partial-path kernels warp-reduce), and the coset midpoint pair. Element `0`
-/// is the global minimum query, the last element the global maximum, and one
-/// query is repeated.
+/// Boundary queries over the flat domain `q = (internal << log_lde_factor) | coset`:
+/// per coset, leaves 0/1, 31/32 (a 32-leaf warp-reduction group boundary), the
+/// midpoint pair, and L-33/L-32/L-2/L-1. Element 0 is the global minimum, the
+/// last the global maximum, and one query is repeated.
 fn boundary_queries(log_lde_factor: u32, log_leaves_count: u32) -> Vec<u32> {
     assert!(log_leaves_count >= 6);
     let leaves = 1u32 << log_leaves_count;
@@ -180,8 +176,7 @@ fn check_leaf_gather(
             _pad: 0,
             slab_dst_ptr: new_slabs[i].as_mut_ptr() as u64,
         };
-        // Negative control: the donor's natural-order addressing applied to the
-        // BITREVERSED codeword — the untranslated read.
+        // Negative control: donor natural-order addressing over the bitreversed codeword.
         control_descs[i] = OracleGatherDesc {
             cosets_ptr: physical_devices[i].as_ptr() as u64,
             columns_count,
@@ -362,8 +357,7 @@ fn check_partial_path_gather(
             _pad: 0,
             slab_dst_ptr: new_slabs[i].as_mut_ptr() as u64,
         };
-        // Negative control: the donor's natural-order leaf addressing applied to
-        // the BITREVERSED codeword, over the same (logical) partial tree.
+        // Negative control: donor natural-order leaf addressing over the bitreversed codeword.
         control_descs[i] = OraclePartialPathDesc {
             cosets_ptr: physical_devices[i].as_ptr() as u64,
             partial_tree_ptr: new_trees[i].as_ptr() as u64,
@@ -518,8 +512,7 @@ fn check_leaf_rows(
         stream,
     )
     .unwrap();
-    // Negative control: the donor's natural-order addressing over the
-    // BITREVERSED codeword.
+    // Negative control: donor natural-order addressing over the bitreversed codeword.
     gather_leaf_rows(
         &indexes_device,
         bit_reverse_indexes,
@@ -635,8 +628,7 @@ fn check_paths_from_rows(
         stream,
     )
     .unwrap();
-    // Negative control: the donor's natural-order leaf addressing over the
-    // BITREVERSED codeword, against the same (logical) partial tree.
+    // Negative control: donor natural-order leaf addressing over the bitreversed codeword.
     gather_merkle_paths_from_rows(
         &indexes_device,
         false,

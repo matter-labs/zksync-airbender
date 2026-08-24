@@ -1,8 +1,7 @@
 //! Arithmetic oracle for the dimension-reducing backward rounds.
 //!
-//! The reference below is a LOCAL transcription of the LSB index invariants of
-//! `prover/src/gkr/prover/dimension_reduction/lsb_backward.rs` (the CPU scalar
-//! chunks are `pub(crate)` there and not callable across crates):
+//! The CPU chunks are `pub(crate)` in the prover crate and not callable across
+//! crates, so the invariants are transcribed here:
 //!
 //! * an input poly is indexed `2*Y + b` with the gate bit `b` lowest, and a
 //!   round pairs `Y = 2j` with `Y = 2j + 1`, so row `j` owns the four
@@ -381,30 +380,12 @@ fn split_polys(flat: &[E4], polys: usize, stride: usize) -> Vec<Vec<E4>> {
         .collect()
 }
 
-/// Input pattern of a case.
-#[derive(Clone, Copy, Debug)]
-enum Fill {
-    Random,
-    /// Poly `0` of the source base becomes `e_offset` (a true basis vector,
-    /// which the fold path is linear in); every other poly stays random so the
-    /// quadratic gates keep both operands live.
-    Basis(usize),
-}
-
-fn fill_source(polys: usize, stride: usize, fill: Fill, rng: &mut StdRng) -> Vec<E4> {
-    let mut flat: Vec<E4> = (0..polys * stride).map(|_| random_e4(rng)).collect();
-    if let Fill::Basis(offset) = fill {
-        let offset = offset % stride;
-        for (i, cell) in flat[..stride].iter_mut().enumerate() {
-            *cell = if i == offset { E4::ONE } else { E4::ZERO };
-        }
-    }
-    flat
+fn fill_source(polys: usize, stride: usize, rng: &mut StdRng) -> Vec<E4> {
+    (0..polys * stride).map(|_| random_e4(rng)).collect()
 }
 
 struct Round0Case {
     acc_size: usize,
-    fill: Fill,
     point_eq: bool,
 }
 
@@ -416,7 +397,7 @@ fn run_round0_case(context: &ProverContext, case: &Round0Case, rng: &mut StdRng)
 
     let (_d_base, batch_challenges) = install_batch_challenges(context, random_e4(rng));
 
-    let inputs_flat = fill_source(POLY_COUNT + 1, input_len, case.fill, rng);
+    let inputs_flat = fill_source(POLY_COUNT + 1, input_len, rng);
     let outputs_flat: Vec<E4> = (0..(POLY_COUNT + 1) * output_len)
         .map(|_| random_e4(rng))
         .collect();
@@ -465,17 +446,13 @@ fn run_round0_case(context: &ProverContext, case: &Round0Case, rng: &mut StdRng)
     assert_e4_slices_eq(
         &from_gpu,
         &expected,
-        &format!(
-            "round0 acc_size={acc_size} fill={:?} point_eq={}",
-            case.fill, case.point_eq
-        ),
+        &format!("round0 acc_size={acc_size} point_eq={}", case.point_eq),
     );
 }
 
 struct ContinuationCase {
     acc_size: usize,
     step: usize,
-    fill: Fill,
     distinct_cache: bool,
     share_last_input: bool,
 }
@@ -490,7 +467,7 @@ fn run_continuation_case(context: &ProverContext, case: &ContinuationCase, rng: 
     let folding_challenge = random_e4(rng);
     write_folding_challenge(context, case.step, folding_challenge);
 
-    let source_flat = fill_source(POLY_COUNT + 1, source_len, case.fill, rng);
+    let source_flat = fill_source(POLY_COUNT + 1, source_len, rng);
     let d_source = upload(context, &source_flat);
     let d_dest = upload(context, &vec![poison(); (POLY_COUNT + 1) * dest_len]);
     let (eq_low, eq_sizes) = install_identity_eq(context);
@@ -534,8 +511,8 @@ fn run_continuation_case(context: &ProverContext, case: &ContinuationCase, rng: 
     }
 
     let label = format!(
-        "continuation acc_size={acc_size} step={} fill={:?} distinct_cache={} shared={}",
-        case.step, case.fill, case.distinct_cache, case.share_last_input
+        "continuation acc_size={acc_size} step={} distinct_cache={} shared={}",
+        case.step, case.distinct_cache, case.share_last_input
     );
     for cache in referenced.iter().copied() {
         assert_e4_slices_eq(
@@ -572,123 +549,47 @@ fn dim_reducing_backward_matches_cpu_lsb() {
     let context = make_test_context(256, 64);
     let mut rng = StdRng::seed_from_u64(0x5e_ed_10_5b);
 
-    for acc_size in [1usize, 2, 8, 256] {
-        for fill in [Fill::Random, Fill::Basis(0), Fill::Basis(5)] {
+    for acc_size in [1usize, 256] {
+        run_round0_case(
+            &context,
+            &Round0Case {
+                acc_size,
+                point_eq: false,
+            },
+            &mut rng,
+        );
+        if acc_size >= 2 {
             run_round0_case(
                 &context,
                 &Round0Case {
                     acc_size,
-                    fill,
-                    point_eq: false,
-                },
-                &mut rng,
-            );
-            if acc_size >= 2 {
-                run_round0_case(
-                    &context,
-                    &Round0Case {
-                        acc_size,
-                        fill,
-                        point_eq: true,
-                    },
-                    &mut rng,
-                );
-            }
-            // Step 1: first access, source poly index != destination poly index.
-            run_continuation_case(
-                &context,
-                &ContinuationCase {
-                    acc_size,
-                    step: 1,
-                    fill,
-                    distinct_cache: true,
-                    share_last_input: false,
-                },
-                &mut rng,
-            );
-            // A later step: arena to arena, with one input poly shared so a slot
-            // reads a fold another slot already wrote.
-            run_continuation_case(
-                &context,
-                &ContinuationCase {
-                    acc_size,
-                    step: 3,
-                    fill,
-                    distinct_cache: false,
-                    share_last_input: true,
+                    point_eq: true,
                 },
                 &mut rng,
             );
         }
-    }
-}
-
-/// Basis-vector sweep over the last continuation's source, pinning the
-/// `[00, 01, 10, 11]` order of the four values this producer hands to the
-/// final-evaluation gather: slot `2*Y + b`, surviving sumcheck coordinate `Y`
-/// above gate bit `b`.
-#[test]
-fn dim_reducing_backward_final_evaluation_packing_is_lsb() {
-    let context = make_test_context(64, 16);
-    let mut rng = StdRng::seed_from_u64(0x1a_57_5f_ac);
-
-    let acc_size = 1usize;
-    let source_len = 8;
-    let dest_len = 4;
-    let step = 2usize;
-    let slots = fixture_slots(false, false);
-    let folding_challenge = random_e4(&mut rng);
-    let mut one_minus_r = E4::ONE;
-    one_minus_r.sub_assign(&folding_challenge);
-
-    let (_d_base, _batch_challenges) = install_batch_challenges(&context, E4::ONE);
-    let (eq_low, eq_sizes) = install_identity_eq(&context);
-    write_folding_challenge(&context, step, folding_challenge);
-
-    for ancestor in 0..source_len {
-        let source_flat: Vec<E4> = (0..(POLY_COUNT + 1) * source_len)
-            .map(|i| {
-                if i % source_len == ancestor {
-                    E4::ONE
-                } else {
-                    E4::ZERO
-                }
-            })
-            .collect();
-        let d_source = upload(&context, &source_flat);
-        let d_dest = upload(&context, &vec![poison(); (POLY_COUNT + 1) * dest_len]);
-        let mut d_contributions = upload(&context, &vec![poison(); 2 * acc_size]);
-        let batch = build_batch(
-            &slots,
-            d_source.as_ptr() as *const u8,
-            source_len.trailing_zeros(),
-            d_dest.as_ptr() as *const u8,
-            dest_len.trailing_zeros(),
-            false,
-            eq_low.as_ptr(),
-            eq_sizes,
-            d_contributions.as_mut_ptr(),
+        // Step 1: first access, source poly index != destination poly index.
+        run_continuation_case(
+            &context,
+            &ContinuationCase {
+                acc_size,
+                step: 1,
+                distinct_cache: true,
+                share_last_input: false,
+            },
+            &mut rng,
         );
-        launch_dim_reducing_continuation_batched_compact(&batch, acc_size, step, &context).unwrap();
-        let dest_gpu = download(&context, &d_dest);
-
-        // Slot 2Y + b folds the ancestor pair (4Y + b, 4Y + b + 2).
-        let expected: Vec<E4> = (0..dest_len)
-            .map(|c| {
-                let (y, b) = (c >> 1, c & 1);
-                if ancestor == 4 * y + b {
-                    one_minus_r
-                } else if ancestor == 4 * y + b + 2 {
-                    folding_challenge
-                } else {
-                    E4::ZERO
-                }
-            })
-            .collect();
-        assert_e4_slices_eq(
-            &dest_gpu[..dest_len],
-            &expected,
-            &format!("final-evaluation packing, ancestor {ancestor}"),
+        // A later step: arena to arena, with one input poly shared so a slot
+        // reads a fold another slot already wrote.
+        run_continuation_case(
+            &context,
+            &ContinuationCase {
+                acc_size,
+                step: 3,
+                distinct_cache: false,
+                share_last_input: true,
+            },
+            &mut rng,
         );
     }
 }

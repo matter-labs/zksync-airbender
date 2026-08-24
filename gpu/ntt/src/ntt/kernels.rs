@@ -53,7 +53,6 @@ strided_tiles_stages!(ab_monomials_to_evals_last_10_stages_kernel);
 // 3-pass monomials to evals
 strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_kernel);
 
-// 3-pass natural monomials to bitreversed evals: middle (in-place, 8 stages)
 strided_tiles_stages!(ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel);
 // evict-first variant for the LAST noninitial pass (hybrid LDE path)
 strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_evict_kernel);
@@ -247,14 +246,11 @@ monomials_to_evals_compact!(ab_monomials_to_evals_initial_6_stages_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_initial_7_stages_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_initial_8_stages_kernel);
 
-// 3-pass natural monomials to bitreversed evals: initial pass. Shares the
-// multi-coset MonomialsToEvalsCompact signature (shared input column, per-coset
-// output slab, coset pre-scale from coset_index_base + coset_factor_shift).
+// Shares the multi-coset MonomialsToEvalsCompact signature (shared input
+// column, per-coset output slab, coset pre-scale).
 monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel);
 
-// 2-pass natural monomials to bitreversed evals: first pass (stages 0 ..
-// log_n - 14). Same multi-coset MonomialsToEvalsCompact signature as the
-// three-pass initial pass.
+// Same MonomialsToEvalsCompact signature as the three-pass initial pass.
 monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_first_9_stages_kernel);
 monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_first_10_stages_kernel);
 
@@ -308,9 +304,8 @@ lde_intermediate!(ab_lde_first_8_stages_kernel);
 lde_intermediate!(ab_lde_first_7_stages_kernel);
 lde_intermediate!(ab_lde_first_6_stages_kernel);
 
-// 3-pass natural monomials to bitreversed evals: final pass. No
-// `transposed_monomials` argument -- the bitreversed codeword is always written
-// in plain row order.
+// No `transposed_monomials` argument -- the bitreversed codeword is always
+// written in plain row order.
 cuda_kernel_signature_and_arguments!(
     pub(super) NaturalToBitrevFinal,
     inputs_matrix: PtrAndStride<BF>,
@@ -338,12 +333,9 @@ macro_rules! natural_to_bitrev_final {
     };
 }
 
-// 2-pass natural monomials to bitreversed evals: last pass (14 stages).
 natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_14_stages_kernel);
 
-// 2-pass-compact natural monomials to bitreversed evals: pass 2 does the last
-// K = log_n - 8 stages per chunk of 2^K consecutive rows, for log_n in [13, 20]
-// (pass 1 is the three-pass initial kernel). Same NaturalToBitrevFinal
+// Pass 1 is the three-pass initial kernel. Same NaturalToBitrevFinal
 // signature: in place per coset slab, plain row order out.
 natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_5_stages_compact_kernel);
 natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_6_stages_compact_kernel);

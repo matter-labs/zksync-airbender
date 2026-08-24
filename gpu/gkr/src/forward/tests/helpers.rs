@@ -157,64 +157,11 @@ pub(super) const PROBE_OUTPUT_TYPES: [OutputType; 5] = [
 /// pairwise types, `[num, den]` for the lookup types.
 pub(super) type ProbeColumns = Vec<(OutputType, [Vec<E4>; 2])>;
 
-/// A probe with one distinguished hypercube coordinate.
-pub(super) struct DistinguishedCellProbe {
-    pub(super) columns: ProbeColumns,
-    pub(super) index: usize,
-    /// `(fill, distinguished)` for each channel that carries the single
-    /// distinguished cell; `None` for the channels that stay constant.
-    pub(super) marks: Vec<[Option<(E4, E4)>; 2]>,
-}
-
 fn is_pairwise(kind: OutputType) -> bool {
     matches!(
         kind,
         OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct
     )
-}
-
-/// Product-chain probe: `ONE` everywhere except `index`, which carries `marker`.
-fn marked_product_column(len: usize, index: usize, marker: E4) -> Vec<E4> {
-    let mut column = vec![E4::ONE; len];
-    column[index] = marker;
-    column
-}
-
-/// Multilinear basis vector: `ONE` at `index`, `ZERO` elsewhere.
-fn basis_column(len: usize, index: usize) -> Vec<E4> {
-    let mut column = vec![E4::ZERO; len];
-    column[index] = E4::ONE;
-    column
-}
-
-/// Builds a probe whose distinguished cell must land at `index >> (round + 1)`
-/// when a round binds adjacent pairs. Product chains use `ONE` with one marker
-/// cell; lookup chains use the basis vector over an all-`ONE` denominator,
-/// where a round sums the pair's numerators.
-pub(super) fn distinguished_cell_probe(len: usize, index: usize) -> DistinguishedCellProbe {
-    let mut columns = ProbeColumns::new();
-    let mut marks = Vec::new();
-    for (slot, kind) in PROBE_OUTPUT_TYPES.into_iter().enumerate() {
-        if is_pairwise(kind) {
-            let markers = [
-                sample_ext(1_000 + slot as u32 * 16),
-                sample_ext(2_000 + slot as u32 * 16),
-            ];
-            columns.push((
-                kind,
-                markers.map(|marker| marked_product_column(len, index, marker)),
-            ));
-            marks.push(markers.map(|marker| Some((E4::ONE, marker))));
-        } else {
-            columns.push((kind, [basis_column(len, index), vec![E4::ONE; len]]));
-            marks.push([Some((E4::ZERO, E4::ONE)), None]);
-        }
-    }
-    DistinguishedCellProbe {
-        columns,
-        index,
-        marks,
-    }
 }
 
 /// Probe with pseudorandom columns: every reduction output is a distinct
@@ -346,43 +293,6 @@ pub(super) fn read_and_pin_round_outputs(
         "{label}: layer {output_layer} must emit every probe output type in OutputType order"
     );
     outputs
-}
-
-/// Pins the adjacent-pair (LSB) signature directly: after `round_idx`, the
-/// probe's distinguished cell sits at `index >> (round_idx + 1)`. Binding the
-/// high coordinate instead would leave it at `index & (round_len - 1)`.
-pub(super) fn assert_distinguished_cell_at_lsb_position(
-    probe: &DistinguishedCellProbe,
-    outputs: &ProbeColumns,
-    round_idx: u32,
-    label: &str,
-) {
-    let expected_index = probe.index >> (round_idx + 1);
-    for ((kind, columns), marks) in outputs.iter().zip(&probe.marks) {
-        for (channel, (column, mark)) in columns.iter().zip(marks).enumerate() {
-            let Some((fill, distinguished)) = *mark else {
-                continue;
-            };
-            let found = column
-                .iter()
-                .enumerate()
-                .filter(|(_, value)| **value != fill)
-                .map(|(idx, _)| idx)
-                .collect::<Vec<_>>();
-            assert_eq!(
-                found,
-                vec![expected_index],
-                "{label}: {kind:?} channel {channel} round {round_idx} must carry the \
-                 distinguished cell at {} >> {} only",
-                probe.index,
-                round_idx + 1
-            );
-            assert_eq!(
-                column[expected_index], distinguished,
-                "{label}: {kind:?} channel {channel} round {round_idx} distinguished value"
-            );
-        }
-    }
 }
 
 pub(super) fn expected_lookup_pair_reduction(num: &[E4], den: &[E4]) -> (Vec<E4>, Vec<E4>) {
