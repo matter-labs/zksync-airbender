@@ -2,12 +2,17 @@
 
 # Make sure to run from the main zksync-airbender directory.
 
-set -e  # Exit on any error
+set -euo pipefail  # Exit on any error
 
 export DOCKER_DEFAULT_PLATFORM=linux/amd64
 
+SOURCE_DATE_EPOCH="1700000000"
+export SOURCE_DATE_EPOCH
+
 # create a fresh docker
-docker build -t airbender-verifiers  -f tools/reproduce/Dockerfile .
+docker build -t airbender-verifiers \
+  --build-arg SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+  -f tools/reproduce/Dockerfile .
 
 docker create --name verifiers airbender-verifiers
 
