@@ -10,18 +10,23 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr_compiler::{
     lower_dr_window_program, project_dr_window_inputs, DrWindowInputOutput,
-    DrWindowInputProjection, DrWindowProgram, DR_WINDOWED_R0_KERNEL_SYMBOL,
+    DrWindowInputProjection, DrWindowProgram, DR_WINDOWED_CONT_KERNEL_SYMBOL,
+    DR_WINDOWED_R0_KERNEL_SYMBOL,
 };
 use gpu_prover_context::ProverContext;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use super::binding::{
-    bind_dr_window_r0, dr_window_partials_len, launch_dr_window_r0, DrWindowRuntimeScratch,
+    bind_dr_window_continuation_launch, bind_dr_window_r0, build_dr_window_continuation_batch,
+    dr_window_partials_len, launch_dr_window_continuation, launch_dr_window_r0,
+    DrContinuationFactoredEqScratch, DrWindowContinuationArena, DrWindowContinuationSource,
+    DrWindowRuntimeScratch,
 };
 use super::composition::{DrWindowLayerCompositionHook, DrWindowPassEqState};
 use super::reference::{
-    compare_dr_tensors, dr_r0_tensor_reference, DrTensorMismatch, DrTensorOracleProgram,
+    compare_dr_tensors, dr_continuation_tensor_reference, dr_r0_tensor_reference,
+    fold_dr_continuation_depth3, DrTensorMismatch, DrTensorOracleProgram,
 };
 use crate::backward::dim_reducing_encoder::{
     build_continuation_batch_compact_for_arenas, build_round0_batch_compact,
@@ -134,6 +139,11 @@ struct PreparedRun {
     _batch_base: DeviceAllocation<E4>,
 }
 
+struct ContinuationPassObservation {
+    tensor: [E4; TENSOR_CELLS],
+    published: Vec<E4>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ThreeRoundStateObservation {
     r0_output: [E4; TENSOR_CELLS],
@@ -237,7 +247,7 @@ struct DrGpuFixture<'a> {
 impl<'a> DrGpuFixture<'a> {
     fn new(context: &'a ProverContext, mask: u32, folding_steps: usize, seed: u64) -> Self {
         assert!((1..=0x1f).contains(&mask));
-        assert!((4..=9).contains(&folding_steps));
+        assert!((4..=12).contains(&folding_steps));
         let input_stride = 1usize << (folding_steps + 1);
         let output_stride = 1usize << folding_steps;
         let mut rng = StdRng::seed_from_u64(seed);
@@ -466,6 +476,123 @@ impl<'a> DrGpuFixture<'a> {
             prepared.hook.r0_launch.selected_symbol(),
             prepared.hook.r0_launch.row_tiles,
         )
+    }
+
+    fn folded_continuation_columns(
+        &self,
+        source: &BTreeMap<GKRAddress, Vec<E4>>,
+        start_round: usize,
+    ) -> BTreeMap<GKRAddress, Vec<E4>> {
+        let challenges: [E4; 3] = self.claim_point[start_round - 3..start_round]
+            .try_into()
+            .expect("one continuation consumes three prior challenges");
+        self.projection
+            .canonical_sources()
+            .iter()
+            .copied()
+            .map(|address| {
+                let folded = fold_dr_continuation_depth3(&source[&address], challenges)
+                    .expect("fixture source has packed depth-3 geometry");
+                (address, folded)
+            })
+            .collect()
+    }
+
+    fn continuation_arena(
+        &self,
+        start_round: usize,
+    ) -> (Arc<DeviceAllocation<E4>>, DrWindowContinuationArena) {
+        let poly_count = self.projection.canonical_sources().len();
+        let log2_stride = (self.folding_steps + 1 - start_round) as u32;
+        let allocation = Arc::new(
+            self.context
+                .alloc(
+                    poly_count * (1usize << log2_stride),
+                    AllocationPlacement::BestFit,
+                )
+                .unwrap(),
+        );
+        let arena =
+            DrWindowContinuationArena::new(Arc::clone(&allocation), log2_stride, poly_count)
+                .expect("fixture arena has exact canonical geometry");
+        (allocation, arena)
+    }
+
+    fn run_continuation_pass(
+        &self,
+        start_round: usize,
+        source: DrWindowContinuationSource<'_, ()>,
+        destination: &DrWindowContinuationArena,
+        destination_allocation: &DeviceAllocation<E4>,
+        eq_scratch: &DrContinuationFactoredEqScratch,
+        partials: &mut DeviceAllocation<E4>,
+        claim_point: &DeviceAllocation<E4>,
+    ) -> ContinuationPassObservation {
+        let suffix_log = self.folding_steps - start_round;
+        let eq = eq_scratch
+            .view_for_pass(self.folding_steps, start_round)
+            .expect("fixture continuation boundary is legal");
+        let batch = build_dr_window_continuation_batch(
+            &self.program,
+            &self.projection,
+            source,
+            destination,
+            eq,
+        )
+        .expect("fixture input-only continuation batch binds");
+        let batch_base = upload(self.context, &[self.batch_base]);
+        schedule_dim_reducing_batch_challenge_table_prelude(batch_base.as_ptr(), self.context)
+            .unwrap();
+        let launch = bind_dr_window_continuation_launch(
+            batch,
+            self.folding_steps,
+            start_round,
+            eq,
+            DrWindowRuntimeScratch {
+                partials: partials.as_mut_ptr(),
+                partials_capacity: partials.len(),
+            },
+            claim_point.as_ptr(),
+        )
+        .expect("fixture continuation launch binds");
+        assert_eq!(launch.selected_symbol(), DR_WINDOWED_CONT_KERNEL_SYMBOL);
+        launch_dr_window_continuation(&launch, self.context).unwrap();
+
+        let partials_len = TENSOR_CELLS * launch.row_tiles;
+        let partial_values = download(self.context, &partials[..partials_len]);
+        let published = download(self.context, &destination_allocation[..]);
+        self.context.get_exec_stream().synchronize().unwrap();
+        let mut tensor = [E4::ZERO; TENSOR_CELLS];
+        for (index, value) in partial_values.into_iter().enumerate() {
+            tensor[index % TENSOR_CELLS].add_assign(&value);
+        }
+        assert_eq!(launch.binding.log_rows as usize, suffix_log - 3);
+        ContinuationPassObservation { tensor, published }
+    }
+
+    fn assert_published_columns(&self, expected: &BTreeMap<GKRAddress, Vec<E4>>, observed: &[E4]) {
+        let stride = expected
+            .values()
+            .next()
+            .expect("nonzero mask has a canonical source")
+            .len();
+        assert_eq!(
+            observed.len(),
+            self.projection.canonical_sources().len() * stride
+        );
+        for (publication_index, address) in self
+            .projection
+            .canonical_sources()
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            assert_eq!(
+                &observed[publication_index * stride..(publication_index + 1) * stride],
+                expected[&address].as_slice(),
+                "canonical publication {publication_index} for {address:?}",
+            );
+        }
     }
 
     fn initial_claim(&self, tensor: &[E4; TENSOR_CELLS]) -> E4 {
@@ -1046,4 +1173,207 @@ fn gpu_dr_window_r0_three_round_state_matches_legacy() {
         compare_three_round_states(&legacy, &perturbed),
         Err(ThreeRoundStateMismatch::R0Output { .. })
     ));
+}
+
+fn factored_eq_group_reference(
+    claim_point: &[E4],
+    challenge_offset: usize,
+    challenge_count: usize,
+    group_index: usize,
+) -> Vec<E4> {
+    let group_start = group_index * 8;
+    let group_size = (challenge_count - group_start).min(8);
+    (0..1usize << group_size)
+        .map(|local_index| {
+            (0..group_size).fold(E4::ONE, |mut product, variable| {
+                let coordinate =
+                    claim_point[challenge_offset + challenge_count - 1 - group_start - variable];
+                let bit = (local_index >> (group_size - 1 - variable)) & 1;
+                product.mul_assign(&eq_weight(bit, coordinate));
+                product
+            })
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "requires CUDA; execute only through an independently approved locked D2 packet"]
+fn dr_window_continuation_first_raw_matches_legacy() {
+    let context = make_test_context(256, 64);
+    let fixture = DrGpuFixture::new(&context, 0x1f, 10, 0xd220_0000_0000_0001);
+    let (destination_allocation, destination) = fixture.continuation_arena(3);
+    let eq_scratch = DrContinuationFactoredEqScratch::allocate(&context).unwrap();
+    let mut partials: DeviceAllocation<E4> = context
+        .alloc(dr_window_partials_len(7), AllocationPlacement::BestFit)
+        .unwrap();
+    let claim_point = upload(&context, &fixture.claim_point);
+    let observed = fixture.run_continuation_pass(
+        3,
+        DrWindowContinuationSource::Storage(&fixture.storage),
+        &destination,
+        destination_allocation.as_ref(),
+        &eq_scratch,
+        &mut partials,
+        &claim_point,
+    );
+    let folded = fixture.folded_continuation_columns(&fixture.columns, 3);
+    fixture.assert_published_columns(&folded, &observed.published);
+    let expected = dr_continuation_tensor_reference(
+        &fixture.oracle_program,
+        &folded,
+        fixture.batch_base,
+        &fixture.claim_point[6..],
+    )
+    .unwrap();
+    compare_dr_tensors(&expected, &observed.tensor).unwrap();
+}
+
+#[test]
+#[ignore = "requires CUDA; execute only through an independently approved locked D2 packet"]
+fn dr_window_continuation_later_arena_matches_legacy() {
+    let context = make_test_context(256, 64);
+    let fixture = DrGpuFixture::new(&context, 0x1f, 10, 0xd221_0000_0000_0001);
+    let (first_allocation, first_arena) = fixture.continuation_arena(3);
+    let (second_allocation, second_arena) = fixture.continuation_arena(6);
+    let eq_scratch = DrContinuationFactoredEqScratch::allocate(&context).unwrap();
+    let mut partials: DeviceAllocation<E4> = context
+        .alloc(dr_window_partials_len(7), AllocationPlacement::BestFit)
+        .unwrap();
+    let claim_point = upload(&context, &fixture.claim_point);
+    let first = fixture.run_continuation_pass(
+        3,
+        DrWindowContinuationSource::Storage(&fixture.storage),
+        &first_arena,
+        first_allocation.as_ref(),
+        &eq_scratch,
+        &mut partials,
+        &claim_point,
+    );
+    let folded_once = fixture.folded_continuation_columns(&fixture.columns, 3);
+    fixture.assert_published_columns(&folded_once, &first.published);
+
+    let second = fixture.run_continuation_pass(
+        6,
+        DrWindowContinuationSource::Arena(&first_arena),
+        &second_arena,
+        second_allocation.as_ref(),
+        &eq_scratch,
+        &mut partials,
+        &claim_point,
+    );
+    let folded_twice = fixture.folded_continuation_columns(&folded_once, 6);
+    fixture.assert_published_columns(&folded_twice, &second.published);
+    let expected = dr_continuation_tensor_reference(
+        &fixture.oracle_program,
+        &folded_twice,
+        fixture.batch_base,
+        &fixture.claim_point[9..],
+    )
+    .unwrap();
+    compare_dr_tensors(&expected, &second.tensor).unwrap();
+}
+
+#[test]
+#[ignore = "requires CUDA; execute only through an independently approved locked D2 packet"]
+fn dr_window_continuation_eq_is_independent() {
+    let context = make_test_context(256, 64);
+    let fixture = DrGpuFixture::new(&context, 0x1f, 10, 0xd222_0000_0000_0001);
+    let claim_point = upload(&context, &fixture.claim_point);
+    let r0_eq = DrWindowPassEqState::allocate(&context, 3, fixture.folding_steps - 3).unwrap();
+    launch_build_eq_high_and_low_groups_from_point(
+        claim_point.as_ptr(),
+        3,
+        fixture.folding_steps - 3,
+        get_eq_high_constant_device_ptr(),
+        r0_eq.eq_low.as_ptr().cast_mut(),
+        &context,
+    )
+    .unwrap();
+    let constant_before = download(
+        &context,
+        raw_device_slice(
+            get_eq_high_constant_device_ptr(),
+            2 * GKR_EQ_GROUP_TABLE_LEN,
+        ),
+    );
+    let r0_low_before = download(&context, &r0_eq.eq_low[..]);
+    context.get_exec_stream().synchronize().unwrap();
+
+    let (destination_allocation, destination) = fixture.continuation_arena(3);
+    let eq_scratch = DrContinuationFactoredEqScratch::allocate(&context).unwrap();
+    let mut partials: DeviceAllocation<E4> = context
+        .alloc(dr_window_partials_len(7), AllocationPlacement::BestFit)
+        .unwrap();
+    let _ = fixture.run_continuation_pass(
+        3,
+        DrWindowContinuationSource::Storage(&fixture.storage),
+        &destination,
+        destination_allocation.as_ref(),
+        &eq_scratch,
+        &mut partials,
+        &claim_point,
+    );
+    let constant_after = download(
+        &context,
+        raw_device_slice(
+            get_eq_high_constant_device_ptr(),
+            2 * GKR_EQ_GROUP_TABLE_LEN,
+        ),
+    );
+    let r0_low_after = download(&context, &r0_eq.eq_low[..]);
+    context.get_exec_stream().synchronize().unwrap();
+    assert_eq!(constant_after, constant_before);
+    assert_eq!(r0_low_after, r0_low_before);
+}
+
+#[test]
+#[ignore = "requires CUDA; execute only through an independently approved locked D2 packet"]
+fn dr_window_continuation_global_eq_builder_matches_reference() {
+    let context = make_test_context(64, 16);
+    let folding_steps = 23;
+    let start_round = 3;
+    let challenge_offset = start_round + 3;
+    let challenge_count = folding_steps - challenge_offset;
+    let mut rng = StdRng::seed_from_u64(0xd223_0000_0000_0001);
+    let claim_host = (0..folding_steps)
+        .map(|_| random_e4(&mut rng))
+        .collect::<Vec<_>>();
+    let claim_point = upload(&context, &claim_host);
+    let eq_scratch = DrContinuationFactoredEqScratch::allocate(&context).unwrap();
+    let view = eq_scratch
+        .view_for_pass(folding_steps, start_round)
+        .unwrap();
+    launch_build_eq_high_and_low_groups_from_point(
+        claim_point.as_ptr(),
+        challenge_offset,
+        challenge_count,
+        view.high_0,
+        view.low,
+        &context,
+    )
+    .unwrap();
+    let high_0 = download(
+        &context,
+        raw_device_slice(view.high_0, GKR_EQ_GROUP_TABLE_LEN),
+    );
+    let high_1 = download(
+        &context,
+        raw_device_slice(view.high_1, GKR_EQ_GROUP_TABLE_LEN),
+    );
+    let low = download(&context, raw_device_slice(view.low, GKR_EQ_GROUP_TABLE_LEN));
+    context.get_exec_stream().synchronize().unwrap();
+
+    assert_eq!(view.sizes, make_eq_sizes(challenge_count));
+    assert_eq!(
+        &high_0[..1usize << view.sizes.high[0]],
+        factored_eq_group_reference(&claim_host, challenge_offset, challenge_count, 0),
+    );
+    assert_eq!(
+        &high_1[..1usize << view.sizes.high[1]],
+        factored_eq_group_reference(&claim_host, challenge_offset, challenge_count, 1),
+    );
+    assert_eq!(
+        &low[..1usize << view.sizes.low],
+        factored_eq_group_reference(&claim_host, challenge_offset, challenge_count, 2),
+    );
 }

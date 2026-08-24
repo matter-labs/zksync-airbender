@@ -6,24 +6,31 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::E4;
 use gpu_gkr_compiler::{
     lower_dr_window_program, project_dr_window_inputs, DrWindowInputOutput,
-    DR_WINDOWED_R0_BLOCK_THREADS, DR_WINDOWED_R0_KERNEL_SYMBOL, KERNEL_ARGUMENT_CEILING_BYTES,
+    DR_WINDOWED_CONT_BLOCK_THREADS, DR_WINDOWED_CONT_KERNEL_SYMBOL, DR_WINDOWED_R0_BLOCK_THREADS,
+    DR_WINDOWED_R0_KERNEL_SYMBOL, KERNEL_ARGUMENT_CEILING_BYTES,
 };
 
 use super::binding::{
-    assemble_dr_window_continuation_batch, dr_window_partials_len, dr_window_row_tiles,
-    resolve_dr_global_active_eq_slot, resolve_dr_window_kernel, validate_dr_r0_eq_contract,
-    validate_dr_window_folding_steps, DrCompactSourceTableBuilder, DrContinuationFactoredEqView,
-    DrWindowBindError, DrWindowLaunchBinding,
+    assemble_dr_window_continuation_batch, bind_dr_window_continuation_launch,
+    dr_window_partials_len, dr_window_row_tiles, resolve_dr_global_active_eq_slot,
+    resolve_dr_window_continuation_kernel, resolve_dr_window_kernel, validate_dr_r0_eq_contract,
+    validate_dr_window_continuation_eq_contract, validate_dr_window_folding_steps,
+    DrCompactSourceTableBuilder, DrContinuationFactoredEqView, DrWindowBindError,
+    DrWindowContinuationLaunchBinding, DrWindowLaunchBinding, DrWindowRuntimeScratch,
 };
 use super::composition::{
     build_raw_input_owner, continuation_window_count, megakernel_entry_round,
     DrWindowRawInputKeepalive,
 };
-use super::generated_registry::{DR_WINDOWED_R0_DEFINED_MASK, DR_WINDOWED_R0_UNIVERSAL_KERNEL};
+use super::generated_registry::{
+    DR_WINDOWED_CONT_DEFINED_MASK, DR_WINDOWED_CONT_UNIVERSAL_KERNEL, DR_WINDOWED_R0_DEFINED_MASK,
+    DR_WINDOWED_R0_UNIVERSAL_KERNEL,
+};
 use crate::backward::kernels::{
     make_eq_sizes, pack_cache_u16, pack_source_u16, FoldingArenaBinding,
-    GpuGKRDimensionReducingBatch, GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
+    GpuGKRDimensionReducingBatch, GpuGKRSourceRecord, GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
 };
+use crate::backward::GKR_EQ_GROUP_TABLE_LEN;
 use crate::backward::{
     derive_dimension_reducing_inputs, legacy_dimension_reducing_slots_for_test,
     GpuGKRDimensionReducingLayerSlots, CONTINUATION_GOLDEN_CORPUS,
@@ -1072,6 +1079,410 @@ fn cpu_dr_window_r0_native_source_pins_tensor_and_constant_eq_contracts() {
         }
     }
     assert_eq!(seen, (0..27).collect());
+}
+
+#[test]
+fn cpu_dr_window_continuation_d2_abi_registry_binder_and_native_contract() {
+    const BINDING: &str = include_str!("binding.rs");
+    const MODULE: &str = include_str!("mod.rs");
+    const REGISTRY: &str = include_str!("generated_registry.rs");
+    const CMAKE: &str = include_str!("../../../native/gkr/backward/CMakeLists.txt");
+    const WINDOW_GEOMETRY: &str =
+        include_str!("../../../native/gkr/backward/window/window_geometry.cuh");
+    const LOOKUP_HELPERS: &str = include_str!("../../../native/gkr/support/lookup_helpers.cuh");
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("resolve repository root from gpu/gkr");
+    let continuation_path = "gpu/gkr/native/gkr/backward/window_dr/continuation.cuh";
+    let manifest_path = "gpu/gkr/native/gkr/backward/generated/dr_windowed_cont_manifest.cuh";
+    let translation_unit_path = "gpu/gkr/native/gkr/backward/generated/dr_cont_window_universal.cu";
+    let continuation = std::fs::read_to_string(root.join(continuation_path)).unwrap_or_default();
+    let manifest = std::fs::read_to_string(root.join(manifest_path)).unwrap_or_default();
+    let translation_unit =
+        std::fs::read_to_string(root.join(translation_unit_path)).unwrap_or_default();
+
+    assert_eq!(size_of::<DrWindowContinuationLaunchBinding>(), 384);
+    assert_eq!(align_of::<DrWindowContinuationLaunchBinding>(), 16);
+    assert!(size_of::<DrWindowContinuationLaunchBinding>() <= KERNEL_ARGUMENT_CEILING_BYTES);
+    assert_eq!(offset_of!(DrWindowContinuationLaunchBinding, batch), 0);
+    assert_eq!(
+        offset_of!(DrWindowContinuationLaunchBinding, eq_high_0),
+        336
+    );
+    assert_eq!(
+        offset_of!(DrWindowContinuationLaunchBinding, eq_high_1),
+        344
+    );
+    assert_eq!(offset_of!(DrWindowContinuationLaunchBinding, partials), 352);
+    assert_eq!(
+        offset_of!(DrWindowContinuationLaunchBinding, claim_point),
+        360
+    );
+    assert_eq!(offset_of!(DrWindowContinuationLaunchBinding, log_rows), 368);
+    assert_eq!(
+        offset_of!(DrWindowContinuationLaunchBinding, start_round),
+        372
+    );
+    assert_eq!(offset_of!(DrWindowContinuationLaunchBinding, reserved), 376);
+    assert_eq!(DR_WINDOWED_CONT_BLOCK_THREADS, 288);
+    assert_eq!(DR_WINDOWED_CONT_DEFINED_MASK, 0x1f);
+    assert_eq!(
+        DR_WINDOWED_CONT_UNIVERSAL_KERNEL.symbol_name,
+        DR_WINDOWED_CONT_KERNEL_SYMBOL
+    );
+    for mask in 1..=DR_WINDOWED_CONT_DEFINED_MASK {
+        assert_eq!(
+            resolve_dr_window_continuation_kernel(mask)
+                .unwrap()
+                .symbol_name,
+            DR_WINDOWED_CONT_KERNEL_SYMBOL,
+        );
+    }
+    assert_eq!(
+        resolve_dr_window_continuation_kernel(0).err().unwrap(),
+        DrWindowBindError::ZeroMask,
+    );
+    for bit in 5..32 {
+        let undefined = 1u32 << bit;
+        assert_eq!(
+            resolve_dr_window_continuation_kernel(undefined)
+                .err()
+                .unwrap(),
+            DrWindowBindError::UndefinedMaskBits { bits: undefined },
+        );
+    }
+
+    let folding_steps = 10;
+    let start_round = 3;
+    let suffix_log = folding_steps - start_round;
+    let challenge_offset = start_round + 3;
+    let challenge_count = folding_steps - challenge_offset;
+    let high_0 = 0x10_000usize as *mut E4;
+    let high_1 = (high_0 as usize + GKR_EQ_GROUP_TABLE_LEN * size_of::<E4>()) as *mut E4;
+    let low = 0x30_000usize as *mut E4;
+    let eq = DrContinuationFactoredEqView::new(
+        high_0,
+        high_1,
+        low,
+        make_eq_sizes(challenge_count),
+        challenge_offset as u32,
+        challenge_count as u32,
+    );
+    assert_eq!(
+        validate_dr_window_continuation_eq_contract(folding_steps, start_round, eq),
+        Ok(()),
+    );
+
+    let mut batch = GpuGKRDimensionReducingBatch::<E4> {
+        enabled_mask: 1,
+        eq_low: low,
+        eq_sizes: eq.sizes,
+        ..Default::default()
+    };
+    batch.tables.bases[0] = 0x40_000usize as *const u8;
+    batch.tables.bases[1] = 0x50_000usize as *const u8;
+    batch.tables.log2_stride[0] = 11;
+    batch.tables.log2_stride[1] = 8;
+    for input_operand in 0..2 {
+        batch.slots[0].io[input_operand] = GpuGKRSourceRecord::new(
+            pack_source_u16(input_operand == 0, 0, input_operand as u16),
+            pack_cache_u16(1, input_operand as u16),
+        );
+    }
+    let required = dr_window_partials_len(suffix_log);
+    assert_eq!(required, 54);
+    match std::panic::catch_unwind(|| dr_window_partials_len(1usize << suffix_log)) {
+        Ok(count_as_log) => assert_ne!(count_as_log, required),
+        Err(_) => {}
+    }
+    let mut partials_backing = vec![E4::default(); required];
+    let scratch = DrWindowRuntimeScratch {
+        partials: partials_backing.as_mut_ptr(),
+        partials_capacity: required,
+    };
+    let claim_point_backing = vec![E4::default(); folding_steps];
+    let claim_point = claim_point_backing.as_ptr();
+    let launch = bind_dr_window_continuation_launch(
+        batch,
+        folding_steps,
+        start_round,
+        eq,
+        scratch,
+        claim_point,
+    )
+    .expect("the exact continuation descriptor geometry binds");
+    assert_eq!(launch.selected_symbol(), DR_WINDOWED_CONT_KERNEL_SYMBOL);
+    assert_eq!(launch.row_tiles, 1);
+    assert_eq!(launch.binding.log_rows, 4);
+    assert_eq!(launch.binding.start_round, 3);
+    assert_eq!(launch.binding.eq_high_0, high_0);
+    assert_eq!(launch.binding.eq_high_1, high_1);
+    assert_eq!(launch.binding.batch.eq_low, low);
+    assert_eq!(launch.binding.reserved, [0; 2]);
+    assert!(launch.binding.batch.contributions.is_null());
+
+    let wrong_offset = DrContinuationFactoredEqView::new(
+        high_0,
+        high_1,
+        low,
+        eq.sizes,
+        (challenge_offset - 1) as u32,
+        challenge_count as u32,
+    );
+    assert_eq!(
+        validate_dr_window_continuation_eq_contract(folding_steps, start_round, wrong_offset,),
+        Err(DrWindowBindError::EqBuildOffset {
+            expected: challenge_offset,
+            observed: challenge_offset - 1,
+        }),
+    );
+    let wrong_count = DrContinuationFactoredEqView::new(
+        high_0,
+        high_1,
+        low,
+        eq.sizes,
+        challenge_offset as u32,
+        (challenge_count - 1) as u32,
+    );
+    assert_eq!(
+        validate_dr_window_continuation_eq_contract(folding_steps, start_round, wrong_count,),
+        Err(DrWindowBindError::EqSizeMismatch),
+    );
+    let wrong_sizes = DrContinuationFactoredEqView::new(
+        high_0,
+        high_1,
+        low,
+        make_eq_sizes(challenge_count - 1),
+        challenge_offset as u32,
+        challenge_count as u32,
+    );
+    assert_eq!(
+        validate_dr_window_continuation_eq_contract(folding_steps, start_round, wrong_sizes,),
+        Err(DrWindowBindError::EqSizeMismatch),
+    );
+    let noncontiguous = DrContinuationFactoredEqView::new(
+        high_0,
+        (high_1 as usize + size_of::<E4>()) as *mut E4,
+        low,
+        eq.sizes,
+        challenge_offset as u32,
+        challenge_count as u32,
+    );
+    assert!(matches!(
+        validate_dr_window_continuation_eq_contract(folding_steps, start_round, noncontiguous,),
+        Err(DrWindowBindError::ContinuationEqHighLayout { .. })
+    ));
+    let null_high = DrContinuationFactoredEqView::new(
+        std::ptr::null_mut(),
+        high_1,
+        low,
+        eq.sizes,
+        challenge_offset as u32,
+        challenge_count as u32,
+    );
+    assert_eq!(
+        validate_dr_window_continuation_eq_contract(folding_steps, start_round, null_high),
+        Err(DrWindowBindError::NullContinuationPointer {
+            pointer: "eq_high_0",
+        }),
+    );
+
+    let bind_error = |batch, scratch, claim_point| {
+        bind_dr_window_continuation_launch(
+            batch,
+            folding_steps,
+            start_round,
+            eq,
+            scratch,
+            claim_point,
+        )
+        .err()
+        .expect("mutation must reject")
+    };
+    assert_eq!(
+        bind_error(
+            batch,
+            DrWindowRuntimeScratch {
+                partials_capacity: required - 1,
+                ..scratch
+            },
+            claim_point,
+        ),
+        DrWindowBindError::ScratchCapacity {
+            required,
+            capacity: required - 1,
+        },
+    );
+    assert_eq!(
+        bind_error(
+            batch,
+            DrWindowRuntimeScratch {
+                partials: std::ptr::null_mut(),
+                ..scratch
+            },
+            claim_point,
+        ),
+        DrWindowBindError::NullContinuationPointer {
+            pointer: "partials",
+        },
+    );
+    assert_eq!(
+        bind_error(batch, scratch, std::ptr::null()),
+        DrWindowBindError::NullContinuationPointer {
+            pointer: "claim_point",
+        },
+    );
+    let mut null_source = batch;
+    null_source.tables.bases[0] = std::ptr::null();
+    assert!(matches!(
+        bind_error(null_source, scratch, claim_point),
+        DrWindowBindError::NullContinuationTableBase {
+            destination: false,
+            ..
+        }
+    ));
+    let mut null_destination = batch;
+    null_destination.tables.bases[1] = std::ptr::null();
+    assert!(matches!(
+        bind_error(null_destination, scratch, claim_point),
+        DrWindowBindError::NullContinuationTableBase {
+            destination: true,
+            ..
+        }
+    ));
+    let mut contributions = batch;
+    contributions.contributions = 0x80_000usize as *mut E4;
+    assert_eq!(
+        bind_error(contributions, scratch, claim_point),
+        DrWindowBindError::ContinuationContributionsMustBeNull,
+    );
+    let mut wrong_low = batch;
+    wrong_low.eq_low = 0x90_000usize as *const E4;
+    assert_eq!(
+        bind_error(wrong_low, scratch, claim_point),
+        DrWindowBindError::ContinuationEqLowMismatch,
+    );
+
+    let mut missing = Vec::<String>::new();
+    let mut require = |surface: &str, label: &str, needle: &str| {
+        if !surface.contains(needle) {
+            missing.push(format!("{label}: {needle}"));
+        }
+    };
+
+    for needle in [
+        "DrWindowContinuationLaunchBinding",
+        "DrWindowContinuationLaunch",
+        "launch_dr_window_continuation",
+    ] {
+        require(MODULE, "Rust module exports", needle);
+    }
+    for needle in [
+        "DrWindowContinuationKernelEntry",
+        "GkrDrContinuationWindow3",
+        "DR_WINDOWED_CONT_BLOCK_THREADS",
+        "ab_gkr_dr_cont_window3_universal_kernel",
+    ] {
+        require(REGISTRY, "generated Rust registry", needle);
+    }
+    for needle in [
+        "window_dr/continuation.cuh",
+        "generated/dr_windowed_cont_manifest.cuh",
+        "generated/dr_cont_window_universal.cu",
+    ] {
+        require(CMAKE, "CMake target_sources", needle);
+    }
+
+    for needle in [
+        "struct alignas(16) gkr_dr_cont_window3_desc",
+        "gkr_dim_reducing_batch<e4> batch",
+        "const e4 *eq_high_0",
+        "const e4 *eq_high_1",
+        "e4 *partials",
+        "const e4 *claim_point",
+        "u32 log_rows",
+        "u32 start_round",
+        "u32 reserved[2]",
+        "sizeof(gkr_dr_cont_window3_desc) == 384",
+        "alignof(gkr_dr_cont_window3_desc) == 16",
+        "__builtin_offsetof(gkr_dr_cont_window3_desc, eq_high_0) == 336",
+        "__builtin_offsetof(gkr_dr_cont_window3_desc, eq_high_1) == 344",
+        "__builtin_offsetof(gkr_dr_cont_window3_desc, partials) == 352",
+        "__builtin_offsetof(gkr_dr_cont_window3_desc, claim_point) == 360",
+        "__builtin_offsetof(gkr_dr_cont_window3_desc, log_rows) == 368",
+        "__builtin_offsetof(gkr_dr_cont_window3_desc, start_round) == 372",
+        "__builtin_offsetof(gkr_dr_cont_window3_desc, reserved) == 376",
+        "std::is_standard_layout_v<gkr_dr_cont_window3_desc>",
+        "std::is_trivially_copyable_v<gkr_dr_cont_window3_desc>",
+        "dr_window_load_e4_pair_guarded",
+        "DR_CONTINUATION_FIRST_ACCESS_BIT",
+        "__syncthreads()",
+        "gkr_load_slot_batch_challenges",
+        "gkr_pairwise_continuation_accumulate",
+        "gkr_lookup_continuation_accumulate",
+        "gkr_compute_eq_inline_global",
+        "9 * x2 + cell_base",
+    ] {
+        require(&continuation, continuation_path, needle);
+    }
+    for needle in [
+        "DR_WINDOW_CONT_DEFINED_MASK",
+        "DR_WINDOW_CONT_BLOCK_THREADS",
+        "DR_WINDOW_CONT_KERNEL_COUNT = 1",
+    ] {
+        require(&manifest, manifest_path, needle);
+    }
+    for needle in [
+        "ab_gkr_dr_cont_window3_universal_kernel",
+        "__launch_bounds__(DR_WINDOW_CONT_BLOCK_THREADS)",
+        "gkr_dr_cont_window3_desc",
+        "dr_window_continuation(desc)",
+    ] {
+        require(&translation_unit, translation_unit_path, needle);
+    }
+
+    assert!(
+        missing.is_empty(),
+        "D2 continuation ABI/generator/registry/binder/native contract is missing:\n{}",
+        missing.join("\n"),
+    );
+    assert_eq!(continuation.matches("__syncthreads()").count(), 1);
+    assert_eq!(continuation.matches("gkr_get_continuing_value(").count(), 0);
+    assert!(continuation.contains("source.first_access && output_pair < output_pair_count"));
+    assert!(!continuation.contains("bwd_window_product_tensor"));
+    assert_eq!(
+        continuation
+            .matches("dr_window_continuation_add_product(total")
+            .count(),
+        4,
+    );
+    for shared_publish_semantic in [
+        "const u32 cell_base = 3 * selector.x1 + selector.x0;",
+        "active ? e4::mul(equality, values[x2]) : e4::ZERO()",
+        "value = bwd_window_warp_sum(value);",
+        "static_cast<size_t>(row_tile) * BWD_WINDOW_TENSOR_CELLS + 9 * x2 + cell_base",
+    ] {
+        assert!(
+            WINDOW_GEOMETRY.contains(shared_publish_semantic),
+            "shared publish semantic drift: {shared_publish_semantic}",
+        );
+        assert!(
+            continuation.contains(shared_publish_semantic),
+            "DR continuation publish semantic drift: {shared_publish_semantic}",
+        );
+    }
+    assert!(LOOKUP_HELPERS.contains("gkr_pairwise_continuation_accumulate"));
+    assert!(LOOKUP_HELPERS.contains("gkr_lookup_continuation_accumulate"));
+    assert!(LOOKUP_HELPERS.contains("const E num0 = E::fma(a0, d0, E::mul(c0, b0));"));
+    assert!(LOOKUP_HELPERS.contains("const E den0 = E::mul(b0, d0);"));
+    let launch_source = &BINDING[BINDING
+        .find("pub(crate) fn launch_dr_window_continuation")
+        .expect("continuation launcher is present")..];
+    assert!(launch_source.contains("launch_build_eq_high_and_low_groups_from_point("));
+    assert!(!launch_source.contains("get_eq_high_constant_device_ptr()"));
+    assert!(!continuation.contains("ab_gkr_eq_high"));
 }
 
 mod d1_cpu_oracles {

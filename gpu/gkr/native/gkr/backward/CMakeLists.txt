@@ -13,8 +13,11 @@ target_sources(gpu_gkr_native PRIVATE
         window/window_geometry.cuh
         window/window_source.cuh
         window_dr/r0.cuh
+        window_dr/continuation.cuh
         generated/dr_windowed_r0_manifest.cuh
         generated/dr_r0_window_universal.cu
+        generated/dr_windowed_cont_manifest.cuh
+        generated/dr_cont_window_universal.cu
         main_continuation_window/main_continuation_window_abi.cuh
         main_continuation_window/fold_prologue.cuh
         main_continuation_window/executor.cuh

@@ -88,8 +88,11 @@ pub use window_dr::{
     DrWindowSlotPlan, DrWindowSourceLane,
 };
 pub use window_dr_manifest::{
-    dr_windowed_r0_generated_artifacts, resolve_dr_windowed_r0_dispatch,
-    validate_dr_windowed_r0_dispatch, DrWindowManifestError, DR_WINDOWED_R0_BLOCK_THREADS,
+    dr_windowed_generated_artifacts, dr_windowed_r0_generated_artifacts,
+    resolve_dr_windowed_continuation_dispatch, resolve_dr_windowed_r0_dispatch,
+    validate_dr_windowed_continuation_dispatch, validate_dr_windowed_r0_dispatch,
+    DrWindowManifestError, DR_WINDOWED_CONT_BLOCK_THREADS, DR_WINDOWED_CONT_DEFINED_MASK,
+    DR_WINDOWED_CONT_KERNEL_SYMBOL, DR_WINDOWED_CONT_OBSERVED_MASKS, DR_WINDOWED_R0_BLOCK_THREADS,
     DR_WINDOWED_R0_DEFINED_MASK, DR_WINDOWED_R0_KERNEL_SYMBOL, DR_WINDOWED_R0_OBSERVED_MASKS,
 };
 pub use window_manifest::{

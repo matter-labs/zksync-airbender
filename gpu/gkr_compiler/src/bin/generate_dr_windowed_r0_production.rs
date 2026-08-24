@@ -1,12 +1,10 @@
-//! Regenerate or verify the three committed DR-window R0 artifacts.
+//! Regenerate or verify the five committed DR-window R0/continuation artifacts.
 
 use std::env;
 use std::fs;
 use std::process::ExitCode;
 
-use gpu_gkr_compiler::backward::window_dr_manifest::{
-    dr_windowed_r0_generated_artifacts, repo_root,
-};
+use gpu_gkr_compiler::backward::window_dr_manifest::{dr_windowed_generated_artifacts, repo_root};
 
 fn usage(program: &str) -> String {
     format!("usage: {program} --write | --check")
@@ -29,7 +27,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let artifacts = match dr_windowed_r0_generated_artifacts() {
+    let artifacts = match dr_windowed_generated_artifacts() {
         Ok(artifacts) => artifacts,
         Err(error) => {
             eprintln!("DR dispatch manifest is invalid: {error}");
@@ -64,7 +62,10 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if stale.is_empty() {
-        println!("{} DR windowed R0 artifacts are current", artifacts.len());
+        println!(
+            "{} DR windowed R0/continuation artifacts are current",
+            artifacts.len()
+        );
         return ExitCode::SUCCESS;
     }
     for entry in stale {

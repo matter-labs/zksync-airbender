@@ -30,8 +30,11 @@ use super::composition::{
     DrWindowPassEqView, DrWindowRawInputKeepalive,
 };
 use super::generated_registry::{
-    DrWindowKernelEntry, GkrDrR0Window3Arguments, GkrDrR0Window3Signature,
-    DR_WINDOWED_R0_BLOCK_THREADS, DR_WINDOWED_R0_DEFINED_MASK, DR_WINDOWED_R0_UNIVERSAL_KERNEL,
+    DrWindowContinuationKernelEntry, DrWindowKernelEntry, GkrDrContinuationWindow3Arguments,
+    GkrDrContinuationWindow3Signature, GkrDrR0Window3Arguments, GkrDrR0Window3Signature,
+    DR_WINDOWED_CONT_BLOCK_THREADS, DR_WINDOWED_CONT_DEFINED_MASK,
+    DR_WINDOWED_CONT_UNIVERSAL_KERNEL, DR_WINDOWED_R0_BLOCK_THREADS, DR_WINDOWED_R0_DEFINED_MASK,
+    DR_WINDOWED_R0_UNIVERSAL_KERNEL,
 };
 
 const DR_WINDOW_COORDINATES: usize = 3;
@@ -228,6 +231,20 @@ pub(crate) struct DrWindowLaunchBinding {
     pub(crate) reserved: u32,
 }
 
+/// The by-value ABI passed to the universal DR continuation producer.
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+pub(crate) struct DrWindowContinuationLaunchBinding {
+    pub(crate) batch: GpuGKRDimensionReducingBatch<E4>,
+    pub(crate) eq_high_0: *const E4,
+    pub(crate) eq_high_1: *const E4,
+    pub(crate) partials: *mut E4,
+    pub(crate) claim_point: *const E4,
+    pub(crate) log_rows: u32,
+    pub(crate) start_round: u32,
+    pub(crate) reserved: [u32; 2],
+}
+
 const _: () = {
     assert!(size_of::<GpuGKRDimensionReducingBatch<E4>>() == 336);
     assert!(size_of::<DrWindowLaunchBinding>() == 352);
@@ -237,6 +254,20 @@ const _: () = {
     assert!(offset_of!(DrWindowLaunchBinding, partials) == 336);
     assert!(offset_of!(DrWindowLaunchBinding, log_rows) == 344);
     assert!(offset_of!(DrWindowLaunchBinding, reserved) == 348);
+};
+
+const _: () = {
+    assert!(size_of::<DrWindowContinuationLaunchBinding>() == 384);
+    assert!(align_of::<DrWindowContinuationLaunchBinding>() == 16);
+    assert!(size_of::<DrWindowContinuationLaunchBinding>() <= KERNEL_ARGUMENT_CEILING_BYTES);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, batch) == 0);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, eq_high_0) == 336);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, eq_high_1) == 344);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, partials) == 352);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, claim_point) == 360);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, log_rows) == 368);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, start_round) == 372);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, reserved) == 376);
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -306,6 +337,21 @@ pub(crate) enum DrWindowBindError {
         poly_index: usize,
         capacity: usize,
     },
+    NullContinuationPointer {
+        pointer: &'static str,
+    },
+    NullContinuationTableBase {
+        slot: usize,
+        input_operand: usize,
+        table_slot: usize,
+        destination: bool,
+    },
+    ContinuationEqHighLayout {
+        high_0: usize,
+        high_1: usize,
+    },
+    ContinuationEqLowMismatch,
+    ContinuationContributionsMustBeNull,
 }
 
 impl core::fmt::Display for DrWindowBindError {
@@ -527,6 +573,16 @@ pub(crate) struct DrWindowLaunch {
     pub(crate) folding_steps: usize,
 }
 
+/// One launch-ready input-only DR continuation tensor producer.
+pub(crate) struct DrWindowContinuationLaunch {
+    pub(crate) binding: Box<DrWindowContinuationLaunchBinding>,
+    pub(crate) kernel: &'static DrWindowContinuationKernelEntry,
+    pub(crate) row_tiles: usize,
+    pub(crate) reduced_tensor: *mut E4,
+    pub(crate) folding_steps: usize,
+    pub(crate) start_round: usize,
+}
+
 /// Static R0 preparation retained by Task 6. Unlike `DrWindowLaunch`, this has
 /// no runtime partials or reduced-tensor pointer and therefore admits no scratch
 /// capacity for the future complete-chain launch.
@@ -544,9 +600,19 @@ impl DrWindowLaunch {
     }
 }
 
+impl DrWindowContinuationLaunch {
+    pub(crate) fn selected_symbol(&self) -> &'static str {
+        self.kernel.symbol_name
+    }
+}
+
 // SAFETY: the raw pointers are only forwarded to stream-ordered kernels.
 unsafe impl Send for DrWindowLaunch {}
 unsafe impl Sync for DrWindowLaunch {}
+
+// SAFETY: the raw pointers are only forwarded to stream-ordered kernels.
+unsafe impl Send for DrWindowContinuationLaunch {}
+unsafe impl Sync for DrWindowContinuationLaunch {}
 
 pub(crate) fn resolve_dr_window_kernel(
     mask: u32,
@@ -559,6 +625,19 @@ pub(crate) fn resolve_dr_window_kernel(
         return Err(DrWindowBindError::ZeroMask);
     }
     Ok(&DR_WINDOWED_R0_UNIVERSAL_KERNEL)
+}
+
+pub(crate) fn resolve_dr_window_continuation_kernel(
+    mask: u32,
+) -> Result<&'static DrWindowContinuationKernelEntry, DrWindowBindError> {
+    let undefined = mask & !DR_WINDOWED_CONT_DEFINED_MASK;
+    if undefined != 0 {
+        return Err(DrWindowBindError::UndefinedMaskBits { bits: undefined });
+    }
+    if mask == 0 {
+        return Err(DrWindowBindError::ZeroMask);
+    }
+    Ok(&DR_WINDOWED_CONT_UNIVERSAL_KERNEL)
 }
 
 /// Assemble the input-only continuation batch. This is the single owner of
@@ -671,6 +750,158 @@ pub(crate) fn build_dr_window_continuation_batch<B>(
             )
         }
     }
+}
+
+pub(super) fn validate_dr_window_continuation_eq_contract(
+    folding_steps: usize,
+    start_round: usize,
+    eq: DrContinuationFactoredEqView,
+) -> Result<(), DrWindowBindError> {
+    if start_round < DR_WINDOW_COORDINATES
+        || start_round % DR_WINDOW_COORDINATES != 0
+        || start_round + DR_WINDOW_COORDINATES >= folding_steps
+    {
+        return Err(DrWindowBindError::InvalidContinuationBoundary {
+            folding_steps,
+            start_round,
+        });
+    }
+    let expected_offset = start_round + DR_WINDOW_COORDINATES;
+    if eq.challenge_offset as usize != expected_offset {
+        return Err(DrWindowBindError::EqBuildOffset {
+            expected: expected_offset,
+            observed: eq.challenge_offset as usize,
+        });
+    }
+    let expected_count = folding_steps - expected_offset;
+    if eq.challenge_count as usize != expected_count || eq.sizes != make_eq_sizes(expected_count) {
+        return Err(DrWindowBindError::EqSizeMismatch);
+    }
+    if eq.high_0.is_null() {
+        return Err(DrWindowBindError::NullContinuationPointer {
+            pointer: "eq_high_0",
+        });
+    }
+    if eq.high_1.is_null() {
+        return Err(DrWindowBindError::NullContinuationPointer {
+            pointer: "eq_high_1",
+        });
+    }
+    if eq.low.is_null() {
+        return Err(DrWindowBindError::NullContinuationPointer { pointer: "eq_low" });
+    }
+    let Some(expected_high_1) =
+        (eq.high_0 as usize).checked_add(GKR_EQ_GROUP_TABLE_LEN * size_of::<E4>())
+    else {
+        return Err(DrWindowBindError::ContinuationEqHighLayout {
+            high_0: eq.high_0 as usize,
+            high_1: eq.high_1 as usize,
+        });
+    };
+    if eq.high_1 as usize != expected_high_1 {
+        return Err(DrWindowBindError::ContinuationEqHighLayout {
+            high_0: eq.high_0 as usize,
+            high_1: eq.high_1 as usize,
+        });
+    }
+    Ok(())
+}
+
+fn validate_dr_window_continuation_table_bases(
+    batch: &GpuGKRDimensionReducingBatch<E4>,
+) -> Result<(), DrWindowBindError> {
+    for (slot, descriptor) in batch.slots.iter().enumerate() {
+        if batch.enabled_mask & (1 << slot) == 0 {
+            continue;
+        }
+        for input_operand in 0..2 {
+            let record = descriptor.io[input_operand];
+            let source_slot = usize::from((record.src >> 11) & 0x0f);
+            if batch.tables.bases[source_slot].is_null() {
+                return Err(DrWindowBindError::NullContinuationTableBase {
+                    slot,
+                    input_operand,
+                    table_slot: source_slot,
+                    destination: false,
+                });
+            }
+            let destination_slot = usize::from((record.cache >> 11) & 0x0f);
+            if batch.tables.bases[destination_slot].is_null() {
+                return Err(DrWindowBindError::NullContinuationTableBase {
+                    slot,
+                    input_operand,
+                    table_slot: destination_slot,
+                    destination: true,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Bind one input-only continuation launch. D3 owns source/arena composition;
+/// this D2 seam validates an already assembled batch without allocating.
+pub(super) fn bind_dr_window_continuation_launch(
+    batch: GpuGKRDimensionReducingBatch<E4>,
+    folding_steps: usize,
+    start_round: usize,
+    eq: DrContinuationFactoredEqView,
+    scratch: DrWindowRuntimeScratch,
+    claim_point: *const E4,
+) -> Result<DrWindowContinuationLaunch, DrWindowBindError> {
+    validate_dr_window_folding_steps(folding_steps)?;
+    validate_dr_window_continuation_eq_contract(folding_steps, start_round, eq)?;
+    let kernel = resolve_dr_window_continuation_kernel(batch.enabled_mask)?;
+    if scratch.partials.is_null() {
+        return Err(DrWindowBindError::NullContinuationPointer {
+            pointer: "partials",
+        });
+    }
+    if claim_point.is_null() {
+        return Err(DrWindowBindError::NullContinuationPointer {
+            pointer: "claim_point",
+        });
+    }
+    if batch.eq_low != eq.low.cast_const() {
+        return Err(DrWindowBindError::ContinuationEqLowMismatch);
+    }
+    if batch.eq_sizes != eq.sizes {
+        return Err(DrWindowBindError::EqSizeMismatch);
+    }
+    if !batch.contributions.is_null() {
+        return Err(DrWindowBindError::ContinuationContributionsMustBeNull);
+    }
+    validate_dr_window_continuation_table_bases(&batch)?;
+
+    let suffix_log = folding_steps - start_round;
+    let required = dr_window_partials_len(suffix_log);
+    if scratch.partials_capacity < required {
+        return Err(DrWindowBindError::ScratchCapacity {
+            required,
+            capacity: scratch.partials_capacity,
+        });
+    }
+    let row_tiles = dr_window_row_tiles(suffix_log);
+    // SAFETY: the checked scratch capacity reserves the complete row-tile
+    // matrix followed by the 27-cell reduced tensor.
+    let reduced_tensor = unsafe { scratch.partials.add(DR_WINDOW_TENSOR_CELLS * row_tiles) };
+    Ok(DrWindowContinuationLaunch {
+        binding: Box::new(DrWindowContinuationLaunchBinding {
+            batch,
+            eq_high_0: eq.high_0.cast_const(),
+            eq_high_1: eq.high_1.cast_const(),
+            partials: scratch.partials,
+            claim_point,
+            log_rows: (suffix_log - DR_WINDOW_COORDINATES) as u32,
+            start_round: start_round as u32,
+            reserved: [0; 2],
+        }),
+        kernel,
+        row_tiles,
+        reduced_tensor,
+        folding_steps,
+        start_round,
+    })
 }
 
 fn build_dr_window_batch<B>(
@@ -813,6 +1044,14 @@ impl KernelFunction for DrWindowKernelEntry {
     }
 }
 
+impl KernelFunction for DrWindowContinuationKernelEntry {
+    type Signature = GkrDrContinuationWindow3Signature;
+
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.symbol as *const std::os::raw::c_void
+    }
+}
+
 /// Build the one R0 pass-local factored-Eq state and then launch the producer.
 /// The builder reads the device-resident claim point from offset 3; this host
 /// function never dereferences it.
@@ -845,4 +1084,40 @@ pub(crate) fn launch_dr_window_r0(
     launch
         .kernel
         .launch(&config, &GkrDrR0Window3Arguments::new(*launch.binding))
+}
+
+/// Build fresh `Eq(tau[start_round + 3..folding_steps])` in the DR-owned
+/// global scratch, then enqueue the universal continuation on `exec_stream`.
+pub(crate) fn launch_dr_window_continuation(
+    launch: &DrWindowContinuationLaunch,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let challenge_offset = launch.start_round + DR_WINDOW_COORDINATES;
+    let challenge_count = launch.folding_steps - challenge_offset;
+    debug_assert_eq!(launch.binding.start_round as usize, launch.start_round);
+    debug_assert_eq!(
+        launch.binding.batch.eq_sizes,
+        make_eq_sizes(challenge_count)
+    );
+    debug_assert_eq!(
+        launch.binding.eq_high_1 as usize,
+        launch.binding.eq_high_0 as usize + GKR_EQ_GROUP_TABLE_LEN * size_of::<E4>(),
+    );
+    launch_build_eq_high_and_low_groups_from_point(
+        launch.binding.claim_point,
+        challenge_offset,
+        challenge_count,
+        launch.binding.eq_high_0.cast_mut(),
+        launch.binding.batch.eq_low.cast_mut(),
+        context,
+    )?;
+    let config = CudaLaunchConfig::basic(
+        launch.row_tiles as u32,
+        DR_WINDOWED_CONT_BLOCK_THREADS,
+        context.get_exec_stream(),
+    );
+    launch.kernel.launch(
+        &config,
+        &GkrDrContinuationWindow3Arguments::new(*launch.binding),
+    )
 }
