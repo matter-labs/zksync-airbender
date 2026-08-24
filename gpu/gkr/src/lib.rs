@@ -18,6 +18,8 @@ pub mod backward;
 pub mod base_layer_claims;
 pub mod forward;
 pub mod gkr_ops;
+#[path = "backward/main_layer/execution_plan.rs"]
+pub(crate) mod main_layer_execution_plan;
 mod programs;
 pub mod proof_layout;
 pub mod setup;
@@ -32,7 +34,10 @@ pub(crate) use forward::kernels::ForwardKernels;
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
 pub(crate) use gpu_gkr_model::storage_layout;
 pub(crate) use gpu_gkr_model::transform;
-pub use programs::{GkrPrograms, WindowLoweringRejection, WindowProgramBundle};
+pub use programs::{
+    GkrPrograms, MainContinuationWindowLoweringRejection, MainContinuationWindowProgramBundle,
+    WindowLoweringRejection, WindowProgramBundle,
+};
 pub(crate) use storage_types::*;
 // Keep the public path `gpu_gkr::gkr_initial_inner_products` (apex proof).
 pub use support::initial_inner_products as gkr_initial_inner_products;
@@ -53,6 +58,10 @@ pub struct GkrBackwardOptions {
     /// [`backward_execution_strategy`]. Clearing it is the escape hatch back to
     /// the per-round arm.
     pub windowed_r0: bool,
+    /// Request width-3 main-layer continuation windows after the landed R0
+    /// window. This stays default-off until the continuation execution path has
+    /// passed its proof-byte and performance gates.
+    pub windowed_main_continuations: bool,
     pub window_tail: WindowTailArm,
 }
 
@@ -60,6 +69,7 @@ impl Default for GkrBackwardOptions {
     fn default() -> Self {
         Self {
             windowed_r0: true,
+            windowed_main_continuations: false,
             window_tail: WindowTailArm::Split,
         }
     }
@@ -70,6 +80,54 @@ impl Default for GkrBackwardOptions {
 pub enum BackwardExecutionStrategy {
     PerRound,
     WindowedR0,
+}
+
+/// A checked main-layer continuation plan could not represent or satisfy the
+/// requested geometry. Exposed for the apex preflight without exposing the
+/// crate-internal plan representation.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MainTailRoundBudgetKind {
+    AtLeast,
+    AtMost,
+}
+
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MainLayerExecutionPlanError {
+    ZeroTailRoundBudget,
+    FoldingStepsBeforeWindowedR0 {
+        folding_steps: usize,
+    },
+    TailBudgetCannotBeSatisfied {
+        folding_steps: usize,
+        tail_round_budget: MainTailRoundBudgetKind,
+        budget_rounds: u8,
+    },
+    ArithmeticOverflow,
+    PlanDoesNotFitRuntimeFields {
+        window_count: usize,
+        tail_start_round: usize,
+    },
+}
+
+/// Returns the continuation window count selected by the legacy-tail policy.
+/// This narrow query is the only plan detail the apex preflight consumes.
+#[doc(hidden)]
+pub fn main_continuation_window_count(
+    options: GkrBackwardOptions,
+    strategy: BackwardExecutionStrategy,
+    folding_steps: usize,
+) -> Result<u8, MainLayerExecutionPlanError> {
+    main_layer_execution_plan::try_derive_main_layer_execution_plan(
+        options,
+        strategy,
+        folding_steps,
+        main_layer_execution_plan::MainTailRoundBudget::AtLeast {
+            min_tail_rounds: main_layer_execution_plan::LEGACY_MAIN_TAIL_MIN_ROUNDS,
+        },
+    )
+    .map(|plan| plan.window_count())
 }
 
 /// The selector: the windowed arm runs iff it was requested AND the prover
@@ -118,6 +176,7 @@ mod cpu_windowed_selector_tests {
     fn cpu_windowed_selector_defaults_to_the_windowed_arm() {
         let options = GkrBackwardOptions::default();
         assert!(options.windowed_r0);
+        assert!(!options.windowed_main_continuations);
         assert_eq!(options.window_tail, WindowTailArm::Split);
         assert_eq!(
             backward_execution_strategy(options, Some(SumcheckScheduleClass::Windowed)),

@@ -1,5 +1,7 @@
 pub(crate) mod common;
 pub(crate) mod continuation;
+pub mod main_continuation_window;
+pub mod main_continuation_window_manifest;
 pub(crate) mod r0;
 pub mod window;
 pub mod window_manifest;
@@ -43,6 +45,29 @@ pub fn decode_continuation_program(program: &LeanProgram) -> Result<Vec<LeanAtom
 pub use continuation::{
     compile_continuations, interpret_continuation_program, ContinuationCompileError,
     ContinuationLayerProgram, ContinuationProgramBundle,
+};
+pub use main_continuation_window::{
+    interpret_main_continuation_window_shape, lower_main_continuation_window_program,
+    MainContinuationWindowCapacities, MainContinuationWindowGroupRecord,
+    MainContinuationWindowLoweringError, MainContinuationWindowProgram,
+    MainContinuationWindowSection, MainContinuationWindowSections, MainContinuationWindowShape,
+    MainContinuationWindowShapeEvaluationError, MainContinuationWindowSource,
+    MAIN_CONTINUATION_WINDOW_COEFFICIENT_BANK_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY, MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY,
+};
+pub use main_continuation_window_manifest::{
+    main_continuation_window_generated_artifacts,
+    main_continuation_window_generated_artifacts_for_bank, main_continuation_window_kernel_symbol,
+    main_continuation_window_translation_unit_name, parse_main_continuation_window_candidate_bank,
+    render_main_continuation_window_manifest, render_main_continuation_window_registry,
+    render_main_continuation_window_translation_unit, resolve_main_continuation_window_kernel,
+    validate_main_continuation_window_generated_tree,
+    validate_main_continuation_window_kernel_bank, MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
+    MAIN_CONTINUATION_WINDOW_FALLBACK_MASK, MAIN_CONTINUATION_WINDOW_GENERATED_NATIVE_DIR,
+    MAIN_CONTINUATION_WINDOW_GENERATED_REGISTRY, MAIN_CONTINUATION_WINDOW_KERNEL_BANK,
+    MAIN_CONTINUATION_WINDOW_KERNEL_COUNT,
 };
 pub use r0::{compile_r0, interpret_r0_program, R0CompileError, R0LayerProgram, R0ProgramBundle};
 pub use window::{
