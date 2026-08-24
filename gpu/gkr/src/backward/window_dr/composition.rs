@@ -8,7 +8,7 @@ use era_cudart::result::CudaResult;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::E4;
-use gpu_gkr_compiler::DrWindowInputProjection;
+use gpu_gkr_compiler::{DrWindowInputProjection, DrWindowProgram};
 use gpu_prover_context::ProverContext;
 
 use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN};
@@ -127,6 +127,10 @@ pub(crate) struct DrWindowLayerCompositionHook {
     pub(crate) r0_eq: DrWindowPassEqState,
     pub(crate) raw_inputs: DrWindowRawInputKeepalive,
     pub(crate) partials_capacity: usize,
+    /// Immutable producer program retained for continuation batch assembly.
+    pub(crate) continuation_program: DrWindowProgram,
+    /// Immutable canonical input-only publication map for every continuation.
+    pub(crate) continuation_projection: DrWindowInputProjection,
 }
 
 impl DrWindowLayerCompositionHook {
@@ -135,6 +139,8 @@ impl DrWindowLayerCompositionHook {
         r0_eq: DrWindowPassEqState,
         raw_inputs: DrWindowRawInputKeepalive,
         partials_capacity: usize,
+        continuation_program: DrWindowProgram,
+        continuation_projection: DrWindowInputProjection,
     ) -> Self {
         let folding_steps = r0_launch.folding_steps;
         Self {
@@ -144,6 +150,8 @@ impl DrWindowLayerCompositionHook {
             r0_eq,
             raw_inputs,
             partials_capacity,
+            continuation_program,
+            continuation_projection,
         }
     }
 }

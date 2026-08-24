@@ -10,8 +10,9 @@ use gpu_gkr_compiler::{
 };
 
 use super::binding::{
-    dr_window_partials_len, dr_window_row_tiles, resolve_dr_window_kernel,
-    validate_dr_r0_eq_contract, validate_dr_window_folding_steps, DrCompactSourceTableBuilder,
+    assemble_dr_window_continuation_batch, dr_window_partials_len, dr_window_row_tiles,
+    resolve_dr_global_active_eq_slot, resolve_dr_window_kernel, validate_dr_r0_eq_contract,
+    validate_dr_window_folding_steps, DrCompactSourceTableBuilder, DrContinuationFactoredEqView,
     DrWindowBindError, DrWindowLaunchBinding,
 };
 use super::composition::{
@@ -1071,6 +1072,988 @@ fn cpu_dr_window_r0_native_source_pins_tensor_and_constant_eq_contracts() {
         }
     }
     assert_eq!(seen, (0..27).collect());
+}
+
+mod d1_cpu_oracles {
+    use prover::gkr::prover::dimension_reduction::lsb_backward::{
+        lsb_dim_reducing_sumcheck_prove, LsbDimReducingRelation,
+    };
+
+    use super::*;
+    use crate::backward::kernels::record_active_eq_slot_fold;
+    use crate::backward::window::reference::tensor_round_tail_reference;
+    use crate::backward::window_dr::reference::{
+        dr_continuation_eq_reference, dr_continuation_geometry_reference,
+        dr_continuation_tensor_reference, dr_final_lookup_four_cells, fold_dr_continuation_depth3,
+        DrTensorOracleProgram,
+    };
+    use crate::upstream::{BabyBearField, Field};
+
+    const OUTPUT_TYPES: [OutputType; 5] = [
+        OutputType::PermutationProduct,
+        OutputType::Lookup16Bits,
+        OutputType::LookupTimestamps,
+        OutputType::GenericLookup,
+        OutputType::InitsAndTeardownsProduct,
+    ];
+
+    fn add(mut left: E4, right: E4) -> E4 {
+        left.add_assign(&right);
+        left
+    }
+
+    fn mul(mut left: E4, right: E4) -> E4 {
+        left.mul_assign(&right);
+        left
+    }
+
+    fn field_sequence(len: usize, offset: usize) -> Vec<E4> {
+        let mut value = E4::ONE;
+        for _ in 0..offset {
+            value.add_assign(&E4::ONE);
+        }
+        (0..len)
+            .map(|_| {
+                let current = value;
+                value.add_assign(&E4::ONE);
+                current
+            })
+            .collect()
+    }
+
+    #[test]
+    fn cpu_dr_window_continuation_geometry_uses_log_suffix() {
+        let mut checked = 0usize;
+        for folding_steps in 4usize..=23 {
+            for start_round in (3..folding_steps).step_by(3) {
+                if start_round + 3 >= folding_steps {
+                    continue;
+                }
+                let suffix_log = folding_steps - start_round;
+                let geometry =
+                    dr_continuation_geometry_reference(folding_steps, start_round).unwrap();
+                let high_rows = 1usize << (suffix_log - 3);
+                let row_tiles = high_rows.div_ceil(32).max(1);
+                assert_eq!(
+                    geometry.published_values_per_source,
+                    1usize << (folding_steps + 1 - start_round)
+                );
+                assert_eq!(geometry.high_rows, high_rows);
+                assert_eq!(geometry.row_tiles, row_tiles);
+                assert_eq!(geometry.partials_len, 27 * (row_tiles + 1));
+                assert_eq!(dr_window_row_tiles(suffix_log), row_tiles);
+                assert_eq!(dr_window_partials_len(suffix_log), geometry.partials_len);
+
+                let count_as_log = 1usize << suffix_log;
+                let mutation = std::panic::catch_unwind(|| {
+                    (
+                        dr_window_row_tiles(count_as_log),
+                        dr_window_partials_len(count_as_log),
+                    )
+                });
+                assert!(
+                    mutation.is_err()
+                        || mutation.unwrap() != (geometry.row_tiles, geometry.partials_len),
+                    "count-as-log mutation survived for f={folding_steps}, r={start_round}",
+                );
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 57);
+    }
+
+    fn record_fixture() -> (
+        gpu_gkr_compiler::DrWindowProgram,
+        gpu_gkr_compiler::DrWindowInputProjection,
+    ) {
+        let canonical_0 = address(10);
+        let canonical_1 = address(20);
+        let alias_0 = address(30);
+        let rows = BTreeMap::from([
+            (
+                OutputType::PermutationProduct,
+                DrWindowInputOutput::new([alias_0, canonical_1], [address(40), address(41)]),
+            ),
+            (
+                OutputType::GenericLookup,
+                DrWindowInputOutput::new([canonical_0, canonical_1], [address(42), address(43)]),
+            ),
+        ]);
+        let program = lower_dr_window_program(&rows).unwrap();
+        let projection =
+            project_dr_window_inputs(&program, &BTreeMap::from([(alias_0, canonical_0)]));
+        (program, projection)
+    }
+
+    fn first_access_pattern<Key: Ord>(keys: impl IntoIterator<Item = Key>) -> Vec<bool> {
+        let mut seen = BTreeSet::new();
+        keys.into_iter().map(|key| seen.insert(key)).collect()
+    }
+
+    fn synthetic_storage_poly(address: GKRAddress) -> usize {
+        match address {
+            value if value == super::address(30) => 17,
+            value if value == super::address(20) => 3,
+            value if value == super::address(10) => 5,
+            _ => unreachable!("record fixture contains only three raw input addresses"),
+        }
+    }
+
+    #[test]
+    fn cpu_dr_window_continuation_records_match_builder_first_access() {
+        let (program, projection) = record_fixture();
+        assert_eq!(projection.canonical_sources(), &[address(10), address(20)]);
+        assert_eq!(projection.occurrences().len(), 4);
+        assert_eq!(projection.occurrences()[0].publication_index(), 0);
+        assert_eq!(projection.occurrences()[2].publication_index(), 0);
+
+        let raw_backing = FoldingArenaBinding::new(0x10_000usize as *const u8, 8);
+        let destination = FoldingArenaBinding::new(0x20_000usize as *const u8, 6);
+        let eq = DrContinuationFactoredEqView::new(
+            0x30_000usize as *mut E4,
+            0x31_000usize as *mut E4,
+            0x32_000usize as *mut E4,
+            make_eq_sizes(5),
+            9,
+            5,
+        );
+
+        let assemble = || {
+            assemble_dr_window_continuation_batch(
+                &program,
+                &projection,
+                eq,
+                destination,
+                |builder, address, publication_index| {
+                    let storage_poly = synthetic_storage_poly(address);
+                    assert_ne!(storage_poly, usize::from(publication_index));
+                    builder.intern_arena_e4(raw_backing, storage_poly)
+                },
+            )
+            .unwrap()
+        };
+
+        let first_launch = assemble();
+        let second_launch = assemble();
+        assert_eq!(first_launch.enabled_mask, program.enabled_mask());
+        assert_eq!(first_launch.eq_low, eq.low.cast_const());
+        assert_eq!(first_launch.eq_sizes, eq.sizes);
+        assert!(first_launch.contributions.is_null());
+
+        let mut occurrences = Vec::new();
+        for (dense_slot, slot) in program.slots().iter().enumerate() {
+            let record_slot = first_launch.slots[slot.slot()];
+            let reset_slot = second_launch.slots[slot.slot()];
+            assert_eq!(record_slot.batch_exp, *slot.batch_exponents());
+            assert_eq!(record_slot.io[2], Default::default());
+            assert_eq!(record_slot.io[3], Default::default());
+            for input_operand in 0..2 {
+                let publication_index = projection
+                    .publication_index(dense_slot, input_operand)
+                    .unwrap();
+                let source_id = slot.source_ids()[input_operand];
+                let address = program.sources()[usize::from(source_id)];
+                let record = record_slot.io[input_operand];
+                let reset = reset_slot.io[input_operand];
+                assert_eq!(record, reset, "first-access state must reset per launch");
+                let builder_base = pack_source_u16(
+                    false,
+                    0,
+                    u16::try_from(synthetic_storage_poly(address)).unwrap(),
+                );
+                assert_eq!(record.src & 0x7fff, builder_base);
+                assert_eq!(record.cache & 0x8000, 0);
+                assert_eq!(record.cache, pack_cache_u16(1, publication_index));
+                occurrences.push((
+                    publication_index,
+                    address,
+                    builder_base,
+                    (record.src & 0x8000) != 0,
+                ));
+            }
+        }
+        let correct = occurrences
+            .iter()
+            .map(|(_, _, _, first)| *first)
+            .collect::<Vec<_>>();
+        assert_eq!(correct, vec![true, true, false, false]);
+        assert_eq!(
+            correct,
+            first_access_pattern(
+                occurrences
+                    .iter()
+                    .map(|(publication, _, _, _)| *publication)
+            ),
+        );
+        assert_eq!(
+            occurrences
+                .iter()
+                .filter(|(publication, _, _, first)| *publication == 0 && *first)
+                .count(),
+            1,
+        );
+        assert_eq!(
+            occurrences
+                .iter()
+                .filter(|(publication, _, _, first)| *publication == 1 && *first)
+                .count(),
+            1,
+        );
+        assert_eq!(first_launch.tables.bases[0], raw_backing.base);
+        assert_eq!(first_launch.tables.bases[1], destination.base);
+
+        // Two canonical publications intentionally share one source backing,
+        // while the raw alias and canonical address share publication zero.
+        assert_eq!(
+            first_launch
+                .tables
+                .bases
+                .iter()
+                .filter(|base| **base == raw_backing.base)
+                .count(),
+            1,
+        );
+
+        // Each forbidden ownership key changes the observable publication
+        // pattern. In particular, publication zero's alias/canonical records
+        // intentionally resolve to different raw poly bases (17 and 5), while
+        // publication one uses poly 3 on the same backing.
+        let poly_key = first_access_pattern(
+            occurrences
+                .iter()
+                .map(|(_, _, base, _)| base & ((1 << 11) - 1)),
+        );
+        let slot_key = first_access_pattern(
+            occurrences
+                .iter()
+                .map(|(_, _, base, _)| (base >> 11) & 0x0f),
+        );
+        let raw_address_key =
+            first_access_pattern(occurrences.iter().map(|(_, address, _, _)| *address));
+        assert_ne!(poly_key, correct, "poly-index ownership mutation survived");
+        assert_ne!(
+            slot_key, correct,
+            "backing/slot ownership mutation survived"
+        );
+        assert_ne!(
+            raw_address_key, correct,
+            "raw-address ownership mutation survived"
+        );
+
+        let missing_first = vec![false; occurrences.len()];
+        let repeated_later = vec![true; occurrences.len()];
+        assert_ne!(missing_first, correct);
+        assert_ne!(repeated_later, correct);
+
+        let retained_seen = occurrences
+            .iter()
+            .map(|(publication, _, _, _)| *publication)
+            .collect::<BTreeSet<_>>();
+        let cross_launch = occurrences
+            .iter()
+            .scan(retained_seen, |seen, (publication, _, _, _)| {
+                Some(seen.insert(*publication))
+            })
+            .collect::<Vec<_>>();
+        assert_ne!(
+            cross_launch, correct,
+            "cross-launch state mutation survived"
+        );
+
+        let repacked = occurrences
+            .iter()
+            .map(|(publication, _, _, _)| pack_source_u16(false, 0, *publication))
+            .collect::<Vec<_>>();
+        let builder_bases = occurrences
+            .iter()
+            .map(|(_, _, base, _)| *base)
+            .collect::<Vec<_>>();
+        assert_ne!(
+            repacked, builder_bases,
+            "slot/poly repack mutation survived"
+        );
+
+        let prior_arena = FoldingArenaBinding::new(0x40_000usize as *const u8, 7);
+        let arena_launch = assemble_dr_window_continuation_batch(
+            &program,
+            &projection,
+            eq,
+            destination,
+            |builder, _, publication_index| {
+                builder.intern_arena_e4(prior_arena, usize::from(publication_index))
+            },
+        )
+        .unwrap();
+        for (dense_slot, slot) in program.slots().iter().enumerate() {
+            for input_operand in 0..2 {
+                let publication_index = projection
+                    .publication_index(dense_slot, input_operand)
+                    .unwrap();
+                let record = arena_launch.slots[slot.slot()].io[input_operand];
+                assert_eq!(
+                    record.src & 0x7fff,
+                    pack_source_u16(false, 0, publication_index),
+                );
+                assert_eq!(record.cache, pack_cache_u16(1, publication_index));
+            }
+        }
+        assert_eq!(arena_launch.tables.bases[0], prior_arena.base);
+        assert_eq!(arena_launch.tables.bases[1], destination.base);
+
+        // The actual Storage/Arena wrapper requires pool-backed
+        // DeviceAllocation owners and therefore is not constructed in this
+        // GPU-free test. This pure assembler seam exercises both storage-like
+        // raw poly mapping and exact source/destination arena mapping.
+    }
+
+    fn dense_fold_once(source: &[E4], challenge: E4) -> Vec<E4> {
+        assert_eq!(source.len() % 4, 0);
+        let mut folded = Vec::with_capacity(source.len() / 2);
+        for y in 0..source.len() / 4 {
+            for gate_bit in 0..2 {
+                let low = source[4 * y + gate_bit];
+                let high = source[4 * y + 2 + gate_bit];
+                let mut value = high;
+                value.sub_assign(&low);
+                value.mul_assign(&challenge);
+                value.add_assign(&low);
+                folded.push(value);
+            }
+        }
+        folded
+    }
+
+    #[test]
+    fn cpu_dr_window_continuation_fold_matches_three_dense_folds() {
+        // Output-pair counts cover a minimal alias fixture, one full 32-row
+        // tile (256 pairs), multiple tiles, and a synthetic partial tile.
+        let geometry_classes = [1usize, 256, 640, 37];
+        for (geometry_class, output_pairs) in geometry_classes.into_iter().enumerate() {
+            for state in 0..32usize {
+                let source = field_sequence(16 * output_pairs, 97 * geometry_class + 13 * state);
+                let challenges: [E4; 3] = field_sequence(3, 7 * state + geometry_class)
+                    .try_into()
+                    .unwrap();
+                let expected = challenges
+                    .into_iter()
+                    .fold(source.clone(), |values, challenge| {
+                        dense_fold_once(&values, challenge)
+                    });
+                let observed = fold_dr_continuation_depth3(&source, challenges).unwrap();
+                assert_eq!(observed, expected, "class={geometry_class}, state={state}");
+                assert_eq!(observed.len(), 2 * output_pairs);
+
+                if geometry_class == 0 {
+                    let aliases = [source.as_slice(), source.as_slice()];
+                    assert!(core::ptr::eq(aliases[0].as_ptr(), aliases[1].as_ptr()));
+                    assert_eq!(
+                        fold_dr_continuation_depth3(aliases[0], challenges).unwrap(),
+                        fold_dr_continuation_depth3(aliases[1], challenges).unwrap(),
+                    );
+                }
+            }
+        }
+    }
+
+    fn tensor_fixture(
+        mask: u32,
+        suffix_bits: usize,
+    ) -> (DrTensorOracleProgram, BTreeMap<GKRAddress, Vec<E4>>) {
+        let mut rows = BTreeMap::new();
+        let mut columns = BTreeMap::new();
+        let column_len = 16usize << suffix_bits;
+        for (slot, output_type) in OUTPUT_TYPES.into_iter().enumerate() {
+            if mask & (1 << slot) == 0 {
+                continue;
+            }
+            let inputs = [address(100 + 4 * slot), address(101 + 4 * slot)];
+            let outputs = [address(102 + 4 * slot), address(103 + 4 * slot)];
+            rows.insert(output_type, DrWindowInputOutput::new(inputs, outputs));
+            for (operand, input) in inputs.into_iter().enumerate() {
+                columns.insert(
+                    input,
+                    field_sequence(column_len, 31 * slot + 11 * operand + 7 * suffix_bits),
+                );
+            }
+        }
+        let program = lower_dr_window_program(&rows).unwrap();
+        (DrTensorOracleProgram::from_production(&program), columns)
+    }
+
+    fn selector_weight(selector: usize, bit: usize) -> E4 {
+        match (selector, bit) {
+            (0, 0) | (1, 1) | (2, 1) => E4::ONE,
+            (0, 1) | (1, 0) => E4::ZERO,
+            (2, 0) => {
+                let mut minus_one = E4::ZERO;
+                minus_one.sub_assign(&E4::ONE);
+                minus_one
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn eq_weight(bit: usize, coordinate: E4) -> E4 {
+        if bit == 0 {
+            let mut result = E4::ONE;
+            result.sub_assign(&coordinate);
+            result
+        } else {
+            coordinate
+        }
+    }
+
+    fn eq_coordinate_weight(left: E4, right: E4) -> E4 {
+        let mut one_minus_left = E4::ONE;
+        one_minus_left.sub_assign(&left);
+        let mut one_minus_right = E4::ONE;
+        one_minus_right.sub_assign(&right);
+        one_minus_left.mul_assign(&one_minus_right);
+        let mut both_one = left;
+        both_one.mul_assign(&right);
+        one_minus_left.add_assign(&both_one);
+        one_minus_left
+    }
+
+    fn upstream_batch_power(base: E4, exponent: u16) -> E4 {
+        (0..exponent).fold(E4::ONE, |mut power, _| {
+            power.mul_assign(&base);
+            power
+        })
+    }
+
+    fn upstream_extension_cell(
+        column: &[E4],
+        suffix_row: usize,
+        selectors: [usize; 3],
+        gate_bit: usize,
+    ) -> E4 {
+        let mut total = E4::ZERO;
+        for boolean_y in 0..8usize {
+            let mut weight = E4::ONE;
+            for axis in 0..3 {
+                weight.mul_assign(&selector_weight(selectors[axis], (boolean_y >> axis) & 1));
+            }
+            let mut value = column[2 * ((suffix_row << 3) | boolean_y) + gate_bit];
+            value.mul_assign(&weight);
+            total.add_assign(&value);
+        }
+        total
+    }
+
+    fn upstream_continuation_tensor(
+        program: &DrTensorOracleProgram,
+        columns: &BTreeMap<GKRAddress, Vec<E4>>,
+        batch_base: E4,
+        suffix_point: &[E4],
+    ) -> [E4; 27] {
+        core::array::from_fn(|cell| {
+            let selectors = [cell / 9, (cell / 3) % 3, cell % 3];
+            let mut total = E4::ZERO;
+            for suffix_row in 0..(1usize << suffix_point.len()) {
+                let mut row_value = E4::ZERO;
+                for slot in &program.slots {
+                    let inputs = slot.source_ids[..2]
+                        .iter()
+                        .map(|source_id| &columns[&program.sources[usize::from(*source_id)]])
+                        .collect::<Vec<_>>();
+                    let values = inputs
+                        .iter()
+                        .map(|column| {
+                            [
+                                upstream_extension_cell(column, suffix_row, selectors, 0),
+                                upstream_extension_cell(column, suffix_row, selectors, 1),
+                            ]
+                        })
+                        .collect::<Vec<_>>();
+                    let weights = slot
+                        .batch_exponents
+                        .map(|exponent| upstream_batch_power(batch_base, exponent));
+                    if slot.slot == 0 || slot.slot == 4 {
+                        for tower in 0..2 {
+                            row_value.add_assign(&mul(
+                                weights[tower],
+                                mul(values[tower][0], values[tower][1]),
+                            ));
+                        }
+                    } else {
+                        row_value.add_assign(&mul(
+                            weights[0],
+                            add(
+                                mul(values[0][0], values[1][1]),
+                                mul(values[0][1], values[1][0]),
+                            ),
+                        ));
+                        row_value.add_assign(&mul(weights[1], mul(values[1][0], values[1][1])));
+                    }
+                }
+                let mut suffix_weight = E4::ONE;
+                for (bit, coordinate) in suffix_point.iter().copied().enumerate() {
+                    suffix_weight.mul_assign(&eq_weight((suffix_row >> bit) & 1, coordinate));
+                }
+                row_value.mul_assign(&suffix_weight);
+                total.add_assign(&row_value);
+            }
+            total
+        })
+    }
+
+    fn continuation_gate_at_boolean(
+        program: &DrTensorOracleProgram,
+        columns: &BTreeMap<GKRAddress, Vec<E4>>,
+        batch_base: E4,
+        y: usize,
+    ) -> E4 {
+        let mut total = E4::ZERO;
+        for slot in &program.slots {
+            let addresses = slot
+                .source_ids
+                .map(|source_id| program.sources[usize::from(source_id)]);
+            let weights = slot
+                .batch_exponents
+                .map(|exponent| upstream_batch_power(batch_base, exponent));
+            if slot.slot == 0 || slot.slot == 4 {
+                for tower in 0..2 {
+                    total.add_assign(&mul(
+                        weights[tower],
+                        mul(
+                            columns[&addresses[tower]][2 * y],
+                            columns[&addresses[tower]][2 * y + 1],
+                        ),
+                    ));
+                }
+            } else {
+                let numerator = &columns[&addresses[0]];
+                let denominator = &columns[&addresses[1]];
+                total.add_assign(&mul(
+                    weights[0],
+                    add(
+                        mul(numerator[2 * y], denominator[2 * y + 1]),
+                        mul(numerator[2 * y + 1], denominator[2 * y]),
+                    ),
+                ));
+                total.add_assign(&mul(
+                    weights[1],
+                    mul(denominator[2 * y], denominator[2 * y + 1]),
+                ));
+            }
+        }
+        total
+    }
+
+    fn continuation_initial_claim(
+        program: &DrTensorOracleProgram,
+        columns: &BTreeMap<GKRAddress, Vec<E4>>,
+        batch_base: E4,
+        tau: &[E4],
+    ) -> E4 {
+        (0..(1usize << tau.len())).fold(E4::ZERO, |mut claim, y| {
+            let mut weight = E4::ONE;
+            for (bit, coordinate) in tau.iter().copied().enumerate() {
+                weight.mul_assign(&eq_weight((y >> bit) & 1, coordinate));
+            }
+            let mut value = continuation_gate_at_boolean(program, columns, batch_base, y);
+            value.mul_assign(&weight);
+            claim.add_assign(&value);
+            claim
+        })
+    }
+
+    fn continuation_relations(
+        program: &DrTensorOracleProgram,
+        batch_base: E4,
+    ) -> Vec<LsbDimReducingRelation<E4>> {
+        let mut relations = Vec::new();
+        for slot in &program.slots {
+            let addresses = slot
+                .source_ids
+                .map(|source_id| program.sources[usize::from(source_id)]);
+            let weights = slot
+                .batch_exponents
+                .map(|exponent| upstream_batch_power(batch_base, exponent));
+            if slot.slot == 0 || slot.slot == 4 {
+                for tower in 0..2 {
+                    relations.push(LsbDimReducingRelation::PairwiseProduct {
+                        input: addresses[tower],
+                        output: addresses[2 + tower],
+                        alpha: weights[tower],
+                    });
+                }
+            } else {
+                relations.push(LsbDimReducingRelation::LogupPair {
+                    num: addresses[0],
+                    den: addresses[1],
+                    num_output: addresses[2],
+                    den_output: addresses[3],
+                    alpha_num: weights[0],
+                    alpha_den: weights[1],
+                });
+            }
+        }
+        relations
+    }
+
+    fn final_gate_from_upstream_values(
+        program: &DrTensorOracleProgram,
+        batch_base: E4,
+        values: &BTreeMap<GKRAddress, [E4; 2]>,
+    ) -> E4 {
+        let columns = values
+            .iter()
+            .map(|(address, pair)| (*address, pair.to_vec()))
+            .collect::<BTreeMap<_, _>>();
+        continuation_gate_at_boolean(program, &columns, batch_base, 0)
+    }
+
+    #[test]
+    fn cpu_dr_window_continuation_tensor_matches_legacy() {
+        let masks = [0x01u32, 0x0d, 0x0f, 0x1f, 0x02];
+        let worker = worker::Worker::new_with_num_threads(2);
+        for mask in masks {
+            for suffix_bits in [0usize, 1] {
+                let (program, columns) = tensor_fixture(mask, suffix_bits);
+                assert_eq!(program.enabled_mask, mask);
+                let batch_base = field_sequence(1, 200 + usize::try_from(mask).unwrap())[0];
+                assert_ne!(batch_base, E4::ZERO);
+                assert_ne!(batch_base, E4::ONE);
+                let tau = field_sequence(3 + suffix_bits, 300 + usize::try_from(mask).unwrap());
+                let expected =
+                    upstream_continuation_tensor(&program, &columns, batch_base, &tau[3..]);
+                let observed =
+                    dr_continuation_tensor_reference(&program, &columns, batch_base, &tau[3..])
+                        .unwrap();
+                assert_eq!(observed, expected, "mask={mask:#04x}, suffix={suffix_bits}");
+
+                let initial_claim =
+                    continuation_initial_claim(&program, &columns, batch_base, &tau);
+                let mut seed = [0x1234_5678u32.wrapping_add(mask); 8];
+                let mut tail_claim = initial_claim;
+                let mut tail_eq = E4::ONE;
+                let rho: [E4; 3] = tau[..3].try_into().unwrap();
+                let (tail_coefficients, tail_challenges) = tensor_round_tail_reference(
+                    expected,
+                    &rho,
+                    &mut seed,
+                    &mut tail_claim,
+                    &mut tail_eq,
+                );
+                let mut challenges = tail_challenges.to_vec();
+                challenges.extend(field_sequence(
+                    suffix_bits,
+                    500 + usize::try_from(mask).unwrap(),
+                ));
+                assert_eq!(&challenges[..3], tail_challenges.as_slice());
+
+                let input_polys = program
+                    .slots
+                    .iter()
+                    .flat_map(|slot| slot.source_ids[..2].iter().copied())
+                    .map(|source_id| {
+                        let address = program.sources[usize::from(source_id)];
+                        (address, columns[&address].as_slice())
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                let upstream = lsb_dim_reducing_sumcheck_prove::<BabyBearField, E4>(
+                    &input_polys,
+                    &continuation_relations(&program, batch_base),
+                    &tau,
+                    initial_claim,
+                    &challenges,
+                    &worker,
+                );
+                for (address, column) in &columns {
+                    let folded = challenges
+                        .iter()
+                        .copied()
+                        .fold(column.clone(), |values, challenge| {
+                            dense_fold_once(&values, challenge)
+                        });
+                    assert_eq!(
+                        upstream.final_values[address],
+                        <[E4; 2]>::try_from(folded).unwrap(),
+                        "upstream consumed every supplied challenge for {address:?}",
+                    );
+                }
+                let upstream_first_three = upstream
+                    .round_coefficients
+                    .iter()
+                    .take(3)
+                    .flatten()
+                    .copied()
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    tail_coefficients.as_slice(),
+                    upstream_first_three.as_slice(),
+                    "upstream cubic messages mask={mask:#04x}, suffix={suffix_bits}",
+                );
+                assert_eq!(
+                    tail_eq,
+                    eq_coordinate_weight(tau[2], tail_challenges[2]),
+                    "three-round Eq factor mask={mask:#04x}, suffix={suffix_bits}",
+                );
+                if suffix_bits == 0 {
+                    assert_eq!(tail_claim, upstream.final_claim);
+                    assert_eq!(tail_eq, upstream.eq_factor);
+                }
+                let expected_final_eq =
+                    eq_coordinate_weight(*tau.last().unwrap(), *challenges.last().unwrap());
+                let mut expected_final_claim =
+                    final_gate_from_upstream_values(&program, batch_base, &upstream.final_values);
+                expected_final_claim.mul_assign(&expected_final_eq);
+                assert_eq!(upstream.eq_factor, expected_final_eq);
+                assert_eq!(upstream.final_claim, expected_final_claim);
+
+                let mut exponent_mutation = program.clone();
+                exponent_mutation.slots[0].batch_exponents[0] += 1;
+                let exponent_tensor = dr_continuation_tensor_reference(
+                    &exponent_mutation,
+                    &columns,
+                    batch_base,
+                    &tau[3..],
+                )
+                .unwrap();
+                assert_ne!(
+                    exponent_tensor, expected,
+                    "batch-exponent mutation survived"
+                );
+
+                if suffix_bits > 0 {
+                    let mut suffix_mutation = tau[3..].to_vec();
+                    suffix_mutation[0].add_assign(&E4::ONE);
+                    let suffix_tensor = dr_continuation_tensor_reference(
+                        &program,
+                        &columns,
+                        batch_base,
+                        &suffix_mutation,
+                    )
+                    .unwrap();
+                    assert_ne!(
+                        suffix_tensor, expected,
+                        "suffix contraction mutation survived"
+                    );
+                }
+            }
+        }
+
+        for mask in [0x01u32, 0x02] {
+            let (program, columns) = tensor_fixture(mask, 1);
+            let batch_base = field_sequence(1, 700 + usize::try_from(mask).unwrap())[0];
+            let suffix = field_sequence(1, 800 + usize::try_from(mask).unwrap());
+            let full =
+                dr_continuation_tensor_reference(&program, &columns, batch_base, &suffix).unwrap();
+            assert_ne!(
+                full[0],
+                E4::ZERO,
+                "Boolean mutation control must be nonzero"
+            );
+            let mut r0_product_excess = full;
+            for a0 in 0..2 {
+                for a1 in 0..2 {
+                    for a2 in 0..2 {
+                        r0_product_excess[9 * a0 + 3 * a1 + a2] = E4::ZERO;
+                    }
+                }
+            }
+            assert_ne!(r0_product_excess, full, "mask={mask:#04x}");
+        }
+    }
+
+    #[test]
+    fn cpu_dr_window_continuation_eq_views_are_pass_local() {
+        let high_0 = 0x40_000usize as *mut E4;
+        let high_1 = 0x50_000usize as *mut E4;
+        let low = 0x60_000usize as *mut E4;
+        let mut checked = 0usize;
+        for folding_steps in 4usize..=23 {
+            let tau = field_sequence(folding_steps, 5 * folding_steps);
+            let mut prior = None;
+            for start_round in (3..folding_steps).step_by(3) {
+                if start_round + 3 >= folding_steps {
+                    continue;
+                }
+                let expected =
+                    dr_continuation_eq_reference(&tau, folding_steps, start_round).unwrap();
+                assert_eq!(expected.challenge_offset, start_round + 3);
+                assert_eq!(expected.challenge_count, folding_steps - start_round - 3);
+                assert_eq!(expected.suffix, tau[start_round + 3..folding_steps],);
+                assert_eq!(
+                    expected.entry_sizes,
+                    make_eq_sizes(expected.challenge_count)
+                );
+                let mut once_folded = expected.entry_sizes;
+                record_active_eq_slot_fold(&mut once_folded);
+                assert_eq!(expected.one_fold_boundary_sizes, once_folded);
+
+                let view = DrContinuationFactoredEqView::for_pass(
+                    high_0,
+                    high_1,
+                    low,
+                    folding_steps,
+                    start_round,
+                )
+                .unwrap();
+                assert_eq!(view.sizes, expected.entry_sizes);
+                assert_eq!(view.challenge_offset, expected.challenge_offset as u32);
+                assert_eq!(view.challenge_count, expected.challenge_count as u32);
+                let (active, size) = resolve_dr_global_active_eq_slot(&view);
+                let (expected_active, expected_size) = if view.sizes.low > 0 {
+                    (low, view.sizes.low)
+                } else if view.sizes.high[1] > 0 {
+                    (high_1, view.sizes.high[1])
+                } else {
+                    (high_0, view.sizes.high[0])
+                };
+                assert_eq!((active, size), (expected_active, expected_size));
+
+                if let Some(prior) = &prior {
+                    assert_ne!(prior, &expected, "prior Eq view was reused");
+                }
+                prior = Some(expected.clone());
+
+                let pass_index = (start_round - 3) / 3;
+                let mut cumulative = make_eq_sizes(folding_steps - 3);
+                for _ in 0..=pass_index {
+                    record_active_eq_slot_fold(&mut cumulative);
+                }
+                assert_ne!(
+                    cumulative, expected.entry_sizes,
+                    "cumulative drain survived"
+                );
+                assert_ne!(
+                    start_round + 1,
+                    expected.challenge_offset,
+                    "r+1 mutation survived"
+                );
+                assert_ne!(
+                    start_round + 4,
+                    expected.challenge_offset,
+                    "r+4 mutation survived"
+                );
+                assert_ne!(
+                    &tau[start_round + 1..folding_steps],
+                    expected.suffix.as_slice(),
+                    "r+1 suffix mutation survived",
+                );
+                assert_ne!(
+                    &tau[start_round + 4..folding_steps],
+                    expected.suffix.as_slice(),
+                    "r+4 suffix mutation survived",
+                );
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 57);
+
+        let mut priority_sizes = make_eq_sizes(17);
+        let priority_view =
+            DrContinuationFactoredEqView::new(high_0, high_1, low, priority_sizes, 6, 17);
+        assert_eq!(resolve_dr_global_active_eq_slot(&priority_view).0, low);
+        priority_sizes.low = 0;
+        let priority_view =
+            DrContinuationFactoredEqView::new(high_0, high_1, low, priority_sizes, 6, 17);
+        assert_eq!(resolve_dr_global_active_eq_slot(&priority_view).0, high_1);
+        priority_sizes.high[1] = 0;
+        let priority_view =
+            DrContinuationFactoredEqView::new(high_0, high_1, low, priority_sizes, 6, 17);
+        assert_eq!(resolve_dr_global_active_eq_slot(&priority_view).0, high_0);
+    }
+
+    #[test]
+    fn cpu_dr_window_final_order_mismatch_seam_matches_legacy() {
+        let mut checked_layers = 0usize;
+        let mut mismatch_layers = 0usize;
+        let mut merge_layers = 0usize;
+        let mut two_cell_mutations = 0usize;
+        let mut four_cell_mutations = 0usize;
+        for (layout_name, _) in CONTINUATION_GOLDEN_CORPUS {
+            let (programs, main_layers) = crate::backward::compile_corpus_layout(layout_name);
+            let runtime = programs.runtime_circuit();
+            let initial_trace_log = runtime.trace_len.trailing_zeros();
+            let legacy_layers = derive_dimension_reducing_inputs(
+                main_layers,
+                &runtime.global_output_map,
+                initial_trace_log,
+                CORPUS_FINAL_TRACE_LOG,
+            );
+            let layout = GpuGKRStorageLayout::from_artifact_with_tower(
+                runtime,
+                CORPUS_FINAL_TRACE_LOG as usize,
+            );
+            let bundle = programs
+                .resolve_dr_window_programs(CORPUS_FINAL_TRACE_LOG)
+                .unwrap();
+            for (absolute_layer, legacy_description) in legacy_layers {
+                let legacy_slots = legacy_dimension_reducing_slots_for_test(&legacy_description);
+                let layer = bundle.layer(absolute_layer).unwrap();
+                let canonical = layer.input_projection().canonical_sources();
+                let raw = legacy_slots.input_addresses().collect::<Vec<_>>();
+                let canonical_cells = field_sequence(4 * canonical.len(), checked_layers * 47);
+                let lookup =
+                    dr_final_lookup_four_cells(canonical, &raw, &layout.aliases, &canonical_cells)
+                        .unwrap();
+                let raw_sorted = raw
+                    .into_iter()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                let expected_indices = raw_sorted
+                    .iter()
+                    .map(|address| {
+                        let canonical_address =
+                            layout.aliases.get(address).copied().unwrap_or(*address);
+                        canonical.binary_search(&canonical_address).unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                let expected_cells = expected_indices
+                    .iter()
+                    .flat_map(|index| canonical_cells[4 * index..4 * index + 4].iter().copied())
+                    .collect::<Vec<_>>();
+                assert_eq!(lookup.publication_indices, expected_indices);
+                assert_eq!(lookup.cells, expected_cells);
+
+                mismatch_layers += usize::from(
+                    lookup.publication_indices != (0..canonical.len()).collect::<Vec<_>>(),
+                );
+                merge_layers += usize::from(raw_sorted.len() != canonical.len());
+                if lookup.publication_indices != (0..canonical.len()).collect::<Vec<_>>() {
+                    assert_ne!(
+                        lookup.cells, canonical_cells,
+                        "canonical-order mutation survived"
+                    );
+                }
+
+                let two_cells = field_sequence(2 * canonical.len(), checked_layers * 53);
+                assert!(dr_final_lookup_four_cells(
+                    canonical,
+                    &raw_sorted,
+                    &layout.aliases,
+                    &two_cells,
+                )
+                .is_err());
+                two_cell_mutations += 1;
+
+                let mut permuted_four_cells = canonical_cells.clone();
+                for cells in permuted_four_cells.chunks_exact_mut(4) {
+                    cells.swap(1, 2);
+                }
+                let permuted = dr_final_lookup_four_cells(
+                    canonical,
+                    &raw_sorted,
+                    &layout.aliases,
+                    &permuted_four_cells,
+                )
+                .unwrap();
+                assert_ne!(permuted.cells, lookup.cells);
+                four_cell_mutations += 1;
+                checked_layers += 1;
+            }
+        }
+        assert_eq!(checked_layers, 229);
+        assert_eq!(mismatch_layers, 9);
+        assert_eq!(merge_layers, 0);
+        assert_eq!(two_cell_mutations, 229);
+        assert_eq!(four_cell_mutations, 229);
+    }
 }
 
 mod cpu_dr_window_tensor_oracle {

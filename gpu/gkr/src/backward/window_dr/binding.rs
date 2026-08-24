@@ -2,11 +2,12 @@
 #![allow(dead_code)]
 
 use core::mem::{align_of, offset_of, size_of};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
+use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::E4;
 use gpu_gkr_compiler::{DrWindowInputProjection, DrWindowProgram, KERNEL_ARGUMENT_CEILING_BYTES};
@@ -18,6 +19,7 @@ use crate::backward::kernels::{
     GpuGKRDimensionReducingSlot, GpuGKRDimensionReducingTables, GpuGKRSourceRecord,
     GKR_BACKWARD_MAX_TRACE_LEN_LOG2, GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_POLY_CAPACITY,
 };
+use crate::backward::GKR_EQ_GROUP_TABLE_LEN;
 use crate::gkr_address_audit::AddressClass;
 use crate::storage_layout::{address_storage_layer, FieldType};
 use crate::upstream::GKRAddress;
@@ -37,6 +39,184 @@ const DR_WINDOW_ROWS_PER_TILE: usize = 32;
 const DR_WINDOW_TENSOR_CELLS: usize = 27;
 const DR_WINDOW_MIN_FOLDING_STEPS: usize = 4;
 const DR_WINDOW_MAX_FOLDING_STEPS: usize = GKR_BACKWARD_MAX_TRACE_LEN_LOG2;
+const DR_CONTINUATION_EQ_GROUPS: usize = 3;
+const DR_CONTINUATION_FIRST_ACCESS_BIT: u16 = 1 << 15;
+
+/// One layer-owned global factored-Eq allocation for every continuation pass.
+/// The physical order is `[high_0, high_1, low]`; later passes overwrite the
+/// same allocation in exec-stream order rather than carrying an R0 or prior
+/// continuation view forward.
+pub(crate) struct DrContinuationFactoredEqScratch {
+    allocation: DeviceAllocation<E4>,
+}
+
+impl DrContinuationFactoredEqScratch {
+    pub(crate) fn allocate(context: &ProverContext) -> CudaResult<Self> {
+        Ok(Self {
+            allocation: context.alloc(
+                DR_CONTINUATION_EQ_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
+                AllocationPlacement::Top,
+            )?,
+        })
+    }
+
+    pub(crate) fn view_for_pass(
+        &self,
+        folding_steps: usize,
+        start_round: usize,
+    ) -> Result<DrContinuationFactoredEqView, DrWindowBindError> {
+        let high_0 = self.allocation.as_ptr().cast_mut();
+        // SAFETY: the allocation contains exactly three consecutive groups.
+        let high_1 = unsafe { high_0.add(GKR_EQ_GROUP_TABLE_LEN) };
+        // SAFETY: the allocation contains exactly three consecutive groups.
+        let low = unsafe { high_1.add(GKR_EQ_GROUP_TABLE_LEN) };
+        DrContinuationFactoredEqView::for_pass(high_0, high_1, low, folding_steps, start_round)
+    }
+}
+
+/// Immutable, pass-local view into [`DrContinuationFactoredEqScratch`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DrContinuationFactoredEqView {
+    pub(crate) high_0: *mut E4,
+    pub(crate) high_1: *mut E4,
+    pub(crate) low: *mut E4,
+    pub(crate) sizes: crate::backward::GkrEqSizes,
+    pub(crate) challenge_offset: u32,
+    pub(crate) challenge_count: u32,
+}
+
+impl DrContinuationFactoredEqView {
+    pub(crate) fn for_pass(
+        high_0: *mut E4,
+        high_1: *mut E4,
+        low: *mut E4,
+        folding_steps: usize,
+        start_round: usize,
+    ) -> Result<Self, DrWindowBindError> {
+        if start_round < DR_WINDOW_COORDINATES
+            || start_round % DR_WINDOW_COORDINATES != 0
+            || start_round + DR_WINDOW_COORDINATES >= folding_steps
+        {
+            return Err(DrWindowBindError::InvalidContinuationBoundary {
+                folding_steps,
+                start_round,
+            });
+        }
+        let challenge_offset = start_round + DR_WINDOW_COORDINATES;
+        let challenge_count = folding_steps - challenge_offset;
+        Ok(Self::new(
+            high_0,
+            high_1,
+            low,
+            make_eq_sizes(challenge_count),
+            challenge_offset as u32,
+            challenge_count as u32,
+        ))
+    }
+
+    pub(crate) const fn new(
+        high_0: *mut E4,
+        high_1: *mut E4,
+        low: *mut E4,
+        sizes: crate::backward::GkrEqSizes,
+        challenge_offset: u32,
+        challenge_count: u32,
+    ) -> Self {
+        Self {
+            high_0,
+            high_1,
+            low,
+            sizes,
+            challenge_offset,
+            challenge_count,
+        }
+    }
+}
+
+// SAFETY: views contain device pointers only and are forwarded exclusively to
+// stream-ordered kernels while the owning scratch remains alive.
+unsafe impl Send for DrContinuationFactoredEqView {}
+unsafe impl Sync for DrContinuationFactoredEqView {}
+
+/// Resolve the next global Eq group without consulting R0's constant slab.
+pub(crate) fn resolve_dr_global_active_eq_slot(
+    view: &DrContinuationFactoredEqView,
+) -> (*mut E4, u32) {
+    if view.sizes.low > 0 {
+        (view.low, view.sizes.low)
+    } else if view.sizes.high[1] > 0 {
+        (view.high_1, view.sizes.high[1])
+    } else {
+        debug_assert!(view.sizes.high[0] >= 1);
+        (view.high_0, view.sizes.high[0])
+    }
+}
+
+/// One arena allocation plus the immutable metadata needed to derive compact
+/// source bindings. Cloning the `Arc` retains the same allocation; it never
+/// allocates a second backing.
+pub(crate) struct DrWindowContinuationArena {
+    allocation: Arc<DeviceAllocation<E4>>,
+    log2_stride: u32,
+    poly_count: usize,
+}
+
+impl DrWindowContinuationArena {
+    pub(crate) fn new(
+        allocation: Arc<DeviceAllocation<E4>>,
+        log2_stride: u32,
+        poly_count: usize,
+    ) -> Result<Self, DrWindowBindError> {
+        let per_poly_len =
+            1usize
+                .checked_shl(log2_stride)
+                .ok_or(DrWindowBindError::ArenaGeometryOverflow {
+                    log2_stride,
+                    poly_count,
+                })?;
+        let required = per_poly_len.checked_mul(poly_count).ok_or(
+            DrWindowBindError::ArenaGeometryOverflow {
+                log2_stride,
+                poly_count,
+            },
+        )?;
+        if allocation.len() < required {
+            return Err(DrWindowBindError::ArenaCapacity {
+                required,
+                capacity: allocation.len(),
+            });
+        }
+        Ok(Self {
+            allocation,
+            log2_stride,
+            poly_count,
+        })
+    }
+
+    pub(crate) fn binding(&self) -> FoldingArenaBinding {
+        FoldingArenaBinding::new(self.allocation.as_ptr().cast(), self.log2_stride)
+    }
+
+    /// Reuse the same allocation with the smaller per-poly prefix of a later
+    /// same-parity pass. This clones ownership metadata only; it performs no
+    /// device allocation.
+    pub(crate) fn with_geometry(
+        &self,
+        log2_stride: u32,
+        poly_count: usize,
+    ) -> Result<Self, DrWindowBindError> {
+        Self::new(Arc::clone(&self.allocation), log2_stride, poly_count)
+    }
+
+    pub(crate) fn poly_count(&self) -> usize {
+        self.poly_count
+    }
+}
+
+pub(crate) enum DrWindowContinuationSource<'a, B> {
+    Storage(&'a GpuGKRStorage<B, E4>),
+    Arena(&'a DrWindowContinuationArena),
+}
 
 /// The by-value ABI passed to the universal DR R0 producer.
 #[repr(C, align(16))]
@@ -77,6 +257,26 @@ pub(crate) enum DrWindowBindError {
         observed: usize,
     },
     EqSizeMismatch,
+    InvalidContinuationBoundary {
+        folding_steps: usize,
+        start_round: usize,
+    },
+    MissingPublicationIndex {
+        dense_slot: usize,
+        input_operand: usize,
+    },
+    PublicationIndexOverflow {
+        publication_index: usize,
+        canonical_source_count: usize,
+    },
+    ArenaGeometryOverflow {
+        log2_stride: u32,
+        poly_count: usize,
+    },
+    ArenaCapacity {
+        required: usize,
+        capacity: usize,
+    },
     MissingStorageLayout {
         address: GKRAddress,
     },
@@ -361,6 +561,118 @@ pub(crate) fn resolve_dr_window_kernel(
     Ok(&DR_WINDOWED_R0_UNIVERSAL_KERNEL)
 }
 
+/// Assemble the input-only continuation batch. This is the single owner of
+/// per-launch first-access state: source interning supplies an already packed,
+/// bit-15-clear base, and this function only adds the publication bit.
+pub(super) fn assemble_dr_window_continuation_batch(
+    program: &DrWindowProgram,
+    projection: &DrWindowInputProjection,
+    eq: DrContinuationFactoredEqView,
+    destination: FoldingArenaBinding,
+    mut intern_source: impl FnMut(
+        &mut DrCompactSourceTableBuilder,
+        GKRAddress,
+        u16,
+    ) -> Result<u16, DrWindowBindError>,
+) -> Result<GpuGKRDimensionReducingBatch<E4>, DrWindowBindError> {
+    let mut batch = GpuGKRDimensionReducingBatch::<E4> {
+        enabled_mask: program.enabled_mask(),
+        eq_low: eq.low.cast_const(),
+        eq_sizes: eq.sizes,
+        ..Default::default()
+    };
+    let mut table_builder = DrCompactSourceTableBuilder::new();
+    let mut first_access_seen = BTreeSet::<u16>::new();
+    for (dense_slot, slot) in program.slots().iter().enumerate() {
+        let mut io = [GpuGKRSourceRecord::default(); 4];
+        for input_operand in 0..2 {
+            let publication_index = projection
+                .publication_index(dense_slot, input_operand)
+                .ok_or(DrWindowBindError::MissingPublicationIndex {
+                    dense_slot,
+                    input_operand,
+                })?;
+            let publication = usize::from(publication_index);
+            if publication >= projection.canonical_sources().len() {
+                return Err(DrWindowBindError::PublicationIndexOverflow {
+                    publication_index: publication,
+                    canonical_source_count: projection.canonical_sources().len(),
+                });
+            }
+            let source_id = slot.source_ids()[input_operand];
+            let address = program.sources()[usize::from(source_id)];
+            let source_base = intern_source(&mut table_builder, address, publication_index)?;
+            assert_eq!(
+                source_base & DR_CONTINUATION_FIRST_ACCESS_BIT,
+                0,
+                "compact source-table builders must return a clear first-access bit",
+            );
+            let cache_base = table_builder.intern_arena_e4(destination, publication)?;
+            assert_eq!(
+                cache_base & DR_CONTINUATION_FIRST_ACCESS_BIT,
+                0,
+                "compact destination-table builders must return a clear first-access bit",
+            );
+            let first_access = first_access_seen.insert(publication_index);
+            let source = source_base
+                | if first_access {
+                    DR_CONTINUATION_FIRST_ACCESS_BIT
+                } else {
+                    0
+                };
+            io[input_operand] = GpuGKRSourceRecord::new(source, cache_base);
+        }
+        batch.slots[slot.slot()] = GpuGKRDimensionReducingSlot {
+            io,
+            batch_exp: *slot.batch_exponents(),
+        };
+    }
+    batch.tables = table_builder.finish();
+    debug_assert!(batch.contributions.is_null());
+    Ok(batch)
+}
+
+pub(crate) fn build_dr_window_continuation_batch<B>(
+    program: &DrWindowProgram,
+    projection: &DrWindowInputProjection,
+    source: DrWindowContinuationSource<'_, B>,
+    destination: &DrWindowContinuationArena,
+    eq: DrContinuationFactoredEqView,
+) -> Result<GpuGKRDimensionReducingBatch<E4>, DrWindowBindError> {
+    if destination.poly_count() < projection.canonical_sources().len() {
+        return Err(DrWindowBindError::ArenaCapacity {
+            required: projection.canonical_sources().len(),
+            capacity: destination.poly_count(),
+        });
+    }
+    match source {
+        DrWindowContinuationSource::Storage(storage) => assemble_dr_window_continuation_batch(
+            program,
+            projection,
+            eq,
+            destination.binding(),
+            |builder, address, _| builder.intern_storage_e4(storage, address),
+        ),
+        DrWindowContinuationSource::Arena(arena) => {
+            if arena.poly_count() < projection.canonical_sources().len() {
+                return Err(DrWindowBindError::ArenaCapacity {
+                    required: projection.canonical_sources().len(),
+                    capacity: arena.poly_count(),
+                });
+            }
+            assemble_dr_window_continuation_batch(
+                program,
+                projection,
+                eq,
+                destination.binding(),
+                |builder, _, publication_index| {
+                    builder.intern_arena_e4(arena.binding(), usize::from(publication_index))
+                },
+            )
+        }
+    }
+}
+
 fn build_dr_window_batch<B>(
     program: &DrWindowProgram,
     storage: &GpuGKRStorage<B, E4>,
@@ -449,6 +761,8 @@ pub(crate) fn bind_dr_window_r0<B>(
         eq,
         raw_inputs,
         partials_capacity,
+        program.clone(),
+        projection.clone(),
     ))
 }
 
