@@ -36,6 +36,222 @@ fn make_allocator_no_small(num_big_chunks: usize) -> InnerStaticAllocator<TestBa
     InnerStaticAllocator::new([backend], BIG_LCS)
 }
 
+type TestStaticAllocator =
+    StaticAllocator<TestBackend, NonConcurrentInnerStaticAllocatorWrapper<TestBackend>>;
+
+fn make_static_allocator(num_big_chunks: usize, small_pool_chunks: usize) -> TestStaticAllocator {
+    let total = num_big_chunks * BIG_CHUNK;
+    let backend = TestBackend(vec![0u8; total]);
+    let pool_size = small_pool_chunks * BIG_CHUNK;
+    TestStaticAllocator::new_with_small_allocator([backend], BIG_LCS, SMALL_LCS, pool_size)
+}
+
+fn make_static_allocator_no_small(num_big_chunks: usize) -> TestStaticAllocator {
+    let total = num_big_chunks * BIG_CHUNK;
+    let backend = TestBackend(vec![0u8; total]);
+    TestStaticAllocator::new([backend], BIG_LCS)
+}
+
+#[test]
+fn cpu_memory_observer_distinguishes_small_pool_logical_peak() {
+    let alloc = make_static_allocator(4, 1);
+
+    // The inactive observer slots are host bookkeeping: constructing them
+    // neither consumes pool bytes nor changes the outer tracker's peak.
+    let inactive_start = alloc.get_memory_usage();
+    assert_eq!(inactive_start.physical_backing_bytes, BIG_CHUNK);
+    assert_eq!(inactive_start.logical_live_bytes, 0);
+    assert_eq!(alloc.get_used_mem_peak(), BIG_CHUNK);
+    let inactive_probe = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    drop(inactive_probe);
+    assert_eq!(alloc.get_memory_usage(), inactive_start);
+    assert_eq!(alloc.get_used_mem_peak(), BIG_CHUNK);
+
+    let observer = alloc.observe_memory_high_water();
+
+    let small = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    drop(small);
+
+    let report = observer.finish();
+    assert_eq!(
+        report.start,
+        PoolMemoryUsage {
+            physical_backing_bytes: BIG_CHUNK,
+            logical_live_bytes: 0,
+        }
+    );
+    assert_eq!(report.physical_backing_peak_bytes, BIG_CHUNK);
+    assert_eq!(report.logical_live_peak_bytes, SMALL_CHUNK);
+    assert_eq!(report.summed_requested_bytes, size_of::<u64>());
+    assert_eq!(report.peak_window_end, report.start);
+    assert_eq!(report.return_to_entry, report.start);
+}
+
+#[test]
+fn cpu_memory_observer_tracks_mixed_physical_and_logical_peaks() {
+    let alloc = make_static_allocator(4, 1);
+    let observer = alloc.observe_memory_high_water();
+
+    let small = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    let big = alloc
+        .alloc::<u64>(33, AllocationPlacement::BestFit)
+        .unwrap();
+    drop(big);
+    drop(small);
+
+    let report = observer.finish();
+    assert_eq!(report.start.physical_backing_bytes, BIG_CHUNK);
+    assert_eq!(report.start.logical_live_bytes, 0);
+    assert_eq!(report.physical_backing_peak_bytes, 2 * BIG_CHUNK);
+    assert_eq!(report.logical_live_peak_bytes, BIG_CHUNK + SMALL_CHUNK);
+    assert_eq!(report.summed_requested_bytes, (1 + 33) * size_of::<u64>());
+    assert_eq!(report.return_to_entry, report.start);
+}
+
+#[test]
+fn cpu_nested_memory_observers_survive_legacy_peak_reset() {
+    let alloc = make_static_allocator(4, 1);
+    let whole = alloc.observe_memory_high_water();
+    let preexisting = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    let mut backward = alloc.observe_memory_high_water();
+    let backward_start = alloc.get_memory_usage();
+
+    // Establish a peak strictly above the current usage at the legacy reset
+    // after both live observers have started. A mutation that clamps either
+    // scoped peak to current would lose this value; the later allocation is
+    // deliberately smaller so it cannot restore the peak accidentally.
+    let pre_reset_peak = alloc
+        .alloc::<u64>(130, AllocationPlacement::BestFit)
+        .unwrap();
+    drop(pre_reset_peak);
+    assert_eq!(alloc.get_memory_usage(), backward_start);
+
+    alloc.reset_used_mem_peak();
+    let big = alloc
+        .alloc::<u64>(33, AllocationPlacement::BestFit)
+        .unwrap();
+    drop(big);
+
+    let sealed = backward.seal();
+    assert_eq!(sealed.start, backward_start);
+    assert_eq!(sealed.physical_backing_peak_bytes, 3 * BIG_CHUNK);
+    assert_eq!(sealed.logical_live_peak_bytes, 2 * BIG_CHUNK + SMALL_CHUNK);
+    assert_eq!(sealed.summed_requested_bytes, (130 + 33) * size_of::<u64>());
+    assert_eq!(sealed.peak_window_end, backward_start);
+
+    let backward_report = backward.finish();
+    assert_eq!(backward_report.return_to_entry, backward_start);
+    drop(preexisting);
+    let whole_report = whole.finish();
+    assert_eq!(whole_report.start.physical_backing_bytes, BIG_CHUNK);
+    assert_eq!(whole_report.start.logical_live_bytes, 0);
+    assert_eq!(whole_report.physical_backing_peak_bytes, 3 * BIG_CHUNK);
+    assert_eq!(
+        whole_report.logical_live_peak_bytes,
+        2 * BIG_CHUNK + SMALL_CHUNK
+    );
+    assert_eq!(
+        whole_report.summed_requested_bytes,
+        (130 + 1 + 33) * size_of::<u64>()
+    );
+    assert_eq!(whole_report.return_to_entry, whole_report.start);
+}
+
+#[test]
+fn cpu_memory_observer_drop_cancels_slot() {
+    let alloc = make_static_allocator_no_small(4);
+    drop(alloc.observe_memory_high_water());
+
+    let first = alloc.observe_memory_high_water();
+    let second = alloc.observe_memory_high_water();
+    let third = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        alloc.observe_memory_high_water()
+    }));
+    assert!(third.is_err());
+    drop(first);
+    drop(second);
+
+    // Both slots must be reusable after unfinished observers are dropped.
+    let first = alloc.observe_memory_high_water();
+    let second = alloc.observe_memory_high_water();
+    drop(first);
+    drop(second);
+}
+
+#[test]
+fn cpu_memory_observer_without_small_pool_has_equal_metrics() {
+    let alloc = make_static_allocator_no_small(4);
+    let observer = alloc.observe_memory_high_water();
+
+    let allocation = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    alloc.reset_used_mem_peak();
+    drop(allocation);
+
+    let report = observer.finish();
+    assert_eq!(report.start.physical_backing_bytes, 0);
+    assert_eq!(report.start.logical_live_bytes, 0);
+    assert_eq!(report.physical_backing_peak_bytes, BIG_CHUNK);
+    assert_eq!(report.logical_live_peak_bytes, BIG_CHUNK);
+    assert_eq!(report.peak_window_end.physical_backing_bytes, 0);
+    assert_eq!(report.peak_window_end.logical_live_bytes, 0);
+    assert_eq!(report.return_to_entry, report.start);
+}
+
+#[test]
+fn cpu_memory_observer_seal_freezes_backward_window() {
+    let alloc = make_static_allocator(8, 1);
+    let whole = alloc.observe_memory_high_water();
+    let mut backward = alloc.observe_memory_high_water();
+
+    let backward_allocation = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    let sealed = backward.seal();
+
+    let later_allocation = alloc
+        .alloc::<u64>(130, AllocationPlacement::BestFit)
+        .unwrap();
+    drop(later_allocation);
+    drop(backward_allocation);
+
+    let backward_report = backward.finish();
+    let whole_report = whole.finish();
+    assert_eq!(backward_report.physical_backing_peak_bytes, BIG_CHUNK);
+    assert_eq!(backward_report.logical_live_peak_bytes, SMALL_CHUNK);
+    assert_eq!(backward_report.summed_requested_bytes, size_of::<u64>());
+    assert_eq!(backward_report.peak_window_end, sealed.peak_window_end);
+    assert_eq!(backward_report.return_to_entry, backward_report.start);
+
+    assert_eq!(whole_report.physical_backing_peak_bytes, 3 * BIG_CHUNK);
+    assert_eq!(
+        whole_report.logical_live_peak_bytes,
+        2 * BIG_CHUNK + SMALL_CHUNK
+    );
+    assert_eq!(
+        whole_report.summed_requested_bytes,
+        (1 + 130) * size_of::<u64>()
+    );
+    assert_eq!(whole_report.return_to_entry, whole_report.start);
+}
+
+#[test]
+fn cpu_memory_observer_requested_bytes_are_unrounded_and_counted_once() {
+    let alloc = make_static_allocator(4, 1);
+    let observer = alloc.observe_memory_high_water();
+
+    let plain = alloc.alloc::<u8>(1, AllocationPlacement::BestFit).unwrap();
+    let aligned = alloc
+        .alloc_with_extra_alignment::<u8, 6>(17, AllocationPlacement::BestFit)
+        .unwrap();
+    assert!(alloc
+        .alloc::<u8>(5 * BIG_CHUNK, AllocationPlacement::BestFit)
+        .is_err());
+    drop(aligned);
+    drop(plain);
+
+    let report = observer.finish();
+    assert_eq!(report.summed_requested_bytes, 18);
+    assert_eq!(report.return_to_entry, report.start);
+}
+
 /// Sweeps `byte_len` across the small/big routing threshold (256 B for
 /// `make_allocator(4, 1)`), asserting the exact `alloc_len` rounding on each
 /// side. Folds `small_alloc_basic_roundtrip` (below-threshold case),
