@@ -349,7 +349,7 @@ impl ProveBackend for CpuBackend {
                 if machine != MachineType::Reduced {
                     return Err("unified proving supports only the reduced machine".to_string());
                 }
-                prover_examples::unified::prove_unified_execution_with_replayer::<Global, _, _>(
+                program_prover::unified::prove_unified_execution_with_replayer::<Global, _, _>(
                     cycles_bound,
                     &padded_bin,
                     &padded_text,

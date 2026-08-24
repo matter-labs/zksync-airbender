@@ -7,6 +7,5 @@ pub use ::setups;
 
 #[cfg(feature = "l1")]
 pub mod l1;
-pub mod unified_transition;
 
 mod recursion;

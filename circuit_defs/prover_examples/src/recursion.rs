@@ -41,7 +41,9 @@ mod tests {
     };
     use full_statement_verifier::program_proof::ProgramProof;
     use program_prover::unified::prove_unified_execution_with_replayer;
-    use program_prover::unrolled::prove_unrolled_execution_with_replayer;
+    use program_prover::unrolled::{
+        prove_unrolled_execution_with_replayer, run_unrolled_machine_in_full,
+    };
     use prover::definitions::SecurityLevel;
     use prover::gkr::prover::{DefaultBabyBearBackend, DefaultBabyBearGKRBackend};
     use prover::worker::Worker;
@@ -65,6 +67,37 @@ mod tests {
     const FSV_DIR: &str = "../../tools/gkr_verifier";
 
     // ---- pure helpers -------------------------------------------------------
+
+    /// Cycle count of a terminating verifier run on the unrolled machine over
+    /// the given ND `stream` (no proving — just the interpreter).
+    fn measure_verifier_cycles(
+        binary_image: &[u32],
+        text_section: &[u32],
+        stream: Vec<u32>,
+    ) -> u64 {
+        use riscv_transpiler::vm::DelegationsAndUnifiedCounters;
+
+        let (
+            (_final_pc, final_timestamp),
+            _snapshotter,
+            _counters,
+            _ram,
+            _registers,
+            _tape,
+            _state,
+        ) = run_unrolled_machine_in_full::<
+            ReducedMachineWithDelegation,
+            DelegationsAndUnifiedCounters,
+        >(
+            UNROLLED_RECURSION_CYCLES_BOUND,
+            binary_image,
+            text_section,
+            RAM_BOUND,
+            DelegationsAndUnifiedCounters::default(),
+            QuasiUARTSource::new_with_reads(stream),
+        );
+        (final_timestamp - common_constants::INITIAL_TIMESTAMP) / common_constants::TIMESTAMP_STEP
+    }
 
     /// Parse a hex-text witness dump (`23620012_witness`): one contiguous string
     /// of 8-hex-char big-endian u32 words. Mirrors `cli::u32_from_hex_string`.
@@ -679,7 +712,7 @@ mod tests {
     #[ignore = "manual research run (needs the converged pipeline caches)"]
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_l1_feeder_high_lde_research() {
-        use crate::unified_transition::prove_unified_transition_with_replayer;
+        use program_prover::unified_transition::prove_unified_transition_with_replayer;
         use verifier_common::fsv_binaries::BlakeMode;
         skip_if_ci!();
 

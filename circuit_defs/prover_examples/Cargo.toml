@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+circuit_common = { workspace = true }
 common_constants = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 program_prover = { workspace = true, default-features = false }
