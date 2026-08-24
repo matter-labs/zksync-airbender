@@ -63,7 +63,7 @@ jobs:
 
           CUDAARCHS="80;89;90" \
           cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --no-run
-          test_binary="$(find target/x86_64-unknown-linux-gnu/release/deps -maxdepth 1 -type f -executable -name 'gpu_circuit_prover-*' -print -quit)"
+          test_binary="$(find target/x86_64-unknown-linux-gnu/release -type f -executable -name 'gpu_circuit_prover-*' -print -quit)"
           test -n "$test_binary"
           cp "$test_binary" artifacts/gpu_circuit_prover-tests
 
