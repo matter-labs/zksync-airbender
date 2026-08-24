@@ -828,15 +828,7 @@ fn schedule_seg_challenge_slab(
         let external = DeviceSlice::from_raw_parts(external_challenges, prefix);
         {
             crate::backward::task8_enqueue_scope!(_task8, "challenge-slab-prefix-copy", Copy, {
-                use crate::backward::task8_probe::Task8Span;
-                vec![
-                    Task8Span::read(
-                        "external_challenges",
-                        external_challenges as usize,
-                        prefix * element,
-                    ),
-                    Task8Span::write("challenge_slab", slab_base, prefix * element),
-                ]
+                task8_challenge_prefix_spans(external_challenges as usize, slab_base, prefix)
             });
             memory_copy_async(&mut slab[..prefix], external, stream)?;
         }
@@ -856,11 +848,7 @@ fn schedule_seg_challenge_slab(
             let source_address = source as usize;
             let source = DeviceSlice::from_raw_parts(source, 1);
             crate::backward::task8_enqueue_scope!(_task8, "challenge-slab-slot-copy", Copy, {
-                use crate::backward::task8_probe::Task8Span;
-                vec![
-                    Task8Span::read("challenge_source", source_address, element),
-                    Task8Span::write("challenge_slab", slab_base + slot * element, element),
-                ]
+                task8_challenge_slot_spans(source_address, slab_base, slot)
             });
             memory_copy_async(&mut slab[slot..slot + 1], source, stream)?;
         }
@@ -1290,6 +1278,42 @@ pub(crate) fn build_bwd_vm_ext_rounds_after_continuations<E: Copy>(
         context,
         Some(published_shape),
     )
+}
+
+/// The two spans one challenge-slab prefix copy names.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_challenge_prefix_spans(
+    external: usize,
+    slab: usize,
+    prefix: usize,
+) -> Vec<crate::backward::task8_probe::Task8Span> {
+    use crate::backward::task8_probe::Task8Span;
+    let element = size_of::<E4>();
+    vec![
+        Task8Span::read("external_challenges", external, prefix * element),
+        Task8Span::write("challenge_slab", slab, prefix * element),
+    ]
+}
+
+/// The two spans one single-slot challenge copy names.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_challenge_slot_spans(
+    source: usize,
+    slab: usize,
+    slot: usize,
+) -> Vec<crate::backward::task8_probe::Task8Span> {
+    use crate::backward::task8_probe::Task8Span;
+    let element = size_of::<E4>();
+    vec![
+        Task8Span::read("challenge_source", source, element),
+        Task8Span::write("challenge_slab", slab + slot * element, element),
+    ]
 }
 
 /// What one bank fill touches: the challenge slab it fills and then reads, plus

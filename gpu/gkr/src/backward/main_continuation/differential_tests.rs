@@ -3738,9 +3738,8 @@ mod cpu_tests {
     use super::E4;
     use super::{
         allocation_group_record, bind_arm_owners_final, bind_challenge_owners_final,
-        bind_transcript_owners_final, build_corpus_census, eq_readback_spans,
-        expected_arm_owner_labels, ledger_bind_final, ledger_open, make_eq_sizes,
-        signed_snapshot_delta, task8_enqueue, task8_register_symbol,
+        bind_transcript_owners_final, build_corpus_census, eq_readback_spans, ledger_bind_final,
+        ledger_open, signed_snapshot_delta, task8_enqueue, task8_register_symbol,
         validate_owner_generation_ledger, validate_single_owner_topology, BTreeSet,
         Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols, Task8ChallengeOwners,
         Task8EnqueueKind, Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord,
@@ -3749,12 +3748,27 @@ mod cpu_tests {
         MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
         TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
     };
+    use crate::backward::kernels::{task8_dual_finalize_spans, task8_eq_build_spans};
     use crate::backward::task8_probe::task8_register_descriptor_sources;
-    use crate::backward::vm::seg::task8_seg_spans;
+    use crate::backward::vm::production_bind::{
+        task8_challenge_prefix_spans, task8_challenge_slot_spans,
+    };
+    use crate::backward::vm::seg::{task8_fold_weight_spans, task8_seg_spans};
+    use crate::backward::vm::seg_coeff_eval::{
+        task8_coeff_eval_reads, task8_coeff_fill_spans, SegCoeffEvalBlob, SegCoeffMonomial,
+        SegCoeffRecipe, BWD_SEG_BLOB_BYTES, BWD_SEG_CHALLENGE_ABSENT,
+    };
     use crate::backward::vm::seg_desc::{
-        bwd_seg_fold_weight_run, bwd_seg_lane, BwdSegAddrSlot, BwdSegDesc, BwdSegSourceRecord,
+        bwd_seg_fold_weight_run, bwd_seg_lane, BwdSegAddrSlot, BwdSegDesc,
         BWD_COEFF_ORIGIN_READ_EXT, BWD_SEG_ADDR_NONE,
     };
+    use crate::backward::vm::seg_lower::{task8_lowered_seg_descriptor, Task8SegSourceSpec};
+    use crate::backward::window::tail::{
+        task8_tail_reduce_spans, task8_tail_round_spans, WindowTailState,
+    };
+    use crate::backward::{make_eq_sizes, GkrEqSizes};
+    use crate::upstream::PrimeField;
+    use gpu_core::primitives::field::BF;
 
     fn record(
         kind: &'static str,
@@ -3870,15 +3884,17 @@ mod cpu_tests {
     const TASK8_TEST_ELEMENT: usize = 16;
     const TASK8_TEST_POINT_LEN: usize = 12;
     const TASK8_TEST_ROW_TILES: usize = 4;
-    const TASK8_TEST_EQ_ACTIVE: usize = 32;
+    const TASK8_TEST_CHALLENGES: usize = 11;
     const TASK8_TEST_HIGH_TABLE: usize = 256;
     const TASK8_TEST_BANK_ELEMS: usize = 16;
     const TASK8_TEST_FOLD_WEIGHT_ELEMS: usize = 11;
-    const TASK8_TEST_TABLE_ELEMS: usize = 64;
     const TASK8_TEST_SLAB_ELEMS: usize = 10;
-    const TASK8_TEST_PUBLICATION_ELEMS: usize = 8;
-    const TASK8_TEST_SOURCE_BYTES: usize = 4096;
-    const TASK8_TEST_SOURCE_COLUMN: usize = 256;
+    const TASK8_TEST_PUBLICATION_ELEMS: usize = 128;
+    const TASK8_TEST_SOURCE_BYTES: usize = 1 << 16;
+    const TASK8_TEST_SOURCE_STRIDE_LOG2: u8 = 3;
+    const TASK8_TEST_PUBLISH_STRIDE_LOG2: u8 = 3;
+    const TASK8_TEST_SEG_ROWS: u32 = 64;
+    const TASK8_TEST_ROUND: usize = 6;
 
     const TASK8_TEST_CLAIM_POINT: usize = 0x10_0000;
     const TASK8_TEST_CLAIM_POINT_SYMBOL: usize = 0x20_0000;
@@ -3896,6 +3912,152 @@ mod cpu_tests {
     const TASK8_TEST_REDUCED_TENSOR: usize =
         TASK8_TEST_PARTIALS + MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * TASK8_TEST_ROW_TILES * 16;
 
+    fn task8_test_sizes() -> GkrEqSizes {
+        make_eq_sizes(TASK8_TEST_CHALLENGES)
+    }
+
+    fn task8_test_slots() -> [BwdSegAddrSlot; 2] {
+        [
+            BwdSegAddrSlot {
+                base: TASK8_TEST_SOURCE as *const u8,
+                log2_stride: TASK8_TEST_SOURCE_STRIDE_LOG2,
+                origin: BWD_COEFF_ORIGIN_READ_EXT,
+                procedural_kind: 0,
+                reserved: [0; 5],
+            },
+            BwdSegAddrSlot {
+                base: TASK8_TEST_PUBLICATION as *const u8,
+                log2_stride: TASK8_TEST_PUBLISH_STRIDE_LOG2,
+                origin: BWD_COEFF_ORIGIN_READ_EXT,
+                procedural_kind: 0,
+                reserved: [0; 5],
+            },
+        ]
+    }
+
+    fn task8_test_window_descriptor() -> Box<MainContinuationWindowLaunchBinding> {
+        // SAFETY: the descriptor is `repr(C)` plain data whose pointer fields
+        // accept null, exactly as the production binder's zeroed box does.
+        let mut desc: Box<MainContinuationWindowLaunchBinding> =
+            unsafe { Box::new(std::mem::zeroed()) };
+        let slots = task8_test_slots();
+        desc.slot[..slots.len()].copy_from_slice(&slots);
+        desc.source[0] = MainContinuationWindowSourceRecord {
+            src: bwd_seg_lane(0, 0).unwrap(),
+            publish: BWD_SEG_ADDR_NONE,
+        };
+        desc.source[1] = MainContinuationWindowSourceRecord {
+            src: bwd_seg_lane(0, 1).unwrap(),
+            publish: bwd_seg_lane(1, 0).unwrap(),
+        };
+        desc.source_count = 2;
+        desc.eq_low = TASK8_TEST_EQ_LOW as *const E4;
+        desc.partials = TASK8_TEST_PARTIALS as *mut E4;
+        desc.row_tiles = TASK8_TEST_ROW_TILES as u32;
+        desc.eq_sizes = task8_test_sizes();
+        desc
+    }
+
+    /// A descriptor the lowering could emit: the class of every source is the
+    /// one `assign_class` gives its origin and depth, a cache appears only where
+    /// that class materializes, and the fold list is exactly those sources.
+    fn task8_test_segmented_descriptor() -> Box<BwdSegDesc> {
+        let slots = task8_test_slots();
+        task8_lowered_seg_descriptor(
+            &slots,
+            &[
+                // Extension backing at depth zero: `E4Direct`, publishes nothing.
+                Task8SegSourceSpec {
+                    extension: true,
+                    delta: 0,
+                    read_slot: 0,
+                    read_column: 0,
+                    cache_slot: 1,
+                    cache_column: 0,
+                },
+                // Extension backing at depth three: materialized `E4Direct`,
+                // so it folds and publishes into the cache slot.
+                Task8SegSourceSpec {
+                    extension: true,
+                    delta: 3,
+                    read_slot: 0,
+                    read_column: 1,
+                    cache_slot: 1,
+                    cache_column: 0,
+                },
+            ],
+            TASK8_TEST_SEG_ROWS,
+            TASK8_TEST_EQ_LOW as *const E4,
+            TASK8_TEST_PARTIALS as *mut E4,
+            task8_test_sizes(),
+        )
+    }
+
+    /// A blob with two live coefficients over three monomials, two of which name
+    /// challenge slots.
+    fn task8_test_blob() -> SegCoeffEvalBlob {
+        let monomial = |challenge_idx_0: u8, challenge_idx_1: u8| SegCoeffMonomial {
+            coeff: BF::from_u32_with_reduction(1),
+            batch_power: 1,
+            challenge_idx_0,
+            challenge_idx_1,
+            power_0: 1,
+            power_1: 1,
+            _pad: [0; 2],
+        };
+        SegCoeffEvalBlob {
+            recipes: vec![
+                SegCoeffRecipe {
+                    scalar: BF::from_u32_with_reduction(1),
+                    monomial_offset: 0,
+                    monomial_count: 1,
+                    kind: 0,
+                    limb: 0,
+                    _pad: [0; 2],
+                },
+                SegCoeffRecipe {
+                    scalar: BF::from_u32_with_reduction(1),
+                    monomial_offset: 1,
+                    monomial_count: 2,
+                    kind: 0,
+                    limb: 0,
+                    _pad: [0; 2],
+                },
+            ],
+            monomials: vec![
+                monomial(0, BWD_SEG_CHALLENGE_ABSENT),
+                monomial(3, BWD_SEG_CHALLENGE_ABSENT),
+                monomial(BWD_SEG_CHALLENGE_ABSENT, BWD_SEG_CHALLENGE_ABSENT),
+            ],
+        }
+    }
+
+    fn task8_test_tail_state(transcript: &Task8TranscriptOwners) -> WindowTailState {
+        WindowTailState {
+            partials: TASK8_TEST_PARTIALS as *const E4,
+            row_tiles: TASK8_TEST_ROW_TILES,
+            reduced_tensor: TASK8_TEST_REDUCED_TENSOR as *mut E4,
+            prev_claim_coords: (TASK8_TEST_CLAIM_POINT + 3 * TASK8_TEST_ELEMENT) as *const E4,
+            seed: transcript.seed.base as *mut u32,
+            claim: transcript.claim.base as *mut E4,
+            eq_prefactor: transcript.prefactor.base as *mut E4,
+            coeffs_out: transcript.coefficients.base as *mut E4,
+            challenges_out: transcript.challenges.base as *mut E4,
+            active_eq_slot_base: TASK8_TEST_EQ_LOW as *mut E4,
+            active_eq_size_before_fold: task8_test_sizes().low,
+        }
+    }
+
+    fn task8_test_carried() -> Task8CarriedSymbols {
+        Task8CarriedSymbols {
+            eq_high: (
+                TASK8_TEST_EQ_HIGH,
+                GKR_EQ_HIGH_SLOTS * TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
+            ),
+            coefficient_bank: Some((TASK8_TEST_BANK, TASK8_TEST_BANK_ELEMS * TASK8_TEST_ELEMENT)),
+        }
+    }
+
     fn open(
         ledger: &mut Task8OwnerGenerationLedger,
         arm: &'static str,
@@ -3906,8 +4068,8 @@ mod cpu_tests {
         ledger_open(ledger, arm, label, Task8OwnerOrigin::ArmOwned, base, bytes)
     }
 
-    /// Opens one pre-enqueue scope, lets the "call" run inside it, closes it,
-    /// and absorbs it — the same order the production call sites use.
+    /// Opens one pre-enqueue scope, lets the "call" run inside it, closes it and
+    /// absorbs it — the order every production call site uses.
     fn enqueue(
         ledger: &mut Task8OwnerGenerationLedger,
         probe: &Task8ProbeGuard,
@@ -3938,6 +4100,26 @@ mod cpu_tests {
             Task8EnqueueKind::Callback,
             Vec::new(),
         );
+    }
+
+    fn upload(
+        ledger: &mut Task8OwnerGenerationLedger,
+        probe: &Task8ProbeGuard,
+        arm: &'static str,
+        label: &'static str,
+        base: usize,
+        bytes: usize,
+    ) -> Task8LedgerOwner {
+        let owner = open(ledger, arm, label, base, bytes);
+        enqueue(
+            ledger,
+            probe,
+            arm,
+            "host-upload",
+            Task8EnqueueKind::Copy,
+            vec![Task8Span::write("upload", base, bytes)],
+        );
+        owner
     }
 
     fn live_mutation(
@@ -3973,77 +4155,32 @@ mod cpu_tests {
         );
     }
 
-    fn eq_build_spans(arm_owners: &Task8ArmOwners) -> Vec<Task8Span> {
-        let mut spans = vec![Task8Span::read(
-            "claim_point",
-            arm_owners.claim_point.base + 6 * TASK8_TEST_ELEMENT,
-            5 * TASK8_TEST_ELEMENT,
-        )];
-        for slot in 0..GKR_EQ_HIGH_SLOTS {
-            spans.push(Task8Span::write(
-                "eq_high",
-                arm_owners.eq_high.base + slot * TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
-                TASK8_TEST_ELEMENT,
-            ));
-        }
-        spans.push(Task8Span::write(
-            "eq_low",
-            arm_owners.eq_low.base,
-            TASK8_TEST_EQ_ACTIVE * TASK8_TEST_ELEMENT,
-        ));
-        spans
+    struct Task8ArmFixture {
+        owners: Task8ArmOwners,
+        challenges: Task8ChallengeOwners,
+        transcript: Task8TranscriptOwners,
+        slab: Task8LedgerOwner,
+        tables: Task8LedgerOwner,
+        publication: Task8LedgerOwner,
+        reduced_tensor: Option<Task8LedgerOwner>,
     }
 
-    fn eq_reader_spans(arm_owners: &Task8ArmOwners) -> Vec<Task8Span> {
-        let mut spans = vec![Task8Span::read(
-            "eq_low",
-            arm_owners.eq_low.base,
-            TASK8_TEST_EQ_ACTIVE * TASK8_TEST_ELEMENT,
-        )];
-        for slot in 0..GKR_EQ_HIGH_SLOTS {
-            spans.push(Task8Span::read(
-                "eq_high",
-                arm_owners.eq_high.base + slot * TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
-                TASK8_TEST_ELEMENT,
-            ));
-        }
-        spans
-    }
-
-    fn bank_and_weight_spans(arm_owners: &Task8ArmOwners) -> Vec<Task8Span> {
-        let bank = arm_owners.coefficient_bank.expect("bank");
-        let weights = arm_owners.fold_weights.expect("fold weights");
-        vec![
-            Task8Span::read("coefficient_bank", bank.base, bank.bytes),
-            Task8Span::read("fold_weights", weights.base, weights.bytes),
-        ]
-    }
-
-    /// The prologue both arms share: the claim-point upload and symbol write,
-    /// the four challenge uploads, and the owners they open.
-    fn replay_prologue(
+    /// Every owner an arm opens, and the uploads and slab fill that cover them,
+    /// with the bank fill's spans coming from `task8_coeff_fill_spans` over the
+    /// census `task8_coeff_eval_reads` derives from a real blob.
+    fn open_production_arm(
         ledger: &mut Task8OwnerGenerationLedger,
         probe: &Task8ProbeGuard,
         arm: &'static str,
-    ) -> (Task8LedgerOwner, Task8LedgerOwner, Task8ChallengeOwners) {
-        let claim_point = open(
+        carried: &Task8CarriedSymbols,
+    ) -> Task8ArmFixture {
+        let claim_point = upload(
             ledger,
+            probe,
             arm,
             "claim_point",
             TASK8_TEST_CLAIM_POINT,
             TASK8_TEST_POINT_LEN * TASK8_TEST_ELEMENT,
-        );
-        enqueue(
-            ledger,
-            probe,
-            arm,
-            "host-upload",
-            Task8EnqueueKind::Copy,
-            vec![Task8Span::write(
-                "upload",
-                claim_point.base,
-                claim_point.bytes,
-            )],
         );
         task8_register_symbol(
             "ab_gkr_main_layer_claim_point",
@@ -4069,39 +4206,40 @@ mod cpu_tests {
                 claim_point_symbol.bytes,
             )],
         );
-        let challenge = |ledger: &mut Task8OwnerGenerationLedger, index: usize, label, elems| {
-            let owner = open(
-                ledger,
-                arm,
-                label,
-                TASK8_TEST_CHALLENGE_BASE + index * 0x1000,
-                elems * TASK8_TEST_ELEMENT,
-            );
-            enqueue(
+        let challenges = Task8ChallengeOwners {
+            external: upload(
                 ledger,
                 probe,
                 arm,
-                "host-upload",
-                Task8EnqueueKind::Copy,
-                vec![Task8Span::write("upload", owner.base, owner.bytes)],
-            );
-            owner
+                "external_challenges",
+                TASK8_TEST_CHALLENGE_BASE,
+                32 * TASK8_TEST_ELEMENT,
+            ),
+            lookup_multiplicative: upload(
+                ledger,
+                probe,
+                arm,
+                "lookup_multiplicative",
+                TASK8_TEST_CHALLENGE_BASE + 0x1000,
+                TASK8_TEST_ELEMENT,
+            ),
+            lookup_additive: upload(
+                ledger,
+                probe,
+                arm,
+                "lookup_additive",
+                TASK8_TEST_CHALLENGE_BASE + 0x2000,
+                TASK8_TEST_ELEMENT,
+            ),
+            claim_batching: upload(
+                ledger,
+                probe,
+                arm,
+                "claim_batching",
+                TASK8_TEST_CHALLENGE_BASE + 0x3000,
+                TASK8_TEST_ELEMENT,
+            ),
         };
-        let challenges = Task8ChallengeOwners {
-            external: challenge(ledger, 0, "external_challenges", 32),
-            lookup_multiplicative: challenge(ledger, 1, "lookup_multiplicative", 1),
-            lookup_additive: challenge(ledger, 2, "lookup_additive", 1),
-            claim_batching: challenge(ledger, 3, "claim_batching", 1),
-        };
-        (claim_point, claim_point_symbol, challenges)
-    }
-
-    fn replay_bank_fill(
-        ledger: &mut Task8OwnerGenerationLedger,
-        probe: &Task8ProbeGuard,
-        arm: &'static str,
-        challenges: &Task8ChallengeOwners,
-    ) -> (Task8LedgerOwner, Task8LedgerOwner, Task8LedgerOwner) {
         let slab = open(
             ledger,
             arm,
@@ -4114,19 +4252,7 @@ mod cpu_tests {
             arm,
             "coefficient_tables",
             TASK8_TEST_TABLES,
-            TASK8_TEST_TABLE_ELEMS * TASK8_TEST_ELEMENT,
-        );
-        task8_register_symbol(
-            "ab_gkr_bwd_seg_coeff_bank",
-            TASK8_TEST_BANK,
-            TASK8_TEST_BANK_ELEMS * TASK8_TEST_ELEMENT,
-        );
-        let bank = open(
-            ledger,
-            arm,
-            "coefficient_bank",
-            TASK8_TEST_BANK,
-            TASK8_TEST_BANK_ELEMS * TASK8_TEST_ELEMENT,
+            BWD_SEG_BLOB_BYTES,
         );
         let prefix = 7;
         enqueue(
@@ -4135,14 +4261,7 @@ mod cpu_tests {
             arm,
             "challenge-slab-prefix-copy",
             Task8EnqueueKind::Copy,
-            vec![
-                Task8Span::read(
-                    "external_challenges",
-                    challenges.external.base,
-                    prefix * TASK8_TEST_ELEMENT,
-                ),
-                Task8Span::write("challenge_slab", slab.base, prefix * TASK8_TEST_ELEMENT),
-            ],
+            task8_challenge_prefix_spans(challenges.external.base, slab.base, prefix),
         );
         for (slot, source) in [
             (7usize, &challenges.lookup_multiplicative),
@@ -4155,14 +4274,7 @@ mod cpu_tests {
                 arm,
                 "challenge-slab-slot-copy",
                 Task8EnqueueKind::Copy,
-                vec![
-                    Task8Span::read("challenge_source", source.base, TASK8_TEST_ELEMENT),
-                    Task8Span::write(
-                        "challenge_slab",
-                        slab.base + slot * TASK8_TEST_ELEMENT,
-                        TASK8_TEST_ELEMENT,
-                    ),
-                ],
+                task8_challenge_slot_spans(source.base, slab.base, slot),
             );
         }
         enqueue(
@@ -4177,102 +4289,97 @@ mod cpu_tests {
                 tables.bytes,
             )],
         );
+        task8_register_symbol(
+            "ab_gkr_bwd_seg_coeff_bank",
+            carried.coefficient_bank.unwrap().0,
+            carried.coefficient_bank.unwrap().1,
+        );
+        let bank = open(
+            ledger,
+            arm,
+            "coefficient_bank",
+            carried.coefficient_bank.unwrap().0,
+            carried.coefficient_bank.unwrap().1,
+        );
         enqueue(
             ledger,
             probe,
             arm,
             "coefficient-bank-fill",
             Task8EnqueueKind::Kernel,
-            vec![
-                Task8Span::read("coefficient_tables", tables.base, tables.bytes),
-                Task8Span::read("challenge_slab", slab.base, slab.bytes),
-                Task8Span::write("coefficient_bank", bank.base, bank.bytes),
-            ],
+            task8_coeff_fill_spans(
+                &task8_coeff_eval_reads(&task8_test_blob()),
+                tables.base,
+                slab.base,
+                bank.base,
+                bank.bytes,
+            ),
         );
-        (slab, tables, bank)
-    }
-
-    fn replay_fold_weights(
-        ledger: &mut Task8OwnerGenerationLedger,
-        probe: &Task8ProbeGuard,
-        arm_owners: &mut Task8ArmOwners,
-        round: usize,
-    ) {
-        let arm = arm_owners.arm;
-        task8_register_symbol(
-            "bwd_seg_fold_weights",
-            TASK8_TEST_FOLD_WEIGHTS,
-            TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
-        );
-        if arm_owners.fold_weights.is_none() {
-            arm_owners.fold_weights = Some(open(
-                ledger,
-                arm,
-                "fold_weights_symbol",
-                TASK8_TEST_FOLD_WEIGHTS,
-                TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
-            ));
-        }
-        let weights = arm_owners.fold_weights.expect("fold weights");
-        enqueue(
-            ledger,
-            probe,
+        let owners = Task8ArmOwners {
             arm,
-            "fold-weight-build",
-            Task8EnqueueKind::Kernel,
-            vec![
-                Task8Span::read(
-                    "claim_point_symbol",
-                    arm_owners.claim_point_symbol.base,
-                    round * TASK8_TEST_ELEMENT,
-                ),
-                Task8Span::write("fold_weights", weights.base, weights.bytes),
-            ],
-        );
-    }
-
-    fn replay_eq_readback(
-        ledger: &mut Task8OwnerGenerationLedger,
-        probe: &Task8ProbeGuard,
-        arm_owners: &Task8ArmOwners,
-        site: &'static str,
-    ) {
-        let low = eq_readback_spans(ledger, &arm_owners.eq_low);
-        readback(ledger, probe, arm_owners.arm, site, low);
-        let high = eq_readback_spans(ledger, &arm_owners.eq_high);
-        readback(ledger, probe, arm_owners.arm, site, high);
-    }
-
-    fn replay_transcript(
-        ledger: &mut Task8OwnerGenerationLedger,
-        probe: &Task8ProbeGuard,
-        arm: &'static str,
-    ) -> Task8TranscriptOwners {
-        let upload = |ledger: &mut Task8OwnerGenerationLedger, offset, label, bytes| {
-            let owner = open(
+            claim_point,
+            claim_point_symbol,
+            eq_low: ledger_open(
                 ledger,
                 arm,
-                label,
-                TASK8_TEST_TRANSCRIPT_BASE + offset,
-                bytes,
-            );
-            enqueue(
+                "eq",
+                Task8OwnerOrigin::FactoredEq,
+                TASK8_TEST_EQ_LOW,
+                TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
+            ),
+            eq_high: ledger_open(
+                ledger,
+                arm,
+                "eq_high_symbol",
+                Task8OwnerOrigin::FactoredEq,
+                carried.eq_high.0,
+                carried.eq_high.1,
+            ),
+            partials: open(
+                ledger,
+                arm,
+                "partials",
+                TASK8_TEST_PARTIALS,
+                MAIN_CONTINUATION_WINDOW_TENSOR_CELLS
+                    * (TASK8_TEST_ROW_TILES + 1)
+                    * TASK8_TEST_ELEMENT,
+            ),
+            sources: vec![ledger_open(
+                ledger,
+                arm,
+                "source_backing",
+                Task8OwnerOrigin::Borrowed(TASK8_PRODUCTION_STORAGE),
+                TASK8_TEST_SOURCE,
+                TASK8_TEST_SOURCE_BYTES,
+            )],
+            fold_weights: None,
+            coefficient_bank: Some(bank),
+        };
+        let transcript = Task8TranscriptOwners {
+            seed: upload(
                 ledger,
                 probe,
                 arm,
-                "host-upload",
-                Task8EnqueueKind::Copy,
-                vec![Task8Span::write("upload", owner.base, owner.bytes)],
-            );
-            owner
-        };
-        let seed = upload(ledger, 0, "transcript_seed", 8 * 4);
-        let claim = upload(ledger, 0x1000, "transcript_claim", TASK8_TEST_ELEMENT);
-        let prefactor = upload(ledger, 0x2000, "transcript_prefactor", TASK8_TEST_ELEMENT);
-        Task8TranscriptOwners {
-            seed,
-            claim,
-            prefactor,
+                "transcript_seed",
+                TASK8_TEST_TRANSCRIPT_BASE,
+                8 * std::mem::size_of::<u32>(),
+            ),
+            claim: upload(
+                ledger,
+                probe,
+                arm,
+                "transcript_claim",
+                TASK8_TEST_TRANSCRIPT_BASE + 0x1000,
+                TASK8_TEST_ELEMENT,
+            ),
+            prefactor: upload(
+                ledger,
+                probe,
+                arm,
+                "transcript_prefactor",
+                TASK8_TEST_TRANSCRIPT_BASE + 0x2000,
+                TASK8_TEST_ELEMENT,
+            ),
             coefficients: open(
                 ledger,
                 arm,
@@ -4287,30 +4394,85 @@ mod cpu_tests {
                 TASK8_TEST_TRANSCRIPT_BASE + 0x4000,
                 3 * TASK8_TEST_ELEMENT,
             ),
+        };
+        Task8ArmFixture {
+            owners,
+            challenges,
+            transcript,
+            slab,
+            tables,
+            publication: open(
+                ledger,
+                arm,
+                "publication",
+                TASK8_TEST_PUBLICATION,
+                TASK8_TEST_PUBLICATION_ELEMS * TASK8_TEST_ELEMENT,
+            ),
+            reduced_tensor: None,
         }
     }
 
-    fn transcript_finalize_spans(
-        transcript: &Task8TranscriptOwners,
-        coefficients: std::ops::Range<usize>,
-        challenges: std::ops::Range<usize>,
-    ) -> Vec<Task8Span> {
-        let mut spans = Vec::new();
-        for owner in [&transcript.seed, &transcript.claim, &transcript.prefactor] {
-            spans.push(Task8Span::read(owner.label, owner.base, owner.bytes));
-            spans.push(Task8Span::write(owner.label, owner.base, owner.bytes));
+    fn replay_eq_build(
+        ledger: &mut Task8OwnerGenerationLedger,
+        probe: &Task8ProbeGuard,
+        owners: &mut Task8ArmOwners,
+    ) {
+        enqueue(
+            ledger,
+            probe,
+            owners.arm,
+            "eq-build",
+            Task8EnqueueKind::Kernel,
+            task8_eq_build_spans(
+                owners.claim_point.base,
+                0,
+                TASK8_TEST_CHALLENGES,
+                owners.eq_high.base,
+                owners.eq_low.base,
+            ),
+        );
+    }
+
+    fn replay_fold_weights(
+        ledger: &mut Task8OwnerGenerationLedger,
+        probe: &Task8ProbeGuard,
+        owners: &mut Task8ArmOwners,
+        round: usize,
+    ) {
+        task8_register_symbol(
+            "bwd_seg_fold_weights",
+            TASK8_TEST_FOLD_WEIGHTS,
+            TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
+        );
+        if owners.fold_weights.is_none() {
+            owners.fold_weights = Some(open(
+                ledger,
+                owners.arm,
+                "fold_weights_symbol",
+                TASK8_TEST_FOLD_WEIGHTS,
+                TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
+            ));
         }
-        spans.push(Task8Span::write(
-            "coefficients",
-            transcript.coefficients.base + coefficients.start * TASK8_TEST_ELEMENT,
-            (coefficients.end - coefficients.start) * TASK8_TEST_ELEMENT,
-        ));
-        spans.push(Task8Span::write(
-            "challenges",
-            transcript.challenges.base + challenges.start * TASK8_TEST_ELEMENT,
-            (challenges.end - challenges.start) * TASK8_TEST_ELEMENT,
-        ));
-        spans
+        enqueue(
+            ledger,
+            probe,
+            owners.arm,
+            "fold-weight-build",
+            Task8EnqueueKind::Kernel,
+            task8_fold_weight_spans(round as u32, TASK8_TEST_FOLD_WEIGHTS),
+        );
+    }
+
+    fn replay_eq_readback(
+        ledger: &mut Task8OwnerGenerationLedger,
+        probe: &Task8ProbeGuard,
+        owners: &Task8ArmOwners,
+        site: &'static str,
+    ) {
+        let low = eq_readback_spans(ledger, &owners.eq_low);
+        readback(ledger, probe, owners.arm, site, low);
+        let high = eq_readback_spans(ledger, &owners.eq_high);
+        readback(ledger, probe, owners.arm, site, high);
     }
 
     fn replay_readbacks(
@@ -4336,101 +4498,52 @@ mod cpu_tests {
         }
     }
 
-    fn open_arm(
+    fn replay_retentions(
         ledger: &mut Task8OwnerGenerationLedger,
         probe: &Task8ProbeGuard,
         arm: &'static str,
-    ) -> (Task8ArmOwners, Task8ChallengeOwners) {
-        let (claim_point, claim_point_symbol, challenges) = replay_prologue(ledger, probe, arm);
-        let owners = Task8ArmOwners {
-            arm,
-            claim_point,
-            claim_point_symbol,
-            eq_low: ledger_open(
+    ) {
+        for _ in 0..10 {
+            enqueue(
                 ledger,
+                probe,
                 arm,
-                "eq",
-                Task8OwnerOrigin::FactoredEq,
-                TASK8_TEST_EQ_LOW,
-                TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
-            ),
-            eq_high: ledger_open(
-                ledger,
-                arm,
-                "eq_high_symbol",
-                Task8OwnerOrigin::FactoredEq,
-                TASK8_TEST_EQ_HIGH,
-                GKR_EQ_HIGH_SLOTS * TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
-            ),
-            partials: open(
-                ledger,
-                arm,
-                "partials",
-                TASK8_TEST_PARTIALS,
-                MAIN_CONTINUATION_WINDOW_TENSOR_CELLS
-                    * (TASK8_TEST_ROW_TILES + 1)
-                    * TASK8_TEST_ELEMENT,
-            ),
-            sources: vec![ledger_open(
-                ledger,
-                arm,
-                "source_backing",
-                Task8OwnerOrigin::Borrowed(TASK8_PRODUCTION_STORAGE),
-                TASK8_TEST_SOURCE,
-                TASK8_TEST_SOURCE_BYTES,
-            )],
-            fold_weights: None,
-            coefficient_bank: None,
-        };
-        (owners, challenges)
+                "staging-retention",
+                Task8EnqueueKind::Callback,
+                Vec::new(),
+            );
+        }
     }
 
-    /// The window arm's enqueue stream at a first-pass coordinate.
+    fn finish_arm(ledger: &mut Task8OwnerGenerationLedger, fixture: &Task8ArmFixture) {
+        ledger_bind_final(ledger, &fixture.publication);
+        if let Some(reduced_tensor) = fixture.reduced_tensor.as_ref() {
+            ledger_bind_final(ledger, reduced_tensor);
+        }
+        ledger_bind_final(ledger, &fixture.slab);
+        ledger_bind_final(ledger, &fixture.tables);
+        bind_challenge_owners_final(ledger, &fixture.challenges);
+        bind_transcript_owners_final(ledger, &fixture.transcript);
+        bind_arm_owners_final(ledger, &fixture.owners);
+    }
+
+    /// The window arm's stream, with every launch's spans produced by the
+    /// production builders.
     fn replay_window_arm(ledger: &mut Task8OwnerGenerationLedger, arm: &'static str) {
         let probe = Task8ProbeGuard::install();
-        let (mut owners, challenges) = open_arm(ledger, &probe, arm);
-        let (slab, tables, bank) = replay_bank_fill(ledger, &probe, arm, &challenges);
-        owners.coefficient_bank = Some(bank);
-        enqueue(
-            ledger,
-            &probe,
-            arm,
-            "eq-build",
-            Task8EnqueueKind::Kernel,
-            eq_build_spans(&owners),
-        );
-        replay_fold_weights(ledger, &probe, &mut owners, 3);
-        let publication = open(
-            ledger,
-            arm,
-            "publication",
-            TASK8_TEST_PUBLICATION,
-            TASK8_TEST_PUBLICATION_ELEMS * TASK8_TEST_ELEMENT,
-        );
-        let mut launch = eq_reader_spans(&owners);
-        launch.extend(bank_and_weight_spans(&owners));
-        launch.push(Task8Span::read(
-            "source_column",
-            owners.sources[0].base,
-            TASK8_TEST_SOURCE_COLUMN,
-        ));
-        launch.push(Task8Span::write(
-            "partials",
-            owners.partials.base,
-            MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * TASK8_TEST_ROW_TILES * TASK8_TEST_ELEMENT,
-        ));
-        launch.push(Task8Span::write(
-            "published_column",
-            publication.base,
-            publication.bytes,
-        ));
+        let carried = task8_test_carried();
+        carried.install();
+        let mut fixture = open_production_arm(ledger, &probe, arm, &carried);
+        replay_eq_build(ledger, &probe, &mut fixture.owners);
+        replay_fold_weights(ledger, &probe, &mut fixture.owners, TASK8_TEST_ROUND);
+        let window = task8_test_window_descriptor();
         enqueue(
             ledger,
             &probe,
             arm,
             "window-launch",
             Task8EnqueueKind::Kernel,
-            launch,
+            task8_window_spans(&window, TASK8_TEST_ROW_TILES),
         );
         let reduced_tensor = open(
             ledger,
@@ -4439,51 +4552,30 @@ mod cpu_tests {
             TASK8_TEST_REDUCED_TENSOR,
             MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * TASK8_TEST_ELEMENT,
         );
-        replay_eq_readback(ledger, &probe, &owners, "pre-eq-readback");
-        let transcript = replay_transcript(ledger, &probe, arm);
+        fixture.reduced_tensor = Some(reduced_tensor);
+        replay_eq_readback(ledger, &probe, &fixture.owners, "pre-eq-readback");
+        let tail = task8_test_tail_state(&fixture.transcript);
         enqueue(
             ledger,
             &probe,
             arm,
             "window-tail-reduce",
             Task8EnqueueKind::Kernel,
-            vec![
-                Task8Span::read(
-                    "partials",
-                    owners.partials.base,
-                    MAIN_CONTINUATION_WINDOW_TENSOR_CELLS
-                        * TASK8_TEST_ROW_TILES
-                        * TASK8_TEST_ELEMENT,
-                ),
-                Task8Span::write("reduced_tensor", reduced_tensor.base, reduced_tensor.bytes),
-            ],
+            task8_tail_reduce_spans(&tail),
         );
-        let mut tail = vec![
-            Task8Span::read("reduced_tensor", reduced_tensor.base, reduced_tensor.bytes),
-            Task8Span::read(
-                "prev_claim_coords",
-                owners.claim_point.base + 3 * TASK8_TEST_ELEMENT,
-                3 * TASK8_TEST_ELEMENT,
-            ),
-        ];
-        tail.extend(transcript_finalize_spans(&transcript, 0..12, 0..3));
-        tail.push(Task8Span::read(
-            "active_eq_slot",
-            owners.eq_low.base,
-            TASK8_TEST_EQ_ACTIVE * TASK8_TEST_ELEMENT,
-        ));
-        tail.push(Task8Span::write(
-            "active_eq_slot",
-            owners.eq_low.base,
-            (TASK8_TEST_EQ_ACTIVE / 2) * TASK8_TEST_ELEMENT,
-        ));
+        let mut rounds = vec![Task8Span::read(
+            "reduced_tensor",
+            reduced_tensor.base,
+            reduced_tensor.bytes,
+        )];
+        rounds.extend(task8_tail_round_spans(&tail));
         enqueue(
             ledger,
             &probe,
             arm,
             "window-tail-rounds",
             Task8EnqueueKind::Kernel,
-            tail,
+            rounds,
         );
         readback(
             ledger,
@@ -4492,108 +4584,50 @@ mod cpu_tests {
             "publication-readback",
             vec![Task8Span::read(
                 "publication",
-                publication.base,
-                publication.bytes,
+                fixture.publication.base,
+                TASK8_TEST_ELEMENT << TASK8_TEST_PUBLISH_STRIDE_LOG2,
             )],
         );
-        replay_readbacks(ledger, &probe, arm, &transcript);
-        replay_eq_readback(ledger, &probe, &owners, "post-eq-readback");
-        live_mutation(ledger, &probe, &publication, 0);
+        replay_readbacks(ledger, &probe, arm, &fixture.transcript);
+        replay_eq_readback(ledger, &probe, &fixture.owners, "post-eq-readback");
+        live_mutation(ledger, &probe, &fixture.publication, 0);
         for index in [0usize, 4, 8, 1] {
-            live_mutation(ledger, &probe, &transcript.coefficients, index);
+            live_mutation(ledger, &probe, &fixture.transcript.coefficients, index);
         }
         for index in 0..3 {
-            live_mutation(ledger, &probe, &transcript.challenges, index);
+            live_mutation(ledger, &probe, &fixture.transcript.challenges, index);
         }
-        live_mutation(ledger, &probe, &transcript.claim, 0);
-        live_mutation(ledger, &probe, &transcript.prefactor, 0);
-        live_mutation(ledger, &probe, &owners.eq_low, 0);
-        for _ in 0..10 {
-            enqueue(
-                ledger,
-                &probe,
-                arm,
-                "staging-retention",
-                Task8EnqueueKind::Callback,
-                Vec::new(),
-            );
-        }
-        ledger_bind_final(ledger, &publication);
-        ledger_bind_final(ledger, &reduced_tensor);
-        ledger_bind_final(ledger, &slab);
-        ledger_bind_final(ledger, &tables);
-        bind_challenge_owners_final(ledger, &challenges);
-        bind_transcript_owners_final(ledger, &transcript);
-        bind_arm_owners_final(ledger, &owners);
+        live_mutation(ledger, &probe, &fixture.transcript.claim, 0);
+        live_mutation(ledger, &probe, &fixture.transcript.prefactor, 0);
+        live_mutation(ledger, &probe, &fixture.owners.eq_low, 0);
+        replay_retentions(ledger, &probe, arm);
+        finish_arm(ledger, &fixture);
         assert!(probe.finish().is_empty());
     }
 
-    /// The legacy arm's enqueue stream at the same coordinate: no window launch
-    /// or tail, one segmented round and one fused finalize per round.
+    /// The legacy arm's stream: no window launch or tail, one segmented round
+    /// and one fused finalize per round, all from the production builders.
     fn replay_legacy_arm(ledger: &mut Task8OwnerGenerationLedger, arm: &'static str) {
         let probe = Task8ProbeGuard::install();
-        let (mut owners, challenges) = open_arm(ledger, &probe, arm);
-        enqueue(
-            ledger,
-            &probe,
-            arm,
-            "eq-build",
-            Task8EnqueueKind::Kernel,
-            eq_build_spans(&owners),
-        );
-        replay_eq_readback(ledger, &probe, &owners, "pre-eq-readback");
-        let (slab, tables, bank) = replay_bank_fill(ledger, &probe, arm, &challenges);
-        owners.coefficient_bank = Some(bank);
-        let transcript = replay_transcript(ledger, &probe, arm);
-        let mut publications = Vec::new();
+        let carried = task8_test_carried();
+        carried.install();
+        let mut fixture = open_production_arm(ledger, &probe, arm, &carried);
+        replay_eq_build(ledger, &probe, &mut fixture.owners);
+        replay_eq_readback(ledger, &probe, &fixture.owners, "pre-eq-readback");
+        let segmented = task8_test_segmented_descriptor();
+        task8_register_descriptor_sources(&*segmented as *const BwdSegDesc as usize, 2);
+        let partials = TASK8_TEST_SEG_ROWS as usize / 32;
         for local_round in 0..3usize {
-            let round = 3 + local_round;
-            replay_fold_weights(ledger, &probe, &mut owners, round);
-            let published = open(
-                ledger,
-                arm,
-                "publication",
-                TASK8_TEST_PUBLICATION + local_round * 0x1000,
-                (TASK8_TEST_PUBLICATION_ELEMS >> local_round) * TASK8_TEST_ELEMENT,
-            );
-            let mut round_spans = eq_reader_spans(&owners);
-            round_spans.extend(bank_and_weight_spans(&owners));
-            round_spans.push(Task8Span::read(
-                "source_column",
-                owners.sources[0].base,
-                TASK8_TEST_SOURCE_COLUMN,
-            ));
-            if let Some(previous) = publications.last() {
-                let previous: &Task8LedgerOwner = previous;
-                round_spans.push(Task8Span::read(
-                    "source_column",
-                    previous.base,
-                    previous.bytes,
-                ));
-            }
-            round_spans.push(Task8Span::write(
-                "published_column",
-                published.base,
-                published.bytes,
-            ));
-            round_spans.push(Task8Span::write(
-                "contributions",
-                owners.partials.base,
-                (8 >> local_round) * TASK8_TEST_ELEMENT,
-            ));
+            let round = TASK8_TEST_ROUND + local_round;
+            replay_fold_weights(ledger, &probe, &mut fixture.owners, round);
             enqueue(
                 ledger,
                 &probe,
                 arm,
                 "segmented-round",
                 Task8EnqueueKind::Kernel,
-                round_spans,
+                task8_seg_spans(&segmented),
             );
-            if local_round > 0 {
-                let retired: Task8LedgerOwner = publications.remove(0);
-                ledger_bind_final(ledger, &retired);
-            }
-            publications.push(published);
             if local_round == 0 {
                 readback(
                     ledger,
@@ -4602,37 +4636,10 @@ mod cpu_tests {
                     "publication-readback",
                     vec![Task8Span::read(
                         "publication",
-                        published.base,
-                        published.bytes,
+                        fixture.publication.base,
+                        2 * TASK8_TEST_SEG_ROWS as usize * TASK8_TEST_ELEMENT,
                     )],
                 );
-            }
-            let mut finalize = vec![Task8Span::read(
-                "partials",
-                owners.partials.base,
-                (8 >> local_round) * TASK8_TEST_ELEMENT,
-            )];
-            finalize.push(Task8Span::read(
-                "prev_claim_coords",
-                owners.claim_point.base + round * TASK8_TEST_ELEMENT,
-                TASK8_TEST_ELEMENT,
-            ));
-            finalize.extend(transcript_finalize_spans(
-                &transcript,
-                4 * local_round..4 * local_round + 4,
-                local_round..local_round + 1,
-            ));
-            if local_round == 2 {
-                finalize.push(Task8Span::read(
-                    "active_eq_slot",
-                    owners.eq_low.base,
-                    TASK8_TEST_EQ_ACTIVE * TASK8_TEST_ELEMENT,
-                ));
-                finalize.push(Task8Span::write(
-                    "active_eq_slot",
-                    owners.eq_low.base,
-                    (TASK8_TEST_EQ_ACTIVE / 2) * TASK8_TEST_ELEMENT,
-                ));
             }
             enqueue(
                 ledger,
@@ -4640,29 +4647,28 @@ mod cpu_tests {
                 arm,
                 "dual-finalize",
                 Task8EnqueueKind::Kernel,
-                finalize,
+                task8_dual_finalize_spans(
+                    TASK8_TEST_PARTIALS,
+                    partials,
+                    fixture.owners.claim_point.base + round * TASK8_TEST_ELEMENT,
+                    fixture.transcript.seed.base,
+                    fixture.transcript.claim.base,
+                    fixture.transcript.prefactor.base,
+                    fixture.transcript.coefficients.base + 4 * local_round * TASK8_TEST_ELEMENT,
+                    fixture.transcript.challenges.base + local_round * TASK8_TEST_ELEMENT,
+                    TASK8_TEST_EQ_LOW,
+                    if local_round == 2 {
+                        task8_test_sizes().low
+                    } else {
+                        0
+                    },
+                ),
             );
         }
-        replay_readbacks(ledger, &probe, arm, &transcript);
-        replay_eq_readback(ledger, &probe, &owners, "post-eq-readback");
-        for _ in 0..10 {
-            enqueue(
-                ledger,
-                &probe,
-                arm,
-                "staging-retention",
-                Task8EnqueueKind::Callback,
-                Vec::new(),
-            );
-        }
-        for owner in &publications {
-            ledger_bind_final(ledger, owner);
-        }
-        ledger_bind_final(ledger, &slab);
-        ledger_bind_final(ledger, &tables);
-        bind_challenge_owners_final(ledger, &challenges);
-        bind_transcript_owners_final(ledger, &transcript);
-        bind_arm_owners_final(ledger, &owners);
+        replay_readbacks(ledger, &probe, arm, &fixture.transcript);
+        replay_eq_readback(ledger, &probe, &fixture.owners, "post-eq-readback");
+        replay_retentions(ledger, &probe, arm);
+        finish_arm(ledger, &fixture);
         assert!(probe.finish().is_empty());
     }
 
@@ -4732,349 +4738,44 @@ mod cpu_tests {
             .unwrap_or_else(|| panic!("no {site} enqueue"))
     }
 
-    const TASK8_TEST_SOURCE_STRIDE_LOG2: u8 = 3;
-    const TASK8_TEST_PUBLISH_STRIDE_LOG2: u8 = 1;
-    const TASK8_TEST_SEG_ROWS: u32 = 64;
-
-    fn task8_test_window_descriptor() -> Box<MainContinuationWindowLaunchBinding> {
-        // SAFETY: the descriptor is `repr(C)` plain data whose pointer fields
-        // accept null, exactly as the production binder's zeroed box does.
-        let mut desc: Box<MainContinuationWindowLaunchBinding> =
-            unsafe { Box::new(std::mem::zeroed()) };
-        desc.slot[0] = BwdSegAddrSlot {
-            base: TASK8_TEST_SOURCE as *const u8,
-            log2_stride: TASK8_TEST_SOURCE_STRIDE_LOG2,
-            origin: BWD_COEFF_ORIGIN_READ_EXT,
-            procedural_kind: 0,
-            reserved: [0; 5],
-        };
-        desc.slot[1] = BwdSegAddrSlot {
-            base: TASK8_TEST_PUBLICATION as *const u8,
-            log2_stride: TASK8_TEST_PUBLISH_STRIDE_LOG2,
-            origin: BWD_COEFF_ORIGIN_READ_EXT,
-            procedural_kind: 0,
-            reserved: [0; 5],
-        };
-        desc.source[0] = MainContinuationWindowSourceRecord {
-            src: bwd_seg_lane(0, 0).unwrap(),
-            publish: BWD_SEG_ADDR_NONE,
-        };
-        desc.source[1] = MainContinuationWindowSourceRecord {
-            src: bwd_seg_lane(0, 1).unwrap(),
-            publish: bwd_seg_lane(1, 0).unwrap(),
-        };
-        desc.source_count = 2;
-        desc.eq_low = TASK8_TEST_EQ_LOW as *const E4;
-        desc.partials = TASK8_TEST_PARTIALS as *mut E4;
-        desc.row_tiles = TASK8_TEST_ROW_TILES as u32;
-        desc.eq_sizes = make_eq_sizes(11);
-        desc
-    }
-
-    fn task8_test_segmented_descriptor() -> Box<BwdSegDesc> {
-        // SAFETY: as above; the segmented descriptor is the same plain data.
-        let mut desc: Box<BwdSegDesc> = unsafe { Box::new(std::mem::zeroed()) };
-        desc.slot[0] = BwdSegAddrSlot {
-            base: TASK8_TEST_SOURCE as *const u8,
-            log2_stride: TASK8_TEST_SOURCE_STRIDE_LOG2,
-            origin: BWD_COEFF_ORIGIN_READ_EXT,
-            procedural_kind: 0,
-            reserved: [0; 5],
-        };
-        desc.slot[1] = BwdSegAddrSlot {
-            base: TASK8_TEST_PUBLICATION as *const u8,
-            log2_stride: TASK8_TEST_PUBLISH_STRIDE_LOG2,
-            origin: BWD_COEFF_ORIGIN_READ_EXT,
-            procedural_kind: 0,
-            reserved: [0; 5],
-        };
-        desc.source[0] = BwdSegSourceRecord {
-            src: bwd_seg_lane(0, 0).unwrap(),
-            cache: BWD_SEG_ADDR_NONE,
-            class: 0,
-            delta: 1,
-        };
-        desc.source[1] = BwdSegSourceRecord {
-            src: bwd_seg_lane(0, 1).unwrap(),
-            cache: bwd_seg_lane(1, 0).unwrap(),
-            class: 0,
-            delta: 3,
-        };
-        desc.eq_low = TASK8_TEST_EQ_LOW as *const E4;
-        desc.contributions = TASK8_TEST_PARTIALS as *mut E4;
-        desc.logical_rows = TASK8_TEST_SEG_ROWS;
-        desc.eq_sizes = make_eq_sizes(11);
-        desc
-    }
-
-    fn task8_test_carried() -> Task8CarriedSymbols {
-        Task8CarriedSymbols {
-            eq_high: (
-                TASK8_TEST_EQ_HIGH,
-                GKR_EQ_HIGH_SLOTS * TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
-            ),
-            coefficient_bank: Some((TASK8_TEST_BANK, TASK8_TEST_BANK_ELEMS * TASK8_TEST_ELEMENT)),
-        }
-    }
-
-    fn task8_test_register_fold_weights() {
-        task8_register_symbol(
-            "bwd_seg_fold_weights",
-            TASK8_TEST_FOLD_WEIGHTS,
-            TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
-        );
-    }
-
-    /// Opens one scope around a production span builder and returns the spans
-    /// the probe resolved and stored, or reports that it could not resolve them.
-    fn probe_spans<F>(
-        probe: &Task8ProbeGuard,
+    /// Every record one enqueue of a ledger carries.
+    fn records_of(
+        ledger: &Task8OwnerGenerationLedger,
         site: &'static str,
-        build: F,
-    ) -> Option<Vec<Task8Span>>
-    where
-        F: FnOnce() -> Vec<Task8Span>,
-    {
-        let previous = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _scope = task8_enqueue(site, Task8EnqueueKind::Kernel, build);
-        }));
-        std::panic::set_hook(previous);
-        outcome.ok()?;
-        Some(probe.drain().pop()?.spans)
-    }
-
-    fn find_span(spans: &[Task8Span], role: &str, address: usize) -> Task8Span {
-        *spans
+    ) -> Vec<Task8LedgerRecord> {
+        let ordinal = enqueue_at(ledger, site) as u64;
+        let mut records: Vec<_> = ledger
+            .generations
             .iter()
-            .find(|span| span.role == role && span.address == address)
-            .unwrap_or_else(|| panic!("no {role} span at {address:#x}"))
-    }
-
-    /// Drives the production span builders under a probe that carries only what
-    /// a real arm would have registered, and checks the ranges they derive
-    /// against the native geometry computed here independently.
-    fn assert_real_span_builders_bind_carried_symbols() {
-        let sizes = make_eq_sizes(11);
-        let window = task8_test_window_descriptor();
-        let segmented = task8_test_segmented_descriptor();
-        let carried = task8_test_carried();
-
-        // A fresh probe holds no symbol a finished arm resolved, so neither
-        // launch can record its reads.
-        {
-            let probe = Task8ProbeGuard::install();
-            assert!(
-                probe_spans(&probe, "window-launch", || task8_window_spans(
-                    &window,
-                    TASK8_TEST_ROW_TILES
-                ))
-                .is_none(),
-                "a fresh probe must not invent an Eq-high address"
-            );
-        }
-        {
-            let probe = Task8ProbeGuard::install();
-            task8_register_symbol("ab_gkr_eq_high", carried.eq_high.0, carried.eq_high.1);
-            task8_test_register_fold_weights();
-            assert!(
-                probe_spans(&probe, "window-launch", || task8_window_spans(
-                    &window,
-                    TASK8_TEST_ROW_TILES
-                ))
-                .is_none(),
-                "a later-start arm must not invent a coefficient bank"
-            );
-        }
-
-        // The later-start legacy arm re-registers the Eq-high pointer and the
-        // address and exact active prefix the finished window arm's fill already
-        // computed. Both builders then resolve.
-        let probe = Task8ProbeGuard::install();
-        carried.install();
-        task8_test_register_fold_weights();
-        task8_register_descriptor_sources(&*segmented as *const BwdSegDesc as usize, 2);
-        let window_spans = probe_spans(&probe, "window-launch", || {
-            task8_window_spans(&window, TASK8_TEST_ROW_TILES)
-        })
-        .expect("the carried symbols resolve the window launch");
-        let segmented_spans =
-            probe_spans(&probe, "segmented-round", || task8_seg_spans(&segmented))
-                .expect("the carried symbols resolve the segmented round");
-
-        let source_stride = TASK8_TEST_ELEMENT << TASK8_TEST_SOURCE_STRIDE_LOG2;
-        let publish_stride = TASK8_TEST_ELEMENT << TASK8_TEST_PUBLISH_STRIDE_LOG2;
-        assert_eq!(
-            find_span(&window_spans, "source_column", TASK8_TEST_SOURCE).bytes,
-            source_stride
-        );
-        assert_eq!(
-            find_span(
-                &window_spans,
-                "source_column",
-                TASK8_TEST_SOURCE + source_stride
-            )
-            .bytes,
-            source_stride
-        );
-        let published: Vec<_> = window_spans
-            .iter()
-            .filter(|span| span.role == "published_column")
+            .flat_map(|entry| entry.records.iter())
+            .filter(|record| record.enqueue == ordinal)
+            .cloned()
             .collect();
-        assert_eq!(
-            published.len(),
-            2,
-            "a published column is written then read"
-        );
-        assert!(published[0].write && !published[1].write);
-        assert_eq!(published[0].address, TASK8_TEST_PUBLICATION);
-        assert_eq!(published[0].bytes, publish_stride);
-        assert_eq!(published[1].address, published[0].address);
-        assert_eq!(published[1].bytes, published[0].bytes);
-        assert_eq!(
-            find_span(&window_spans, "eq_low", TASK8_TEST_EQ_LOW).bytes,
-            (1usize << sizes.low) * TASK8_TEST_ELEMENT
-        );
-        assert_eq!(
-            find_span(&window_spans, "ab_gkr_eq_high", TASK8_TEST_EQ_HIGH).bytes,
-            (1usize << sizes.high[0]) * TASK8_TEST_ELEMENT
-        );
-        assert_eq!(
-            find_span(&window_spans, "ab_gkr_bwd_seg_coeff_bank", TASK8_TEST_BANK).bytes,
-            carried.coefficient_bank.unwrap().1,
-            "the bank read is the prefix the fill wrote, not the whole symbol"
-        );
-        let d3 = bwd_seg_fold_weight_run(3);
-        assert_eq!(
-            find_span(
-                &window_spans,
-                "bwd_seg_fold_weights",
-                TASK8_TEST_FOLD_WEIGHTS + d3.start * TASK8_TEST_ELEMENT
-            )
-            .bytes,
-            (d3.end - d3.start) * TASK8_TEST_ELEMENT,
-            "a width-3 window reads the D3 run only"
-        );
-        assert!(
-            window_spans
-                .iter()
-                .all(|span| span.role != "bwd_seg_fold_weights"
-                    || span.bytes < TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT),
-            "the whole eleven-slot bank is never recorded as read"
-        );
-        assert_eq!(
-            find_span(&window_spans, "partials", TASK8_TEST_PARTIALS).bytes,
-            MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * TASK8_TEST_ROW_TILES * TASK8_TEST_ELEMENT
-        );
-
-        let rows = TASK8_TEST_SEG_ROWS as usize;
-        assert_eq!(
-            find_span(&segmented_spans, "source_column", TASK8_TEST_SOURCE).bytes,
-            2 * rows * 2 * TASK8_TEST_ELEMENT,
-            "a depth-one source reads two leaves per row pair"
-        );
-        assert_eq!(
-            find_span(
-                &segmented_spans,
-                "source_column",
-                TASK8_TEST_SOURCE + source_stride
-            )
-            .bytes,
-            2 * rows * 8 * TASK8_TEST_ELEMENT,
-            "a depth-three source reads eight"
-        );
-        for delta in [1u8, 3] {
-            let run = bwd_seg_fold_weight_run(delta);
-            assert_eq!(
-                find_span(
-                    &segmented_spans,
-                    "bwd_seg_fold_weights",
-                    TASK8_TEST_FOLD_WEIGHTS + run.start * TASK8_TEST_ELEMENT
-                )
-                .bytes,
-                (run.end - run.start) * TASK8_TEST_ELEMENT
-            );
-        }
-        assert!(
-            !segmented_spans
-                .iter()
-                .any(|span| span.role == "bwd_seg_fold_weights"
-                    && span.address
-                        == TASK8_TEST_FOLD_WEIGHTS
-                            + bwd_seg_fold_weight_run(2).start * TASK8_TEST_ELEMENT),
-            "no live source folds at depth two, so its run is not read"
-        );
-        let cached: Vec<_> = segmented_spans
-            .iter()
-            .filter(|span| span.role == "published_column")
-            .collect();
-        assert_eq!(cached.len(), 2);
-        assert!(cached[0].write && !cached[1].write);
-        assert_eq!(cached[0].bytes, 2 * rows * TASK8_TEST_ELEMENT);
-        assert!(probe.finish().is_empty());
+        records.sort_by_key(|record| record.step);
+        records
     }
 
-    /// The most specific declaration stays authoritative after it binds `Final`,
-    /// even while the allocation it lives in is still live.
-    fn assert_finalized_narrow_owner_is_authoritative() {
-        const BROAD: usize = 0xc0_0000;
-        const NARROW: usize = BROAD + 64;
-        let mut ledger = Task8OwnerGenerationLedger::default();
-        let probe = Task8ProbeGuard::install();
-        let arm = TASK8_WINDOW_ARM;
-        let broad = ledger_open(
-            &mut ledger,
-            arm,
-            "partials",
-            Task8OwnerOrigin::ArmOwned,
-            BROAD,
-            256,
-        );
-        let narrow = ledger_open(
-            &mut ledger,
-            arm,
-            "reduced_tensor",
-            Task8OwnerOrigin::ArmOwned,
-            NARROW,
-            64,
-        );
-        enqueue(
-            &mut ledger,
-            &probe,
-            arm,
-            "window-tail-reduce",
-            Task8EnqueueKind::Kernel,
-            vec![
-                Task8Span::write("partials", BROAD, 64),
-                Task8Span::write("reduced_tensor", NARROW, 64),
-            ],
-        );
-        ledger_bind_final(&mut ledger, &narrow);
-        assert_eq!(
-            ledger.owner_of(&(NARROW..NARROW + 64)),
-            Err(Task8LedgerError::UseAfterFinal),
-            "a finalized sub-buffer must not fall back to the allocation it lives in"
-        );
-        assert!(ledger.owner_of(&(BROAD..BROAD + 64)).is_ok());
-        // An explicit successor generation takes the address back.
-        let successor = ledger
-            .open(
-                TASK8_LEGACY_ARM,
-                "reduced_tensor",
-                Task8OwnerOrigin::ArmOwned,
-                NARROW,
-                64,
-            )
-            .expect("the retired sub-buffer admits a successor");
-        assert_eq!(ledger.owner_of(&(NARROW..NARROW + 64)), Ok(successor.slot));
-        ledger_bind_final(&mut ledger, &broad);
-        assert!(probe.finish().is_empty());
+    /// Drops one record from a ledger without repairing the enqueue's count, the
+    /// shape a missing exact range takes in the recorded stream.
+    fn drop_record(
+        ledger: &mut Task8OwnerGenerationLedger,
+        arm: &'static str,
+        label: &'static str,
+        role: &'static str,
+    ) {
+        let slot = slot_of(ledger, arm, label);
+        let entry = &mut ledger.generations[slot];
+        let position = entry
+            .records
+            .iter()
+            .position(|record| record.role == role)
+            .unwrap_or_else(|| panic!("no {role} record on {label}"));
+        entry.records.remove(position);
     }
 
     #[test]
     fn cpu_main_continuation_owner_generation_accepts_both_real_arm_orders() {
-        assert_real_span_builders_bind_carried_symbols();
+        let sizes = task8_test_sizes();
         for (first_arm, second_arm) in arm_orders() {
             let ledger = replay_both_orders(first_arm, second_arm);
             assert_eq!(
@@ -5082,19 +4783,8 @@ mod cpu_tests {
                 TASK8_SHARED_DEVICE_SYMBOLS.len()
             );
             for arm in [first_arm, second_arm] {
-                assert_eq!(ledger.arm_labels(arm), expected_arm_owner_labels(arm, 3, 1));
                 assert!(ledger.resident_reads(arm) > 0);
             }
-            assert_eq!(
-                ledger.label_generations(TASK8_WINDOW_ARM, "publication"),
-                1,
-                "the window arm publishes one level"
-            );
-            assert_eq!(
-                ledger.label_generations(TASK8_LEGACY_ARM, "publication"),
-                3,
-                "the legacy arm publishes one level per round"
-            );
             let window = ledger.enqueue_sites(TASK8_WINDOW_ARM);
             let legacy = ledger.enqueue_sites(TASK8_LEGACY_ARM);
             assert_eq!(window["window-launch"], 1);
@@ -5110,6 +4800,104 @@ mod cpu_tests {
                 assert_eq!(sites["challenge-slab-slot-copy"], 3);
                 assert_eq!(sites["claim-point-symbol-write"], 1);
             }
+
+            // The production census, as the validated ledger recorded it.
+            let element = TASK8_TEST_ELEMENT;
+            let claim = records_of(&ledger, "fold-weight-build");
+            let claim_read = claim
+                .iter()
+                .find(|record| record.role == "ab_gkr_main_layer_claim_point")
+                .expect("the fold-weight build reads the claim point");
+            assert_eq!(
+                claim_read.range.len(),
+                3 * element,
+                "the fold-weight build reads only the three coordinates below its round"
+            );
+            assert_eq!(
+                claim_read.address,
+                TASK8_TEST_CLAIM_POINT_SYMBOL + (TASK8_TEST_ROUND - 3) * element
+            );
+            let launch = records_of(&ledger, "window-launch");
+            let d3 = bwd_seg_fold_weight_run(3);
+            let weights: Vec<_> = launch
+                .iter()
+                .filter(|record| record.role == "bwd_seg_fold_weights")
+                .collect();
+            assert_eq!(weights.len(), 1, "a window folds at depth three only");
+            assert_eq!(
+                weights[0].address,
+                TASK8_TEST_FOLD_WEIGHTS + d3.start * element
+            );
+            assert_eq!(weights[0].range.len(), (d3.end - d3.start) * element);
+            let published: Vec<_> = launch
+                .iter()
+                .filter(|record| record.role == "published_column")
+                .collect();
+            assert_eq!(published.len(), 2);
+            assert_eq!(published[0].use_kind, Task8QueuedUse::Write);
+            assert_eq!(published[1].use_kind, Task8QueuedUse::Read);
+            assert_eq!(published[0].range, published[1].range);
+            assert_eq!(
+                launch
+                    .iter()
+                    .find(|record| record.role == "eq_low")
+                    .unwrap()
+                    .range
+                    .len(),
+                (1usize << sizes.low) * element
+            );
+            let round = records_of(&ledger, "segmented-round");
+            let seg_weights: Vec<_> = round
+                .iter()
+                .filter(|record| record.role == "bwd_seg_fold_weights")
+                .map(|record| record.address)
+                .collect();
+            for delta in [0u8, 3] {
+                let run = bwd_seg_fold_weight_run(delta);
+                let named = seg_weights.contains(&(TASK8_TEST_FOLD_WEIGHTS + run.start * element));
+                assert_eq!(
+                    named,
+                    delta == 3,
+                    "only the runs the live source deltas name are read"
+                );
+            }
+            assert!(
+                !seg_weights.contains(
+                    &(TASK8_TEST_FOLD_WEIGHTS + bwd_seg_fold_weight_run(2).start * element)
+                ),
+                "no live source folds at depth two"
+            );
+            let cached: Vec<_> = round
+                .iter()
+                .filter(|record| record.role == "published_column")
+                .collect();
+            assert_eq!(cached.len(), 2);
+            assert_eq!(cached[0].use_kind, Task8QueuedUse::Write);
+            assert_eq!(cached[1].use_kind, Task8QueuedUse::Read);
+
+            // The coefficient fill records exactly the live recipe and monomial
+            // records and the challenge slots those monomials name.
+            let reads = task8_coeff_eval_reads(&task8_test_blob());
+            assert_eq!(reads.challenge_slots, vec![0, 3, 9]);
+            let fill = records_of(&ledger, "coefficient-bank-fill");
+            let tables: Vec<_> = fill
+                .iter()
+                .filter(|record| record.role == "coefficient_tables")
+                .map(|record| {
+                    record.range.start - TASK8_TEST_TABLES..record.range.end - TASK8_TEST_TABLES
+                })
+                .collect();
+            assert_eq!(tables, reads.table_ranges);
+            assert!(
+                tables.iter().map(|range| range.len()).sum::<usize>() < BWD_SEG_BLOB_BYTES,
+                "the fill reads its live records, not the whole staged blob"
+            );
+            let slots: Vec<_> = fill
+                .iter()
+                .filter(|record| record.role == "challenge_slab")
+                .map(|record| (record.address - TASK8_TEST_SLAB) / element)
+                .collect();
+            assert_eq!(slots, reads.challenge_slots);
         }
     }
 
@@ -5169,18 +4957,16 @@ mod cpu_tests {
                 TASK8_SHARED_DEVICE_SYMBOLS.len()
             );
 
-            // The scope was opened after its own call had been issued.
             let mut late = base.clone();
             {
-                let index = enqueue_at(&late, "window-launch");
+                let index = enqueue_at(&late, "eq-build");
                 late.enqueues[index].issued_at_open += 1;
             }
             assert!(validator_rejects(&late, first_arm, second_arm));
 
-            // The scope was closed around work that was not its own.
             let mut wide = base.clone();
             {
-                let index = enqueue_at(&wide, "eq-build");
+                let index = enqueue_at(&wide, "coefficient-bank-fill");
                 wide.enqueues[index].issued_at_close += 1;
             }
             assert!(validator_rejects(&wide, first_arm, second_arm));
@@ -5190,18 +4976,15 @@ mod cpu_tests {
             // produces in the recorded stream.
             let mut moved = base.clone();
             {
-                let build = enqueue_at(&moved, "eq-build");
-                let reader =
-                    enqueue_at(&moved, "window-launch").max(enqueue_at(&moved, "segmented-round"));
+                let build = enqueue_at(&moved, "eq-build") as u64;
+                let reader = enqueue_at(&moved, "fold-weight-build") as u64;
                 for entry in &mut moved.generations {
                     for record in &mut entry.records {
-                        if record.enqueue == build as u64 {
-                            record.enqueue = reader as u64;
+                        if record.enqueue == build {
+                            record.enqueue = reader;
                             record.step += 1_000_000;
                         }
                     }
-                }
-                for entry in &mut moved.generations {
                     entry.records.sort_by_key(|record| record.step);
                 }
             }
@@ -5210,37 +4993,71 @@ mod cpu_tests {
     }
 
     #[test]
-    fn cpu_main_continuation_owner_generation_validator_rejects_coverage_and_final_mutations() {
-        assert_finalized_narrow_owner_is_authoritative();
+    fn cpu_main_continuation_owner_generation_validator_rejects_census_and_overlap_mutations() {
         for (first_arm, second_arm) in arm_orders() {
             let base = replay_both_orders(first_arm, second_arm);
             let mut families = BTreeSet::new();
 
-            let mut missing = base.clone();
-            {
-                let slot = slot_of(&missing, first_arm, "coefficients");
-                let entry = &mut missing.generations[slot];
-                let write = entry
-                    .records
-                    .iter()
-                    .position(|record| record.use_kind == Task8QueuedUse::Write)
-                    .unwrap();
-                entry.records.remove(write);
-            }
-            assert!(validator_rejects(&missing, first_arm, second_arm));
-            families.insert("missing-initialization");
+            // A missing exact range: the fold-weight build's claim-point read.
+            let mut missing_claim = base.clone();
+            drop_record(
+                &mut missing_claim,
+                first_arm,
+                "claim_point_symbol",
+                "ab_gkr_main_layer_claim_point",
+            );
+            assert!(validator_rejects(&missing_claim, first_arm, second_arm));
+            families.insert("missing-claim-point-range");
 
+            // A missing fold-weight run read at a launch.
+            let mut missing_run = base.clone();
+            drop_record(
+                &mut missing_run,
+                first_arm,
+                "fold_weights_symbol",
+                "bwd_seg_fold_weights",
+            );
+            assert!(validator_rejects(&missing_run, first_arm, second_arm));
+            families.insert("missing-fold-weight-run");
+
+            // A missing recipe/monomial range and a missing challenge slot.
+            let mut missing_tables = base.clone();
+            drop_record(
+                &mut missing_tables,
+                first_arm,
+                "coefficient_tables",
+                "coefficient_tables",
+            );
+            assert!(validator_rejects(&missing_tables, first_arm, second_arm));
+            families.insert("missing-coefficient-record");
+
+            let mut missing_challenge = base.clone();
+            drop_record(
+                &mut missing_challenge,
+                first_arm,
+                "challenge_slab",
+                "challenge_slab",
+            );
+            assert!(validator_rejects(&missing_challenge, first_arm, second_arm));
+            families.insert("missing-challenge-slot");
+
+            // The published column's read moved before the write that covers it.
             let mut reordered = base.clone();
             {
-                let slot = slot_of(&reordered, first_arm, "claim_point");
+                let slot = slot_of(&reordered, first_arm, "publication");
                 let entry = &mut reordered.generations[slot];
-                let steps: Vec<_> = entry.records.iter().map(|record| record.step).collect();
-                entry.records[0].step = steps[1];
-                entry.records[1].step = steps[0];
-                entry.records.swap(0, 1);
+                let first = entry
+                    .records
+                    .iter()
+                    .position(|record| record.role == "published_column")
+                    .unwrap();
+                let steps = (entry.records[first].step, entry.records[first + 1].step);
+                entry.records[first].step = steps.1;
+                entry.records[first + 1].step = steps.0;
+                entry.records.swap(first, first + 1);
             }
             assert!(validator_rejects(&reordered, first_arm, second_arm));
-            families.insert("reordered-records");
+            families.insert("published-read-before-write");
 
             let mut partial = base.clone();
             {
@@ -5273,15 +5090,6 @@ mod cpu_tests {
             assert!(validator_rejects(&unbound, first_arm, second_arm));
             families.insert("unbound-final");
 
-            let mut out_of_range = base.clone();
-            {
-                let slot = slot_of(&out_of_range, first_arm, "eq");
-                let entry = &mut out_of_range.generations[slot];
-                entry.records[0].range.end = entry.covered.end + TASK8_TEST_ELEMENT;
-            }
-            assert!(validator_rejects(&out_of_range, first_arm, second_arm));
-            families.insert("out-of-range-use");
-
             let mut repeated = base.clone();
             {
                 let slot = slot_of(&repeated, first_arm, "claim_point_symbol");
@@ -5290,31 +5098,13 @@ mod cpu_tests {
             assert!(validator_rejects(&repeated, first_arm, second_arm));
             families.insert("repeated-address-without-retirement");
 
-            let mut lost = base.clone();
-            {
-                let slot = slot_of(&lost, first_arm, "claim_batching");
-                lost.generations[slot].records.pop();
-                lost.generations[slot].final_enqueue =
-                    lost.generations[slot].records.last().map(|r| r.enqueue);
-            }
-            assert!(validator_rejects(&lost, first_arm, second_arm));
-            families.insert("enqueue-lost-a-pointer-record");
-
-            assert_eq!(families.len(), 8);
-        }
-    }
-
-    #[test]
-    fn cpu_main_continuation_owner_generation_validator_rejects_borrowed_and_resident_mutations() {
-        for (first_arm, second_arm) in arm_orders() {
-            let base = replay_both_orders(first_arm, second_arm);
-
             let mut borrowed = base.clone();
             {
                 let slot = slot_of(&borrowed, first_arm, "source_backing");
                 borrowed.generations[slot].records[0].use_kind = Task8QueuedUse::Write;
             }
             assert!(validator_rejects(&borrowed, first_arm, second_arm));
+            families.insert("write-to-borrowed-storage");
 
             let mut resident = base.clone();
             {
@@ -5322,28 +5112,163 @@ mod cpu_tests {
                 resident.generations[slot].records[0].use_kind = Task8QueuedUse::ResidentRead;
             }
             assert!(validator_rejects(&resident, first_arm, second_arm));
+            families.insert("resident-read-outside-eq");
 
-            let mut covered = base.clone();
-            {
-                let slot = slot_of(&covered, first_arm, "eq");
-                let entry = &mut covered.generations[slot];
-                let written = entry
-                    .records
-                    .iter()
-                    .find(|record| record.use_kind == Task8QueuedUse::Write)
-                    .unwrap()
-                    .range
-                    .clone();
-                let resident = entry
-                    .records
-                    .iter_mut()
-                    .find(|record| record.use_kind == Task8QueuedUse::ResidentRead)
-                    .unwrap();
-                resident.address = written.start;
-                resident.range = written;
-            }
-            assert!(validator_rejects(&covered, first_arm, second_arm));
+            // The reduced tensor lives inside the partial buffer. Its span must
+            // not be rebound to the allocation once the tensor is finalized.
+            assert!(validator_rejects(
+                &overlap_ledger_with_rebound_tensor(first_arm),
+                first_arm,
+                first_arm
+            ));
+            families.insert("finalized-narrow-overlap");
+            assert_eq!(overlap_successor_owner(first_arm), "reduced_tensor");
+
+            assert_eq!(families.len(), 12);
         }
+    }
+
+    /// A production-derived window stream whose finalized reduced-tensor record
+    /// has been rebound to the still-live partial buffer it lives inside.
+    fn overlap_ledger_with_rebound_tensor(arm: &'static str) -> Task8OwnerGenerationLedger {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        replay_window_arm(&mut ledger, arm);
+        let tensor = slot_of(&ledger, arm, "reduced_tensor");
+        let partials = slot_of(&ledger, arm, "partials");
+        let moved: Vec<_> = ledger.generations[tensor].records.drain(..).collect();
+        ledger.generations[tensor].final_enqueue = None;
+        ledger.generations[partials].records.extend(moved);
+        ledger.generations[partials]
+            .records
+            .sort_by_key(|record| record.step);
+        ledger.generations[partials].final_enqueue = ledger.generations[partials]
+            .records
+            .last()
+            .map(|record| record.enqueue);
+        ledger
+    }
+
+    /// The owner a span inside a finalized reduced tensor binds to once an
+    /// explicit successor generation takes that address back.
+    fn overlap_successor_owner(arm: &'static str) -> &'static str {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        replay_window_arm(&mut ledger, arm);
+        let tensor = slot_of(&ledger, arm, "reduced_tensor");
+        let (base, bytes) = {
+            let entry = &ledger.generations[tensor];
+            (entry.owner, entry.covered.end - entry.covered.start)
+        };
+        assert_eq!(
+            ledger.owner_of(&(base..base + bytes)),
+            Err(Task8LedgerError::UseAfterFinal),
+            "a finalized sub-buffer must not fall back to the allocation it lives in"
+        );
+        let successor = ledger
+            .open(
+                TASK8_LEGACY_ARM,
+                "reduced_tensor",
+                Task8OwnerOrigin::ArmOwned,
+                base,
+                bytes,
+            )
+            .expect("the retired sub-buffer admits a successor");
+        assert_eq!(ledger.owner_of(&(base..base + bytes)), Ok(successor.slot));
+        ledger.generations[successor.slot].label
+    }
+
+    #[test]
+    fn cpu_main_continuation_owner_generation_requires_carried_symbol_state() {
+        let window = task8_test_window_descriptor();
+        let segmented = task8_test_segmented_descriptor();
+        let carried = task8_test_carried();
+
+        // A fresh probe holds nothing a finished arm resolved, so neither
+        // builder can record its reads.
+        for builder in 0..2 {
+            let probe = Task8ProbeGuard::install();
+            task8_register_descriptor_sources(&*segmented as *const BwdSegDesc as usize, 2);
+            assert!(
+                probe_spans(&probe, builder, &window, &segmented).is_none(),
+                "a fresh probe must not invent a device symbol"
+            );
+        }
+
+        // Eq-high alone is not enough for either builder: both read the bank.
+        for builder in 0..2 {
+            let probe = Task8ProbeGuard::install();
+            task8_register_symbol("ab_gkr_eq_high", carried.eq_high.0, carried.eq_high.1);
+            task8_register_symbol(
+                "bwd_seg_fold_weights",
+                TASK8_TEST_FOLD_WEIGHTS,
+                TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
+            );
+            task8_register_descriptor_sources(&*segmented as *const BwdSegDesc as usize, 2);
+            assert!(
+                probe_spans(&probe, builder, &window, &segmented).is_none(),
+                "a later-start arm must not invent a coefficient bank"
+            );
+        }
+
+        // The carried address and exact active prefix resolve both builders, and
+        // both arm orders then validate.
+        for builder in 0..2 {
+            let probe = Task8ProbeGuard::install();
+            carried.install();
+            task8_register_symbol(
+                "bwd_seg_fold_weights",
+                TASK8_TEST_FOLD_WEIGHTS,
+                TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
+            );
+            task8_register_descriptor_sources(&*segmented as *const BwdSegDesc as usize, 2);
+            let spans = probe_spans(&probe, builder, &window, &segmented)
+                .expect("the carried symbols resolve the builder");
+            assert_eq!(
+                spans
+                    .iter()
+                    .find(|span| span.role == "ab_gkr_bwd_seg_coeff_bank")
+                    .unwrap()
+                    .bytes,
+                carried.coefficient_bank.unwrap().1,
+                "the bank read is the prefix the fill wrote"
+            );
+            assert!(spans
+                .iter()
+                .any(|span| span.role == "ab_gkr_eq_high" && span.address == carried.eq_high.0));
+        }
+
+        for (first_arm, second_arm) in arm_orders() {
+            let ledger = replay_both_orders(first_arm, second_arm);
+            assert_eq!(
+                validate(&ledger, first_arm, second_arm),
+                TASK8_SHARED_DEVICE_SYMBOLS.len()
+            );
+        }
+    }
+
+    /// Opens one scope around a production span builder and returns the spans
+    /// the probe resolved, or reports that it could not resolve them.
+    fn probe_spans(
+        probe: &Task8ProbeGuard,
+        builder: usize,
+        window: &MainContinuationWindowLaunchBinding,
+        segmented: &BwdSegDesc,
+    ) -> Option<Vec<Task8Span>> {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if builder == 0 {
+                let _scope = task8_enqueue("window-launch", Task8EnqueueKind::Kernel, || {
+                    task8_window_spans(window, TASK8_TEST_ROW_TILES)
+                });
+            } else {
+                let _scope = task8_enqueue("segmented-round", Task8EnqueueKind::Kernel, || {
+                    task8_seg_spans(segmented)
+                });
+            }
+        }));
+        std::panic::set_hook(previous);
+        outcome.ok()?;
+        Some(probe.drain().pop()?.spans)
     }
 }
 

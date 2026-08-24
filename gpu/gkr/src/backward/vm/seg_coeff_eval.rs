@@ -683,6 +683,45 @@ pub(crate) struct Task8CoeffEvalReads {
     any(test, feature = "task8_continuation_differential_test"),
     not(no_cuda)
 ))]
+/// The pointer arguments one coefficient-bank fill's evaluation names: the
+/// recipe and monomial records it reads, the challenge slots those monomials
+/// use, and the bank prefix it writes.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_coeff_fill_spans(
+    reads: &Task8CoeffEvalReads,
+    tables_base: usize,
+    slab: usize,
+    bank: usize,
+    bank_bytes: usize,
+) -> Vec<crate::backward::task8_probe::Task8Span> {
+    use crate::backward::task8_probe::Task8Span;
+    let element = std::mem::size_of::<E4>();
+    let mut spans = Vec::with_capacity(reads.table_ranges.len() + reads.challenge_slots.len() + 1);
+    for range in &reads.table_ranges {
+        spans.push(Task8Span::read(
+            "coefficient_tables",
+            tables_base + range.start,
+            range.end - range.start,
+        ));
+    }
+    for slot in &reads.challenge_slots {
+        spans.push(Task8Span::read(
+            "challenge_slab",
+            slab + slot * element,
+            element,
+        ));
+    }
+    spans.push(Task8Span::write("coefficient_bank", bank, bank_bytes));
+    spans
+}
+
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
 pub(crate) fn task8_coeff_eval_reads(blob: &SegCoeffEvalBlob) -> Task8CoeffEvalReads {
     let recipe_bytes = std::mem::size_of::<SegCoeffRecipe>();
     let monomial_bytes = std::mem::size_of::<SegCoeffMonomial>();
@@ -850,29 +889,13 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let function = GkrBwdSegEvalCoefficientsFunction(ab_gkr_bwd_seg_eval_coefficients_kernel);
     crate::backward::task8_enqueue_scope!(_task8, "coefficient-bank-fill", Kernel, {
-        use crate::backward::task8_probe::Task8Span;
-        let element = std::mem::size_of::<E4>();
-        let mut spans = Vec::with_capacity(task8_reads.table_ranges.len() + 8);
-        for range in &task8_reads.table_ranges {
-            spans.push(Task8Span::read(
-                "coefficient_tables",
-                tables_base + range.start,
-                range.end - range.start,
-            ));
-        }
-        for slot in &task8_reads.challenge_slots {
-            spans.push(Task8Span::read(
-                "challenge_slab",
-                slab as usize + slot * element,
-                element,
-            ));
-        }
-        spans.push(Task8Span::write(
-            "coefficient_bank",
+        task8_coeff_fill_spans(
+            &task8_reads,
+            tables_base,
+            slab as usize,
             bank as usize,
             bank_bytes,
-        ));
-        spans
+        )
     });
     function.launch(
         &config,

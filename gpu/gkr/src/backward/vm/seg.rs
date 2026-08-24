@@ -98,22 +98,7 @@ pub(crate) fn launch_bwd_seg_build_fold_weights(
         BWD_SEG_FOLD_WEIGHT_SLOTS * size_of::<E4>(),
     );
     crate::backward::task8_enqueue_scope!(_task8, "fold-weight-build", Kernel, {
-        use crate::backward::task8_probe::Task8Span;
-        // `seg_build_fold_weights` reads `round - delta + j` for `j < delta`
-        // and `delta <= 3`, so the union is the three coordinates below `round`.
-        let first = (round as usize).saturating_sub(3);
-        vec![
-            Task8Span::symbol_read(
-                "ab_gkr_main_layer_claim_point",
-                first * size_of::<E4>(),
-                (round as usize - first) * size_of::<E4>(),
-            ),
-            Task8Span::write(
-                "bwd_seg_fold_weights",
-                fold_weights as usize,
-                BWD_SEG_FOLD_WEIGHT_SLOTS * size_of::<E4>(),
-            ),
-        ]
+        task8_fold_weight_spans(round, fold_weights as usize)
     });
     GkrBwdSegBuildFoldWeightsFunction(ab_gkr_bwd_seg_build_fold_weights_kernel).launch(
         &config,
@@ -123,6 +108,35 @@ pub(crate) fn launch_bwd_seg_build_fold_weights(
         fold_weights as usize,
         BWD_SEG_FOLD_WEIGHT_SLOTS * size_of::<E4>(),
     ))
+}
+
+/// The pointer arguments one fold-weight build names. Native
+/// `seg_build_fold_weights` reads `round - delta + j` for `j < delta` with
+/// `delta <= 3`, so the claim-point union is the three coordinates below
+/// `round`; every slot of the bank is written.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_fold_weight_spans(
+    round: u32,
+    fold_weights: usize,
+) -> Vec<crate::backward::task8_probe::Task8Span> {
+    use crate::backward::task8_probe::Task8Span;
+    let element = size_of::<E4>();
+    let first = (round as usize).saturating_sub(3);
+    vec![
+        Task8Span::symbol_read(
+            "ab_gkr_main_layer_claim_point",
+            first * element,
+            (round as usize - first) * element,
+        ),
+        Task8Span::write(
+            "bwd_seg_fold_weights",
+            fold_weights,
+            BWD_SEG_FOLD_WEIGHT_SLOTS * element,
+        ),
+    ]
 }
 
 const fn plane_smem_bytes(k: u32) -> usize {
