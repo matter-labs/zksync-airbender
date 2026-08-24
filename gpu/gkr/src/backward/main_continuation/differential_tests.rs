@@ -63,8 +63,8 @@ struct Task8AllocationRecord {
     owner: usize,
     size_bytes: usize,
     successful_requested_bytes: usize,
-    physical_backing_delta_bytes: usize,
-    logical_live_delta_bytes: usize,
+    physical_backing_delta_bytes: i128,
+    logical_live_delta_bytes: i128,
     multiplicity: usize,
     live_from: usize,
     live_until: usize,
@@ -119,14 +119,10 @@ fn allocation_record_with_usage<T>(
         overlap_group,
         placement,
     );
-    record.physical_backing_delta_bytes = after
-        .physical_backing_bytes
-        .checked_sub(before.physical_backing_bytes)
-        .expect("Task 8 allocation reduced physical backing at construction");
-    record.logical_live_delta_bytes = after
-        .logical_live_bytes
-        .checked_sub(before.logical_live_bytes)
-        .expect("Task 8 allocation reduced logical live bytes at construction");
+    record.physical_backing_delta_bytes =
+        signed_snapshot_delta(after.physical_backing_bytes, before.physical_backing_bytes);
+    record.logical_live_delta_bytes =
+        signed_snapshot_delta(after.logical_live_bytes, before.logical_live_bytes);
     record
 }
 
@@ -140,20 +136,18 @@ fn allocation_group_record(
     multiplicity: usize,
     report: &PoolMemoryHighWaterReport,
 ) -> Task8AllocationRecord {
-    let physical_backing_delta_bytes = report
-        .return_to_entry
-        .physical_backing_bytes
-        .checked_sub(report.start.physical_backing_bytes)
-        .expect("Task 8 allocation group reduced physical backing at construction");
-    let logical_live_delta_bytes = report
-        .return_to_entry
-        .logical_live_bytes
-        .checked_sub(report.start.logical_live_bytes)
-        .expect("Task 8 allocation group reduced logical live bytes at construction");
+    let physical_backing_delta_bytes = signed_snapshot_delta(
+        report.return_to_entry.physical_backing_bytes,
+        report.start.physical_backing_bytes,
+    );
+    let logical_live_delta_bytes = signed_snapshot_delta(
+        report.return_to_entry.logical_live_bytes,
+        report.start.logical_live_bytes,
+    );
     Task8AllocationRecord {
         kind,
         owner,
-        size_bytes: logical_live_delta_bytes,
+        size_bytes: report.summed_requested_bytes,
         successful_requested_bytes: report.summed_requested_bytes,
         physical_backing_delta_bytes,
         logical_live_delta_bytes,
@@ -164,6 +158,11 @@ fn allocation_group_record(
         placement,
         retired: true,
     }
+}
+
+#[inline]
+fn signed_snapshot_delta(after: usize, before: usize) -> i128 {
+    (after as i128) - (before as i128)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2027,8 +2026,8 @@ fn actual_topology_records(
                     owner,
                     size_bytes,
                     successful_requested_bytes: requested_bytes,
-                    physical_backing_delta_bytes: size_bytes,
-                    logical_live_delta_bytes: requested_bytes,
+                    physical_backing_delta_bytes: size_bytes as i128,
+                    logical_live_delta_bytes: requested_bytes as i128,
                     multiplicity: 1,
                     live_from: 0,
                     live_until: 100,
@@ -2147,8 +2146,8 @@ fn build_corpus_census() -> CorpusCensus {
 #[cfg(test)]
 mod cpu_tests {
     use super::{
-        build_corpus_census, validate_single_owner_topology, Task8AllocationRecord,
-        Task8TopologyError,
+        build_corpus_census, signed_snapshot_delta, validate_single_owner_topology,
+        Task8AllocationRecord, Task8TopologyError,
     };
 
     fn record(
@@ -2215,6 +2214,17 @@ mod cpu_tests {
         assert_eq!(census.max_sources, 1_012);
         assert_eq!(census.max_legacy_displacement, 174);
         assert_eq!(census.publication_over_2gib, 4);
+    }
+
+    #[test]
+    fn cpu_main_continuation_snapshot_decrease_is_signed_not_checked_sub() {
+        assert_eq!(signed_snapshot_delta(7, 11), -4);
+    }
+
+    #[test]
+    fn cpu_main_continuation_snapshot_growth_and_zero_are_preserved() {
+        assert_eq!(signed_snapshot_delta(11, 7), 4);
+        assert_eq!(signed_snapshot_delta(7, 7), 0);
     }
 }
 
