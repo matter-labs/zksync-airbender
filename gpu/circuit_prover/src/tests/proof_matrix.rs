@@ -1,4 +1,1205 @@
 use super::*;
+use gpu_gkr::BackwardExecutionStrategy;
+use serde::Serialize;
+use std::io::Write;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
+
+const TASK6_EXACT_MEMORY_SCHEMA_VERSION: u32 = 1;
+const TASK6_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
+const TASK6_DEVICE_ARENA_BYTES: u64 = 64u64 << 30;
+const TASK6_MAX_DEVICE_BLOCKS: u64 = TASK6_DEVICE_ARENA_BYTES >> TASK6_ALLOCATOR_BLOCK_LOG_SIZE;
+const TASK6_SMALL_ALLOCATOR_LOG_CHUNK_SIZE: u32 = 8;
+const TASK6_SMALL_ALLOCATOR_POOL_BLOCKS: u64 = 16;
+const TASK6_WORKLOAD_SOURCE: &str = "prepare_unified_proof_fixture";
+const TASK6_FIXTURE_LAYOUT_PATH: &str =
+    "cs/compiled_circuits/unified_reduced_machine_layout_gkr.json";
+const TASK6_FIXTURE_LAYOUT_SHA256: &str =
+    "53331555ffd08dab4dd3f71be8011528a52d3584f435320a8a0b2ffd9121add8";
+const TASK6_FIXTURE_BINARY_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.bin";
+const TASK6_FIXTURE_TEXT_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.text";
+const TASK6_FIXTURE_NON_DETERMINISM_WORDS: [u32; 2] = [50, 0xDEAD_BEEF];
+
+#[derive(Clone, Debug, Serialize)]
+struct Task6ExactMemoryRecord {
+    schema_version: u32,
+    artifact_head: String,
+    artifact_tree: String,
+    release_executable: String,
+    release_executable_sha256: String,
+    workload_id: String,
+    sample_index: u64,
+    pair_index: u64,
+    order_in_pair: u64,
+    arm: String,
+    backward_options: String,
+    final_trace_size_log_2: u32,
+    allocator_block_log_size: u32,
+    max_device_allocation_blocks_count: u64,
+    actual_device_allocation_blocks_count: u64,
+    actual_device_arena_bytes: u64,
+    small_allocator_enabled: bool,
+    small_allocator_log_chunk_size: u32,
+    small_allocator_pool_blocks: u64,
+    backward_start_physical_backing_bytes: u64,
+    backward_start_logical_live_bytes: u64,
+    backward_peak_physical_backing_bytes: u64,
+    backward_peak_logical_live_bytes: u64,
+    backward_summed_requested_bytes: u64,
+    backward_peak_window_end_physical_backing_bytes: u64,
+    backward_peak_window_end_logical_live_bytes: u64,
+    backward_return_physical_backing_bytes: u64,
+    backward_return_logical_live_bytes: u64,
+    whole_start_physical_backing_bytes: u64,
+    whole_start_logical_live_bytes: u64,
+    whole_peak_physical_backing_bytes: u64,
+    whole_peak_logical_live_bytes: u64,
+    whole_summed_requested_bytes: u64,
+    whole_peak_window_end_physical_backing_bytes: u64,
+    whole_peak_window_end_logical_live_bytes: u64,
+    whole_return_physical_backing_bytes: u64,
+    whole_return_logical_live_bytes: u64,
+    proof_sha256: String,
+    proof_time_ms: u64,
+    cuda_proof_time_ms: f32,
+    selected_strategy: String,
+    dr_bundle_final_log: Option<u32>,
+    dr_prepared_layer_count: u64,
+    legacy_dr_execution_count: u64,
+    dr_r0_launch_count: u64,
+    dr_continuation_launch_count: u64,
+    dr_tail_launch_count: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Task6ExactMemoryMismatch {
+    field: &'static str,
+    baseline: u64,
+    new: u64,
+    delta: i128,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Task6FixtureTraceLenMismatch {
+    layout_declared_trace_len: usize,
+    prepared_fixture_trace_len: usize,
+}
+
+impl std::fmt::Display for Task6FixtureTraceLenMismatch {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "fixture trace_len mismatch: layout_declared_trace_len={} prepared_fixture_trace_len={}",
+            self.layout_declared_trace_len, self.prepared_fixture_trace_len
+        )
+    }
+}
+
+fn task6_fixture_trace_len_from_layout_value(layout: &serde_json::Value) -> Result<usize, String> {
+    let trace_len = layout
+        .get("trace_len")
+        .ok_or_else(|| "fixture layout must contain top-level trace_len".to_owned())?
+        .as_u64()
+        .ok_or_else(|| "fixture layout trace_len must be an unsigned integer".to_owned())?;
+    if trace_len == 0 {
+        return Err("fixture layout trace_len must be nonzero".to_owned());
+    }
+    trace_len
+        .try_into()
+        .map_err(|_| format!("fixture layout trace_len does not fit usize: {trace_len}"))
+}
+
+fn task6_fixture_trace_len_from_layout(path: &std::path::Path) -> Result<usize, String> {
+    let file = std::fs::File::open(path)
+        .map_err(|error| format!("failed to open fixture layout {}: {error}", path.display()))?;
+    let layout: serde_json::Value = serde_json::from_reader(file)
+        .map_err(|error| format!("failed to parse fixture layout {}: {error}", path.display()))?;
+    task6_fixture_trace_len_from_layout_value(&layout)
+}
+
+fn require_task6_prepared_trace_len_matches_layout(
+    layout_declared_trace_len: usize,
+    prepared_fixture_trace_len: usize,
+) -> Result<(), Task6FixtureTraceLenMismatch> {
+    if prepared_fixture_trace_len == layout_declared_trace_len {
+        Ok(())
+    } else {
+        Err(Task6FixtureTraceLenMismatch {
+            layout_declared_trace_len,
+            prepared_fixture_trace_len,
+        })
+    }
+}
+
+impl std::fmt::Display for Task6ExactMemoryMismatch {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} mismatch: baseline={} bytes new={} bytes delta={:+} bytes",
+            self.field, self.baseline, self.new, self.delta
+        )
+    }
+}
+
+fn exact_memory_mismatch(field: &'static str, baseline: u64, new: u64) -> Task6ExactMemoryMismatch {
+    Task6ExactMemoryMismatch {
+        field,
+        baseline,
+        new,
+        delta: i128::from(new) - i128::from(baseline),
+    }
+}
+
+fn require_exact_memory_equal(
+    field: &'static str,
+    baseline: u64,
+    new: u64,
+) -> Result<(), Task6ExactMemoryMismatch> {
+    if baseline == new {
+        Ok(())
+    } else {
+        Err(exact_memory_mismatch(field, baseline, new))
+    }
+}
+
+fn require_exact_memory_nonincrease(
+    field: &'static str,
+    baseline: u64,
+    new: u64,
+) -> Result<(), Task6ExactMemoryMismatch> {
+    if new <= baseline {
+        Ok(())
+    } else {
+        Err(exact_memory_mismatch(field, baseline, new))
+    }
+}
+
+fn compare_task6_exact_memory_pair(
+    baseline: &Task6ExactMemoryRecord,
+    new: &Task6ExactMemoryRecord,
+) -> Result<(), Task6ExactMemoryMismatch> {
+    require_exact_memory_equal(
+        "allocator_block_log_size",
+        u64::from(baseline.allocator_block_log_size),
+        u64::from(new.allocator_block_log_size),
+    )?;
+    require_exact_memory_equal(
+        "max_device_allocation_blocks_count",
+        baseline.max_device_allocation_blocks_count,
+        new.max_device_allocation_blocks_count,
+    )?;
+    require_exact_memory_equal(
+        "actual_device_allocation_blocks_count",
+        baseline.actual_device_allocation_blocks_count,
+        new.actual_device_allocation_blocks_count,
+    )?;
+    require_exact_memory_equal(
+        "actual_device_arena_bytes",
+        baseline.actual_device_arena_bytes,
+        new.actual_device_arena_bytes,
+    )?;
+    require_exact_memory_equal(
+        "small_allocator_enabled",
+        u64::from(baseline.small_allocator_enabled),
+        u64::from(new.small_allocator_enabled),
+    )?;
+    require_exact_memory_equal(
+        "small_allocator_log_chunk_size",
+        u64::from(baseline.small_allocator_log_chunk_size),
+        u64::from(new.small_allocator_log_chunk_size),
+    )?;
+    require_exact_memory_equal(
+        "small_allocator_pool_blocks",
+        baseline.small_allocator_pool_blocks,
+        new.small_allocator_pool_blocks,
+    )?;
+    require_exact_memory_equal(
+        "backward.start.physical_backing_bytes",
+        baseline.backward_start_physical_backing_bytes,
+        new.backward_start_physical_backing_bytes,
+    )?;
+    require_exact_memory_equal(
+        "backward.start.logical_live_bytes",
+        baseline.backward_start_logical_live_bytes,
+        new.backward_start_logical_live_bytes,
+    )?;
+    require_exact_memory_equal(
+        "whole.start.physical_backing_bytes",
+        baseline.whole_start_physical_backing_bytes,
+        new.whole_start_physical_backing_bytes,
+    )?;
+    require_exact_memory_equal(
+        "whole.start.logical_live_bytes",
+        baseline.whole_start_logical_live_bytes,
+        new.whole_start_logical_live_bytes,
+    )?;
+
+    for (field, start, returned) in [
+        (
+            "baseline.backward.return.physical_backing_bytes",
+            baseline.whole_start_physical_backing_bytes,
+            baseline.backward_return_physical_backing_bytes,
+        ),
+        (
+            "baseline.backward.return.logical_live_bytes",
+            baseline.whole_start_logical_live_bytes,
+            baseline.backward_return_logical_live_bytes,
+        ),
+        (
+            "new.backward.return.physical_backing_bytes",
+            new.whole_start_physical_backing_bytes,
+            new.backward_return_physical_backing_bytes,
+        ),
+        (
+            "new.backward.return.logical_live_bytes",
+            new.whole_start_logical_live_bytes,
+            new.backward_return_logical_live_bytes,
+        ),
+        (
+            "baseline.whole.return.physical_backing_bytes",
+            baseline.whole_start_physical_backing_bytes,
+            baseline.whole_return_physical_backing_bytes,
+        ),
+        (
+            "baseline.whole.return.logical_live_bytes",
+            baseline.whole_start_logical_live_bytes,
+            baseline.whole_return_logical_live_bytes,
+        ),
+        (
+            "new.whole.return.physical_backing_bytes",
+            new.whole_start_physical_backing_bytes,
+            new.whole_return_physical_backing_bytes,
+        ),
+        (
+            "new.whole.return.logical_live_bytes",
+            new.whole_start_logical_live_bytes,
+            new.whole_return_logical_live_bytes,
+        ),
+    ] {
+        require_exact_memory_equal(field, start, returned)?;
+    }
+
+    for (field, backward_return, whole_return) in [
+        (
+            "baseline.backward.return_eq_whole.return.physical_backing_bytes",
+            baseline.backward_return_physical_backing_bytes,
+            baseline.whole_return_physical_backing_bytes,
+        ),
+        (
+            "baseline.backward.return_eq_whole.return.logical_live_bytes",
+            baseline.backward_return_logical_live_bytes,
+            baseline.whole_return_logical_live_bytes,
+        ),
+        (
+            "new.backward.return_eq_whole.return.physical_backing_bytes",
+            new.backward_return_physical_backing_bytes,
+            new.whole_return_physical_backing_bytes,
+        ),
+        (
+            "new.backward.return_eq_whole.return.logical_live_bytes",
+            new.backward_return_logical_live_bytes,
+            new.whole_return_logical_live_bytes,
+        ),
+    ] {
+        require_exact_memory_equal(field, backward_return, whole_return)?;
+    }
+
+    require_exact_memory_nonincrease(
+        "backward.physical_backing_peak_bytes",
+        baseline.backward_peak_physical_backing_bytes,
+        new.backward_peak_physical_backing_bytes,
+    )?;
+    require_exact_memory_nonincrease(
+        "backward.logical_live_peak_bytes",
+        baseline.backward_peak_logical_live_bytes,
+        new.backward_peak_logical_live_bytes,
+    )?;
+    require_exact_memory_nonincrease(
+        "whole.physical_backing_peak_bytes",
+        baseline.whole_peak_physical_backing_bytes,
+        new.whole_peak_physical_backing_bytes,
+    )?;
+    require_exact_memory_nonincrease(
+        "whole.logical_live_peak_bytes",
+        baseline.whole_peak_logical_live_bytes,
+        new.whole_peak_logical_live_bytes,
+    )?;
+    Ok(())
+}
+
+const TASK6_RAW_U64_FIELDS: &[&str] = &[
+    "actual_device_arena_bytes",
+    "backward_start_physical_backing_bytes",
+    "backward_start_logical_live_bytes",
+    "backward_peak_physical_backing_bytes",
+    "backward_peak_logical_live_bytes",
+    "backward_summed_requested_bytes",
+    "backward_peak_window_end_physical_backing_bytes",
+    "backward_peak_window_end_logical_live_bytes",
+    "backward_return_physical_backing_bytes",
+    "backward_return_logical_live_bytes",
+    "whole_start_physical_backing_bytes",
+    "whole_start_logical_live_bytes",
+    "whole_peak_physical_backing_bytes",
+    "whole_peak_logical_live_bytes",
+    "whole_summed_requested_bytes",
+    "whole_peak_window_end_physical_backing_bytes",
+    "whole_peak_window_end_logical_live_bytes",
+    "whole_return_physical_backing_bytes",
+    "whole_return_logical_live_bytes",
+];
+
+fn validate_task6_exact_memory_schema(value: &serde_json::Value) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "raw record must be a JSON object".to_owned())?;
+    for field in TASK6_RAW_U64_FIELDS {
+        let value = object
+            .get(*field)
+            .ok_or_else(|| format!("missing raw integer field {field}"))?;
+        if value.as_u64().is_none() {
+            return Err(format!("raw field {field} must be an integer byte value"));
+        }
+    }
+    if object
+        .keys()
+        .any(|field| field.to_ascii_lowercase().contains("gib"))
+    {
+        return Err("raw schema must not contain rounded GiB fields".to_owned());
+    }
+    Ok(())
+}
+
+fn task6_exact_memory_record_for_test(arm: &str) -> Task6ExactMemoryRecord {
+    Task6ExactMemoryRecord {
+        schema_version: TASK6_EXACT_MEMORY_SCHEMA_VERSION,
+        artifact_head: "head".to_owned(),
+        artifact_tree: "tree".to_owned(),
+        release_executable: "target/release/test".to_owned(),
+        release_executable_sha256: "sha256".to_owned(),
+        workload_id: "canonical-unified-fixture-for-comparator".to_owned(),
+        sample_index: 0,
+        pair_index: 0,
+        order_in_pair: 0,
+        arm: arm.to_owned(),
+        backward_options: format!("windowed_dr={}", arm == "new"),
+        final_trace_size_log_2: 4,
+        allocator_block_log_size: TASK6_ALLOCATOR_BLOCK_LOG_SIZE,
+        max_device_allocation_blocks_count: TASK6_MAX_DEVICE_BLOCKS,
+        actual_device_allocation_blocks_count: TASK6_MAX_DEVICE_BLOCKS,
+        actual_device_arena_bytes: TASK6_DEVICE_ARENA_BYTES,
+        small_allocator_enabled: true,
+        small_allocator_log_chunk_size: TASK6_SMALL_ALLOCATOR_LOG_CHUNK_SIZE,
+        small_allocator_pool_blocks: TASK6_SMALL_ALLOCATOR_POOL_BLOCKS,
+        backward_start_physical_backing_bytes: 100,
+        backward_start_logical_live_bytes: 10,
+        backward_peak_physical_backing_bytes: 200,
+        backward_peak_logical_live_bytes: 120,
+        backward_summed_requested_bytes: 90,
+        backward_peak_window_end_physical_backing_bytes: 150,
+        backward_peak_window_end_logical_live_bytes: 80,
+        backward_return_physical_backing_bytes: 100,
+        backward_return_logical_live_bytes: 10,
+        whole_start_physical_backing_bytes: 100,
+        whole_start_logical_live_bytes: 10,
+        whole_peak_physical_backing_bytes: 300,
+        whole_peak_logical_live_bytes: 220,
+        whole_summed_requested_bytes: 190,
+        whole_peak_window_end_physical_backing_bytes: 175,
+        whole_peak_window_end_logical_live_bytes: 90,
+        whole_return_physical_backing_bytes: 100,
+        whole_return_logical_live_bytes: 10,
+        proof_sha256: "proof".to_owned(),
+        proof_time_ms: 1,
+        cuda_proof_time_ms: 1.0,
+        selected_strategy: "WindowedR0".to_owned(),
+        dr_bundle_final_log: (arm == "new").then_some(4),
+        dr_prepared_layer_count: u64::from(arm == "new"),
+        legacy_dr_execution_count: 1,
+        dr_r0_launch_count: 0,
+        dr_continuation_launch_count: 0,
+        dr_tail_launch_count: 0,
+    }
+}
+
+#[test]
+fn cpu_exact_memory_comparator_rejects_each_positive_byte_delta() {
+    let baseline = task6_exact_memory_record_for_test("baseline");
+    for (field, mutate) in [
+        ("backward.physical_backing_peak_bytes", 0usize),
+        ("backward.logical_live_peak_bytes", 1),
+        ("whole.physical_backing_peak_bytes", 2),
+        ("whole.logical_live_peak_bytes", 3),
+    ] {
+        let mut new = task6_exact_memory_record_for_test("new");
+        match mutate {
+            0 => new.backward_peak_physical_backing_bytes += 1,
+            1 => new.backward_peak_logical_live_bytes += 1,
+            2 => new.whole_peak_physical_backing_bytes += 1,
+            3 => new.whole_peak_logical_live_bytes += 1,
+            _ => unreachable!(),
+        }
+        let error = compare_task6_exact_memory_pair(&baseline, &new).unwrap_err();
+        assert_eq!(error.field, field);
+        assert_eq!(error.delta, 1);
+    }
+}
+
+#[test]
+fn cpu_exact_memory_comparator_rejects_hidden_small_pool_growth() {
+    let baseline = task6_exact_memory_record_for_test("baseline");
+    let mut new = task6_exact_memory_record_for_test("new");
+    new.backward_peak_logical_live_bytes += 1;
+    let error = compare_task6_exact_memory_pair(&baseline, &new).unwrap_err();
+    assert_eq!(error.field, "backward.logical_live_peak_bytes");
+}
+
+#[test]
+fn cpu_exact_memory_comparator_rejects_whole_peak_masking() {
+    let baseline = task6_exact_memory_record_for_test("baseline");
+    let mut new = task6_exact_memory_record_for_test("new");
+    new.backward_peak_physical_backing_bytes += 1;
+    let error = compare_task6_exact_memory_pair(&baseline, &new).unwrap_err();
+    assert_eq!(error.field, "backward.physical_backing_peak_bytes");
+}
+
+#[test]
+fn cpu_exact_memory_record_is_raw_integer_bytes() {
+    let record = task6_exact_memory_record_for_test("baseline");
+    let mut value = serde_json::to_value(record).unwrap();
+    validate_task6_exact_memory_schema(&value).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .remove("whole_peak_logical_live_bytes");
+    let error = validate_task6_exact_memory_schema(&value).unwrap_err();
+    assert!(error.contains("whole_peak_logical_live_bytes"));
+}
+
+#[test]
+fn cpu_exact_memory_record_rejects_entry_config_and_return_drift() {
+    let baseline = task6_exact_memory_record_for_test("baseline");
+    for (field, mutate) in [
+        ("backward.start.physical_backing_bytes", 0usize),
+        ("whole.start.logical_live_bytes", 1),
+        ("allocator_block_log_size", 2),
+        ("max_device_allocation_blocks_count", 3),
+        ("actual_device_allocation_blocks_count", 4),
+        ("actual_device_arena_bytes", 5),
+        ("small_allocator_enabled", 6),
+        ("small_allocator_log_chunk_size", 7),
+        ("small_allocator_pool_blocks", 8),
+        ("new.backward.return.physical_backing_bytes", 9),
+        ("new.whole.return.logical_live_bytes", 10),
+    ] {
+        let mut new = task6_exact_memory_record_for_test("new");
+        match mutate {
+            0 => new.backward_start_physical_backing_bytes += 1,
+            1 => new.whole_start_logical_live_bytes += 1,
+            2 => new.allocator_block_log_size += 1,
+            3 => new.max_device_allocation_blocks_count += 1,
+            4 => new.actual_device_allocation_blocks_count += 1,
+            5 => new.actual_device_arena_bytes += 1,
+            6 => new.small_allocator_enabled = false,
+            7 => new.small_allocator_log_chunk_size += 1,
+            8 => new.small_allocator_pool_blocks += 1,
+            9 => new.backward_return_physical_backing_bytes += 1,
+            10 => new.whole_return_logical_live_bytes += 1,
+            _ => unreachable!(),
+        }
+        let error = compare_task6_exact_memory_pair(&baseline, &new).unwrap_err();
+        assert_eq!(error.field, field);
+    }
+
+    let mut baseline = task6_exact_memory_record_for_test("baseline");
+    let mut new = task6_exact_memory_record_for_test("new");
+    baseline.whole_start_logical_live_bytes += 1;
+    new.whole_start_logical_live_bytes += 1;
+    let error = compare_task6_exact_memory_pair(&baseline, &new).unwrap_err();
+    assert_eq!(error.field, "baseline.backward.return.logical_live_bytes");
+}
+
+#[test]
+fn cpu_exact_memory_fixture_trace_len_provenance_rejects_prepared_mismatch() {
+    let layout_path = test_artifact_path(TASK6_FIXTURE_LAYOUT_PATH);
+    assert_eq!(task6_sha256_file(&layout_path), TASK6_FIXTURE_LAYOUT_SHA256);
+    let layout_declared_trace_len = task6_fixture_trace_len_from_layout(&layout_path).unwrap();
+    assert_eq!(layout_declared_trace_len, 1usize << 23);
+    require_task6_prepared_trace_len_matches_layout(
+        layout_declared_trace_len,
+        layout_declared_trace_len,
+    )
+    .unwrap();
+
+    let prepared_fixture_trace_len = layout_declared_trace_len.checked_add(1).unwrap();
+    let error = require_task6_prepared_trace_len_matches_layout(
+        layout_declared_trace_len,
+        prepared_fixture_trace_len,
+    )
+    .unwrap_err();
+    assert_eq!(error.layout_declared_trace_len, layout_declared_trace_len);
+    assert_eq!(error.prepared_fixture_trace_len, prepared_fixture_trace_len);
+    assert!(error
+        .to_string()
+        .contains("layout_declared_trace_len=8388608"));
+    assert!(error
+        .to_string()
+        .contains("prepared_fixture_trace_len=8388609"));
+
+    for invalid_layout in [
+        serde_json::json!({}),
+        serde_json::json!({"trace_len": "8388608"}),
+        serde_json::json!({"trace_len": 0}),
+    ] {
+        assert!(task6_fixture_trace_len_from_layout_value(&invalid_layout).is_err());
+    }
+}
+
+struct Task6MeasuredProofJob<'context> {
+    job: GpuGKRProofJob<'static, Global>,
+    backward: crate::proof::ProofMemoryHighWaterSink<'context>,
+    whole: gpu_prover_context::DeviceMemoryHighWaterObserver<'context>,
+    sequence: Arc<AtomicUsize>,
+    whole_start_sequence: usize,
+    host_start: Instant,
+}
+
+struct Task6MeasuredProof {
+    proof: GKRProof<BF, E4, DefaultTreeConstructor>,
+    proof_time_ms: u64,
+    cuda_proof_time_ms: f32,
+    backward: gpu_prover_context::PoolMemoryHighWaterReport,
+    whole: gpu_prover_context::PoolMemoryHighWaterReport,
+    legacy_dr_execution_count: usize,
+    dr_prepared_layer_count: usize,
+    dr_bundle_final_log: Option<u32>,
+}
+
+impl Task6MeasuredProofJob<'_> {
+    fn finish(self) -> CudaResult<Task6MeasuredProof> {
+        let (proof, cuda_proof_time_ms) = self.job.finish()?;
+        let job_finish_sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
+        let backward = self.backward.finish();
+        let backward_finish_sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
+        let whole = self.whole.finish();
+        let whole_finish_sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
+
+        assert!(self.whole_start_sequence < backward.start_sequence);
+        assert!(backward.start_sequence < backward.seal_sequence);
+        assert!(backward.seal_sequence < job_finish_sequence);
+        assert!(job_finish_sequence < backward_finish_sequence);
+        assert!(backward_finish_sequence <= whole_finish_sequence);
+
+        Ok(Task6MeasuredProof {
+            proof,
+            proof_time_ms: self.host_start.elapsed().as_millis().try_into().unwrap(),
+            cuda_proof_time_ms,
+            backward: backward.backward,
+            whole,
+            legacy_dr_execution_count: backward.legacy_dr_execution_count,
+            dr_prepared_layer_count: backward.dr_prepared_layer_count,
+            dr_bundle_final_log: backward.dr_bundle_final_log,
+        })
+    }
+}
+
+impl BasicUnrolledFixture {
+    fn schedule_task6_exact_memory_prove(
+        &self,
+        backward_options: GkrBackwardOptions,
+    ) -> CudaResult<Task6MeasuredProofJob<'_>> {
+        let sequence = Arc::new(AtomicUsize::new(0));
+        let whole = self.context.observe_device_memory_high_water();
+        let whole_start_sequence = sequence.fetch_add(1, Ordering::SeqCst);
+        let strategy = resolve_backward_execution_strategy(
+            &self.gkr_programs,
+            &self.prover_config,
+            backward_options,
+        );
+        let mut transfers = construct_after_windowed_backward_preflight(
+            &self.gkr_programs,
+            strategy,
+            backward_options,
+            self.final_trace_size_log_2,
+            || self.create_transfers(),
+        )
+        .unwrap()?;
+
+        let h2d_stream = self.context.get_h2d_stream();
+        let transfer_range = Range::new("gkr.proof.h2d_transfers")?;
+        transfer_range.start(h2d_stream)?;
+        transfers.schedule(&self.context)?;
+        transfer_range.end(h2d_stream)?;
+
+        let mem_before_prove = self.context.get_device_memory_usage();
+        let mut backward = crate::proof::ProofMemoryHighWaterSink::new(Arc::clone(&sequence));
+        let host_start = Instant::now();
+        let mut job = crate::proof::prove_measured::<Global>(
+            &self.gkr_programs,
+            &self.prover_config,
+            self.final_trace_size_log_2,
+            transfers,
+            backward_options,
+            &mut backward,
+            &self.context,
+        )?;
+        let mem_after_prove = self.context.get_device_memory_usage();
+        assert_eq!(
+            mem_after_prove, mem_before_prove,
+            "measured prove must release every proof-owned device allocation"
+        );
+        job.ranges.insert(0, transfer_range);
+        Ok(Task6MeasuredProofJob {
+            job,
+            backward,
+            whole,
+            sequence,
+            whole_start_sequence,
+            host_start,
+        })
+    }
+}
+
+fn task6_checked_u64(value: usize, field: &str) -> u64 {
+    value
+        .try_into()
+        .unwrap_or_else(|_| panic!("{field} does not fit in u64: {value}"))
+}
+
+fn task6_command_stdout(program: &str, args: &[&str]) -> String {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .unwrap_or_else(|error| panic!("failed to run {program}: {error}"));
+    assert!(
+        output.status.success(),
+        "{program} {:?} failed: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+fn task6_sha256_bytes(bytes: &[u8]) -> String {
+    let mut child = Command::new("sha256sum")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("sha256sum must be available for the exact-memory gate");
+    child.stdin.as_mut().unwrap().write_all(bytes).unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_owned()
+}
+
+fn task6_sha256_file(path: &std::path::Path) -> String {
+    task6_command_stdout("sha256sum", &[path.to_str().unwrap()])
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_owned()
+}
+
+fn task6_proof_sha256(proof: &GKRProof<BF, E4, DefaultTreeConstructor>) -> String {
+    task6_sha256_bytes(&serde_json::to_vec_pretty(proof).unwrap())
+}
+
+fn task6_record_from_finished(
+    finished: &Task6MeasuredProof,
+    artifact_head: &str,
+    artifact_tree: &str,
+    release_executable: &str,
+    release_executable_sha256: &str,
+    workload_id: &str,
+    sample_index: usize,
+    options: GkrBackwardOptions,
+    selected_strategy: BackwardExecutionStrategy,
+    final_trace_size_log_2: u32,
+    actual_device_arena_bytes: usize,
+) -> Task6ExactMemoryRecord {
+    let pair_index = sample_index / 2;
+    let order_in_pair = sample_index % 2;
+    let arm = if options.windowed_dr {
+        "new"
+    } else {
+        "baseline"
+    };
+    let backward = finished.backward;
+    let whole = finished.whole;
+    Task6ExactMemoryRecord {
+        schema_version: TASK6_EXACT_MEMORY_SCHEMA_VERSION,
+        artifact_head: artifact_head.to_owned(),
+        artifact_tree: artifact_tree.to_owned(),
+        release_executable: release_executable.to_owned(),
+        release_executable_sha256: release_executable_sha256.to_owned(),
+        workload_id: workload_id.to_owned(),
+        sample_index: sample_index.try_into().unwrap(),
+        pair_index: pair_index.try_into().unwrap(),
+        order_in_pair: order_in_pair.try_into().unwrap(),
+        arm: arm.to_owned(),
+        backward_options: format!("{options:?}"),
+        final_trace_size_log_2,
+        allocator_block_log_size: TASK6_ALLOCATOR_BLOCK_LOG_SIZE,
+        max_device_allocation_blocks_count: TASK6_MAX_DEVICE_BLOCKS,
+        actual_device_allocation_blocks_count: task6_checked_u64(
+            actual_device_arena_bytes >> TASK6_ALLOCATOR_BLOCK_LOG_SIZE,
+            "actual_device_allocation_blocks_count",
+        ),
+        actual_device_arena_bytes: task6_checked_u64(
+            actual_device_arena_bytes,
+            "actual_device_arena_bytes",
+        ),
+        small_allocator_enabled: true,
+        small_allocator_log_chunk_size: TASK6_SMALL_ALLOCATOR_LOG_CHUNK_SIZE,
+        small_allocator_pool_blocks: TASK6_SMALL_ALLOCATOR_POOL_BLOCKS,
+        backward_start_physical_backing_bytes: task6_checked_u64(
+            backward.start.physical_backing_bytes,
+            "backward_start_physical_backing_bytes",
+        ),
+        backward_start_logical_live_bytes: task6_checked_u64(
+            backward.start.logical_live_bytes,
+            "backward_start_logical_live_bytes",
+        ),
+        backward_peak_physical_backing_bytes: task6_checked_u64(
+            backward.physical_backing_peak_bytes,
+            "backward_peak_physical_backing_bytes",
+        ),
+        backward_peak_logical_live_bytes: task6_checked_u64(
+            backward.logical_live_peak_bytes,
+            "backward_peak_logical_live_bytes",
+        ),
+        backward_summed_requested_bytes: task6_checked_u64(
+            backward.summed_requested_bytes,
+            "backward_summed_requested_bytes",
+        ),
+        backward_peak_window_end_physical_backing_bytes: task6_checked_u64(
+            backward.peak_window_end.physical_backing_bytes,
+            "backward_peak_window_end_physical_backing_bytes",
+        ),
+        backward_peak_window_end_logical_live_bytes: task6_checked_u64(
+            backward.peak_window_end.logical_live_bytes,
+            "backward_peak_window_end_logical_live_bytes",
+        ),
+        backward_return_physical_backing_bytes: task6_checked_u64(
+            backward.return_to_entry.physical_backing_bytes,
+            "backward_return_physical_backing_bytes",
+        ),
+        backward_return_logical_live_bytes: task6_checked_u64(
+            backward.return_to_entry.logical_live_bytes,
+            "backward_return_logical_live_bytes",
+        ),
+        whole_start_physical_backing_bytes: task6_checked_u64(
+            whole.start.physical_backing_bytes,
+            "whole_start_physical_backing_bytes",
+        ),
+        whole_start_logical_live_bytes: task6_checked_u64(
+            whole.start.logical_live_bytes,
+            "whole_start_logical_live_bytes",
+        ),
+        whole_peak_physical_backing_bytes: task6_checked_u64(
+            whole.physical_backing_peak_bytes,
+            "whole_peak_physical_backing_bytes",
+        ),
+        whole_peak_logical_live_bytes: task6_checked_u64(
+            whole.logical_live_peak_bytes,
+            "whole_peak_logical_live_bytes",
+        ),
+        whole_summed_requested_bytes: task6_checked_u64(
+            whole.summed_requested_bytes,
+            "whole_summed_requested_bytes",
+        ),
+        whole_peak_window_end_physical_backing_bytes: task6_checked_u64(
+            whole.peak_window_end.physical_backing_bytes,
+            "whole_peak_window_end_physical_backing_bytes",
+        ),
+        whole_peak_window_end_logical_live_bytes: task6_checked_u64(
+            whole.peak_window_end.logical_live_bytes,
+            "whole_peak_window_end_logical_live_bytes",
+        ),
+        whole_return_physical_backing_bytes: task6_checked_u64(
+            whole.return_to_entry.physical_backing_bytes,
+            "whole_return_physical_backing_bytes",
+        ),
+        whole_return_logical_live_bytes: task6_checked_u64(
+            whole.return_to_entry.logical_live_bytes,
+            "whole_return_logical_live_bytes",
+        ),
+        proof_sha256: task6_proof_sha256(&finished.proof),
+        proof_time_ms: finished.proof_time_ms,
+        cuda_proof_time_ms: finished.cuda_proof_time_ms,
+        selected_strategy: format!("{selected_strategy:?}"),
+        dr_bundle_final_log: finished.dr_bundle_final_log,
+        dr_prepared_layer_count: finished.dr_prepared_layer_count.try_into().unwrap(),
+        legacy_dr_execution_count: finished.legacy_dr_execution_count.try_into().unwrap(),
+        dr_r0_launch_count: 0,
+        dr_continuation_launch_count: 0,
+        dr_tail_launch_count: 0,
+    }
+}
+
+fn task6_assert_peak_determinism(rows: &[Task6ExactMemoryRecord], arm: &str) {
+    let mut matching = rows.iter().filter(|row| row.arm == arm);
+    let first = matching.next().expect("each arm must have measured rows");
+    let expected = (
+        first.backward_peak_physical_backing_bytes,
+        first.backward_peak_logical_live_bytes,
+        first.whole_peak_physical_backing_bytes,
+        first.whole_peak_logical_live_bytes,
+    );
+    for row in matching {
+        assert_eq!(
+            (
+                row.backward_peak_physical_backing_bytes,
+                row.backward_peak_logical_live_bytes,
+                row.whole_peak_physical_backing_bytes,
+                row.whole_peak_logical_live_bytes,
+            ),
+            expected,
+            "all {arm} repetitions must have deterministic four-cell peaks"
+        );
+    }
+}
+
+fn task6_assert_maxima_nonincrease(rows: &[Task6ExactMemoryRecord]) {
+    let maxima = |arm: &str, field: fn(&Task6ExactMemoryRecord) -> u64| {
+        rows.iter()
+            .filter(|row| row.arm == arm)
+            .map(field)
+            .max()
+            .expect("each arm must have measured rows")
+    };
+    for (field, accessor) in [
+        (
+            "backward.physical_backing_peak_bytes",
+            (|row: &Task6ExactMemoryRecord| row.backward_peak_physical_backing_bytes)
+                as fn(&Task6ExactMemoryRecord) -> u64,
+        ),
+        (
+            "backward.logical_live_peak_bytes",
+            |row: &Task6ExactMemoryRecord| row.backward_peak_logical_live_bytes,
+        ),
+        (
+            "whole.physical_backing_peak_bytes",
+            |row: &Task6ExactMemoryRecord| row.whole_peak_physical_backing_bytes,
+        ),
+        (
+            "whole.logical_live_peak_bytes",
+            |row: &Task6ExactMemoryRecord| row.whole_peak_logical_live_bytes,
+        ),
+    ] {
+        require_exact_memory_nonincrease(
+            field,
+            maxima("baseline", accessor),
+            maxima("new", accessor),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+#[test]
+#[ignore]
+fn run_dr_task6_exact_memory_review() {
+    let output_root = std::env::var("GKR_TASK6_EXACT_MEMORY_OUT")
+        .expect("GKR_TASK6_EXACT_MEMORY_OUT must name the immutable evidence directory");
+    let output_root = std::path::PathBuf::from(output_root);
+    std::fs::create_dir_all(&output_root).unwrap();
+
+    let artifact_head = task6_command_stdout("git", &["rev-parse", "HEAD"]);
+    let artifact_tree = task6_command_stdout("git", &["rev-parse", "HEAD^{tree}"]);
+    let release_executable = std::env::current_exe().unwrap();
+    let release_executable_sha256 = task6_sha256_file(&release_executable);
+    let release_executable = release_executable.to_string_lossy().into_owned();
+    let fixture_layout_path = test_artifact_path(TASK6_FIXTURE_LAYOUT_PATH);
+    let fixture_layout_sha256 = task6_sha256_file(&fixture_layout_path);
+    assert_eq!(fixture_layout_sha256, TASK6_FIXTURE_LAYOUT_SHA256);
+    let fixture_layout_declared_trace_len =
+        task6_fixture_trace_len_from_layout(&fixture_layout_path).unwrap();
+    let fixture_binary_sha256 = task6_sha256_file(&test_artifact_path(TASK6_FIXTURE_BINARY_PATH));
+    let fixture_text_sha256 = task6_sha256_file(&test_artifact_path(TASK6_FIXTURE_TEXT_PATH));
+    let device_census = serde_json::json!({
+        "gpu": task6_command_stdout(
+            "nvidia-smi",
+            &["--query-gpu=name,uuid,driver_version,pstate,clocks.sm,power.draw,memory.free", "--format=csv,noheader,nounits"],
+        ),
+        "compute_processes": task6_command_stdout(
+            "nvidia-smi",
+            &["--query-compute-apps=pid,process_name,used_memory", "--format=csv,noheader,nounits"],
+        ),
+    });
+
+    let fixture = prepare_unified_proof_fixture();
+    assert_eq!(
+        fixture.base.circuit_type,
+        CircuitType::Unrolled(UnrolledCircuitType::Unified)
+    );
+    let prepared_fixture_trace_len = fixture.base.compiled_circuit.trace_len;
+    require_task6_prepared_trace_len_matches_layout(
+        fixture_layout_declared_trace_len,
+        prepared_fixture_trace_len,
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert!(prepared_fixture_trace_len.is_power_of_two());
+    assert_eq!(fixture.base.final_trace_size_log_2, 4);
+    assert_eq!(
+        fixture.base.prover_config.security_level,
+        SecurityLevel::Sec80
+    );
+    let workload_id = format!(
+        "canonical-unified-reduced-machine-layout-trace-{prepared_fixture_trace_len}-final-log-{}-sec80-fixed-nd",
+        fixture.base.final_trace_size_log_2
+    );
+    let actual_device_arena_bytes = fixture.base.context.get_mem_size();
+    assert_eq!(
+        task6_checked_u64(actual_device_arena_bytes, "actual_device_arena_bytes"),
+        TASK6_DEVICE_ARENA_BYTES,
+        "the fixture must not silently reduce the pinned 64 GiB arena"
+    );
+
+    let baseline_options = GkrBackwardOptions {
+        windowed_dr: false,
+        ..GkrBackwardOptions::default()
+    };
+    let new_options = GkrBackwardOptions {
+        windowed_dr: true,
+        ..GkrBackwardOptions::default()
+    };
+    let baseline_strategy = resolve_backward_execution_strategy(
+        &fixture.base.gkr_programs,
+        &fixture.base.prover_config,
+        baseline_options,
+    );
+    let new_strategy = resolve_backward_execution_strategy(
+        &fixture.base.gkr_programs,
+        &fixture.base.prover_config,
+        new_options,
+    );
+    assert_eq!(baseline_strategy, new_strategy);
+    assert!(!fixture
+        .base
+        .gkr_programs
+        .dr_window_programs_ready(fixture.base.final_trace_size_log_2));
+
+    let mut cold_preflight_count = 0usize;
+    preflight_windowed_backward(
+        &fixture.base.gkr_programs,
+        baseline_strategy,
+        baseline_options,
+        fixture.base.final_trace_size_log_2,
+    )
+    .unwrap();
+    cold_preflight_count += 1;
+    assert!(!fixture
+        .base
+        .gkr_programs
+        .dr_window_programs_ready(fixture.base.final_trace_size_log_2));
+    preflight_windowed_backward(
+        &fixture.base.gkr_programs,
+        new_strategy,
+        new_options,
+        fixture.base.final_trace_size_log_2,
+    )
+    .unwrap();
+    cold_preflight_count += 1;
+    let bundle = fixture
+        .base
+        .gkr_programs
+        .resolve_dr_window_programs(fixture.base.final_trace_size_log_2)
+        .unwrap();
+    let bundle_again = fixture
+        .base
+        .gkr_programs
+        .resolve_dr_window_programs(fixture.base.final_trace_size_log_2)
+        .unwrap();
+    assert!(Arc::ptr_eq(&bundle, &bundle_again));
+    assert_eq!(
+        bundle.final_trace_log(),
+        fixture.base.final_trace_size_log_2
+    );
+
+    let mut excluded_warmup_count = 0usize;
+    for options in [baseline_options, new_options] {
+        let (proof, _) = fixture
+            .schedule_prove_with(options)
+            .unwrap()
+            .finish()
+            .unwrap();
+        assert_gkr_proof_eq_for_test(&proof, &fixture.expected_cpu_proof);
+        drop(proof);
+        excluded_warmup_count += 1;
+    }
+
+    let measured_order = [
+        baseline_options,
+        new_options,
+        new_options,
+        baseline_options,
+        baseline_options,
+        new_options,
+        new_options,
+        baseline_options,
+        baseline_options,
+        new_options,
+        new_options,
+        baseline_options,
+    ];
+    let mut rows = Vec::with_capacity(measured_order.len());
+    let mut matched_cpu_reference_proof_count = 0usize;
+    for (sample_index, options) in measured_order.into_iter().enumerate() {
+        let selected_strategy = resolve_backward_execution_strategy(
+            &fixture.base.gkr_programs,
+            &fixture.base.prover_config,
+            options,
+        );
+        let finished = fixture
+            .base
+            .schedule_task6_exact_memory_prove(options)
+            .unwrap()
+            .finish()
+            .unwrap();
+        assert_gkr_proof_eq_for_test(&finished.proof, &fixture.expected_cpu_proof);
+        matched_cpu_reference_proof_count += 1;
+        let row = task6_record_from_finished(
+            &finished,
+            &artifact_head,
+            &artifact_tree,
+            &release_executable,
+            &release_executable_sha256,
+            &workload_id,
+            sample_index,
+            options,
+            selected_strategy,
+            fixture.base.final_trace_size_log_2,
+            actual_device_arena_bytes,
+        );
+        validate_task6_exact_memory_schema(&serde_json::to_value(&row).unwrap()).unwrap();
+        assert!(row.legacy_dr_execution_count > 0);
+        if options.windowed_dr {
+            assert!(row.dr_prepared_layer_count > 0);
+            assert_eq!(row.dr_prepared_layer_count, row.legacy_dr_execution_count);
+            assert_eq!(
+                row.dr_bundle_final_log,
+                Some(fixture.base.final_trace_size_log_2)
+            );
+        } else {
+            assert_eq!(row.dr_prepared_layer_count, 0);
+            assert_eq!(row.dr_bundle_final_log, None);
+        }
+        assert_eq!(row.dr_r0_launch_count, 0);
+        assert_eq!(row.dr_continuation_launch_count, 0);
+        assert_eq!(row.dr_tail_launch_count, 0);
+        rows.push(row);
+    }
+
+    assert_eq!(rows.len(), 12);
+    for pair in rows.chunks_exact(2) {
+        let (baseline, new) = if pair[0].arm == "baseline" {
+            (&pair[0], &pair[1])
+        } else {
+            (&pair[1], &pair[0])
+        };
+        assert_eq!(baseline.arm, "baseline");
+        assert_eq!(new.arm, "new");
+        assert_eq!(baseline.proof_sha256, new.proof_sha256);
+        assert_eq!(baseline.selected_strategy, new.selected_strategy);
+        compare_task6_exact_memory_pair(baseline, new).unwrap_or_else(|error| panic!("{error}"));
+    }
+    let expected_proof_sha256 = &rows[0].proof_sha256;
+    assert!(rows
+        .iter()
+        .all(|row| row.proof_sha256 == *expected_proof_sha256));
+    task6_assert_peak_determinism(&rows, "baseline");
+    task6_assert_peak_determinism(&rows, "new");
+    task6_assert_maxima_nonincrease(&rows);
+    let distinct_proof_sha256_count = rows
+        .iter()
+        .map(|row| row.proof_sha256.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    let proof_execution_count = excluded_warmup_count + rows.len();
+    let fixture_trace_len_log_2 = prepared_fixture_trace_len.trailing_zeros();
+
+    let manifest = serde_json::json!({
+        "schema_version": TASK6_EXACT_MEMORY_SCHEMA_VERSION,
+        "artifact_head": artifact_head,
+        "artifact_tree": artifact_tree,
+        "release_executable": release_executable,
+        "release_executable_sha256": release_executable_sha256,
+        "workload_source": TASK6_WORKLOAD_SOURCE,
+        "workload_id": workload_id,
+        "fixture_layout": TASK6_FIXTURE_LAYOUT_PATH,
+        "fixture_layout_sha256": fixture_layout_sha256,
+        "fixture_layout_declared_trace_len": task6_checked_u64(
+            fixture_layout_declared_trace_len,
+            "fixture_layout_declared_trace_len",
+        ),
+        "prepared_fixture_trace_len": task6_checked_u64(
+            prepared_fixture_trace_len,
+            "prepared_fixture_trace_len",
+        ),
+        "fixture_binary": TASK6_FIXTURE_BINARY_PATH,
+        "fixture_binary_sha256": fixture_binary_sha256,
+        "fixture_text": TASK6_FIXTURE_TEXT_PATH,
+        "fixture_text_sha256": fixture_text_sha256,
+        "fixture_non_determinism_words": TASK6_FIXTURE_NON_DETERMINISM_WORDS,
+        "fixture_trace_len_log_2": fixture_trace_len_log_2,
+        "fixture_final_trace_size_log_2": fixture.base.final_trace_size_log_2,
+        "fixture_security_level": format!("{:?}", fixture.base.prover_config.security_level),
+        "selected_test_count": 1,
+        "cold_preflight_count": cold_preflight_count,
+        "excluded_warmup_count": excluded_warmup_count,
+        "measured_row_count": rows.len(),
+        "proof_execution_count": proof_execution_count,
+        "matched_cpu_reference_proof_count": matched_cpu_reference_proof_count,
+        "distinct_proof_sha256_count": distinct_proof_sha256_count,
+        "counterbalanced_order": "A,B,B,A x 3",
+        "allocator_block_log_size": TASK6_ALLOCATOR_BLOCK_LOG_SIZE,
+        "max_device_allocation_blocks_count": TASK6_MAX_DEVICE_BLOCKS,
+        "actual_device_arena_bytes": actual_device_arena_bytes,
+        "small_allocator_enabled": true,
+        "small_allocator_log_chunk_size": TASK6_SMALL_ALLOCATOR_LOG_CHUNK_SIZE,
+        "small_allocator_pool_blocks": TASK6_SMALL_ALLOCATOR_POOL_BLOCKS,
+    });
+    serde_json::to_writer_pretty(
+        std::fs::File::create(output_root.join("manifest.json")).unwrap(),
+        &manifest,
+    )
+    .unwrap();
+    let mut raw_rows =
+        std::io::BufWriter::new(std::fs::File::create(output_root.join("raw-rows.jsonl")).unwrap());
+    for row in &rows {
+        serde_json::to_writer(&mut raw_rows, row).unwrap();
+        raw_rows.write_all(b"\n").unwrap();
+    }
+    raw_rows.flush().unwrap();
+    let proofs = rows
+        .iter()
+        .map(|row| format!("{} {} {}", row.sample_index, row.arm, row.proof_sha256))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(output_root.join("proofs.sha256"), format!("{proofs}\n")).unwrap();
+    let cpu_reference_parity = format!(
+        "matched_cpu_reference_proof_count={matched_cpu_reference_proof_count}\n\
+         measured_row_count={}\n\
+         distinct_proof_sha256_count={distinct_proof_sha256_count}\n",
+        rows.len(),
+    );
+    std::fs::write(
+        output_root.join("cpu-reference-parity.log"),
+        cpu_reference_parity,
+    )
+    .unwrap();
+    serde_json::to_writer_pretty(
+        std::fs::File::create(output_root.join("device-census.json")).unwrap(),
+        &device_census,
+    )
+    .unwrap();
+}
 
 // ---------------------------------------------------------------------------
 // Generic test bodies

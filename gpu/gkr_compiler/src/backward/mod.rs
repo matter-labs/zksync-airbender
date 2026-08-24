@@ -1,7 +1,11 @@
 pub(crate) mod common;
 pub(crate) mod continuation;
+pub mod main_continuation_window;
+pub mod main_continuation_window_manifest;
 pub(crate) mod r0;
 pub mod window;
+pub mod window_dr;
+pub mod window_dr_manifest;
 pub mod window_manifest;
 
 pub use common::group::{
@@ -44,6 +48,29 @@ pub use continuation::{
     compile_continuations, interpret_continuation_program, ContinuationCompileError,
     ContinuationLayerProgram, ContinuationProgramBundle,
 };
+pub use main_continuation_window::{
+    interpret_main_continuation_window_shape, lower_main_continuation_window_program,
+    MainContinuationWindowCapacities, MainContinuationWindowGroupRecord,
+    MainContinuationWindowLoweringError, MainContinuationWindowProgram,
+    MainContinuationWindowSection, MainContinuationWindowSections, MainContinuationWindowShape,
+    MainContinuationWindowShapeEvaluationError, MainContinuationWindowSource,
+    MAIN_CONTINUATION_WINDOW_COEFFICIENT_BANK_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY, MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY,
+};
+pub use main_continuation_window_manifest::{
+    main_continuation_window_generated_artifacts,
+    main_continuation_window_generated_artifacts_for_bank, main_continuation_window_kernel_symbol,
+    main_continuation_window_translation_unit_name, parse_main_continuation_window_candidate_bank,
+    render_main_continuation_window_manifest, render_main_continuation_window_registry,
+    render_main_continuation_window_translation_unit, resolve_main_continuation_window_kernel,
+    validate_main_continuation_window_generated_tree,
+    validate_main_continuation_window_kernel_bank, MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
+    MAIN_CONTINUATION_WINDOW_FALLBACK_MASK, MAIN_CONTINUATION_WINDOW_GENERATED_NATIVE_DIR,
+    MAIN_CONTINUATION_WINDOW_GENERATED_REGISTRY, MAIN_CONTINUATION_WINDOW_KERNEL_BANK,
+    MAIN_CONTINUATION_WINDOW_KERNEL_COUNT,
+};
 pub use r0::{compile_r0, interpret_r0_program, R0CompileError, R0LayerProgram, R0ProgramBundle};
 pub use window::{
     build_window_grouped_program, derive_window_shape, lower_window_program, lower_window_sections,
@@ -54,6 +81,16 @@ pub use window::{
     WindowOperandWords, WindowPhase, WindowProgram, WindowShape, WindowSourceLane,
     WINDOW_COEFFICIENT_BANK_BIAS, WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS,
     WINDOW_SHAPE_DEFINED_BITS,
+};
+pub use window_dr::{
+    lower_dr_window_program, project_dr_window_inputs, DrWindowInputOccurrence,
+    DrWindowInputOutput, DrWindowInputProjection, DrWindowLoweringError, DrWindowProgram,
+    DrWindowSlotPlan, DrWindowSourceLane,
+};
+pub use window_dr_manifest::{
+    dr_windowed_r0_generated_artifacts, resolve_dr_windowed_r0_dispatch,
+    validate_dr_windowed_r0_dispatch, DrWindowManifestError, DR_WINDOWED_R0_BLOCK_THREADS,
+    DR_WINDOWED_R0_DEFINED_MASK, DR_WINDOWED_R0_KERNEL_SYMBOL, DR_WINDOWED_R0_OBSERVED_MASKS,
 };
 pub use window_manifest::{
     render_windowed_r0_manifest, render_windowed_r0_registry, render_windowed_r0_translation_unit,

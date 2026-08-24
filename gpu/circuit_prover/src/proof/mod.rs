@@ -1,6 +1,8 @@
 pub mod inputs;
 mod orchestration;
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
@@ -17,10 +19,15 @@ use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::{
-    backward_execution_strategy, BackwardExecutionStrategy, GkrBackwardOptions, GkrPrograms,
-    WindowLoweringRejection,
+    backward_execution_strategy, main_continuation_window_count, BackwardExecutionStrategy,
+    DrWindowLoweringRejection, GkrBackwardOptions, GkrPrograms,
+    MainContinuationWindowLoweringRejection, MainLayerExecutionPlanError, WindowLoweringRejection,
 };
 use gpu_prover_context::ProverContext;
+#[cfg(test)]
+use gpu_prover_context::{
+    DeviceMemoryHighWaterObserver, PoolMemoryHighWaterReport, PoolMemoryHighWaterSnapshot,
+};
 
 pub use orchestration::GpuGKRProofJob;
 use orchestration::{
@@ -38,6 +45,127 @@ pub enum GpuProveError {
         layer: usize,
         resource: String,
     },
+    MainContinuationWindowLowering {
+        circuit: String,
+        layer: usize,
+        resource: String,
+    },
+    DrWindowLowering {
+        circuit: String,
+        layer: usize,
+        resource: String,
+    },
+    MainLayerExecutionPlan {
+        error: MainLayerExecutionPlanError,
+    },
+}
+
+#[cfg(test)]
+pub(crate) struct ProofMemoryHighWaterResult {
+    pub(crate) backward: PoolMemoryHighWaterReport,
+    pub(crate) start_sequence: usize,
+    pub(crate) seal_sequence: usize,
+    pub(crate) legacy_dr_execution_count: usize,
+    pub(crate) dr_prepared_layer_count: usize,
+    pub(crate) dr_bundle_final_log: Option<u32>,
+}
+
+#[cfg(test)]
+pub(crate) struct ProofMemoryHighWaterSink<'context> {
+    backward: Option<DeviceMemoryHighWaterObserver<'context>>,
+    sealed: Option<PoolMemoryHighWaterSnapshot>,
+    sequence: Arc<AtomicUsize>,
+    start_sequence: Option<usize>,
+    seal_sequence: Option<usize>,
+    legacy_dr_execution_count: usize,
+    dr_prepared_layer_count: usize,
+    dr_bundle_final_log: Option<u32>,
+}
+
+#[cfg(test)]
+impl<'context> ProofMemoryHighWaterSink<'context> {
+    pub(crate) fn new(sequence: Arc<AtomicUsize>) -> Self {
+        Self {
+            backward: None,
+            sealed: None,
+            sequence,
+            start_sequence: None,
+            seal_sequence: None,
+            legacy_dr_execution_count: 0,
+            dr_prepared_layer_count: 0,
+            dr_bundle_final_log: None,
+        }
+    }
+
+    fn start(&mut self, context: &'context ProverContext) {
+        assert!(
+            self.backward.is_none(),
+            "backward observer must start exactly once"
+        );
+        assert!(
+            self.sealed.is_none(),
+            "backward observer must start before it seals"
+        );
+        assert!(
+            self.start_sequence.is_none(),
+            "backward observer must record exactly one start order"
+        );
+        self.backward = Some(context.observe_device_memory_high_water());
+        self.start_sequence = Some(self.sequence.fetch_add(1, Ordering::SeqCst));
+    }
+
+    fn seal(&mut self, backward_scheduled: &gpu_gkr::backward::GpuGKRBackwardScheduledExecution) {
+        assert!(
+            self.sealed.is_none(),
+            "backward observer must seal exactly once"
+        );
+        let snapshot = self
+            .backward
+            .as_mut()
+            .expect("backward observer must remain owned until proof completion")
+            .seal();
+        self.legacy_dr_execution_count = backward_scheduled.dimension_reducing_layer_count();
+        self.dr_prepared_layer_count = backward_scheduled.dr_prepared_layer_count();
+        self.dr_bundle_final_log = backward_scheduled.dr_prepared_bundle_final_log();
+        self.sealed = Some(snapshot);
+        self.seal_sequence = Some(self.sequence.fetch_add(1, Ordering::SeqCst));
+    }
+
+    pub(crate) fn finish(self) -> ProofMemoryHighWaterResult {
+        let snapshot = self
+            .sealed
+            .expect("backward observer must seal before WHIR scheduling");
+        let backward = self
+            .backward
+            .expect("backward observer must remain owned until proof completion")
+            .finish();
+        assert_eq!(backward.start, snapshot.start);
+        assert_eq!(
+            backward.physical_backing_peak_bytes,
+            snapshot.physical_backing_peak_bytes
+        );
+        assert_eq!(
+            backward.logical_live_peak_bytes,
+            snapshot.logical_live_peak_bytes
+        );
+        assert_eq!(
+            backward.summed_requested_bytes,
+            snapshot.summed_requested_bytes
+        );
+        assert_eq!(backward.peak_window_end, snapshot.peak_window_end);
+        ProofMemoryHighWaterResult {
+            backward,
+            start_sequence: self
+                .start_sequence
+                .expect("backward observer must record its start order"),
+            seal_sequence: self
+                .seal_sequence
+                .expect("backward observer must record its seal order"),
+            legacy_dr_execution_count: self.legacy_dr_execution_count,
+            dr_prepared_layer_count: self.dr_prepared_layer_count,
+            dr_bundle_final_log: self.dr_bundle_final_log,
+        }
+    }
 }
 
 impl std::fmt::Display for GpuProveError {
@@ -51,6 +179,25 @@ impl std::fmt::Display for GpuProveError {
                 formatter,
                 "windowed R0 lowering rejected for {circuit}/{layer}: {resource}"
             ),
+            Self::MainContinuationWindowLowering {
+                circuit,
+                layer,
+                resource,
+            } => write!(
+                formatter,
+                "main continuation window lowering rejected for {circuit}/{layer}: {resource}"
+            ),
+            Self::DrWindowLowering {
+                circuit,
+                layer,
+                resource,
+            } => write!(
+                formatter,
+                "dimension-reducing windowed R0 lowering rejected for {circuit}/{layer}: {resource}"
+            ),
+            Self::MainLayerExecutionPlan { error } => {
+                write!(formatter, "main-layer execution plan rejected: {error:?}")
+            }
         }
     }
 }
@@ -63,6 +210,26 @@ impl From<&WindowLoweringRejection> for GpuProveError {
             circuit: rejection.circuit.clone(),
             layer: rejection.layer,
             resource: rejection.resource.clone(),
+        }
+    }
+}
+
+impl From<&MainContinuationWindowLoweringRejection> for GpuProveError {
+    fn from(rejection: &MainContinuationWindowLoweringRejection) -> Self {
+        Self::MainContinuationWindowLowering {
+            circuit: rejection.circuit.clone(),
+            layer: rejection.layer,
+            resource: rejection.resource.clone(),
+        }
+    }
+}
+
+impl From<&DrWindowLoweringRejection> for GpuProveError {
+    fn from(rejection: &DrWindowLoweringRejection) -> Self {
+        Self::DrWindowLowering {
+            circuit: rejection.circuit().to_owned(),
+            layer: rejection.layer(),
+            resource: rejection.resource().to_owned(),
         }
     }
 }
@@ -85,25 +252,61 @@ fn validated_schedule_class(
     gkr_programs: &GkrPrograms,
     prover_config: &ProverConfig,
 ) -> Option<SumcheckScheduleClass> {
-    let folding_steps = gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize;
-    validate_sumcheck_schedule(&prover_config.same_size_sumcheck_schedule, folding_steps).ok()
+    validate_sumcheck_schedule(
+        &prover_config.same_size_sumcheck_schedule,
+        main_folding_steps(gkr_programs),
+    )
+    .ok()
 }
 
-/// Resolve the window program bundle before any of this proof's H2D work is
-/// scheduled, so a lowering rejection surfaces as an error rather than a panic
-/// with a half-enqueued proof. A per-round strategy never lowers and never
-/// rejects.
-pub fn preflight_windowed_r0(
+fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
+    gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize
+}
+
+/// Resolve every lazy bundle selected by the full backward options before any
+/// proof H2D transfer is constructed or scheduled. A per-round strategy does
+/// not lower either main-window family.
+pub fn preflight_windowed_backward(
     gkr_programs: &GkrPrograms,
     strategy: BackwardExecutionStrategy,
+    options: GkrBackwardOptions,
+    final_trace_size_log_2: u32,
 ) -> Result<(), GpuProveError> {
     match strategy {
-        BackwardExecutionStrategy::PerRound => Ok(()),
+        BackwardExecutionStrategy::PerRound => {}
         BackwardExecutionStrategy::WindowedR0 => gkr_programs
             .resolve_window_programs()
             .map(|_| ())
-            .map_err(GpuProveError::from),
+            .map_err(GpuProveError::from)?,
     }
+    let window_count =
+        main_continuation_window_count(options, strategy, main_folding_steps(gkr_programs))
+            .map_err(|error| GpuProveError::MainLayerExecutionPlan { error })?;
+    if window_count > 0 {
+        gkr_programs
+            .resolve_main_continuation_window_programs()
+            .map(|_| ())
+            .map_err(GpuProveError::from)?;
+    }
+    if options.windowed_dr {
+        gkr_programs
+            .resolve_dr_window_programs(final_trace_size_log_2)
+            .map(|_| ())
+            .map_err(|rejection| GpuProveError::from(&rejection))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn construct_after_windowed_backward_preflight<T>(
+    gkr_programs: &GkrPrograms,
+    strategy: BackwardExecutionStrategy,
+    options: GkrBackwardOptions,
+    final_trace_size_log_2: u32,
+    construct_transfers: impl FnOnce() -> T,
+) -> Result<T, GpuProveError> {
+    preflight_windowed_backward(gkr_programs, strategy, options, final_trace_size_log_2)?;
+    Ok(construct_transfers())
 }
 
 pub fn prove<'a, A: GoodAllocator + 'a>(
@@ -120,6 +323,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         inputs,
         backward_options,
+        None,
+        #[cfg(test)]
         None,
         context,
     )
@@ -141,18 +346,42 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         inputs,
         backward_options,
         Some(Box::default()),
+        None,
         context,
     )
 }
 
-fn prove_inner<'a, A: GoodAllocator + 'a>(
+#[cfg(test)]
+pub(crate) fn prove_measured<'a, 'context, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    backward_options: GkrBackwardOptions,
+    sink: &mut ProofMemoryHighWaterSink<'context>,
+    context: &'context ProverContext,
+) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    prove_inner(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        backward_options,
+        None,
+        Some(sink),
+        context,
+    )
+}
+
+fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
-    context: &ProverContext,
+    #[cfg(test)] mut memory_high_water: Option<&mut ProofMemoryHighWaterSink<'context>>,
+    context: &'context ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let backward_strategy =
@@ -165,9 +394,27 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         ),
         BackwardExecutionStrategy::WindowedR0 => assert!(
             gkr_programs.window_programs_ready(),
-            "prove() with the windowed arm requires preflight_windowed_r0 first"
+            "prove() with the windowed arm requires preflight_windowed_backward first"
         ),
         BackwardExecutionStrategy::PerRound => {}
+    }
+    let continuation_window_count = main_continuation_window_count(
+        backward_options,
+        backward_strategy,
+        main_folding_steps(gkr_programs),
+    )
+    .expect("prove() requires a main-layer execution plan accepted by preflight");
+    if continuation_window_count > 0 {
+        assert!(
+            gkr_programs.main_continuation_window_programs_ready(),
+            "continuation scheduling requires preflight_windowed_backward first"
+        );
+    }
+    if backward_options.windowed_dr {
+        assert!(
+            gkr_programs.dr_window_programs_ready(final_trace_size_log_2),
+            "DR window preparation requires preflight_windowed_backward first"
+        );
     }
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
@@ -287,6 +534,11 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
 
     ranges.push(post_forward_handoff_range);
 
+    #[cfg(test)]
+    if let Some(memory_high_water) = memory_high_water.as_deref_mut() {
+        memory_high_water.start(context);
+    }
+
     let BackwardPhaseResult {
         mut backward_scheduled,
     } = schedule_backward_phase(
@@ -295,6 +547,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         Arc::clone(gkr_programs),
         backward_options,
         backward_strategy,
+        final_trace_size_log_2,
         external_challenges.device.as_ptr(),
         d_seed,
         d_evaluation_point_and_batching,
@@ -307,6 +560,10 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         &mut callbacks,
         context,
     )?;
+    #[cfg(test)]
+    if let Some(memory_high_water) = memory_high_water.as_deref_mut() {
+        memory_high_water.seal(&backward_scheduled);
+    }
     let batching_pow_bits =
         crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
     let WhirPhaseResult {

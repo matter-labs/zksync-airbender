@@ -38,6 +38,9 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan {
     pub(crate) round_scratch: GpuGKRMainLayerRoundScratch,
     pub(crate) bwd_vm_r0: MainLayerR0Binding,
     pub(crate) bwd_vm_ext: super::super::vm::production_bind::BwdVmExtLaunch,
+    pub(crate) main_execution_plan:
+        super::super::main_layer::execution_plan::MainLayerExecutionPlan,
+    pub(crate) main_continuation: super::super::main_continuation::MainContinuationWindowSequence,
     pub(crate) eq_sizes: GkrEqSizes,
 }
 
@@ -76,4 +79,16 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution {
     /// the async H2D copies that read it.
     #[allow(dead_code)]
     pub(crate) coeff_bank_staging: Vec<StaticPinnedBox<u8>>,
+    /// Pointer-free final continuation Eq boundary. The isolated Task 6 arm
+    /// adopts the publication into legacy; Blue may consume this witness when
+    /// replacing that remainder with main-mega.
+    #[allow(dead_code)]
+    pub(crate) main_continuation_eq_boundary:
+        Option<super::super::main_layer::execution_plan::MainEqBoundaryWitness>,
+    /// Test-only ownership keeps the terminal recurrence state live for the
+    /// full-layer option-off/option-on byte comparison.
+    #[cfg(test)]
+    pub(crate) device_final_claim_for_test: Option<DeviceAllocation<E4>>,
+    #[cfg(test)]
+    pub(crate) device_final_eq_prefactor_for_test: Option<DeviceAllocation<E4>>,
 }

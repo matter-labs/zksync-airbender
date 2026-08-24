@@ -18,6 +18,27 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::ProverContext;
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[cfg(test)]
+static MAIN_LAYER_EXT_BANK_FILL_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(test)]
+pub(crate) fn reset_main_layer_ext_bank_fill_count_for_test() {
+    MAIN_LAYER_EXT_BANK_FILL_COUNT.store(0, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+pub(crate) fn main_layer_ext_bank_fill_count_for_test() -> usize {
+    MAIN_LAYER_EXT_BANK_FILL_COUNT.load(Ordering::SeqCst)
+}
+
+#[cfg(test)]
+fn record_main_layer_ext_bank_fill_for_test() {
+    MAIN_LAYER_EXT_BANK_FILL_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
 impl GpuGKRMainLayerSumcheckLayerPlan {
     fn dispatch_warp_partial_tail(
         &mut self,
@@ -128,6 +149,8 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             claim_batching,
             context,
         )?;
+        #[cfg(test)]
+        record_main_layer_ext_bank_fill_for_test();
         if let Some(recorder) = recorder.as_mut() {
             recorder.mark("ext_bank_fill", stream)?;
         }
@@ -215,13 +238,27 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
         // `first_ext_round` is the first round the continuation VM plays;
         // `first_round_in_loop` is the first round the per-round loop below
         // plays, which for the per-round arm is round 0 on the R0 VM.
-        let (first_ext_round, first_round_in_loop) = match &self.bwd_vm_r0 {
+        let (first_ext_round, r0_first_round_in_loop) = match &self.bwd_vm_r0 {
             MainLayerR0Binding::PerRound(_) => (1, 0),
             MainLayerR0Binding::Windowed(_) => (BWD_WINDOW_COORDINATES, BWD_WINDOW_COORDINATES),
+        };
+        let continuation_tail_start = self.main_continuation.tail_start_round();
+        let first_round_in_loop = if self.main_execution_plan.window_count() > 0 {
+            usize::from(continuation_tail_start)
+        } else {
+            r0_first_round_in_loop
         };
         let challenge_count = self.folding_steps - first_ext_round;
         let arm = match &self.bwd_vm_r0 {
             MainLayerR0Binding::PerRound(_) => "per_round",
+            MainLayerR0Binding::Windowed(windowed)
+                if self.main_execution_plan.window_count() > 0 =>
+            {
+                match windowed.tail_arm {
+                    crate::WindowTailArm::Absorbed => "windowed_cont_absorbed",
+                    crate::WindowTailArm::Split => "windowed_cont_split",
+                }
+            }
             MainLayerR0Binding::Windowed(windowed) => match windowed.tail_arm {
                 crate::WindowTailArm::Absorbed => "windowed_absorbed",
                 crate::WindowTailArm::Split => "windowed_split",
@@ -301,7 +338,68 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 recorder.as_mut(),
                 context,
             )?;
-            storage.purge_up_to_layer(self.layer_idx);
+            if self.main_execution_plan.window_count() > 0 {
+                let tail_arm = match &self.bwd_vm_r0 {
+                    MainLayerR0Binding::Windowed(windowed) => windowed.tail_arm,
+                    MainLayerR0Binding::PerRound(_) => {
+                        unreachable!("continuation windows require windowed R0")
+                    }
+                };
+                let scratch =
+                    super::super::main_continuation::MainContinuationWindowRuntimeScratch {
+                        eq_low: self.round_scratch.eq_low_group.as_ptr(),
+                        partials: self.round_scratch.partials.as_mut_ptr(),
+                        partials_capacity: self.round_scratch.partials.len(),
+                    };
+                self.main_continuation.schedule_windows(
+                    storage,
+                    self.folding_steps,
+                    scratch,
+                    device_claim_point_in.as_ptr(),
+                    device_seed.as_mut_ptr(),
+                    device_claim.as_mut_ptr(),
+                    device_eq_prefactor.as_mut_ptr(),
+                    coeffs_buffer_ptr,
+                    device_claim_point_out.as_mut_ptr(),
+                    tail_arm,
+                    recorder.as_mut(),
+                    context,
+                )?;
+                let boundary = self
+                    .main_continuation
+                    .final_eq_boundary()
+                    .expect("a non-empty continuation sequence records an Eq boundary");
+                assert_eq!(
+                    boundary.consumer_round, continuation_tail_start,
+                    "the final continuation boundary must name the prepared remainder"
+                );
+                let expected_remainder_eq = super::super::vm::production_bind::drained_eq_sizes(
+                    make_eq_sizes(self.folding_steps - usize::from(continuation_tail_start)),
+                    1,
+                );
+                assert_eq!(
+                    boundary.eq_sizes, expected_remainder_eq,
+                    "the final pass-local Eq state must equal the first legacy descriptor"
+                );
+                self.eq_sizes = boundary.eq_sizes;
+                assert!(
+                    self.main_continuation.published_level().is_some(),
+                    "the final continuation publication must remain owned until handoff"
+                );
+                let published = self
+                    .main_continuation
+                    .take_published_level()
+                    .expect("the legacy remainder consumes the final publication");
+                if let Err((published, error)) = self.bwd_vm_ext.adopt_published_level(published) {
+                    drop(published);
+                    panic!(
+                        "legacy adoption for layer {} at round {}: {error:?}",
+                        self.layer_idx, continuation_tail_start
+                    );
+                }
+            } else {
+                storage.purge_up_to_layer(self.layer_idx);
+            }
         }
 
         for step in first_round_in_loop..last_step {
@@ -329,6 +427,8 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                         cont_batch_base_ptr,
                         context,
                     )?;
+                    #[cfg(test)]
+                    record_main_layer_ext_bank_fill_for_test();
                 }
                 super::super::vm::production_bind::schedule_bwd_vm_ext_round(
                     &mut self.bwd_vm_ext,
@@ -513,8 +613,14 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
         layer_range.end(stream)?;
         tracing_ranges.push(layer_range);
 
+        #[cfg(not(test))]
         drop(device_claim);
+        #[cfg(not(test))]
         drop(device_eq_prefactor);
+        #[cfg(test)]
+        let device_final_claim_for_test = Some(device_claim);
+        #[cfg(test)]
+        let device_final_eq_prefactor_for_test = Some(device_eq_prefactor);
         drop(device_last_evals);
         drop(device_claim_point_in);
         drop(device_claims_in);
@@ -535,6 +641,11 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             device_claims_for_next_layer: Some(device_new_claims),
             claim_layout_for_next_layer: Some(next_claim_layout),
             coeff_bank_staging,
+            main_continuation_eq_boundary: self.main_continuation.final_eq_boundary(),
+            #[cfg(test)]
+            device_final_claim_for_test,
+            #[cfg(test)]
+            device_final_eq_prefactor_for_test,
         })
     }
 }
