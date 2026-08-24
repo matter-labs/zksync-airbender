@@ -17,8 +17,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # matterlabs-ci-gpu-runner currently has CUDA 12.2 driver support only, so
-        # CUDA 13-compiled binaries are not runnable there.
+        # The minimum supported toolkit: the NVTX 3.2 headers the pool
+        # instrumentation compiles against ship with CUDA 13.
         cuda: [ "13.0.3-devel-ubuntu22.04" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
@@ -67,6 +67,10 @@ jobs:
           test -n "$test_binary"
           cp "$test_binary" artifacts/gpu_circuit_prover-tests
 
+          # The runner host has the CUDA 13 driver but not the toolkit; bundle
+          # the runtime library next to the binaries.
+          cp -L /usr/local/cuda/lib64/libcudart.so.13 artifacts/
+
       - name: Upload GPU artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -79,8 +83,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Keep this aligned with the build matrix because runner driver support is
-        # currently limited to CUDA 12.2 (CUDA 13 artifacts fail at runtime).
+        # Keep this aligned with the build matrix; artifact names embed it.
         cuda: [ "13.0.3-devel-ubuntu22.04" ]
 
     needs: zksync-airbender-build
@@ -121,6 +124,10 @@ jobs:
         with:
           name: zksync-airbender-${{ matrix.cuda }}-gpu
           path: zksync-airbender-gpu/
+
+      - name: Expose the bundled CUDA runtime
+        run: |
+          echo "LD_LIBRARY_PATH=${{ github.workspace }}/zksync-airbender-gpu" >> "$GITHUB_ENV"
 
       - name: Test GKR VM parity
         env:
