@@ -539,6 +539,46 @@ pub(crate) fn launch_main_tail(
     enqueue_prepared_main_tail(prepared, context)
 }
 
+/// Test-only observation at the actual dispatch boundary. These counters are
+/// updated only after the delegated production launcher accepts its enqueue;
+/// the differential harness cannot claim a path it did not dispatch.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct MainTailDispatchCounters {
+    pub(crate) main_tail_launches: usize,
+    pub(crate) per_round_remainder_launches: usize,
+    pub(crate) fold_weight_symbol_writes: usize,
+}
+
+#[cfg(test)]
+pub(crate) fn launch_main_tail_counted<'input>(
+    launch: MainTailLaunch<'input>,
+    context: &ProverContext,
+    counters: &mut MainTailDispatchCounters,
+) -> Result<MainTailLaunched, MainTailBindError> {
+    let launched = launch_main_tail(launch, context)?;
+    counters.main_tail_launches += 1;
+    Ok(launched)
+}
+
+#[cfg(test)]
+pub(crate) fn schedule_per_round_remainder_counted(
+    launch: &mut crate::backward::vm::production_bind::BwdVmExtLaunch,
+    round: u32,
+    acc_size: u32,
+    context: &ProverContext,
+    counters: &mut MainTailDispatchCounters,
+) -> era_cudart::result::CudaResult<()> {
+    crate::backward::vm::production_bind::schedule_bwd_vm_ext_round(
+        launch, round, acc_size, context,
+    )?;
+    counters.per_round_remainder_launches += 1;
+    // The production continuation dispatch schedules this symbol write before
+    // the segmented evaluator in the same stream.
+    counters.fold_weight_symbol_writes += 1;
+    Ok(())
+}
+
 const _: () = {
     assert!(MAIN_TAIL_LIST_OFFSETS_OFFSET == 0);
     assert!(MAIN_TAIL_PROGRAM_OFFSET == 18);
