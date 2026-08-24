@@ -105,7 +105,7 @@ MODE=""                            # set by subcommand
 BLAKE="blake2_with_compression"
 VARIANT="caches"
 ENCODING="coeff"
-SECURITY_LEVEL="80"
+SECURITY_LEVEL="100"
 PROVE_EMPTY=false
 SELF_CHECKS=true
 CHECK_SATISFIED=false
@@ -140,7 +140,7 @@ Options:
   --variant V           caches (default) | no_caches
   --encoding ENC        coeff (default) | eval (WHIR leaf encoding)
                         Forwarded as the eval_leaves feature to prover + generator.
-  --security-level L    80 (default) | 100   (mutually exclusive — run separately)
+  --security-level L    100 (the only supported level; flag kept for compatibility)
   --prove-empty         Prove every applicable circuit even if program made 0 calls.
                         Forwarded via GKR_PROVE_EMPTY.
   --no-self-checks      Disable in-prove sumcheck/cache/at-point-eval checks.
@@ -182,7 +182,7 @@ Examples:
   $0 unified
   $0 per_family --from generator
   $0 unified --circuits blake2_with_extended_control --from binaries
-  $0 per_family --security-level 100 --from generator
+  $0 per_family --from generator
   $0 unified --dry-run
 
 Exit codes:
@@ -272,7 +272,7 @@ run_recursion() {
 
   local pe="circuit_defs/prover_examples"
   local runner=eval; $dry && runner="echo [dry-run]"
-  local secfeat="security_80"; [[ "$variant" = "no_caches" ]] && secfeat="security_80,no_caches"
+  local genfeat=(); [[ "$variant" = "no_caches" ]] && genfeat=(--features no_caches)
 
   echo "==> recursion: from=$from variant=$variant switch=$switch_cycles"
   echo "    blake unrolled=$unrolled_blake bridge=$bridge_blake final=$final_blake"
@@ -285,8 +285,8 @@ run_recursion() {
     $runner "(cd circuit_defs/unrolled_circuits/unified_reduced_machine && cargo test generate -- --exact test::generate)"
   fi
   if active generator; then
-    echo "==> [generator] regenerate inlined verifiers (features: $secfeat)"
-    $runner "cargo test -p verifier_generator --no-default-features --features $secfeat --test generate_verifiers"
+    echo "==> [generator] regenerate inlined verifiers (${genfeat[*]:-default features})"
+    $runner "cargo test -p verifier_generator --no-default-features ${genfeat[*]} --test generate_verifiers"
   fi
   if active binaries; then
     echo "==> [binaries] rebuild recursive verifier binaries (variant=$variant)"
@@ -385,8 +385,8 @@ case "$VARIANT" in
 esac
 
 case "$SECURITY_LEVEL" in
-  80|100) ;;
-  *) die "--security-level must be 80 or 100 (run the levels as separate invocations; they are mutually exclusive). Got: $SECURITY_LEVEL" ;;
+  100) ;;
+  *) die "--security-level must be 100 (the 80-bit mode was removed). Got: $SECURITY_LEVEL" ;;
 esac
 
 if [[ ${#SELECTED_CIRCUITS[@]} -gt 0 ]]; then
@@ -409,16 +409,10 @@ else
 fi
 
 case "$SECURITY_LEVEL" in
-  80)   LEVELS=(sec_80) ;;
   100)  LEVELS=(sec_100) ;;
 esac
 
-LEVEL_FEATURES_ARR=()
-for lvl in "${LEVELS[@]}"; do LEVEL_FEATURES_ARR+=("security_${lvl#sec_}"); done
-LEVEL_FEATURES=$(IFS=,; echo "${LEVEL_FEATURES_ARR[*]}")
-
-# Exactly one level per run (security_80 and security_100 are mutually exclusive — a
-# `compile_error!` in verifier_common enforces it), so a level test-filter is always set.
+# Single supported level, so a level test-filter is always set.
 LEVEL_TEST_FILTER="_${LEVELS[0]}"
 
 # CIRCUITS = (base × level), filtered by which bin files actually exist.
@@ -467,8 +461,8 @@ fi
 # ============================================================================
 # Feature flags + cargo test filter assembly
 # ============================================================================
-FEATURES="${BLAKE},${LEVEL_FEATURES}"
-GENERATOR_FEATURES="${LEVEL_FEATURES}"
+FEATURES="${BLAKE}"
+GENERATOR_FEATURES=""
 VARIANT_FEATURES=()
 if [[ "$VARIANT" = "no_caches" ]]; then
   FEATURES="${FEATURES},no_caches"
@@ -632,12 +626,9 @@ step_prover() {
 }
 
 step_native() {
-  # verifier_common PoW-bits self-check at BOTH levels (level-independent): exercises the
-  # security_100 cfg-dispatch of MEMORY_DELEGATION_POW_BITS that single-level pipeline runs skip.
-  run_step "verifier_common PoW-bits self-check (security_80)" \
-    cargo test -p verifier_common --no-default-features --features security_80 memory_delegation_pow
-  run_step "verifier_common PoW-bits self-check (security_100)" \
-    cargo test -p verifier_common --no-default-features --features security_100 memory_delegation_pow
+  # verifier_common PoW-bits derivation self-check (level-independent math).
+  run_step "verifier_common PoW-bits self-check" \
+    cargo test -p verifier_common --no-default-features memory_delegation_pow
   run_step "Native tests" \
     "${VERIFIER_TEST[@]}" --test native \
       -- "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}"
@@ -683,12 +674,12 @@ step_fsv() {
     echo "  [fsv] skipped (FSV base-layer test runs under blake2_with_compression only; BLAKE=$BLAKE)"
     return 0
   fi
-  # The FSV RISC-V binary (fsv_unified_base_layer_sec_80) is NOT in the per-circuit set the
+  # The FSV RISC-V binary (fsv_unified_base_layer_sec_100) is NOT in the per-circuit set the
   # `binaries` step builds, so build it here for the transpiler test. dump_bin.sh auto-discovers
   # it; the blake variant comes from verifier_common's unified features (the FSV pins no blake).
   run_step "Build FSV unified base-layer RISC-V binary" \
     in_dir tools/gkr_verifier ./dump_bin.sh \
-      --blake "$BLAKE" --variant "$VARIANT" fsv_unified_base_layer_sec_80
+      --blake "$BLAKE" --variant "$VARIANT" fsv_unified_base_layer_sec_100
   run_step "Full statement verifier (unified base layer: native + transpiler)" \
     env RUSTFLAGS="$WARN_FLAGS" cargo test -p full_statement_verifier \
       --features blake2_with_compression --test unified -- --include-ignored
@@ -703,7 +694,7 @@ step_fsv() {
 #       (self_checks OFF), then verifier-side malicious.rs (rejects_malicious_unified_*)
 #       asserts the real verifier rejects (proof layer).
 # The inits/teardowns-eval corruption lives in the `corruption` step
-# (rejects_corrupted_it_evals_unified_reduced_machine_sec_80).
+# (rejects_corrupted_it_evals_unified_reduced_machine_sec_100).
 step_malicious() {
   # `malicious` is opt-in, so a full pipeline (which runs `generator`) may not have run
   # beforehand. Regenerate the verifier first so the soundness-gap tests always exercise

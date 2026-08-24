@@ -251,7 +251,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 
     let prover_config = crate::config::prover_config(
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
     )
     .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();

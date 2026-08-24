@@ -223,6 +223,11 @@ pub fn validate_sumcheck_schedule(
 
 #[derive(Clone, Debug)]
 pub struct ProverConfig {
+    /// log2 of the circuit trace length this config was computed for. The
+    /// prove entries assert the caller-supplied `trace_len` matches, so a
+    /// config can never silently be applied to a different-size circuit
+    /// (schedules, query counts and PoW splits are all size-specific).
+    pub trace_len_log2: usize,
     pub lde_factor: usize,
     pub cap_size: usize,
     pub base_oracles_values_per_leaf: usize,
@@ -245,6 +250,68 @@ pub struct ProverConfig {
     /// NaiveSumcheck for every round otherwise. Each entry must satisfy
     /// [`validate_sumcheck_schedule`] for its key.
     pub dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
+}
+
+impl ProverConfig {
+    /// Structural validation of the WHIR schedule for a starting polynomial of
+    /// `message_size_log2` variables — equal to [`Self::trace_len_log2`] for
+    /// the separate/merged commitment modes and `trace_len_log2 + pack_log2`
+    /// for the packed mode. Called by the prove entries after they assert the
+    /// caller's `trace_len` against `trace_len_log2`.
+    ///
+    /// Beyond shape consistency, enforces the plain-text floor: every
+    /// COMMITTED intermediate oracle must be an LDE of a polynomial of at
+    /// least `1 << DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2` monomials. Folding
+    /// below that size must instead TERMINATE the schedule — the tail
+    /// polynomial ships as explicit monomial coefficients, which is strictly
+    /// cheaper than another LDE + Merkle commitment + query round for both
+    /// prover and verifier.
+    pub fn validate_for_whir_message_size(&self, message_size_log2: usize) {
+        use crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
+
+        let schedule = &self.whir_schedule;
+        let num_rounds = schedule.whir_steps_schedule.len();
+        assert!(num_rounds >= 1, "empty WHIR schedule");
+        assert_eq!(schedule.whir_queries_schedule.len(), num_rounds);
+        assert_eq!(schedule.whir_pow_schedule.len(), num_rounds);
+        assert_eq!(schedule.whir_steps_lde_factors.len(), num_rounds - 1);
+        assert_eq!(schedule.base_lde_factor, self.lde_factor);
+        assert_eq!(schedule.cap_size, self.cap_size);
+        assert_eq!(
+            self.base_oracles_values_per_leaf,
+            1usize << schedule.whir_steps_schedule[0],
+            "base-oracle leaves hold exactly one round-0 fold worth of values"
+        );
+
+        let mut poly_size_log2 = message_size_log2;
+        for (round, fold_log2) in schedule.whir_steps_schedule.iter().enumerate() {
+            assert!(*fold_log2 >= 1);
+            assert!(
+                poly_size_log2 >= *fold_log2,
+                "WHIR round {round} folds by 2^{fold_log2} but only a 2^{poly_size_log2} \
+                 polynomial remains"
+            );
+            poly_size_log2 -= *fold_log2;
+            let commits_an_oracle = round + 1 != num_rounds;
+            if commits_an_oracle {
+                assert!(
+                    poly_size_log2 >= DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
+                    "WHIR round {round} would commit an LDE of a 2^{poly_size_log2} polynomial \
+                     (below the 2^{DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2} plain-text floor): \
+                     terminate the schedule here and ship the tail in plain text instead"
+                );
+            }
+        }
+        assert!(
+            poly_size_log2 >= 1,
+            "the WHIR schedule folds the polynomial away completely"
+        );
+        assert!(
+            poly_size_log2 <= DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
+            "the schedule's explicit tail (2^{poly_size_log2}) exceeds the plain-text \
+             envelope 2^{DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2}"
+        );
+    }
 }
 
 /// The DEFAULT same-size schedule: the full window chain for
@@ -554,7 +621,31 @@ mod test {
     use super::*;
 
     #[test]
-    #[ignore = "unfinished exhaustive WHIR config search"]
+    fn example_configs_pass_validation() {
+        for log in [20usize, 22, 23, 24] {
+            let config = example_configs::config_for_100_bits_under_pessimistic_conjecture(log);
+            assert_eq!(config.trace_len_log2, log);
+            config.validate_for_whir_message_size(log);
+        }
+        let feeder = example_configs::l1_feeder_config_for_2_23();
+        assert_eq!(feeder.trace_len_log2, 23);
+        feeder.validate_for_whir_message_size(feeder.trace_len_log2);
+    }
+
+    #[test]
+    #[should_panic(expected = "plain-text floor")]
+    fn sub_plain_text_oracle_is_rejected() {
+        // Re-append the retired sixth round of the 2^23 schedule: its oracle
+        // would be an LDE of a 2^3 polynomial, below the plain-text floor.
+        let mut config = example_configs::config_for_100_bits_under_pessimistic_conjecture(23);
+        config.whir_schedule.whir_steps_schedule.push(2);
+        config.whir_schedule.whir_queries_schedule.push(5);
+        config.whir_schedule.whir_pow_schedule.push(21);
+        config.whir_schedule.whir_steps_lde_factors.push(524288);
+        config.validate_for_whir_message_size(23);
+    }
+
+    #[test]
     fn test_try_compute_some_config() {
         let prover_config = compute_best_prover_config_guess(
             20,

@@ -131,7 +131,7 @@ pub(super) fn replay_delegation_trace_buffer_for_workload<W: Clone, OPT: Decodin
 }
 
 pub(super) fn delegation_prover_config(circuit_type: DelegationCircuitType) -> ProverConfig {
-    crate::config::prover_config(CircuitType::Delegation(circuit_type), SecurityLevel::Sec80)
+    crate::config::prover_config(CircuitType::Delegation(circuit_type), SecurityLevel::Sec100)
         .unwrap()
 }
 

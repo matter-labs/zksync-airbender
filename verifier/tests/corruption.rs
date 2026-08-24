@@ -1,8 +1,6 @@
-// Corruption tests. The bulk of the suite is Sec80-only (it depends on the Sec80 NDS layout
-// and the Sec80 generated verifier), so those tests are gated at their macro invocation below.
-// The PoW-nonce tests run at *every* enabled security level: at Sec80 a tampered nonce is caught
-// downstream (0-bit threshold is vacuous), while at Sec100 it is caught directly by `verify_pow`'s
-// threshold check — so this is the coverage of the nonzero-bit rejection branch.
+// Corruption tests over the Sec100 NDS layout and the Sec100 generated verifier.
+// The PoW-nonce tests additionally cover `verify_pow`'s nonzero-bit
+// threshold-rejection branch directly (Sec100 draws carry non-zero PoW bits).
 
 #[macro_use]
 mod common;
@@ -17,28 +15,31 @@ use common::{
 };
 
 fn test_rejects_garbage_proof(name: &str) {
-    let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
+    let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
     assert_rejects_corrupted_nds(
         name,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         "garbage proof",
         |nds| {
             for i in 0..nds_len {
                 nds[i] = (i as u32).wrapping_mul(2654435761);
             }
         },
-        |r| matches!(r, VerifyRejection::Error(..)),
+        // Sec100 PoW bits are non-zero: a diverged transcript seed is caught by
+        // the next `verify_pow`, which panics in the host transcript — either
+        // rejection kind is a reject here.
+        |r| matches!(r, VerifyRejection::Error(..) | VerifyRejection::Panic(_)),
     );
 }
 
 fn test_rejects_corruption_at_fractions(name: &str) {
-    let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
+    let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
     for fraction in [0.25, 0.50, 0.75] {
         let label = format!("fraction {:.2}", fraction);
         let idx = (nds_len as f64 * fraction) as usize;
         assert_rejects_corrupted_nds(
             name,
-            SecurityLevel::Sec80,
+            SecurityLevel::Sec100,
             &label,
             |nds| nds[idx] ^= 1,
             |r| matches!(r, VerifyRejection::Error(..)),
@@ -47,7 +48,7 @@ fn test_rejects_corruption_at_fractions(name: &str) {
 }
 
 fn test_rejects_corrupted_gkr_region(name: &str) {
-    with_circuit!(name, SecurityLevel::Sec80, |m| {
+    with_circuit!(name, SecurityLevel::Sec100, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
         let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
             - (core::mem::offset_of!(InitialTranscript, setup_caps)
@@ -67,17 +68,19 @@ fn test_rejects_corrupted_gkr_region(name: &str) {
         for &(idx, mask, label) in cases {
             assert_rejects_corrupted_nds(
                 name,
-                SecurityLevel::Sec80,
+                SecurityLevel::Sec100,
                 label,
                 |nds| nds[idx] ^= mask,
-                |r| matches!(r, VerifyRejection::Error(..)),
+                // head corruption diverges the seed before the PoW draws — the
+                // host transcript's `verify_pow` panic is a valid rejection
+                |r| matches!(r, VerifyRejection::Error(..) | VerifyRejection::Panic(_)),
             );
         }
     });
 }
 
 fn test_rejects_corrupted_whir_region(name: &str) {
-    let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
+    let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
 
     let cases: &[(usize, &str)] = &[
         (nds_len / 2, "whir_early"),
@@ -88,7 +91,7 @@ fn test_rejects_corrupted_whir_region(name: &str) {
     for &(idx, label) in cases {
         assert_rejects_corrupted_nds(
             name,
-            SecurityLevel::Sec80,
+            SecurityLevel::Sec100,
             label,
             |nds| nds[idx] ^= 1,
             |r| matches!(r, VerifyRejection::Error(..)),
@@ -97,14 +100,14 @@ fn test_rejects_corrupted_whir_region(name: &str) {
 }
 
 fn test_rejects_zeroed_regions(name: &str) {
-    with_circuit!(name, SecurityLevel::Sec80, |m| {
+    with_circuit!(name, SecurityLevel::Sec100, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
         let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
             - (core::mem::offset_of!(InitialTranscript, setup_caps)
                 - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
         let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
 
-        let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
+        let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
 
         let cases: &[(usize, usize, &str)] = &[
             (gkr_off + 200, 32, "sumcheck_chunk"),
@@ -114,7 +117,7 @@ fn test_rejects_zeroed_regions(name: &str) {
         for &(start, count, label) in cases {
             assert_rejects_corrupted_nds(
                 name,
-                SecurityLevel::Sec80,
+                SecurityLevel::Sec100,
                 label,
                 |nds| {
                     let end = (start + count).min(nds.len());
@@ -131,15 +134,17 @@ fn test_rejects_zeroed_regions(name: &str) {
 fn test_rejects_shifted_nds(name: &str) {
     assert_rejects_corrupted_nds(
         name,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         "shifted by one word",
         |nds| nds.insert(0, 0),
-        |r| matches!(r, VerifyRejection::Error(..)),
+        // shifted stream diverges the seed before the PoW draws — the host
+        // transcript's `verify_pow` panic is a valid rejection
+        |r| matches!(r, VerifyRejection::Error(..) | VerifyRejection::Panic(_)),
     );
 }
 
 fn test_rejects_corrupted_oracle_caps(name: &str) {
-    with_circuit!(name, SecurityLevel::Sec80, |m| {
+    with_circuit!(name, SecurityLevel::Sec100, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
         let setup_oracle_commit_offset = core::mem::offset_of!(InitialTranscript, setup_caps);
         let memory_oracle_commit_offset = core::mem::offset_of!(InitialTranscript, memory_caps);
@@ -177,13 +182,17 @@ fn test_rejects_corrupted_oracle_caps(name: &str) {
             let label = format!("oracle_cap_{}", cap_name);
             assert_rejects_corrupted_nds(
                 name,
-                SecurityLevel::Sec80,
+                SecurityLevel::Sec100,
                 &label,
                 |nds| nds[offset] ^= 1,
+                // a corrupted cap diverges the transcript seed at absorption;
+                // at Sec100 the next non-zero-bit `verify_pow` draw catches it
+                // first (host-transcript panic) — before the sumcheck rounds
                 |r| {
                     matches!(
                         r,
                         VerifyRejection::Error(VerificationError::GkrSumcheckRoundFailed { .. })
+                            | VerifyRejection::Panic(_)
                     )
                 },
             );
@@ -194,7 +203,7 @@ fn test_rejects_corrupted_oracle_caps(name: &str) {
 fn test_rejects_truncated_nds(name: &str) {
     assert_rejects_corrupted_nds(
         name,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         "truncated NDS",
         |nds| {
             let new_len = nds.len() * 9 / 10;
@@ -205,7 +214,7 @@ fn test_rejects_truncated_nds(name: &str) {
 }
 
 fn test_rejects_corrupted_final_monomials(name: &str) {
-    with_circuit!(name, SecurityLevel::Sec80, |m| {
+    with_circuit!(name, SecurityLevel::Sec100, |m| {
         // NDS tail: [final_sumcheck_polys | final_monomials | pow_nonce | final_queries]
         // Compute monomials position by working backward from nds_len.
         let final_fold_steps = *m::constants::WHIR_FOLD_STEPS.last().unwrap();
@@ -216,12 +225,12 @@ fn test_rejects_corrupted_final_monomials(name: &str) {
         let queries_words = final_num_queries * (leaf_words + path_words);
         let pow_words = 2;
         let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4;
-        let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
+        let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
         let monomials_end = nds_len - queries_words - pow_words;
         let start = monomials_end - monomial_words;
         assert_rejects_corrupted_nds(
             name,
-            SecurityLevel::Sec80,
+            SecurityLevel::Sec100,
             "corrupted final_monomials",
             |nds| {
                 for word in &mut nds[start..monomials_end] {
@@ -239,16 +248,19 @@ fn test_rejects_cross_circuit_nds(name: &str) {
         .find(|c| c.name != name)
         .expect("need at least two circuits");
 
-    let other_nds = other.load_nds_for(SecurityLevel::Sec80).0;
+    let other_nds = other.load_nds_for(SecurityLevel::Sec100).0;
     assert_rejects_corrupted_nds(
         name,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &format!("NDS from {}", other.name),
         |nds| {
             nds.clear();
             nds.extend_from_slice(&other_nds);
         },
-        |r| matches!(r, VerifyRejection::Error(..)),
+        // a foreign NDS diverges the seed like any head corruption — at Sec100
+        // the first non-zero-bit `verify_pow` draw may reject via the host
+        // transcript's panic before any clean Err
+        |r| matches!(r, VerifyRejection::Error(..) | VerifyRejection::Panic(_)),
     );
 }
 
@@ -267,7 +279,7 @@ fn test_rejects_corrupted_init_teardown_bits(name: &str) {
         let label = format!("teardown_top_bit_{}", i);
         assert_rejects_corrupted_nds(
             name,
-            SecurityLevel::Sec80,
+            SecurityLevel::Sec100,
             &label,
             |nds| nds[i] ^= 0xFFFF_FFFF,
             |r| matches!(r, VerifyRejection::Error(..)),
@@ -276,7 +288,7 @@ fn test_rejects_corrupted_init_teardown_bits(name: &str) {
 }
 
 fn test_rejects_non_canonical_field_element(name: &str) {
-    with_circuit!(name, SecurityLevel::Sec80, |m| {
+    with_circuit!(name, SecurityLevel::Sec100, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
         let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
             - (core::mem::offset_of!(InitialTranscript, setup_caps)
@@ -285,7 +297,7 @@ fn test_rejects_non_canonical_field_element(name: &str) {
 
         assert_rejects_corrupted_nds(
             name,
-            SecurityLevel::Sec80,
+            SecurityLevel::Sec100,
             "non_canonical_field_element",
             |nds| {
                 nds[gkr_off + 4] |= 0x8000_0000;
@@ -311,34 +323,33 @@ fn test_rejects_non_canonical_field_element(name: &str) {
 
 fn test_rejects_corrupted_ood_sample(name: &str) {
     let circuit_data = common::circuit_by_name(name);
-    let mut proof = circuit_data.proof_for(SecurityLevel::Sec80);
+    let mut proof = circuit_data.proof_for(SecurityLevel::Sec100);
     assert!(
         !proof.whir_proof.ood_samples.is_empty(),
         "{}: proof must have OOD samples",
         name
     );
     proof.whir_proof.ood_samples[0].add_assign(&BabyBearExt4::ONE);
-    assert_rejects_via_panic(name, SecurityLevel::Sec80, "corrupted OOD sample", &proof);
+    assert_rejects_via_panic(name, SecurityLevel::Sec100, "corrupted OOD sample", &proof);
 }
 
 fn test_rejects_corrupted_pow_nonce(name: &str) {
     let circuit_data = common::circuit_by_name(name);
-    let mut proof = circuit_data.proof_for(SecurityLevel::Sec80);
+    let mut proof = circuit_data.proof_for(SecurityLevel::Sec100);
     assert!(
         !proof.whir_proof.pow_nonces.is_empty(),
         "{}: proof must have PoW nonces",
         name
     );
     proof.whir_proof.pow_nonces[0] ^= 1;
-    assert_rejects_via_panic(name, SecurityLevel::Sec80, "corrupted PoW nonce", &proof);
+    assert_rejects_via_panic(name, SecurityLevel::Sec100, "corrupted PoW nonce", &proof);
 }
 
 fn test_rejects_corrupted_lookup_pow_nonce(name: &str, level: SecurityLevel) {
     let circuit_data = common::circuit_by_name(name);
     let mut proof = circuit_data.proof_for(level);
     // The lookup-challenge PoW nonce is bound into the transcript seed. Tampering with it
-    // must be rejected — directly by `verify_pow` when the bit-count is non-zero (Sec100),
-    // otherwise downstream once the diverged seed corrupts every later challenge (Sec80).
+    // must be rejected directly by `verify_pow` (Sec100 bit-counts are non-zero).
     proof.lookup_challenges_pow_nonce ^= 1;
     assert_rejects_any(name, level, "corrupted lookup PoW nonce", &proof);
 }
@@ -353,7 +364,7 @@ fn test_rejects_corrupted_batched_proximity_pow_nonce(name: &str, level: Securit
 #[cfg(not(feature = "no_caches"))]
 fn test_rejects_corrupted_cache_relations(name: &str) {
     let circuit_data = common::circuit_by_name(name);
-    let mut proof = circuit_data.proof_for(SecurityLevel::Sec80);
+    let mut proof = circuit_data.proof_for(SecurityLevel::Sec100);
 
     let base_layer = proof
         .sumcheck_intermediate_values
@@ -376,7 +387,7 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
 
     assert_rejects_with_variant(
         name,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         "corrupted cache relation",
         &proof,
         |e| {
@@ -391,7 +402,7 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
 }
 
 fn test_rejects_corrupted_it_evals(name: &str) {
-    with_circuit!(name, SecurityLevel::Sec80, |m| {
+    with_circuit!(name, SecurityLevel::Sec100, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
         let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
             - (core::mem::offset_of!(InitialTranscript, setup_caps)
@@ -407,7 +418,7 @@ fn test_rejects_corrupted_it_evals(name: &str) {
 
         assert_rejects_corrupted_nds(
             name,
-            SecurityLevel::Sec80,
+            SecurityLevel::Sec100,
             "it_evals",
             |nds| nds[it_eval_off] ^= 1,
             |r| {
@@ -425,7 +436,7 @@ fn test_rejects_corrupted_it_evals(name: &str) {
 }
 
 #[test]
-fn rejects_corrupted_it_evals_unified_reduced_machine_sec_80() {
+fn rejects_corrupted_it_evals_unified_reduced_machine_sec_100() {
     test_rejects_corrupted_it_evals("unified_reduced_machine");
 }
 
@@ -434,78 +445,78 @@ macro_rules! generate_corruption_tests {
         $(
             paste::paste! {
                 #[test]
-                fn [<rejects_garbage_proof_ $name _sec_80>]() {
+                fn [<rejects_garbage_proof_ $name _sec_100>]() {
                     test_rejects_garbage_proof(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corruption_ $name _sec_80>]() {
+                fn [<rejects_corruption_ $name _sec_100>]() {
                     test_rejects_corruption_at_fractions(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_gkr_region_ $name _sec_80>]() {
+                fn [<rejects_corrupted_gkr_region_ $name _sec_100>]() {
                     test_rejects_corrupted_gkr_region(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_whir_region_ $name _sec_80>]() {
+                fn [<rejects_corrupted_whir_region_ $name _sec_100>]() {
                     test_rejects_corrupted_whir_region(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_zeroed_regions_ $name _sec_80>]() {
+                fn [<rejects_zeroed_regions_ $name _sec_100>]() {
                     test_rejects_zeroed_regions(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_shifted_nds_ $name _sec_80>]() {
+                fn [<rejects_shifted_nds_ $name _sec_100>]() {
                     test_rejects_shifted_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_oracle_caps_ $name _sec_80>]() {
+                fn [<rejects_corrupted_oracle_caps_ $name _sec_100>]() {
                     test_rejects_corrupted_oracle_caps(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_truncated_nds_ $name _sec_80>]() {
+                fn [<rejects_truncated_nds_ $name _sec_100>]() {
                     test_rejects_truncated_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_final_monomials_ $name _sec_80>]() {
+                fn [<rejects_corrupted_final_monomials_ $name _sec_100>]() {
                     test_rejects_corrupted_final_monomials(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_cross_circuit_nds_ $name _sec_80>]() {
+                fn [<rejects_cross_circuit_nds_ $name _sec_100>]() {
                     test_rejects_cross_circuit_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_init_teardown_bits_ $name _sec_80>]() {
+                fn [<rejects_corrupted_init_teardown_bits_ $name _sec_100>]() {
                     test_rejects_corrupted_init_teardown_bits(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_non_canonical_field_element_ $name _sec_80>]() {
+                fn [<rejects_non_canonical_field_element_ $name _sec_100>]() {
                     test_rejects_non_canonical_field_element(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_ood_sample_ $name _sec_80>]() {
+                fn [<rejects_corrupted_ood_sample_ $name _sec_100>]() {
                     test_rejects_corrupted_ood_sample(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_pow_nonce_ $name _sec_80>]() {
+                fn [<rejects_corrupted_pow_nonce_ $name _sec_100>]() {
                     test_rejects_corrupted_pow_nonce(stringify!($name));
                 }
 
                 #[cfg(not(feature = "no_caches"))]
                 #[test]
-                fn [<rejects_corrupted_cache_relations_ $name _sec_80>]() {
+                fn [<rejects_corrupted_cache_relations_ $name _sec_100>]() {
                     test_rejects_corrupted_cache_relations(stringify!($name));
                 }
 
@@ -513,33 +524,18 @@ macro_rules! generate_corruption_tests {
         )*
     };
 }
-// The bulk of the corruption suite is Sec80-only (Sec80 NDS layout + Sec80 verifier).
-#[cfg(feature = "security_80")]
 verifier_common::gkr_circuits!(generate_corruption_tests);
 
-// PoW-nonce corruption runs at every enabled security level — the only corruption tests that
-// exercise Sec100. At Sec100 (non-zero PoW bits) these hit `verify_pow`'s threshold-rejection
-// branch directly; at Sec80 (0 bits) they verify the nonce is transcript-bound (downstream reject).
+// PoW-nonce corruption: at Sec100 (non-zero PoW bits) these hit `verify_pow`'s
+// threshold-rejection branch directly.
 macro_rules! generate_pow_nonce_corruption_tests {
     ($($name:ident; $prod_path:expr),* $(,)?) => {
         $(
             paste::paste! {
-                #[cfg(feature = "security_80")]
-                #[test]
-                fn [<rejects_corrupted_lookup_pow_nonce_sec80_ $name>]() {
-                    test_rejects_corrupted_lookup_pow_nonce(stringify!($name), SecurityLevel::Sec80);
-                }
-                #[cfg(feature = "security_100")]
                 #[test]
                 fn [<rejects_corrupted_lookup_pow_nonce_sec100_ $name>]() {
                     test_rejects_corrupted_lookup_pow_nonce(stringify!($name), SecurityLevel::Sec100);
                 }
-                #[cfg(feature = "security_80")]
-                #[test]
-                fn [<rejects_corrupted_batched_proximity_pow_nonce_sec80_ $name>]() {
-                    test_rejects_corrupted_batched_proximity_pow_nonce(stringify!($name), SecurityLevel::Sec80);
-                }
-                #[cfg(feature = "security_100")]
                 #[test]
                 fn [<rejects_corrupted_batched_proximity_pow_nonce_sec100_ $name>]() {
                     test_rejects_corrupted_batched_proximity_pow_nonce(stringify!($name), SecurityLevel::Sec100);

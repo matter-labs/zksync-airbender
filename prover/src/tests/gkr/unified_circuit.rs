@@ -5,8 +5,8 @@ use riscv_transpiler::vm::DelegationsAndUnifiedCounters;
 use worker::Worker;
 
 #[test]
-fn gkr_run_unified_test_sec_80() {
-    run_unified_test(SecurityLevel::Sec80);
+fn gkr_run_unified_test_sec_100() {
+    run_unified_test(SecurityLevel::Sec100);
 }
 
 fn run_unified_test(level: SecurityLevel) {

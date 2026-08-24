@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+circuit_common = { workspace = true }
 common_constants = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 program_prover = { workspace = true, default-features = false }
@@ -28,9 +29,11 @@ serial_test = "3"
 flate2 = "*"
 
 [features]
-verifiers = ["program_prover/verifiers", "verifier_common/no_inline", "full_statement_verifier/verifiers", "full_statement_verifier/security_80"]
-security_80 = ["program_prover/security_80", "verifier_common/security_80"]
-security_100 = ["program_prover/security_100", "verifier_common/security_100"]
+verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
+# L1 wrap driver: prove a delegation-free run as ONE Proth120 packed unified
+# proof with the EVM-production parameters (pulls in prover's test harness for
+# the Proth120 witness path).
+l1 = ["prover/test", "prover/bincode"]
 # When enabled, the crate will print detailed debug logs.
 debug_logs = ["program_prover/debug_logs"]
 # Will perform satisfiability tests on witness
@@ -40,4 +43,4 @@ debug_satisfiable = ["program_prover/debug_satisfiable"]
 # Print logs related to timings only.
 timing_logs = ["program_prover/timing_logs"]
 
-default = ["timing_logs", "security_80", "verifier_common/proof_utils", "gkr_self_checks"]
+default = ["timing_logs", "verifier_common/proof_utils", "gkr_self_checks"]

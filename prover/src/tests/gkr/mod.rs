@@ -39,8 +39,11 @@ pub mod orchestration;
 
 #[cfg(test)]
 mod family_circuits;
-#[cfg(test)]
-mod large_field;
+// Also exposed under `feature = "test"`: the L1 wrap driver in
+// `prover_examples` reuses the Proth120 unified packed-proving pieces
+// (`build_unified_trace_without_precompiles`, the EVM-production config and
+// the Proth120 witness eval fn).
+pub mod large_field;
 #[cfg(test)]
 mod malicious_proofs;
 #[cfg(test)]
@@ -780,8 +783,7 @@ mod unified_reduced_machine {
     }
 }
 
-#[cfg(test)]
-mod unified_reduced_machine_proth120 {
+pub mod unified_reduced_machine_proth120 {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;

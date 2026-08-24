@@ -341,31 +341,6 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     Ok(output)
 }
 
-pub fn verify_unrolled_base_layer_sec_80<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    unsafe {
-        let circuits_setups: [MerkleTreeCap<_>; NUM_BASE_LAYER_CIRCUITS] =
-            core::array::from_fn(|_| {
-                read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>(nd_source)
-            });
-        let circuits_setups_refs = circuits_setups.each_ref();
-        verify_full_statement_for_unrolled_circuits::<I, E, true, REDUCED_ROUNDS>(
-            &circuits_setups_refs,
-            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_80::<I, E>(
-            ),
-            crate::unrolled_circuit_params::inits_and_teardowns_verifier_sec_80::<I, E>(),
-            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
-            &crate::delegation_params::all_delegation_circuit_verifiers_sec_80::<I, E>(),
-            nd_source,
-        )
-    }
-}
-
 pub fn verify_unrolled_base_layer_sec_100<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -402,39 +377,9 @@ pub fn verify_unrolled_base_layer<
     security_level: prover::definitions::SecurityLevel,
 ) -> Result<[u32; 16], E::Error> {
     match security_level {
-        prover::definitions::SecurityLevel::Sec80 => {
-            verify_unrolled_base_layer_sec_80::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
         prover::definitions::SecurityLevel::Sec100 => {
             verify_unrolled_base_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
         }
-    }
-}
-
-pub fn verify_unrolled_recursion_layer_sec_80<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    unsafe {
-        let circuits_setups: [MerkleTreeCap<_>; NUM_RECURSION_LAYER_CIRCUITS] =
-            core::array::from_fn(|_| {
-                read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>(nd_source)
-            });
-        let circuits_setups_refs = circuits_setups.each_ref();
-        verify_full_statement_for_unrolled_circuits::<I, E, false, REDUCED_ROUNDS>(
-            &circuits_setups_refs,
-            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_recursion_layer_sec_80::<
-                I,
-                E,
-            >(),
-            crate::unrolled_circuit_params::inits_and_teardowns_verifier_sec_80::<I, E>(),
-            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
-            &crate::delegation_params::all_delegation_circuit_verifiers_sec_80::<I, E>(),
-            nd_source,
-        )
     }
 }
 
@@ -474,34 +419,8 @@ pub fn verify_unrolled_recursion_layer<
     security_level: prover::definitions::SecurityLevel,
 ) -> Result<[u32; 16], E::Error> {
     match security_level {
-        prover::definitions::SecurityLevel::Sec80 => {
-            verify_unrolled_recursion_layer_sec_80::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
         prover::definitions::SecurityLevel::Sec100 => {
             verify_unrolled_recursion_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
-    }
-}
-
-pub fn verify_base_or_recursion_unrolled_circuits_sec_80<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    // we just branch
-    let op_type = nd_source.read_word();
-    use crate::definitions::*;
-    match op_type {
-        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => {
-            verify_unrolled_base_layer_sec_80::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
-        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => {
-            verify_unrolled_recursion_layer_sec_80::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
-        _ => {
-            panic!("Unknown op");
         }
     }
 }
@@ -538,9 +457,6 @@ pub fn verify_base_or_recursion_unrolled_circuits<
     security_level: prover::definitions::SecurityLevel,
 ) -> Result<[u32; 16], E::Error> {
     match security_level {
-        prover::definitions::SecurityLevel::Sec80 => {
-            verify_base_or_recursion_unrolled_circuits_sec_80::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
         prover::definitions::SecurityLevel::Sec100 => {
             verify_base_or_recursion_unrolled_circuits_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
         }

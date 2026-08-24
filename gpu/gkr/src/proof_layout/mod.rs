@@ -247,10 +247,10 @@ pub struct ProofLayout {
     pub(crate) backward: Vec<BackwardLayerLayout>,
     pub(crate) whir: WhirLayout,
     /// `GKRProof::lookup_challenges_pow_nonce` — a single `u64` ground by the
-    /// pow-aware lookup-challenge draw (0 at Sec80).
+    /// pow-aware lookup-challenge draw.
     pub lookup_pow_nonce: Range<usize>,
     /// `GKRProof::batched_proximity_check_pow_nonce` — a single `u64` ground by
-    /// the pow-aware WHIR batching-challenge draw (0 at Sec80).
+    /// the pow-aware WHIR batching-challenge draw.
     pub batched_proximity_pow_nonce: Range<usize>,
     pub total_bytes: usize,
 }

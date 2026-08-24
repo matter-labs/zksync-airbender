@@ -10,7 +10,7 @@ use crate::definitions::{
     produce_initial_permutation_product_contribution, FinalRegisterValue, MerkleTreeCap,
     SecurityLevel, DEFAULT_CAP_SIZE,
 };
-use crate::gkr::prover::prove_configured_with_gkr_with_gkr_backend;
+use crate::gkr::prover::prove_configured_with_gkr_with_backends;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
 use crate::gkr::prover::CommitmentMode;
@@ -825,11 +825,12 @@ pub fn prove_built_unified_trace(
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr_with_gkr_backend::<
+    let proof = prove_configured_with_gkr_with_backends::<
         BabyBearField,
         BabyBearExt4,
         DefaultTreeConstructor,
         Blake2sTranscript,
+        _,
         _,
     >(
         unified_circuit,
@@ -842,6 +843,7 @@ pub fn prove_built_unified_trace(
         CommitmentMode::SeparateMemoryAndWitness,
         unified_top_bits,
         trace_len,
+        &crate::gkr::prover::WorkStealingBackend,
         &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
         worker,
     );

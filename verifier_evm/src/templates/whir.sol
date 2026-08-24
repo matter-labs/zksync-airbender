@@ -66,7 +66,7 @@ contract WhirVerifier {
     // preimage) itself and reports it to the registry (it does NOT check a passed preimage).
     uint256 constant COMMIT_PTR = 96; // recomputed committed state, marked at the end
     // GkrWhirRegistry address (test etches the deployed registry here).
-    uint256 constant REGISTRY   = 0xCAFE0001;
+    address constant __TEMPLATE_REGISTRY_ADDRESS   = 0x00000000000000000000000000000000caFe0001;
     uint256 constant MARK_WHIR_SELECTOR = 0xbb716068; // mark_whir_verified(bytes32)
 
     // ── hand-placed memory ────────────────────────────────────────────────────
@@ -603,7 +603,7 @@ contract WhirVerifier {
         {
             mstore(0, shl(224, MARK_WHIR_SELECTOR))
             mstore(4, mload(COMMIT_PTR))
-            pop(call(gas(), REGISTRY, 0, 0, 36, 0, 0))
+            pop(call(gas(), __TEMPLATE_REGISTRY_ADDRESS, 0, 0, 36, 0, 0))
         }
 
         // Return the final claim, the gas used, and the number of proof bytes consumed.

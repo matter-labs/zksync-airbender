@@ -26,6 +26,9 @@ use prover::field::*;
 use prover::gkr::prover::CommitmentMode;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
+use prover::gkr::prover::{
+    prove_configured_with_gkr_with_backends, Backend, GKRBackend, TwiddleSetOps,
+};
 use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
@@ -321,7 +324,17 @@ where
     buffers
 }
 
-pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator>(
+/// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
+/// [`Backend::TwiddleSet`]s are built here, once per trace length) and the
+/// [`GKRBackend`] sumcheck engine. Proof bytes are backend-independent; pass
+/// `DefaultBabyBearBackend::default()` + `DefaultBabyBearGKRBackend::default()`
+/// for the target-recommended pair.
+pub fn prove_unrolled_execution_with_replayer<
+    C: MachineConfig,
+    A: GoodAllocator,
+    B: Backend<BabyBearField, BabyBearExt4>,
+    GB: GKRBackend<BabyBearField, BabyBearExt4>,
+>(
     cycles_bound: usize,
     binary_image: &[u32],
     text_section: &[u32],
@@ -331,6 +344,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     worker: &worker::Worker,
     security_level: SecurityLevel,
     permutation_argument_pow_bits: u32,
+    backend: &B,
+    gkr_backend: &GB,
 ) -> (
     full_statement_verifier::program_proof::ProgramProof,
     BTreeMap<u32, UnrolledCircuitSetupParams>,
@@ -362,8 +377,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     let mut family_chunk_sizes = HashMap::new();
 
     fn get_riscv_chunk_size<
-        const B: bool,
-        C: circuit_common::RiscVCycleCircuit<BabyBearField, B>,
+        const IS_MEM: bool,
+        C: circuit_common::RiscVCycleCircuit<BabyBearField, IS_MEM>,
     >(
         dst: &mut HashMap<u8, usize>,
     ) {
@@ -694,15 +709,18 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
-            .or_insert_with(|| Twiddles::new(trace_len, worker));
+            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
         for chunk in witness_chunks.iter() {
             let cap = commit_memory_tree_for_unrolled_nonmem_circuits::<
                 BabyBearField,
+                BabyBearExt4,
                 DefaultTreeConstructor,
                 Global,
                 Global,
+                _,
             >(
+                backend,
                 &setup.compiled_circuit,
                 &chunk,
                 &*twiddles_for_size,
@@ -733,15 +751,18 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
-            .or_insert_with(|| Twiddles::new(trace_len, worker));
+            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
         for chunk in witness_chunks.iter() {
             let cap = commit_memory_tree_for_unrolled_mem_circuits::<
                 BabyBearField,
+                BabyBearExt4,
                 DefaultTreeConstructor,
                 Global,
                 Global,
+                _,
             >(
+                backend,
                 &setup.compiled_circuit,
                 &chunk,
                 &*twiddles_for_size,
@@ -761,14 +782,17 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let trace_len = inits_and_teardowns_setup.trace_len;
         let twiddles_for_size = twiddles
             .entry(trace_len)
-            .or_insert_with(|| Twiddles::new(trace_len, worker));
+            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let cap = commit_memory_tree_for_inits_and_teardowns::<
             BabyBearField,
+            BabyBearExt4,
             DefaultTreeConstructor,
             Global,
             Global,
+            _,
         >(
+            backend,
             &inits_and_teardowns_setup.compiled_circuit,
             inits_and_teardowns.clone(),
             &*twiddles_for_size,
@@ -793,12 +817,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
+                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
                     BabyBearField,
+                    BabyBearExt4,
                     DefaultTreeConstructor,
                     A,
                     A,
@@ -807,7 +832,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     _,
                     _,
                     _,
+                    _,
                 >(
+                    backend,
                     &setup.compiled_circuit,
                     el,
                     &*twiddles_for_size,
@@ -832,12 +859,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
+                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
                     BabyBearField,
+                    BabyBearExt4,
                     DefaultTreeConstructor,
                     A,
                     A,
@@ -846,7 +874,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     _,
                     _,
                     _,
+                    _,
                 >(
+                    backend,
                     &setup.compiled_circuit,
                     el,
                     &*twiddles_for_size,
@@ -871,12 +901,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
+                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
                     BabyBearField,
+                    BabyBearExt4,
                     DefaultTreeConstructor,
                     A,
                     A,
@@ -885,7 +916,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     _,
                     _,
                     _,
+                    _,
                 >(
+                    backend,
                     &setup.compiled_circuit,
                     el,
                     &*twiddles_for_size,
@@ -911,12 +944,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
+                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
                     BabyBearField,
+                    BabyBearExt4,
                     DefaultTreeConstructor,
                     A,
                     A,
@@ -925,7 +959,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     _,
                     _,
                     _,
+                    _,
                 >(
+                    backend,
                     &setup.compiled_circuit,
                     el,
                     &*twiddles_for_size,
@@ -1075,9 +1111,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
-                    .or_insert_with(|| Twiddles::new(trace_len, worker));
+                    .or_insert_with(|| backend.make_twiddles(trace_len, worker));
                 let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
-                    &*twiddles_for_size,
+                    twiddles_for_size.plain(),
                     prover_config.lde_factor,
                     prover_config.whir_schedule.whir_steps_schedule[0],
                     prover_config.cap_size,
@@ -1106,9 +1142,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
-            .or_insert_with(|| Twiddles::new(trace_len, worker));
+            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
         let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
-            &*twiddles_for_size,
+            twiddles_for_size.plain(),
             prover_config.lde_factor,
             prover_config.whir_schedule.whir_steps_schedule[0],
             prover_config.cap_size,
@@ -1191,11 +1227,12 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             // }
 
             let now = std::time::Instant::now();
-            let proof = prove_configured_with_gkr_with_gkr_backend::<
+            let proof = prove_configured_with_gkr_with_backends::<
                 BabyBearField,
                 BabyBearExt4,
                 DefaultTreeConstructor,
                 Blake2sTranscript,
+                _,
                 _,
             >(
                 &setup.compiled_circuit,
@@ -1208,7 +1245,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 CommitmentMode::SeparateMemoryAndWitness,
                 vec![],
                 trace_len,
-                &DefaultBabyBearGKRBackend::default(),
+                backend,
+                gkr_backend,
                 &worker,
             );
             println!(
@@ -1246,9 +1284,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
-                    .or_insert_with(|| Twiddles::new(trace_len, worker));
+                    .or_insert_with(|| backend.make_twiddles(trace_len, worker));
                 let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
-                    &*twiddles_for_size,
+                    twiddles_for_size.plain(),
                     prover_config.lde_factor,
                     prover_config.whir_schedule.whir_steps_schedule[0],
                     prover_config.cap_size,
@@ -1276,9 +1314,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
-            .or_insert_with(|| Twiddles::new(trace_len, worker));
+            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
         let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
-            &*twiddles_for_size,
+            twiddles_for_size.plain(),
             prover_config.lde_factor,
             prover_config.whir_schedule.whir_steps_schedule[0],
             prover_config.cap_size,
@@ -1359,11 +1397,12 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             // }
 
             let now = std::time::Instant::now();
-            let proof = prove_configured_with_gkr_with_gkr_backend::<
+            let proof = prove_configured_with_gkr_with_backends::<
                 BabyBearField,
                 BabyBearExt4,
                 DefaultTreeConstructor,
                 Blake2sTranscript,
+                _,
                 _,
             >(
                 &setup.compiled_circuit,
@@ -1376,7 +1415,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 CommitmentMode::SeparateMemoryAndWitness,
                 vec![],
                 trace_len,
-                &DefaultBabyBearGKRBackend::default(),
+                backend,
+                gkr_backend,
                 &worker,
             );
             println!(
@@ -1413,9 +1453,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
-            .or_insert_with(|| Twiddles::new(trace_len, worker));
+            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
         let setup_commitment = setup.setup.commit(
-            &*twiddles_for_size,
+            twiddles_for_size.plain(),
             prover_config.lde_factor,
             prover_config.whir_schedule.whir_steps_schedule[0],
             prover_config.cap_size,
@@ -1449,11 +1489,12 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let proof = prove_configured_with_gkr_with_gkr_backend::<
+        let proof = prove_configured_with_gkr_with_backends::<
             BabyBearField,
             BabyBearExt4,
             DefaultTreeConstructor,
             Blake2sTranscript,
+            _,
             _,
         >(
             &setup.compiled_circuit,
@@ -1466,7 +1507,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             CommitmentMode::SeparateMemoryAndWitness,
             inits_and_teardowns_top_bits,
             trace_len,
-            &DefaultBabyBearGKRBackend::default(),
+            backend,
+            gkr_backend,
             &worker,
         );
 
@@ -1501,7 +1543,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _>(
+                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
                     &external_challenges,
                     setup,
@@ -1512,6 +1554,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     should_dump_witness,
                     &mut twiddles,
                     &prover_config,
+                    backend,
+                    gkr_backend,
                     worker,
                 );
 
@@ -1535,7 +1579,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _>(
+                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
                     &external_challenges,
                     setup,
@@ -1546,6 +1590,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     should_dump_witness,
                     &mut twiddles,
                     &prover_config,
+                    backend,
+                    gkr_backend,
                     worker,
                 );
 
@@ -1569,7 +1615,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _>(
+                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
                     &external_challenges,
                     setup,
@@ -1580,6 +1626,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     should_dump_witness,
                     &mut twiddles,
                     &prover_config,
+                    backend,
+                    gkr_backend,
                     worker,
                 );
 
@@ -1603,7 +1651,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _>(
+                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
                     &external_challenges,
                     setup,
@@ -1614,6 +1662,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     should_dump_witness,
                     &mut twiddles,
                     &prover_config,
+                    backend,
+                    gkr_backend,
                     worker,
                 );
 
@@ -1663,6 +1713,8 @@ pub(crate) fn prove_delegation_circuit<
     const INDIRECT_READS: usize,
     const INDIRECT_WRITES: usize,
     const VARIABLE_OFFSETS: usize,
+    B: Backend<BabyBearField, BabyBearExt4>,
+    GB: GKRBackend<BabyBearField, BabyBearExt4>,
 >(
     witnesses: &[Vec<
         riscv_transpiler::witness::DelegationWitness<
@@ -1693,8 +1745,10 @@ pub(crate) fn prove_delegation_circuit<
     permutation_argument_grand_product: &mut BabyBearExt4,
     delegation_proofs_count: &mut usize,
     should_dump_witness: bool,
-    twiddles: &mut HashMap<usize, Twiddles<BabyBearField, Global>>,
+    twiddles: &mut HashMap<usize, B::TwiddleSet>,
     prover_config: &ProverConfig,
+    backend: &B,
+    gkr_backend: &GB,
     worker: &worker::Worker,
 ) -> (
     Vec<GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>>,
@@ -1707,9 +1761,9 @@ pub(crate) fn prove_delegation_circuit<
     let trace_len = setup.trace_len;
     let twiddles_for_size = twiddles
         .entry(trace_len)
-        .or_insert_with(|| Twiddles::new(trace_len, worker));
+        .or_insert_with(|| backend.make_twiddles(trace_len, worker));
     let setup_commitment = setup.setup.commit(
-        &*twiddles_for_size,
+        twiddles_for_size.plain(),
         prover_config.lde_factor,
         prover_config.whir_schedule.whir_steps_schedule[0],
         prover_config.cap_size,
@@ -1780,16 +1834,15 @@ pub(crate) fn prove_delegation_circuit<
         // }
 
         // and prove
-        use ::prover::gkr::prover::prove_configured_with_gkr_with_gkr_backend;
-
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         assert!(delegation_type < 1 << 12);
-        let proof = prove_configured_with_gkr_with_gkr_backend::<
+        let proof = prove_configured_with_gkr_with_backends::<
             BabyBearField,
             BabyBearExt4,
             DefaultTreeConstructor,
             Blake2sTranscript,
+            _,
             _,
         >(
             &setup.compiled_circuit,
@@ -1802,7 +1855,8 @@ pub(crate) fn prove_delegation_circuit<
             CommitmentMode::SeparateMemoryAndWitness,
             vec![],
             trace_len,
-            &::prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
+            backend,
+            gkr_backend,
             &worker,
         );
         #[cfg(feature = "timing_logs")]
@@ -1852,6 +1906,8 @@ pub(crate) mod test {
         let (program_proof, setups) = prove_unrolled_execution_with_replayer::<
             IMStandardIsaConfigUnsignedMulDivOnly,
             Global,
+            _,
+            _,
         >(
             1 << 24,
             &binary_image,
@@ -1860,8 +1916,10 @@ pub(crate) mod test {
             non_determinism_source,
             1 << 30,
             &worker,
-            SecurityLevel::Sec80,
-            0,
+            SecurityLevel::Sec100,
+            verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+            &prover::gkr::prover::DefaultBabyBearBackend::default(),
+            &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
         );
 
         bincode_serialize_to_file(&program_proof, "tmp_proof.bin");
@@ -1901,7 +1959,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let verification_result =
-                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer_sec_80::<
+                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer_sec_100::<
                         _,
                         DebugErrorCreator,
                         true,
@@ -1942,7 +2000,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let (family, verifier_fn) =
-                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_80::<
+                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<
                         _,
                         DebugErrorCreator,
                     >()[verifier_idx];

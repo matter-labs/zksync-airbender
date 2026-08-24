@@ -304,7 +304,7 @@ pub fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
             ext_quad.insert(*b);
         }
     }
-    let base_interp: Vec<bool> = base_polys.iter().map(|a| base_quad.contains(a)).collect();
+    let mut base_interp: Vec<bool> = base_polys.iter().map(|a| base_quad.contains(a)).collect();
     let ext_interp: Vec<bool> = ext_polys.iter().map(|a| ext_quad.contains(a)).collect();
 
     let mut forms: Vec<FormDesc<F>> = vec![];
@@ -467,6 +467,25 @@ pub fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
             ProgramStep::QuadEE { a, b, c } => folded_quad.push((nb + *a, nb + *b, *c)),
             ProgramStep::LinB { i, c } => folded_lin.push((*i, *c)),
             ProgramStep::LinE { i, c } => folded_lin.push((nb + *i, *c)),
+        }
+    }
+
+    // The flattened description's quad participation is a superset of the
+    // factored program's difference-cell needs only up to CS-side
+    // simplification: a factored form may read a slot whose expanded cross
+    // terms cancelled out of the flattened relation (keccak_special5 layer 0
+    // hits this), so the flags derived above can miss it. The program itself
+    // is the authority on which slots it reads at the difference cells.
+    for form in forms.iter() {
+        for (_, idx) in form.members.iter() {
+            base_interp[*idx as usize] = true;
+        }
+    }
+    for (a, b, _) in products.iter() {
+        for r in [a, b] {
+            if let FormRef::Slot(i) = r {
+                base_interp[*i as usize] = true;
+            }
         }
     }
 

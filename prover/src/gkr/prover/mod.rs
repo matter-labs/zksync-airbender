@@ -573,19 +573,22 @@ where
 }
 
 /// [`prove_configured_with_gkr`] (same historical mode-dependent storage
-/// policy, same [`WorkStealingBackend`] FFT/tree backend and plain twiddles)
-/// with an explicit [`GKRBackend`]. Field-concrete callers select their
-/// target-recommended sumcheck engine here — the DEFAULT configurations
-/// (prover_examples, the test orchestration) pass
-/// [`DefaultBabyBearGKRBackend`], which resolves to the NEON SoA engine on
-/// aarch64 and to [`NaiveGKRBackend`] elsewhere. Proof bytes are identical
-/// across GKR backends; only the execution strategy differs.
+/// policy) with explicit compute backends: the FFT/tree [`Backend`] — whose
+/// [`Backend::TwiddleSet`] (built once via [`Backend::make_twiddles`]) replaces
+/// the plain twiddles — and the [`GKRBackend`] sumcheck engine. Field-concrete
+/// callers select their target-recommended pair here — the DEFAULT
+/// configurations (prover_examples, the test orchestration) pass
+/// [`DefaultBabyBearBackend`] + [`DefaultBabyBearGKRBackend`], which resolve to
+/// the NEON implementations on aarch64 and to the generic ones elsewhere.
+/// Proof bytes are identical across backends; only the execution strategy
+/// differs.
 #[allow(clippy::too_many_arguments)]
-pub fn prove_configured_with_gkr_with_gkr_backend<
+pub fn prove_configured_with_gkr_with_backends<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
     TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
     GB: GKRBackend<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
@@ -593,11 +596,12 @@ pub fn prove_configured_with_gkr_with_gkr_backend<
     witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
     setup: &GKRSetup<F>,
     setup_commitment: &SetupCommitment<F, T>,
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
     commitment_mode: CommitmentMode,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
+    backend: &B,
     gkr_backend: &GB,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
@@ -613,7 +617,7 @@ where
             WhirOracleStorage::fully_in_memory()
         }
     };
-    prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -625,7 +629,7 @@ where
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
-        &WorkStealingBackend,
+        backend,
         gkr_backend,
         worker,
     )
@@ -764,6 +768,21 @@ where
 {
     let rs_codeword_source = storage.base_rs_source;
     assert_eq!(compiled_circuit.trace_len, trace_len);
+    assert!(trace_len.is_power_of_two());
+    assert_eq!(
+        prover_config.trace_len_log2,
+        trace_len.trailing_zeros() as usize,
+        "the prover config was computed for trace length 2^{} but this circuit's \
+         trace length is {trace_len}",
+        prover_config.trace_len_log2,
+    );
+    // The WHIR run starts from the (possibly packed) committed message size.
+    let whir_message_size_log2 = prover_config.trace_len_log2
+        + match &commitment_mode {
+            CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2, .. } => *pack_log2,
+            CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => 0,
+        };
+    prover_config.validate_for_whir_message_size(whir_message_size_log2);
     if witness_eval_data.column_major_memory_trace.len() > 0 {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
@@ -780,11 +799,6 @@ where
     assert_eq!(
         inits_and_teardowns_top_bits.len(),
         compiled_circuit.memory_layout.teardown_sets.len()
-    );
-
-    assert_eq!(
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.whir_schedule.whir_steps_schedule[0]
     );
 
     let mut external_challenges = *external_challenges;
@@ -1562,11 +1576,11 @@ where
             let [merged_claims, setup_polys_claims] = [merged_claims, setup_polys_claims]
                 .map(|input| merge_claims(&input, &extra_coordinates));
 
-            // and we need to update claim point
-            let mut new_claim_point = extra_coordinates;
-            new_claim_point.extend_from_slice(&base_layer_z);
-
-            base_layer_z = new_claim_point;
+            // and we need to update claim point: the pack index occupies the HIGH
+            // bits of the packed enumeration (sub-polys are concatenated block by
+            // block), so under LSB binding the packing coordinates EXTEND the
+            // claim point at the top.
+            base_layer_z.extend_from_slice(&extra_coordinates);
             trace_len_log2_for_whir += pack_log2;
 
             #[cfg(feature = "gkr_self_checks")]
@@ -1602,13 +1616,13 @@ where
                             twiddles.plain(),
                         )
                     };
-                    // monomials -> hypercube evaluations of the packed multilinear,
-                    // then bit-reverse (the packing committed `evals_into_coeffs(bitrev(H))`,
-                    // so the inverse is `coeffs_into_hypercube_evals` then `bitreverse`;
-                    // this mirrors `whir_fold`'s own claim recomputation).
+                    // monomials -> hypercube evaluations of the packed multilinear.
+                    // The packing is reversal-free under the LSB convention
+                    // (`evals_into_coeffs` straight over the concatenated blocks),
+                    // so the inverse is just `coeffs_into_hypercube_evals` —
+                    // mirroring `whir_fold`'s own reversal-free claim recomputation.
                     let size_log2 = hypercube_evals.len().trailing_zeros();
                     multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, size_log2);
-                    crate::fft::bitreverse_enumeration_inplace(&mut hypercube_evals);
                     // re-evaluate at the extended claim point and compare
                     assert_eq!(hypercube_evals.len(), eq_at_point.len());
                     let reevaluated =
@@ -1793,9 +1807,11 @@ fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
             padded
         };
         let mut buffer = vec![];
-        // note `rev` on the coordiantes - we will later on concatenate
-        // coordiantes, so first coordiante is MSB
-        for merge_point in extra_coordinates.iter().rev() {
+        // adjacent claims differ in pack-index bit 0, which pairs with
+        // extra_coordinates[0] under LSB binding — iterate FORWARD (the pack
+        // coordinates land at the TOP of the claim point, but their own bits
+        // are still enumerated LSB-first)
+        for merge_point in extra_coordinates.iter() {
             for [a, b] in input.as_chunks::<2>().0 {
                 // canonical interpolation a + (b - a) * r', consistent with the packing
                 // that concatenates sub-polys in order (block 0 => a at coordinate 0)
