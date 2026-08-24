@@ -4,10 +4,14 @@ use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{CudaDeviceAttr, CudaError};
 use gpu_core::allocator::device::{
-    NonConcurrentStaticDeviceAllocator, StaticDeviceAllocationBackend,
+    NonConcurrentStaticDeviceAllocator, NonConcurrentStaticDeviceMemoryHighWaterObserver,
+    StaticDeviceAllocationBackend,
 };
 use gpu_core::allocator::host::NonConcurrentStaticHostAllocator;
 use gpu_core::allocator::tracker::AllocationPlacement;
+pub use gpu_core::allocator::{
+    PoolMemoryHighWaterReport, PoolMemoryHighWaterSnapshot, PoolMemoryUsage,
+};
 use gpu_core::primitives::context::{
     DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
 };
@@ -55,6 +59,30 @@ pub struct ProverContext {
     device_id: i32,
     device_properties: DeviceProperties,
     reversed_allocation_placement: bool,
+}
+
+/// Scoped device-pool observer for exact physical and corrected-logical peaks.
+///
+/// `seal` freezes the peak/requested-byte window while retaining the slot for
+/// `finish` to sample return-to-entry. Dropping an unfinished observer cancels
+/// it and releases the slot.
+#[must_use = "finish, cancel, or drop the device memory high-water observer"]
+pub struct DeviceMemoryHighWaterObserver<'a> {
+    inner: NonConcurrentStaticDeviceMemoryHighWaterObserver<'a>,
+}
+
+impl DeviceMemoryHighWaterObserver<'_> {
+    pub fn seal(&mut self) -> PoolMemoryHighWaterSnapshot {
+        self.inner.seal()
+    }
+
+    pub fn finish(self) -> PoolMemoryHighWaterReport {
+        self.inner.finish()
+    }
+
+    pub fn cancel(self) {
+        self.inner.cancel();
+    }
 }
 
 impl ProverContext {
@@ -244,17 +272,36 @@ impl ProverContext {
         self.device_allocator_mem_size
     }
 
+    /// Corrected logical live bytes. With the small allocator enabled, this
+    /// replaces its full carved backing with only live small suballocations.
     pub fn get_used_mem_current(&self) -> usize {
         self.device_allocator.get_used_mem_current()
     }
 
+    /// Legacy physical-backing high-water from the outer allocator tracker.
+    /// This includes a carved small-allocation pool in full.
     #[doc(hidden)]
     pub fn get_used_mem_peak(&self) -> usize {
         self.device_allocator.get_used_mem_peak()
     }
 
+    /// Resets only the legacy physical-backing peak. Scoped observers are
+    /// independent and remain intact across this call.
     pub fn reset_used_mem_peak(&self) {
         self.device_allocator.reset_used_mem_peak();
+    }
+
+    /// Returns exact current physical-backing and corrected-logical live bytes.
+    pub fn get_device_memory_usage(&self) -> PoolMemoryUsage {
+        self.device_allocator.get_memory_usage()
+    }
+
+    /// Starts an interval-local observer. At most two may be live at once,
+    /// which supports overlapping whole-proof and backward windows.
+    pub fn observe_device_memory_high_water(&self) -> DeviceMemoryHighWaterObserver<'_> {
+        DeviceMemoryHighWaterObserver {
+            inner: self.device_allocator.observe_memory_high_water(),
+        }
     }
 
     pub fn get_device_properties(&self) -> &DeviceProperties {
