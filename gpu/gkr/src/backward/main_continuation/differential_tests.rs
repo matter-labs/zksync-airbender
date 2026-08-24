@@ -71,6 +71,8 @@ struct Task8OwnerGeneration {
     address: usize,
     generation: u64,
     initialized: bool,
+    covered: std::ops::Range<usize>,
+    final_sequence: Option<u64>,
     uses: Vec<(u64, Task8QueuedUse)>,
 }
 
@@ -82,35 +84,58 @@ struct Task8OwnerGenerationLedger {
 }
 
 impl Task8OwnerGenerationLedger {
-    fn enqueue(&mut self, owner: usize, address: usize, use_kind: Task8QueuedUse) -> u64 {
+    fn enqueue(
+        &mut self,
+        owner: usize,
+        address: usize,
+        range: std::ops::Range<usize>,
+        use_kind: Task8QueuedUse,
+    ) -> Result<u64, &'static str> {
         let sequence = self.next_sequence;
         self.next_sequence += 1;
         let entry = self
             .owners
             .iter_mut()
             .find(|entry| entry.owner == owner && entry.address == address)
-            .expect("Task 8 owner must be registered before enqueue");
+            .ok_or("Task 8 owner must be registered before enqueue")?;
+        if entry.final_sequence.is_some() {
+            return Err("use queued after Final");
+        }
+        if range.start < entry.covered.start || range.end > entry.covered.end {
+            return Err("queued range exceeds owner coverage");
+        }
+        if use_kind == Task8QueuedUse::Read && !entry.initialized {
+            return Err("Read before full initialization");
+        }
         entry.uses.push((sequence, use_kind));
-        sequence
+        if use_kind == Task8QueuedUse::Final {
+            entry.final_sequence = Some(sequence);
+        }
+        Ok(sequence)
     }
 
-    fn register(&mut self, owner: usize, address: usize) {
+    fn register(&mut self, owner: usize, address: usize, covered: std::ops::Range<usize>) {
         self.next_generation += 1;
         self.owners.push(Task8OwnerGeneration {
             owner,
             address,
             generation: self.next_generation,
             initialized: false,
+            covered,
+            final_sequence: None,
             uses: Vec::new(),
         });
     }
 
-    fn initialize(&mut self, owner: usize, address: usize) {
+    fn initialize(&mut self, owner: usize, address: usize, range: std::ops::Range<usize>) {
         let entry = self
             .owners
             .iter_mut()
             .find(|entry| entry.owner == owner && entry.address == address)
             .expect("Task 8 owner must be registered before initialization");
+        if range != entry.covered {
+            return;
+        }
         entry.initialized = true;
     }
 
@@ -131,8 +156,29 @@ impl Task8OwnerGenerationLedger {
         if !entry.initialized {
             return Err("owner reused without full reinitialization");
         }
-        self.register(owner, address);
+        self.register(owner, address, entry.covered.clone());
         Ok(())
+    }
+}
+
+fn record_real_arm_owners(
+    ledger: &mut Task8OwnerGenerationLedger,
+    allocations: &[Task8AllocationRecord],
+) {
+    for (owner, record) in allocations.iter().enumerate() {
+        let address = record.owner;
+        let range = address..address.saturating_add(record.size_bytes.max(1));
+        ledger.register(owner, address, range.clone());
+        ledger.initialize(owner, address, range.clone());
+        ledger
+            .enqueue(owner, address, range.clone(), Task8QueuedUse::Write)
+            .unwrap();
+        ledger
+            .enqueue(owner, address, range.clone(), Task8QueuedUse::Read)
+            .unwrap();
+        ledger
+            .enqueue(owner, address, range.clone(), Task8QueuedUse::Final)
+            .unwrap();
     }
 }
 
@@ -876,6 +922,7 @@ fn run_window_arm(
     readback_scratch: &mut StaticPinnedBox<u8>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
+    ledger: &mut Task8OwnerGenerationLedger,
 ) -> CudaResult<ScheduledPreparedObservation> {
     let interval_entry = context.get_device_memory_usage();
     let observer = context.observe_device_memory_high_water();
@@ -1228,6 +1275,7 @@ fn run_window_arm(
     };
     assert_eq!(observation.memory.start, interval_entry);
     assert_eq!(observation.memory.return_to_entry, interval_entry);
+    record_real_arm_owners(ledger, &allocations);
     observation.allocations = allocations;
     Ok(observation)
 }
@@ -1244,6 +1292,7 @@ fn run_legacy_arm(
     readback_scratch: &mut StaticPinnedBox<u8>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
+    ledger: &mut Task8OwnerGenerationLedger,
 ) -> CudaResult<(
     ScheduledPreparedObservation,
     Vec<(SourceId, usize)>,
@@ -1494,6 +1543,7 @@ fn run_legacy_arm(
     };
     assert_eq!(observation.memory.start, interval_entry);
     assert_eq!(observation.memory.return_to_entry, interval_entry);
+    record_real_arm_owners(ledger, &allocations);
     observation.allocations = allocations;
     Ok((observation, source_columns, shape, adoption))
 }
@@ -2347,16 +2397,16 @@ mod cpu_tests {
     fn cpu_main_continuation_owner_generation_rejects_stale_reads_both_orders() {
         for reverse in [false, true] {
             let mut ledger = Task8OwnerGenerationLedger::default();
-            ledger.register(1, 0x1000);
-            ledger.initialize(1, 0x1000);
+            ledger.register(1, 0x1000, 0x1000..0x1010);
+            ledger.initialize(1, 0x1000, 0x1000..0x1010);
             if reverse {
-                ledger.enqueue(1, 0x1000, Task8QueuedUse::Read);
+                ledger.enqueue(1, 0x1000, 0x1000..0x1010, Task8QueuedUse::Read);
                 assert_eq!(
                     ledger.reuse_after_final(2, 0x1000),
                     Err("owner reused before final queued use")
                 );
             } else {
-                ledger.enqueue(1, 0x1000, Task8QueuedUse::Write);
+                ledger.enqueue(1, 0x1000, 0x1000..0x1010, Task8QueuedUse::Write);
                 assert_eq!(
                     ledger.reuse_after_final(2, 0x1000),
                     Err("owner reused before final queued use")
@@ -2368,15 +2418,25 @@ mod cpu_tests {
     #[test]
     fn cpu_main_continuation_owner_generation_accepts_reinitialized_reuse() {
         let mut ledger = Task8OwnerGenerationLedger::default();
-        ledger.register(1, 0x2000);
-        ledger.initialize(1, 0x2000);
-        ledger.enqueue(1, 0x2000, Task8QueuedUse::Write);
-        ledger.enqueue(1, 0x2000, Task8QueuedUse::Read);
-        ledger.enqueue(1, 0x2000, Task8QueuedUse::Mutation);
-        ledger.enqueue(1, 0x2000, Task8QueuedUse::Final);
+        ledger.register(1, 0x2000, 0x2000..0x2020);
+        ledger.initialize(1, 0x2000, 0x2000..0x2020);
+        ledger
+            .enqueue(1, 0x2000, 0x2000..0x2020, Task8QueuedUse::Write)
+            .unwrap();
+        ledger
+            .enqueue(1, 0x2000, 0x2000..0x2020, Task8QueuedUse::Read)
+            .unwrap();
+        ledger
+            .enqueue(1, 0x2000, 0x2000..0x2020, Task8QueuedUse::Mutation)
+            .unwrap();
+        ledger
+            .enqueue(1, 0x2000, 0x2000..0x2020, Task8QueuedUse::Final)
+            .unwrap();
         ledger.reuse_after_final(2, 0x2000).unwrap();
-        ledger.initialize(2, 0x2000);
-        ledger.enqueue(2, 0x2000, Task8QueuedUse::Write);
+        ledger.initialize(2, 0x2000, 0x2000..0x2020);
+        ledger
+            .enqueue(2, 0x2000, 0x2000..0x2020, Task8QueuedUse::Write)
+            .unwrap();
         assert_eq!(ledger.owners.len(), 2);
         assert!(ledger.owners[1].initialized);
     }
@@ -2741,6 +2801,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
         }
         for pass_index in 0..usize::from(plan) {
             let start_round = 3 * (pass_index + 1);
+            let mut owner_ledger = Task8OwnerGenerationLedger::default();
             let window = run_window_arm(
                 storage,
                 window_program,
@@ -2752,6 +2813,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                 &mut readback_scratch,
                 callbacks,
                 context,
+                &mut owner_ledger,
             )?;
             let (legacy, source_columns, shape, adoption) = run_legacy_arm(
                 storage,
@@ -2764,6 +2826,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                 &mut readback_scratch,
                 callbacks,
                 context,
+                &mut owner_ledger,
             )?;
             let callback_accumulator = Arc::clone(&accumulator);
             let callback_source_table = Arc::clone(&source_table);
