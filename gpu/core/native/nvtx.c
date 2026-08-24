@@ -1,3 +1,7 @@
+// The NVTX bundle in CUDA 13.0 defines this with an unbalanced parenthesis
+// (fixed by 13.3); pre-empt the guarded header definition with a correct one.
+#define NVTX_POINTER_AS_PAYLOAD_ULLVALUE(p) ((uint64_t)(uintptr_t)(p))
+
 #include <nvtx3/nvToolsExt.h>
 #include <nvtx3/nvToolsExtCounters.h>
 #include <nvtx3/nvToolsExtMem.h>
