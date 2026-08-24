@@ -305,7 +305,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         1 << 30,
         &worker,
         crate::upstream::SecurityLevel::Sec100,
-        0,
+        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
         &prover_examples::prover::gkr::prover::DefaultBabyBearBackend::default(),
         &prover_examples::prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
     );

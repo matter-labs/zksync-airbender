@@ -319,7 +319,7 @@ impl ProveBackend for CpuBackend {
                         self.cpu.ram_bound,
                         &self.worker,
                         security_level,
-                        0,
+                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                         &DefaultBabyBearBackend::default(),
                         &DefaultBabyBearGKRBackend::default(),
                     )
@@ -339,7 +339,7 @@ impl ProveBackend for CpuBackend {
                         self.cpu.ram_bound,
                         &self.worker,
                         security_level,
-                        0,
+                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                         &DefaultBabyBearBackend::default(),
                         &DefaultBabyBearGKRBackend::default(),
                     )
