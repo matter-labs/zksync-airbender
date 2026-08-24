@@ -1,3 +1,4 @@
+mod binding;
 mod program;
 
 pub use program::MainTailProgram;
@@ -11,3 +12,10 @@ pub(crate) use program::{
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod reference;
+
+#[cfg(test)]
+#[path = "tests/gpu.rs"]
+mod gpu_tests;

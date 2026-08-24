@@ -1,5 +1,10 @@
+use core::mem::{align_of, offset_of, size_of};
+
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr_compiler::{CoefficientRecipeId, ContinuationLayerProgram, SourceId};
+use gpu_gkr_compiler::{
+    interpret_continuation_program, CoeffResolver, CoefficientRecipeId, ContinuationLayerProgram,
+    SourceId,
+};
 
 use super::reference::{
     main_tail_reference, main_tail_reference_with_mutation, MainTailClaimOutput,
@@ -11,6 +16,11 @@ use crate::backward::{
     compile_corpus_layout, continuation_golden_path, decode_golden, make_eq_sizes,
 };
 use crate::upstream::{Field, FieldExtension, PrimeField};
+
+use super::super::binding::{
+    serialize_main_tail_program_blob, validate_main_tail_final_publication_capacity,
+    MainTailBindError, MainTailDesc, MAIN_TAIL_DESCRIPTOR_BYTES, MAIN_TAIL_PARAMETER_HEADROOM,
+};
 
 fn lift(value: u32) -> E4 {
     <E4 as FieldExtension<BF>>::from_base(BF::from_u32_with_reduction(value))
@@ -391,4 +401,189 @@ fn cpu_main_tail_mutation_conventions_are_live() {
         main_tail_reference(entry_eq_perturbation.input(MainTailClaimOutput::Aliased)),
         Err(MainTailReferenceError::EntryEqValue { index: 0 })
     ));
+}
+
+#[test]
+fn cpu_main_tail_descriptor_immediates_use_montgomery_raw() {
+    struct ImmediateResolver;
+
+    impl CoeffResolver for ImmediateResolver {
+        fn coefficient(&self, id: CoefficientRecipeId) -> E4 {
+            lift(13 + 17 * id.0)
+        }
+
+        fn source_pair(&self, id: SourceId, row: usize) -> (E4, E4) {
+            let endpoint0 = lift(29 + 19 * id.0 + 7 * row as u32);
+            let mut endpoint1 = endpoint0;
+            endpoint1.add_assign(&lift(5 + id.0));
+            (endpoint0, endpoint1)
+        }
+    }
+
+    let (programs, layers) = compile_corpus_layout("mem_word_only_layout_gkr.json");
+    let (program, tail_program, canonical_copy) = (0..layers)
+        .filter_map(|layer| {
+            let program = programs.continuation_layer(layer).clone();
+            let tail_program = super::super::lower_main_tail_program(&program).ok()?;
+            if tail_program.immediates.is_empty() {
+                return None;
+            }
+            let mut canonical_copy = program.clone();
+            canonical_copy.immediates = tail_program
+                .immediates
+                .iter()
+                .map(|&canonical_as_raw| {
+                    BF::from_reduced_raw_repr(canonical_as_raw).as_u32_reduced()
+                })
+                .collect();
+            canonical_copy.coefficients.immediates = canonical_copy.immediates.clone();
+            let live = (0..32).any(|row| {
+                interpret_continuation_program(&program, row, &ImmediateResolver, 8).unwrap()
+                    != interpret_continuation_program(&canonical_copy, row, &ImmediateResolver, 8)
+                        .unwrap()
+            });
+            live.then_some((program, tail_program, canonical_copy))
+        })
+        .next()
+        .expect("the fixed mem-word corpus has a live banked immediate");
+    assert!(!tail_program.immediates.is_empty());
+
+    let blob = serialize_main_tail_program_blob(&tail_program);
+    let packed = tail_program
+        .immediates
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            let offset = super::super::MAIN_TAIL_IMMEDIATE_OFFSET + index * size_of::<u32>();
+            u32::from_le_bytes(blob[offset..offset + size_of::<u32>()].try_into().unwrap())
+        })
+        .collect::<Vec<_>>();
+    let expected = tail_program
+        .immediates
+        .iter()
+        .map(|&canonical| BF::from_u32_with_reduction(canonical).as_u32_raw_repr_reduced())
+        .collect::<Vec<_>>();
+    assert_eq!(packed, expected);
+    assert!(tail_program
+        .immediates
+        .iter()
+        .zip(&packed)
+        .any(|(&canonical, &raw)| canonical != raw));
+
+    assert!((0..32).any(|row| {
+        interpret_continuation_program(&program, row, &ImmediateResolver, 8).unwrap()
+            != interpret_continuation_program(&canonical_copy, row, &ImmediateResolver, 8).unwrap()
+    }));
+}
+
+#[test]
+fn cpu_main_tail_final_publication_preflight_rejects_before_launch() {
+    let final_elems = 2_024;
+    assert!(matches!(
+        validate_main_tail_final_publication_capacity(final_elems, final_elems - 1),
+        Err(MainTailBindError::FinalAllocationLength {
+            required,
+            available,
+        }) if required == final_elems && available == final_elems - 1
+    ));
+    assert!(validate_main_tail_final_publication_capacity(final_elems, final_elems).is_ok());
+}
+
+#[test]
+fn cpu_main_tail_descriptor_abi_and_blob_sections_are_exact() {
+    assert_eq!(size_of::<MainTailDesc>(), 128);
+    assert_eq!(align_of::<MainTailDesc>(), 16);
+    for (field, actual, expected) in [
+        ("program_blob", offset_of!(MainTailDesc, program_blob), 0),
+        ("entry", offset_of!(MainTailDesc, entry), 8),
+        ("ping", offset_of!(MainTailDesc, ping), 16),
+        ("pong", offset_of!(MainTailDesc, pong), 24),
+        ("eq_low", offset_of!(MainTailDesc, eq_low), 32),
+        (
+            "prev_claim_coordinates",
+            offset_of!(MainTailDesc, prev_claim_coordinates),
+            40,
+        ),
+        ("seed", offset_of!(MainTailDesc, seed), 48),
+        ("claim", offset_of!(MainTailDesc, claim), 56),
+        ("eq_prefactor", offset_of!(MainTailDesc, eq_prefactor), 64),
+        (
+            "coefficients_out",
+            offset_of!(MainTailDesc, coefficients_out),
+            72,
+        ),
+        (
+            "challenges_out",
+            offset_of!(MainTailDesc, challenges_out),
+            80,
+        ),
+        ("eq_sizes", offset_of!(MainTailDesc, eq_sizes), 88),
+        (
+            "entry_column_elems",
+            offset_of!(MainTailDesc, entry_column_elems),
+            100,
+        ),
+        ("source_count", offset_of!(MainTailDesc, source_count), 104),
+        (
+            "program_words",
+            offset_of!(MainTailDesc, program_words),
+            106,
+        ),
+        (
+            "immediate_count",
+            offset_of!(MainTailDesc, immediate_count),
+            108,
+        ),
+        (
+            "c_init_coeff_id",
+            offset_of!(MainTailDesc, c_init_coeff_id),
+            110,
+        ),
+        ("tail_start", offset_of!(MainTailDesc, tail_start), 112),
+        (
+            "folding_steps",
+            offset_of!(MainTailDesc, folding_steps),
+            113,
+        ),
+        ("k", offset_of!(MainTailDesc, k), 114),
+        ("reserved", offset_of!(MainTailDesc, reserved), 115),
+        ("blob_bytes", offset_of!(MainTailDesc, blob_bytes), 116),
+        ("tail_padding", offset_of!(MainTailDesc, tail_padding), 120),
+    ] {
+        assert_eq!(actual, expected, "{field}");
+    }
+    assert_eq!(MAIN_TAIL_DESCRIPTOR_BYTES, 128);
+    assert_eq!(MAIN_TAIL_PARAMETER_HEADROOM, 32_636);
+
+    let program = super::super::lower_main_tail_program(&rich_program()).unwrap();
+    let blob = serialize_main_tail_program_blob(&program);
+    assert_eq!(blob.len(), super::super::MAIN_TAIL_BLOB_BYTES);
+    assert!(
+        blob[super::super::MAIN_TAIL_PROGRAM_OFFSET + program.program_words.len() * 2
+            ..super::super::MAIN_TAIL_IMMEDIATE_OFFSET]
+            .iter()
+            .all(|&byte| byte == 0)
+    );
+    assert!(
+        blob[super::super::MAIN_TAIL_IMMEDIATE_OFFSET + program.immediates.len() * 4..]
+            .iter()
+            .all(|&byte| byte == 0)
+    );
+
+    let cuda = include_str!("../../../../native/gkr/backward/main_tail.cuh");
+    for assertion in [
+        "sizeof(bwd_main_tail_desc) == 128",
+        "alignof(bwd_main_tail_desc) == 16",
+        "__builtin_offsetof(bwd_main_tail_desc, eq_sizes) == 88",
+        "__builtin_offsetof(bwd_main_tail_desc, entry_column_elems) == 100",
+        "__builtin_offsetof(bwd_main_tail_desc, source_count) == 104",
+        "__builtin_offsetof(bwd_main_tail_desc, tail_start) == 112",
+        "__builtin_offsetof(bwd_main_tail_desc, blob_bytes) == 116",
+        "BWD_MAIN_TAIL_PARAMETER_CEILING - sizeof(bwd_main_tail_desc) == 32636",
+    ] {
+        assert!(
+            cuda.contains(assertion),
+            "missing CUDA assertion {assertion}"
+        );
+    }
 }
