@@ -11,22 +11,21 @@ pub fn evaluate_virtual_range_check_setup_poly<
 ) -> E {
     assert_eq!(evaluation_point.len(), trace_len_log2 as usize);
     assert!(BITS <= trace_len_log2);
-    // for poly P(x_1, x_2, ..., xN) x1 represents MSB in enumeration of hypercube values in our system,
-    // so we blindly guess a poly that has a form of [0, 1, 2, ..., 2^BITS-1, 0, 0, ..., 0]
-
-    // Such poly is (x_N + 2 * x_{N - 1} + 4 * x_{N - 2} + ... + 2^K * x_{N-K}) * (1 - X_{N - K - 1}) * (1 - X_{N - K - 2}) + ...
-    // and it's obviously multilinear
+    // the evaluation point is in VARIABLE order (LSB binding): coordinate b
+    // is index bit b. The poly [0, 1, 2, ..., 2^BITS-1, 0, 0, ..., 0] is
+    // (x_0 + 2*x_1 + ... + 2^(BITS-1)*x_{BITS-1}) * (1 - x_BITS) * ... and
+    // is obviously multilinear
 
     let mut result = E::ZERO;
     let mut prefactor = F::ONE;
-    for el in evaluation_point.iter().rev().take(BITS as usize) {
+    for el in evaluation_point.iter().take(BITS as usize) {
         let mut t = *el;
         t.mul_assign_by_base(&prefactor);
         result.add_assign(&t);
         prefactor.double();
     }
 
-    for el in evaluation_point.iter().rev().skip(BITS as usize) {
+    for el in evaluation_point.iter().skip(BITS as usize) {
         let mut t = E::ONE;
         t.sub_assign(el);
         result.mul_assign(&t);
@@ -74,7 +73,7 @@ mod test {
             let eval_point: Vec<E> = (0..domain_size_log2)
                 .map(|_| E::random_element(&mut rng))
                 .collect();
-            let mut eq_polys = make_eq_poly_in_full::<E>(&eval_point[..], &worker);
+            let mut eq_polys = make_eq_poly_in_full_lsb::<E>(&eval_point[..], &worker);
             let eq_poly = eq_polys.pop().unwrap();
             let naive_poly = materialize_virtual_range_check_setup_poly::<F, Global, 16>(
                 domain_size_log2 as u32,

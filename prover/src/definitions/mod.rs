@@ -29,23 +29,20 @@ pub const DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2: usize = 4;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(usize)]
 pub enum SecurityLevel {
-    Sec80 = 0,
-    Sec100 = 1,
+    Sec100 = 0,
 }
 
 impl SecurityLevel {
-    pub const ALL: &'static [SecurityLevel] = &[SecurityLevel::Sec80, SecurityLevel::Sec100];
+    pub const ALL: &'static [SecurityLevel] = &[SecurityLevel::Sec100];
 
     pub fn dir_suffix(self) -> &'static str {
         match self {
-            SecurityLevel::Sec80 => "sec_80",
             SecurityLevel::Sec100 => "sec_100",
         }
     }
 
     pub const fn security_bits(self) -> usize {
         match self {
-            SecurityLevel::Sec80 => 80,
             SecurityLevel::Sec100 => 100,
         }
     }

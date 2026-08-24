@@ -64,10 +64,29 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn make_batched_description(
         &self,
         challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+        layer: usize,
+    ) -> BatchedGKRDescription<F, E> {
+        self.make_batched_description_excluding(
+            challenge_constants,
+            layer,
+            &std::collections::BTreeSet::new(),
+        )
+    }
+
+    /// [`Self::make_batched_description`] with the kernels at the given
+    /// indices SKIPPED — the expression-compiled relations of the windowed
+    /// program are evaluated factored and must not be flattened in again.
+    pub(crate) fn make_batched_description_excluding(
+        &self,
+        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
         _layer: usize,
+        exclude_kernels: &std::collections::BTreeSet<usize>,
     ) -> BatchedGKRDescription<F, E> {
         let mut draft = BatchedGKRDescriptionDraft::<F, E>::default();
-        for kernel in self.kernels.iter() {
+        for (kernel_idx, kernel) in self.kernels.iter().enumerate() {
+            if exclude_kernels.contains(&kernel_idx) {
+                continue;
+            }
             let terms = kernel.get_terms(challenge_constants);
             let challenges = kernel.batch_challenges();
             assert_eq!(
@@ -76,11 +95,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 "number of challenges diverged for kernel {:?}",
                 kernel
             );
-
-            // use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelVariant;
-            // if let KernelVariant::MaxQuadratic(..) = kernel {
-            //     dbg!(&terms);
-            // }
 
             for (batch_challege, term) in challenges.iter().zip(terms.iter()) {
                 for (a, other_terms) in term.quadratic_part_base_by_base.iter() {
@@ -203,7 +217,7 @@ pub(crate) fn evaluate_batched_gkr_description<
 
     let work_size = accumulator.len();
     assert!(work_size.is_power_of_two());
-
+    let now = std::time::Instant::now();
     match step {
         0 => {
             for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
@@ -453,6 +467,8 @@ pub(crate) fn evaluate_batched_gkr_description<
             }
         }
     }
+
+    println!("Round {} took {:?}", step, now.elapsed());
 }
 
 fn evaluate_quadratic_term<

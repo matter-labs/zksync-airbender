@@ -86,7 +86,7 @@ where
             .expect("missing sumcheck values for layer");
 
         for coeffs in &proof_values.internal_round_coefficients {
-            flatten_field_els::<F, E>(coeffs, &mut result);
+            flatten_field_els::<F, E>(coeffs.as_multilinear(), &mut result);
         }
 
         for (_addr, evals) in &proof_values.final_step_evaluations {

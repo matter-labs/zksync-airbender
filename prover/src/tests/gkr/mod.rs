@@ -29,12 +29,26 @@ pub(crate) fn bincode_serialize_to_file<T: serde::Serialize>(el: &T, filename: &
     bincode::serialize_into(dst, el).unwrap();
 }
 
-mod orchestration;
+// The orchestration layer (VM capture + per-circuit prove helpers) is exposed
+// under `feature = "test"` so thin downstream harnesses (`experiments_runner`'s
+// fast add/sub proving test) can reuse the exact prove path of the per-family
+// tests. The concrete test suites below — and all generated witness-eval
+// includes except the add/sub one — stay `cfg(test)`-only so a lib build with
+// that feature does not pay for ~49K lines of other generated circuit code.
+pub mod orchestration;
 
+#[cfg(test)]
 mod family_circuits;
-mod large_field;
+// Also exposed under `feature = "test"`: the L1 wrap driver in
+// `prover_examples` reuses the Proth120 unified packed-proving pieces
+// (`build_unified_trace_without_precompiles`, the EVM-production config and
+// the Proth120 witness eval fn).
+pub mod large_field;
+#[cfg(test)]
 mod malicious_proofs;
+#[cfg(test)]
 mod unified_circuit;
+#[cfg(test)]
 mod unified_negative_tests;
 
 pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
@@ -458,7 +472,7 @@ pub fn check_satisfied_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     true
 }
 
-mod add_sub_lui_auipc_mop {
+pub mod add_sub_lui_auipc_mop {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -485,6 +499,7 @@ mod add_sub_lui_auipc_mop {
     }
 }
 
+#[cfg(test)]
 mod jump_branch_slt {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
@@ -512,6 +527,7 @@ mod jump_branch_slt {
     }
 }
 
+#[cfg(test)]
 mod shift_binary_ops {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
@@ -539,6 +555,7 @@ mod shift_binary_ops {
     }
 }
 
+#[cfg(test)]
 mod unsigned_mul_div {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
@@ -566,6 +583,7 @@ mod unsigned_mul_div {
     }
 }
 
+#[cfg(test)]
 mod mem_word_only {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
@@ -593,6 +611,7 @@ mod mem_word_only {
     }
 }
 
+#[cfg(test)]
 mod mem_subword_only {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
@@ -620,6 +639,7 @@ mod mem_subword_only {
     }
 }
 
+#[cfg(test)]
 mod blake2_with_extended_control {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -647,6 +667,7 @@ mod blake2_with_extended_control {
     }
 }
 
+#[cfg(test)]
 mod bigint_with_extended_control {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -674,6 +695,7 @@ mod bigint_with_extended_control {
     }
 }
 
+#[cfg(test)]
 mod keccak_special5 {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -701,6 +723,7 @@ mod keccak_special5 {
     }
 }
 
+#[cfg(test)]
 mod blake2_g_function {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -732,6 +755,7 @@ mod blake2_g_function {
     }
 }
 
+#[cfg(test)]
 mod unified_reduced_machine {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
@@ -759,7 +783,7 @@ mod unified_reduced_machine {
     }
 }
 
-mod unified_reduced_machine_proth120 {
+pub mod unified_reduced_machine_proth120 {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;

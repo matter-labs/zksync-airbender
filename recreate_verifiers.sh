@@ -39,5 +39,4 @@ done
 (cd circuit_defs/setups && RUST_MIN_STACK=100000000 cargo test --release generate_delegation_circuits_artifacts)
 cd -
 
-(cargo test -p verifier_generator --no-default-features --features security_80 --test generate_verifiers)
-(cargo test -p verifier_generator --no-default-features --features security_100 --test generate_verifiers)
+(cargo test -p verifier_generator --no-default-features --test generate_verifiers)

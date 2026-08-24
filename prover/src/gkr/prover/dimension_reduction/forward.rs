@@ -11,12 +11,24 @@ pub struct DimensionReducingInputOutput {
     pub output: Vec<GKRAddress>,
 }
 
-pub fn evaluate_dimension_reduction_forward<F: PrimeField, E: FieldExtension<F> + Field>(
+/// Backend-parameterized forward skeleton: the layer/address bookkeeping is
+/// backend-independent; the per-relation evaluation is supplied by the
+/// [`GKRBackend`](crate::gkr::prover::gkr_backend::GKRBackend) implementation
+/// (scalar for the naive backend, platform-specialized otherwise). Platform
+/// selection NEVER appears in this file.
+pub fn evaluate_dimension_reduction_forward_with<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    PW: Fn(&mut GKRStorage<F, E>, GKRAddress, GKRAddress, usize, usize, &Worker),
+    LG: Fn(&mut GKRStorage<F, E>, [GKRAddress; 2], [GKRAddress; 2], usize, usize, &Worker),
+>(
     gkr_storage: &mut GKRStorage<F, E>,
     compiled_circuit: &GKRCircuitArtifact<F>,
     initial_trace_log_2: usize,
     final_trace_log_2: usize,
     worker: &Worker,
+    pairwise: PW,
+    logup: LG,
 ) -> (
     usize,
     BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
@@ -39,7 +51,9 @@ pub fn evaluate_dimension_reduction_forward<F: PrimeField, E: FieldExtension<F> 
 
     let mut current_layer_idx = layer_idx;
 
+    let forward_total = std::time::Instant::now();
     for input_size_log_2 in ((final_trace_log_2 + 1)..=initial_trace_log_2).rev() {
+        let layer_timer = std::time::Instant::now();
         let layer_inputs = if current_layer_idx != layer_idx {
             let t = dimension_reduction_description
                 .get(&(current_layer_idx - 1))
@@ -64,10 +78,10 @@ pub fn evaluate_dimension_reduction_forward<F: PrimeField, E: FieldExtension<F> 
                             offset: output_idx,
                         };
                         output_idx += 1;
-                        let kernel =
-                            PairwiseProductDimensionReducingGKRRelation { input: set, output };
-                        kernel.evaluate_forward_over_storage(
+                        pairwise(
                             gkr_storage,
+                            set,
+                            output,
                             current_layer_idx + 1,
                             input_trace_len,
                             worker,
@@ -94,12 +108,10 @@ pub fn evaluate_dimension_reduction_forward<F: PrimeField, E: FieldExtension<F> 
                         offset: output_idx,
                     };
                     output_idx += 1;
-                    let kernel = LookupPairDimensionReducingGKRRelation {
-                        inputs: [num, den],
-                        outputs: [new_num, new_den],
-                    };
-                    kernel.evaluate_forward_over_storage(
+                    logup(
                         gkr_storage,
+                        [num, den],
+                        [new_num, new_den],
                         current_layer_idx + 1,
                         input_trace_len,
                         worker,
@@ -114,8 +126,160 @@ pub fn evaluate_dimension_reduction_forward<F: PrimeField, E: FieldExtension<F> 
         }
         dimension_reduction_description.insert(current_layer_idx, layer_description);
 
+        println!(
+            "Dimension-reduction forward layer 2^{} -> 2^{} took {:?}",
+            input_size_log_2,
+            input_size_log_2 - 1,
+            layer_timer.elapsed()
+        );
         current_layer_idx += 1;
     }
+    println!(
+        "Dimension-reduction forward pass total: {:?}",
+        forward_total.elapsed()
+    );
 
     (current_layer_idx - 1, dimension_reduction_description)
+}
+
+/// Naive (scalar) forward pass: the skeleton with the scalar per-relation ops.
+pub fn evaluate_dimension_reduction_forward<F: PrimeField, E: FieldExtension<F> + Field>(
+    gkr_storage: &mut GKRStorage<F, E>,
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    initial_trace_log_2: usize,
+    final_trace_log_2: usize,
+    worker: &Worker,
+) -> (
+    usize,
+    BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
+) {
+    evaluate_dimension_reduction_forward_with(
+        gkr_storage,
+        compiled_circuit,
+        initial_trace_log_2,
+        final_trace_log_2,
+        worker,
+        forward_pairwise_specialized,
+        forward_logup_specialized,
+    )
+}
+
+/// Specialized forward evaluation of one pairwise-product reduction:
+/// `out[i] = in[2i] * in[2i+1]`, straight over the raw slices (no
+/// `EvaluationFormStorage` / kernel-trait indirection), worker-chunked.
+pub(crate) fn forward_pairwise_specialized<F: PrimeField, E: FieldExtension<F> + Field>(
+    gkr_storage: &mut GKRStorage<F, E>,
+    input: GKRAddress,
+    output: GKRAddress,
+    expected_output_layer: usize,
+    input_trace_len: usize,
+    worker: &Worker,
+) {
+    use crate::gkr::PAR_THRESHOLD;
+    let output_trace_len = input_trace_len / 2;
+    unsafe {
+        let inputs = GKRInputs {
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: vec![input],
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: Vec::new(),
+        };
+        let sources = gkr_storage.get_for_sumcheck_round_0(&inputs);
+        let src: &[E] = sources.extension_field_inputs[0].current_values();
+        debug_assert_eq!(src.len(), input_trace_len);
+        let mut destination = Box::<[E]>::new_uninit_slice(output_trace_len);
+        let src_addr = crate::gkr::prover::SendConstPtr(src.as_ptr());
+        let dst_addr = crate::gkr::prover::SendPtr(destination.as_mut_ptr());
+        worker.scope_with_threshold(output_trace_len, PAR_THRESHOLD, |scope, geometry| {
+            for thread_idx in 0..geometry.num_chunks {
+                let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                let chunk_size = geometry.get_chunk_size(thread_idx);
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let sp = src_addr.get();
+                    let dp = dst_addr.get() as *mut E;
+                    for i in chunk_start..(chunk_start + chunk_size) {
+                        let mut v = *sp.add(2 * i);
+                        v.mul_assign(&*sp.add(2 * i + 1));
+                        *dp.add(i) = v;
+                    }
+                })
+            }
+        });
+        let values = destination.assume_init();
+        output.assert_as_layer(expected_output_layer);
+        gkr_storage.insert_extension_at_layer(
+            expected_output_layer,
+            output,
+            crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::new(values),
+        );
+    }
+}
+
+/// Specialized forward evaluation of one logup fraction-add reduction:
+/// `out_num[i] = n[2i]*d[2i+1] + n[2i+1]*d[2i]`, `out_den[i] = d[2i]*d[2i+1]`.
+pub(crate) fn forward_logup_specialized<F: PrimeField, E: FieldExtension<F> + Field>(
+    gkr_storage: &mut GKRStorage<F, E>,
+    inputs: [GKRAddress; 2],
+    outputs: [GKRAddress; 2],
+    expected_output_layer: usize,
+    input_trace_len: usize,
+    worker: &Worker,
+) {
+    use crate::gkr::PAR_THRESHOLD;
+    let output_trace_len = input_trace_len / 2;
+    unsafe {
+        let gkr_inputs = GKRInputs {
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: inputs.to_vec(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: Vec::new(),
+        };
+        let sources = gkr_storage.get_for_sumcheck_round_0(&gkr_inputs);
+        let n_src: &[E] = sources.extension_field_inputs[0].current_values();
+        let d_src: &[E] = sources.extension_field_inputs[1].current_values();
+        debug_assert_eq!(n_src.len(), input_trace_len);
+        debug_assert_eq!(d_src.len(), input_trace_len);
+        let mut num_dst = Box::<[E]>::new_uninit_slice(output_trace_len);
+        let mut den_dst = Box::<[E]>::new_uninit_slice(output_trace_len);
+        let n_addr = crate::gkr::prover::SendConstPtr(n_src.as_ptr());
+        let d_addr = crate::gkr::prover::SendConstPtr(d_src.as_ptr());
+        let nd_addr = crate::gkr::prover::SendPtr(num_dst.as_mut_ptr());
+        let dd_addr = crate::gkr::prover::SendPtr(den_dst.as_mut_ptr());
+        worker.scope_with_threshold(output_trace_len, PAR_THRESHOLD, |scope, geometry| {
+            for thread_idx in 0..geometry.num_chunks {
+                let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                let chunk_size = geometry.get_chunk_size(thread_idx);
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let np = n_addr.get();
+                    let dp = d_addr.get();
+                    let ndp = nd_addr.get() as *mut E;
+                    let ddp = dd_addr.get() as *mut E;
+                    for i in chunk_start..(chunk_start + chunk_size) {
+                        let (n0, n1) = (*np.add(2 * i), *np.add(2 * i + 1));
+                        let (d0, d1) = (*dp.add(2 * i), *dp.add(2 * i + 1));
+                        let mut num_v = n0;
+                        num_v.mul_assign(&d1);
+                        let mut t = n1;
+                        t.mul_assign(&d0);
+                        num_v.add_assign(&t);
+                        let mut den_v = d0;
+                        den_v.mul_assign(&d1);
+                        *ndp.add(i) = num_v;
+                        *ddp.add(i) = den_v;
+                    }
+                })
+            }
+        });
+        for (addr, dst) in outputs
+            .into_iter()
+            .zip([num_dst.assume_init(), den_dst.assume_init()].into_iter())
+        {
+            addr.assert_as_layer(expected_output_layer);
+            gkr_storage.insert_extension_at_layer(
+                expected_output_layer,
+                addr,
+                crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::new(dst),
+            );
+        }
+    }
 }

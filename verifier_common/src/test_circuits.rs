@@ -17,9 +17,9 @@ macro_rules! make_circuits {
         vec![$(CircuitData {
             name: stringify!($name),
             production_path: $prod_path,
-            security_levels: [SecurityLevel::Sec80, SecurityLevel::Sec100],
-            prover_configs_cache: [OnceLock::new(), OnceLock::new()],
-            nds_cache: [OnceLock::new(), OnceLock::new()],
+            security_levels: [SecurityLevel::Sec100],
+            prover_configs_cache: [OnceLock::new()],
+            nds_cache: [OnceLock::new()],
         }),*]
     };
 }
@@ -28,7 +28,7 @@ pub static CIRCUITS: LazyLock<Vec<CircuitData>> = LazyLock::new(|| gkr_circuits!
 
 pub use prover::definitions::SecurityLevel;
 
-const NUM_SECURITY_LEVELS: usize = 2;
+const NUM_SECURITY_LEVELS: usize = 1;
 
 pub struct CircuitData {
     pub name: &'static str,

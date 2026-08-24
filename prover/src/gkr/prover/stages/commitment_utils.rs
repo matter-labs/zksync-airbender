@@ -512,7 +512,7 @@ pub(crate) fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdi
                         let mut input = evals[i].to_vec();
                         let size_log2 = input.len().trailing_zeros();
 
-                        bitreverse_enumeration_inplace(&mut input);
+                        // natural convention: variable b <-> exponent bit b
                         hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs(
                             &mut input, size_log2,
                         );
@@ -546,10 +546,11 @@ pub fn commit_trace_part<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
+    B: crate::gkr::prover::backend::Backend<F, E>,
 >(
-    backend: &impl crate::gkr::prover::backend::Backend<F, E>,
+    backend: &B,
     input_on_hypercube: &[&[F]],
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     lde_factor: usize,
     whir_first_fold_step_log2: usize,
     tree_cap_size: usize,
@@ -662,10 +663,11 @@ pub fn commit_trace_part_packed<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
+    B: crate::gkr::prover::backend::Backend<F, E>,
 >(
-    backend: &impl crate::gkr::prover::backend::Backend<F, E>,
+    backend: &B,
     input_on_hypercube: &[&[F]],
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     lde_factor: usize,
     whir_first_fold_step_log2: usize,
     tree_cap_size: usize,
@@ -786,16 +788,15 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
     // bit-reversal and the multilinear transform use all cores internally (nesting a
     // per-poly `worker.scope` here would deadlock the thread pool).
     //
-    // We apply `bitreverse` THEN `evals_into_coeffs` (over ALL variables of the packed
-    // poly), matching the base-commitment convention used everywhere else: the
-    // monolithic `commit_trace_part` / `CosetByCosetBaseCommitment::commit` transform,
-    // and the inverse that `whir_fold`'s claim recomputation performs
-    // (`IFFT -> coeffs_into_hypercube_evals -> bitreverse -> evaluate`). Omitting the
-    // bit-reversal here would commit a bit-permuted polynomial whose reconstructed
-    // evaluation no longer matches the GKR / `merge_claims` claim.
+    // NATURAL (LSB) convention, matching the base-commitment transform
+    // everywhere else: multilinear variable b <-> univariate exponent bit b,
+    // so the coefficients come straight from `evals_into_coeffs` with no
+    // bit-reversal (the reversal that used to sit here encoded the reversed
+    // variable labeling of the retired MSB convention). The inverse that
+    // `whir_fold`'s claim recomputation performs is
+    // `IFFT -> coeffs_into_hypercube_evals -> evaluate`, also reversal-free.
     for packed in result.iter_mut() {
         let size_log2 = packed.len().trailing_zeros();
-        parallel_bitreverse_enumeration_inplace(&mut packed[..], worker);
         hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs(
             &mut packed[..],
             size_log2,

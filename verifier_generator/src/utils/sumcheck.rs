@@ -27,6 +27,9 @@ pub fn generate_sumcheck_helpers<MW: FieldWrapper>() -> TokenStream {
             result
         }
 
+        #[doc = " LSB-first eq table over a claim point in plain VARIABLE order"]
+        #[doc = " (the LSB-binding convention): table index bit `b` pairs with"]
+        #[doc = " `challenges[b]`, matching the prover's `make_eq_table_lsb_first`."]
         #[inline(always)]
         pub fn make_eq_poly<const M: usize, const N: usize>(
             challenges: &[#quartic_struct; M],
@@ -35,9 +38,7 @@ pub fn generate_sumcheck_helpers<MW: FieldWrapper>() -> TokenStream {
             assert_eq!(N, 1 << M);
             unsafe { buf.set_unchecked(0, #quartic_one) };
             let mut size = 1usize;
-            let mut idx = M;
-            for _ in 0..M {
-                idx -= 1;
+            for idx in 0..M {
                 let c = unsafe { *challenges.get_unchecked(idx) };
                 let f1 = c;
                 let mut f0 = #quartic_one;

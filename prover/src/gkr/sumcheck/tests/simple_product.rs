@@ -2,9 +2,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use cs::definitions::GKRAddress;
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic};
+use field::baby_bear::base::BabyBearField;
+use field::baby_bear::ext4::BabyBearExt4;
+use field::{Field, FieldExtension};
 use worker::Worker;
 
+use crate::gkr::sumcheck::access_and_fold::DisjointAccessQuasiSlice;
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::sumcheck::{
     access_and_fold::{ExtensionFieldPoly, GKRLayerSource, GKRStorage},
@@ -34,8 +37,8 @@ use super::*;
 
 #[test]
 fn test_simple_product() {
-    type F = Mersenne31Field;
-    type E = Mersenne31Quartic;
+    type F = BabyBearField;
+    type E = BabyBearExt4;
 
     const FOLDING_STEPS: usize = 4;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
@@ -113,7 +116,7 @@ fn test_simple_product() {
         .collect();
     // dbg!(&previous_round_challenges);
 
-    let eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges, &worker);
+    let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&previous_round_challenges, &worker);
     // dbg!(&eq_precomputed);
 
     let mut claim = evaluate_with_precomputed_eq_ext::<E>(
@@ -134,7 +137,7 @@ fn test_simple_product() {
         let folding_challenges: Vec<E> = (0..FOLDING_STEPS)
             .map(|el| E::from_base(F::from_u32_with_reduction(2 * (el as u32) + 1)))
             .collect();
-        let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges, &worker);
+        let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&folding_challenges, &worker);
         let a = &storage.layers[0]
             .extension_field_inputs
             .get(&GKRAddress::InnerLayer {
@@ -176,7 +179,7 @@ fn test_simple_product() {
 
     let mut folding_challenges = vec![];
 
-    let eq_reduced_precomputed = make_eq_poly_reduced::<E>(&previous_round_challenges, &worker);
+    let eq_reduced_precomputed = make_eq_poly_reduced_lsb::<E>(&previous_round_challenges, &worker);
     // dbg!(&eq_reduced_precomputed);
     let eq_reduced_len = eq_reduced_precomputed.len();
 
@@ -239,8 +242,8 @@ fn test_simple_product() {
             );
             let eq = &eq_reduced_precomputed[eq_reduced_len - 1 - step];
 
-            dbg!(&accumulator);
-            dbg!(&eq);
+            // dbg!(&accumulator);
+            // dbg!(&eq);
 
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
@@ -248,7 +251,7 @@ fn test_simple_product() {
                 &worker,
             );
 
-            dbg!([c0, c2]);
+            // dbg!([c0, c2]);
 
             let mut normalized_claim = claim;
             normalized_claim.mul_assign(
@@ -267,7 +270,9 @@ fn test_simple_product() {
             // this will give us a sumcheck claim for the next round
             {
                 let s0 = evaluate_small_univariate_poly::<F, E, 4>(&coeffs, &E::ZERO);
+                dbg!(s0);
                 let s1 = evaluate_small_univariate_poly::<F, E, 4>(&coeffs, &E::ONE);
+                dbg!(s1);
                 let mut v = s0;
                 v.add_assign(&s1);
                 v.mul_assign(&last_eq_poly_prefactor_contribution);

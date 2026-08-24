@@ -25,10 +25,12 @@ riscv_common = { path = "../riscv_common", default-features = false }
 verifier_common = { workspace = true }
 
 # Recursion protocol helpers (ND streams, chain, fsv binaries) + native
-# verification (`verifiers` comes in via the security_* feature blocks).
+# verification (`verifiers` is unconditional: the pipeline calls the
+# native_verify_* wrappers on every proving path).
 full_statement_verifier = { path = "../full_statement_verifier", default-features = false, features = [
     "proof_utils",
     "host_utils",
+    "verifiers",
 ] }
 sha3 = { package = "sha3", version = "*" }
 log = "0.4"
@@ -42,24 +44,10 @@ gpu_program_prover = { workspace = true, optional = true, default-features = fal
 ] }
 
 [features]
-default = ["security_80"]
-
-security_80 = [
-    "program_prover/security_80",
-    "verifier_common/security_80",
-    "full_statement_verifier/security_80",
-    "verifier_common/proof_utils",
-    "gpu_execution_prover?/security_80",
-    "gpu_program_prover?/security_80",
-]
-security_100 = [
-    "program_prover/security_100",
-    "verifier_common/security_100",
-    "full_statement_verifier/security_100",
-    "verifier_common/proof_utils",
-    "gpu_execution_prover?/security_100",
-    "gpu_program_prover?/security_100",
-]
+# The security level is a runtime parameter now; everything the old
+# security_* feature blocks carried that still exists on this branch is
+# unconditional (see the dependency declarations above).
+default = []
 
 debug_logs = ["prover/debug_logs", "program_prover/debug_logs"]
 # if enabled - allow GPU for proving.

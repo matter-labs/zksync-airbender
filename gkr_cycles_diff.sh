@@ -23,14 +23,14 @@ Options:
   -h, --help       Show this message.
 
 Args:
-  circuit ...      Full circuit names (e.g. add_sub_lui_auipc_mop_sec_80).
+  circuit ...      Full circuit names (e.g. add_sub_lui_auipc_mop_sec_100).
                    Defaults to every flamegraph found in verifier/.
 
 Examples:
   $0
   $0 --baseline origin/av_gkr_compiler
-  $0 unified_reduced_machine_sec_80
-  $0 --baseline HEAD~5 jump_branch_slt_sec_80 mem_word_only_sec_80
+  $0 unified_reduced_machine_sec_100
+  $0 --baseline HEAD~5 jump_branch_slt_sec_100 mem_word_only_sec_100
 EOF
   exit 1
 }

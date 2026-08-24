@@ -8,7 +8,7 @@ use common_constants::{
     REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer_sec_80;
+use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer_sec_100;
 use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
 use verifier_common::errors::DebugErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
@@ -38,7 +38,7 @@ fn delegation_circuit_name(csr: u32) -> &'static str {
 /// Must match the variant the fixture was proven with.
 const REDUCED_ROUNDS: bool = true;
 
-const FIXTURE_PATH: &str = "tests/fixtures/unified_base_layer_fixture_sec_80.json";
+const FIXTURE_PATH: &str = "tests/fixtures/unified_base_layer_fixture_sec_100.json";
 
 fn load_bundle() -> UnifiedBaseLayerComponents {
     let file = std::fs::File::open(FIXTURE_PATH).unwrap_or_else(|e| {
@@ -112,7 +112,7 @@ fn run_unified_base_layer(responses: Vec<u32>) -> Result<[u32; 16], ()> {
         .stack_size(1 << 27)
         .spawn(move || {
             let mut src = responses.into_iter();
-            verify_unified_circuit_base_layer_sec_80::<_, DebugErrorCreator, REDUCED_ROUNDS>(
+            verify_unified_circuit_base_layer_sec_100::<_, DebugErrorCreator, REDUCED_ROUNDS>(
                 &mut src,
             )
         })
@@ -213,7 +213,7 @@ fn rejects_duplicated_multi_instance() {
 
 fn fsv_binary_section_path(ext: &str) -> String {
     format!(
-        "{}/../tools/gkr_verifier/fsv_unified_base_layer_sec_80.{}",
+        "{}/../tools/gkr_verifier/fsv_unified_base_layer_sec_100.{}",
         env!("CARGO_MANIFEST_DIR"),
         ext
     )

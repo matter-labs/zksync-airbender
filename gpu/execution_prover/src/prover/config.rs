@@ -73,7 +73,7 @@ impl Default for ExecutionProverConfiguration {
             host_allocators_per_job_count: 256,              // 16 GB
             host_allocators_per_device_count: 128,           // 8 GB
             min_free_host_allocators_per_job: 32,            // 2 GB
-            security_level: SecurityLevel::Sec80,
+            security_level: SecurityLevel::Sec100,
         }
     }
 }

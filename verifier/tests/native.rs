@@ -33,12 +33,6 @@ macro_rules! generate_native_tests {
     ($($name:ident; $prod_path:expr),* $(,)?) => {
         paste::paste! {
             $(
-                #[cfg(feature = "security_80")]
-                #[test]
-                fn [<$name _sec_80>]() {
-                    run_native(stringify!($name), SecurityLevel::Sec80);
-                }
-                #[cfg(feature = "security_100")]
                 #[test]
                 fn [<$name _sec_100>]() {
                     run_native(stringify!($name), SecurityLevel::Sec100);

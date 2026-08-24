@@ -46,13 +46,13 @@ pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .spawn(move || {
             let mut it = stream.into_iter();
             let result = if is_base {
-                crate::unrolled_proof_statement::verify_unrolled_base_layer_sec_80::<
+                crate::unrolled_proof_statement::verify_unrolled_base_layer_sec_100::<
                     _,
                     DebugErrorCreator,
                     USE_REDUCED_BLAKE2_ROUNDS,
                 >(&mut it)
             } else {
-                crate::unrolled_proof_statement::verify_unrolled_recursion_layer_sec_80::<
+                crate::unrolled_proof_statement::verify_unrolled_recursion_layer_sec_100::<
                     _,
                     DebugErrorCreator,
                     USE_REDUCED_BLAKE2_ROUNDS,
@@ -74,13 +74,13 @@ pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .spawn(move || {
             let mut it = stream.into_iter();
             let result = if is_base {
-                crate::unified_circuit_statement::verify_unified_circuit_base_layer_sec_80::<
+                crate::unified_circuit_statement::verify_unified_circuit_base_layer_sec_100::<
                     _,
                     DebugErrorCreator,
                     USE_REDUCED_BLAKE2_ROUNDS,
                 >(&mut it)
             } else {
-                crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_80::<
+                crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100::<
                     _,
                     DebugErrorCreator,
                     USE_REDUCED_BLAKE2_ROUNDS,

@@ -73,16 +73,40 @@ fn boundary_si_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         .collect()
 }
 
-/// Replace the RHS of the single `uint256 constant <name> = <...>;` line with `= <value>;`,
-/// preserving indentation and any trailing `// comment`. Panics unless exactly one such line
-/// exists, so a template rename can never silently drop a substitution.
-fn set_const(src: &str, name: &str, value: u128) -> String {
+/// EIP-55 checksummed form of a `0x`-prefixed 20-byte hex address — solc
+/// accepts only checksummed (or all-lowercase-rejected) `address` literals.
+fn checksum_address(addr: &str) -> String {
+    use sha3::{Digest, Keccak256};
+    let lower = addr[2..].to_lowercase();
+    let hash = Keccak256::digest(lower.as_bytes());
+    let mut out = String::with_capacity(42);
+    out.push_str("0x");
+    for (i, c) in lower.chars().enumerate() {
+        let nibble = (hash[i / 2] >> (4 * (1 - i % 2))) & 0xf;
+        if c.is_ascii_alphabetic() && nibble >= 8 {
+            out.push(c.to_ascii_uppercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Replace the RHS of the single `uint256 constant <name> = <...>;` (or
+/// `address constant <name> = <...>;`) line with `= <value>;`, preserving
+/// indentation and any trailing `// comment`. Panics unless exactly one such
+/// line exists, so a template rename can never silently drop a substitution.
+fn set_const(src: &str, name: &str, value: impl std::fmt::Display) -> String {
     let needle = format!("constant {name} "); // name is followed by alignment whitespace then '='
     let mut hits = 0usize;
     let body: Vec<String> = src
         .lines()
         .map(|line| {
-            if line.trim_start().starts_with("uint256 constant ") && line.contains(&needle) {
+            let is_const_line = {
+                let t = line.trim_start();
+                t.starts_with("uint256 constant ") || t.starts_with("address constant ")
+            };
+            if is_const_line && line.contains(&needle) {
                 if let Some(eq) = line.find('=') {
                     if let Some(rel) = line[eq..].find(';') {
                         let semi = eq + rel;
@@ -96,7 +120,7 @@ fn set_const(src: &str, name: &str, value: u128) -> String {
         .collect();
     assert_eq!(
         hits, 1,
-        "expected exactly one `uint256 constant {name}` line in the template"
+        "expected exactly one `uint256/address constant {name}` line in the template"
     );
     let mut out = body.join("\n");
     if src.ends_with('\n') {
@@ -169,7 +193,21 @@ pub fn generate_verifiers(
     external_pow_bits: u32,
     whir_batch_pow_bits: u32,
     final_pc: u32,
+    registry_address: &str,
 ) -> GeneratedContracts {
+    // The registry address is baked into BOTH verifiers (they `call` it to mark
+    // their committed state), so deployments must generate with the REAL
+    // registry address — deploy the registry first, then regenerate + deploy
+    // the verifiers. `0x…` 20-byte hex literal.
+    assert!(
+        registry_address.starts_with("0x")
+            && registry_address.len() == 42
+            && registry_address[2..].chars().all(|c| c.is_ascii_hexdigit()),
+        "registry_address must be a 0x-prefixed 20-byte hex literal, got `{registry_address}`"
+    );
+    // The templates declare an `address constant`, and solc only accepts
+    // EIP-55 checksummed address literals — normalize whatever case came in.
+    let registry_literal = checksum_address(registry_address);
     let d = Derived::from(circuit);
     // WHIR config derived from the same source the prover used, plus the artifact's widths.
     let wc = WhirGenConfig::derive(
@@ -229,6 +267,7 @@ pub fn generate_verifiers(
     ] {
         gkr = set_const(&gkr, name, value);
     }
+    let gkr = set_const(&gkr, "__TEMPLATE_REGISTRY_ADDRESS", &registry_literal);
 
     // Boundary-layer LSB reorder for gkr_dr_final: the dim-reduce LSB lines are stored in
     // GKRAddress-offset order, but the g-accumulator wants OutputType-group (iteration) order so
@@ -278,6 +317,7 @@ pub fn generate_verifiers(
     ] {
         whir = set_const(&whir, name, value);
     }
+    let whir = set_const(&whir, "__TEMPLATE_REGISTRY_ADDRESS", &registry_literal);
     let whir = strip_from_contract(&whir, "WhirRealProofTest");
 
     GeneratedContracts {

@@ -2633,21 +2633,20 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
         }}
 
+        // Plain VARIABLE order (LSB binding): index bit k pairs with point coordinate k.
+        // compose_vars sums 2^k * point[skip + k] for k in 0..len (Horner from the top
+        // coordinate down); zero_vars forces the HIGHEST `len` coordinates to zero —
+        // both mirror the CPU generator's plain-order closed forms.
         function gkr_virtual_poly_compose_vars(len, skip) -> eval {{
-            // let total := add(skip, len)
-            let max := sub(__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
-            let min := sub(max, len)
-            // NO NEED FOR THIS CHECK, WE DO IT VIA RUST
-            // if gt(total, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ // abort when bad
-            //     min := max
-            // }}
-            for {{ let i := min }} lt(i, max) {{ i := add(i, 1) }} {{
+            for {{ let i := add(skip, len) }} gt(i, skip) {{ }} {{
+                i := sub(i, 1)
                 eval := add(mul(eval, 2), mload(add(POINT_PTR(), mul(i, 32))))
             }}
         }}
         function gkr_virtual_poly_zero_vars(len) -> eval {{
             eval := 1
-            for {{ let i := 0 }} lt(i, len) {{ i := add(i, 1) }} {{
+            let n := __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS
+            for {{ let i := sub(n, len) }} lt(i, n) {{ i := add(i, 1) }} {{
                 eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR(), mul(i, 32))))), P)
             }}
         }}

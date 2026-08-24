@@ -161,7 +161,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     let mem_oracle = ColumnMajorBaseOracleForLDE::CosetRecompute(mem_commitment); // 8 cols
     let wit_oracle = ColumnMajorBaseOracleForLDE::CosetRecompute(wit_commitment); // 1 col
                                                                                   // empty setup oracle (borrowed, held for the whole call, but carries no cosets)
-    let setup_oracle = commit_trace_part::<Proth120, Proth120, Tree>(
+    let setup_oracle = commit_trace_part::<Proth120, Proth120, Tree, _>(
         &crate::gkr::prover::backend::NaiveBackend,
         &[],
         &twiddles,
@@ -188,7 +188,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
 
     log("running whir_fold (folding rounds + PoW grinding)");
     let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup_oracle);
-    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript>(
+    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript, _>(
         mem_oracle,
         mem_claims.clone(),
         wit_oracle,
