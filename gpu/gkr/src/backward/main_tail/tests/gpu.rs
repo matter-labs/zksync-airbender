@@ -22,7 +22,9 @@ use super::{lower_main_tail_program, MainTailProgram, MAIN_TAIL_BLOB_BYTES};
 use crate::backward::main_continuation::{ContinuationPublishedLevel, ContinuationPublishedShape};
 use crate::backward::main_layer::execution_plan::MainEqBoundaryWitness;
 use crate::backward::vm::seg::bwd_seg_coeff_bank_device_ptr;
-use crate::backward::{compile_corpus_layout, make_eq_sizes};
+use crate::backward::{
+    compile_corpus_layout, get_eq_high_constant_device_ptr, make_eq_sizes, GKR_EQ_GROUP_TABLE_LEN,
+};
 use crate::test_utils::make_test_context;
 use crate::upstream::{Field, FieldExtension, PrimeField};
 
@@ -79,6 +81,11 @@ struct Fixture {
     entry_depth: u8,
     eq_boundary: MainEqBoundaryWitness,
     tail_rounds: usize,
+}
+
+struct FixtureEqState {
+    high_sentinels: [E4; 2],
+    low: Vec<E4>,
 }
 
 impl Fixture {
@@ -173,6 +180,42 @@ impl Fixture {
             claim_output: MainTailClaimOutput::Detached,
         }
     }
+
+    fn eq_state(&self) -> FixtureEqState {
+        FixtureEqState {
+            high_sentinels: [E4::ONE; 2],
+            low: self.entry_eq_low.clone(),
+        }
+    }
+}
+
+#[test]
+fn cpu_main_tail_smoke_eq_state_covers_strict_three_slot_contract() {
+    let fixture = Fixture::deterministic();
+    let staged = fixture.eq_state();
+    let expected = direct_eq(
+        &fixture.claim_coordinates[usize::from(fixture.eq_boundary.semantic_suffix_offset)..],
+    );
+    assert_eq!(staged.low, expected);
+    for (row, &low) in staged.low.iter().enumerate() {
+        let mut actual = staged.high_sentinels[0];
+        actual.mul_assign(&staged.high_sentinels[1]);
+        actual.mul_assign(&low);
+        assert_eq!(actual, expected[row], "row {row}");
+    }
+    for slot in 0..staged.high_sentinels.len() {
+        let mut mutated = staged.high_sentinels;
+        mutated[slot] = E4::ZERO;
+        assert!(
+            staged.low.iter().zip(&expected).any(|(&low, &expected)| {
+                let mut actual = mutated[0];
+                actual.mul_assign(&mutated[1]);
+                actual.mul_assign(&low);
+                actual != expected
+            }),
+            "zeroing high sentinel {slot} must be observable",
+        );
+    }
 }
 
 fn upload<T: Copy>(
@@ -200,6 +243,22 @@ fn write_coefficient_bank(context: &ProverContext, coefficients: &[E4]) -> Stati
     };
     memory_copy_async(destination, &staging[..], context.get_exec_stream()).unwrap();
     staging
+}
+
+fn write_eq_high_sentinels(
+    context: &ProverContext,
+    sentinels: &[E4; 2],
+) -> [StaticPinnedBox<E4>; 2] {
+    let high = get_eq_high_constant_device_ptr();
+    std::array::from_fn(|slot| {
+        let staging = alloc_static_pinned_box_from_slice(&sentinels[slot..=slot]).unwrap();
+        // SAFETY: each strict high slot owns `GKR_EQ_GROUP_TABLE_LEN` E4 values;
+        // this fixture writes only its mandatory identity at offset zero.
+        let destination =
+            unsafe { DeviceSlice::from_raw_parts_mut(high.add(slot * GKR_EQ_GROUP_TABLE_LEN), 1) };
+        memory_copy_async(destination, &staging[..], context.get_exec_stream()).unwrap();
+        staging
+    })
 }
 
 #[derive(Debug)]
@@ -331,9 +390,11 @@ fn gpu_main_tail_smoke_matches_reference() {
     )
     .unwrap();
     let _coefficient_staging = write_coefficient_bank(&context, &fixture.coefficient_bank);
+    let eq_state = fixture.eq_state();
+    let _eq_high_staging = write_eq_high_sentinels(&context, &eq_state.high_sentinels);
     let (claim_coordinates, _claim_coordinates_staging) =
         upload(&context, &fixture.claim_coordinates);
-    let (mut eq_low, _eq_staging) = upload(&context, &fixture.entry_eq_low);
+    let (mut eq_low, _eq_staging) = upload(&context, &eq_state.low);
     let (mut seed, _seed_staging) = upload(&context, &fixture.seed);
     let (mut claim, _claim_staging) = upload(&context, &[fixture.claim]);
     let (mut eq_prefactor, _prefactor_staging) = upload(&context, &[fixture.eq_prefactor]);
