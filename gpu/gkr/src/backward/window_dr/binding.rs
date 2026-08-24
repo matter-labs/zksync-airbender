@@ -26,8 +26,10 @@ use crate::upstream::GKRAddress;
 use crate::GpuGKRStorage;
 
 use super::composition::{
-    DrWindowLayerCompositionHook, DrWindowLayerPreparationHook, DrWindowPassEqState,
-    DrWindowPassEqView, DrWindowRawInputKeepalive,
+    plan_dr_window_continuations, DrWindowContinuationArenaOwners, DrWindowContinuationParity,
+    DrWindowContinuationPass, DrWindowContinuationPlannedSource, DrWindowLayerCompositionHook,
+    DrWindowLayerPreparationHook, DrWindowPassEqState, DrWindowPassEqView,
+    DrWindowRawInputKeepalive,
 };
 use super::generated_registry::{
     DrWindowContinuationKernelEntry, DrWindowKernelEntry, GkrDrContinuationWindow3Arguments,
@@ -165,6 +167,28 @@ pub(crate) struct DrWindowContinuationArena {
 }
 
 impl DrWindowContinuationArena {
+    pub(crate) fn allocate(
+        context: &ProverContext,
+        log2_stride: u32,
+        poly_count: usize,
+    ) -> Result<Self, DrWindowBindError> {
+        let per_poly_len =
+            1usize
+                .checked_shl(log2_stride)
+                .ok_or(DrWindowBindError::ArenaGeometryOverflow {
+                    log2_stride,
+                    poly_count,
+                })?;
+        let required = per_poly_len.checked_mul(poly_count).ok_or(
+            DrWindowBindError::ArenaGeometryOverflow {
+                log2_stride,
+                poly_count,
+            },
+        )?;
+        let allocation = Arc::new(context.alloc(required, AllocationPlacement::Top)?);
+        Self::new(allocation, log2_stride, poly_count)
+    }
+
     pub(crate) fn new(
         allocation: Arc<DeviceAllocation<E4>>,
         log2_stride: u32,
@@ -213,6 +237,18 @@ impl DrWindowContinuationArena {
 
     pub(crate) fn poly_count(&self) -> usize {
         self.poly_count
+    }
+
+    pub(crate) fn log2_stride(&self) -> u32 {
+        self.log2_stride
+    }
+
+    pub(crate) fn capacity(&self) -> usize {
+        self.allocation.len()
+    }
+
+    pub(crate) fn allocation_keepalive(&self) -> Arc<DeviceAllocation<E4>> {
+        Arc::clone(&self.allocation)
     }
 }
 
@@ -272,6 +308,7 @@ const _: () = {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum DrWindowBindError {
+    Cuda(era_cudart_sys::CudaError),
     ZeroMask,
     UndefinedMaskBits {
         bits: u32,
@@ -292,6 +329,11 @@ pub(crate) enum DrWindowBindError {
         folding_steps: usize,
         start_round: usize,
     },
+    ContinuationPlanMismatch {
+        window_count: usize,
+        entry_round: usize,
+    },
+    ContinuationsAlreadyBound,
     MissingPublicationIndex {
         dense_slot: usize,
         input_operand: usize,
@@ -352,6 +394,12 @@ pub(crate) enum DrWindowBindError {
     },
     ContinuationEqLowMismatch,
     ContinuationContributionsMustBeNull,
+}
+
+impl From<era_cudart_sys::CudaError> for DrWindowBindError {
+    fn from(error: era_cudart_sys::CudaError) -> Self {
+        Self::Cuda(error)
+    }
 }
 
 impl core::fmt::Display for DrWindowBindError {
@@ -536,6 +584,19 @@ pub(crate) fn dr_window_row_tiles(folding_steps: usize) -> usize {
 
 pub(crate) fn dr_window_partials_len(folding_steps: usize) -> usize {
     DR_WINDOW_TENSOR_CELLS * (dr_window_row_tiles(folding_steps) + 1)
+}
+
+/// Pure capacity seam shared by layer planning and D3 tests. The retained
+/// allocation must cover the legacy consumer, R0, and every selected
+/// continuation pass; no caller may replace one requirement with another.
+pub(crate) fn dr_window_partials_maximum(
+    legacy_partials_len: usize,
+    r0_partials_len: usize,
+    continuation_partials_lens: impl IntoIterator<Item = usize>,
+) -> usize {
+    continuation_partials_lens
+        .into_iter()
+        .fold(legacy_partials_len.max(r0_partials_len), usize::max)
 }
 
 pub(super) fn validate_dr_window_folding_steps(
@@ -995,6 +1056,145 @@ pub(crate) fn bind_dr_window_r0<B>(
         program.clone(),
         projection.clone(),
     ))
+}
+
+/// Allocate and bind the exact continuation prefix already selected by the
+/// landed R0 hook. All descriptor pointers are retained by `hook`: raw input
+/// backings, the two parity arena allocations, and the single global Eq
+/// scratch outlive every launch queued from the returned records.
+pub(crate) fn bind_dr_window_continuations<B>(
+    hook: &mut DrWindowLayerCompositionHook,
+    storage: &GpuGKRStorage<B, E4>,
+    claim_point: *const E4,
+    context: &ProverContext,
+) -> Result<(), DrWindowBindError> {
+    if !hook.continuation_launches.is_empty()
+        || hook.continuation_eq.is_some()
+        || hook.continuation_arenas.even.is_some()
+        || hook.continuation_arenas.odd.is_some()
+        || !hook.continuation_keepalives.is_empty()
+    {
+        return Err(DrWindowBindError::ContinuationsAlreadyBound);
+    }
+
+    let folding_steps = hook.r0_launch.folding_steps;
+    let geometries = plan_dr_window_continuations(
+        folding_steps,
+        hook.continuation_window_count,
+        hook.megakernel_entry_round,
+    )?;
+    if geometries.is_empty() {
+        return Ok(());
+    }
+
+    let scratch = DrWindowRuntimeScratch {
+        partials: hook.r0_launch.binding.partials,
+        partials_capacity: hook.partials_capacity,
+    };
+    for geometry in &geometries {
+        if scratch.partials_capacity < geometry.partials_len {
+            return Err(DrWindowBindError::ScratchCapacity {
+                required: geometry.partials_len,
+                capacity: scratch.partials_capacity,
+            });
+        }
+    }
+
+    let poly_count = hook.continuation_projection.canonical_sources().len();
+    let mut arenas = DrWindowContinuationArenaOwners::default();
+    let even_geometry = geometries
+        .iter()
+        .find(|geometry| geometry.destination == DrWindowContinuationParity::Even)
+        .expect("a nonempty continuation prefix always starts with even parity");
+    arenas.even = Some(DrWindowContinuationArena::allocate(
+        context,
+        even_geometry.log2_stride,
+        poly_count,
+    )?);
+    if let Some(odd_geometry) = geometries
+        .iter()
+        .find(|geometry| geometry.destination == DrWindowContinuationParity::Odd)
+    {
+        arenas.odd = Some(DrWindowContinuationArena::allocate(
+            context,
+            odd_geometry.log2_stride,
+            poly_count,
+        )?);
+    }
+    let eq_scratch = DrContinuationFactoredEqScratch::allocate(context)?;
+    let mut launches = Vec::with_capacity(geometries.len());
+
+    for geometry in geometries {
+        let eq_entry = eq_scratch.view_for_pass(folding_steps, geometry.start_round)?;
+        debug_assert_eq!(eq_entry.sizes, geometry.eq_entry_sizes);
+        debug_assert_eq!(
+            eq_entry.challenge_offset as usize,
+            geometry.challenge_offset
+        );
+        debug_assert_eq!(eq_entry.challenge_count as usize, geometry.challenge_count);
+
+        let destination = arenas
+            .get(geometry.destination)
+            .expect("the first use allocated this destination parity")
+            .with_geometry(geometry.log2_stride, poly_count)?;
+        let source_arena = match geometry.source {
+            DrWindowContinuationPlannedSource::Raw => None,
+            DrWindowContinuationPlannedSource::Arena(parity) => {
+                let previous_geometry = launches
+                    .last()
+                    .map(|pass: &DrWindowContinuationPass| pass.geometry)
+                    .expect("an arena source always follows a prior pass");
+                debug_assert_eq!(previous_geometry.destination, parity);
+                Some(
+                    arenas
+                        .get(parity)
+                        .expect("the prior pass allocated this source parity")
+                        .with_geometry(previous_geometry.log2_stride, poly_count)?,
+                )
+            }
+        };
+        let source = source_arena
+            .as_ref()
+            .map_or(DrWindowContinuationSource::Storage(storage), |arena| {
+                DrWindowContinuationSource::Arena(arena)
+            });
+        let batch = build_dr_window_continuation_batch(
+            &hook.continuation_program,
+            &hook.continuation_projection,
+            source,
+            &destination,
+            eq_entry,
+        )?;
+        let launch = bind_dr_window_continuation_launch(
+            batch,
+            folding_steps,
+            geometry.start_round,
+            eq_entry,
+            scratch,
+            claim_point,
+        )?;
+        launches.push(DrWindowContinuationPass {
+            geometry,
+            launch,
+            eq_entry,
+            one_fold_boundary_sizes: geometry.one_fold_boundary_sizes,
+        });
+    }
+
+    debug_assert_eq!(
+        launches.last().unwrap().geometry.start_round + DR_WINDOW_COORDINATES,
+        hook.megakernel_entry_round,
+    );
+    let keepalives = [arenas.even.as_ref(), arenas.odd.as_ref()]
+        .into_iter()
+        .flatten()
+        .map(DrWindowContinuationArena::allocation_keepalive)
+        .collect();
+    hook.continuation_launches = launches;
+    hook.continuation_eq = Some(eq_scratch);
+    hook.continuation_arenas = arenas;
+    hook.continuation_keepalives = keepalives;
+    Ok(())
 }
 
 /// Prepare the allocation-neutral Task 6 seam. The caller supplies a typed

@@ -18,10 +18,10 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use super::binding::{
-    bind_dr_window_continuation_launch, bind_dr_window_r0, build_dr_window_continuation_batch,
-    dr_window_partials_len, launch_dr_window_continuation, launch_dr_window_r0,
-    DrContinuationFactoredEqScratch, DrWindowContinuationArena, DrWindowContinuationSource,
-    DrWindowRuntimeScratch,
+    bind_dr_window_continuation_launch, bind_dr_window_continuations, bind_dr_window_r0,
+    build_dr_window_continuation_batch, dr_window_partials_len, launch_dr_window_continuation,
+    launch_dr_window_r0, DrContinuationFactoredEqScratch, DrWindowContinuationArena,
+    DrWindowContinuationSource, DrWindowRuntimeScratch,
 };
 use super::composition::{DrWindowLayerCompositionHook, DrWindowPassEqState};
 use super::reference::{
@@ -32,8 +32,9 @@ use crate::backward::dim_reducing_encoder::{
     build_continuation_batch_compact_for_arenas, build_round0_batch_compact,
     build_round1_batch_compact_for_arena,
 };
+use crate::backward::dim_reducing_sumcheck_plan::launch_dr_window_continuation_chain_for_test;
 use crate::backward::kernels::{
-    get_dim_reducing_layer_claim_point_device_ptr, get_eq_high_constant_device_ptr,
+    eq_group_count, get_dim_reducing_layer_claim_point_device_ptr, get_eq_high_constant_device_ptr,
     launch_backward_dual_finalize_from_acc, launch_build_eq_high_and_low_groups_from_point,
     launch_dim_reducing_continuation_batched_compact, launch_dim_reducing_round0_batched_compact,
     make_eq_sizes, record_active_eq_slot_fold, resolve_active_eq_slot,
@@ -142,6 +143,87 @@ struct PreparedRun {
 struct ContinuationPassObservation {
     tensor: [E4; TENSOR_CELLS],
     published: Vec<E4>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DrContinuationChainObservation {
+    published: Vec<Vec<E4>>,
+    tensors: Vec<[E4; TENSOR_CELLS]>,
+    coefficients: Vec<E4>,
+    claim_point: Vec<E4>,
+    seed: [u32; 8],
+    claim: E4,
+    eq_prefactor: E4,
+    eq_entries: Vec<GkrEqSizes>,
+    eq_boundaries: Vec<GkrEqSizes>,
+    eq_entry_active_sizes: Vec<u32>,
+    eq_entry_active_values: Vec<Vec<E4>>,
+    eq_boundary_active_sizes: Vec<u32>,
+    eq_boundary_active_values: Vec<Vec<E4>>,
+    constant_slab: Vec<E4>,
+    r0_low: Vec<E4>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum DrContinuationChainMutation {
+    Publication,
+    Axis,
+    BatchExponent,
+    ProductExcess,
+    EqSuffix,
+    ConstantPointer,
+    PriorViewReuse,
+    CumulativeDrain,
+}
+
+fn mutate_dr_continuation_chain(
+    observation: &DrContinuationChainObservation,
+    mutation: DrContinuationChainMutation,
+) -> DrContinuationChainObservation {
+    let mut mutated = observation.clone();
+    match mutation {
+        DrContinuationChainMutation::Publication => {
+            mutated.published[0][0].add_assign(&E4::ONE);
+        }
+        DrContinuationChainMutation::Axis => {
+            mutated.tensors[0].swap(1, 3);
+            if mutated.tensors == observation.tensors {
+                mutated.tensors[0][1].add_assign(&E4::ONE);
+            }
+        }
+        DrContinuationChainMutation::BatchExponent => {
+            mutated.tensors[0][9].add_assign(&E4::ONE);
+        }
+        DrContinuationChainMutation::ProductExcess => {
+            for a0 in 0..2 {
+                for a1 in 0..2 {
+                    for a2 in 0..2 {
+                        mutated.tensors[0][9 * a0 + 3 * a1 + a2] = E4::ZERO;
+                    }
+                }
+            }
+        }
+        DrContinuationChainMutation::EqSuffix => {
+            mutated.eq_entries[0] = mutated.eq_boundaries[0];
+            mutated.eq_entry_active_sizes[0] = mutated.eq_boundary_active_sizes[0];
+            mutated.eq_entry_active_values[0] = mutated.eq_boundary_active_values[0].clone();
+        }
+        DrContinuationChainMutation::ConstantPointer => {
+            let entry_len = mutated.eq_entry_active_values[0].len();
+            mutated.eq_entry_active_values[0] = mutated.constant_slab[..entry_len].to_vec();
+        }
+        DrContinuationChainMutation::PriorViewReuse => {
+            mutated.eq_entries[1] = mutated.eq_entries[0];
+            mutated.eq_entry_active_sizes[1] = mutated.eq_entry_active_sizes[0];
+            mutated.eq_entry_active_values[1] = mutated.eq_entry_active_values[0].clone();
+        }
+        DrContinuationChainMutation::CumulativeDrain => {
+            mutated.eq_entries[1] = mutated.eq_boundaries[0];
+            mutated.eq_entry_active_sizes[1] = mutated.eq_boundary_active_sizes[0];
+            mutated.eq_entry_active_values[1] = mutated.eq_boundary_active_values[0].clone();
+        }
+    }
+    mutated
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1175,6 +1257,23 @@ fn gpu_dr_window_r0_three_round_state_matches_legacy() {
     ));
 }
 
+fn active_factored_eq_physical_slot(sizes: GkrEqSizes) -> (usize, u32) {
+    if sizes.low > 0 {
+        (2, sizes.low)
+    } else if sizes.high[1] > 0 {
+        (1, sizes.high[1])
+    } else {
+        assert!(sizes.high[0] > 0);
+        (0, sizes.high[0])
+    }
+}
+
+fn active_factored_eq_logical_group(challenge_count: usize) -> usize {
+    eq_group_count(challenge_count)
+        .checked_sub(1)
+        .expect("a continuation Eq suffix always has at least one logical group")
+}
+
 fn factored_eq_group_reference(
     claim_point: &[E4],
     challenge_offset: usize,
@@ -1194,6 +1293,64 @@ fn factored_eq_group_reference(
             })
         })
         .collect()
+}
+
+#[test]
+fn cpu_dr_window_continuation_factored_eq_reference_maps_logical_groups() {
+    let mut rng = StdRng::seed_from_u64(0xd331_0000_0000_0001);
+    let claim_point = (0..32).map(|_| random_e4(&mut rng)).collect::<Vec<_>>();
+    let challenge_offset = 4usize;
+    let mut logical_group_reachability = [0usize; 3];
+    let mut physical_low_mutations_rejected = 0usize;
+
+    for challenge_count in 1usize..=24 {
+        let sizes = make_eq_sizes(challenge_count);
+        let logical_group = (challenge_count - 1) / 8;
+        let logical_group_start = logical_group * 8;
+        let logical_group_size = (challenge_count - logical_group_start).min(8);
+        let (physical_slot, mapped_size) = active_factored_eq_physical_slot(sizes);
+        let mapped_group = active_factored_eq_logical_group(challenge_count);
+
+        assert_eq!(sizes.low as usize, logical_group_size);
+        assert_eq!(physical_slot, 2);
+        assert_eq!(mapped_group, logical_group);
+        assert_eq!(mapped_size as usize, logical_group_size);
+
+        let observed = factored_eq_group_reference(
+            &claim_point,
+            challenge_offset,
+            challenge_count,
+            mapped_group,
+        );
+        let expected = (0..1usize << logical_group_size)
+            .map(|local_index| {
+                (0..logical_group_size).fold(E4::ONE, |mut product, local_variable| {
+                    let logical_variable = logical_group_start + local_variable;
+                    let coordinate =
+                        claim_point[challenge_offset + challenge_count - 1 - logical_variable];
+                    let bit = (local_index >> (logical_group_size - 1 - local_variable)) & 1;
+                    product.mul_assign(&eq_weight(bit, coordinate));
+                    product
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(observed, expected);
+
+        // Historical mutation: physical slot 2 (`low`) was passed as logical
+        // builder group 2. It must be rejected for one- and two-group Eq
+        // builds, where the last logical group is 0 or 1 respectively.
+        if logical_group < 2 {
+            assert_ne!(
+                physical_slot, mapped_group,
+                "physical-low-as-logical-group mutation survived count={challenge_count}",
+            );
+            physical_low_mutations_rejected += 1;
+        }
+        logical_group_reachability[logical_group] += 1;
+    }
+
+    assert_eq!(logical_group_reachability, [8, 8, 8]);
+    assert_eq!(physical_low_mutations_rejected, 16);
 }
 
 #[test]
@@ -1376,4 +1533,390 @@ fn dr_window_continuation_global_eq_builder_matches_reference() {
         &low[..1usize << view.sizes.low],
         factored_eq_group_reference(&claim_host, challenge_offset, challenge_count, 2),
     );
+}
+
+#[test]
+#[ignore = "requires CUDA; execute only through the independently approved D3 GPU lock packet"]
+fn dr_window_continuation_chain_matches_legacy() {
+    let context = make_test_context(256, 64);
+    let masks = OBSERVED_MASKS
+        .into_iter()
+        .chain([UNOBSERVED_WELL_FORMED_MASK]);
+
+    for (case_index, mask) in masks.enumerate() {
+        let fixture = DrGpuFixture::new(
+            &context,
+            mask,
+            12,
+            0xd330_0000_0000_0001 ^ ((case_index as u64) << 40) ^ u64::from(mask),
+        );
+        let source_before = fixture.source_snapshot();
+        let expected_r0_tensor = fixture.expected_tensor();
+        let mut prepared = fixture.prepare();
+        let claim_point_base = prepared.claim_point.as_ptr();
+        bind_dr_window_continuations(
+            &mut prepared.hook,
+            &fixture.storage,
+            claim_point_base,
+            &context,
+        )
+        .expect("D3 binds the landed W'=2 prefix");
+        assert_eq!(prepared.hook.continuation_launches.len(), 2);
+        assert_eq!(
+            prepared
+                .hook
+                .continuation_launches
+                .iter()
+                .map(|pass| pass.launch.row_tiles)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([1, 2]),
+        );
+        assert!(prepared.hook.continuation_eq.is_some());
+        assert!(prepared.hook.continuation_arenas.even.is_some());
+        assert!(prepared.hook.continuation_arenas.odd.is_some());
+        assert_eq!(prepared.hook.continuation_keepalives.len(), 2);
+        let poly_count = fixture.projection.canonical_sources().len();
+        let even = prepared.hook.continuation_arenas.even.as_ref().unwrap();
+        let odd = prepared.hook.continuation_arenas.odd.as_ref().unwrap();
+        assert_eq!(even.log2_stride(), fixture.folding_steps as u32 - 2);
+        assert_eq!(odd.log2_stride(), fixture.folding_steps as u32 - 5);
+        assert_eq!(even.capacity(), poly_count << (fixture.folding_steps - 2));
+        assert_eq!(odd.capacity(), poly_count << (fixture.folding_steps - 5));
+
+        let entry_round = prepared.hook.megakernel_entry_round;
+        let mut seed = upload(&context, &fixture.tail_seed);
+        let initial_claim = fixture.initial_claim(&expected_r0_tensor);
+        let mut claim = upload(&context, &[initial_claim]);
+        let mut eq_prefactor = upload(&context, &[E4::ONE]);
+        let mut coefficients: DeviceAllocation<E4> = context
+            .alloc(4 * entry_round, AllocationPlacement::BestFit)
+            .unwrap();
+
+        let (r0_active_slot, r0_active_size) = resolve_active_eq_slot(
+            &prepared.hook.r0_eq.eq_sizes,
+            prepared.hook.r0_eq.eq_low.as_mut_ptr(),
+        );
+        let r0_tail = WindowTailState {
+            partials: prepared.scratch.as_ptr(),
+            row_tiles: prepared.hook.r0_launch.row_tiles,
+            reduced_tensor: prepared.hook.r0_launch.reduced_tensor,
+            prev_claim_coords: prepared.claim_point.as_ptr(),
+            seed: seed.as_mut_ptr(),
+            claim: claim.as_mut_ptr(),
+            eq_prefactor: eq_prefactor.as_mut_ptr(),
+            coeffs_out: coefficients.as_mut_ptr(),
+            challenges_out: prepared.claim_point.as_mut_ptr(),
+            active_eq_slot_base: r0_active_slot,
+            active_eq_size_before_fold: r0_active_size,
+        };
+        launch_window_tensor_round_tail(WindowTailArm::Split, &r0_tail, &context).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        let constant_before = download(
+            &context,
+            raw_device_slice(
+                get_eq_high_constant_device_ptr(),
+                2 * GKR_EQ_GROUP_TABLE_LEN,
+            ),
+        );
+        let r0_low_before = download(&context, &prepared.hook.r0_eq.eq_low[..]);
+        context.get_exec_stream().synchronize().unwrap();
+
+        let mut expected_seed = fixture.tail_seed;
+        let mut expected_claim = initial_claim;
+        let mut expected_eq_prefactor = E4::ONE;
+        let mut expected_claim_point = fixture.claim_point.clone();
+        let r0_rho: [E4; 3] = expected_claim_point[..3].try_into().unwrap();
+        let (r0_coefficients, r0_challenges) = tensor_round_tail_reference(
+            expected_r0_tensor,
+            &r0_rho,
+            &mut expected_seed,
+            &mut expected_claim,
+            &mut expected_eq_prefactor,
+        );
+        let mut expected_coefficients = vec![E4::ZERO; 4 * entry_round];
+        expected_coefficients[..12].copy_from_slice(&r0_coefficients);
+        expected_claim_point[..3].copy_from_slice(&r0_challenges);
+
+        let claim_point_ptr = prepared.claim_point.as_mut_ptr();
+        let coeffs_ptr = coefficients.as_mut_ptr();
+        let seed_ptr = seed.as_mut_ptr();
+        let claim_ptr = claim.as_mut_ptr();
+        let eq_prefactor_ptr = eq_prefactor.as_mut_ptr();
+        let mut expected_columns = fixture.columns.clone();
+        let mut expected_published = Vec::new();
+        let mut observed_published = Vec::new();
+        let mut expected_tensors = Vec::new();
+        let mut observed_tensors = Vec::new();
+        let mut expected_eq_entries = Vec::new();
+        let mut expected_eq_boundaries = Vec::new();
+        let mut expected_eq_entry_active_sizes = Vec::new();
+        let mut expected_eq_entry_active_values = Vec::new();
+        let mut expected_eq_boundary_active_sizes = Vec::new();
+        let mut expected_eq_boundary_active_values = Vec::new();
+
+        let eq_snapshots = launch_dr_window_continuation_chain_for_test(
+            &prepared.hook,
+            WindowTailArm::Split,
+            claim_point_ptr,
+            coeffs_ptr,
+            seed_ptr,
+            claim_ptr,
+            eq_prefactor_ptr,
+            &context,
+            |pass| {
+                let start_round = pass.geometry.start_round;
+                let folding_challenges: [E4; 3] = expected_claim_point
+                    [start_round - 3..start_round]
+                    .try_into()
+                    .unwrap();
+                expected_columns = fixture
+                    .projection
+                    .canonical_sources()
+                    .iter()
+                    .copied()
+                    .map(|address| {
+                        let folded = fold_dr_continuation_depth3(
+                            &expected_columns[&address],
+                            folding_challenges,
+                        )
+                        .unwrap();
+                        (address, folded)
+                    })
+                    .collect();
+                let expected_tensor = dr_continuation_tensor_reference(
+                    &fixture.oracle_program,
+                    &expected_columns,
+                    fixture.batch_base,
+                    &expected_claim_point[start_round + 3..fixture.folding_steps],
+                )
+                .unwrap();
+
+                let partial_values = download(
+                    &context,
+                    raw_device_slice(
+                        pass.launch.binding.partials,
+                        TENSOR_CELLS * pass.launch.row_tiles,
+                    ),
+                );
+                let first_slot = pass.launch.binding.batch.enabled_mask.trailing_zeros() as usize;
+                let destination_record = pass.launch.binding.batch.slots[first_slot].io[0];
+                let destination_slot = usize::from((destination_record.cache >> 11) & 0x0f);
+                assert_eq!(
+                    pass.launch.binding.batch.tables.log2_stride[destination_slot],
+                    pass.geometry.log2_stride,
+                );
+                let destination_base =
+                    pass.launch.binding.batch.tables.bases[destination_slot].cast::<E4>();
+                let published_len =
+                    fixture.projection.canonical_sources().len() * pass.geometry.per_poly_len;
+                let published =
+                    download(&context, raw_device_slice(destination_base, published_len));
+
+                let rho: [E4; 3] = expected_claim_point[start_round..start_round + 3]
+                    .try_into()
+                    .unwrap();
+                let (tail_coefficients, tail_challenges) = tensor_round_tail_reference(
+                    expected_tensor,
+                    &rho,
+                    &mut expected_seed,
+                    &mut expected_claim,
+                    &mut expected_eq_prefactor,
+                );
+                expected_coefficients[4 * start_round..4 * (start_round + 3)]
+                    .copy_from_slice(&tail_coefficients);
+                expected_claim_point[start_round..start_round + 3]
+                    .copy_from_slice(&tail_challenges);
+
+                let observed_coefficients = download(
+                    &context,
+                    raw_device_slice(coeffs_ptr.cast_const(), 4 * (start_round + 3)),
+                );
+                let observed_claim_point = download(
+                    &context,
+                    raw_device_slice(claim_point_ptr.cast_const(), fixture.folding_steps),
+                );
+                let observed_seed = download(&context, raw_device_slice(seed_ptr.cast_const(), 8));
+                let observed_claim =
+                    download(&context, raw_device_slice(claim_ptr.cast_const(), 1));
+                let observed_eq_prefactor =
+                    download(&context, raw_device_slice(eq_prefactor_ptr.cast_const(), 1));
+                context.get_exec_stream().synchronize().unwrap();
+
+                let mut observed_tensor = [E4::ZERO; TENSOR_CELLS];
+                for (index, value) in partial_values.into_iter().enumerate() {
+                    observed_tensor[index % TENSOR_CELLS].add_assign(&value);
+                }
+                compare_dr_tensors(&expected_tensor, &observed_tensor).unwrap();
+                let expected_publication = fixture
+                    .projection
+                    .canonical_sources()
+                    .iter()
+                    .flat_map(|address| expected_columns[address].iter().copied())
+                    .collect::<Vec<_>>();
+                assert_eq!(published, expected_publication);
+                assert_eq!(
+                    observed_coefficients,
+                    expected_coefficients[..4 * (start_round + 3)],
+                );
+                assert_eq!(observed_claim_point, expected_claim_point);
+                assert_eq!(observed_seed, expected_seed);
+                assert_eq!(observed_claim, vec![expected_claim]);
+                assert_eq!(observed_eq_prefactor, vec![expected_eq_prefactor]);
+
+                let expected_entry = make_eq_sizes(fixture.folding_steps - start_round - 3);
+                let mut expected_boundary = expected_entry;
+                record_active_eq_slot_fold(&mut expected_boundary);
+                let (_, entry_active_size) = active_factored_eq_physical_slot(expected_entry);
+                let active_group =
+                    active_factored_eq_logical_group(fixture.folding_steps - start_round - 3);
+                let expected_entry_active_values = factored_eq_group_reference(
+                    &expected_claim_point,
+                    start_round + 3,
+                    fixture.folding_steps - start_round - 3,
+                    active_group,
+                );
+                assert_eq!(
+                    expected_entry_active_values.len(),
+                    1usize << entry_active_size,
+                );
+                let expected_boundary_active_values = expected_entry_active_values
+                    .chunks_exact(2)
+                    .map(|pair| add(pair[0], pair[1]))
+                    .collect::<Vec<_>>();
+                assert_eq!(pass.eq_entry.sizes, expected_entry);
+                assert_eq!(pass.one_fold_boundary_sizes, expected_boundary);
+                expected_published.push(expected_publication);
+                observed_published.push(published);
+                expected_tensors.push(expected_tensor);
+                observed_tensors.push(observed_tensor);
+                expected_eq_entries.push(expected_entry);
+                expected_eq_boundaries.push(expected_boundary);
+                expected_eq_entry_active_sizes.push(entry_active_size);
+                expected_eq_entry_active_values.push(expected_entry_active_values);
+                expected_eq_boundary_active_sizes.push(entry_active_size - 1);
+                expected_eq_boundary_active_values.push(expected_boundary_active_values);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        let constant_after = download(
+            &context,
+            raw_device_slice(
+                get_eq_high_constant_device_ptr(),
+                2 * GKR_EQ_GROUP_TABLE_LEN,
+            ),
+        );
+        let r0_low_after = download(&context, &prepared.hook.r0_eq.eq_low[..]);
+        let observed_coefficients = download(&context, &coefficients[..4 * entry_round]);
+        let observed_claim_point = download(&context, &prepared.claim_point[..]);
+        let observed_seed: [u32; 8] = download(&context, &seed[..]).try_into().unwrap();
+        let observed_claim = download(&context, &claim[..])[0];
+        let observed_eq_prefactor = download(&context, &eq_prefactor[..])[0];
+        let source_after = fixture.source_snapshot();
+        context.get_exec_stream().synchronize().unwrap();
+
+        assert_eq!(source_after, source_before);
+        assert_eq!(constant_after, constant_before);
+        assert_eq!(r0_low_after, r0_low_before);
+        assert_eq!(eq_snapshots.len(), expected_eq_entries.len());
+        for (pass_index, snapshot) in eq_snapshots.iter().enumerate() {
+            assert_eq!(snapshot.entry_sizes, expected_eq_entries[pass_index]);
+            assert_eq!(
+                snapshot.entry_active_size,
+                expected_eq_entry_active_sizes[pass_index],
+            );
+            assert_eq!(
+                snapshot.entry_active_values,
+                expected_eq_entry_active_values[pass_index],
+            );
+            assert_eq!(snapshot.one_fold_sizes, expected_eq_boundaries[pass_index],);
+            assert_eq!(
+                snapshot.one_fold_active_size,
+                expected_eq_boundary_active_sizes[pass_index],
+            );
+            assert_eq!(
+                snapshot.one_fold_active_values,
+                expected_eq_boundary_active_values[pass_index],
+            );
+        }
+        let expected = DrContinuationChainObservation {
+            published: expected_published,
+            tensors: expected_tensors,
+            coefficients: expected_coefficients,
+            claim_point: expected_claim_point,
+            seed: expected_seed,
+            claim: expected_claim,
+            eq_prefactor: expected_eq_prefactor,
+            eq_entries: expected_eq_entries,
+            eq_boundaries: expected_eq_boundaries,
+            eq_entry_active_sizes: expected_eq_entry_active_sizes,
+            eq_entry_active_values: expected_eq_entry_active_values,
+            eq_boundary_active_sizes: expected_eq_boundary_active_sizes,
+            eq_boundary_active_values: expected_eq_boundary_active_values,
+            constant_slab: constant_before,
+            r0_low: r0_low_before,
+        };
+        let observed = DrContinuationChainObservation {
+            published: observed_published,
+            tensors: observed_tensors,
+            coefficients: observed_coefficients,
+            claim_point: observed_claim_point,
+            seed: observed_seed,
+            claim: observed_claim,
+            eq_prefactor: observed_eq_prefactor,
+            eq_entries: prepared
+                .hook
+                .continuation_launches
+                .iter()
+                .map(|pass| pass.eq_entry.sizes)
+                .collect(),
+            eq_boundaries: eq_snapshots
+                .iter()
+                .map(|snapshot| snapshot.one_fold_sizes)
+                .collect(),
+            eq_entry_active_sizes: eq_snapshots
+                .iter()
+                .map(|snapshot| snapshot.entry_active_size)
+                .collect(),
+            eq_entry_active_values: eq_snapshots
+                .iter()
+                .map(|snapshot| snapshot.entry_active_values.clone())
+                .collect(),
+            eq_boundary_active_sizes: eq_snapshots
+                .iter()
+                .map(|snapshot| snapshot.one_fold_active_size)
+                .collect(),
+            eq_boundary_active_values: eq_snapshots
+                .iter()
+                .map(|snapshot| snapshot.one_fold_active_values.clone())
+                .collect(),
+            constant_slab: constant_after,
+            r0_low: r0_low_after,
+        };
+        assert_eq!(observed, expected);
+        assert!(
+            (0..2).any(|a0| (0..2).any(
+                |a1| (0..2).any(|a2| { expected.tensors[0][9 * a0 + 3 * a1 + a2] != E4::ZERO })
+            )),
+            "Boolean continuation cells must make product-excess mutation non-vacuous",
+        );
+        for mutation in [
+            DrContinuationChainMutation::Publication,
+            DrContinuationChainMutation::Axis,
+            DrContinuationChainMutation::BatchExponent,
+            DrContinuationChainMutation::ProductExcess,
+            DrContinuationChainMutation::EqSuffix,
+            DrContinuationChainMutation::ConstantPointer,
+            DrContinuationChainMutation::PriorViewReuse,
+            DrContinuationChainMutation::CumulativeDrain,
+        ] {
+            assert_ne!(
+                mutate_dr_continuation_chain(&expected, mutation),
+                observed,
+                "{mutation:?} mutation survived mask={mask:#04x}",
+            );
+        }
+    }
 }

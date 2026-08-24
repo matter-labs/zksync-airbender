@@ -11,12 +11,15 @@ use gpu_core::primitives::field::E4;
 use gpu_gkr_compiler::{DrWindowInputProjection, DrWindowProgram};
 use gpu_prover_context::ProverContext;
 
+use crate::backward::kernels::record_active_eq_slot_fold;
 use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN};
 use crate::upstream::GKRAddress;
 use crate::GpuGKRStorage;
 
 use super::binding::{
-    resolve_storage_e4, DrWindowBindError, DrWindowLaunch, DrWindowR0Preparation,
+    dr_window_partials_len, resolve_storage_e4, DrContinuationFactoredEqScratch,
+    DrContinuationFactoredEqView, DrWindowBindError, DrWindowContinuationArena,
+    DrWindowContinuationLaunch, DrWindowLaunch, DrWindowR0Preparation,
 };
 
 #[derive(Clone, Copy)]
@@ -117,6 +120,128 @@ pub(crate) fn megakernel_entry_round(folding_steps: usize) -> usize {
     3 + 3 * continuation_window_count(folding_steps)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DrWindowContinuationParity {
+    Even,
+    Odd,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DrWindowContinuationPlannedSource {
+    Raw,
+    Arena(DrWindowContinuationParity),
+}
+
+/// Allocation-neutral geometry for one continuation pass. The Eq entry and
+/// boundary descriptors are both immutable: consumers must never carry a
+/// mutable cumulative drain from one record into the next.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DrWindowContinuationPassGeometry {
+    pub(crate) pass_index: usize,
+    pub(crate) start_round: usize,
+    pub(crate) source: DrWindowContinuationPlannedSource,
+    pub(crate) destination: DrWindowContinuationParity,
+    pub(crate) per_poly_len: usize,
+    pub(crate) log2_stride: u32,
+    pub(crate) eq_entry_sizes: GkrEqSizes,
+    pub(crate) one_fold_boundary_sizes: GkrEqSizes,
+    pub(crate) challenge_offset: usize,
+    pub(crate) challenge_count: usize,
+    pub(crate) partials_len: usize,
+}
+
+pub(crate) fn dr_window_continuation_pass_geometry(
+    folding_steps: usize,
+    start_round: usize,
+) -> Result<DrWindowContinuationPassGeometry, DrWindowBindError> {
+    if start_round < 3 || start_round % 3 != 0 || start_round + 3 >= folding_steps {
+        return Err(DrWindowBindError::InvalidContinuationBoundary {
+            folding_steps,
+            start_round,
+        });
+    }
+    let pass_index = (start_round - 3) / 3;
+    let log2_stride = folding_steps + 1 - start_round;
+    let challenge_offset = start_round + 3;
+    let challenge_count = folding_steps - challenge_offset;
+    let eq_entry_sizes = make_eq_sizes(challenge_count);
+    let mut one_fold_boundary_sizes = eq_entry_sizes;
+    record_active_eq_slot_fold(&mut one_fold_boundary_sizes);
+    let destination = if pass_index % 2 == 0 {
+        DrWindowContinuationParity::Even
+    } else {
+        DrWindowContinuationParity::Odd
+    };
+    let source = if pass_index == 0 {
+        DrWindowContinuationPlannedSource::Raw
+    } else {
+        DrWindowContinuationPlannedSource::Arena(if pass_index % 2 == 0 {
+            DrWindowContinuationParity::Odd
+        } else {
+            DrWindowContinuationParity::Even
+        })
+    };
+    Ok(DrWindowContinuationPassGeometry {
+        pass_index,
+        start_round,
+        source,
+        destination,
+        per_poly_len: 1usize << log2_stride,
+        log2_stride: log2_stride as u32,
+        eq_entry_sizes,
+        one_fold_boundary_sizes,
+        challenge_offset,
+        challenge_count,
+        partials_len: dr_window_partials_len(folding_steps - start_round),
+    })
+}
+
+/// Build exactly the continuation prefix already landed in the layer hook.
+/// The caller supplies both W' and the tail-entry round so composition cannot
+/// silently introduce a competing policy calculation.
+pub(crate) fn plan_dr_window_continuations(
+    folding_steps: usize,
+    landed_window_count: usize,
+    landed_entry_round: usize,
+) -> Result<Vec<DrWindowContinuationPassGeometry>, DrWindowBindError> {
+    if landed_window_count > 4 || landed_entry_round != 3 + 3 * landed_window_count {
+        return Err(DrWindowBindError::ContinuationPlanMismatch {
+            window_count: landed_window_count,
+            entry_round: landed_entry_round,
+        });
+    }
+    (0..landed_window_count)
+        .map(|pass_index| dr_window_continuation_pass_geometry(folding_steps, 3 + 3 * pass_index))
+        .collect()
+}
+
+#[derive(Default)]
+pub(crate) struct DrWindowContinuationArenaOwners {
+    pub(crate) even: Option<DrWindowContinuationArena>,
+    pub(crate) odd: Option<DrWindowContinuationArena>,
+}
+
+impl DrWindowContinuationArenaOwners {
+    pub(crate) fn get(
+        &self,
+        parity: DrWindowContinuationParity,
+    ) -> Option<&DrWindowContinuationArena> {
+        match parity {
+            DrWindowContinuationParity::Even => self.even.as_ref(),
+            DrWindowContinuationParity::Odd => self.odd.as_ref(),
+        }
+    }
+}
+
+/// One immutable continuation launch and the exact Eq state observed at its
+/// entry and after its one tail fold.
+pub(crate) struct DrWindowContinuationPass {
+    pub(crate) geometry: DrWindowContinuationPassGeometry,
+    pub(crate) launch: DrWindowContinuationLaunch,
+    pub(crate) eq_entry: DrContinuationFactoredEqView,
+    pub(crate) one_fold_boundary_sizes: GkrEqSizes,
+}
+
 /// Whole-layer owner handed to D1/DR-cont after the R0 producer is prepared.
 /// R0's Eq state remains pass-local: later continuation evaluators allocate a
 /// distinct Eq view and do not mutate this persistent tail state.
@@ -131,6 +256,19 @@ pub(crate) struct DrWindowLayerCompositionHook {
     pub(crate) continuation_program: DrWindowProgram,
     /// Immutable canonical input-only publication map for every continuation.
     pub(crate) continuation_projection: DrWindowInputProjection,
+    /// Stream-ordered continuation descriptors. Each record snapshots its own
+    /// Eq entry and one-fold boundary rather than sharing mutable drain state.
+    pub(crate) continuation_launches: Vec<DrWindowContinuationPass>,
+    /// Exactly one DR-owned three-group Eq allocation when W'>0.
+    pub(crate) continuation_eq: Option<DrContinuationFactoredEqScratch>,
+    /// First-use-sized even/odd arena owners. Their `Arc` allocations keep all
+    /// raw pointers in the launch descriptors alive through the final queued
+    /// consumer.
+    pub(crate) continuation_arenas: DrWindowContinuationArenaOwners,
+    /// Explicit allocation keepalives mirror the parity owners so later hook
+    /// reshaping cannot shorten the lifetime of already queued descriptors.
+    /// Cloning these `Arc`s never allocates another device backing.
+    pub(crate) continuation_keepalives: Vec<Arc<DeviceAllocation<E4>>>,
 }
 
 impl DrWindowLayerCompositionHook {
@@ -152,6 +290,10 @@ impl DrWindowLayerCompositionHook {
             partials_capacity,
             continuation_program,
             continuation_projection,
+            continuation_launches: Vec::new(),
+            continuation_eq: None,
+            continuation_arenas: DrWindowContinuationArenaOwners::default(),
+            continuation_keepalives: Vec::new(),
         }
     }
 }

@@ -12,15 +12,17 @@ use gpu_gkr_compiler::{
 
 use super::binding::{
     assemble_dr_window_continuation_batch, bind_dr_window_continuation_launch,
-    dr_window_partials_len, dr_window_row_tiles, resolve_dr_global_active_eq_slot,
-    resolve_dr_window_continuation_kernel, resolve_dr_window_kernel, validate_dr_r0_eq_contract,
+    dr_window_partials_len, dr_window_partials_maximum, dr_window_row_tiles,
+    resolve_dr_global_active_eq_slot, resolve_dr_window_continuation_kernel,
+    resolve_dr_window_kernel, validate_dr_r0_eq_contract,
     validate_dr_window_continuation_eq_contract, validate_dr_window_folding_steps,
     DrCompactSourceTableBuilder, DrContinuationFactoredEqView, DrWindowBindError,
     DrWindowContinuationLaunchBinding, DrWindowLaunchBinding, DrWindowRuntimeScratch,
 };
 use super::composition::{
-    build_raw_input_owner, continuation_window_count, megakernel_entry_round,
-    DrWindowRawInputKeepalive,
+    build_raw_input_owner, continuation_window_count, dr_window_continuation_pass_geometry,
+    megakernel_entry_round, plan_dr_window_continuations, DrWindowContinuationParity,
+    DrWindowContinuationPlannedSource, DrWindowRawInputKeepalive,
 };
 use super::generated_registry::{
     DR_WINDOWED_CONT_DEFINED_MASK, DR_WINDOWED_CONT_UNIVERSAL_KERNEL, DR_WINDOWED_R0_DEFINED_MASK,
@@ -1483,6 +1485,407 @@ fn cpu_dr_window_continuation_d2_abi_registry_binder_and_native_contract() {
     assert!(launch_source.contains("launch_build_eq_high_and_low_groups_from_point("));
     assert!(!launch_source.contains("get_eq_high_constant_device_ptr()"));
     assert!(!continuation.contains("ab_gkr_eq_high"));
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum D3Parity {
+    Even,
+    Odd,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum D3ContinuationSource {
+    Raw,
+    Arena(D3Parity),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct D3ContinuationPassPlan {
+    pass_index: usize,
+    start_round: usize,
+    source: D3ContinuationSource,
+    destination: D3Parity,
+    per_poly_len: usize,
+    log2_stride: usize,
+    challenge_offset: usize,
+    challenge_count: usize,
+    entry_sizes: crate::backward::GkrEqSizes,
+    one_fold_boundary_sizes: crate::backward::GkrEqSizes,
+    partials_len: usize,
+    claim_point_offset: usize,
+    coeffs_offset: usize,
+}
+
+fn expected_d3_continuation_passes(
+    folding_steps: usize,
+    landed_window_count: usize,
+    landed_entry_round: usize,
+) -> Vec<D3ContinuationPassPlan> {
+    use crate::backward::kernels::record_active_eq_slot_fold;
+
+    assert!(landed_window_count <= 4);
+    assert_eq!(landed_entry_round, 3 + 3 * landed_window_count);
+    (0..landed_window_count)
+        .map(|pass_index| {
+            let start_round = 3 + 3 * pass_index;
+            assert!(start_round + 3 < folding_steps);
+            let log2_stride = folding_steps + 1 - start_round;
+            let challenge_offset = start_round + 3;
+            let challenge_count = folding_steps - challenge_offset;
+            let entry_sizes = make_eq_sizes(challenge_count);
+            let mut one_fold_boundary_sizes = entry_sizes;
+            record_active_eq_slot_fold(&mut one_fold_boundary_sizes);
+            let destination = if pass_index % 2 == 0 {
+                D3Parity::Even
+            } else {
+                D3Parity::Odd
+            };
+            let source = if pass_index == 0 {
+                D3ContinuationSource::Raw
+            } else {
+                D3ContinuationSource::Arena(if pass_index % 2 == 0 {
+                    D3Parity::Odd
+                } else {
+                    D3Parity::Even
+                })
+            };
+            D3ContinuationPassPlan {
+                pass_index,
+                start_round,
+                source,
+                destination,
+                per_poly_len: 1usize << log2_stride,
+                log2_stride,
+                challenge_offset,
+                challenge_count,
+                entry_sizes,
+                one_fold_boundary_sizes,
+                partials_len: dr_window_partials_len(folding_steps - start_round),
+                claim_point_offset: start_round,
+                coeffs_offset: 4 * start_round,
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn cpu_dr_window_hook_composes_landed_r0() {
+    const COMPOSITION: &str = include_str!("composition.rs");
+    const BINDING: &str = include_str!("binding.rs");
+
+    let hook_start = COMPOSITION
+        .find("pub(crate) struct DrWindowLayerCompositionHook")
+        .expect("landed R0 composition hook must remain present");
+    let hook_end = COMPOSITION[hook_start..]
+        .find("impl DrWindowLayerCompositionHook")
+        .map(|offset| hook_start + offset)
+        .expect("landed R0 composition hook implementation must remain present");
+    let hook = &COMPOSITION[hook_start..hook_end];
+    for landed_field in [
+        "r0_launch:",
+        "continuation_window_count:",
+        "megakernel_entry_round:",
+        "r0_eq:",
+        "raw_inputs:",
+        "partials_capacity:",
+        "continuation_program:",
+        "continuation_projection:",
+    ] {
+        assert!(
+            hook.contains(landed_field),
+            "D3 must preserve landed hook field {landed_field}",
+        );
+    }
+
+    let anchors = [(6usize, 0usize), (7, 1), (10, 2), (13, 3), (16, 4)];
+    for (folding_steps, window_count) in anchors {
+        assert_eq!(continuation_window_count(folding_steps), window_count);
+        let entry_round = 3 + 3 * window_count;
+        let passes = expected_d3_continuation_passes(folding_steps, window_count, entry_round);
+        let production =
+            plan_dr_window_continuations(folding_steps, window_count, entry_round).unwrap();
+        assert_eq!(production.len(), passes.len());
+        for (expected, observed) in passes.iter().zip(&production) {
+            assert_eq!(observed.pass_index, expected.pass_index);
+            assert_eq!(observed.start_round, expected.start_round);
+            assert_eq!(observed.per_poly_len, expected.per_poly_len);
+            assert_eq!(observed.log2_stride as usize, expected.log2_stride);
+            assert_eq!(observed.challenge_offset, expected.challenge_offset);
+            assert_eq!(observed.challenge_count, expected.challenge_count);
+            assert_eq!(observed.eq_entry_sizes, expected.entry_sizes);
+            assert_eq!(
+                observed.one_fold_boundary_sizes,
+                expected.one_fold_boundary_sizes,
+            );
+            assert_eq!(observed.partials_len, expected.partials_len);
+            assert_eq!(
+                observed.destination,
+                match expected.destination {
+                    D3Parity::Even => DrWindowContinuationParity::Even,
+                    D3Parity::Odd => DrWindowContinuationParity::Odd,
+                },
+            );
+            assert_eq!(
+                observed.source,
+                match expected.source {
+                    D3ContinuationSource::Raw => DrWindowContinuationPlannedSource::Raw,
+                    D3ContinuationSource::Arena(D3Parity::Even) => {
+                        DrWindowContinuationPlannedSource::Arena(DrWindowContinuationParity::Even)
+                    }
+                    D3ContinuationSource::Arena(D3Parity::Odd) => {
+                        DrWindowContinuationPlannedSource::Arena(DrWindowContinuationParity::Odd)
+                    }
+                },
+            );
+        }
+        let arena_count = passes
+            .iter()
+            .map(|pass| pass.destination)
+            .collect::<BTreeSet<_>>()
+            .len();
+        assert_eq!(arena_count, window_count.min(2));
+        if window_count == 0 {
+            assert!(passes.is_empty(), "W'=0 must allocate and bind no arena");
+            continue;
+        }
+        assert_eq!(passes[0].destination, D3Parity::Even);
+        assert_eq!(passes[0].per_poly_len, 1usize << (folding_steps - 2));
+        if window_count > 1 {
+            assert_eq!(passes[1].destination, D3Parity::Odd);
+            assert_eq!(passes[1].per_poly_len, 1usize << (folding_steps - 5));
+        }
+        for parity in [D3Parity::Even, D3Parity::Odd] {
+            let same_parity = passes
+                .iter()
+                .filter(|pass| pass.destination == parity)
+                .collect::<Vec<_>>();
+            for pair in same_parity.windows(2) {
+                assert_eq!(pair[0].per_poly_len, 64 * pair[1].per_poly_len);
+                assert_eq!(pair[0].log2_stride, pair[1].log2_stride + 6);
+            }
+        }
+    }
+
+    // A deliberately shorter, internally consistent landed plan for f=20
+    // proves that D3 consumes the hook's W'/entry pair instead of recomputing
+    // the formula's W'=4/entry=15 in a competing planner.
+    let folding_steps = 20usize;
+    let landed_window_count = 2usize;
+    let landed_entry_round = 9usize;
+    assert_ne!(
+        landed_window_count,
+        continuation_window_count(folding_steps)
+    );
+    assert_ne!(landed_entry_round, megakernel_entry_round(folding_steps));
+    let landed =
+        expected_d3_continuation_passes(folding_steps, landed_window_count, landed_entry_round);
+    let landed_production =
+        plan_dr_window_continuations(folding_steps, landed_window_count, landed_entry_round)
+            .unwrap();
+    assert_eq!(landed.len(), landed_window_count);
+    assert_eq!(landed_production.len(), landed_window_count);
+    assert_eq!(landed.last().unwrap().start_round + 3, landed_entry_round);
+    assert_eq!(
+        landed_production.last().unwrap().start_round + 3,
+        landed_entry_round,
+    );
+
+    let mut legal_boundary_count = 0usize;
+    for folding_steps in 4usize..=23 {
+        for start_round in (3..folding_steps).step_by(3) {
+            if start_round + 3 >= folding_steps {
+                continue;
+            }
+            let geometry =
+                dr_window_continuation_pass_geometry(folding_steps, start_round).unwrap();
+            assert_eq!(geometry.start_round, start_round);
+            assert_eq!(geometry.pass_index, (start_round - 3) / 3);
+            assert_eq!(
+                geometry.per_poly_len,
+                1usize << (folding_steps + 1 - start_round),
+            );
+            assert_eq!(
+                geometry.eq_entry_sizes,
+                make_eq_sizes(folding_steps - start_round - 3),
+            );
+            let mut boundary = geometry.eq_entry_sizes;
+            crate::backward::kernels::record_active_eq_slot_fold(&mut boundary);
+            assert_eq!(geometry.one_fold_boundary_sizes, boundary);
+            legal_boundary_count += 1;
+        }
+    }
+    assert_eq!(legal_boundary_count, 57);
+
+    let required_hook_state = [
+        "DrWindowContinuationPass",
+        "DrContinuationFactoredEqScratch",
+        "DrWindowContinuationArena",
+        "continuation_keepalives:",
+    ];
+    let missing_hook_state = required_hook_state
+        .into_iter()
+        .filter(|needle| !hook.contains(needle))
+        .collect::<Vec<_>>();
+    assert!(
+        missing_hook_state.is_empty(),
+        "RED D3 hook lacks continuation owners/keepalives: {missing_hook_state:?}",
+    );
+
+    let binder_start = BINDING
+        .find("fn bind_dr_window_continuations")
+        .expect("RED D3 lacks bind_dr_window_continuations");
+    let binder = &BINDING[binder_start..];
+    assert!(binder.contains("hook.continuation_window_count"));
+    assert!(binder.contains("hook.megakernel_entry_round"));
+    assert!(!binder.contains("continuation_window_count(hook.r0_launch.folding_steps)"));
+    assert!(!binder.contains("megakernel_entry_round(hook.r0_launch.folding_steps)"));
+}
+
+#[test]
+fn cpu_dr_window_partials_retain_maximum() {
+    let mut checked = 0usize;
+    for folding_steps in 4usize..=23 {
+        let r0 = dr_window_partials_len(folding_steps);
+        let continuation = expected_d3_continuation_passes(
+            folding_steps,
+            continuation_window_count(folding_steps),
+            megakernel_entry_round(folding_steps),
+        )
+        .into_iter()
+        .map(|pass| pass.partials_len)
+        .collect::<Vec<_>>();
+        for legacy in [0usize, r0.saturating_sub(1), r0 + 7] {
+            let expected = std::iter::once(legacy)
+                .chain(std::iter::once(r0))
+                .chain(continuation.iter().copied())
+                .max()
+                .unwrap();
+            let observed = dr_window_partials_maximum(legacy, r0, continuation.iter().copied());
+            assert_eq!(observed, expected);
+            assert!(expected >= legacy);
+            assert!(expected >= r0);
+            assert!(continuation.iter().all(|&len| expected >= len));
+
+            if legacy > r0 {
+                assert_ne!(r0, expected, "R0-only replacement mutation survived");
+            }
+            if legacy < r0 {
+                assert_ne!(
+                    legacy, expected,
+                    "legacy-only replacement mutation survived"
+                );
+            }
+            if let Some(&last) = continuation.last().filter(|&&last| last < expected) {
+                assert_ne!(
+                    last, expected,
+                    "last-pass replacement mutation survived at f={folding_steps}",
+                );
+            }
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 60);
+}
+
+#[test]
+fn cpu_dr_window_continuation_host_chain_contract_is_closed() {
+    const BINDING: &str = include_str!("binding.rs");
+    const SUMCHECK_PLAN: &str = include_str!("../dim_reducing_sumcheck_plan.rs");
+
+    let mut pass_count = 0usize;
+    for folding_steps in 4usize..=23 {
+        let window_count = continuation_window_count(folding_steps);
+        let entry_round = megakernel_entry_round(folding_steps);
+        let passes = expected_d3_continuation_passes(folding_steps, window_count, entry_round);
+        assert_eq!(passes.len(), window_count);
+        assert_eq!(entry_round, 3 + 3 * passes.len());
+        if passes.is_empty() {
+            assert_eq!(entry_round, 3);
+            continue;
+        }
+
+        for (pass_index, pass) in passes.iter().enumerate() {
+            assert_eq!(pass.pass_index, pass_index);
+            assert_eq!(pass.start_round, 3 + 3 * pass_index);
+            assert_eq!(pass.challenge_offset, pass.start_round + 3);
+            assert_eq!(pass.challenge_count, folding_steps - pass.start_round - 3,);
+            assert_eq!(pass.entry_sizes, make_eq_sizes(pass.challenge_count));
+            let mut boundary = pass.entry_sizes;
+            crate::backward::kernels::record_active_eq_slot_fold(&mut boundary);
+            assert_eq!(pass.one_fold_boundary_sizes, boundary);
+            assert_ne!(
+                pass.entry_sizes, pass.one_fold_boundary_sizes,
+                "one-fold boundary mutation survived",
+            );
+            assert_eq!(pass.claim_point_offset, pass.start_round);
+            assert_eq!(pass.coeffs_offset, 4 * pass.start_round);
+            assert_eq!(
+                pass.source,
+                if pass_index == 0 {
+                    D3ContinuationSource::Raw
+                } else {
+                    D3ContinuationSource::Arena(passes[pass_index - 1].destination)
+                },
+            );
+            assert_eq!(
+                pass.destination,
+                if pass_index % 2 == 0 {
+                    D3Parity::Even
+                } else {
+                    D3Parity::Odd
+                },
+            );
+
+            let prior_view_reuse = if pass_index == 0 {
+                make_eq_sizes(folding_steps - 3)
+            } else {
+                passes[pass_index - 1].one_fold_boundary_sizes
+            };
+            assert_ne!(
+                prior_view_reuse, pass.entry_sizes,
+                "prior-view reuse mutation survived at f={folding_steps}, r={}",
+                pass.start_round,
+            );
+            let cumulative_drain = {
+                let mut sizes = make_eq_sizes(folding_steps - 3);
+                for _ in 0..=pass_index {
+                    crate::backward::kernels::record_active_eq_slot_fold(&mut sizes);
+                }
+                sizes
+            };
+            assert_ne!(
+                cumulative_drain, pass.entry_sizes,
+                "cumulative-drain mutation survived at f={folding_steps}, r={}",
+                pass.start_round,
+            );
+            pass_count += 1;
+        }
+    }
+    assert_eq!(pass_count, 50);
+
+    let binding_contract = [
+        "bind_dr_window_continuations",
+        "launch_dr_window_continuation",
+        "resolve_dr_global_active_eq_slot",
+    ];
+    let plan_contract = [
+        "launch_window_tensor_round_tail",
+        "claim_point.add(start_round)",
+        "coeffs.add(4 * start_round)",
+    ];
+    let missing = binding_contract
+        .into_iter()
+        .filter(|needle| !BINDING.contains(needle))
+        .chain(
+            plan_contract
+                .into_iter()
+                .filter(|needle| !SUMCHECK_PLAN.contains(needle)),
+        )
+        .collect::<Vec<_>>();
+    assert!(
+        missing.is_empty(),
+        "RED D3 closed continuation chain is absent: {missing:?}",
+    );
 }
 
 mod d1_cpu_oracles {
