@@ -17,7 +17,6 @@ fft = { workspace = true, optional = true }
 common_constants = { workspace = true }
 riscv_transpiler = { workspace = true, optional = true }
 itertools = { workspace = true, optional = true }
-derivative = { version = "2", optional = true }
 smallvec = {version = "1.13", features = ["const_generics", "const_new", "serde"], optional = true }
 proc-macro2 = {version = "1", optional = true }
 quote = {version = "1", optional = true }
@@ -37,7 +36,7 @@ disc-v = {git = "https://github.com/oxidecomputer/disc-v.git"}
 rand = { workspace = true, features = ["std", "thread_rng", "std_rng"]}
 
 [features]
-compiler = ["blake2s_u32", "fft", "itertools", "derivative", "smallvec", "proc-macro2", "quote", "seq-macro", "super-seq-macro", "serde_json", "bincode", "rayon", "type-map", "layout-rs", "serde_with", "arrayvec", "riscv_transpiler"]
+compiler = ["blake2s_u32", "fft", "itertools", "smallvec", "proc-macro2", "quote", "seq-macro", "super-seq-macro", "serde_json", "bincode", "rayon", "type-map", "layout-rs", "serde_with", "arrayvec", "riscv_transpiler"]
 # Will perform witness evaluation in synthesis functions
 debug_evaluate_witness = []
 # When enabled, the crate will print detailed debug logs.

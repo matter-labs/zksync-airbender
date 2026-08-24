@@ -1,7 +1,6 @@
 use crate::definitions::MAX_TABLE_WIDTH;
 use arrayvec::ArrayVec;
 use core::panic;
-use derivative::Derivative;
 use field::PrimeField;
 use rayon::prelude::*;
 use smallvec::SmallVec;
@@ -51,8 +50,6 @@ pub type TableGenerationClosure<F: PrimeField> = std::sync::Arc<
         + std::panic::RefUnwindSafe,
 >;
 
-#[derive(Derivative)]
-#[derivative(Clone)]
 pub enum ValueLookupFn<F: PrimeField> {
     None,
     Pure(fn(&[F]) -> ArrayVec<F, MAX_TABLE_WIDTH>),
@@ -60,8 +57,17 @@ pub enum ValueLookupFn<F: PrimeField> {
     Closure(TableGenerationClosure<F>),
 }
 
-#[derive(Derivative)]
-#[derivative(Clone)]
+impl<F: PrimeField> Clone for ValueLookupFn<F> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::None => Self::None,
+            Self::Pure(fn_ptr) => Self::Pure(*fn_ptr),
+            Self::ReuseGenerationFn(fn_ptr) => Self::ReuseGenerationFn(*fn_ptr),
+            Self::Closure(closure) => Self::Closure(closure.clone()),
+        }
+    }
+}
+
 pub enum IndexLookupFn<F: PrimeField> {
     None,
     Pure(fn(&[F]) -> usize),
@@ -70,10 +76,21 @@ pub enum IndexLookupFn<F: PrimeField> {
     Closure(std::sync::Arc<dyn Fn(&[F]) -> usize + 'static + Send + Sync>),
 }
 
+impl<F: PrimeField> Clone for IndexLookupFn<F> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::None => Self::None,
+            Self::Pure(fn_ptr) => Self::Pure(*fn_ptr),
+            Self::ReuseGenerationFn(fn_ptr) => Self::ReuseGenerationFn(*fn_ptr),
+            Self::ReuseGenerationClosure(closure) => Self::ReuseGenerationClosure(closure.clone()),
+            Self::Closure(closure) => Self::Closure(closure.clone()),
+        }
+    }
+}
+
 pub const TABLE_TYPES_UPPER_BOUNDS: usize = TOTAL_NUM_OF_TABLES;
 
-#[derive(Derivative)]
-#[derivative(Clone, Debug)]
+#[derive(Clone)]
 pub struct LookupTable<F: PrimeField> {
     pub name: String,
     pub num_key_columns: usize,
@@ -81,20 +98,26 @@ pub struct LookupTable<F: PrimeField> {
     // NOTE: for small fields and not too large N hashmaps are the most efficient here
 
     // to lookup value from key
-    #[derivative(Debug = "ignore")]
     pub lookup_data: Arc<HashMap<LookupKey<F>, LookupValue<F>>>,
     // to lookup table index from full row
-    #[derivative(Debug = "ignore")]
     pub content_data: Arc<HashMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>>,
     // for setup - plain content of the table
-    #[derivative(Debug = "ignore")]
     pub data: Arc<Vec<ArrayVec<F, MAX_TABLE_WIDTH>>>,
-    #[derivative(Debug = "ignore")]
     pub quick_value_lookup_fn: ValueLookupFn<F>,
-    #[derivative(Debug = "ignore")]
     pub quick_index_lookup_fn: IndexLookupFn<F>,
 
     pub id: u32,
+}
+
+impl<F: PrimeField> std::fmt::Debug for LookupTable<F> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("LookupTable")
+            .field("name", &self.name)
+            .field("num_key_columns", &self.num_key_columns)
+            .field("num_value_columns", &self.num_value_columns)
+            .field("id", &self.id)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
