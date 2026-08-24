@@ -26,6 +26,8 @@ LEAFS = "LEAFS"
 INOT = "INOT"
 inot = "inot"
 ot = "ot"
+optin = "optin"
+Optin = "Optin"
 
 [type.asm.extend-words]
 Wich = "Wich"

@@ -55,7 +55,9 @@ pub(crate) use cs::tables::TableType;
 // -----------------------------------------------------------------------
 
 pub(crate) use field::baby_bear::base::BabyBearField;
-pub(crate) use field::{Field, PrimeField};
+#[cfg(test)]
+pub(crate) use field::Field;
+pub(crate) use field::PrimeField;
 
 // -----------------------------------------------------------------------
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with

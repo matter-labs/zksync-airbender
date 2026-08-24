@@ -38,13 +38,16 @@ template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_value(const gkr_ext_i
   return load<E, ld_modifier::cs>(source.start, index);
 }
 
+DEVICE_FORCEINLINE unsigned gkr_dim_reducing_ancestor_index(const unsigned index) { return GKR_DIM_REDUCING_PAIR_STRIDE * (index & ~1u) + (index & 1u); }
+
 template <typename E>
 DEVICE_FORCEINLINE E gkr_get_continuing_value(const gkr_ext_continuing_source<E> &source, const E folding_challenge, const unsigned index) {
   if (!source.first_access)
     return load<E, ld_modifier::cs>(source.this_layer_start, index);
 
-  const E f0 = load<E, ld_modifier::cs>(source.previous_layer_start, index);
-  const E f1 = load<E, ld_modifier::cs>(source.previous_layer_start, source.this_layer_size + index);
+  const unsigned ancestor = gkr_dim_reducing_ancestor_index(index);
+  const E f0 = load<E, ld_modifier::cs>(source.previous_layer_start, ancestor);
+  const E f1 = load<E, ld_modifier::cs>(source.previous_layer_start, ancestor + GKR_DIM_REDUCING_PAIR_STRIDE);
   const E diff = E::sub(f1, f0);
   const E folded = E::fma(folding_challenge, diff, f0);
   store<E, st_modifier::cs>(source.this_layer_start, folded, index);
@@ -53,7 +56,7 @@ DEVICE_FORCEINLINE E gkr_get_continuing_value(const gkr_ext_continuing_source<E>
 
 template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_delta(const gkr_ext_initial_source<E> &source, const unsigned index) {
   const E f0 = gkr_get_initial_value(source, index);
-  const E f1 = gkr_get_initial_value(source, source.next_layer_size + index);
+  const E f1 = gkr_get_initial_value(source, index + GKR_DIM_REDUCING_PAIR_STRIDE);
   return E::sub(f1, f0);
 }
 
@@ -61,7 +64,7 @@ template <typename E>
 DEVICE_FORCEINLINE void gkr_get_continuing_points(const gkr_ext_continuing_source<E> &source, const E folding_challenge, const unsigned index, E &f0,
                                                   E &delta) {
   f0 = gkr_get_continuing_value(source, folding_challenge, index);
-  const E f1 = gkr_get_continuing_value(source, folding_challenge, source.next_layer_size + index);
+  const E f1 = gkr_get_continuing_value(source, folding_challenge, index + GKR_DIM_REDUCING_PAIR_STRIDE);
   delta = E::sub(f1, f0);
 }
 
@@ -99,12 +102,14 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_poin
     const unsigned chunk_len = 1u << chunk_size;
     if (chunk_table_idx < chunk_len) {
       const unsigned variable_idx = group_start + variable_offset;
+      // LSB relabeling: the reversal is WITHIN `[challenge_offset, challenge_offset + challenge_count)`.
+      const unsigned first_idx = challenge_offset + challenge_count - 1 - variable_idx;
       const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
-      const E first_challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + variable_idx);
+      const E first_challenge = load<E, ld_modifier::cs>(claim_point, first_idx);
       E value = first_bit ? first_challenge : E::sub(E::ONE(), first_challenge);
       if (chunk_size == 2) {
         const unsigned low_bit = chunk_table_idx & 1u;
-        const E second_challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + variable_idx + 1);
+        const E second_challenge = load<E, ld_modifier::cs>(claim_point, first_idx - 1);
         const E second_term = low_bit ? second_challenge : E::sub(E::ONE(), second_challenge);
         value = E::mul(value, second_term);
       }

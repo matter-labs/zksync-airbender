@@ -10,7 +10,8 @@ use super::dit::monomials_to_evals_dit;
 use super::forward::{
     fused_writeback_single_coset_3_pass, monomials_to_evals_2_pass_compact_initial,
     monomials_to_evals_3_pass, monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed,
-    monomials_to_evals_subwarp,
+    monomials_to_evals_subwarp, natural_monomials_to_bitrev_evals_2_pass,
+    natural_monomials_to_bitrev_evals_2_pass_compact, natural_monomials_to_bitrev_evals_3_pass,
 };
 use super::hypercube::hypercube_evals_to_pre_tail_monomials_3_pass;
 use super::kernels::*;
@@ -638,4 +639,178 @@ fn dispatch_forward_multi_coset(
         )?;
     }
     Ok(())
+}
+
+/// Forward NTT from NATURAL-order monomials to BITREVERSED-order evaluations
+/// across the full multi-coset LDE.
+///
+/// `out_k[p] = f(g_k * omega^rev_n(p))` where `f` is the polynomial whose
+/// NATURAL-labeled coefficients are `inputs_matrix` (physical row `i` holds
+/// `c_i`), `g_k` is coset `k`'s shift on the size-`2^(log_n + log_lde_factor)`
+/// LDE domain, and `p` runs over the output rows — the same values
+/// [`bitreversed_monomials_to_natural_evals_multi_coset`] produces, in
+/// bitreversed row order.
+///
+/// Output layout matches the sibling entry: coset-major outer, column-major
+/// inner; coset `k`'s columns occupy
+/// `outputs[(k * num_cols_per_coset_stride + col) * trace_len ..]`.
+///
+/// Covers `log_n` in `[13, 24]`; smaller dispatch families are unreachable
+/// from a production base size.
+#[allow(clippy::too_many_arguments)]
+pub fn natural_monomials_to_bitreversed_evals_multi_coset(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs: &mut DeviceSlice<BF>,
+    log_n: usize,
+    log_lde_factor: usize,
+    num_cols_per_coset_stride: usize,
+    transposed_monomials: bool,
+    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
+    d_table_scratch: Option<&mut DeviceSlice<BF>>,
+    stream: &CudaStream,
+    device_properties: &DeviceProperties,
+) -> CudaResult<()> {
+    let num_cosets = 1usize << log_lde_factor;
+    natural_monomials_to_bitreversed_evals_coset_range(
+        inputs_matrix,
+        outputs,
+        log_n,
+        log_lde_factor,
+        num_cosets,
+        0,
+        num_cols_per_coset_stride,
+        transposed_monomials,
+        ntt_ctx,
+        d_table_scratch,
+        stream,
+        device_properties,
+    )
+}
+
+/// [`natural_monomials_to_bitreversed_evals_multi_coset`] over a
+/// caller-selected coset range.
+///
+/// `log_lde_factor` still describes the full LDE domain (and therefore the
+/// coset-factor shift). `num_cosets` is the number of local cosets written to
+/// `outputs`, `coset_index_base` the global index of the first local coset.
+/// Both must be powers of two and the range must fit the full LDE domain.
+#[allow(clippy::too_many_arguments)]
+pub fn natural_monomials_to_bitreversed_evals_coset_range(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs: &mut DeviceSlice<BF>,
+    log_n: usize,
+    log_lde_factor: usize,
+    num_cosets: usize,
+    coset_index_base: usize,
+    num_cols_per_coset_stride: usize,
+    transposed_monomials: bool,
+    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
+    d_table_scratch: Option<&mut DeviceSlice<BF>>,
+    stream: &CudaStream,
+    device_properties: &DeviceProperties,
+) -> CudaResult<()> {
+    // The three-pass regime needs neither the DIT triangles nor a d-table
+    // scratch; both stay in the signature for the smaller dispatch families.
+    let _ = (ntt_ctx, d_table_scratch);
+    assert!(
+        log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize,
+        "log_n ({log_n}) + log_lde_factor ({log_lde_factor}) > OMEGA_LOG_ORDER ({OMEGA_LOG_ORDER})",
+    );
+    assert!(
+        num_cosets.is_power_of_two(),
+        "num_cosets must be a power of 2 (got {num_cosets})"
+    );
+    let full_num_cosets = 1usize << log_lde_factor;
+    let coset_index_end = coset_index_base
+        .checked_add(num_cosets)
+        .expect("coset_index_base + num_cosets overflow");
+    assert!(
+        coset_index_end <= full_num_cosets,
+        "coset range [{coset_index_base}, {coset_index_end}) exceeds full LDE coset count {full_num_cosets}",
+    );
+    let trace_len = 1usize << log_n;
+    let num_cols = inputs_matrix.cols();
+    assert!(
+        num_cols_per_coset_stride >= num_cols,
+        "num_cols_per_coset_stride ({num_cols_per_coset_stride}) must be >= inputs_matrix.cols() ({num_cols})",
+    );
+    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset_stride + num_cols;
+    assert!(
+        outputs.len() >= max_col_offset_exclusive * trace_len,
+        "outputs slice has {} BFs but needs at least {} for ({}, {}, {}) cosets x stride x trace_len",
+        outputs.len(),
+        max_col_offset_exclusive * trace_len,
+        num_cosets,
+        num_cols_per_coset_stride,
+        trace_len,
+    );
+    let strategy = super::select_ntt_strategy(
+        super::NttDirection::NaturalToBitrev,
+        log_n,
+        num_cols,
+        num_cosets,
+        device_properties,
+    )
+    .unwrap_or_else(|e| {
+        unreachable!(
+            "natural->bitrev strategy unavailable for log_n {log_n}: {e:?} (this entry only \
+             serves the multipass sizes plus the two-pass-compact range, log_n in [13, 24])"
+        )
+    });
+    let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
+    let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);
+    // Routed on the LAST pass: the three-pass and two-pass-compact plans share
+    // `NaturalToBitrevInitial` as pass 1.
+    match strategy.passes.last().unwrap().kernel {
+        super::NttKernelKind::NaturalToBitrevFinal { .. } => {
+            natural_monomials_to_bitrev_evals_3_pass(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                strategy.cosets_per_launch,
+                strategy.columns_per_launch,
+                transposed_monomials,
+                stream,
+            )
+        }
+        super::NttKernelKind::NaturalToBitrevLast { .. } => {
+            natural_monomials_to_bitrev_evals_2_pass(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                strategy.cosets_per_launch,
+                strategy.columns_per_launch,
+                transposed_monomials,
+                stream,
+            )
+        }
+        super::NttKernelKind::NaturalToBitrevLastCompact { .. } => {
+            natural_monomials_to_bitrev_evals_2_pass_compact(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                strategy.cosets_per_launch,
+                strategy.columns_per_launch,
+                transposed_monomials,
+                stream,
+            )
+        }
+        _ => unreachable!(
+            "natural->bitrev LDE implements the multipass and two-pass-compact plans only \
+             (got {:?})",
+            strategy.passes,
+        ),
+    }
 }

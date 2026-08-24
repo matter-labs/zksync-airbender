@@ -28,6 +28,7 @@ use full_statement_verifier::host_utils::{
     unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
+use prover::gkr::prover::{DefaultBabyBearBackend, DefaultBabyBearGKRBackend};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::cycle::{
     IMStandardIsaConfigUnsignedMulDivOnly, ReducedMachineWithDelegation,
@@ -40,33 +41,21 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
-#[cfg(all(feature = "security_80", feature = "security_100"))]
-compile_error!("multiple security levels selected at the same time");
-#[cfg(all(not(feature = "security_80"), not(feature = "security_100")))]
-compile_error!(
-    "one security level must be selected: enable either `security_80` or `security_100`"
-);
-
 /// Serde-friendly mirror of `prover::definitions::SecurityLevel` (which does
 /// not derive serde) for the persisted artifact.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SecurityLevel {
-    Sec80,
     Sec100,
 }
 
 impl SecurityLevel {
     pub fn to_prover(self) -> prover::definitions::SecurityLevel {
         match self {
-            SecurityLevel::Sec80 => prover::definitions::SecurityLevel::Sec80,
             SecurityLevel::Sec100 => prover::definitions::SecurityLevel::Sec100,
         }
     }
 }
 
-#[cfg(feature = "security_80")]
-pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec80;
-#[cfg(feature = "security_100")]
 pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
 
 // Per-stage cycle bounds, mirroring prover_examples::recursion.
@@ -319,6 +308,8 @@ impl ProveBackend for CpuBackend {
                     program_prover::unrolled::prove_unrolled_execution_with_replayer::<
                         IMStandardIsaConfigUnsignedMulDivOnly,
                         Global,
+                        _,
+                        _,
                     >(
                         cycles_bound,
                         &padded_bin,
@@ -328,13 +319,17 @@ impl ProveBackend for CpuBackend {
                         self.cpu.ram_bound,
                         &self.worker,
                         security_level,
-                        0,
+                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                        &DefaultBabyBearBackend::default(),
+                        &DefaultBabyBearGKRBackend::default(),
                     )
                 }
                 MachineType::Reduced => {
                     program_prover::unrolled::prove_unrolled_execution_with_replayer::<
                         ReducedMachineWithDelegation,
                         Global,
+                        _,
+                        _,
                     >(
                         cycles_bound,
                         &padded_bin,
@@ -344,7 +339,9 @@ impl ProveBackend for CpuBackend {
                         self.cpu.ram_bound,
                         &self.worker,
                         security_level,
-                        0,
+                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                        &DefaultBabyBearBackend::default(),
+                        &DefaultBabyBearGKRBackend::default(),
                     )
                 }
             },
@@ -352,7 +349,7 @@ impl ProveBackend for CpuBackend {
                 if machine != MachineType::Reduced {
                     return Err("unified proving supports only the reduced machine".to_string());
                 }
-                program_prover::unified::prove_unified_execution_with_replayer::<Global>(
+                program_prover::unified::prove_unified_execution_with_replayer::<Global, _, _>(
                     cycles_bound,
                     &padded_bin,
                     &padded_text,
@@ -362,6 +359,8 @@ impl ProveBackend for CpuBackend {
                     &self.worker,
                     security_level,
                     0,
+                    &DefaultBabyBearBackend::default(),
+                    &DefaultBabyBearGKRBackend::default(),
                 )
             }
         };

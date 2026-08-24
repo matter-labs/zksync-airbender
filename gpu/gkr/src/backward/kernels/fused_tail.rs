@@ -78,15 +78,13 @@ pub(crate) fn max_partials_len(max_acc_size: usize) -> usize {
 /// Resolves the active eq slot for the upcoming fold. Returns
 /// `(slot_base_ptr, slot_size_before_fold)` and the **next** size for the
 /// caller to write back into `eq_sizes` AFTER the kernel is scheduled.
-/// Priority is `high[0]` > `high[1]` > `low`.
+/// The eq build puts claim coordinate `b` on physical row bit `b`, and
+/// `gkr_compute_eq_inline` reads the slots as `[high[0] | high[1] | low]` from
+/// the top, so the coordinate the round eliminates is the lowest bit of the
+/// lowest non-empty slot.
 pub(crate) fn resolve_active_eq_slot(eq_sizes: &GkrEqSizes, eq_low: *mut E4) -> (*mut E4, u32) {
-    if eq_sizes.high[0] > 0 {
-        #[allow(clippy::erasing_op)]
-        // `0 * GKR_EQ_GROUP_TABLE_LEN` kept for symmetry with the implicit 1* sibling below
-        let base = unsafe {
-            super::launchers::get_eq_high_constant_device_ptr().add(0 * GKR_EQ_GROUP_TABLE_LEN)
-        };
-        (base, eq_sizes.high[0])
+    if eq_sizes.low > 0 {
+        (eq_low, eq_sizes.low)
     } else if eq_sizes.high[1] > 0 {
         const { assert!(GKR_EQ_HIGH_SLOTS >= 2) };
         let base = unsafe {
@@ -94,8 +92,11 @@ pub(crate) fn resolve_active_eq_slot(eq_sizes: &GkrEqSizes, eq_low: *mut E4) -> 
         };
         (base, eq_sizes.high[1])
     } else {
-        debug_assert!(eq_sizes.low >= 1);
-        (eq_low, eq_sizes.low)
+        debug_assert!(eq_sizes.high[0] >= 1);
+        (
+            super::launchers::get_eq_high_constant_device_ptr(),
+            eq_sizes.high[0],
+        )
     }
 }
 
@@ -103,13 +104,13 @@ pub(crate) fn resolve_active_eq_slot(eq_sizes: &GkrEqSizes, eq_low: *mut E4) -> 
 /// kernel has been scheduled. Stream ordering guarantees the next round's
 /// kernel sees the post-fold slot values.
 pub(crate) fn record_active_eq_slot_fold(eq_sizes: &mut GkrEqSizes) {
-    if eq_sizes.high[0] > 0 {
-        eq_sizes.high[0] -= 1;
+    if eq_sizes.low > 0 {
+        eq_sizes.low -= 1;
     } else if eq_sizes.high[1] > 0 {
         eq_sizes.high[1] -= 1;
     } else {
-        debug_assert!(eq_sizes.low >= 1);
-        eq_sizes.low -= 1;
+        debug_assert!(eq_sizes.high[0] >= 1, "the factored eq drained past empty");
+        eq_sizes.high[0] -= 1;
     }
 }
 

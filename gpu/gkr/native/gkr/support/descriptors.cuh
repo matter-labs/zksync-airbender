@@ -18,16 +18,18 @@ enum gkr_base_source_kind : u32 {
   GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH = 5,
 };
 
+// Input poly index is `2*Y + b`, gate bit `b` lowest; the sumcheck binds `Y` LSB-first, so row `j` spans GKR_DIM_REDUCING_ROW_SPAN cells and the f0/f1 pair
+// is GKR_DIM_REDUCING_PAIR_STRIDE apart.
+static constexpr unsigned GKR_DIM_REDUCING_ROW_SPAN = 4;
+static constexpr unsigned GKR_DIM_REDUCING_PAIR_STRIDE = 2;
+
 template <typename E> struct gkr_ext_initial_source {
   const E *start;
-  size_t next_layer_size;
 };
 
 template <typename E> struct gkr_ext_continuing_source {
   const E *previous_layer_start;
   E *this_layer_start;
-  size_t this_layer_size;
-  size_t next_layer_size;
   bool first_access;
 };
 

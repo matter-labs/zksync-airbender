@@ -546,7 +546,13 @@ impl ProofLayout {
             let coeffs_flat = self.backward_internal_coeffs_host(slab, layer_slot);
             // `sumcheck_num_rounds` monomials.
             debug_assert_eq!(coeffs_flat.len(), bw.sumcheck_num_rounds * 4);
-            let internal_round_coefficients: Vec<[E4; 4]> = coeffs_flat.as_chunks::<4>().0.to_vec();
+            let internal_round_coefficients: Vec<_> = coeffs_flat
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .copied()
+                .map(SumcheckRoundCoefficients::Multilinear)
+                .collect();
             let finals_flat = self.backward_final_step_evals_host(slab, layer_slot);
             debug_assert_eq!(
                 finals_flat.len(),

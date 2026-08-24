@@ -98,7 +98,7 @@ fn generate_proof(
         full_trace,
         trace_len,
         &hardcoded_external_challenges(),
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &worker,
     )
 }
@@ -294,7 +294,7 @@ fn generate_subword_proof(
         full_trace,
         trace_len,
         &hardcoded_external_challenges(),
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &worker,
     )
 }

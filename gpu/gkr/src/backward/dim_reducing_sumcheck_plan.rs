@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
 
@@ -438,6 +439,12 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             stream,
         )?;
 
+        let device_next_claim_point = schedule_dim_reducing_next_layer_claim_point(
+            &device_claim_point_out,
+            self.folding_steps,
+            context,
+        )?;
+
         let next_claim_layout = ClaimBufferLayout::from_addresses(transcript_input_addresses);
         if let Some(layer_range) = layer_range.take() {
             layer_range.end(stream)?;
@@ -452,9 +459,43 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
             device_seed: Some(device_seed),
-            device_claim_point_for_next_layer: Some(device_claim_point_out),
+            device_claim_point_for_next_layer: Some(DeviceClaimPointAndBatching::from_allocation(
+                device_next_claim_point,
+            )),
             device_claims_for_next_layer: Some(device_new_claims),
             claim_layout_for_next_layer: Some(next_claim_layout),
         })
     }
+}
+
+/// Materializes the next layer's claim point in variable order: the end-of-layer
+/// challenge binds the gate bit (coordinate 0 of the polys the next layer
+/// reads), so it LEADS, then the round challenges, then batching. The layer's
+/// own scratch stays in DRAW order because the continuation kernels index it by
+/// round.
+pub(crate) fn schedule_dim_reducing_next_layer_claim_point(
+    layer_out: &DeviceClaimPointAndBatching,
+    folding_steps: usize,
+    context: &ProverContext,
+) -> CudaResult<DeviceAllocation<E4>> {
+    let len = folding_steps + 2;
+    assert_eq!(
+        layer_out.len(),
+        len,
+        "layer output view must be [round challenges | end-of-layer challenge | batching]",
+    );
+    let stream = context.get_exec_stream();
+    let mut next: DeviceAllocation<E4> = context.alloc(len, AllocationPlacement::Top)?;
+    memory_copy_async(&mut next[..1], layer_out.slice(folding_steps, 1), stream)?;
+    memory_copy_async(
+        &mut next[1..1 + folding_steps],
+        layer_out.slice(0, folding_steps),
+        stream,
+    )?;
+    memory_copy_async(
+        &mut next[1 + folding_steps..],
+        layer_out.slice(folding_steps + 1, 1),
+        stream,
+    )?;
+    Ok(next)
 }

@@ -108,7 +108,7 @@ fn assert_device_slices_equal_chunked<T>(
     }
 }
 
-fn run_stage1_buffer_parity(fixture: BasicUnrolledFixture) {
+fn run_stage1_buffer_parity(fixture: &BasicUnrolledFixture) {
     use gpu_gkr::proof_layout::GpuGKRTraceGeometry;
     use gpu_gkr::stage1::{
         generate_with_witness_strategy, GpuGKRStage1Output, WitnessGenerationStrategy,
@@ -203,25 +203,25 @@ fn run_stage1_buffer_parity(fixture: BasicUnrolledFixture) {
 #[test]
 #[ignore]
 fn run_add_sub_stage1_buffer_parity_test() {
-    run_stage1_buffer_parity(prepare_basic_unrolled_profiling_fixture());
+    run_stage1_buffer_parity(&prepare_basic_unrolled_profiling_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_load_store_subword_stage1_buffer_parity_test() {
-    run_stage1_buffer_parity(prepare_load_store_subword_only_profiling_fixture());
+    run_stage1_buffer_parity(&prepare_load_store_subword_only_profiling_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_unified_stage1_buffer_parity_test() {
-    run_stage1_buffer_parity(prepare_unified_profiling_fixture());
+    run_stage1_buffer_parity(&prepare_unified_profiling_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_blake2_compression_delegation_stage1_buffer_parity_test() {
-    run_stage1_buffer_parity(prepare_blake2_with_compression_profiling_fixture());
+    run_stage1_buffer_parity(&prepare_blake2_with_compression_profiling_fixture());
 }
 
 /// Full-proof parity at Sec100, where the lookup-challenge and WHIR-batching

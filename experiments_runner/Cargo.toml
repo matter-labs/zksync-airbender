@@ -9,18 +9,30 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-# Fast-iteration experiment harness: depends only on the small leaf crates
-# (field / fft / worker), so a release rebuild takes seconds instead of the
-# minutes a `prover` test build costs. Cross-compiled and run on remote
-# benchmark machines.
+# Fast-iteration GKR harness: a single integration test that proves ONLY the
+# add_sub_lui_auipc_mop family circuit — the analog of the add/sub section of
+# `prover`'s per-family `gkr_run_basic_unrolled_test_sec_100`. Rebuilding after
+# a `prover` edit compiles the prover lib plus this thin test crate, instead
+# of the full `prover` test harness (all family/unified/malicious test suites
+# and ~49K lines of other generated witness-eval code).
+#
+#   cargo test -p experiments_runner --release \
+#       --features gkr_self_checks,deterministic_pow \
+#       gkr_prove_add_sub_family_sec_100 -- --nocapture
 
 [dependencies]
+prover = { workspace = true, features = ["prover", "cs_debug", "bincode", "test"] }
+cs.workspace = true
+riscv_transpiler.workspace = true
 field.workspace = true
-fft.workspace = true
+common_constants.workspace = true
 worker.workspace = true
-blake2s_u32.workspace = true
-rand = { workspace = true, features = ["std", "std_rng", "thread_rng"] }
 
-[[bin]]
-name = "experiments_runner"
-path = "src/main.rs"
+[dev-dependencies]
+rand = { workspace = true, features = ["std", "thread_rng", "std_rng"] }
+
+[features]
+gkr_self_checks = ["prover/gkr_self_checks"]
+deterministic_pow = ["prover/deterministic_pow"]
+gkr_check_satisfied = ["prover/gkr_check_satisfied"]
+no_caches = ["prover/no_caches"]

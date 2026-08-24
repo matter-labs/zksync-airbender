@@ -96,17 +96,8 @@ pub const fn memory_delegation_pow_bits(level: ::prover::definitions::SecurityLe
     )
 }
 
-#[cfg(all(feature = "security_80", feature = "security_100"))]
-compile_error!(
-    "features `security_80` and `security_100` are mutually exclusive — enable exactly one"
-);
-
-#[cfg(feature = "security_100")]
 pub const MEMORY_DELEGATION_POW_BITS: usize =
     memory_delegation_pow_bits(::prover::definitions::SecurityLevel::Sec100);
-#[cfg(not(feature = "security_100"))]
-pub const MEMORY_DELEGATION_POW_BITS: usize =
-    memory_delegation_pow_bits(::prover::definitions::SecurityLevel::Sec80);
 
 #[cfg(test)]
 mod memory_delegation_pow_tests {
@@ -127,17 +118,13 @@ mod memory_delegation_pow_tests {
             ),
             81
         );
-        // 80-bit target is already met without PoW; 100-bit needs 19.
-        assert_eq!(memory_delegation_pow_bits(SecurityLevel::Sec80), 0);
+        // the 100-bit target needs 19 bits of PoW on top of the 81-bit base.
         assert_eq!(memory_delegation_pow_bits(SecurityLevel::Sec100), 19);
     }
 
     #[test]
     fn active_constant_matches_selected_security_level() {
-        #[cfg(feature = "security_100")]
         assert_eq!(MEMORY_DELEGATION_POW_BITS, 19);
-        #[cfg(not(feature = "security_100"))]
-        assert_eq!(MEMORY_DELEGATION_POW_BITS, 0);
     }
 }
 

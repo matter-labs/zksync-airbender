@@ -2,6 +2,7 @@ use std::alloc::Global;
 
 use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use era_cudart::memory::memory_copy_async;
+use era_cudart::memory::DeviceAllocation as RawDeviceAllocation;
 
 use itertools::Itertools;
 
@@ -263,7 +264,13 @@ fn assert_trace_holder_materialization_and_caps_match_cpu(log_rows_per_leaf: u32
                 let mut gpu = vec![BF::ZERO; per_coset];
                 memory_copy_async(&mut gpu, segment, context.get_exec_stream()).unwrap();
                 context.get_exec_stream().synchronize().unwrap();
-                assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
+                let expected = bitreverse_coset_columns(
+                    &cpu_cosets[coset_idx],
+                    1,
+                    columns_count,
+                    log_domain_size,
+                );
+                assert_eq!(gpu, expected, "coset {}", coset_idx);
             }
         }
         CosetsHolder::None(_) => panic!("expected Full cosets in test"),
@@ -337,7 +344,13 @@ fn trace_holder_lazy_coset_materialization_matches_cpu() {
                 let mut gpu = vec![BF::ZERO; per_coset];
                 memory_copy_async(&mut gpu, segment, context.get_exec_stream()).unwrap();
                 context.get_exec_stream().synchronize().unwrap();
-                assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
+                let expected = bitreverse_coset_columns(
+                    &cpu_cosets[coset_idx],
+                    1,
+                    columns_count,
+                    log_domain_size,
+                );
+                assert_eq!(gpu, expected, "coset {}", coset_idx);
             }
         }
         CosetsHolder::None(_) => panic!("expected Full cosets in test"),
@@ -387,7 +400,9 @@ fn trace_holder_cosets_view_is_contiguous_in_coset_major_order() {
 
     for coset_index in 0..lde_factor {
         let segment = &concat[coset_index * per_coset_len..(coset_index + 1) * per_coset_len];
-        assert_eq!(segment, &cpu_cosets[coset_index][..], "coset {coset_index}");
+        let expected =
+            bitreverse_coset_columns(&cpu_cosets[coset_index], 1, columns_count, log_domain_size);
+        assert_eq!(segment, &expected[..], "coset {coset_index}");
     }
 }
 
@@ -451,7 +466,7 @@ fn trace_holder_consolidated_cosets_matches_per_coset_views() {
 fn trace_holder_full_tree_view_is_contiguous_in_coset_major_order() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -499,7 +514,7 @@ fn trace_holder_full_tree_view_is_contiguous_in_coset_major_order() {
 fn trace_holder_partial_tree_view_is_contiguous_in_coset_major_order() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -547,7 +562,7 @@ fn trace_holder_partial_tree_view_is_contiguous_in_coset_major_order() {
 fn trace_holder_consolidated_tree_matches_per_coset_views() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -646,7 +661,7 @@ fn trace_holder_get_evaluations_returns_coset_zero_subrange() {
 fn trace_holder_consolidated_partial_tree_matches_per_coset_views() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -715,7 +730,7 @@ fn trace_holder_materialization_matches_stage1_caps_for_grouped_leafs() {
 fn trace_holder_queries_match_across_tree_cache_modes() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
-    let log_domain_size = 9u32;
+    let log_domain_size = 11u32;
     let log_lde_factor = 2u32;
     let log_rows_per_leaf = 2u32;
     let log_tree_cap_size = 3u32;
@@ -899,5 +914,312 @@ fn trace_holder_queries_match_across_tree_cache_modes() {
             &stage1_caps,
             log_lde_factor,
         );
+    }
+}
+
+const PHYSICAL_TREE_SHAPES: [(u32, u32); 3] = [(4, 1), (10, 1), (10, 5)];
+
+fn deterministic_values(len: usize) -> Vec<BF> {
+    let mut state = 0x1234_5678_9abc_def0u64;
+    (0..len)
+        .map(|_| {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            BF::from_raw_u32(((state >> 33) as u32) % BF::ORDER)
+        })
+        .collect_vec()
+}
+
+/// Permutes every column of every coset slab from natural row order into the
+/// bitreversed row order the LSB commit path consumes.
+fn bitreverse_coset_columns(
+    values: &[BF],
+    cosets_count: usize,
+    columns_count: usize,
+    log_domain_size: u32,
+) -> Vec<BF> {
+    let rows_count = 1usize << log_domain_size;
+    let coset_stride = columns_count * rows_count;
+    let mut result = vec![BF::ZERO; values.len()];
+    for coset in 0..cosets_count {
+        for column in 0..columns_count {
+            let base = coset * coset_stride + column * rows_count;
+            for physical in 0..rows_count {
+                result[base + physical] =
+                    values[base + super::bitreverse_index(physical, log_domain_size)];
+            }
+        }
+    }
+    result
+}
+
+/// Host blake2s over LOGICAL leaf `leaf`: slot `s` of column `c` reads natural
+/// row `leaf + rev_b(s) * leaves_count`, absorbed column-major / slot-fast.
+fn host_logical_leaf_digest(
+    values: &[BF],
+    coset_base: usize,
+    rows_count: usize,
+    columns_count: usize,
+    leaves_count: usize,
+    log_rows_per_leaf: u32,
+    leaf: usize,
+) -> Digest {
+    let mut words = Vec::with_capacity(columns_count << log_rows_per_leaf);
+    for column in 0..columns_count {
+        for slot in 0..1usize << log_rows_per_leaf {
+            let row = leaf + super::bitreverse_index(slot, log_rows_per_leaf) * leaves_count;
+            words.push(values[coset_base + column * rows_count + row].0);
+        }
+    }
+    hash_leaf_words(&words)
+}
+
+fn gather_caps_synchronously(
+    tree: &RawDeviceAllocation<Digest>,
+    per_coset_tree_stride: usize,
+    log_lde_factor: u32,
+    log_subtree_cap_size: u32,
+    stream: &CudaStream,
+) -> Vec<u32> {
+    let per_coset_cap_size = 1usize << log_subtree_cap_size;
+    let cap_words_per_coset = per_coset_cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS;
+    let cap_offset_words =
+        (per_coset_tree_stride - (per_coset_cap_size << 1)) * BLAKE2S_DIGEST_SIZE_U32_WORDS;
+    let total_words = cap_words_per_coset << log_lde_factor;
+    let mut dst = RawDeviceAllocation::<u32>::alloc(total_words).unwrap();
+    // SAFETY: `cap_offset_words` stays inside the first per-coset slab.
+    let base = unsafe { (tree.as_ptr() as *const u32).add(cap_offset_words) };
+    gather_tree_caps_inline(
+        base,
+        cap_words_per_coset as u32,
+        (per_coset_tree_stride * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32,
+        log_lde_factor,
+        &mut dst,
+        stream,
+    )
+    .unwrap();
+    let mut host = vec![0u32; total_words];
+    memory_copy_async(&mut host, &dst, stream).unwrap();
+    stream.synchronize().unwrap();
+    host
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn full_tree_from_physical_leaves_matches_natural_path() {
+    let stream = CudaStream::default();
+    let log_subtree_cap_size = 1u32;
+    for (log_domain_size, log_rows_per_leaf) in PHYSICAL_TREE_SHAPES {
+        for log_lde_factor in [0u32, 1u32] {
+            for columns_count in [1usize, 3usize] {
+                let log_tree_cap_size = log_lde_factor + log_subtree_cap_size;
+                let cosets_in_tile = 1usize << log_lde_factor;
+                let rows_count = 1usize << log_domain_size;
+                let leaves_count = rows_count >> log_rows_per_leaf;
+                let per_coset_evals_stride = columns_count * rows_count;
+                let per_coset_tree_stride = leaves_count << 1;
+                let trees_len = per_coset_tree_stride * cosets_in_tile;
+                let label = format!(
+                    "n={log_domain_size} b={log_rows_per_leaf} cosets={cosets_in_tile} \
+                     cols={columns_count}"
+                );
+
+                let natural = deterministic_values(per_coset_evals_stride * cosets_in_tile);
+                let physical = bitreverse_coset_columns(
+                    &natural,
+                    cosets_in_tile,
+                    columns_count,
+                    log_domain_size,
+                );
+
+                let mut natural_device = RawDeviceAllocation::alloc(natural.len()).unwrap();
+                let mut physical_device = RawDeviceAllocation::alloc(physical.len()).unwrap();
+                memory_copy_async(&mut natural_device, &natural, &stream).unwrap();
+                memory_copy_async(&mut physical_device, &physical, &stream).unwrap();
+
+                // Sentinel fill: any digest neither path writes must stay
+                // identical in both backings, so an out-of-region write in
+                // either path breaks the whole-backing comparison below.
+                let sentinel = vec![[0xdead_beefu32; 8]; trees_len];
+                let mut old_tree = RawDeviceAllocation::<Digest>::alloc(trees_len).unwrap();
+                let mut new_tree = RawDeviceAllocation::<Digest>::alloc(trees_len).unwrap();
+                memory_copy_async(&mut old_tree, &sentinel, &stream).unwrap();
+                memory_copy_async(&mut new_tree, &sentinel, &stream).unwrap();
+
+                commit_trace_multi_coset(
+                    &natural_device,
+                    &mut old_tree,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                    columns_count,
+                    cosets_in_tile,
+                    &stream,
+                )
+                .unwrap();
+                build_full_trees_from_physical(
+                    &physical_device,
+                    &mut new_tree,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                    columns_count,
+                    cosets_in_tile,
+                    &stream,
+                )
+                .unwrap();
+
+                let mut old_host = vec![Digest::default(); trees_len];
+                let mut new_host = vec![Digest::default(); trees_len];
+                memory_copy_async(&mut old_host, &old_tree, &stream).unwrap();
+                memory_copy_async(&mut new_host, &new_tree, &stream).unwrap();
+                stream.synchronize().unwrap();
+
+                for coset in 0..cosets_in_tile {
+                    let start = coset * per_coset_tree_stride;
+                    for digest in 0..per_coset_tree_stride {
+                        assert_eq!(
+                            new_host[start + digest],
+                            old_host[start + digest],
+                            "{label}: coset {coset} tree digest {digest}",
+                        );
+                    }
+                }
+
+                let old_caps = gather_caps_synchronously(
+                    &old_tree,
+                    per_coset_tree_stride,
+                    log_lde_factor,
+                    log_subtree_cap_size,
+                    &stream,
+                );
+                let new_caps = gather_caps_synchronously(
+                    &new_tree,
+                    per_coset_tree_stride,
+                    log_lde_factor,
+                    log_subtree_cap_size,
+                    &stream,
+                );
+                assert_eq!(new_caps, old_caps, "{label}: unified cap");
+
+                for coset in 0..cosets_in_tile {
+                    for leaf in 0..leaves_count {
+                        let expected = host_logical_leaf_digest(
+                            &natural,
+                            coset * per_coset_evals_stride,
+                            rows_count,
+                            columns_count,
+                            leaves_count,
+                            log_rows_per_leaf,
+                            leaf,
+                        );
+                        assert_eq!(
+                            new_host[coset * per_coset_tree_stride + leaf],
+                            expected,
+                            "{label}: host oracle coset {coset} logical leaf {leaf}",
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+const PHYSICAL_PARTIAL_TREE_SHAPES: [(u32, u32); 2] = [(14, 1), (14, 5)];
+
+#[test]
+#[cfg(not(no_cuda))]
+fn partial_tree_from_physical_leaves_matches_natural_path() {
+    let stream = CudaStream::default();
+    let log_subtree_cap_size = 1u32;
+    for (log_domain_size, log_rows_per_leaf) in PHYSICAL_PARTIAL_TREE_SHAPES {
+        for log_lde_factor in [0u32, 1u32] {
+            for columns_count in [1usize, 3usize] {
+                let log_tree_cap_size = log_lde_factor + log_subtree_cap_size;
+                let cosets_in_tile = 1usize << log_lde_factor;
+                let rows_count = 1usize << log_domain_size;
+                let leaves_count = rows_count >> log_rows_per_leaf;
+                let per_coset_evals_stride = columns_count * rows_count;
+                let per_coset_tree_stride = (leaves_count << 1) >> PARTIAL_TREE_REDUCTION_LAYERS;
+                let trees_len = per_coset_tree_stride * cosets_in_tile;
+                let label = format!(
+                    "n={log_domain_size} b={log_rows_per_leaf} cosets={cosets_in_tile} \
+                     cols={columns_count}"
+                );
+
+                let natural = deterministic_values(per_coset_evals_stride * cosets_in_tile);
+                let physical = bitreverse_coset_columns(
+                    &natural,
+                    cosets_in_tile,
+                    columns_count,
+                    log_domain_size,
+                );
+
+                let mut natural_device = RawDeviceAllocation::alloc(natural.len()).unwrap();
+                let mut physical_device = RawDeviceAllocation::alloc(physical.len()).unwrap();
+                memory_copy_async(&mut natural_device, &natural, &stream).unwrap();
+                memory_copy_async(&mut physical_device, &physical, &stream).unwrap();
+
+                let sentinel = vec![[0xdead_beefu32; 8]; trees_len];
+                let mut old_tree = RawDeviceAllocation::<Digest>::alloc(trees_len).unwrap();
+                let mut new_tree = RawDeviceAllocation::<Digest>::alloc(trees_len).unwrap();
+                memory_copy_async(&mut old_tree, &sentinel, &stream).unwrap();
+                memory_copy_async(&mut new_tree, &sentinel, &stream).unwrap();
+
+                commit_trace_with_partial_tree_multi_coset(
+                    &natural_device,
+                    &mut old_tree,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                    columns_count,
+                    cosets_in_tile,
+                    &stream,
+                )
+                .unwrap();
+                let mut staging =
+                    RawDeviceAllocation::<Digest>::alloc(leaves_count * cosets_in_tile).unwrap();
+                build_partial_trees_from_physical(
+                    &physical_device,
+                    &mut new_tree,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                    columns_count,
+                    cosets_in_tile,
+                    &mut staging,
+                    &stream,
+                )
+                .unwrap();
+
+                let mut old_host = vec![Digest::default(); trees_len];
+                let mut new_host = vec![Digest::default(); trees_len];
+                memory_copy_async(&mut old_host, &old_tree, &stream).unwrap();
+                memory_copy_async(&mut new_host, &new_tree, &stream).unwrap();
+                stream.synchronize().unwrap();
+                assert_eq!(new_host, old_host, "{label}: partial tree backing");
+
+                let old_caps = gather_caps_synchronously(
+                    &old_tree,
+                    per_coset_tree_stride,
+                    log_lde_factor,
+                    log_subtree_cap_size,
+                    &stream,
+                );
+                let new_caps = gather_caps_synchronously(
+                    &new_tree,
+                    per_coset_tree_stride,
+                    log_lde_factor,
+                    log_subtree_cap_size,
+                    &stream,
+                );
+                assert_eq!(new_caps, old_caps, "{label}: unified cap");
+            }
+        }
     }
 }

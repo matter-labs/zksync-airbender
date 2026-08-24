@@ -219,10 +219,10 @@ fn test_setup_hosts_initialized_by_constructor_and_add_binary() {
     let configuration = ExecutionProverConfiguration::default();
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
     for (circuit_type, precomputations) in prover.common_precomputations.iter() {
-        let expected_columns = match circuit_type {
-            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => false,
-            _ => true,
-        };
+        let expected_columns = !matches!(
+            circuit_type,
+            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
+        );
         assert_eq!(
             precomputations.setup_host.get_initialized().is_some(),
             expected_columns,

@@ -251,7 +251,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 
     let prover_config = crate::config::prover_config(
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
     )
     .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
@@ -319,7 +319,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             .collect::<Vec<_>>()
     } else {
         let (mem_oracle, _wit_oracle) =
-            commit_separate_memory_and_witness_subtrees::<BF, BF, DefaultTreeConstructor>(
+            commit_separate_memory_and_witness_subtrees::<BF, BF, DefaultTreeConstructor, _>(
                 &NaiveBackend,
                 &make_full_trace(),
                 &twiddles,

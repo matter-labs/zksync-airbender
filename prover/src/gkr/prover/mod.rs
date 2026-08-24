@@ -14,12 +14,16 @@ use crate::fft::Twiddles;
 #[cfg(target_arch = "aarch64")]
 pub use crate::gkr::prover::backend::BabyBearNeonWorkStealingBackend;
 pub use crate::gkr::prover::backend::{
-    Backend, DefaultBabyBearBackend, NaiveBackend, Proth120WorkStealingLazyBackend,
+    Backend, DefaultBabyBearBackend, NaiveBackend, Proth120WorkStealingLazyBackend, TwiddleSetOps,
     WorkStealingBackend,
 };
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
+#[cfg(target_arch = "aarch64")]
+pub use crate::gkr::prover::gkr_backend::NeonGKRBackend;
+pub use crate::gkr::prover::gkr_backend::{DefaultBabyBearGKRBackend, GKRBackend, NaiveGKRBackend};
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils;
+use crate::gkr::prover::sumcheck_loop::flatten_claim_point;
 use crate::gkr::prover::transcript_utils::{
     commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
 };
@@ -45,6 +49,7 @@ pub mod backend;
 mod debug_utils;
 pub mod dimension_reduction;
 pub mod forward_loop;
+pub mod gkr_backend;
 pub mod setup;
 pub mod stages;
 pub mod sumcheck_loop;
@@ -242,8 +247,42 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     }
 }
 
-pub(crate) struct SendPtr<T: Sized>(*mut T);
+pub(crate) struct SendPtr<T: Sized>(pub(crate) *mut T);
 unsafe impl<T: Send + Sync> Send for SendPtr<T> {}
+unsafe impl<T: Send + Sync> Sync for SendPtr<T> {}
+impl<T> Clone for SendPtr<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for SendPtr<T> {}
+impl<T> SendPtr<T> {
+    /// Whole-struct accessor: use inside `move` closures so the WRAPPER is
+    /// captured (a bare `.0` field access disjointly captures the raw
+    /// pointer, which is not `Send`).
+    #[inline(always)]
+    pub(crate) fn get(self) -> *mut T {
+        self.0
+    }
+}
+
+/// `*const` sibling of [`SendPtr`] for shared-input pointer tables.
+pub(crate) struct SendConstPtr<T: Sized>(pub(crate) *const T);
+unsafe impl<T: Send + Sync> Send for SendConstPtr<T> {}
+unsafe impl<T: Send + Sync> Sync for SendConstPtr<T> {}
+impl<T> Clone for SendConstPtr<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for SendConstPtr<T> {}
+impl<T> SendConstPtr<T> {
+    /// Whole-struct accessor (see [`SendPtr::get`]).
+    #[inline(always)]
+    pub(crate) fn get(self) -> *const T {
+        self.0
+    }
+}
 
 #[serde_with::serde_as]
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
@@ -252,7 +291,7 @@ unsafe impl<T: Send + Sync> Send for SendPtr<T> {}
 )]
 pub struct SumcheckIntermediateProofValues<F: PrimeField, E: FieldExtension<F> + Field> {
     pub sumcheck_num_rounds: usize,
-    pub internal_round_coefficients: Vec<[E; 4]>, // max quadratic gates
+    pub internal_round_coefficients: Vec<SumcheckRoundCoefficients<E>>,
     #[serde_as(as = "Vec<(_, _)>")]
     pub final_step_evaluations: BTreeMap<GKRAddress, Vec<E>>,
     #[serde_as(as = "Vec<(_, _)>")]
@@ -260,9 +299,94 @@ pub struct SumcheckIntermediateProofValues<F: PrimeField, E: FieldExtension<F> +
     pub _marker: core::marker::PhantomData<F>,
 }
 
+/// One entry of a claim/evaluation point, in emission (plain-push) order: a
+/// per-variable coordinate from a scalar round, or a uniskip window binding
+/// `width` variables through ONE challenge on the smooth (subgroup) domain.
+/// A uniskip entry has no per-coordinate form -- its eq contribution is the
+/// `2^width` Lagrange fold-weight block, produced by
+/// [`Self::eq_weight_block`] and tensored by
+/// `eq_poly::make_eq_table_from_weight_blocks` (the flatten step). The
+/// verifier evaluates the block's multilinear extension at its own folding
+/// coordinates with `2^width` terms.
+#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+pub enum EvaluationPointEntry<E: Field> {
+    Coordinate { point: E },
+    Uniskip { point: E, width: usize },
+}
+
+impl<E: Field> EvaluationPointEntry<E> {
+    /// Number of variables this entry binds.
+    pub fn bound_vars(&self) -> usize {
+        match self {
+            Self::Coordinate { .. } => 1,
+            Self::Uniskip { width, .. } => *width,
+        }
+    }
+
+    /// The entry's eq weight block (length `2^bound_vars`), LSB-first over
+    /// its variables. `omega16` is F's size-16 domain generator (only used
+    /// by uniskip entries).
+    pub fn eq_weight_block<F: PrimeField>(&self, _omega16: F) -> Vec<E>
+    where
+        E: field::FieldExtension<F>,
+    {
+        match self {
+            Self::Coordinate { point } => {
+                let mut om = E::ONE;
+                om.sub_assign(point);
+                vec![om, *point]
+            }
+            Self::Uniskip { point, width } => {
+                unimplemented!("uniskip support is not implemented for now");
+                // assert_eq!(*width, 3, "only width-3 uniskip windows are wired");
+                // crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::uniskip8_fold_weights::<
+                //     F,
+                //     E,
+                // >(point, omega16)
+                // .to_vec()
+            }
+        }
+    }
+}
+
+/// One transcript message of a sumcheck: either the classic per-variable
+/// multilinear round (degree <= 3 round polynomial, 4 coefficients) or a
+/// univariate-skip round (monomial coefficients of the packed q -- for a
+/// window of k variables, `2^(k+1)` coefficients of degree `< 2^(k+1)`).
+#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(bound = "E: serde::Serialize + serde::de::DeserializeOwned")]
+pub enum SumcheckRoundCoefficients<E: Field> {
+    Multilinear([E; 4]),
+    Uniskip(Vec<E>),
+}
+
+impl<E: Field> SumcheckRoundCoefficients<E> {
+    #[track_caller]
+    pub fn as_multilinear(&self) -> &[E; 4] {
+        match self {
+            SumcheckRoundCoefficients::Multilinear(c) => c,
+            SumcheckRoundCoefficients::Uniskip(_) => {
+                panic!("expected a multilinear round, found a uniskip round")
+            }
+        }
+    }
+
+    pub fn num_values(&self) -> usize {
+        match self {
+            SumcheckRoundCoefficients::Multilinear(_) => 4,
+            SumcheckRoundCoefficients::Uniskip(v) => v.len(),
+        }
+    }
+}
+
 impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValues<F, E> {
     pub fn estimate_size(&self) -> usize {
-        self.internal_round_coefficients.len() * E::DEGREE * 4 * core::mem::size_of::<u32>()
+        self.internal_round_coefficients
+            .iter()
+            .map(|c| c.num_values())
+            .sum::<usize>()
+            * E::DEGREE
+            * core::mem::size_of::<u32>()
             + self
                 .final_step_evaluations
                 .iter()
@@ -430,7 +554,7 @@ where
             WhirOracleStorage::fully_in_memory()
         }
     };
-    prove_configured_with_gkr_impl::<F, E, T, TR, _>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -443,6 +567,70 @@ where
         inits_and_teardowns_top_bits,
         trace_len,
         &WorkStealingBackend,
+        &NaiveGKRBackend,
+        worker,
+    )
+}
+
+/// [`prove_configured_with_gkr`] (same historical mode-dependent storage
+/// policy) with explicit compute backends: the FFT/tree [`Backend`] — whose
+/// [`Backend::TwiddleSet`] (built once via [`Backend::make_twiddles`]) replaces
+/// the plain twiddles — and the [`GKRBackend`] sumcheck engine. Field-concrete
+/// callers select their target-recommended pair here — the DEFAULT
+/// configurations (prover_examples, the test orchestration) pass
+/// [`DefaultBabyBearBackend`] + [`DefaultBabyBearGKRBackend`], which resolve to
+/// the NEON implementations on aarch64 and to the generic ones elsewhere.
+/// Proof bytes are identical across backends; only the execution strategy
+/// differs.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_configured_with_gkr_with_backends<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &B::TwiddleSet,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    backend: &B,
+    gkr_backend: &GB,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
+    let storage = match commitment_mode {
+        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
+            WhirOracleStorage::fully_recompute()
+        }
+        CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => {
+            WhirOracleStorage::fully_in_memory()
+        }
+    };
+    prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        storage,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        backend,
+        gkr_backend,
         worker,
     )
 }
@@ -479,7 +667,7 @@ where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
 {
-    prove_configured_with_gkr_impl::<F, E, T, TR, _>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -492,15 +680,18 @@ where
         inits_and_teardowns_top_bits,
         trace_len,
         &WorkStealingBackend,
+        &NaiveGKRBackend,
         worker,
     )
 }
 
-/// [`prove_configured_with_gkr_with_storage`] with an explicit compute backend.
-/// Backends must (and do — see `backend::tests`) produce byte-identical proofs;
-/// only the execution strategy differs. Field-specific backends (like the
-/// Proth120 lazy-reduction [`Proth120WorkStealingLazyBackend`]) are selected HERE by
-/// callers that concretely know their field — there is no runtime dispatch.
+/// [`prove_configured_with_gkr_with_storage`] with explicit compute backends
+/// (the FFT/tree [`Backend`] and the [`GKRBackend`]). Backends must (and do —
+/// see `backend::tests`) produce byte-identical proofs; only the execution
+/// strategy differs. Field-specific backends (like the Proth120
+/// lazy-reduction [`Proth120WorkStealingLazyBackend`] or the aarch64-only
+/// BabyBear [`DefaultBabyBearGKRBackend`]) are selected HERE by callers that
+/// concretely know their field — there is no runtime dispatch.
 #[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage_and_backend<
     F: PrimeField + TwoAdicField,
@@ -508,26 +699,28 @@ pub fn prove_configured_with_gkr_with_storage_and_backend<
     T: ColumnMajorMerkleTreeConstructor<F>,
     TR: ::transcript::Transcript<F, E>,
     B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
     setup: &GKRSetup<F>,
     setup_commitment: &SetupCommitment<F, T>,
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
     commitment_mode: CommitmentMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     backend: &B,
+    gkr_backend: &GB,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
 {
-    prove_configured_with_gkr_impl::<F, E, T, TR, B>(
+    prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -540,6 +733,7 @@ where
         inits_and_teardowns_top_bits,
         trace_len,
         backend,
+        gkr_backend,
         worker,
     )
 }
@@ -551,19 +745,21 @@ fn prove_configured_with_gkr_impl<
     T: ColumnMajorMerkleTreeConstructor<F>,
     TR: ::transcript::Transcript<F, E>,
     B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
     setup: &GKRSetup<F>,
     setup_commitment: &SetupCommitment<F, T>,
-    twiddles: &Twiddles<F, Global>,
+    twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
     commitment_mode: CommitmentMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     backend: &B,
+    gkr_backend: &GB,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
@@ -572,6 +768,21 @@ where
 {
     let rs_codeword_source = storage.base_rs_source;
     assert_eq!(compiled_circuit.trace_len, trace_len);
+    assert!(trace_len.is_power_of_two());
+    assert_eq!(
+        prover_config.trace_len_log2,
+        trace_len.trailing_zeros() as usize,
+        "the prover config was computed for trace length 2^{} but this circuit's \
+         trace length is {trace_len}",
+        prover_config.trace_len_log2,
+    );
+    // The WHIR run starts from the (possibly packed) committed message size.
+    let whir_message_size_log2 = prover_config.trace_len_log2
+        + match &commitment_mode {
+            CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2, .. } => *pack_log2,
+            CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => 0,
+        };
+    prover_config.validate_for_whir_message_size(whir_message_size_log2);
     if witness_eval_data.column_major_memory_trace.len() > 0 {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
@@ -590,11 +801,6 @@ where
         compiled_circuit.memory_layout.teardown_sets.len()
     );
 
-    assert_eq!(
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.whir_schedule.whir_steps_schedule[0]
-    );
-
     let mut external_challenges = *external_challenges;
 
     let (
@@ -608,7 +814,7 @@ where
             // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
             let (mem_oracle, wit_oracle) = match rs_codeword_source {
                 RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, E, T>(
+                    stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, E, T, B>(
                         backend,
                         &witness_eval_data,
                         twiddles,
@@ -622,7 +828,7 @@ where
                 RsCodewordSource::Recompute => {
                     stages::initial_commit::commit_separate_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
-                        twiddles,
+                        twiddles.plain(),
                         prover_config.lde_factor,
                         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                         prover_config.cap_size,
@@ -695,7 +901,7 @@ where
         CommitmentMode::MergedMemoryAndWitness => {
             let merged_oracle = match rs_codeword_source {
                 RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, E, T>(
+                    stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, E, T, B>(
                         backend,
                         &witness_eval_data,
                         twiddles,
@@ -709,7 +915,7 @@ where
                 RsCodewordSource::Recompute => {
                     stages::initial_commit::commit_merged_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
-                        twiddles,
+                        twiddles.plain(),
                         prover_config.lde_factor,
                         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                         prover_config.cap_size,
@@ -790,6 +996,7 @@ where
                         F,
                         E,
                         T,
+                        B,
                     >(
                         backend,
                         &witness_eval_data,
@@ -805,7 +1012,7 @@ where
                 RsCodewordSource::Recompute => {
                     stages::initial_commit::commit_packed_merged_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
-                        twiddles,
+                        twiddles.plain(),
                         prover_config.lde_factor,
                         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                         prover_config.cap_size,
@@ -955,7 +1162,9 @@ where
     // now we should perform "forward" evaluation, and fill the GKR storage
     let mut witness_eval_data = witness_eval_data;
     // Go from layer 0 to the end, and produce intermediate polynomials. We do not need to commit to them
+    let forward_layers_total = std::time::Instant::now();
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+        let fl_timer = std::time::Instant::now();
         forward_loop::evaluate_layer(
             layer_idx,
             layer,
@@ -971,7 +1180,12 @@ where
             decoder_lookup_fill_value,
             worker,
         );
+        println!(
+            "Forward layer {layer_idx} evaluation took {:?}",
+            fl_timer.elapsed()
+        );
     }
+    println!("Forward layers total: {:?}", forward_layers_total.elapsed());
 
     #[cfg(feature = "gkr_self_checks")]
     assert!(debug_utils::check_logup_identity(
@@ -983,8 +1197,36 @@ where
     // final trace size on which we output the polynomials in plain text
     let final_trace_size_log_2 = prover_config.sumcheck_explicit_output_size_log_2;
 
-    let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
-        dimension_reduction::forward::evaluate_dimension_reduction_forward(
+    // Sumcheck schedules: validated up front against the STRICT grammar so a
+    // misconfigured schedule fails before any proving work. Uniskip steps
+    // panic inside the validation as unimplemented (the Lagrange weight-block
+    // claim shape is not wired through the engines and the WHIR handoff).
+    {
+        let folding_steps = trace_len.trailing_zeros() as usize;
+        crate::gkr::prover_config::validate_sumcheck_schedule(
+            &prover_config.same_size_sumcheck_schedule,
+            folding_steps,
+        )
+        .unwrap_or_else(|e| panic!("same_size_sumcheck_schedule: {e}"));
+    }
+    for (rounds, schedule) in prover_config.dimension_reducing_sumcheck_schedule.iter() {
+        assert!(
+            schedule.iter().all(|s| matches!(
+                s,
+                crate::gkr::prover_config::SumcheckStep::NaiveSumcheck
+            )),
+            "dimension_reducing_sumcheck_schedule[{rounds}]: the dimension-reducing engines run naive rounds only"
+        );
+        assert!(
+            schedule.is_empty() || schedule.len() == *rounds,
+            "dimension_reducing_sumcheck_schedule[{rounds}]: an explicit all-naive schedule must have one step per round"
+        );
+    }
+
+    // GKRBackend seam: the dimension-reducing paths run through the backend
+    // selection in `gkr_backend` (platform dispatch lives ONLY there)
+    let (initial_layer_for_sumcheck, dimension_reducing_inputs) = gkr_backend
+        .dimension_reduction_forward(
             &mut gkr_storage,
             compiled_circuit,
             trace_len.trailing_zeros() as usize,
@@ -1087,30 +1329,73 @@ where
 
     // then we go "backward", by taking random point evaluation claims from the previous layer, and producing claims for the next layer
     let mut claims_for_layers: BTreeMap<usize, BTreeMap<GKRAddress, E>> = BTreeMap::new();
-    let mut points_for_claims_at_layer = BTreeMap::new();
+    let mut claim_point_entries: BTreeMap<usize, Vec<EvaluationPointEntry<E>>> = BTreeMap::new();
 
     claims_for_layers.insert(initial_layer_for_sumcheck + 1, top_layer_claims);
-    points_for_claims_at_layer.insert(initial_layer_for_sumcheck + 1, evaluation_point);
+    // the claim/evaluation coordinate must ALWAYS have one entry per variable
+    assert_eq!(evaluation_point.len(), final_trace_size_log_2);
+    claim_point_entries.insert(
+        initial_layer_for_sumcheck + 1,
+        evaluation_point
+            .into_iter()
+            .map(|el| EvaluationPointEntry::Coordinate { point: el })
+            .collect::<Vec<_>>(),
+    );
 
     let mut sumcheck_intermediate_values = BTreeMap::new();
+    // mixed claim points (uniskip entries) alongside the scalar map
 
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
+    // ONE pass-wide buffer set for the whole dimension-reducing backward
+    // pass, built by the backend's constructor from the largest layer's
+    // shape and reused by every layer below
+    let dr_max_rounds = final_trace_size_log_2 + dimension_reducing_inputs.len().saturating_sub(1);
+    let dr_max_polys = dimension_reducing_inputs
+        .values()
+        .map(|layer| {
+            let mut addrs: Vec<_> = layer.values().flat_map(|v| v.inputs.iter()).collect();
+            addrs.sort();
+            addrs.dedup();
+            addrs.len()
+        })
+        .max()
+        .unwrap_or(0);
+    let mut dr_work_buffers =
+        gkr_backend.make_dim_reducing_work_buffers(dr_max_rounds, dr_max_polys, worker);
+    let dim_reducing_total = std::time::Instant::now();
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
-        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer::<F, E, TR>(
+        let dr_schedule: &[crate::gkr::prover_config::SumcheckStep] = {
+            let rounds = reduced_trace_size_log_2;
+            if let Some(s) = prover_config
+                .dimension_reducing_sumcheck_schedule
+                .get(&rounds)
+            {
+                &s[..]
+            } else {
+                &[]
+            }
+        };
+        let proof = gkr_backend.dimension_reducing_sumcheck_for_layer::<TR>(
+            dr_schedule,
             layer_idx,
             &layer,
-            &mut points_for_claims_at_layer,
+            &mut claim_point_entries,
             &mut claims_for_layers,
             &mut gkr_storage,
             &mut sumcheck_batching_challenge,
             &mut seed,
             1 << reduced_trace_size_log_2,
             worker,
+            &mut dr_work_buffers,
         );
         sumcheck_intermediate_values.insert(layer_idx, proof);
         reduced_trace_size_log_2 += 1;
     }
+    println!(
+        "Dimension-reducing sumcheck layers total: {:?}",
+        dim_reducing_total.elapsed()
+    );
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
@@ -1122,38 +1407,50 @@ where
     };
 
     // Backward loop: standard layer-by-layer sumcheck
+    let same_size_total = std::time::Instant::now();
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
-        let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<F, E, TR>(
+        let layer_timer = std::time::Instant::now();
+        let proof = gkr_backend.evaluate_same_size_sumcheck_for_layer::<TR>(
             layer_idx,
             layer,
-            &mut points_for_claims_at_layer,
+            &mut claim_point_entries,
             &mut claims_for_layers,
             &mut gkr_storage,
             &mut sumcheck_batching_challenge,
-            compiled_circuit,
             trace_len,
             lookup_alpha,
             lookup_additive_part,
             &inits_and_teardowns_top_bits[..],
             address_high_bits_shift,
             &external_challenges,
+            prover_config,
             &mut seed,
             worker,
         );
+        println!(
+            "Same-size layer {layer_idx} sumcheck took {:?}",
+            layer_timer.elapsed()
+        );
         sumcheck_intermediate_values.insert(layer_idx, proof);
     }
+    println!(
+        "Same-size sumcheck layers total: {:?}",
+        same_size_total.elapsed()
+    );
 
     drop(preprocessed_generic_lookup);
 
-    let mut base_layer_z = points_for_claims_at_layer
-        .get(&0)
-        .expect("must have base layer point")
-        .clone();
+    let Some(base_layer_entries) = claim_point_entries.get(&0) else {
+        panic!("Missing claim point for committed polys");
+    };
+    let mut base_layer_z = flatten_claim_point(base_layer_entries);
 
     let mut _eq_at_z: Box<[E]> = vec![].into_boxed_slice();
     #[cfg(feature = "gkr_self_checks")]
     {
-        let mut eq_precomputed = make_eq_poly_in_full(&base_layer_z, worker);
+        // scalar base-layer points are in VARIABLE order (LSB rounds)
+        let mut eq_precomputed =
+            crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb(&base_layer_z, worker);
         _eq_at_z = eq_precomputed.pop().unwrap();
     }
 
@@ -1279,11 +1576,11 @@ where
             let [merged_claims, setup_polys_claims] = [merged_claims, setup_polys_claims]
                 .map(|input| merge_claims(&input, &extra_coordinates));
 
-            // and we need to update claim point
-            let mut new_claim_point = extra_coordinates;
-            new_claim_point.extend_from_slice(&base_layer_z);
-
-            base_layer_z = new_claim_point;
+            // and we need to update claim point: the pack index occupies the HIGH
+            // bits of the packed enumeration (sub-polys are concatenated block by
+            // block), so under LSB binding the packing coordinates EXTEND the
+            // claim point at the top.
+            base_layer_z.extend_from_slice(&extra_coordinates);
             trace_len_log2_for_whir += pack_log2;
 
             #[cfg(feature = "gkr_self_checks")]
@@ -1302,7 +1599,10 @@ where
                     merged_claims.len(),
                     "one committed packed column per merged claim"
                 );
-                let eq_at_point = make_eq_poly_in_full::<E>(&base_layer_z, worker);
+                let eq_at_point = crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb::<E>(
+                    &base_layer_z,
+                    worker,
+                );
                 let eq_at_point = eq_at_point.last().expect("eq poly has a full layer");
                 for (column_index, expected_claim) in merged_claims.iter().enumerate() {
                     // Reduce the base-domain column to monomial coefficients: evals
@@ -1313,16 +1613,16 @@ where
                     } else {
                         compute_column_major_monomial_form_from_main_domain::<F, F, Global>(
                             column.as_slice(),
-                            twiddles,
+                            twiddles.plain(),
                         )
                     };
-                    // monomials -> hypercube evaluations of the packed multilinear,
-                    // then bit-reverse (the packing committed `evals_into_coeffs(bitrev(H))`,
-                    // so the inverse is `coeffs_into_hypercube_evals` then `bitreverse`;
-                    // this mirrors `whir_fold`'s own claim recomputation).
+                    // monomials -> hypercube evaluations of the packed multilinear.
+                    // The packing is reversal-free under the LSB convention
+                    // (`evals_into_coeffs` straight over the concatenated blocks),
+                    // so the inverse is just `coeffs_into_hypercube_evals` —
+                    // mirroring `whir_fold`'s own reversal-free claim recomputation.
                     let size_log2 = hypercube_evals.len().trailing_zeros();
                     multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, size_log2);
-                    crate::fft::bitreverse_enumeration_inplace(&mut hypercube_evals);
                     // re-evaluate at the extended claim point and compare
                     assert_eq!(hypercube_evals.len(), eq_at_point.len());
                     let reevaluated =
@@ -1376,7 +1676,7 @@ where
         t_gkr_phase.elapsed()
     );
     let t_whir = std::time::Instant::now();
-    let whir_proof = whir_fold::<F, E, T, TR>(
+    let whir_proof = whir_fold::<F, E, T, TR, B>(
         mem_oracle,
         mem_polys_claims,
         wit_oracle,
@@ -1507,9 +1807,11 @@ fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
             padded
         };
         let mut buffer = vec![];
-        // note `rev` on the coordiantes - we will later on concatenate
-        // coordiantes, so first coordiante is MSB
-        for merge_point in extra_coordinates.iter().rev() {
+        // adjacent claims differ in pack-index bit 0, which pairs with
+        // extra_coordinates[0] under LSB binding — iterate FORWARD (the pack
+        // coordinates land at the TOP of the claim point, but their own bits
+        // are still enumerated LSB-first)
+        for merge_point in extra_coordinates.iter() {
             for [a, b] in input.as_chunks::<2>().0 {
                 // canonical interpolation a + (b - a) * r', consistent with the packing
                 // that concatenates sub-polys in order (block 0 => a at coordinate 0)
@@ -1532,7 +1834,7 @@ fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
 mod packing_merge_tests {
     use super::merge_claims;
     use crate::gkr::prover::stages::commitment_utils::pack_polys_parallel_from_hypercubes_to_monomials;
-    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq, make_eq_poly_in_full};
+    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq, make_eq_table_lsb_first};
     use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
@@ -1584,11 +1886,14 @@ mod packing_merge_tests {
         // 1) a single random N-coordinate point, and the claims `a(r)`, `b(r)`
         //    obtained as a dot product with the equality poly of `r`.
         let r: Vec<E> = (0..N).map(|_| rand_e(&mut rng)).collect();
-        let eq_r_layers = make_eq_poly_in_full::<E>(&r, &worker);
-        let eq_r = eq_r_layers.last().unwrap();
+        // the packed layout's TOP index bit selects the sub-poly, so the eq
+        // table pairs index bit b with r[N - 1 - b]: build lsb-first over
+        // the reversed point
+        let r_rev: Vec<E> = r.iter().rev().copied().collect();
+        let eq_r = make_eq_table_lsb_first::<E>(&r_rev, &worker);
         assert_eq!(eq_r.len(), size);
-        let claim_a = evaluate_with_precomputed_eq::<F, E>(&a, eq_r);
-        let claim_b = evaluate_with_precomputed_eq::<F, E>(&b, eq_r);
+        let claim_a = evaluate_with_precomputed_eq::<F, E>(&a, &eq_r);
+        let claim_b = evaluate_with_precomputed_eq::<F, E>(&b, &eq_r);
 
         // 2) concatenate the two polys "as monomials" via the commitment helper.
         //    `pack_log2 = 1` merges the 2 sub-polys into one packed poly that is the
@@ -1620,13 +1925,11 @@ mod packing_merge_tests {
         //     treats `challenges[0]` as the MOST-significant index bit, so the block
         //     coordinate (the MSB of `P`) is listed first, followed by `r`. With the
         //     canonical interpolation the block challenge is exactly `r'`.
-        let mut ext_point = Vec::with_capacity(N + 1);
-        ext_point.push(r_prime);
-        ext_point.extend_from_slice(&r);
-        let eq_ext_layers = make_eq_poly_in_full::<E>(&ext_point, &worker);
-        let eq_ext = eq_ext_layers.last().unwrap();
+        let mut ext_point_rev: Vec<E> = r.iter().rev().copied().collect();
+        ext_point_rev.push(r_prime);
+        let eq_ext = make_eq_table_lsb_first::<E>(&ext_point_rev, &worker);
         assert_eq!(eq_ext.len(), 2 * size);
-        let naive = evaluate_with_precomputed_eq::<F, E>(&p_evals, eq_ext);
+        let naive = evaluate_with_precomputed_eq::<F, E>(&p_evals, &eq_ext);
 
         assert_eq!(
             merged, naive,

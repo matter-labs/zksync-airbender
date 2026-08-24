@@ -103,7 +103,7 @@ where
 {
     let previous_round_challenges = random_poly_in_ext(folding_steps);
 
-    let eq_precomputed = make_eq_poly_in_full_serial::<E>(&previous_round_challenges);
+    let eq_precomputed = make_eq_poly_in_full_lsb_serial::<E>(&previous_round_challenges);
     let eq_last = eq_precomputed.last().unwrap();
 
     // Compute claim as sum over all outputs
@@ -119,7 +119,7 @@ where
 
     // Compute expected random evaluations
     let folding_challenges: Vec<E> = random_poly_in_ext(folding_steps);
-    let eq_for_evals = make_eq_poly_in_full_serial::<E>(&folding_challenges);
+    let eq_for_evals = make_eq_poly_in_full_lsb_serial::<E>(&folding_challenges);
 
     let mut expected = BTreeMap::new();
     for (addr, poly) in input_polys {
@@ -276,7 +276,7 @@ pub(super) fn run_sumcheck_test<
     let mut claim = initial_claim;
     let batch_challenges = vec![E::from_base(F::ONE); kernel.num_challenges()];
     let mut folding_challenges = vec![];
-    let eq_reduced_precomputed = make_eq_poly_reduced::<E>(previous_round_challenges, &worker);
+    let eq_reduced_precomputed = make_eq_poly_reduced_lsb::<E>(previous_round_challenges, &worker);
     let eq_reduced_len = eq_reduced_precomputed.len();
     let mut last_evaluations = BTreeMap::new();
     let mut last_eq_poly_prefactor_contribution = E::ONE;

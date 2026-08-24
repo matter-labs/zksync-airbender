@@ -12,13 +12,14 @@ namespace airbender::gkr {
 template <typename E>
 DEVICE_FORCEINLINE void gkr_pairwise_round0_accumulate(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *bc,
                                                        const unsigned gid, E &acc0, E &acc1) {
-  const unsigned even_index = gid * 2;
+  const unsigned even_index = gid * GKR_DIM_REDUCING_ROW_SPAN;
   const unsigned odd_index = even_index + 1;
+  const unsigned output_index = gid * GKR_DIM_REDUCING_PAIR_STRIDE;
 
 #pragma unroll
   for (unsigned t = 0; t < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT; ++t) {
     // Round 0 reads the forward tower's own output as the value at t = 0.
-    const E output_value = gkr_get_initial_value(outputs[t], gid);
+    const E output_value = gkr_get_initial_value(outputs[t], output_index);
     const E delta_even = gkr_get_initial_delta(inputs[t], even_index);
     const E delta_odd = gkr_get_initial_delta(inputs[t], odd_index);
 
@@ -30,11 +31,12 @@ DEVICE_FORCEINLINE void gkr_pairwise_round0_accumulate(const gkr_ext_initial_sou
 template <typename E>
 DEVICE_FORCEINLINE void gkr_lookup_round0_accumulate(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *bc,
                                                      const unsigned gid, E &acc0, E &acc1) {
-  const unsigned even_index = gid * 2;
+  const unsigned even_index = gid * GKR_DIM_REDUCING_ROW_SPAN;
   const unsigned odd_index = even_index + 1;
+  const unsigned output_index = gid * GKR_DIM_REDUCING_PAIR_STRIDE;
 
-  const E output_num = gkr_get_initial_value(outputs[0], gid);
-  const E output_den = gkr_get_initial_value(outputs[1], gid);
+  const E output_num = gkr_get_initial_value(outputs[0], output_index);
+  const E output_den = gkr_get_initial_value(outputs[1], output_index);
 
   const E a = gkr_get_initial_delta(inputs[0], even_index);
   const E b = gkr_get_initial_delta(inputs[1], even_index);
@@ -53,7 +55,7 @@ DEVICE_FORCEINLINE void gkr_pairwise_continuation_accumulate(const gkr_ext_conti
                                                              const unsigned gid, E &acc0, E &acc1) {
   const E current_folding_challenge = folding_challenge[0];
 
-  const unsigned even_index = gid * 2;
+  const unsigned even_index = gid * GKR_DIM_REDUCING_ROW_SPAN;
   const unsigned odd_index = even_index + 1;
 
 #pragma unroll
@@ -76,7 +78,7 @@ DEVICE_FORCEINLINE void gkr_lookup_continuation_accumulate(const gkr_ext_continu
                                                            const unsigned gid, E &acc0, E &acc1) {
   const E current_folding_challenge = folding_challenge[0];
 
-  const unsigned even_index = gid * 2;
+  const unsigned even_index = gid * GKR_DIM_REDUCING_ROW_SPAN;
   const unsigned odd_index = even_index + 1;
 
   E a0;
@@ -187,10 +189,8 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
   store<E, st_modifier::cs>(batch.output, value, gid);
 }
 
-// Round-0 inputs have `next_layer_size = 2 * acc_size`; output reads ignore it.
 template <typename E>
-DEVICE_FORCEINLINE gkr_ext_initial_source<E> gkr_resolve_dim_reducing_initial_source(const gkr_dim_reducing_tables &tables, const gkr_source_record record,
-                                                                                     const unsigned acc_size) {
+DEVICE_FORCEINLINE gkr_ext_initial_source<E> gkr_resolve_dim_reducing_initial_source(const gkr_dim_reducing_tables &tables, const gkr_source_record record) {
   bool first_access;
   u32 ptr_idx;
   u32 poly_idx;
@@ -198,7 +198,7 @@ DEVICE_FORCEINLINE gkr_ext_initial_source<E> gkr_resolve_dim_reducing_initial_so
   const E *base_e = reinterpret_cast<const E *>(tables.bases[ptr_idx]);
   const u32 log2_stride = tables.log2_stride[ptr_idx];
   const E *start = base_e + (static_cast<size_t>(poly_idx) << log2_stride);
-  return gkr_ext_initial_source<E>{start, 2u * acc_size};
+  return gkr_ext_initial_source<E>{start};
 }
 
 // Loads a slot's 2 batch challenges from the __constant__ table.
@@ -230,10 +230,10 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched_co
     gkr_ext_initial_source<E> outputs[GKR_DIM_REDUCING_OUTPUTS_PER_SLOT];
 #pragma unroll
     for (unsigned k = 0; k < GKR_DIM_REDUCING_INPUTS_PER_SLOT; ++k)
-      inputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, desc.io[k], acc_size);
+      inputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, desc.io[k]);
 #pragma unroll
     for (unsigned k = 0; k < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT; ++k)
-      outputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, desc.io[GKR_DIM_REDUCING_INPUTS_PER_SLOT + k], acc_size);
+      outputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, desc.io[GKR_DIM_REDUCING_INPUTS_PER_SLOT + k]);
 
     if ((GKR_DIM_REDUCING_PAIRWISE_SLOT_MASK >> slot) & 1u)
       gkr_pairwise_round0_accumulate<E>(inputs, outputs, bc, gid, total0, total1);
@@ -251,12 +251,11 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched_co
 // fold is written to. Both resolve through the same pointer table, so one kernel
 // serves every step past 0; only the host encoder distinguishes the two cases.
 //
-// `this_layer_size` is the f0/f1 stride within the source span
-// (trace_len_after_reduction >> (step - 1) = 4 * acc_size); `next_layer_size` is
-// the produced fold's stride, half of it.
+// Source and cache spans never overlap: the host allocates a fresh destination arena per step. `gkr_dim_reducing_ancestor_index` maps a cache index to its
+// source pair.
 template <typename E>
 DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continuation_source(const gkr_dim_reducing_tables &tables,
-                                                                                             const gkr_source_record record, const unsigned acc_size) {
+                                                                                             const gkr_source_record record) {
   bool first_access;
   u32 ptr_idx;
   u32 poly_idx;
@@ -270,7 +269,7 @@ DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continu
   E *cache_base = reinterpret_cast<E *>(const_cast<u8 *>(tables.bases[cache_slot]));
   const u32 cache_log2_stride = tables.log2_stride[cache_slot];
   E *cache_start = cache_base + (static_cast<size_t>(cache_poly_idx) << cache_log2_stride);
-  return gkr_ext_continuing_source<E>{source_start, cache_start, 4u * acc_size, 2u * acc_size, first_access};
+  return gkr_ext_continuing_source<E>{source_start, cache_start, first_access};
 }
 
 template <typename E>
@@ -298,7 +297,7 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(cons
     gkr_ext_continuing_source<E> inputs[GKR_DIM_REDUCING_INPUTS_PER_SLOT];
 #pragma unroll
     for (unsigned k = 0; k < GKR_DIM_REDUCING_INPUTS_PER_SLOT; ++k)
-      inputs[k] = gkr_resolve_dim_reducing_continuation_source<E>(batch.tables, desc.io[k], acc_size);
+      inputs[k] = gkr_resolve_dim_reducing_continuation_source<E>(batch.tables, desc.io[k]);
 
     if ((GKR_DIM_REDUCING_PAIRWISE_SLOT_MASK >> slot) & 1u)
       gkr_pairwise_continuation_accumulate<E>(inputs, folding_challenge, bc, gid, total0, total1);

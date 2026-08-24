@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, PrimeField};
+use field::baby_bear::base::BabyBearField;
+use field::baby_bear::ext4::BabyBearExt4;
+use field::{Field, FieldExtension, PrimeField};
 use worker::Worker;
 
 use super::utils::*;
@@ -15,8 +17,8 @@ use crate::gkr::sumcheck::{
     output_univariate_monomial_form_max_quadratic,
 };
 
-type F = Mersenne31Field;
-type E = Mersenne31Quartic;
+type F = BabyBearField;
+type E = BabyBearExt4;
 
 #[test]
 fn test_batched_kernels() {
@@ -111,7 +113,7 @@ fn test_batched_kernels() {
     // Compute combined claim
     let prev_challenges: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
     let folding_challenges_precomputed: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
-    let eq_precomputed = make_eq_poly_in_full_serial::<E>(&prev_challenges);
+    let eq_precomputed = make_eq_poly_in_full_lsb_serial::<E>(&prev_challenges);
     let eq_last = eq_precomputed.last().unwrap();
 
     let output_polys = [&copy_output, &product_output, &lookup_num, &lookup_den];
@@ -128,7 +130,7 @@ fn test_batched_kernels() {
     let worker = Worker::new_with_num_threads(1);
     let mut claim = combined_claim;
     let mut folding_challenges = vec![];
-    let eq_reduced = make_eq_poly_reduced::<E>(&prev_challenges, &worker);
+    let eq_reduced = make_eq_poly_reduced_lsb::<E>(&prev_challenges, &worker);
     let mut last_evaluations = BTreeMap::new();
     let mut eq_prefactor = E::ONE;
 
@@ -217,7 +219,7 @@ fn test_batched_kernels() {
             assert_eq!(claim, recomputed, "Final claim verification failed");
 
             // Verify final evaluations
-            let eq_for_evals = make_eq_poly_in_full::<E>(
+            let eq_for_evals = make_eq_poly_in_full_lsb::<E>(
                 &[&folding_challenges[..], &[folding_challenge]].concat(),
                 &worker,
             );

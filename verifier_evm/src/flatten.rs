@@ -49,7 +49,7 @@ fn dim_reduce_blob(proof: &Proof) -> Vec<u8> {
     for &layer in dim_layers.iter().rev() {
         let siv = &proof.sumcheck_intermediate_values[&layer];
         for c in siv.internal_round_coefficients.iter() {
-            for e in c.iter() {
+            for e in c.as_multilinear().iter() {
                 blob.extend_from_slice(&be16(*e));
             }
         }
@@ -74,7 +74,7 @@ fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
     for config_idx in (0..num_standard_layers).rev() {
         let siv = &proof.sumcheck_intermediate_values[&config_idx];
         for c in siv.internal_round_coefficients.iter() {
-            for e in c.iter() {
+            for e in c.as_multilinear().iter() {
                 blob.extend_from_slice(&be16(*e));
             }
         }

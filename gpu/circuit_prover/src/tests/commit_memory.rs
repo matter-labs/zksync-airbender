@@ -345,14 +345,14 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let non_memory_circuit_type =
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type));
     let prover_config =
-        crate::config::prover_config(non_memory_circuit_type, SecurityLevel::Sec80).unwrap();
+        crate::config::prover_config(non_memory_circuit_type, SecurityLevel::Sec100).unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let mem_inputs: Vec<_> = cpu_memory_trace
         .column_major_trace
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor>(
+    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor, _>(
         &NaiveBackend,
         &mem_inputs,
         &twiddles,
@@ -539,14 +539,14 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let memory_circuit_type_value =
         CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type));
     let prover_config =
-        crate::config::prover_config(memory_circuit_type_value, SecurityLevel::Sec80).unwrap();
+        crate::config::prover_config(memory_circuit_type_value, SecurityLevel::Sec100).unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let mem_inputs: Vec<_> = cpu_memory_trace
         .column_major_trace
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor>(
+    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor, _>(
         &NaiveBackend,
         &mem_inputs,
         &twiddles,
@@ -646,7 +646,7 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor>(
+    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor, _>(
         &NaiveBackend,
         &mem_inputs,
         &twiddles,

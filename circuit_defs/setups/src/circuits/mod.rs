@@ -142,7 +142,6 @@ pub fn dump_delegation_setups_for_verifier(use_caches: bool, security_level: Sec
     };
 
     let suffix = match security_level {
-        SecurityLevel::Sec80 => "80",
         SecurityLevel::Sec100 => "100",
     };
 
@@ -172,7 +171,6 @@ mod test {
     fn generate_delegation_circuits_artifacts() {
         skip_if_ci!();
 
-        dump_delegation_setups_for_verifier(true, SecurityLevel::Sec80);
         dump_delegation_setups_for_verifier(true, SecurityLevel::Sec100);
     }
 }

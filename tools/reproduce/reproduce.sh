@@ -22,13 +22,13 @@ docker create --name verifiers airbender-verifiers
 # blake2_g_function, and special_opcodes_extension), at both 80- and 100-bit
 # security levels.
 STEMS=(
-    fsv_unrolled_base_layer_sec_80_blake2_with_compression
     fsv_unrolled_base_layer_sec_100_blake2_with_compression
-    fsv_unrolled_recursion_layer_sec_80_blake2_with_compression
+    fsv_unrolled_base_layer_sec_100_blake2_with_compression
     fsv_unrolled_recursion_layer_sec_100_blake2_with_compression
-    fsv_unified_recursion_layer_sec_80_blake2_with_compression
-    fsv_unified_recursion_layer_sec_80_blake2_g_function
-    fsv_unified_recursion_layer_sec_80_special_opcodes_extension
+    fsv_unrolled_recursion_layer_sec_100_blake2_with_compression
+    fsv_unified_recursion_layer_sec_100_blake2_with_compression
+    fsv_unified_recursion_layer_sec_100_blake2_g_function
+    fsv_unified_recursion_layer_sec_100_special_opcodes_extension
     fsv_unified_recursion_layer_sec_100_blake2_with_compression
     fsv_unified_recursion_layer_sec_100_blake2_g_function
     fsv_unified_recursion_layer_sec_100_special_opcodes_extension

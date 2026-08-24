@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic};
+use field::baby_bear::base::BabyBearField;
+use field::baby_bear::ext4::BabyBearExt4;
+use field::{Field, FieldExtension};
 use worker::Worker;
 
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
@@ -17,8 +19,8 @@ use super::*;
 
 #[test]
 fn test_quadratic_constraint_with_constant() {
-    type F = Mersenne31Field;
-    type E = Mersenne31Quartic;
+    type F = BabyBearField;
+    type E = BabyBearExt4;
 
     const FOLDING_STEPS: usize = 5;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
@@ -92,7 +94,7 @@ fn test_quadratic_constraint_with_constant() {
         .collect();
     // dbg!(&previous_round_challenges);
 
-    let eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges, &worker);
+    let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&previous_round_challenges, &worker);
     // dbg!(&eq_precomputed);
 
     let batching_challenges = vec![E::from_base(F::from_u32_with_reduction(42))];
@@ -103,7 +105,7 @@ fn test_quadratic_constraint_with_constant() {
 
     let mut folding_challenges = vec![];
 
-    let eq_reduced_precomputed = make_eq_poly_reduced::<E>(&previous_round_challenges, &worker);
+    let eq_reduced_precomputed = make_eq_poly_reduced_lsb::<E>(&previous_round_challenges, &worker);
     // dbg!(&eq_reduced_precomputed);
     let eq_reduced_len = eq_reduced_precomputed.len();
 
@@ -227,7 +229,7 @@ fn test_quadratic_constraint_with_constant() {
             folding_challenges.push(folding_challenge);
             // derive new claims
 
-            let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges, &worker);
+            let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&folding_challenges, &worker);
             for poly in [GKRAddress::BaseLayerMemory(0)] {
                 let evals = &storage.layers[0]
                     .base_field_inputs

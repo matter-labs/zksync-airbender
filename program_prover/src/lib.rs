@@ -6,6 +6,7 @@ pub use ::prover;
 pub use ::setups;
 
 pub mod unified;
+pub mod unified_transition;
 pub mod unrolled;
 
 const DUMP_WITNESS_VAR: &str = "DUMP_WITNESS";

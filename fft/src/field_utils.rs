@@ -86,8 +86,11 @@ pub fn materialize_powers_serial_starting_with_elem<F: Field, A: GoodAllocator>(
 }
 
 pub fn domain_generator_for_size<F: TwoAdicField>(size: u64) -> F {
-    debug_assert!(size.is_power_of_two());
-    debug_assert!(size.trailing_zeros() as usize <= F::TWO_ADICITY);
+    // Hard asserts: a domain beyond the field's two-adicity silently yields a
+    // wrong-order generator in release builds otherwise (caught the invalid
+    // 2^29 BabyBear oracle domain of an over-aggressive WHIR ladder).
+    assert!(size.is_power_of_two());
+    assert!(size.trailing_zeros() as usize <= F::TWO_ADICITY);
 
     let mut omega = F::two_adic_generator();
     let mut t = omega;

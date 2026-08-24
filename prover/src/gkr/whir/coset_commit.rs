@@ -179,7 +179,10 @@ where
             let col = input_on_hypercube[i];
             assert_eq!(col.len(), 1usize << trace_len_log2);
             let mut v = col.to_vec();
-            bitreverse_enumeration_inplace(&mut v);
+            // LSB/natural convention: multilinear variable b <-> univariate
+            // exponent bit b, so the coefficients come straight from the
+            // transform (the old pre-bitreverse encoded the reversed
+            // variable labeling)
             multivariate_hypercube_evals_into_coeffs(&mut v, trace_len_log2 as u32);
             v
         });
@@ -563,9 +566,7 @@ struct ExtCommonCtx<F: PrimeField + TwoAdicField> {
 
 impl<F: PrimeField + TwoAdicField> ExtCommonCtx<F> {
     fn new(trace_len: usize, lde_factor: usize, values_per_leaf: usize) -> Self {
-        let next_root = domain_generator_for_size::<F>((trace_len * lde_factor) as u64);
-        let root_powers =
-            materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
+        let root_powers = crate::gkr::prover::backend::coset_offsets::<F>(trace_len, lde_factor);
         Self {
             root_powers,
             values_per_leaf,
@@ -1055,7 +1056,7 @@ mod test {
         let twiddles = Twiddles::<Proth120, Global>::new(1usize << packed_trace_len_log2, &worker);
 
         let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> =
-            commit_trace_part_packed::<Proth120, Proth120, Tree>(
+            commit_trace_part_packed::<Proth120, Proth120, Tree, _>(
                 &crate::gkr::prover::backend::NaiveBackend,
                 &col_refs,
                 &twiddles,
@@ -1157,7 +1158,7 @@ mod test {
         let twiddles = Twiddles::<Proth120, Global>::new(trace_len, &worker);
 
         let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> =
-            commit_trace_part::<Proth120, Proth120, Tree>(
+            commit_trace_part::<Proth120, Proth120, Tree, _>(
                 &crate::gkr::prover::backend::NaiveBackend,
                 &col_refs,
                 &twiddles,
@@ -1255,6 +1256,7 @@ mod test {
                 Proth120,
                 Proth120,
                 Tree,
+                _,
             >(
                 &crate::gkr::prover::backend::NaiveBackend,
                 &col_refs,

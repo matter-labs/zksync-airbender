@@ -58,9 +58,14 @@ rather than letting the duplicate drift by convention.
 - **Archive / `links` key**: `gpu_whir_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_whir_native", "GPU_WHIR").build()`
   — no `export_include`; nothing above this crate includes its headers).
-- **Kernel count**: 25 `__global__` kernels (verified by grep, across
-  `whir/{accumulate_eq,columns,fold,leaves}.cu`). No `__constant__` symbols
-  (all 8 cluster-wide ones live in `gpu_gkr`).
+- **Kernel count**: 25 `__global__` kernels — `accumulate_eq.cu` 4,
+  `columns.cu` 3, `fold.cu` 9, `leaves.cu` 9. Count with
+  `rg -c '__global__' gpu/whir/native/whir/*.cu`, or equivalently
+  `rg -o 'ab_[a-z0-9_]*_kernel' gpu/whir/native/whir/*.cu | sort -u | wc -l`.
+  Never count `__global__ void`: five of `leaves.cu`'s nine kernels are spelled
+  `EXTERN __launch_bounds__(…) __global__` with the `void` on the next line, so
+  that grep reports 20 and is how this absolute number drifted before. No
+  `__constant__` symbols (all 8 cluster-wide ones live in `gpu_gkr`).
 - **Namespace**: `airbender::whir`.
 - **Header relationships**: `accumulate_eq.cu` includes `gpu_gkr`'s
   `gkr/support/{eq_inline,kernel_helpers}.cuh` via

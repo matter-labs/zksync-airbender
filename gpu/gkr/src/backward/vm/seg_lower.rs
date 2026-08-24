@@ -1118,7 +1118,7 @@ fn check_alias(
     publishes: &[bool],
     rows: usize,
 ) -> Result<(), BwdSegLowerError> {
-    // Per-column write extent: both endpoint halves, as E4. Read extent: the
+    // Per-column write extent: both endpoints, as E4. Read extent: the
     // pair total at the window's delta, in the backing's own width — the same
     // count `lower_window`'s span guard bounded against the backing.
     let publish_extent = 2 * rows * E4_COLUMN_BYTES as usize;

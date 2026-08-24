@@ -861,7 +861,7 @@ mod tests {
     use std::path::Path;
     use std::sync::Arc;
 
-    use gpu_core::primitives::field::{BF, E4};
+    use gpu_core::primitives::field::BF;
     use gpu_gkr_compiler::{
         ForwardDstLine as DstLine, ForwardInstr as Instr, ForwardLdcSub as LdcSub,
         ForwardOperandField as OperandField, ForwardOperandLine as OperandLine,
@@ -1176,9 +1176,13 @@ mod tests {
                 .find_map(|(candidate, column)| (*candidate == address).then_some(*column))
         };
         let header = FwdVmInputs {
-            mapping_arena: [1 as *const u32, 2 as *const u32, 3 as *const u32],
+            mapping_arena: [
+                std::ptr::without_provenance(1),
+                std::ptr::without_provenance(2),
+                std::ptr::without_provenance(3),
+            ],
             decoder_mapping_col: Some(0),
-            table: 4 as *const E4,
+            table: std::ptr::without_provenance(4),
             table_len: 16,
             count: 16,
             inits_and_teardowns_top_bits: &[0; 32],

@@ -170,7 +170,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
     let security_level = configuration.security_level;
 
     let (cpu_proof, cpu_setups) =
-        program_prover::unified::prove_unified_execution_with_replayer::<std::alloc::Global>(
+        program_prover::unified::prove_unified_execution_with_replayer::<std::alloc::Global, _, _>(
             1 << 31,
             &padded_binary_image,
             &padded_text_section,
@@ -180,6 +180,8 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
             &worker,
             security_level,
             0,
+            &prover::gkr::prover::DefaultBabyBearBackend::default(),
+            &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
         );
     log::info!("CPU reference proved (internal closure passed); verifying natively");
     let cpu_output = crate::upstream::native_verify_unified(
@@ -289,6 +291,8 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     let (cpu_proof, cpu_setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
         riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
         std::alloc::Global,
+        _,
+        _,
     >(
         1 << 31,
         &padded_binary_image,
@@ -297,8 +301,10 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         QuasiUARTSource::new_with_reads(vec![100, 5]),
         1 << 30,
         &worker,
-        crate::upstream::SecurityLevel::Sec80,
-        0,
+        crate::upstream::SecurityLevel::Sec100,
+        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+        &prover::gkr::prover::DefaultBabyBearBackend::default(),
+        &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
     );
     log::info!("CPU reference proved; verifying natively");
     let cpu_output = crate::upstream::native_verify_unrolled(
@@ -503,12 +509,12 @@ fn test_program_prover_recursion_layer_verify() {
     // Stage 2: prove the fsv base-layer verifier over the base proof's stream.
     let (_, fsv_binary) = read_binary(
         &artifact_root()
-            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_80_blake2_with_compression.bin"),
+            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.bin"),
     );
-    let (_, fsv_text) = read_binary(
-        &artifact_root()
-            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_80_blake2_with_compression.text"),
-    );
+    let (_, fsv_text) =
+        read_binary(&artifact_root().join(
+            "tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.text",
+        ));
     let stream = build_unrolled_stream(&base_setups, &base_proof);
     let (mut recursion_proof, recursion_setups) = prove_on_gpu(
         &mut prover,

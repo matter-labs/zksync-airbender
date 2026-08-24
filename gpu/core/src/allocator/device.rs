@@ -24,6 +24,10 @@ impl DerefMut for StaticDeviceAllocationBackend {
 }
 
 impl StaticAllocationBackend for StaticDeviceAllocationBackend {
+    fn nvtx_mem_heap_name() -> Option<&'static str> {
+        Some("ab.pool.device")
+    }
+
     fn as_non_null(&mut self) -> NonNull<u8> {
         // SAFETY: `DeviceAllocation::as_mut_ptr` returns a non-null device
         // pointer (cudaMalloc-backed; null would have failed allocation).

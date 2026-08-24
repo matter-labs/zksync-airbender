@@ -390,12 +390,15 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
             state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
         ) -> Result<(), E::Error> {
             unsafe {
+                // The claim point is in plain VARIABLE order (LSB binding):
+                // coordinate `k` is index bit `k`, matching the prover's
+                // `evaluate_virtual_range_check_setup_poly`.
                 let pt = state.prev_point.get_unchecked(..#n);
                 let mut result: #quartic_struct = #quartic_zero;
                 let mut prefactor: #field_struct = #field_one;
                 let mut k: usize = 0;
                 while k < #bits {
-                    let mut t = *pt.get_unchecked(#n - 1 - k);
+                    let mut t = *pt.get_unchecked(k);
                     #mul_t_pre;
                     #add_res_t;
                     #dbl_pre;
@@ -403,7 +406,7 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
                 }
                 while k < #n {
                     let mut t: #quartic_struct = #quartic_one;
-                    let p = pt.get_unchecked(#n - 1 - k);
+                    let p = pt.get_unchecked(k);
                     #sub_t_p;
                     #mul_res_t;
                     k += 1;
@@ -455,6 +458,9 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
             state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
         ) -> Result<(), E::Error> {
             unsafe {
+                // The claim point is in plain VARIABLE order (LSB binding):
+                // coordinate `k` is index bit `k`, matching the prover's
+                // `evaluate_virtual_inits_and_teardowns_base_address_setup_polys`.
                 let pt = state.prev_point.get_unchecked(..#n);
 
                 let mut low_eval: #quartic_struct = #quartic_zero;
@@ -467,7 +473,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
                     }
                     let mut k: usize = 0;
                     while k < #take_count {
-                        let mut t = *pt.get_unchecked(#n - 1 - k);
+                        let mut t = *pt.get_unchecked(k);
                         #mul_t_pre;
                         #add_low_t;
                         #dbl_pre;
@@ -480,7 +486,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
                     let mut prefactor: #field_struct = #field_one;
                     let mut k: usize = 0;
                     while k < #n - #take_count {
-                        let mut t = *pt.get_unchecked(#n - 1 - #take_count - k);
+                        let mut t = *pt.get_unchecked(#take_count + k);
                         #mul_t_pre;
                         #add_high_t;
                         #dbl_pre;
@@ -1064,6 +1070,43 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
     security_bits: u32,
 ) -> GKRGeneratedFiles {
+    generate_gkr_inlined_for_commitment_mode::<MW>(
+        compiled_circuit,
+        sumcheck_output_size_log_2,
+        whir_schedule,
+        security_bits,
+        &prover::gkr::prover::CommitmentMode::SeparateMemoryAndWitness,
+    )
+}
+
+/// [`generate_gkr_inlined`] with an explicit base [`CommitmentMode`].
+///
+/// `SeparateMemoryAndWitness` (the default of every pre-existing entry) emits
+/// the historical two-tree verifier. `MergedMemoryAndWitness` emits a verifier
+/// for the single merged base tree: the witness columns are treated as living
+/// in the memory subtree at the positions AFTER the memory columns — which is
+/// exactly the prover's merged committer layout (memory columns chained with
+/// witness columns), and also exactly the layer-0 claim layout the GKR side
+/// already uses ([mem 0..M][wit 0..W][setup ...]), so only the oracle/cap view
+/// changes: one Memory oracle of `mem + wit` columns, no Witness commitment.
+/// The packed mode has no generated verifier (the EVM generator serves it).
+///
+/// [`CommitmentMode`]: prover::gkr::prover::CommitmentMode
+pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
+    compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
+    sumcheck_output_size_log_2: usize,
+    whir_schedule: &WhirSchedule,
+    security_bits: u32,
+    commitment_mode: &prover::gkr::prover::CommitmentMode,
+) -> GKRGeneratedFiles {
+    use prover::gkr::prover::CommitmentMode;
+    let merged_base_commitment = match commitment_mode {
+        CommitmentMode::SeparateMemoryAndWitness => false,
+        CommitmentMode::MergedMemoryAndWitness => true,
+        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
+            unimplemented!("no generated CPU verifier for the packed base commitment")
+        }
+    };
     let num_standard_layers = compiled_circuit.layers.len();
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
@@ -1202,8 +1245,19 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
     let max_evals = total_output_polys * (1usize << sumcheck_output_size_log_2);
 
-    let num_memory_commits = (compiled_circuit.memory_layout.total_width > 0) as usize;
-    let num_witness_commits = (compiled_circuit.witness_layout.total_width > 0) as usize;
+    // In merged mode the witness columns live in the memory subtree (after the
+    // memory columns), so there is a single base commitment and no witness cap.
+    let num_memory_commits = if merged_base_commitment {
+        ((compiled_circuit.memory_layout.total_width + compiled_circuit.witness_layout.total_width)
+            > 0) as usize
+    } else {
+        (compiled_circuit.memory_layout.total_width > 0) as usize
+    };
+    let num_witness_commits = if merged_base_commitment {
+        0
+    } else {
+        (compiled_circuit.witness_layout.total_width > 0) as usize
+    };
     let num_setup_commits = (compiled_circuit.generic_lookup_tables_width > 0) as usize;
 
     let num_challenges = sumcheck_output_size_log_2 + BATCHING_CHALLENGE_EXTRA;
@@ -1405,7 +1459,17 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
                 let r_last = *draw_buf.get(0);
                 let next_batching = *draw_buf.get(1);
-                *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+                // `r_last` binds bit 0 of the NEXT layer's enumeration, so the new claim
+                // point is `[r_last, r_0, .., r_{n-1}]` in plain variable order: shift the
+                // round challenges up by one and prepend.
+                {
+                    let mut i = fc_len;
+                    while i > 0 {
+                        *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                        i -= 1;
+                    }
+                    *state.prev_point.get_unchecked_mut(0) = r_last;
+                }
                 fc_len += 1;
                 const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
                 const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
@@ -1982,8 +2046,16 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
     let mut oracles = BTreeMap::new();
     {
-        // memory
-        let num_columns = compiled_circuit.memory_layout.total_width;
+        // memory — in merged mode this single oracle also carries the witness
+        // columns, placed AFTER the memory columns (the merged committer
+        // chains `column_major_memory_trace` with `column_major_witness_trace`,
+        // matching the [mem][wit][setup] layer-0 claim layout, so the gamma
+        // batching offsets are unchanged relative to the separate mode).
+        let num_columns = if merged_base_commitment {
+            compiled_circuit.memory_layout.total_width + compiled_circuit.witness_layout.total_width
+        } else {
+            compiled_circuit.memory_layout.total_width
+        };
         if num_columns > 0 {
             let info = OracleInfo {
                 num_columns,
@@ -1993,8 +2065,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             oracles.insert(OracleType::Memory, info);
         }
 
-        // witness
-        let num_columns = compiled_circuit.witness_layout.total_width;
+        // witness (separate mode only)
+        let num_columns = if merged_base_commitment {
+            0
+        } else {
+            compiled_circuit.witness_layout.total_width
+        };
         if num_columns > 0 {
             let info = OracleInfo {
                 num_columns,

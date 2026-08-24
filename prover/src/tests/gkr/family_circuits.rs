@@ -35,13 +35,6 @@ const PROVE_EMPTY: bool = true;
 pub use crate::definitions::SecurityLevel;
 
 #[test]
-#[ignore = "production-scale 2^24 proof; run explicitly"]
-fn gkr_run_basic_unrolled_test_sec_80() {
-    gkr_run_basic_unrolled_test_impl(SecurityLevel::Sec80, None, None);
-}
-
-#[test]
-#[ignore = "production-scale 2^24 proof; run explicitly"]
 fn gkr_run_basic_unrolled_test_sec_100() {
     gkr_run_basic_unrolled_test_impl(SecurityLevel::Sec100, None, None);
 }
@@ -814,7 +807,7 @@ fn add_sub_mop_real_program_check_satisfied() {
         full_trace,
         trace_len,
         &super::orchestration::common::hardcoded_external_challenges(),
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &worker,
     );
 
@@ -909,13 +902,13 @@ fn add_sub_family_bench_in_memory() {
         full_trace,
         trace_len,
         &super::orchestration::common::hardcoded_external_challenges(),
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &worker,
     );
     std::hint::black_box(&proof);
 }
 
-/// Short single-family variant of [`gkr_run_basic_unrolled_test_sec_80`]: prove ONLY
+/// Short single-family variant of [`gkr_run_basic_unrolled_test_sec_100`]: prove ONLY
 /// the add/sub/lui/auipc/mop family circuit, but prove it twice under different
 /// RS-codeword storage policies ([`RsCodewordSource::InMemory`] vs
 /// [`RsCodewordSource::Recompute`]) and assert the two proofs are byte-identical.
@@ -998,7 +991,7 @@ fn add_sub_family_rs_codeword_source_parity() {
             full_trace.clone(),
             trace_len,
             &external_challenges,
-            SecurityLevel::Sec80,
+            SecurityLevel::Sec100,
             storage,
             &worker,
         )
@@ -1109,7 +1102,7 @@ fn add_sub_family_on_disk_setup() {
         full_trace.clone(),
         trace_len,
         &external_challenges,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &disk_prefix,
         &worker,
     );
@@ -1123,7 +1116,7 @@ fn add_sub_family_on_disk_setup() {
         full_trace,
         trace_len,
         &external_challenges,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &worker,
     );
 

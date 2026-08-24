@@ -25,7 +25,7 @@ pub const GKR_EQ_HIGH_SLOTS: usize = 2;
 /// widths for the strict 3-slot eq layout `[high[0], high[1], low]`. Field
 /// types and layout MUST match the CUDA side (`unsigned high[2]; unsigned low`).
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct GkrEqSizes {
     pub(crate) high: [u32; GKR_EQ_HIGH_SLOTS],
     pub(crate) low: u32,

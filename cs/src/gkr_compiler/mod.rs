@@ -912,6 +912,9 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
             Self::EnforceConstraintsMaxQuadratic { input } => {
                 // nothing
             }
+            Self::EnforceSingleMaxQuadraticConstraint { .. } => {
+                // nothing
+            }
             Self::CopyInBaseField { output, .. } | Self::CopyInExtensionField { output, .. } => {
                 result.insert(*output);
             }
