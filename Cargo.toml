@@ -195,7 +195,6 @@ object = "0.37"
 rand = { version = "0.9", default-features = false }
 unroll = "0.1"
 seq-macro = "0.3"
-super-seq-macro = "0.3"
 arrayvec = { version = "0.7", default-features = false }
 itertools = { version = "0.14" }
 inferno = "0.12"
