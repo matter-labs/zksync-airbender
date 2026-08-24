@@ -37,6 +37,7 @@ use crate::backward::vm::seg_lower::zeroed_box;
 use crate::backward::GkrEqSizes;
 use crate::forward::vm::lower::read_place_to_gkr_address;
 use crate::forward::vm::production_bind::resolve_storage_column;
+use crate::upstream::PrimeField;
 use crate::GpuGKRStorage;
 
 pub(crate) use super::abi::MainContinuationWindowDesc as MainContinuationWindowLaunchBinding;
@@ -606,6 +607,12 @@ fn prior_input_lanes(
     Ok((lanes, folds))
 }
 
+fn encode_main_continuation_immediate_prefix(canonical: &[u32], destination: &mut [u32]) {
+    for (encoded, &value) in destination[..canonical.len()].iter_mut().zip(canonical) {
+        *encoded = BF::from_u32_with_reduction(value).as_u32_raw_repr_reduced();
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn assemble_launch<'input>(
     program: &MainContinuationWindowProgram,
@@ -723,7 +730,7 @@ fn assemble_launch<'input>(
     binding.c_init_coeff = program
         .c_init
         .map_or(BWD_SEG_C_INIT_NONE, |coefficient| coefficient.0);
-    binding.immediates[..program.immediates.len()].copy_from_slice(&program.immediates);
+    encode_main_continuation_immediate_prefix(&program.immediates, &mut binding.immediates);
     binding.eq_low = scratch.eq_low;
     binding.partials = scratch.partials;
     binding.row_tiles =
@@ -1014,6 +1021,43 @@ mod cpu_main_continuation_binding {
             masks,
             BTreeSet::from([0x00, 0x01, 0x03, 0x07, 0x13, 0x17, 0x1f])
         );
+    }
+
+    #[test]
+    fn cpu_main_continuation_immediate_encoding_matches_descriptor_abi() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../cs/compiled_circuits/mem_word_only_layout_gkr.json");
+        let artifact: GKRCircuitArtifact<CpuBf> =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
+        let compiled = compile_continuations(&dag).unwrap();
+        let source = compiled.layers.first().expect("mem_word_only has layer 0");
+        let program = lower_main_continuation_window_program(source).unwrap();
+
+        assert_eq!(program.layer, 0);
+        assert_eq!(program.shape, MainContinuationWindowShape::UNIVERSAL);
+        assert_eq!(program.shape.bits(), 0x1f);
+        assert_eq!(program.shape.bits(), MAIN_CONTINUATION_WINDOW_FALLBACK_MASK);
+        assert_eq!(program.immediates.len(), 6);
+
+        let expected = program
+            .immediates
+            .iter()
+            .map(|&value| BF::from_u32_with_reduction(value).as_u32_raw_repr_reduced())
+            .collect::<Vec<_>>();
+        for (index, (&canonical, &raw)) in program.immediates.iter().zip(&expected).enumerate() {
+            assert_ne!(canonical, raw, "immediate {index}");
+        }
+
+        let mut destination = [0u32; MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY];
+        encode_main_continuation_immediate_prefix(&program.immediates, &mut destination);
+        assert_eq!(
+            &destination[..program.immediates.len()],
+            expected.as_slice()
+        );
+        assert!(destination[program.immediates.len()..]
+            .iter()
+            .all(|&value| value == 0));
     }
 
     #[test]
