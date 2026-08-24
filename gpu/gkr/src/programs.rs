@@ -20,7 +20,7 @@ use gpu_trace::witness::circuit_type::{
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use crate::backward::derive_dimension_reducing_inputs;
+use crate::backward::{derive_dimension_reducing_inputs, window_dr};
 use crate::storage_layout::GpuGKRStorageLayout;
 use crate::transform::normalize_compiled_circuit_for_gpu;
 use crate::upstream::{
@@ -594,6 +594,9 @@ impl GkrPrograms {
                         format!("missing DR output storage layout for layer {}", layer + 1),
                     )
                 })?;
+            window_dr::validate_dr_window_folding_steps(folding_steps).map_err(|error| {
+                DrWindowLoweringRejection::lowering(circuit, layer, error.to_string())
+            })?;
             layers.insert(
                 layer,
                 DrWindowLayerProgram::new(layer, folding_steps, program, input_projection),

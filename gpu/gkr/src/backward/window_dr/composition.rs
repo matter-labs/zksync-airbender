@@ -15,7 +15,31 @@ use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN};
 use crate::upstream::GKRAddress;
 use crate::GpuGKRStorage;
 
-use super::binding::{resolve_storage_e4, DrWindowBindError, DrWindowLaunch};
+use super::binding::{
+    resolve_storage_e4, DrWindowBindError, DrWindowLaunch, DrWindowR0Preparation,
+};
+
+#[derive(Clone, Copy)]
+pub(crate) struct DrWindowPassEqView {
+    pub(crate) eq_low: *const E4,
+    pub(crate) eq_sizes: GkrEqSizes,
+    pub(crate) build_offset: usize,
+}
+
+impl DrWindowPassEqView {
+    pub(crate) fn new(eq_low: *const E4, eq_sizes: GkrEqSizes, build_offset: usize) -> Self {
+        Self {
+            eq_low,
+            eq_sizes,
+            build_offset,
+        }
+    }
+}
+
+// SAFETY: the view is retained only by a layer plan that also owns the
+// allocation, and the pointer is forwarded only to stream-ordered kernels.
+unsafe impl Send for DrWindowPassEqView {}
+unsafe impl Sync for DrWindowPassEqView {}
 
 pub(crate) struct DrWindowPassEqState {
     pub(crate) eq_low: DeviceAllocation<E4>,
@@ -34,6 +58,10 @@ impl DrWindowPassEqState {
             eq_sizes: make_eq_sizes(challenge_count),
             build_offset,
         })
+    }
+
+    pub(crate) fn as_view(&self) -> DrWindowPassEqView {
+        DrWindowPassEqView::new(self.eq_low.as_ptr(), self.eq_sizes, self.build_offset)
     }
 }
 
@@ -116,6 +144,37 @@ impl DrWindowLayerCompositionHook {
             r0_eq,
             raw_inputs,
             partials_capacity,
+        }
+    }
+}
+
+/// Allocation-neutral Task 6 preparation retained for a future complete-chain
+/// launch. The non-owning Eq view borrows the common round scratch; no runtime
+/// partials pointer or launch-ready descriptor is retained here.
+pub(crate) struct DrWindowLayerPreparationHook {
+    pub(crate) r0: DrWindowR0Preparation,
+    pub(crate) continuation_window_count: usize,
+    pub(crate) megakernel_entry_round: usize,
+    pub(crate) r0_eq: DrWindowPassEqView,
+    pub(crate) raw_inputs: DrWindowRawInputKeepalive,
+    pub(crate) required_future_partials_len: usize,
+}
+
+impl DrWindowLayerPreparationHook {
+    pub(crate) fn new(
+        r0: DrWindowR0Preparation,
+        r0_eq: DrWindowPassEqView,
+        raw_inputs: DrWindowRawInputKeepalive,
+    ) -> Self {
+        let folding_steps = r0.folding_steps;
+        let required_future_partials_len = r0.required_future_partials_len;
+        Self {
+            r0,
+            continuation_window_count: continuation_window_count(folding_steps),
+            megakernel_entry_round: megakernel_entry_round(folding_steps),
+            r0_eq,
+            raw_inputs,
+            required_future_partials_len,
         }
     }
 }

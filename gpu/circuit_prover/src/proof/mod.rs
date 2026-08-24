@@ -1,6 +1,8 @@
 pub mod inputs;
 mod orchestration;
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
@@ -22,6 +24,10 @@ use gpu_gkr::{
     MainContinuationWindowLoweringRejection, MainLayerExecutionPlanError, WindowLoweringRejection,
 };
 use gpu_prover_context::ProverContext;
+#[cfg(test)]
+use gpu_prover_context::{
+    DeviceMemoryHighWaterObserver, PoolMemoryHighWaterReport, PoolMemoryHighWaterSnapshot,
+};
 
 pub use orchestration::GpuGKRProofJob;
 use orchestration::{
@@ -52,6 +58,114 @@ pub enum GpuProveError {
     MainLayerExecutionPlan {
         error: MainLayerExecutionPlanError,
     },
+}
+
+#[cfg(test)]
+pub(crate) struct ProofMemoryHighWaterResult {
+    pub(crate) backward: PoolMemoryHighWaterReport,
+    pub(crate) start_sequence: usize,
+    pub(crate) seal_sequence: usize,
+    pub(crate) legacy_dr_execution_count: usize,
+    pub(crate) dr_prepared_layer_count: usize,
+    pub(crate) dr_bundle_final_log: Option<u32>,
+}
+
+#[cfg(test)]
+pub(crate) struct ProofMemoryHighWaterSink<'context> {
+    backward: Option<DeviceMemoryHighWaterObserver<'context>>,
+    sealed: Option<PoolMemoryHighWaterSnapshot>,
+    sequence: Arc<AtomicUsize>,
+    start_sequence: Option<usize>,
+    seal_sequence: Option<usize>,
+    legacy_dr_execution_count: usize,
+    dr_prepared_layer_count: usize,
+    dr_bundle_final_log: Option<u32>,
+}
+
+#[cfg(test)]
+impl<'context> ProofMemoryHighWaterSink<'context> {
+    pub(crate) fn new(sequence: Arc<AtomicUsize>) -> Self {
+        Self {
+            backward: None,
+            sealed: None,
+            sequence,
+            start_sequence: None,
+            seal_sequence: None,
+            legacy_dr_execution_count: 0,
+            dr_prepared_layer_count: 0,
+            dr_bundle_final_log: None,
+        }
+    }
+
+    fn start(&mut self, context: &'context ProverContext) {
+        assert!(
+            self.backward.is_none(),
+            "backward observer must start exactly once"
+        );
+        assert!(
+            self.sealed.is_none(),
+            "backward observer must start before it seals"
+        );
+        assert!(
+            self.start_sequence.is_none(),
+            "backward observer must record exactly one start order"
+        );
+        self.backward = Some(context.observe_device_memory_high_water());
+        self.start_sequence = Some(self.sequence.fetch_add(1, Ordering::SeqCst));
+    }
+
+    fn seal(&mut self, backward_scheduled: &gpu_gkr::backward::GpuGKRBackwardScheduledExecution) {
+        assert!(
+            self.sealed.is_none(),
+            "backward observer must seal exactly once"
+        );
+        let snapshot = self
+            .backward
+            .as_mut()
+            .expect("backward observer must remain owned until proof completion")
+            .seal();
+        self.legacy_dr_execution_count = backward_scheduled.dimension_reducing_layer_count();
+        self.dr_prepared_layer_count = backward_scheduled.dr_prepared_layer_count();
+        self.dr_bundle_final_log = backward_scheduled.dr_prepared_bundle_final_log();
+        self.sealed = Some(snapshot);
+        self.seal_sequence = Some(self.sequence.fetch_add(1, Ordering::SeqCst));
+    }
+
+    pub(crate) fn finish(self) -> ProofMemoryHighWaterResult {
+        let snapshot = self
+            .sealed
+            .expect("backward observer must seal before WHIR scheduling");
+        let backward = self
+            .backward
+            .expect("backward observer must remain owned until proof completion")
+            .finish();
+        assert_eq!(backward.start, snapshot.start);
+        assert_eq!(
+            backward.physical_backing_peak_bytes,
+            snapshot.physical_backing_peak_bytes
+        );
+        assert_eq!(
+            backward.logical_live_peak_bytes,
+            snapshot.logical_live_peak_bytes
+        );
+        assert_eq!(
+            backward.summed_requested_bytes,
+            snapshot.summed_requested_bytes
+        );
+        assert_eq!(backward.peak_window_end, snapshot.peak_window_end);
+        ProofMemoryHighWaterResult {
+            backward,
+            start_sequence: self
+                .start_sequence
+                .expect("backward observer must record its start order"),
+            seal_sequence: self
+                .seal_sequence
+                .expect("backward observer must record its seal order"),
+            legacy_dr_execution_count: self.legacy_dr_execution_count,
+            dr_prepared_layer_count: self.dr_prepared_layer_count,
+            dr_bundle_final_log: self.dr_bundle_final_log,
+        }
+    }
 }
 
 impl std::fmt::Display for GpuProveError {
@@ -210,6 +324,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         inputs,
         backward_options,
         None,
+        #[cfg(test)]
+        None,
         context,
     )
 }
@@ -230,18 +346,42 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         inputs,
         backward_options,
         Some(Box::default()),
+        None,
         context,
     )
 }
 
-fn prove_inner<'a, A: GoodAllocator + 'a>(
+#[cfg(test)]
+pub(crate) fn prove_measured<'a, 'context, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    backward_options: GkrBackwardOptions,
+    sink: &mut ProofMemoryHighWaterSink<'context>,
+    context: &'context ProverContext,
+) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    prove_inner(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        backward_options,
+        None,
+        Some(sink),
+        context,
+    )
+}
+
+fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
-    context: &ProverContext,
+    #[cfg(test)] mut memory_high_water: Option<&mut ProofMemoryHighWaterSink<'context>>,
+    context: &'context ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let backward_strategy =
@@ -394,6 +534,11 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
 
     ranges.push(post_forward_handoff_range);
 
+    #[cfg(test)]
+    if let Some(memory_high_water) = memory_high_water.as_deref_mut() {
+        memory_high_water.start(context);
+    }
+
     let BackwardPhaseResult {
         mut backward_scheduled,
     } = schedule_backward_phase(
@@ -415,6 +560,10 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         &mut callbacks,
         context,
     )?;
+    #[cfg(test)]
+    if let Some(memory_high_water) = memory_high_water.as_deref_mut() {
+        memory_high_water.seal(&backward_scheduled);
+    }
     let batching_pow_bits =
         crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
     let WhirPhaseResult {

@@ -164,7 +164,10 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     /// Task 6 scheduler deliberately leaves this hook untouched and executes
     /// the accepted legacy per-round layer.
     #[allow(dead_code)]
-    pub(crate) dr_window: Option<crate::backward::window_dr::DrWindowLayerCompositionHook>,
+    pub(crate) dr_window: Option<crate::backward::window_dr::DrWindowLayerPreparationHook>,
+    /// Final-log identity of the canonical bundle that produced `dr_window`.
+    /// It is `None` exactly when no hook was prepared.
+    pub(crate) dr_window_bundle_final_log: Option<u32>,
     pub(crate) round_scratch: GpuGKRDimensionReducingRoundScratch,
     /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
     /// `make_eq_sizes(folding_steps - 1)`, updated between sumcheck rounds,
@@ -189,6 +192,11 @@ pub struct GpuGKRDimensionReducingBackwardState {
 pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution {
     #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
     pub(crate) tracing_ranges: Vec<Range>,
+    /// Schedule-time evidence that this legacy-executed layer retained a real
+    /// DR composition hook. No DR window kernel is launched in Task 6.
+    pub(crate) dr_window_prepared: bool,
+    /// Identity carried from the successfully resolved canonical bundle.
+    pub(crate) dr_window_bundle_final_log: Option<u32>,
     /// Device-resident Fiat-Shamir seed passed in by the caller, consumed by
     /// this layer's per-round + end-of-layer transcript work, and returned
     /// via `.take()` for the next backward layer scheduler to reuse. `None`

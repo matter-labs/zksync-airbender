@@ -68,6 +68,47 @@ fn validate_dr_window_layer_program(
     );
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DrWindowPassEqGeometry {
+    build_offset: usize,
+    challenge_count: usize,
+    eq_sizes: GkrEqSizes,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DrWindowPreparationAllocationPolicy {
+    r0_eq_owner_count: usize,
+    retained_partials_len: usize,
+    required_future_partials_len: Option<usize>,
+}
+
+fn dr_window_preparation_allocation_policy(
+    max_acc_size: usize,
+    folding_steps: usize,
+    prepares_dr_window: bool,
+) -> DrWindowPreparationAllocationPolicy {
+    let legacy_partials_len = kernels::max_partials_len(max_acc_size);
+    let required_future_partials_len =
+        prepares_dr_window.then(|| window_dr::dr_window_partials_len(folding_steps));
+    DrWindowPreparationAllocationPolicy {
+        r0_eq_owner_count: 1,
+        retained_partials_len: legacy_partials_len,
+        required_future_partials_len,
+    }
+}
+
+fn dr_window_pass_eq_geometry(folding_steps: usize) -> DrWindowPassEqGeometry {
+    const BUILD_OFFSET: usize = 3;
+    let challenge_count = folding_steps
+        .checked_sub(BUILD_OFFSET)
+        .expect("preflighted DR R0 geometry must include the first three coordinates");
+    DrWindowPassEqGeometry {
+        build_offset: BUILD_OFFSET,
+        challenge_count,
+        eq_sizes: make_eq_sizes(challenge_count),
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn legacy_dimension_reducing_slots_for_test(
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
@@ -151,6 +192,7 @@ impl GpuGKRDimensionReducingBackwardState {
         layer_idx: usize,
         layer_slots: GpuGKRDimensionReducingLayerSlots,
         dr_window_program: Option<&crate::DrWindowLayerProgram>,
+        dr_window_bundle_final_log: Option<u32>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingSumcheckLayerPlan> {
         let trace_len_after_reduction = self.next_trace_len_after_reduction;
@@ -177,44 +219,67 @@ impl GpuGKRDimensionReducingBackwardState {
         let round0_batch_template_compact =
             self::dim_reducing_encoder::build_round0_batch_compact(&layer_slots, &self.storage);
         let max_acc_size = trace_len_after_reduction / 2;
-        let legacy_partials_len = kernels::max_partials_len(max_acc_size);
-        let dr_window_partials_len = dr_window_program
-            .map(|program| {
-                validate_dr_window_layer_program(program, layer_idx, folding_steps);
-                window_dr::dr_window_partials_len(folding_steps)
-            })
-            .unwrap_or(0);
-        let partials_len = legacy_partials_len.max(dr_window_partials_len);
-        let partials = context.alloc(partials_len, AllocationPlacement::Top)?;
+        if let Some(program) = dr_window_program {
+            validate_dr_window_layer_program(program, layer_idx, folding_steps);
+        }
+        let allocation_policy = dr_window_preparation_allocation_policy(
+            max_acc_size,
+            folding_steps,
+            dr_window_program.is_some(),
+        );
+        assert_eq!(
+            allocation_policy.r0_eq_owner_count, 1,
+            "both Task 6 arms must allocate exactly one common round Eq owner",
+        );
+        let partials = context.alloc(
+            allocation_policy.retained_partials_len,
+            AllocationPlacement::Top,
+        )?;
 
-        let mut round_scratch = GpuGKRDimensionReducingRoundScratch {
+        let round_scratch = GpuGKRDimensionReducingRoundScratch {
             eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
             accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
             partials,
         };
 
         let dr_window = if let Some(program) = dr_window_program {
-            const R0_COORDINATES: usize = 3;
-            let challenge_count = folding_steps
-                .checked_sub(R0_COORDINATES)
-                .expect("preflighted DR R0 requires at least three coordinates");
-            let eq =
-                window_dr::DrWindowPassEqState::allocate(context, R0_COORDINATES, challenge_count)?;
-            let scratch = window_dr::DrWindowRuntimeScratch {
-                partials: round_scratch.partials.as_mut_ptr(),
-                partials_capacity: round_scratch.partials.len(),
-            };
-            Some(
-                window_dr::bind_dr_window_r0(
-                    program.program(),
-                    program.input_projection(),
-                    &self.storage,
-                    folding_steps,
-                    eq,
-                    scratch,
-                )
-                .expect("preflighted DR window program must bind to runtime storage"),
+            let eq_geometry = dr_window_pass_eq_geometry(folding_steps);
+            debug_assert_eq!(
+                eq_geometry.eq_sizes,
+                make_eq_sizes(eq_geometry.challenge_count),
+            );
+            let eq = window_dr::DrWindowPassEqView::new(
+                round_scratch.eq_low_group.as_ptr(),
+                eq_geometry.eq_sizes,
+                eq_geometry.build_offset,
+            );
+            debug_assert_eq!(eq.eq_sizes, eq_geometry.eq_sizes);
+            assert_eq!(
+                eq.eq_low,
+                round_scratch.eq_low_group.as_ptr(),
+                "Task 6 preparation must borrow the common round Eq owner",
+            );
+            let required_future_partials_len = allocation_policy
+                .required_future_partials_len
+                .expect("prepared DR window policy must retain its future partials requirement");
+            let prepared = window_dr::prepare_dr_window_r0(
+                program.program(),
+                program.input_projection(),
+                &self.storage,
+                folding_steps,
+                eq,
+                required_future_partials_len,
             )
+            .expect(
+                "preflighted DR window preparation contract (geometry, Eq contract, mask, \
+                 storage, and raw keepalive) must bind to runtime storage",
+            );
+            assert_eq!(
+                prepared.r0.batch.eq_low,
+                round_scratch.eq_low_group.as_ptr(),
+                "Task 6 prepared batch must borrow the common round Eq owner",
+            );
+            Some(prepared)
         } else {
             None
         };
@@ -229,6 +294,7 @@ impl GpuGKRDimensionReducingBackwardState {
             folding_addresses: dim_reducing_ext_inputs.into_iter().collect(),
             round0_batch_template_compact,
             dr_window,
+            dr_window_bundle_final_log,
             round_scratch,
             eq_sizes: GkrEqSizes::zeroed(),
         })
@@ -243,15 +309,19 @@ impl GpuGKRDimensionReducingBackwardState {
             return Ok(None);
         };
         let layer_slots = build_dimension_reducing_slots_static(&layer);
-        let dr_window_program = dr_window_programs.map(|bundle| {
-            bundle.layer(layer_idx).unwrap_or_else(|| {
-                panic!("preflighted DR window bundle is missing absolute layer {layer_idx}")
+        let (dr_window_program, dr_window_bundle_final_log) = dr_window_programs
+            .map(|bundle| {
+                let program = bundle.layer(layer_idx).unwrap_or_else(|| {
+                    panic!("preflighted DR window bundle is missing absolute layer {layer_idx}")
+                });
+                (Some(program), Some(bundle.final_trace_log()))
             })
-        });
+            .unwrap_or((None, None));
         Ok(Some(self.prepare_layer_from_slots(
             layer_idx,
             layer_slots,
             dr_window_program,
+            dr_window_bundle_final_log,
             context,
         )?))
     }
@@ -263,9 +333,201 @@ mod tests;
 #[cfg(test)]
 mod cpu_dr_window_composition_preparation_tests {
     use super::*;
+    use core::mem::size_of;
     use gpu_gkr_compiler::{
         lower_dr_window_program, project_dr_window_inputs, DrWindowInputOutput,
     };
+    use gpu_prover_context::ProverContextConfig;
+
+    const CANONICAL_FIXTURE_INITIAL_TRACE_LOG: usize = 23;
+    const CANONICAL_FIXTURE_FINAL_TRACE_LOG: usize = 4;
+    const SMALL_ALLOCATION_CHUNK_BYTES: usize = 1 << 8;
+    const SMALL_ALLOCATION_THRESHOLD_BYTES: usize = 1 << 18;
+    const OUTER_ALLOCATION_BLOCK_BYTES: usize = 1 << 20;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Task6AllocationOwnershipViolation {
+        EqOwnerCount {
+            folding_steps: usize,
+            baseline: usize,
+            candidate: usize,
+            corrected_logical_delta_bytes: usize,
+        },
+        RetainedPartials {
+            folding_steps: usize,
+            baseline_len: usize,
+            candidate_len: usize,
+            corrected_logical_delta_bytes: usize,
+        },
+    }
+
+    fn corrected_logical_allocation_bytes(len: usize) -> usize {
+        let requested_bytes = len
+            .checked_mul(size_of::<E4>())
+            .expect("canonical fixture allocation byte length must fit usize");
+        let chunk_bytes = if requested_bytes <= SMALL_ALLOCATION_THRESHOLD_BYTES {
+            SMALL_ALLOCATION_CHUNK_BYTES
+        } else {
+            OUTER_ALLOCATION_BLOCK_BYTES
+        };
+        requested_bytes.next_multiple_of(chunk_bytes)
+    }
+
+    fn assert_canonical_allocator_rounding_contract() {
+        let config = ProverContextConfig::default();
+        assert_eq!(
+            1usize << config.allocator_block_log_size,
+            OUTER_ALLOCATION_BLOCK_BYTES,
+        );
+        assert_eq!(
+            config.small_allocator_log_chunk_size,
+            Some(SMALL_ALLOCATION_CHUNK_BYTES.trailing_zeros()),
+        );
+        assert_eq!(
+            1usize << (config.allocator_block_log_size - 2),
+            SMALL_ALLOCATION_THRESHOLD_BYTES,
+        );
+    }
+
+    fn task6_allocation_ownership_violation(
+        folding_steps: usize,
+        baseline: DrWindowPreparationAllocationPolicy,
+        candidate: DrWindowPreparationAllocationPolicy,
+    ) -> Option<Task6AllocationOwnershipViolation> {
+        if candidate.r0_eq_owner_count != baseline.r0_eq_owner_count {
+            let extra_owners = candidate
+                .r0_eq_owner_count
+                .checked_sub(baseline.r0_eq_owner_count)
+                .expect("the mutation oracle only admits added Eq owners");
+            return Some(Task6AllocationOwnershipViolation::EqOwnerCount {
+                folding_steps,
+                baseline: baseline.r0_eq_owner_count,
+                candidate: candidate.r0_eq_owner_count,
+                corrected_logical_delta_bytes: extra_owners
+                    * corrected_logical_allocation_bytes(GKR_EQ_GROUP_TABLE_LEN),
+            });
+        }
+        let baseline_partials = corrected_logical_allocation_bytes(baseline.retained_partials_len);
+        let candidate_partials =
+            corrected_logical_allocation_bytes(candidate.retained_partials_len);
+        if candidate_partials != baseline_partials {
+            return Some(Task6AllocationOwnershipViolation::RetainedPartials {
+                folding_steps,
+                baseline_len: baseline.retained_partials_len,
+                candidate_len: candidate.retained_partials_len,
+                corrected_logical_delta_bytes: candidate_partials
+                    .checked_sub(baseline_partials)
+                    .expect("the mutation oracle only admits retained-partials expansion"),
+            });
+        }
+        None
+    }
+
+    fn canonical_fixture_policy(
+        folding_steps: usize,
+        prepares_dr_window: bool,
+    ) -> DrWindowPreparationAllocationPolicy {
+        let max_acc_size = 1usize << (folding_steps - 1);
+        dr_window_preparation_allocation_policy(max_acc_size, folding_steps, prepares_dr_window)
+    }
+
+    #[test]
+    fn cpu_dr_window_composition_uses_one_common_eq_owner_at_every_canonical_fold() {
+        assert_eq!(GKR_EQ_GROUP_TABLE_LEN, 256);
+        assert_eq!(size_of::<E4>(), 16);
+        let mut fold_count = 0;
+        for folding_steps in CANONICAL_FIXTURE_FINAL_TRACE_LOG..CANONICAL_FIXTURE_INITIAL_TRACE_LOG
+        {
+            let baseline = canonical_fixture_policy(folding_steps, false);
+            let prepared = canonical_fixture_policy(folding_steps, true);
+            assert_eq!(baseline.r0_eq_owner_count, 1);
+            assert_eq!(
+                prepared.r0_eq_owner_count, 1,
+                "Task 6 prepared fold f={folding_steps} must borrow the one common Eq owner"
+            );
+            assert_eq!(
+                task6_allocation_ownership_violation(folding_steps, baseline, prepared),
+                None,
+            );
+            fold_count += 1;
+        }
+        assert_eq!(fold_count, 19);
+    }
+
+    #[test]
+    fn cpu_dr_window_composition_retains_only_legacy_partials_at_every_canonical_fold() {
+        let mut fold_count = 0;
+        for folding_steps in CANONICAL_FIXTURE_FINAL_TRACE_LOG..CANONICAL_FIXTURE_INITIAL_TRACE_LOG
+        {
+            let baseline = canonical_fixture_policy(folding_steps, false);
+            let prepared = canonical_fixture_policy(folding_steps, true);
+            assert_eq!(
+                prepared.retained_partials_len, baseline.retained_partials_len,
+                "Task 6 prepared fold f={folding_steps} must retain only legacy partials"
+            );
+            assert_eq!(
+                prepared.required_future_partials_len,
+                Some(window_dr::dr_window_partials_len(folding_steps)),
+            );
+            assert_eq!(
+                task6_allocation_ownership_violation(folding_steps, baseline, prepared),
+                None,
+            );
+            fold_count += 1;
+        }
+        assert_eq!(fold_count, 19);
+    }
+
+    #[test]
+    fn cpu_dr_window_composition_rejects_duplicate_eq_owner_with_exact_4096_bytes() {
+        for folding_steps in CANONICAL_FIXTURE_FINAL_TRACE_LOG..CANONICAL_FIXTURE_INITIAL_TRACE_LOG
+        {
+            let baseline = canonical_fixture_policy(folding_steps, false);
+            let mut mutated = canonical_fixture_policy(folding_steps, true);
+            mutated.r0_eq_owner_count += 1;
+            assert_eq!(
+                task6_allocation_ownership_violation(folding_steps, baseline, mutated),
+                Some(Task6AllocationOwnershipViolation::EqOwnerCount {
+                    folding_steps,
+                    baseline: 1,
+                    candidate: 2,
+                    corrected_logical_delta_bytes: 4_096,
+                }),
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_dr_window_composition_rejects_retained_dr_partials_with_exact_fold_deltas() {
+        assert_canonical_allocator_rounding_contract();
+        let mut observed_deltas = BTreeMap::new();
+        for folding_steps in CANONICAL_FIXTURE_FINAL_TRACE_LOG..CANONICAL_FIXTURE_INITIAL_TRACE_LOG
+        {
+            let baseline = canonical_fixture_policy(folding_steps, false);
+            let mut mutated = canonical_fixture_policy(folding_steps, true);
+            let required = mutated.required_future_partials_len.unwrap();
+            mutated.retained_partials_len = mutated.retained_partials_len.max(required);
+            let expected_delta = corrected_logical_allocation_bytes(mutated.retained_partials_len)
+                - corrected_logical_allocation_bytes(baseline.retained_partials_len);
+            assert_eq!(
+                task6_allocation_ownership_violation(folding_steps, baseline, mutated),
+                Some(Task6AllocationOwnershipViolation::RetainedPartials {
+                    folding_steps,
+                    baseline_len: baseline.retained_partials_len,
+                    candidate_len: mutated.retained_partials_len,
+                    corrected_logical_delta_bytes: expected_delta,
+                }),
+            );
+            observed_deltas.insert(folding_steps, expected_delta);
+        }
+        assert_eq!(observed_deltas.len(), 19);
+        assert_eq!(observed_deltas[&4], 768);
+        assert_eq!(observed_deltas[&8], 768);
+        assert_eq!(observed_deltas[&9], 1_280);
+        assert_eq!(observed_deltas[&18], 917_504);
+        assert_eq!(observed_deltas[&19], 786_432);
+        assert_eq!(observed_deltas[&22], 5_242_880);
+    }
 
     fn address(offset: usize) -> GKRAddress {
         GKRAddress::InnerLayer { layer: 7, offset }
@@ -310,10 +572,12 @@ mod cpu_dr_window_composition_preparation_tests {
             .contains(&output_b));
         assert_eq!(window_dr::continuation_window_count(FOLDING_STEPS), 2);
         assert_eq!(window_dr::megakernel_entry_round(FOLDING_STEPS), 9);
+        let eq_geometry = dr_window_pass_eq_geometry(FOLDING_STEPS);
+        assert_eq!(eq_geometry.build_offset, R0_COORDINATES);
+        assert_eq!(eq_geometry.challenge_count, FOLDING_STEPS - R0_COORDINATES);
         assert_eq!(
-            make_eq_sizes(FOLDING_STEPS - R0_COORDINATES),
-            make_eq_sizes(8),
-            "R0 Eq must cover only the suffix after offset 3"
+            eq_geometry.eq_sizes,
+            make_eq_sizes(FOLDING_STEPS - R0_COORDINATES)
         );
         assert!(window_dr::dr_window_partials_len(FOLDING_STEPS) >= 27);
 

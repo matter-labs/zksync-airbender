@@ -24,7 +24,8 @@ use crate::upstream::GKRAddress;
 use crate::GpuGKRStorage;
 
 use super::composition::{
-    DrWindowLayerCompositionHook, DrWindowPassEqState, DrWindowRawInputKeepalive,
+    DrWindowLayerCompositionHook, DrWindowLayerPreparationHook, DrWindowPassEqState,
+    DrWindowPassEqView, DrWindowRawInputKeepalive,
 };
 use super::generated_registry::{
     DrWindowKernelEntry, GkrDrR0Window3Arguments, GkrDrR0Window3Signature,
@@ -326,6 +327,17 @@ pub(crate) struct DrWindowLaunch {
     pub(crate) folding_steps: usize,
 }
 
+/// Static R0 preparation retained by Task 6. Unlike `DrWindowLaunch`, this has
+/// no runtime partials or reduced-tensor pointer and therefore admits no scratch
+/// capacity for the future complete-chain launch.
+pub(crate) struct DrWindowR0Preparation {
+    pub(crate) batch: GpuGKRDimensionReducingBatch<E4>,
+    pub(crate) kernel: &'static DrWindowKernelEntry,
+    pub(crate) row_tiles: usize,
+    pub(crate) folding_steps: usize,
+    pub(crate) required_future_partials_len: usize,
+}
+
 impl DrWindowLaunch {
     pub(crate) fn selected_symbol(&self) -> &'static str {
         self.kernel.symbol_name
@@ -352,11 +364,11 @@ pub(crate) fn resolve_dr_window_kernel(
 fn build_dr_window_batch<B>(
     program: &DrWindowProgram,
     storage: &GpuGKRStorage<B, E4>,
-    eq: &DrWindowPassEqState,
+    eq: DrWindowPassEqView,
 ) -> Result<GpuGKRDimensionReducingBatch<E4>, DrWindowBindError> {
     let mut batch = GpuGKRDimensionReducingBatch::<E4> {
         enabled_mask: program.enabled_mask(),
-        eq_low: eq.eq_low.as_ptr(),
+        eq_low: eq.eq_low,
         eq_sizes: eq.eq_sizes,
         ..Default::default()
     };
@@ -400,7 +412,7 @@ fn bind_dr_window_launch<B>(
     }
 
     let row_tiles = dr_window_row_tiles(folding_steps);
-    let batch = build_dr_window_batch(program, storage, eq)?;
+    let batch = build_dr_window_batch(program, storage, eq.as_view())?;
     // SAFETY: the capacity check reserves the complete partial matrix before
     // the 27-cell reduced-tensor suffix.
     let reduced_tensor = unsafe { scratch.partials.add(DR_WINDOW_TENSOR_CELLS * row_tiles) };
@@ -437,6 +449,45 @@ pub(crate) fn bind_dr_window_r0<B>(
         eq,
         raw_inputs,
         partials_capacity,
+    ))
+}
+
+/// Prepare the allocation-neutral Task 6 seam. The caller supplies a typed
+/// view of the common round Eq owner and checked metadata for the future
+/// complete-chain scratch requirement; no runtime scratch pointer is accepted.
+pub(crate) fn prepare_dr_window_r0<B>(
+    program: &DrWindowProgram,
+    projection: &DrWindowInputProjection,
+    storage: &GpuGKRStorage<B, E4>,
+    folding_steps: usize,
+    eq: DrWindowPassEqView,
+    required_future_partials_len: usize,
+) -> Result<DrWindowLayerPreparationHook, DrWindowBindError> {
+    validate_dr_window_folding_steps(folding_steps)?;
+    let kernel = resolve_dr_window_kernel(program.enabled_mask())?;
+    validate_dr_r0_eq_contract(folding_steps, eq.build_offset, eq.eq_sizes)?;
+    let expected_partials_len = dr_window_partials_len(folding_steps);
+    assert_eq!(
+        required_future_partials_len, expected_partials_len,
+        "Task 6 must retain the exact future complete-chain partials requirement as metadata",
+    );
+    let raw_inputs = DrWindowRawInputKeepalive::from_projection(storage, projection)?;
+    let row_tiles = dr_window_row_tiles(folding_steps);
+    let batch = build_dr_window_batch(program, storage, eq)?;
+    assert_eq!(
+        batch.eq_low, eq.eq_low,
+        "the prepared descriptor must borrow its non-owning Eq view",
+    );
+    Ok(DrWindowLayerPreparationHook::new(
+        DrWindowR0Preparation {
+            batch,
+            kernel,
+            row_tiles,
+            folding_steps,
+            required_future_partials_len,
+        },
+        eq,
+        raw_inputs,
     ))
 }
 

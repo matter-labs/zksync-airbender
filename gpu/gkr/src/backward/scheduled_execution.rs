@@ -14,6 +14,44 @@ use gpu_prover_context::ProverContext;
 use super::stage_snapshots::{schedule_stage_snapshot, GKRBackwardStageSnapshotSink};
 
 impl GpuGKRBackwardScheduledExecution {
+    /// Number of dimension-reducing layers actually scheduled through the
+    /// accepted legacy executor. Task 6's release harness uses this as a
+    /// reachability count while the prepared DR hook remains launch-inert.
+    #[doc(hidden)]
+    pub fn dimension_reducing_layer_count(&self) -> usize {
+        self.dimension_reducing_layers.len()
+    }
+
+    /// Number of actually scheduled legacy layers whose prepared plan retained
+    /// a real DR composition hook.
+    #[doc(hidden)]
+    pub fn dr_prepared_layer_count(&self) -> usize {
+        self.dimension_reducing_layers
+            .iter()
+            .filter(|layer| layer.dr_window_prepared)
+            .count()
+    }
+
+    /// Canonical final-log identity carried by the actual prepared hooks.
+    #[doc(hidden)]
+    pub fn dr_prepared_bundle_final_log(&self) -> Option<u32> {
+        let mut logs = self
+            .dimension_reducing_layers
+            .iter()
+            .filter(|layer| layer.dr_window_prepared)
+            .map(|layer| {
+                layer
+                    .dr_window_bundle_final_log
+                    .expect("a prepared DR hook must carry its bundle final-log identity")
+            });
+        let first = logs.next()?;
+        assert!(
+            logs.all(|log| log == first),
+            "all prepared DR hooks must come from one canonical final-log bundle"
+        );
+        Some(first)
+    }
+
     pub fn final_device_seed_and_claim_point_mut(
         &mut self,
     ) -> (

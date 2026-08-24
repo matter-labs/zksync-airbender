@@ -535,6 +535,55 @@ fn cpu_dr_window_preflight_typed_rejection_constructs_zero_transfers() {
     );
 }
 
+#[test]
+fn cpu_dr_window_preflight_cached_geometry_rejection_constructs_zero_transfers() {
+    use super::{construct_after_windowed_backward_preflight, GpuProveError};
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+    use std::cell::Cell;
+
+    const INVALID_FINAL_LOG: u32 = 3;
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let options = GkrBackwardOptions {
+        windowed_dr: true,
+        ..GkrBackwardOptions::default()
+    };
+    let transfer_constructions = Cell::new(0usize);
+
+    let error = construct_after_windowed_backward_preflight(
+        &programs,
+        BackwardExecutionStrategy::PerRound,
+        options,
+        INVALID_FINAL_LOG,
+        || transfer_constructions.set(transfer_constructions.get() + 1),
+    )
+    .unwrap_err();
+    assert_eq!(transfer_constructions.get(), 0);
+    let rejection = programs
+        .resolve_dr_window_programs(INVALID_FINAL_LOG)
+        .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::DrWindowLowering {
+            circuit: rejection.circuit().to_owned(),
+            layer: rejection.layer(),
+            resource: rejection.resource().to_owned(),
+        }
+    );
+    assert_eq!(
+        rejection.resource(),
+        "UnsupportedFoldingSteps { folding_steps: 3 }"
+    );
+    assert!(!programs.dr_window_programs_ready(INVALID_FINAL_LOG));
+    assert_eq!(
+        programs
+            .resolve_dr_window_programs(INVALID_FINAL_LOG)
+            .unwrap_err(),
+        rejection,
+        "producer geometry rejection must remain stable in the final-log cache"
+    );
+}
+
 /// Which corpus families the windowed arm is selected for, per supported
 /// security level. This is the both-arm byte gate's zero-selection guard: the
 /// gate's wrappers run the windowed arm only where
