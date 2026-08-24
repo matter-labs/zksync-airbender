@@ -25,3 +25,6 @@ pub(crate) use sequence::MainContinuationWindowSequence;
 
 #[cfg(test)]
 mod cpu_tests;
+
+#[cfg(all(test, not(no_cuda)))]
+mod tests;
