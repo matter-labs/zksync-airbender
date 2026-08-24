@@ -25,7 +25,7 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0                                                # all circuits, defaults"
-    echo "  $0 --sec 100                                       # only the 100-bit security leve individual verifiers"
+    echo "  $0 --sec 100                                       # only the 100-bit security level individual verifiers"
     echo "  $0 --blake mop_extension                          # all circuits, mop_extension"
     echo "  $0 --blake mop_extension blake2_with_extended_control  # single circuit"
     echo "  $0 --variant caches                               # all circuits, cached variant"
