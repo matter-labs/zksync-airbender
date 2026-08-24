@@ -164,6 +164,49 @@ pub(crate) fn launch_backward_dual_finalize_from_partials(
         active_eq_slot_base,
         active_eq_size_before_fold,
     );
+    crate::backward::task8_enqueue_scope!(_task8, "dual-finalize", Kernel, {
+        use crate::backward::task8_probe::Task8Span;
+        let element = std::mem::size_of::<E4>();
+        let mut spans = vec![
+            Task8Span::read("partials", partials as usize, 2 * num_partials * element),
+            Task8Span::read("prev_claim_coords", prev_claim_coord as usize, element),
+        ];
+        for (role, address, bytes) in [
+            (
+                "transcript_seed",
+                seed as usize,
+                8 * std::mem::size_of::<u32>(),
+            ),
+            ("transcript_claim", claim as usize, element),
+            ("transcript_prefactor", eq_prefactor as usize, element),
+        ] {
+            spans.push(Task8Span::read(role, address, bytes));
+            spans.push(Task8Span::write(role, address, bytes));
+        }
+        spans.push(Task8Span::write(
+            "coefficients",
+            coeffs_out as usize,
+            4 * element,
+        ));
+        spans.push(Task8Span::write(
+            "challenges",
+            challenge_out as usize,
+            element,
+        ));
+        if active_eq_size_before_fold > 0 {
+            spans.push(Task8Span::read(
+                "active_eq_slot",
+                active_eq_slot_base as usize,
+                (1usize << active_eq_size_before_fold) * element,
+            ));
+            spans.push(Task8Span::write(
+                "active_eq_slot",
+                active_eq_slot_base as usize,
+                (1usize << (active_eq_size_before_fold - 1)) * element,
+            ));
+        }
+        spans
+    });
     BackwardDualFinalizeFromPartialsFunction::default().launch(&config, &args)
 }
 

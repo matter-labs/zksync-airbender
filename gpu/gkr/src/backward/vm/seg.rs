@@ -88,6 +88,30 @@ pub(crate) fn launch_bwd_seg_build_fold_weights(
         .stream(context.get_exec_stream())
         .build();
     let fold_weights = bwd_seg_fold_weights_device_ptr();
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    crate::backward::task8_probe::task8_register_symbol(
+        "bwd_seg_fold_weights",
+        fold_weights as usize,
+        BWD_SEG_FOLD_WEIGHT_SLOTS * size_of::<E4>(),
+    );
+    crate::backward::task8_enqueue_scope!(_task8, "fold-weight-build", Kernel, {
+        use crate::backward::task8_probe::Task8Span;
+        vec![
+            Task8Span::symbol_read(
+                "ab_gkr_main_layer_claim_point",
+                0,
+                round as usize * size_of::<E4>(),
+            ),
+            Task8Span::write(
+                "bwd_seg_fold_weights",
+                fold_weights as usize,
+                BWD_SEG_FOLD_WEIGHT_SLOTS * size_of::<E4>(),
+            ),
+        ]
+    });
     GkrBwdSegBuildFoldWeightsFunction(ab_gkr_bwd_seg_build_fold_weights_kernel).launch(
         &config,
         &GkrBwdSegBuildFoldWeightsArguments::new(fold_weights, round),
@@ -119,11 +143,97 @@ fn launch_config<'a>(desc: &BwdSegDesc, context: &'a ProverContext) -> CudaLaunc
         .build()
 }
 
+/// The pointer arguments one segmented-VM launch names, taken from the
+/// descriptor it is about to hand the runtime: every live source column at its
+/// own base, stride and row extent, every published column, the factored Eq
+/// tables' active prefixes, the coefficient bank and fold-weight banks, and the
+/// contribution buffer.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+fn task8_seg_spans(desc: &BwdSegDesc) -> Vec<crate::backward::task8_probe::Task8Span> {
+    use super::seg_desc::{
+        bwd_seg_lane_slot, BWD_COEFF_ORIGIN_READ_EXT, BWD_SEG_ADDR_COLUMN_BITS, BWD_SEG_ADDR_NONE,
+    };
+    use crate::backward::task8_probe::{task8_descriptor_sources, Task8Span};
+    use crate::backward::{GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS};
+
+    let element = size_of::<E4>();
+    let rows = desc.logical_rows as usize;
+    let sources = task8_descriptor_sources(desc as *const BwdSegDesc as usize)
+        .expect("a Task 8 segmented launch needs its descriptor's live source count");
+    let column_of = |lane: u16| usize::from(lane) & ((1 << BWD_SEG_ADDR_COLUMN_BITS) - 1);
+    let width_of = |slot: &super::seg_desc::BwdSegAddrSlot| {
+        if slot.origin == BWD_COEFF_ORIGIN_READ_EXT {
+            element
+        } else {
+            size_of::<gpu_core::primitives::field::BF>()
+        }
+    };
+    let mut spans = Vec::with_capacity(2 * sources + 8);
+    for record in &desc.source[..sources] {
+        let slot = &desc.slot[bwd_seg_lane_slot(record.src)];
+        if !slot.base.is_null() {
+            let width = width_of(slot);
+            spans.push(Task8Span::read(
+                "source_column",
+                slot.base as usize + column_of(record.src) * (width << slot.log2_stride),
+                2 * rows * (1usize << record.delta) * width,
+            ));
+        }
+        if record.cache != BWD_SEG_ADDR_NONE {
+            let slot = &desc.slot[bwd_seg_lane_slot(record.cache)];
+            if !slot.base.is_null() {
+                let width = width_of(slot);
+                spans.push(Task8Span::write(
+                    "published_column",
+                    slot.base as usize + column_of(record.cache) * (width << slot.log2_stride),
+                    2 * rows * element,
+                ));
+            }
+        }
+    }
+    if !desc.eq_low.is_null() {
+        spans.push(Task8Span::read(
+            "eq_low",
+            desc.eq_low as usize,
+            (1usize << desc.eq_sizes.low) * element,
+        ));
+    }
+    for slot in 0..GKR_EQ_HIGH_SLOTS {
+        let size = desc.eq_sizes.high[slot];
+        spans.push(Task8Span::symbol_read(
+            "ab_gkr_eq_high",
+            slot * GKR_EQ_GROUP_TABLE_LEN * element,
+            if size == 0 {
+                element
+            } else {
+                (1usize << size) * element
+            },
+        ));
+    }
+    spans.push(Task8Span::symbol_region("ab_gkr_bwd_seg_coeff_bank"));
+    spans.push(Task8Span::symbol_region("bwd_seg_fold_weights"));
+    spans.push(Task8Span::write(
+        "contributions",
+        desc.contributions as usize,
+        2 * rows.div_ceil(WARP_SIZE as usize) * element,
+    ));
+    spans
+}
+
 fn launch(
     setup: &BwdSegSetup,
     symbol: GkrBwdSegSignature,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    crate::backward::task8_enqueue_scope!(
+        _task8,
+        "segmented-round",
+        Kernel,
+        task8_seg_spans(setup)
+    );
     GkrBwdSegFunction(symbol).launch(
         &launch_config(setup, context),
         &GkrBwdSegArguments::new(**setup),

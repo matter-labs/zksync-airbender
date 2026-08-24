@@ -814,9 +814,32 @@ fn schedule_seg_challenge_slab(
     let prefix = BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE as usize;
     debug_assert_eq!(BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE, 0);
     // SAFETY: all sources and the slab are device allocations of the copied size.
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let element = size_of::<E4>();
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let slab_base = slab.as_ptr() as usize;
     unsafe {
         let external = DeviceSlice::from_raw_parts(external_challenges, prefix);
-        memory_copy_async(&mut slab[..prefix], external, stream)?;
+        {
+            crate::backward::task8_enqueue_scope!(_task8, "challenge-slab-prefix-copy", Copy, {
+                use crate::backward::task8_probe::Task8Span;
+                vec![
+                    Task8Span::read(
+                        "external_challenges",
+                        external_challenges as usize,
+                        prefix * element,
+                    ),
+                    Task8Span::write("challenge_slab", slab_base, prefix * element),
+                ]
+            });
+            memory_copy_async(&mut slab[..prefix], external, stream)?;
+        }
         for (slot, source) in [
             (
                 BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE,
@@ -826,7 +849,19 @@ fn schedule_seg_challenge_slab(
             (BWD_SEG_CHALLENGE_CLAIM_BATCHING, claim_batching),
         ] {
             let slot = slot as usize;
+            #[cfg(all(
+                any(test, feature = "task8_continuation_differential_test"),
+                not(no_cuda)
+            ))]
+            let source_address = source as usize;
             let source = DeviceSlice::from_raw_parts(source, 1);
+            crate::backward::task8_enqueue_scope!(_task8, "challenge-slab-slot-copy", Copy, {
+                use crate::backward::task8_probe::Task8Span;
+                vec![
+                    Task8Span::read("challenge_source", source_address, element),
+                    Task8Span::write("challenge_slab", slab_base + slot * element, element),
+                ]
+            });
             memory_copy_async(&mut slab[slot..slot + 1], source, stream)?;
         }
     }

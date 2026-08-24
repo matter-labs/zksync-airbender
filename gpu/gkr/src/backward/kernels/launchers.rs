@@ -363,6 +363,38 @@ pub(crate) fn launch_build_eq_high_and_low_groups_from_point(
         high_slab,
         low_buffer,
     );
+    crate::backward::task8_enqueue_scope!(_task8, "eq-build", Kernel, {
+        use crate::backward::task8_probe::Task8Span;
+        let element = size_of::<E4>();
+        let sizes = make_eq_sizes(challenge_count);
+        let mut spans = vec![Task8Span::read(
+            "claim_point",
+            claim_point as usize + challenge_offset * element,
+            challenge_count * element,
+        )];
+        for slot in 0..GKR_EQ_HIGH_SLOTS {
+            spans.push(Task8Span::write(
+                "eq_high",
+                high_slab as usize + slot * GKR_EQ_GROUP_TABLE_LEN * element,
+                element,
+            ));
+        }
+        for (group, size) in sizes.high.iter().enumerate() {
+            if *size > 0 {
+                spans.push(Task8Span::write(
+                    "eq_high",
+                    high_slab as usize + group * GKR_EQ_GROUP_TABLE_LEN * element,
+                    (1usize << size) * element,
+                ));
+            }
+        }
+        spans.push(Task8Span::write(
+            "eq_low",
+            low_buffer as usize,
+            (1usize << sizes.low) * element,
+        ));
+        spans
+    });
     GpuDimensionReducingBuildEqHighLowFromPointFunction(
         ab_gkr_dim_reducing_build_eq_high_low_from_point_e4_kernel,
     )

@@ -733,14 +733,53 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
         .expect("the coefficient blob's host staging must outlive its H2D copy");
     // SAFETY: the device allocation and the host blob are both exactly
     // `BWD_SEG_BLOB_BYTES` long, and E4 carries no invalid bit patterns.
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let tables_base = device.as_ptr() as usize;
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let bank_bytes = desc.num_coefficients as usize * std::mem::size_of::<E4>();
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    crate::backward::task8_probe::task8_register_symbol(
+        "ab_gkr_bwd_seg_coeff_bank",
+        bank as usize,
+        bank_bytes,
+    );
     unsafe {
         let destination = (&mut device[..]).transmute_mut::<u8>();
+        crate::backward::task8_enqueue_scope!(_task8, "coefficient-table-copy", Copy, {
+            use crate::backward::task8_probe::Task8Span;
+            vec![Task8Span::write(
+                "coefficient_tables",
+                tables_base,
+                BWD_SEG_BLOB_BYTES,
+            )]
+        });
         memory_copy_async(destination, &host[..], stream)?;
     }
     let count = desc.num_coefficients;
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let function = GkrBwdSegEvalCoefficientsFunction(ab_gkr_bwd_seg_eval_coefficients_kernel);
+    crate::backward::task8_enqueue_scope!(_task8, "coefficient-bank-fill", Kernel, {
+        use crate::backward::task8_probe::Task8Span;
+        vec![
+            Task8Span::read("coefficient_tables", tables_base, BWD_SEG_BLOB_BYTES),
+            Task8Span::read(
+                "challenge_slab",
+                slab as usize,
+                BWD_SEG_CHALLENGE_SLOTS * std::mem::size_of::<E4>(),
+            ),
+            Task8Span::write("coefficient_bank", bank as usize, bank_bytes),
+        ]
+    });
     function.launch(
         &config,
         &GkrBwdSegEvalCoefficientsArguments::new(*desc, slab, bank),

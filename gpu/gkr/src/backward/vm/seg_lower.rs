@@ -803,6 +803,17 @@ fn lower_bwd_seg_view(
     desc.contributions = binding.contributions;
     desc.eq_sizes = binding.eq_sizes;
     desc.logical_rows = logical_rows;
+    // The source table is zero-filled to its ABI capacity, so a launch cannot
+    // recover how many leading entries are live. Nothing else about the
+    // descriptor is recorded here.
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    crate::backward::task8_probe::task8_register_descriptor_sources(
+        &*desc as *const BwdSegDesc as usize,
+        sources.len(),
+    );
     Ok(desc)
 }
 

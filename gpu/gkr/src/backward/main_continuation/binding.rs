@@ -825,6 +825,90 @@ impl KernelFunction for MainContinuationWindowKernelEntry {
 /// Enqueue one prepared continuation window. Consuming the preparation keeps
 /// its input borrow and output allocation alive through the CUDA launch call;
 /// the owned canonical publication is returned only after enqueue succeeds.
+/// The pointer arguments one window launch names, taken from the descriptor it
+/// is about to hand the runtime: every live source column at its own base and
+/// stride, every published column, the factored Eq tables' active prefixes, the
+/// coefficient and fold-weight banks, and the row-tile partial matrix.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+fn task8_window_spans(
+    binding: &MainContinuationWindowLaunchBinding,
+    row_tiles: usize,
+) -> Vec<crate::backward::task8_probe::Task8Span> {
+    use crate::backward::task8_probe::Task8Span;
+    use crate::backward::vm::seg_desc::{
+        bwd_seg_lane_slot, BWD_COEFF_ORIGIN_READ_EXT, BWD_SEG_ADDR_COLUMN_BITS, BWD_SEG_ADDR_NONE,
+    };
+    use crate::backward::{GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS};
+
+    let element = size_of::<E4>();
+    let sources = usize::from(binding.source_count);
+    let column_of = |lane: u16| usize::from(lane) & ((1 << BWD_SEG_ADDR_COLUMN_BITS) - 1);
+    let width_of = |slot: &crate::backward::vm::seg_desc::BwdSegAddrSlot| {
+        if slot.origin == BWD_COEFF_ORIGIN_READ_EXT {
+            element
+        } else {
+            size_of::<BF>()
+        }
+    };
+    let mut spans = Vec::with_capacity(2 * sources + 8);
+    for record in &binding.source[..sources] {
+        if record.src != BWD_SEG_ADDR_NONE {
+            let slot = &binding.slot[bwd_seg_lane_slot(record.src)];
+            if !slot.base.is_null() {
+                let width = width_of(slot);
+                let stride = width << slot.log2_stride;
+                spans.push(Task8Span::read(
+                    "source_column",
+                    slot.base as usize + column_of(record.src) * stride,
+                    stride,
+                ));
+            }
+        }
+        if record.publish != BWD_SEG_ADDR_NONE {
+            let slot = &binding.slot[bwd_seg_lane_slot(record.publish)];
+            if !slot.base.is_null() {
+                let width = width_of(slot);
+                let stride = width << slot.log2_stride;
+                spans.push(Task8Span::write(
+                    "published_column",
+                    slot.base as usize + column_of(record.publish) * stride,
+                    stride,
+                ));
+            }
+        }
+    }
+    if !binding.eq_low.is_null() {
+        spans.push(Task8Span::read(
+            "eq_low",
+            binding.eq_low as usize,
+            (1usize << binding.eq_sizes.low) * element,
+        ));
+    }
+    for slot in 0..GKR_EQ_HIGH_SLOTS {
+        let size = binding.eq_sizes.high[slot];
+        spans.push(Task8Span::symbol_read(
+            "ab_gkr_eq_high",
+            slot * GKR_EQ_GROUP_TABLE_LEN * element,
+            if size == 0 {
+                element
+            } else {
+                (1usize << size) * element
+            },
+        ));
+    }
+    spans.push(Task8Span::symbol_region("ab_gkr_bwd_seg_coeff_bank"));
+    spans.push(Task8Span::symbol_region("bwd_seg_fold_weights"));
+    spans.push(Task8Span::write(
+        "partials",
+        binding.partials as usize,
+        MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * row_tiles * element,
+    ));
+    spans
+}
+
 pub(crate) fn launch_main_continuation_window(
     launch: MainContinuationWindowLaunch<'_>,
     context: &ProverContext,
@@ -835,6 +919,12 @@ pub(crate) fn launch_main_continuation_window(
         context.get_exec_stream(),
     );
     let eq_sizes = launch.binding.eq_sizes;
+    crate::backward::task8_enqueue_scope!(
+        _task8,
+        "window-launch",
+        Kernel,
+        task8_window_spans(&launch.binding, launch.row_tiles)
+    );
     launch.kernel.launch(
         &config,
         &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
