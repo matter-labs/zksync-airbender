@@ -260,7 +260,11 @@ pub fn binary_u8_to_u32(binary_u8: &[u8]) -> Vec<u32> {
 
 pub fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
     use std::io::Read;
-    let mut file = std::fs::File::open(path).expect("must open provided file");
+    let mut file = std::fs::File::open(path)
+        .map_err(|_| {
+            panic!("Failed to load file at path {}", path.display());
+        })
+        .expect("must open provided file");
     let mut buffer = vec![];
     file.read_to_end(&mut buffer).expect("must read the file");
     let binary = binary_u8_to_u32(&buffer);
