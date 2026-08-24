@@ -19,19 +19,13 @@ docker create --name verifiers airbender-verifiers
 # Full-statement-verifier (fsv_) build artifacts, exactly the set produced by
 # tools/gkr_verifier/dump_recursive_verifiers.sh (unrolled base+recursion in the
 # blake2_with_compression variant; unified recursion in blake2_with_compression,
-# blake2_g_function, and special_opcodes_extension), at both 80- and 100-bit
-# security levels.
+# blake2_g_function, and special_opcodes_extension)
 STEMS=(
     fsv_unrolled_base_layer_sec_100_blake2_with_compression
-    fsv_unrolled_base_layer_sec_100_blake2_with_compression
-    fsv_unrolled_recursion_layer_sec_100_blake2_with_compression
     fsv_unrolled_recursion_layer_sec_100_blake2_with_compression
     fsv_unified_recursion_layer_sec_100_blake2_with_compression
-    fsv_unified_recursion_layer_sec_100_blake2_g_function
     fsv_unified_recursion_layer_sec_100_special_opcodes_extension
-    fsv_unified_recursion_layer_sec_100_blake2_with_compression
-    fsv_unified_recursion_layer_sec_100_blake2_g_function
-    fsv_unified_recursion_layer_sec_100_special_opcodes_extension
+    fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension
 )
 
 FILES=()

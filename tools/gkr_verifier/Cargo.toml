@@ -49,6 +49,10 @@ name = "fsv_unified_recursion_layer_sec_100"
 path = "src/bin/fsv_unified_recursion_layer_sec_100.rs"
 
 [[bin]]
+name = "fsv_unified_recursion_layer_sec_100_l1_feeder"
+path = "src/bin/fsv_unified_recursion_layer_sec_100_l1_feeder.rs"
+
+[[bin]]
 name = "inits_and_teardowns_sec_100"
 path = "src/bin/inits_and_teardowns_sec_100.rs"
 
