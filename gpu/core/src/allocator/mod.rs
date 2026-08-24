@@ -498,6 +498,20 @@ pub struct StaticAllocation<T, B: StaticAllocationBackend, W: InnerStaticAllocat
     nvtx_span: nvtx::MemSpanId,
 }
 
+impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAllocation<T, B, W> {
+    /// Shrinks the exposed element count without changing physical ownership.
+    ///
+    /// `len` and `data.len` count `T` elements. `data.alloc_len` remains the
+    /// originally reserved byte count used when this allocation is dropped.
+    pub fn shrink_len_to(&mut self, len: usize) {
+        assert!(
+            len <= self.data.len,
+            "StaticAllocation::shrink_len_to cannot grow"
+        );
+        self.data.len = len;
+    }
+}
+
 impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Drop
     for StaticAllocation<T, B, W>
 {

@@ -252,6 +252,153 @@ fn cpu_memory_observer_requested_bytes_are_unrounded_and_counted_once() {
     assert_eq!(report.return_to_entry, report.start);
 }
 
+#[test]
+fn static_allocation_shrink_len_to_full_pool_round_trips() {
+    let alloc = make_static_allocator_no_small(4);
+    let baseline = alloc.get_memory_usage();
+    let original_len = 33;
+    let mut allocation = alloc
+        .alloc::<u64>(original_len, AllocationPlacement::BestFit)
+        .unwrap();
+    let original_ptr = allocation.data.ptr;
+    let original_alloc_len = allocation.data.alloc_len;
+    assert_eq!(allocation.data.len, original_len);
+    assert_eq!(original_alloc_len, BIG_CHUNK);
+
+    allocation.shrink_len_to(7);
+    assert_eq!(allocation.data.len, 7);
+    assert_eq!(allocation.data.ptr, original_ptr);
+    assert_eq!(allocation.data.alloc_len, original_alloc_len);
+    drop(allocation);
+    assert_eq!(alloc.get_memory_usage(), baseline);
+
+    let reused = alloc
+        .alloc::<u64>(original_len, AllocationPlacement::BestFit)
+        .unwrap();
+    assert_eq!(reused.data.ptr, original_ptr);
+    assert_eq!(reused.data.alloc_len, original_alloc_len);
+    drop(reused);
+    assert_eq!(alloc.get_memory_usage(), baseline);
+}
+
+#[test]
+fn static_allocation_shrink_len_to_small_pool_round_trips() {
+    let alloc = make_static_allocator(4, 1);
+    let baseline = alloc.get_memory_usage();
+    let original_len = 3;
+    let mut allocation = alloc
+        .alloc::<u64>(original_len, AllocationPlacement::BestFit)
+        .unwrap();
+    let original_ptr = allocation.data.ptr;
+    let original_alloc_len = allocation.data.alloc_len;
+    assert_eq!(allocation.data.len, original_len);
+    assert_eq!(original_alloc_len, 2 * SMALL_CHUNK);
+
+    allocation.shrink_len_to(1);
+    assert_eq!(allocation.data.len, 1);
+    assert_eq!(allocation.data.ptr, original_ptr);
+    assert_eq!(allocation.data.alloc_len, original_alloc_len);
+    drop(allocation);
+    assert_eq!(alloc.get_memory_usage(), baseline);
+
+    let reused = alloc
+        .alloc::<u64>(original_len, AllocationPlacement::BestFit)
+        .unwrap();
+    assert_eq!(reused.data.ptr, original_ptr);
+    assert_eq!(reused.data.alloc_len, original_alloc_len);
+    drop(reused);
+    assert_eq!(alloc.get_memory_usage(), baseline);
+}
+
+#[test]
+fn static_allocation_shrink_len_to_preserves_accounting_and_units() {
+    let alloc = make_static_allocator(4, 1);
+    let baseline = alloc.get_memory_usage();
+    let mut allocation = alloc.alloc::<u64>(3, AllocationPlacement::BestFit).unwrap();
+    let original_ptr = allocation.data.ptr;
+    let original_alloc_len = allocation.data.alloc_len;
+    assert_eq!(allocation.data.len, 3);
+    assert_eq!(original_alloc_len, 2 * SMALL_CHUNK);
+    let start = alloc.get_memory_usage();
+    assert_eq!(
+        start,
+        PoolMemoryUsage {
+            physical_backing_bytes: BIG_CHUNK,
+            logical_live_bytes: 2 * SMALL_CHUNK,
+        }
+    );
+    let mut observer = alloc.observe_memory_high_water();
+
+    allocation.shrink_len_to(1);
+    assert_eq!(allocation.data.len, 1);
+    assert_eq!(allocation.data.ptr, original_ptr);
+    assert_eq!(allocation.data.alloc_len, original_alloc_len);
+    let snapshot = observer.seal();
+    assert_eq!(snapshot.start, start);
+    assert_eq!(
+        snapshot.physical_backing_peak_bytes,
+        start.physical_backing_bytes
+    );
+    assert_eq!(snapshot.logical_live_peak_bytes, start.logical_live_bytes);
+    assert_eq!(snapshot.summed_requested_bytes, 0);
+    assert_eq!(snapshot.peak_window_end, start);
+
+    let report = observer.finish();
+    assert_eq!(report.start, start);
+    assert_eq!(
+        report.physical_backing_peak_bytes,
+        start.physical_backing_bytes
+    );
+    assert_eq!(report.logical_live_peak_bytes, start.logical_live_bytes);
+    assert_eq!(report.summed_requested_bytes, 0);
+    assert_eq!(report.peak_window_end, start);
+    assert_eq!(report.return_to_entry, start);
+
+    drop(allocation);
+    assert_eq!(alloc.get_memory_usage(), baseline);
+}
+
+#[test]
+fn static_allocation_shrink_len_to_same_and_zero() {
+    let alloc = make_static_allocator(4, 1);
+    let baseline = alloc.get_memory_usage();
+    let mut allocation = alloc.alloc::<u16>(9, AllocationPlacement::BestFit).unwrap();
+    let original_ptr = allocation.data.ptr;
+    let original_alloc_len = allocation.data.alloc_len;
+
+    allocation.shrink_len_to(9);
+    assert_eq!(allocation.data.len, 9);
+    assert_eq!(allocation.data.ptr, original_ptr);
+    assert_eq!(allocation.data.alloc_len, original_alloc_len);
+    allocation.shrink_len_to(0);
+    assert_eq!(allocation.data.len, 0);
+    assert_eq!(allocation.data.ptr, original_ptr);
+    assert_eq!(allocation.data.alloc_len, original_alloc_len);
+
+    drop(allocation);
+    assert_eq!(alloc.get_memory_usage(), baseline);
+}
+
+#[test]
+#[should_panic(expected = "StaticAllocation::shrink_len_to cannot grow")]
+fn static_allocation_shrink_len_to_rejects_growth() {
+    let alloc = make_static_allocator(4, 1);
+    let baseline = alloc.get_memory_usage();
+    let mut allocation = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    let original_ptr = allocation.data.ptr;
+    let original_alloc_len = allocation.data.alloc_len;
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        allocation.shrink_len_to(2);
+    }))
+    .expect_err("growth must panic");
+    assert_eq!(allocation.data.len, 1);
+    assert_eq!(allocation.data.ptr, original_ptr);
+    assert_eq!(allocation.data.alloc_len, original_alloc_len);
+    drop(allocation);
+    assert_eq!(alloc.get_memory_usage(), baseline);
+    std::panic::resume_unwind(panic);
+}
+
 /// Sweeps `byte_len` across the small/big routing threshold (256 B for
 /// `make_allocator(4, 1)`), asserting the exact `alloc_len` rounding on each
 /// side. Folds `small_alloc_basic_roundtrip` (below-threshold case),
