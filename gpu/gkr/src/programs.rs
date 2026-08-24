@@ -7,18 +7,24 @@
 
 use gpu_core::primitives::field::BF;
 use gpu_gkr_compiler::{
-    compile_continuations, compile_forward, compile_r0, lower_window_program,
-    parse_forward_artifact, ContinuationProgramBundle, ForwardProgramBundle, R0ProgramBundle,
-    WindowFamily, WindowProgram,
+    compile_continuations, compile_forward, compile_r0, lower_dr_window_program,
+    lower_window_program, parse_forward_artifact, project_dr_window_inputs,
+    ContinuationProgramBundle, DrWindowInputOutput, DrWindowInputProjection, DrWindowProgram,
+    ForwardProgramBundle, R0ProgramBundle, WindowFamily, WindowProgram,
 };
 use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use std::sync::{Arc, OnceLock};
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::backward::derive_dimension_reducing_inputs;
+use crate::storage_layout::GpuGKRStorageLayout;
 use crate::transform::normalize_compiled_circuit_for_gpu;
-use crate::upstream::{GKRAddress, GKRCircuitArtifact, VirtualSetupPoly};
+use crate::upstream::{
+    DimensionReducingInputOutput, GKRAddress, GKRCircuitArtifact, OutputType, VirtualSetupPoly,
+};
 
 #[derive(Clone)]
 pub(crate) struct BackwardLayerPlan {
@@ -197,6 +203,178 @@ impl core::fmt::Display for WindowLoweringRejection {
 
 impl std::error::Error for WindowLoweringRejection {}
 
+/// One dimension-reducing layer's window-3 R0 program and publication view.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DrWindowLayerProgram {
+    layer: usize,
+    folding_steps: usize,
+    program: DrWindowProgram,
+    input_projection: DrWindowInputProjection,
+}
+
+impl DrWindowLayerProgram {
+    pub(crate) fn new(
+        layer: usize,
+        folding_steps: usize,
+        program: DrWindowProgram,
+        input_projection: DrWindowInputProjection,
+    ) -> Self {
+        Self {
+            layer,
+            folding_steps,
+            program,
+            input_projection,
+        }
+    }
+
+    pub const fn layer(&self) -> usize {
+        self.layer
+    }
+
+    pub const fn folding_steps(&self) -> usize {
+        self.folding_steps
+    }
+
+    pub const fn program(&self) -> &DrWindowProgram {
+        &self.program
+    }
+
+    pub const fn input_projection(&self) -> &DrWindowInputProjection {
+        &self.input_projection
+    }
+}
+
+/// Window-3 R0 programs for every dimension-reducing layer at one final log.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DrWindowProgramBundle {
+    final_trace_log: u32,
+    layers: BTreeMap<usize, DrWindowLayerProgram>,
+}
+
+impl DrWindowProgramBundle {
+    pub(crate) fn new(final_trace_log: u32, layers: BTreeMap<usize, DrWindowLayerProgram>) -> Self {
+        Self {
+            final_trace_log,
+            layers,
+        }
+    }
+
+    pub const fn final_trace_log(&self) -> u32 {
+        self.final_trace_log
+    }
+
+    pub fn layer(&self, dr_layer: usize) -> Option<&DrWindowLayerProgram> {
+        self.layers.get(&dr_layer)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DrWindowLegacyRowSide {
+    Input,
+    Output,
+}
+
+impl DrWindowLegacyRowSide {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Input => "input",
+            Self::Output => "output",
+        }
+    }
+}
+
+/// A dimension-reducing window lowering the circuit shape does not support.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DrWindowLoweringRejection {
+    circuit: String,
+    layer: usize,
+    output_type: Option<OutputType>,
+    expected_count: Option<usize>,
+    actual_count: Option<usize>,
+    legacy_row_side: Option<DrWindowLegacyRowSide>,
+    resource: String,
+}
+
+impl DrWindowLoweringRejection {
+    fn lowering(circuit: impl Into<String>, layer: usize, resource: impl Into<String>) -> Self {
+        Self {
+            circuit: circuit.into(),
+            layer,
+            output_type: None,
+            expected_count: None,
+            actual_count: None,
+            legacy_row_side: None,
+            resource: resource.into(),
+        }
+    }
+
+    fn legacy_arity(
+        circuit: impl Into<String>,
+        layer: usize,
+        output_type: OutputType,
+        side: DrWindowLegacyRowSide,
+        expected_count: usize,
+        actual_count: usize,
+    ) -> Self {
+        let circuit = circuit.into();
+        Self {
+            resource: format!(
+                "{output_type:?} {} arity: expected {expected_count}, got {actual_count}",
+                side.as_str()
+            ),
+            circuit,
+            layer,
+            output_type: Some(output_type),
+            expected_count: Some(expected_count),
+            actual_count: Some(actual_count),
+            legacy_row_side: Some(side),
+        }
+    }
+
+    pub fn circuit(&self) -> &str {
+        &self.circuit
+    }
+
+    pub const fn layer(&self) -> usize {
+        self.layer
+    }
+
+    pub const fn output_type(&self) -> Option<OutputType> {
+        self.output_type
+    }
+
+    pub const fn expected_count(&self) -> Option<usize> {
+        self.expected_count
+    }
+
+    pub const fn actual_count(&self) -> Option<usize> {
+        self.actual_count
+    }
+
+    pub const fn legacy_row_side(&self) -> Option<&'static str> {
+        match self.legacy_row_side {
+            Some(side) => Some(side.as_str()),
+            None => None,
+        }
+    }
+
+    pub fn resource(&self) -> &str {
+        &self.resource
+    }
+}
+
+impl core::fmt::Display for DrWindowLoweringRejection {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            formatter,
+            "dimension-reducing windowed R0 lowering rejected for {}/{}: {}",
+            self.circuit, self.layer, self.resource
+        )
+    }
+}
+
+impl std::error::Error for DrWindowLoweringRejection {}
+
 /// Symbolic programs compiled once with the circuit's other precomputations.
 ///
 /// R0 and continuation remain separate compiler products and separate runtime
@@ -213,6 +391,10 @@ pub struct GkrPrograms {
     /// `GkrPrograms` is built in circuit precomputations, which have no prover
     /// config to select an arm with.
     window: OnceLock<Result<WindowProgramBundle, WindowLoweringRejection>>,
+    /// Dimension-reducing programs depend on proof geometry, so one circuit
+    /// precomputation may hold accepted or rejected results for several final
+    /// trace logs. Values are owned outside the lock through `Arc`.
+    dr_window: Mutex<BTreeMap<u32, Result<Arc<DrWindowProgramBundle>, DrWindowLoweringRejection>>>,
 }
 
 impl GkrPrograms {
@@ -256,6 +438,7 @@ impl GkrPrograms {
             continuations,
             backward_layers,
             window: OnceLock::new(),
+            dr_window: Mutex::new(BTreeMap::new()),
         })
     }
 
@@ -290,6 +473,103 @@ impl GkrPrograms {
     /// was accepted.
     pub fn window_programs_ready(&self) -> bool {
         matches!(self.window.get(), Some(Ok(_)))
+    }
+
+    /// Resolve the dimension-reducing window bundle for one final trace log.
+    /// Both accepted bundles and typed rejections are stable cached results.
+    pub fn resolve_dr_window_programs(
+        &self,
+        final_trace_log: u32,
+    ) -> Result<Arc<DrWindowProgramBundle>, DrWindowLoweringRejection> {
+        {
+            let cache = self
+                .dr_window
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(cached) = cache.get(&final_trace_log) {
+                return cached.clone();
+            }
+        }
+
+        let resolved = self.build_dr_window_programs(final_trace_log);
+        let mut cache = self
+            .dr_window
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match cache.entry(final_trace_log) {
+            std::collections::btree_map::Entry::Occupied(cached) => cached.get().clone(),
+            std::collections::btree_map::Entry::Vacant(vacant) => {
+                vacant.insert(resolved.clone());
+                resolved
+            }
+        }
+    }
+
+    /// Whether this final trace log has a cached, accepted DR window bundle.
+    pub fn dr_window_programs_ready(&self, final_trace_log: u32) -> bool {
+        let cache = self
+            .dr_window
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        matches!(cache.get(&final_trace_log), Some(Ok(_)))
+    }
+
+    fn build_dr_window_programs(
+        &self,
+        final_trace_log: u32,
+    ) -> Result<Arc<DrWindowProgramBundle>, DrWindowLoweringRejection> {
+        let circuit = forward_artifact(self.circuit_type).1;
+        let initial_layer = self.runtime_circuit.layers.len();
+        let initial_trace_log = self.runtime_circuit.trace_len.trailing_zeros();
+        if final_trace_log > initial_trace_log {
+            return Err(DrWindowLoweringRejection::lowering(
+                circuit,
+                initial_layer,
+                format!(
+                    "final trace log {final_trace_log} exceeds initial trace log {initial_trace_log}"
+                ),
+            ));
+        }
+
+        let legacy_layers = derive_dimension_reducing_inputs(
+            initial_layer,
+            &self.runtime_circuit.global_output_map,
+            initial_trace_log,
+            final_trace_log,
+        );
+        let layout = GpuGKRStorageLayout::from_artifact_with_tower(
+            self.runtime_circuit.as_ref(),
+            final_trace_log as usize,
+        );
+        let mut layers = BTreeMap::new();
+
+        for (layer, legacy_rows) in legacy_layers {
+            let rows = adapt_dr_window_rows(circuit, layer, &legacy_rows)?;
+            let program = lower_dr_window_program(&rows).map_err(|error| {
+                DrWindowLoweringRejection::lowering(circuit, layer, error.to_string())
+            })?;
+            let input_projection = project_dr_window_inputs(&program, &layout.aliases);
+            let folding_steps = layout
+                .layers
+                .get(layer + 1)
+                .map(|output_layout| output_layout.log2_stride as usize)
+                .ok_or_else(|| {
+                    DrWindowLoweringRejection::lowering(
+                        circuit,
+                        layer,
+                        format!("missing DR output storage layout for layer {}", layer + 1),
+                    )
+                })?;
+            layers.insert(
+                layer,
+                DrWindowLayerProgram::new(layer, folding_steps, program, input_projection),
+            );
+        }
+
+        Ok(Arc::new(DrWindowProgramBundle::new(
+            final_trace_log,
+            layers,
+        )))
     }
 
     /// Seat a rejection in the once-cell so the preflight boundary can be tested
@@ -331,6 +611,56 @@ impl GkrPrograms {
     ) -> &gpu_gkr_compiler::ContinuationLayerProgram {
         &self.continuations.layers[layer]
     }
+}
+
+fn adapt_dr_window_rows(
+    circuit: &str,
+    layer: usize,
+    legacy_rows: &BTreeMap<OutputType, DimensionReducingInputOutput>,
+) -> Result<BTreeMap<OutputType, DrWindowInputOutput>, DrWindowLoweringRejection> {
+    legacy_rows
+        .iter()
+        .map(|(output_type, legacy)| {
+            adapt_dr_window_row(circuit, layer, *output_type, legacy).map(|row| (*output_type, row))
+        })
+        .collect()
+}
+
+fn adapt_dr_window_row(
+    circuit: &str,
+    layer: usize,
+    output_type: OutputType,
+    legacy: &DimensionReducingInputOutput,
+) -> Result<DrWindowInputOutput, DrWindowLoweringRejection> {
+    let inputs = adapt_dr_window_addresses(
+        circuit,
+        layer,
+        output_type,
+        DrWindowLegacyRowSide::Input,
+        &legacy.inputs,
+    )?;
+    let outputs = adapt_dr_window_addresses(
+        circuit,
+        layer,
+        output_type,
+        DrWindowLegacyRowSide::Output,
+        &legacy.output,
+    )?;
+    Ok(DrWindowInputOutput::new(inputs, outputs))
+}
+
+fn adapt_dr_window_addresses(
+    circuit: &str,
+    layer: usize,
+    output_type: OutputType,
+    side: DrWindowLegacyRowSide,
+    addresses: &[GKRAddress],
+) -> Result<[GKRAddress; 2], DrWindowLoweringRejection> {
+    let actual_count = addresses.len();
+    let fixed: &[GKRAddress; 2] = addresses.try_into().map_err(|_| {
+        DrWindowLoweringRejection::legacy_arity(circuit, layer, output_type, side, 2, actual_count)
+    })?;
+    Ok(*fixed)
 }
 
 #[cfg(test)]
@@ -399,5 +729,36 @@ mod tests {
                 GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
             ])
         );
+    }
+
+    #[test]
+    fn dr_window_program_legacy_adapter_owns_input_and_output_arity_rejections() {
+        let address = |offset| GKRAddress::InnerLayer { layer: 9, offset };
+        let context = ("adapter_circuit", 17, OutputType::LookupTimestamps);
+        let bad_input = DimensionReducingInputOutput {
+            inputs: vec![address(0)],
+            output: vec![address(1), address(2)],
+        };
+        let input_error = adapt_dr_window_row(context.0, context.1, context.2, &bad_input)
+            .expect_err("one legacy input must be rejected");
+        assert_eq!(input_error.circuit(), context.0);
+        assert_eq!(input_error.layer(), context.1);
+        assert_eq!(input_error.output_type(), Some(context.2));
+        assert_eq!(input_error.expected_count(), Some(2));
+        assert_eq!(input_error.actual_count(), Some(1));
+        assert_eq!(input_error.legacy_row_side(), Some("input"));
+
+        let bad_output = DimensionReducingInputOutput {
+            inputs: vec![address(0), address(1)],
+            output: vec![address(2), address(3), address(4)],
+        };
+        let output_error = adapt_dr_window_row(context.0, context.1, context.2, &bad_output)
+            .expect_err("three legacy outputs must be rejected");
+        assert_eq!(output_error.circuit(), context.0);
+        assert_eq!(output_error.layer(), context.1);
+        assert_eq!(output_error.output_type(), Some(context.2));
+        assert_eq!(output_error.expected_count(), Some(2));
+        assert_eq!(output_error.actual_count(), Some(3));
+        assert_eq!(output_error.legacy_row_side(), Some("output"));
     }
 }

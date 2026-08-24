@@ -14,6 +14,9 @@ target_sources(gpu_gkr_native PRIVATE
         window/window_control.cuh
         window/window_geometry.cuh
         window/window_source.cuh
+        window_dr/r0.cuh
+        generated/dr_windowed_r0_manifest.cuh
+        generated/dr_r0_window_universal.cu
         generated/windowed_r0_manifest.cuh
         generated/r0_window_shape_1b1.cu
         generated/r0_window_shape_3ff.cu

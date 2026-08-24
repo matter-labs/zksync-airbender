@@ -18,6 +18,7 @@ mod scheduled_execution;
 mod stage_snapshots;
 pub(crate) mod vm;
 pub mod window;
+pub(crate) mod window_dr;
 
 #[doc(hidden)]
 pub use dr_tail::dr_tail_first_order_mismatch;
@@ -43,6 +44,14 @@ pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 
 use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 use main_layer::blueprints::build_dimension_reducing_slots_static;
+
+#[cfg(test)]
+pub(crate) fn legacy_dimension_reducing_slots_for_test(
+    layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
+) -> GpuGKRDimensionReducingLayerSlots {
+    build_dimension_reducing_slots_static(layer)
+}
+
 impl GpuGKRDimensionReducingBackwardState {
     pub(super) fn new(
         forward_tracing_ranges: Vec<Range>,
