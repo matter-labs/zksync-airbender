@@ -2,7 +2,7 @@ use crate::gkr::sumcheck::evaluation_kernels::{
     lookup_base_minus_multiplicity_base, lookup_base_pair, lookup_rational_with_unbalanced_base,
     BatchedGKRKernel,
 };
-use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
+use cs::definitions::gkr::SingleColumnLookupRelation;
 
 use super::*;
 
@@ -53,7 +53,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
     F: PrimeField,
     E: FieldExtension<F> + Field,
 >(
-    inputs: &[NoFieldSingleColumnLookupRelation<F>; 2],
+    inputs: &[SingleColumnLookupRelation<F>; 2],
     outputs: [GKRAddress; 2],
     gkr_storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
@@ -146,7 +146,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
     F: PrimeField,
     E: FieldExtension<F> + Field,
 >(
-    inputs: &[NoFieldSingleColumnLookupRelation<F>; 2],
+    inputs: &[SingleColumnLookupRelation<F>; 2],
     outputs: [GKRAddress; 2],
     gkr_storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,

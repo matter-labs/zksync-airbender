@@ -358,7 +358,7 @@ impl ProveBackend for CpuBackend {
                     self.cpu.ram_bound,
                     &self.worker,
                     security_level,
-                    0,
+                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                     &DefaultBabyBearBackend::default(),
                     &DefaultBabyBearGKRBackend::default(),
                 )
@@ -599,6 +599,13 @@ fn advance_to_target(
         "bridge proved in unified mode ({} cycles)",
         bridge_proof.executed_cycles()
     );
+
+    // Self-check the bridge proof against its full-statement verifier before
+    // the final unified layers consume it (panics inside on an invalid proof).
+    // The chain already holds the base layer, so this is never a base-layer
+    // statement.
+    native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof), false);
+    log::info!("bridge proof passed the unified full-statement verifier");
 
     // === Final: fsv_unified_recursion_layer in unified mode, repeated until convergence. ===
     let final_mode = final_blake_mode();

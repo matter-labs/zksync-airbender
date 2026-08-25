@@ -1,5 +1,5 @@
 use crate::gkr::prover::forward_loop::utils::vector_lookup_as_flattened_relation;
-use cs::definitions::{gkr::NoFieldVectorLookupRelation, GKRAddress};
+use cs::definitions::{gkr::VectorLookupRelation, GKRAddress};
 use worker::Worker;
 
 use super::*;
@@ -7,7 +7,7 @@ use super::*;
 #[derive(Debug)]
 pub struct LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation<F: PrimeField> {
     pub inputs: [GKRAddress; 2],
-    pub remainder: NoFieldVectorLookupRelation<F>,
+    pub remainder: VectorLookupRelation<F>,
     pub outputs: [GKRAddress; 2],
 }
 

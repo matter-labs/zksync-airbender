@@ -1,11 +1,11 @@
 use crate::gkr::prover::forward_loop::utils::memory_query_as_flattened_relation;
 
 use super::*;
-use cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation;
+use cs::gkr_compiler::SpecialMemoryContributionRelation;
 
 #[derive(Debug)]
 pub struct SameSizeProductGKRRelationWithoutCaches {
-    pub inputs: [NoFieldSpecialMemoryContributionRelation; 2],
+    pub inputs: [SpecialMemoryContributionRelation; 2],
     pub output: GKRAddress,
 }
 

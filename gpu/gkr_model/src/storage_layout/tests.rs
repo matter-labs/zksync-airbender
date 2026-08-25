@@ -195,7 +195,7 @@ fn layout_matches_audit_for_all_circuits() {
 
 #[test]
 fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
-    use cs::gkr_compiler::NoFieldGKRRelation as R;
+    use cs::gkr_compiler::GKRRelation as R;
 
     let dir = compiled_circuit_dir();
     let mut covered = 0;
@@ -311,15 +311,15 @@ fn normalize_leaves_no_scratch_mapped_inner_layer_reads() {
 fn relation_outputs_classifies_known_variants() {
     // Spot-check the classification table against the dispatch in
     // forward.rs that distinguishes base vs ext insertion sites.
-    use cs::definitions::gkr::NoFieldLinearRelation;
+    use cs::definitions::gkr::LinearRelation;
     use cs::definitions::GKRAddress::*;
-    use cs::gkr_compiler::NoFieldGKRRelation::*;
+    use cs::gkr_compiler::GKRRelation::*;
 
     let dummy_addr = InnerLayer {
         layer: 1,
         offset: 0,
     };
-    let dummy_input = NoFieldLinearRelation::<field::Mersenne31Field> {
+    let dummy_input = LinearRelation::<field::Mersenne31Field> {
         constant: field::Mersenne31Field::ZERO,
         linear_terms: vec![].into_boxed_slice(),
     };
@@ -330,7 +330,7 @@ fn relation_outputs_classifies_known_variants() {
     };
     assert_eq!(relation_outputs(&base), vec![(dummy_addr, FieldType::Base)]);
 
-    let ext: cs::gkr_compiler::NoFieldGKRRelation<field::Mersenne31Field> = CopyInExtensionField {
+    let ext: cs::gkr_compiler::GKRRelation<field::Mersenne31Field> = CopyInExtensionField {
         input: dummy_addr,
         output: dummy_addr,
     };
@@ -339,9 +339,7 @@ fn relation_outputs_classifies_known_variants() {
 
 #[test]
 fn normalize_max_quadratic_rewrites_scratch_addresses_and_preserves_expression() {
-    use cs::gkr_compiler::{
-        NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression,
-    };
+    use cs::gkr_compiler::{CompiledMaxQuadraticGKRRelation, GKRRelation, StructuredExpression};
     use field::{baby_bear::base::BabyBearField, PrimeField};
 
     type F = BabyBearField;
@@ -359,15 +357,15 @@ fn normalize_max_quadratic_rewrites_scratch_addresses_and_preserves_expression()
         layer: 2,
         offset: 19,
     };
-    let expression = NoFieldStructuredExpression::Product(vec![
-        NoFieldStructuredExpression::Place(input_address),
-        NoFieldStructuredExpression::Sum(vec![
-            NoFieldStructuredExpression::Constant(F::from_u32(7).unwrap()),
-            NoFieldStructuredExpression::Place(output_address),
+    let expression = StructuredExpression::Product(vec![
+        StructuredExpression::Place(input_address),
+        StructuredExpression::Sum(vec![
+            StructuredExpression::Constant(F::from_u32(7).unwrap()),
+            StructuredExpression::Place(output_address),
         ]),
     ]);
-    let relation = NoFieldGKRRelation::MaxQuadratic {
-        input: NoFieldMaxQuadraticGKRRelation {
+    let relation = GKRRelation::MaxQuadratic {
+        input: CompiledMaxQuadraticGKRRelation {
             quadratic_terms: vec![(
                 input_address,
                 vec![(F::ONE, output_address)].into_boxed_slice(),
@@ -407,7 +405,7 @@ fn normalize_max_quadratic_rewrites_scratch_addresses_and_preserves_expression()
         .next()
         .expect("normalized fixture must retain its gate");
 
-    let NoFieldGKRRelation::MaxQuadratic {
+    let GKRRelation::MaxQuadratic {
         input,
         expression: normalized_expression,
         output,

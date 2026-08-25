@@ -67,9 +67,11 @@ done
 
 # Unified-machine recursion verifier: round, g function, or inline special opcodes.
 for sec in $SEC_LEVELS; do
-    for mode in blake2_with_compression blake2_g_function special_opcodes_extension; do
+    for mode in blake2_with_compression special_opcodes_extension; do
         build_variant "fsv_unified_recursion_layer_sec_${sec}" "${mode}"
     done
 done
+
+build_variant "fsv_unified_recursion_layer_sec_100_l1_feeder" "special_opcodes_extension"
 
 echo "==> all recursive verifier variants built (sec: ${SEC})"

@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::upstream::{GKRAddress, GKRCircuitArtifact, NoFieldGKRRelation, PrimeField};
+use crate::upstream::{GKRAddress, GKRCircuitArtifact, GKRRelation, PrimeField};
 
 use super::construct::address_storage_layer;
 use super::types::GpuGKRStorageLayout;
@@ -53,8 +53,8 @@ pub(super) fn build_alias_redirects<F: PrimeField>(
             .chain(layer.gates_with_external_connections.iter())
         {
             match &gate.enforced_relation {
-                NoFieldGKRRelation::CopyInBaseField { input, output }
-                | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+                GKRRelation::CopyInBaseField { input, output }
+                | GKRRelation::CopyInExtensionField { input, output } => {
                     let root = find(&mut parent, *input);
                     parent.insert(*output, root);
                 }

@@ -1,7 +1,7 @@
 use crate::upstream::{
-    GKRCircuitArtifact, NoFieldSingleColumnLookupRelation, PrimeField, TIMESTAMP_COLUMNS_NUM_BITS,
+    GKRCircuitArtifact, PrimeField, SingleColumnLookupRelation, TIMESTAMP_COLUMNS_NUM_BITS,
 };
-use crate::witness::NoFieldLinearRelation;
+use crate::witness::LinearRelation;
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -113,24 +113,23 @@ pub(crate) const MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT: usize = 128;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LookupExpressions {
     relations_count: u32,
-    relations: [NoFieldLinearRelation; MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT],
+    relations: [LinearRelation; MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT],
 }
 
 impl Default for LookupExpressions {
     fn default() -> Self {
         Self {
             relations_count: 0,
-            relations: [NoFieldLinearRelation::default(); MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT],
+            relations: [LinearRelation::default(); MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT],
         }
     }
 }
 
-impl From<&Vec<NoFieldSingleColumnLookupRelation>> for LookupExpressions {
-    fn from(value: &Vec<NoFieldSingleColumnLookupRelation>) -> Self {
+impl From<&Vec<SingleColumnLookupRelation>> for LookupExpressions {
+    fn from(value: &Vec<SingleColumnLookupRelation>) -> Self {
         let len = value.len();
         assert!(len <= MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT);
-        let mut relations =
-            [NoFieldLinearRelation::default(); MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT];
+        let mut relations = [LinearRelation::default(); MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT];
         for (src, dst) in value.iter().map(|r| &r.input).zip(relations.iter_mut()) {
             *dst = src.into();
         }

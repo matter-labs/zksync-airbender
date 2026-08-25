@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
+use cs::gkr_compiler::MaxQuadraticConstraintsGKRRelation;
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension};
@@ -47,7 +47,7 @@ fn test_boolean_constraints() {
     );
     storage.layers.push(layer_0);
 
-    let constraint = NoFieldMaxQuadraticConstraintsGKRRelation {
+    let constraint = MaxQuadraticConstraintsGKRRelation {
         quadratic_terms: vec![(
             (
                 GKRAddress::BaseLayerMemory(0),

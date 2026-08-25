@@ -1,12 +1,12 @@
 use crate::gkr::prover::forward_loop::utils::single_column_lookup_as_flattened_relation;
-use cs::definitions::{gkr::NoFieldSingleColumnLookupRelation, GKRAddress};
+use cs::definitions::{gkr::SingleColumnLookupRelation, GKRAddress};
 use worker::Worker;
 
 use super::*;
 
 #[derive(Debug)]
 pub struct LookupBasePairWithoutCachesGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
-    pub inputs: [NoFieldSingleColumnLookupRelation<F>; 2],
+    pub inputs: [SingleColumnLookupRelation<F>; 2],
     pub outputs: [GKRAddress; 2],
     pub lookup_additive_challenge: E,
     pub _marker: core::marker::PhantomData<F>,

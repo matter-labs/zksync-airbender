@@ -2,9 +2,9 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::gkr::prover::sumcheck_loop::batch_evaluation::BatchedGKRDescription;
-use cs::definitions::gkr::NoFieldLinearRelation;
+use cs::definitions::gkr::LinearRelation;
 use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
-use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation};
+use cs::gkr_compiler::{CompiledMaxQuadraticGKRRelation, GKRCircuitArtifact, GKRRelation};
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn analyze_terms(&self) {
@@ -463,8 +463,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
             }
             // CSE variant: max-quadratic constraints share inner-linear-form construction.
             match rel {
-                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. }
-                | NoFieldGKRRelation::MaxQuadratic { input, .. } => {
+                GKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. }
+                | GKRRelation::MaxQuadratic { input, .. } => {
                     gate_native_cse += max_quadratic_cse_cost(input, &mut materialized);
                 }
                 other => {
@@ -596,7 +596,7 @@ fn coeff_is_mult<F: PrimeField>(coeff: &F) -> bool {
 }
 
 /// Native (bracket-preserving) cost of a max-quadratic relation `Σ a*(Σ c_j b_j) + Σ c_k v_k + c`.
-fn max_quadratic_native_cost<F: PrimeField>(rel: &NoFieldMaxQuadraticGKRRelation<F>) -> EvalCost {
+fn max_quadratic_native_cost<F: PrimeField>(rel: &CompiledMaxQuadraticGKRRelation<F>) -> EvalCost {
     let mut cost = EvalCost::default();
     for (_a, inner) in rel.quadratic_terms.iter() {
         let mut nonzero = 0usize;
@@ -634,7 +634,7 @@ fn max_quadratic_native_cost<F: PrimeField>(rel: &NoFieldMaxQuadraticGKRRelation
 /// gates): each distinct form pays its construction (coefficient scaling + additions) only once,
 /// after which every quadratic term that uses it just multiplies (`a * L`) and accumulates.
 fn max_quadratic_cse_cost<F: PrimeField>(
-    rel: &NoFieldMaxQuadraticGKRRelation<F>,
+    rel: &CompiledMaxQuadraticGKRRelation<F>,
     materialized: &mut BTreeSet<Vec<(u128, GKRAddress)>>,
 ) -> EvalCost {
     let mut cost = EvalCost::default();
@@ -677,7 +677,7 @@ fn max_quadratic_cse_cost<F: PrimeField>(
 }
 
 /// Native cost of a linear relation `Σ c_k v_k + c`.
-fn linear_native_cost<F: PrimeField>(rel: &NoFieldLinearRelation<F>) -> EvalCost {
+fn linear_native_cost<F: PrimeField>(rel: &LinearRelation<F>) -> EvalCost {
     let mut cost = EvalCost::default();
     for (coeff, _v) in rel.linear_terms.iter() {
         if coeff.is_zero() {
@@ -696,38 +696,39 @@ fn linear_native_cost<F: PrimeField>(rel: &NoFieldLinearRelation<F>) -> EvalCost
 
 /// Native arithmetic cost of one gate, before the batching fold. `None` for gate kinds we do not
 /// model (so the caller can report coverage). Lookup gates use small, documented closed-form costs.
-fn native_gate_cost<F: PrimeField>(rel: &NoFieldGKRRelation<F>) -> Option<EvalCost> {
+fn native_gate_cost<F: PrimeField>(rel: &GKRRelation<F>) -> Option<EvalCost> {
     let cost = match rel {
-        NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+        GKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
             max_quadratic_native_cost(input)
         }
-        NoFieldGKRRelation::MaxQuadratic { input, .. } => max_quadratic_native_cost(input),
-        NoFieldGKRRelation::LinearBaseFieldRelation { input, .. } => linear_native_cost(input),
+        GKRRelation::MaxQuadratic { input, .. } => max_quadratic_native_cost(input),
+        GKRRelation::LinearBaseFieldRelation { input, .. } => linear_native_cost(input),
         // A copy a(x) = Σ eq(x,y) a(y) carries no arithmetic of its own here.
-        NoFieldGKRRelation::CopyInBaseField { .. }
-        | NoFieldGKRRelation::CopyInExtensionField { .. } => EvalCost::default(),
+        GKRRelation::CopyInBaseField { .. } | GKRRelation::CopyInExtensionField { .. } => {
+            EvalCost::default()
+        }
         // A single product of two operands.
-        NoFieldGKRRelation::InitialGrandProductFromCaches { .. }
-        | NoFieldGKRRelation::InitialGrandProductWithoutCaches { .. }
-        | NoFieldGKRRelation::TrivialProduct { .. } => EvalCost {
+        GKRRelation::InitialGrandProductFromCaches { .. }
+        | GKRRelation::InitialGrandProductWithoutCaches { .. }
+        | GKRRelation::TrivialProduct { .. } => EvalCost {
             product_mults: 1,
             coeff_mults: 0,
             adds: 0,
         },
         // 1/(a+γ) + 1/(b+γ): den = (a+γ)(b+γ), num = (a+γ) + (b+γ).
-        NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { .. } => EvalCost {
+        GKRRelation::LookupPairFromMaterializedBaseInputs { .. } => EvalCost {
             product_mults: 1,
             coeff_mults: 0,
             adds: 3,
         },
         // 1/(a+γ) + m/(s+γ): den = (a+γ)(s+γ), num = (s+γ) + m*(a+γ).
-        NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup { .. } => EvalCost {
+        GKRRelation::LookupFromMaterializedBaseInputWithSetup { .. } => EvalCost {
             product_mults: 2,
             coeff_mults: 0,
             adds: 3,
         },
         // a/b - c/d -> (num = a*d - c*b, den = b*d).
-        NoFieldGKRRelation::LookupWithCachedDensAndSetup { .. } => EvalCost {
+        GKRRelation::LookupWithCachedDensAndSetup { .. } => EvalCost {
             product_mults: 3,
             coeff_mults: 0,
             adds: 1,
@@ -739,7 +740,7 @@ fn native_gate_cost<F: PrimeField>(rel: &NoFieldGKRRelation<F>) -> Option<EvalCo
 
 /// Number of outputs a gate writes (used for the batching-fold charge). Output-less enforced
 /// constraints return 0 (the caller then charges a single fold).
-fn num_outputs<F: PrimeField>(rel: &NoFieldGKRRelation<F>) -> usize {
+fn num_outputs<F: PrimeField>(rel: &GKRRelation<F>) -> usize {
     let mut outputs = BTreeSet::new();
     rel.dump_outputs(&mut outputs);
     outputs.len()
@@ -1778,7 +1779,7 @@ mod test {
         let mut linear_raw = 0usize;
         let mut linear_distinct: BTreeSet<GKRAddress> = BTreeSet::new();
 
-        let mut max_quad_rels: Vec<&NoFieldMaxQuadraticGKRRelation<BabyBearField>> = vec![];
+        let mut max_quad_rels: Vec<&CompiledMaxQuadraticGKRRelation<BabyBearField>> = vec![];
         let mut list_rels = vec![];
         for gate in layer
             .gates_with_external_connections
@@ -1786,15 +1787,15 @@ mod test {
             .chain(layer.gates.iter())
         {
             match &gate.enforced_relation {
-                NoFieldGKRRelation::MaxQuadratic { input, .. } => {
+                GKRRelation::MaxQuadratic { input, .. } => {
                     n_max_quad += 1;
                     max_quad_rels.push(input);
                 }
-                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+                GKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                     n_enforce_single += 1;
                     max_quad_rels.push(input);
                 }
-                NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
+                GKRRelation::EnforceConstraintsMaxQuadratic { input } => {
                     n_enforce_list += 1;
                     list_rels.push(input);
                 }

@@ -24,3 +24,7 @@ tools/gkr_verifier/*.text
 # workspace member and is not in the fsv build's dependency tree).
 examples
 *.pdf
+
+# Temporary files that may be artifacts of large on-disk proof caches
+**/*.rscw
+**/*.tree

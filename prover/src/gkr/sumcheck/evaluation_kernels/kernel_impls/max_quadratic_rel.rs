@@ -1,10 +1,10 @@
 use super::*;
-use cs::{definitions::GKRAddress, gkr_compiler::NoFieldMaxQuadraticGKRRelation};
+use cs::{definitions::GKRAddress, gkr_compiler::CompiledMaxQuadraticGKRRelation};
 
 #[derive(Debug)]
 pub struct MaxQuadraticGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
     pub kernel: MaxQuadraticGKRRelationKernel<F, E>,
-    pub relation: NoFieldMaxQuadraticGKRRelation<F>,
+    pub relation: CompiledMaxQuadraticGKRRelation<F>,
     pub inputs: Vec<GKRAddress>,
     pub output: GKRAddress,
 }
@@ -31,7 +31,7 @@ impl DenseInputRemapper {
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> MaxQuadraticGKRRelation<F, E> {
-    pub fn new(input: &NoFieldMaxQuadraticGKRRelation<F>, output: GKRAddress) -> Self {
+    pub fn new(input: &CompiledMaxQuadraticGKRRelation<F>, output: GKRAddress) -> Self {
         let mut remapper = DenseInputRemapper::default();
         let mut inputs = vec![];
         let mut kernel = MaxQuadraticGKRRelationKernel::<F, E> {

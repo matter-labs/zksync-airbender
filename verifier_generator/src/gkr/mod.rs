@@ -20,8 +20,8 @@ use prover::cs::definitions::{
 };
 use prover::cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation,
-    NoFieldSpecialMemoryContributionRelation, OutputType,
+    GKRCacheRelation, GKRCircuitArtifact, GKRLayerDescription, OutputType,
+    SpecialMemoryContributionRelation,
 };
 use prover::gkr::prover::WhirSchedule;
 use prover::gkr::prover_config::pow_bits;
@@ -533,8 +533,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
     // MemoryTuple caches: (cached_idx, relation). Bound below by an unrolled per-relation
     // block that reproduces `evaluate_memory_tuple_from_claims` exactly. Without this, the
     // memory-permutation grand product certifies nothing about the committed base columns
-    let mut memtuple_relations: Vec<(usize, &NoFieldSpecialMemoryContributionRelation)> =
-        Vec::new();
+    let mut memtuple_relations: Vec<(usize, &SpecialMemoryContributionRelation)> = Vec::new();
 
     let find_idx = |addr: &GKRAddress| -> usize {
         target_addrs
@@ -552,7 +551,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
         let cached_idx = find_idx(cached_addr);
 
         match relation {
-            NoFieldGKRCacheRelation::SingleColumnLookup {
+            GKRCacheRelation::SingleColumnLookup {
                 relation: rel,
                 range_check_width: _,
             } => {
@@ -570,7 +569,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
                     rel.input.linear_terms.len(),
                 ));
             }
-            NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
+            GKRCacheRelation::VectorizedLookup(rel) => {
                 let col_start = vector_cols.len();
                 for column in rel.columns.iter() {
                     let t_start = vector_terms.len();
@@ -588,14 +587,14 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
                 }
                 vector_descs.push((cached_idx, col_start, rel.columns.len()));
             }
-            NoFieldGKRCacheRelation::VectorizedLookupSetup(setup_addrs) => {
+            GKRCacheRelation::VectorizedLookupSetup(setup_addrs) => {
                 let dep_start = vsetup_deps.len();
                 for addr in setup_addrs.iter() {
                     vsetup_deps.push(find_idx(addr));
                 }
                 vsetup_descs.push((cached_idx, dep_start, setup_addrs.len()));
             }
-            NoFieldGKRCacheRelation::MemoryTuple(rel) => {
+            GKRCacheRelation::MemoryTuple(rel) => {
                 memtuple_relations.push((cached_idx, rel));
             }
         }
@@ -779,7 +778,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
 
 /// Emit a straight-line check binding a single MemoryTuple cache to the committed base columns
 fn emit_memory_tuple_check<MW: FieldWrapper>(
-    rel: &NoFieldSpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation,
     cached_idx: usize,
     layer_idx: usize,
     relation_idx: usize,

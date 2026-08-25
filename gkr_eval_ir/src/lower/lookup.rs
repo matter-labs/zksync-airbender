@@ -33,7 +33,7 @@
 //! There is no `Sub`/`Neg` node: `a − b = a + (−1)·b`, where `−1` is the reduced
 //! base-field constant `F::CHARACTERISTICS − 1`, threaded in as `minus_one`.
 
-use cs::definitions::gkr::{NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation};
+use cs::definitions::gkr::{SingleColumnLookupRelation, VectorLookupRelation};
 use cs::definitions::GKRAddress;
 use field::PrimeField;
 
@@ -82,7 +82,7 @@ pub(super) fn read(arena: &mut ArenaBuilder, addr: GKRAddress) -> ExprId {
 /// Uses the same arithmetic lowering as `LinearBaseFieldRelation`.
 fn lower_query<F: PrimeField>(
     arena: &mut ArenaBuilder,
-    lin: &cs::definitions::gkr::NoFieldLinearRelation<F>,
+    lin: &cs::definitions::gkr::LinearRelation<F>,
 ) -> ExprId {
     super::arithmetic::lower_linear(arena, lin).0
 }
@@ -95,7 +95,7 @@ fn lower_query<F: PrimeField>(
 /// the timestamp column. `set_index` is the relation's `lookup_set_index`.
 pub(super) fn single_column_lookup<F: PrimeField>(
     arena: &mut ArenaBuilder,
-    rel: &NoFieldSingleColumnLookupRelation<F>,
+    rel: &SingleColumnLookupRelation<F>,
     range_check_width: u32,
 ) -> ExprId {
     let kind = if range_check_width == RANGE_CHECK_16_WIDTH {
@@ -119,7 +119,7 @@ pub(super) fn single_column_lookup<F: PrimeField>(
 /// `LookupValue` carries the relation's `lookup_set_index`.
 pub(super) fn folded_lookup<F: PrimeField>(
     arena: &mut ArenaBuilder,
-    rel: &NoFieldVectorLookupRelation<F>,
+    rel: &VectorLookupRelation<F>,
 ) -> ExprId {
     let mut terms = Vec::with_capacity(rel.columns.len());
     for (j, column) in rel.columns.iter().enumerate() {

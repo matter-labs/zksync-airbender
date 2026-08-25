@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
+use cs::gkr_compiler::MaxQuadraticConstraintsGKRRelation;
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension};
@@ -52,7 +52,7 @@ fn test_quadratic_constraint_with_constant() {
     let mut minus_4 = F::from_u32_with_reduction(4);
     minus_4.negate();
 
-    let constraint = NoFieldMaxQuadraticConstraintsGKRRelation {
+    let constraint = MaxQuadraticConstraintsGKRRelation {
         quadratic_terms: vec![
             (
                 (

@@ -2,31 +2,30 @@
 
 # Make sure to run from the main zksync-airbender directory.
 
-set -e  # Exit on any error
+set -euo pipefail  # Exit on any error
 
 export DOCKER_DEFAULT_PLATFORM=linux/amd64
 
+SOURCE_DATE_EPOCH="1700000000"
+export SOURCE_DATE_EPOCH
+
 # create a fresh docker
-docker build -t airbender-verifiers  -f tools/reproduce/Dockerfile .
+docker build -t airbender-verifiers \
+  --build-arg SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+  -f tools/reproduce/Dockerfile .
 
 docker create --name verifiers airbender-verifiers
 
 # Full-statement-verifier (fsv_) build artifacts, exactly the set produced by
 # tools/gkr_verifier/dump_recursive_verifiers.sh (unrolled base+recursion in the
 # blake2_with_compression variant; unified recursion in blake2_with_compression,
-# blake2_g_function, and special_opcodes_extension), at both 80- and 100-bit
-# security levels.
+# blake2_g_function, and special_opcodes_extension)
 STEMS=(
     fsv_unrolled_base_layer_sec_100_blake2_with_compression
-    fsv_unrolled_base_layer_sec_100_blake2_with_compression
-    fsv_unrolled_recursion_layer_sec_100_blake2_with_compression
     fsv_unrolled_recursion_layer_sec_100_blake2_with_compression
     fsv_unified_recursion_layer_sec_100_blake2_with_compression
-    fsv_unified_recursion_layer_sec_100_blake2_g_function
     fsv_unified_recursion_layer_sec_100_special_opcodes_extension
-    fsv_unified_recursion_layer_sec_100_blake2_with_compression
-    fsv_unified_recursion_layer_sec_100_blake2_g_function
-    fsv_unified_recursion_layer_sec_100_special_opcodes_extension
+    fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension
 )
 
 FILES=()

@@ -8,7 +8,7 @@ namespace airbender::trace::witness::multiplicities {
 
 struct LookupExpressions {
   u32 relations_count;
-  NoFieldLinearRelation relations[MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT];
+  LinearRelation relations[MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT];
 };
 
 template <typename Memory, typename Witness, typename Scratch, typename Mapping>

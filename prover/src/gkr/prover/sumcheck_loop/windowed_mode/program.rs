@@ -1,6 +1,6 @@
 //! Shared batched-program representation for the same-size LSB sumcheck
 //! engines: CSE'd bracket forms + factored products compiled DIRECTLY from
-//! the layer's [`NoFieldStructuredExpression`] trees (for the max-quadratic
+//! the layer's [`StructuredExpression`] trees (for the max-quadratic
 //! relation kinds), plus the expanded remainder of every other kernel from
 //! the flattened batched description. Consumed by the uniskip/window chain
 //! kernels (`lsb_bench`, `lsb_generic`) and the chain driver (`lsb_chain`).
@@ -19,7 +19,7 @@ use crate::gkr::prover::sumcheck_loop::batch_evaluation::BatchedGKRDescription;
 use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelCollector;
 use crate::gkr::sumcheck::evaluation_kernels::generic_kernel::BatchedGKRTermDescriptionConstants;
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation, NoFieldStructuredExpression};
+use cs::gkr_compiler::{GKRLayerDescription, GKRRelation, StructuredExpression};
 use field::{Field, FieldExtension, PrimeField};
 
 /// One inner-linear-form member of a preserved bracket.
@@ -153,19 +153,19 @@ struct QPoly<F: PrimeField> {
     quads: Vec<(F, Affine<F>, Affine<F>)>,
 }
 
-/// Compiles a [`NoFieldStructuredExpression`] tree into the factored
+/// Compiles a [`StructuredExpression`] tree into the factored
 /// normal form. Returns `None` for shapes beyond max-quadratic (the caller
 /// falls back to the flattened path for that relation).
-fn compile_expression<F: PrimeField>(e: &NoFieldStructuredExpression<F>) -> Option<QPoly<F>> {
+fn compile_expression<F: PrimeField>(e: &StructuredExpression<F>) -> Option<QPoly<F>> {
     match e {
-        NoFieldStructuredExpression::Constant(c) => Some(QPoly {
+        StructuredExpression::Constant(c) => Some(QPoly {
             affine: Affine {
                 constant: *c,
                 linear: BTreeMap::new(),
             },
             quads: vec![],
         }),
-        NoFieldStructuredExpression::Place(a) => {
+        StructuredExpression::Place(a) => {
             let mut linear = BTreeMap::new();
             linear.insert(*a, F::ONE);
             Some(QPoly {
@@ -176,7 +176,7 @@ fn compile_expression<F: PrimeField>(e: &NoFieldStructuredExpression<F>) -> Opti
                 quads: vec![],
             })
         }
-        NoFieldStructuredExpression::Sum(children) => {
+        StructuredExpression::Sum(children) => {
             let mut acc = QPoly {
                 affine: Affine::zero(),
                 quads: vec![],
@@ -188,7 +188,7 @@ fn compile_expression<F: PrimeField>(e: &NoFieldStructuredExpression<F>) -> Opti
             }
             Some(acc)
         }
-        NoFieldStructuredExpression::Product(children) => {
+        StructuredExpression::Product(children) => {
             let mut scale = F::ONE;
             let mut affines: Vec<Affine<F>> = vec![];
             let mut quad: Option<QPoly<F>> = None;
@@ -248,9 +248,9 @@ fn compile_expression<F: PrimeField>(e: &NoFieldStructuredExpression<F>) -> Opti
 
 /// Build the SoA + bracket-preserving program for a layer.
 ///
-/// Max-quadratic relations (`NoFieldGKRRelation::MaxQuadratic` /
+/// Max-quadratic relations (`GKRRelation::MaxQuadratic` /
 /// `::EnforceSingleMaxQuadraticConstraint`) compile DIRECTLY from their
-/// [`NoFieldStructuredExpression`] trees: quadratic terms stay factored as
+/// [`StructuredExpression`] trees: quadratic terms stay factored as
 /// (possibly mixed-degree) form-by-form products, so nothing is expanded and
 /// re-recovered. Every other kernel -- and any structured relation whose
 /// expression the compiler cannot lower (non-base places, exotic shapes) --
@@ -362,10 +362,8 @@ pub fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
         .chain(layer_desc.gates_with_external_connections.iter());
     for (ki, (gate, kernel)) in gates_iter.zip(collector.kernels.iter()).enumerate() {
         let expression = match &gate.enforced_relation {
-            NoFieldGKRRelation::MaxQuadratic { expression, .. }
-            | NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { expression, .. } => {
-                expression
-            }
+            GKRRelation::MaxQuadratic { expression, .. }
+            | GKRRelation::EnforceSingleMaxQuadraticConstraint { expression, .. } => expression,
             _ => continue,
         };
         let challenge = match kernel {

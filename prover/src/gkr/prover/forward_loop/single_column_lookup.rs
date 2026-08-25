@@ -1,5 +1,5 @@
 use super::*;
-use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
+use cs::definitions::gkr::SingleColumnLookupRelation;
 
 pub(crate) fn evaluate_single_column_lookup_relation<
     F: PrimeField,
@@ -7,7 +7,7 @@ pub(crate) fn evaluate_single_column_lookup_relation<
 >(
     layer_idx: usize,
     output: GKRAddress,
-    relation: &NoFieldSingleColumnLookupRelation<F>,
+    relation: &SingleColumnLookupRelation<F>,
     range_check_width: u32,
     gkr_storage: &mut GKRStorage<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,

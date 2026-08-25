@@ -17,7 +17,7 @@ pub struct GKRLayerDescription<F: PrimeField> {
     // for the sumcheck like f(r) = \sum_x eq(r, x) a(x) b(x)
     pub gates_with_external_connections: Vec<GateArtifacts<F>>,
     #[serde_as(as = "Vec<(_, _)>")]
-    pub cached_relations: BTreeMap<GKRAddress, NoFieldGKRCacheRelation<F>>,
+    pub cached_relations: BTreeMap<GKRAddress, GKRCacheRelation<F>>,
     pub gates: Vec<GateArtifacts<F>>,
     pub intermediate_layer_width: Option<usize>, // number of polys in intermediate layers. None for the base one
 }
@@ -52,10 +52,10 @@ impl<F: PrimeField> GKRLayerDescription<F> {
 
 #[derive(Clone, Debug)]
 pub(crate) enum LookupOutput<F: PrimeField> {
-    Direct(NoFieldGKRRelation<F>),
+    Direct(GKRRelation<F>),
     Copied {
-        num: NoFieldGKRRelation<F>,
-        den: NoFieldGKRRelation<F>,
+        num: GKRRelation<F>,
+        den: GKRRelation<F>,
     },
 }
 
@@ -71,9 +71,9 @@ impl<F: PrimeField> GKRGraph<F> {
 
     pub(crate) fn layout_layers(
         &mut self,
-        mut grand_product_outputs: [(GKRAddress, NoFieldGKRRelation<F>); 2],
+        mut grand_product_outputs: [(GKRAddress, GKRRelation<F>); 2],
         mut lookup_outputs: BTreeMap<LookupType, ([GKRAddress; 2], LookupOutput<F>)>,
-        mut inits_teardowns_outputs: Option<[(GKRAddress, NoFieldGKRRelation<F>); 2]>,
+        mut inits_teardowns_outputs: Option<[(GKRAddress, GKRRelation<F>); 2]>,
     ) -> (
         Vec<GKRLayerDescription<F>>,
         BTreeMap<OutputType, Vec<GKRAddress>>,

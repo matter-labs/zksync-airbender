@@ -108,12 +108,30 @@ pub fn load_fsv_program(
 ) -> (Vec<u32>, Vec<u32>) {
     let dir = dir.as_ref();
     let stem = program.file_stem(blake);
-    if dir.join(format!("{stem}.bin")).exists() {
+    println!("Trying to load `{}` verifier", &stem);
+    let bin_path = dir.join(format!("{stem}.bin"));
+    let exists = match bin_path.try_exists() {
+        Ok(res) => res,
+        Err(err) => {
+            if let Some(err) = err.get_ref() {
+                println!("Failed to probe path `{}`: {}", bin_path.display(), err);
+            } else {
+                println!("Failed to probe path `{}`", bin_path.display());
+            }
+            false
+        }
+    };
+    if exists {
         load_program(
             &dir.join(format!("{stem}.bin")),
             &dir.join(format!("{stem}.text")),
         )
     } else {
+        println!(
+            "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
+            &stem,
+            bin_path.display(),
+        );
         assert!(
             blake == BlakeMode::Compression,
             "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`",

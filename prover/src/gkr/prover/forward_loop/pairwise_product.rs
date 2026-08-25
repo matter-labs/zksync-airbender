@@ -1,6 +1,6 @@
 use super::*;
 use crate::gkr::sumcheck::evaluation_kernels::{pairwise_product, BatchedGKRKernel};
-use cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation;
+use cs::gkr_compiler::SpecialMemoryContributionRelation;
 
 pub fn forward_evaluate_pairwise_product<F: PrimeField, E: FieldExtension<F> + Field>(
     inputs: [GKRAddress; 2],
@@ -19,7 +19,7 @@ pub fn forward_evaluate_base_layer_pairwise_product_without_caches<
     F: PrimeField,
     E: FieldExtension<F> + Field,
 >(
-    inputs: &[NoFieldSpecialMemoryContributionRelation; 2],
+    inputs: &[SpecialMemoryContributionRelation; 2],
     output: GKRAddress,
     gkr_storage: &mut GKRStorage<F, E>,
     external_challenges: &GKRExternalChallenges<F, E>,

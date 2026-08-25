@@ -18,7 +18,7 @@ use cs::definitions::{
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    InitsOrTeardownsTimestampAndValue, NoFieldSpecialMemoryContributionRelation,
+    InitsOrTeardownsTimestampAndValue, SpecialMemoryContributionRelation,
 };
 
 use super::super::{
@@ -85,7 +85,7 @@ fn slot_for_address_high() -> PermutationSlot {
 
 // ── memory tuple ────────────────────────────────────────────────────────────────
 
-/// Lower a `NoFieldSpecialMemoryContributionRelation` into an affine `Expr`,
+/// Lower a `SpecialMemoryContributionRelation` into an affine `Expr`,
 /// matching `evaluate_memory_query`.
 ///
 /// Returns an error for the unsupported `U32SpaceGeneric` address form.
@@ -94,7 +94,7 @@ fn slot_for_address_high() -> PermutationSlot {
 /// encode the `IsRegister` `1 − bit` rewrite without a `Sub`/`Neg` node.
 pub(super) fn lower_memory_tuple(
     arena: &mut ArenaBuilder,
-    rel: &NoFieldSpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation,
     minus_one: u32,
 ) -> Result<ExprId, String> {
     let mut terms: Vec<ExprId> = Vec::with_capacity(8);

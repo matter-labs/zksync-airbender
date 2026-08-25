@@ -177,15 +177,12 @@ pub(crate) fn create_inits_and_teardowns_set<F: PrimeField>(
     graph: &mut impl GraphHolder<F>,
     set_idxes: [usize; 2],
     allocated_teardown_ts_and_values: [([GKRAddress; 2], [GKRAddress; 2]); 2],
-) -> (
-    (GKRAddress, NoFieldGKRRelation<F>),
-    (GKRAddress, NoFieldGKRRelation<F>),
-) {
+) -> ((GKRAddress, GKRRelation<F>), (GKRAddress, GKRRelation<F>)) {
     let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(1));
     // inits and teardowns are almost the same, so we just use enum to indicate
     // what is an timestamp + value
 
-    let inits = NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+    let inits = GKRRelation::InitsOrTeardownsInitialPair {
         timestamp_and_value: InitsOrTeardownsTimestampAndValue::Init,
         setup: [
             GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
@@ -198,7 +195,7 @@ pub(crate) fn create_inits_and_teardowns_set<F: PrimeField>(
 
     let [(lhs_timestamp, lhs_value), (rhs_timestamp, rhs_value)] = allocated_teardown_ts_and_values;
 
-    let teardowns = NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+    let teardowns = GKRRelation::InitsOrTeardownsInitialPair {
         timestamp_and_value: InitsOrTeardownsTimestampAndValue::Teardown {
             lhs_timestamp: lhs_timestamp.map(|el| {
                 let GKRAddress::BaseLayerMemory(el) = el else {

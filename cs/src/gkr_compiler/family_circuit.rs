@@ -537,18 +537,16 @@ impl<F: PrimeField> GKRCompiler<F> {
         );
 
         // Build the inline inits/teardowns grand product
-        let inline_it_output: Option<(
-            (GKRAddress, NoFieldGKRRelation<F>),
-            (GKRAddress, NoFieldGKRRelation<F>),
-        )> = if !inline_it_teardown_sets.is_empty() {
-            use crate::gkr_compiler::inits_and_teardowns_inline::build_inline_inits_and_teardowns_grand_product;
-            Some(build_inline_inits_and_teardowns_grand_product(
-                &mut graph,
-                &inline_it_teardown_sets,
-            ))
-        } else {
-            None
-        };
+        let inline_it_output: Option<((GKRAddress, GKRRelation<F>), (GKRAddress, GKRRelation<F>))> =
+            if !inline_it_teardown_sets.is_empty() {
+                use crate::gkr_compiler::inits_and_teardowns_inline::build_inline_inits_and_teardowns_grand_product;
+                Some(build_inline_inits_and_teardowns_grand_product(
+                    &mut graph,
+                    &inline_it_teardown_sets,
+                ))
+            } else {
+                None
+            };
 
         // now we can follow up with lookup subarguments. We separate "hot" range check 16 and 19 bit
         // ones, and "generic" ones (that includes decoder)
@@ -907,16 +905,16 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         for rel in range_check_16_lookups_compiled
             .iter_mut()
-            .map(|el: &mut NoFieldSingleColumnLookupRelation<F>| &mut el.input)
+            .map(|el: &mut SingleColumnLookupRelation<F>| &mut el.input)
             .chain(
                 timestamp_range_check_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldSingleColumnLookupRelation<F>| &mut el.input),
+                    .map(|el: &mut SingleColumnLookupRelation<F>| &mut el.input),
             )
             .chain(
                 generic_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldVectorLookupRelation<F>| el.columns.iter_mut())
+                    .map(|el: &mut VectorLookupRelation<F>| el.columns.iter_mut())
                     .flatten(),
             )
         {

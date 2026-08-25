@@ -1,10 +1,10 @@
 use super::*;
 use crate::gkr::prover::forward_loop::utils::single_column_lookup_as_flattened_relation;
-use cs::definitions::{gkr::NoFieldSingleColumnLookupRelation, GKRAddress};
+use cs::definitions::{gkr::SingleColumnLookupRelation, GKRAddress};
 
 #[derive(Debug)]
 pub struct MaterializeSingleLookupInputGKRRelation<F: PrimeField> {
-    pub input: NoFieldSingleColumnLookupRelation<F>,
+    pub input: SingleColumnLookupRelation<F>,
     pub output: GKRAddress,
 }
 
