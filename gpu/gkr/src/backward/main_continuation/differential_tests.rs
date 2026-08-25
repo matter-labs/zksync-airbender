@@ -3909,9 +3909,13 @@ mod cpu_tests {
         TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
     };
     use crate::backward::kernels::{task8_dual_finalize_spans, task8_eq_build_spans};
+    use crate::backward::main_layer::execution_plan::{
+        main_continuation_post_tail_eq_boundary, WINDOW_WIDTH,
+    };
     use crate::backward::task8_probe::task8_register_descriptor_sources;
     use crate::backward::vm::production_bind::{
-        task8_challenge_prefix_spans, task8_challenge_slot_spans,
+        drained_eq_sizes, foldable_eq_variables, task8_challenge_prefix_spans,
+        task8_challenge_slot_spans, task8_differential_eq_plan, EqDrainSchedule,
     };
     use crate::backward::vm::seg::{task8_fold_weight_spans, task8_seg_plan, task8_seg_spans};
     use crate::backward::vm::seg_coeff_eval::{
@@ -5133,6 +5137,174 @@ mod cpu_tests {
         }
         ledger.next_step = positions.iter().sum::<usize>() as u64;
         ledger
+    }
+
+    /// Every coordinate the prepared selector covers, from the fixture census
+    /// the selector itself asserts.
+    fn task8_selector_coordinates() -> impl Iterator<Item = (usize, usize)> {
+        [20usize, 22, 23, 24].into_iter().flat_map(|folding_steps| {
+            [3usize, 6, 9, 12, 15, 18]
+                .into_iter()
+                .filter(move |start| start + 2 < folding_steps)
+                .map(move |start| (folding_steps, start))
+        })
+    }
+
+    /// The Eq-low prefix an arm's own build covers at one coordinate.
+    fn task8_built_eq(folding_steps: usize, start_round: usize) -> (GkrEqSizes, usize) {
+        let built = make_eq_sizes(folding_steps - start_round - WINDOW_WIDTH);
+        (built, (1usize << built.low) * std::mem::size_of::<E4>())
+    }
+
+    /// The legacy arm folds Eq once, at its third comparison round. This is the
+    /// live Eq state each planned round runs against.
+    fn task8_live_eq(base: GkrEqSizes, round_index: usize) -> GkrEqSizes {
+        if round_index + 1 < WINDOW_WIDTH {
+            base
+        } else {
+            drained_eq_sizes(base, 1)
+        }
+    }
+
+    /// The plan the differential hands the segmented round planner must describe
+    /// exactly the Eq the arm builds and folds, at every coordinate. The
+    /// consumed packet-v7 run failed here: a first segmented round declared
+    /// sixteen Eq-low slots against a build that had covered four.
+    #[test]
+    fn cpu_main_continuation_differential_eq_plan_matches_every_selector_coordinate() {
+        let element = std::mem::size_of::<E4>();
+        let mut coordinates = 0usize;
+        for (folding_steps, start_round) in task8_selector_coordinates() {
+            let (built, built_bytes) = task8_built_eq(folding_steps, start_round);
+            let (base, schedule) = task8_differential_eq_plan(start_round as u8, folding_steps);
+            assert_eq!(
+                base, built,
+                "the differential Eq base is not what the arm seeds at \
+                 folding_steps={folding_steps} start_round={start_round}"
+            );
+
+            // Exactly one fold, at the third comparison round, and one entry per
+            // planned round of the sequence the differential binds.
+            assert_eq!(schedule.len(), folding_steps - start_round);
+            assert_eq!(
+                schedule
+                    .iter()
+                    .map(|drains| usize::from(*drains))
+                    .sum::<usize>(),
+                1
+            );
+            assert_eq!(schedule[WINDOW_WIDTH - 1], 1);
+            assert!(schedule
+                .iter()
+                .enumerate()
+                .all(|(index, drains)| *drains == u8::from(index == WINDOW_WIDTH - 1)));
+
+            let plan = EqDrainSchedule::Explicit(&schedule);
+            for index in 0..schedule.len() {
+                let declared = drained_eq_sizes(base, plan.drains_through(index, schedule.len()));
+                let live = task8_live_eq(base, index);
+                assert_eq!(
+                    declared, live,
+                    "round {index} declares an Eq state the arm is not in at \
+                     folding_steps={folding_steps} start_round={start_round}"
+                );
+                assert!(
+                    (1usize << declared.low) * element <= built_bytes,
+                    "round {index} declares {} Eq-low bytes of {built_bytes} built at \
+                     folding_steps={folding_steps} start_round={start_round}",
+                    (1usize << declared.low) * element
+                );
+            }
+
+            // The two arms are compared on their post-tail boundary witness, so
+            // the legacy arm's single fold must land on the window arm's state.
+            let post = drained_eq_sizes(base, 1);
+            assert_eq!(
+                main_continuation_post_tail_eq_boundary(start_round as u8, folding_steps, post),
+                main_continuation_post_tail_eq_boundary(
+                    start_round as u8,
+                    folding_steps,
+                    drained_eq_sizes(make_eq_sizes(folding_steps - start_round - WINDOW_WIDTH), 1),
+                ),
+                "the legacy boundary witness diverges at \
+                 folding_steps={folding_steps} start_round={start_round}"
+            );
+            coordinates += 1;
+        }
+        assert_eq!(coordinates, 23, "the selector's coordinate corpus changed");
+    }
+
+    /// Each way of getting the drain schedule wrong must be visible to the
+    /// oracle above, at some coordinate the selector covers.
+    #[test]
+    fn cpu_main_continuation_differential_eq_plan_rejects_wrong_schedules() {
+        let element = std::mem::size_of::<E4>();
+        let mut caught: BTreeSet<&'static str> = BTreeSet::new();
+        for (folding_steps, start_round) in task8_selector_coordinates() {
+            let (built, built_bytes) = task8_built_eq(folding_steps, start_round);
+            let (base, schedule) = task8_differential_eq_plan(start_round as u8, folding_steps);
+            let rounds = schedule.len();
+
+            // One drain per round: the production tail's rhythm, which this arm
+            // does not have. It over-drains the arm's live state.
+            let all_drain = EqDrainSchedule::PerRound;
+            if (0..rounds).any(|index| {
+                u32::from(all_drain.drains_through(index, rounds)) <= foldable_eq_variables(&base)
+                    && drained_eq_sizes(base, all_drain.drains_through(index, rounds))
+                        != task8_live_eq(base, index)
+            }) {
+                caught.insert("all-drain");
+            }
+            // Never folding: the boundary witness never reaches the window arm's.
+            let never = vec![0u8; rounds];
+            let plan = EqDrainSchedule::Explicit(&never);
+            if drained_eq_sizes(base, plan.drains_through(rounds - 1, rounds))
+                != task8_live_eq(base, rounds - 1)
+            {
+                caught.insert("no-drain");
+            }
+            // Folding one round early.
+            let mut shifted = vec![0u8; rounds];
+            shifted[WINDOW_WIDTH - 2] = 1;
+            let plan = EqDrainSchedule::Explicit(&shifted);
+            if (0..rounds).any(|index| {
+                drained_eq_sizes(base, plan.drains_through(index, rounds))
+                    != task8_live_eq(base, index)
+            }) {
+                caught.insert("shifted-drain");
+            }
+            // The production tail's base under this arm's own sequence length:
+            // it carries three fewer variables than the rounds would drain.
+            let stale = make_eq_sizes(folding_steps - start_round);
+            if (1usize << drained_eq_sizes(stale, 1).low) * element > built_bytes {
+                caught.insert("post-tail-overrun");
+            }
+            if u32::from(EqDrainSchedule::PerRound.drains_through(rounds - 1, rounds))
+                > foldable_eq_variables(&base)
+            {
+                caught.insert("post-tail-underflow");
+            }
+        }
+        assert_eq!(
+            caught.iter().copied().collect::<Vec<_>>(),
+            vec![
+                "all-drain",
+                "no-drain",
+                "post-tail-overrun",
+                "post-tail-underflow",
+                "shifted-drain",
+            ],
+            "a wrong schedule is invisible to the oracle"
+        );
+    }
+
+    /// A schedule that does not cover the sequence exactly fails closed.
+    #[test]
+    #[should_panic(expected = "one entry per planned round")]
+    fn cpu_main_continuation_differential_eq_schedule_length_fails_closed() {
+        let (_, schedule) = task8_differential_eq_plan(3, 24);
+        let short = &schedule[..schedule.len() - 1];
+        EqDrainSchedule::Explicit(short).drains_through(0, schedule.len());
     }
 
     #[test]

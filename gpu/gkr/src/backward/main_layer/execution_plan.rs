@@ -5,7 +5,7 @@ use crate::{
 
 use crate::backward::kernels::{make_eq_sizes, record_active_eq_slot_fold, GkrEqSizes};
 
-const WINDOW_WIDTH: usize = 3;
+pub(crate) const WINDOW_WIDTH: usize = 3;
 
 pub(crate) const LEGACY_MAIN_TAIL_MIN_ROUNDS: u8 = 1;
 

@@ -40,6 +40,7 @@ use crate::backward::main_continuation::{
     validate_adoption_state, validate_canonical_publication, ContinuationPublicationError,
     ContinuationPublishedLevel, ContinuationPublishedShape,
 };
+use crate::backward::main_layer::execution_plan::WINDOW_WIDTH;
 use crate::backward::{make_eq_sizes, record_active_eq_slot_fold, GkrEqSizes};
 use crate::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
 use crate::forward::vm::production_bind::resolve_storage_column;
@@ -1031,6 +1032,49 @@ struct PlannedExtRound {
 /// Bind and lower every continuation round of one layer. Shared by the
 /// production launch builder and the golden snapshot, which differ only in the
 /// resolver they hand it and in the `K` ceiling they pin.
+/// How many times the fused finalize folds the factored Eq at each round of a
+/// planned sequence, indexed from the sequence's first round.
+///
+/// The production tail folds once at every round, which is what
+/// [`record_active_eq_slot_fold`] does and what [`drained_eq_sizes`] mirrors.
+/// A caller whose arm folds on a different rhythm must say so: the prepared
+/// differential's legacy sequence stands in for one window kernel and folds
+/// only at the last of its three comparison rounds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EqDrainSchedule<'a> {
+    /// One drain per round, for every round in the sequence.
+    PerRound,
+    /// One entry per planned round, in sequence order.
+    Explicit(&'a [u8]),
+}
+
+impl EqDrainSchedule<'_> {
+    /// Total drains applied by the end of round `index`, counting from the
+    /// sequence's first round. Fails closed on a schedule that does not cover
+    /// the sequence exactly.
+    pub(crate) fn drains_through(&self, index: usize, rounds: usize) -> u8 {
+        match self {
+            Self::PerRound => u8::try_from(index + 1).expect("planned sequence exceeds u8 rounds"),
+            Self::Explicit(schedule) => {
+                assert_eq!(
+                    schedule.len(),
+                    rounds,
+                    "the Eq drain schedule must carry one entry per planned round"
+                );
+                schedule[..=index]
+                    .iter()
+                    .try_fold(0u8, |total, drains| total.checked_add(*drains))
+                    .expect("the Eq drain schedule overflowed u8")
+            }
+        }
+    }
+}
+
+/// How many variables a base can still fold before it is empty.
+pub(crate) fn foldable_eq_variables(sizes: &GkrEqSizes) -> u32 {
+    sizes.low + sizes.high.iter().sum::<u32>()
+}
+
 fn plan_ext_rounds(
     resolver: &dyn ExtSourceResolver,
     program: &ContinuationLayerProgram,
@@ -1038,6 +1082,7 @@ fn plan_ext_rounds(
     folding_steps: usize,
     eq_low: *const E4,
     base_eq_sizes: GkrEqSizes,
+    eq_drains: EqDrainSchedule<'_>,
     partials: *mut E4,
     ceiling: usize,
     published_shape: Option<ContinuationPublishedShape>,
@@ -1056,7 +1101,23 @@ fn plan_ext_rounds(
     } = bound;
 
     let mut planned = Vec::with_capacity(bound_rounds.len());
-    for round in bound_rounds {
+    let sequence_rounds = bound_rounds.len();
+    let foldable = foldable_eq_variables(&base_eq_sizes);
+    for (index, round) in bound_rounds.into_iter().enumerate() {
+        // The schedule is positional, so a sequence that is not contiguous from
+        // its own first round would silently misalign with it.
+        assert_eq!(
+            usize::from(round.round),
+            usize::from(start_round) + index,
+            "planned round {} is not at sequence position {index}",
+            round.round
+        );
+        let drains = eq_drains.drains_through(index, sequence_rounds);
+        assert!(
+            u32::from(drains) <= foldable,
+            "round {} would drain the factored Eq {drains} times past its {foldable} variables",
+            round.round
+        );
         let bytes_per_row = seg_ext_bytes_per_row(&round.slots, &round.sources, round.round);
         let k = seg_continuation_policy_k(bytes_per_row, ceiling);
         // The segmented descriptor lowerer expresses the one exceptional
@@ -1098,7 +1159,7 @@ fn plan_ext_rounds(
             c_init: program.c_init,
             immediates: &program.immediates,
             eq_low,
-            eq_sizes: drained_eq_sizes(base_eq_sizes, round.round - start_round + 1),
+            eq_sizes: drained_eq_sizes(base_eq_sizes, drains),
             contributions: partials,
             acc_size: round.rows as u32,
         };
@@ -1129,6 +1190,7 @@ fn build_bwd_vm_ext_rounds_inner<E: Copy>(
     folding_steps: usize,
     eq_low: *const E4,
     base_eq_sizes: GkrEqSizes,
+    eq_drains: EqDrainSchedule<'_>,
     partials: *mut E4,
     inits_and_teardowns_top_bits: &[u32],
     context: &ProverContext,
@@ -1147,6 +1209,7 @@ fn build_bwd_vm_ext_rounds_inner<E: Copy>(
         folding_steps,
         eq_low,
         base_eq_sizes,
+        eq_drains,
         partials,
         ceiling,
         published_shape,
@@ -1210,6 +1273,7 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
         folding_steps,
         eq_low,
         base_eq_sizes,
+        EqDrainSchedule::PerRound,
         partials,
         inits_and_teardowns_top_bits,
         context,
@@ -1273,6 +1337,7 @@ pub(crate) fn build_bwd_vm_ext_rounds_after_continuations<E: Copy>(
         folding_steps,
         eq_low,
         make_eq_sizes(suffix_len),
+        EqDrainSchedule::PerRound,
         partials,
         inits_and_teardowns_top_bits,
         context,
@@ -1645,6 +1710,7 @@ pub fn continuation_snapshot(
         folding_steps,
         (GOLDEN_REGION_EQ_LOW << GOLDEN_REGION_SHIFT) as *const E4,
         make_eq_sizes(folding_steps - usize::from(start_round)),
+        EqDrainSchedule::PerRound,
         (GOLDEN_REGION_CONTRIBUTIONS << GOLDEN_REGION_SHIFT) as *mut E4,
         GOLDEN_K_CEILING,
         None,
@@ -1699,6 +1765,7 @@ pub fn continuation_start_round_snapshot(
         folding_steps,
         (GOLDEN_REGION_EQ_LOW << GOLDEN_REGION_SHIFT) as *const E4,
         fresh_eq,
+        EqDrainSchedule::PerRound,
         (GOLDEN_REGION_CONTRIBUTIONS << GOLDEN_REGION_SHIFT) as *mut E4,
         GOLDEN_K_CEILING,
         Some(published_shape),
@@ -2030,6 +2097,35 @@ impl PreparedContinuationDifferentialRounds {
     }
 }
 
+/// The Eq base and drain rhythm a prepared-state differential arm runs against.
+///
+/// Both arms seed the factored Eq at the windowed consumer boundary with
+/// `launch_build_eq_high_and_low_groups_from_point(point, round + WINDOW_WIDTH,
+/// folding_steps - round - WINDOW_WIDTH, ..)`, and both fold it exactly once, at
+/// the third comparison round's fused finalize. The legacy arm's three rounds
+/// stand in for one window kernel: they do not fold, and neither do the rounds
+/// beyond them, which this differential never schedules. Seeding from
+/// `folding_steps - comparison_round` instead — the production tail's base —
+/// would describe an Eq-low table wider than the arm ever built, which is what
+/// the consumed packet-v7 run reported as `UseBeforeInitialization`.
+#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+pub(crate) fn task8_differential_eq_plan(
+    comparison_round: u8,
+    folding_steps: usize,
+) -> (GkrEqSizes, Vec<u8>) {
+    let rounds = folding_steps
+        .checked_sub(usize::from(comparison_round))
+        .expect("the differential comparison round is outside the layer folding width");
+    let base = make_eq_sizes(
+        rounds
+            .checked_sub(WINDOW_WIDTH)
+            .expect("the differential window extends past the layer folding steps"),
+    );
+    let mut schedule = vec![0u8; rounds];
+    schedule[WINDOW_WIDTH - 1] = 1;
+    (base, schedule)
+}
+
 #[cfg(any(test, feature = "task8_continuation_differential_test"))]
 pub(crate) fn prepare_continuation_differential_rounds<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
@@ -2112,35 +2208,27 @@ pub(crate) fn prepare_continuation_differential_rounds<E: Copy>(
         first.slots[source.read_slot].deferred_base
             && first.slots[source.read_slot].procedural_kind.is_none()
     });
-    let mut launch = if let Some(prior) = prior {
-        let mut launch = build_bwd_vm_ext_rounds_after_continuations(
-            storage,
-            program,
-            comparison_round,
-            folding_steps,
-            eq_low,
-            partials,
-            inits_and_teardowns_top_bits,
-            context,
-        )?;
+    let (base_eq_sizes, eq_drains) = task8_differential_eq_plan(comparison_round, folding_steps);
+    let mut launch = build_bwd_vm_ext_rounds_inner(
+        storage,
+        program,
+        comparison_round,
+        folding_steps,
+        eq_low,
+        base_eq_sizes,
+        EqDrainSchedule::Explicit(&eq_drains),
+        partials,
+        inits_and_teardowns_top_bits,
+        context,
+        prior
+            .as_ref()
+            .map(|_| expected_published_shape(program, comparison_round, folding_steps)),
+    )?;
+    if let Some(prior) = prior {
         if let Err((_prior, error)) = launch.adopt_published_level(prior) {
             panic!("Task 8 legacy prior adoption failed: {error:?}");
         }
-        launch
-    } else {
-        build_bwd_vm_ext_rounds_inner(
-            storage,
-            program,
-            comparison_round,
-            folding_steps,
-            eq_low,
-            make_eq_sizes(folding_steps - usize::from(comparison_round)),
-            partials,
-            inits_and_teardowns_top_bits,
-            context,
-            None,
-        )?
-    };
+    }
     let adopted_depth = adopted_shape.map(|shape| shape.depth);
     assert!(
         adopted_depth.is_none_or(|depth| launch.live.contains_key(&depth)),
