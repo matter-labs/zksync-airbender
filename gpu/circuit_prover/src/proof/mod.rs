@@ -156,6 +156,27 @@ pub fn resolve_backward_execution_strategy(
     )
 }
 
+/// Production-only resolver. An enabled production request is never
+/// converted into the legacy per-round strategy: a schedule that cannot run
+/// the complete windowed MAIN chain is rejected before transfer construction.
+pub fn resolve_backward_execution_strategy_checked(
+    gkr_programs: &GkrPrograms,
+    prover_config: &ProverConfig,
+    options: GkrBackwardOptions,
+) -> Result<BackwardExecutionStrategy, GpuProveError> {
+    if !options.windowed_r0 {
+        return Ok(BackwardExecutionStrategy::PerRound);
+    }
+    if validated_schedule_class(gkr_programs, prover_config)
+        != Some(SumcheckScheduleClass::Windowed)
+    {
+        return Err(GpuProveError::MainLayerExecutionPlan {
+            error: MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+        });
+    }
+    Ok(BackwardExecutionStrategy::WindowedR0)
+}
+
 fn validated_schedule_class(
     gkr_programs: &GkrPrograms,
     prover_config: &ProverConfig,
@@ -334,7 +355,7 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
 ) -> Result<GpuGKRProofJob<'a, A>, GpuProveError> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let backward_strategy =
-        resolve_backward_execution_strategy(gkr_programs, prover_config, backward_options);
+        resolve_backward_execution_strategy_checked(gkr_programs, prover_config, backward_options)?;
     match backward_strategy {
         BackwardExecutionStrategy::PerRound if backward_options.windowed_r0 => {
             return Err(GpuProveError::MainLayerExecutionPlan {

@@ -8,8 +8,8 @@ use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::{
-    preflight_windowed_backward, prove, resolve_backward_execution_strategy, GpuGKRProofJob,
-    GpuProveError,
+    preflight_windowed_backward, prove, resolve_backward_execution_strategy_checked,
+    GpuGKRProofJob, GpuProveError,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -329,11 +329,11 @@ fn schedule_phase_one<'a>(
         // scheduling side effect behind.
         preflight_windowed_backward(
             &state.precomputations.gkr_programs,
-            resolve_backward_execution_strategy(
+            resolve_backward_execution_strategy_checked(
                 &state.precomputations.gkr_programs,
                 prover_config,
                 BACKWARD_OPTIONS,
-            ),
+            )?,
             BACKWARD_OPTIONS,
             FINAL_TRACE_SIZE_LOG_2,
         )?;
