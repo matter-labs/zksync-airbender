@@ -5372,6 +5372,37 @@ mod cpu_tests {
         validator_rejection(ledger, first, second).is_some()
     }
 
+    #[test]
+    fn cpu_legacy_multi_pass_retirement_lifecycle_mutations() {
+        let mut green = replay_both_orders(TASK8_LEGACY_ARM, TASK8_WINDOW_ARM);
+        assert!(validate(&green, TASK8_LEGACY_ARM, TASK8_WINDOW_ARM) > 0);
+
+        // Premature Final must reproduce the UseAfterFinal/last-use failure.
+        let slot = green
+            .generations
+            .iter()
+            .position(|entry| entry.arm == TASK8_LEGACY_ARM && entry.label == "publication")
+            .expect("legacy publication generation");
+        let mut premature = green.clone();
+        premature.generations[slot].final_enqueue = Some(
+            premature.generations[slot]
+                .records
+                .first()
+                .expect("publication use")
+                .enqueue,
+        );
+        assert!(validator_rejects(&premature, TASK8_LEGACY_ARM, TASK8_WINDOW_ARM));
+
+        // Omitting Final is rejected by the structural validator.
+        let mut omitted = green.clone();
+        omitted.generations[slot].final_enqueue = None;
+        assert!(validator_rejects(&omitted, TASK8_LEGACY_ARM, TASK8_WINDOW_ARM));
+
+        // A successor at an overlapping address must be generation-aware and
+        // must not satisfy the predecessor's retirement predicate.
+        assert_eq!(overlap_successor_owner(TASK8_LEGACY_ARM), "reduced_tensor");
+    }
+
     /// How the exact census names one range, so a control can assert which
     /// range the validator objected to and not merely that it objected.
     fn census_entry(role: &str, use_kind: Task8QueuedUse, address: usize, bytes: usize) -> String {
