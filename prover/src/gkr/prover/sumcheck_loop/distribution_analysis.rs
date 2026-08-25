@@ -4,7 +4,7 @@ use super::*;
 use crate::gkr::prover::sumcheck_loop::batch_evaluation::BatchedGKRDescription;
 use cs::definitions::gkr::LinearRelation;
 use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
-use cs::gkr_compiler::{GKRCircuitArtifact, GKRRelation, MaxQuadraticGKRRelation};
+use cs::gkr_compiler::{CompiledMaxQuadraticGKRRelation, GKRCircuitArtifact, GKRRelation};
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn analyze_terms(&self) {
@@ -596,7 +596,7 @@ fn coeff_is_mult<F: PrimeField>(coeff: &F) -> bool {
 }
 
 /// Native (bracket-preserving) cost of a max-quadratic relation `Σ a*(Σ c_j b_j) + Σ c_k v_k + c`.
-fn max_quadratic_native_cost<F: PrimeField>(rel: &MaxQuadraticGKRRelation<F>) -> EvalCost {
+fn max_quadratic_native_cost<F: PrimeField>(rel: &CompiledMaxQuadraticGKRRelation<F>) -> EvalCost {
     let mut cost = EvalCost::default();
     for (_a, inner) in rel.quadratic_terms.iter() {
         let mut nonzero = 0usize;
@@ -634,7 +634,7 @@ fn max_quadratic_native_cost<F: PrimeField>(rel: &MaxQuadraticGKRRelation<F>) ->
 /// gates): each distinct form pays its construction (coefficient scaling + additions) only once,
 /// after which every quadratic term that uses it just multiplies (`a * L`) and accumulates.
 fn max_quadratic_cse_cost<F: PrimeField>(
-    rel: &MaxQuadraticGKRRelation<F>,
+    rel: &CompiledMaxQuadraticGKRRelation<F>,
     materialized: &mut BTreeSet<Vec<(u128, GKRAddress)>>,
 ) -> EvalCost {
     let mut cost = EvalCost::default();
@@ -1779,7 +1779,7 @@ mod test {
         let mut linear_raw = 0usize;
         let mut linear_distinct: BTreeSet<GKRAddress> = BTreeSet::new();
 
-        let mut max_quad_rels: Vec<&MaxQuadraticGKRRelation<BabyBearField>> = vec![];
+        let mut max_quad_rels: Vec<&CompiledMaxQuadraticGKRRelation<BabyBearField>> = vec![];
         let mut list_rels = vec![];
         for gate in layer
             .gates_with_external_connections

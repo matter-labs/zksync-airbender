@@ -261,7 +261,7 @@ impl<F: PrimeField> GKRGate<F> for SingleConstraintEvaluationNode<F> {
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-        let input = MaxQuadraticGKRRelation {
+        let input = CompiledMaxQuadraticGKRRelation {
             quadratic_terms,
             linear_terms,
             constant: self.constant_part,

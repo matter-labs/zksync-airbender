@@ -8,9 +8,9 @@ use cs::{
         VirtualSetupPoly,
     },
     gkr_compiler::{
-        CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-        GKRCacheRelation, GKRCircuitArtifact, GKRLayerDescription, GKRRelation, GateArtifacts,
-        InitsOrTeardownsTimestampAndValue, MaxQuadraticGKRRelation,
+        CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMaxQuadraticGKRRelation,
+        CompiledMemoryTimestamp, GKRCacheRelation, GKRCircuitArtifact, GKRLayerDescription,
+        GKRRelation, GateArtifacts, InitsOrTeardownsTimestampAndValue,
         SpecialMemoryContributionRelation,
     },
 };
@@ -1272,7 +1272,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             // gkraddress_to_calldata for every operand so the gate-input offsets are still recorded
             // for the transcript "extras" the same way the inline path would. Returns the slot.
             fn collect_quad_terms(
-                input: &MaxQuadraticGKRRelation<Proth120>,
+                input: &CompiledMaxQuadraticGKRRelation<Proth120>,
                 expected_layer: usize,
                 layer0_group_widths: (usize, usize, usize, usize),
                 running_max_group_offsets: &mut (usize, usize, usize, usize),
@@ -1282,7 +1282,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             ) -> u32 {
                 let slot = *slot_counter;
                 *slot_counter += 1;
-                let MaxQuadraticGKRRelation {
+                let CompiledMaxQuadraticGKRRelation {
                     quadratic_terms,
                     linear_terms,
                     constant,
@@ -1496,7 +1496,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 )
             }
             fn quadrel_to_calldata_inner(
-                input: &MaxQuadraticGKRRelation<Proth120>,
+                input: &CompiledMaxQuadraticGKRRelation<Proth120>,
                 expected_layer: usize,
                 layer0_group_widths: (usize, usize, usize, usize),
                 running_max_group_offsets: &mut (usize, usize, usize, usize),
@@ -1504,7 +1504,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 // eval_max_quadratic: constant + Σ_a read_a·(Σ_b coeff·read_b) + Σ coeff·read.
                 // Products via mulmod (reduced); sums via add (non-canonical, funneled through
                 // the outer mulmod in pointcheck_update). Mirrors the validated Rust kernel.
-                let MaxQuadraticGKRRelation {
+                let CompiledMaxQuadraticGKRRelation {
                     quadratic_terms,
                     linear_terms,
                     constant,

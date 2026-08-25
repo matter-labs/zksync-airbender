@@ -103,7 +103,7 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MaxQuadraticGKRRelation<F: PrimeField> {
+pub struct CompiledMaxQuadraticGKRRelation<F: PrimeField> {
     pub quadratic_terms: Box<[(GKRAddress, Box<[(F, GKRAddress)]>)]>,
     pub linear_terms: Box<[(F, GKRAddress)]>,
     pub constant: F,
@@ -330,13 +330,13 @@ pub enum GKRRelation<F: PrimeField> {
         output: GKRAddress,
     },
     MaxQuadratic {
-        input: MaxQuadraticGKRRelation<F>,
+        input: CompiledMaxQuadraticGKRRelation<F>,
         expression: StructuredExpression<F>,
         output: GKRAddress,
     },
 
     EnforceSingleMaxQuadraticConstraint {
-        input: MaxQuadraticGKRRelation<F>,
+        input: CompiledMaxQuadraticGKRRelation<F>,
         expression: StructuredExpression<F>,
     },
 

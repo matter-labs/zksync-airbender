@@ -42,7 +42,7 @@ pub(super) fn lower_linear<F: PrimeField>(
 /// Returns the root expr and `FieldKind::Base` (max-quadratic is base-field).
 pub(super) fn lower_max_quadratic<F: PrimeField>(
     arena: &mut ArenaBuilder,
-    rel: &cs::gkr_compiler::MaxQuadraticGKRRelation<F>,
+    rel: &cs::gkr_compiler::CompiledMaxQuadraticGKRRelation<F>,
 ) -> (ExprId, FieldKind) {
     let mut terms = Vec::new();
     let constant = rel.constant.as_u32_reduced();

@@ -1,10 +1,10 @@
 use crate::upstream::{
-    GKRAddress, GKRCircuitArtifact, GKRRelation, LinearRelation, MaxQuadraticGKRRelation,
+    CompiledMaxQuadraticGKRRelation, GKRAddress, GKRCircuitArtifact, GKRRelation, LinearRelation,
     PrimeField, VectorLookupRelation,
 };
 use std::collections::BTreeMap;
 
-/// Element type of `MaxQuadraticGKRRelation::quadratic_terms`.
+/// Element type of `CompiledMaxQuadraticGKRRelation::quadratic_terms`.
 type MaxQuadraticTerm<F> = (GKRAddress, Box<[(F, GKRAddress)]>);
 /// Element type of `MaxQuadraticConstraintsGKRRelation::quadratic_terms`.
 type ConstraintsQuadraticTerm<F> = ((GKRAddress, GKRAddress), Box<[(F, usize)]>);
@@ -102,7 +102,7 @@ fn rewrite_vector_lookup<F: PrimeField>(
 }
 
 fn rewrite_max_quadratic<F: PrimeField>(
-    rel: &mut MaxQuadraticGKRRelation<F>,
+    rel: &mut CompiledMaxQuadraticGKRRelation<F>,
     mapping: &BTreeMap<GKRAddress, usize>,
 ) {
     let mut rewritten_quadratic: Vec<MaxQuadraticTerm<F>> =

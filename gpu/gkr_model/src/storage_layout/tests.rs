@@ -339,7 +339,7 @@ fn relation_outputs_classifies_known_variants() {
 
 #[test]
 fn normalize_max_quadratic_rewrites_scratch_addresses_and_preserves_expression() {
-    use cs::gkr_compiler::{GKRRelation, MaxQuadraticGKRRelation, StructuredExpression};
+    use cs::gkr_compiler::{CompiledMaxQuadraticGKRRelation, GKRRelation, StructuredExpression};
     use field::{baby_bear::base::BabyBearField, PrimeField};
 
     type F = BabyBearField;
@@ -365,7 +365,7 @@ fn normalize_max_quadratic_rewrites_scratch_addresses_and_preserves_expression()
         ]),
     ]);
     let relation = GKRRelation::MaxQuadratic {
-        input: MaxQuadraticGKRRelation {
+        input: CompiledMaxQuadraticGKRRelation {
             quadratic_terms: vec![(
                 input_address,
                 vec![(F::ONE, output_address)].into_boxed_slice(),

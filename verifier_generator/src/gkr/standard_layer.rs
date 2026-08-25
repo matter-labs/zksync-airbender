@@ -375,7 +375,7 @@ fn emit_setup_horner_eval<MW: FieldWrapper>(
 }
 
 fn emit_max_quadratic_eval<MW: FieldWrapper, F: PrimeField>(
-    input: &prover::cs::gkr_compiler::MaxQuadraticGKRRelation<F>,
+    input: &prover::cs::gkr_compiler::CompiledMaxQuadraticGKRRelation<F>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {

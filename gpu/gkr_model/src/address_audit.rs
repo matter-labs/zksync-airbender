@@ -23,10 +23,11 @@
 //! |                             | backing partition; not an error sentinel) |
 
 use crate::upstream::{
-    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp, GKRAddress,
-    GKRCacheRelation, GKRRelation, InitsOrTeardownsTimestampAndValue, LinearRelation,
-    MaxQuadraticConstraintsGKRRelation, MaxQuadraticGKRRelation, PrimeField, RamWordRepresentation,
-    SingleColumnLookupRelation, SpecialMemoryContributionRelation, VectorLookupRelation,
+    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMaxQuadraticGKRRelation,
+    CompiledMemoryTimestamp, GKRAddress, GKRCacheRelation, GKRRelation,
+    InitsOrTeardownsTimestampAndValue, LinearRelation, MaxQuadraticConstraintsGKRRelation,
+    PrimeField, RamWordRepresentation, SingleColumnLookupRelation,
+    SpecialMemoryContributionRelation, VectorLookupRelation,
 };
 
 /// Per-launch hard cap on distinct backings. Matches the dim-reducing
@@ -182,7 +183,8 @@ pub fn collect_addresses_from_relation<F: PrimeField>(
     let push_single_lookup = |s: &SingleColumnLookupRelation<F>, reads: &mut Vec<GKRAddress>| {
         push_linear(&s.input, reads)
     };
-    let push_max_quadratic = |q: &MaxQuadraticGKRRelation<F>, reads: &mut Vec<GKRAddress>| {
+    let push_max_quadratic = |q: &CompiledMaxQuadraticGKRRelation<F>,
+                              reads: &mut Vec<GKRAddress>| {
         for (a, b) in q.quadratic_terms.iter() {
             reads.push(*a);
             for (_, c) in b.iter() {

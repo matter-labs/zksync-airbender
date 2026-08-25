@@ -190,7 +190,7 @@ pub fn no_field_gkr_max_quadratic_from_expr_and_constraint<F: PrimeField>(
 
     let expression = expression_into_no_field_expression(&expression, graph);
 
-    let input = MaxQuadraticGKRRelation {
+    let input = CompiledMaxQuadraticGKRRelation {
         quadratic_terms,
         linear_terms,
         constant,
