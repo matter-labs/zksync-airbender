@@ -655,10 +655,16 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
             "DR window preparation requires preflight_windowed_backward first"
         );
     }
-    assert!(
-        !backward_options.windowed_dr_continuations,
-        "DR continuation execution is incomplete on Red and requires preflight rejection"
-    );
+    if backward_options.windowed_dr_continuations {
+        assert!(
+            backward_options.windowed_dr && backward_options.dr_tail_megakernel,
+            "DR continuation execution requires the complete production chain"
+        );
+        assert!(
+            gkr_programs.dr_window_programs_ready(final_trace_size_log_2),
+            "DR continuation execution requires preflighted DR window programs"
+        );
+    }
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
