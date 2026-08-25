@@ -36,6 +36,7 @@ gpu_gkr_compiler = { workspace = true, optional = true }
 serde_json = { version = "1", optional = true }
 
 [dev-dependencies]
+gpu_core = { workspace = true }
 gpu_gkr = { workspace = true }
 
 [build-dependencies]

@@ -1,5 +1,8 @@
 //! Standalone first-window GKR sumcheck GPU experiment.
 
+#[cfg(test)]
+gpu_core::force_serial_libtest!();
+
 pub mod abi;
 pub mod artifact;
 pub mod geometry;

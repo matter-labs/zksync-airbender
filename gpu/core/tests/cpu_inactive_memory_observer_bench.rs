@@ -1,3 +1,5 @@
+gpu_core::force_serial_libtest!();
+
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::allocator::{
     NonConcurrentInnerStaticAllocatorWrapper, StaticAllocationBackend, StaticAllocator,

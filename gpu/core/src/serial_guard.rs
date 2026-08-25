@@ -113,6 +113,18 @@ mod tests {
         let config =
             std::fs::read_to_string(gpu_dir.parent().unwrap().join(".config/nextest.toml"))
                 .expect("workspace .config/nextest.toml must exist");
+        let gpu_serial_override = config
+            .split("[[profile.default.overrides]]")
+            .find(|block| {
+                block
+                    .lines()
+                    .any(|line| line.trim() == "test-group = 'gpu-serial'")
+            })
+            .expect("nextest config must define a gpu-serial override");
+        let gpu_serial_filter = gpu_serial_override
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("filter = "))
+            .expect("gpu-serial override must define a filter");
         let mut crates_seen = 0;
         for entry in std::fs::read_dir(&gpu_dir).unwrap() {
             let dir = entry.unwrap().path();
@@ -128,15 +140,24 @@ mod tests {
             crates_seen += 1;
             if !FILTER_EXEMPT.contains(&name.as_str()) {
                 assert!(
-                    config.contains(&format!("package({name})")),
+                    gpu_serial_filter.contains(&format!("package({name})")),
                     "{name} is missing from the gpu-serial filter in .config/nextest.toml \
                      — its tests would run in parallel under nextest"
                 );
             }
             if !GUARD_EXEMPT.contains(&name.as_str()) {
                 let lib = std::fs::read_to_string(dir.join("src/lib.rs")).unwrap();
+                let lib_lines = lib.lines().map(str::trim).collect::<Vec<_>>();
+                let has_guard = lib_lines.windows(2).any(|lines| {
+                    lines[0] == "#[cfg(test)]"
+                        && matches!(
+                            lines[1],
+                            "gpu_core::force_serial_libtest!();"
+                                | "crate::force_serial_libtest!();"
+                        )
+                });
                 assert!(
-                    lib.contains("force_serial_libtest!"),
+                    has_guard,
                     "{name} does not invoke gpu_core::force_serial_libtest!() at its crate \
                      root — its tests would run in parallel under plain cargo test"
                 );
