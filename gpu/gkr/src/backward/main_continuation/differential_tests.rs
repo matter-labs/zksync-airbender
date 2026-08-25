@@ -2376,7 +2376,10 @@ fn build_prior_level(
         // The previously published level remains a read input to the next
         // continuation enqueue. Its Final is bound by that consumer's
         // retirement facts, not at replacement time.
-        let _consumed_owner = prior_owner.replace(published);
+        let consumed_owner = prior_owner.replace(published);
+        if let Some(consumed_owner) = consumed_owner {
+            ledger_bind_final(ledger, &consumed_owner);
+        }
         prior = Some(launched.into_published_level());
         drop(consumed);
     }
