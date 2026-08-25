@@ -2515,8 +2515,10 @@ fn run_window_arm(
         eprintln!(
             "Task 8 window binding allocator report: requested={} physical_delta={} logical_delta={}",
             binding_report.summed_requested_bytes,
-            binding_report.physical_backing_delta_bytes,
-            binding_report.logical_live_delta_bytes,
+            binding_report.return_to_entry.physical_backing_bytes as isize
+                - binding_report.start.physical_backing_bytes as isize,
+            binding_report.return_to_entry.logical_live_bytes as isize
+                - binding_report.start.logical_live_bytes as isize,
         );
         allocations.push(publication_record);
         let publication_owner = ledger_open_allocation(
