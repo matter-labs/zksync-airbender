@@ -614,6 +614,80 @@ mod tests {
         programs.runtime_circuit().clone()
     }
 
+    /// Bound disposition of every diagnostic neighbour across the committed
+    /// corpus. The packet's entry sweep needs a host-side expectation for each
+    /// neighbour instead of discovering it on the device, so this records which
+    /// entries are legal and capacity-passing and which are typed rejections.
+    #[test]
+    fn cpu_dr_tail_entry_sweep_disposition_is_bound_for_the_corpus() {
+        let mut lines = Vec::new();
+        for (layout_name, _) in CONTINUATION_GOLDEN_CORPUS {
+            let layout_name: &'static str = layout_name;
+            let (programs, _) = compile_corpus_layout(layout_name);
+            let artifact = programs.runtime_circuit();
+            for selection in [
+                DrTailEntrySelection::Portable,
+                DrTailEntrySelection::Minus3,
+                DrTailEntrySelection::Plus3,
+            ] {
+                let outcome = plan_dr_tail_layers(
+                    artifact.as_ref(),
+                    FINAL_TRACE_LOG,
+                    0,
+                    DEVICE_CAP,
+                    selection,
+                );
+                let summary = match &outcome {
+                    Ok(layers) => format!(
+                        "admits entries={:?}",
+                        layers
+                            .iter()
+                            .map(|layer| layer.capacity.entry_round())
+                            .collect::<Vec<_>>()
+                    ),
+                    Err(error) => format!("rejects {error:?}"),
+                };
+                lines.push(format!("{layout_name} {} {summary}", selection.label()));
+            }
+        }
+        for line in &lines {
+            eprintln!("{line}");
+        }
+        // Portable admits every layout; that is the production path.
+        assert!(
+            lines
+                .iter()
+                .filter(|line| line.contains(" portable "))
+                .all(|line| line.contains("admits")),
+            "the portable entry must admit every committed layout"
+        );
+        // Bound disposition: at this geometry no adjacent neighbour is legal
+        // and capacity-passing, so the set of capacity-passing neighbours is
+        // empty and every neighbour is a typed pre-enqueue rejection.
+        // `portable_entry` already selects the largest legal width-three
+        // boundary, so `plus3` runs past the final round; `minus3` raises
+        // `entry_cells_per_source` by 2^3 and exceeds the device cap.
+        for line in lines.iter().filter(|line| line.contains(" plus3 ")) {
+            assert!(
+                line.contains("rejects Capacity") && line.contains("EntryAtOrAfterFinalRound"),
+                "plus3 must be a typed after-final-round rejection: {line}"
+            );
+        }
+        for line in lines.iter().filter(|line| line.contains(" minus3 ")) {
+            assert!(
+                line.contains("rejects Capacity")
+                    && (line.contains("DeviceCapacityExceeded")
+                        || line.contains("EntryBeforeFirstWindow")),
+                "minus3 must be a typed capacity or first-window rejection: {line}"
+            );
+        }
+        assert_eq!(
+            lines.len(),
+            CONTINUATION_GOLDEN_CORPUS.len() * 3,
+            "every layout must report a disposition for all three entries"
+        );
+    }
+
     /// B6: the diagnostic entry override runs through the very same capacity
     /// decision as production. The portable entry is unchanged, each legal
     /// neighbour shifts every layer by exactly one width-three boundary, and an

@@ -513,9 +513,15 @@ fn schedule_phase_one<'a, 'context>(
                 entry,
             });
 
+    let mut exact_memory = exact_memory;
     let inputs = admit_dr_tail_before_transfers(
         preflight_request,
         |dr_tail_plan| -> CudaResult<PhaseOneInputs<'a, 'context>> {
+            // Admission has returned, so the first production operation of a
+            // measured proof is complete before any transfer is constructed.
+            if let Some(sink) = exact_memory.as_mut() {
+                sink.record_operation("resource_preflight");
+            }
             let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
                 Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
             } else {
@@ -600,7 +606,10 @@ fn schedule_phase_one<'a, 'context>(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
                 bundle.schedule(context)?;
-                PhaseOneInputs::Proof(bundle, dr_tail_plan, exact_memory)
+                if let Some(sink) = exact_memory.as_mut() {
+                    sink.record_operation("initial_input_h2d");
+                }
+                PhaseOneInputs::Proof(bundle, dr_tail_plan, exact_memory.take())
             } else {
                 let mut bundle =
                     gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
@@ -643,7 +652,7 @@ fn enqueue_phase_two<'a, 'context>(
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
-            let job = gpu_circuit_prover::proof::prove_with_measurement::<A>(
+            let mut job = gpu_circuit_prover::proof::prove_with_measurement::<A>(
                 &state.precomputations.gkr_programs,
                 &prover_config,
                 final_trace_size_log_2,
@@ -653,6 +662,10 @@ fn enqueue_phase_two<'a, 'context>(
                 exact_memory,
                 context,
             )?;
+            // Everything the proof needs is enqueued, including the single
+            // terminal final-slab D2H the unchanged terminal owner scheduled.
+            job.record_measured_operation("prove_enqueue");
+            job.record_measured_operation("final_slab_d2h");
             JobType::Proof(job)
         }
         PhaseOneInputs::MemoryCommitment(bundle) => {

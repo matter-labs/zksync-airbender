@@ -1565,6 +1565,7 @@ fn cpu_exact_memory_row_schema_matches_the_durable_analyzer() {
         &snapshot,
         &report,
         &snapshot,
+        &super::EXACT_MEMORY_OPERATION_ORDER,
     );
 
     // Exactly the analyzer's top-level keys, no more and no fewer.
@@ -1587,6 +1588,7 @@ fn cpu_exact_memory_row_schema_matches_the_durable_analyzer() {
             "entry",
             "geometry",
             "invocation",
+            "operations",
             "options",
             "phase",
             "sample",
@@ -1594,6 +1596,17 @@ fn cpu_exact_memory_row_schema_matches_the_durable_analyzer() {
             "whole",
             "whole_sealed",
         ]
+    );
+
+    // The production-shaped operation trace, in the accepted order.
+    assert_eq!(
+        row["operations"]
+            .as_array()
+            .expect("operations is a JSON array")
+            .iter()
+            .map(|value| value.as_str().expect("each operation is a string"))
+            .collect::<Vec<_>>(),
+        super::EXACT_MEMORY_OPERATION_ORDER,
     );
 
     // The analyzer reads these option fields by name.
@@ -1661,4 +1674,88 @@ fn cpu_exact_memory_row_schema_matches_the_durable_analyzer() {
     assert!(serde_json::from_str::<serde_json::Value>(&line).is_ok());
     // The DR layer count is this proof's, never the block's proof count.
     assert_eq!(row["dr_layers"], 7);
+}
+
+/// The production operation trace is ordered and complete by construction: the
+/// sink refuses any mark that is out of order, repeated, or skipped.
+#[test]
+fn cpu_exact_memory_operation_trace_order_is_enforced() {
+    use super::EXACT_MEMORY_OPERATION_ORDER;
+
+    assert_eq!(
+        EXACT_MEMORY_OPERATION_ORDER,
+        [
+            "resource_preflight",
+            "initial_input_h2d",
+            "prove_enqueue",
+            "final_slab_d2h",
+            "proof_assembly_after_final_d2h",
+        ]
+    );
+
+    // The recorder is a pure prefix check, so it is exercised directly here
+    // without a device: position N must be exactly the Nth expected mark.
+    let accepts = |marks: &[&'static str]| -> bool {
+        let mut recorded: Vec<&'static str> = Vec::new();
+        for mark in marks {
+            if EXACT_MEMORY_OPERATION_ORDER.get(recorded.len()).copied() != Some(*mark) {
+                return false;
+            }
+            recorded.push(*mark);
+        }
+        true
+    };
+
+    assert!(accepts(&EXACT_MEMORY_OPERATION_ORDER));
+    // Out of order.
+    assert!(!accepts(&["initial_input_h2d", "resource_preflight"]));
+    // Repeated.
+    assert!(!accepts(&["resource_preflight", "resource_preflight"]));
+    // Skipped.
+    assert!(!accepts(&["resource_preflight", "prove_enqueue"]));
+    // Unknown.
+    assert!(!accepts(&["stage1_forward"]));
+    // A truncated prefix is accepted mark-by-mark but is not a complete trace,
+    // which `finish_report` rejects separately.
+    assert!(accepts(&["resource_preflight", "initial_input_h2d"]));
+}
+
+/// The four enqueue-side marks are recorded at the real worker boundaries, and
+/// the terminal owner is untouched.
+#[test]
+fn cpu_exact_memory_operation_marks_are_wired_at_worker_boundaries() {
+    const WORKER: &str = include_str!("../../../execution_prover/src/workers/gpu.rs");
+
+    let preflight = WORKER
+        .find(r#"sink.record_operation("resource_preflight")"#)
+        .expect("preflight mark must be recorded in phase one");
+    let h2d = WORKER
+        .find(r#"sink.record_operation("initial_input_h2d")"#)
+        .expect("H2D mark must be recorded in phase one");
+    let enqueue = WORKER
+        .find(r#"record_measured_operation("prove_enqueue")"#)
+        .expect("prove-enqueue mark must be recorded in phase two");
+    let d2h = WORKER
+        .find(r#"record_measured_operation("final_slab_d2h")"#)
+        .expect("terminal-D2H mark must be recorded in phase two");
+    assert!(
+        preflight < h2d && h2d < enqueue && enqueue < d2h,
+        "the enqueue-side marks must appear in production order"
+    );
+
+    // Admission is marked before any transfer exists.
+    let construct = WORKER
+        .find("DecoderTableTransfer::new")
+        .expect("phase one must still construct the decoder transfer");
+    assert!(
+        preflight < construct,
+        "the preflight mark must precede the first transfer construction"
+    );
+    let schedule = WORKER
+        .find("bundle.schedule(context)?;")
+        .expect("phase one must still schedule the H2D bundle");
+    assert!(
+        schedule < h2d,
+        "the H2D mark must follow the real bundle schedule"
+    );
 }

@@ -74,6 +74,15 @@ pub struct GpuGKRProofJob<'a, 'context, A: GoodAllocator> {
 }
 
 impl<'a, 'context, A: GoodAllocator> GpuGKRProofJob<'a, 'context, A> {
+    /// Record a production operation on the measurement sink, if measuring.
+    /// Enqueue-side callers use this to mark the boundaries they own; the
+    /// sink itself rejects any out-of-order or repeated mark.
+    pub fn record_measured_operation(&mut self, operation: &'static str) {
+        if let Some(sink) = self.exact_memory.as_mut() {
+            sink.record_operation(operation);
+        }
+    }
+
     /// Complete the proof, then finalize measurement.
     ///
     /// Cleanup order is load-bearing: the completion event is synchronized,

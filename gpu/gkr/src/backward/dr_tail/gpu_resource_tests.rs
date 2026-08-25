@@ -5,7 +5,7 @@
 //! kernel and the real device, and is the only place the CUDA queries are
 //! exercised.
 
-use super::preflight_dr_tail_resources;
+use super::{preflight_dr_tail_resources, DrTailEntrySelection};
 use crate::backward::compile_corpus_layout;
 use crate::test_utils::make_test_context;
 
@@ -20,8 +20,16 @@ fn dr_tail_gpu_resource_preflight() {
     let device_id = era_cudart::device::get_device().expect("a bound CUDA device");
     let (programs, _) = compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
 
-    let plan = preflight_dr_tail_resources(&programs, FINAL_TRACE_LOG, device_id)
-        .expect("the production DR tower must be admissible on this device");
+    // Explicitly the production entry: this smoke covers the path production
+    // takes, not a diagnostic neighbour.
+    let plan = preflight_dr_tail_resources(
+        &programs,
+        FINAL_TRACE_LOG,
+        device_id,
+        DrTailEntrySelection::Portable,
+    )
+    .expect("the production DR tower must be admissible on this device");
+    assert_eq!(plan.entry(), DrTailEntrySelection::Portable);
 
     let resources = plan.resources();
     assert_eq!(

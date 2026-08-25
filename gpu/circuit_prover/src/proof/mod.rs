@@ -434,7 +434,21 @@ pub struct ExactMemoryGateSink<'context> {
     dr_layers: usize,
     dr_prepared_layers: usize,
     dr_bundle_final_log: Option<u32>,
+    operations: Vec<&'static str>,
 }
+
+/// The production-shaped operation order of one measured proof, recorded at the
+/// real boundaries the worker and the job already own. It is pure host
+/// bookkeeping: no CUDA call, no callback, and no device-protocol computation.
+/// `final_slab_d2h` labels the single terminal D2H that `prove()` scheduled --
+/// the terminal owner itself is unchanged.
+pub const EXACT_MEMORY_OPERATION_ORDER: [&str; 5] = [
+    "resource_preflight",
+    "initial_input_h2d",
+    "prove_enqueue",
+    "final_slab_d2h",
+    "proof_assembly_after_final_d2h",
+];
 
 impl<'context> ExactMemoryGateSink<'context> {
     /// Open the whole-proof observation. The caller must invoke this before any
@@ -454,11 +468,28 @@ impl<'context> ExactMemoryGateSink<'context> {
             dr_layers: 0,
             dr_prepared_layers: 0,
             dr_bundle_final_log: None,
+            operations: Vec::with_capacity(EXACT_MEMORY_OPERATION_ORDER.len()),
         }
     }
 
     pub const fn entry(&self) -> DrTailEntrySelection {
         self.config.entry
+    }
+
+    /// Record one production operation, in order. A caller that records out of
+    /// order or twice is a wiring bug, so this panics before any measured
+    /// result can be emitted.
+    pub fn record_operation(&mut self, operation: &'static str) {
+        let expected = EXACT_MEMORY_OPERATION_ORDER
+            .get(self.operations.len())
+            .copied();
+        assert_eq!(
+            expected,
+            Some(operation),
+            "measured operations must follow the production order: got {operation:?} at position {}",
+            self.operations.len()
+        );
+        self.operations.push(operation);
     }
 
     fn start_backward(&mut self, context: &'context ProverContext) {
@@ -487,6 +518,9 @@ impl<'context> ExactMemoryGateSink<'context> {
         mut self,
         job_finish_sequence: usize,
     ) -> Result<(PathBuf, serde_json::Value), String> {
+        // The proof has completed and been extracted by the caller, so the
+        // final production operation is recorded before the observers close.
+        self.record_operation("proof_assembly_after_final_d2h");
         let backward = self
             .backward
             .take()
@@ -524,6 +558,12 @@ impl<'context> ExactMemoryGateSink<'context> {
         };
         sequence.validate()?;
 
+        if self.operations.len() != EXACT_MEMORY_OPERATION_ORDER.len() {
+            return Err(format!(
+                "incomplete production operation trace: {:?}",
+                self.operations
+            ));
+        }
         let row = exact_memory_row_json(
             self.config.identity_json(),
             self.geometry,
@@ -537,6 +577,7 @@ impl<'context> ExactMemoryGateSink<'context> {
             &whole_sealed,
             &backward,
             &backward_sealed,
+            &self.operations,
         );
         Ok((self.config.output, row))
     }
@@ -563,6 +604,7 @@ pub(crate) fn exact_memory_row_json(
     whole_sealed: &PoolMemoryHighWaterSnapshot,
     backward: &PoolMemoryHighWaterReport,
     backward_sealed: &PoolMemoryHighWaterSnapshot,
+    operations: &[&'static str],
 ) -> serde_json::Value {
     let mut row = identity;
     let object = row
@@ -591,6 +633,15 @@ pub(crate) fn exact_memory_row_json(
     object.insert(
         "backward_sealed".to_owned(),
         memory_snapshot_json(backward_sealed),
+    );
+    object.insert(
+        "operations".to_owned(),
+        serde_json::Value::Array(
+            operations
+                .iter()
+                .map(|operation| serde_json::Value::String((*operation).to_owned()))
+                .collect(),
+        ),
     );
     row
 }
