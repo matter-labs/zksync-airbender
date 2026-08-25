@@ -2237,9 +2237,10 @@ fn main_integrated_production_vs_whole_layer_legacy_gpu_acceptance() {
                     pair_index,
                     1,
                 );
-                assert_eq!(
-                    first_proof, second_proof,
-                    "{workload_id} pair {pair_index} proof bytes differ"
+                assert_exact_bytes_eq_for_test(
+                    &first_proof,
+                    &second_proof,
+                    &format!("{workload_id} pair {pair_index} proof bytes"),
                 );
                 let (legacy, production) = if first.arm == "legacy" {
                     (&first, &second)

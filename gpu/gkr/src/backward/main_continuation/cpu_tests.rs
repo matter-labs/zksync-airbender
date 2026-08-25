@@ -574,6 +574,7 @@ fn cpu_task8_differential_is_standalone_from_prove() {
     );
     rust_sources(&crate_root.join("src/backward"), &mut production_sources);
     let standalone_only = [
+        crate_root.join("../circuit_prover/src/proof/main_acceptance.rs"),
         crate_root.join("src/backward/main_continuation/cpu_tests.rs"),
         crate_root.join("src/backward/main_continuation/differential_tests.rs"),
         crate_root.join("src/backward/main_continuation/tests.rs"),
@@ -601,14 +602,35 @@ fn cpu_task8_differential_is_standalone_from_prove() {
     for path in production_sources {
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let production_source = if path.ends_with("circuit_prover/src/proof/mod.rs") {
+            source
+                .split_once("\n#[cfg(test)]\nmod tests;")
+                .map(|(prefix, _)| prefix)
+                .expect("proof/mod.rs must retain its production/test boundary")
+        } else {
+            &source
+        };
         for needle in forbidden {
             assert!(
-                !source.contains(needle),
+                !production_source.contains(needle),
                 "Task 8 differential instrumentation `{needle}` remains in prove-transitive source {}",
                 path.display(),
             );
         }
     }
+
+    let proof_module_source =
+        std::fs::read_to_string(crate_root.join("../circuit_prover/src/proof/mod.rs"))
+            .expect("circuit prover proof module source must be readable");
+    let (_, test_only_tail) = proof_module_source
+        .split_once("\n#[cfg(test)]\nmod tests;")
+        .expect("proof/mod.rs must retain its production/test boundary");
+    assert!(
+        test_only_tail.contains(
+            "#[cfg(all(test, feature = \"task8_continuation_differential_test\", not(no_cuda)))]\nmod main_acceptance;"
+        ),
+        "the standalone acceptance scheduler must remain behind test, feature, and CUDA-test guards",
+    );
 
     let module_source =
         std::fs::read_to_string(crate_root.join("src/backward/main_continuation/mod.rs"))

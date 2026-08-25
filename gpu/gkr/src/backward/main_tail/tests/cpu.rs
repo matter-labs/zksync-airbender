@@ -55,6 +55,30 @@ fn direct_eq(point: &[E4]) -> Vec<E4> {
         .collect()
 }
 
+#[test]
+fn cpu_main_tail_d3_fold_uses_generated_challenges_not_previous_claim_coordinates() {
+    let source = include_str!("../../../../native/gkr/backward/main_tail.cuh");
+    let start = source
+        .find("if (threadIdx.x < 3)")
+        .expect("main-tail D3 coordinate load must remain present");
+    let end = source[start..]
+        .find("if (threadIdx.x == 0)")
+        .map(|offset| start + offset)
+        .expect("main-tail Eq-state initialization must follow the D3 coordinate load");
+    let d3_coordinate_load = &source[start..end];
+
+    assert!(
+        d3_coordinate_load.contains(
+            "d3_coordinates[threadIdx.x] = desc.challenges_out[u32{desc.tail_start} - 3u + threadIdx.x]"
+        ),
+        "the D3 fold must consume the three generated sumcheck challenges immediately before tail_start"
+    );
+    assert!(
+        !d3_coordinate_load.contains("d3_coordinates[threadIdx.x] = desc.prev_claim_coordinates"),
+        "the incoming claim point is only the round-update normalization point, not a source-fold challenge"
+    );
+}
+
 fn rich_program() -> ContinuationLayerProgram {
     let (programs, layers) = compile_corpus_layout("blake2_with_extended_control_layout_gkr.json");
     (0..layers)
@@ -96,6 +120,7 @@ struct Fixture {
     source_ids: Vec<SourceId>,
     columns: Vec<E4>,
     coefficient_bank: Vec<E4>,
+    generated_challenges: Vec<E4>,
     claim_coordinates: Vec<E4>,
     entry_eq_low: Vec<E4>,
     seed: [u32; 8],
@@ -134,6 +159,9 @@ impl Fixture {
         let claim_coordinates = (0..folding_steps)
             .map(|index| lift(307 + 23 * index as u32))
             .collect::<Vec<_>>();
+        let generated_challenges = (0..folding_steps)
+            .map(|index| lift(1_307 + 29 * index as u32))
+            .collect::<Vec<_>>();
         let semantic_suffix_offset = entry_round + 1;
         let entry_eq_low =
             direct_eq(&claim_coordinates[usize::from(semantic_suffix_offset)..folding_steps]);
@@ -148,6 +176,7 @@ impl Fixture {
             source_ids,
             columns,
             coefficient_bank,
+            generated_challenges,
             claim_coordinates,
             entry_eq_low,
             seed: [
@@ -180,6 +209,7 @@ impl Fixture {
                 stride: 1usize << (self.tail_rounds + 3),
                 depth: self.entry_depth,
             },
+            generated_challenges: &self.generated_challenges,
             claim_coordinates: &self.claim_coordinates,
             entry_eq_low: &self.entry_eq_low,
             seed: self.seed,
@@ -210,7 +240,7 @@ fn assert_same_semantics(left: &MainTailReferenceOutput, right: &MainTailReferen
 fn direct_d3(fixture: &Fixture, source: usize, output_row: usize) -> E4 {
     let stride = 1usize << (fixture.tail_rounds + 3);
     let input = source * stride + 8 * output_row;
-    let coordinates = &fixture.claim_coordinates
+    let coordinates = &fixture.generated_challenges
         [usize::from(fixture.entry_round) - 3..usize::from(fixture.entry_round)];
     (0..8).fold(E4::ZERO, |mut folded, q| {
         let mut weight = E4::ONE;
@@ -303,6 +333,27 @@ fn cpu_main_tail_reference_covers_1012_canonical_sources() {
 fn cpu_main_tail_mutation_conventions_are_live() {
     let fixture = Fixture::new(rich_program(), 5);
     let correct = main_tail_reference(fixture.input(MainTailClaimOutput::Aliased)).unwrap();
+
+    let mut old_point_as_fold_challenges =
+        Fixture::new(fixture.program.clone(), fixture.tail_rounds);
+    old_point_as_fold_challenges.generated_challenges =
+        old_point_as_fold_challenges.claim_coordinates.clone();
+    let old_point_result =
+        main_tail_reference(old_point_as_fold_challenges.input(MainTailClaimOutput::Aliased))
+            .unwrap();
+    assert_ne!(
+        old_point_result.rounds[0].coefficients,
+        correct.rounds[0].coefficients,
+        "using the incoming claim point for the D3 entry fold must change the first tail polynomial",
+    );
+    let mut missing_fold_challenges = Fixture::new(fixture.program.clone(), fixture.tail_rounds);
+    missing_fold_challenges
+        .generated_challenges
+        .truncate(usize::from(missing_fold_challenges.entry_round) - 1);
+    assert!(matches!(
+        main_tail_reference(missing_fold_challenges.input(MainTailClaimOutput::Aliased)),
+        Err(MainTailReferenceError::GeneratedChallenges { .. })
+    ));
 
     for (label, mutation) in [
         (

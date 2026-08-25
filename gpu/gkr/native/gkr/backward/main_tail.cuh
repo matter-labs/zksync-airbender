@@ -219,7 +219,10 @@ DEVICE_FORCEINLINE void bwd_main_tail_execute(const bwd_main_tail_desc &desc) {
 
   const u32 tail_rounds = u32{desc.folding_steps} - u32{desc.tail_start};
   if (threadIdx.x < 3)
-    d3_coordinates[threadIdx.x] = desc.prev_claim_coordinates[u32{desc.tail_start} - 3u + threadIdx.x];
+    // The published entry still precedes the last continuation window's
+    // three folds. Bind it with those generated sumcheck challenges, not with
+    // the incoming claim point used by the round-update normalization below.
+    d3_coordinates[threadIdx.x] = desc.challenges_out[u32{desc.tail_start} - 3u + threadIdx.x];
   if (threadIdx.x == 0)
     eq_sizes = desc.eq_sizes;
   __syncthreads();

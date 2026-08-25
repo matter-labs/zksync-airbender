@@ -41,6 +41,10 @@ pub(crate) struct MainTailReferenceInput<'a> {
     pub(crate) tail_program: &'a MainTailProgram,
     pub(crate) coefficient_bank: &'a [E4],
     pub(crate) entry: MainTailReferenceEntry<'a>,
+    /// Sumcheck challenges already produced before `entry_round`.
+    /// The D3 entry fold consumes the immediately preceding three values.
+    pub(crate) generated_challenges: &'a [E4],
+    /// The incoming claim point used to normalize each tail round.
     pub(crate) claim_coordinates: &'a [E4],
     pub(crate) entry_eq_low: &'a [E4],
     pub(crate) seed: [u32; 8],
@@ -102,6 +106,10 @@ pub(crate) enum MainTailReferenceError {
         rounds: usize,
     },
     ClaimCoordinates {
+        required: usize,
+        actual: usize,
+    },
+    GeneratedChallenges {
         required: usize,
         actual: usize,
     },
@@ -418,6 +426,12 @@ fn main_tail_reference_inner(
             actual: input.claim_coordinates.len(),
         });
     }
+    if input.generated_challenges.len() < usize::from(input.entry_round) {
+        return Err(MainTailReferenceError::GeneratedChallenges {
+            required: usize::from(input.entry_round),
+            actual: input.generated_challenges.len(),
+        });
+    }
     let coefficient_count = usize::from(input.tail_program.coefficient_count);
     if input.coefficient_bank.len() < coefficient_count {
         return Err(MainTailReferenceError::CoefficientBank {
@@ -464,10 +478,10 @@ fn main_tail_reference_inner(
         return Err(MainTailReferenceError::EntryEqValue { index });
     }
 
-    let d3_coordinates: [E4; 3] = input.claim_coordinates
+    let d3_coordinates: [E4; 3] = input.generated_challenges
         [usize::from(input.entry_round) - 3..usize::from(input.entry_round)]
         .try_into()
-        .expect("the entry round was checked to have three predecessor coordinates");
+        .expect("the entry round was checked to have three preceding challenges");
     let mut columns = fold_d3(
         input.entry.columns,
         source_count,

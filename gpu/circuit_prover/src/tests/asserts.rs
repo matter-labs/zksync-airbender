@@ -354,21 +354,15 @@ pub(super) fn canonical_serialized_bytes_for_test<T: serde::Serialize>(value: &T
     bytes
 }
 
-pub(super) fn assert_serialized_bytes_eq_for_test<T: serde::Serialize>(
-    cpu: &T,
-    gpu: &T,
-    label: &str,
-) {
-    let cpu_bytes = canonical_serialized_bytes_for_test(cpu);
-    let gpu_bytes = canonical_serialized_bytes_for_test(gpu);
-    if cpu_bytes == gpu_bytes {
+pub(super) fn assert_exact_bytes_eq_for_test(left: &[u8], right: &[u8], label: &str) {
+    if left == right {
         return;
     }
-    let first_diff = cpu_bytes
+    let first_diff = left
         .iter()
-        .zip(gpu_bytes.iter())
-        .position(|(cpu_byte, gpu_byte)| cpu_byte != gpu_byte)
-        .unwrap_or_else(|| cpu_bytes.len().min(gpu_bytes.len()));
+        .zip(right.iter())
+        .position(|(left_byte, right_byte)| left_byte != right_byte)
+        .unwrap_or_else(|| left.len().min(right.len()));
     let window = |bytes: &[u8]| {
         let start = first_diff.saturating_sub(32);
         let end = (first_diff + 32).min(bytes.len());
@@ -376,18 +370,55 @@ pub(super) fn assert_serialized_bytes_eq_for_test<T: serde::Serialize>(
     };
     panic!(
         "{label}: serialized bytes diverged at offset {first_diff} \
-         (cpu {} bytes, gpu {} bytes)\n  cpu: {}\n  gpu: {}",
-        cpu_bytes.len(),
-        gpu_bytes.len(),
-        window(&cpu_bytes),
-        window(&gpu_bytes),
+         (left {} bytes, right {} bytes)\n  left: {}\n  right: {}",
+        left.len(),
+        right.len(),
+        window(left),
+        window(right),
     );
 }
 
-// Catches anything the field-by-field asserts above do not walk.
+pub(super) fn assert_serialized_bytes_eq_for_test<T: serde::Serialize>(
+    cpu: &T,
+    gpu: &T,
+    label: &str,
+) {
+    let cpu_bytes = canonical_serialized_bytes_for_test(cpu);
+    let gpu_bytes = canonical_serialized_bytes_for_test(gpu);
+    assert_exact_bytes_eq_for_test(&cpu_bytes, &gpu_bytes, label);
+}
+
+// The terminal gate of the MSB->LSB migration, and the last step of
+// `assert_gkr_proof_eq_for_test`: the field-by-field asserts above name a
+// diverging field, this one catches anything they do not walk.
 pub(super) fn assert_serialized_proof_bytes_eq(
     cpu: &GKRProof<BF, E4, DefaultTreeConstructor>,
     gpu: &GKRProof<BF, E4, DefaultTreeConstructor>,
 ) {
     assert_serialized_bytes_eq_for_test(cpu, gpu, "GKR proof");
+}
+
+#[test]
+fn serialized_proof_bytes_canary_accepts_identical_values() {
+    let schedule = WhirSchedule::default();
+    assert_serialized_bytes_eq_for_test(&schedule, &schedule.clone(), "whir schedule");
+}
+
+#[test]
+#[should_panic(expected = "serialized bytes diverged at offset")]
+fn serialized_proof_bytes_canary_rejects_mutated_values() {
+    let schedule = WhirSchedule::default();
+    let mut mutated = schedule.clone();
+    mutated.cap_size += 1;
+    assert_serialized_bytes_eq_for_test(&schedule, &mutated, "whir schedule");
+}
+
+#[test]
+#[should_panic(expected = "serialized bytes diverged at offset 40")]
+fn exact_byte_comparator_reports_a_bounded_first_difference() {
+    let mut left = vec![b'a'; 1 << 20];
+    let mut right = left.clone();
+    left[40] = b'x';
+    right[40] = b'y';
+    assert_exact_bytes_eq_for_test(&left, &right, "large exact-byte canary");
 }

@@ -89,6 +89,7 @@ struct Fixture {
     source_ids: Vec<SourceId>,
     columns: Vec<E4>,
     coefficient_bank: Vec<E4>,
+    generated_challenges: Vec<E4>,
     claim_coordinates: Vec<E4>,
     entry_eq_low: Vec<E4>,
     seed: [u32; 8],
@@ -194,6 +195,9 @@ impl Fixture {
         let claim_coordinates = (0..folding_steps)
             .map(|index| lift(307 + 23 * index as u32))
             .collect::<Vec<_>>();
+        let generated_challenges = (0..folding_steps)
+            .map(|index| lift(1_307 + 29 * index as u32))
+            .collect::<Vec<_>>();
         let semantic_suffix_offset = entry_round + 1;
         let entry_eq_low =
             direct_eq(&claim_coordinates[usize::from(semantic_suffix_offset)..folding_steps]);
@@ -205,6 +209,7 @@ impl Fixture {
                 .collect(),
             columns,
             coefficient_bank,
+            generated_challenges,
             claim_coordinates,
             entry_eq_low,
             seed: [
@@ -254,6 +259,9 @@ impl Fixture {
         let claim_coordinates = (0..case.folding_steps)
             .map(|index| lift(307 + case.salt * 4_099 + 23 * index as u32))
             .collect::<Vec<_>>();
+        let generated_challenges = (0..case.folding_steps)
+            .map(|index| lift(1_307 + case.salt * 8_191 + 29 * index as u32))
+            .collect::<Vec<_>>();
         let semantic_suffix_offset = case.entry_round + 1;
         let entry_eq_low =
             direct_eq(&claim_coordinates[usize::from(semantic_suffix_offset)..case.folding_steps]);
@@ -265,6 +273,7 @@ impl Fixture {
                 .collect(),
             columns,
             coefficient_bank,
+            generated_challenges,
             claim_coordinates,
             entry_eq_low,
             seed: [
@@ -305,6 +314,7 @@ impl Fixture {
                 stride: 1usize << (self.tail_rounds + 3),
                 depth: self.entry_depth,
             },
+            generated_challenges: &self.generated_challenges,
             claim_coordinates: &self.claim_coordinates,
             entry_eq_low: &self.entry_eq_low,
             seed: self.seed,
@@ -314,6 +324,14 @@ impl Fixture {
             eq_boundary: self.eq_boundary,
             claim_output,
         }
+    }
+
+    fn aliased_claim_and_challenge_coordinates(&self) -> Vec<E4> {
+        let mut coordinates = self.claim_coordinates.clone();
+        let end = usize::from(self.entry_round);
+        let start = end - 3;
+        coordinates[start..end].copy_from_slice(&self.generated_challenges[start..end]);
+        coordinates
     }
 
     fn eq_state(&self) -> FixtureEqState {
@@ -723,10 +741,14 @@ fn run_main_tail_arm(
     let _coefficient_staging = write_coefficient_bank(context, &fixture.coefficient_bank);
     let eq_state = fixture.eq_state();
     let _eq_high_staging = write_eq_high_sentinels(context, &eq_state.high_sentinels);
+    let claim_coordinate_input = match claim_mode {
+        ClaimMode::Aliased => fixture.aliased_claim_and_challenge_coordinates(),
+        ClaimMode::Detached => fixture.claim_coordinates.clone(),
+    };
     let (mut claim_coordinates, _claim_coordinates_staging) =
-        upload(context, &fixture.claim_coordinates);
+        upload(context, &claim_coordinate_input);
     let (mut detached_challenges, _detached_challenges_staging) =
-        upload(context, &vec![E4::ZERO; fixture.claim_coordinates.len()]);
+        upload(context, &fixture.generated_challenges);
     let (mut eq_low, _eq_staging) = upload(context, &eq_state.low);
     let (mut seed, _seed_staging) = upload(context, &fixture.seed);
     let (mut claim, _claim_staging) = upload(context, &[fixture.claim]);
@@ -842,11 +864,12 @@ fn run_per_round_arm(
     let _coefficient_staging = write_coefficient_bank(context, &fixture.coefficient_bank);
 
     let claim_point = get_main_layer_claim_point_device_ptr();
-    let _claim_point_staging = write_symbol(context, claim_point, &fixture.claim_coordinates);
+    let aliased_coordinates = fixture.aliased_claim_and_challenge_coordinates();
+    let _claim_point_staging = write_symbol(context, claim_point, &aliased_coordinates);
     let (claim_coordinates, _claim_coordinates_staging) =
         upload(context, &fixture.claim_coordinates);
     let (mut detached_challenges, _detached_challenges_staging) =
-        upload(context, &vec![E4::ZERO; fixture.claim_coordinates.len()]);
+        upload(context, &fixture.generated_challenges);
     let (mut seed, _seed_staging) = upload(context, &fixture.seed);
     let (mut claim, _claim_staging) = upload(context, &[fixture.claim]);
     let (mut eq_prefactor, _prefactor_staging) = upload(context, &[fixture.eq_prefactor]);
@@ -1292,7 +1315,7 @@ fn gpu_main_tail_smoke_matches_reference() {
     let folding_steps = fixture.claim_coordinates.len();
     let (mut coefficients, _coefficients_staging) =
         upload(&context, &vec![E4::ZERO; 4 * folding_steps]);
-    let (mut challenges, _challenges_staging) = upload(&context, &vec![E4::ZERO; folding_steps]);
+    let (mut challenges, _challenges_staging) = upload(&context, &fixture.generated_challenges);
 
     let launch = bind_main_tail(
         fixture.program.layer,
