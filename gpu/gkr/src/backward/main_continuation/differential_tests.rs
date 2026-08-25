@@ -2452,6 +2452,9 @@ fn run_window_arm(
         )?;
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
         launch_bwd_seg_build_fold_weights(start_round as u32, context)?;
+        // The fold-weight phase has a distinct probe registration boundary
+        // from the earlier coefficient-bank fill registration above.
+        open_reported_symbols(ledger, &mut owners);
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
         let scratch = MainContinuationWindowRuntimeScratch {
             eq_low: eq_low.as_ptr(),
