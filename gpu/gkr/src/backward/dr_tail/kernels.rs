@@ -268,5 +268,13 @@ mod tests {
                 "DR-tail production source names prohibited symbol/helper {forbidden}"
             );
         }
+        assert!(
+            CUDA_HEADER.contains("__shared__ e4 entry_challenges"),
+            "entry challenge tuple must remain shared to keep local spill at zero"
+        );
+        assert!(
+            !CUDA_HEADER.contains("e4 challenges[GKR_DR_TAIL_ENTRY_CHALLENGES]"),
+            "thread-local entry challenge arrays regress the linked-kernel spill"
+        );
     }
 }

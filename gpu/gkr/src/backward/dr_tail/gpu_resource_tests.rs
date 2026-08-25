@@ -13,7 +13,10 @@ const FINAL_TRACE_LOG: u32 = 4;
 
 #[test]
 fn dr_tail_gpu_resource_preflight() {
-    let _context = make_test_context(1, 1);
+    // Smallest context proven by the existing GPU suite: admission only
+    // queries function attributes and occupancy, but context creation itself
+    // needs enough arena for the static allocator's small-pool carve.
+    let _context = make_test_context(64, 16);
     let device_id = era_cudart::device::get_device().expect("a bound CUDA device");
     let (programs, _) = compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
 

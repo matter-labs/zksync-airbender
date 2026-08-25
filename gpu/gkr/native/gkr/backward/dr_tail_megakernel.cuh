@@ -346,18 +346,21 @@ template <typename Recorder> DEVICE_FORCEINLINE void gkr_dr_tail_megakernel_inne
   const unsigned eq_group_count = gkr_eq_group_count(eq_challenge_count);
 
   __shared__ e4 entry_weights[1u << GKR_DR_TAIL_ENTRY_CHALLENGES];
+  // Keep the entry challenge tuple in shared memory. A thread-0 local array
+  // becomes a 16-byte local-memory spill in the linked production kernel,
+  // which is forbidden by the resource admission gate.
+  __shared__ e4 entry_challenges[GKR_DR_TAIL_ENTRY_CHALLENGES];
   __shared__ e4 round_challenge;
   if (tid == 0) {
-    e4 challenges[GKR_DR_TAIL_ENTRY_CHALLENGES];
 #pragma unroll
     for (unsigned bit = 0; bit < GKR_DR_TAIL_ENTRY_CHALLENGES; ++bit)
-      challenges[bit] = load<e4, ld_modifier::cs>(desc.challenges_out, desc.entry_round - GKR_DR_TAIL_ENTRY_CHALLENGES + bit);
+      entry_challenges[bit] = load<e4, ld_modifier::cs>(desc.challenges_out, desc.entry_round - GKR_DR_TAIL_ENTRY_CHALLENGES + bit);
 #pragma unroll
     for (unsigned ancestor = 0; ancestor < (1u << GKR_DR_TAIL_ENTRY_CHALLENGES); ++ancestor) {
       e4 weight = e4::ONE();
 #pragma unroll
       for (unsigned bit = 0; bit < GKR_DR_TAIL_ENTRY_CHALLENGES; ++bit) {
-        const e4 factor = ((ancestor >> bit) & 1u) != 0 ? challenges[bit] : e4::sub(e4::ONE(), challenges[bit]);
+        const e4 factor = ((ancestor >> bit) & 1u) != 0 ? entry_challenges[bit] : e4::sub(e4::ONE(), entry_challenges[bit]);
         weight = e4::mul(weight, factor);
       }
       entry_weights[ancestor] = weight;
