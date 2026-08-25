@@ -3,14 +3,13 @@
 //! from `gpu/circuit_prover/src/upstream.rs`.
 
 pub(crate) use cs::definitions::gkr::{
-    NoFieldLinearRelation, NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation,
-    RamWordRepresentation,
+    LinearRelation, RamWordRepresentation, SingleColumnLookupRelation, VectorLookupRelation,
 };
 pub(crate) use cs::definitions::GKRAddress;
 pub(crate) use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    GKRCircuitArtifact, InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation,
-    NoFieldGKRRelation, NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation,
-    NoFieldSpecialMemoryContributionRelation, OutputType,
+    GKRCacheRelation, GKRCircuitArtifact, GKRRelation, InitsOrTeardownsTimestampAndValue,
+    MaxQuadraticConstraintsGKRRelation, MaxQuadraticGKRRelation, OutputType,
+    SpecialMemoryContributionRelation,
 };
 pub(crate) use field::PrimeField;

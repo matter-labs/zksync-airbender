@@ -1,6 +1,6 @@
 use crate::constraint::Constraint;
 use crate::definitions::{GKRAddress, Variable, VirtualSetupPoly};
-use crate::gkr_compiler::{GKRGate, LookupType, NoFieldGKRCacheRelation, NoFieldGKRRelation};
+use crate::gkr_compiler::{GKRCacheRelation, GKRGate, GKRRelation, LookupType};
 use crate::structured_expr::Expr;
 use field::PrimeField;
 use std::collections::BTreeSet;
@@ -34,12 +34,12 @@ impl<F: PrimeField> GKRGate<F> for CopyNode {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         match self {
             Self::FromBaseLayerInBase(input) | Self::FromIntermediateInBase(input) => {
                 // println!("Copying variable {:?} -> {:?} in base field", input, output);
-                let rel = NoFieldGKRRelation::CopyInBaseField {
+                let rel = GKRRelation::CopyInBaseField {
                     input: *input,
                     output,
                 };
@@ -52,7 +52,7 @@ impl<F: PrimeField> GKRGate<F> for CopyNode {
                 //     "Copying variable {:?} -> {:?} in extension field",
                 //     input, output
                 // );
-                let rel = NoFieldGKRRelation::CopyInExtensionField {
+                let rel = GKRRelation::CopyInExtensionField {
                     input: *input,
                     output,
                 };
@@ -73,8 +73,8 @@ pub struct GKRGraph<F: PrimeField> {
     pub(crate) base_layer_witness: BTreeMap<Variable, GKRAddress>,
     pub(crate) base_layer_witness_rev: BTreeMap<GKRAddress, Variable>,
     pub(crate) setups: Vec<GKRAddress>,
-    pub(crate) cached_relations: BTreeMap<usize, Vec<NoFieldGKRCacheRelation<F>>>,
-    pub(crate) enforced_relations: BTreeMap<usize, Vec<NoFieldGKRRelation<F>>>,
+    pub(crate) cached_relations: BTreeMap<usize, Vec<GKRCacheRelation<F>>>,
+    pub(crate) enforced_relations: BTreeMap<usize, Vec<GKRRelation<F>>>,
     pub(crate) generic_lookup_setup_width: usize,
     pub(crate) copies: Vec<BTreeMap<GKRAddress, GKRAddress>>,
     pub(crate) intermediate_layers_offsets: BTreeMap<usize, usize>,
@@ -136,7 +136,7 @@ impl<F: PrimeField> GKRGraph<F> {
 
     fn search_cached_relation(
         &self,
-        relation: &NoFieldGKRCacheRelation<F>,
+        relation: &GKRCacheRelation<F>,
         output_layer: usize,
     ) -> Option<usize> {
         if let Some(cached) = self.cached_relations.get(&output_layer) {
@@ -405,7 +405,7 @@ impl<F: PrimeField> GraphHolder<F> for GKRGraph<F> {
         intermediate
     }
 
-    fn add_enforced_relation(&mut self, relation: NoFieldGKRRelation<F>, output_layer: usize) {
+    fn add_enforced_relation(&mut self, relation: GKRRelation<F>, output_layer: usize) {
         assert!(output_layer > 0);
         let input_layer = output_layer - 1;
         let entry = self.enforced_relations.entry(input_layer).or_insert(vec![]);
@@ -415,7 +415,7 @@ impl<F: PrimeField> GraphHolder<F> for GKRGraph<F> {
     #[track_caller]
     fn add_cached_relation(
         &mut self,
-        relation: NoFieldGKRCacheRelation<F>,
+        relation: GKRCacheRelation<F>,
         output_layer: usize,
     ) -> GKRAddress {
         if self.caching_is_allowed == false {
@@ -501,13 +501,13 @@ pub trait GraphHolder<F: PrimeField> {
     // add cached relations
     fn add_cached_relation(
         &mut self,
-        relation: NoFieldGKRCacheRelation<F>,
+        relation: GKRCacheRelation<F>,
         output_layer: usize,
     ) -> GKRAddress;
 
     // add enforced relations
     fn add_intermediate_variable_at_layer(&mut self, output_layer: usize) -> GKRAddress;
-    fn add_enforced_relation(&mut self, relation: NoFieldGKRRelation<F>, output_layer: usize);
+    fn add_enforced_relation(&mut self, relation: GKRRelation<F>, output_layer: usize);
 }
 
 // pub trait GraphElement: 'static + core::any::Any + core::fmt::Debug {
@@ -522,7 +522,7 @@ pub trait GraphHolder<F: PrimeField> {
 //     fn equals(&self, other: &dyn GraphElement) -> bool;
 //     fn dependencies(&self, graph: &mut dyn GraphHolder) -> Vec<NodeIndex>;
 //     fn short_name(&self) -> String;
-//     fn evaluation_description(&self, graph: &mut dyn GraphHolder) -> NoFieldGKRRelation<F>;
+//     fn evaluation_description(&self, graph: &mut dyn GraphHolder) -> GKRRelation<F>;
 // }
 
 // pub(crate) fn downcast_graph_element<T: Sized + 'static>(other: &dyn GraphElement) -> Option<&T> {
@@ -578,8 +578,8 @@ pub trait GraphHolder<F: PrimeField> {
 //         }
 //     }
 //     #[track_caller]
-//     fn evaluation_description(&self, _graph: &mut dyn GraphHolder) -> NoFieldGKRRelation<F> {
-//         NoFieldGKRRelation<F>::FormalBaseLayerInput
+//     fn evaluation_description(&self, _graph: &mut dyn GraphHolder) -> GKRRelation<F> {
+//         GKRRelation<F>::FormalBaseLayerInput
 //     }
 // }
 

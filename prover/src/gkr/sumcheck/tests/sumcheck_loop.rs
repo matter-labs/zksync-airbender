@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::mem::MaybeUninit;
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
+use cs::gkr_compiler::{GKRLayerDescription, GKRRelation, GateArtifacts};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
@@ -145,7 +145,7 @@ fn test_sumcheck_loop_product() {
         layer: 0,
         gates: vec![GateArtifacts {
             output_layer: 1,
-            enforced_relation: NoFieldGKRRelation::TrivialProduct {
+            enforced_relation: GKRRelation::TrivialProduct {
                 input: [addr_a, addr_b],
                 output: addr_out,
             },
@@ -317,14 +317,14 @@ fn test_sumcheck_loop_multiple_gates() {
         gates: vec![
             GateArtifacts {
                 output_layer: 1,
-                enforced_relation: NoFieldGKRRelation::CopyInExtensionField {
+                enforced_relation: GKRRelation::CopyInExtensionField {
                     input: addr_copy_in,
                     output: addr_copy_out,
                 },
             },
             GateArtifacts {
                 output_layer: 1,
-                enforced_relation: NoFieldGKRRelation::TrivialProduct {
+                enforced_relation: GKRRelation::TrivialProduct {
                     input: [addr_prod_a, addr_prod_b],
                     output: addr_prod_out,
                 },

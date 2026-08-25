@@ -1,4 +1,4 @@
-use cs::definitions::{gkr::NoFieldVectorLookupRelation, GKRAddress};
+use cs::definitions::{gkr::VectorLookupRelation, GKRAddress};
 use worker::Worker;
 
 use crate::gkr::prover::forward_loop::utils::vector_lookup_as_flattened_relation;
@@ -7,7 +7,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct LookupBaseExtMinusBaseExtWithoutCachesGKRRelation<F: PrimeField> {
-    pub masked_input: (GKRAddress, NoFieldVectorLookupRelation<F>),
+    pub masked_input: (GKRAddress, VectorLookupRelation<F>),
     pub setup: (GKRAddress, Box<[GKRAddress]>),
     pub outputs: [GKRAddress; 2],
 }

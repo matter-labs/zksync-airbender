@@ -17,10 +17,10 @@ pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
     lookup_type: &str,
     lookup: LookupType,
 ) -> (
-    Variable,                                  // multiplicity var
-    [GKRAddress; 2],                           // final num/den pair
-    NoFieldGKRRelation<F>,                     // relation that gives rise to final pair
-    Vec<NoFieldSingleColumnLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
+    Variable,                           // multiplicity var
+    [GKRAddress; 2],                    // final num/den pair
+    GKRRelation<F>,                     // relation that gives rise to final pair
+    Vec<SingleColumnLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
 ) {
     let (a, b, c, rels) = layout_lookup_expressions::<F, true>(
         graph,
@@ -49,7 +49,7 @@ pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
         .map(|el| {
             assert_eq!(el.columns.len(), 1);
 
-            NoFieldSingleColumnLookupRelation {
+            SingleColumnLookupRelation {
                 input: el.columns[0].clone(),
                 lookup_set_index: el.lookup_set_index,
             }
@@ -236,10 +236,10 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
     total_width: usize,
     expect_table_id: bool,
 ) -> (
-    Variable,                            // multiplicity var
-    [GKRAddress; 2],                     // final num/den pair
-    NoFieldGKRRelation<F>,               // relation that gives rise to final pair
-    Vec<NoFieldVectorLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
+    Variable,                     // multiplicity var
+    [GKRAddress; 2],              // final num/den pair
+    GKRRelation<F>,               // relation that gives rise to final pair
+    Vec<VectorLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
 ) {
     let mut all_relations_for_witness_eval = vec![];
     // sanity checks
@@ -392,13 +392,13 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
             usize,
             (
                 (Vec<LookupInput<F>>, LookupQueryTableType<F>),
-                NoFieldVectorLookupRelation<F>,
+                VectorLookupRelation<F>,
             ),
         >,
     >,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
-    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation<F>>,
+    relations_map: &mut BTreeMap<[GKRAddress; 2], GKRRelation<F>>,
+    all_relations_for_witness_eval: &mut Vec<VectorLookupRelation<F>>,
 ) {
     if decoder_lookup.is_some() || multiplicity.is_some() {
         assert_eq!(input_layer, 0);
@@ -501,7 +501,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
                 let (_, rel) = inputs.remove(&key).unwrap();
                 all_relations_for_witness_eval.push(rel.clone());
                 assert_eq!(rel.columns.len(), 1);
-                let input = NoFieldSingleColumnLookupRelation {
+                let input = SingleColumnLookupRelation {
                     input: rel.columns[0].clone(),
                     lookup_set_index: rel.lookup_set_index,
                 };
@@ -619,7 +619,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
 
         if SINGLE_COLUMN {
             assert_eq!(input_rel.columns.len(), 1);
-            let base_input = NoFieldSingleColumnLookupRelation {
+            let base_input = SingleColumnLookupRelation {
                 input: input_rel.columns[0].clone(),
                 lookup_set_index: input_rel.lookup_set_index,
             };
@@ -689,7 +689,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
             assert_eq!(setup.len(), 1);
 
             assert_eq!(rel.columns.len(), 1);
-            let input = NoFieldSingleColumnLookupRelation {
+            let input = SingleColumnLookupRelation {
                 input: rel.columns[0].clone(),
                 lookup_set_index: rel.lookup_set_index,
             };
@@ -743,7 +743,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
             ) => {
                 assert!(SINGLE_COLUMN);
                 let output = graph.add_intermediate_variable_at_layer(input_layer + 1);
-                let relation = NoFieldGKRRelation::CopyInBaseField { input, output };
+                let relation = GKRRelation::CopyInBaseField { input, output };
                 graph.add_enforced_relation(relation.clone(), input_layer + 1);
 
                 intermediate_values
@@ -760,7 +760,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
             ) => {
                 assert!(SINGLE_COLUMN == false);
                 let output = graph.add_intermediate_variable_at_layer(input_layer + 1);
-                let relation = NoFieldGKRRelation::CopyInExtensionField { input, output };
+                let relation = GKRRelation::CopyInExtensionField { input, output };
                 graph.add_enforced_relation(relation.clone(), input_layer + 1);
 
                 intermediate_values
@@ -778,7 +778,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
                 // copy them
                 let [num, den] = [num, den].map(|el| {
                     let output = graph.add_intermediate_variable_at_layer(input_layer + 1);
-                    let relation = NoFieldGKRRelation::CopyInExtensionField { input: el, output };
+                    let relation = GKRRelation::CopyInExtensionField { input: el, output };
                     graph.add_enforced_relation(relation.clone(), input_layer + 1);
 
                     output
@@ -809,12 +809,12 @@ fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
         usize,
         (
             (Vec<LookupInput<F>>, LookupQueryTableType<F>),
-            NoFieldVectorLookupRelation<F>,
+            VectorLookupRelation<F>,
         ),
     >,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
-    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation<F>>,
+    relations_map: &mut BTreeMap<[GKRAddress; 2], GKRRelation<F>>,
+    all_relations_for_witness_eval: &mut Vec<VectorLookupRelation<F>>,
 ) {
     let single_columns_lookup_width = match lookup {
         LookupType::RangeCheck16 => Some(16),
@@ -835,7 +835,7 @@ fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
 
         let [lhs, rhs] = [rel_0, rel_1].map(|rel| {
             assert_eq!(rel.columns.len(), 1);
-            NoFieldSingleColumnLookupRelation {
+            SingleColumnLookupRelation {
                 input: rel.columns[0].clone(),
                 lookup_set_index: rel.lookup_set_index,
             }
@@ -881,7 +881,7 @@ fn merge_intermediate_lookup_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
     total_width: usize,
     expect_table_id: bool,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
+    relations_map: &mut BTreeMap<[GKRAddress; 2], GKRRelation<F>>,
 ) {
     let single_columns_lookup_width = match lookup {
         LookupType::RangeCheck16 => Some(16),

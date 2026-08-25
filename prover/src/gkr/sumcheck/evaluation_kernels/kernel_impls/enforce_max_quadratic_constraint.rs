@@ -1,13 +1,13 @@
 use super::*;
-use cs::{definitions::GKRAddress, gkr_compiler::NoFieldMaxQuadraticGKRRelation};
+use cs::{definitions::GKRAddress, gkr_compiler::MaxQuadraticGKRRelation};
 
 #[derive(Debug)]
 pub struct EnforceSingleMaxQuadraticConstraintGKRRelation<F: PrimeField> {
-    pub relation: NoFieldMaxQuadraticGKRRelation<F>,
+    pub relation: MaxQuadraticGKRRelation<F>,
 }
 
 pub(crate) fn remap<F: PrimeField>(
-    relation: &NoFieldMaxQuadraticGKRRelation<F>,
+    relation: &MaxQuadraticGKRRelation<F>,
 ) -> (
     Vec<GKRAddress>,
     EnforceSingleMaxQuadraticConstraintGKRKernel<F>,
@@ -132,7 +132,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 #[derive(Debug)]
 // Assumes reordering of access implementors, to have lhs at 0 and rhs at 1
 pub struct EnforceSingleMaxQuadraticConstraintGKRKernel<F: PrimeField> {
-    pub relation: NoFieldMaxQuadraticGKRRelation<F>,
+    pub relation: MaxQuadraticGKRRelation<F>,
     pub quadratic_parts: Vec<((usize, usize), F)>,
     pub linear_parts: Vec<(usize, F)>,
     pub constant_offset: F,

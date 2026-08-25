@@ -32,7 +32,7 @@ pub(crate) use cs::definitions::{
 };
 pub(crate) use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 pub(crate) type GKRLayerDescription = cs::gkr_compiler::GKRLayerDescription<BabyBearField>;
-pub(crate) type NoFieldGKRRelation = cs::gkr_compiler::NoFieldGKRRelation<BabyBearField>;
+pub(crate) type GKRRelation = cs::gkr_compiler::GKRRelation<BabyBearField>;
 pub(crate) use cs::tables::TableType;
 
 // -----------------------------------------------------------------------

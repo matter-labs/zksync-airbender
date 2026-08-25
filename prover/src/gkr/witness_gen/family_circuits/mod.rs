@@ -3,7 +3,7 @@ use super::*;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
-use cs::definitions::gkr::NoFieldLinearRelation;
+use cs::definitions::gkr::LinearRelation;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use cs::oracle::Oracle;
@@ -87,7 +87,7 @@ pub(crate) fn chunk_vec_vec_capacity_for_geometry<
 }
 
 pub(crate) fn evaluate_linear_relation<'a, F: PrimeField, O: Oracle<F> + 'a>(
-    relation: &NoFieldLinearRelation<F>,
+    relation: &LinearRelation<F>,
     proxy: &ColumnMajorWitnessProxy<'a, O, F>,
 ) -> F {
     let mut result = relation.constant;

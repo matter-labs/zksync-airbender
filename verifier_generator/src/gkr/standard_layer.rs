@@ -3,8 +3,8 @@ use prover::field::PrimeField;
 use quote::quote;
 
 use crate::field_wrapper::FieldWrapper;
-use prover::cs::definitions::gkr::NoFieldVectorLookupRelation;
 use prover::cs::definitions::gkr::RamWordRepresentation;
+use prover::cs::definitions::gkr::VectorLookupRelation;
 use prover::cs::definitions::GKRAddress;
 use prover::cs::definitions::{
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
@@ -16,8 +16,8 @@ use prover::cs::definitions::{
 };
 use prover::cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    GKRLayerDescription, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
-    NoFieldSpecialMemoryContributionRelation,
+    GKRLayerDescription, GKRRelation, InitsOrTeardownsTimestampAndValue,
+    SpecialMemoryContributionRelation,
 };
 use verifier_common::gkr::SimpleGateType;
 
@@ -243,7 +243,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
 }
 
 fn emit_linear_relation_eval<MW: FieldWrapper, F: PrimeField>(
-    rel: &prover::cs::definitions::gkr::NoFieldLinearRelation<F>,
+    rel: &prover::cs::definitions::gkr::LinearRelation<F>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -271,7 +271,7 @@ fn emit_linear_relation_eval<MW: FieldWrapper, F: PrimeField>(
 }
 
 fn emit_vector_lookup_eval<MW: FieldWrapper, F: PrimeField>(
-    rel: &NoFieldVectorLookupRelation<F>,
+    rel: &VectorLookupRelation<F>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -375,7 +375,7 @@ fn emit_setup_horner_eval<MW: FieldWrapper>(
 }
 
 fn emit_max_quadratic_eval<MW: FieldWrapper, F: PrimeField>(
-    input: &prover::cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation<F>,
+    input: &prover::cs::gkr_compiler::MaxQuadraticGKRRelation<F>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -421,7 +421,7 @@ fn emit_max_quadratic_eval<MW: FieldWrapper, F: PrimeField>(
 }
 
 fn emit_memory_expression_eval<MW: FieldWrapper>(
-    rel: &NoFieldSpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -660,7 +660,7 @@ pub fn generate_layer_compute_claim<MW: FieldWrapper, F: PrimeField>(
         .iter()
         .chain(layer.gates_with_external_connections.iter())
     {
-        use NoFieldGKRRelation as R;
+        use GKRRelation as R;
         match &gate.enforced_relation {
             R::EnforceSingleMaxQuadraticConstraint { .. } => {
                 descs.push((0usize, 0usize, 0usize));
@@ -745,7 +745,7 @@ fn emit_simple_gate<F: PrimeField>(
     input_sorted_addrs: &[GKRAddress],
     simple_group: &mut Vec<(SimpleGateType, [usize; 4])>,
 ) {
-    use NoFieldGKRRelation as R;
+    use GKRRelation as R;
     let desc = match &gate.enforced_relation {
         R::CopyInBaseField { input, .. } | R::CopyInExtensionField { input, .. } => (
             SimpleGateType::Copy,
@@ -1067,7 +1067,7 @@ fn emit_single_output_value<MW: FieldWrapper, F: PrimeField>(
     gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
 ) -> Option<TokenStream> {
-    use NoFieldGKRRelation as R;
+    use GKRRelation as R;
     match &gate.enforced_relation {
         R::EnforceSingleMaxQuadraticConstraint { input, .. } => {
             Some(emit_max_quadratic_eval::<MW, _>(
@@ -1120,7 +1120,7 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
     gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
 ) -> bool {
-    use NoFieldGKRRelation as R;
+    use GKRRelation as R;
 
     let standard_lookup_pair =
         |body: &mut TokenStream, comp_a: TokenStream, comp_b: TokenStream| {
@@ -1261,7 +1261,7 @@ fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
     gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
 ) {
-    use NoFieldGKRRelation as R;
+    use GKRRelation as R;
     let R::InitsOrTeardownsInitialPair {
         timestamp_and_value,
         setup,
@@ -1412,7 +1412,7 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
     };
 
     for gate in &gates {
-        use NoFieldGKRRelation as R;
+        use GKRRelation as R;
         match &gate.enforced_relation {
             // Simple gates — batched into a const-array-driven runtime dispatch loop
             R::CopyInBaseField { .. }

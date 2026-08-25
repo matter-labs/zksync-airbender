@@ -24,11 +24,9 @@
 
 use crate::upstream::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp, GKRAddress,
-    InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation, NoFieldGKRRelation,
-    NoFieldLinearRelation, NoFieldMaxQuadraticConstraintsGKRRelation,
-    NoFieldMaxQuadraticGKRRelation, NoFieldSingleColumnLookupRelation,
-    NoFieldSpecialMemoryContributionRelation, NoFieldVectorLookupRelation, PrimeField,
-    RamWordRepresentation,
+    GKRCacheRelation, GKRRelation, InitsOrTeardownsTimestampAndValue, LinearRelation,
+    MaxQuadraticConstraintsGKRRelation, MaxQuadraticGKRRelation, PrimeField, RamWordRepresentation,
+    SingleColumnLookupRelation, SpecialMemoryContributionRelation, VectorLookupRelation,
 };
 
 /// Per-launch hard cap on distinct backings. Matches the dim-reducing
@@ -101,12 +99,9 @@ pub fn classify(addr: &GKRAddress, output_layer: usize) -> AddressClass {
     }
 }
 
-/// Replicates `cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation::dependencies`,
+/// Replicates `cs::gkr_compiler::SpecialMemoryContributionRelation::dependencies`,
 /// which is `pub(crate)` upstream and not callable from this crate.
-fn collect_memory_dependencies(
-    m: &NoFieldSpecialMemoryContributionRelation,
-    reads: &mut Vec<GKRAddress>,
-) {
+fn collect_memory_dependencies(m: &SpecialMemoryContributionRelation, reads: &mut Vec<GKRAddress>) {
     match &m.address_space {
         CompiledAddressSpaceRelationStrict::Constant(_) => {}
         CompiledAddressSpaceRelationStrict::IsRegister(offset)
@@ -163,33 +158,31 @@ fn collect_memory_dependencies(
     }
 }
 
-/// Walk a `NoFieldGKRRelation` and collect every `GKRAddress` it touches,
+/// Walk a `GKRRelation` and collect every `GKRAddress` it touches,
 /// classified as "read" (input/source) or "write" (output/sink).
 pub fn collect_addresses_from_relation<F: PrimeField>(
-    rel: &NoFieldGKRRelation<F>,
+    rel: &GKRRelation<F>,
     reads: &mut Vec<GKRAddress>,
     writes: &mut Vec<GKRAddress>,
 ) {
-    use NoFieldGKRRelation::*;
+    use GKRRelation::*;
 
-    let push_linear = |r: &NoFieldLinearRelation<F>, reads: &mut Vec<GKRAddress>| {
+    let push_linear = |r: &LinearRelation<F>, reads: &mut Vec<GKRAddress>| {
         for (_, a) in r.linear_terms.iter() {
             reads.push(*a);
         }
     };
-    let push_vector = |v: &NoFieldVectorLookupRelation<F>, reads: &mut Vec<GKRAddress>| {
+    let push_vector = |v: &VectorLookupRelation<F>, reads: &mut Vec<GKRAddress>| {
         for col in v.columns.iter() {
             for (_, a) in col.linear_terms.iter() {
                 reads.push(*a);
             }
         }
     };
-    let push_single_lookup = |s: &NoFieldSingleColumnLookupRelation<F>,
-                              reads: &mut Vec<GKRAddress>| {
+    let push_single_lookup = |s: &SingleColumnLookupRelation<F>, reads: &mut Vec<GKRAddress>| {
         push_linear(&s.input, reads)
     };
-    let push_max_quadratic = |q: &NoFieldMaxQuadraticGKRRelation<F>,
-                              reads: &mut Vec<GKRAddress>| {
+    let push_max_quadratic = |q: &MaxQuadraticGKRRelation<F>, reads: &mut Vec<GKRAddress>| {
         for (a, b) in q.quadratic_terms.iter() {
             reads.push(*a);
             for (_, c) in b.iter() {
@@ -201,7 +194,7 @@ pub fn collect_addresses_from_relation<F: PrimeField>(
         }
     };
     let push_max_quadratic_constraints =
-        |q: &NoFieldMaxQuadraticConstraintsGKRRelation<F>, reads: &mut Vec<GKRAddress>| {
+        |q: &MaxQuadraticConstraintsGKRRelation<F>, reads: &mut Vec<GKRAddress>| {
             for ((a, b), _) in q.quadratic_terms.iter() {
                 reads.push(*a);
                 reads.push(*b);
@@ -413,7 +406,7 @@ pub fn collect_addresses_from_relation<F: PrimeField>(
 
 /// Collect every address read by a cache relation.
 pub fn collect_addresses_from_cache_relation<F: PrimeField>(
-    rel: &NoFieldGKRCacheRelation<F>,
+    rel: &GKRCacheRelation<F>,
     reads: &mut Vec<GKRAddress>,
 ) {
     for a in rel.dependencies() {

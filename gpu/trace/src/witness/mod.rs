@@ -256,7 +256,7 @@ impl From<GKRAddress> for Address {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct NoFieldLinearTerm {
+pub(crate) struct LinearTerm {
     coefficient: u32,
     address: Address,
 }
@@ -265,20 +265,20 @@ pub(crate) const MAX_LINEAR_TERMS_COUNT: usize = 4;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct NoFieldLinearRelation {
+pub(crate) struct LinearRelation {
     linear_terms_count: u32,
-    linear_terms: [NoFieldLinearTerm; MAX_LINEAR_TERMS_COUNT],
+    linear_terms: [LinearTerm; MAX_LINEAR_TERMS_COUNT],
     constant: u32,
 }
 
-impl From<&crate::upstream::NoFieldLinearRelation> for NoFieldLinearRelation {
-    fn from(value: &crate::upstream::NoFieldLinearRelation) -> Self {
+impl From<&crate::upstream::LinearRelation> for LinearRelation {
+    fn from(value: &crate::upstream::LinearRelation) -> Self {
         let terms = &value.linear_terms;
         let len = terms.len();
         assert!(len <= MAX_LINEAR_TERMS_COUNT);
-        let mut linear_terms = [NoFieldLinearTerm::default(); MAX_LINEAR_TERMS_COUNT];
+        let mut linear_terms = [LinearTerm::default(); MAX_LINEAR_TERMS_COUNT];
         for (&src, dst) in terms.iter().zip(linear_terms.iter_mut()) {
-            *dst = NoFieldLinearTerm {
+            *dst = LinearTerm {
                 coefficient: src.0.to_u32(),
                 address: src.1.into(),
             };

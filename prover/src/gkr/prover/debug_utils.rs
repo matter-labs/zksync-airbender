@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use cs::definitions::gkr::{AddressSpaceType, NoFieldLinearRelation, RamWordRepresentation};
+use cs::definitions::gkr::{AddressSpaceType, LinearRelation, RamWordRepresentation};
 use cs::definitions::{
     GKRAddress, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
@@ -12,9 +12,8 @@ use cs::definitions::{
 };
 use cs::gkr_compiler::CompiledMemoryTimestamp;
 use cs::gkr_compiler::{
-    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCircuitArtifact,
-    GKRLayerDescription, NoFieldGKRCacheRelation, NoFieldSpecialMemoryContributionRelation,
-    OutputType,
+    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCacheRelation,
+    GKRCircuitArtifact, GKRLayerDescription, OutputType, SpecialMemoryContributionRelation,
 };
 use fft::batch_inverse_inplace_parallel;
 use field::{Field, FieldExtension, PrimeField};
@@ -176,7 +175,7 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
             }
         };
         match relation {
-            NoFieldGKRCacheRelation::MemoryTuple(rel) => {
+            GKRCacheRelation::MemoryTuple(rel) => {
                 let expected = evaluate_memory_tuple_from_claims(rel, claims, external_challenges);
 
                 if expected != cached_claim {
@@ -187,7 +186,7 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
                     return false;
                 }
             }
-            NoFieldGKRCacheRelation::SingleColumnLookup {
+            GKRCacheRelation::SingleColumnLookup {
                 relation,
                 range_check_width: _,
             } => {
@@ -202,7 +201,7 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
                     return false;
                 }
             }
-            NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
+            GKRCacheRelation::VectorizedLookup(rel) => {
                 // cached[row] = sum_j alpha^j * column_j(row), where column_j is a linear relation
                 let expected =
                     evaluate_vectorized_lookup_from_claims::<F, E>(rel, claims, lookup_alpha);
@@ -214,7 +213,7 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
                     return false;
                 }
             }
-            NoFieldGKRCacheRelation::VectorizedLookupSetup(setup_addrs) => {
+            GKRCacheRelation::VectorizedLookupSetup(setup_addrs) => {
                 // cached[row] = sum_j alpha^j * setup_col_j[row]
                 let mut expected = E::ZERO;
                 let mut alpha_power = E::ONE;
@@ -239,7 +238,7 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
 }
 
 fn evaluate_linear_relation_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &cs::definitions::gkr::NoFieldLinearRelation<F>,
+    rel: &cs::definitions::gkr::LinearRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
 ) -> E {
     let mut result = E::from_base(rel.constant);
@@ -252,7 +251,7 @@ fn evaluate_linear_relation_from_claims<F: PrimeField, E: FieldExtension<F> + Fi
 }
 
 fn evaluate_vectorized_lookup_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &cs::definitions::gkr::NoFieldVectorLookupRelation<F>,
+    rel: &cs::definitions::gkr::VectorLookupRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
     lookup_alpha: E,
 ) -> E {
@@ -269,7 +268,7 @@ fn evaluate_vectorized_lookup_from_claims<F: PrimeField, E: FieldExtension<F> + 
 }
 
 fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldSpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation,
     claims: &BTreeMap<GKRAddress, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
 ) -> E {
@@ -419,7 +418,7 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
 }
 
 fn evaluate_linear_relation<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldLinearRelation<F>,
+    rel: &LinearRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
 ) -> E {
     let mut result = E::from_base(rel.constant);

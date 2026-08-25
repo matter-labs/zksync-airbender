@@ -1,5 +1,5 @@
 use super::*;
-use crate::definitions::gkr::NoFieldSingleColumnLookupRelation;
+use crate::definitions::gkr::SingleColumnLookupRelation;
 use crate::definitions::{Degree1Constraint, GKRAddress, VirtualSetupPoly};
 use crate::gkr_compiler::graph::GraphHolder;
 
@@ -31,7 +31,7 @@ pub struct LookupInputRelation<F: PrimeField> {
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MaterializeSingleInputNode<F: PrimeField> {
-    pub(crate) input: NoFieldSingleColumnLookupRelation<F>,
+    pub(crate) input: SingleColumnLookupRelation<F>,
     pub(crate) range_check_width: u32,
 }
 
@@ -46,20 +46,20 @@ impl<F: PrimeField> GKRGate<F> for MaterializeSingleInputNode<F> {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
 
         if self.input.input.is_trivial_single_input() {
             // just copy
             let input = self.input.input.linear_terms[0].1;
-            let relation = NoFieldGKRRelation::CopyInBaseField { input, output };
+            let relation = GKRRelation::CopyInBaseField { input, output };
             graph.add_enforced_relation(relation.clone(), output_layer);
 
             return (output, relation);
         }
 
         if graph.can_use_caching() {
-            let cached_input = NoFieldGKRCacheRelation::SingleColumnLookup {
+            let cached_input = GKRCacheRelation::SingleColumnLookup {
                 relation: self.input.clone(),
                 range_check_width: self.range_check_width as usize,
             };
@@ -67,7 +67,7 @@ impl<F: PrimeField> GKRGate<F> for MaterializeSingleInputNode<F> {
             let layer_for_caches = output_layer - 1;
             let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
 
-            let relation = NoFieldGKRRelation::CopyInBaseField {
+            let relation = GKRRelation::CopyInBaseField {
                 input: cached_input,
                 output,
             };
@@ -75,7 +75,7 @@ impl<F: PrimeField> GKRGate<F> for MaterializeSingleInputNode<F> {
 
             (output, relation)
         } else {
-            let relation = NoFieldGKRRelation::MaterializeSingleLookupInput {
+            let relation = GKRRelation::MaterializeSingleLookupInput {
                 input: self.input.clone(),
                 output,
                 range_check_width: self.range_check_width,
@@ -88,7 +88,7 @@ impl<F: PrimeField> GKRGate<F> for MaterializeSingleInputNode<F> {
 }
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MaterializeVectorInputNode<F: PrimeField>(pub(crate) NoFieldVectorLookupRelation<F>);
+pub struct MaterializeVectorInputNode<F: PrimeField>(pub(crate) VectorLookupRelation<F>);
 
 impl<F: PrimeField> GKRGate<F> for MaterializeVectorInputNode<F> {
     type Output = GKRAddress;
@@ -101,11 +101,11 @@ impl<F: PrimeField> GKRGate<F> for MaterializeVectorInputNode<F> {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         // TODO: decide to cache or not, maybe adaptively based on the number of terms
 
-        let relation = NoFieldGKRRelation::MaterializedVectorLookupInput {
+        let relation = GKRRelation::MaterializedVectorLookupInput {
             input: self.0.clone(),
             output,
         };
@@ -118,7 +118,7 @@ impl<F: PrimeField> GKRGate<F> for MaterializeVectorInputNode<F> {
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LookupMaskedWitnessMinusSetupInputNode<F: PrimeField> {
     pub mask: GKRAddress,
-    pub input: NoFieldVectorLookupRelation<F>,
+    pub input: VectorLookupRelation<F>,
     pub multiplicity: GKRAddress,
     pub setup: Box<[GKRAddress]>,
 }
@@ -134,17 +134,17 @@ impl<F: PrimeField> GKRGate<F> for LookupMaskedWitnessMinusSetupInputNode<F> {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         if graph.can_use_caching() {
             let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
-            let cached_input = NoFieldGKRCacheRelation::VectorizedLookup(self.input.clone());
-            let cached_setup = NoFieldGKRCacheRelation::VectorizedLookupSetup(self.setup.clone());
+            let cached_input = GKRCacheRelation::VectorizedLookup(self.input.clone());
+            let cached_setup = GKRCacheRelation::VectorizedLookupSetup(self.setup.clone());
             assert!(output_layer > 0);
             let layer_for_caches = output_layer - 1;
             let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
             let cached_setup = graph.add_cached_relation(cached_setup, layer_for_caches);
 
-            let relation = NoFieldGKRRelation::LookupWithCachedDensAndSetup {
+            let relation = GKRRelation::LookupWithCachedDensAndSetup {
                 input: [self.mask, cached_input],
                 setup: [self.multiplicity, cached_setup],
                 output,
@@ -154,7 +154,7 @@ impl<F: PrimeField> GKRGate<F> for LookupMaskedWitnessMinusSetupInputNode<F> {
             (output, relation)
         } else {
             let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
-            let relation = NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+            let relation = GKRRelation::LookupWithDensAndSetupExpressions {
                 input: (self.mask, self.input.clone()),
                 setup: (self.multiplicity, self.setup.clone()),
                 output,
@@ -168,7 +168,7 @@ impl<F: PrimeField> GKRGate<F> for LookupMaskedWitnessMinusSetupInputNode<F> {
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LookupSingleColumnWitnessMinusSetupInputNode<F: PrimeField> {
-    pub input: NoFieldSingleColumnLookupRelation<F>,
+    pub input: SingleColumnLookupRelation<F>,
     pub multiplicity: GKRAddress,
     pub setup: GKRAddress,
     pub range_check_width: u32,
@@ -185,7 +185,7 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessMinusSetupInputNode<
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         match self.range_check_width {
             16 => assert_eq!(
                 self.setup,
@@ -205,7 +205,7 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessMinusSetupInputNode<
         let input = if self.input.input.is_trivial_single_input() {
             self.input.input.linear_terms[0].1
         } else {
-            let cached_input = NoFieldGKRCacheRelation::SingleColumnLookup {
+            let cached_input = GKRCacheRelation::SingleColumnLookup {
                 relation: self.input.clone(),
                 range_check_width: self.range_check_width as usize,
             };
@@ -216,7 +216,7 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessMinusSetupInputNode<
             cached_input
         };
 
-        let relation = NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
+        let relation = GKRRelation::LookupFromMaterializedBaseInputWithSetup {
             input,
             setup: [self.multiplicity, self.setup],
             output,
@@ -230,8 +230,8 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessMinusSetupInputNode<
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LookupSingleColumnWitnessPairAggregationNode<F: PrimeField> {
-    pub lhs: NoFieldSingleColumnLookupRelation<F>,
-    pub rhs: NoFieldSingleColumnLookupRelation<F>,
+    pub lhs: SingleColumnLookupRelation<F>,
+    pub rhs: SingleColumnLookupRelation<F>,
     pub range_check_width: u32,
 }
 
@@ -246,7 +246,7 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessPairAggregationNode<
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
         if graph.can_use_caching() {
@@ -254,7 +254,7 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessPairAggregationNode<
                 if input.input.is_trivial_single_input() {
                     input.input.linear_terms[0].1
                 } else {
-                    let cached_input = NoFieldGKRCacheRelation::SingleColumnLookup {
+                    let cached_input = GKRCacheRelation::SingleColumnLookup {
                         relation: input.clone(),
                         range_check_width: self.range_check_width as usize,
                     };
@@ -266,14 +266,13 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessPairAggregationNode<
                 }
             });
 
-            let relation =
-                NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { input, output };
+            let relation = GKRRelation::LookupPairFromMaterializedBaseInputs { input, output };
 
             graph.add_enforced_relation(relation.clone(), output_layer);
 
             (output, relation)
         } else {
-            let relation = NoFieldGKRRelation::LookupPairFromBaseInputs {
+            let relation = GKRRelation::LookupPairFromBaseInputs {
                 input: [self.lhs.clone(), self.rhs.clone()],
                 output,
                 range_check_width: self.range_check_width,
@@ -305,10 +304,10 @@ impl<F: PrimeField> GKRGate<F> for LookupExplicitPairAggregationNode {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
-        let relation = NoFieldGKRRelation::AggregateLookupRationalPair {
+        let relation = GKRRelation::AggregateLookupRationalPair {
             input: [[self.lhs_num, self.lhs_den], [self.rhs_num, self.rhs_den]],
             output,
         };
@@ -325,7 +324,7 @@ impl<F: PrimeField> GKRGate<F> for LookupExplicitPairAggregationNode {
 pub struct LookupExplicitPairWithSingleColumnInputAggregationNode<F: PrimeField> {
     pub lhs_num: GKRAddress,
     pub lhs_den: GKRAddress,
-    pub base_input: NoFieldSingleColumnLookupRelation<F>,
+    pub base_input: SingleColumnLookupRelation<F>,
     pub range_check_width: u32,
 }
 
@@ -340,12 +339,12 @@ impl<F: PrimeField> GKRGate<F> for LookupExplicitPairWithSingleColumnInputAggreg
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         // cache the explicit value
         let base_input = if self.base_input.input.is_trivial_single_input() {
             self.base_input.input.linear_terms[0].1
         } else {
-            let cached_input = NoFieldGKRCacheRelation::SingleColumnLookup {
+            let cached_input = GKRCacheRelation::SingleColumnLookup {
                 relation: self.base_input.clone(),
                 range_check_width: self.range_check_width as usize,
             };
@@ -387,10 +386,10 @@ impl<F: PrimeField> GKRGate<F>
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
-        let relation = NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
+        let relation = GKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
             input: [self.lhs_num, self.lhs_den],
             remainder: self.base_input,
             output,
@@ -404,8 +403,8 @@ impl<F: PrimeField> GKRGate<F>
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct VectorLookupWitnessPairAggregationFromCachesNode<F: PrimeField> {
-    pub lhs: NoFieldVectorLookupRelation<F>,
-    pub rhs: NoFieldVectorLookupRelation<F>,
+    pub lhs: VectorLookupRelation<F>,
+    pub rhs: VectorLookupRelation<F>,
 }
 
 impl<F: PrimeField> GKRGate<F> for VectorLookupWitnessPairAggregationFromCachesNode<F> {
@@ -419,13 +418,13 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupWitnessPairAggregationFromCachesN
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
         if graph.can_use_caching() {
             let input = [&self.lhs, &self.rhs].map(|input| {
                 // cache
-                let cached_input = NoFieldGKRCacheRelation::VectorizedLookup(input.clone());
+                let cached_input = GKRCacheRelation::VectorizedLookup(input.clone());
                 assert!(output_layer > 0);
                 let layer_for_caches = output_layer - 1;
                 let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
@@ -433,14 +432,13 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupWitnessPairAggregationFromCachesN
                 cached_input
             });
 
-            let relation =
-                NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output };
+            let relation = GKRRelation::LookupPairFromMaterializedVectorInputs { input, output };
 
             graph.add_enforced_relation(relation.clone(), output_layer);
 
             (output, relation)
         } else {
-            let relation = NoFieldGKRRelation::LookupPairFromVectorInputs {
+            let relation = GKRRelation::LookupPairFromVectorInputs {
                 input: [self.lhs.clone(), self.rhs.clone()],
                 output,
             };
@@ -456,7 +454,7 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupWitnessPairAggregationFromCachesN
 pub struct VectorLookupExplicitPairWithInputAggregationNode<F: PrimeField> {
     pub lhs_num: GKRAddress,
     pub lhs_den: GKRAddress,
-    pub vector_input: NoFieldVectorLookupRelation<F>,
+    pub vector_input: VectorLookupRelation<F>,
 }
 
 impl<F: PrimeField> GKRGate<F> for VectorLookupExplicitPairWithInputAggregationNode<F> {
@@ -470,10 +468,10 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupExplicitPairWithInputAggregationN
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         if graph.can_use_caching() {
             // cache the explicit value
-            let cached_input = NoFieldGKRCacheRelation::VectorizedLookup(self.vector_input.clone());
+            let cached_input = GKRCacheRelation::VectorizedLookup(self.vector_input.clone());
             assert!(output_layer > 0);
             let layer_for_caches = output_layer - 1;
             let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
@@ -487,7 +485,7 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupExplicitPairWithInputAggregationN
         } else {
             let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
-            let relation = NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+            let relation = GKRRelation::LookupUnbalancedPairWithVectorInputs {
                 input: [self.lhs_num, self.lhs_den],
                 remainder: self.vector_input.clone(),
                 output,
@@ -518,10 +516,10 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupExplicitPairWithMaterializedInput
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
-        let relation = NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
+        let relation = GKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
             input: [self.lhs_num, self.lhs_den],
             remainder: self.vector_input,
             output,
@@ -535,7 +533,7 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupExplicitPairWithMaterializedInput
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct VectorLookupWitnessMinusSetupInputNode<F: PrimeField> {
-    pub input: NoFieldVectorLookupRelation<F>,
+    pub input: VectorLookupRelation<F>,
     pub multiplicity: GKRAddress,
     pub setup: Box<[GKRAddress]>,
 }
@@ -551,10 +549,10 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupWitnessMinusSetupInputNode<F> {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         if graph.can_use_caching() {
             // We will be lazy - will cache the input
-            let cached_input = NoFieldGKRCacheRelation::VectorizedLookup(self.input.clone());
+            let cached_input = GKRCacheRelation::VectorizedLookup(self.input.clone());
             assert!(output_layer > 0);
             let layer_for_caches = output_layer - 1;
             let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
@@ -568,7 +566,7 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupWitnessMinusSetupInputNode<F> {
         } else {
             let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
-            let relation = NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+            let relation = GKRRelation::LookupFromVectorInputWithSetup {
                 input: self.input.clone(),
                 setup: (self.multiplicity, self.setup.clone()),
                 output,
@@ -599,15 +597,15 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupMaterializedWitnessMinusSetupInpu
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
-        let cached_setup = NoFieldGKRCacheRelation::VectorizedLookupSetup(self.setup.clone());
+        let cached_setup = GKRCacheRelation::VectorizedLookupSetup(self.setup.clone());
         assert!(output_layer > 0);
         let layer_for_caches = output_layer - 1;
         let cached_setup = graph.add_cached_relation(cached_setup, layer_for_caches);
 
-        let relation = NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
+        let relation = GKRRelation::LookupFromMaterializedVectorInputWithSetup {
             input: self.input,
             setup: [self.multiplicity, cached_setup],
             output,

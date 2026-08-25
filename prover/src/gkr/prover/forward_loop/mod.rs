@@ -6,12 +6,10 @@ use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::{cs::definitions::*, gkr::sumcheck::access_and_fold::ExtensionFieldPoly};
 use cs::definitions::gkr::RamWordRepresentation;
 use cs::gkr_compiler::CompiledMemoryTimestamp;
-use cs::gkr_compiler::{
-    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, NoFieldGKRRelation,
-};
+use cs::gkr_compiler::{CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRRelation};
 use cs::{
     definitions::{gkr::DECODER_LOOKUP_FORMAL_SET_INDEX, GKRAddress},
-    gkr_compiler::{GKRLayerDescription, NoFieldGKRCacheRelation},
+    gkr_compiler::{GKRCacheRelation, GKRLayerDescription},
 };
 
 pub(crate) mod copy;
@@ -29,7 +27,7 @@ pub(crate) mod vector_lookup;
 fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
     address: GKRAddress,
-    relation: &NoFieldGKRCacheRelation<F>,
+    relation: &GKRCacheRelation<F>,
     gkr_storage: &mut GKRStorage<F, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
@@ -45,7 +43,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     assert!(address.is_cache());
     unsafe {
         match relation {
-            NoFieldGKRCacheRelation::SingleColumnLookup {
+            GKRCacheRelation::SingleColumnLookup {
                 relation,
                 range_check_width,
             } => {
@@ -60,7 +58,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRCacheRelation::MemoryTuple(rel) => {
+            GKRCacheRelation::MemoryTuple(rel) => {
                 let destination = utils::materialize_memory_tuple(
                     rel,
                     &*gkr_storage,
@@ -77,7 +75,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                     ExtensionFieldPoly::new(destination),
                 );
             }
-            NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
+            GKRCacheRelation::VectorizedLookup(rel) => {
                 let destination = utils::materialize_vector_lookup_input(
                     rel,
                     &*gkr_storage,
@@ -97,7 +95,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                     ExtensionFieldPoly::new(destination),
                 );
             }
-            NoFieldGKRCacheRelation::VectorizedLookupSetup(_rel) => {
+            GKRCacheRelation::VectorizedLookupSetup(_rel) => {
                 let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
                 destination[..preprocessed_generic_lookup.len()]
                     .write_copy_of_slice(preprocessed_generic_lookup);
@@ -225,8 +223,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 
         // let now = std::time::Instant::now();
         match &gate.enforced_relation {
-            NoFieldGKRRelation::CopyInBaseField { input, output }
-            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+            GKRRelation::CopyInBaseField { input, output }
+            | GKRRelation::CopyInExtensionField { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 copy::forward_evaluate_copy::<F, E, false>(
                     *input,
@@ -237,7 +235,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
+            GKRRelation::MaxQuadratic { input, output, .. } => {
                 if compiled_circuit.scratch_space_mapping.contains_key(output) {
                     // a value of it will be filled from scratch space in the next round
                 } else {
@@ -250,7 +248,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     todo!();
                 }
             }
-            NoFieldGKRRelation::MaterializedVectorLookupInput { input, output } => {
+            GKRRelation::MaterializedVectorLookupInput { input, output } => {
                 let value = utils::materialize_vector_lookup_input(
                     input,
                     &*gkr_storage,
@@ -313,8 +311,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 
         // let now = std::time::Instant::now();
         match &gate.enforced_relation {
-            NoFieldGKRRelation::CopyInBaseField { input, output }
-            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+            GKRRelation::CopyInBaseField { input, output }
+            | GKRRelation::CopyInExtensionField { input, output } => {
                 // even though it's handled above, we may need to copy cache relation to the
                 // next layer after making it, so we try again, but infailable option
                 copy::forward_evaluate_copy::<F, E, true>(
@@ -326,14 +324,14 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::MaxQuadratic { .. } => {
+            GKRRelation::MaxQuadratic { .. } => {
                 // handled above
             }
-            NoFieldGKRRelation::MaterializedVectorLookupInput { .. } => {
+            GKRRelation::MaterializedVectorLookupInput { .. } => {
                 // handled above
             }
 
-            NoFieldGKRRelation::MaterializeSingleLookupInput {
+            GKRRelation::MaterializeSingleLookupInput {
                 input,
                 output,
                 range_check_width,
@@ -349,7 +347,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::InitialGrandProductFromCaches { input, output } => {
+            GKRRelation::InitialGrandProductFromCaches { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 pairwise_product::forward_evaluate_pairwise_product(
                     *input,
@@ -360,7 +358,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output } => {
+            GKRRelation::InitialGrandProductWithoutCaches { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 pairwise_product::forward_evaluate_base_layer_pairwise_product_without_caches(
                     input,
@@ -373,7 +371,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::MaskIntoIdentityProduct {
+            GKRRelation::MaskIntoIdentityProduct {
                 input,
                 mask,
                 output,
@@ -389,7 +387,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::TrivialProduct { input, output } => {
+            GKRRelation::TrivialProduct { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 pairwise_product::forward_evaluate_pairwise_product(
                     *input,
@@ -400,11 +398,11 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
+            GKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
                 unimplemented!("no longer supported");
                 // we do nothing as it should result in all zeroes in case if constraints are satisfied
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input: _input, .. } => {
+            GKRRelation::EnforceSingleMaxQuadraticConstraint { input: _input, .. } => {
                 #[cfg(feature = "gkr_self_checks")]
                 {
                     max_quadratic::self_check_max_quadratic_constraint(
@@ -419,7 +417,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 
                 // we do nothing as it should result in all zeroes in case if constraints are satisfied
             }
-            NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
+            GKRRelation::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,
                 output,
@@ -436,7 +434,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::LookupWithCachedDensAndSetup {
+            GKRRelation::LookupWithCachedDensAndSetup {
                 input,
                 setup,
                 output,
@@ -444,7 +442,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 lookup_from_vector_inputs::forward_evaluate_masked_lookup_from_vector_inputs_with_setup(*input, *setup, *output, gkr_storage, expected_output_layer, trace_len, lookup_challenges_additive_part, worker);
             }
-            NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+            GKRRelation::LookupWithDensAndSetupExpressions {
                 input,
                 setup,
                 output,
@@ -466,7 +464,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
+            GKRRelation::AggregateLookupRationalPair { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 lookup_pair::forward_evaluate_lookup_pair(
                     *input,
@@ -477,7 +475,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
+            GKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 lookup_from_base_inputs::forward_evaluate_lookup_base_inputs_pair(
                     *input,
@@ -489,7 +487,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::LookupPairFromBaseInputs {
+            GKRRelation::LookupPairFromBaseInputs {
                 input,
                 output,
                 range_check_width,
@@ -523,7 +521,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     );
                 }
             }
-            NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
+            GKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
                 remainder,
                 output,
@@ -540,7 +538,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
+            GKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
                 input,
                 remainder,
                 output,
@@ -557,7 +555,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output } => {
+            GKRRelation::LookupPairFromMaterializedVectorInputs { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 lookup_from_vector_inputs::forward_evaluate_lookup_from_vector_inputs_pair(
                     *input,
@@ -569,7 +567,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
+            GKRRelation::LookupFromMaterializedVectorInputWithSetup {
                 input,
                 setup,
                 output,
@@ -585,7 +583,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
+            GKRRelation::LookupPairFromVectorInputs { input, output } => {
                 vector_lookup::materialize_lookup_expressions_pair(
                     input,
                     *output,
@@ -600,7 +598,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+            GKRRelation::LookupUnbalancedPairWithVectorInputs {
                 input,
                 remainder,
                 output,
@@ -620,7 +618,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+            GKRRelation::LookupFromVectorInputWithSetup {
                 input,
                 setup,
                 output,
@@ -639,7 +637,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output } => {
+            GKRRelation::MaterializeGrandProductTermExpression { input, output } => {
                 let destination = utils::materialize_memory_tuple(
                     input,
                     &*gkr_storage,
@@ -656,7 +654,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     ExtensionFieldPoly::new(destination),
                 );
             }
-            NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+            GKRRelation::InitsOrTeardownsInitialPair {
                 timestamp_and_value,
                 setup: _,
                 output,

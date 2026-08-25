@@ -1,14 +1,14 @@
 use crate::upstream::{
-    GKRAddress, GKRCircuitArtifact, NoFieldGKRRelation, NoFieldLinearRelation,
-    NoFieldMaxQuadraticGKRRelation, NoFieldVectorLookupRelation, PrimeField,
+    GKRAddress, GKRCircuitArtifact, GKRRelation, LinearRelation, MaxQuadraticGKRRelation,
+    PrimeField, VectorLookupRelation,
 };
 use std::collections::BTreeMap;
 
-/// Element type of `NoFieldMaxQuadraticGKRRelation::quadratic_terms`.
+/// Element type of `MaxQuadraticGKRRelation::quadratic_terms`.
 type MaxQuadraticTerm<F> = (GKRAddress, Box<[(F, GKRAddress)]>);
-/// Element type of `NoFieldMaxQuadraticConstraintsGKRRelation::quadratic_terms`.
+/// Element type of `MaxQuadraticConstraintsGKRRelation::quadratic_terms`.
 type ConstraintsQuadraticTerm<F> = ((GKRAddress, GKRAddress), Box<[(F, usize)]>);
-/// Element type of `NoFieldMaxQuadraticConstraintsGKRRelation::linear_terms`.
+/// Element type of `MaxQuadraticConstraintsGKRRelation::linear_terms`.
 type ConstraintsLinearTerm<F> = (GKRAddress, Box<[(F, usize)]>);
 
 pub fn normalize_compiled_circuit_for_gpu<F: PrimeField>(
@@ -80,7 +80,7 @@ pub fn logical_protocol_address(
 }
 
 fn rewrite_linear_relation<F: PrimeField>(
-    rel: &mut NoFieldLinearRelation<F>,
+    rel: &mut LinearRelation<F>,
     mapping: &BTreeMap<GKRAddress, usize>,
 ) {
     let mut rewritten: Vec<(F, GKRAddress)> = Vec::with_capacity(rel.linear_terms.len());
@@ -93,7 +93,7 @@ fn rewrite_linear_relation<F: PrimeField>(
 }
 
 fn rewrite_vector_lookup<F: PrimeField>(
-    rel: &mut NoFieldVectorLookupRelation<F>,
+    rel: &mut VectorLookupRelation<F>,
     mapping: &BTreeMap<GKRAddress, usize>,
 ) {
     for col in rel.columns.iter_mut() {
@@ -102,7 +102,7 @@ fn rewrite_vector_lookup<F: PrimeField>(
 }
 
 fn rewrite_max_quadratic<F: PrimeField>(
-    rel: &mut NoFieldMaxQuadraticGKRRelation<F>,
+    rel: &mut MaxQuadraticGKRRelation<F>,
     mapping: &BTreeMap<GKRAddress, usize>,
 ) {
     let mut rewritten_quadratic: Vec<MaxQuadraticTerm<F>> =
@@ -130,10 +130,10 @@ fn rewrite_max_quadratic<F: PrimeField>(
 }
 
 fn rewrite_relation_scratch_addresses<F: PrimeField>(
-    rel: &mut NoFieldGKRRelation<F>,
+    rel: &mut GKRRelation<F>,
     mapping: &BTreeMap<GKRAddress, usize>,
 ) {
-    use NoFieldGKRRelation::*;
+    use GKRRelation::*;
     match rel {
         MaxQuadratic { input, output, .. } => {
             rewrite_max_quadratic(input, mapping);

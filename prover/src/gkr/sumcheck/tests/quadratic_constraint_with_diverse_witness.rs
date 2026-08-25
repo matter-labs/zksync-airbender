@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
+use cs::gkr_compiler::MaxQuadraticConstraintsGKRRelation;
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, Rand};
@@ -66,7 +66,7 @@ fn test_quadratic_constraint_with_constant() {
 
     // (b - a) is boolean, so (b - a)^2 - (b - a) == 0, or b^2 + a^2 - 2 ab - b + a == 0
 
-    let constraint = NoFieldMaxQuadraticConstraintsGKRRelation {
+    let constraint = MaxQuadraticConstraintsGKRRelation {
         quadratic_terms: vec![
             (
                 (

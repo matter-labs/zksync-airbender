@@ -2,10 +2,10 @@ use super::*;
 use crate::gkr::sumcheck::evaluation_kernels::{
     enforce_max_quadratic_constraint, BatchedGKRKernel,
 };
-use cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation;
+use cs::gkr_compiler::MaxQuadraticGKRRelation;
 
 pub fn self_check_max_quadratic_constraint<F: PrimeField, E: FieldExtension<F> + Field>(
-    input: &NoFieldMaxQuadraticGKRRelation<F>,
+    input: &MaxQuadraticGKRRelation<F>,
     gkr_storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     trace_len: usize,

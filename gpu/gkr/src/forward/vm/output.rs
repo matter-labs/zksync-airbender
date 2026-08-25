@@ -4,7 +4,7 @@ use gpu_prover_context::ProverContext;
 
 use crate::gkr_address_audit::AddressClass;
 use crate::storage_layout::FieldType;
-use crate::upstream::{Field, FieldExtension, GKRAddress, GKRLayerDescription, NoFieldGKRRelation};
+use crate::upstream::{Field, FieldExtension, GKRAddress, GKRLayerDescription, GKRRelation};
 use crate::GpuGKRStorage;
 
 /// Register copy gates, which intentionally have no VM store instruction.
@@ -22,7 +22,7 @@ pub(super) fn register_layer_copy_aliases<B, E>(
         .chain(layer.gates_with_external_connections.iter())
     {
         match &gate.enforced_relation {
-            NoFieldGKRRelation::CopyInBaseField { input, output } => {
+            GKRRelation::CopyInBaseField { input, output } => {
                 assert_eq!(gate.output_layer, layer_idx + 1);
                 let out_layer = layer_idx + 1;
                 let source = storage
@@ -31,7 +31,7 @@ pub(super) fn register_layer_copy_aliases<B, E>(
                     .clone_shared();
                 storage.insert_base_field_at_layer(out_layer, *output, source);
             }
-            NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+            GKRRelation::CopyInExtensionField { input, output } => {
                 assert_eq!(gate.output_layer, layer_idx + 1);
                 let out_layer = layer_idx + 1;
                 let source = storage.get_ext_poly(*input).clone_shared();

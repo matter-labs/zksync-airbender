@@ -1,6 +1,6 @@
 //! Arithmetic / copy relation lowering for the DAG IR generator.
 //!
-//! Each function lowers ONE `NoFieldGKRRelation` arm into an `Expr` tree in the
+//! Each function lowers ONE `GKRRelation` arm into an `Expr` tree in the
 //! shared [`ArenaBuilder`] and returns the root `ExprId` plus the sink
 //! [`FieldKind`] dictated by the RELATION (never derived by field inference —
 //! see [`super`]'s module docs on the cross-layer field subtlety).
@@ -11,7 +11,7 @@
 //! - max-quadratic: `constant + Σ_quad c_ij·a_i·b_ij + Σ_lin c_i·x_i`
 //! - copy:          `read(input)` (base or extension field)
 
-use cs::definitions::gkr::NoFieldLinearRelation;
+use cs::definitions::gkr::LinearRelation;
 use cs::definitions::GKRAddress;
 use field::PrimeField;
 
@@ -23,7 +23,7 @@ use super::util::{apply_coeff, const_expr, read_expr, sum_terms};
 /// Returns the root expr and `FieldKind::Base` (linear relations are base-field).
 pub(super) fn lower_linear<F: PrimeField>(
     arena: &mut ArenaBuilder,
-    lin: &NoFieldLinearRelation<F>,
+    lin: &LinearRelation<F>,
 ) -> (ExprId, FieldKind) {
     let mut terms = Vec::new();
     let constant = lin.constant.as_u32_reduced();
@@ -42,7 +42,7 @@ pub(super) fn lower_linear<F: PrimeField>(
 /// Returns the root expr and `FieldKind::Base` (max-quadratic is base-field).
 pub(super) fn lower_max_quadratic<F: PrimeField>(
     arena: &mut ArenaBuilder,
-    rel: &cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation<F>,
+    rel: &cs::gkr_compiler::MaxQuadraticGKRRelation<F>,
 ) -> (ExprId, FieldKind) {
     let mut terms = Vec::new();
     let constant = rel.constant.as_u32_reduced();

@@ -880,9 +880,9 @@ fn verify_permutation_identity_no_inversion() {
 /// Output address for the single-output GKR relation variants (compute_claim kind 1).
 /// Returns None for constraint gates (kind 0) and dual-output lookups (kind 2).
 fn single_output(
-    rel: &crate::cs::gkr_compiler::NoFieldGKRRelation<Proth120>,
+    rel: &crate::cs::gkr_compiler::GKRRelation<Proth120>,
 ) -> Option<&crate::cs::definitions::GKRAddress> {
-    use crate::cs::gkr_compiler::NoFieldGKRRelation as R;
+    use crate::cs::gkr_compiler::GKRRelation as R;
     match rel {
         R::CopyInBaseField { output, .. }
         | R::CopyInExtensionField { output, .. }
@@ -903,9 +903,9 @@ fn single_output(
 
 /// Output pair for the dual-output (lookup, compute_claim kind 2) relation variants.
 fn dual_outputs(
-    rel: &crate::cs::gkr_compiler::NoFieldGKRRelation<Proth120>,
+    rel: &crate::cs::gkr_compiler::GKRRelation<Proth120>,
 ) -> Option<&[crate::cs::definitions::GKRAddress; 2]> {
-    use crate::cs::gkr_compiler::NoFieldGKRRelation as R;
+    use crate::cs::gkr_compiler::GKRRelation as R;
     match rel {
         R::AggregateLookupRationalPair { output, .. }
         | R::LookupPairFromBaseInputs { output, .. }
@@ -945,8 +945,8 @@ fn circuit_layer_g(
     ) -> usize,
 ) -> Proth120 {
     use crate::cs::definitions::GKRAddress;
+    use crate::cs::gkr_compiler::GKRRelation as R;
     use crate::cs::gkr_compiler::InitsOrTeardownsTimestampAndValue as ITV;
-    use crate::cs::gkr_compiler::NoFieldGKRRelation as R;
     use ::field::Field;
     type E = Proth120;
     let mul = |a: &E, b: &E| {
@@ -1442,7 +1442,7 @@ fn verify_dim_reduce_layers() {
     // FULL 22 monomial sumcheck rounds, then a per-gate `g` accumulator, final-step check
     // `g*eq==claim`, absorb the at-point evals, draw next_batching, next claims = evals directly.
     use crate::cs::definitions::GKRAddress;
-    use crate::cs::gkr_compiler::NoFieldGKRRelation as R;
+    use crate::cs::gkr_compiler::GKRRelation as R;
     let addr_to_idx = |addr: &GKRAddress, sorted: &[GKRAddress]| -> usize {
         sorted
             .iter()
@@ -1658,7 +1658,7 @@ fn verify_dim_reduce_layers() {
         // equal the linear/vector-lookup combination of its dependency at-point evals. ----
         {
             use crate::cs::definitions::gkr::RamWordRepresentation as Val;
-            use crate::cs::gkr_compiler::NoFieldGKRCacheRelation as CR;
+            use crate::cs::gkr_compiler::GKRCacheRelation as CR;
             use crate::cs::gkr_compiler::{
                 CompiledAddressSpaceRelationStrict as ASpace, CompiledAddressStrict as Addr,
                 CompiledMemoryTimestamp as Ts,

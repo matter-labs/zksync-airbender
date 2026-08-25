@@ -4,7 +4,7 @@
 
 use super::super::{ArenaBuilder, ExprId, Root, RootOrigin};
 use super::{arithmetic, LayerOut, RootGroup};
-use cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation;
+use cs::gkr_compiler::MaxQuadraticGKRRelation;
 use field::PrimeField;
 
 // ── Public entry points ───────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ use field::PrimeField;
 pub(super) fn lower_single_constraint<F: PrimeField>(
     arena: &mut ArenaBuilder,
     out: &mut LayerOut,
-    input: &NoFieldMaxQuadraticGKRRelation<F>,
+    input: &MaxQuadraticGKRRelation<F>,
     group: RootGroup,
     relation_index: usize,
 ) {

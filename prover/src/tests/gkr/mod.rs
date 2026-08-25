@@ -255,12 +255,12 @@ fn read_value<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     }
 }
 
-/// Evaluate a `NoFieldLinearRelation` (used by lookup expressions) at the
+/// Evaluate a `LinearRelation` (used by lookup expressions) at the
 /// given row. Coefficients are stored as raw integers (`u32`) and reduced
 /// into `F` here. Non-base-layer addresses contribute zero, matching the
 /// fallback in `evaluate_linear_constraint`.
 fn evaluate_no_field_linear<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
-    rel: &NoFieldLinearRelation<F>,
+    rel: &LinearRelation<F>,
     full_trace: &GKRFullWitnessTrace<F, A, B>,
     absolute_row_idx: usize,
 ) -> F {

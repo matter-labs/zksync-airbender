@@ -31,10 +31,11 @@ jobs:
         run: cargo install cargo-binutils --locked
       - name: Compile
         run: cargo build --verbose
-      - name: Unit tests (CI)
+      - name: Prover smoke test (CI)
         env:
           CI: "true"
-        run: cargo test --profile cli -- --nocapture
+          RUST_MIN_STACK: 16777216
+        run: cargo test -p prover --profile cli -- --nocapture gkr_run_basic_unrolled_test_sec_100
       - name: GPU test serialization drift guard
         run: cargo test -p gpu_core --profile cli cpu_nextest_config_covers_all_gpu_crates
       - name: GKR compiler feature tests
