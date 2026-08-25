@@ -127,6 +127,42 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
 }
 
 #[cfg(feature = "task8_continuation_differential_test")]
+fn task8_blake2s_digest(bytes: &[u8]) -> String {
+    use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS};
+
+    // The byte length is part of the message and the tail is zero padded, so
+    // distinct JSON byte strings cannot alias merely because the u32 API has a
+    // word-granular final length.
+    let mut framed = Vec::with_capacity(8 + bytes.len() + 3);
+    framed.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
+    framed.extend_from_slice(bytes);
+    framed.resize(framed.len().next_multiple_of(4), 0);
+    let words: Vec<u32> = framed
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|chunk| u32::from_le_bytes(*chunk))
+        .collect();
+    let mut state = Blake2sState::new();
+    let mut chunks = words.chunks(BLAKE2S_BLOCK_SIZE_U32_WORDS).peekable();
+    let mut digest = [0u32; blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS];
+    while let Some(chunk) = chunks.next() {
+        let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+        block[..chunk.len()].copy_from_slice(chunk);
+        if chunks.peek().is_some() {
+            state.absorb::<false>(&block);
+        } else {
+            state.absorb_final_block::<false>(&block, chunk.len(), &mut digest);
+        }
+    }
+    digest
+        .iter()
+        .flat_map(|word| word.to_le_bytes())
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 struct Task8AllocatorConfiguration {
     powers_of_w_coarse_log_count: u32,
@@ -176,12 +212,22 @@ impl From<gpu_prover_context::PoolMemoryHighWaterReport> for Task8MemoryInterval
 
 #[cfg(feature = "task8_continuation_differential_test")]
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+struct Task8RuntimeOperationCensus {
+    initial_input_h2d: usize,
+    final_slab_d2h: usize,
+    proof_assembly_after_final_d2h: usize,
+    candidate_added_h2d: usize,
+    candidate_added_d2h: usize,
+    candidate_added_host_callbacks: usize,
+    candidate_added_host_staging: usize,
+    candidate_added_host_computation: usize,
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 struct Task8ExactMemoryRecord {
     schema_version: u32,
-    performance_plan_sha256: String,
-    observer_dependency_commit: String,
-    observer_closure_audit_sha256: String,
-    inactive_observer_evidence_hook: String,
+    harness_contract: String,
     artifact_head: String,
     artifact_tree: String,
     release_executable: String,
@@ -195,18 +241,19 @@ struct Task8ExactMemoryRecord {
     configuration: Task8AllocatorConfiguration,
     backward: Task8MemoryIntervalRecord,
     whole: Task8MemoryIntervalRecord,
-    proof_sha256: String,
+    proof_blake2s: String,
+    proof_serialized_bytes: usize,
     proof_time_ms_bits: u32,
     selected_strategy: String,
-    dr_counters_observed: bool,
-    dr_bundle_final_log: Option<u32>,
-    dr_prepared_layer_count: Option<usize>,
-    dr_r0_launch_count: Option<usize>,
-    dr_continuation_launch_count: Option<usize>,
-    dr_tail_launch_count: Option<usize>,
+    main_folding_steps: usize,
+    main_layer_count: usize,
+    main_r0_launch_count: usize,
     main_continuation_planned_window_count: usize,
-    main_planned_legacy_full_round_count: usize,
-    main_planned_legacy_remainder_round_count: usize,
+    main_tail_launch_count: usize,
+    legacy_layer_count: usize,
+    legacy_round_count: usize,
+    operation_trace: Vec<crate::proof::MainAcceptanceOperation>,
+    runtime_operation_census: Task8RuntimeOperationCensus,
 }
 
 #[cfg(feature = "task8_continuation_differential_test")]
@@ -247,63 +294,59 @@ fn compare_task8_exact_memory(
     baseline: &Task8ExactMemoryRecord,
     new: &Task8ExactMemoryRecord,
 ) -> Result<(), String> {
-    if baseline.schema_version != 1 || new.schema_version != 1 {
+    if baseline.schema_version != 2 || new.schema_version != 2 {
         return Err("Task 8 row has an unsupported schema version".to_owned());
     }
-    if baseline.performance_plan_sha256
-        != "27bb732c87371b4ed3c357f8cbe524e1ae3c285150f34cfdc2e601e4163052d8"
-        || new.performance_plan_sha256 != baseline.performance_plan_sha256
-        || baseline.observer_dependency_commit != "2e4a6d5e58a96f94991fbbb5b797c01a830e9ee0"
-        || new.observer_dependency_commit != baseline.observer_dependency_commit
-        || baseline.observer_closure_audit_sha256
-            != "5813895a7bcd4dbb8c5e77575e868ad9925f7be264b63627794e232339be508d"
-        || new.observer_closure_audit_sha256 != baseline.observer_closure_audit_sha256
-        || baseline.inactive_observer_evidence_hook
-            != "producer-owned release zero-allocation/unchanged-byte comparison"
-        || new.inactive_observer_evidence_hook != baseline.inactive_observer_evidence_hook
+    if baseline.harness_contract != "main-integrated-production-vs-whole-legacy-v1"
+        || new.harness_contract != baseline.harness_contract
     {
-        return Err("Task 8 observer/performance evidence binding differs".to_owned());
+        return Err("Task 8 integrated harness contract differs".to_owned());
     }
-    if baseline.arm != "baseline"
-        || new.arm != "new"
+    if baseline.arm != "legacy"
+        || new.arm != "production"
+        || !baseline.backward_options.contains("windowed_r0: false")
         || !baseline
             .backward_options
             .contains("windowed_main_continuations: false")
+        || !new.backward_options.contains("windowed_r0: true")
         || !new
             .backward_options
             .contains("windowed_main_continuations: true")
     {
         return Err("Task 8 paired rows have invalid arm/options labels".to_owned());
     }
-    if baseline.selected_strategy != "WindowedR0" || new.selected_strategy != "WindowedR0" {
-        return Err("Task 8 paired rows did not both select WindowedR0".to_owned());
-    }
-    for (arm, record) in [("baseline", baseline), ("new", new)] {
-        let dr_fields_present = record.dr_bundle_final_log.is_some()
-            && record.dr_prepared_layer_count.is_some()
-            && record.dr_r0_launch_count.is_some()
-            && record.dr_continuation_launch_count.is_some()
-            && record.dr_tail_launch_count.is_some();
-        if record.dr_counters_observed != dr_fields_present {
-            return Err(format!(
-                "Task 8 {arm} row misstates DR counter observation provenance"
-            ));
-        }
+    if baseline.selected_strategy != "PerRound" || new.selected_strategy != "WindowedR0" {
+        return Err(
+            "Task 8 paired rows did not select whole-layer legacy and production MAIN".to_owned(),
+        );
     }
     if baseline.configuration != new.configuration {
         return Err("Task 8 allocator configuration differs between arms".to_owned());
     }
     if baseline.main_continuation_planned_window_count != 0
-        || baseline.main_planned_legacy_full_round_count == 0
-        || baseline.main_planned_legacy_remainder_round_count != 0
+        || baseline.main_r0_launch_count != 0
+        || baseline.main_tail_launch_count != 0
+        || baseline.legacy_layer_count == 0
+        || baseline.legacy_round_count == 0
     {
         return Err("Task 8 legacy/off row has invalid planned work counts".to_owned());
     }
     if new.main_continuation_planned_window_count == 0
-        || new.main_planned_legacy_full_round_count != 0
-        || new.main_planned_legacy_remainder_round_count == 0
+        || new.main_r0_launch_count == 0
+        || new.main_tail_launch_count == 0
+        || new.legacy_layer_count != 0
+        || new.legacy_round_count != 0
     {
         return Err("Task 8 new/on row has invalid planned work counts".to_owned());
+    }
+    if baseline.main_layer_count == 0
+        || baseline.main_layer_count != new.main_layer_count
+        || baseline.main_folding_steps != new.main_folding_steps
+        || new.main_r0_launch_count != new.main_layer_count
+        || new.main_tail_launch_count != new.main_layer_count
+        || baseline.legacy_layer_count != baseline.main_layer_count
+    {
+        return Err("Task 8 paired rows have invalid MAIN layer coverage".to_owned());
     }
     if baseline.artifact_head != new.artifact_head
         || baseline.artifact_tree != new.artifact_tree
@@ -329,8 +372,30 @@ fn compare_task8_exact_memory(
     {
         return Err("Task 8 paired rows have invalid A,B/B,A sample orientation".to_owned());
     }
-    if baseline.proof_sha256 != new.proof_sha256 {
-        return Err("Task 8 paired-arm proof SHA-256 differs".to_owned());
+    if baseline.proof_blake2s != new.proof_blake2s
+        || baseline.proof_serialized_bytes != new.proof_serialized_bytes
+    {
+        return Err("Task 8 paired-arm proof bytes differ".to_owned());
+    }
+    let expected_trace = expected_task8_operation_trace();
+    for (arm, record) in [("legacy", baseline), ("production", new)] {
+        if record.operation_trace != expected_trace {
+            return Err(format!(
+                "Task 8 {arm} runtime operation trace is incomplete or reordered"
+            ));
+        }
+        let census = &record.runtime_operation_census;
+        if census.initial_input_h2d != 1
+            || census.final_slab_d2h != 1
+            || census.proof_assembly_after_final_d2h != 1
+            || census.candidate_added_h2d != 0
+            || census.candidate_added_d2h != 0
+            || census.candidate_added_host_callbacks != 0
+            || census.candidate_added_host_staging != 0
+            || census.candidate_added_host_computation != 0
+        {
+            return Err(format!("Task 8 {arm} runtime operation census is invalid"));
+        }
     }
     for (name, left, right) in [
         ("backward", baseline.backward, new.backward),
@@ -380,7 +445,46 @@ fn compare_task8_exact_memory(
             ));
         }
     }
+    for (interval, baseline_bytes, new_bytes) in [
+        (
+            "backward",
+            baseline.backward.summed_requested_bytes,
+            new.backward.summed_requested_bytes,
+        ),
+        (
+            "whole",
+            baseline.whole.summed_requested_bytes,
+            new.whole.summed_requested_bytes,
+        ),
+    ] {
+        if new_bytes > baseline_bytes {
+            return Err(format!(
+                "Task 8 {interval} requested bytes increased: baseline={baseline_bytes} new={new_bytes} delta=+{}",
+                new_bytes - baseline_bytes
+            ));
+        }
+    }
     Ok(())
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+fn expected_task8_operation_trace() -> Vec<crate::proof::MainAcceptanceOperation> {
+    vec![
+        crate::proof::MainAcceptanceOperation::InitialInputsTransferEnsured,
+        crate::proof::MainAcceptanceOperation::Stage1AndForwardPrepared,
+        crate::proof::MainAcceptanceOperation::ForwardScheduled,
+        crate::proof::MainAcceptanceOperation::BackwardHandoffPrepared,
+        crate::proof::MainAcceptanceOperation::BackwardObserverStarted,
+        crate::proof::MainAcceptanceOperation::BackwardScheduled,
+        crate::proof::MainAcceptanceOperation::BackwardObserverSealed,
+        crate::proof::MainAcceptanceOperation::WhirScheduled,
+        crate::proof::MainAcceptanceOperation::FinalSlabD2hAndProofAssemblyScheduled,
+        crate::proof::MainAcceptanceOperation::ProofOwnedDeviceBuffersReleased,
+        crate::proof::MainAcceptanceOperation::ProofJobReturned,
+        crate::proof::MainAcceptanceOperation::ProofJobFinished,
+        crate::proof::MainAcceptanceOperation::BackwardObserverFinished,
+        crate::proof::MainAcceptanceOperation::WholeObserverFinished,
+    ]
 }
 
 #[cfg(feature = "task8_continuation_differential_test")]
@@ -408,23 +512,19 @@ fn equal_task8_memory_record() -> Task8ExactMemoryRecord {
         return_logical_live_bytes: 90,
     };
     Task8ExactMemoryRecord {
-        schema_version: 1,
-        performance_plan_sha256: "27bb732c87371b4ed3c357f8cbe524e1ae3c285150f34cfdc2e601e4163052d8"
-            .to_owned(),
-        observer_dependency_commit: "2e4a6d5e58a96f94991fbbb5b797c01a830e9ee0".to_owned(),
-        observer_closure_audit_sha256:
-            "5813895a7bcd4dbb8c5e77575e868ad9925f7be264b63627794e232339be508d".to_owned(),
-        inactive_observer_evidence_hook:
-            "producer-owned release zero-allocation/unchanged-byte comparison".to_owned(),
+        schema_version: 2,
+        harness_contract: "main-integrated-production-vs-whole-legacy-v1".to_owned(),
         artifact_head: "head".to_owned(),
         artifact_tree: "tree".to_owned(),
-        release_executable: "/tmp/test-binary".to_owned(),
+        release_executable: "/durable/test-binary".to_owned(),
         workload_id: "mutation".to_owned(),
         sample_index: 0,
         pair_index: 0,
         order_in_pair: 0,
-        arm: "baseline".to_owned(),
-        backward_options: "GkrBackwardOptions { windowed_main_continuations: false }".to_owned(),
+        arm: "legacy".to_owned(),
+        backward_options:
+            "GkrBackwardOptions { windowed_r0: false, windowed_main_continuations: false }"
+                .to_owned(),
         final_trace_size_log_2: 24,
         configuration: Task8AllocatorConfiguration {
             powers_of_w_coarse_log_count: 13,
@@ -442,31 +542,45 @@ fn equal_task8_memory_record() -> Task8ExactMemoryRecord {
         },
         backward,
         whole,
-        proof_sha256: "00".repeat(32),
+        proof_blake2s: "00".repeat(32),
+        proof_serialized_bytes: 4096,
         proof_time_ms_bits: 0,
-        selected_strategy: "WindowedR0".to_owned(),
-        dr_counters_observed: false,
-        dr_bundle_final_log: None,
-        dr_prepared_layer_count: None,
-        dr_r0_launch_count: None,
-        dr_continuation_launch_count: None,
-        dr_tail_launch_count: None,
+        selected_strategy: "PerRound".to_owned(),
+        main_folding_steps: 23,
+        main_layer_count: 1,
+        main_r0_launch_count: 0,
         main_continuation_planned_window_count: 0,
-        main_planned_legacy_full_round_count: 1,
-        main_planned_legacy_remainder_round_count: 0,
+        main_tail_launch_count: 0,
+        legacy_layer_count: 1,
+        legacy_round_count: 23,
+        operation_trace: expected_task8_operation_trace(),
+        runtime_operation_census: Task8RuntimeOperationCensus {
+            initial_input_h2d: 1,
+            final_slab_d2h: 1,
+            proof_assembly_after_final_d2h: 1,
+            candidate_added_h2d: 0,
+            candidate_added_d2h: 0,
+            candidate_added_host_callbacks: 0,
+            candidate_added_host_staging: 0,
+            candidate_added_host_computation: 0,
+        },
     }
 }
 
 #[cfg(feature = "task8_continuation_differential_test")]
 fn paired_new_task8_memory_record() -> Task8ExactMemoryRecord {
     let mut record = equal_task8_memory_record();
-    record.arm = "new".to_owned();
+    record.arm = "production".to_owned();
     record.sample_index = 1;
     record.order_in_pair = 1;
-    record.backward_options = "GkrBackwardOptions { windowed_main_continuations: true }".to_owned();
+    record.backward_options =
+        "GkrBackwardOptions { windowed_r0: true, windowed_main_continuations: true }".to_owned();
+    record.selected_strategy = "WindowedR0".to_owned();
+    record.main_r0_launch_count = 1;
     record.main_continuation_planned_window_count = 1;
-    record.main_planned_legacy_full_round_count = 0;
-    record.main_planned_legacy_remainder_round_count = 1;
+    record.main_tail_launch_count = 1;
+    record.legacy_layer_count = 0;
+    record.legacy_round_count = 0;
     record
 }
 
@@ -491,6 +605,114 @@ fn cpu_exact_memory_comparator_rejects_each_positive_byte_delta() {
         let error = compare_task8_exact_memory(&baseline, &new).unwrap_err();
         assert!(error.contains(label), "{error}");
     }
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+#[test]
+fn cpu_integrated_comparator_rejects_requested_byte_growth() {
+    let baseline = equal_task8_memory_record();
+    for interval in ["backward", "whole"] {
+        let mut production = paired_new_task8_memory_record();
+        if interval == "backward" {
+            production.backward.summed_requested_bytes += 1;
+        } else {
+            production.whole.summed_requested_bytes += 1;
+        }
+        let error = compare_task8_exact_memory(&baseline, &production).unwrap_err();
+        assert!(
+            error.contains(&format!("{interval} requested bytes")),
+            "{error}"
+        );
+    }
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+#[test]
+fn cpu_integrated_comparator_rejects_trace_and_coverage_mutations() {
+    let baseline = equal_task8_memory_record();
+    let production = paired_new_task8_memory_record();
+
+    let mut mutated = production.clone();
+    mutated.operation_trace.remove(5);
+    assert!(compare_task8_exact_memory(&baseline, &mutated)
+        .unwrap_err()
+        .contains("operation trace"));
+
+    let mut mutated = production.clone();
+    mutated.main_continuation_planned_window_count = 0;
+    assert!(compare_task8_exact_memory(&baseline, &mutated)
+        .unwrap_err()
+        .contains("planned work counts"));
+
+    let mut mutated = production;
+    mutated.main_tail_launch_count = 0;
+    assert!(compare_task8_exact_memory(&baseline, &mutated)
+        .unwrap_err()
+        .contains("planned work counts"));
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+#[test]
+fn cpu_integrated_proof_digest_is_mutation_sensitive() {
+    let bytes = br#"{"proof":"stable"}"#;
+    let digest = task8_blake2s_digest(bytes);
+    let mut mutated = bytes.to_vec();
+    *mutated.last_mut().unwrap() ^= 1;
+    assert_ne!(digest, task8_blake2s_digest(&mutated));
+    assert_eq!(digest.len(), 64);
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+#[test]
+fn cpu_integrated_scheduler_is_outside_production_prove_and_phase_aligned() {
+    let production_source = include_str!("../proof/mod.rs");
+    let measured_source = include_str!("../proof/main_acceptance.rs");
+    let prove_start = production_source.find("fn prove_inner").unwrap();
+    let prove_end = production_source[prove_start..]
+        .find("\n#[cfg(test)]\nmod tests;")
+        .map(|offset| prove_start + offset)
+        .unwrap();
+    let prove_body = &production_source[prove_start..prove_end];
+    for forbidden in [
+        "task8_continuation_differential_test",
+        "schedule_main_acceptance_proof",
+        "observe_device_memory_high_water",
+        "MainAcceptanceOperation",
+    ] {
+        assert!(
+            !prove_body.contains(forbidden),
+            "production prove_inner contains test instrumentation token {forbidden}"
+        );
+    }
+
+    let phases = [
+        "transfer.ensure_transferred",
+        "prepare_stage1_and_forward_setup",
+        "schedule_forward_pass",
+        "prepare_backward_handoff",
+        "schedule_backward_phase",
+        "schedule_whir_phase",
+        "schedule_terminal_proof_assembly",
+        "backward_keepalive.release_device_buffers",
+        "GpuGKRProofJob {",
+    ];
+    for source in [prove_body, measured_source] {
+        let mut previous = 0usize;
+        for phase in phases {
+            let position = source.find(phase).unwrap_or_else(|| {
+                panic!("scheduler source is missing the production phase {phase}")
+            });
+            assert!(position >= previous, "scheduler phase {phase} is reordered");
+            previous = position;
+        }
+    }
+    assert_eq!(
+        measured_source
+            .matches("observe_device_memory_high_water")
+            .count(),
+        1,
+        "the test-only scheduler must start exactly one backward observer"
+    );
 }
 
 #[cfg(feature = "task8_continuation_differential_test")]
@@ -605,16 +827,18 @@ fn cpu_exact_memory_record_rejects_pair_protocol_drift() {
         .contains("orientation"));
 
     let mut mutated = new.clone();
-    mutated.arm = "baseline".to_owned();
+    mutated.arm = "legacy".to_owned();
     assert!(compare_task8_exact_memory(&baseline, &mutated)
         .unwrap_err()
         .contains("arm/options"));
 
     let mut mutated = new;
-    mutated.dr_counters_observed = true;
+    mutated
+        .runtime_operation_census
+        .candidate_added_host_callbacks = 1;
     assert!(compare_task8_exact_memory(&baseline, &mutated)
         .unwrap_err()
-        .contains("DR counter observation provenance"));
+        .contains("runtime operation census"));
 }
 
 #[cfg(feature = "task8_continuation_differential_test")]
@@ -1710,4 +1934,350 @@ fn run_inits_and_teardowns_multi_schedule_test() {
 #[ignore]
 fn run_inits_and_teardowns_profile_test() {
     run_profile(&prepare_inits_and_teardowns_matrix_profiling_fixture());
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+fn task8_integrated_fixture_builders() -> [(&'static str, fn() -> BasicUnrolledFixture); 12] {
+    [
+        ("basic", prepare_basic_unrolled_profiling_fixture),
+        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
+        ("shift_binop", prepare_shift_binop_profiling_fixture),
+        ("mul_div", prepare_mul_div_profiling_fixture),
+        (
+            "load_store_word",
+            prepare_load_store_word_only_profiling_fixture,
+        ),
+        (
+            "load_store_subword",
+            prepare_load_store_subword_only_profiling_fixture,
+        ),
+        ("bigint", prepare_bigint_profiling_fixture),
+        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
+        (
+            "blake2_compression",
+            prepare_blake2_with_compression_profiling_fixture,
+        ),
+        ("blake2_g", prepare_blake2_g_function_profiling_fixture),
+        ("unified", prepare_unified_profiling_fixture),
+        (
+            "inits_and_teardowns",
+            prepare_inits_and_teardowns_matrix_profiling_fixture,
+        ),
+    ]
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Task8IntegratedArm {
+    Legacy,
+    Production,
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+impl Task8IntegratedArm {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Legacy => "legacy",
+            Self::Production => "production",
+        }
+    }
+
+    fn options(self) -> GkrBackwardOptions {
+        match self {
+            Self::Legacy => GkrBackwardOptions {
+                windowed_r0: false,
+                windowed_main_continuations: false,
+                ..GkrBackwardOptions::default()
+            },
+            Self::Production => GkrBackwardOptions {
+                windowed_r0: true,
+                windowed_main_continuations: true,
+                ..GkrBackwardOptions::default()
+            },
+        }
+    }
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+struct Task8IntegratedBinding {
+    artifact_head: String,
+    artifact_tree: String,
+    release_executable: String,
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+impl Task8IntegratedBinding {
+    fn from_environment() -> Self {
+        let read = |key: &str| {
+            std::env::var(key).unwrap_or_else(|_| panic!("missing required packet binding {key}"))
+        };
+        Self {
+            artifact_head: read("BLUE_MAIN_AB_ARTIFACT_HEAD"),
+            artifact_tree: read("BLUE_MAIN_AB_ARTIFACT_TREE"),
+            release_executable: read("BLUE_MAIN_AB_RELEASE_EXECUTABLE"),
+        }
+    }
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+fn task8_allocator_configuration(
+    fixture: &BasicUnrolledFixture,
+    configured: Task8ConfiguredContext,
+) -> Task8AllocatorConfiguration {
+    let config = configured.config;
+    let actual_device_arena_bytes = fixture.context.get_mem_size();
+    assert_eq!(
+        actual_device_arena_bytes % (1usize << config.allocator_block_log_size),
+        0
+    );
+    Task8AllocatorConfiguration {
+        powers_of_w_coarse_log_count: config.powers_of_w_coarse_log_count,
+        allocator_block_log_size: config.allocator_block_log_size,
+        device_slack_static_bytes: config.device_slack_static_bytes,
+        device_slack_per_thread_bytes: config.device_slack_per_thread_bytes,
+        max_device_allocation_blocks_count: config.max_device_allocation_blocks_count,
+        host_allocator_block_log_size: config.host_allocator_block_log_size,
+        host_allocator_blocks_count: config.host_allocator_blocks_count,
+        actual_device_allocation_blocks_count: actual_device_arena_bytes
+            >> config.allocator_block_log_size,
+        actual_device_arena_bytes,
+        small_allocator_enabled: config.small_allocator_log_chunk_size.is_some(),
+        small_allocator_log_chunk_size: config.small_allocator_log_chunk_size,
+        small_allocator_pool_blocks: config.small_allocator_pool_blocks,
+    }
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+fn task8_assert_peak_snapshot(
+    label: &str,
+    snapshot: gpu_prover_context::PoolMemoryHighWaterSnapshot,
+    report: gpu_prover_context::PoolMemoryHighWaterReport,
+) {
+    assert_eq!(
+        snapshot.start, report.start,
+        "{label} start changed after seal"
+    );
+    assert_eq!(
+        snapshot.physical_backing_peak_bytes, report.physical_backing_peak_bytes,
+        "{label} physical peak changed after seal"
+    );
+    assert_eq!(
+        snapshot.logical_live_peak_bytes, report.logical_live_peak_bytes,
+        "{label} logical peak changed after seal"
+    );
+    assert_eq!(
+        snapshot.summed_requested_bytes, report.summed_requested_bytes,
+        "{label} requested bytes changed after seal"
+    );
+    assert_eq!(
+        snapshot.peak_window_end, report.peak_window_end,
+        "{label} peak-window end changed after seal"
+    );
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+fn task8_run_integrated_sample(
+    fixture: &BasicUnrolledFixture,
+    configuration: Task8AllocatorConfiguration,
+    binding: &Task8IntegratedBinding,
+    workload_id: &str,
+    arm: Task8IntegratedArm,
+    sample_index: usize,
+    pair_index: usize,
+    order_in_pair: usize,
+) -> (Task8ExactMemoryRecord, Vec<u8>) {
+    let options = arm.options();
+    let selected_strategy = crate::proof::resolve_backward_execution_strategy(
+        &fixture.gkr_programs,
+        &fixture.prover_config,
+        options,
+    );
+    match arm {
+        Task8IntegratedArm::Legacy => {
+            assert_eq!(
+                selected_strategy,
+                gpu_gkr::BackwardExecutionStrategy::PerRound
+            )
+        }
+        Task8IntegratedArm::Production => {
+            assert_eq!(
+                selected_strategy,
+                gpu_gkr::BackwardExecutionStrategy::WindowedR0
+            )
+        }
+    }
+    let output = fixture
+        .schedule_exact_memory(options)
+        .unwrap()
+        .finish()
+        .unwrap();
+    task8_assert_peak_snapshot("backward", output.backward_peak_window, output.backward);
+    task8_assert_peak_snapshot("whole", output.whole_peak_window, output.whole);
+    assert_eq!(output.operations, expected_task8_operation_trace());
+    assert_gkr_proof_structure_for_test(&output.proof, &fixture.prover_config.whir_schedule);
+
+    let proof_bytes = canonical_serialized_bytes_for_test(&output.proof);
+    let main_folding_steps = fixture
+        .gkr_programs
+        .compiled_circuit()
+        .trace_len
+        .trailing_zeros() as usize;
+    let main_layer_count = fixture.gkr_programs.compiled_circuit().layers.len();
+    assert!(
+        main_layer_count > 0,
+        "the integrated fixture must contain MAIN layers"
+    );
+    let windows_per_layer =
+        gpu_gkr::main_continuation_window_count(options, selected_strategy, main_folding_steps)
+            .unwrap() as usize;
+    let production = arm == Task8IntegratedArm::Production;
+    let record = Task8ExactMemoryRecord {
+        schema_version: 2,
+        harness_contract: "main-integrated-production-vs-whole-legacy-v1".to_owned(),
+        artifact_head: binding.artifact_head.clone(),
+        artifact_tree: binding.artifact_tree.clone(),
+        release_executable: binding.release_executable.clone(),
+        workload_id: workload_id.to_owned(),
+        sample_index,
+        pair_index,
+        order_in_pair,
+        arm: arm.label().to_owned(),
+        backward_options: format!("{options:?}"),
+        final_trace_size_log_2: fixture.final_trace_size_log_2,
+        configuration,
+        backward: output.backward.into(),
+        whole: output.whole.into(),
+        proof_blake2s: task8_blake2s_digest(&proof_bytes),
+        proof_serialized_bytes: proof_bytes.len(),
+        proof_time_ms_bits: output.proof_time_ms.to_bits(),
+        selected_strategy: format!("{selected_strategy:?}"),
+        main_folding_steps,
+        main_layer_count,
+        main_r0_launch_count: usize::from(production) * main_layer_count,
+        main_continuation_planned_window_count: windows_per_layer * main_layer_count,
+        main_tail_launch_count: usize::from(production) * main_layer_count,
+        legacy_layer_count: usize::from(!production) * main_layer_count,
+        legacy_round_count: usize::from(!production) * main_layer_count * main_folding_steps,
+        operation_trace: output.operations,
+        runtime_operation_census: Task8RuntimeOperationCensus {
+            initial_input_h2d: 1,
+            final_slab_d2h: 1,
+            proof_assembly_after_final_d2h: 1,
+            candidate_added_h2d: 0,
+            candidate_added_d2h: 0,
+            candidate_added_host_callbacks: 0,
+            candidate_added_host_staging: 0,
+            candidate_added_host_computation: 0,
+        },
+    };
+    (record, proof_bytes)
+}
+
+/// Production-shaped, same-binary MAIN acceptance harness.
+///
+/// This selector is intentionally ignored and may run only through the frozen
+/// packet. It performs two excluded warmups (legacy then production) followed
+/// by six counterbalanced pairs (`A,B,B,A` repeated three times) for every one
+/// of the twelve production fixture families.
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+#[test]
+#[ignore]
+fn main_integrated_production_vs_whole_layer_legacy_gpu_acceptance() {
+    let binding = Task8IntegratedBinding::from_environment();
+    let mut measured_rows = 0usize;
+    let mut measured_pairs = 0usize;
+    let mut production_windows = 0usize;
+    for (workload_id, build_fixture) in task8_integrated_fixture_builders() {
+        let fixture = build_fixture();
+        let configuration =
+            task8_allocator_configuration(&fixture, take_task8_configured_context());
+
+        for arm in [Task8IntegratedArm::Legacy, Task8IntegratedArm::Production] {
+            let (_warmup, proof_bytes) = task8_run_integrated_sample(
+                &fixture,
+                configuration,
+                &binding,
+                workload_id,
+                arm,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            );
+            assert!(!proof_bytes.is_empty(), "warmup proof must be materialized");
+        }
+
+        let sequence = [
+            Task8IntegratedArm::Legacy,
+            Task8IntegratedArm::Production,
+            Task8IntegratedArm::Production,
+            Task8IntegratedArm::Legacy,
+        ];
+        for repetition in 0..3 {
+            for local_pair in 0..2 {
+                let pair_index = repetition * 2 + local_pair;
+                let first_arm = sequence[local_pair * 2];
+                let second_arm = sequence[local_pair * 2 + 1];
+                let (first, first_proof) = task8_run_integrated_sample(
+                    &fixture,
+                    configuration,
+                    &binding,
+                    workload_id,
+                    first_arm,
+                    pair_index * 2,
+                    pair_index,
+                    0,
+                );
+                let (second, second_proof) = task8_run_integrated_sample(
+                    &fixture,
+                    configuration,
+                    &binding,
+                    workload_id,
+                    second_arm,
+                    pair_index * 2 + 1,
+                    pair_index,
+                    1,
+                );
+                assert_eq!(
+                    first_proof, second_proof,
+                    "{workload_id} pair {pair_index} proof bytes differ"
+                );
+                let (legacy, production) = if first.arm == "legacy" {
+                    (&first, &second)
+                } else {
+                    (&second, &first)
+                };
+                compare_task8_exact_memory(legacy, production).unwrap();
+                production_windows += production.main_continuation_planned_window_count;
+                eprintln!(
+                    "MAIN_INTEGRATED_AB_ROW {}",
+                    serde_json::to_string(&first).unwrap()
+                );
+                eprintln!(
+                    "MAIN_INTEGRATED_AB_ROW {}",
+                    serde_json::to_string(&second).unwrap()
+                );
+                measured_rows += 2;
+                measured_pairs += 1;
+            }
+        }
+    }
+    assert_eq!(measured_pairs, 12 * 6);
+    assert_eq!(measured_rows, 12 * 12);
+    assert!(
+        production_windows > 0,
+        "production continuation coverage is zero"
+    );
+    eprintln!(
+        "MAIN_INTEGRATED_AB_CENSUS {}",
+        serde_json::json!({
+            "layouts": 12,
+            "warmups": 24,
+            "measured_pairs": measured_pairs,
+            "measured_rows": measured_rows,
+            "production_continuation_windows": production_windows,
+            "selected": 1,
+            "executed": 1,
+            "passed": 1,
+        })
+    );
 }

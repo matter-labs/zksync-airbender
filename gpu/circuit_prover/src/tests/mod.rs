@@ -2,6 +2,11 @@ use crate::proof::{
     construct_after_windowed_backward_preflight, preflight_windowed_backward, prove,
     resolve_backward_execution_strategy, GpuGKRProofJob, GpuProveError,
 };
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+use crate::proof::{
+    schedule_main_acceptance_proof, MainAcceptanceOperation, MainAcceptanceScheduledJob,
+};
+#[cfg(not(feature = "task8_continuation_differential_test"))]
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -17,6 +22,11 @@ use gpu_gkr::{
     GkrBackwardOptions, GkrPrograms,
 };
 use gpu_prover_context::ProverContext;
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+use gpu_prover_context::{
+    DeviceMemoryHighWaterObserver, PoolMemoryHighWaterReport, PoolMemoryHighWaterSnapshot,
+    PoolMemoryUsage,
+};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::commit_memory;
 use gpu_trace::trace::tracing_data::{
@@ -232,6 +242,62 @@ pub(crate) struct BasicUnrolledFixture {
 
 type BasicUnrolledTransfers<'a> = crate::proof::inputs::GpuGKRProofTransfer<'a, Global>;
 
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+struct Task8ExactMemoryJob<'context> {
+    job: MainAcceptanceScheduledJob<'static, 'context, Global>,
+    whole: DeviceMemoryHighWaterObserver<'context>,
+    stable_entry: PoolMemoryUsage,
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+struct Task8ExactMemoryOutput {
+    proof: GKRProof<BF, E4, DefaultTreeConstructor>,
+    proof_time_ms: f32,
+    backward: PoolMemoryHighWaterReport,
+    backward_peak_window: PoolMemoryHighWaterSnapshot,
+    whole: PoolMemoryHighWaterReport,
+    whole_peak_window: PoolMemoryHighWaterSnapshot,
+    operations: Vec<MainAcceptanceOperation>,
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+impl Task8ExactMemoryJob<'_> {
+    fn finish(self) -> CudaResult<Task8ExactMemoryOutput> {
+        let Task8ExactMemoryJob {
+            job,
+            whole,
+            stable_entry,
+        } = self;
+        let mut finished = job.finish()?;
+        let mut whole = whole;
+        let whole_peak_window = whole.seal();
+        let whole = whole.finish();
+        finished
+            .operations
+            .push(MainAcceptanceOperation::WholeObserverFinished);
+        assert_eq!(
+            whole.start, stable_entry,
+            "Task 8 whole observer did not start at the stable proof entry"
+        );
+        assert_eq!(
+            whole.return_to_entry, whole.start,
+            "Task 8 whole observer did not return to the stable proof entry"
+        );
+        assert_eq!(
+            finished.backward.return_to_entry, whole.return_to_entry,
+            "Task 8 backward observer return did not match the whole-proof return"
+        );
+        Ok(Task8ExactMemoryOutput {
+            proof: finished.proof,
+            proof_time_ms: finished.proof_time_ms,
+            backward: finished.backward,
+            backward_peak_window: finished.backward_peak_window,
+            whole,
+            whole_peak_window,
+            operations: finished.operations,
+        })
+    }
+}
 pub(crate) struct BasicUnrolledProofFixture {
     pub(crate) base: BasicUnrolledFixture,
     pub(crate) expected_cpu_proof: GKRProof<BF, E4, DefaultTreeConstructor>,
@@ -403,47 +469,12 @@ impl BasicUnrolledFixture {
         Ok(proof_job)
     }
     #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
-    fn schedule_main_continuation_differential(
-        &self,
-    ) -> Result<Task8PreparedDifferentialJob, GpuProveError> {
-        let options = GkrBackwardOptions {
-            windowed_r0: true,
-            windowed_main_continuations: true,
-            ..GkrBackwardOptions::default()
-        };
-        let strategy =
-            resolve_backward_execution_strategy(&self.gkr_programs, &self.prover_config, options);
-        let mut transfers = construct_after_windowed_backward_preflight(
-            &self.gkr_programs,
-            strategy,
-            options,
-            self.final_trace_size_log_2,
-            || self.create_transfers(),
-        )
-        .unwrap()?;
-        transfers.schedule(&self.context)?;
-        let (sink, handle) =
-            gpu_gkr::backward::GKRBackwardStageSnapshotSink::requesting_main_continuation_differential();
-        let job = prove_main_continuation_differential(
-            &self.gkr_programs,
-            &self.prover_config,
-            self.final_trace_size_log_2,
-            transfers,
-            options,
-            Box::new(sink),
-            &self.context,
-        )?;
-        Ok(Task8PreparedDifferentialJob { job, handle })
-    }
-
-    #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
     fn schedule_exact_memory(
         &self,
         options: GkrBackwardOptions,
     ) -> Result<Task8ExactMemoryJob<'_>, GpuProveError> {
         let stable_entry = self.context.get_device_memory_usage();
         let whole = self.context.observe_device_memory_high_water();
-        let finish_sequence = Arc::new(AtomicUsize::new(0));
         assert_eq!(self.context.get_device_memory_usage(), stable_entry);
         let strategy =
             resolve_backward_execution_strategy(&self.gkr_programs, &self.prover_config, options);
@@ -456,24 +487,18 @@ impl BasicUnrolledFixture {
         )
         .unwrap()?;
         transfers.schedule(&self.context)?;
-        let (sink, execution_counts) =
-            gpu_gkr::backward::GKRBackwardStageSnapshotSink::requesting_main_continuation_execution_counts();
-        let (job, backward) = prove_with_exact_memory(
+        let job = schedule_main_acceptance_proof(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
             options,
-            Box::new(sink),
             &self.context,
         )?;
         Ok(Task8ExactMemoryJob {
             job,
-            backward,
             whole,
-            execution_counts,
             stable_entry,
-            finish_sequence,
         })
     }
 }

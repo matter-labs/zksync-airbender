@@ -583,3 +583,27 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, feature = "task8_continuation_differential_test"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub(crate) enum MainAcceptanceOperation {
+    InitialInputsTransferEnsured,
+    Stage1AndForwardPrepared,
+    ForwardScheduled,
+    BackwardHandoffPrepared,
+    BackwardObserverStarted,
+    BackwardScheduled,
+    BackwardObserverSealed,
+    WhirScheduled,
+    FinalSlabD2hAndProofAssemblyScheduled,
+    ProofOwnedDeviceBuffersReleased,
+    ProofJobReturned,
+    ProofJobFinished,
+    BackwardObserverFinished,
+    WholeObserverFinished,
+}
+
+#[cfg(all(test, feature = "task8_continuation_differential_test", not(no_cuda)))]
+mod main_acceptance;
+#[cfg(all(test, feature = "task8_continuation_differential_test", not(no_cuda)))]
+pub(crate) use main_acceptance::{schedule_main_acceptance_proof, MainAcceptanceScheduledJob};
