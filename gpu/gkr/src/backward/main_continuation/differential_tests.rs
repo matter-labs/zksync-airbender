@@ -269,11 +269,11 @@ enum Task8LedgerError {
     /// Two live declarations that overlap without one containing the other, so
     /// neither is a nested view of the other.
     OverlappingLiveDeclaration(Task8Culprit),
-    FinalWithoutEnqueue,
-    FinalAlreadyBound,
-    ReleaseWithoutFinal,
-    ReleaseKindMismatch,
-    AlreadyReleased,
+    FinalWithoutEnqueue(Task8Culprit),
+    FinalAlreadyBound(Task8Culprit),
+    ReleaseWithoutFinal(Task8Culprit),
+    ReleaseKindMismatch(Task8Culprit),
+    AlreadyReleased(Task8Culprit),
 }
 
 /// Enqueue-order ledger for the device buffers and symbols one differential
@@ -587,13 +587,14 @@ impl Task8OwnerGenerationLedger {
     /// Binds `Final` to the enqueue of the generation's own last pointer use.
     fn bind_final(&mut self, owner: Task8GenerationToken) -> Result<u64, Task8LedgerError> {
         let slot = self.resolve(owner)?;
+        let culprit = self.culprit(slot);
         let entry = &mut self.generations[slot];
         if entry.final_enqueue.is_some() {
-            return Err(Task8LedgerError::FinalAlreadyBound);
+            return Err(Task8LedgerError::FinalAlreadyBound(culprit));
         }
         let bound = entry
             .last_enqueue()
-            .ok_or(Task8LedgerError::FinalWithoutEnqueue)?;
+            .ok_or(Task8LedgerError::FinalWithoutEnqueue(culprit))?;
         entry.final_enqueue = Some(bound);
         Ok(bound)
     }
@@ -609,15 +610,16 @@ impl Task8OwnerGenerationLedger {
     ) -> Result<u64, Task8LedgerError> {
         let slot = self.resolve(owner)?;
         let at_enqueue = self.enqueues.len() as u64;
+        let culprit = self.culprit(slot);
         let entry = &mut self.generations[slot];
         if entry.final_enqueue.is_none() {
-            return Err(Task8LedgerError::ReleaseWithoutFinal);
+            return Err(Task8LedgerError::ReleaseWithoutFinal(culprit));
         }
         if entry.released.is_some() {
-            return Err(Task8LedgerError::AlreadyReleased);
+            return Err(Task8LedgerError::AlreadyReleased(culprit));
         }
         if !end.admits(entry.origin) {
-            return Err(Task8LedgerError::ReleaseKindMismatch);
+            return Err(Task8LedgerError::ReleaseKindMismatch(culprit));
         }
         entry.released = Some(Task8Release { at_enqueue, end });
         Ok(at_enqueue)
@@ -5608,14 +5610,8 @@ mod cpu_tests {
                 generation: entry.generation,
             }
         };
-        assert_eq!(
-            repeated.bind_final(token),
-            Err(Task8LedgerError::FinalAlreadyBound)
-        );
-        assert_eq!(
-            repeated.release(token, Task8OwnershipEnd::Freed),
-            Err(Task8LedgerError::AlreadyReleased)
-        );
+        assert!(matches!(repeated.bind_final(token), Err(Task8LedgerError::FinalAlreadyBound(_))));
+        assert!(matches!(repeated.release(token, Task8OwnershipEnd::Freed), Err(Task8LedgerError::AlreadyReleased(_))));
 
         // Premature Final must reproduce the UseAfterFinal/last-use failure.
         let slot = green
