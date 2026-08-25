@@ -717,6 +717,29 @@ fn dr_window_continuation_preflight_is_default_off_and_requires_the_complete_cha
     assert_eq!(spy.complete_new_chain_count(), 0);
     assert_eq!(spy.legacy_diagnostic_count(), 0);
 
+    let r0_only = GkrBackwardOptions {
+        windowed_dr: true,
+        windowed_dr_continuations: false,
+        dr_tail_megakernel: false,
+        ..GkrBackwardOptions::default()
+    };
+    assert_eq!(
+        super::preflight_windowed_backward(
+            &programs,
+            BackwardExecutionStrategy::WindowedR0,
+            r0_only,
+            4,
+        ),
+        Err(GpuProveError::DrWindowContinuationPreflight {
+            error: DrWindowContinuationPreflightError::IncompleteChain {
+                windowed_r0: true,
+                continuations: false,
+                recursive_tail: false,
+            }
+        }),
+        "windowed DR R0 alone is a forbidden partial production chain",
+    );
+
     let tail_only = GkrBackwardOptions {
         windowed_dr: true,
         windowed_dr_continuations: false,

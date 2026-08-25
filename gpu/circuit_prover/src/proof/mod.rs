@@ -960,26 +960,26 @@ pub fn preflight_windowed_backward(
             .map(|_| ())
             .map_err(GpuProveError::from)?;
     }
-    if options.windowed_dr {
+    let dr_stages = DrWindowChainStages::new(
+        options.windowed_dr,
+        options.windowed_dr_continuations,
+        options.dr_tail_megakernel,
+    );
+    if dr_stages.windowed_r0() {
         gkr_programs
             .resolve_dr_window_programs(final_trace_size_log_2)
             .map(|_| ())
             .map_err(|rejection| GpuProveError::from(&rejection))?;
     }
-    if options.windowed_dr_continuations || options.dr_tail_megakernel {
-        if options.windowed_dr && !gkr_programs.dr_window_programs_ready(final_trace_size_log_2) {
+    if dr_stages.any_stage() {
+        if dr_stages.windowed_r0() && !gkr_programs.dr_window_programs_ready(final_trace_size_log_2)
+        {
             return Err(DrWindowContinuationPreflightError::BundleNotReady.into());
         }
-        // The production DR-tail selector owns the complete chain: windowed R0,
-        // continuations, and the megakernel consumer. Keep the old incomplete
-        // rejection for diagnostic/test callers that request continuation
-        // producers without the production consumer.
-        let stages = DrWindowChainStages::new(
-            options.windowed_dr,
-            options.windowed_dr_continuations,
-            options.dr_tail_megakernel,
-        );
-        select_dr_window_complete_chain(strategy, stages).map_err(GpuProveError::from)?;
+        // Any DR stage selects the whole production chain. All-zero is the
+        // explicit whole-layer legacy diagnostic; every partial combination
+        // rejects before resource admission or transfer construction.
+        select_dr_window_complete_chain(strategy, dr_stages).map_err(GpuProveError::from)?;
     }
     Ok(())
 }
