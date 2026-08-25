@@ -1,7 +1,7 @@
 use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
 
-use super::dr_tail::resources::{DrTailLayerIdentity, DrTailPlanCursor, DrTailScheduleError};
+use super::dr_tail::resources::{DrTailPlanCursor, DrTailScheduleError};
 use super::kernels::*;
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
@@ -246,6 +246,7 @@ impl GpuGKRDimensionReducingBackwardState {
         let mut backward_layer_slot: usize = 0;
         while let Some(mut prepared_layer) = self.prepare_next_layer_static(
             dr_window_programs.as_deref(),
+            dr_tail_plan_cursor.as_mut(),
             options,
             strategy,
             context,
@@ -259,16 +260,6 @@ impl GpuGKRDimensionReducingBackwardState {
                 proof_slab,
                 proof_layout,
                 backward_layer_slot,
-                dr_tail_plan_cursor
-                    .as_mut()
-                    .map(|cursor| {
-                        cursor.bind(DrTailLayerIdentity::new(
-                            prepared_layer.layer_idx,
-                            prepared_layer.folding_steps,
-                            &prepared_layer.folding_addresses,
-                        ))
-                    })
-                    .transpose()?,
                 options.window_tail,
                 &mut self.storage,
                 context,

@@ -6,8 +6,8 @@ use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
 
 use super::dr_tail::resources::DrTailScheduleError;
 use super::dr_tail::{
-    launch_dr_tail_megakernel_e4, DrTailCapacityDecision, DrTailMegakernelDesc, DrTailSlot,
-    DR_TAIL_MAX_SOURCES, DR_TAIL_SLOTS,
+    launch_dr_tail_megakernel_e4, DrTailMegakernelDesc, DrTailSlot, DR_TAIL_MAX_SOURCES,
+    DR_TAIL_SLOTS,
 };
 use super::window::tail::{launch_window_tensor_round_tail, WindowTailArm, WindowTailState};
 use super::window_dr::{
@@ -277,6 +277,125 @@ mod stage_dispatch_tests {
         assert!(observed.is_empty());
         assert!(launched.is_empty());
     }
+
+    const DR_INTEGRATION_OTHER_SOURCES: &[(&str, &str)] = &[
+        ("backward/mod.rs", include_str!("mod.rs")),
+        (
+            "backward/scheduled_execution.rs",
+            include_str!("scheduled_execution.rs"),
+        ),
+        (
+            "backward/dr_tail/resources.rs",
+            include_str!("dr_tail/resources.rs"),
+        ),
+        (
+            "backward/kernels/dim_reducing.rs",
+            include_str!("kernels/dim_reducing.rs"),
+        ),
+        (
+            "backward/window_dr/binding.rs",
+            include_str!("window_dr/binding.rs"),
+        ),
+        (
+            "backward/window_dr/composition.rs",
+            include_str!("window_dr/composition.rs"),
+        ),
+    ];
+    const BOUNDARY_TOKENS: &[&str] = &[
+        "memory_copy_async",
+        "launch_host_fn",
+        "callbacks.schedule",
+        "Callbacks::schedule",
+        "schedule_callback",
+        "HostAllocation",
+        "alloc_host",
+        "copy_from_slice",
+        ".synchronize(",
+    ];
+    const ACCEPTED_D5_BOUNDARY_SITE_COUNT: usize = 2;
+    const ACCEPTED_D5_BOUNDARY_SITE_FNV64: u64 = 0x01ab6678581f9edc;
+
+    fn dr_integration_boundary_site_census(sources: &[(&str, &str)]) -> (usize, u64) {
+        let mut count = 0usize;
+        let mut hash = 0xcbf29ce484222325u64;
+        for (name, source) in sources {
+            for line in source
+                .lines()
+                .map(str::trim)
+                .filter(|line| BOUNDARY_TOKENS.iter().any(|token| line.contains(token)))
+            {
+                count += 1;
+                for byte in name
+                    .bytes()
+                    .chain([b'\t'])
+                    .chain(line.bytes())
+                    .chain([b'\n'])
+                {
+                    hash ^= u64::from(byte);
+                    hash = hash.wrapping_mul(0x100000001b3);
+                }
+            }
+        }
+        (count, hash)
+    }
+
+    fn dr_integration_boundary_delta_is_empty(sources: &[(&str, &str)]) -> bool {
+        dr_integration_boundary_site_census(sources)
+            == (
+                ACCEPTED_D5_BOUNDARY_SITE_COUNT,
+                ACCEPTED_D5_BOUNDARY_SITE_FNV64,
+            )
+    }
+
+    fn dr_integration_sources() -> Vec<(&'static str, &'static str)> {
+        let scheduler = include_str!("dim_reducing_sumcheck_plan.rs");
+        let start = scheduler
+            .rfind("fn preflighted_dr_window_result")
+            .expect("production DR scheduler start marker must remain present");
+        let end = scheduler
+            .rfind("/// Test-only continuation executor")
+            .expect("production DR scheduler end marker must remain present");
+        assert!(start < end);
+        let mut sources = DR_INTEGRATION_OTHER_SOURCES.to_vec();
+        sources.push((
+            "backward/dim_reducing_sumcheck_plan.rs::production",
+            &scheduler[start..end],
+        ));
+        sources
+    }
+
+    #[test]
+    fn cpu_dr_integration_static_boundary_delta_is_empty_and_mutation_sensitive() {
+        let sources = dr_integration_sources();
+        let observed = dr_integration_boundary_site_census(&sources);
+        assert!(
+            dr_integration_boundary_delta_is_empty(&sources),
+            "DR integration boundary call-site census drifted: {observed:?}",
+        );
+
+        for (name, mutation) in [
+            (
+                "mutation/new_transfer.rs",
+                "memory_copy_async(host_state, device_state, stream)?;",
+            ),
+            (
+                "mutation/new_callback.rs",
+                "callbacks.schedule(stream, move || consume(device_state))?;",
+            ),
+            (
+                "mutation/new_staging.rs",
+                "let staging: HostAllocation<_> = alloc_host(count)?;",
+            ),
+            ("mutation/new_sync.rs", "stream.synchronize()?;"),
+        ] {
+            let mut mutated = sources.clone();
+            mutated.push((name, mutation));
+            assert!(
+                !dr_integration_boundary_delta_is_empty(&mutated),
+                "a new production boundary site must fail the static delta oracle: {name}",
+            );
+        }
+    }
 }
 
 fn preflighted_dr_window_result<T>(
@@ -420,12 +539,13 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
         layer_slot: usize,
-        dr_tail_capacity: Option<&DrTailCapacityDecision>,
         window_tail: WindowTailArm,
         storage: &mut GpuGKRStorage<BF, E4>,
         context: &ProverContext,
     ) -> Result<GpuGKRDimensionReducingScheduledLayerExecution, DrTailScheduleError> {
         let stream = context.get_exec_stream();
+        let dr_execution_plan = self.dr_execution_plan;
+        let dr_tail_capacity = dr_execution_plan.map(|plan| plan.capacity());
         let dr_window_prepared = self.dr_window.is_some();
         if dr_tail_capacity.is_some() {
             assert!(
@@ -443,7 +563,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         let exact_memory_folding_steps = self.folding_steps;
         let exact_memory_canonical_source_count = self.folding_addresses.len();
         let exact_memory_dr_tail_entry_round =
-            dr_tail_capacity.map(DrTailCapacityDecision::entry_round);
+            dr_tail_capacity.map(|capacity| capacity.entry_round());
         let mut tracing_ranges = Vec::new();
         assert!(self.folding_steps >= 2);
         let last_step = self.folding_steps - 1;
@@ -548,6 +668,8 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         let mut folding_current_len = 0usize;
         let mut dr_tail_output: Option<DeviceAllocation<E4>> = None;
         if let Some(capacity) = dr_tail_capacity {
+            let execution_plan = dr_execution_plan
+                .expect("a DR-tail capacity must belong to its preflighted execution plan");
             let prepared = self
                 .dr_window
                 .take()
@@ -563,13 +685,23 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             )?;
             assert_eq!(
                 hook.continuation_launches.len(),
-                hook.continuation_window_count,
+                execution_plan.continuation_window_count(),
                 "every accepted continuation object must be launch-ready",
             );
             assert_eq!(
                 hook.megakernel_entry_round,
-                capacity.entry_round(),
+                execution_plan.megakernel_entry_round(),
                 "DR window boundary must match the admitted recursive-tail entry",
+            );
+            assert_eq!(
+                hook.continuation_window_count,
+                execution_plan.continuation_window_count(),
+                "DR window preparation must consume the preflighted continuation count",
+            );
+            assert_eq!(
+                capacity.entry_round(),
+                execution_plan.megakernel_entry_round(),
+                "DR resource capacity and execution boundary must be one plan",
             );
             assert_eq!(
                 hook.continuation_projection.canonical_sources(),
@@ -615,7 +747,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 stream,
             )?;
 
-            let continuation_count = hook.continuation_launches.len();
+            let continuation_count = execution_plan.continuation_window_count();
             schedule_dr_layer_execution(
                 Some(&execution_contract),
                 DrLayerExecutionSelection::CompleteNewChain { continuation_count },
@@ -702,7 +834,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                                 challenges_out: device_claim_point_out.as_mut_ptr(),
                                 slots,
                             };
-                            launch_dr_tail_megakernel_e4(desc, capacity, context)?;
+                            launch_dr_tail_megakernel_e4(desc, &capacity, context)?;
                             dr_tail_output = Some(output);
                             if let Some(recorder) = first3_recorder.as_mut() {
                                 recorder.mark("megakernel", stream)?;

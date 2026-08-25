@@ -338,17 +338,27 @@ pub(crate) struct DrWindowLayerCompositionHook {
 impl DrWindowLayerCompositionHook {
     pub(crate) fn new(
         r0_launch: DrWindowLaunch,
+        continuation_window_count: usize,
+        megakernel_entry_round: usize,
         r0_eq: DrWindowPassEqState,
         raw_inputs: DrWindowRawInputKeepalive,
         partials_capacity: usize,
         continuation_program: DrWindowProgram,
         continuation_projection: DrWindowInputProjection,
     ) -> Self {
-        let folding_steps = r0_launch.folding_steps;
+        assert_eq!(
+            megakernel_entry_round,
+            3 + 3 * continuation_window_count,
+            "the preflighted DR execution plan must use width-three boundaries",
+        );
+        assert!(
+            megakernel_entry_round < r0_launch.folding_steps,
+            "the recursive tail must own at least one round",
+        );
         Self {
             r0_launch,
-            continuation_window_count: continuation_window_count(folding_steps),
-            megakernel_entry_round: megakernel_entry_round(folding_steps),
+            continuation_window_count,
+            megakernel_entry_round,
             continuation_readiness: DrWindowContinuationReadiness::Disabled,
             r0_eq,
             raw_inputs,
@@ -449,17 +459,27 @@ pub(crate) struct DrWindowLayerPreparationHook {
 impl DrWindowLayerPreparationHook {
     pub(crate) fn new(
         r0_launch: DrWindowLaunch,
+        continuation_window_count: usize,
+        megakernel_entry_round: usize,
         r0_eq: DrWindowPassEqState,
         raw_inputs: DrWindowRawInputKeepalive,
         required_future_partials_len: usize,
         continuation_program: DrWindowProgram,
         continuation_projection: DrWindowInputProjection,
     ) -> Self {
-        let folding_steps = r0_launch.folding_steps;
+        assert_eq!(
+            megakernel_entry_round,
+            3 + 3 * continuation_window_count,
+            "the preflighted DR execution plan must use width-three boundaries",
+        );
+        assert!(
+            megakernel_entry_round < r0_launch.folding_steps,
+            "the recursive tail must own at least one round",
+        );
         Self {
             r0_launch,
-            continuation_window_count: continuation_window_count(folding_steps),
-            megakernel_entry_round: megakernel_entry_round(folding_steps),
+            continuation_window_count,
+            megakernel_entry_round,
             continuation_readiness: DrWindowContinuationReadiness::Disabled,
             r0_eq,
             raw_inputs,
@@ -482,6 +502,8 @@ impl DrWindowLayerPreparationHook {
         );
         let mut hook = DrWindowLayerCompositionHook::new(
             self.r0_launch,
+            self.continuation_window_count,
+            self.megakernel_entry_round,
             self.r0_eq,
             self.raw_inputs,
             self.required_future_partials_len,

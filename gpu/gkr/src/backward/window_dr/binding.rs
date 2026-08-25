@@ -26,10 +26,10 @@ use crate::upstream::GKRAddress;
 use crate::GpuGKRStorage;
 
 use super::composition::{
-    plan_dr_window_continuations, DrWindowContinuationArenaOwners, DrWindowContinuationParity,
-    DrWindowContinuationPass, DrWindowContinuationPlannedSource, DrWindowLayerCompositionHook,
-    DrWindowLayerPreparationHook, DrWindowPassEqState, DrWindowPassEqView,
-    DrWindowRawInputKeepalive,
+    continuation_window_count, megakernel_entry_round, plan_dr_window_continuations,
+    DrWindowContinuationArenaOwners, DrWindowContinuationParity, DrWindowContinuationPass,
+    DrWindowContinuationPlannedSource, DrWindowLayerCompositionHook, DrWindowLayerPreparationHook,
+    DrWindowPassEqState, DrWindowPassEqView, DrWindowRawInputKeepalive,
 };
 use super::generated_registry::{
     DrWindowContinuationKernelEntry, DrWindowKernelEntry, GkrDrContinuationWindow3Arguments,
@@ -1054,6 +1054,8 @@ pub(crate) fn bind_dr_window_r0<B>(
     let launch = bind_dr_window_launch(program, storage, folding_steps, &eq, scratch)?;
     Ok(DrWindowLayerCompositionHook::new(
         launch,
+        continuation_window_count(folding_steps),
+        megakernel_entry_round(folding_steps),
         eq,
         raw_inputs,
         partials_capacity,
@@ -1208,6 +1210,8 @@ pub(crate) fn prepare_dr_window_r0<B>(
     projection: &DrWindowInputProjection,
     storage: &GpuGKRStorage<B, E4>,
     folding_steps: usize,
+    continuation_window_count: usize,
+    megakernel_entry_round: usize,
     eq: DrWindowPassEqState,
     required_future_partials_len: usize,
     partials: *mut E4,
@@ -1242,6 +1246,8 @@ pub(crate) fn prepare_dr_window_r0<B>(
     };
     Ok(DrWindowLayerPreparationHook::new(
         launch,
+        continuation_window_count,
+        megakernel_entry_round,
         eq,
         raw_inputs,
         required_future_partials_len,

@@ -58,6 +58,7 @@ pub(crate) use main_continuation::ContinuationPublishedShape;
 pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 
 use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
+use dr_tail::resources::DrTailPlanCursor;
 use main_layer::blueprints::build_dimension_reducing_slots_static;
 
 fn validate_dr_window_layer_program(
@@ -207,10 +208,11 @@ impl GpuGKRDimensionReducingBackwardState {
         layer_slots: GpuGKRDimensionReducingLayerSlots,
         dr_window_program: Option<&crate::DrWindowLayerProgram>,
         dr_window_bundle_final_log: Option<u32>,
+        dr_tail_plan_cursor: Option<&mut DrTailPlanCursor<'_>>,
         options: crate::GkrBackwardOptions,
         strategy: crate::BackwardExecutionStrategy,
         context: &ProverContext,
-    ) -> CudaResult<GpuGKRDimensionReducingSumcheckLayerPlan> {
+    ) -> Result<GpuGKRDimensionReducingSumcheckLayerPlan, DrTailScheduleError> {
         let trace_len_after_reduction = self.next_trace_len_after_reduction;
         assert!(trace_len_after_reduction.is_power_of_two());
         let folding_steps = trace_len_after_reduction.trailing_zeros() as usize;
@@ -231,6 +233,22 @@ impl GpuGKRDimensionReducingBackwardState {
                     .unwrap_or(address)
             })
             .collect();
+        let folding_addresses: Vec<GKRAddress> = dim_reducing_ext_inputs.into_iter().collect();
+        let dr_execution_plan = dr_tail_plan_cursor
+            .map(|cursor| {
+                cursor.bind(dr_tail::resources::DrTailLayerIdentity::new(
+                    layer_idx,
+                    folding_steps,
+                    &folding_addresses,
+                ))
+            })
+            .transpose()?;
+        if dr_execution_plan.is_some() {
+            assert!(
+                dr_window_program.is_some(),
+                "an admitted complete-chain layer requires its preflighted window program",
+            );
+        }
 
         let round0_batch_template_compact =
             self::dim_reducing_encoder::build_round0_batch_compact(&layer_slots, &self.storage);
@@ -278,11 +296,26 @@ impl GpuGKRDimensionReducingBackwardState {
             let required_future_partials_len = allocation_policy
                 .required_future_partials_len
                 .expect("prepared DR window policy must retain its future partials requirement");
+            let (continuation_window_count, megakernel_entry_round) = dr_execution_plan
+                .map(|plan| {
+                    (
+                        plan.continuation_window_count(),
+                        plan.megakernel_entry_round(),
+                    )
+                })
+                .unwrap_or_else(|| {
+                    (
+                        window_dr::continuation_window_count(folding_steps),
+                        window_dr::megakernel_entry_round(folding_steps),
+                    )
+                });
             let mut prepared = window_dr::prepare_dr_window_r0(
                 program.program(),
                 program.input_projection(),
                 &self.storage,
                 folding_steps,
+                continuation_window_count,
+                megakernel_entry_round,
                 eq,
                 required_future_partials_len,
                 round_scratch.partials.as_mut_ptr(),
@@ -314,10 +347,11 @@ impl GpuGKRDimensionReducingBackwardState {
             trace_len_after_reduction,
             folding_steps,
             layer_slots,
-            folding_addresses: dim_reducing_ext_inputs.into_iter().collect(),
+            folding_addresses,
             round0_batch_template_compact,
             dr_window,
             dr_window_bundle_final_log,
+            dr_execution_plan,
             round_scratch,
             eq_sizes: GkrEqSizes::zeroed(),
         })
@@ -326,10 +360,11 @@ impl GpuGKRDimensionReducingBackwardState {
     pub(crate) fn prepare_next_layer_static(
         &mut self,
         dr_window_programs: Option<&crate::DrWindowProgramBundle>,
+        dr_tail_plan_cursor: Option<&mut DrTailPlanCursor<'_>>,
         options: crate::GkrBackwardOptions,
         strategy: crate::BackwardExecutionStrategy,
         context: &ProverContext,
-    ) -> CudaResult<Option<GpuGKRDimensionReducingSumcheckLayerPlan>> {
+    ) -> Result<Option<GpuGKRDimensionReducingSumcheckLayerPlan>, DrTailScheduleError> {
         let Some((layer_idx, layer)) = self.pending_layers.pop_front() else {
             return Ok(None);
         };
@@ -347,6 +382,7 @@ impl GpuGKRDimensionReducingBackwardState {
             layer_slots,
             dr_window_program,
             dr_window_bundle_final_log,
+            dr_tail_plan_cursor,
             options,
             strategy,
             context,

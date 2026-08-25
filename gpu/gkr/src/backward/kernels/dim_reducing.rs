@@ -211,6 +211,9 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     /// Final-log identity of the canonical bundle that produced `dr_window`.
     /// It is `None` exactly when no hook was prepared.
     pub(crate) dr_window_bundle_final_log: Option<u32>,
+    /// Identity-bound complete-chain plan admitted before proof transfers.
+    /// `None` is reserved for the explicit whole-layer legacy diagnostic.
+    pub(crate) dr_execution_plan: Option<crate::backward::dr_tail::resources::DrLayerExecutionPlan>,
     pub(crate) round_scratch: GpuGKRDimensionReducingRoundScratch,
     /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
     /// `make_eq_sizes(folding_steps - 1)`, updated between sumcheck rounds,

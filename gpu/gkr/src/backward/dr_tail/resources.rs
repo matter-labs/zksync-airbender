@@ -223,6 +223,20 @@ impl DrTailProofPlan {
                     layer_idx: expected.layer_idx,
                 });
             }
+            if observed.continuation_window_count != expected.continuation_window_count {
+                return Err(DrTailPlanIdentityError::ContinuationWindowCountMismatch {
+                    layer_idx: expected.layer_idx,
+                    expected: expected.continuation_window_count,
+                    observed: observed.continuation_window_count,
+                });
+            }
+            if observed.megakernel_entry_round != expected.megakernel_entry_round {
+                return Err(DrTailPlanIdentityError::MegakernelEntryRoundMismatch {
+                    layer_idx: expected.layer_idx,
+                    expected: expected.megakernel_entry_round,
+                    observed: observed.megakernel_entry_round,
+                });
+            }
         }
         Ok(())
     }
@@ -236,10 +250,62 @@ pub struct DrTailLayerPlan {
     layer_idx: usize,
     folding_steps: usize,
     canonical_sources: Vec<GKRAddress>,
+    continuation_window_count: usize,
+    megakernel_entry_round: usize,
     capacity: DrTailCapacityDecision,
 }
 
+/// Copyable execution portion of one identity-bound, preflight-derived layer
+/// plan. Scheduling consumes this value and never recomputes its window count
+/// or recursive-tail boundary from runtime state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DrLayerExecutionPlan {
+    continuation_window_count: usize,
+    megakernel_entry_round: usize,
+    capacity: DrTailCapacityDecision,
+}
+
+impl DrLayerExecutionPlan {
+    pub(crate) const fn continuation_window_count(self) -> usize {
+        self.continuation_window_count
+    }
+
+    pub(crate) const fn megakernel_entry_round(self) -> usize {
+        self.megakernel_entry_round
+    }
+
+    pub(crate) const fn capacity(self) -> DrTailCapacityDecision {
+        self.capacity
+    }
+
+    pub(crate) const fn entry_round(self) -> usize {
+        self.megakernel_entry_round
+    }
+}
+
 impl DrTailLayerPlan {
+    fn new(
+        layer_idx: usize,
+        folding_steps: usize,
+        canonical_sources: Vec<GKRAddress>,
+        capacity: DrTailCapacityDecision,
+    ) -> Self {
+        let megakernel_entry_round = capacity.entry_round();
+        let continuation_window_count = megakernel_entry_round
+            .checked_sub(3)
+            .expect("an admitted DR tail starts after windowed R0")
+            / 3;
+        debug_assert_eq!(megakernel_entry_round, 3 + 3 * continuation_window_count);
+        Self {
+            layer_idx,
+            folding_steps,
+            canonical_sources,
+            continuation_window_count,
+            megakernel_entry_round,
+            capacity,
+        }
+    }
+
     pub const fn layer_idx(&self) -> usize {
         self.layer_idx
     }
@@ -258,6 +324,14 @@ impl DrTailLayerPlan {
 
     pub const fn capacity(&self) -> &DrTailCapacityDecision {
         &self.capacity
+    }
+
+    pub(crate) const fn execution_plan(&self) -> DrLayerExecutionPlan {
+        DrLayerExecutionPlan {
+            continuation_window_count: self.continuation_window_count,
+            megakernel_entry_round: self.megakernel_entry_round,
+            capacity: self.capacity,
+        }
     }
 
     pub const fn dynamic_smem_bytes(&self) -> usize {
@@ -322,6 +396,16 @@ pub enum DrTailPlanIdentityError {
     CapacityMismatch {
         layer_idx: usize,
     },
+    ContinuationWindowCountMismatch {
+        layer_idx: usize,
+        expected: usize,
+        observed: usize,
+    },
+    MegakernelEntryRoundMismatch {
+        layer_idx: usize,
+        expected: usize,
+        observed: usize,
+    },
     MissingLayer {
         layer_idx: usize,
     },
@@ -366,7 +450,7 @@ impl<'a> DrTailPlanCursor<'a> {
     pub(crate) fn bind(
         &mut self,
         expected: DrTailLayerIdentity<'_>,
-    ) -> Result<&'a DrTailCapacityDecision, DrTailPlanIdentityError> {
+    ) -> Result<DrLayerExecutionPlan, DrTailPlanIdentityError> {
         let planned = self
             .layers
             .iter()
@@ -380,7 +464,7 @@ impl<'a> DrTailPlanCursor<'a> {
                 layer_idx: expected.layer_idx,
             });
         }
-        Ok(planned.capacity())
+        Ok(planned.execution_plan())
     }
 
     pub(crate) fn finish(self) -> Result<(), DrTailPlanIdentityError> {
@@ -461,12 +545,12 @@ pub(crate) fn plan_dr_tail_layers<F: PrimeField>(
                 layer_idx: input.layer_idx,
                 rejection,
             })?;
-            Ok(DrTailLayerPlan {
-                layer_idx: input.layer_idx,
-                folding_steps: input.folding_steps,
+            Ok(DrTailLayerPlan::new(
+                input.layer_idx,
+                input.folding_steps,
                 canonical_sources,
                 capacity,
-            })
+            ))
         })
         .collect()
 }
@@ -860,6 +944,64 @@ mod tests {
     }
 
     #[test]
+    fn cpu_dr_layer_execution_plan_is_preflight_derived_and_mutation_sensitive() {
+        let artifact = artifact();
+        let layers = plan_dr_tail_layers(
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            0,
+            DEVICE_CAP,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("production layers must be admissible");
+
+        for layer in &layers {
+            let execution = layer.execution_plan();
+            assert_eq!(
+                execution.megakernel_entry_round(),
+                layer.capacity().entry_round(),
+                "resource capacity and the execution boundary must be one plan",
+            );
+            assert_eq!(
+                execution.continuation_window_count(),
+                (execution.megakernel_entry_round() - 3) / 3,
+                "preflight must derive every width-three continuation",
+            );
+            let contract = DrLayerExecutionContract::minimal_valid_for_test();
+            let mut observed = Vec::new();
+            schedule_dr_layer_execution(
+                Some(&contract),
+                DrLayerExecutionSelection::CompleteNewChain {
+                    continuation_count: execution.continuation_window_count(),
+                },
+                Some(&mut |stage| observed.push(stage)),
+                |_| Ok::<(), DrTailScheduleError>(()),
+            )
+            .expect("the admitted execution plan must enumerate the complete chain");
+            assert_eq!(observed.first(), Some(&DrLayerExecutionStage::R0));
+            assert_eq!(observed.last(), Some(&DrLayerExecutionStage::Megakernel));
+            assert_eq!(
+                observed.len(),
+                execution.continuation_window_count() + 2,
+                "R0 and the recursive tail must bracket every planned continuation",
+            );
+        }
+
+        let mut plan = admit_dr_tail_resources(
+            &FakeQueries::healthy(DEVICE_CAP),
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("production fixture must admit");
+        plan.layers[0].continuation_window_count -= 1;
+        assert!(matches!(
+            plan.validate_before_enqueue(artifact.as_ref(), FINAL_TRACE_LOG),
+            Err(DrTailPlanIdentityError::ContinuationWindowCountMismatch { .. })
+        ));
+    }
+
+    #[test]
     fn cpu_plan_identity_mutations_reject_before_any_launch() {
         fn admitted() -> (
             std::sync::Arc<GKRCircuitArtifact<gpu_core::primitives::field::BF>>,
@@ -944,6 +1086,24 @@ mod tests {
             |error| matches!(error, DrTailPlanIdentityError::CapacityMismatch { .. }),
         );
         rejected(
+            |plan| plan.layers[0].continuation_window_count -= 1,
+            |error| {
+                matches!(
+                    error,
+                    DrTailPlanIdentityError::ContinuationWindowCountMismatch { .. }
+                )
+            },
+        );
+        rejected(
+            |plan| plan.layers[0].megakernel_entry_round -= 3,
+            |error| {
+                matches!(
+                    error,
+                    DrTailPlanIdentityError::MegakernelEntryRoundMismatch { .. }
+                )
+            },
+        );
+        rejected(
             |plan| {
                 plan.layers[0].folding_steps += 1;
             },
@@ -1003,12 +1163,7 @@ mod tests {
             }
             .decide()
             .unwrap();
-            DrTailLayerPlan {
-                layer_idx,
-                folding_steps,
-                canonical_sources,
-                capacity,
-            }
+            DrTailLayerPlan::new(layer_idx, folding_steps, canonical_sources, capacity)
         }
 
         let low_sources = vec![GKRAddress::ScratchSpace(1), GKRAddress::ScratchSpace(2)];
@@ -1034,18 +1189,8 @@ mod tests {
         );
 
         let reversed_capacities = vec![
-            DrTailLayerPlan {
-                layer_idx: 11,
-                folding_steps: 20,
-                canonical_sources: high_sources.clone(),
-                capacity: *ascending[1].capacity(),
-            },
-            DrTailLayerPlan {
-                layer_idx: 29,
-                folding_steps: 10,
-                canonical_sources: low_sources.clone(),
-                capacity: *ascending[0].capacity(),
-            },
+            DrTailLayerPlan::new(11, 20, high_sources.clone(), *ascending[1].capacity()),
+            DrTailLayerPlan::new(29, 10, low_sources.clone(), *ascending[0].capacity()),
         ];
         let mut reversed = DrTailPlanCursor::new(&reversed_capacities);
         assert_eq!(
