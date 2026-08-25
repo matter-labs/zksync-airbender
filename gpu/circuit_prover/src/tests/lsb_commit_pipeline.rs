@@ -443,9 +443,18 @@ fn assert_composed_pipeline_matches_cpu(shape: Shape) {
 }
 
 #[test]
-fn composed_lsb_commit_pipeline_matches_cpu_log21() {
+fn composed_lsb_commit_pipeline_matches_reference_log21() {
     assert_composed_pipeline_matches_cpu(Shape {
         log_domain_size: 21,
+        log_rows_per_leaf: 1,
+        log_lde_factor: 1,
+        columns_count: 1,
+    });
+}
+#[test]
+fn composed_lsb_commit_pipeline_matches_reference_log20() {
+    assert_composed_pipeline_matches_cpu(Shape {
+        log_domain_size: 20,
         log_rows_per_leaf: 1,
         log_lde_factor: 1,
         columns_count: 1,
