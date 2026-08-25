@@ -37,8 +37,8 @@ use crate::backward::stage_snapshots::{
     MainContinuationDifferentialReport, Task8ContinuationDifferentialRequest,
 };
 use crate::backward::task8_probe::{
-    task8_enqueue, task8_register_symbol, task8_symbol, Task8EnqueueKind, Task8ProbeGuard,
-    Task8Span,
+    task8_enqueue, task8_enqueue_plan, task8_register_symbol, task8_symbol, Task8EnqueueKind,
+    Task8EnqueuePlan, Task8ProbeGuard, Task8Span,
 };
 use crate::backward::vm::production_bind::{
     canonicalize_legacy_publication, family_read_place, prepare_continuation_differential_bank,
@@ -46,9 +46,7 @@ use crate::backward::vm::production_bind::{
     LegacyPublicationCanonicalizationError, Task8LivePublicationEvent,
 };
 use crate::backward::vm::seg::launch_bwd_seg_build_fold_weights;
-use crate::backward::vm::seg_coeff_eval::{
-    BWD_SEG_BLOB_MONOMIALS_OFFSET, BWD_SEG_CHALLENGE_CLAIM_BATCHING,
-};
+use crate::backward::vm::seg_desc::bwd_seg_fold_weight_run;
 use crate::backward::window::binding::window_partials_len;
 use crate::backward::window::tail::{launch_window_tensor_round_tail, WindowTailState};
 use crate::forward::vm::lower::read_place_to_gkr_address;
@@ -77,7 +75,7 @@ const TASK8_NON_PUBLICATION_COMPARISONS: usize =
 
 /// What one ledger row states about the byte range it names. Every row comes
 /// from a span the enqueue reported before it ran.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Task8QueuedUse {
     /// Covers bytes for the first time.
     Write,
@@ -239,6 +237,10 @@ struct Task8AbsorbedEnqueue {
     arm: &'static str,
     site: &'static str,
     kind: Task8EnqueueKind,
+    /// What the kernel this enqueue launches is about to do, as production
+    /// described it before the call. The census below is derived from this and
+    /// never from the records under review.
+    plan: Option<Task8EnqueuePlan>,
     records: usize,
     issued_at_open: u64,
     issued_at_close: u64,
@@ -545,6 +547,7 @@ impl Task8OwnerGenerationLedger {
                 arm,
                 site: observed.site,
                 kind: observed.kind,
+                plan: observed.plan.clone(),
                 records: 0,
                 issued_at_open: observed.issued_at_open,
                 issued_at_close: closed,
@@ -651,133 +654,143 @@ fn eq_readback_spans(
     spans
 }
 
-/// The census one enqueue must carry, checked against the records the ledger
-/// holds for it. Each rule is a property of the native kernel the site
-/// launches, so an omitted or widened range at that site fails here rather than
-/// passing as a merely well-formed record stream.
+/// The census one guarded enqueue must carry, derived from the production plan
+/// that enqueue reported before its call and compared against the records the
+/// ledger holds for it. Nothing here is computed from those records, so a
+/// builder that narrows, widens, misplaces, duplicates or drops one of the
+/// guarded ranges disagrees with the plan.
 fn validate_enqueue_census(ledger: &Task8OwnerGenerationLedger) {
     let element = std::mem::size_of::<E4>();
-    let owner_span = |record: &Task8LedgerRecord| {
-        ledger
-            .generations
-            .iter()
-            .find(|entry| entry.records.iter().any(|held| held.step == record.step))
-            .map(|entry| entry.covered.clone())
-            .expect("every record belongs to a generation")
-    };
     for (ordinal, enqueue) in ledger.enqueues.iter().enumerate() {
-        let records: Vec<&Task8LedgerRecord> = ledger
+        let guarded: &[&str] = match enqueue.site {
+            "fold-weight-build" => &["ab_gkr_main_layer_claim_point", "bwd_seg_fold_weights"],
+            "coefficient-bank-fill" => {
+                &["coefficient_tables", "challenge_slab", "coefficient_bank"]
+            }
+            "window-launch" | "segmented-round" => &[
+                "bwd_seg_fold_weights",
+                "published_column",
+                "ab_gkr_bwd_seg_coeff_bank",
+            ],
+            _ => continue,
+        };
+        let plan = enqueue.plan.as_ref().unwrap_or_else(|| {
+            panic!(
+                "Task 8 {} enqueue reported no production plan to check its ranges against",
+                enqueue.site
+            )
+        });
+        let base_of = |label: &'static str| {
+            ledger
+                .generations
+                .iter()
+                .find(|entry| entry.arm == enqueue.arm && entry.label == label)
+                .map(|entry| entry.covered.clone())
+                .unwrap_or_else(|| panic!("Task 8 {} arm never opened {label}", enqueue.arm))
+        };
+        let mut expected: Vec<(&'static str, Task8QueuedUse, usize, usize)> = Vec::new();
+        match plan {
+            Task8EnqueuePlan::FoldWeightBuild {
+                round,
+                fold_weights,
+                fold_weight_bytes,
+            } => {
+                let first = round.saturating_sub(3);
+                expected.push((
+                    "ab_gkr_main_layer_claim_point",
+                    Task8QueuedUse::Read,
+                    base_of("claim_point_symbol").start + first * element,
+                    (round - first) * element,
+                ));
+                expected.push((
+                    "bwd_seg_fold_weights",
+                    Task8QueuedUse::Write,
+                    *fold_weights,
+                    *fold_weight_bytes,
+                ));
+            }
+            Task8EnqueuePlan::CoefficientFill {
+                tables,
+                table_ranges,
+                slab,
+                challenge_slots,
+                bank,
+                bank_bytes,
+            } => {
+                for range in table_ranges {
+                    expected.push((
+                        "coefficient_tables",
+                        Task8QueuedUse::Read,
+                        tables + range.start,
+                        range.end - range.start,
+                    ));
+                }
+                for slot in challenge_slots {
+                    expected.push((
+                        "challenge_slab",
+                        Task8QueuedUse::Read,
+                        slab + slot * element,
+                        element,
+                    ));
+                }
+                expected.push((
+                    "coefficient_bank",
+                    Task8QueuedUse::Write,
+                    *bank,
+                    *bank_bytes,
+                ));
+            }
+            Task8EnqueuePlan::Folding {
+                deltas,
+                publications,
+            } => {
+                let weights = base_of("fold_weights_symbol");
+                for delta in deltas {
+                    let run = bwd_seg_fold_weight_run(*delta);
+                    if run.is_empty() {
+                        continue;
+                    }
+                    expected.push((
+                        "bwd_seg_fold_weights",
+                        Task8QueuedUse::Read,
+                        weights.start + run.start * element,
+                        (run.end - run.start) * element,
+                    ));
+                }
+                for (address, bytes) in publications {
+                    expected.push(("published_column", Task8QueuedUse::Write, *address, *bytes));
+                    expected.push(("published_column", Task8QueuedUse::Read, *address, *bytes));
+                }
+                let bank = base_of("coefficient_bank");
+                expected.push((
+                    "ab_gkr_bwd_seg_coeff_bank",
+                    Task8QueuedUse::Read,
+                    bank.start,
+                    bank.end - bank.start,
+                ));
+            }
+        }
+        let mut observed: Vec<(&'static str, Task8QueuedUse, usize, usize)> = ledger
             .generations
             .iter()
             .flat_map(|entry| entry.records.iter())
-            .filter(|record| record.enqueue == ordinal as u64)
+            .filter(|record| record.enqueue == ordinal as u64 && guarded.contains(&record.role))
+            .map(|record| {
+                (
+                    record.role,
+                    record.use_kind,
+                    record.address,
+                    record.range.len(),
+                )
+            })
             .collect();
-        let named = |role: &str, use_kind: Task8QueuedUse| {
-            records
-                .iter()
-                .filter(|record| record.role == role && record.use_kind == use_kind)
-                .count()
-        };
-        match enqueue.site {
-            "fold-weight-build" => {
-                let claim: Vec<_> = records
-                    .iter()
-                    .filter(|record| {
-                        record.role == "ab_gkr_main_layer_claim_point"
-                            && record.use_kind == Task8QueuedUse::Read
-                    })
-                    .collect();
-                assert_eq!(
-                    claim.len(),
-                    1,
-                    "a fold-weight build reads the claim point exactly once"
-                );
-                assert!(
-                    claim[0].range.len() <= 3 * element,
-                    "a fold-weight build reads at most the three coordinates below its round"
-                );
-                assert_eq!(
-                    named("bwd_seg_fold_weights", Task8QueuedUse::Write),
-                    1,
-                    "a fold-weight build fills the bank once"
-                );
-            }
-            "coefficient-bank-fill" => {
-                let tables: Vec<_> = records
-                    .iter()
-                    .filter(|record| {
-                        record.role == "coefficient_tables"
-                            && record.use_kind == Task8QueuedUse::Read
-                    })
-                    .collect();
-                let base = tables
-                    .first()
-                    .map(|record| owner_span(record).start)
-                    .expect("a coefficient fill reads its staged tables");
-                assert!(
-                    tables
-                        .iter()
-                        .any(|record| record.address - base < BWD_SEG_BLOB_MONOMIALS_OFFSET),
-                    "a coefficient fill reads its live recipe records"
-                );
-                assert!(
-                    tables
-                        .iter()
-                        .any(|record| record.address - base >= BWD_SEG_BLOB_MONOMIALS_OFFSET),
-                    "a coefficient fill reads the monomials its recipes reference"
-                );
-                let slab: Vec<_> = records
-                    .iter()
-                    .filter(|record| {
-                        record.role == "challenge_slab" && record.use_kind == Task8QueuedUse::Read
-                    })
-                    .collect();
-                let slab_base = slab
-                    .first()
-                    .map(|record| owner_span(record).start)
-                    .expect("a coefficient fill reads its challenge slab");
-                assert!(
-                    slab.iter().any(|record| record.address - slab_base
-                        == BWD_SEG_CHALLENGE_CLAIM_BATCHING as usize * element),
-                    "a coefficient fill reads the batching slot every monomial scales by"
-                );
-                assert_eq!(
-                    named("coefficient_bank", Task8QueuedUse::Write),
-                    1,
-                    "a coefficient fill writes the bank prefix once"
-                );
-            }
-            "window-launch" | "segmented-round" => {
-                let runs: Vec<_> = records
-                    .iter()
-                    .filter(|record| {
-                        record.role == "bwd_seg_fold_weights"
-                            && record.use_kind == Task8QueuedUse::Read
-                    })
-                    .collect();
-                assert!(
-                    !runs.is_empty(),
-                    "a folding launch reads the fold-weight runs its deltas name"
-                );
-                for record in &runs {
-                    assert!(
-                        record.range.len() < owner_span(record).len(),
-                        "a folding launch reads its own runs, not the whole fold-weight bank"
-                    );
-                }
-                assert_eq!(
-                    named("ab_gkr_bwd_seg_coeff_bank", Task8QueuedUse::Read),
-                    1,
-                    "a folding launch reads the coefficient bank once"
-                );
-                assert_eq!(
-                    named("published_column", Task8QueuedUse::Write),
-                    named("published_column", Task8QueuedUse::Read),
-                    "every published column the launch writes is read back in the same launch"
-                );
-            }
-            _ => {}
-        }
+        observed.sort();
+        expected.sort();
+        assert_eq!(
+            observed, expected,
+            "Task 8 {} enqueue does not name the exact ranges its plan describes",
+            enqueue.site
+        );
     }
 }
 
@@ -3880,26 +3893,27 @@ mod cpu_tests {
         MainContinuationWindowDesc as MainContinuationWindowLaunchBinding,
         MainContinuationWindowSourceRecord,
     };
-    use super::super::binding::task8_window_spans;
+    use super::super::binding::{task8_window_plan, task8_window_spans};
     use super::E4;
     use super::{
         allocation_group_record, bind_arm_owners_final, bind_challenge_owners_final,
         bind_transcript_owners_final, build_corpus_census, eq_readback_spans, ledger_bind_final,
-        ledger_open, signed_snapshot_delta, task8_enqueue, task8_register_symbol,
-        validate_owner_generation_ledger, validate_owner_generation_structure,
-        validate_single_owner_topology, BTreeSet, Task8AllocationRecord, Task8ArmOwners,
-        Task8CarriedSymbols, Task8ChallengeOwners, Task8EnqueueKind, Task8LedgerError,
-        Task8LedgerOwner, Task8LedgerRecord, Task8OwnerGeneration, Task8OwnerGenerationLedger,
-        Task8OwnerOrigin, Task8ProbeGuard, Task8QueuedUse, Task8Span, Task8TopologyError,
-        Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS, MAIN_CONTINUATION_WINDOW_TENSOR_CELLS,
-        TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE, TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
+        ledger_open, signed_snapshot_delta, task8_enqueue, task8_enqueue_plan,
+        task8_register_symbol, validate_owner_generation_ledger,
+        validate_owner_generation_structure, validate_single_owner_topology, BTreeSet,
+        Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols, Task8ChallengeOwners,
+        Task8EnqueueKind, Task8EnqueuePlan, Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord,
+        Task8OwnerGeneration, Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard,
+        Task8QueuedUse, Task8Span, Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
+        MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
+        TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
     };
     use crate::backward::kernels::{task8_dual_finalize_spans, task8_eq_build_spans};
     use crate::backward::task8_probe::task8_register_descriptor_sources;
     use crate::backward::vm::production_bind::{
         task8_challenge_prefix_spans, task8_challenge_slot_spans,
     };
-    use crate::backward::vm::seg::{task8_fold_weight_spans, task8_seg_spans};
+    use crate::backward::vm::seg::{task8_fold_weight_spans, task8_seg_plan, task8_seg_spans};
     use crate::backward::vm::seg_coeff_eval::{
         task8_coeff_eval_reads, task8_coeff_fill_spans, SegCoeffEvalBlob, SegCoeffMonomial,
         SegCoeffRecipe, BWD_SEG_BLOB_BYTES, BWD_SEG_CHALLENGE_ABSENT,
@@ -4231,6 +4245,25 @@ mod cpu_tests {
         ledger.absorb(arm, probe);
     }
 
+    /// One guarded enqueue: the spans its builder reports, and the production
+    /// plan the same call site carries so the census has an independent source.
+    fn enqueue_planned(
+        ledger: &mut Task8OwnerGenerationLedger,
+        probe: &Task8ProbeGuard,
+        arm: &'static str,
+        site: &'static str,
+        spans: Vec<Task8Span>,
+        plan: Task8EnqueuePlan,
+    ) {
+        {
+            let _scope = task8_enqueue(site, Task8EnqueueKind::Kernel, || {
+                task8_enqueue_plan(|| plan);
+                spans
+            });
+        }
+        ledger.absorb(arm, probe);
+    }
+
     fn readback(
         ledger: &mut Task8OwnerGenerationLedger,
         probe: &Task8ProbeGuard,
@@ -4448,19 +4481,21 @@ mod cpu_tests {
             carried.coefficient_bank.unwrap().0,
             carried.coefficient_bank.unwrap().1,
         );
-        enqueue(
+        let reads = task8_coeff_eval_reads(&task8_test_blob());
+        enqueue_planned(
             ledger,
             probe,
             arm,
             "coefficient-bank-fill",
-            Task8EnqueueKind::Kernel,
-            task8_coeff_fill_spans(
-                &task8_coeff_eval_reads(&task8_test_blob()),
-                tables.base,
-                slab.base,
-                bank.base,
-                bank.bytes,
-            ),
+            task8_coeff_fill_spans(&reads, tables.base, slab.base, bank.base, bank.bytes),
+            Task8EnqueuePlan::CoefficientFill {
+                tables: tables.base,
+                table_ranges: reads.table_ranges.clone(),
+                slab: slab.base,
+                challenge_slots: reads.challenge_slots.clone(),
+                bank: bank.base,
+                bank_bytes: bank.bytes,
+            },
         );
         let owners = Task8ArmOwners {
             arm,
@@ -4600,13 +4635,17 @@ mod cpu_tests {
                 TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
             ));
         }
-        enqueue(
+        enqueue_planned(
             ledger,
             probe,
             owners.arm,
             "fold-weight-build",
-            Task8EnqueueKind::Kernel,
             task8_fold_weight_spans(round as u32, TASK8_TEST_FOLD_WEIGHTS),
+            Task8EnqueuePlan::FoldWeightBuild {
+                round,
+                fold_weights: TASK8_TEST_FOLD_WEIGHTS,
+                fold_weight_bytes: TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
+            },
         );
     }
 
@@ -4684,13 +4723,13 @@ mod cpu_tests {
         replay_eq_build(ledger, &probe, &mut fixture.owners);
         replay_fold_weights(ledger, &probe, &mut fixture.owners, TASK8_TEST_ROUND);
         let window = task8_test_window_descriptor();
-        enqueue(
+        enqueue_planned(
             ledger,
             &probe,
             arm,
             "window-launch",
-            Task8EnqueueKind::Kernel,
             task8_window_spans(&window, TASK8_TEST_ROW_TILES),
+            task8_window_plan(&window),
         );
         let reduced_tensor = open(
             ledger,
@@ -4767,13 +4806,13 @@ mod cpu_tests {
         for local_round in 0..3usize {
             let round = TASK8_TEST_ROUND + local_round;
             replay_fold_weights(ledger, &probe, &mut fixture.owners, round);
-            enqueue(
+            enqueue_planned(
                 ledger,
                 &probe,
                 arm,
                 "segmented-round",
-                Task8EnqueueKind::Kernel,
                 task8_seg_spans(&segmented),
+                task8_seg_plan(&segmented),
             );
             if local_round == 0 {
                 readback(
@@ -4872,14 +4911,21 @@ mod cpu_tests {
         validator_rejection(ledger, first, second).is_some()
     }
 
-    /// Asserts that `ledger` is a well-formed capture — the same stream the
-    /// accepted ledger records, one range shorter — and that the only thing the
-    /// validator objects to is the missing range.
-    fn omission_rejected_by(
+    /// How the exact census names one range, so a control can assert which
+    /// range the validator objected to and not merely that it objected.
+    fn census_entry(role: &str, use_kind: Task8QueuedUse, address: usize, bytes: usize) -> String {
+        format!("({role:?}, {use_kind:?}, {address}, {bytes})")
+    }
+
+    /// Asserts that `ledger` is a well-formed capture — the accepted stream with
+    /// one range removed or moved — and that the only thing the validator
+    /// objects to is that range disagreeing with its enqueue's production plan.
+    fn census_rejected_by(
         ledger: &Task8OwnerGenerationLedger,
         first: &'static str,
         second: &'static str,
-        invariant: &str,
+        site: &str,
+        entry: &str,
     ) {
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {}));
@@ -4889,9 +4935,16 @@ mod cpu_tests {
         std::panic::set_hook(previous);
         assert!(
             structural.is_ok(),
-            "evidence missing {invariant:?} is otherwise a consistent capture"
+            "a ledger differing only in {entry} is otherwise a consistent capture"
         );
-        rejected_by(ledger, first, second, invariant);
+        let rejection = validator_rejection(ledger, first, second)
+            .unwrap_or_else(|| panic!("the validator accepted a census missing {entry}"));
+        let expected =
+            format!("Task 8 {site} enqueue does not name the exact ranges its plan describes");
+        assert!(
+            rejection.contains(&expected) && rejection.contains(entry),
+            "expected {site} to reject over {entry}, got {rejection:?}"
+        );
     }
 
     /// Asserts the validator rejected `ledger`, and that it did so through the
@@ -4967,15 +5020,35 @@ mod cpu_tests {
         bytes: usize,
     }
 
-    /// The ledger a capture whose builder omitted exactly `target` would have
-    /// produced: the named range is gone and nothing else about the stream is,
-    /// so the record census, the dense step order, the within-enqueue positions
-    /// and every generation's `Final` stay internally consistent.
-    fn omit_range(
+    /// The ledger a capture whose builder reported `target`'s bytes at a
+    /// different address or extent would have produced. Only that one record's
+    /// address and range change, so the stream, the census counts, the coverage
+    /// and every `Final` stay exactly as the accepted ledger has them.
+    fn retune_range(
         base: &Task8OwnerGenerationLedger,
         target: Task8OmittedRange,
+        address: usize,
+        bytes: usize,
     ) -> Task8OwnerGenerationLedger {
         let mut ledger = base.clone();
+        let (slot, index) = locate_range(&ledger, target);
+        let record = &mut ledger.generations[slot].records[index];
+        assert_ne!(
+            record.use_kind,
+            Task8QueuedUse::Write,
+            "retuning a write would also have to move that generation's coverage"
+        );
+        record.address = address;
+        record.range = address..address + bytes;
+        ledger
+    }
+
+    /// The one record `target` names, as a generation slot and a position in
+    /// that generation's record list.
+    fn locate_range(
+        ledger: &Task8OwnerGenerationLedger,
+        target: Task8OmittedRange,
+    ) -> (usize, usize) {
         let ordinal = ledger
             .enqueues
             .iter()
@@ -4988,40 +5061,45 @@ mod cpu_tests {
                 )
             })
             .ordinal;
-        let mut removed = None;
-        for (slot, entry) in ledger.generations.iter_mut().enumerate() {
+        let mut found = None;
+        for (slot, entry) in ledger.generations.iter().enumerate() {
             if entry.arm != target.arm {
                 continue;
             }
-            let matches: Vec<usize> = entry
-                .records
-                .iter()
-                .enumerate()
-                .filter(|(_, record)| {
-                    record.enqueue == ordinal
-                        && record.use_kind == target.use_kind
-                        && record.address == target.address
-                        && record.range.len() == target.bytes
-                })
-                .map(|(index, _)| index)
-                .collect();
-            assert!(
-                matches.len() <= 1 && (matches.is_empty() || removed.is_none()),
-                "{:?} does not name exactly one recorded range",
-                target
-            );
-            if let Some(index) = matches.first() {
-                removed = Some((slot, entry.records.remove(*index)));
+            for (index, record) in entry.records.iter().enumerate() {
+                if record.enqueue == ordinal
+                    && record.use_kind == target.use_kind
+                    && record.address == target.address
+                    && record.range.len() == target.bytes
+                {
+                    assert!(
+                        found.is_none(),
+                        "{target:?} does not name exactly one recorded range"
+                    );
+                    found = Some((slot, index));
+                }
             }
         }
-        let (slot, removed) =
-            removed.unwrap_or_else(|| panic!("{:?} names no recorded range", target));
+        found.unwrap_or_else(|| panic!("{target:?} names no recorded range"))
+    }
+
+    /// The ledger a capture whose builder omitted exactly `target` would have
+    /// produced: the named range is gone and nothing else about the stream is,
+    /// so the record census, the dense step order, the within-enqueue positions
+    /// and every generation's `Final` stay internally consistent.
+    fn omit_range(
+        base: &Task8OwnerGenerationLedger,
+        target: Task8OmittedRange,
+    ) -> Task8OwnerGenerationLedger {
+        let mut ledger = base.clone();
+        let (slot, index) = locate_range(&ledger, target);
+        let removed = ledger.generations[slot].records.remove(index);
         assert_ne!(
             removed.use_kind,
             Task8QueuedUse::Write,
             "omitting a write would also have to unwind that generation's coverage"
         );
-        ledger.enqueues[ordinal as usize].records -= 1;
+        ledger.enqueues[removed.enqueue as usize].records -= 1;
         {
             let entry = &mut ledger.generations[slot];
             if entry.final_enqueue == Some(removed.enqueue) {
@@ -5289,59 +5367,114 @@ mod cpu_tests {
             let element = TASK8_TEST_ELEMENT;
             let reads = task8_coeff_eval_reads(&task8_test_blob());
 
-            // Each mutation below removes exactly one range a production builder
-            // reported, named by arm, enqueue, use and extent, and leaves a
-            // ledger whose census, steps, positions and `Final` bindings are the
-            // ones that capture would have carried.
+            // Every mutation below changes exactly one range a production
+            // builder reported — dropping it, narrowing it, widening it or
+            // moving it — and leaves a ledger whose stream, census, coverage and
+            // `Final` bindings are the ones that capture would have carried. The
+            // census each is checked against comes from the enqueue's own
+            // production plan, so each mutant names the range that disagrees.
+            let claim = Task8OmittedRange {
+                arm: first_arm,
+                site: "fold-weight-build",
+                occurrence: 0,
+                use_kind: Task8QueuedUse::Read,
+                address: TASK8_TEST_CLAIM_POINT_SYMBOL + (TASK8_TEST_ROUND - 3) * element,
+                bytes: 3 * element,
+            };
 
             // The claim-point coordinates the fold-weight build reads.
             for arm in [first_arm, second_arm] {
-                let missing_claim = omit_range(
-                    &base,
-                    Task8OmittedRange {
-                        arm,
-                        site: "fold-weight-build",
-                        occurrence: 0,
-                        use_kind: Task8QueuedUse::Read,
-                        address: TASK8_TEST_CLAIM_POINT_SYMBOL + (TASK8_TEST_ROUND - 3) * element,
-                        bytes: 3 * element,
-                    },
-                );
-                omission_rejected_by(
-                    &missing_claim,
+                let target = Task8OmittedRange { arm, ..claim };
+                census_rejected_by(
+                    &omit_range(&base, target),
                     first_arm,
                     second_arm,
-                    "a fold-weight build reads the claim point exactly once",
+                    "fold-weight-build",
+                    &census_entry(
+                        "ab_gkr_main_layer_claim_point",
+                        Task8QueuedUse::Read,
+                        target.address,
+                        target.bytes,
+                    ),
                 );
             }
             families.insert("missing-claim-point-range");
 
+            // The same read narrowed to one coordinate: still one record, still
+            // inside the initialized claim point, still not the slice the round
+            // names.
+            census_rejected_by(
+                &retune_range(&base, claim, claim.address, element),
+                first_arm,
+                second_arm,
+                "fold-weight-build",
+                &census_entry(
+                    "ab_gkr_main_layer_claim_point",
+                    Task8QueuedUse::Read,
+                    claim.address,
+                    element,
+                ),
+            );
+            families.insert("narrowed-claim-point-range");
+
             // The fold-weight run each folding launch reads, in the arm that
             // enqueues that launch.
             let d3 = bwd_seg_fold_weight_run(3);
+            let run_target = |arm, site| Task8OmittedRange {
+                arm,
+                site,
+                occurrence: 0,
+                use_kind: Task8QueuedUse::Read,
+                address: TASK8_TEST_FOLD_WEIGHTS + d3.start * element,
+                bytes: (d3.end - d3.start) * element,
+            };
             for (arm, site) in [
                 (TASK8_WINDOW_ARM, "window-launch"),
                 (TASK8_LEGACY_ARM, "segmented-round"),
             ] {
-                let missing_run = omit_range(
-                    &base,
-                    Task8OmittedRange {
-                        arm,
-                        site,
-                        occurrence: 0,
-                        use_kind: Task8QueuedUse::Read,
-                        address: TASK8_TEST_FOLD_WEIGHTS + d3.start * element,
-                        bytes: (d3.end - d3.start) * element,
-                    },
-                );
-                omission_rejected_by(
-                    &missing_run,
+                let target = run_target(arm, site);
+                census_rejected_by(
+                    &omit_range(&base, target),
                     first_arm,
                     second_arm,
-                    "a folding launch reads the fold-weight runs its deltas name",
+                    site,
+                    &census_entry(
+                        "bwd_seg_fold_weights",
+                        Task8QueuedUse::Read,
+                        target.address,
+                        target.bytes,
+                    ),
                 );
             }
             families.insert("missing-fold-weight-run");
+
+            // The window's D3 run widened to the D2+D3 superset, and the
+            // segmented round's run moved to the depth-two run no live source
+            // folds at. Both stay inside the initialized fold-weight bank.
+            let d2 = bwd_seg_fold_weight_run(2);
+            for (arm, site, address, bytes) in [
+                (
+                    TASK8_WINDOW_ARM,
+                    "window-launch",
+                    TASK8_TEST_FOLD_WEIGHTS + d2.start * element,
+                    (d3.end - d2.start) * element,
+                ),
+                (
+                    TASK8_LEGACY_ARM,
+                    "segmented-round",
+                    TASK8_TEST_FOLD_WEIGHTS + d2.start * element,
+                    (d2.end - d2.start) * element,
+                ),
+            ] {
+                census_rejected_by(
+                    &retune_range(&base, run_target(arm, site), address, bytes),
+                    first_arm,
+                    second_arm,
+                    site,
+                    &census_entry("bwd_seg_fold_weights", Task8QueuedUse::Read, address, bytes),
+                );
+            }
+            families.insert("inexact-fold-weight-run");
 
             // Either half of the coefficient fill's staged-table census: the
             // live recipe records, or the monomials those recipes reference.
@@ -5350,50 +5483,147 @@ mod cpu_tests {
                 2,
                 "the fill's census names the recipe section and the monomial section"
             );
-            for (index, range) in reads.table_ranges.iter().enumerate() {
-                let missing_tables = omit_range(
-                    &base,
-                    Task8OmittedRange {
-                        arm: first_arm,
-                        site: "coefficient-bank-fill",
-                        occurrence: 0,
-                        use_kind: Task8QueuedUse::Read,
-                        address: TASK8_TEST_TABLES + range.start,
-                        bytes: range.len(),
-                    },
-                );
-                omission_rejected_by(
-                    &missing_tables,
+            let table_target = |index: usize| Task8OmittedRange {
+                arm: first_arm,
+                site: "coefficient-bank-fill",
+                occurrence: 0,
+                use_kind: Task8QueuedUse::Read,
+                address: TASK8_TEST_TABLES + reads.table_ranges[index].start,
+                bytes: reads.table_ranges[index].len(),
+            };
+            for index in 0..2 {
+                let target = table_target(index);
+                census_rejected_by(
+                    &omit_range(&base, target),
                     first_arm,
                     second_arm,
-                    if index == 0 {
-                        "a coefficient fill reads its live recipe records"
-                    } else {
-                        "a coefficient fill reads the monomials its recipes reference"
-                    },
+                    "coefficient-bank-fill",
+                    &census_entry(
+                        "coefficient_tables",
+                        Task8QueuedUse::Read,
+                        target.address,
+                        target.bytes,
+                    ),
                 );
             }
             families.insert("missing-coefficient-record");
 
-            // The batching slot every monomial in that fill scales by.
-            let missing_challenge = omit_range(
-                &base,
-                Task8OmittedRange {
+            // The recipe range widened by one record and the monomial range
+            // moved on by one record. The staged blob is written whole, so both
+            // stay inside initialized bytes.
+            for (index, address, bytes) in [
+                (
+                    0,
+                    table_target(0).address,
+                    table_target(0).bytes + std::mem::size_of::<SegCoeffRecipe>(),
+                ),
+                (
+                    1,
+                    table_target(1).address + std::mem::size_of::<SegCoeffMonomial>(),
+                    table_target(1).bytes,
+                ),
+            ] {
+                census_rejected_by(
+                    &retune_range(&base, table_target(index), address, bytes),
+                    first_arm,
+                    second_arm,
+                    "coefficient-bank-fill",
+                    &census_entry("coefficient_tables", Task8QueuedUse::Read, address, bytes),
+                );
+            }
+            families.insert("inexact-coefficient-record");
+
+            // Every challenge slot the fill's live monomials name, batching and
+            // non-batching alike.
+            for slot in &reads.challenge_slots {
+                let target = Task8OmittedRange {
                     arm: first_arm,
                     site: "coefficient-bank-fill",
                     occurrence: 0,
                     use_kind: Task8QueuedUse::Read,
-                    address: TASK8_TEST_SLAB + BWD_SEG_CHALLENGE_CLAIM_BATCHING as usize * element,
+                    address: TASK8_TEST_SLAB + slot * element,
                     bytes: element,
-                },
-            );
-            omission_rejected_by(
-                &missing_challenge,
+                };
+                census_rejected_by(
+                    &omit_range(&base, target),
+                    first_arm,
+                    second_arm,
+                    "coefficient-bank-fill",
+                    &census_entry(
+                        "challenge_slab",
+                        Task8QueuedUse::Read,
+                        target.address,
+                        target.bytes,
+                    ),
+                );
+                families.insert(if *slot == BWD_SEG_CHALLENGE_CLAIM_BATCHING as usize {
+                    "missing-challenge-slot"
+                } else {
+                    "missing-referenced-challenge-slot"
+                });
+            }
+
+            // The publication pair: the read-back of a published column narrowed
+            // to half the column the launch wrote.
+            let published = match task8_window_plan(&task8_test_window_descriptor()) {
+                Task8EnqueuePlan::Folding { publications, .. } => publications,
+                plan => panic!("a window launch plans a fold, not {plan:?}"),
+            };
+            let (address, bytes) = published[0];
+            census_rejected_by(
+                &retune_range(
+                    &base,
+                    Task8OmittedRange {
+                        arm: TASK8_WINDOW_ARM,
+                        site: "window-launch",
+                        occurrence: 0,
+                        use_kind: Task8QueuedUse::Read,
+                        address,
+                        bytes,
+                    },
+                    address,
+                    bytes / 2,
+                ),
                 first_arm,
                 second_arm,
-                "a coefficient fill reads the batching slot every monomial scales by",
+                "window-launch",
+                &census_entry("published_column", Task8QueuedUse::Read, address, bytes / 2),
             );
-            families.insert("missing-challenge-slot");
+            families.insert("mismatched-publication-pair");
+
+            // The coefficient bank a folding launch reads: exactly the extent
+            // the carried symbol declares, not a prefix of it.
+            let bank = task8_test_carried().coefficient_bank.unwrap();
+            for (arm, site) in [
+                (TASK8_WINDOW_ARM, "window-launch"),
+                (TASK8_LEGACY_ARM, "segmented-round"),
+            ] {
+                census_rejected_by(
+                    &retune_range(
+                        &base,
+                        Task8OmittedRange {
+                            arm,
+                            site,
+                            occurrence: 0,
+                            use_kind: Task8QueuedUse::Read,
+                            address: bank.0,
+                            bytes: bank.1,
+                        },
+                        bank.0,
+                        bank.1 - element,
+                    ),
+                    first_arm,
+                    second_arm,
+                    site,
+                    &census_entry(
+                        "ab_gkr_bwd_seg_coeff_bank",
+                        Task8QueuedUse::Read,
+                        bank.0,
+                        bank.1 - element,
+                    ),
+                );
+            }
+            families.insert("inexact-coefficient-bank-extent");
 
             // The published column's read moved before the write that covers it.
             let mut reordered = base.clone();
@@ -5483,7 +5713,7 @@ mod cpu_tests {
             // one exists, and to nothing before that.
             assert_eq!(overlap_successor_owner(first_arm), "reduced_tensor");
 
-            assert_eq!(families.len(), 12);
+            assert_eq!(families.len(), 18);
         }
     }
 

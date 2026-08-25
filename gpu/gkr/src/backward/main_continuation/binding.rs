@@ -825,6 +825,45 @@ impl KernelFunction for MainContinuationWindowKernelEntry {
 /// Enqueue one prepared continuation window. Consuming the preparation keeps
 /// its input borrow and output allocation alive through the CUDA launch call;
 /// the owned canonical publication is returned only after enqueue succeeds.
+/// What one window launch folds and publishes, read from the binding's own live
+/// source records rather than from the spans that launch reported. A width-3
+/// window folds at depth three only.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_window_plan(
+    binding: &MainContinuationWindowLaunchBinding,
+) -> crate::backward::task8_probe::Task8EnqueuePlan {
+    use crate::backward::task8_probe::Task8EnqueuePlan;
+    use crate::backward::vm::seg_desc::{
+        bwd_seg_lane_slot, BWD_COEFF_ORIGIN_READ_EXT, BWD_SEG_ADDR_COLUMN_BITS, BWD_SEG_ADDR_NONE,
+    };
+
+    let mut publications = Vec::new();
+    for record in &binding.source[..usize::from(binding.source_count)] {
+        if record.publish == BWD_SEG_ADDR_NONE {
+            continue;
+        }
+        let slot = &binding.slot[bwd_seg_lane_slot(record.publish)];
+        if slot.base.is_null() {
+            continue;
+        }
+        let width = if slot.origin == BWD_COEFF_ORIGIN_READ_EXT {
+            size_of::<E4>()
+        } else {
+            size_of::<BF>()
+        };
+        let stride = width << slot.log2_stride;
+        let column = usize::from(record.publish) & ((1 << BWD_SEG_ADDR_COLUMN_BITS) - 1);
+        publications.push((slot.base as usize + column * stride, stride));
+    }
+    Task8EnqueuePlan::Folding {
+        deltas: vec![3],
+        publications,
+    }
+}
+
 /// The pointer arguments one window launch names, taken from the descriptor it
 /// is about to hand the runtime: every live source column at its own base and
 /// stride, every published column, the factored Eq tables' active prefixes, the
@@ -930,7 +969,8 @@ pub(crate) fn launch_main_continuation_window(
         _task8,
         "window-launch",
         Kernel,
-        task8_window_spans(&launch.binding, launch.row_tiles)
+        task8_window_spans(&launch.binding, launch.row_tiles),
+        plan = task8_window_plan(&launch.binding)
     );
     launch.kernel.launch(
         &config,

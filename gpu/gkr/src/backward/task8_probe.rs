@@ -88,12 +88,44 @@ impl Task8Span {
     }
 }
 
+/// What one guarded enqueue's kernel is about to do, taken from the round, the
+/// descriptor and the staged blob rather than from the spans that same enqueue
+/// reported. The census a ledger is checked against is derived from this, so a
+/// span builder that narrows, widens, misplaces or drops a pointer range
+/// disagrees with it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Task8EnqueuePlan {
+    /// Builds the fold-weight bank for one round from the claim point's last
+    /// three coordinates.
+    FoldWeightBuild {
+        round: usize,
+        fold_weights: usize,
+        fold_weight_bytes: usize,
+    },
+    /// Evaluates the live coefficient recipes into the bank prefix.
+    CoefficientFill {
+        tables: usize,
+        table_ranges: Vec<std::ops::Range<usize>>,
+        slab: usize,
+        challenge_slots: Vec<usize>,
+        bank: usize,
+        bank_bytes: usize,
+    },
+    /// Folds one set of sources: the depths they fold at, and the columns the
+    /// launch publishes and reads back inside the same enqueue.
+    Folding {
+        deltas: Vec<u8>,
+        publications: Vec<(usize, usize)>,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Task8Enqueue {
     pub(crate) ordinal: u64,
     pub(crate) site: &'static str,
     pub(crate) kind: Task8EnqueueKind,
     pub(crate) spans: Vec<Task8Span>,
+    pub(crate) plan: Option<Task8EnqueuePlan>,
     /// How many enqueues had already been issued when this one was opened. A
     /// scope opened before its own call sees exactly its own ordinal here.
     pub(crate) issued_at_open: u64,
@@ -250,6 +282,36 @@ pub(crate) fn task8_symbol(symbol: &'static str) -> Option<(usize, usize)> {
     })
 }
 
+/// Attaches the production description of the enqueue that is currently open.
+/// Like every other probe entry point it is inert without an installed guard.
+pub(crate) fn task8_enqueue_plan<F>(plan: F)
+where
+    F: FnOnce() -> Task8EnqueuePlan,
+{
+    let open = PROBE.with(|probe| {
+        probe
+            .borrow()
+            .as_ref()
+            .and_then(|state| state.open.last().copied())
+    });
+    let Some(ordinal) = open else {
+        return;
+    };
+    let plan = plan();
+    PROBE.with(|probe| {
+        let mut probe = probe.borrow_mut();
+        let state = probe
+            .as_mut()
+            .expect("the Task 8 enqueue probe was uninstalled mid-scope");
+        state
+            .enqueues
+            .iter_mut()
+            .find(|entry| entry.ordinal == ordinal)
+            .expect("an open Task 8 enqueue scope lost its record")
+            .plan = Some(plan);
+    });
+}
+
 /// Opens one enqueue. `spans` runs only while the probe is installed, so an
 /// uninstrumented build pays one thread-local read.
 pub(crate) fn task8_enqueue<F>(
@@ -271,6 +333,7 @@ where
             site,
             kind,
             spans: Vec::new(),
+            plan: None,
             issued_at_open,
             issued_at_close: None,
         });

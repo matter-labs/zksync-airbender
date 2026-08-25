@@ -23,8 +23,9 @@ mod binding {
 
     pub(crate) use super::binding_impl::{
         bind_first_main_continuation_window, bind_later_main_continuation_window,
-        task8_window_spans, MainContinuationWindowBindError, MainContinuationWindowLaunchBinding,
-        MainContinuationWindowLaunched, MainContinuationWindowRuntimeScratch,
+        task8_window_plan, task8_window_spans, MainContinuationWindowBindError,
+        MainContinuationWindowLaunchBinding, MainContinuationWindowLaunched,
+        MainContinuationWindowRuntimeScratch,
     };
 
     thread_local! {

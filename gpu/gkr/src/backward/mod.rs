@@ -23,6 +23,20 @@ macro_rules! task8_enqueue_scope {
             || $spans,
         );
     };
+    ($name:ident, $site:expr, $kind:ident, $spans:expr, plan = $plan:expr) => {
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
+        let $name = $crate::backward::task8_probe::task8_enqueue(
+            $site,
+            $crate::backward::task8_probe::Task8EnqueueKind::$kind,
+            || {
+                $crate::backward::task8_probe::task8_enqueue_plan(|| $plan);
+                $spans
+            },
+        );
+    };
 }
 pub(crate) use task8_enqueue_scope;
 

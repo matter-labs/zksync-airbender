@@ -97,9 +97,17 @@ pub(crate) fn launch_bwd_seg_build_fold_weights(
         fold_weights as usize,
         BWD_SEG_FOLD_WEIGHT_SLOTS * size_of::<E4>(),
     );
-    crate::backward::task8_enqueue_scope!(_task8, "fold-weight-build", Kernel, {
-        task8_fold_weight_spans(round, fold_weights as usize)
-    });
+    crate::backward::task8_enqueue_scope!(
+        _task8,
+        "fold-weight-build",
+        Kernel,
+        task8_fold_weight_spans(round, fold_weights as usize),
+        plan = crate::backward::task8_probe::Task8EnqueuePlan::FoldWeightBuild {
+            round: round as usize,
+            fold_weights: fold_weights as usize,
+            fold_weight_bytes: BWD_SEG_FOLD_WEIGHT_SLOTS * size_of::<E4>(),
+        }
+    );
     GkrBwdSegBuildFoldWeightsFunction(ab_gkr_bwd_seg_build_fold_weights_kernel).launch(
         &config,
         &GkrBwdSegBuildFoldWeightsArguments::new(fold_weights, round),
@@ -255,6 +263,52 @@ pub(crate) fn task8_seg_spans(desc: &BwdSegDesc) -> Vec<crate::backward::task8_p
     spans
 }
 
+/// What one segmented round folds and publishes, read from the descriptor's own
+/// live source records rather than from the spans that round reported.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_seg_plan(desc: &BwdSegDesc) -> crate::backward::task8_probe::Task8EnqueuePlan {
+    use super::seg_desc::{
+        bwd_seg_lane_slot, BWD_COEFF_ORIGIN_READ_EXT, BWD_SEG_ADDR_COLUMN_BITS, BWD_SEG_ADDR_NONE,
+    };
+    use crate::backward::task8_probe::{task8_descriptor_sources, Task8EnqueuePlan};
+
+    let element = size_of::<E4>();
+    let rows = desc.logical_rows as usize;
+    let sources = task8_descriptor_sources(desc as *const BwdSegDesc as usize)
+        .expect("a Task 8 segmented launch needs its descriptor's live source count");
+    let mut deltas = Vec::new();
+    let mut publications = Vec::new();
+    for record in &desc.source[..sources] {
+        if !deltas.contains(&record.delta) {
+            deltas.push(record.delta);
+        }
+        if record.cache == BWD_SEG_ADDR_NONE {
+            continue;
+        }
+        let slot = &desc.slot[bwd_seg_lane_slot(record.cache)];
+        if slot.base.is_null() {
+            continue;
+        }
+        let width = if slot.origin == BWD_COEFF_ORIGIN_READ_EXT {
+            element
+        } else {
+            size_of::<gpu_core::primitives::field::BF>()
+        };
+        let column = usize::from(record.cache) & ((1 << BWD_SEG_ADDR_COLUMN_BITS) - 1);
+        publications.push((
+            slot.base as usize + column * (width << slot.log2_stride),
+            2 * rows * element,
+        ));
+    }
+    Task8EnqueuePlan::Folding {
+        deltas,
+        publications,
+    }
+}
+
 fn launch(
     setup: &BwdSegSetup,
     symbol: GkrBwdSegSignature,
@@ -264,7 +318,8 @@ fn launch(
         _task8,
         "segmented-round",
         Kernel,
-        task8_seg_spans(setup)
+        task8_seg_spans(setup),
+        plan = task8_seg_plan(setup)
     );
     GkrBwdSegFunction(symbol).launch(
         &launch_config(setup, context),

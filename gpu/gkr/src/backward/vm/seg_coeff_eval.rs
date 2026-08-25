@@ -884,15 +884,28 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let function = GkrBwdSegEvalCoefficientsFunction(ab_gkr_bwd_seg_eval_coefficients_kernel);
-    crate::backward::task8_enqueue_scope!(_task8, "coefficient-bank-fill", Kernel, {
-        task8_coeff_fill_spans(
-            &task8_reads,
-            tables_base,
-            slab as usize,
-            bank as usize,
+    crate::backward::task8_enqueue_scope!(
+        _task8,
+        "coefficient-bank-fill",
+        Kernel,
+        {
+            task8_coeff_fill_spans(
+                &task8_reads,
+                tables_base,
+                slab as usize,
+                bank as usize,
+                bank_bytes,
+            )
+        },
+        plan = crate::backward::task8_probe::Task8EnqueuePlan::CoefficientFill {
+            tables: tables_base,
+            table_ranges: task8_reads.table_ranges.clone(),
+            slab: slab as usize,
+            challenge_slots: task8_reads.challenge_slots.clone(),
+            bank: bank as usize,
             bank_bytes,
-        )
-    });
+        }
+    );
     function.launch(
         &config,
         &GkrBwdSegEvalCoefficientsArguments::new(*desc, slab, bank),
