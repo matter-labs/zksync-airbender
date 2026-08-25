@@ -746,12 +746,13 @@ impl<'a> Reader<'a> {
 #[cfg(test)]
 mod cpu_continuation_rebase {
     use super::super::production_bind::{
-        continuation_snapshot, continuation_start_round_snapshot, drained_eq_sizes,
+        canonicalize_legacy_publication, continuation_snapshot, continuation_start_round_snapshot,
+        drained_eq_sizes, LegacyPublicationCanonicalizationError,
     };
     use super::super::seg_desc::{BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT};
     use super::*;
     use crate::backward::make_eq_sizes;
-    use gpu_gkr_compiler::SOURCE_WINDOW_COLUMNS;
+    use gpu_gkr_compiler::{SourceId, SOURCE_WINDOW_COLUMNS};
 
     /// Round 3 is the windowed arm's handoff: `BWD_SEG_MAX_FOLD_DEPTH`.
     const WINDOW_START_ROUND: u8 = 3;
@@ -1075,6 +1076,73 @@ mod cpu_continuation_rebase {
             std::collections::BTreeSet::from([15, 18, 21]),
             "the structural oracle must cover the union of ruled tail starts"
         );
+    }
+
+    #[test]
+    fn canonical_legacy_publication_reorders_whole_columns_and_rejects_bad_maps() {
+        let input = [10u8, 11, 20, 21, 30, 31];
+        let map = [(SourceId(0), 2), (SourceId(1), 0), (SourceId(2), 1)];
+        assert_eq!(
+            canonicalize_legacy_publication(&input, &map, 3, 2).unwrap(),
+            [30, 31, 10, 11, 20, 21]
+        );
+
+        let duplicate = [(SourceId(0), 2), (SourceId(0), 0), (SourceId(2), 1)];
+        assert_eq!(
+            canonicalize_legacy_publication(&input, &duplicate, 3, 2),
+            Err(LegacyPublicationCanonicalizationError::DuplicateSource { source: 0 })
+        );
+        let missing = [(SourceId(0), 2), (SourceId(2), 1)];
+        assert_eq!(
+            canonicalize_legacy_publication(&input, &missing, 3, 2),
+            Err(LegacyPublicationCanonicalizationError::MissingSource { source: 1 })
+        );
+        assert_eq!(
+            canonicalize_legacy_publication(&input, &map, 3, 0),
+            Err(LegacyPublicationCanonicalizationError::ZeroColumnElements)
+        );
+    }
+
+    #[test]
+    fn maximum_legacy_publication_displacement_is_real_and_nonidentity() {
+        let (programs, _) = compile_corpus_layout("blake2_with_extended_control_layout_gkr.json");
+        let snapshot = continuation_snapshot(&programs, 0, WINDOW_START_ROUND);
+        let first = snapshot
+            .rounds
+            .first()
+            .expect("the maximum-source layer must contain round 3");
+        assert_eq!(first.folding_buffer_columns, 1_012);
+        let stride_bytes = first.folding_buffer_column_elems as usize
+            * std::mem::size_of::<gpu_core::primitives::field::E4>();
+        let source_columns: Vec<_> = first
+            .sources
+            .iter()
+            .enumerate()
+            .map(|(source, record)| {
+                assert_ne!(record.publish_slot, NO_PUBLISH);
+                let patch = first
+                    .folding_buffer_patches
+                    .iter()
+                    .find(|patch| patch.slot == record.publish_slot)
+                    .expect("published slot must have a folding-buffer patch");
+                let chunk = patch.byte_offset as usize / (SOURCE_WINDOW_COLUMNS * stride_bytes);
+                (
+                    SourceId(source as u32),
+                    chunk * SOURCE_WINDOW_COLUMNS + record.publish_column as usize,
+                )
+            })
+            .collect();
+        assert_eq!(source_columns.len(), 1_012);
+        let displaced = source_columns
+            .iter()
+            .filter(|(source, column)| source.0 as usize != *column)
+            .count();
+        assert_eq!(displaced, 174);
+        let legacy: Vec<u32> = (0..source_columns.len() as u32).collect();
+        let canonical =
+            canonicalize_legacy_publication(&legacy, &source_columns, source_columns.len(), 1)
+                .unwrap();
+        assert_ne!(legacy, canonical);
     }
 }
 

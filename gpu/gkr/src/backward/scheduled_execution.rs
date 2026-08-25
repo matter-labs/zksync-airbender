@@ -113,6 +113,24 @@ impl GpuGKRDimensionReducingBackwardState {
             DeviceClaimPointAndBatching::from_allocation(initial_d_claim_point_and_batching);
         let mut shared_device_claims = initial_d_claims;
         let mut shared_claim_layout = initial_claim_layout;
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
+        let mut task8_requests = stage_snapshots.map(|sink| {
+            // SAFETY: no snapshot callback using this accessor has been
+            // scheduled yet. The helper consumes only the sink-owned request.
+            unsafe { super::stage_snapshots::take_task8_sink_requests(sink) }
+        });
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
+        let stage_snapshots = stage_snapshots.filter(|_| {
+            task8_requests
+                .as_ref()
+                .is_none_or(|requests| requests.capture_snapshots)
+        });
         if let Some(output) = stage_snapshots {
             let initial_layer_idx = self
                 .pending_layers
@@ -192,6 +210,23 @@ impl GpuGKRDimensionReducingBackwardState {
             options,
             strategy,
         );
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
+        if let Some(request) = task8_requests
+            .as_mut()
+            .and_then(|requests| requests.differential.take())
+        {
+            super::main_continuation::schedule_prepared_main_continuation_differential(
+                request,
+                &main_backward_state.storage,
+                &main_backward_state.programs,
+                &main_backward_state.inits_and_teardowns_top_bits,
+                callbacks,
+                context,
+            )?;
+        }
         let mut main_layers = Vec::new();
         let main_layers_range = Range::new("gkr.backward.main_layers")?;
         main_layers_range.start(stream)?;
@@ -199,7 +234,23 @@ impl GpuGKRDimensionReducingBackwardState {
             main_backward_state.prepare_next_layer_static(options, context)?
         {
             let layer_idx = prepared_layer.layer_idx;
-            let mut execution = prepared_layer.schedule_execute_main_layer(
+            #[cfg(all(
+                any(test, feature = "task8_continuation_differential_test"),
+                not(no_cuda)
+            ))]
+            let task8_expected_window_launches =
+                usize::from(prepared_layer.main_execution_plan.window_count());
+            #[cfg(all(
+                any(test, feature = "task8_continuation_differential_test"),
+                not(no_cuda)
+            ))]
+            let task8_launch_counter = task8_requests
+                .as_ref()
+                .filter(|requests| requests.tracks_execution_counts())
+                .map(|_| {
+                    super::main_continuation::Task8MainContinuationLaunchCounterGuard::install()
+                });
+            let execution_result = prepared_layer.schedule_execute_main_layer(
                 shared_device_seed,
                 shared_device_claim_point,
                 shared_device_claims,
@@ -211,7 +262,47 @@ impl GpuGKRDimensionReducingBackwardState {
                 backward_layer_slot,
                 &mut main_backward_state.storage,
                 context,
-            )?;
+            );
+            let mut execution = execution_result?;
+            #[cfg(all(
+                any(test, feature = "task8_continuation_differential_test"),
+                not(no_cuda)
+            ))]
+            if let Some(requests) = task8_requests.as_ref() {
+                let boundary_window_launches = prepared_layer
+                    .main_continuation
+                    .final_eq_boundary()
+                    .map_or(0, |boundary| {
+                        assert_eq!(
+                            boundary.consumer_round % 3,
+                            0,
+                            "Task 8 continuation boundary must be width-three aligned"
+                        );
+                        usize::from(boundary.consumer_round)
+                            .checked_div(3)
+                            .and_then(|groups| groups.checked_sub(1))
+                            .expect("Task 8 continuation boundary must encode complete width-three passes")
+                    });
+                assert_eq!(
+                    boundary_window_launches, task8_expected_window_launches,
+                    "Task 8 continuation boundary differs from the prepared plan"
+                );
+                let window_launches = task8_launch_counter
+                    .map(|counter| counter.finish())
+                    .unwrap_or(0);
+                if requests.tracks_execution_counts() {
+                    assert_eq!(
+                        window_launches, task8_expected_window_launches,
+                        "Task 8 actual continuation enqueue count differs from the prepared plan"
+                    );
+                }
+                let legacy_rounds = prepared_layer.bwd_vm_ext.task8_scheduled_rounds();
+                requests.record_main_layer(
+                    window_launches,
+                    usize::from(window_launches > 0) * legacy_rounds,
+                    usize::from(window_launches == 0) * legacy_rounds,
+                );
+            }
             if let Some(output) = stage_snapshots {
                 schedule_stage_snapshot(
                     layer_idx,
@@ -253,6 +344,14 @@ impl GpuGKRDimensionReducingBackwardState {
         }
         main_layers_range.end(stream)?;
         tracing_ranges.push(main_layers_range);
+
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
+        if let Some(requests) = task8_requests.as_ref() {
+            requests.finalize_execution_counts();
+        }
 
         drop(main_backward_state);
         // All main-layer work has been scheduled before its storage drops.

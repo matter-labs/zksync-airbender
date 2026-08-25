@@ -363,10 +363,65 @@ pub(crate) fn launch_build_eq_high_and_low_groups_from_point(
         high_slab,
         low_buffer,
     );
+    crate::backward::task8_enqueue_scope!(_task8, "eq-build", Kernel, {
+        task8_eq_build_spans(
+            claim_point as usize,
+            challenge_offset,
+            challenge_count,
+            high_slab as usize,
+            low_buffer as usize,
+        )
+    });
     GpuDimensionReducingBuildEqHighLowFromPointFunction(
         ab_gkr_dim_reducing_build_eq_high_low_from_point_e4_kernel,
     )
     .launch(&config, &args)
+}
+
+/// The pointer arguments one Eq build names: the claim-point coordinates it
+/// reads, the sentinel and group tables it writes into the high slabs, and the
+/// last group's table in the low buffer.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_eq_build_spans(
+    claim_point: usize,
+    challenge_offset: usize,
+    challenge_count: usize,
+    high_slab: usize,
+    low_buffer: usize,
+) -> Vec<crate::backward::task8_probe::Task8Span> {
+    use crate::backward::task8_probe::Task8Span;
+    let element = size_of::<E4>();
+    let sizes = make_eq_sizes(challenge_count);
+    let mut spans = vec![Task8Span::read(
+        "claim_point",
+        claim_point + challenge_offset * element,
+        challenge_count * element,
+    )];
+    for slot in 0..GKR_EQ_HIGH_SLOTS {
+        spans.push(Task8Span::write(
+            "eq_high",
+            high_slab + slot * GKR_EQ_GROUP_TABLE_LEN * element,
+            element,
+        ));
+    }
+    for (group, size) in sizes.high.iter().enumerate() {
+        if *size > 0 {
+            spans.push(Task8Span::write(
+                "eq_high",
+                high_slab + group * GKR_EQ_GROUP_TABLE_LEN * element,
+                (1usize << size) * element,
+            ));
+        }
+    }
+    spans.push(Task8Span::write(
+        "eq_low",
+        low_buffer,
+        (1usize << sizes.low) * element,
+    ));
+    spans
 }
 
 pub fn eq_group_count(challenge_count: usize) -> usize {

@@ -92,6 +92,79 @@ pub(crate) struct WindowTailState {
     pub active_eq_size_before_fold: u32,
 }
 
+/// The transcript state one tail round pass advances in place, the coefficients
+/// and challenges it writes out, and the active Eq slot it folds.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_tail_round_spans(
+    state: &WindowTailState,
+) -> Vec<crate::backward::task8_probe::Task8Span> {
+    use crate::backward::task8_probe::Task8Span;
+    let element = size_of::<E4>();
+    let mut spans = vec![Task8Span::read(
+        "prev_claim_coords",
+        state.prev_claim_coords as usize,
+        3 * element,
+    )];
+    for (role, address, bytes) in [
+        ("transcript_seed", state.seed as usize, 8 * size_of::<u32>()),
+        ("transcript_claim", state.claim as usize, element),
+        ("transcript_prefactor", state.eq_prefactor as usize, element),
+    ] {
+        spans.push(Task8Span::read(role, address, bytes));
+        spans.push(Task8Span::write(role, address, bytes));
+    }
+    spans.push(Task8Span::write(
+        "coefficients",
+        state.coeffs_out as usize,
+        12 * element,
+    ));
+    spans.push(Task8Span::write(
+        "challenges",
+        state.challenges_out as usize,
+        3 * element,
+    ));
+    if state.active_eq_size_before_fold > 0 {
+        spans.push(Task8Span::read(
+            "active_eq_slot",
+            state.active_eq_slot_base as usize,
+            (1usize << state.active_eq_size_before_fold) * element,
+        ));
+        spans.push(Task8Span::write(
+            "active_eq_slot",
+            state.active_eq_slot_base as usize,
+            (1usize << (state.active_eq_size_before_fold - 1)) * element,
+        ));
+    }
+    spans
+}
+
+/// The row-tile partial matrix one tail reduce reads and the tensor it writes.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_tail_reduce_spans(
+    state: &WindowTailState,
+) -> Vec<crate::backward::task8_probe::Task8Span> {
+    use crate::backward::task8_probe::Task8Span;
+    let element = size_of::<E4>();
+    vec![
+        Task8Span::read(
+            "partials",
+            state.partials as usize,
+            WINDOW_TAIL_TENSOR_CELLS * state.row_tiles * element,
+        ),
+        Task8Span::write(
+            "reduced_tensor",
+            state.reduced_tensor as usize,
+            WINDOW_TAIL_TENSOR_CELLS * element,
+        ),
+    ]
+}
+
 /// Reduces the window partial matrix, plays rounds 0-2, and folds the active eq
 /// slot once.
 pub(crate) fn launch_window_tensor_round_tail(
@@ -107,6 +180,15 @@ pub(crate) fn launch_window_tensor_round_tail(
     match arm {
         WindowTailArm::Absorbed => {
             let config = CudaLaunchConfig::basic(1, WINDOW_TAIL_ABSORBED_BLOCK_THREADS, stream);
+            crate::backward::task8_enqueue_scope!(_task8, "window-tail-absorbed", Kernel, {
+                let mut spans = vec![crate::backward::task8_probe::Task8Span::read(
+                    "partials",
+                    state.partials as usize,
+                    WINDOW_TAIL_TENSOR_CELLS * state.row_tiles * size_of::<E4>(),
+                )];
+                spans.extend(task8_tail_round_spans(state));
+                spans
+            });
             let args = WindowTailAbsorbedArguments::new(
                 state.partials,
                 row_tiles,
@@ -129,7 +211,15 @@ pub(crate) fn launch_window_tensor_round_tail(
             );
             let reduce_args =
                 WindowTailReduceArguments::new(state.partials, row_tiles, state.reduced_tensor);
-            WindowTailReduceFunction::default().launch(&reduce_config, &reduce_args)?;
+            {
+                crate::backward::task8_enqueue_scope!(
+                    _task8,
+                    "window-tail-reduce",
+                    Kernel,
+                    task8_tail_reduce_spans(state)
+                );
+                WindowTailReduceFunction::default().launch(&reduce_config, &reduce_args)?;
+            }
 
             let config = CudaLaunchConfig::basic(1, WINDOW_TAIL_BLOCK_THREADS, stream);
             let args = WindowTailFromTensorArguments::new(
@@ -143,6 +233,15 @@ pub(crate) fn launch_window_tensor_round_tail(
                 state.active_eq_slot_base,
                 state.active_eq_size_before_fold,
             );
+            crate::backward::task8_enqueue_scope!(_task8, "window-tail-rounds", Kernel, {
+                let mut spans = vec![crate::backward::task8_probe::Task8Span::read(
+                    "reduced_tensor",
+                    state.reduced_tensor as usize,
+                    WINDOW_TAIL_TENSOR_CELLS * size_of::<E4>(),
+                )];
+                spans.extend(task8_tail_round_spans(state));
+                spans
+            });
             WindowTailFromTensorFunction::default().launch(&config, &args)
         }
     }

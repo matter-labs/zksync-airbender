@@ -21,6 +21,8 @@ use gpu_gkr::{
     GkrBackwardOptions, GkrPrograms, MainContinuationWindowLoweringRejection,
     MainLayerExecutionPlanError, WindowLoweringRejection,
 };
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+use gpu_prover_context::DeviceMemoryHighWaterObserver;
 use gpu_prover_context::ProverContext;
 
 pub use orchestration::GpuGKRProofJob;
@@ -184,6 +186,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         inputs,
         backward_options,
         None,
+        #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+        None,
         context,
     )
 }
@@ -204,18 +208,74 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         inputs,
         backward_options,
         Some(Box::default()),
+        #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+        None,
         context,
     )
 }
 
-fn prove_inner<'a, A: GoodAllocator + 'a>(
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+pub(crate) fn prove_main_continuation_differential<'a, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    backward_options: GkrBackwardOptions,
+    sink: Box<GKRBackwardStageSnapshotSink>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    prove_inner(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        backward_options,
+        Some(sink),
+        None,
+        context,
+    )
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+pub(crate) fn prove_with_exact_memory<'a, 'context, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    backward_options: GkrBackwardOptions,
+    sink: Box<GKRBackwardStageSnapshotSink>,
+    context: &'context ProverContext,
+) -> CudaResult<(
+    GpuGKRProofJob<'a, A>,
+    DeviceMemoryHighWaterObserver<'context>,
+)> {
+    let mut backward_observer = None;
+    let job = prove_inner(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        backward_options,
+        Some(sink),
+        Some(&mut backward_observer),
+        context,
+    )?;
+    Ok((
+        job,
+        backward_observer.expect("exact-memory prove must start its backward observer"),
+    ))
+}
+
+fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
-    context: &ProverContext,
+    #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+    mut backward_observer_out: Option<&mut Option<DeviceMemoryHighWaterObserver<'context>>>,
+    context: &'context ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let backward_strategy =
@@ -362,6 +422,12 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
 
     ranges.push(post_forward_handoff_range);
 
+    #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+    if let Some(observer_out) = backward_observer_out.as_deref_mut() {
+        assert!(observer_out.is_none());
+        *observer_out = Some(context.observe_device_memory_high_water());
+    }
+
     let BackwardPhaseResult {
         mut backward_scheduled,
     } = schedule_backward_phase(
@@ -382,6 +448,13 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         &mut callbacks,
         context,
     )?;
+    #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+    if let Some(observer) = backward_observer_out
+        .as_deref_mut()
+        .and_then(Option::as_mut)
+    {
+        observer.seal();
+    }
     let batching_pow_bits =
         crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
     let WhirPhaseResult {

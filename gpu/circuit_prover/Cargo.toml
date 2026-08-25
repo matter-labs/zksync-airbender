@@ -42,6 +42,7 @@ test_no_inline = ["field/no_inline"]
 # with the matching encoding (verifier_generator `eval_leaves`). The single cfg
 # site lives in gpu_whir; the apex forwards the feature down.
 eval_leaves = ["gpu_whir/eval_leaves"]
+task8_continuation_differential_test = ["gpu_gkr/task8_continuation_differential_test"]
 
 [build-dependencies]
 gpu_native_build = { workspace = true }
@@ -59,3 +60,4 @@ gpu_ops = { workspace = true }
 itertools = "0.14"
 serde = { workspace = true }
 serde_json = "*"
+ring = "0.17"

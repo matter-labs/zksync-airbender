@@ -477,6 +477,86 @@ pub(super) fn materializes(origin: SourceOrigin, delta: u8) -> bool {
     assign_class(origin, delta).1
 }
 
+/// One source of a descriptor built for the Task-8 read census: where it reads,
+/// whether its backing is extension-wide, the depth it folds at, and where it
+/// publishes when its class materializes.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Task8SegSourceSpec {
+    pub(crate) extension: bool,
+    pub(crate) delta: u8,
+    pub(crate) read_slot: usize,
+    pub(crate) read_column: usize,
+    pub(crate) cache_slot: usize,
+    pub(crate) cache_column: usize,
+}
+
+/// Builds a segmented descriptor the way the lowering does: every source takes
+/// the class [`assign_class`] gives its origin and depth, names a cache only
+/// when that class materializes, and the fold list is exactly the publishing
+/// sources. A caller cannot hand the read census a descriptor lowering could
+/// not emit.
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_lowered_seg_descriptor(
+    slots: &[BwdSegAddrSlot],
+    sources: &[Task8SegSourceSpec],
+    logical_rows: u32,
+    eq_low: *const E4,
+    contributions: *mut E4,
+    eq_sizes: GkrEqSizes,
+) -> Box<BwdSegDesc> {
+    // SAFETY: `BwdSegDesc` is plain `repr(C)` data, exactly as the lowering's
+    // own zeroed box relies on.
+    let mut desc: Box<BwdSegDesc> = unsafe { zeroed_box() };
+    desc.slot[..slots.len()].copy_from_slice(slots);
+    let mut fold_source = Vec::new();
+    for (index, source) in sources.iter().enumerate() {
+        let origin = if source.extension {
+            SourceOrigin::E4
+        } else {
+            SourceOrigin::Bf
+        };
+        let (class, publishes) = assign_class(origin, source.delta);
+        let read = &slots[source.read_slot];
+        assert_eq!(
+            read.origin == BWD_COEFF_ORIGIN_READ_EXT,
+            source.extension,
+            "a Task 8 source's slot width must match its origin"
+        );
+        let cache = if publishes {
+            assert_eq!(
+                slots[source.cache_slot].origin, BWD_COEFF_ORIGIN_READ_EXT,
+                "a materialized source publishes into an extension slot"
+            );
+            fold_source.push(index as u16);
+            bwd_seg_lane(source.cache_slot, source.cache_column)
+                .expect("Task 8 cache lane is in range")
+        } else {
+            BWD_SEG_ADDR_NONE
+        };
+        desc.source[index] = BwdSegSourceRecord {
+            src: bwd_seg_lane(source.read_slot, source.read_column)
+                .expect("Task 8 read lane is in range"),
+            cache,
+            class: class.code(),
+            delta: source.delta,
+        };
+    }
+    desc.num_foldable = fold_source.len() as u16;
+    desc.fold_source[..fold_source.len()].copy_from_slice(&fold_source);
+    desc.eq_low = eq_low;
+    desc.contributions = contributions;
+    desc.logical_rows = logical_rows;
+    desc.eq_sizes = eq_sizes;
+    desc
+}
+
 // ── Lowering ─────────────────────────────────────────────────────────────────
 
 /// A zero-initialized `Box<T>`.
@@ -803,6 +883,17 @@ fn lower_bwd_seg_view(
     desc.contributions = binding.contributions;
     desc.eq_sizes = binding.eq_sizes;
     desc.logical_rows = logical_rows;
+    // The source table is zero-filled to its ABI capacity, so a launch cannot
+    // recover how many leading entries are live. Nothing else about the
+    // descriptor is recorded here.
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    crate::backward::task8_probe::task8_register_descriptor_sources(
+        &*desc as *const BwdSegDesc as usize,
+        sources.len(),
+    );
     Ok(desc)
 }
 
