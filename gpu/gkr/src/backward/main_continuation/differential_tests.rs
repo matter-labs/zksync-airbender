@@ -5156,10 +5156,13 @@ mod cpu_tests {
         (built, (1usize << built.low) * std::mem::size_of::<E4>())
     }
 
-    /// The legacy arm folds Eq once, at its third comparison round. This is the
-    /// live Eq state each planned round runs against.
+    /// The Eq state a descriptor at `round_index` must describe: what the
+    /// finalizers that already completed have left. The legacy arm folds once,
+    /// at the finalize that follows its third comparison round, so all three
+    /// scheduled descriptors see the undrained base and the one-fold state
+    /// begins only at the position after them.
     fn task8_live_eq(base: GkrEqSizes, round_index: usize) -> GkrEqSizes {
-        if round_index + 1 < WINDOW_WIDTH {
+        if round_index < WINDOW_WIDTH {
             base
         } else {
             drained_eq_sizes(base, 1)
@@ -5183,8 +5186,8 @@ mod cpu_tests {
                  folding_steps={folding_steps} start_round={start_round}"
             );
 
-            // Exactly one fold, at the third comparison round, and one entry per
-            // planned round of the sequence the differential binds.
+            // Exactly one fold, carried by the entry after the last scheduled
+            // round, and one entry per planned round of the bound sequence.
             assert_eq!(schedule.len(), folding_steps - start_round);
             assert_eq!(
                 schedule
@@ -5193,13 +5196,40 @@ mod cpu_tests {
                     .sum::<usize>(),
                 1
             );
-            assert_eq!(schedule[WINDOW_WIDTH - 1], 1);
+            assert_eq!(schedule[WINDOW_WIDTH], 1);
             assert!(schedule
                 .iter()
                 .enumerate()
-                .all(|(index, drains)| *drains == u8::from(index == WINDOW_WIDTH - 1)));
+                .all(|(index, drains)| *drains == u8::from(index == WINDOW_WIDTH)));
 
+            // The three descriptors this differential actually schedules must
+            // each describe the undrained base the arm built: their rounds run
+            // before any finalize has folded.
             let plan = EqDrainSchedule::Explicit(&schedule);
+            for index in 0..WINDOW_WIDTH {
+                assert_eq!(
+                    plan.drains_through(index, schedule.len()),
+                    0,
+                    "scheduled descriptor {index} claims a fold that has not happened at \
+                     folding_steps={folding_steps} start_round={start_round}"
+                );
+                assert_eq!(
+                    drained_eq_sizes(base, plan.drains_through(index, schedule.len())),
+                    built,
+                    "scheduled descriptor {index} does not describe the built base at \
+                     folding_steps={folding_steps} start_round={start_round}"
+                );
+            }
+            // The finalize that follows the third scheduled round is the single
+            // fold, and nothing after it folds again.
+            assert_eq!(plan.drains_through(WINDOW_WIDTH, schedule.len()), 1);
+            assert_eq!(
+                plan.drains_through(schedule.len() - 1, schedule.len()),
+                1,
+                "the differential folds Eq more than once at \
+                 folding_steps={folding_steps} start_round={start_round}"
+            );
+
             for index in 0..schedule.len() {
                 let declared = drained_eq_sizes(base, plan.drains_through(index, schedule.len()));
                 let live = task8_live_eq(base, index);
@@ -5263,7 +5293,7 @@ mod cpu_tests {
             {
                 caught.insert("no-drain");
             }
-            // Folding one round early.
+            // Folding a round early.
             let mut shifted = vec![0u8; rounds];
             shifted[WINDOW_WIDTH - 2] = 1;
             let plan = EqDrainSchedule::Explicit(&shifted);
@@ -5272,6 +5302,17 @@ mod cpu_tests {
                     != task8_live_eq(base, index)
             }) {
                 caught.insert("shifted-drain");
+            }
+            // The fold moved from after the third scheduled round to before it:
+            // descriptor 2 would claim the post-fold shape while its own
+            // finalize has not run. This is the shape the previous child had.
+            let mut before_third = vec![0u8; rounds];
+            before_third[WINDOW_WIDTH - 1] = 1;
+            let plan = EqDrainSchedule::Explicit(&before_third);
+            if drained_eq_sizes(base, plan.drains_through(WINDOW_WIDTH - 1, rounds))
+                != task8_live_eq(base, WINDOW_WIDTH - 1)
+            {
+                caught.insert("drain-before-third-descriptor");
             }
             // The production tail's base under this arm's own sequence length:
             // it carries three fewer variables than the rounds would drain.
@@ -5289,6 +5330,7 @@ mod cpu_tests {
             caught.iter().copied().collect::<Vec<_>>(),
             vec![
                 "all-drain",
+                "drain-before-third-descriptor",
                 "no-drain",
                 "post-tail-overrun",
                 "post-tail-underflow",

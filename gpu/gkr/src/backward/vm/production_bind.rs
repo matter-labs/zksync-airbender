@@ -2102,12 +2102,20 @@ impl PreparedContinuationDifferentialRounds {
 /// Both arms seed the factored Eq at the windowed consumer boundary with
 /// `launch_build_eq_high_and_low_groups_from_point(point, round + WINDOW_WIDTH,
 /// folding_steps - round - WINDOW_WIDTH, ..)`, and both fold it exactly once, at
-/// the third comparison round's fused finalize. The legacy arm's three rounds
-/// stand in for one window kernel: they do not fold, and neither do the rounds
-/// beyond them, which this differential never schedules. Seeding from
-/// `folding_steps - comparison_round` instead — the production tail's base —
-/// would describe an Eq-low table wider than the arm ever built, which is what
-/// the consumed packet-v7 run reported as `UseBeforeInitialization`.
+/// the fused finalize that follows the third comparison round.
+///
+/// A descriptor is built before its own round runs, so it must describe the Eq
+/// state left by the finalizers that have already completed. All three rounds
+/// this differential schedules therefore see the **undrained** base: the single
+/// fold belongs to the finalize that follows the third of them, and
+/// [`EqDrainSchedule::drains_through`] is inclusive, so that fold is carried by
+/// the entry one position past the last scheduled round. Nothing after it folds
+/// again, because this differential schedules no further round.
+///
+/// Seeding from `folding_steps - comparison_round` instead — the production
+/// tail's base — would describe an Eq-low table wider than the arm ever built,
+/// which is what the consumed packet-v7 run reported as
+/// `UseBeforeInitialization`.
 #[cfg(any(test, feature = "task8_continuation_differential_test"))]
 pub(crate) fn task8_differential_eq_plan(
     comparison_round: u8,
@@ -2121,8 +2129,12 @@ pub(crate) fn task8_differential_eq_plan(
             .checked_sub(WINDOW_WIDTH)
             .expect("the differential window extends past the layer folding steps"),
     );
+    assert!(
+        rounds > WINDOW_WIDTH,
+        "the differential needs a round after its window for the single Eq fold"
+    );
     let mut schedule = vec![0u8; rounds];
-    schedule[WINDOW_WIDTH - 1] = 1;
+    schedule[WINDOW_WIDTH] = 1;
     (base, schedule)
 }
 
