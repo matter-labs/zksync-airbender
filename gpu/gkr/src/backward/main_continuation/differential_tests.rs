@@ -111,14 +111,14 @@ struct Task8GenerationToken {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Task8OwnerOrigin {
     /// The arm allocates or writes the owner itself, so it starts uncovered.
-    ArmOwned,
+    ArmOwned(Task8OwnershipEnd),
     /// Production storage the arm only reads. It starts fully covered and every
     /// write or mutation of it is rejected.
-    Borrowed(&'static str),
+    Borrowed(&'static str, Task8OwnershipEnd),
     /// A factored Eq table: the arm writes the active prefix each build fixes
     /// and reads back the whole buffer, so bytes outside its own writes are
     /// recorded as resident reads and never as initialization.
-    FactoredEq,
+    FactoredEq(Task8OwnershipEnd),
 }
 
 /// How a generation's ownership of its bytes ended. The ledger needs the end,
@@ -144,8 +144,8 @@ impl Task8OwnershipEnd {
     /// free can never be spelled as a borrow closure.
     fn admits(&self, origin: Task8OwnerOrigin) -> bool {
         match origin {
-            Task8OwnerOrigin::Borrowed(_) => matches!(self, Task8OwnershipEnd::BorrowClosed),
-            Task8OwnerOrigin::ArmOwned | Task8OwnerOrigin::FactoredEq => matches!(
+            Task8OwnerOrigin::Borrowed(_, _) => matches!(self, Task8OwnershipEnd::BorrowClosed),
+            Task8OwnerOrigin::ArmOwned(_) | Task8OwnerOrigin::FactoredEq(_) => matches!(
                 self,
                 Task8OwnershipEnd::Freed | Task8OwnershipEnd::SymbolReleased
             ),
@@ -473,23 +473,8 @@ impl Task8OwnerGenerationLedger {
             generation: self.next_generation,
         };
         let initialized = match origin {
-            Task8OwnerOrigin::ArmOwned | Task8OwnerOrigin::FactoredEq => Vec::new(),
-            Task8OwnerOrigin::Borrowed(_) => vec![covered.clone()],
-        };
-        let allowed_end = match origin {
-            Task8OwnerOrigin::Borrowed(_) => Task8OwnershipEnd::BorrowClosed,
-            Task8OwnerOrigin::FactoredEq if label.contains("symbol") => {
-                Task8OwnershipEnd::SymbolReleased
-            }
-            Task8OwnerOrigin::FactoredEq => Task8OwnershipEnd::Freed,
-            Task8OwnerOrigin::ArmOwned
-                if label.contains("symbol")
-                    || label == "coefficient_bank"
-                    || label == "fold_weights" =>
-            {
-                Task8OwnershipEnd::SymbolReleased
-            }
-            Task8OwnerOrigin::ArmOwned => Task8OwnershipEnd::Freed,
+            Task8OwnerOrigin::ArmOwned(_) | Task8OwnerOrigin::FactoredEq(_) => Vec::new(),
+            Task8OwnerOrigin::Borrowed(_, _) => vec![covered.clone()],
         };
         self.generations.push(Task8OwnerGeneration {
             arm,
@@ -498,7 +483,11 @@ impl Task8OwnerGenerationLedger {
             covered,
             generation: self.next_generation,
             origin,
-            allowed_end,
+            allowed_end: match origin {
+                Task8OwnerOrigin::ArmOwned(end)
+                | Task8OwnerOrigin::FactoredEq(end)
+                | Task8OwnerOrigin::Borrowed(_, end) => end,
+            },
             superseded_by: None,
             released: None,
             initialized,
@@ -561,7 +550,7 @@ impl Task8OwnerGenerationLedger {
             }
             match use_kind {
                 Task8QueuedUse::Write => {
-                    if matches!(entry.origin, Task8OwnerOrigin::Borrowed(_)) {
+                    if matches!(entry.origin, Task8OwnerOrigin::Borrowed(_, _)) {
                         return Err(Task8LedgerError::WriteToBorrowedOwner);
                     }
                 }
@@ -571,7 +560,7 @@ impl Task8OwnerGenerationLedger {
                     }
                 }
                 Task8QueuedUse::ResidentRead => {
-                    if !matches!(entry.origin, Task8OwnerOrigin::FactoredEq) {
+                    if !matches!(entry.origin, Task8OwnerOrigin::FactoredEq(_)) {
                         return Err(Task8LedgerError::ResidentReadOfNonEqOwner);
                     }
                     if !Task8OwnerGeneration::disjoint(&entry.initialized, &range) {
@@ -786,13 +775,14 @@ fn ledger_open_allocation<T>(
     ledger: &mut Task8OwnerGenerationLedger,
     arm: &'static str,
     label: &'static str,
+    allowed_end: Task8OwnershipEnd,
     allocation: &DeviceSlice<T>,
 ) -> Task8LedgerOwner {
     ledger_open(
         ledger,
         arm,
         label,
-        Task8OwnerOrigin::ArmOwned,
+        Task8OwnerOrigin::ArmOwned(allowed_end),
         allocation.as_ptr() as usize,
         allocation.len() * std::mem::size_of::<T>(),
     )
@@ -816,7 +806,11 @@ fn ledger_end_ownership(
     let bound = ledger_bind_final(ledger, owner);
     ledger.release(owner.token, end).unwrap_or_else(|error| {
         let (arm, label) = (owner.arm, owner.label);
-        panic!("Task 8 {arm} arm could not end {label} ownership as {end:?}: {error:?}")
+        let allowed = ledger
+            .resolve(owner.token)
+            .ok()
+            .map(|slot| ledger.generations[slot].allowed_end);
+        panic!("Task 8 {arm} arm could not end {label} ownership as {end:?} (allowed {allowed:?}): {error:?}")
     });
     bound
 }
@@ -1083,8 +1077,8 @@ fn validate_owner_generation_structure(
             entry.arm
         );
         let mut coverage = match entry.origin {
-            Task8OwnerOrigin::ArmOwned | Task8OwnerOrigin::FactoredEq => Vec::new(),
-            Task8OwnerOrigin::Borrowed(_) => vec![entry.covered.clone()],
+            Task8OwnerOrigin::ArmOwned(_) | Task8OwnerOrigin::FactoredEq(_) => Vec::new(),
+            Task8OwnerOrigin::Borrowed(_, _) => vec![entry.covered.clone()],
         };
         let mut previous = None;
         for record in &entry.records {
@@ -1125,7 +1119,7 @@ fn validate_owner_generation_structure(
             match record.use_kind {
                 Task8QueuedUse::Write => {
                     assert!(
-                        !matches!(entry.origin, Task8OwnerOrigin::Borrowed(_)),
+                        !matches!(entry.origin, Task8OwnerOrigin::Borrowed(_, _)),
                         "Task 8 {} wrote borrowed production storage",
                         entry.label
                     );
@@ -1138,7 +1132,7 @@ fn validate_owner_generation_structure(
                 ),
                 Task8QueuedUse::ResidentRead => {
                     assert!(
-                        matches!(entry.origin, Task8OwnerOrigin::FactoredEq),
+                        matches!(entry.origin, Task8OwnerOrigin::FactoredEq(_)),
                         "Task 8 {} recorded a resident read outside the factored Eq tables",
                         entry.label
                     );
@@ -2158,15 +2152,34 @@ fn open_transcript_owners(
     transcript: &TranscriptBuffers,
 ) -> Task8TranscriptOwners {
     Task8TranscriptOwners {
-        seed: ledger_open_allocation(ledger, arm, "transcript_seed", &transcript.seed),
-        claim: ledger_open_allocation(ledger, arm, "transcript_claim", &transcript.claim),
+        seed: ledger_open_allocation(
+            ledger,
+            arm,
+            "transcript_seed",
+            Task8OwnershipEnd::BorrowClosed,
+            &transcript.seed,
+        ),
+        claim: ledger_open_allocation(
+            ledger,
+            arm,
+            "transcript_claim",
+            Task8OwnershipEnd::BorrowClosed,
+            &transcript.claim,
+        ),
         prefactor: ledger_open_allocation(
             ledger,
             arm,
             "transcript_prefactor",
+            Task8OwnershipEnd::BorrowClosed,
             &transcript.prefactor,
         ),
-        coefficients: ledger_open_allocation(ledger, arm, "coefficients", &transcript.coefficients),
+        coefficients: ledger_open_allocation(
+            ledger,
+            arm,
+            "coefficients",
+            Task8OwnershipEnd::BorrowClosed,
+            &transcript.coefficients,
+        ),
     }
 }
 
@@ -2251,7 +2264,7 @@ fn open_challenge_owners(
             ledger,
             arm,
             label,
-            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS),
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS, Task8OwnershipEnd::BorrowClosed),
             base,
             bytes,
         )
@@ -2292,7 +2305,7 @@ fn open_bank_owners(
         ledger,
         arm,
         "challenge_slab",
-        Task8OwnerOrigin::ArmOwned,
+        Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
         spans.slab.0,
         spans.slab.1,
     );
@@ -2369,7 +2382,7 @@ fn open_reported_symbols(ledger: &mut Task8OwnerGenerationLedger, owners: &mut T
                 ledger,
                 arm,
                 label,
-                Task8OwnerOrigin::ArmOwned,
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::SymbolReleased),
                 base,
                 bytes,
             ));
@@ -2477,7 +2490,10 @@ fn open_source_owners(
                 ledger,
                 arm,
                 "source_backing",
-                Task8OwnerOrigin::Borrowed(TASK8_PRODUCTION_STORAGE),
+                Task8OwnerOrigin::Borrowed(
+                    TASK8_PRODUCTION_STORAGE,
+                    Task8OwnershipEnd::BorrowClosed,
+                ),
                 base,
                 bytes,
             )
@@ -2595,6 +2611,7 @@ fn build_prior_level(
             ledger,
             owners.arm,
             "prior_publication",
+            Task8OwnershipEnd::Freed,
             launched.published_level().allocation(),
         );
         ledger.absorb(owners.arm, probe);
@@ -2650,7 +2667,7 @@ fn run_window_arm(
             ledger,
             TASK8_WINDOW_ARM,
             "claim_point",
-            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS),
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS, Task8OwnershipEnd::BorrowClosed),
             point_base,
             point_bytes,
         );
@@ -2660,7 +2677,7 @@ fn run_window_arm(
             ledger,
             TASK8_WINDOW_ARM,
             "claim_point_symbol",
-            Task8OwnerOrigin::ArmOwned,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::SymbolReleased),
             claim_point_symbol,
             inputs.point_len() * std::mem::size_of::<E4>(),
         );
@@ -2696,7 +2713,7 @@ fn run_window_arm(
                 ledger,
                 TASK8_WINDOW_ARM,
                 "eq",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::Freed),
                 eq_low.as_ptr() as usize,
                 eq_low.len() * std::mem::size_of::<E4>(),
             ),
@@ -2706,11 +2723,17 @@ fn run_window_arm(
                 ledger,
                 TASK8_WINDOW_ARM,
                 "eq_high_symbol",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::SymbolReleased),
                 carried.eq_high.0,
                 carried.eq_high.1,
             ),
-            partials: ledger_open_allocation(ledger, TASK8_WINDOW_ARM, "partials", &partials),
+            partials: ledger_open_allocation(
+                ledger,
+                TASK8_WINDOW_ARM,
+                "partials",
+                Task8OwnershipEnd::Freed,
+                &partials,
+            ),
             sources,
             fold_weights: None,
             coefficient_bank: None,
@@ -2885,6 +2908,7 @@ fn run_window_arm(
             ledger,
             TASK8_WINDOW_ARM,
             "publication",
+            Task8OwnershipEnd::Freed,
             launched.published_level().allocation(),
         );
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
@@ -2893,7 +2917,7 @@ fn run_window_arm(
             ledger,
             TASK8_WINDOW_ARM,
             "reduced_tensor",
-            Task8OwnerOrigin::ArmOwned,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
             launched.reduced_tensor() as usize,
             MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * std::mem::size_of::<E4>(),
         );
@@ -3178,7 +3202,7 @@ fn run_legacy_arm(
             ledger,
             TASK8_LEGACY_ARM,
             "claim_point",
-            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS),
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS, Task8OwnershipEnd::BorrowClosed),
             point_base,
             point_bytes,
         );
@@ -3188,7 +3212,7 @@ fn run_legacy_arm(
             ledger,
             TASK8_LEGACY_ARM,
             "claim_point_symbol",
-            Task8OwnerOrigin::ArmOwned,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::SymbolReleased),
             claim_point_symbol,
             inputs.point_len() * std::mem::size_of::<E4>(),
         );
@@ -3225,7 +3249,10 @@ fn run_legacy_arm(
                     ledger,
                     TASK8_LEGACY_ARM,
                     "coefficient_bank",
-                    Task8OwnerOrigin::Borrowed(TASK8_RESIDENT_COEFFICIENT_BANK),
+                    Task8OwnerOrigin::Borrowed(
+                        TASK8_RESIDENT_COEFFICIENT_BANK,
+                        Task8OwnershipEnd::BorrowClosed,
+                    ),
                     base,
                     bytes,
                 )
@@ -3238,7 +3265,7 @@ fn run_legacy_arm(
                 ledger,
                 TASK8_LEGACY_ARM,
                 "eq",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::Freed),
                 eq_low.as_ptr() as usize,
                 eq_low.len() * std::mem::size_of::<E4>(),
             ),
@@ -3248,11 +3275,17 @@ fn run_legacy_arm(
                 ledger,
                 TASK8_LEGACY_ARM,
                 "eq_high_symbol",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::SymbolReleased),
                 carried.eq_high.0,
                 carried.eq_high.1,
             ),
-            partials: ledger_open_allocation(ledger, TASK8_LEGACY_ARM, "partials", &partials),
+            partials: ledger_open_allocation(
+                ledger,
+                TASK8_LEGACY_ARM,
+                "partials",
+                Task8OwnershipEnd::Freed,
+                &partials,
+            ),
             sources,
             fold_weights: None,
             coefficient_bank: borrowed_bank,
@@ -3384,7 +3417,7 @@ fn run_legacy_arm(
                 ledger,
                 TASK8_LEGACY_ARM,
                 "publication",
-                Task8OwnerOrigin::ArmOwned,
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
                 enqueue_facts.published.0,
                 enqueue_facts.published.1,
             );
@@ -4428,6 +4461,50 @@ fn build_corpus_census() -> CorpusCensus {
 #[cfg(test)]
 mod cpu_tests {
     #[test]
+    fn cpu_non_containing_partial_overlap_reports_full_culprit_and_nested_view_is_valid() {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        let outer = ledger
+            .open(
+                TASK8_WINDOW_ARM,
+                "outer",
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+                0x1000,
+                0x100,
+            )
+            .unwrap();
+        let nested = ledger
+            .open(
+                TASK8_WINDOW_ARM,
+                "nested",
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+                0x1040,
+                0x20,
+            )
+            .unwrap();
+        assert_ne!(outer.generation, nested.generation);
+        let error = ledger
+            .open(
+                TASK8_WINDOW_ARM,
+                "partial",
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+                0x10f0,
+                0x40,
+            )
+            .unwrap_err();
+        match error {
+            Task8LedgerError::OverlappingLiveDeclaration(culprit) => {
+                assert_eq!(culprit.arm, TASK8_WINDOW_ARM);
+                assert_eq!(culprit.label, "outer");
+                assert_eq!(culprit.generation, outer.generation);
+                assert_eq!(culprit.covered, (0x1000, 0x1100));
+                assert_eq!(culprit.final_enqueue, None);
+                assert_eq!(culprit.released, None);
+            }
+            other => panic!("expected non-containing overlap, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn probe_phase_registration_order_is_explicit() {
         let source = include_str!("differential_tests.rs");
         let bank = source.find("let bank_spans = bank.schedule").unwrap();
@@ -4585,7 +4662,7 @@ mod cpu_tests {
                 &mut ledger,
                 arm,
                 "eq",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::Freed),
                 low_base,
                 GKR_EQ_GROUP_TABLE_LEN * element,
             );
@@ -4593,7 +4670,7 @@ mod cpu_tests {
                 &mut ledger,
                 arm,
                 "eq_high_symbol",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::SymbolReleased),
                 high_base,
                 2 * GKR_EQ_GROUP_TABLE_LEN * element,
             );
@@ -4904,7 +4981,31 @@ mod cpu_tests {
         base: usize,
         bytes: usize,
     ) -> Task8LedgerOwner {
-        ledger_open(ledger, arm, label, Task8OwnerOrigin::ArmOwned, base, bytes)
+        ledger_open(
+            ledger,
+            arm,
+            label,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+            base,
+            bytes,
+        )
+    }
+
+    fn open_symbol(
+        ledger: &mut Task8OwnerGenerationLedger,
+        arm: &'static str,
+        label: &'static str,
+        base: usize,
+        bytes: usize,
+    ) -> Task8LedgerOwner {
+        ledger_open(
+            ledger,
+            arm,
+            label,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::SymbolReleased),
+            base,
+            bytes,
+        )
     }
 
     /// Opens one pre-enqueue scope, lets the "call" run inside it, closes it and
@@ -4971,7 +5072,7 @@ mod cpu_tests {
             ledger,
             arm,
             label,
-            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS),
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS, Task8OwnershipEnd::BorrowClosed),
             base,
             bytes,
         )
@@ -5062,7 +5163,7 @@ mod cpu_tests {
             TASK8_TEST_CLAIM_POINT_SYMBOL,
             TASK8_TEST_POINT_LEN * TASK8_TEST_ELEMENT,
         );
-        let claim_point_symbol = open(
+        let claim_point_symbol = open_symbol(
             ledger,
             arm,
             "claim_point_symbol",
@@ -5148,7 +5249,7 @@ mod cpu_tests {
             carried.coefficient_bank.unwrap().0,
             carried.coefficient_bank.unwrap().1,
         );
-        let bank = open(
+        let bank = open_symbol(
             ledger,
             arm,
             "coefficient_bank",
@@ -5185,7 +5286,7 @@ mod cpu_tests {
                 ledger,
                 arm,
                 "eq",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::Freed),
                 TASK8_TEST_EQ_LOW,
                 TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
             ),
@@ -5193,7 +5294,7 @@ mod cpu_tests {
                 ledger,
                 arm,
                 "eq_high_symbol",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::SymbolReleased),
                 carried.eq_high.0,
                 carried.eq_high.1,
             ),
@@ -5210,7 +5311,10 @@ mod cpu_tests {
                 ledger,
                 arm,
                 "source_backing",
-                Task8OwnerOrigin::Borrowed(TASK8_PRODUCTION_STORAGE),
+                Task8OwnerOrigin::Borrowed(
+                    TASK8_PRODUCTION_STORAGE,
+                    Task8OwnershipEnd::BorrowClosed,
+                ),
                 TASK8_TEST_SOURCE,
                 TASK8_TEST_SOURCE_BYTES,
             )],
@@ -5299,7 +5403,7 @@ mod cpu_tests {
             TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
         );
         if owners.fold_weights.is_none() {
-            owners.fold_weights = Some(open(
+            owners.fold_weights = Some(open_symbol(
                 ledger,
                 owners.arm,
                 "fold_weights_symbol",
@@ -5613,6 +5717,7 @@ mod cpu_tests {
                 .released
                 .unwrap_or_else(|| panic!("{} never released ownership", entry.label));
             assert!(released.end.admits(entry.origin));
+            assert_eq!(released.end, entry.allowed_end);
             assert_eq!(entry.final_enqueue, entry.last_enqueue());
         }
         // Every ownership class rejects the opposite end kind while retaining
@@ -5625,7 +5730,11 @@ mod cpu_tests {
                 Task8OwnershipEnd::SymbolReleased => Task8OwnershipEnd::Freed,
                 Task8OwnershipEnd::BorrowClosed => Task8OwnershipEnd::Freed,
             };
-            let token = Task8GenerationToken { slot, owner: entry.owner, generation: entry.generation };
+            let token = Task8GenerationToken {
+                slot,
+                owner: entry.owner,
+                generation: entry.generation,
+            };
             match wrong.release(token, wrong_end) {
                 Err(Task8LedgerError::ReleaseKindMismatch(culprit)) => {
                     assert_eq!(culprit.arm, entry.arm);
@@ -5650,8 +5759,14 @@ mod cpu_tests {
                 generation: entry.generation,
             }
         };
-        assert!(matches!(repeated.bind_final(token), Err(Task8LedgerError::FinalAlreadyBound(_))));
-        assert!(matches!(repeated.release(token, Task8OwnershipEnd::Freed), Err(Task8LedgerError::AlreadyReleased(_))));
+        assert!(matches!(
+            repeated.bind_final(token),
+            Err(Task8LedgerError::FinalAlreadyBound(_))
+        ));
+        assert!(matches!(
+            repeated.release(token, Task8OwnershipEnd::Freed),
+            Err(Task8LedgerError::AlreadyReleased(_))
+        ));
 
         // Premature Final must reproduce the UseAfterFinal/last-use failure.
         let slot = green
@@ -5805,7 +5920,13 @@ mod cpu_tests {
         base: usize,
         bytes: usize,
     ) -> Result<Task8LedgerOwner, Task8LedgerError> {
-        let token = ledger.open(arm, label, Task8OwnerOrigin::ArmOwned, base, bytes)?;
+        let token = ledger.open(
+            arm,
+            label,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+            base,
+            bytes,
+        )?;
         Ok(Task8LedgerOwner {
             token,
             arm,
@@ -6387,7 +6508,7 @@ mod cpu_tests {
             ledger.open(
                 TASK8_WINDOW_ARM,
                 "publication",
-                Task8OwnerOrigin::ArmOwned,
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
                 base,
                 4096
             ),
@@ -7703,7 +7824,7 @@ mod cpu_tests {
             .open(
                 TASK8_LEGACY_ARM,
                 "reduced_tensor",
-                Task8OwnerOrigin::ArmOwned,
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
                 base,
                 bytes,
             )
