@@ -47,30 +47,19 @@ pub(crate) const BWD_SEG_FOLD_WEIGHT_SLOTS: usize = 11;
 /// First slot of each delta's packed run. A depth-DELTA fold reads only its own
 /// run, so a launch's fold-weight reads are the union of the runs its live
 /// source records name. Only the Task-8 read census needs the split.
-#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+#[cfg(test)]
 pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D1: usize = 0;
-#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+#[cfg(test)]
 pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D2: usize = 1;
-#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+#[cfg(test)]
 pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D3: usize = 4;
 
-#[cfg(any(test, feature = "task8_continuation_differential_test"))]
+#[cfg(test)]
 const _: () = {
     assert!(BWD_SEG_FOLD_WEIGHT_BASE_D2 == BWD_SEG_FOLD_WEIGHT_BASE_D1 + 1);
     assert!(BWD_SEG_FOLD_WEIGHT_BASE_D3 == BWD_SEG_FOLD_WEIGHT_BASE_D2 + 3);
     assert!(BWD_SEG_FOLD_WEIGHT_SLOTS == BWD_SEG_FOLD_WEIGHT_BASE_D3 + 7);
 };
-
-/// The slots one depth-`delta` fold reads.
-#[cfg(any(test, feature = "task8_continuation_differential_test"))]
-pub(crate) fn bwd_seg_fold_weight_run(delta: u8) -> std::ops::Range<usize> {
-    match delta {
-        1 => BWD_SEG_FOLD_WEIGHT_BASE_D1..BWD_SEG_FOLD_WEIGHT_BASE_D2,
-        2 => BWD_SEG_FOLD_WEIGHT_BASE_D2..BWD_SEG_FOLD_WEIGHT_BASE_D3,
-        3 => BWD_SEG_FOLD_WEIGHT_BASE_D3..BWD_SEG_FOLD_WEIGHT_SLOTS,
-        _ => 0..0,
-    }
-}
 
 /// Source-table slots rounded to a 16-slot boundary.
 pub(crate) const BWD_SEG_MAX_SOURCES: usize = 1_072;

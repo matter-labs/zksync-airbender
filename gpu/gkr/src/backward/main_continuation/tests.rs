@@ -1089,7 +1089,7 @@ mod gpu {
     }
 
     #[test]
-    fn main_continuation_window_gpu_oracle() {
+    fn main_continuation_standalone_differential_gpu_oracle() {
         let context = make_test_context(1_024, 128);
         let mut per_mask = [0usize; EXACT_MASKS.len()];
         let mut coordinate_paths = BTreeSet::new();

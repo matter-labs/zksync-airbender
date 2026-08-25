@@ -523,6 +523,7 @@ impl SegCoeffEvalBlob {
         );
     }
 
+    #[cfg(test)]
     fn monomials_of(&self, slot: usize) -> &[SegCoeffMonomial] {
         let recipe = self.recipes[slot];
         let start = usize::from(recipe.monomial_offset);
@@ -630,12 +631,6 @@ fn literal_monomial(value: E4) -> SegCoeffMonomial {
 pub(crate) struct SegCoeffEvalChunks {
     chunks: Vec<Box<SegCoeffChunkDesc>>,
     num_coefficients: u32,
-    /// The challenge slots each chunk's evaluation reads.
-    #[cfg(all(
-        any(test, feature = "task8_continuation_differential_test"),
-        not(no_cuda)
-    ))]
-    task8_chunk_challenge_slots: Vec<Vec<usize>>,
 }
 
 impl SegCoeffEvalChunks {
@@ -689,25 +684,8 @@ impl SegCoeffEvalChunks {
         let built = Self {
             chunks,
             num_coefficients: blob.recipes.len() as u32,
-            #[cfg(all(
-                any(test, feature = "task8_continuation_differential_test"),
-                not(no_cuda)
-            ))]
-            task8_chunk_challenge_slots: Vec::new(),
         };
         built.assert_covers_bank();
-        #[cfg(all(
-            any(test, feature = "task8_continuation_differential_test"),
-            not(no_cuda)
-        ))]
-        let built = Self {
-            task8_chunk_challenge_slots: built
-                .chunks
-                .iter()
-                .map(|chunk| task8_chunk_challenge_slots(chunk))
-                .collect(),
-            ..built
-        };
         built
     }
 
@@ -748,37 +726,26 @@ impl SegCoeffEvalChunks {
         );
     }
 
+    #[cfg(test)]
     pub(crate) fn num_coefficients(&self) -> u32 {
         self.num_coefficients
     }
 
-    /// The number of by-value kernel enqueues the production fill performs.
-    /// Task 8 must compare its observed enqueue census with this partition,
-    /// rather than treating one logical bank fill as one kernel launch.
-    #[cfg(any(test, feature = "task8_continuation_differential_test"))]
-    pub(crate) fn task8_chunk_count(&self) -> usize {
+    /// Number of by-value kernel launches the production fill performs.
+    #[cfg(test)]
+    pub(crate) fn chunk_count_for_test(&self) -> usize {
         self.chunks.len()
     }
 
-    /// The challenge slots each chunk's evaluation reads, in chunk order.
-    #[cfg(all(
-        any(test, feature = "task8_continuation_differential_test"),
-        not(no_cuda)
-    ))]
-    pub(crate) fn task8_challenge_slots(&self) -> &[Vec<usize>] {
-        &self.task8_chunk_challenge_slots
-    }
-
-    /// The contiguous bank ranges the chunks cover, in element units.
-    #[cfg(all(
-        any(test, feature = "task8_continuation_differential_test"),
-        not(no_cuda)
-    ))]
-    pub(crate) fn task8_chunk_ranges(&self) -> Vec<(u32, u32)> {
-        self.chunks
-            .iter()
-            .map(|chunk| (chunk.bank_first, chunk.bank_count))
-            .collect()
+    #[cfg(test)]
+    fn observed_chunk_count_for_test(&self) -> usize {
+        let mut observed = 0usize;
+        for_each_coeff_chunk(self, |_| {
+            observed += 1;
+            Ok::<_, std::convert::Infallible>(())
+        })
+        .expect("the test observer is infallible");
+        observed
     }
 
     #[cfg(test)]
@@ -790,53 +757,15 @@ impl SegCoeffEvalChunks {
     }
 }
 
-/// The challenge slots one chunk's evaluation reads: the batching slot plus
-/// every challenge index its live monomials name.
-#[cfg(all(
-    any(test, feature = "task8_continuation_differential_test"),
-    not(no_cuda)
-))]
-fn task8_chunk_challenge_slots(chunk: &SegCoeffChunkDesc) -> Vec<usize> {
-    let mut slots = std::collections::BTreeSet::from([BWD_SEG_CHALLENGE_CLAIM_BATCHING as usize]);
-    for monomial in &chunk.monomials[..chunk.monomial_count as usize] {
-        for index in [monomial.challenge_idx_0, monomial.challenge_idx_1] {
-            if index != BWD_SEG_CHALLENGE_ABSENT {
-                slots.insert(index as usize);
-            }
-        }
+fn for_each_coeff_chunk<E>(
+    chunks: &SegCoeffEvalChunks,
+    mut action: impl FnMut(&SegCoeffChunkDesc) -> Result<(), E>,
+) -> Result<(), E> {
+    chunks.assert_covers_bank();
+    for chunk in &chunks.chunks {
+        action(chunk)?;
     }
-    slots.into_iter().collect()
-}
-
-/// The pointer arguments one fill chunk's evaluation names: the challenge slots
-/// its monomials use and the bank range it writes. The recipes and monomials
-/// ride the launch parameters by value, so no table read exists.
-#[cfg(all(
-    any(test, feature = "task8_continuation_differential_test"),
-    not(no_cuda)
-))]
-pub(crate) fn task8_coeff_fill_spans(
-    challenge_slots: &[usize],
-    slab: usize,
-    bank_first_byte: usize,
-    bank_bytes: usize,
-) -> Vec<crate::backward::task8_probe::Task8Span> {
-    use crate::backward::task8_probe::Task8Span;
-    let element = std::mem::size_of::<E4>();
-    let mut spans = Vec::with_capacity(challenge_slots.len() + 1);
-    for slot in challenge_slots {
-        spans.push(Task8Span::read(
-            "challenge_slab",
-            slab + slot * element,
-            element,
-        ));
-    }
-    spans.push(Task8Span::write(
-        "coefficient_bank",
-        bank_first_byte,
-        bank_bytes,
-    ));
-    spans
+    Ok(())
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -876,57 +805,18 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
     bank: *mut E4,
     stream: &CudaStream,
 ) -> CudaResult<BwdSegCoeffBankFillSpans> {
-    chunks.assert_covers_bank();
     let element = std::mem::size_of::<E4>();
     let bank_bytes = chunks.num_coefficients as usize * element;
-    #[cfg(all(
-        any(test, feature = "task8_continuation_differential_test"),
-        not(no_cuda)
-    ))]
-    crate::backward::task8_probe::task8_register_symbol(
-        "ab_gkr_bwd_seg_coeff_bank",
-        bank as usize,
-        bank_bytes,
-    );
-    for (index, chunk) in chunks.chunks.iter().enumerate() {
+    for_each_coeff_chunk(chunks, |chunk| {
         let count = chunk.bank_count;
         let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
         let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
         let function = GkrBwdSegEvalCoefficientsFunction(ab_gkr_bwd_seg_eval_coefficients_kernel);
-        #[cfg(all(
-            any(test, feature = "task8_continuation_differential_test"),
-            not(no_cuda)
-        ))]
-        let chunk_slots = &chunks.task8_chunk_challenge_slots[index];
-        #[cfg(not(all(
-            any(test, feature = "task8_continuation_differential_test"),
-            not(no_cuda)
-        )))]
-        let _ = index;
-        crate::backward::task8_enqueue_scope!(
-            _task8,
-            "coefficient-bank-fill",
-            Kernel,
-            {
-                task8_coeff_fill_spans(
-                    chunk_slots,
-                    slab as usize,
-                    bank as usize + chunk.bank_first as usize * element,
-                    chunk.bank_count as usize * element,
-                )
-            },
-            plan = crate::backward::task8_probe::Task8EnqueuePlan::CoefficientFill {
-                slab: slab as usize,
-                challenge_slots: chunk_slots.clone(),
-                bank_first: bank as usize + chunk.bank_first as usize * element,
-                bank_bytes: chunk.bank_count as usize * element,
-            }
-        );
         function.launch(
             &config,
             &GkrBwdSegEvalCoefficientsArguments::new(SegCoeffChunkDesc::clone(chunk), slab, bank),
-        )?;
-    }
+        )
+    })?;
     Ok(BwdSegCoeffBankFillSpans {
         bank: (bank as usize, bank_bytes),
     })
@@ -1371,7 +1261,12 @@ mod tests {
             chunks.chunk_bounds().len() > 1,
             "the recipe count must force a second chunk"
         );
-        assert_eq!(chunks.task8_chunk_count(), chunks.chunk_bounds().len());
+        assert_eq!(chunks.chunk_count_for_test(), chunks.chunk_bounds().len());
+        assert_eq!(
+            chunks.observed_chunk_count_for_test(),
+            chunks.chunk_bounds().len(),
+            "the production chunk iterator must visit every partition"
+        );
         assert_chunks_equal_blob(&blob, &chunks);
     }
 
@@ -1493,13 +1388,15 @@ mod corpus_capacity_tests {
                     let ext_blob =
                         build_seg_coeff_eval_blob(&ext_layer.coefficient_recipes, TOP_BITS)
                             .unwrap_or_else(|error| panic!("{label} Ext blob: {error:?}"));
-                    let ext_chunks = SegCoeffEvalChunks::build(&ext_blob).task8_chunk_count();
+                    let ext_chunks = SegCoeffEvalChunks::build(&ext_blob);
+                    let observed_ext_chunks = ext_chunks.observed_chunk_count_for_test();
+                    assert_eq!(observed_ext_chunks, ext_chunks.chunk_count_for_test());
                     maxima.coordinates += 1;
                     maxima.bank_slots = maxima.bank_slots.max(slots);
                     maxima.recipe_entries = maxima.recipe_entries.max(slots);
                     maxima.monomials = maxima.monomials.max(monomials);
                     maxima.window_plans = maxima.window_plans.max(plans);
-                    maxima.ext_chunks = maxima.ext_chunks.max(ext_chunks);
+                    maxima.ext_chunks = maxima.ext_chunks.max(observed_ext_chunks);
                 }
             }
             assert_eq!(

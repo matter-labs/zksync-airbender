@@ -164,72 +164,7 @@ pub(crate) fn launch_backward_dual_finalize_from_partials(
         active_eq_slot_base,
         active_eq_size_before_fold,
     );
-    crate::backward::task8_enqueue_scope!(_task8, "dual-finalize", Kernel, {
-        task8_dual_finalize_spans(
-            partials as usize,
-            num_partials,
-            prev_claim_coord as usize,
-            seed as usize,
-            claim as usize,
-            eq_prefactor as usize,
-            coeffs_out as usize,
-            challenge_out as usize,
-            active_eq_slot_base as usize,
-            active_eq_size_before_fold,
-        )
-    });
     BackwardDualFinalizeFromPartialsFunction::default().launch(&config, &args)
-}
-
-/// The pointer arguments one fused finalize names: the warp partials and claim
-/// coordinate it reads, the transcript state it advances in place, the round's
-/// own coefficients and challenge, and the active Eq slot it folds.
-#[cfg(all(
-    any(test, feature = "task8_continuation_differential_test"),
-    not(no_cuda)
-))]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn task8_dual_finalize_spans(
-    partials: usize,
-    num_partials: usize,
-    prev_claim_coord: usize,
-    seed: usize,
-    claim: usize,
-    eq_prefactor: usize,
-    coeffs_out: usize,
-    challenge_out: usize,
-    active_eq_slot_base: usize,
-    active_eq_size_before_fold: u32,
-) -> Vec<crate::backward::task8_probe::Task8Span> {
-    use crate::backward::task8_probe::Task8Span;
-    let element = std::mem::size_of::<E4>();
-    let mut spans = vec![
-        Task8Span::read("partials", partials, 2 * num_partials * element),
-        Task8Span::read("prev_claim_coords", prev_claim_coord, element),
-    ];
-    for (role, address, bytes) in [
-        ("transcript_seed", seed, 8 * std::mem::size_of::<u32>()),
-        ("transcript_claim", claim, element),
-        ("transcript_prefactor", eq_prefactor, element),
-    ] {
-        spans.push(Task8Span::read(role, address, bytes));
-        spans.push(Task8Span::write(role, address, bytes));
-    }
-    spans.push(Task8Span::write("coefficients", coeffs_out, 4 * element));
-    spans.push(Task8Span::write("challenges", challenge_out, element));
-    if active_eq_size_before_fold > 0 {
-        spans.push(Task8Span::read(
-            "active_eq_slot",
-            active_eq_slot_base,
-            (1usize << active_eq_size_before_fold) * element,
-        ));
-        spans.push(Task8Span::write(
-            "active_eq_slot",
-            active_eq_slot_base,
-            (1usize << (active_eq_size_before_fold - 1)) * element,
-        ));
-    }
-    spans
 }
 
 /// Number of 32-row partials produced by a VM round.

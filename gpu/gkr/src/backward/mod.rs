@@ -8,38 +8,6 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::ProverContext;
 
-/// Opens a Task-8 pre-enqueue scope immediately before the launch or copy that
-/// follows it, and closes it when the scope leaves the enclosing block. The
-/// span list is built only while a differential arm has the probe installed.
-macro_rules! task8_enqueue_scope {
-    ($name:ident, $site:expr, $kind:ident, $spans:expr) => {
-        #[cfg(all(
-            any(test, feature = "task8_continuation_differential_test"),
-            not(no_cuda)
-        ))]
-        let $name = $crate::backward::task8_probe::task8_enqueue(
-            $site,
-            $crate::backward::task8_probe::Task8EnqueueKind::$kind,
-            || $spans,
-        );
-    };
-    ($name:ident, $site:expr, $kind:ident, $spans:expr, plan = $plan:expr) => {
-        #[cfg(all(
-            any(test, feature = "task8_continuation_differential_test"),
-            not(no_cuda)
-        ))]
-        let $name = $crate::backward::task8_probe::task8_enqueue(
-            $site,
-            $crate::backward::task8_probe::Task8EnqueueKind::$kind,
-            || {
-                $crate::backward::task8_probe::task8_enqueue_plan(|| $plan);
-                $spans
-            },
-        );
-    };
-}
-pub(crate) use task8_enqueue_scope;
-
 mod dim_reducing_encoder;
 mod dim_reducing_sumcheck_plan;
 pub mod kernels;
@@ -48,11 +16,6 @@ mod main_layer;
 pub mod round_timing;
 mod scheduled_execution;
 mod stage_snapshots;
-#[cfg(all(
-    any(test, feature = "task8_continuation_differential_test"),
-    not(no_cuda)
-))]
-pub(crate) mod task8_probe;
 pub(crate) mod vm;
 pub mod window;
 
