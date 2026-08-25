@@ -10,7 +10,7 @@ on:
 permissions: read-all
 
 env:
-  RUST_TOOLCHAIN: nightly-2026-02-10
+  RUST_TOOLCHAIN: nightly-2026-08-09
 
 jobs:
   tests:
@@ -193,6 +193,10 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: miri
+          # Every other job in this workflow clears rustflags. Without this the action
+          # defaults to -Dwarnings, and under miri's cfg some target-gated features read
+          # as unused, so `unused_features` becomes a hard error.
+          rustflags: ""
       - name: Run Miri tests
         run: cargo miri test -p riscv_transpiler -- miri_
   
