@@ -319,12 +319,12 @@ impl Task7ExecutionEvidence {
     }
 }
 
-pub(super) struct Task7ProofJob {
-    job: GpuGKRProofJob<'static, Global>,
+pub(super) struct Task7ProofJob<'context> {
+    job: GpuGKRProofJob<'static, 'context, Global>,
     evidence: Task7ExecutionEvidence,
 }
 
-impl Task7ProofJob {
+impl<'context> Task7ProofJob<'context> {
     pub(super) fn finish(
         mut self,
     ) -> CudaResult<(
@@ -422,21 +422,21 @@ impl BasicUnrolledFixture {
         Ok(transfers)
     }
 
-    fn prove(
-        &self,
+    fn prove<'context>(
+        &'context self,
         transfers: BasicUnrolledTransfers<'static>,
-    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
+    ) -> GpuProveResult<GpuGKRProofJob<'static, 'context, Global>> {
         self.prove_with(transfers, GkrBackwardOptions::default())
     }
 
     /// Preflights the requested arm, then proves. Every fixture path goes
     /// through here so a windowed run reaches `prove()` the way production
     /// callers do.
-    fn prove_with(
-        &self,
+    fn prove_with<'context>(
+        &'context self,
         transfers: BasicUnrolledTransfers<'static>,
         backward_options: GkrBackwardOptions,
-    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
+    ) -> GpuProveResult<GpuGKRProofJob<'static, 'context, Global>> {
         let strategy = resolve_backward_execution_strategy(
             &self.gkr_programs,
             &self.prover_config,
@@ -460,23 +460,25 @@ impl BasicUnrolledFixture {
         )
     }
 
-    fn schedule_prove(&self) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
+    fn schedule_prove<'context>(
+        &'context self,
+    ) -> GpuProveResult<GpuGKRProofJob<'static, 'context, Global>> {
         self.schedule_prove_with(GkrBackwardOptions::default())
     }
 
-    fn schedule_prove_with(
-        &self,
+    fn schedule_prove_with<'context>(
+        &'context self,
         backward_options: GkrBackwardOptions,
-    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
+    ) -> GpuProveResult<GpuGKRProofJob<'static, 'context, Global>> {
         self.schedule_prove_with_prepared(backward_options, None, None)
     }
 
-    fn schedule_prove_with_prepared(
-        &self,
+    fn schedule_prove_with_prepared<'context>(
+        &'context self,
         backward_options: GkrBackwardOptions,
         prepared: Option<(BasicUnrolledTransfers<'static>, Option<DrTailProofPlan>)>,
         mut task7_trace: Option<&mut Vec<Task7ProofOperation>>,
-    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
+    ) -> GpuProveResult<GpuGKRProofJob<'static, 'context, Global>> {
         let (mut transfers, dr_tail_plan) = match prepared {
             Some(prepared) => prepared,
             None => {
@@ -556,7 +558,10 @@ impl BasicUnrolledFixture {
     /// Production-shaped Task 7 scheduling: admit the exact DR-tail plan
     /// before constructing the one existing input transfer, then pass that
     /// owned plan into the unchanged `prove()` call graph.
-    fn schedule_task7_prove(&self, arm: Task7DrTailArm) -> GpuProveResult<Task7ProofJob> {
+    fn schedule_task7_prove<'context>(
+        &'context self,
+        arm: Task7DrTailArm,
+    ) -> GpuProveResult<Task7ProofJob<'context>> {
         let backward_options = arm.backward_options();
         let strategy = resolve_backward_execution_strategy(
             &self.gkr_programs,
@@ -622,18 +627,23 @@ impl BasicUnrolledFixture {
 }
 
 impl BasicUnrolledProofFixture {
-    fn schedule_prove(&self) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
+    fn schedule_prove<'context>(
+        &'context self,
+    ) -> GpuProveResult<GpuGKRProofJob<'static, 'context, Global>> {
         self.base.schedule_prove()
     }
 
-    fn schedule_prove_with(
-        &self,
+    fn schedule_prove_with<'context>(
+        &'context self,
         backward_options: GkrBackwardOptions,
-    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
+    ) -> GpuProveResult<GpuGKRProofJob<'static, 'context, Global>> {
         self.base.schedule_prove_with(backward_options)
     }
 
-    fn schedule_task7_prove(&self, arm: Task7DrTailArm) -> GpuProveResult<Task7ProofJob> {
+    fn schedule_task7_prove<'context>(
+        &'context self,
+        arm: Task7DrTailArm,
+    ) -> GpuProveResult<Task7ProofJob<'context>> {
         self.base.schedule_task7_prove(arm)
     }
 }

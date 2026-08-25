@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
 use era_cudart::result::CudaResult;
@@ -58,7 +60,7 @@ pub struct ProverContext {
     device_allocator_mem_size: usize,
     device_id: i32,
     device_properties: DeviceProperties,
-    reversed_allocation_placement: bool,
+    reversed_allocation_placement: Cell<bool>,
 }
 
 /// Scoped device-pool observer for exact physical and corrected-logical peaks.
@@ -169,7 +171,7 @@ impl ProverContext {
             device_allocator_mem_size,
             device_id,
             device_properties,
-            reversed_allocation_placement: false,
+            reversed_allocation_placement: Cell::new(false),
         };
         Ok(context)
     }
@@ -203,7 +205,7 @@ impl ProverContext {
         size: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<DeviceAllocation<T>> {
-        let placement = if self.reversed_allocation_placement {
+        let placement = if self.reversed_allocation_placement.get() {
             match placement {
                 AllocationPlacement::BestFit => AllocationPlacement::BestFit,
                 AllocationPlacement::Bottom => AllocationPlacement::Top,
@@ -230,7 +232,7 @@ impl ProverContext {
         size: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<DeviceAllocation<T>> {
-        let placement = if self.reversed_allocation_placement {
+        let placement = if self.reversed_allocation_placement.get() {
             match placement {
                 AllocationPlacement::BestFit => AllocationPlacement::BestFit,
                 AllocationPlacement::Bottom => AllocationPlacement::Top,
@@ -308,7 +310,7 @@ impl ProverContext {
         &self.device_properties
     }
 
-    pub fn set_reversed_allocation_placement(&mut self, reversed: bool) {
-        self.reversed_allocation_placement = reversed;
+    pub fn set_reversed_allocation_placement(&self, reversed: bool) {
+        self.reversed_allocation_placement.set(reversed);
     }
 }

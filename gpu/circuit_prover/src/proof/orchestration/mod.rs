@@ -5,6 +5,7 @@ use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransferKeepalive;
+use crate::proof::{write_exact_memory_report, ExactMemoryGateSink};
 use crate::upstream::{
     DefaultTreeConstructor, DimensionReducingInputOutput, Field, GKRProof, OutputType,
 };
@@ -63,16 +64,17 @@ type FinishedProofWithSnapshots = (
 #[cfg(test)]
 type StagewiseFinishedProof = (FinishedProof, Vec<GKRBackwardStageSnapshot>, f32);
 
-pub struct GpuGKRProofJob<'a, A: GoodAllocator> {
+pub struct GpuGKRProofJob<'a, 'context, A: GoodAllocator> {
     pub(crate) is_finished_event: CudaEvent,
     pub(crate) callbacks: Callbacks<'a>,
     pub(crate) proof: Box<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     pub(crate) ranges: Vec<Range>,
     pub(crate) stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
+    pub(crate) exact_memory: Option<ExactMemoryGateSink<'context>>,
     pub(super) keepalive: GpuGKRProofJobKeepalive<'a, A>,
 }
 
-impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
+impl<'a, 'context, A: GoodAllocator> GpuGKRProofJob<'a, 'context, A> {
     fn finish_inner(self) -> CudaResult<FinishedProofWithSnapshots> {
         let Self {
             is_finished_event,
@@ -80,11 +82,22 @@ impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
             mut proof,
             ranges,
             stage_snapshots,
+            exact_memory,
             keepalive,
         } = self;
         is_finished_event.synchronize()?;
         drop(callbacks);
         drop(keepalive);
+        if let Some(sink) = exact_memory {
+            match sink.finish_report() {
+                Ok((output, row)) => {
+                    if let Err(error) = write_exact_memory_report(output, row) {
+                        log::error!("exact-memory report write failed after proof finish: {error}");
+                    }
+                }
+                Err(error) => log::error!("exact-memory report finalization failed: {error}"),
+            }
+        }
         let proof = proof
             .take()
             .expect("proof must be materialized before finish");

@@ -172,9 +172,9 @@ struct RequestState {
 }
 
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
-struct PhaseOne<'a> {
+struct PhaseOne<'a, 'context> {
     state: RequestState,
-    inputs: PhaseOneInputs<'a>,
+    inputs: PhaseOneInputs<'a, 'context>,
 }
 
 /// Per-phase-1 bundle, scheduled on h2d_stream against a single shared
@@ -184,19 +184,20 @@ struct PhaseOne<'a> {
 // long-lived collection; boxing `Proof` would add a heap alloc per request
 // for no steady-state benefit.
 #[allow(clippy::large_enum_variant)]
-enum PhaseOneInputs<'a> {
+enum PhaseOneInputs<'a, 'context> {
     Proof(
         gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>,
         Option<gpu_gkr::DrTailProofPlan>,
+        Option<gpu_circuit_prover::proof::ExactMemoryGateSink<'context>>,
     ),
     MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
     SetupInitialization,
 }
 
 /// Phase-2 state: GPU job enqueued, awaiting `finish()`.
-struct PhaseTwo<'a> {
+struct PhaseTwo<'a, 'context> {
     state: RequestState,
-    job: JobType<'a>,
+    job: JobType<'a, 'context>,
 }
 
 // Same rationale as `PhaseOneInputs` above: one instance per in-flight
@@ -204,9 +205,9 @@ struct PhaseTwo<'a> {
 // would add a per-request heap alloc rather than shrink a steady-state
 // collection.
 #[allow(clippy::large_enum_variant)]
-enum JobType<'a> {
+enum JobType<'a, 'context> {
     MemoryCommitment(MemoryCommitmentJob<'a, A>),
-    Proof(GpuGKRProofJob<'a, A>),
+    Proof(GpuGKRProofJob<'a, 'context, A>),
     SetupInitialization,
 }
 
@@ -311,12 +312,12 @@ fn gpu_worker(
     Ok(())
 }
 
-fn schedule_phase_one<'a>(
+fn schedule_phase_one<'a, 'context>(
     device_id: i32,
-    context: &ProverContext,
+    context: &'context ProverContext,
     backward_options: GkrBackwardOptions,
     request: GpuWorkRequest<A>,
-) -> Result<PhaseOne<'a>, GpuWorkerError> {
+) -> Result<PhaseOne<'a, 'context>, GpuWorkerError> {
     if let GpuWorkRequest::SetupInitialization(request) = request {
         let SetupInitializationRequest {
             batch_id,
@@ -413,6 +414,13 @@ fn schedule_phase_one<'a>(
     let sequence_id = state.sequence_id;
     let is_proof = matches!(state.kind, RequestKind::Proof);
 
+    let exact_memory = if is_proof {
+        gpu_circuit_prover::proof::ExactMemoryGateSink::config_from_environment(backward_options)?
+            .map(|config| gpu_circuit_prover::proof::ExactMemoryGateSink::begin(context, config))
+    } else {
+        None
+    };
+
     let proof_prover_config = is_proof.then(|| {
         gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
             .expect("ExecutionProverConfiguration validated GPU security level before GPU work")
@@ -437,7 +445,7 @@ fn schedule_phase_one<'a>(
 
     let inputs = admit_dr_tail_before_transfers(
         preflight_request,
-        |dr_tail_plan| -> CudaResult<PhaseOneInputs<'a>> {
+        |dr_tail_plan| -> CudaResult<PhaseOneInputs<'a, 'context>> {
             let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
                 Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
             } else {
@@ -463,7 +471,7 @@ fn schedule_phase_one<'a>(
                 None
             };
 
-            let inputs: PhaseOneInputs<'a> = if is_proof {
+            let inputs: PhaseOneInputs<'a, 'context> = if is_proof {
                 let setup_transfer =
                     if let Some(setup_host) = state.precomputations.setup_host.get_initialized() {
                         Some(GpuGKRSetupTransfer::new(setup_host, context)?)
@@ -522,7 +530,7 @@ fn schedule_phase_one<'a>(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
                 bundle.schedule(context)?;
-                PhaseOneInputs::Proof(bundle, dr_tail_plan)
+                PhaseOneInputs::Proof(bundle, dr_tail_plan, exact_memory)
             } else {
                 let mut bundle =
                     gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
@@ -544,12 +552,12 @@ fn schedule_phase_one<'a>(
     Ok(PhaseOne { state, inputs })
 }
 
-fn enqueue_phase_two<'a>(
+fn enqueue_phase_two<'a, 'context>(
     device_id: i32,
-    context: &ProverContext,
+    context: &'context ProverContext,
     backward_options: GkrBackwardOptions,
-    p1: PhaseOne<'a>,
-) -> GpuProveResult<PhaseTwo<'a>> {
+    p1: PhaseOne<'a, 'context>,
+) -> GpuProveResult<PhaseTwo<'a, 'context>> {
     let PhaseOne { state, inputs } = p1;
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
@@ -561,17 +569,18 @@ fn enqueue_phase_two<'a>(
     let compiled_circuit_arc = Arc::clone(state.precomputations.gkr_programs.compiled_circuit());
 
     let job = match inputs {
-        PhaseOneInputs::Proof(bundle, dr_tail_plan) => {
+        PhaseOneInputs::Proof(bundle, dr_tail_plan, exact_memory) => {
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
-            let job = prove::<A>(
+            let job = gpu_circuit_prover::proof::prove_with_measurement::<A>(
                 &state.precomputations.gkr_programs,
                 &prover_config,
                 final_trace_size_log_2,
                 bundle,
                 backward_options,
                 dr_tail_plan,
+                exact_memory,
                 context,
             )?;
             JobType::Proof(job)
@@ -595,7 +604,10 @@ fn enqueue_phase_two<'a>(
     Ok(PhaseTwo { state, job })
 }
 
-fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWorkResult<A>> {
+fn finish_phase_three<'a, 'context>(
+    device_id: i32,
+    p2: PhaseTwo<'a, 'context>,
+) -> CudaResult<GpuWorkResult<A>> {
     let PhaseTwo { state, job } = p2;
     let RequestState {
         batch_id,

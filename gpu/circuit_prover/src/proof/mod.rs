@@ -244,7 +244,7 @@ impl<'context> ProofMemoryHighWaterSink<'context> {
 /// Opt-in production measurement sink. It samples allocator bookkeeping only;
 /// it schedules no CUDA work, performs no synchronization, and creates no
 /// callback. The CLI enables it with `GKR_EXACT_MEMORY_OUT`.
-struct ExactMemoryGateSink<'context> {
+pub struct ExactMemoryGateSink<'context> {
     whole: DeviceMemoryHighWaterObserver<'context>,
     backward: Option<DeviceMemoryHighWaterObserver<'context>>,
     backward_sealed: Option<PoolMemoryHighWaterSnapshot>,
@@ -255,24 +255,64 @@ struct ExactMemoryGateSink<'context> {
     dr_bundle_final_log: Option<u32>,
 }
 
+#[derive(Clone, Debug)]
+pub struct ExactMemoryConfig {
+    output: PathBuf,
+    arm: &'static str,
+}
+
 impl<'context> ExactMemoryGateSink<'context> {
-    fn from_env(context: &'context ProverContext) -> Option<Self> {
-        let output = std::env::var_os("GKR_EXACT_MEMORY_OUT").map(PathBuf::from)?;
-        let arm = match std::env::var("AB_GKR_DR_TAIL").as_deref() {
-            Ok("1") => "on",
-            Ok("0") => "off",
-            _ => return None,
+    pub fn config_from_environment(
+        options: GkrBackwardOptions,
+    ) -> GpuProveResult<Option<ExactMemoryConfig>> {
+        let output = std::env::var_os("GKR_EXACT_MEMORY_OUT").map(PathBuf::from);
+        let arm_env = std::env::var_os("GKR_EXACT_MEMORY_ARM");
+        if output.is_none() && arm_env.is_none() {
+            return Ok(None);
+        }
+        let output = output.ok_or_else(|| GpuProveError::ExactMemoryMeasurement {
+            message: "GKR_EXACT_MEMORY_ARM is set without GKR_EXACT_MEMORY_OUT".to_owned(),
+        })?;
+        let arm = match arm_env.as_deref().and_then(|v| v.to_str()) {
+            Some("on")
+                if options.dr_tail_megakernel
+                    && options.windowed_dr
+                    && options.windowed_dr_continuations =>
+            {
+                "on"
+            }
+            Some("off")
+                if !options.dr_tail_megakernel
+                    && !options.windowed_dr
+                    && !options.windowed_dr_continuations =>
+            {
+                "off"
+            }
+            Some(value) => {
+                return Err(GpuProveError::ExactMemoryMeasurement {
+                    message: format!("measurement arm {value:?} disagrees with resolved options"),
+                })
+            }
+            None => {
+                return Err(GpuProveError::ExactMemoryMeasurement {
+                    message: "GKR_EXACT_MEMORY_ARM must be explicit UTF-8 on/off".to_owned(),
+                })
+            }
         };
-        Some(Self {
+        Ok(Some(ExactMemoryConfig { output, arm }))
+    }
+
+    pub fn begin(context: &'context ProverContext, config: ExactMemoryConfig) -> Self {
+        Self {
             whole: context.observe_device_memory_high_water(),
             backward: None,
             backward_sealed: None,
-            output,
-            arm,
+            output: config.output,
+            arm: config.arm,
             dr_layers: 0,
             dr_prepared_layers: 0,
             dr_bundle_final_log: None,
-        })
+        }
     }
 
     fn start_backward(&mut self, context: &'context ProverContext) {
@@ -291,7 +331,7 @@ impl<'context> ExactMemoryGateSink<'context> {
         self.dr_bundle_final_log = scheduled.dr_prepared_bundle_final_log();
     }
 
-    fn finish(mut self) -> Result<(), String> {
+    pub(crate) fn finish_report(mut self) -> Result<(PathBuf, serde_json::Value), String> {
         let whole_sealed = self.whole.seal();
         let whole = self.whole.finish();
         let backward = self
@@ -319,13 +359,20 @@ impl<'context> ExactMemoryGateSink<'context> {
             "backward": memory_report_json(&backward),
             "backward_sealed": memory_snapshot_json(&backward_sealed),
         });
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.output)
-            .map_err(|error| format!("{}: {error}", self.output.display()))?;
-        writeln!(file, "{row}").map_err(|error| format!("{}: {error}", self.output.display()))
+        Ok((self.output, row))
     }
+}
+
+pub(crate) fn write_exact_memory_report(
+    output: PathBuf,
+    row: serde_json::Value,
+) -> Result<(), String> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&output)
+        .map_err(|error| format!("{}: {error}", output.display()))?;
+    writeln!(file, "{row}").map_err(|error| format!("{}: {error}", output.display()))
 }
 
 fn memory_usage_json(usage: &gpu_prover_context::PoolMemoryUsage) -> serde_json::Value {
@@ -664,15 +711,37 @@ pub(crate) fn construct_after_dr_window_selection_preflight<T>(
     Ok(Some(construct_transfers()))
 }
 
-pub fn prove<'a, A: GoodAllocator + 'a>(
+pub fn prove<'a, 'context, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
     dr_tail_plan: Option<gpu_gkr::DrTailProofPlan>,
-    context: &ProverContext,
-) -> GpuProveResult<GpuGKRProofJob<'a, A>> {
+    context: &'context ProverContext,
+) -> GpuProveResult<GpuGKRProofJob<'a, 'context, A>> {
+    prove_with_measurement(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        backward_options,
+        dr_tail_plan,
+        None,
+        context,
+    )
+}
+
+pub fn prove_with_measurement<'a, 'context, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    backward_options: GkrBackwardOptions,
+    dr_tail_plan: Option<gpu_gkr::DrTailProofPlan>,
+    exact_memory: Option<ExactMemoryGateSink<'context>>,
+    context: &'context ProverContext,
+) -> GpuProveResult<GpuGKRProofJob<'a, 'context, A>> {
     prove_inner(
         gkr_programs,
         prover_config,
@@ -680,6 +749,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         inputs,
         backward_options,
         dr_tail_plan,
+        exact_memory,
         None,
         #[cfg(test)]
         None,
@@ -688,20 +758,21 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
 }
 
 #[cfg(test)]
-pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
+pub(crate) fn prove_stagewise<'a, 'context, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
-    context: &ProverContext,
-) -> GpuProveResult<GpuGKRProofJob<'a, A>> {
+    context: &'context ProverContext,
+) -> GpuProveResult<GpuGKRProofJob<'a, 'context, A>> {
     prove_inner(
         gkr_programs,
         prover_config,
         final_trace_size_log_2,
         inputs,
         backward_options,
+        None,
         None,
         Some(Box::default()),
         None,
@@ -718,13 +789,14 @@ pub(crate) fn prove_measured<'a, 'context, A: GoodAllocator + 'a>(
     backward_options: GkrBackwardOptions,
     sink: &mut ProofMemoryHighWaterSink<'context>,
     context: &'context ProverContext,
-) -> GpuProveResult<GpuGKRProofJob<'a, A>> {
+) -> GpuProveResult<GpuGKRProofJob<'a, 'context, A>> {
     prove_inner(
         gkr_programs,
         prover_config,
         final_trace_size_log_2,
         inputs,
         backward_options,
+        None,
         None,
         None,
         Some(sink),
@@ -739,10 +811,11 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
     dr_tail_plan: Option<gpu_gkr::DrTailProofPlan>,
+    mut exact_memory: Option<ExactMemoryGateSink<'context>>,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     #[cfg(test)] mut memory_high_water: Option<&mut ProofMemoryHighWaterSink<'context>>,
     context: &'context ProverContext,
-) -> GpuProveResult<GpuGKRProofJob<'a, A>> {
+) -> GpuProveResult<GpuGKRProofJob<'a, 'context, A>> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let backward_strategy =
         resolve_backward_execution_strategy(gkr_programs, prover_config, backward_options);
@@ -803,10 +876,6 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
         top_bits_host,
         external_challenges,
     } = inputs;
-    // Start before transfer construction so the whole-proof interval includes
-    // every proof-owned allocation and the existing initial-input H2D bundle.
-    let mut exact_memory = ExactMemoryGateSink::from_env(context);
-
     if let Some(setup_transfer) = setup.as_ref() {
         assert_eq!(
             setup_transfer.trace_holder.log_lde_factor,
@@ -1033,11 +1102,6 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     // Proof slab: last scheduled use is the terminal D2H on exec_stream.
     drop(proof_slab);
 
-    if let Some(sink) = exact_memory.take() {
-        sink.finish()
-            .map_err(|message| GpuProveError::ExactMemoryMeasurement { message })?;
-    }
-
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
 
@@ -1062,6 +1126,7 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
         proof,
         ranges,
         stage_snapshots,
+        exact_memory,
         keepalive: GpuGKRProofJobKeepalive {
             _stage1: stage1_output.into_keepalive(),
             _inputs: inputs_keepalive,

@@ -616,7 +616,7 @@ fn cpu_exact_memory_host_interval_starts_before_preflight_and_transfers() {
 }
 
 struct Task6MeasuredProofJob<'context> {
-    job: GpuGKRProofJob<'static, Global>,
+    job: GpuGKRProofJob<'static, 'context, Global>,
     backward: crate::proof::ProofMemoryHighWaterSink<'context>,
     whole: gpu_prover_context::DeviceMemoryHighWaterObserver<'context>,
     sequence: Arc<AtomicUsize>,
@@ -671,8 +671,8 @@ impl Task6MeasuredProofJob<'_> {
 }
 
 impl BasicUnrolledFixture {
-    fn schedule_task6_exact_memory_prove(
-        &self,
+    fn schedule_task6_exact_memory_prove<'context>(
+        &'context self,
         backward_options: GkrBackwardOptions,
     ) -> GpuProveResult<Task6MeasuredProofJob<'_>> {
         let sequence = Arc::new(AtomicUsize::new(0));
