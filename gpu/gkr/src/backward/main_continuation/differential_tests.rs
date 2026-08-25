@@ -6982,7 +6982,13 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                     assert!(
                         window_memory.logical_live_peak_bytes
                             <= legacy_memory.logical_live_peak_bytes,
-                        "Task 8 window arm increased corrected logical peak"
+                        "Task 8 window arm increased corrected logical peak: window_peak={} legacy_peak={} window_start={:?} legacy_start={:?} window_allocations={:?} legacy_allocations={:?}",
+                        window_memory.logical_live_peak_bytes,
+                        legacy_memory.logical_live_peak_bytes,
+                        window_memory.start,
+                        legacy_memory.start,
+                        window_allocations,
+                        legacy_allocations
                     );
                     let semantic_comparisons = compare_observations(&window, &legacy)
                         .unwrap_or_else(|error| {
