@@ -327,7 +327,7 @@ pub(super) struct Task7ProofJob<'context> {
 impl<'context> Task7ProofJob<'context> {
     pub(super) fn finish(
         mut self,
-    ) -> CudaResult<(
+    ) -> GpuProveResult<(
         GKRProof<BF, E4, DefaultTreeConstructor>,
         f32,
         Task7ExecutionEvidence,
@@ -579,6 +579,7 @@ impl BasicUnrolledFixture {
             options: backward_options,
             final_trace_size_log_2: self.final_trace_size_log_2,
             device_id: era_cudart::device::get_device()?,
+            entry: gpu_gkr::DrTailEntrySelection::Portable,
         };
         let mut operation_trace = Vec::with_capacity(TASK7_EXPECTED_OPERATION_TRACE.len());
         let admitted = admit_dr_tail_before_transfers(Some(request), |dr_tail_plan| {

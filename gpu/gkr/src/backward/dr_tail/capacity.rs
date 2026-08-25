@@ -75,6 +75,55 @@ impl core::fmt::Display for DrTailCapacityRejection {
 
 impl std::error::Error for DrTailCapacityRejection {}
 
+/// Which width-three entry boundary the DR tail enters at.
+///
+/// Production is always [`Self::Portable`]. The two adjacent variants exist
+/// only for the pre-registered diagnostic sweep: they shift the portable entry
+/// by exactly one legal width-three boundary and are then decided by the very
+/// same [`DrTailCapacityRequest::decide`], so an illegal or capacity-failing
+/// neighbour is rejected before anything is enqueued. They never change
+/// production selection, geometry, or fallback policy.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DrTailEntrySelection {
+    #[default]
+    Portable,
+    Minus3,
+    Plus3,
+}
+
+impl DrTailEntrySelection {
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "portable" => Some(Self::Portable),
+            "minus3" => Some(Self::Minus3),
+            "plus3" => Some(Self::Plus3),
+            _ => None,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Portable => "portable",
+            Self::Minus3 => "minus3",
+            Self::Plus3 => "plus3",
+        }
+    }
+
+    /// Shift the portable entry onto the requested adjacent boundary. Only the
+    /// arithmetic lives here; legality and capacity stay with `decide`.
+    pub(crate) fn apply(self, portable: usize) -> Result<usize, DrTailCapacityRejection> {
+        match self {
+            Self::Portable => Ok(portable),
+            Self::Minus3 => portable
+                .checked_sub(3)
+                .ok_or(DrTailCapacityRejection::EntryBeforeFirstWindow),
+            Self::Plus3 => portable
+                .checked_add(3)
+                .ok_or(DrTailCapacityRejection::ArithmeticOverflow),
+        }
+    }
+}
+
 pub(crate) fn portable_entry(folding_steps: usize) -> Result<usize, DrTailCapacityRejection> {
     let completed = folding_steps
         .checked_sub(1)

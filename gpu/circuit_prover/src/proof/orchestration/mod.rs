@@ -1,11 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use era_cudart::event::CudaEvent;
-use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransferKeepalive;
-use crate::proof::{write_exact_memory_report, ExactMemoryGateSink};
+use crate::proof::{write_exact_memory_report, ExactMemoryGateSink, GpuProveError, GpuProveResult};
 use crate::upstream::{
     DefaultTreeConstructor, DimensionReducingInputOutput, Field, GKRProof, OutputType,
 };
@@ -75,7 +74,15 @@ pub struct GpuGKRProofJob<'a, 'context, A: GoodAllocator> {
 }
 
 impl<'a, 'context, A: GoodAllocator> GpuGKRProofJob<'a, 'context, A> {
-    fn finish_inner(self) -> CudaResult<FinishedProofWithSnapshots> {
+    /// Complete the proof, then finalize measurement.
+    ///
+    /// Cleanup order is load-bearing: the completion event is synchronized,
+    /// callbacks and keepalives are dropped, and the proof and its elapsed time
+    /// are extracted **before** any report work runs. Measurement therefore
+    /// never runs in the enqueue path and never preempts release, and a
+    /// measurement failure is still returned as a typed error rather than a
+    /// log line — a missing or truncated row fails the invocation.
+    fn finish_inner(self) -> GpuProveResult<FinishedProofWithSnapshots> {
         let Self {
             is_finished_event,
             callbacks,
@@ -88,16 +95,6 @@ impl<'a, 'context, A: GoodAllocator> GpuGKRProofJob<'a, 'context, A> {
         is_finished_event.synchronize()?;
         drop(callbacks);
         drop(keepalive);
-        if let Some(sink) = exact_memory {
-            match sink.finish_report() {
-                Ok((output, row)) => {
-                    if let Err(error) = write_exact_memory_report(output, row) {
-                        log::error!("exact-memory report write failed after proof finish: {error}");
-                    }
-                }
-                Err(error) => log::error!("exact-memory report finalization failed: {error}"),
-            }
-        }
         let proof = proof
             .take()
             .expect("proof must be materialized before finish");
@@ -106,16 +103,30 @@ impl<'a, 'context, A: GoodAllocator> GpuGKRProofJob<'a, 'context, A> {
             .expect("proof job must keep the top-level range")
             .elapsed()?;
 
+        if let Some(sink) = exact_memory {
+            let job_finish_sequence = crate::proof::next_exact_memory_sequence();
+            let (output, row) = sink.finish_report(job_finish_sequence).map_err(|message| {
+                GpuProveError::ExactMemoryMeasurement {
+                    message: format!("report finalization failed after proof finish: {message}"),
+                }
+            })?;
+            write_exact_memory_report(output, row).map_err(|message| {
+                GpuProveError::ExactMemoryMeasurement {
+                    message: format!("report write failed after proof finish: {message}"),
+                }
+            })?;
+        }
+
         Ok((proof, stage_snapshots, proof_time_ms))
     }
 
-    pub fn finish(self) -> CudaResult<(GKRProof<BF, E4, DefaultTreeConstructor>, f32)> {
+    pub fn finish(self) -> GpuProveResult<(GKRProof<BF, E4, DefaultTreeConstructor>, f32)> {
         let (proof, _, proof_time_ms) = self.finish_inner()?;
         Ok((proof, proof_time_ms))
     }
 
     #[cfg(test)]
-    pub(crate) fn finish_stagewise(self) -> CudaResult<StagewiseFinishedProof> {
+    pub(crate) fn finish_stagewise(self) -> GpuProveResult<StagewiseFinishedProof> {
         let (proof, snapshots, proof_time_ms) = self.finish_inner()?;
         Ok((
             proof,

@@ -58,9 +58,21 @@ pub struct ProverContext {
     side_stream: CudaStream,
     h2d_stream: CudaStream,
     device_allocator_mem_size: usize,
+    device_allocator_geometry: DeviceAllocatorGeometry,
     device_id: i32,
     device_properties: DeviceProperties,
     reversed_allocation_placement: Cell<bool>,
+}
+
+/// The resolved device-pool shape. Exact-memory rows carry it so two samples
+/// can only be compared when they were produced by the same allocator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeviceAllocatorGeometry {
+    pub block_log_size: u32,
+    pub blocks_count: usize,
+    pub small_chunk_log_size: Option<u32>,
+    pub small_pool_bytes: usize,
+    pub mem_size_bytes: usize,
 }
 
 /// Scoped device-pool observer for exact physical and corrected-logical peaks.
@@ -161,6 +173,15 @@ impl ProverContext {
         let host_allocator =
             NonConcurrentStaticHostAllocator::new([host_allocation], host_block_log_size);
         let device_properties = DeviceProperties::new()?;
+        let device_allocator_geometry = DeviceAllocatorGeometry {
+            block_log_size: allocator_block_log_size,
+            blocks_count: device_blocks_count,
+            small_chunk_log_size: config.small_allocator_log_chunk_size,
+            small_pool_bytes: config.small_allocator_log_chunk_size.map_or(0, |_| {
+                config.small_allocator_pool_blocks << allocator_block_log_size
+            }),
+            mem_size_bytes: device_allocator_mem_size,
+        };
         let context = Self {
             _device_context: device_context,
             device_allocator,
@@ -169,6 +190,7 @@ impl ProverContext {
             side_stream,
             h2d_stream,
             device_allocator_mem_size,
+            device_allocator_geometry,
             device_id,
             device_properties,
             reversed_allocation_placement: Cell::new(false),
@@ -300,6 +322,10 @@ impl ProverContext {
 
     /// Starts an interval-local observer. At most two may be live at once,
     /// which supports overlapping whole-proof and backward windows.
+    pub const fn device_allocator_geometry(&self) -> DeviceAllocatorGeometry {
+        self.device_allocator_geometry
+    }
+
     pub fn observe_device_memory_high_water(&self) -> DeviceMemoryHighWaterObserver<'_> {
         DeviceMemoryHighWaterObserver {
             inner: self.device_allocator.observe_memory_high_water(),

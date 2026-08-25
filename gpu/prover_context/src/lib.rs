@@ -10,8 +10,8 @@ pub mod transfer;
 pub(crate) mod upstream;
 
 pub use context::{
-    DeviceMemoryHighWaterObserver, PoolMemoryHighWaterReport, PoolMemoryHighWaterSnapshot,
-    PoolMemoryUsage, ProverContext, ProverContextConfig,
+    DeviceAllocatorGeometry, DeviceMemoryHighWaterObserver, PoolMemoryHighWaterReport,
+    PoolMemoryHighWaterSnapshot, PoolMemoryUsage, ProverContext, ProverContextConfig,
 };
 
 #[cfg(test)]

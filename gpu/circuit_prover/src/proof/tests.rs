@@ -1017,6 +1017,7 @@ fn cpu_dr_tail_seam_preflight_precedes_every_transfer_construction() {
             options,
             final_trace_size_log_2: 4,
             device_id: 0,
+            entry: gpu_gkr::DrTailEntrySelection::Portable,
         }
     }
 
@@ -1157,6 +1158,7 @@ fn cpu_dr_tail_seam_forced_legacy_issues_zero_resource_queries() {
                 options,
                 final_trace_size_log_2: 4,
                 device_id: 0,
+                entry: gpu_gkr::DrTailEntrySelection::Portable,
             }),
             |_| {
                 admissions.set(admissions.get() + 1);
@@ -1197,4 +1199,466 @@ fn cpu_public_proof_result_preserves_typed_dr_tail_identity_error() {
             error: DrTailScheduleError::Identity(identity),
         })
     );
+}
+
+/// B1 production seam: the six recorded observation positions are the accepted
+/// boundary, and every single-step reordering is rejected.
+#[test]
+fn cpu_exact_memory_production_sequence_boundary_is_exact() {
+    use super::ExactMemorySequence;
+
+    let accepted = ExactMemorySequence {
+        whole_start: 0,
+        backward_start: 1,
+        backward_seal: 2,
+        job_finish: 3,
+        backward_finish: 4,
+        whole_finish: 5,
+    };
+    assert_eq!(accepted.validate(), Ok(()));
+
+    // Non-adjacent positions are fine as long as the order holds: a real run
+    // interleaves other allocator observations between boundaries.
+    let sparse = ExactMemorySequence {
+        whole_start: 10,
+        backward_start: 21,
+        backward_seal: 22,
+        job_finish: 40,
+        backward_finish: 41,
+        whole_finish: 99,
+    };
+    assert_eq!(sparse.validate(), Ok(()));
+
+    // Every red mutation: each field in turn is moved to tie or invert with its
+    // predecessor, and each must be refused by name.
+    let mutations: [(&str, ExactMemorySequence); 5] = [
+        (
+            "whole_start",
+            ExactMemorySequence {
+                backward_start: accepted.whole_start,
+                ..accepted
+            },
+        ),
+        (
+            "backward_start",
+            ExactMemorySequence {
+                backward_seal: accepted.backward_start,
+                ..accepted
+            },
+        ),
+        (
+            "backward_seal",
+            ExactMemorySequence {
+                job_finish: accepted.backward_seal,
+                ..accepted
+            },
+        ),
+        (
+            "job_finish",
+            ExactMemorySequence {
+                backward_finish: accepted.job_finish,
+                ..accepted
+            },
+        ),
+        (
+            "backward_finish",
+            ExactMemorySequence {
+                whole_finish: accepted.backward_finish,
+                ..accepted
+            },
+        ),
+    ];
+    for (earlier, mutated) in mutations {
+        let error = mutated
+            .validate()
+            .expect_err("a tied boundary must be rejected");
+        assert!(
+            error.contains(earlier),
+            "rejection must name the violated boundary {earlier}: {error}"
+        );
+    }
+
+    // The load-bearing case the audit named: observers finishing before the
+    // real job finish would measure neither proof assembly nor release.
+    let finished_early = ExactMemorySequence {
+        job_finish: 9,
+        backward_finish: 4,
+        whole_finish: 5,
+        ..accepted
+    };
+    assert!(finished_early
+        .validate()
+        .expect_err("closing before job finish must be rejected")
+        .contains("job_finish"));
+}
+
+/// B1 production topology: the measured worker loop must not overlap two
+/// proofs, and the unmeasured loop must keep the production pipeline. The
+/// source oracle pins both, plus the two-deep result cadence the GPU manager
+/// requires.
+#[test]
+fn cpu_exact_memory_measured_worker_topology_is_serialized() {
+    const WORKER: &str = include_str!("../../../execution_prover/src/workers/gpu.rs");
+
+    let measured = WORKER
+        .find("if let Some(measurement) = measurement.as_ref() {")
+        .expect("the measured topology branch must remain present");
+    let unmeasured = WORKER
+        .find("let mut current_phase_one: Option<PhaseOne> = None;")
+        .expect("the production pipelined topology must remain present");
+    assert!(
+        measured < unmeasured,
+        "the measured branch must short-circuit before the pipelined loop"
+    );
+    let measured_body = &WORKER[measured..unmeasured];
+
+    // Serialized: all three phases of one proof, in order, inside one branch.
+    let p1 = measured_body
+        .find("schedule_phase_one(")
+        .expect("measured topology must schedule phase one");
+    let p2 = measured_body
+        .find("enqueue_phase_two(")
+        .expect("measured topology must enqueue phase two");
+    let p3 = measured_body
+        .find("finish_phase_three(")
+        .expect("measured topology must finish phase three");
+    assert!(
+        p1 < p2 && p2 < p3,
+        "a measured proof must complete all three phases before the next request"
+    );
+    assert!(
+        !measured_body.contains("mem::swap"),
+        "the measured topology must not keep a second proof in flight"
+    );
+    // Cadence: the manager pre-seeds two queue slots, so the measured loop must
+    // reproduce exactly that skew or results land against the wrong batch.
+    assert!(
+        measured_body.contains("VecDeque::from([None, None])"),
+        "the measured topology must preserve the manager's two-deep result skew"
+    );
+
+    // The unmeasured loop keeps the pipelined swap topology unchanged.
+    let production_body = &WORKER[unmeasured..];
+    assert!(
+        production_body.contains("mem::swap(&mut current_phase_one, &mut phase_one);"),
+        "production must keep its pipelined phase-one swap"
+    );
+    assert!(
+        production_body.contains("mem::swap(&mut current_phase_two, &mut phase_two);"),
+        "production must keep its pipelined phase-two swap"
+    );
+}
+
+/// B3: the measurement configuration is resolved from the already-resolved
+/// options, is complete, and rejects every partial or inconsistent identity.
+/// The env is read once per worker, so this drives the parser directly.
+#[test]
+fn cpu_exact_memory_config_requires_complete_consistent_identity() {
+    use super::{ExactMemoryConfig, GpuProveError};
+    use gpu_gkr::{DrTailEntrySelection, GkrBackwardOptions, WindowTailArm};
+
+    const VARS: [&str; 6] = [
+        "GKR_EXACT_MEMORY_OUT",
+        "GKR_EXACT_MEMORY_ARM",
+        "GKR_EXACT_MEMORY_PHASE",
+        "GKR_EXACT_MEMORY_SAMPLE",
+        "GKR_EXACT_MEMORY_INVOCATION",
+        "GKR_DR_ENTRY",
+    ];
+    let complete_on: [(&str, &str); 6] = [
+        ("GKR_EXACT_MEMORY_OUT", "/dev/null"),
+        ("GKR_EXACT_MEMORY_ARM", "on"),
+        ("GKR_EXACT_MEMORY_PHASE", "retained"),
+        ("GKR_EXACT_MEMORY_SAMPLE", "3"),
+        ("GKR_EXACT_MEMORY_INVOCATION", "inv-1"),
+        ("GKR_DR_ENTRY", "portable"),
+    ];
+    let production = GkrBackwardOptions {
+        dr_tail_megakernel: true,
+        windowed_r0: true,
+        windowed_main_continuations: true,
+        windowed_dr: true,
+        windowed_dr_continuations: true,
+        window_tail: WindowTailArm::Split,
+    };
+    let legacy = GkrBackwardOptions {
+        dr_tail_megakernel: false,
+        windowed_dr: false,
+        windowed_dr_continuations: false,
+        ..production
+    };
+
+    // This test mutates process environment, so it must not run concurrently
+    // with another env-reading test. `cpu_` tests in this crate share one
+    // process; keep every mutation inside this function and restore after.
+    let apply = |pairs: &[(&str, &str)]| {
+        for name in VARS {
+            std::env::remove_var(name);
+        }
+        for (name, value) in pairs {
+            std::env::set_var(name, value);
+        }
+    };
+    let message = |error: GpuProveError| match error {
+        GpuProveError::ExactMemoryMeasurement { message } => message,
+        other => panic!("expected a measurement error, got {other:?}"),
+    };
+
+    // No variable at all is the production default: measurement off.
+    apply(&[]);
+    assert_eq!(ExactMemoryConfig::from_environment(production), Ok(None));
+
+    // Complete and consistent.
+    apply(&complete_on);
+    let config = ExactMemoryConfig::from_environment(production)
+        .expect("a complete consistent identity must resolve")
+        .expect("measurement must be enabled");
+    assert_eq!(config.entry(), DrTailEntrySelection::Portable);
+
+    // Every single missing variable is refused by name: no silently omitted row.
+    for skipped in VARS {
+        let partial: Vec<(&str, &str)> = complete_on
+            .iter()
+            .copied()
+            .filter(|(name, _)| *name != skipped)
+            .collect();
+        apply(&partial);
+        let error = message(
+            ExactMemoryConfig::from_environment(production)
+                .expect_err("a partial identity must be refused"),
+        );
+        assert!(
+            error.contains(skipped),
+            "refusal must name the missing variable {skipped}: {error}"
+        );
+    }
+
+    // The arm must agree with the options the proof actually consumes.
+    apply(&complete_on);
+    let error = message(
+        ExactMemoryConfig::from_environment(legacy)
+            .expect_err("arm on with legacy options must be refused"),
+    );
+    assert!(error.contains("disagrees with resolved options"), "{error}");
+
+    let mut off_arm = complete_on;
+    off_arm[1] = ("GKR_EXACT_MEMORY_ARM", "off");
+    apply(&off_arm);
+    assert_eq!(
+        ExactMemoryConfig::from_environment(legacy)
+            .expect("arm off with legacy options is consistent")
+            .map(|config| config.entry()),
+        Some(DrTailEntrySelection::Portable)
+    );
+    let error = message(
+        ExactMemoryConfig::from_environment(production)
+            .expect_err("arm off with production options must be refused"),
+    );
+    assert!(error.contains("disagrees with resolved options"), "{error}");
+
+    // Each field's own red mutation.
+    for (index, bad, needle) in [
+        (1usize, "unset", "must be on or off"),
+        (2, "steady", "must be warmup or retained"),
+        (3, "many", "must be an integer"),
+        (4, "", "must be non-empty"),
+        (5, "r-3", "must be portable, minus3, or plus3"),
+    ] {
+        let mut mutated = complete_on;
+        mutated[index] = (complete_on[index].0, bad);
+        apply(&mutated);
+        let error = message(
+            ExactMemoryConfig::from_environment(production)
+                .expect_err("an invalid identity field must be refused"),
+        );
+        assert!(error.contains(needle), "{error}");
+    }
+
+    // A diagnostic entry is only meaningful on the complete-chain arm.
+    let mut diagnostic_off = complete_on;
+    diagnostic_off[1] = ("GKR_EXACT_MEMORY_ARM", "off");
+    diagnostic_off[5] = ("GKR_DR_ENTRY", "plus3");
+    apply(&diagnostic_off);
+    let error = message(
+        ExactMemoryConfig::from_environment(legacy)
+            .expect_err("a diagnostic entry on the legacy arm must be refused"),
+    );
+    assert!(error.contains("requires the complete-chain arm"), "{error}");
+
+    // Both diagnostic neighbours resolve on the production arm.
+    for label in ["minus3", "plus3"] {
+        let mut diagnostic = complete_on;
+        diagnostic[5] = ("GKR_DR_ENTRY", label);
+        apply(&diagnostic);
+        assert_eq!(
+            ExactMemoryConfig::from_environment(production)
+                .expect("a diagnostic neighbour must resolve")
+                .map(|config| config.entry()),
+            Some(DrTailEntrySelection::from_label(label).unwrap())
+        );
+    }
+
+    apply(&[]);
+}
+
+/// B5 producer/consumer contract: the emitted row must carry exactly the keys
+/// the durable analyzer consumes. If either side drifts, this fails instead of
+/// the gate silently becoming unreachable.
+#[test]
+fn cpu_exact_memory_row_schema_matches_the_durable_analyzer() {
+    use super::{exact_memory_row_json, ExactMemoryLayerCounts, ExactMemorySequence};
+    use gpu_prover_context::{
+        PoolMemoryHighWaterReport, PoolMemoryHighWaterSnapshot, PoolMemoryUsage,
+    };
+
+    let usage = |physical, logical| PoolMemoryUsage {
+        physical_backing_bytes: physical,
+        logical_live_bytes: logical,
+    };
+    let report = PoolMemoryHighWaterReport {
+        start: usage(10, 8),
+        physical_backing_peak_bytes: 120,
+        logical_live_peak_bytes: 90,
+        summed_requested_bytes: 200,
+        peak_window_end: usage(10, 8),
+        return_to_entry: usage(10, 8),
+    };
+    let snapshot = PoolMemoryHighWaterSnapshot {
+        start: usage(10, 8),
+        physical_backing_peak_bytes: 120,
+        logical_live_peak_bytes: 90,
+        summed_requested_bytes: 200,
+        peak_window_end: usage(10, 8),
+    };
+    let identity = serde_json::json!({
+        "invocation": "inv",
+        "phase": "retained",
+        "sample": 1,
+        "arm": "on",
+        "entry": "portable",
+        "options": {
+            "dr_tail_megakernel": true,
+            "windowed_r0": true,
+            "windowed_main_continuations": true,
+            "windowed_dr": true,
+            "windowed_dr_continuations": true,
+            "window_tail": "Split",
+        },
+    });
+    let row = exact_memory_row_json(
+        identity,
+        serde_json::json!({"block_log_size": 20, "blocks_count": 4}),
+        ExactMemorySequence {
+            whole_start: 0,
+            backward_start: 1,
+            backward_seal: 2,
+            job_finish: 3,
+            backward_finish: 4,
+            whole_finish: 5,
+        },
+        ExactMemoryLayerCounts {
+            dr_layers: 7,
+            dr_prepared_layers: 7,
+            dr_bundle_final_log: Some(4),
+        },
+        &report,
+        &snapshot,
+        &report,
+        &snapshot,
+    );
+
+    // Exactly the analyzer's top-level keys, no more and no fewer.
+    let mut keys: Vec<&str> = row
+        .as_object()
+        .expect("a row is a JSON object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        [
+            "arm",
+            "backward",
+            "backward_sealed",
+            "dr_bundle_final_log",
+            "dr_layers",
+            "dr_prepared_layers",
+            "entry",
+            "geometry",
+            "invocation",
+            "options",
+            "phase",
+            "sample",
+            "sequence",
+            "whole",
+            "whole_sealed",
+        ]
+    );
+
+    // The analyzer reads these option fields by name.
+    let mut option_keys: Vec<&str> = row["options"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    option_keys.sort_unstable();
+    assert_eq!(
+        option_keys,
+        [
+            "dr_tail_megakernel",
+            "window_tail",
+            "windowed_dr",
+            "windowed_dr_continuations",
+            "windowed_main_continuations",
+            "windowed_r0",
+        ]
+    );
+
+    // The six sequence positions, by the analyzer's exact names and order.
+    let sequence = row["sequence"].as_object().unwrap();
+    for name in [
+        "whole_start",
+        "backward_start",
+        "backward_seal",
+        "job_finish",
+        "backward_finish",
+        "whole_finish",
+    ] {
+        assert!(
+            sequence.contains_key(name),
+            "missing sequence position {name}"
+        );
+    }
+    assert_eq!(sequence.len(), 6);
+
+    // Report and seal shapes: the seal carries no return-to-entry.
+    for scope in ["whole", "backward"] {
+        for metric in [
+            "physical_backing_peak_bytes",
+            "logical_live_peak_bytes",
+            "summed_requested_bytes",
+        ] {
+            assert!(
+                row[scope][metric].is_u64(),
+                "{scope}.{metric} must be integer bytes"
+            );
+            assert!(row[format!("{scope}_sealed")][metric].is_u64());
+        }
+        for boundary in ["start", "peak_window_end", "return_to_entry"] {
+            assert!(row[scope][boundary]["physical_backing_bytes"].is_u64());
+            assert!(row[scope][boundary]["logical_live_bytes"].is_u64());
+        }
+        assert!(row[format!("{scope}_sealed")]
+            .get("return_to_entry")
+            .is_none());
+        assert!(row[format!("{scope}_sealed")]["start"].is_object());
+    }
+
+    // The analyzer must be able to consume this row verbatim.
+    let line = serde_json::to_string(&row).unwrap();
+    assert!(serde_json::from_str::<serde_json::Value>(&line).is_ok());
+    // The DR layer count is this proof's, never the block's proof count.
+    assert_eq!(row["dr_layers"], 7);
 }

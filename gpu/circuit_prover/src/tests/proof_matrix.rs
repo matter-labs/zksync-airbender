@@ -562,8 +562,11 @@ fn cpu_exact_memory_fixture_trace_len_provenance_rejects_prepared_mismatch() {
 #[test]
 fn cpu_exact_memory_host_interval_starts_before_preflight_and_transfers() {
     const SOURCE: &str = include_str!("proof_matrix.rs");
+    // Anchor on the name only: the seam carries generic parameters, and the
+    // oracle must survive a signature change while still failing on a moved
+    // boundary.
     let schedule_start = SOURCE
-        .find("\n    fn schedule_task6_exact_memory_prove(")
+        .find("\n    fn schedule_task6_exact_memory_prove")
         .map(|offset| offset + 1)
         .expect("exact-memory scheduling seam must remain present");
     let schedule_end = SOURCE[schedule_start..]
@@ -639,7 +642,7 @@ struct Task6MeasuredProof {
 }
 
 impl Task6MeasuredProofJob<'_> {
-    fn finish(self) -> CudaResult<Task6MeasuredProof> {
+    fn finish(self) -> GpuProveResult<Task6MeasuredProof> {
         let (proof, cuda_proof_time_ms) = self.job.finish()?;
         let job_finish_sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
         let backward = self.backward.finish();

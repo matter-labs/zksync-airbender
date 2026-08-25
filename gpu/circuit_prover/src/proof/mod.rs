@@ -241,83 +241,230 @@ impl<'context> ProofMemoryHighWaterSink<'context> {
     }
 }
 
-/// Opt-in production measurement sink. It samples allocator bookkeeping only;
-/// it schedules no CUDA work, performs no synchronization, and creates no
-/// callback. The CLI enables it with `GKR_EXACT_MEMORY_OUT`.
-pub struct ExactMemoryGateSink<'context> {
-    whole: DeviceMemoryHighWaterObserver<'context>,
-    backward: Option<DeviceMemoryHighWaterObserver<'context>>,
-    backward_sealed: Option<PoolMemoryHighWaterSnapshot>,
-    output: PathBuf,
-    arm: &'static str,
-    dr_layers: usize,
-    dr_prepared_layers: usize,
-    dr_bundle_final_log: Option<u32>,
-}
+/// The DR entry the diagnostic sweep selects. Production always uses
+/// [`DrTailEntrySelection::Portable`]; the adjacent legal entries exist only so
+/// the measurement gate can compare capacity-passing neighbours. Every variant
+/// flows through the same `DrTailCapacityRequest::decide` and is rejected
+/// before enqueue if it is illegal or exceeds capacity.
+pub use gpu_gkr::DrTailEntrySelection;
 
-#[derive(Clone, Debug)]
+/// Immutable measurement identity, resolved exactly once per worker process
+/// from the already-resolved backward options. No proof rereads the process
+/// environment: `prove()` and the worker phases consume this value only.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExactMemoryConfig {
     output: PathBuf,
     arm: &'static str,
+    entry: DrTailEntrySelection,
+    invocation: String,
+    phase: &'static str,
+    sample: u32,
+    options: GkrBackwardOptions,
 }
 
-impl<'context> ExactMemoryGateSink<'context> {
-    pub fn config_from_environment(
-        options: GkrBackwardOptions,
-    ) -> GpuProveResult<Option<ExactMemoryConfig>> {
-        let output = std::env::var_os("GKR_EXACT_MEMORY_OUT").map(PathBuf::from);
-        let arm_env = std::env::var_os("GKR_EXACT_MEMORY_ARM");
-        if output.is_none() && arm_env.is_none() {
+impl ExactMemoryConfig {
+    /// Read every measurement variable once. Returns `Ok(None)` when no
+    /// measurement variable is present at all, which is the production default.
+    pub fn from_environment(options: GkrBackwardOptions) -> GpuProveResult<Option<Self>> {
+        const VARS: [&str; 6] = [
+            "GKR_EXACT_MEMORY_OUT",
+            "GKR_EXACT_MEMORY_ARM",
+            "GKR_EXACT_MEMORY_PHASE",
+            "GKR_EXACT_MEMORY_SAMPLE",
+            "GKR_EXACT_MEMORY_INVOCATION",
+            "GKR_DR_ENTRY",
+        ];
+        let present: Vec<&str> = VARS
+            .into_iter()
+            .filter(|name| std::env::var_os(name).is_some())
+            .collect();
+        if present.is_empty() {
             return Ok(None);
         }
-        let output = output.ok_or_else(|| GpuProveError::ExactMemoryMeasurement {
-            message: "GKR_EXACT_MEMORY_ARM is set without GKR_EXACT_MEMORY_OUT".to_owned(),
-        })?;
-        let arm = match arm_env.as_deref().and_then(|v| v.to_str()) {
-            Some("on")
-                if options.dr_tail_megakernel
-                    && options.windowed_dr
-                    && options.windowed_dr_continuations =>
+        if present.len() != VARS.len() {
+            let missing: Vec<&str> = VARS
+                .into_iter()
+                .filter(|name| !present.contains(name))
+                .collect();
+            return Err(GpuProveError::ExactMemoryMeasurement {
+                message: format!("measurement requires every variable; missing {missing:?}"),
+            });
+        }
+        let text = |name: &str| -> GpuProveResult<String> {
+            std::env::var(name).map_err(|_| GpuProveError::ExactMemoryMeasurement {
+                message: format!("{name} must be valid UTF-8"),
+            })
+        };
+
+        let output = PathBuf::from(text("GKR_EXACT_MEMORY_OUT")?);
+        if output.as_os_str().is_empty() {
+            return Err(GpuProveError::ExactMemoryMeasurement {
+                message: "GKR_EXACT_MEMORY_OUT must be a non-empty path".to_owned(),
+            });
+        }
+        let arm = match text("GKR_EXACT_MEMORY_ARM")?.as_str() {
+            "on" if options.dr_tail_megakernel
+                && options.windowed_dr
+                && options.windowed_dr_continuations =>
             {
                 "on"
             }
-            Some("off")
+            "off"
                 if !options.dr_tail_megakernel
                     && !options.windowed_dr
                     && !options.windowed_dr_continuations =>
             {
                 "off"
             }
-            Some(value) => {
+            value @ ("on" | "off") => {
                 return Err(GpuProveError::ExactMemoryMeasurement {
-                    message: format!("measurement arm {value:?} disagrees with resolved options"),
+                    message: format!(
+                        "measurement arm {value:?} disagrees with resolved options {options:?}"
+                    ),
                 })
             }
-            None => {
+            value => {
                 return Err(GpuProveError::ExactMemoryMeasurement {
-                    message: "GKR_EXACT_MEMORY_ARM must be explicit UTF-8 on/off".to_owned(),
+                    message: format!("GKR_EXACT_MEMORY_ARM must be on or off, got {value:?}"),
                 })
             }
         };
-        Ok(Some(ExactMemoryConfig { output, arm }))
+        let phase = match text("GKR_EXACT_MEMORY_PHASE")?.as_str() {
+            "warmup" => "warmup",
+            "retained" => "retained",
+            value => {
+                return Err(GpuProveError::ExactMemoryMeasurement {
+                    message: format!(
+                        "GKR_EXACT_MEMORY_PHASE must be warmup or retained, got {value:?}"
+                    ),
+                })
+            }
+        };
+        let sample_text = text("GKR_EXACT_MEMORY_SAMPLE")?;
+        let sample: u32 =
+            sample_text
+                .parse()
+                .map_err(|_| GpuProveError::ExactMemoryMeasurement {
+                    message: format!(
+                        "GKR_EXACT_MEMORY_SAMPLE must be an integer, got {sample_text:?}"
+                    ),
+                })?;
+        let invocation = text("GKR_EXACT_MEMORY_INVOCATION")?;
+        if invocation.is_empty() {
+            return Err(GpuProveError::ExactMemoryMeasurement {
+                message: "GKR_EXACT_MEMORY_INVOCATION must be non-empty".to_owned(),
+            });
+        }
+        let entry_text = text("GKR_DR_ENTRY")?;
+        let entry = DrTailEntrySelection::from_label(&entry_text).ok_or_else(|| {
+            GpuProveError::ExactMemoryMeasurement {
+                message: format!(
+                    "GKR_DR_ENTRY must be portable, minus3, or plus3, got {entry_text:?}"
+                ),
+            }
+        })?;
+        if entry != DrTailEntrySelection::Portable && arm != "on" {
+            return Err(GpuProveError::ExactMemoryMeasurement {
+                message: format!(
+                    "diagnostic entry {entry:?} requires the complete-chain arm, got {arm:?}"
+                ),
+            });
+        }
+        Ok(Some(Self {
+            output,
+            arm,
+            entry,
+            invocation,
+            phase,
+            sample,
+            options,
+        }))
     }
 
+    pub const fn entry(&self) -> DrTailEntrySelection {
+        self.entry
+    }
+
+    fn identity_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "invocation": self.invocation,
+            "phase": self.phase,
+            "sample": self.sample,
+            "arm": self.arm,
+            "entry": self.entry.label(),
+            "options": {
+                "dr_tail_megakernel": self.options.dr_tail_megakernel,
+                "windowed_r0": self.options.windowed_r0,
+                "windowed_main_continuations": self.options.windowed_main_continuations,
+                "windowed_dr": self.options.windowed_dr,
+                "windowed_dr_continuations": self.options.windowed_dr_continuations,
+                "window_tail": format!("{:?}", self.options.window_tail),
+            },
+        })
+    }
+}
+
+/// Monotonic per-process observation clock. Every sink boundary records its
+/// position from this counter, so a row proves the real order of whole start,
+/// backward start/seal, job finish, backward finish, and whole finish.
+static EXACT_MEMORY_SEQUENCE: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+fn next_exact_memory_sequence() -> usize {
+    EXACT_MEMORY_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Opt-in production measurement sink. It samples allocator bookkeeping only;
+/// it schedules no CUDA work, performs no synchronization, and creates no
+/// callback.
+///
+/// It holds at most two live allocator observations (whole and backward). The
+/// worker therefore runs a serialized measurement topology so no second proof
+/// can open a third observation or contribute allocations to this proof's
+/// whole interval — see `gpu_execution_prover`'s worker loop.
+pub struct ExactMemoryGateSink<'context> {
+    whole: DeviceMemoryHighWaterObserver<'context>,
+    backward: Option<DeviceMemoryHighWaterObserver<'context>>,
+    backward_sealed: Option<PoolMemoryHighWaterSnapshot>,
+    config: ExactMemoryConfig,
+    geometry: serde_json::Value,
+    whole_start_sequence: usize,
+    backward_start_sequence: Option<usize>,
+    backward_seal_sequence: Option<usize>,
+    dr_layers: usize,
+    dr_prepared_layers: usize,
+    dr_bundle_final_log: Option<u32>,
+}
+
+impl<'context> ExactMemoryGateSink<'context> {
+    /// Open the whole-proof observation. The caller must invoke this before any
+    /// proof-owned allocation, preflight, or transfer construction.
     pub fn begin(context: &'context ProverContext, config: ExactMemoryConfig) -> Self {
+        let whole = context.observe_device_memory_high_water();
+        let whole_start_sequence = next_exact_memory_sequence();
         Self {
-            whole: context.observe_device_memory_high_water(),
+            whole,
             backward: None,
             backward_sealed: None,
-            output: config.output,
-            arm: config.arm,
+            config,
+            geometry: allocator_geometry_json(context),
+            whole_start_sequence,
+            backward_start_sequence: None,
+            backward_seal_sequence: None,
             dr_layers: 0,
             dr_prepared_layers: 0,
             dr_bundle_final_log: None,
         }
     }
 
+    pub const fn entry(&self) -> DrTailEntrySelection {
+        self.config.entry
+    }
+
     fn start_backward(&mut self, context: &'context ProverContext) {
         assert!(self.backward.is_none(), "backward observer must start once");
         self.backward = Some(context.observe_device_memory_high_water());
+        self.backward_start_sequence = Some(next_exact_memory_sequence());
     }
 
     fn seal_backward(&mut self, scheduled: &gpu_gkr::backward::GpuGKRBackwardScheduledExecution) {
@@ -326,18 +473,30 @@ impl<'context> ExactMemoryGateSink<'context> {
             .as_mut()
             .expect("backward observer must start before sealing");
         self.backward_sealed = Some(observer.seal());
+        self.backward_seal_sequence = Some(next_exact_memory_sequence());
         self.dr_layers = scheduled.dimension_reducing_layer_count();
         self.dr_prepared_layers = scheduled.dr_prepared_layer_count();
         self.dr_bundle_final_log = scheduled.dr_prepared_bundle_final_log();
     }
 
-    pub(crate) fn finish_report(mut self) -> Result<(PathBuf, serde_json::Value), String> {
-        let whole_sealed = self.whole.seal();
-        let whole = self.whole.finish();
+    /// Finalize both observations. `job_finish_sequence` is taken by the caller
+    /// immediately after the real completion-event synchronization and
+    /// callback/keepalive release, so the row proves the observers outlived
+    /// proof assembly and release.
+    pub(crate) fn finish_report(
+        mut self,
+        job_finish_sequence: usize,
+    ) -> Result<(PathBuf, serde_json::Value), String> {
         let backward = self
             .backward
+            .take()
             .ok_or_else(|| "backward observer was never started".to_owned())?
             .finish();
+        let backward_finish_sequence = next_exact_memory_sequence();
+        let whole_sealed = self.whole.seal();
+        let whole = self.whole.finish();
+        let whole_finish_sequence = next_exact_memory_sequence();
+
         let backward_sealed = self
             .backward_sealed
             .ok_or_else(|| "backward observer was never sealed".to_owned())?;
@@ -349,18 +508,150 @@ impl<'context> ExactMemoryGateSink<'context> {
         {
             return Err("backward sealed and final reports differ".to_owned());
         }
-        let row = serde_json::json!({
-            "arm": self.arm,
-            "dr_layers": self.dr_layers,
-            "dr_prepared_layers": self.dr_prepared_layers,
-            "dr_bundle_final_log": self.dr_bundle_final_log,
-            "whole": memory_report_json(&whole),
-            "whole_sealed": memory_snapshot_json(&whole_sealed),
-            "backward": memory_report_json(&backward),
-            "backward_sealed": memory_snapshot_json(&backward_sealed),
-        });
-        Ok((self.output, row))
+        let backward_start_sequence = self
+            .backward_start_sequence
+            .ok_or_else(|| "backward observer recorded no start position".to_owned())?;
+        let backward_seal_sequence = self
+            .backward_seal_sequence
+            .ok_or_else(|| "backward observer recorded no seal position".to_owned())?;
+        let sequence = ExactMemorySequence {
+            whole_start: self.whole_start_sequence,
+            backward_start: backward_start_sequence,
+            backward_seal: backward_seal_sequence,
+            job_finish: job_finish_sequence,
+            backward_finish: backward_finish_sequence,
+            whole_finish: whole_finish_sequence,
+        };
+        sequence.validate()?;
+
+        let row = exact_memory_row_json(
+            self.config.identity_json(),
+            self.geometry,
+            sequence,
+            ExactMemoryLayerCounts {
+                dr_layers: self.dr_layers,
+                dr_prepared_layers: self.dr_prepared_layers,
+                dr_bundle_final_log: self.dr_bundle_final_log,
+            },
+            &whole,
+            &whole_sealed,
+            &backward,
+            &backward_sealed,
+        );
+        Ok((self.config.output, row))
     }
+}
+
+/// This proof's DR layer census. `dr_layers` is the DR layer count of one GKR
+/// proof; it is never the block's proof count, which is the number of emitted
+/// rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ExactMemoryLayerCounts {
+    pub(crate) dr_layers: usize,
+    pub(crate) dr_prepared_layers: usize,
+    pub(crate) dr_bundle_final_log: Option<u32>,
+}
+
+/// Assemble one measurement row. This is the exact schema the durable analyzer
+/// consumes, so it is pure and directly testable.
+pub(crate) fn exact_memory_row_json(
+    identity: serde_json::Value,
+    geometry: serde_json::Value,
+    sequence: ExactMemorySequence,
+    counts: ExactMemoryLayerCounts,
+    whole: &PoolMemoryHighWaterReport,
+    whole_sealed: &PoolMemoryHighWaterSnapshot,
+    backward: &PoolMemoryHighWaterReport,
+    backward_sealed: &PoolMemoryHighWaterSnapshot,
+) -> serde_json::Value {
+    let mut row = identity;
+    let object = row
+        .as_object_mut()
+        .expect("the measurement identity is a JSON object");
+    object.insert("geometry".to_owned(), geometry);
+    object.insert("sequence".to_owned(), sequence.to_json());
+    object.insert("dr_layers".to_owned(), counts.dr_layers.into());
+    object.insert(
+        "dr_prepared_layers".to_owned(),
+        counts.dr_prepared_layers.into(),
+    );
+    object.insert(
+        "dr_bundle_final_log".to_owned(),
+        match counts.dr_bundle_final_log {
+            Some(value) => value.into(),
+            None => serde_json::Value::Null,
+        },
+    );
+    object.insert("whole".to_owned(), memory_report_json(whole));
+    object.insert(
+        "whole_sealed".to_owned(),
+        memory_snapshot_json(whole_sealed),
+    );
+    object.insert("backward".to_owned(), memory_report_json(backward));
+    object.insert(
+        "backward_sealed".to_owned(),
+        memory_snapshot_json(backward_sealed),
+    );
+    row
+}
+
+/// The six recorded observation positions of one measured proof.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ExactMemorySequence {
+    pub(crate) whole_start: usize,
+    pub(crate) backward_start: usize,
+    pub(crate) backward_seal: usize,
+    pub(crate) job_finish: usize,
+    pub(crate) backward_finish: usize,
+    pub(crate) whole_finish: usize,
+}
+
+impl ExactMemorySequence {
+    /// The accepted boundary: whole opens first, backward opens and seals
+    /// inside it, the real job finishes next, and both observations close after
+    /// proof assembly and release.
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let ordered = [
+            ("whole_start", self.whole_start),
+            ("backward_start", self.backward_start),
+            ("backward_seal", self.backward_seal),
+            ("job_finish", self.job_finish),
+            ("backward_finish", self.backward_finish),
+            ("whole_finish", self.whole_finish),
+        ];
+        for window in ordered.windows(2) {
+            let (earlier_name, earlier) = window[0];
+            let (later_name, later) = window[1];
+            if earlier >= later {
+                return Err(format!(
+                    "measurement boundary out of order: {earlier_name}={earlier} must precede {later_name}={later}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn to_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "whole_start": self.whole_start,
+            "backward_start": self.backward_start,
+            "backward_seal": self.backward_seal,
+            "job_finish": self.job_finish,
+            "backward_finish": self.backward_finish,
+            "whole_finish": self.whole_finish,
+        })
+    }
+}
+
+fn allocator_geometry_json(context: &ProverContext) -> serde_json::Value {
+    let geometry = context.device_allocator_geometry();
+    serde_json::json!({
+        "block_log_size": geometry.block_log_size,
+        "blocks_count": geometry.blocks_count,
+        "small_chunk_log_size": geometry.small_chunk_log_size,
+        "small_pool_bytes": geometry.small_pool_bytes,
+        "mem_size_bytes": geometry.mem_size_bytes,
+    })
 }
 
 pub(crate) fn write_exact_memory_report(
@@ -577,6 +868,9 @@ pub struct DrTailPreflightRequest<'a> {
     pub options: GkrBackwardOptions,
     pub final_trace_size_log_2: u32,
     pub device_id: i32,
+    /// Always `Portable` in production; the measurement config is the only
+    /// source of a diagnostic neighbour.
+    pub entry: DrTailEntrySelection,
 }
 
 /// Preflight and admit before anything is constructed.
@@ -599,6 +893,7 @@ pub fn admit_dr_tail_before_transfers<T>(
                 request.gkr_programs,
                 request.final_trace_size_log_2,
                 request.device_id,
+                request.entry,
             )
             .map_err(GpuProveError::from)
         },

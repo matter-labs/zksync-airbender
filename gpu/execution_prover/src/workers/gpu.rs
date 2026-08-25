@@ -8,12 +8,12 @@ use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::{
-    admit_dr_tail_before_transfers, prove, resolve_backward_execution_strategy,
-    DrTailPreflightRequest, GpuGKRProofJob, GpuProveError, GpuProveResult,
+    admit_dr_tail_before_transfers, resolve_backward_execution_strategy, DrTailPreflightRequest,
+    ExactMemoryConfig, GpuGKRProofJob, GpuProveError, GpuProveResult,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
-use gpu_gkr::{GkrBackwardOptions, WindowTailArm};
+use gpu_gkr::{DrTailEntrySelection, GkrBackwardOptions, WindowTailArm};
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
@@ -24,6 +24,7 @@ use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
 
 use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
+use std::collections::VecDeque;
 use std::ffi::CStr;
 use std::mem;
 use std::process::exit;
@@ -250,6 +251,16 @@ fn gpu_worker(
     trace!("GPU_WORKER[{device_id}] started");
     let backward_options = backward_options_from_environment()
         .unwrap_or_else(|error| panic!("GPU_WORKER[{device_id}] {error}"));
+    // The complete measurement identity is resolved exactly once here, beside
+    // the single arm read, and is then immutable for the worker's lifetime. No
+    // proof rereads the process environment.
+    let measurement = ExactMemoryConfig::from_environment(backward_options)
+        .unwrap_or_else(|error| panic!("GPU_WORKER[{device_id}] {error}"));
+    if measurement.is_some() {
+        info!(
+            "GPU_WORKER[{device_id}] exact-memory measurement enabled; using the serialized measurement topology"
+        );
+    }
     set_device(device_id)?;
     let props = get_device_properties(device_id)?;
     let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
@@ -269,6 +280,54 @@ fn gpu_worker(
         .expect("GPU worker initialization channel closed before readiness signal");
     drop(is_initialized);
     let mut even_odd_index = 0;
+    if let Some(measurement) = measurement.as_ref() {
+        // Measurement-only topology.
+        //
+        // The production loop below keeps two proofs in flight, so in steady
+        // state proof A holds its whole observation while proof B schedules
+        // phase one. That is two problems at once: the allocator admits only
+        // two live observations (whole + backward already uses both), and A's
+        // whole interval would absorb B's phase-one allocations, destroying
+        // per-proof attribution.
+        //
+        // While measuring, each proof therefore runs phase one, phase two, and
+        // phase three back to back, so exactly one proof ever holds
+        // observations. The request/result cadence is deliberately unchanged:
+        // `pending_results` reproduces the same two-deep skew the GPU manager's
+        // pre-seeded queue expects, so no manager bookkeeping changes and every
+        // result still lands against its own batch id.
+        let mut pending_results: VecDeque<Option<GpuWorkResult<A>>> = VecDeque::from([None, None]);
+        for request in requests {
+            context.set_reversed_allocation_placement(even_odd_index == 1);
+            let completed = if let Some(request) = request {
+                let p1 = schedule_phase_one(
+                    device_id,
+                    &context,
+                    backward_options,
+                    Some(measurement),
+                    request,
+                )?;
+                let p2 = enqueue_phase_two(device_id, &context, backward_options, p1)?;
+                Some(finish_phase_three(device_id, p2)?)
+            } else {
+                None
+            };
+            even_odd_index = 1 - even_odd_index;
+            pending_results.push_back(completed);
+            let result = pending_results
+                .pop_front()
+                .expect("the measured result queue keeps one entry per iteration");
+            results
+                .send(result)
+                .expect("GPU worker results channel closed before queued work completed")
+        }
+        assert!(
+            pending_results.iter().all(Option::is_none),
+            "every measured proof result must reach the GPU manager"
+        );
+        trace!("GPU_WORKER[{device_id}] finished");
+        return Ok(());
+    }
     let mut current_phase_one: Option<PhaseOne> = None;
     let mut current_phase_two: Option<PhaseTwo> = None;
     for request in requests {
@@ -278,6 +337,7 @@ fn gpu_worker(
                 device_id,
                 &context,
                 backward_options,
+                None,
                 request,
             )?)
         } else {
@@ -316,6 +376,7 @@ fn schedule_phase_one<'a, 'context>(
     device_id: i32,
     context: &'context ProverContext,
     backward_options: GkrBackwardOptions,
+    measurement: Option<&ExactMemoryConfig>,
     request: GpuWorkRequest<A>,
 ) -> Result<PhaseOne<'a, 'context>, GpuWorkerError> {
     if let GpuWorkRequest::SetupInitialization(request) = request {
@@ -414,12 +475,20 @@ fn schedule_phase_one<'a, 'context>(
     let sequence_id = state.sequence_id;
     let is_proof = matches!(state.kind, RequestKind::Proof);
 
+    // The whole-proof observation opens here: before the prover config, before
+    // every preflight, and before the first transfer is constructed. The
+    // measured worker topology (see `gpu_worker`) guarantees no other proof
+    // holds an observation or allocates while this one is live.
     let exact_memory = if is_proof {
-        gpu_circuit_prover::proof::ExactMemoryGateSink::config_from_environment(backward_options)?
+        measurement
+            .cloned()
             .map(|config| gpu_circuit_prover::proof::ExactMemoryGateSink::begin(context, config))
     } else {
         None
     };
+    let entry = exact_memory
+        .as_ref()
+        .map_or(DrTailEntrySelection::Portable, |sink| sink.entry());
 
     let proof_prover_config = is_proof.then(|| {
         gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
@@ -441,6 +510,7 @@ fn schedule_phase_one<'a, 'context>(
                 options: backward_options,
                 final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
                 device_id,
+                entry,
             });
 
     let inputs = admit_dr_tail_before_transfers(
@@ -604,10 +674,13 @@ fn enqueue_phase_two<'a, 'context>(
     Ok(PhaseTwo { state, job })
 }
 
+/// Phase 3 completes the enqueued job. It returns the worker error type
+/// because a measurement failure surfaced by `GpuGKRProofJob::finish` is a
+/// typed failed invocation, not a log line.
 fn finish_phase_three<'a, 'context>(
     device_id: i32,
     p2: PhaseTwo<'a, 'context>,
-) -> CudaResult<GpuWorkResult<A>> {
+) -> Result<GpuWorkResult<A>, GpuWorkerError> {
     let PhaseTwo { state, job } = p2;
     let RequestState {
         batch_id,

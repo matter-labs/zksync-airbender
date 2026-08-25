@@ -10,6 +10,7 @@ use super::super::{
 };
 use super::capacity::{
     portable_entry, DrTailCapacityDecision, DrTailCapacityRejection, DrTailCapacityRequest,
+    DrTailEntrySelection,
 };
 
 const FINAL_TRACE_LOG: usize = 4;
@@ -67,9 +68,14 @@ pub(super) struct DrTailLayerInput {
 }
 
 /// Resolve every production DR layer of `artifact` down to `final_trace_log_2`.
+///
+/// `entry` is [`DrTailEntrySelection::Portable`] for every production caller;
+/// the diagnostic sweep shifts it onto an adjacent width-three boundary, which
+/// the caller's capacity pass then accepts or rejects.
 pub(super) fn dr_tail_layer_inputs<F: crate::upstream::PrimeField>(
     artifact: &crate::upstream::GKRCircuitArtifact<F>,
     final_trace_log_2: usize,
+    entry: DrTailEntrySelection,
 ) -> Result<Vec<DrTailLayerInput>, DrTailCapacityRejection> {
     let trace_log = artifact.trace_len.trailing_zeros() as usize;
     let layout = GpuGKRStorageLayout::from_artifact_with_tower(artifact, final_trace_log_2);
@@ -88,7 +94,7 @@ pub(super) fn dr_tail_layer_inputs<F: crate::upstream::PrimeField>(
             .ok_or(DrTailCapacityRejection::ArithmeticOverflow)?;
         let slots = build_dimension_reducing_slots_static(&layer);
         let order = address_order(slots.input_addresses(), &layout.aliases);
-        let entry_round = portable_entry(folding_steps)?;
+        let entry_round = entry.apply(portable_entry(folding_steps)?)?;
         inputs.push(DrTailLayerInput {
             layer_idx,
             folding_steps,
@@ -153,8 +159,12 @@ fn build_census() -> DrTailCorpusCensus {
     for (layout_name, _) in CONTINUATION_GOLDEN_CORPUS {
         let (programs, _) = compile_corpus_layout(layout_name);
         let artifact = programs.runtime_circuit();
-        let inputs = dr_tail_layer_inputs(artifact.as_ref(), FINAL_TRACE_LOG)
-            .unwrap_or_else(|error| panic!("{layout_name}: {error}"));
+        let inputs = dr_tail_layer_inputs(
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
+        )
+        .unwrap_or_else(|error| panic!("{layout_name}: {error}"));
         for input in inputs {
             let DrTailLayerInput {
                 layer_idx,

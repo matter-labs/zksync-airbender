@@ -13,7 +13,9 @@
 
 use std::collections::BTreeSet;
 
-use super::capacity::{DrTailCapacityDecision, DrTailCapacityRejection, DrTailCapacityRequest};
+use super::capacity::{
+    DrTailCapacityDecision, DrTailCapacityRejection, DrTailCapacityRequest, DrTailEntrySelection,
+};
 use super::census::dr_tail_layer_inputs;
 use crate::upstream::{GKRAddress, GKRCircuitArtifact, PrimeField};
 use era_cudart_sys::CudaError;
@@ -84,6 +86,10 @@ impl DrTailKernelResources {
 pub struct DrTailProofPlan {
     resources: DrTailKernelResources,
     layers: Vec<DrTailLayerPlan>,
+    /// The entry selection this plan was admitted under. Pre-enqueue
+    /// validation recomputes the census with exactly this value, so a plan
+    /// admitted for a diagnostic entry can never be re-validated as portable.
+    entry: DrTailEntrySelection,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -134,6 +140,10 @@ impl DrTailProofPlan {
         &self.layers
     }
 
+    pub const fn entry(&self) -> DrTailEntrySelection {
+        self.entry
+    }
+
     /// Validate the complete admitted identity before the scheduler can enqueue
     /// any work.  Recomputing the census here also binds capacities, not just
     /// the layer labels, so swapped or stale decisions cannot launch.
@@ -147,6 +157,7 @@ impl DrTailProofPlan {
             final_trace_log_2,
             self.resources.static_smem_bytes,
             self.resources.device_optin_cap_bytes,
+            self.entry,
         )
         .map_err(|error| DrTailPlanIdentityError::CapacityDerivation {
             detail: format!("{error:?}"),
@@ -384,8 +395,9 @@ pub(crate) fn plan_dr_tail_layers<F: PrimeField>(
     final_trace_log_2: usize,
     static_smem_bytes: usize,
     device_cap_bytes: usize,
+    entry: DrTailEntrySelection,
 ) -> Result<Vec<DrTailLayerPlan>, DrTailResourceError> {
-    let inputs = dr_tail_layer_inputs(artifact, final_trace_log_2).map_err(|rejection| {
+    let inputs = dr_tail_layer_inputs(artifact, final_trace_log_2, entry).map_err(|rejection| {
         DrTailResourceError::Capacity {
             layer_idx: usize::MAX,
             rejection,
@@ -436,6 +448,7 @@ pub(crate) fn admit_dr_tail_resources<F: PrimeField, Q: DrTailDeviceQueries>(
     queries: &Q,
     artifact: &GKRCircuitArtifact<F>,
     final_trace_log_2: usize,
+    entry: DrTailEntrySelection,
 ) -> Result<DrTailProofPlan, DrTailResourceError> {
     let attributes = queries.attributes()?;
     if attributes.local_bytes != 0 {
@@ -450,6 +463,7 @@ pub(crate) fn admit_dr_tail_resources<F: PrimeField, Q: DrTailDeviceQueries>(
         final_trace_log_2,
         attributes.static_smem_bytes,
         device_cap_bytes,
+        entry,
     )?;
     if layers.is_empty() {
         return Err(DrTailResourceError::MissingLayerPlan);
@@ -493,6 +507,7 @@ pub(crate) fn admit_dr_tail_resources<F: PrimeField, Q: DrTailDeviceQueries>(
             occupancy_by_dynamic_bytes,
         },
         layers,
+        entry,
     })
 }
 
@@ -599,15 +614,122 @@ mod tests {
         programs.runtime_circuit().clone()
     }
 
+    /// B6: the diagnostic entry override runs through the very same capacity
+    /// decision as production. The portable entry is unchanged, each legal
+    /// neighbour shifts every layer by exactly one width-three boundary, and an
+    /// illegal or capacity-failing neighbour is a typed rejection produced
+    /// before any plan exists — so nothing can be enqueued.
+    #[test]
+    fn cpu_dr_tail_entry_override_decides_through_production_capacity() {
+        let artifact = artifact();
+        let portable = plan_dr_tail_layers(
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            0,
+            DEVICE_CAP,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("the portable entry admits");
+
+        // Production default is untouched by the existence of the override.
+        let default_entry = DrTailEntrySelection::default();
+        assert_eq!(default_entry, DrTailEntrySelection::Portable);
+        assert_eq!(default_entry.label(), "portable");
+        assert_eq!(
+            DrTailEntrySelection::from_label("portable"),
+            Some(DrTailEntrySelection::Portable)
+        );
+        assert_eq!(DrTailEntrySelection::from_label("r+3"), None);
+
+        for (selection, delta) in [
+            (DrTailEntrySelection::Minus3, -3i64),
+            (DrTailEntrySelection::Plus3, 3),
+        ] {
+            let shifted =
+                plan_dr_tail_layers(artifact.as_ref(), FINAL_TRACE_LOG, 0, DEVICE_CAP, selection);
+            let Ok(shifted) = shifted else {
+                // A neighbour that no layer can legally take is refused by the
+                // production capacity pass, which is the accepted behaviour.
+                let error = shifted.expect_err("checked above");
+                assert!(
+                    matches!(error, DrTailResourceError::Capacity { .. }),
+                    "a rejected neighbour must be a typed capacity rejection: {error:?}"
+                );
+                continue;
+            };
+            assert_eq!(shifted.len(), portable.len(), "{selection:?}");
+            for (base, moved) in portable.iter().zip(&shifted) {
+                assert_eq!(moved.layer_idx, base.layer_idx);
+                assert_eq!(
+                    i64::try_from(moved.capacity.entry_round()).unwrap(),
+                    i64::try_from(base.capacity.entry_round()).unwrap() + delta,
+                    "{selection:?} must move every entry by exactly one boundary"
+                );
+                // Every shifted decision still came from `decide`, so it keeps
+                // the width-three boundary and stays inside the device cap.
+                assert_eq!(moved.capacity.entry_round() % 3, 0);
+                assert!(moved.capacity.total_smem_bytes() <= DEVICE_CAP);
+            }
+        }
+
+        // An admitted plan records its own entry, so pre-enqueue validation
+        // recomputes with it and a portable plan can never be revalidated as a
+        // neighbour's.
+        let queries = FakeQueries::healthy(DEVICE_CAP);
+        let plan = admit_dr_tail_resources(
+            &queries,
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("portable admission");
+        assert_eq!(plan.entry(), DrTailEntrySelection::Portable);
+        assert_eq!(
+            plan.validate_before_enqueue(artifact.as_ref(), FINAL_TRACE_LOG),
+            Ok(())
+        );
+        let mut swapped = plan.clone();
+        swapped.entry = DrTailEntrySelection::Plus3;
+        let revalidated = swapped.validate_before_enqueue(artifact.as_ref(), FINAL_TRACE_LOG);
+        assert_ne!(
+            revalidated,
+            Ok(()),
+            "a plan whose entry was swapped must not revalidate"
+        );
+
+        // A neighbour whose entry cannot exist is refused before admission
+        // returns, so no plan and therefore no enqueue is possible.
+        let starved = FakeQueries::healthy(1);
+        assert!(matches!(
+            admit_dr_tail_resources(
+                &starved,
+                artifact.as_ref(),
+                FINAL_TRACE_LOG,
+                DrTailEntrySelection::Plus3,
+            ),
+            Err(DrTailResourceError::Capacity { .. })
+        ));
+    }
+
     /// Test 1 of the advisory: production layer coverage, shared with the
     /// census. Every DR layer of the tower yields exactly one decision.
     #[test]
     fn cpu_dr_tail_resource_layer_coverage() {
         let artifact = artifact();
-        let inputs = super::super::census::dr_tail_layer_inputs(artifact.as_ref(), FINAL_TRACE_LOG)
-            .expect("production tower must resolve");
-        let layers = plan_dr_tail_layers(artifact.as_ref(), FINAL_TRACE_LOG, 0, DEVICE_CAP)
-            .expect("production layers must be admissible");
+        let inputs = super::super::census::dr_tail_layer_inputs(
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("production tower must resolve");
+        let layers = plan_dr_tail_layers(
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            0,
+            DEVICE_CAP,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("production layers must be admissible");
         assert_eq!(
             layers.len(),
             inputs.len(),
@@ -633,8 +755,13 @@ mod tests {
         ) {
             let artifact = artifact();
             let queries = FakeQueries::healthy(DEVICE_CAP);
-            let plan = admit_dr_tail_resources(&queries, artifact.as_ref(), FINAL_TRACE_LOG)
-                .expect("production fixture must admit");
+            let plan = admit_dr_tail_resources(
+                &queries,
+                artifact.as_ref(),
+                FINAL_TRACE_LOG,
+                DrTailEntrySelection::Portable,
+            )
+            .expect("production fixture must admit");
             (artifact, plan)
         }
         fn rejected(
@@ -844,10 +971,20 @@ mod tests {
     #[test]
     fn cpu_dr_tail_resource_cap_rejection() {
         let artifact = artifact();
-        let inputs = super::super::census::dr_tail_layer_inputs(artifact.as_ref(), FINAL_TRACE_LOG)
-            .expect("production tower must resolve");
-        let layers = plan_dr_tail_layers(artifact.as_ref(), FINAL_TRACE_LOG, 0, DEVICE_CAP)
-            .expect("baseline plan");
+        let inputs = super::super::census::dr_tail_layer_inputs(
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("production tower must resolve");
+        let layers = plan_dr_tail_layers(
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            0,
+            DEVICE_CAP,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("baseline plan");
         let largest = layers
             .iter()
             .map(DrTailLayerPlan::dynamic_smem_bytes)
@@ -864,18 +1001,35 @@ mod tests {
 
         let healthy = FakeQueries::healthy(DEVICE_CAP);
         assert!(
-            admit_dr_tail_resources(&healthy, artifact.as_ref(), FINAL_TRACE_LOG).is_ok(),
+            admit_dr_tail_resources(
+                &healthy,
+                artifact.as_ref(),
+                FINAL_TRACE_LOG,
+                DrTailEntrySelection::Portable
+            )
+            .is_ok(),
             "the unmutated device cap admits the production plan"
         );
         let exact = FakeQueries::healthy(largest);
         assert!(
-            admit_dr_tail_resources(&exact, artifact.as_ref(), FINAL_TRACE_LOG).is_ok(),
+            admit_dr_tail_resources(
+                &exact,
+                artifact.as_ref(),
+                FINAL_TRACE_LOG,
+                DrTailEntrySelection::Portable
+            )
+            .is_ok(),
             "a cap of exactly the largest total admits"
         );
 
         let starved = FakeQueries::healthy(largest - 1);
-        let error = admit_dr_tail_resources(&starved, artifact.as_ref(), FINAL_TRACE_LOG)
-            .expect_err("one byte below the largest layer must reject");
+        let error = admit_dr_tail_resources(
+            &starved,
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
+        )
+        .expect_err("one byte below the largest layer must reject");
         assert_eq!(
             error,
             DrTailResourceError::Capacity {
@@ -906,19 +1060,30 @@ mod tests {
     #[test]
     fn cpu_dr_tail_resource_requires_raised_optin() {
         let artifact = artifact();
-        let largest = plan_dr_tail_layers(artifact.as_ref(), FINAL_TRACE_LOG, 0, DEVICE_CAP)
-            .expect("baseline plan")
-            .iter()
-            .map(DrTailLayerPlan::dynamic_smem_bytes)
-            .max()
-            .expect("non-empty");
+        let largest = plan_dr_tail_layers(
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            0,
+            DEVICE_CAP,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("baseline plan")
+        .iter()
+        .map(DrTailLayerPlan::dynamic_smem_bytes)
+        .max()
+        .expect("non-empty");
         let starved_ceiling = largest - 1;
 
         let mut queries = FakeQueries::healthy(DEVICE_CAP);
         queries.attributes.borrow_mut().max_dynamic_smem_bytes = starved_ceiling;
         queries.grant_optin = false;
-        let error = admit_dr_tail_resources(&queries, artifact.as_ref(), FINAL_TRACE_LOG)
-            .expect_err("an unraised opt-in ceiling must reject");
+        let error = admit_dr_tail_resources(
+            &queries,
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
+        )
+        .expect_err("an unraised opt-in ceiling must reject");
         assert_eq!(
             error,
             DrTailResourceError::DynamicMemoryExceedsOptIn {
@@ -941,8 +1106,13 @@ mod tests {
         // the rejection above is the refusal and not the geometry.
         let queries = FakeQueries::healthy(DEVICE_CAP);
         queries.attributes.borrow_mut().max_dynamic_smem_bytes = starved_ceiling;
-        let plan = admit_dr_tail_resources(&queries, artifact.as_ref(), FINAL_TRACE_LOG)
-            .expect("a granted raise admits the same plan");
+        let plan = admit_dr_tail_resources(
+            &queries,
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("a granted raise admits the same plan");
         assert_eq!(
             plan.resources().effective_max_dynamic_smem_bytes(),
             largest,
@@ -956,7 +1126,12 @@ mod tests {
         let queries = FakeQueries::healthy(DEVICE_CAP);
         queries.attributes.borrow_mut().local_bytes = 16;
         assert!(matches!(
-            admit_dr_tail_resources(&queries, artifact.as_ref(), FINAL_TRACE_LOG),
+            admit_dr_tail_resources(
+                &queries,
+                artifact.as_ref(),
+                FINAL_TRACE_LOG,
+                DrTailEntrySelection::Portable
+            ),
             Err(DrTailResourceError::LocalMemorySpill { .. })
         ));
         assert_eq!(
@@ -970,7 +1145,12 @@ mod tests {
         let mut queries = FakeQueries::healthy(DEVICE_CAP);
         queries.occupancy = 0;
         assert!(matches!(
-            admit_dr_tail_resources(&queries, artifact.as_ref(), FINAL_TRACE_LOG),
+            admit_dr_tail_resources(
+                &queries,
+                artifact.as_ref(),
+                FINAL_TRACE_LOG,
+                DrTailEntrySelection::Portable
+            ),
             Err(DrTailResourceError::ZeroOccupancy { .. })
         ));
         assert_eq!(
@@ -995,8 +1175,13 @@ mod tests {
     fn cpu_dr_tail_resource_admission_event_order() {
         let artifact = artifact();
         let queries = FakeQueries::healthy(DEVICE_CAP);
-        let plan = admit_dr_tail_resources(&queries, artifact.as_ref(), FINAL_TRACE_LOG)
-            .expect("healthy admission");
+        let plan = admit_dr_tail_resources(
+            &queries,
+            artifact.as_ref(),
+            FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("healthy admission");
 
         let distinct = distinct_selected_sizes(artifact.as_ref());
         let largest = *distinct.last().expect("non-empty");
@@ -1026,12 +1211,17 @@ mod tests {
     fn distinct_selected_sizes(
         artifact: &GKRCircuitArtifact<gpu_core::primitives::field::BF>,
     ) -> Vec<usize> {
-        let mut distinct: Vec<usize> =
-            plan_dr_tail_layers(artifact, FINAL_TRACE_LOG, 0, DEVICE_CAP)
-                .expect("baseline plan")
-                .iter()
-                .map(DrTailLayerPlan::dynamic_smem_bytes)
-                .collect();
+        let mut distinct: Vec<usize> = plan_dr_tail_layers(
+            artifact,
+            FINAL_TRACE_LOG,
+            0,
+            DEVICE_CAP,
+            DrTailEntrySelection::Portable,
+        )
+        .expect("baseline plan")
+        .iter()
+        .map(DrTailLayerPlan::dynamic_smem_bytes)
+        .collect();
         distinct.sort_unstable();
         distinct.dedup();
         distinct
@@ -1052,6 +1242,7 @@ mod tests {
                 FINAL_TRACE_LOG,
                 0,
                 DEVICE_CAP,
+                DrTailEntrySelection::Portable,
             )
             .unwrap_or_else(|error| panic!("{layout_name}: {error:?}"));
             let largest = layers
@@ -1098,6 +1289,7 @@ mod tests {
             &FakeQueries::healthy(DEVICE_CAP),
             artifact.as_ref(),
             FINAL_TRACE_LOG,
+            DrTailEntrySelection::Portable,
         )
         .expect("healthy admission");
         assert!(!plan.layers().is_empty());
