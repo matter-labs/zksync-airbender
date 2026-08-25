@@ -2409,31 +2409,6 @@ fn run_window_arm(
                 Some(readback)
             }
         };
-        let bank_observer = context.observe_device_memory_high_water();
-        let mut bank =
-            prepare_continuation_differential_bank(continuation_program, top_bits, context)?;
-        let bank_report = bank_observer.finish();
-        allocations.push(allocation_group_record(
-            "bank",
-            bank.challenge_slab().as_ptr() as usize,
-            2,
-            8,
-            1,
-            "mixed",
-            2,
-            &bank_report,
-        ));
-        let bank_spans = bank.schedule(
-            external.as_ptr(),
-            lookup_mul.as_ptr(),
-            lookup_add.as_ptr(),
-            batching.as_ptr(),
-            context,
-        )?;
-        assert_eq!(bank_spans.slab.0, bank.challenge_slab().as_ptr() as usize);
-        let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
-        carried.coefficient_bank = Some(bank_spans.bank);
-        ledger.absorb(TASK8_WINDOW_ARM, &probe);
         // Defer bank construction until after the prior publication has been
         // prepared/read back.  This matches the legacy arm's enqueue lifetime:
         // the bank's transient allocation is not simultaneously live with the
