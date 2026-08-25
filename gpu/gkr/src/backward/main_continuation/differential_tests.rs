@@ -37,8 +37,8 @@ use crate::backward::stage_snapshots::{
     MainContinuationDifferentialReport, Task8ContinuationDifferentialRequest,
 };
 use crate::backward::task8_probe::{
-    task8_enqueue, task8_enqueue_plan, task8_register_symbol, task8_symbol, Task8EnqueueKind,
-    Task8EnqueuePlan, Task8ProbeGuard, Task8Span,
+    task8_register_symbol, task8_symbol, Task8EnqueueKind, Task8EnqueuePlan, Task8ProbeGuard,
+    Task8Span,
 };
 use crate::backward::vm::production_bind::{
     canonicalize_legacy_publication, family_read_place, foldable_eq_variables,
@@ -663,9 +663,7 @@ fn validate_enqueue_census(ledger: &Task8OwnerGenerationLedger) {
     for (ordinal, enqueue) in ledger.enqueues.iter().enumerate() {
         let guarded: &[&str] = match enqueue.site {
             "fold-weight-build" => &["ab_gkr_main_layer_claim_point", "bwd_seg_fold_weights"],
-            "coefficient-bank-fill" => {
-                &["coefficient_tables", "challenge_slab", "coefficient_bank"]
-            }
+            "coefficient-bank-fill" => &["challenge_slab", "coefficient_bank"],
             "window-launch" | "segmented-round" => &[
                 "bwd_seg_fold_weights",
                 "published_column",
@@ -709,21 +707,11 @@ fn validate_enqueue_census(ledger: &Task8OwnerGenerationLedger) {
                 ));
             }
             Task8EnqueuePlan::CoefficientFill {
-                tables,
-                table_ranges,
                 slab,
                 challenge_slots,
-                bank,
+                bank_first,
                 bank_bytes,
             } => {
-                for range in table_ranges {
-                    expected.push((
-                        "coefficient_tables",
-                        Task8QueuedUse::Read,
-                        tables + range.start,
-                        range.end - range.start,
-                    ));
-                }
                 for slot in challenge_slots {
                     expected.push((
                         "challenge_slab",
@@ -735,7 +723,7 @@ fn validate_enqueue_census(ledger: &Task8OwnerGenerationLedger) {
                 expected.push((
                     "coefficient_bank",
                     Task8QueuedUse::Write,
-                    *bank,
+                    *bank_first,
                     *bank_bytes,
                 ));
             }
@@ -1441,43 +1429,140 @@ impl ScheduledPreparedObservation {
     }
 }
 
-/// Uploads a host buffer. The copy opens its own pre-enqueue scope, so the
-/// ledger sees it in the same stream order as every production enqueue.
-fn upload<T: Copy>(
-    context: &ProverContext,
-    host: &[T],
-) -> CudaResult<(DeviceAllocation<T>, StaticPinnedBox<T>)> {
-    let staging = alloc_static_pinned_box_from_slice(host)?;
-    let mut device = context.alloc(host.len().max(1), AllocationPlacement::BestFit)?;
-    let destination = device.as_ptr() as usize;
-    crate::backward::task8_enqueue_scope!(_task8, "host-upload", Copy, {
-        vec![Task8Span::write(
-            "upload",
-            destination,
-            host.len() * std::mem::size_of::<T>(),
-        )]
-    });
-    memory_copy_async(
-        &mut device[..host.len()],
-        &staging[..],
-        context.get_exec_stream(),
-    )?;
-    Ok((device, staging))
+/// The number of external challenges the segmented challenge slab consumes:
+/// the six permutation linearization challenges plus the additive part.
+const TASK8_EXTERNAL_CHALLENGES: usize = 7;
+
+/// Production-shaped device inputs one layer's differential consumes. The only
+/// host-to-device copies are the initial inputs — the external challenges and
+/// the transcript seed constant, the same class production's input transfer
+/// carries. Everything transcript-derived (the lookup challenges, the claim
+/// point and its batching slot, and the starting claim and Eq prefactor) is
+/// squeezed on the device by the production transcript kernel; both arms
+/// consume the same device-resident values, and the host learns them only
+/// through the observation readback.
+struct Task8DeviceInputs {
+    /// `[external(7) | lookup(mul, add) | point + batching (fs + 1) | claim, prefactor]`.
+    master: DeviceAllocation<E4>,
+    /// The post-draw transcript seed both arms start from.
+    seed_master: DeviceAllocation<u32>,
+    folding_steps: usize,
+    /// Initial-input staging, held as a plain host keepalive until the stream
+    /// has drained — never through a callback.
+    _external_staging: StaticPinnedBox<E4>,
+    _seed_staging: StaticPinnedBox<u32>,
 }
 
-/// Writes the main-layer claim-point symbol and registers the address this copy
-/// hands the runtime, so later launches that read the symbol without naming it
-/// can record an exact range against it.
-fn write_claim_point_symbol(
+impl Task8DeviceInputs {
+    fn lookup_offset() -> usize {
+        TASK8_EXTERNAL_CHALLENGES
+    }
+    fn point_offset() -> usize {
+        Self::lookup_offset() + 2
+    }
+    fn state_offset(&self) -> usize {
+        Self::point_offset() + self.folding_steps + 1
+    }
+    fn len(&self) -> usize {
+        self.state_offset() + 2
+    }
+    fn external_ptr(&self) -> *const E4 {
+        self.master.as_ptr()
+    }
+    fn lookup_mul_ptr(&self) -> *const E4 {
+        // SAFETY: the master layout above owns these offsets.
+        unsafe { self.master.as_ptr().add(Self::lookup_offset()) }
+    }
+    fn lookup_add_ptr(&self) -> *const E4 {
+        // SAFETY: as above.
+        unsafe { self.master.as_ptr().add(Self::lookup_offset() + 1) }
+    }
+    fn point_ptr(&self) -> *const E4 {
+        // SAFETY: as above.
+        unsafe { self.master.as_ptr().add(Self::point_offset()) }
+    }
+    fn batching_ptr(&self) -> *const E4 {
+        // SAFETY: as above.
+        unsafe {
+            self.master
+                .as_ptr()
+                .add(Self::point_offset() + self.folding_steps)
+        }
+    }
+    fn point_len(&self) -> usize {
+        self.folding_steps + 1
+    }
+    fn range(&self, offset: usize, elements: usize) -> (usize, usize) {
+        (
+            self.master.as_ptr() as usize + offset * std::mem::size_of::<E4>(),
+            elements * std::mem::size_of::<E4>(),
+        )
+    }
+}
+
+fn prepare_task8_device_inputs(
+    folding_steps: usize,
     context: &ProverContext,
-    point: &[E4],
-) -> CudaResult<(StaticPinnedBox<E4>, usize)> {
-    let staging = alloc_static_pinned_box_from_slice(point)?;
+) -> CudaResult<Task8DeviceInputs> {
+    let stream = context.get_exec_stream();
+    let total = Task8DeviceInputs::point_offset() + folding_steps + 1 + 2;
+    let mut master: DeviceAllocation<E4> = context.alloc(total, AllocationPlacement::BestFit)?;
+    let external_host: Vec<E4> = (0..TASK8_EXTERNAL_CHALLENGES as u32)
+        .map(|i| deterministic_e4(0x100 + i))
+        .collect();
+    let external_staging = alloc_static_pinned_box_from_slice(&external_host)?;
+    memory_copy_async(
+        &mut master[..TASK8_EXTERNAL_CHALLENGES],
+        &external_staging[..],
+        stream,
+    )?;
+    let seed_host = [0x1020_3040u32, 0x5060_7080, 1, 2, 3, 5, 8, 13];
+    let mut seed_master: DeviceAllocation<u32> =
+        context.alloc(seed_host.len(), AllocationPlacement::BestFit)?;
+    let seed_staging = alloc_static_pinned_box_from_slice(&seed_host)?;
+    memory_copy_async(&mut seed_master[..], &seed_staging[..], stream)?;
+    let lookup = Task8DeviceInputs::lookup_offset();
+    let point = Task8DeviceInputs::point_offset();
+    let state = point + folding_steps + 1;
+    gpu_hash::blake2s::transcript_squeeze_e4(
+        &mut seed_master[..],
+        &mut master[lookup..point],
+        stream,
+    )?;
+    gpu_hash::blake2s::transcript_squeeze_e4(
+        &mut seed_master[..],
+        &mut master[point..state],
+        stream,
+    )?;
+    gpu_hash::blake2s::transcript_squeeze_e4(
+        &mut seed_master[..],
+        &mut master[state..total],
+        stream,
+    )?;
+    Ok(Task8DeviceInputs {
+        master,
+        seed_master,
+        folding_steps,
+        _external_staging: external_staging,
+        _seed_staging: seed_staging,
+    })
+}
+
+/// Copies the device-squeezed claim point (batching slot included) into the
+/// main-layer claim-point symbol — device to device, exactly as production's
+/// output claim point lives in the symbol — and registers the address this
+/// copy hands the runtime, so later launches that read the symbol without
+/// naming it can record an exact range against it.
+fn copy_claim_point_symbol(
+    context: &ProverContext,
+    inputs: &Task8DeviceInputs,
+) -> CudaResult<usize> {
     let symbol = get_main_layer_claim_point_device_ptr();
+    let elements = inputs.point_len();
     // SAFETY: the main-layer claim-point symbol is sized for every admitted
     // folding width; the corpus maximum is pinned independently by preflight.
-    let destination = unsafe { DeviceSlice::from_raw_parts_mut(symbol, point.len()) };
-    let bytes = point.len() * std::mem::size_of::<E4>();
+    let destination = unsafe { DeviceSlice::from_raw_parts_mut(symbol, elements) };
+    let bytes = elements * std::mem::size_of::<E4>();
     task8_register_symbol("ab_gkr_main_layer_claim_point", symbol as usize, bytes);
     crate::backward::task8_enqueue_scope!(_task8, "claim-point-symbol-write", Copy, {
         vec![Task8Span::write(
@@ -1486,8 +1571,13 @@ fn write_claim_point_symbol(
             bytes,
         )]
     });
-    memory_copy_async(destination, &staging[..], context.get_exec_stream())?;
-    Ok((staging, symbol as usize))
+    let point = Task8DeviceInputs::point_offset();
+    memory_copy_async(
+        destination,
+        &inputs.master[point..point + elements],
+        context.get_exec_stream(),
+    )?;
+    Ok(symbol as usize)
 }
 
 /// Reads a device range back in scratch-sized chunks. Each chunk copy and each
@@ -1718,18 +1808,34 @@ struct TranscriptBuffers {
     claim: DeviceAllocation<E4>,
     prefactor: DeviceAllocation<E4>,
     coefficients: DeviceAllocation<E4>,
-    _seed_staging: StaticPinnedBox<u32>,
-    _claim_staging: StaticPinnedBox<E4>,
-    _prefactor_staging: StaticPinnedBox<E4>,
     allocations: Vec<Task8AllocationRecord>,
 }
 
-fn transcript_buffers(context: &ProverContext) -> CudaResult<TranscriptBuffers> {
+/// The arm's mutable transcript state, initialized device-to-device from the
+/// seam's squeezed master values so both arms start from the same
+/// device-produced seed, claim and Eq prefactor. No host value and no staging
+/// exists on this path.
+fn transcript_buffers(
+    context: &ProverContext,
+    inputs: &Task8DeviceInputs,
+) -> CudaResult<TranscriptBuffers> {
+    let stream = context.get_exec_stream();
     let mut allocations = Vec::new();
-    let seed_host = [0x1020_3040, 0x5060_7080, 1, 2, 3, 5, 8, 13];
     let before_seed = context.get_device_memory_usage();
-    let (seed, seed_staging) = upload(context, &seed_host)?;
+    let mut seed: DeviceAllocation<u32> =
+        context.alloc(inputs.seed_master.len(), AllocationPlacement::BestFit)?;
     let after_seed = context.get_device_memory_usage();
+    {
+        let destination = seed.as_ptr() as usize;
+        crate::backward::task8_enqueue_scope!(_task8, "transcript-state-copy", Copy, {
+            vec![Task8Span::write(
+                "transcript_seed",
+                destination,
+                inputs.seed_master.len() * std::mem::size_of::<u32>(),
+            )]
+        });
+        memory_copy_async(&mut seed[..], &inputs.seed_master[..], stream)?;
+    }
     allocations.push(allocation_record_with_usage(
         "transcript_seed",
         &seed,
@@ -1740,9 +1846,21 @@ fn transcript_buffers(context: &ProverContext) -> CudaResult<TranscriptBuffers> 
         before_seed,
         after_seed,
     ));
+    let state = inputs.state_offset();
     let before_claim = after_seed;
-    let (claim, claim_staging) = upload(context, &[deterministic_e4(0x51)])?;
+    let mut claim: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
     let after_claim = context.get_device_memory_usage();
+    {
+        let destination = claim.as_ptr() as usize;
+        crate::backward::task8_enqueue_scope!(_task8, "transcript-state-copy", Copy, {
+            vec![Task8Span::write(
+                "transcript_claim",
+                destination,
+                std::mem::size_of::<E4>(),
+            )]
+        });
+        memory_copy_async(&mut claim[..], &inputs.master[state..state + 1], stream)?;
+    }
     allocations.push(allocation_record_with_usage(
         "transcript_claim",
         &claim,
@@ -1754,8 +1872,23 @@ fn transcript_buffers(context: &ProverContext) -> CudaResult<TranscriptBuffers> 
         after_claim,
     ));
     let before_prefactor = after_claim;
-    let (prefactor, prefactor_staging) = upload(context, &[deterministic_e4(0x71)])?;
+    let mut prefactor: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
     let after_prefactor = context.get_device_memory_usage();
+    {
+        let destination = prefactor.as_ptr() as usize;
+        crate::backward::task8_enqueue_scope!(_task8, "transcript-state-copy", Copy, {
+            vec![Task8Span::write(
+                "transcript_prefactor",
+                destination,
+                std::mem::size_of::<E4>(),
+            )]
+        });
+        memory_copy_async(
+            &mut prefactor[..],
+            &inputs.master[state + 1..state + 2],
+            stream,
+        )?;
+    }
     allocations.push(allocation_record_with_usage(
         "transcript_prefactor",
         &prefactor,
@@ -1784,9 +1917,6 @@ fn transcript_buffers(context: &ProverContext) -> CudaResult<TranscriptBuffers> 
         claim,
         prefactor,
         coefficients,
-        _seed_staging: seed_staging,
-        _claim_staging: claim_staging,
-        _prefactor_staging: prefactor_staging,
         allocations,
     })
 }
@@ -1871,58 +2001,52 @@ where
     Ok((family, target, value, readback))
 }
 
-/// Uploads the four challenge buffers and opens their owners.
-#[allow(clippy::type_complexity)]
-fn upload_challenges(
-    context: &ProverContext,
+/// Opens the four challenge owners as read-only borrows over the seam's
+/// device-resident master values: the initial-input external challenges and
+/// the device-squeezed lookup and batching challenges. Nothing is uploaded and
+/// nothing is staged.
+const TASK8_SHARED_DEVICE_INPUTS: &str =
+    "device-resident production-shaped inputs the seam squeezed before either arm ran";
+
+fn open_challenge_owners(
     ledger: &mut Task8OwnerGenerationLedger,
-    probe: &Task8ProbeGuard,
     arm: &'static str,
-    external_host: &[E4],
-) -> CudaResult<(
-    DeviceAllocation<E4>,
-    DeviceAllocation<E4>,
-    DeviceAllocation<E4>,
-    DeviceAllocation<E4>,
-    (
-        StaticPinnedBox<E4>,
-        StaticPinnedBox<E4>,
-        StaticPinnedBox<E4>,
-        StaticPinnedBox<E4>,
-    ),
-    Task8ChallengeOwners,
-)> {
-    let (external, external_staging) = upload(context, external_host)?;
-    let external_owner = ledger_open_allocation(ledger, arm, "external_challenges", &external);
-    ledger.absorb(arm, probe);
-    let (lookup_mul, lookup_mul_staging) = upload(context, &[deterministic_e4(0x201)])?;
-    let lookup_mul_owner =
-        ledger_open_allocation(ledger, arm, "lookup_multiplicative", &lookup_mul);
-    ledger.absorb(arm, probe);
-    let (lookup_add, lookup_add_staging) = upload(context, &[deterministic_e4(0x202)])?;
-    let lookup_add_owner = ledger_open_allocation(ledger, arm, "lookup_additive", &lookup_add);
-    ledger.absorb(arm, probe);
-    let (batching, batching_staging) = upload(context, &[deterministic_e4(0x203)])?;
-    let batching_owner = ledger_open_allocation(ledger, arm, "claim_batching", &batching);
-    ledger.absorb(arm, probe);
-    Ok((
-        external,
-        lookup_mul,
-        lookup_add,
-        batching,
-        (
-            external_staging,
-            lookup_mul_staging,
-            lookup_add_staging,
-            batching_staging,
+    inputs: &Task8DeviceInputs,
+) -> Task8ChallengeOwners {
+    let borrow = |ledger: &mut Task8OwnerGenerationLedger,
+                  label: &'static str,
+                  (base, bytes): (usize, usize)| {
+        ledger_open(
+            ledger,
+            arm,
+            label,
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS),
+            base,
+            bytes,
+        )
+    };
+    Task8ChallengeOwners {
+        external: borrow(
+            ledger,
+            "external_challenges",
+            inputs.range(0, TASK8_EXTERNAL_CHALLENGES),
         ),
-        Task8ChallengeOwners {
-            external: external_owner,
-            lookup_multiplicative: lookup_mul_owner,
-            lookup_additive: lookup_add_owner,
-            claim_batching: batching_owner,
-        },
-    ))
+        lookup_multiplicative: borrow(
+            ledger,
+            "lookup_multiplicative",
+            inputs.range(Task8DeviceInputs::lookup_offset(), 1),
+        ),
+        lookup_additive: borrow(
+            ledger,
+            "lookup_additive",
+            inputs.range(Task8DeviceInputs::lookup_offset() + 1, 1),
+        ),
+        claim_batching: borrow(
+            ledger,
+            "claim_batching",
+            inputs.range(Task8DeviceInputs::point_offset() + inputs.folding_steps, 1),
+        ),
+    }
 }
 
 /// Opens the challenge slab and staged-table owners from the spans the fill
@@ -1931,7 +2055,7 @@ fn open_bank_owners(
     ledger: &mut Task8OwnerGenerationLedger,
     owners: &mut Task8ArmOwners,
     spans: BwdSegBankFillSpans,
-) -> (Task8LedgerOwner, Task8LedgerOwner) {
+) -> Task8LedgerOwner {
     let arm = owners.arm;
     let slab = ledger_open(
         ledger,
@@ -1941,14 +2065,6 @@ fn open_bank_owners(
         spans.slab.0,
         spans.slab.1,
     );
-    let tables = ledger_open(
-        ledger,
-        arm,
-        "coefficient_tables",
-        Task8OwnerOrigin::ArmOwned,
-        spans.tables.0,
-        spans.tables.1,
-    );
     open_reported_symbols(ledger, owners);
     assert_eq!(
         owners
@@ -1957,7 +2073,7 @@ fn open_bank_owners(
         Some(spans.bank),
         "Task 8 bank fill reported a span the probe did not register"
     );
-    (slab, tables)
+    slab
 }
 
 /// The device symbols a differential arm must name that only another arm's
@@ -2064,7 +2180,6 @@ fn expected_arm_owner_labels(
         "claim_point",
         "claim_point_symbol",
         "coefficient_bank",
-        "coefficient_tables",
         "coefficients",
         "eq",
         "eq_high_symbol",
@@ -2264,7 +2379,7 @@ fn run_window_arm(
     top_bits: &[u32],
     folding_steps: usize,
     start_round: usize,
-    point_host: &[E4],
+    inputs: &Task8DeviceInputs,
     readback_scratch: &mut StaticPinnedBox<u8>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
@@ -2288,19 +2403,25 @@ fn run_window_arm(
     let (mut observation, allocations) = {
         let mut allocations = Vec::new();
         let sources = open_source_owners(ledger, TASK8_WINDOW_ARM, storage, window_program);
-        let (claim_point, point_staging) = upload(context, point_host)?;
-        let claim_point_owner =
-            ledger_open_allocation(ledger, TASK8_WINDOW_ARM, "claim_point", &claim_point);
+        let (point_base, point_bytes) =
+            inputs.range(Task8DeviceInputs::point_offset(), inputs.point_len());
+        let claim_point_owner = ledger_open(
+            ledger,
+            TASK8_WINDOW_ARM,
+            "claim_point",
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS),
+            point_base,
+            point_bytes,
+        );
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
-        let (claim_symbol_staging, claim_point_symbol) =
-            write_claim_point_symbol(context, point_host)?;
+        let claim_point_symbol = copy_claim_point_symbol(context, inputs)?;
         let claim_point_symbol_owner = ledger_open(
             ledger,
             TASK8_WINDOW_ARM,
             "claim_point_symbol",
             Task8OwnerOrigin::ArmOwned,
             claim_point_symbol,
-            point_host.len() * std::mem::size_of::<E4>(),
+            inputs.point_len() * std::mem::size_of::<E4>(),
         );
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
         let before_eq = context.get_device_memory_usage();
@@ -2325,13 +2446,7 @@ fn run_window_arm(
             before_partials,
             after_partials,
         ));
-        let external_host: Vec<_> = (0..32).map(|i| deterministic_e4(0x100 + i)).collect();
-        let challenge_owners =
-            upload_challenges(context, ledger, &probe, TASK8_WINDOW_ARM, &external_host)?;
-        let (external, lookup_mul, lookup_add, batching, challenge_staging, challenge_owners) =
-            challenge_owners;
-        let (external_staging, lookup_mul_staging, lookup_add_staging, batching_staging) =
-            challenge_staging;
+        let challenge_owners = open_challenge_owners(ledger, TASK8_WINDOW_ARM, inputs);
         let mut owners = Task8ArmOwners {
             arm: TASK8_WINDOW_ARM,
             claim_point: claim_point_owner,
@@ -2376,33 +2491,22 @@ fn run_window_arm(
             &bank_report,
         ));
         let bank_spans = bank.schedule(
-            external.as_ptr(),
-            lookup_mul.as_ptr(),
-            lookup_add.as_ptr(),
-            batching.as_ptr(),
+            inputs.external_ptr(),
+            inputs.lookup_mul_ptr(),
+            inputs.lookup_add_ptr(),
+            inputs.batching_ptr(),
             context,
         )?;
         assert_eq!(bank_spans.slab.0, bank.challenge_slab().as_ptr() as usize);
-        let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
+        let slab = open_bank_owners(ledger, &mut owners, bank_spans);
         carried.coefficient_bank = Some(bank_spans.bank);
         open_reported_symbols(ledger, &mut owners);
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
         // Challenge inputs are consumed exclusively by the bank fill. Retire
-        // their owners and staging at that enqueue boundary.
-        retain_in_callback(external_staging, callbacks, context)?;
-        retain_in_callback(lookup_mul_staging, callbacks, context)?;
-        retain_in_callback(lookup_add_staging, callbacks, context)?;
-        retain_in_callback(batching_staging, callbacks, context)?;
+        // their borrowed owners at that enqueue boundary; the device-resident
+        // seam values themselves outlive both arms.
         bind_challenge_owners_final(ledger, &challenge_owners);
-        drop(external);
-        drop(lookup_mul);
-        drop(lookup_add);
-        drop(batching);
-        if let Some(staging) = bank.take_bank_staging() {
-            retain_in_callback(staging, callbacks, context)?;
-        }
         ledger_bind_final(ledger, &slab);
-        ledger_bind_final(ledger, &coefficient_tables);
         drop(bank);
 
         let before_prior = context.get_device_memory_usage();
@@ -2412,7 +2516,7 @@ fn run_window_arm(
             window_program,
             folding_steps,
             start_round,
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             &mut eq_low,
             &mut partials,
             context,
@@ -2456,7 +2560,7 @@ fn run_window_arm(
             }
         };
         launch_build_eq_high_and_low_groups_from_point(
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             start_round + 3,
             folding_steps - start_round - 3,
             owners.eq_high.base as *mut E4,
@@ -2560,7 +2664,7 @@ fn run_window_arm(
             ledger,
         )?;
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
-        let mut transcript = transcript_buffers(context)?;
+        let mut transcript = transcript_buffers(context, inputs)?;
         let _ = &mut transcript;
         allocations.append(&mut transcript.allocations);
         let transcript_owners = open_transcript_owners(ledger, TASK8_WINDOW_ARM, &transcript);
@@ -2571,7 +2675,7 @@ fn run_window_arm(
             partials: partials.as_ptr(),
             row_tiles: launched.row_tiles(),
             reduced_tensor: launched.reduced_tensor(),
-            prev_claim_coords: unsafe { claim_point.as_ptr().add(start_round) },
+            prev_claim_coords: unsafe { inputs.point_ptr().add(start_round) },
             seed: transcript.seed.as_mut_ptr(),
             claim: transcript.claim.as_mut_ptr(),
             eq_prefactor: transcript.prefactor.as_mut_ptr(),
@@ -2748,11 +2852,6 @@ fn run_window_arm(
             ledger_bind_final(ledger, prior_owner);
         }
         drop(prior);
-        retain_in_callback(point_staging, callbacks, context)?;
-        retain_in_callback(claim_symbol_staging, callbacks, context)?;
-        retain_in_callback(transcript._seed_staging, callbacks, context)?;
-        retain_in_callback(transcript._claim_staging, callbacks, context)?;
-        retain_in_callback(transcript._prefactor_staging, callbacks, context)?;
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
         ledger_bind_final(ledger, &publication_owner);
         ledger_bind_final(ledger, &reduced_tensor);
@@ -2763,7 +2862,6 @@ fn run_window_arm(
         drop(transcript.prefactor);
         drop(transcript.coefficients);
         bind_arm_owners_final(ledger, &owners);
-        drop(claim_point);
         drop(eq_low);
         drop(partials);
         let memory = observer.finish();
@@ -2807,7 +2905,7 @@ fn run_legacy_arm(
     top_bits: &[u32],
     folding_steps: usize,
     start_round: usize,
-    point_host: &[E4],
+    inputs: &Task8DeviceInputs,
     readback_scratch: &mut StaticPinnedBox<u8>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
@@ -2829,19 +2927,25 @@ fn run_legacy_arm(
     let (mut observation, source_columns, shape, adoption, allocations) = {
         let mut allocations = Vec::new();
         let sources = open_source_owners(ledger, TASK8_LEGACY_ARM, storage, window_program);
-        let (claim_point, point_staging) = upload(context, point_host)?;
-        let claim_point_owner =
-            ledger_open_allocation(ledger, TASK8_LEGACY_ARM, "claim_point", &claim_point);
+        let (point_base, point_bytes) =
+            inputs.range(Task8DeviceInputs::point_offset(), inputs.point_len());
+        let claim_point_owner = ledger_open(
+            ledger,
+            TASK8_LEGACY_ARM,
+            "claim_point",
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS),
+            point_base,
+            point_bytes,
+        );
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
-        let (claim_symbol_staging, claim_point_symbol) =
-            write_claim_point_symbol(context, point_host)?;
+        let claim_point_symbol = copy_claim_point_symbol(context, inputs)?;
         let claim_point_symbol_owner = ledger_open(
             ledger,
             TASK8_LEGACY_ARM,
             "claim_point_symbol",
             Task8OwnerOrigin::ArmOwned,
             claim_point_symbol,
-            point_host.len() * std::mem::size_of::<E4>(),
+            inputs.point_len() * std::mem::size_of::<E4>(),
         );
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
         let before_eq = context.get_device_memory_usage();
@@ -2915,7 +3019,7 @@ fn run_legacy_arm(
             window_program,
             folding_steps,
             start_round,
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             &mut eq_low,
             &mut partials,
             context,
@@ -2941,7 +3045,7 @@ fn run_legacy_arm(
             allocations.push(record);
         }
         launch_build_eq_high_and_low_groups_from_point(
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             start_round + 1,
             folding_steps - start_round - 1,
             owners.eq_high.base as *mut E4,
@@ -2987,25 +3091,21 @@ fn run_legacy_arm(
         let input_live_before = rounds.expected_input_is_live();
         let first_deltas = rounds.first_deltas().to_vec();
         let first_reads_only_published = rounds.first_reads_only_published();
-        let external_host: Vec<_> = (0..32).map(|i| deterministic_e4(0x100 + i)).collect();
-        let (external, lookup_mul, lookup_add, batching, challenge_staging, challenge_owners) =
-            upload_challenges(context, ledger, &probe, TASK8_LEGACY_ARM, &external_host)?;
-        let (external_staging, lookup_mul_staging, lookup_add_staging, batching_staging) =
-            challenge_staging;
+        let challenge_owners = open_challenge_owners(ledger, TASK8_LEGACY_ARM, inputs);
         let bank_spans = rounds.schedule_bank_fill(
-            external.as_ptr(),
-            lookup_mul.as_ptr(),
-            lookup_add.as_ptr(),
-            batching.as_ptr(),
+            inputs.external_ptr(),
+            inputs.lookup_mul_ptr(),
+            inputs.lookup_add_ptr(),
+            inputs.batching_ptr(),
             context,
         )?;
         assert_eq!(bank_spans.slab.0, rounds.challenge_slab().as_ptr() as usize);
         if let Some(borrowed_bank) = owners.coefficient_bank.take() {
             ledger_bind_final(ledger, &borrowed_bank);
         }
-        let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
+        let slab = open_bank_owners(ledger, &mut owners, bank_spans);
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
-        let mut transcript = transcript_buffers(context)?;
+        let mut transcript = transcript_buffers(context, inputs)?;
         allocations.append(&mut transcript.allocations);
         let transcript_owners = open_transcript_owners(ledger, TASK8_LEGACY_ARM, &transcript);
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
@@ -3069,7 +3169,7 @@ fn run_legacy_arm(
             launch_backward_dual_finalize_from_partials(
                 partials.as_ptr(),
                 warp_partial_count(acc_size),
-                unsafe { claim_point.as_ptr().add(round) },
+                unsafe { inputs.point_ptr().add(round) },
                 transcript.seed.as_mut_ptr(),
                 transcript.claim.as_mut_ptr(),
                 transcript.prefactor.as_mut_ptr(),
@@ -3148,37 +3248,19 @@ fn run_legacy_arm(
             first_reads_only_published,
             input_retired: !rounds.expected_input_is_live(),
         };
-        if let Some(bank_staging) = rounds.take_bank_staging() {
-            retain_in_callback(bank_staging, callbacks, context)?;
-        }
-        retain_in_callback(point_staging, callbacks, context)?;
-        retain_in_callback(claim_symbol_staging, callbacks, context)?;
-        retain_in_callback(external_staging, callbacks, context)?;
-        retain_in_callback(lookup_mul_staging, callbacks, context)?;
-        retain_in_callback(lookup_add_staging, callbacks, context)?;
-        retain_in_callback(batching_staging, callbacks, context)?;
-        retain_in_callback(transcript._seed_staging, callbacks, context)?;
-        retain_in_callback(transcript._claim_staging, callbacks, context)?;
-        retain_in_callback(transcript._prefactor_staging, callbacks, context)?;
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
         for (_, owner) in publications.iter() {
             ledger_bind_final(ledger, owner);
         }
         ledger_bind_final(ledger, &slab);
-        ledger_bind_final(ledger, &coefficient_tables);
         drop(rounds);
         bind_challenge_owners_final(ledger, &challenge_owners);
-        drop(external);
-        drop(lookup_mul);
-        drop(lookup_add);
-        drop(batching);
         bind_transcript_owners_final(ledger, &transcript_owners);
         drop(transcript.seed);
         drop(transcript.claim);
         drop(transcript.prefactor);
         drop(transcript.coefficients);
         bind_arm_owners_final(ledger, &owners);
-        drop(claim_point);
         drop(eq_low);
         drop(partials);
         let memory = observer.finish();
@@ -3229,15 +3311,14 @@ fn run_first_pass_legacy_capacity_probe(
     continuation_program: &gpu_gkr_compiler::ContinuationLayerProgram,
     top_bits: &[u32],
     folding_steps: usize,
-    point_host: &[E4],
-    callbacks: &mut Callbacks<'_>,
+    inputs: &Task8DeviceInputs,
+    _callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<Task8CapacityEvidence> {
     let entry = context.get_device_memory_usage();
     let observer = context.observe_device_memory_high_water();
     let (publication_bytes, overlap_event) = {
-        let (claim_point, point_staging) = upload(context, point_host)?;
-        let (claim_symbol_staging, _) = write_claim_point_symbol(context, point_host)?;
+        let _ = copy_claim_point_symbol(context, inputs)?;
         let mut eq_low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::BestFit)?;
         let mut partials = context.alloc(
             window_partials_len(1usize << folding_steps),
@@ -3245,7 +3326,7 @@ fn run_first_pass_legacy_capacity_probe(
         )?;
 
         launch_build_eq_high_and_low_groups_from_point(
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             4,
             folding_steps - 4,
             get_eq_high_constant_device_ptr(),
@@ -3263,16 +3344,11 @@ fn run_first_pass_legacy_capacity_probe(
             top_bits,
             context,
         )?;
-        let external_host: Vec<_> = (0..32).map(|i| deterministic_e4(0x100 + i)).collect();
-        let (external, external_staging) = upload(context, &external_host)?;
-        let (lookup_mul, lookup_mul_staging) = upload(context, &[deterministic_e4(0x201)])?;
-        let (lookup_add, lookup_add_staging) = upload(context, &[deterministic_e4(0x202)])?;
-        let (batching, batching_staging) = upload(context, &[deterministic_e4(0x203)])?;
         let _ = rounds.schedule_bank_fill(
-            external.as_ptr(),
-            lookup_mul.as_ptr(),
-            lookup_add.as_ptr(),
-            batching.as_ptr(),
+            inputs.external_ptr(),
+            inputs.lookup_mul_ptr(),
+            inputs.lookup_add_ptr(),
+            inputs.batching_ptr(),
             context,
         )?;
         let mut publication_bytes = 0usize;
@@ -3304,21 +3380,7 @@ fn run_first_pass_legacy_capacity_probe(
             rounds.peak_live_publications(),
             (2, publication_bytes + publication_bytes / 2)
         );
-        if let Some(bank_staging) = rounds.take_bank_staging() {
-            retain_in_callback(bank_staging, callbacks, context)?;
-        }
-        retain_in_callback(point_staging, callbacks, context)?;
-        retain_in_callback(claim_symbol_staging, callbacks, context)?;
-        retain_in_callback(external_staging, callbacks, context)?;
-        retain_in_callback(lookup_mul_staging, callbacks, context)?;
-        retain_in_callback(lookup_add_staging, callbacks, context)?;
-        retain_in_callback(batching_staging, callbacks, context)?;
         drop(rounds);
-        drop(external);
-        drop(lookup_mul);
-        drop(lookup_add);
-        drop(batching);
-        drop(claim_point);
         drop(eq_low);
         drop(partials);
         (publication_bytes, overlap_event)
@@ -4117,7 +4179,7 @@ mod cpu_tests {
         allocation_group_record, bind_arm_owners_final, bind_challenge_owners_final,
         bind_transcript_owners_final, build_corpus_census, deterministic_e4, eq_readback_spans,
         ledger_bind_final, ledger_open, record_active_eq_slot_fold, signed_snapshot_delta,
-        task8_enqueue, task8_enqueue_plan, task8_eq_coordinates, task8_register_symbol,
+        task8_eq_coordinates, task8_register_symbol,
         validate_owner_generation_ledger, validate_owner_generation_structure,
         validate_single_owner_topology, BTreeSet, Field, Task8AllocationRecord, Task8ArmOwners,
         Task8CarriedSymbols, Task8ChallengeOwners, Task8EnqueueKind, Task8EnqueuePlan,
@@ -4125,12 +4187,11 @@ mod cpu_tests {
         Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard, Task8QueuedUse, Task8Span,
         Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
         MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
-        TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
+        TASK8_SHARED_DEVICE_INPUTS, TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
     };
+    use crate::backward::task8_probe::{task8_enqueue, task8_enqueue_plan};
     use crate::backward::kernels::{task8_dual_finalize_spans, task8_eq_build_spans};
-    use crate::backward::main_layer::execution_plan::{
-        main_continuation_post_tail_eq_boundary, WINDOW_WIDTH,
-    };
+    use crate::backward::main_layer::execution_plan::WINDOW_WIDTH;
     use crate::backward::task8_probe::task8_register_descriptor_sources;
     use crate::backward::vm::production_bind::{
         drained_eq_sizes, foldable_eq_variables, task8_challenge_prefix_spans,
@@ -4138,9 +4199,8 @@ mod cpu_tests {
     };
     use crate::backward::vm::seg::{task8_fold_weight_spans, task8_seg_plan, task8_seg_spans};
     use crate::backward::vm::seg_coeff_eval::{
-        task8_coeff_eval_reads, task8_coeff_fill_spans, SegCoeffEvalBlob, SegCoeffMonomial,
-        SegCoeffRecipe, BWD_SEG_BLOB_BYTES, BWD_SEG_CHALLENGE_ABSENT,
-        BWD_SEG_CHALLENGE_CLAIM_BATCHING,
+        task8_coeff_fill_spans, SegCoeffEvalBlob, SegCoeffEvalChunks, SegCoeffMonomial,
+        SegCoeffRecipe, BWD_SEG_CHALLENGE_ABSENT, BWD_SEG_CHALLENGE_CLAIM_BATCHING,
     };
     use crate::backward::vm::seg_desc::{
         bwd_seg_fold_weight_run, bwd_seg_lane, BwdSegAddrSlot, BwdSegDesc,
@@ -4270,7 +4330,9 @@ mod cpu_tests {
     const TASK8_TEST_ROW_TILES: usize = 4;
     const TASK8_TEST_CHALLENGES: usize = 11;
     const TASK8_TEST_HIGH_TABLE: usize = 256;
-    const TASK8_TEST_BANK_ELEMS: usize = 16;
+    // Matches the test blob's recipe count: the registered symbol extent is
+    // exactly the filled bank prefix, as in the real fill.
+    const TASK8_TEST_BANK_ELEMS: usize = 2;
     const TASK8_TEST_FOLD_WEIGHT_ELEMS: usize = 11;
     const TASK8_TEST_SLAB_ELEMS: usize = 10;
     const TASK8_TEST_PUBLICATION_ELEMS: usize = 128;
@@ -4505,7 +4567,26 @@ mod cpu_tests {
         );
     }
 
-    fn upload(
+    fn borrow(
+        ledger: &mut Task8OwnerGenerationLedger,
+        arm: &'static str,
+        label: &'static str,
+        base: usize,
+        bytes: usize,
+    ) -> Task8LedgerOwner {
+        ledger_open(
+            ledger,
+            arm,
+            label,
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS),
+            base,
+            bytes,
+        )
+    }
+
+    /// One arm-owned buffer initialized device-to-device from the seam, as the
+    /// real transcript buffers are.
+    fn state_copy(
         ledger: &mut Task8OwnerGenerationLedger,
         probe: &Task8ProbeGuard,
         arm: &'static str,
@@ -4518,9 +4599,9 @@ mod cpu_tests {
             ledger,
             probe,
             arm,
-            "host-upload",
+            "transcript-state-copy",
             Task8EnqueueKind::Copy,
-            vec![Task8Span::write("upload", base, bytes)],
+            vec![Task8Span::write(label, base, bytes)],
         );
         owner
     }
@@ -4563,7 +4644,6 @@ mod cpu_tests {
         challenges: Task8ChallengeOwners,
         transcript: Task8TranscriptOwners,
         slab: Task8LedgerOwner,
-        tables: Task8LedgerOwner,
         publication: Task8LedgerOwner,
         reduced_tensor: Option<Task8LedgerOwner>,
     }
@@ -4577,9 +4657,8 @@ mod cpu_tests {
         arm: &'static str,
         carried: &Task8CarriedSymbols,
     ) -> Task8ArmFixture {
-        let claim_point = upload(
+        let claim_point = borrow(
             ledger,
-            probe,
             arm,
             "claim_point",
             TASK8_TEST_CLAIM_POINT,
@@ -4610,36 +4689,34 @@ mod cpu_tests {
             )],
         );
         let challenges = Task8ChallengeOwners {
-            external: upload(
+            external: borrow(
                 ledger,
-                probe,
                 arm,
                 "external_challenges",
                 TASK8_TEST_CHALLENGE_BASE,
-                32 * TASK8_TEST_ELEMENT,
+                7 * TASK8_TEST_ELEMENT,
             ),
-            lookup_multiplicative: upload(
+            lookup_multiplicative: borrow(
                 ledger,
-                probe,
                 arm,
                 "lookup_multiplicative",
-                TASK8_TEST_CHALLENGE_BASE + 0x1000,
+                TASK8_TEST_CHALLENGE_BASE + 7 * TASK8_TEST_ELEMENT,
                 TASK8_TEST_ELEMENT,
             ),
-            lookup_additive: upload(
+            lookup_additive: borrow(
                 ledger,
-                probe,
                 arm,
                 "lookup_additive",
-                TASK8_TEST_CHALLENGE_BASE + 0x2000,
+                TASK8_TEST_CHALLENGE_BASE + 8 * TASK8_TEST_ELEMENT,
                 TASK8_TEST_ELEMENT,
             ),
-            claim_batching: upload(
+            // Nested inside the borrowed claim point, as the real batching slot
+            // is its last element; the narrowest declaration wins the reads.
+            claim_batching: borrow(
                 ledger,
-                probe,
                 arm,
                 "claim_batching",
-                TASK8_TEST_CHALLENGE_BASE + 0x3000,
+                TASK8_TEST_CLAIM_POINT + (TASK8_TEST_POINT_LEN - 1) * TASK8_TEST_ELEMENT,
                 TASK8_TEST_ELEMENT,
             ),
         };
@@ -4649,13 +4726,6 @@ mod cpu_tests {
             "challenge_slab",
             TASK8_TEST_SLAB,
             TASK8_TEST_SLAB_ELEMS * TASK8_TEST_ELEMENT,
-        );
-        let tables = open(
-            ledger,
-            arm,
-            "coefficient_tables",
-            TASK8_TEST_TABLES,
-            BWD_SEG_BLOB_BYTES,
         );
         let prefix = 7;
         enqueue(
@@ -4680,18 +4750,6 @@ mod cpu_tests {
                 task8_challenge_slot_spans(source.base, slab.base, slot),
             );
         }
-        enqueue(
-            ledger,
-            probe,
-            arm,
-            "coefficient-table-copy",
-            Task8EnqueueKind::Copy,
-            vec![Task8Span::write(
-                "coefficient_tables",
-                tables.base,
-                tables.bytes,
-            )],
-        );
         task8_register_symbol(
             "ab_gkr_bwd_seg_coeff_bank",
             carried.coefficient_bank.unwrap().0,
@@ -4704,22 +4762,28 @@ mod cpu_tests {
             carried.coefficient_bank.unwrap().0,
             carried.coefficient_bank.unwrap().1,
         );
-        let reads = task8_coeff_eval_reads(&task8_test_blob());
-        enqueue_planned(
-            ledger,
-            probe,
-            arm,
-            "coefficient-bank-fill",
-            task8_coeff_fill_spans(&reads, tables.base, slab.base, bank.base, bank.bytes),
-            Task8EnqueuePlan::CoefficientFill {
-                tables: tables.base,
-                table_ranges: reads.table_ranges.clone(),
-                slab: slab.base,
-                challenge_slots: reads.challenge_slots.clone(),
-                bank: bank.base,
-                bank_bytes: bank.bytes,
-            },
-        );
+        let chunks = SegCoeffEvalChunks::build(&task8_test_blob());
+        for ((first, count), slots) in chunks
+            .task8_chunk_ranges()
+            .into_iter()
+            .zip(chunks.task8_challenge_slots())
+        {
+            let bank_first = bank.base + first as usize * TASK8_TEST_ELEMENT;
+            let bank_bytes = count as usize * TASK8_TEST_ELEMENT;
+            enqueue_planned(
+                ledger,
+                probe,
+                arm,
+                "coefficient-bank-fill",
+                task8_coeff_fill_spans(slots, slab.base, bank_first, bank_bytes),
+                Task8EnqueuePlan::CoefficientFill {
+                    slab: slab.base,
+                    challenge_slots: slots.to_vec(),
+                    bank_first,
+                    bank_bytes,
+                },
+            );
+        }
         let owners = Task8ArmOwners {
             arm,
             claim_point,
@@ -4761,7 +4825,7 @@ mod cpu_tests {
             coefficient_bank: Some(bank),
         };
         let transcript = Task8TranscriptOwners {
-            seed: upload(
+            seed: state_copy(
                 ledger,
                 probe,
                 arm,
@@ -4769,7 +4833,7 @@ mod cpu_tests {
                 TASK8_TEST_TRANSCRIPT_BASE,
                 8 * std::mem::size_of::<u32>(),
             ),
-            claim: upload(
+            claim: state_copy(
                 ledger,
                 probe,
                 arm,
@@ -4777,7 +4841,7 @@ mod cpu_tests {
                 TASK8_TEST_TRANSCRIPT_BASE + 0x1000,
                 TASK8_TEST_ELEMENT,
             ),
-            prefactor: upload(
+            prefactor: state_copy(
                 ledger,
                 probe,
                 arm,
@@ -4798,7 +4862,6 @@ mod cpu_tests {
             challenges,
             transcript,
             slab,
-            tables,
             publication: open(
                 ledger,
                 arm,
@@ -4934,7 +4997,6 @@ mod cpu_tests {
             ledger_bind_final(ledger, reduced_tensor);
         }
         ledger_bind_final(ledger, &fixture.slab);
-        ledger_bind_final(ledger, &fixture.tables);
         bind_challenge_owners_final(ledger, &fixture.challenges);
         bind_transcript_owners_final(ledger, &fixture.transcript);
         bind_arm_owners_final(ledger, &fixture.owners);
@@ -5274,6 +5336,31 @@ mod cpu_tests {
         );
         record.address = address;
         record.range = address..address + bytes;
+        ledger
+    }
+
+    /// A capture whose first coefficient-bank-fill enqueue of `arm` reported a
+    /// plan naming a different bank range. The records are untouched, so the
+    /// census — records against the plan — is the only thing that disagrees.
+    fn mutate_fill_plan(
+        base: &Task8OwnerGenerationLedger,
+        arm: &'static str,
+        mutate: impl Fn(&mut usize, &mut usize),
+    ) -> Task8OwnerGenerationLedger {
+        let mut ledger = base.clone();
+        let enqueue = ledger
+            .enqueues
+            .iter_mut()
+            .find(|enqueue| enqueue.arm == arm && enqueue.site == "coefficient-bank-fill")
+            .expect("the arm must carry a coefficient-bank-fill enqueue");
+        match enqueue.plan.as_mut() {
+            Some(Task8EnqueuePlan::CoefficientFill {
+                bank_first,
+                bank_bytes,
+                ..
+            }) => mutate(bank_first, bank_bytes),
+            other => panic!("the fill enqueue carries an unexpected plan: {other:?}"),
+        }
         ledger
     }
 
@@ -5855,29 +5942,39 @@ mod cpu_tests {
             assert_eq!(cached[0].use_kind, Task8QueuedUse::Write);
             assert_eq!(cached[1].use_kind, Task8QueuedUse::Read);
 
-            // The coefficient fill records exactly the live recipe and monomial
-            // records and the challenge slots those monomials name.
-            let reads = task8_coeff_eval_reads(&task8_test_blob());
-            assert_eq!(reads.challenge_slots, vec![0, 3, 9]);
-            let fill = records_of(&ledger, "coefficient-bank-fill");
-            let tables: Vec<_> = fill
+            // The coefficient fill's chunks ride the launch parameters by
+            // value, so its only reads are the challenge slots the chunk's
+            // monomials name, and its writes cover the bank prefix exactly.
+            let chunks = SegCoeffEvalChunks::build(&task8_test_blob());
+            let expected_slots: Vec<usize> = chunks
+                .task8_challenge_slots()
                 .iter()
-                .filter(|record| record.role == "coefficient_tables")
-                .map(|record| {
-                    record.range.start - TASK8_TEST_TABLES..record.range.end - TASK8_TEST_TABLES
-                })
+                .flatten()
+                .copied()
                 .collect();
-            assert_eq!(tables, reads.table_ranges);
+            assert_eq!(expected_slots, vec![0, 3, 9]);
+            let fill = records_of(&ledger, "coefficient-bank-fill");
             assert!(
-                tables.iter().map(|range| range.len()).sum::<usize>() < BWD_SEG_BLOB_BYTES,
-                "the fill reads its live records, not the whole staged blob"
+                fill.iter()
+                    .all(|record| record.role != "coefficient_tables"),
+                "a by-value fill reads no device table"
             );
             let slots: Vec<_> = fill
                 .iter()
                 .filter(|record| record.role == "challenge_slab")
                 .map(|record| (record.address - TASK8_TEST_SLAB) / element)
                 .collect();
-            assert_eq!(slots, reads.challenge_slots);
+            assert_eq!(slots, expected_slots);
+            let written: usize = fill
+                .iter()
+                .filter(|record| record.role == "coefficient_bank")
+                .map(|record| record.range.len())
+                .sum();
+            assert_eq!(
+                written,
+                chunks.num_coefficients() as usize * element,
+                "the chunk writes must cover the bank prefix exactly"
+            );
         }
     }
 
@@ -5983,7 +6080,7 @@ mod cpu_tests {
             );
             let mut families = BTreeSet::new();
             let element = TASK8_TEST_ELEMENT;
-            let reads = task8_coeff_eval_reads(&task8_test_blob());
+            let chunks = SegCoeffEvalChunks::build(&task8_test_blob());
 
             // Every mutation below changes exactly one range a production
             // builder reported — dropping it, narrowing it, widening it or
@@ -6094,66 +6191,60 @@ mod cpu_tests {
             }
             families.insert("inexact-fold-weight-run");
 
-            // Either half of the coefficient fill's staged-table census: the
-            // live recipe records, or the monomials those recipes reference.
+            // The chunk's bank write: the plan pins the exact contiguous
+            // range, so a builder whose plan narrows it, moves it, or covers a
+            // different prefix disagrees with the recorded write.
             assert_eq!(
-                reads.table_ranges.len(),
-                2,
-                "the fill's census names the recipe section and the monomial section"
+                chunks.task8_chunk_ranges(),
+                vec![(0, chunks.num_coefficients())],
+                "the test blob must ride one chunk"
             );
-            let table_target = |index: usize| Task8OmittedRange {
-                arm: first_arm,
-                site: "coefficient-bank-fill",
-                occurrence: 0,
-                use_kind: Task8QueuedUse::Read,
-                address: TASK8_TEST_TABLES + reads.table_ranges[index].start,
-                bytes: reads.table_ranges[index].len(),
-            };
-            for index in 0..2 {
-                let target = table_target(index);
-                census_rejected_by(
-                    &omit_range(&base, target),
-                    first_arm,
-                    second_arm,
-                    "coefficient-bank-fill",
-                    &census_entry(
-                        "coefficient_tables",
-                        Task8QueuedUse::Read,
-                        target.address,
-                        target.bytes,
-                    ),
-                );
-            }
+            let bank_bytes = chunks.num_coefficients() as usize * element;
+            let narrowed = mutate_fill_plan(&base, first_arm, |bank_first, bytes| {
+                let _ = bank_first;
+                *bytes -= element;
+            });
+            census_rejected_by(
+                &narrowed,
+                first_arm,
+                second_arm,
+                "coefficient-bank-fill",
+                &census_entry(
+                    "coefficient_bank",
+                    Task8QueuedUse::Write,
+                    TASK8_TEST_BANK,
+                    bank_bytes - element,
+                ),
+            );
             families.insert("missing-coefficient-record");
 
-            // The recipe range widened by one record and the monomial range
-            // moved on by one record. The staged blob is written whole, so both
-            // stay inside initialized bytes.
-            for (index, address, bytes) in [
-                (
-                    0,
-                    table_target(0).address,
-                    table_target(0).bytes + std::mem::size_of::<SegCoeffRecipe>(),
+            let moved = mutate_fill_plan(&base, first_arm, |bank_first, bytes| {
+                let _ = bytes;
+                *bank_first += element;
+            });
+            census_rejected_by(
+                &moved,
+                first_arm,
+                second_arm,
+                "coefficient-bank-fill",
+                &census_entry(
+                    "coefficient_bank",
+                    Task8QueuedUse::Write,
+                    TASK8_TEST_BANK + element,
+                    bank_bytes,
                 ),
-                (
-                    1,
-                    table_target(1).address + std::mem::size_of::<SegCoeffMonomial>(),
-                    table_target(1).bytes,
-                ),
-            ] {
-                census_rejected_by(
-                    &retune_range(&base, table_target(index), address, bytes),
-                    first_arm,
-                    second_arm,
-                    "coefficient-bank-fill",
-                    &census_entry("coefficient_tables", Task8QueuedUse::Read, address, bytes),
-                );
-            }
+            );
             families.insert("inexact-coefficient-record");
 
             // Every challenge slot the fill's live monomials name, batching and
             // non-batching alike.
-            for slot in &reads.challenge_slots {
+            let fill_challenge_slots: Vec<usize> = chunks
+                .task8_challenge_slots()
+                .iter()
+                .flatten()
+                .copied()
+                .collect();
+            for slot in &fill_challenge_slots {
                 let target = Task8OmittedRange {
                     arm: first_arm,
                     site: "coefficient-bank-fill",
@@ -6675,9 +6766,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
         "{TASK8_DIAGNOSTIC}: fixture selected zero continuation passes"
     );
 
-    let point_host: Vec<_> = (0..=folding_steps)
-        .map(|coordinate| deterministic_e4(0x300 + coordinate as u32))
-        .collect();
+    let device_inputs = prepare_task8_device_inputs(folding_steps, context)?;
     let layers = programs.runtime_circuit().layers.len();
     let accumulator = Arc::new(Mutex::new(Task8DifferentialAccumulator {
         layers,
@@ -6718,6 +6807,33 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
         ledger_owner_records: 0,
     }));
     let mut readback_scratch = alloc_static_pinned_box_uninit(TASK8_READBACK_CHUNK_BYTES)?;
+    // The host learns the seam's device-squeezed values only through this
+    // observation readback; every host oracle below consumes it.
+    let master_readback = schedule_read_device_chunked(
+        &device_inputs.master[..],
+        &mut readback_scratch,
+        callbacks,
+        context,
+        "input-readback",
+        |_, _| Vec::new(),
+    )?;
+    let master_table: Arc<Mutex<Option<Vec<E4>>>> = Arc::new(Mutex::new(None));
+    {
+        let sink = Arc::clone(&master_table);
+        let pending = Mutex::new(Some(master_readback));
+        callbacks.schedule(
+            move || {
+                let values = pending
+                    .lock()
+                    .expect("Task 8 master readback mutex poisoned")
+                    .take()
+                    .expect("Task 8 master readback consumed twice")
+                    .materialize();
+                *sink.lock().expect("Task 8 master table mutex poisoned") = Some(values);
+            },
+            context.get_exec_stream(),
+        )?;
+    }
     let storage_owner = storage as *const _ as usize;
     for layer in 0..layers {
         let window_program = programs.main_continuation_window_layer(layer);
@@ -6834,7 +6950,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             continuation_program,
             inits_and_teardowns_top_bits,
             folding_steps,
-            &point_host,
+            &device_inputs,
             callbacks,
             context,
         )?;
@@ -6882,7 +6998,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                 inits_and_teardowns_top_bits,
                 folding_steps,
                 start_round,
-                &point_host,
+                &device_inputs,
                 &mut readback_scratch,
                 callbacks,
                 context,
@@ -6895,7 +7011,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                 inits_and_teardowns_top_bits,
                 folding_steps,
                 start_round,
-                &point_host,
+                &device_inputs,
                 &mut readback_scratch,
                 callbacks,
                 context,
@@ -6904,7 +7020,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             )?;
             let callback_accumulator = Arc::clone(&accumulator);
             let callback_source_table = Arc::clone(&source_table);
-            let callback_point_host = point_host.clone();
+            let callback_master_table = Arc::clone(&master_table);
             let callback_folding_steps = folding_steps;
             let coordinate_payload = Mutex::new(Some((
                 window,
@@ -6922,6 +7038,19 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                             .expect("Task 8 coordinate payload mutex poisoned")
                             .take()
                             .expect("Task 8 coordinate payload consumed twice");
+                    let master = callback_master_table
+                        .lock()
+                        .expect("Task 8 master table mutex poisoned")
+                        .clone()
+                        .expect("Task 8 master observation did not materialize before use");
+                    let callback_point_host = master[Task8DeviceInputs::point_offset()..]
+                        [..callback_folding_steps + 1]
+                        .to_vec();
+                    let state = Task8DeviceInputs::point_offset() + callback_folding_steps + 1;
+                    assert!(
+                        !master[state + 1].is_zero(),
+                        "Task 8 device-squeezed Eq prefactor must be invertible"
+                    );
                     let ledger_shared_symbol_transitions = validate_owner_generation_ledger(
                         &owner_ledger,
                         TASK8_WINDOW_ARM,

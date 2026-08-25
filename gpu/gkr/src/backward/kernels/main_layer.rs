@@ -7,7 +7,6 @@ use crate::upstream::GKRAddress;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::static_host::StaticPinnedBox;
 
 pub(crate) struct GpuGKRMainLayerRoundScratch {
     pub(crate) eq_low_group: DeviceAllocation<E4>,
@@ -75,10 +74,6 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution {
     pub(crate) device_claims_for_next_layer: Option<DeviceAllocation<E4>>,
     /// Explicit address order of `device_claims_for_next_layer`.
     pub(crate) claim_layout_for_next_layer: Option<ClaimBufferLayout>,
-    /// Coefficient-blob host staging, moved out of the layer plan so it outlives
-    /// the async H2D copies that read it.
-    #[allow(dead_code)]
-    pub(crate) coeff_bank_staging: Vec<StaticPinnedBox<u8>>,
     /// Pointer-free final continuation Eq boundary. The isolated Task 6 arm
     /// adopts the publication into legacy; Blue may consume this witness when
     /// replacing that remainder with main-mega.
