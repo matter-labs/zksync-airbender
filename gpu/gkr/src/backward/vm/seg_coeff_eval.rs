@@ -679,10 +679,6 @@ pub(crate) struct Task8CoeffEvalReads {
     pub(crate) challenge_slots: Vec<usize>,
 }
 
-#[cfg(all(
-    any(test, feature = "task8_continuation_differential_test"),
-    not(no_cuda)
-))]
 /// The pointer arguments one coefficient-bank fill's evaluation names: the
 /// recipe and monomial records it reads, the challenge slots those monomials
 /// use, and the bank prefix it writes.
