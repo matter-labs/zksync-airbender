@@ -121,6 +121,57 @@ enum Task8OwnerOrigin {
     FactoredEq,
 }
 
+/// How a generation's ownership of its bytes ended. The ledger needs the end,
+/// not only `Final`: `Final` says no further enqueue may name the generation,
+/// while the end says whether the bytes went back to the pool, so a later
+/// declaration over the same address is reuse rather than a shadow.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Task8OwnershipEnd {
+    /// The arm dropped the device allocation and the pool may hand the bytes to
+    /// any later request.
+    Freed,
+    /// A static device symbol the arm stops naming. The storage outlives the
+    /// arm; only this arm's generation of it ends.
+    SymbolReleased,
+    /// A read-only borrow of storage the arm never owned. Nothing is freed and
+    /// nothing is handed back; the borrow itself is what ends.
+    BorrowClosed,
+}
+
+impl Task8OwnershipEnd {
+    /// The ends an origin may declare. A borrow can only be closed, and storage
+    /// the arm writes can only be freed or released as a symbol, so a missing
+    /// free can never be spelled as a borrow closure.
+    fn admits(&self, origin: Task8OwnerOrigin) -> bool {
+        match origin {
+            Task8OwnerOrigin::Borrowed(_) => matches!(self, Task8OwnershipEnd::BorrowClosed),
+            Task8OwnerOrigin::ArmOwned | Task8OwnerOrigin::FactoredEq => matches!(
+                self,
+                Task8OwnershipEnd::Freed | Task8OwnershipEnd::SymbolReleased
+            ),
+        }
+    }
+}
+
+/// One generation's ownership end, and the enqueue boundary it happened at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Task8Release {
+    at_enqueue: u64,
+    end: Task8OwnershipEnd,
+}
+
+/// The generation a rejected span or declaration collided with, carried by the
+/// error so a failure names the stale owner and not only the new access.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Task8Culprit {
+    arm: &'static str,
+    label: &'static str,
+    generation: u64,
+    covered: (usize, usize),
+    final_enqueue: Option<u64>,
+    released: Option<Task8Release>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Task8OwnerGeneration {
     arm: &'static str,
@@ -130,7 +181,7 @@ struct Task8OwnerGeneration {
     generation: u64,
     origin: Task8OwnerOrigin,
     superseded_by: Option<u64>,
-    released: Option<u64>,
+    released: Option<Task8Release>,
     initialized: Vec<std::ops::Range<usize>>,
     final_enqueue: Option<u64>,
     records: Vec<Task8LedgerRecord>,
@@ -201,15 +252,28 @@ impl Task8OwnerGeneration {
 enum Task8LedgerError {
     StaleToken,
     AmbiguousLiveGeneration,
-    UseAfterFinal,
+    /// A span whose narrowest unreleased owner has already bound `Final`. The
+    /// culprit is that owner, so the failure names the generation the bytes
+    /// still belong to.
+    UseAfterFinal(Task8Culprit),
     UseBeforeInitialization,
     ResidentReadOfCoveredBytes,
     ResidentReadOfNonEqOwner,
     WriteToBorrowedOwner,
     UnownedSpan,
-    ReuseWithoutFinal,
+    /// A declaration over the exact range of a generation that is still live.
+    ReuseWithoutFinal(Task8Culprit),
+    /// A declaration over bytes a retired generation still owns because its
+    /// ownership never ended.
+    ReuseWithoutRelease(Task8Culprit),
+    /// Two live declarations that overlap without one containing the other, so
+    /// neither is a nested view of the other.
+    OverlappingLiveDeclaration(Task8Culprit),
     FinalWithoutEnqueue,
     FinalAlreadyBound,
+    ReleaseWithoutFinal,
+    ReleaseKindMismatch,
+    AlreadyReleased,
 }
 
 /// Enqueue-order ledger for the device buffers and symbols one differential
@@ -258,73 +322,91 @@ impl Task8OwnerGenerationLedger {
         Ok(token.slot)
     }
 
-    /// The single generation an address is currently open under, or `None` when
-    /// the address has never been opened. Two open generations at one address
-    /// are a ledger fault, not a lookup to disambiguate by position.
-    fn live_generation(
-        &self,
-        owner: usize,
-    ) -> Result<Option<Task8GenerationToken>, Task8LedgerError> {
-        let mut live = self
-            .generations
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| entry.owner == owner && entry.superseded_by.is_none());
-        let first = live.next();
-        if live.next().is_some() {
-            return Err(Task8LedgerError::AmbiguousLiveGeneration);
-        }
-        Ok(first.map(|(slot, entry)| Task8GenerationToken {
-            slot,
-            owner,
-            generation: entry.generation,
-        }))
-    }
-
     /// The generation that owns `range`: the most specific declaration
     /// containing it, so a sub-buffer such as the reduced tensor takes the spans
     /// inside it from the allocation it lives in.
     ///
-    /// The most specific declaration stays authoritative after it binds `Final`.
-    /// A span inside a finalized narrow owner is a use after that owner's last
-    /// enqueue even while a broader owner is still live, until an explicit
-    /// successor generation is admitted at the same address. Two live
-    /// candidates of the same width are a ledger fault, not a choice.
+    /// A generation whose ownership has ended -- superseded by an admitted
+    /// successor, or released back to the pool, the symbol or the lender -- is
+    /// not a candidate at all. It is dropped before specificity is decided, so
+    /// bytes the allocator has recycled cannot be shadowed by the declaration
+    /// that used to hold them.
+    ///
+    /// A generation that bound `Final` but never released stays authoritative:
+    /// it still owns its bytes, so a span inside it is a use after its last
+    /// enqueue even while a broader owner is live. That rejection carries the
+    /// stale owner's identity.
+    ///
+    /// Two live candidates of the same width are a ledger fault, not a choice.
     fn owner_of(&self, range: &std::ops::Range<usize>) -> Result<usize, Task8LedgerError> {
         let mut narrowest: Option<usize> = None;
         let mut live: Option<usize> = None;
+        let mut retired: Option<usize> = None;
         let mut ambiguous = false;
         for (slot, entry) in self.generations.iter().enumerate() {
             if !entry.within(range) {
                 continue;
             }
+            if entry.superseded_by.is_some() || entry.released.is_some() {
+                continue;
+            }
             let width = entry.covered.end - entry.covered.start;
-            let open = entry.superseded_by.is_none() && entry.final_enqueue.is_none() && entry.released.is_none();
+            let open = entry.final_enqueue.is_none();
             match narrowest {
                 Some(best) if best < width => continue,
                 Some(best) if best == width => {
                     if open {
                         ambiguous |= live.is_some();
                         live = Some(slot);
+                    } else if retired.is_none() {
+                        retired = Some(slot);
                     }
                 }
                 _ => {
                     narrowest = Some(width);
                     ambiguous = false;
                     live = open.then_some(slot);
+                    retired = (!open).then_some(slot);
                 }
             }
         }
         if ambiguous {
             return Err(Task8LedgerError::AmbiguousLiveGeneration);
         }
-        match (narrowest, live) {
-            (_, Some(slot)) => Ok(slot),
-            (Some(_), None) => Err(Task8LedgerError::UseAfterFinal),
+        match (live, retired) {
+            (Some(slot), _) => Ok(slot),
+            (None, Some(slot)) => Err(Task8LedgerError::UseAfterFinal(self.culprit(slot))),
             (None, None) => Err(Task8LedgerError::UnownedSpan),
         }
     }
 
+    /// The identity a rejection carries: which generation the new access or
+    /// declaration collided with, and how far through retirement it had got.
+    fn culprit(&self, slot: usize) -> Task8Culprit {
+        let entry = &self.generations[slot];
+        Task8Culprit {
+            arm: entry.arm,
+            label: entry.label,
+            generation: entry.generation,
+            covered: (entry.covered.start, entry.covered.end),
+            final_enqueue: entry.final_enqueue,
+            released: entry.released,
+        }
+    }
+
+    /// Opens a declaration over `owner..owner + bytes`, classifying it against
+    /// every generation whose own successor has not already taken over.
+    ///
+    /// A retired generation at the same base is this declaration's predecessor:
+    /// it is the address being taken back, and [`Self::admit_reuse`] decides
+    /// whether it may be. Everything else that intersects is judged by what it
+    /// still is. A live generation that contains, or is contained by, the new
+    /// range is a nested view -- a sub-buffer inside its allocation, a borrowed
+    /// element inside a borrowed vector -- and is left alone; the same range
+    /// while it is live is a second owner of bytes it still holds. A generation
+    /// that bound `Final` but never released still owns its bytes, so declaring
+    /// over them is reuse of storage the arm never gave back. A generation that
+    /// did release owns nothing, so it constrains nothing.
     fn open(
         &mut self,
         arm: &'static str,
@@ -334,7 +416,43 @@ impl Task8OwnerGenerationLedger {
         bytes: usize,
     ) -> Result<Task8GenerationToken, Task8LedgerError> {
         let covered = owner..owner + bytes;
-        match self.live_generation(owner)? {
+        let mut predecessor: Option<Task8GenerationToken> = None;
+        for slot in 0..self.generations.len() {
+            let entry = &self.generations[slot];
+            if entry.superseded_by.is_some() {
+                continue;
+            }
+            let live = entry.final_enqueue.is_none();
+            if entry.owner == covered.start && !live {
+                predecessor = Some(Task8GenerationToken {
+                    slot,
+                    owner: entry.owner,
+                    generation: entry.generation,
+                });
+                continue;
+            }
+            if entry.released.is_some() {
+                continue;
+            }
+            if entry.covered.start >= covered.end || covered.start >= entry.covered.end {
+                continue;
+            }
+            if !live {
+                return Err(Task8LedgerError::ReuseWithoutRelease(self.culprit(slot)));
+            }
+            if entry.covered == covered {
+                return Err(Task8LedgerError::ReuseWithoutFinal(self.culprit(slot)));
+            }
+            let nested = (entry.covered.start <= covered.start && covered.end <= entry.covered.end)
+                || (covered.start <= entry.covered.start && entry.covered.end <= covered.end);
+            if nested {
+                continue;
+            }
+            return Err(Task8LedgerError::OverlappingLiveDeclaration(
+                self.culprit(slot),
+            ));
+        }
+        match predecessor {
             None => Ok(self.register(arm, label, origin, covered)),
             Some(prior) => self.admit_reuse(arm, label, origin, prior, covered),
         }
@@ -373,10 +491,11 @@ impl Task8OwnerGenerationLedger {
         token
     }
 
-    /// The only admission a repeated owner address has. The caller names the
-    /// generation it is retiring; that generation must still be the open one and
-    /// must have bound `Final` to its own last enqueue, so no queued use of it
-    /// can remain. The successor starts with no coverage of its own.
+    /// The only admission a repeated address range has. The predecessor must
+    /// have bound `Final` to its own last enqueue, so no queued use of it can
+    /// remain, and its ownership must have ended, so the bytes are the
+    /// allocator's to hand out again. The successor starts with no coverage of
+    /// its own.
     fn admit_reuse(
         &mut self,
         arm: &'static str,
@@ -386,16 +505,20 @@ impl Task8OwnerGenerationLedger {
         covered: std::ops::Range<usize>,
     ) -> Result<Task8GenerationToken, Task8LedgerError> {
         let slot = self.resolve(prior)?;
-        if self.live_generation(prior.owner)? != Some(prior) {
+        if self.generations[slot].superseded_by.is_some() {
             return Err(Task8LedgerError::StaleToken);
         }
         {
             let entry = &self.generations[slot];
-            let bound = entry
-                .final_enqueue
-                .ok_or(Task8LedgerError::ReuseWithoutFinal)?;
-            if entry.last_enqueue() != Some(bound) {
-                return Err(Task8LedgerError::ReuseWithoutFinal);
+            match entry.final_enqueue {
+                None => return Err(Task8LedgerError::ReuseWithoutFinal(self.culprit(slot))),
+                Some(bound) if entry.last_enqueue() != Some(bound) => {
+                    return Err(Task8LedgerError::ReuseWithoutFinal(self.culprit(slot)))
+                }
+                Some(_) => {}
+            }
+            if entry.released.is_none() {
+                return Err(Task8LedgerError::ReuseWithoutRelease(self.culprit(slot)));
             }
         }
         let token = self.register(arm, label, origin, covered);
@@ -475,15 +598,29 @@ impl Task8OwnerGenerationLedger {
         Ok(bound)
     }
 
-    fn release(&mut self, owner: Task8GenerationToken) -> Result<u64, Task8LedgerError> {
+    /// Ends one generation's ownership, exactly once, at the enqueue boundary
+    /// the arm reached. `Final` must already be bound -- ownership cannot end
+    /// while a queued enqueue may still name the generation -- and the end must
+    /// be one its origin admits.
+    fn release(
+        &mut self,
+        owner: Task8GenerationToken,
+        end: Task8OwnershipEnd,
+    ) -> Result<u64, Task8LedgerError> {
         let slot = self.resolve(owner)?;
+        let at_enqueue = self.enqueues.len() as u64;
         let entry = &mut self.generations[slot];
-        let final_enqueue = entry.final_enqueue.ok_or(Task8LedgerError::FinalWithoutEnqueue)?;
-        if entry.released.is_some() {
-            return Err(Task8LedgerError::FinalAlreadyBound);
+        if entry.final_enqueue.is_none() {
+            return Err(Task8LedgerError::ReleaseWithoutFinal);
         }
-        entry.released = Some(final_enqueue);
-        Ok(final_enqueue)
+        if entry.released.is_some() {
+            return Err(Task8LedgerError::AlreadyReleased);
+        }
+        if !end.admits(entry.origin) {
+            return Err(Task8LedgerError::ReleaseKindMismatch);
+        }
+        entry.released = Some(Task8Release { at_enqueue, end });
+        Ok(at_enqueue)
     }
 
     fn generation(&self, owner: Task8GenerationToken) -> &Task8OwnerGeneration {
@@ -649,12 +786,40 @@ fn ledger_bind_final(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8Ledge
     })
 }
 
-fn ledger_retire(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8LedgerOwner) -> u64 {
+/// The one retirement operation: bind `Final` to the generation's own last
+/// enqueue and end its ownership, both exactly once. Every real ownership end
+/// goes through this, so a site cannot bind `Final` and forget the end.
+fn ledger_end_ownership(
+    ledger: &mut Task8OwnerGenerationLedger,
+    owner: &Task8LedgerOwner,
+    end: Task8OwnershipEnd,
+) -> u64 {
     let bound = ledger_bind_final(ledger, owner);
-    ledger.release(owner.token).unwrap_or_else(|error| {
-        panic!("Task 8 {} could not release after Final: {error:?}", owner.label)
+    ledger.release(owner.token, end).unwrap_or_else(|error| {
+        let (arm, label) = (owner.arm, owner.label);
+        panic!("Task 8 {arm} arm could not end {label} ownership as {end:?}: {error:?}")
     });
     bound
+}
+
+/// Retires an owner whose device allocation the arm drops here: the bytes go
+/// back to the pool and any later declaration over them is reuse.
+fn ledger_retire(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8LedgerOwner) -> u64 {
+    ledger_end_ownership(ledger, owner, Task8OwnershipEnd::Freed)
+}
+
+/// Retires an owner backed by a static device symbol. Nothing returns to the
+/// pool; this arm's generation of the symbol ends so the next arm may open its
+/// own over the same address.
+fn ledger_retire_symbol(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8LedgerOwner) -> u64 {
+    ledger_end_ownership(ledger, owner, Task8OwnershipEnd::SymbolReleased)
+}
+
+/// Closes a borrow of storage the arm never owned. Distinct from a free on
+/// purpose: production keeps the bytes, so this end can never stand in for a
+/// missing free.
+fn ledger_close_borrow(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8LedgerOwner) -> u64 {
+    ledger_end_ownership(ledger, owner, Task8OwnershipEnd::BorrowClosed)
 }
 
 /// Splits a whole-buffer readback of a factored Eq owner into the bytes this
@@ -980,9 +1145,21 @@ fn validate_owner_generation_structure(
             "Task 8 {} bound Final away from its last enqueue",
             entry.label
         );
-        if let Some(released) = entry.released {
-            assert!(released >= bound, "Task 8 {} released before Final", entry.label);
-        }
+        let released = entry
+            .released
+            .unwrap_or_else(|| panic!("Task 8 {} never released ownership", entry.label));
+        assert!(
+            released.end.admits(entry.origin),
+            "Task 8 {} ended {:?} ownership as {:?}",
+            entry.label,
+            entry.origin,
+            released.end
+        );
+        assert!(
+            released.at_enqueue >= bound,
+            "Task 8 {} released before Final",
+            entry.label
+        );
     }
     stream.sort_by_key(|(step, _, _)| *step);
     assert_eq!(
@@ -2289,7 +2466,9 @@ fn open_source_owners(
         .collect()
 }
 
-fn bind_challenge_owners_final(
+/// The seam's challenge views are borrows of device-resident production input.
+/// Nothing is freed here; the borrow ends.
+fn close_challenge_owners(
     ledger: &mut Task8OwnerGenerationLedger,
     challenges: &Task8ChallengeOwners,
 ) {
@@ -2299,11 +2478,13 @@ fn bind_challenge_owners_final(
         &challenges.lookup_additive,
         &challenges.claim_batching,
     ] {
-        ledger_bind_final(ledger, owner);
+        ledger_close_borrow(ledger, owner);
     }
 }
 
-fn bind_transcript_owners_final(
+/// The transcript buffers are this arm's own allocations and are dropped right
+/// after this call.
+fn retire_transcript_owners(
     ledger: &mut Task8OwnerGenerationLedger,
     transcript: &Task8TranscriptOwners,
 ) {
@@ -2313,25 +2494,27 @@ fn bind_transcript_owners_final(
         &transcript.prefactor,
         &transcript.coefficients,
     ] {
-        ledger_bind_final(ledger, owner);
+        ledger_retire(ledger, owner);
     }
 }
 
-fn bind_arm_owners_final(ledger: &mut Task8OwnerGenerationLedger, owners: &Task8ArmOwners) {
-    for owner in [
-        &owners.claim_point,
-        &owners.eq_low,
-        &owners.partials,
-        &owners.claim_point_symbol,
-        &owners.eq_high,
-    ] {
-        ledger_bind_final(ledger, owner);
+/// Ends every owner the arm still holds, each by what actually happens to its
+/// bytes: the Eq and partials allocations are dropped, the claim point and the
+/// source backings were only ever borrowed, and the rest are static device
+/// symbols this arm stops naming.
+fn retire_arm_owners(ledger: &mut Task8OwnerGenerationLedger, owners: &Task8ArmOwners) {
+    ledger_close_borrow(ledger, &owners.claim_point);
+    for owner in [&owners.eq_low, &owners.partials] {
+        ledger_retire(ledger, owner);
+    }
+    for owner in [&owners.claim_point_symbol, &owners.eq_high] {
+        ledger_retire_symbol(ledger, owner);
     }
     for owner in owners.fold_weights.iter().chain(&owners.coefficient_bank) {
-        ledger_bind_final(ledger, owner);
+        ledger_retire_symbol(ledger, owner);
     }
     for owner in &owners.sources {
-        ledger_bind_final(ledger, owner);
+        ledger_close_borrow(ledger, owner);
     }
 }
 
@@ -2548,8 +2731,8 @@ fn run_window_arm(
         // Challenge inputs are consumed exclusively by the bank fill. Retire
         // their borrowed owners at that enqueue boundary; the device-resident
         // seam values themselves outlive both arms.
-        bind_challenge_owners_final(ledger, &challenge_owners);
-        ledger_bind_final(ledger, &slab);
+        close_challenge_owners(ledger, &challenge_owners);
+        ledger_retire(ledger, &slab);
         drop(bank);
 
         let before_prior = context.get_device_memory_usage();
@@ -2892,19 +3075,19 @@ fn run_window_arm(
                 context,
             )?);
             ledger.absorb(TASK8_WINDOW_ARM, &probe);
-            ledger_bind_final(ledger, prior_owner);
+            ledger_retire(ledger, prior_owner);
         }
         drop(prior);
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
-        ledger_bind_final(ledger, &publication_owner);
-        ledger_bind_final(ledger, &reduced_tensor);
+        ledger_retire(ledger, &publication_owner);
+        ledger_retire(ledger, &reduced_tensor);
         drop(launched);
-        bind_transcript_owners_final(ledger, &transcript_owners);
+        retire_transcript_owners(ledger, &transcript_owners);
         drop(transcript.seed);
         drop(transcript.claim);
         drop(transcript.prefactor);
         drop(transcript.coefficients);
-        bind_arm_owners_final(ledger, &owners);
+        retire_arm_owners(ledger, &owners);
         drop(eq_low);
         drop(partials);
         let memory = observer.finish();
@@ -3144,7 +3327,7 @@ fn run_legacy_arm(
         )?;
         assert_eq!(bank_spans.slab.0, rounds.challenge_slab().as_ptr() as usize);
         if let Some(borrowed_bank) = owners.coefficient_bank.take() {
-            ledger_bind_final(ledger, &borrowed_bank);
+            ledger_close_borrow(ledger, &borrowed_bank);
         }
         let slab = open_bank_owners(ledger, &mut owners, bank_spans);
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
@@ -3193,7 +3376,7 @@ fn run_legacy_arm(
                 let retired = publications
                     .remove(depth)
                     .expect("Task 8 round retired a publication that was never opened");
-                ledger_bind_final(ledger, &retired);
+                ledger_retire(ledger, &retired);
             }
             if local_round == 0 {
                 let owner = publications[&(round as u8)];
@@ -3293,17 +3476,17 @@ fn run_legacy_arm(
         };
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
         for (_, owner) in publications.iter() {
-            ledger_bind_final(ledger, owner);
+            ledger_retire(ledger, owner);
         }
-        ledger_bind_final(ledger, &slab);
+        ledger_retire(ledger, &slab);
         drop(rounds);
-        bind_challenge_owners_final(ledger, &challenge_owners);
-        bind_transcript_owners_final(ledger, &transcript_owners);
+        close_challenge_owners(ledger, &challenge_owners);
+        retire_transcript_owners(ledger, &transcript_owners);
         drop(transcript.seed);
         drop(transcript.claim);
         drop(transcript.prefactor);
         drop(transcript.coefficients);
-        bind_arm_owners_final(ledger, &owners);
+        retire_arm_owners(ledger, &owners);
         drop(eq_low);
         drop(partials);
         let memory = observer.finish();
@@ -4260,15 +4443,17 @@ mod cpu_tests {
     use super::super::binding::{task8_window_plan, task8_window_spans};
     use super::E4;
     use super::{
-        allocation_group_record, bind_arm_owners_final, bind_challenge_owners_final,
-        bind_transcript_owners_final, build_corpus_census, deterministic_e4, eq_readback_spans,
-        ledger_bind_final, ledger_open, record_active_eq_slot_fold, signed_snapshot_delta,
-        task8_eq_coordinates, task8_register_symbol, validate_owner_generation_ledger,
-        validate_owner_generation_structure, validate_single_owner_topology, BTreeSet, Field,
+        allocation_group_record, build_corpus_census, close_challenge_owners, deterministic_e4,
+        eq_readback_spans, ledger_bind_final, ledger_open, ledger_retire,
+        record_active_eq_slot_fold, retire_arm_owners, retire_transcript_owners,
+        signed_snapshot_delta, task8_eq_coordinates, task8_register_symbol,
+        validate_owner_generation_ledger, validate_owner_generation_structure,
+        validate_single_owner_topology, BTreeSet, Field, Task8AbsorbedEnqueue,
         Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols, Task8ChallengeOwners,
-        Task8EnqueueKind, Task8EnqueuePlan, Task8GenerationToken, Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord,
-        Task8OwnerGeneration, Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard,
-        Task8QueuedUse, Task8Span, Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
+        Task8Culprit, Task8EnqueueKind, Task8EnqueuePlan, Task8GenerationToken, Task8LedgerError,
+        Task8LedgerOwner, Task8LedgerRecord, Task8OwnerGeneration, Task8OwnerGenerationLedger,
+        Task8OwnerOrigin, Task8OwnershipEnd, Task8ProbeGuard, Task8QueuedUse, Task8Release,
+        Task8Span, Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
         MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
         TASK8_SHARED_DEVICE_INPUTS, TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
     };
@@ -5181,14 +5366,14 @@ mod cpu_tests {
     }
 
     fn finish_arm(ledger: &mut Task8OwnerGenerationLedger, fixture: &Task8ArmFixture) {
-        ledger_bind_final(ledger, &fixture.publication);
+        ledger_retire(ledger, &fixture.publication);
         if let Some(reduced_tensor) = fixture.reduced_tensor.as_ref() {
-            ledger_bind_final(ledger, reduced_tensor);
+            ledger_retire(ledger, reduced_tensor);
         }
-        ledger_bind_final(ledger, &fixture.slab);
-        bind_challenge_owners_final(ledger, &fixture.challenges);
-        bind_transcript_owners_final(ledger, &fixture.transcript);
-        bind_arm_owners_final(ledger, &fixture.owners);
+        ledger_retire(ledger, &fixture.slab);
+        close_challenge_owners(ledger, &fixture.challenges);
+        retire_transcript_owners(ledger, &fixture.transcript);
+        retire_arm_owners(ledger, &fixture.owners);
     }
 
     /// The window arm's stream, with every launch's spans produced by the
@@ -5396,23 +5581,41 @@ mod cpu_tests {
         validator_rejection(ledger, first, second).is_some()
     }
 
+    /// The retirement lifecycle the differential's two arms run over one
+    /// shared ledger, kept as a whole-fixture control: every owner both arms
+    /// open is retired exactly once, and the second arm's declarations take
+    /// the addresses the first arm released.
     #[test]
     fn cpu_legacy_multi_pass_retirement_lifecycle_mutations() {
-        let mut green = replay_both_orders(TASK8_LEGACY_ARM, TASK8_WINDOW_ARM);
+        let green = replay_both_orders(TASK8_LEGACY_ARM, TASK8_WINDOW_ARM);
         assert!(validate(&green, TASK8_LEGACY_ARM, TASK8_WINDOW_ARM) > 0);
-        let tokens: Vec<_> = green
-            .generations
-            .iter()
-            .filter_map(|entry| entry.final_enqueue.map(|_| Task8GenerationToken {
-                slot: green.generations.iter().position(|candidate| std::ptr::eq(candidate, entry)).unwrap(),
+        for entry in &green.generations {
+            let released = entry
+                .released
+                .unwrap_or_else(|| panic!("{} never released ownership", entry.label));
+            assert!(released.end.admits(entry.origin));
+            assert_eq!(entry.final_enqueue, entry.last_enqueue());
+        }
+
+        // Retirement is exactly once: the ledger refuses a second `Final` and a
+        // second end of ownership on the same generation.
+        let mut repeated = green.clone();
+        let token = {
+            let entry = &repeated.generations[0];
+            Task8GenerationToken {
+                slot: 0,
                 owner: entry.owner,
                 generation: entry.generation,
-            }))
-            .collect();
-        for token in tokens {
-            assert!(green.release(token).is_ok());
-            assert!(green.release(token).is_err());
-        }
+            }
+        };
+        assert_eq!(
+            repeated.bind_final(token),
+            Err(Task8LedgerError::FinalAlreadyBound)
+        );
+        assert_eq!(
+            repeated.release(token, Task8OwnershipEnd::Freed),
+            Err(Task8LedgerError::AlreadyReleased)
+        );
 
         // Premature Final must reproduce the UseAfterFinal/last-use failure.
         let slot = green
@@ -5428,16 +5631,755 @@ mod cpu_tests {
                 .expect("publication use")
                 .enqueue,
         );
-        assert!(validator_rejects(&premature, TASK8_LEGACY_ARM, TASK8_WINDOW_ARM));
+        assert!(validator_rejects(
+            &premature,
+            TASK8_LEGACY_ARM,
+            TASK8_WINDOW_ARM
+        ));
 
         // Omitting Final is rejected by the structural validator.
         let mut omitted = green.clone();
         omitted.generations[slot].final_enqueue = None;
-        assert!(validator_rejects(&omitted, TASK8_LEGACY_ARM, TASK8_WINDOW_ARM));
+        assert!(validator_rejects(
+            &omitted,
+            TASK8_LEGACY_ARM,
+            TASK8_WINDOW_ARM
+        ));
 
         // A successor at an overlapping address must be generation-aware and
         // must not satisfy the predecessor's retirement predicate.
         assert_eq!(overlap_successor_owner(TASK8_LEGACY_ARM), "reduced_tensor");
+    }
+
+    // ------------------------------------------------------------------
+    // Release-aware prior-publication lifecycle
+    //
+    // The GPU failure this replays is a legacy `published_column` write landing
+    // on bytes a retired window-arm generation still claimed. Nothing about it
+    // needs a device: it is the ledger deciding which generation owns an
+    // address after the pool recycled it. The replay drives the ledger through
+    // the real control flow of `build_prior_level` plus each arm's own
+    // comparison launch, over a pool that recycles exactly as the device pool
+    // did, and asserts ownership by identity rather than by "it did not panic".
+    // ------------------------------------------------------------------
+
+    /// Every admitted comparison start round.
+    const TASK8_REPLAY_START_ROUNDS: [usize; 6] = [3, 6, 9, 12, 15, 18];
+    /// A synthetic arena base, well clear of the fixed fixture addresses above.
+    const TASK8_REPLAY_ARENA: usize = 0x1000_0000;
+    /// One published column, the size the rejected run named.
+    const TASK8_REPLAY_COLUMN: usize = 1 << 20;
+    const TASK8_REPLAY_COLUMNS: usize = 2;
+
+    /// A deterministic stand-in for the device pool: first fit over a
+    /// coalescing free list. An arm that frees adjacent blocks hands the next
+    /// arm one wider block, so the second arm's first publication lands on top
+    /// of storage the first arm's narrower generations used to own -- the
+    /// recycling that put a retired window generation under a legacy column.
+    struct Task8ReplayPool {
+        cursor: usize,
+        free: Vec<(usize, usize)>,
+    }
+
+    impl Task8ReplayPool {
+        fn new() -> Self {
+            Self {
+                cursor: TASK8_REPLAY_ARENA,
+                free: Vec::new(),
+            }
+        }
+
+        fn alloc(&mut self, bytes: usize) -> usize {
+            if let Some(index) = self.free.iter().position(|&(_, size)| size >= bytes) {
+                let (base, size) = self.free.remove(index);
+                if size > bytes {
+                    self.free.push((base + bytes, size - bytes));
+                    self.free.sort();
+                }
+                return base;
+            }
+            let base = self.cursor;
+            self.cursor += bytes;
+            base
+        }
+
+        fn free(&mut self, base: usize, bytes: usize) {
+            self.free.push((base, bytes));
+            self.free.sort();
+            let mut merged: Vec<(usize, usize)> = Vec::new();
+            for (base, bytes) in self.free.drain(..) {
+                match merged.last_mut() {
+                    Some((prior_base, prior_bytes)) if *prior_base + *prior_bytes == base => {
+                        *prior_bytes += bytes;
+                    }
+                    _ => merged.push((base, bytes)),
+                }
+            }
+            self.free = merged;
+        }
+    }
+
+    /// The publication a pass folds into: every three rounds fold three
+    /// variables, so each pass publishes an eighth of the rows the last one did.
+    fn replay_publication_bytes(pass_index: usize) -> usize {
+        ((TASK8_REPLAY_COLUMNS * TASK8_REPLAY_COLUMN) >> (3 * pass_index))
+            .max(TASK8_REPLAY_COLUMNS * 16)
+    }
+
+    /// What one coordinate's replay does differently from the accepted flow.
+    /// Each value changes exactly one fact, so the control it drives has one
+    /// cause.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Task8ReplayMutation {
+        /// The accepted flow.
+        None,
+        /// Bind `Final` at the producing launch instead of at the consumer that
+        /// still reads the generation, and never release.
+        PrematureFinal,
+        /// Bind `Final` at the right consumer but never end ownership, on a
+        /// generation nothing later reuses.
+        OmittedRelease,
+        /// Declare the second arm's first publication over half its real
+        /// extent, so its later columns have no successor to own them.
+        TruncatedSuccessor,
+        /// Leave a first-arm allocation `Final`-bound and unreleased, so the
+        /// second arm's publication intersects storage that was never handed
+        /// back.
+        UnreleasedIntersection,
+    }
+
+    /// One arm's replayed owners, the enqueues that consumed them, and which
+    /// generation owned the recycled column while this arm's first declaration
+    /// over it was still live.
+    struct Task8ReplayArm {
+        scratch: Option<Task8LedgerOwner>,
+        priors: Vec<Task8LedgerOwner>,
+        publication: Task8LedgerOwner,
+        prior_launches: Vec<u64>,
+        comparison_launch: u64,
+        recycled_column_owner: Option<Result<u64, Task8LedgerError>>,
+    }
+
+    /// Opens a declaration the way production does, but fallibly: the controls
+    /// assert the typed rejection rather than catching a panic.
+    fn replay_open(
+        ledger: &mut Task8OwnerGenerationLedger,
+        arm: &'static str,
+        label: &'static str,
+        base: usize,
+        bytes: usize,
+    ) -> Result<Task8LedgerOwner, Task8LedgerError> {
+        let token = ledger.open(arm, label, Task8OwnerOrigin::ArmOwned, base, bytes)?;
+        Ok(Task8LedgerOwner {
+            token,
+            arm,
+            label,
+            base,
+            bytes,
+        })
+    }
+
+    /// Absorbs one enqueue exactly as [`Task8OwnerGenerationLedger::absorb`]
+    /// does -- same ordinals, same per-arm probe order, same record order --
+    /// and returns the ledger's own error instead of panicking on it.
+    fn replay_enqueue(
+        ledger: &mut Task8OwnerGenerationLedger,
+        arm: &'static str,
+        site: &'static str,
+        spans: &[Task8Span],
+    ) -> Result<u64, Task8LedgerError> {
+        let ordinal = ledger.enqueues.len() as u64;
+        let probe_ordinal = ledger
+            .enqueues
+            .iter()
+            .rev()
+            .find(|enqueue| enqueue.arm == arm)
+            .map_or(0, |enqueue| enqueue.probe_ordinal + 1);
+        let enqueue = Task8AbsorbedEnqueue {
+            ordinal,
+            probe_ordinal,
+            arm,
+            site,
+            kind: Task8EnqueueKind::Kernel,
+            plan: None,
+            records: 0,
+            issued_at_open: probe_ordinal,
+            issued_at_close: probe_ordinal + 1,
+        };
+        ledger.enqueues.push(enqueue.clone());
+        for span in spans {
+            let use_kind = if span.write {
+                Task8QueuedUse::Write
+            } else {
+                Task8QueuedUse::Read
+            };
+            ledger.record(&enqueue, span.role, span.address, span.bytes, use_kind)?;
+        }
+        Ok(ordinal)
+    }
+
+    /// One publication's columns, as the window binding reports them.
+    fn replay_columns(owner: &Task8LedgerOwner, write: bool) -> Vec<Task8Span> {
+        let column = owner.bytes / TASK8_REPLAY_COLUMNS;
+        (0..TASK8_REPLAY_COLUMNS)
+            .map(|index| {
+                let address = owner.base + index * column;
+                if write {
+                    Task8Span::write("published_column", address, column)
+                } else {
+                    Task8Span::read("published_column", address, column)
+                }
+            })
+            .collect()
+    }
+
+    /// Ends one replayed owner's ownership, unless it is the generation a
+    /// mutation deliberately leaves owning its bytes after `Final`.
+    fn replay_end_ownership(
+        ledger: &mut Task8OwnerGenerationLedger,
+        owner: &Task8LedgerOwner,
+        unreleased: Option<u64>,
+    ) {
+        if unreleased == Some(owner.token.generation) {
+            ledger_bind_final(ledger, owner);
+        } else {
+            ledger_retire(ledger, owner);
+        }
+    }
+
+    /// Replays one arm at one coordinate: the prior passes `build_prior_level`
+    /// runs, then the arm's own comparison launch, then the arm's frees.
+    ///
+    /// The first arm also holds one tail scratch block the second arm does not,
+    /// which is what leaves the two arms' layouts different enough for the
+    /// second arm's first publication to land over the first arm's storage.
+    fn replay_prior_lifecycle_arm(
+        ledger: &mut Task8OwnerGenerationLedger,
+        pool: &mut Task8ReplayPool,
+        arm: &'static str,
+        start_round: usize,
+        mutation: Task8ReplayMutation,
+        first_arm: bool,
+    ) -> Result<Task8ReplayArm, Task8LedgerError> {
+        let passes = start_round / 3 - 1;
+        let premature = mutation == Task8ReplayMutation::PrematureFinal;
+        // The one generation `UnreleasedIntersection` leaves owning its bytes:
+        // this arm's second allocation, which sits above the tail scratch and
+        // so intersects the next arm's first publication from a different base.
+        let mut unreleased: Option<u64> = None;
+        let mut recycled_column_owner = None;
+        let column = TASK8_REPLAY_ARENA..TASK8_REPLAY_ARENA + TASK8_REPLAY_COLUMN;
+        let scratch = if first_arm {
+            let base = pool.alloc(TASK8_REPLAY_COLUMN);
+            let scratch = replay_open(ledger, arm, "tail_scratch", base, TASK8_REPLAY_COLUMN)?;
+            replay_enqueue(
+                ledger,
+                arm,
+                "tail-scratch-init",
+                &[Task8Span::write("tail_scratch", base, TASK8_REPLAY_COLUMN)],
+            )?;
+            if premature {
+                ledger_bind_final(ledger, &scratch);
+            }
+            Some(scratch)
+        } else {
+            None
+        };
+        let mut prior: Option<Task8LedgerOwner> = None;
+        let mut priors = Vec::new();
+        let mut prior_launches = Vec::new();
+        for pass_index in 0..passes {
+            let bytes = replay_publication_bytes(pass_index);
+            let base = pool.alloc(bytes);
+            // Production opens the new publication after the launch allocated
+            // it and before the probe is absorbed.
+            let published = replay_open(ledger, arm, "prior_publication", base, bytes)?;
+            if pass_index == 0 {
+                if first_arm && mutation == Task8ReplayMutation::UnreleasedIntersection {
+                    unreleased = Some(published.token.generation);
+                }
+                if !first_arm {
+                    recycled_column_owner = Some(
+                        ledger
+                            .owner_of(&column)
+                            .map(|slot| ledger.generations[slot].generation),
+                    );
+                }
+            }
+            let mut spans = replay_columns(&published, true);
+            if let Some(prior) = prior.as_ref() {
+                spans.extend(replay_columns(prior, false));
+            }
+            let launch = replay_enqueue(ledger, arm, "prior-window-launch", &spans)?;
+            prior_launches.push(launch);
+            if premature {
+                ledger_bind_final(ledger, &published);
+            }
+            if let Some(consumed) = prior.replace(published) {
+                if !premature {
+                    replay_end_ownership(ledger, &consumed, unreleased);
+                }
+                pool.free(consumed.base, consumed.bytes);
+            }
+            priors.push(published);
+        }
+        let bytes = replay_publication_bytes(passes);
+        let base = pool.alloc(bytes);
+        let declared = if mutation == Task8ReplayMutation::TruncatedSuccessor && !first_arm {
+            bytes / TASK8_REPLAY_COLUMNS
+        } else {
+            bytes
+        };
+        let publication = replay_open(ledger, arm, "publication", base, declared)?;
+        if passes == 0 {
+            if first_arm && mutation == Task8ReplayMutation::UnreleasedIntersection {
+                unreleased = Some(publication.token.generation);
+            }
+            if !first_arm {
+                recycled_column_owner = Some(
+                    ledger
+                        .owner_of(&column)
+                        .map(|slot| ledger.generations[slot].generation),
+                );
+            }
+        }
+        let mut spans: Vec<Task8Span> = (0..TASK8_REPLAY_COLUMNS)
+            .map(|index| {
+                let column = bytes / TASK8_REPLAY_COLUMNS;
+                Task8Span::write("published_column", base + index * column, column)
+            })
+            .collect();
+        if let Some(prior) = prior.as_ref() {
+            spans.extend(replay_columns(prior, false));
+        }
+        if let Some(scratch) = scratch.as_ref() {
+            spans.push(Task8Span::read("tail_scratch", scratch.base, scratch.bytes));
+        }
+        let comparison_launch = replay_enqueue(ledger, arm, "comparison-launch", &spans)?;
+        if !premature {
+            if let Some(consumed) = prior.take() {
+                replay_end_ownership(ledger, &consumed, unreleased);
+                pool.free(consumed.base, consumed.bytes);
+            }
+            if mutation == Task8ReplayMutation::OmittedRelease && !first_arm {
+                // Nothing reuses the second arm's own publication, so the only
+                // thing that can object to the missing end is the validator.
+                ledger_bind_final(ledger, &publication);
+            } else {
+                replay_end_ownership(ledger, &publication, unreleased);
+            }
+            pool.free(base, bytes);
+            if let Some(scratch) = scratch.as_ref() {
+                ledger_retire(ledger, scratch);
+                pool.free(scratch.base, scratch.bytes);
+            }
+        }
+        Ok(Task8ReplayArm {
+            scratch,
+            priors,
+            publication,
+            prior_launches,
+            comparison_launch,
+            recycled_column_owner,
+        })
+    }
+
+    struct Task8ReplayCoordinate {
+        ledger: Task8OwnerGenerationLedger,
+        window: Task8ReplayArm,
+        legacy: Task8ReplayArm,
+    }
+
+    /// Both arms of one coordinate over one pool, window arm first, exactly as
+    /// the differential runs them against one shared ledger.
+    fn replay_prior_lifecycle(
+        start_round: usize,
+        mutation: Task8ReplayMutation,
+    ) -> Result<Task8ReplayCoordinate, Task8LedgerError> {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        let mut pool = Task8ReplayPool::new();
+        let window = replay_prior_lifecycle_arm(
+            &mut ledger,
+            &mut pool,
+            TASK8_WINDOW_ARM,
+            start_round,
+            mutation,
+            true,
+        )?;
+        let legacy = replay_prior_lifecycle_arm(
+            &mut ledger,
+            &mut pool,
+            TASK8_LEGACY_ARM,
+            start_round,
+            mutation,
+            false,
+        )?;
+        Ok(Task8ReplayCoordinate {
+            ledger,
+            window,
+            legacy,
+        })
+    }
+
+    /// The generation a token names, by identity rather than by slot.
+    fn replay_generation<'a>(
+        ledger: &'a Task8OwnerGenerationLedger,
+        owner: &Task8LedgerOwner,
+    ) -> &'a Task8OwnerGeneration {
+        ledger
+            .generations
+            .iter()
+            .find(|entry| entry.generation == owner.token.generation)
+            .expect("the replay owner names a generation")
+    }
+
+    /// The culprit identity a rejection must carry for `owner`, in the state
+    /// the mutation left it in.
+    fn replay_culprit(
+        ledger: &Task8OwnerGenerationLedger,
+        owner: &Task8LedgerOwner,
+        final_enqueue: Option<u64>,
+        released: Option<Task8Release>,
+    ) -> Task8Culprit {
+        let entry = replay_generation(ledger, owner);
+        Task8Culprit {
+            arm: owner.arm,
+            label: owner.label,
+            generation: entry.generation,
+            covered: (owner.base, owner.base + owner.bytes),
+            final_enqueue,
+            released,
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_prior_publication_lifecycle_retires_exactly_once() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let passes = start_round / 3 - 1;
+            let replayed = replay_prior_lifecycle(start_round, Task8ReplayMutation::None)
+                .unwrap_or_else(|error| {
+                    panic!("start round {start_round} replays cleanly, got {error:?}")
+                });
+            let ledger = &replayed.ledger;
+            validate_owner_generation_structure(ledger, TASK8_WINDOW_ARM, TASK8_LEGACY_ARM, &[]);
+
+            // Exact counts. The window arm holds one tail scratch the legacy
+            // arm does not; both open one publication per prior pass plus their
+            // own.
+            assert_eq!(replayed.window.priors.len(), passes);
+            assert_eq!(replayed.legacy.priors.len(), passes);
+            assert_eq!(
+                ledger.label_generations(TASK8_WINDOW_ARM, "prior_publication"),
+                passes
+            );
+            assert_eq!(
+                ledger.label_generations(TASK8_LEGACY_ARM, "prior_publication"),
+                passes
+            );
+            assert_eq!(ledger.generations.len(), 2 * passes + 3);
+            assert_eq!(ledger.enqueues.len() as u64, 2 * passes as u64 + 3);
+
+            // Every generation retires exactly once: `Final` on its own last
+            // enqueue, then one end of ownership, and every one of these is a
+            // pool allocation the arm dropped.
+            for entry in &ledger.generations {
+                assert_eq!(
+                    entry.final_enqueue,
+                    entry.last_enqueue(),
+                    "{} bound Final away from its last enqueue",
+                    entry.label
+                );
+                let released = entry
+                    .released
+                    .unwrap_or_else(|| panic!("{} never released ownership", entry.label));
+                assert_eq!(released.end, Task8OwnershipEnd::Freed);
+                assert!(released.at_enqueue >= entry.final_enqueue.unwrap());
+            }
+
+            // Owner identity: each intermediate prior is retired by the pass
+            // that still reads it, and the last one by the arm's own comparison
+            // launch.
+            for arm in [&replayed.window, &replayed.legacy] {
+                for (index, prior) in arm.priors.iter().enumerate() {
+                    let expected = if index + 1 < passes {
+                        arm.prior_launches[index + 1]
+                    } else {
+                        arm.comparison_launch
+                    };
+                    let entry = replay_generation(ledger, prior);
+                    assert_eq!(
+                        entry.final_enqueue,
+                        Some(expected),
+                        "prior {index} of start round {start_round} retired away from its consumer"
+                    );
+                    assert_eq!(
+                        ledger.enqueues[expected as usize].site,
+                        if index + 1 < passes {
+                            "prior-window-launch"
+                        } else {
+                            "comparison-launch"
+                        }
+                    );
+                }
+            }
+
+            // Successor ownership. The legacy arm's first publication covers
+            // the exact bytes the window arm's tail scratch used to own; the
+            // released predecessor must not shadow the live successor.
+            let scratch = replayed.window.scratch.as_ref().expect("window scratch");
+            assert_eq!(scratch.base, TASK8_REPLAY_ARENA);
+            assert_eq!(scratch.bytes, TASK8_REPLAY_COLUMN);
+            assert!(replay_generation(ledger, scratch).released.is_some());
+            let successor = if passes > 0 {
+                &replayed.legacy.priors[0]
+            } else {
+                &replayed.legacy.publication
+            };
+            assert_eq!(successor.base, TASK8_REPLAY_ARENA);
+            assert!(successor.bytes > TASK8_REPLAY_COLUMN);
+
+            // Every generation a successor takes back had already released, and
+            // is taken back at its own base by a later declaration.
+            for entry in ledger.generations.iter() {
+                let Some(successor_generation) = entry.superseded_by else {
+                    continue;
+                };
+                assert!(
+                    entry.released.is_some(),
+                    "{} was taken back unreleased",
+                    entry.label
+                );
+                let taker = ledger
+                    .generations
+                    .iter()
+                    .find(|candidate| candidate.generation == successor_generation)
+                    .expect("the successor generation exists");
+                assert!(taker.generation > entry.generation);
+                assert_eq!(taker.owner, entry.owner, "reuse is admitted at one base");
+            }
+            assert_eq!(
+                replay_generation(ledger, scratch).superseded_by,
+                Some(successor.token.generation),
+                "the tail scratch must be taken back by the legacy successor"
+            );
+
+            // While that successor was live, the recycled column resolved to it
+            // and not to the released predecessor it covers.
+            assert_eq!(
+                replayed.legacy.recycled_column_owner,
+                Some(Ok(successor.token.generation)),
+                "start round {start_round} must hand the recycled column to the live successor"
+            );
+            // And the ledger's own record of that column names the successor.
+            let column = TASK8_REPLAY_ARENA..TASK8_REPLAY_ARENA + TASK8_REPLAY_COLUMN;
+            let entry = replay_generation(ledger, successor);
+            assert_eq!(entry.arm, TASK8_LEGACY_ARM);
+            assert!(
+                entry.records.iter().any(
+                    |record| record.range == column && record.use_kind == Task8QueuedUse::Write
+                ),
+                "the successor must hold the write of the recycled column"
+            );
+            let stale = replay_generation(ledger, scratch);
+            assert!(
+                stale.records.iter().all(|record| record.enqueue
+                    < replayed
+                        .legacy
+                        .prior_launches
+                        .first()
+                        .copied()
+                        .unwrap_or(replayed.legacy.comparison_launch)),
+                "the released predecessor must record nothing from the second arm"
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_premature_final_names_the_stale_generation() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let passes = start_round / 3 - 1;
+            let error = replay_prior_lifecycle(start_round, Task8ReplayMutation::PrematureFinal)
+                .err()
+                .unwrap_or_else(|| {
+                    panic!("start round {start_round} must reject a premature Final")
+                });
+            // The first generation a later enqueue still reads: the pass-0
+            // publication where there are prior passes, and the tail scratch the
+            // comparison launch reduces through where there are none.
+            let reference = replay_prior_lifecycle(start_round, Task8ReplayMutation::None)
+                .expect("the accepted flow replays");
+            let (owner, bound) = if passes > 0 {
+                (
+                    &reference.window.priors[0],
+                    reference.window.prior_launches[0],
+                )
+            } else {
+                (
+                    reference.window.scratch.as_ref().expect("window scratch"),
+                    reference
+                        .window
+                        .prior_launches
+                        .first()
+                        .copied()
+                        .unwrap_or(0),
+                )
+            };
+            let expected = replay_culprit(&reference.ledger, owner, Some(bound), None);
+            assert_eq!(
+                error,
+                Task8LedgerError::UseAfterFinal(expected),
+                "start round {start_round} must name the prematurely retired generation"
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_omitted_release_is_rejected_as_a_missing_end() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let replayed = replay_prior_lifecycle(start_round, Task8ReplayMutation::OmittedRelease)
+                .expect("an omitted end is not a ledger error until validation");
+            let entry = replay_generation(&replayed.ledger, &replayed.legacy.publication);
+            assert_eq!(entry.final_enqueue, entry.last_enqueue());
+            assert!(entry.released.is_none());
+            let rejection = replay_structure_rejection(&replayed.ledger).unwrap_or_else(|| {
+                panic!("start round {start_round} must reject a generation that never released")
+            });
+            assert!(
+                rejection.contains("Task 8 publication never released ownership"),
+                "expected the missing end to be the objection, got {rejection:?}"
+            );
+
+            // Isolation: the same replay without the mutation is accepted.
+            let accepted = replay_prior_lifecycle(start_round, Task8ReplayMutation::None)
+                .expect("the accepted flow replays");
+            assert!(replay_structure_rejection(&accepted.ledger).is_none());
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_wrong_successor_does_not_inherit_ownership() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let error =
+                replay_prior_lifecycle(start_round, Task8ReplayMutation::TruncatedSuccessor)
+                    .err()
+                    .unwrap_or_else(|| {
+                        panic!("start round {start_round} must reject an uncovered column")
+                    });
+            // The bytes the truncated successor left out belong to no live
+            // generation: ownership follows the successor's own declaration and
+            // is never inherited from the retired generations under it.
+            assert_eq!(
+                error,
+                Task8LedgerError::UnownedSpan,
+                "start round {start_round} must not hand the column to a stale owner"
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_intersecting_reuse_requires_the_release() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let error =
+                replay_prior_lifecycle(start_round, Task8ReplayMutation::UnreleasedIntersection)
+                    .err()
+                    .unwrap_or_else(|| {
+                        panic!("start round {start_round} must reject unreleased reuse")
+                    });
+            let reference = replay_prior_lifecycle(start_round, Task8ReplayMutation::None)
+                .expect("the accepted flow replays");
+            let passes = start_round / 3 - 1;
+            // The first-arm allocation that keeps its bytes is its second one:
+            // the pass-0 publication where prior passes exist, the arm's own
+            // publication otherwise. Either way it sits above the tail scratch,
+            // so the second arm's first publication intersects it from a
+            // different base and never reaches `admit_reuse`.
+            let owner = if passes > 0 {
+                &reference.window.priors[0]
+            } else {
+                &reference.window.publication
+            };
+            let bound = replay_generation(&reference.ledger, owner)
+                .final_enqueue
+                .expect("the accepted flow binds Final");
+            assert_ne!(owner.base, TASK8_REPLAY_ARENA);
+            let successor = TASK8_REPLAY_ARENA..TASK8_REPLAY_ARENA + 2 * TASK8_REPLAY_COLUMN;
+            assert!(
+                owner.base > successor.start && owner.base < successor.end,
+                "the control must intersect the successor from a different base"
+            );
+            let expected = replay_culprit(&reference.ledger, owner, Some(bound), None);
+            assert_eq!(
+                error,
+                Task8LedgerError::ReuseWithoutRelease(expected),
+                "start round {start_round} must name the generation that never released"
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_open_preserves_live_nested_declarations() {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        let base = TASK8_REPLAY_ARENA;
+        let allocation = replay_open(&mut ledger, TASK8_WINDOW_ARM, "publication", base, 4096)
+            .expect("the allocation opens");
+        replay_enqueue(
+            &mut ledger,
+            TASK8_WINDOW_ARM,
+            "comparison-launch",
+            &[Task8Span::write("published_column", base, 4096)],
+        )
+        .expect("the allocation is written");
+
+        // A narrower view at the same base as a live allocation is a nested
+        // declaration, not reuse of that address.
+        let nested = replay_open(&mut ledger, TASK8_WINDOW_ARM, "reduced_tensor", base, 1024)
+            .expect("a live allocation admits a nested view at its own base");
+        assert_eq!(
+            ledger.owner_of(&(base..base + 1024)),
+            Ok(nested.token.slot),
+            "the narrowest live declaration owns the span"
+        );
+        assert_eq!(
+            ledger.owner_of(&(base + 2048..base + 3072)),
+            Ok(allocation.token.slot),
+            "bytes outside the view still belong to the allocation"
+        );
+
+        // The same range while the allocation is live is reuse of a live
+        // generation, and is rejected as such.
+        assert_eq!(
+            ledger.open(
+                TASK8_WINDOW_ARM,
+                "publication",
+                Task8OwnerOrigin::ArmOwned,
+                base,
+                4096
+            ),
+            Err(Task8LedgerError::ReuseWithoutFinal(replay_culprit(
+                &ledger,
+                &allocation,
+                None,
+                None
+            )))
+        );
+    }
+
+    /// Runs the structural validator over a replayed ledger and reports the
+    /// assertion that rejected it, or `None` if it was accepted.
+    fn replay_structure_rejection(ledger: &Task8OwnerGenerationLedger) -> Option<String> {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            validate_owner_generation_structure(ledger, TASK8_WINDOW_ARM, TASK8_LEGACY_ARM, &[]);
+        }));
+        std::panic::set_hook(previous);
+        outcome.err().map(|payload| {
+            payload
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| payload.downcast_ref::<&str>().map(|text| text.to_string()))
+                .unwrap_or_default()
+        })
     }
 
     /// How the exact census names one range, so a control can assert which
@@ -6718,8 +7660,8 @@ mod cpu_tests {
         };
         assert_eq!(
             ledger.owner_of(&(base..base + bytes)),
-            Err(Task8LedgerError::UseAfterFinal),
-            "a finalized sub-buffer must not fall back to the allocation it lives in"
+            Err(Task8LedgerError::UnownedSpan),
+            "a released sub-buffer must not fall back to the allocation it lived in"
         );
         let successor = ledger
             .open(
