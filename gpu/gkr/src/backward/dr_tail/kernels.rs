@@ -277,4 +277,50 @@ mod tests {
             "thread-local entry challenge arrays regress the linked-kernel spill"
         );
     }
+
+    #[test]
+    fn cpu_dr_tail_shared_eq_sizes_matches_helper_and_mutation_oracle() {
+        use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_SIZE, GKR_EQ_HIGH_SLOTS};
+
+        fn shared_initialization(challenge_count: usize) -> GkrEqSizes {
+            let groups = challenge_count.div_ceil(GKR_EQ_GROUP_SIZE);
+            let mut sizes = GkrEqSizes::zeroed();
+            let mut consumed = 0;
+            let mut high_idx = 0;
+            for group in 0..groups {
+                let remaining = challenge_count - consumed;
+                let group_size = remaining.min(GKR_EQ_GROUP_SIZE) as u32;
+                if group + 1 == groups {
+                    sizes.low = group_size;
+                } else {
+                    assert!(high_idx < GKR_EQ_HIGH_SLOTS);
+                    sizes.high[high_idx] = group_size;
+                    high_idx += 1;
+                }
+                consumed += group_size as usize;
+            }
+            sizes
+        }
+
+        fn modulo_mutation(challenge_count: usize) -> GkrEqSizes {
+            let mut sizes = GkrEqSizes::zeroed();
+            sizes.low = (challenge_count % GKR_EQ_GROUP_SIZE) as u32;
+            sizes
+        }
+
+        for challenge_count in [0, 1, 7, 8, 9, 16, 17, 24] {
+            assert_eq!(
+                shared_initialization(challenge_count),
+                make_eq_sizes(challenge_count),
+                "shared initialization drift at challenge_count={challenge_count}"
+            );
+        }
+        for challenge_count in [8, 16, 24] {
+            assert_ne!(
+                modulo_mutation(challenge_count),
+                make_eq_sizes(challenge_count),
+                "the divisible-count mutation must be caught at challenge_count={challenge_count}"
+            );
+        }
+    }
 }

@@ -66,23 +66,6 @@ struct __align__(32) gkr_dr_tail_e4_pair {
 
 static_assert(sizeof(gkr_dr_tail_e4_pair) == 32 && alignof(gkr_dr_tail_e4_pair) == 32, "DR-tail packed E4 pair ABI drift");
 
-DEVICE_FORCEINLINE gkr_eq_sizes gkr_dr_tail_make_eq_sizes(const unsigned challenge_count) {
-  gkr_eq_sizes sizes{};
-  const unsigned groups = gkr_eq_group_count(challenge_count);
-  unsigned consumed = 0;
-  unsigned high_idx = 0;
-  for (unsigned group = 0; group < groups; ++group) {
-    const unsigned remaining = challenge_count - consumed;
-    const unsigned group_size = remaining < GKR_EQ_GROUP_SIZE ? remaining : GKR_EQ_GROUP_SIZE;
-    if (group + 1 == groups)
-      sizes.low = group_size;
-    else
-      sizes.high[high_idx++] = group_size;
-    consumed += group_size;
-  }
-  return sizes;
-}
-
 struct gkr_dr_tail_shared_eq_reader {
   const e4 *groups;
   gkr_eq_sizes sizes;
@@ -351,6 +334,7 @@ template <typename Recorder> DEVICE_FORCEINLINE void gkr_dr_tail_megakernel_inne
   // which is forbidden by the resource admission gate.
   __shared__ e4 entry_challenges[GKR_DR_TAIL_ENTRY_CHALLENGES];
   __shared__ e4 round_challenge;
+  __shared__ gkr_eq_sizes eq_sizes_shared;
   if (tid == 0) {
 #pragma unroll
     for (unsigned bit = 0; bit < GKR_DR_TAIL_ENTRY_CHALLENGES; ++bit)
@@ -390,7 +374,23 @@ template <typename Recorder> DEVICE_FORCEINLINE void gkr_dr_tail_megakernel_inne
     gkr_build_eq_group_table_from_point<e4>(desc.tau, desc.entry_round + 1, eq_challenge_count, group, shared_writer);
     __syncthreads();
   }
-  gkr_eq_sizes eq_sizes = gkr_dr_tail_make_eq_sizes(eq_challenge_count);
+  if (tid == 0) {
+    eq_sizes_shared = {};
+    const unsigned groups = gkr_eq_group_count(eq_challenge_count);
+    unsigned consumed = 0;
+    unsigned high_idx = 0;
+    for (unsigned group = 0; group < groups; ++group) {
+      const unsigned remaining = eq_challenge_count - consumed;
+      const unsigned group_size = remaining < GKR_EQ_GROUP_SIZE ? remaining : GKR_EQ_GROUP_SIZE;
+      if (group + 1 == groups)
+        eq_sizes_shared.low = group_size;
+      else
+        eq_sizes_shared.high[high_idx++] = group_size;
+      consumed += group_size;
+    }
+  }
+  __syncthreads();
+  gkr_eq_sizes &eq_sizes = eq_sizes_shared;
   if constexpr (Recorder::ENABLED) {
     recorder.record_entry(desc, state, source_stride, eq_groups, eq_sizes, eq_group_count);
     __syncthreads();
