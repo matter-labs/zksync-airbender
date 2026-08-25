@@ -545,3 +545,78 @@ fn cpu_windowed_arm_selection_covers_every_corpus_family() {
          selected: {selected:?}",
     );
 }
+
+#[test]
+fn cpu_checked_main_strategy_is_fail_closed_and_keeps_diagnostic_per_round() {
+    use super::{resolve_backward_execution_strategy_checked, GpuProveError};
+    use crate::config::prover_config;
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let config = prover_config(
+        programs.circuit_type(),
+        crate::upstream::SecurityLevel::Sec80,
+    )
+    .unwrap();
+    assert_eq!(
+        resolve_backward_execution_strategy_checked(
+            &programs,
+            &config,
+            GkrBackwardOptions::default(),
+        )
+        .unwrap(),
+        BackwardExecutionStrategy::WindowedR0,
+    );
+
+    let mut unsupported = config.clone();
+    unsupported.same_size_sumcheck_schedule.clear();
+    let error = resolve_backward_execution_strategy_checked(
+        &programs,
+        &unsupported,
+        GkrBackwardOptions::default(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::MainLayerExecutionPlan {
+            error: gpu_gkr::MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+        }
+    );
+
+    let diagnostic = GkrBackwardOptions {
+        windowed_r0: false,
+        ..GkrBackwardOptions::default()
+    };
+    assert_eq!(
+        resolve_backward_execution_strategy_checked(&programs, &unsupported, diagnostic).unwrap(),
+        BackwardExecutionStrategy::PerRound,
+    );
+}
+
+#[test]
+fn cpu_partial_main_option_rejects_before_transfer_construction() {
+    use super::{construct_after_windowed_backward_preflight, GpuProveError};
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let mut transfer_construction_calls = 0usize;
+    let error = construct_after_windowed_backward_preflight(
+        &programs,
+        BackwardExecutionStrategy::PerRound,
+        GkrBackwardOptions::default(),
+        4,
+        || {
+            transfer_construction_calls += 1;
+        },
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::MainLayerExecutionPlan {
+            error: gpu_gkr::MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+        }
+    );
+    assert_eq!(transfer_construction_calls, 0);
+}
