@@ -41,6 +41,8 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan {
     pub(crate) main_execution_plan:
         super::super::main_layer::execution_plan::MainLayerExecutionPlan,
     pub(crate) main_continuation: super::super::main_continuation::MainContinuationWindowSequence,
+    pub(crate) main_tail_program: Option<super::super::main_tail::MainTailProgram>,
+    pub(crate) main_tail_launched: Option<super::super::main_tail::MainTailLaunched>,
     pub(crate) eq_sizes: GkrEqSizes,
 }
 

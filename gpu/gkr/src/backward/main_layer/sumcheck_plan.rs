@@ -9,6 +9,7 @@ use crate::GpuGKRStorage;
 use super::super::kernels::*;
 use super::super::window::binding::{launch_window_program, BWD_WINDOW_COORDINATES};
 use super::super::window::tail::{launch_window_tensor_round_tail, WindowTailState};
+use super::super::main_tail::{bind_main_tail, launch_main_tail, MainTailRuntimeState};
 use super::extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
@@ -389,19 +390,40 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 let published = self
                     .main_continuation
                     .take_published_level()
-                    .expect("the legacy remainder consumes the final publication");
-                if let Err((published, error)) = self.bwd_vm_ext.adopt_published_level(published) {
-                    drop(published);
-                    panic!(
-                        "legacy adoption for layer {} at round {}: {error:?}",
-                        self.layer_idx, continuation_tail_start
-                    );
-                }
+                    .expect("main-tail consumes the final continuation publication");
+                let tail_program = self
+                    .main_tail_program
+                    .as_ref()
+                    .expect("windowed production path requires a preflighted main-tail program");
+                let tail_launch = bind_main_tail(
+                    self.layer_idx,
+                    tail_program,
+                    &published,
+                    usize::from(continuation_tail_start),
+                    self.folding_steps,
+                    boundary,
+                    MainTailRuntimeState {
+                        eq_low: self.round_scratch.eq_low_group.as_mut_ptr(),
+                        prev_claim_coordinates: device_claim_point_in.as_ptr(),
+                        seed: device_seed.as_mut_ptr(),
+                        claim: device_claim.as_mut_ptr(),
+                        eq_prefactor: device_eq_prefactor.as_mut_ptr(),
+                        coefficients_out: coeffs_buffer_ptr,
+                        challenges_out: device_claim_point_out.as_mut_ptr(),
+                    },
+                    context,
+                )
+                .unwrap_or_else(|error| panic!("main-tail binding rejected: {error}"));
+                self.main_tail_launched = Some(
+                    launch_main_tail(tail_launch, context)
+                        .unwrap_or_else(|error| panic!("main-tail launch failed: {error}")),
+                );
             } else {
                 storage.purge_up_to_layer(self.layer_idx);
             }
         }
 
+        if self.main_tail_launched.is_none() {
         for step in first_round_in_loop..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
@@ -487,6 +509,7 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 context,
             )?;
         }
+        }
         if let Some(recorder) = recorder.take() {
             recorder.finish(stream)?;
         }
@@ -496,8 +519,15 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             .iter()
             .map(|address| (*address, std::ptr::null()))
             .collect();
-        self.bwd_vm_ext
-            .repoint_final_evaluations(&mut transcript_input_sources);
+        if let Some(main_tail) = self.main_tail_launched.as_ref() {
+            self.bwd_vm_ext.repoint_final_evaluations_from_external_buffer(
+                main_tail.final_level().allocation(),
+                &mut transcript_input_sources,
+            );
+        } else {
+            self.bwd_vm_ext
+                .repoint_final_evaluations(&mut transcript_input_sources);
+        }
         let num_addresses = transcript_input_sources.len();
         let last_evals_len = num_addresses * 2;
         let transcript_input_addresses: Vec<GKRAddress> =

@@ -151,6 +151,11 @@ pub fn preflight_windowed_backward(
     // Reserved for later DR bundle checks. Main-layer geometry belongs to the
     // compiled circuit and must not be inferred from the final reduced trace.
     let _ = final_trace_size_log_2;
+    if options.windowed_r0 && matches!(strategy, BackwardExecutionStrategy::PerRound) {
+        return Err(GpuProveError::MainLayerExecutionPlan {
+            error: MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+        });
+    }
     match strategy {
         BackwardExecutionStrategy::PerRound => {}
         BackwardExecutionStrategy::WindowedR0 => gkr_programs
@@ -293,10 +298,9 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     let backward_strategy =
         resolve_backward_execution_strategy(gkr_programs, prover_config, backward_options);
     match backward_strategy {
-        BackwardExecutionStrategy::PerRound if backward_options.windowed_r0 => panic!(
-            "windowed MAIN production path is unavailable for validated schedule {:?}; refusing legacy fallback",
-            validated_schedule_class(gkr_programs, prover_config)
-        ),
+        BackwardExecutionStrategy::PerRound if backward_options.windowed_r0 => {
+            return Err(era_cudart_sys::CudaError::ErrorInvalidValue);
+        }
         BackwardExecutionStrategy::WindowedR0 => assert!(
             gkr_programs.window_programs_ready(),
             "prove() with the windowed arm requires preflight_windowed_backward first"

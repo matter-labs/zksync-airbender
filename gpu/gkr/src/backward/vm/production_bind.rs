@@ -999,6 +999,19 @@ impl BwdVmExtLaunch {
         );
     }
 
+    pub(crate) fn repoint_final_evaluations_from_external_buffer<E>(
+        &self,
+        buffer: &DeviceAllocation<E4>,
+        sources: &mut BTreeMap<GKRAddress, *const E>,
+    ) {
+        repoint_final_evaluations_from_buffer(
+            buffer,
+            MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS,
+            &self.final_evaluations,
+            sources,
+        );
+    }
+
     #[allow(dead_code)] // Task 6 wires the continuation producer to this consumer.
     pub(crate) fn adopt_published_level(
         &mut self,

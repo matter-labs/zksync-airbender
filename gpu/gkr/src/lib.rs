@@ -95,6 +95,7 @@ pub enum MainTailRoundBudgetKind {
 #[doc(hidden)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MainLayerExecutionPlanError {
+    WindowedStrategyUnavailable,
     ZeroTailRoundBudget,
     FoldingStepsBeforeWindowedR0 {
         folding_steps: usize,
