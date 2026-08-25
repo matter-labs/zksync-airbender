@@ -2387,6 +2387,17 @@ fn run_window_arm(
         carried.coefficient_bank = Some(bank_spans.bank);
         open_reported_symbols(ledger, &mut owners);
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
+        // Challenge inputs are consumed exclusively by the bank fill. Retire
+        // their owners and staging at that enqueue boundary.
+        retain_in_callback(external_staging, callbacks, context)?;
+        retain_in_callback(lookup_mul_staging, callbacks, context)?;
+        retain_in_callback(lookup_add_staging, callbacks, context)?;
+        retain_in_callback(batching_staging, callbacks, context)?;
+        bind_challenge_owners_final(ledger, &challenge_owners);
+        drop(external);
+        drop(lookup_mul);
+        drop(lookup_add);
+        drop(batching);
         if let Some(staging) = bank.take_bank_staging() {
             retain_in_callback(staging, callbacks, context)?;
         }
@@ -2739,10 +2750,6 @@ fn run_window_arm(
         drop(prior);
         retain_in_callback(point_staging, callbacks, context)?;
         retain_in_callback(claim_symbol_staging, callbacks, context)?;
-        retain_in_callback(external_staging, callbacks, context)?;
-        retain_in_callback(lookup_mul_staging, callbacks, context)?;
-        retain_in_callback(lookup_add_staging, callbacks, context)?;
-        retain_in_callback(batching_staging, callbacks, context)?;
         retain_in_callback(transcript._seed_staging, callbacks, context)?;
         retain_in_callback(transcript._claim_staging, callbacks, context)?;
         retain_in_callback(transcript._prefactor_staging, callbacks, context)?;
@@ -2750,11 +2757,6 @@ fn run_window_arm(
         ledger_bind_final(ledger, &publication_owner);
         ledger_bind_final(ledger, &reduced_tensor);
         drop(launched);
-        bind_challenge_owners_final(ledger, &challenge_owners);
-        drop(external);
-        drop(lookup_mul);
-        drop(lookup_add);
-        drop(batching);
         bind_transcript_owners_final(ledger, &transcript_owners);
         drop(transcript.seed);
         drop(transcript.claim);
