@@ -130,6 +130,7 @@ struct Task8OwnerGeneration {
     generation: u64,
     origin: Task8OwnerOrigin,
     superseded_by: Option<u64>,
+    released: Option<u64>,
     initialized: Vec<std::ops::Range<usize>>,
     final_enqueue: Option<u64>,
     records: Vec<Task8LedgerRecord>,
@@ -298,7 +299,7 @@ impl Task8OwnerGenerationLedger {
                 continue;
             }
             let width = entry.covered.end - entry.covered.start;
-            let open = entry.superseded_by.is_none() && entry.final_enqueue.is_none();
+            let open = entry.superseded_by.is_none() && entry.final_enqueue.is_none() && entry.released.is_none();
             match narrowest {
                 Some(best) if best < width => continue,
                 Some(best) if best == width => {
@@ -364,6 +365,7 @@ impl Task8OwnerGenerationLedger {
             generation: self.next_generation,
             origin,
             superseded_by: None,
+            released: None,
             initialized,
             final_enqueue: None,
             records: Vec::new(),
@@ -471,6 +473,17 @@ impl Task8OwnerGenerationLedger {
             .ok_or(Task8LedgerError::FinalWithoutEnqueue)?;
         entry.final_enqueue = Some(bound);
         Ok(bound)
+    }
+
+    fn release(&mut self, owner: Task8GenerationToken) -> Result<u64, Task8LedgerError> {
+        let slot = self.resolve(owner)?;
+        let entry = &mut self.generations[slot];
+        let final_enqueue = entry.final_enqueue.ok_or(Task8LedgerError::FinalWithoutEnqueue)?;
+        if entry.released.is_some() {
+            return Err(Task8LedgerError::FinalAlreadyBound);
+        }
+        entry.released = Some(final_enqueue);
+        Ok(final_enqueue)
     }
 
     fn generation(&self, owner: Task8GenerationToken) -> &Task8OwnerGeneration {
@@ -634,6 +647,14 @@ fn ledger_bind_final(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8Ledge
         let (arm, label) = (owner.arm, owner.label);
         panic!("Task 8 {arm} arm could not bind Final to {label}: {error:?}")
     })
+}
+
+fn ledger_retire(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8LedgerOwner) -> u64 {
+    let bound = ledger_bind_final(ledger, owner);
+    ledger.release(owner.token).unwrap_or_else(|error| {
+        panic!("Task 8 {} could not release after Final: {error:?}", owner.label)
+    });
+    bound
 }
 
 /// Splits a whole-buffer readback of a factored Eq owner into the bytes this
@@ -959,6 +980,9 @@ fn validate_owner_generation_structure(
             "Task 8 {} bound Final away from its last enqueue",
             entry.label
         );
+        if let Some(released) = entry.released {
+            assert!(released >= bound, "Task 8 {} released before Final", entry.label);
+        }
     }
     stream.sort_by_key(|(step, _, _)| *step);
     assert_eq!(
@@ -2378,7 +2402,7 @@ fn build_prior_level(
         // retirement facts, not at replacement time.
         let consumed_owner = prior_owner.replace(published);
         if let Some(consumed_owner) = consumed_owner {
-            ledger_bind_final(ledger, &consumed_owner);
+            ledger_retire(ledger, &consumed_owner);
         }
         prior = Some(launched.into_published_level());
         drop(consumed);
@@ -4242,7 +4266,7 @@ mod cpu_tests {
         task8_eq_coordinates, task8_register_symbol, validate_owner_generation_ledger,
         validate_owner_generation_structure, validate_single_owner_topology, BTreeSet, Field,
         Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols, Task8ChallengeOwners,
-        Task8EnqueueKind, Task8EnqueuePlan, Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord,
+        Task8EnqueueKind, Task8EnqueuePlan, Task8GenerationToken, Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord,
         Task8OwnerGeneration, Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard,
         Task8QueuedUse, Task8Span, Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
         MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
@@ -5376,6 +5400,19 @@ mod cpu_tests {
     fn cpu_legacy_multi_pass_retirement_lifecycle_mutations() {
         let mut green = replay_both_orders(TASK8_LEGACY_ARM, TASK8_WINDOW_ARM);
         assert!(validate(&green, TASK8_LEGACY_ARM, TASK8_WINDOW_ARM) > 0);
+        let tokens: Vec<_> = green
+            .generations
+            .iter()
+            .filter_map(|entry| entry.final_enqueue.map(|_| Task8GenerationToken {
+                slot: green.generations.iter().position(|candidate| std::ptr::eq(candidate, entry)).unwrap(),
+                owner: entry.owner,
+                generation: entry.generation,
+            }))
+            .collect();
+        for token in tokens {
+            assert!(green.release(token).is_ok());
+            assert!(green.release(token).is_err());
+        }
 
         // Premature Final must reproduce the UseAfterFinal/last-use failure.
         let slot = green
