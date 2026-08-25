@@ -425,8 +425,6 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         storage: &mut GpuGKRStorage<BF, E4>,
         context: &ProverContext,
     ) -> Result<GpuGKRDimensionReducingScheduledLayerExecution, DrTailScheduleError> {
-        const DIMENSION_REDUCING_LAYER_RANGE_MIN_FOLDING_STEPS: usize = 19;
-
         let stream = context.get_exec_stream();
         let dr_window_prepared = self.dr_window.is_some();
         if dr_tail_capacity.is_some() {
@@ -444,16 +442,27 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         let mut tracing_ranges = Vec::new();
         assert!(self.folding_steps >= 2);
         let last_step = self.folding_steps - 1;
-        let mut layer_range = if self.folding_steps
-            >= DIMENSION_REDUCING_LAYER_RANGE_MIN_FOLDING_STEPS
-        {
-            let layer_name = format!("gkr.backward.dimension_reducing.layer.{}", self.layer_idx);
+        // The production-shaped measurement interval covers the complete DR
+        // layer, including its arm-specific allocations and the final LSB /
+        // transcript work.  It is intentionally present for every geometry;
+        // the old >=19 guard made small layers invisible to the analyzer.
+        let layer_name = format!("gkr.backward.dimension_reducing.layer.{}", self.layer_idx);
+        let layer_range = {
             let range = Range::new(layer_name)?;
             range.start(stream)?;
             Some(range)
-        } else {
-            None
         };
+        let mut first3_recorder = super::round_timing::First3Recorder::begin(
+            "dim_reducing",
+            if dr_tail_capacity.is_some() {
+                "mega_dr"
+            } else {
+                "per_round"
+            },
+            self.layer_idx,
+            self.folding_steps,
+            stream,
+        )?;
         // Exponents come from the same slot table the kernels read, so the claim
         // combination and the per-output kernel weights cannot disagree.
         let mut desc_pairs: Vec<u32> = Vec::new();
@@ -533,17 +542,6 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         let mut folding_current: Option<DeviceAllocation<E4>> = None;
         let mut folding_current_len = 0usize;
         let mut dr_tail_output: Option<DeviceAllocation<E4>> = None;
-        let mut first3_recorder = super::round_timing::First3Recorder::begin(
-            "dim_reducing",
-            if dr_tail_capacity.is_some() {
-                "mega_dr"
-            } else {
-                "per_round"
-            },
-            self.layer_idx,
-            self.folding_steps,
-            stream,
-        )?;
         if let Some(capacity) = dr_tail_capacity {
             let prepared = self
                 .dr_window
@@ -857,10 +855,6 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 },
             )?;
         }
-        if let Some(recorder) = first3_recorder.take() {
-            recorder.finish(stream)?;
-        }
-
         let transcript_input_sources = if let Some(output) = dr_tail_output.as_ref() {
             self.final_evaluation_sources_for_last_step(storage, output, 4)
         } else {
@@ -955,7 +949,10 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         )?;
 
         let next_claim_layout = ClaimBufferLayout::from_addresses(transcript_input_addresses);
-        if let Some(layer_range) = layer_range.take() {
+        if let Some(recorder) = first3_recorder.take() {
+            recorder.finish(stream)?;
+        }
+        if let Some(layer_range) = layer_range {
             layer_range.end(stream)?;
             tracing_ranges.push(layer_range);
         }

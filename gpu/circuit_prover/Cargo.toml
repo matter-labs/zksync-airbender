@@ -29,6 +29,7 @@ gpu_whir = { workspace = true }
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
 log = { workspace = true }
+serde_json = "*"
 
 [features]
 default = ["deterministic_pow"]
@@ -58,4 +59,3 @@ gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
 itertools = "0.14"
 serde = { workspace = true }
-serde_json = "*"

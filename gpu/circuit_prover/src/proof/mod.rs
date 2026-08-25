@@ -6,6 +6,7 @@ use std::cell::Cell;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::{fs::OpenOptions, io::Write, path::PathBuf};
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::stream::CudaStreamWaitEventFlags;
@@ -26,7 +27,6 @@ use gpu_gkr::{
     MainContinuationWindowLoweringRejection, MainLayerExecutionPlanError, WindowLoweringRejection,
 };
 use gpu_prover_context::ProverContext;
-#[cfg(test)]
 use gpu_prover_context::{
     DeviceMemoryHighWaterObserver, PoolMemoryHighWaterReport, PoolMemoryHighWaterSnapshot,
 };
@@ -71,6 +71,9 @@ pub enum GpuProveError {
     },
     DrTailSchedule {
         error: gpu_gkr::DrTailScheduleError,
+    },
+    ExactMemoryMeasurement {
+        message: String,
     },
 }
 
@@ -238,6 +241,121 @@ impl<'context> ProofMemoryHighWaterSink<'context> {
     }
 }
 
+/// Opt-in production measurement sink. It samples allocator bookkeeping only;
+/// it schedules no CUDA work, performs no synchronization, and creates no
+/// callback. The CLI enables it with `GKR_EXACT_MEMORY_OUT`.
+struct ExactMemoryGateSink<'context> {
+    whole: DeviceMemoryHighWaterObserver<'context>,
+    backward: Option<DeviceMemoryHighWaterObserver<'context>>,
+    backward_sealed: Option<PoolMemoryHighWaterSnapshot>,
+    output: PathBuf,
+    arm: &'static str,
+    dr_layers: usize,
+    dr_prepared_layers: usize,
+    dr_bundle_final_log: Option<u32>,
+}
+
+impl<'context> ExactMemoryGateSink<'context> {
+    fn from_env(context: &'context ProverContext) -> Option<Self> {
+        let output = std::env::var_os("GKR_EXACT_MEMORY_OUT").map(PathBuf::from)?;
+        let arm = match std::env::var("AB_GKR_DR_TAIL").as_deref() {
+            Ok("1") => "on",
+            Ok("0") => "off",
+            _ => return None,
+        };
+        Some(Self {
+            whole: context.observe_device_memory_high_water(),
+            backward: None,
+            backward_sealed: None,
+            output,
+            arm,
+            dr_layers: 0,
+            dr_prepared_layers: 0,
+            dr_bundle_final_log: None,
+        })
+    }
+
+    fn start_backward(&mut self, context: &'context ProverContext) {
+        assert!(self.backward.is_none(), "backward observer must start once");
+        self.backward = Some(context.observe_device_memory_high_water());
+    }
+
+    fn seal_backward(&mut self, scheduled: &gpu_gkr::backward::GpuGKRBackwardScheduledExecution) {
+        let observer = self
+            .backward
+            .as_mut()
+            .expect("backward observer must start before sealing");
+        self.backward_sealed = Some(observer.seal());
+        self.dr_layers = scheduled.dimension_reducing_layer_count();
+        self.dr_prepared_layers = scheduled.dr_prepared_layer_count();
+        self.dr_bundle_final_log = scheduled.dr_prepared_bundle_final_log();
+    }
+
+    fn finish(mut self) -> Result<(), String> {
+        let whole_sealed = self.whole.seal();
+        let whole = self.whole.finish();
+        let backward = self
+            .backward
+            .ok_or_else(|| "backward observer was never started".to_owned())?
+            .finish();
+        let backward_sealed = self
+            .backward_sealed
+            .ok_or_else(|| "backward observer was never sealed".to_owned())?;
+        if backward.start != backward_sealed.start
+            || backward.physical_backing_peak_bytes != backward_sealed.physical_backing_peak_bytes
+            || backward.logical_live_peak_bytes != backward_sealed.logical_live_peak_bytes
+            || backward.summed_requested_bytes != backward_sealed.summed_requested_bytes
+            || backward.peak_window_end != backward_sealed.peak_window_end
+        {
+            return Err("backward sealed and final reports differ".to_owned());
+        }
+        let row = serde_json::json!({
+            "arm": self.arm,
+            "dr_layers": self.dr_layers,
+            "dr_prepared_layers": self.dr_prepared_layers,
+            "dr_bundle_final_log": self.dr_bundle_final_log,
+            "whole": memory_report_json(&whole),
+            "whole_sealed": memory_snapshot_json(&whole_sealed),
+            "backward": memory_report_json(&backward),
+            "backward_sealed": memory_snapshot_json(&backward_sealed),
+        });
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.output)
+            .map_err(|error| format!("{}: {error}", self.output.display()))?;
+        writeln!(file, "{row}").map_err(|error| format!("{}: {error}", self.output.display()))
+    }
+}
+
+fn memory_usage_json(usage: &gpu_prover_context::PoolMemoryUsage) -> serde_json::Value {
+    serde_json::json!({
+        "physical_backing_bytes": usage.physical_backing_bytes,
+        "logical_live_bytes": usage.logical_live_bytes,
+    })
+}
+
+fn memory_report_json(report: &PoolMemoryHighWaterReport) -> serde_json::Value {
+    serde_json::json!({
+        "start": memory_usage_json(&report.start),
+        "physical_backing_peak_bytes": report.physical_backing_peak_bytes,
+        "logical_live_peak_bytes": report.logical_live_peak_bytes,
+        "summed_requested_bytes": report.summed_requested_bytes,
+        "peak_window_end": memory_usage_json(&report.peak_window_end),
+        "return_to_entry": memory_usage_json(&report.return_to_entry),
+    })
+}
+
+fn memory_snapshot_json(snapshot: &PoolMemoryHighWaterSnapshot) -> serde_json::Value {
+    serde_json::json!({
+        "start": memory_usage_json(&snapshot.start),
+        "physical_backing_peak_bytes": snapshot.physical_backing_peak_bytes,
+        "logical_live_peak_bytes": snapshot.logical_live_peak_bytes,
+        "summed_requested_bytes": snapshot.summed_requested_bytes,
+        "peak_window_end": memory_usage_json(&snapshot.peak_window_end),
+    })
+}
+
 impl std::fmt::Display for GpuProveError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -277,6 +395,9 @@ impl std::fmt::Display for GpuProveError {
             }
             Self::DrTailSchedule { error } => {
                 write!(formatter, "DR-tail scheduling rejected: {error:?}")
+            }
+            Self::ExactMemoryMeasurement { message } => {
+                write!(formatter, "exact-memory measurement failed: {message}")
             }
         }
     }
@@ -682,6 +803,9 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
         top_bits_host,
         external_challenges,
     } = inputs;
+    // Start before transfer construction so the whole-proof interval includes
+    // every proof-owned allocation and the existing initial-input H2D bundle.
+    let mut exact_memory = ExactMemoryGateSink::from_env(context);
 
     if let Some(setup_transfer) = setup.as_ref() {
         assert_eq!(
@@ -783,6 +907,12 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
 
     ranges.push(post_forward_handoff_range);
 
+    if let Some(sink) = exact_memory.as_mut() {
+        // This is the first arm-specific backward allocation boundary. The
+        // observer itself is allocator bookkeeping only and remains
+        // enqueue-only.
+        sink.start_backward(context);
+    }
     #[cfg(test)]
     if let Some(memory_high_water) = memory_high_water.as_deref_mut() {
         memory_high_water.start(context);
@@ -810,6 +940,9 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
         &mut callbacks,
         context,
     )?;
+    if let Some(sink) = exact_memory.as_mut() {
+        sink.seal_backward(&backward_scheduled);
+    }
     #[cfg(test)]
     if let Some(memory_high_water) = memory_high_water.as_deref_mut() {
         memory_high_water.seal(&backward_scheduled);
@@ -899,6 +1032,11 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     whir_scheduled.release_device_buffers();
     // Proof slab: last scheduled use is the terminal D2H on exec_stream.
     drop(proof_slab);
+
+    if let Some(sink) = exact_memory.take() {
+        sink.finish()
+            .map_err(|message| GpuProveError::ExactMemoryMeasurement { message })?;
+    }
 
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
