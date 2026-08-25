@@ -1380,6 +1380,38 @@ pub(crate) fn build_bwd_vm_ext_rounds_after_continuations<E: Copy>(
     )
 }
 
+/// Explicit zero-round carrier for the W=0 main-tail path. This deliberately
+/// does not enter `bind_ext_round_sources`; the non-empty Ext binder remains
+/// strict for every ordinary remainder.
+pub(crate) fn build_zero_round_ext_carrier(
+    program: &ContinuationLayerProgram,
+    inits_and_teardowns_top_bits: &[u32],
+    context: &ProverContext,
+) -> CudaResult<BwdVmExtLaunch> {
+    let blob = build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
+        .unwrap_or_else(|error| panic!("zero-round Ext carrier translation: {error:?}"));
+    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
+    Ok(BwdVmExtLaunch {
+        start_round: 0,
+        rounds: Vec::new(),
+        live: BTreeMap::new(),
+        expected_published_shape: None,
+        final_evaluations: BTreeMap::new(),
+        tables,
+        slab,
+        filled: false,
+        #[cfg(all(any(test, feature = "task8_continuation_differential_test"), not(no_cuda)))]
+        task8_scheduled_rounds: 0,
+        #[cfg(all(any(test, feature = "task8_continuation_differential_test"), not(no_cuda)))]
+        task8_peak_live_publication_owners: 0,
+        #[cfg(all(any(test, feature = "task8_continuation_differential_test"), not(no_cuda)))]
+        task8_peak_live_publication_bytes: 0,
+        #[cfg(all(any(test, feature = "task8_continuation_differential_test"), not(no_cuda)))]
+        task8_live_publication_events: Vec::new(),
+    })
+}
+
 /// The two spans one challenge-slab prefix copy names.
 #[cfg(all(
     any(test, feature = "task8_continuation_differential_test"),

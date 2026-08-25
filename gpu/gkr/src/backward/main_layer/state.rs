@@ -110,16 +110,24 @@ impl GpuGKRMainLayerBackwardState {
             }
         };
         let bwd_vm_ext = if main_chain_selected {
-            super::super::vm::production_bind::build_bwd_vm_ext_rounds_after_continuations(
-                &self.storage,
-                self.programs.continuation_layer(layer_idx),
-                main_execution_plan.tail_start_round(),
-                folding_steps,
-                round_scratch.eq_low_group.as_ptr(),
-                round_scratch.partials.as_mut_ptr(),
-                &self.inits_and_teardowns_top_bits,
-                context,
-            )?
+            if main_execution_plan.window_count() == 0 {
+                super::super::vm::production_bind::build_zero_round_ext_carrier(
+                    self.programs.continuation_layer(layer_idx),
+                    &self.inits_and_teardowns_top_bits,
+                    context,
+                )?
+            } else {
+                super::super::vm::production_bind::build_bwd_vm_ext_rounds_after_continuations(
+                    &self.storage,
+                    self.programs.continuation_layer(layer_idx),
+                    main_execution_plan.tail_start_round(),
+                    folding_steps,
+                    round_scratch.eq_low_group.as_ptr(),
+                    round_scratch.partials.as_mut_ptr(),
+                    &self.inits_and_teardowns_top_bits,
+                    context,
+                )?
+            }
         } else {
             super::super::vm::production_bind::build_bwd_vm_ext_rounds(
                 &self.storage,
