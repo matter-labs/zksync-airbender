@@ -2480,11 +2480,15 @@ fn run_window_arm(
         let mut bank =
             prepare_continuation_differential_bank(continuation_program, top_bits, context)?;
         let bank_report = bank_observer.finish();
+        // The window arm retires the bank slab right after the fill enqueue
+        // (`drop(bank)` below), before the prior build: the record must say so,
+        // or the pool's reuse of the freed block by a later recorded owner is
+        // an address overlap the topology oracle rightly rejects.
         allocations.push(allocation_group_record(
             "bank",
             bank.challenge_slab().as_ptr() as usize,
             1,
-            8,
+            2,
             1,
             "mixed",
             1,
@@ -4179,20 +4183,19 @@ mod cpu_tests {
         allocation_group_record, bind_arm_owners_final, bind_challenge_owners_final,
         bind_transcript_owners_final, build_corpus_census, deterministic_e4, eq_readback_spans,
         ledger_bind_final, ledger_open, record_active_eq_slot_fold, signed_snapshot_delta,
-        task8_eq_coordinates, task8_register_symbol,
-        validate_owner_generation_ledger, validate_owner_generation_structure,
-        validate_single_owner_topology, BTreeSet, Field, Task8AllocationRecord, Task8ArmOwners,
-        Task8CarriedSymbols, Task8ChallengeOwners, Task8EnqueueKind, Task8EnqueuePlan,
-        Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord, Task8OwnerGeneration,
-        Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard, Task8QueuedUse, Task8Span,
-        Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
+        task8_eq_coordinates, task8_register_symbol, validate_owner_generation_ledger,
+        validate_owner_generation_structure, validate_single_owner_topology, BTreeSet, Field,
+        Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols, Task8ChallengeOwners,
+        Task8EnqueueKind, Task8EnqueuePlan, Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord,
+        Task8OwnerGeneration, Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard,
+        Task8QueuedUse, Task8Span, Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
         MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
         TASK8_SHARED_DEVICE_INPUTS, TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
     };
-    use crate::backward::task8_probe::{task8_enqueue, task8_enqueue_plan};
     use crate::backward::kernels::{task8_dual_finalize_spans, task8_eq_build_spans};
     use crate::backward::main_layer::execution_plan::WINDOW_WIDTH;
     use crate::backward::task8_probe::task8_register_descriptor_sources;
+    use crate::backward::task8_probe::{task8_enqueue, task8_enqueue_plan};
     use crate::backward::vm::production_bind::{
         drained_eq_sizes, foldable_eq_variables, task8_challenge_prefix_spans,
         task8_challenge_slot_spans, task8_differential_eq_plan, EqDrainSchedule,
@@ -4263,6 +4266,28 @@ mod cpu_tests {
         assert_eq!(
             validate_single_owner_topology(&duplicate_raw),
             Err(Task8TopologyError::DuplicateRawBacking)
+        );
+    }
+
+    /// The exact shape the consumed v17 run rejected: the window arm's bank
+    /// slab is retired right after the fill, the pool's best-fit reuse hands
+    /// its base to a later transcript buffer, and only a record that tells the
+    /// truth about the early retirement is a valid topology. A record claiming
+    /// the slab lived to the arm's end must be rejected as an address overlap.
+    #[test]
+    fn cpu_main_continuation_task8_topology_accepts_early_retired_bank_reuse() {
+        let reused_base = 7;
+        let mut reuse = valid_topology();
+        reuse.push(record("bank", reused_base, 1, 2));
+        reuse.push(record("transcript_seed", reused_base, 4, 8));
+        validate_single_owner_topology(&reuse).unwrap();
+
+        let mut stale = valid_topology();
+        stale.push(record("bank", reused_base, 1, 8));
+        stale.push(record("transcript_seed", reused_base, 4, 8));
+        assert_eq!(
+            validate_single_owner_topology(&stale),
+            Err(Task8TopologyError::OverlappingOwner)
         );
     }
 
