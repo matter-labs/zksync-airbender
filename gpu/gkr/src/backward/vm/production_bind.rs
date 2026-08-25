@@ -26,7 +26,7 @@ use super::seg::{
 };
 use super::seg_coeff_eval::{
     build_seg_coeff_eval_blob, build_seg_coeff_eval_window_blob, schedule_bwd_seg_coeff_bank_fill,
-    SegCoeffEvalTables, BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE,
+    SegCoeffEvalChunks, BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE,
     BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE,
     BWD_SEG_CHALLENGE_SLOTS,
 };
@@ -52,7 +52,6 @@ use crate::GpuGKRStorage;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_prover_context::ProverContext;
 
 // ── The separate `K` policies ────────────────────────────────────────────────
@@ -718,14 +717,8 @@ fn addressed_columns<'a>(
 
 pub(crate) struct BwdVmRound0Launch {
     setup: BwdSegSetup,
-    tables: SegCoeffEvalTables,
+    chunks: SegCoeffEvalChunks,
     slab: DeviceAllocation<E4>,
-}
-
-impl BwdVmRound0Launch {
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.tables.take_host_staging()
-    }
 }
 
 pub(crate) fn build_bwd_vm_round0<E: Copy>(
@@ -743,7 +736,7 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
     let blob =
         build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
             .unwrap_or_else(|error| panic!("backward VM R0 bank translation: {error:?}"));
-    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let chunks = SegCoeffEvalChunks::build(&blob);
 
     let bytes_per_row = seg_r0_bytes_per_row(&bound.slots, &bound.sources);
     let k = seg_r0_policy_k(bytes_per_row, seg_k_ceiling(BwdRegime::R0)?);
@@ -767,7 +760,7 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
     Ok(BwdVmRound0Launch {
         setup,
-        tables,
+        chunks,
         slab,
     })
 }
@@ -799,7 +792,7 @@ pub(crate) fn schedule_bwd_vm_round0(
         context,
     )?;
     schedule_bwd_seg_coeff_bank_fill(
-        &mut launch.tables,
+        &launch.chunks,
         launch.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         stream,
@@ -819,11 +812,6 @@ fn schedule_seg_challenge_slab(
     let prefix = BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE as usize;
     debug_assert_eq!(BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE, 0);
     // SAFETY: all sources and the slab are device allocations of the copied size.
-    #[cfg(all(
-        any(test, feature = "task8_continuation_differential_test"),
-        not(no_cuda)
-    ))]
-    let element = size_of::<E4>();
     #[cfg(all(
         any(test, feature = "task8_continuation_differential_test"),
         not(no_cuda)
@@ -911,7 +899,7 @@ pub(crate) struct BwdVmExtLaunch {
     #[allow(dead_code)] // Task 6 adopts the level after constructing the remainder.
     expected_published_shape: Option<ContinuationPublishedShape>,
     final_evaluations: BTreeMap<GKRAddress, usize>,
-    tables: SegCoeffEvalTables,
+    chunks: SegCoeffEvalChunks,
     slab: DeviceAllocation<E4>,
     filled: bool,
     #[cfg(all(
@@ -1019,10 +1007,6 @@ impl BwdVmExtLaunch {
             self.task8_peak_live_publication_owners,
             self.task8_peak_live_publication_bytes,
         )
-    }
-
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.tables.take_host_staging()
     }
 
     pub(crate) fn repoint_final_evaluations<E>(
@@ -1257,7 +1241,7 @@ fn build_bwd_vm_ext_rounds_inner<E: Copy>(
     let blob =
         build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
             .unwrap_or_else(|error| panic!("backward VM Ext bank translation: {error:?}"));
-    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let chunks = SegCoeffEvalChunks::build(&blob);
 
     let ceiling = seg_k_ceiling(BwdRegime::Ext)?;
     let (planned, final_evaluations) = plan_ext_rounds(
@@ -1287,7 +1271,7 @@ fn build_bwd_vm_ext_rounds_inner<E: Copy>(
         live: BTreeMap::new(),
         expected_published_shape: published_shape,
         final_evaluations,
-        tables,
+        chunks,
         slab,
         filled: false,
         #[cfg(all(
@@ -1502,7 +1486,6 @@ pub(crate) fn task8_challenge_slot_spans(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BwdSegBankFillSpans {
     pub(crate) slab: (usize, usize),
-    pub(crate) tables: (usize, usize),
     pub(crate) bank: (usize, usize),
 }
 
@@ -1527,7 +1510,7 @@ pub(crate) fn schedule_bwd_vm_ext_bank_fill(
         context,
     )?;
     let spans = schedule_bwd_seg_coeff_bank_fill(
-        &mut launch.tables,
+        &launch.chunks,
         launch.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         context.get_exec_stream(),
@@ -1535,14 +1518,13 @@ pub(crate) fn schedule_bwd_vm_ext_bank_fill(
     launch.filled = true;
     Ok(BwdSegBankFillSpans {
         slab: slab_span(&launch.slab),
-        tables: spans.tables,
         bank: spans.bank,
     })
 }
 
 #[cfg(any(test, feature = "task8_continuation_differential_test"))]
 pub(crate) struct PreparedContinuationDifferentialBank {
-    tables: SegCoeffEvalTables,
+    chunks: SegCoeffEvalChunks,
     slab: DeviceAllocation<E4>,
 }
 
@@ -1554,10 +1536,6 @@ impl PreparedContinuationDifferentialBank {
     ))]
     pub(crate) fn challenge_slab(&self) -> &DeviceAllocation<E4> {
         &self.slab
-    }
-
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.tables.take_host_staging()
     }
 
     pub(crate) fn schedule(
@@ -1577,14 +1555,13 @@ impl PreparedContinuationDifferentialBank {
             context,
         )?;
         let spans = schedule_bwd_seg_coeff_bank_fill(
-            &mut self.tables,
+            &self.chunks,
             self.slab.as_ptr(),
             bwd_seg_coeff_bank_device_ptr(),
             context.get_exec_stream(),
         )?;
         Ok(BwdSegBankFillSpans {
             slab: slab_span(&self.slab),
-            tables: spans.tables,
             bank: spans.bank,
         })
     }
@@ -1599,9 +1576,9 @@ pub(crate) fn prepare_continuation_differential_bank(
     let blob =
         build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
             .unwrap_or_else(|error| panic!("Task 8 Ext bank translation: {error:?}"));
-    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let chunks = SegCoeffEvalChunks::build(&blob);
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
-    Ok(PreparedContinuationDifferentialBank { tables, slab })
+    Ok(PreparedContinuationDifferentialBank { chunks, slab })
 }
 
 // ── The windowed arm's bank ──────────────────────────────────────────────────
@@ -1610,15 +1587,11 @@ pub(crate) fn prepare_continuation_differential_bank(
 /// arm's second fill is the shared [`schedule_bwd_vm_ext_bank_fill`] above, so
 /// both arms are two-fill and the ext refill is identical between them.
 pub(crate) struct BwdVmWindowBank {
-    tables: SegCoeffEvalTables,
+    chunks: SegCoeffEvalChunks,
     slab: DeviceAllocation<E4>,
 }
 
-impl BwdVmWindowBank {
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.tables.take_host_staging()
-    }
-}
+impl BwdVmWindowBank {}
 
 pub(crate) fn build_bwd_vm_window_bank(
     program: &WindowProgram,
@@ -1628,9 +1601,9 @@ pub(crate) fn build_bwd_vm_window_bank(
     let blob =
         build_seg_coeff_eval_window_blob(&program.coefficient_plans, inits_and_teardowns_top_bits)
             .unwrap_or_else(|error| panic!("backward VM window bank translation: {error:?}"));
-    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let chunks = SegCoeffEvalChunks::build(&blob);
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
-    Ok(BwdVmWindowBank { tables, slab })
+    Ok(BwdVmWindowBank { chunks, slab })
 }
 
 /// Fill the output bank with this layer's window plans.
@@ -1657,7 +1630,7 @@ pub(crate) fn schedule_bwd_vm_window_bank_fill(
         context,
     )?;
     schedule_bwd_seg_coeff_bank_fill(
-        &mut bank.tables,
+        &bank.chunks,
         bank.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         context.get_exec_stream(),
@@ -2108,10 +2081,6 @@ impl PreparedContinuationDifferentialRounds {
             claim_batching,
             context,
         )
-    }
-
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.launch.take_bank_staging()
     }
 
     /// The pointer arguments one segmented-VM round enqueue names: the

@@ -1825,6 +1825,7 @@ fn main_continuation_prepared_differential() {
     let mut seen_layouts = std::collections::BTreeSet::new();
     let mut layers = 0usize;
     let mut coordinates = 0usize;
+    let mut non_identity_coordinates = 0usize;
     let mut folding_steps = std::collections::BTreeSet::new();
     let mut start_rounds = std::collections::BTreeSet::new();
     let mut masks = std::collections::BTreeSet::new();
@@ -1863,6 +1864,7 @@ fn main_continuation_prepared_differential() {
             report.layers, report.semantic_comparisons, report.mutation_checks
         );
         assert_eq!(report.coordinates, report.layers, "{workload}");
+        assert!(report.non_identity_coordinates <= report.coordinates);
         assert_eq!(
             report.topology_coordinates,
             report.layers * report.start_rounds.len(),
@@ -2035,6 +2037,7 @@ fn main_continuation_prepared_differential() {
         }
         layers += report.layers;
         coordinates += report.coordinates;
+        non_identity_coordinates += report.non_identity_coordinates;
         folding_steps.extend(report.folding_steps);
         start_rounds.extend(report.start_rounds);
         masks.extend(report.masks);
@@ -2059,6 +2062,7 @@ fn main_continuation_prepared_differential() {
     assert_eq!(seen_layouts, expected_layouts);
     assert_eq!(layers, 57);
     assert_eq!(coordinates, 57);
+    assert_eq!(non_identity_coordinates, 23);
     assert_eq!(
         folding_steps,
         std::collections::BTreeSet::from([20, 22, 23, 24])
@@ -2085,11 +2089,22 @@ fn main_continuation_prepared_differential() {
         publication_elements_compared + 26 * topology_coordinates
     );
     assert_eq!(comparator_field_coverage_checks, 24 * topology_coordinates);
+    assert_eq!(topology_coordinates, 342);
     assert_eq!(
         mutation_checks,
         16 * layers + 22 * later_start_shared_prior_coordinates + 2 * multi_source_coordinates
     );
     assert!(publication_elements_compared > 0);
+    let census_starts: Vec<_> = start_rounds.iter().copied().collect();
+    eprintln!(
+        "TASK8_CENSUS_JSON={{\"layouts\":{},\"layers\":{},\"coordinates\":{},\"starts\":{:?},\"topology_coordinates\":{},\"non_identity_coordinates\":{}}}",
+        seen_layouts.len(),
+        layers,
+        coordinates,
+        census_starts,
+        topology_coordinates,
+        non_identity_coordinates,
+    );
 }
 
 #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]

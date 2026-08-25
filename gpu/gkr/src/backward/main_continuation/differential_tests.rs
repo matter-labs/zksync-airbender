@@ -37,8 +37,8 @@ use crate::backward::stage_snapshots::{
     MainContinuationDifferentialReport, Task8ContinuationDifferentialRequest,
 };
 use crate::backward::task8_probe::{
-    task8_enqueue, task8_enqueue_plan, task8_register_symbol, task8_symbol, Task8EnqueueKind,
-    Task8EnqueuePlan, Task8ProbeGuard, Task8Span,
+    task8_register_symbol, task8_symbol, Task8EnqueueKind, Task8EnqueuePlan, Task8ProbeGuard,
+    Task8Span,
 };
 use crate::backward::vm::production_bind::{
     canonicalize_legacy_publication, family_read_place, foldable_eq_variables,
@@ -111,14 +111,65 @@ struct Task8GenerationToken {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Task8OwnerOrigin {
     /// The arm allocates or writes the owner itself, so it starts uncovered.
-    ArmOwned,
+    ArmOwned(Task8OwnershipEnd),
     /// Production storage the arm only reads. It starts fully covered and every
     /// write or mutation of it is rejected.
-    Borrowed(&'static str),
+    Borrowed(&'static str, Task8OwnershipEnd),
     /// A factored Eq table: the arm writes the active prefix each build fixes
     /// and reads back the whole buffer, so bytes outside its own writes are
     /// recorded as resident reads and never as initialization.
-    FactoredEq,
+    FactoredEq(Task8OwnershipEnd),
+}
+
+/// How a generation's ownership of its bytes ended. The ledger needs the end,
+/// not only `Final`: `Final` says no further enqueue may name the generation,
+/// while the end says whether the bytes went back to the pool, so a later
+/// declaration over the same address is reuse rather than a shadow.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Task8OwnershipEnd {
+    /// The arm dropped the device allocation and the pool may hand the bytes to
+    /// any later request.
+    Freed,
+    /// A static device symbol the arm stops naming. The storage outlives the
+    /// arm; only this arm's generation of it ends.
+    SymbolReleased,
+    /// A read-only borrow of storage the arm never owned. Nothing is freed and
+    /// nothing is handed back; the borrow itself is what ends.
+    BorrowClosed,
+}
+
+impl Task8OwnershipEnd {
+    /// The ends an origin may declare. A borrow can only be closed, and storage
+    /// the arm writes can only be freed or released as a symbol, so a missing
+    /// free can never be spelled as a borrow closure.
+    fn admits(&self, origin: Task8OwnerOrigin) -> bool {
+        match origin {
+            Task8OwnerOrigin::Borrowed(_, _) => matches!(self, Task8OwnershipEnd::BorrowClosed),
+            Task8OwnerOrigin::ArmOwned(_) | Task8OwnerOrigin::FactoredEq(_) => matches!(
+                self,
+                Task8OwnershipEnd::Freed | Task8OwnershipEnd::SymbolReleased
+            ),
+        }
+    }
+}
+
+/// One generation's ownership end, and the enqueue boundary it happened at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Task8Release {
+    at_enqueue: u64,
+    end: Task8OwnershipEnd,
+}
+
+/// The generation a rejected span or declaration collided with, carried by the
+/// error so a failure names the stale owner and not only the new access.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Task8Culprit {
+    arm: &'static str,
+    label: &'static str,
+    generation: u64,
+    covered: (usize, usize),
+    final_enqueue: Option<u64>,
+    released: Option<Task8Release>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,7 +180,9 @@ struct Task8OwnerGeneration {
     covered: std::ops::Range<usize>,
     generation: u64,
     origin: Task8OwnerOrigin,
+    allowed_end: Task8OwnershipEnd,
     superseded_by: Option<u64>,
+    released: Option<Task8Release>,
     initialized: Vec<std::ops::Range<usize>>,
     final_enqueue: Option<u64>,
     records: Vec<Task8LedgerRecord>,
@@ -200,15 +253,28 @@ impl Task8OwnerGeneration {
 enum Task8LedgerError {
     StaleToken,
     AmbiguousLiveGeneration,
-    UseAfterFinal,
+    /// A span whose narrowest unreleased owner has already bound `Final`. The
+    /// culprit is that owner, so the failure names the generation the bytes
+    /// still belong to.
+    UseAfterFinal(Task8Culprit),
     UseBeforeInitialization,
     ResidentReadOfCoveredBytes,
     ResidentReadOfNonEqOwner,
     WriteToBorrowedOwner,
     UnownedSpan,
-    ReuseWithoutFinal,
-    FinalWithoutEnqueue,
-    FinalAlreadyBound,
+    /// A declaration over the exact range of a generation that is still live.
+    ReuseWithoutFinal(Task8Culprit),
+    /// A declaration over bytes a retired generation still owns because its
+    /// ownership never ended.
+    ReuseWithoutRelease(Task8Culprit),
+    /// Two live declarations that overlap without one containing the other, so
+    /// neither is a nested view of the other.
+    OverlappingLiveDeclaration(Task8Culprit),
+    FinalWithoutEnqueue(Task8Culprit),
+    FinalAlreadyBound(Task8Culprit),
+    ReleaseWithoutFinal(Task8Culprit),
+    ReleaseKindMismatch(Task8Culprit),
+    AlreadyReleased(Task8Culprit),
 }
 
 /// Enqueue-order ledger for the device buffers and symbols one differential
@@ -257,73 +323,91 @@ impl Task8OwnerGenerationLedger {
         Ok(token.slot)
     }
 
-    /// The single generation an address is currently open under, or `None` when
-    /// the address has never been opened. Two open generations at one address
-    /// are a ledger fault, not a lookup to disambiguate by position.
-    fn live_generation(
-        &self,
-        owner: usize,
-    ) -> Result<Option<Task8GenerationToken>, Task8LedgerError> {
-        let mut live = self
-            .generations
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| entry.owner == owner && entry.superseded_by.is_none());
-        let first = live.next();
-        if live.next().is_some() {
-            return Err(Task8LedgerError::AmbiguousLiveGeneration);
-        }
-        Ok(first.map(|(slot, entry)| Task8GenerationToken {
-            slot,
-            owner,
-            generation: entry.generation,
-        }))
-    }
-
     /// The generation that owns `range`: the most specific declaration
     /// containing it, so a sub-buffer such as the reduced tensor takes the spans
     /// inside it from the allocation it lives in.
     ///
-    /// The most specific declaration stays authoritative after it binds `Final`.
-    /// A span inside a finalized narrow owner is a use after that owner's last
-    /// enqueue even while a broader owner is still live, until an explicit
-    /// successor generation is admitted at the same address. Two live
-    /// candidates of the same width are a ledger fault, not a choice.
+    /// A generation whose ownership has ended -- superseded by an admitted
+    /// successor, or released back to the pool, the symbol or the lender -- is
+    /// not a candidate at all. It is dropped before specificity is decided, so
+    /// bytes the allocator has recycled cannot be shadowed by the declaration
+    /// that used to hold them.
+    ///
+    /// A generation that bound `Final` but never released stays authoritative:
+    /// it still owns its bytes, so a span inside it is a use after its last
+    /// enqueue even while a broader owner is live. That rejection carries the
+    /// stale owner's identity.
+    ///
+    /// Two live candidates of the same width are a ledger fault, not a choice.
     fn owner_of(&self, range: &std::ops::Range<usize>) -> Result<usize, Task8LedgerError> {
         let mut narrowest: Option<usize> = None;
         let mut live: Option<usize> = None;
+        let mut retired: Option<usize> = None;
         let mut ambiguous = false;
         for (slot, entry) in self.generations.iter().enumerate() {
             if !entry.within(range) {
                 continue;
             }
+            if entry.superseded_by.is_some() || entry.released.is_some() {
+                continue;
+            }
             let width = entry.covered.end - entry.covered.start;
-            let open = entry.superseded_by.is_none() && entry.final_enqueue.is_none();
+            let open = entry.final_enqueue.is_none();
             match narrowest {
                 Some(best) if best < width => continue,
                 Some(best) if best == width => {
                     if open {
                         ambiguous |= live.is_some();
                         live = Some(slot);
+                    } else if retired.is_none() {
+                        retired = Some(slot);
                     }
                 }
                 _ => {
                     narrowest = Some(width);
                     ambiguous = false;
                     live = open.then_some(slot);
+                    retired = (!open).then_some(slot);
                 }
             }
         }
         if ambiguous {
             return Err(Task8LedgerError::AmbiguousLiveGeneration);
         }
-        match (narrowest, live) {
-            (_, Some(slot)) => Ok(slot),
-            (Some(_), None) => Err(Task8LedgerError::UseAfterFinal),
+        match (live, retired) {
+            (Some(slot), _) => Ok(slot),
+            (None, Some(slot)) => Err(Task8LedgerError::UseAfterFinal(self.culprit(slot))),
             (None, None) => Err(Task8LedgerError::UnownedSpan),
         }
     }
 
+    /// The identity a rejection carries: which generation the new access or
+    /// declaration collided with, and how far through retirement it had got.
+    fn culprit(&self, slot: usize) -> Task8Culprit {
+        let entry = &self.generations[slot];
+        Task8Culprit {
+            arm: entry.arm,
+            label: entry.label,
+            generation: entry.generation,
+            covered: (entry.covered.start, entry.covered.end),
+            final_enqueue: entry.final_enqueue,
+            released: entry.released,
+        }
+    }
+
+    /// Opens a declaration over `owner..owner + bytes`, classifying it against
+    /// every generation whose own successor has not already taken over.
+    ///
+    /// A retired generation at the same base is this declaration's predecessor:
+    /// it is the address being taken back, and [`Self::admit_reuse`] decides
+    /// whether it may be. Everything else that intersects is judged by what it
+    /// still is. A live generation that contains, or is contained by, the new
+    /// range is a nested view -- a sub-buffer inside its allocation, a borrowed
+    /// element inside a borrowed vector -- and is left alone; the same range
+    /// while it is live is a second owner of bytes it still holds. A generation
+    /// that bound `Final` but never released still owns its bytes, so declaring
+    /// over them is reuse of storage the arm never gave back. A generation that
+    /// did release owns nothing, so it constrains nothing.
     fn open(
         &mut self,
         arm: &'static str,
@@ -333,7 +417,43 @@ impl Task8OwnerGenerationLedger {
         bytes: usize,
     ) -> Result<Task8GenerationToken, Task8LedgerError> {
         let covered = owner..owner + bytes;
-        match self.live_generation(owner)? {
+        let mut predecessor: Option<Task8GenerationToken> = None;
+        for slot in 0..self.generations.len() {
+            let entry = &self.generations[slot];
+            if entry.superseded_by.is_some() {
+                continue;
+            }
+            let live = entry.final_enqueue.is_none();
+            if entry.owner == covered.start && !live {
+                predecessor = Some(Task8GenerationToken {
+                    slot,
+                    owner: entry.owner,
+                    generation: entry.generation,
+                });
+                continue;
+            }
+            if entry.released.is_some() {
+                continue;
+            }
+            if entry.covered.start >= covered.end || covered.start >= entry.covered.end {
+                continue;
+            }
+            if !live {
+                return Err(Task8LedgerError::ReuseWithoutRelease(self.culprit(slot)));
+            }
+            if entry.covered == covered {
+                return Err(Task8LedgerError::ReuseWithoutFinal(self.culprit(slot)));
+            }
+            let nested = (entry.covered.start <= covered.start && covered.end <= entry.covered.end)
+                || (covered.start <= entry.covered.start && entry.covered.end <= covered.end);
+            if nested {
+                continue;
+            }
+            return Err(Task8LedgerError::OverlappingLiveDeclaration(
+                self.culprit(slot),
+            ));
+        }
+        match predecessor {
             None => Ok(self.register(arm, label, origin, covered)),
             Some(prior) => self.admit_reuse(arm, label, origin, prior, covered),
         }
@@ -353,8 +473,8 @@ impl Task8OwnerGenerationLedger {
             generation: self.next_generation,
         };
         let initialized = match origin {
-            Task8OwnerOrigin::ArmOwned | Task8OwnerOrigin::FactoredEq => Vec::new(),
-            Task8OwnerOrigin::Borrowed(_) => vec![covered.clone()],
+            Task8OwnerOrigin::ArmOwned(_) | Task8OwnerOrigin::FactoredEq(_) => Vec::new(),
+            Task8OwnerOrigin::Borrowed(_, _) => vec![covered.clone()],
         };
         self.generations.push(Task8OwnerGeneration {
             arm,
@@ -363,7 +483,13 @@ impl Task8OwnerGenerationLedger {
             covered,
             generation: self.next_generation,
             origin,
+            allowed_end: match origin {
+                Task8OwnerOrigin::ArmOwned(end)
+                | Task8OwnerOrigin::FactoredEq(end)
+                | Task8OwnerOrigin::Borrowed(_, end) => end,
+            },
             superseded_by: None,
+            released: None,
             initialized,
             final_enqueue: None,
             records: Vec::new(),
@@ -371,10 +497,11 @@ impl Task8OwnerGenerationLedger {
         token
     }
 
-    /// The only admission a repeated owner address has. The caller names the
-    /// generation it is retiring; that generation must still be the open one and
-    /// must have bound `Final` to its own last enqueue, so no queued use of it
-    /// can remain. The successor starts with no coverage of its own.
+    /// The only admission a repeated address range has. The predecessor must
+    /// have bound `Final` to its own last enqueue, so no queued use of it can
+    /// remain, and its ownership must have ended, so the bytes are the
+    /// allocator's to hand out again. The successor starts with no coverage of
+    /// its own.
     fn admit_reuse(
         &mut self,
         arm: &'static str,
@@ -384,16 +511,20 @@ impl Task8OwnerGenerationLedger {
         covered: std::ops::Range<usize>,
     ) -> Result<Task8GenerationToken, Task8LedgerError> {
         let slot = self.resolve(prior)?;
-        if self.live_generation(prior.owner)? != Some(prior) {
+        if self.generations[slot].superseded_by.is_some() {
             return Err(Task8LedgerError::StaleToken);
         }
         {
             let entry = &self.generations[slot];
-            let bound = entry
-                .final_enqueue
-                .ok_or(Task8LedgerError::ReuseWithoutFinal)?;
-            if entry.last_enqueue() != Some(bound) {
-                return Err(Task8LedgerError::ReuseWithoutFinal);
+            match entry.final_enqueue {
+                None => return Err(Task8LedgerError::ReuseWithoutFinal(self.culprit(slot))),
+                Some(bound) if entry.last_enqueue() != Some(bound) => {
+                    return Err(Task8LedgerError::ReuseWithoutFinal(self.culprit(slot)))
+                }
+                Some(_) => {}
+            }
+            if entry.released.is_none() {
+                return Err(Task8LedgerError::ReuseWithoutRelease(self.culprit(slot)));
             }
         }
         let token = self.register(arm, label, origin, covered);
@@ -419,7 +550,7 @@ impl Task8OwnerGenerationLedger {
             }
             match use_kind {
                 Task8QueuedUse::Write => {
-                    if matches!(entry.origin, Task8OwnerOrigin::Borrowed(_)) {
+                    if matches!(entry.origin, Task8OwnerOrigin::Borrowed(_, _)) {
                         return Err(Task8LedgerError::WriteToBorrowedOwner);
                     }
                 }
@@ -429,7 +560,7 @@ impl Task8OwnerGenerationLedger {
                     }
                 }
                 Task8QueuedUse::ResidentRead => {
-                    if !matches!(entry.origin, Task8OwnerOrigin::FactoredEq) {
+                    if !matches!(entry.origin, Task8OwnerOrigin::FactoredEq(_)) {
                         return Err(Task8LedgerError::ResidentReadOfNonEqOwner);
                     }
                     if !Task8OwnerGeneration::disjoint(&entry.initialized, &range) {
@@ -462,15 +593,42 @@ impl Task8OwnerGenerationLedger {
     /// Binds `Final` to the enqueue of the generation's own last pointer use.
     fn bind_final(&mut self, owner: Task8GenerationToken) -> Result<u64, Task8LedgerError> {
         let slot = self.resolve(owner)?;
+        let culprit = self.culprit(slot);
         let entry = &mut self.generations[slot];
         if entry.final_enqueue.is_some() {
-            return Err(Task8LedgerError::FinalAlreadyBound);
+            return Err(Task8LedgerError::FinalAlreadyBound(culprit));
         }
         let bound = entry
             .last_enqueue()
-            .ok_or(Task8LedgerError::FinalWithoutEnqueue)?;
+            .ok_or(Task8LedgerError::FinalWithoutEnqueue(culprit))?;
         entry.final_enqueue = Some(bound);
         Ok(bound)
+    }
+
+    /// Ends one generation's ownership, exactly once, at the enqueue boundary
+    /// the arm reached. `Final` must already be bound -- ownership cannot end
+    /// while a queued enqueue may still name the generation -- and the end must
+    /// be one its origin admits.
+    fn release(
+        &mut self,
+        owner: Task8GenerationToken,
+        end: Task8OwnershipEnd,
+    ) -> Result<u64, Task8LedgerError> {
+        let slot = self.resolve(owner)?;
+        let at_enqueue = self.enqueues.len() as u64;
+        let culprit = self.culprit(slot);
+        let entry = &mut self.generations[slot];
+        if entry.final_enqueue.is_none() {
+            return Err(Task8LedgerError::ReleaseWithoutFinal(culprit));
+        }
+        if entry.released.is_some() {
+            return Err(Task8LedgerError::AlreadyReleased(culprit));
+        }
+        if end != entry.allowed_end {
+            return Err(Task8LedgerError::ReleaseKindMismatch(culprit));
+        }
+        entry.released = Some(Task8Release { at_enqueue, end });
+        Ok(at_enqueue)
     }
 
     fn generation(&self, owner: Task8GenerationToken) -> &Task8OwnerGeneration {
@@ -507,6 +665,17 @@ impl Task8OwnerGenerationLedger {
             .flat_map(|entry| entry.records.iter())
             .filter(|record| record.use_kind == Task8QueuedUse::ResidentRead)
             .count()
+    }
+
+    /// Bytes the arm read back that no recorded device producer had written.
+    fn resident_read_bytes(&self, arm: &'static str) -> usize {
+        self.generations
+            .iter()
+            .filter(|entry| entry.arm == arm)
+            .flat_map(|entry| entry.records.iter())
+            .filter(|record| record.use_kind == Task8QueuedUse::ResidentRead)
+            .map(|record| record.range.len())
+            .sum()
     }
 
     fn enqueue_sites(&self, arm: &'static str) -> std::collections::BTreeMap<&'static str, usize> {
@@ -606,13 +775,14 @@ fn ledger_open_allocation<T>(
     ledger: &mut Task8OwnerGenerationLedger,
     arm: &'static str,
     label: &'static str,
+    allowed_end: Task8OwnershipEnd,
     allocation: &DeviceSlice<T>,
 ) -> Task8LedgerOwner {
     ledger_open(
         ledger,
         arm,
         label,
-        Task8OwnerOrigin::ArmOwned,
+        Task8OwnerOrigin::ArmOwned(allowed_end),
         allocation.as_ptr() as usize,
         allocation.len() * std::mem::size_of::<T>(),
     )
@@ -623,6 +793,46 @@ fn ledger_bind_final(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8Ledge
         let (arm, label) = (owner.arm, owner.label);
         panic!("Task 8 {arm} arm could not bind Final to {label}: {error:?}")
     })
+}
+
+/// The one retirement operation: bind `Final` to the generation's own last
+/// enqueue and end its ownership, both exactly once. Every real ownership end
+/// goes through this, so a site cannot bind `Final` and forget the end.
+fn ledger_end_ownership(
+    ledger: &mut Task8OwnerGenerationLedger,
+    owner: &Task8LedgerOwner,
+    end: Task8OwnershipEnd,
+) -> u64 {
+    let bound = ledger_bind_final(ledger, owner);
+    ledger.release(owner.token, end).unwrap_or_else(|error| {
+        let (arm, label) = (owner.arm, owner.label);
+        let allowed = ledger
+            .resolve(owner.token)
+            .ok()
+            .map(|slot| ledger.generations[slot].allowed_end);
+        panic!("Task 8 {arm} arm could not end {label} ownership as {end:?} (allowed {allowed:?}): {error:?}")
+    });
+    bound
+}
+
+/// Retires an owner whose device allocation the arm drops here: the bytes go
+/// back to the pool and any later declaration over them is reuse.
+fn ledger_retire(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8LedgerOwner) -> u64 {
+    ledger_end_ownership(ledger, owner, Task8OwnershipEnd::Freed)
+}
+
+/// Retires an owner backed by a static device symbol. Nothing returns to the
+/// pool; this arm's generation of the symbol ends so the next arm may open its
+/// own over the same address.
+fn ledger_retire_symbol(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8LedgerOwner) -> u64 {
+    ledger_end_ownership(ledger, owner, Task8OwnershipEnd::SymbolReleased)
+}
+
+/// Closes a borrow of storage the arm never owned. Distinct from a free on
+/// purpose: production keeps the bytes, so this end can never stand in for a
+/// missing free.
+fn ledger_close_borrow(ledger: &mut Task8OwnerGenerationLedger, owner: &Task8LedgerOwner) -> u64 {
+    ledger_end_ownership(ledger, owner, Task8OwnershipEnd::BorrowClosed)
 }
 
 /// Splits a whole-buffer readback of a factored Eq owner into the bytes this
@@ -663,9 +873,7 @@ fn validate_enqueue_census(ledger: &Task8OwnerGenerationLedger) {
     for (ordinal, enqueue) in ledger.enqueues.iter().enumerate() {
         let guarded: &[&str] = match enqueue.site {
             "fold-weight-build" => &["ab_gkr_main_layer_claim_point", "bwd_seg_fold_weights"],
-            "coefficient-bank-fill" => {
-                &["coefficient_tables", "challenge_slab", "coefficient_bank"]
-            }
+            "coefficient-bank-fill" => &["challenge_slab", "coefficient_bank"],
             "window-launch" | "segmented-round" => &[
                 "bwd_seg_fold_weights",
                 "published_column",
@@ -709,21 +917,11 @@ fn validate_enqueue_census(ledger: &Task8OwnerGenerationLedger) {
                 ));
             }
             Task8EnqueuePlan::CoefficientFill {
-                tables,
-                table_ranges,
                 slab,
                 challenge_slots,
-                bank,
+                bank_first,
                 bank_bytes,
             } => {
-                for range in table_ranges {
-                    expected.push((
-                        "coefficient_tables",
-                        Task8QueuedUse::Read,
-                        tables + range.start,
-                        range.end - range.start,
-                    ));
-                }
                 for slot in challenge_slots {
                     expected.push((
                         "challenge_slab",
@@ -735,7 +933,7 @@ fn validate_enqueue_census(ledger: &Task8OwnerGenerationLedger) {
                 expected.push((
                     "coefficient_bank",
                     Task8QueuedUse::Write,
-                    *bank,
+                    *bank_first,
                     *bank_bytes,
                 ));
             }
@@ -879,8 +1077,8 @@ fn validate_owner_generation_structure(
             entry.arm
         );
         let mut coverage = match entry.origin {
-            Task8OwnerOrigin::ArmOwned | Task8OwnerOrigin::FactoredEq => Vec::new(),
-            Task8OwnerOrigin::Borrowed(_) => vec![entry.covered.clone()],
+            Task8OwnerOrigin::ArmOwned(_) | Task8OwnerOrigin::FactoredEq(_) => Vec::new(),
+            Task8OwnerOrigin::Borrowed(_, _) => vec![entry.covered.clone()],
         };
         let mut previous = None;
         for record in &entry.records {
@@ -921,7 +1119,7 @@ fn validate_owner_generation_structure(
             match record.use_kind {
                 Task8QueuedUse::Write => {
                     assert!(
-                        !matches!(entry.origin, Task8OwnerOrigin::Borrowed(_)),
+                        !matches!(entry.origin, Task8OwnerOrigin::Borrowed(_, _)),
                         "Task 8 {} wrote borrowed production storage",
                         entry.label
                     );
@@ -934,7 +1132,7 @@ fn validate_owner_generation_structure(
                 ),
                 Task8QueuedUse::ResidentRead => {
                     assert!(
-                        matches!(entry.origin, Task8OwnerOrigin::FactoredEq),
+                        matches!(entry.origin, Task8OwnerOrigin::FactoredEq(_)),
                         "Task 8 {} recorded a resident read outside the factored Eq tables",
                         entry.label
                     );
@@ -958,6 +1156,21 @@ fn validate_owner_generation_structure(
             entry.last_enqueue(),
             Some(bound),
             "Task 8 {} bound Final away from its last enqueue",
+            entry.label
+        );
+        let released = entry
+            .released
+            .unwrap_or_else(|| panic!("Task 8 {} never released ownership", entry.label));
+        assert!(
+            released.end.admits(entry.origin),
+            "Task 8 {} ended {:?} ownership as {:?}",
+            entry.label,
+            entry.origin,
+            released.end
+        );
+        assert!(
+            released.at_enqueue >= bound,
+            "Task 8 {} released before Final",
             entry.label
         );
     }
@@ -1441,43 +1654,140 @@ impl ScheduledPreparedObservation {
     }
 }
 
-/// Uploads a host buffer. The copy opens its own pre-enqueue scope, so the
-/// ledger sees it in the same stream order as every production enqueue.
-fn upload<T: Copy>(
-    context: &ProverContext,
-    host: &[T],
-) -> CudaResult<(DeviceAllocation<T>, StaticPinnedBox<T>)> {
-    let staging = alloc_static_pinned_box_from_slice(host)?;
-    let mut device = context.alloc(host.len().max(1), AllocationPlacement::BestFit)?;
-    let destination = device.as_ptr() as usize;
-    crate::backward::task8_enqueue_scope!(_task8, "host-upload", Copy, {
-        vec![Task8Span::write(
-            "upload",
-            destination,
-            host.len() * std::mem::size_of::<T>(),
-        )]
-    });
-    memory_copy_async(
-        &mut device[..host.len()],
-        &staging[..],
-        context.get_exec_stream(),
-    )?;
-    Ok((device, staging))
+/// The number of external challenges the segmented challenge slab consumes:
+/// the six permutation linearization challenges plus the additive part.
+const TASK8_EXTERNAL_CHALLENGES: usize = 7;
+
+/// Production-shaped device inputs one layer's differential consumes. The only
+/// host-to-device copies are the initial inputs — the external challenges and
+/// the transcript seed constant, the same class production's input transfer
+/// carries. Everything transcript-derived (the lookup challenges, the claim
+/// point and its batching slot, and the starting claim and Eq prefactor) is
+/// squeezed on the device by the production transcript kernel; both arms
+/// consume the same device-resident values, and the host learns them only
+/// through the observation readback.
+struct Task8DeviceInputs {
+    /// `[external(7) | lookup(mul, add) | point + batching (fs + 1) | claim, prefactor]`.
+    master: DeviceAllocation<E4>,
+    /// The post-draw transcript seed both arms start from.
+    seed_master: DeviceAllocation<u32>,
+    folding_steps: usize,
+    /// Initial-input staging, held as a plain host keepalive until the stream
+    /// has drained — never through a callback.
+    _external_staging: StaticPinnedBox<E4>,
+    _seed_staging: StaticPinnedBox<u32>,
 }
 
-/// Writes the main-layer claim-point symbol and registers the address this copy
-/// hands the runtime, so later launches that read the symbol without naming it
-/// can record an exact range against it.
-fn write_claim_point_symbol(
+impl Task8DeviceInputs {
+    fn lookup_offset() -> usize {
+        TASK8_EXTERNAL_CHALLENGES
+    }
+    fn point_offset() -> usize {
+        Self::lookup_offset() + 2
+    }
+    fn state_offset(&self) -> usize {
+        Self::point_offset() + self.folding_steps + 1
+    }
+    fn len(&self) -> usize {
+        self.state_offset() + 2
+    }
+    fn external_ptr(&self) -> *const E4 {
+        self.master.as_ptr()
+    }
+    fn lookup_mul_ptr(&self) -> *const E4 {
+        // SAFETY: the master layout above owns these offsets.
+        unsafe { self.master.as_ptr().add(Self::lookup_offset()) }
+    }
+    fn lookup_add_ptr(&self) -> *const E4 {
+        // SAFETY: as above.
+        unsafe { self.master.as_ptr().add(Self::lookup_offset() + 1) }
+    }
+    fn point_ptr(&self) -> *const E4 {
+        // SAFETY: as above.
+        unsafe { self.master.as_ptr().add(Self::point_offset()) }
+    }
+    fn batching_ptr(&self) -> *const E4 {
+        // SAFETY: as above.
+        unsafe {
+            self.master
+                .as_ptr()
+                .add(Self::point_offset() + self.folding_steps)
+        }
+    }
+    fn point_len(&self) -> usize {
+        self.folding_steps + 1
+    }
+    fn range(&self, offset: usize, elements: usize) -> (usize, usize) {
+        (
+            self.master.as_ptr() as usize + offset * std::mem::size_of::<E4>(),
+            elements * std::mem::size_of::<E4>(),
+        )
+    }
+}
+
+fn prepare_task8_device_inputs(
+    folding_steps: usize,
     context: &ProverContext,
-    point: &[E4],
-) -> CudaResult<(StaticPinnedBox<E4>, usize)> {
-    let staging = alloc_static_pinned_box_from_slice(point)?;
+) -> CudaResult<Task8DeviceInputs> {
+    let stream = context.get_exec_stream();
+    let total = Task8DeviceInputs::point_offset() + folding_steps + 1 + 2;
+    let mut master: DeviceAllocation<E4> = context.alloc(total, AllocationPlacement::BestFit)?;
+    let external_host: Vec<E4> = (0..TASK8_EXTERNAL_CHALLENGES as u32)
+        .map(|i| deterministic_e4(0x100 + i))
+        .collect();
+    let external_staging = alloc_static_pinned_box_from_slice(&external_host)?;
+    memory_copy_async(
+        &mut master[..TASK8_EXTERNAL_CHALLENGES],
+        &external_staging[..],
+        stream,
+    )?;
+    let seed_host = [0x1020_3040u32, 0x5060_7080, 1, 2, 3, 5, 8, 13];
+    let mut seed_master: DeviceAllocation<u32> =
+        context.alloc(seed_host.len(), AllocationPlacement::BestFit)?;
+    let seed_staging = alloc_static_pinned_box_from_slice(&seed_host)?;
+    memory_copy_async(&mut seed_master[..], &seed_staging[..], stream)?;
+    let lookup = Task8DeviceInputs::lookup_offset();
+    let point = Task8DeviceInputs::point_offset();
+    let state = point + folding_steps + 1;
+    gpu_hash::blake2s::transcript_squeeze_e4(
+        &mut seed_master[..],
+        &mut master[lookup..point],
+        stream,
+    )?;
+    gpu_hash::blake2s::transcript_squeeze_e4(
+        &mut seed_master[..],
+        &mut master[point..state],
+        stream,
+    )?;
+    gpu_hash::blake2s::transcript_squeeze_e4(
+        &mut seed_master[..],
+        &mut master[state..total],
+        stream,
+    )?;
+    Ok(Task8DeviceInputs {
+        master,
+        seed_master,
+        folding_steps,
+        _external_staging: external_staging,
+        _seed_staging: seed_staging,
+    })
+}
+
+/// Copies the device-squeezed claim point (batching slot included) into the
+/// main-layer claim-point symbol — device to device, exactly as production's
+/// output claim point lives in the symbol — and registers the address this
+/// copy hands the runtime, so later launches that read the symbol without
+/// naming it can record an exact range against it.
+fn copy_claim_point_symbol(
+    context: &ProverContext,
+    inputs: &Task8DeviceInputs,
+) -> CudaResult<usize> {
     let symbol = get_main_layer_claim_point_device_ptr();
+    let elements = inputs.point_len();
     // SAFETY: the main-layer claim-point symbol is sized for every admitted
     // folding width; the corpus maximum is pinned independently by preflight.
-    let destination = unsafe { DeviceSlice::from_raw_parts_mut(symbol, point.len()) };
-    let bytes = point.len() * std::mem::size_of::<E4>();
+    let destination = unsafe { DeviceSlice::from_raw_parts_mut(symbol, elements) };
+    let bytes = elements * std::mem::size_of::<E4>();
     task8_register_symbol("ab_gkr_main_layer_claim_point", symbol as usize, bytes);
     crate::backward::task8_enqueue_scope!(_task8, "claim-point-symbol-write", Copy, {
         vec![Task8Span::write(
@@ -1486,8 +1796,13 @@ fn write_claim_point_symbol(
             bytes,
         )]
     });
-    memory_copy_async(destination, &staging[..], context.get_exec_stream())?;
-    Ok((staging, symbol as usize))
+    let point = Task8DeviceInputs::point_offset();
+    memory_copy_async(
+        destination,
+        &inputs.master[point..point + elements],
+        context.get_exec_stream(),
+    )?;
+    Ok(symbol as usize)
 }
 
 /// Reads a device range back in scratch-sized chunks. Each chunk copy and each
@@ -1718,18 +2033,65 @@ struct TranscriptBuffers {
     claim: DeviceAllocation<E4>,
     prefactor: DeviceAllocation<E4>,
     coefficients: DeviceAllocation<E4>,
-    _seed_staging: StaticPinnedBox<u32>,
-    _claim_staging: StaticPinnedBox<E4>,
-    _prefactor_staging: StaticPinnedBox<E4>,
     allocations: Vec<Task8AllocationRecord>,
 }
 
-fn transcript_buffers(context: &ProverContext) -> CudaResult<TranscriptBuffers> {
+/// Byte ranges of the four arm-owned transcript allocations. The production
+/// implementation is backed by real `DeviceAllocation`s; CPU lifecycle tests
+/// implement the same seam with inert addresses so they exercise the exact
+/// open/retire functions without touching CUDA.
+trait Task8TranscriptOwnerRanges {
+    fn task8_transcript_owner_ranges(&self) -> [(usize, usize); 4];
+}
+
+impl Task8TranscriptOwnerRanges for TranscriptBuffers {
+    fn task8_transcript_owner_ranges(&self) -> [(usize, usize); 4] {
+        [
+            (
+                self.seed.as_ptr() as usize,
+                self.seed.len() * std::mem::size_of::<u32>(),
+            ),
+            (
+                self.claim.as_ptr() as usize,
+                self.claim.len() * std::mem::size_of::<E4>(),
+            ),
+            (
+                self.prefactor.as_ptr() as usize,
+                self.prefactor.len() * std::mem::size_of::<E4>(),
+            ),
+            (
+                self.coefficients.as_ptr() as usize,
+                self.coefficients.len() * std::mem::size_of::<E4>(),
+            ),
+        ]
+    }
+}
+
+/// The arm's mutable transcript state, initialized device-to-device from the
+/// seam's squeezed master values so both arms start from the same
+/// device-produced seed, claim and Eq prefactor. No host value and no staging
+/// exists on this path.
+fn transcript_buffers(
+    context: &ProverContext,
+    inputs: &Task8DeviceInputs,
+) -> CudaResult<TranscriptBuffers> {
+    let stream = context.get_exec_stream();
     let mut allocations = Vec::new();
-    let seed_host = [0x1020_3040, 0x5060_7080, 1, 2, 3, 5, 8, 13];
     let before_seed = context.get_device_memory_usage();
-    let (seed, seed_staging) = upload(context, &seed_host)?;
+    let mut seed: DeviceAllocation<u32> =
+        context.alloc(inputs.seed_master.len(), AllocationPlacement::BestFit)?;
     let after_seed = context.get_device_memory_usage();
+    {
+        let destination = seed.as_ptr() as usize;
+        crate::backward::task8_enqueue_scope!(_task8, "transcript-state-copy", Copy, {
+            vec![Task8Span::write(
+                "transcript_seed",
+                destination,
+                inputs.seed_master.len() * std::mem::size_of::<u32>(),
+            )]
+        });
+        memory_copy_async(&mut seed[..], &inputs.seed_master[..], stream)?;
+    }
     allocations.push(allocation_record_with_usage(
         "transcript_seed",
         &seed,
@@ -1740,9 +2102,21 @@ fn transcript_buffers(context: &ProverContext) -> CudaResult<TranscriptBuffers> 
         before_seed,
         after_seed,
     ));
+    let state = inputs.state_offset();
     let before_claim = after_seed;
-    let (claim, claim_staging) = upload(context, &[deterministic_e4(0x51)])?;
+    let mut claim: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
     let after_claim = context.get_device_memory_usage();
+    {
+        let destination = claim.as_ptr() as usize;
+        crate::backward::task8_enqueue_scope!(_task8, "transcript-state-copy", Copy, {
+            vec![Task8Span::write(
+                "transcript_claim",
+                destination,
+                std::mem::size_of::<E4>(),
+            )]
+        });
+        memory_copy_async(&mut claim[..], &inputs.master[state..state + 1], stream)?;
+    }
     allocations.push(allocation_record_with_usage(
         "transcript_claim",
         &claim,
@@ -1754,8 +2128,23 @@ fn transcript_buffers(context: &ProverContext) -> CudaResult<TranscriptBuffers> 
         after_claim,
     ));
     let before_prefactor = after_claim;
-    let (prefactor, prefactor_staging) = upload(context, &[deterministic_e4(0x71)])?;
+    let mut prefactor: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
     let after_prefactor = context.get_device_memory_usage();
+    {
+        let destination = prefactor.as_ptr() as usize;
+        crate::backward::task8_enqueue_scope!(_task8, "transcript-state-copy", Copy, {
+            vec![Task8Span::write(
+                "transcript_prefactor",
+                destination,
+                std::mem::size_of::<E4>(),
+            )]
+        });
+        memory_copy_async(
+            &mut prefactor[..],
+            &inputs.master[state + 1..state + 2],
+            stream,
+        )?;
+    }
     allocations.push(allocation_record_with_usage(
         "transcript_prefactor",
         &prefactor,
@@ -1784,28 +2173,31 @@ fn transcript_buffers(context: &ProverContext) -> CudaResult<TranscriptBuffers> 
         claim,
         prefactor,
         coefficients,
-        _seed_staging: seed_staging,
-        _claim_staging: claim_staging,
-        _prefactor_staging: prefactor_staging,
         allocations,
     })
 }
 
-fn open_transcript_owners(
+fn open_transcript_owners<T: Task8TranscriptOwnerRanges>(
     ledger: &mut Task8OwnerGenerationLedger,
     arm: &'static str,
-    transcript: &TranscriptBuffers,
+    transcript: &T,
 ) -> Task8TranscriptOwners {
-    Task8TranscriptOwners {
-        seed: ledger_open_allocation(ledger, arm, "transcript_seed", &transcript.seed),
-        claim: ledger_open_allocation(ledger, arm, "transcript_claim", &transcript.claim),
-        prefactor: ledger_open_allocation(
+    let [seed, claim, prefactor, coefficients] = transcript.task8_transcript_owner_ranges();
+    let mut open = |label, (base, bytes)| {
+        ledger_open(
             ledger,
             arm,
-            "transcript_prefactor",
-            &transcript.prefactor,
-        ),
-        coefficients: ledger_open_allocation(ledger, arm, "coefficients", &transcript.coefficients),
+            label,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+            base,
+            bytes,
+        )
+    };
+    Task8TranscriptOwners {
+        seed: open("transcript_seed", seed),
+        claim: open("transcript_claim", claim),
+        prefactor: open("transcript_prefactor", prefactor),
+        coefficients: open("coefficients", coefficients),
     }
 }
 
@@ -1871,58 +2263,52 @@ where
     Ok((family, target, value, readback))
 }
 
-/// Uploads the four challenge buffers and opens their owners.
-#[allow(clippy::type_complexity)]
-fn upload_challenges(
-    context: &ProverContext,
+/// Opens the four challenge owners as read-only borrows over the seam's
+/// device-resident master values: the initial-input external challenges and
+/// the device-squeezed lookup and batching challenges. Nothing is uploaded and
+/// nothing is staged.
+const TASK8_SHARED_DEVICE_INPUTS: &str =
+    "device-resident production-shaped inputs the seam squeezed before either arm ran";
+
+fn open_challenge_owners(
     ledger: &mut Task8OwnerGenerationLedger,
-    probe: &Task8ProbeGuard,
     arm: &'static str,
-    external_host: &[E4],
-) -> CudaResult<(
-    DeviceAllocation<E4>,
-    DeviceAllocation<E4>,
-    DeviceAllocation<E4>,
-    DeviceAllocation<E4>,
-    (
-        StaticPinnedBox<E4>,
-        StaticPinnedBox<E4>,
-        StaticPinnedBox<E4>,
-        StaticPinnedBox<E4>,
-    ),
-    Task8ChallengeOwners,
-)> {
-    let (external, external_staging) = upload(context, external_host)?;
-    let external_owner = ledger_open_allocation(ledger, arm, "external_challenges", &external);
-    ledger.absorb(arm, probe);
-    let (lookup_mul, lookup_mul_staging) = upload(context, &[deterministic_e4(0x201)])?;
-    let lookup_mul_owner =
-        ledger_open_allocation(ledger, arm, "lookup_multiplicative", &lookup_mul);
-    ledger.absorb(arm, probe);
-    let (lookup_add, lookup_add_staging) = upload(context, &[deterministic_e4(0x202)])?;
-    let lookup_add_owner = ledger_open_allocation(ledger, arm, "lookup_additive", &lookup_add);
-    ledger.absorb(arm, probe);
-    let (batching, batching_staging) = upload(context, &[deterministic_e4(0x203)])?;
-    let batching_owner = ledger_open_allocation(ledger, arm, "claim_batching", &batching);
-    ledger.absorb(arm, probe);
-    Ok((
-        external,
-        lookup_mul,
-        lookup_add,
-        batching,
-        (
-            external_staging,
-            lookup_mul_staging,
-            lookup_add_staging,
-            batching_staging,
+    inputs: &Task8DeviceInputs,
+) -> Task8ChallengeOwners {
+    let borrow = |ledger: &mut Task8OwnerGenerationLedger,
+                  label: &'static str,
+                  (base, bytes): (usize, usize)| {
+        ledger_open(
+            ledger,
+            arm,
+            label,
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS, Task8OwnershipEnd::BorrowClosed),
+            base,
+            bytes,
+        )
+    };
+    Task8ChallengeOwners {
+        external: borrow(
+            ledger,
+            "external_challenges",
+            inputs.range(0, TASK8_EXTERNAL_CHALLENGES),
         ),
-        Task8ChallengeOwners {
-            external: external_owner,
-            lookup_multiplicative: lookup_mul_owner,
-            lookup_additive: lookup_add_owner,
-            claim_batching: batching_owner,
-        },
-    ))
+        lookup_multiplicative: borrow(
+            ledger,
+            "lookup_multiplicative",
+            inputs.range(Task8DeviceInputs::lookup_offset(), 1),
+        ),
+        lookup_additive: borrow(
+            ledger,
+            "lookup_additive",
+            inputs.range(Task8DeviceInputs::lookup_offset() + 1, 1),
+        ),
+        claim_batching: borrow(
+            ledger,
+            "claim_batching",
+            inputs.range(Task8DeviceInputs::point_offset() + inputs.folding_steps, 1),
+        ),
+    }
 }
 
 /// Opens the challenge slab and staged-table owners from the spans the fill
@@ -1931,23 +2317,15 @@ fn open_bank_owners(
     ledger: &mut Task8OwnerGenerationLedger,
     owners: &mut Task8ArmOwners,
     spans: BwdSegBankFillSpans,
-) -> (Task8LedgerOwner, Task8LedgerOwner) {
+) -> Task8LedgerOwner {
     let arm = owners.arm;
     let slab = ledger_open(
         ledger,
         arm,
         "challenge_slab",
-        Task8OwnerOrigin::ArmOwned,
+        Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
         spans.slab.0,
         spans.slab.1,
-    );
-    let tables = ledger_open(
-        ledger,
-        arm,
-        "coefficient_tables",
-        Task8OwnerOrigin::ArmOwned,
-        spans.tables.0,
-        spans.tables.1,
     );
     open_reported_symbols(ledger, owners);
     assert_eq!(
@@ -1957,7 +2335,7 @@ fn open_bank_owners(
         Some(spans.bank),
         "Task 8 bank fill reported a span the probe did not register"
     );
-    (slab, tables)
+    slab
 }
 
 /// The device symbols a differential arm must name that only another arm's
@@ -2022,7 +2400,7 @@ fn open_reported_symbols(ledger: &mut Task8OwnerGenerationLedger, owners: &mut T
                 ledger,
                 arm,
                 label,
-                Task8OwnerOrigin::ArmOwned,
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::SymbolReleased),
                 base,
                 bytes,
             ));
@@ -2064,7 +2442,6 @@ fn expected_arm_owner_labels(
         "claim_point",
         "claim_point_symbol",
         "coefficient_bank",
-        "coefficient_tables",
         "coefficients",
         "eq",
         "eq_high_symbol",
@@ -2131,7 +2508,10 @@ fn open_source_owners(
                 ledger,
                 arm,
                 "source_backing",
-                Task8OwnerOrigin::Borrowed(TASK8_PRODUCTION_STORAGE),
+                Task8OwnerOrigin::Borrowed(
+                    TASK8_PRODUCTION_STORAGE,
+                    Task8OwnershipEnd::BorrowClosed,
+                ),
                 base,
                 bytes,
             )
@@ -2139,7 +2519,9 @@ fn open_source_owners(
         .collect()
 }
 
-fn bind_challenge_owners_final(
+/// The seam's challenge views are borrows of device-resident production input.
+/// Nothing is freed here; the borrow ends.
+fn close_challenge_owners(
     ledger: &mut Task8OwnerGenerationLedger,
     challenges: &Task8ChallengeOwners,
 ) {
@@ -2149,11 +2531,13 @@ fn bind_challenge_owners_final(
         &challenges.lookup_additive,
         &challenges.claim_batching,
     ] {
-        ledger_bind_final(ledger, owner);
+        ledger_close_borrow(ledger, owner);
     }
 }
 
-fn bind_transcript_owners_final(
+/// The transcript buffers are this arm's own allocations and are dropped right
+/// after this call.
+fn retire_transcript_owners(
     ledger: &mut Task8OwnerGenerationLedger,
     transcript: &Task8TranscriptOwners,
 ) {
@@ -2163,25 +2547,27 @@ fn bind_transcript_owners_final(
         &transcript.prefactor,
         &transcript.coefficients,
     ] {
-        ledger_bind_final(ledger, owner);
+        ledger_retire(ledger, owner);
     }
 }
 
-fn bind_arm_owners_final(ledger: &mut Task8OwnerGenerationLedger, owners: &Task8ArmOwners) {
-    for owner in [
-        &owners.claim_point,
-        &owners.eq_low,
-        &owners.partials,
-        &owners.claim_point_symbol,
-        &owners.eq_high,
-    ] {
-        ledger_bind_final(ledger, owner);
+/// Ends every owner the arm still holds, each by what actually happens to its
+/// bytes: the Eq and partials allocations are dropped, the claim point and the
+/// source backings were only ever borrowed, and the rest are static device
+/// symbols this arm stops naming.
+fn retire_arm_owners(ledger: &mut Task8OwnerGenerationLedger, owners: &Task8ArmOwners) {
+    ledger_close_borrow(ledger, &owners.claim_point);
+    for owner in [&owners.eq_low, &owners.partials] {
+        ledger_retire(ledger, owner);
+    }
+    for owner in [&owners.claim_point_symbol, &owners.eq_high] {
+        ledger_retire_symbol(ledger, owner);
     }
     for owner in owners.fold_weights.iter().chain(&owners.coefficient_bank) {
-        ledger_bind_final(ledger, owner);
+        ledger_retire_symbol(ledger, owner);
     }
     for owner in &owners.sources {
-        ledger_bind_final(ledger, owner);
+        ledger_close_borrow(ledger, owner);
     }
 }
 
@@ -2243,12 +2629,17 @@ fn build_prior_level(
             ledger,
             owners.arm,
             "prior_publication",
+            Task8OwnershipEnd::Freed,
             launched.published_level().allocation(),
         );
         ledger.absorb(owners.arm, probe);
         let consumed = prior.take();
-        if let Some(consumed_owner) = prior_owner.replace(published) {
-            ledger_bind_final(ledger, &consumed_owner);
+        // The previously published level remains a read input to the next
+        // continuation enqueue. Its Final is bound by that consumer's
+        // retirement facts, not at replacement time.
+        let consumed_owner = prior_owner.replace(published);
+        if let Some(consumed_owner) = consumed_owner {
+            ledger_retire(ledger, &consumed_owner);
         }
         prior = Some(launched.into_published_level());
         drop(consumed);
@@ -2264,7 +2655,7 @@ fn run_window_arm(
     top_bits: &[u32],
     folding_steps: usize,
     start_round: usize,
-    point_host: &[E4],
+    inputs: &Task8DeviceInputs,
     readback_scratch: &mut StaticPinnedBox<u8>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
@@ -2288,19 +2679,25 @@ fn run_window_arm(
     let (mut observation, allocations) = {
         let mut allocations = Vec::new();
         let sources = open_source_owners(ledger, TASK8_WINDOW_ARM, storage, window_program);
-        let (claim_point, point_staging) = upload(context, point_host)?;
-        let claim_point_owner =
-            ledger_open_allocation(ledger, TASK8_WINDOW_ARM, "claim_point", &claim_point);
+        let (point_base, point_bytes) =
+            inputs.range(Task8DeviceInputs::point_offset(), inputs.point_len());
+        let claim_point_owner = ledger_open(
+            ledger,
+            TASK8_WINDOW_ARM,
+            "claim_point",
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS, Task8OwnershipEnd::BorrowClosed),
+            point_base,
+            point_bytes,
+        );
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
-        let (claim_symbol_staging, claim_point_symbol) =
-            write_claim_point_symbol(context, point_host)?;
+        let claim_point_symbol = copy_claim_point_symbol(context, inputs)?;
         let claim_point_symbol_owner = ledger_open(
             ledger,
             TASK8_WINDOW_ARM,
             "claim_point_symbol",
-            Task8OwnerOrigin::ArmOwned,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::SymbolReleased),
             claim_point_symbol,
-            point_host.len() * std::mem::size_of::<E4>(),
+            inputs.point_len() * std::mem::size_of::<E4>(),
         );
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
         let before_eq = context.get_device_memory_usage();
@@ -2325,27 +2722,7 @@ fn run_window_arm(
             before_partials,
             after_partials,
         ));
-        let bank_observer = context.observe_device_memory_high_water();
-        let mut bank =
-            prepare_continuation_differential_bank(continuation_program, top_bits, context)?;
-        let bank_report = bank_observer.finish();
-        allocations.push(allocation_group_record(
-            "bank",
-            bank.challenge_slab().as_ptr() as usize,
-            1,
-            8,
-            1,
-            "mixed",
-            2,
-            &bank_report,
-        ));
-        let external_host: Vec<_> = (0..32).map(|i| deterministic_e4(0x100 + i)).collect();
-        let challenge_owners =
-            upload_challenges(context, ledger, &probe, TASK8_WINDOW_ARM, &external_host)?;
-        let (external, lookup_mul, lookup_add, batching, challenge_staging, challenge_owners) =
-            challenge_owners;
-        let (external_staging, lookup_mul_staging, lookup_add_staging, batching_staging) =
-            challenge_staging;
+        let challenge_owners = open_challenge_owners(ledger, TASK8_WINDOW_ARM, inputs);
         let mut owners = Task8ArmOwners {
             arm: TASK8_WINDOW_ARM,
             claim_point: claim_point_owner,
@@ -2354,7 +2731,7 @@ fn run_window_arm(
                 ledger,
                 TASK8_WINDOW_ARM,
                 "eq",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::Freed),
                 eq_low.as_ptr() as usize,
                 eq_low.len() * std::mem::size_of::<E4>(),
             ),
@@ -2364,26 +2741,59 @@ fn run_window_arm(
                 ledger,
                 TASK8_WINDOW_ARM,
                 "eq_high_symbol",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::SymbolReleased),
                 carried.eq_high.0,
                 carried.eq_high.1,
             ),
-            partials: ledger_open_allocation(ledger, TASK8_WINDOW_ARM, "partials", &partials),
+            partials: ledger_open_allocation(
+                ledger,
+                TASK8_WINDOW_ARM,
+                "partials",
+                Task8OwnershipEnd::Freed,
+                &partials,
+            ),
             sources,
             fold_weights: None,
             coefficient_bank: None,
         };
+        // The filled static bank is required by every prior fold-weight
+        // enqueue; prepare and schedule it before build_prior_level.
+        let bank_observer = context.observe_device_memory_high_water();
+        let mut bank =
+            prepare_continuation_differential_bank(continuation_program, top_bits, context)?;
+        let bank_report = bank_observer.finish();
+        // The window arm retires the bank slab right after the fill enqueue
+        // (`drop(bank)` below), before the prior build: the record must say so,
+        // or the pool's reuse of the freed block by a later recorded owner is
+        // an address overlap the topology oracle rightly rejects.
+        allocations.push(allocation_group_record(
+            "bank",
+            bank.challenge_slab().as_ptr() as usize,
+            1,
+            2,
+            1,
+            "mixed",
+            1,
+            &bank_report,
+        ));
         let bank_spans = bank.schedule(
-            external.as_ptr(),
-            lookup_mul.as_ptr(),
-            lookup_add.as_ptr(),
-            batching.as_ptr(),
+            inputs.external_ptr(),
+            inputs.lookup_mul_ptr(),
+            inputs.lookup_add_ptr(),
+            inputs.batching_ptr(),
             context,
         )?;
         assert_eq!(bank_spans.slab.0, bank.challenge_slab().as_ptr() as usize);
-        let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
+        let slab = open_bank_owners(ledger, &mut owners, bank_spans);
         carried.coefficient_bank = Some(bank_spans.bank);
+        open_reported_symbols(ledger, &mut owners);
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
+        // Challenge inputs are consumed exclusively by the bank fill. Retire
+        // their borrowed owners at that enqueue boundary; the device-resident
+        // seam values themselves outlive both arms.
+        close_challenge_owners(ledger, &challenge_owners);
+        ledger_retire(ledger, &slab);
+        drop(bank);
 
         let before_prior = context.get_device_memory_usage();
         let prior_observer = context.observe_device_memory_high_water();
@@ -2392,7 +2802,7 @@ fn run_window_arm(
             window_program,
             folding_steps,
             start_round,
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             &mut eq_low,
             &mut partials,
             context,
@@ -2436,7 +2846,7 @@ fn run_window_arm(
             }
         };
         launch_build_eq_high_and_low_groups_from_point(
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             start_round + 3,
             folding_steps - start_round - 3,
             owners.eq_high.base as *mut E4,
@@ -2445,6 +2855,8 @@ fn run_window_arm(
         )?;
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
         launch_bwd_seg_build_fold_weights(start_round as u32, context)?;
+        // The fold-weight phase has a distinct probe registration boundary
+        // from the earlier coefficient-bank fill registration above.
         open_reported_symbols(ledger, &mut owners);
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
         let scratch = MainContinuationWindowRuntimeScratch {
@@ -2501,11 +2913,20 @@ fn run_window_arm(
             after_binding,
         );
         publication_record.successful_requested_bytes = binding_report.summed_requested_bytes;
+        eprintln!(
+            "Task 8 window binding allocator report: requested={} physical_delta={} logical_delta={}",
+            binding_report.summed_requested_bytes,
+            binding_report.return_to_entry.physical_backing_bytes as isize
+                - binding_report.start.physical_backing_bytes as isize,
+            binding_report.return_to_entry.logical_live_bytes as isize
+                - binding_report.start.logical_live_bytes as isize,
+        );
         allocations.push(publication_record);
         let publication_owner = ledger_open_allocation(
             ledger,
             TASK8_WINDOW_ARM,
             "publication",
+            Task8OwnershipEnd::Freed,
             launched.published_level().allocation(),
         );
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
@@ -2514,7 +2935,7 @@ fn run_window_arm(
             ledger,
             TASK8_WINDOW_ARM,
             "reduced_tensor",
-            Task8OwnerOrigin::ArmOwned,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
             launched.reduced_tensor() as usize,
             MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * std::mem::size_of::<E4>(),
         );
@@ -2530,7 +2951,7 @@ fn run_window_arm(
             ledger,
         )?;
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
-        let mut transcript = transcript_buffers(context)?;
+        let mut transcript = transcript_buffers(context, inputs)?;
         let _ = &mut transcript;
         allocations.append(&mut transcript.allocations);
         let transcript_owners = open_transcript_owners(ledger, TASK8_WINDOW_ARM, &transcript);
@@ -2541,7 +2962,7 @@ fn run_window_arm(
             partials: partials.as_ptr(),
             row_tiles: launched.row_tiles(),
             reduced_tensor: launched.reduced_tensor(),
-            prev_claim_coords: unsafe { claim_point.as_ptr().add(start_round) },
+            prev_claim_coords: unsafe { inputs.point_ptr().add(start_round) },
             seed: transcript.seed.as_mut_ptr(),
             claim: transcript.claim.as_mut_ptr(),
             eq_prefactor: transcript.prefactor.as_mut_ptr(),
@@ -2715,40 +3136,19 @@ fn run_window_arm(
                 context,
             )?);
             ledger.absorb(TASK8_WINDOW_ARM, &probe);
-            ledger_bind_final(ledger, prior_owner);
+            ledger_retire(ledger, prior_owner);
         }
         drop(prior);
-        if let Some(bank_staging) = bank.take_bank_staging() {
-            retain_in_callback(bank_staging, callbacks, context)?;
-        }
-        retain_in_callback(point_staging, callbacks, context)?;
-        retain_in_callback(claim_symbol_staging, callbacks, context)?;
-        retain_in_callback(external_staging, callbacks, context)?;
-        retain_in_callback(lookup_mul_staging, callbacks, context)?;
-        retain_in_callback(lookup_add_staging, callbacks, context)?;
-        retain_in_callback(batching_staging, callbacks, context)?;
-        retain_in_callback(transcript._seed_staging, callbacks, context)?;
-        retain_in_callback(transcript._claim_staging, callbacks, context)?;
-        retain_in_callback(transcript._prefactor_staging, callbacks, context)?;
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
-        ledger_bind_final(ledger, &publication_owner);
-        ledger_bind_final(ledger, &reduced_tensor);
+        ledger_retire(ledger, &publication_owner);
+        ledger_retire(ledger, &reduced_tensor);
         drop(launched);
-        ledger_bind_final(ledger, &slab);
-        ledger_bind_final(ledger, &coefficient_tables);
-        drop(bank);
-        bind_challenge_owners_final(ledger, &challenge_owners);
-        drop(external);
-        drop(lookup_mul);
-        drop(lookup_add);
-        drop(batching);
-        bind_transcript_owners_final(ledger, &transcript_owners);
+        retire_transcript_owners(ledger, &transcript_owners);
         drop(transcript.seed);
         drop(transcript.claim);
         drop(transcript.prefactor);
         drop(transcript.coefficients);
-        bind_arm_owners_final(ledger, &owners);
-        drop(claim_point);
+        retire_arm_owners(ledger, &owners);
         drop(eq_low);
         drop(partials);
         let memory = observer.finish();
@@ -2792,7 +3192,7 @@ fn run_legacy_arm(
     top_bits: &[u32],
     folding_steps: usize,
     start_round: usize,
-    point_host: &[E4],
+    inputs: &Task8DeviceInputs,
     readback_scratch: &mut StaticPinnedBox<u8>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
@@ -2814,19 +3214,25 @@ fn run_legacy_arm(
     let (mut observation, source_columns, shape, adoption, allocations) = {
         let mut allocations = Vec::new();
         let sources = open_source_owners(ledger, TASK8_LEGACY_ARM, storage, window_program);
-        let (claim_point, point_staging) = upload(context, point_host)?;
-        let claim_point_owner =
-            ledger_open_allocation(ledger, TASK8_LEGACY_ARM, "claim_point", &claim_point);
+        let (point_base, point_bytes) =
+            inputs.range(Task8DeviceInputs::point_offset(), inputs.point_len());
+        let claim_point_owner = ledger_open(
+            ledger,
+            TASK8_LEGACY_ARM,
+            "claim_point",
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS, Task8OwnershipEnd::BorrowClosed),
+            point_base,
+            point_bytes,
+        );
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
-        let (claim_symbol_staging, claim_point_symbol) =
-            write_claim_point_symbol(context, point_host)?;
+        let claim_point_symbol = copy_claim_point_symbol(context, inputs)?;
         let claim_point_symbol_owner = ledger_open(
             ledger,
             TASK8_LEGACY_ARM,
             "claim_point_symbol",
-            Task8OwnerOrigin::ArmOwned,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::SymbolReleased),
             claim_point_symbol,
-            point_host.len() * std::mem::size_of::<E4>(),
+            inputs.point_len() * std::mem::size_of::<E4>(),
         );
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
         let before_eq = context.get_device_memory_usage();
@@ -2861,7 +3267,10 @@ fn run_legacy_arm(
                     ledger,
                     TASK8_LEGACY_ARM,
                     "coefficient_bank",
-                    Task8OwnerOrigin::Borrowed(TASK8_RESIDENT_COEFFICIENT_BANK),
+                    Task8OwnerOrigin::Borrowed(
+                        TASK8_RESIDENT_COEFFICIENT_BANK,
+                        Task8OwnershipEnd::BorrowClosed,
+                    ),
                     base,
                     bytes,
                 )
@@ -2874,7 +3283,7 @@ fn run_legacy_arm(
                 ledger,
                 TASK8_LEGACY_ARM,
                 "eq",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::Freed),
                 eq_low.as_ptr() as usize,
                 eq_low.len() * std::mem::size_of::<E4>(),
             ),
@@ -2884,11 +3293,17 @@ fn run_legacy_arm(
                 ledger,
                 TASK8_LEGACY_ARM,
                 "eq_high_symbol",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::SymbolReleased),
                 carried.eq_high.0,
                 carried.eq_high.1,
             ),
-            partials: ledger_open_allocation(ledger, TASK8_LEGACY_ARM, "partials", &partials),
+            partials: ledger_open_allocation(
+                ledger,
+                TASK8_LEGACY_ARM,
+                "partials",
+                Task8OwnershipEnd::Freed,
+                &partials,
+            ),
             sources,
             fold_weights: None,
             coefficient_bank: borrowed_bank,
@@ -2900,7 +3315,7 @@ fn run_legacy_arm(
             window_program,
             folding_steps,
             start_round,
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             &mut eq_low,
             &mut partials,
             context,
@@ -2926,7 +3341,7 @@ fn run_legacy_arm(
             allocations.push(record);
         }
         launch_build_eq_high_and_low_groups_from_point(
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             start_round + 1,
             folding_steps - start_round - 1,
             owners.eq_high.base as *mut E4,
@@ -2972,25 +3387,21 @@ fn run_legacy_arm(
         let input_live_before = rounds.expected_input_is_live();
         let first_deltas = rounds.first_deltas().to_vec();
         let first_reads_only_published = rounds.first_reads_only_published();
-        let external_host: Vec<_> = (0..32).map(|i| deterministic_e4(0x100 + i)).collect();
-        let (external, lookup_mul, lookup_add, batching, challenge_staging, challenge_owners) =
-            upload_challenges(context, ledger, &probe, TASK8_LEGACY_ARM, &external_host)?;
-        let (external_staging, lookup_mul_staging, lookup_add_staging, batching_staging) =
-            challenge_staging;
+        let challenge_owners = open_challenge_owners(ledger, TASK8_LEGACY_ARM, inputs);
         let bank_spans = rounds.schedule_bank_fill(
-            external.as_ptr(),
-            lookup_mul.as_ptr(),
-            lookup_add.as_ptr(),
-            batching.as_ptr(),
+            inputs.external_ptr(),
+            inputs.lookup_mul_ptr(),
+            inputs.lookup_add_ptr(),
+            inputs.batching_ptr(),
             context,
         )?;
         assert_eq!(bank_spans.slab.0, rounds.challenge_slab().as_ptr() as usize);
         if let Some(borrowed_bank) = owners.coefficient_bank.take() {
-            ledger_bind_final(ledger, &borrowed_bank);
+            ledger_close_borrow(ledger, &borrowed_bank);
         }
-        let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
+        let slab = open_bank_owners(ledger, &mut owners, bank_spans);
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
-        let mut transcript = transcript_buffers(context)?;
+        let mut transcript = transcript_buffers(context, inputs)?;
         allocations.append(&mut transcript.allocations);
         let transcript_owners = open_transcript_owners(ledger, TASK8_LEGACY_ARM, &transcript);
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
@@ -3024,7 +3435,7 @@ fn run_legacy_arm(
                 ledger,
                 TASK8_LEGACY_ARM,
                 "publication",
-                Task8OwnerOrigin::ArmOwned,
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
                 enqueue_facts.published.0,
                 enqueue_facts.published.1,
             );
@@ -3035,7 +3446,7 @@ fn run_legacy_arm(
                 let retired = publications
                     .remove(depth)
                     .expect("Task 8 round retired a publication that was never opened");
-                ledger_bind_final(ledger, &retired);
+                ledger_retire(ledger, &retired);
             }
             if local_round == 0 {
                 let owner = publications[&(round as u8)];
@@ -3054,7 +3465,7 @@ fn run_legacy_arm(
             launch_backward_dual_finalize_from_partials(
                 partials.as_ptr(),
                 warp_partial_count(acc_size),
-                unsafe { claim_point.as_ptr().add(round) },
+                unsafe { inputs.point_ptr().add(round) },
                 transcript.seed.as_mut_ptr(),
                 transcript.claim.as_mut_ptr(),
                 transcript.prefactor.as_mut_ptr(),
@@ -3133,37 +3544,19 @@ fn run_legacy_arm(
             first_reads_only_published,
             input_retired: !rounds.expected_input_is_live(),
         };
-        if let Some(bank_staging) = rounds.take_bank_staging() {
-            retain_in_callback(bank_staging, callbacks, context)?;
-        }
-        retain_in_callback(point_staging, callbacks, context)?;
-        retain_in_callback(claim_symbol_staging, callbacks, context)?;
-        retain_in_callback(external_staging, callbacks, context)?;
-        retain_in_callback(lookup_mul_staging, callbacks, context)?;
-        retain_in_callback(lookup_add_staging, callbacks, context)?;
-        retain_in_callback(batching_staging, callbacks, context)?;
-        retain_in_callback(transcript._seed_staging, callbacks, context)?;
-        retain_in_callback(transcript._claim_staging, callbacks, context)?;
-        retain_in_callback(transcript._prefactor_staging, callbacks, context)?;
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
         for (_, owner) in publications.iter() {
-            ledger_bind_final(ledger, owner);
+            ledger_retire(ledger, owner);
         }
-        ledger_bind_final(ledger, &slab);
-        ledger_bind_final(ledger, &coefficient_tables);
+        ledger_retire(ledger, &slab);
         drop(rounds);
-        bind_challenge_owners_final(ledger, &challenge_owners);
-        drop(external);
-        drop(lookup_mul);
-        drop(lookup_add);
-        drop(batching);
-        bind_transcript_owners_final(ledger, &transcript_owners);
+        close_challenge_owners(ledger, &challenge_owners);
+        retire_transcript_owners(ledger, &transcript_owners);
         drop(transcript.seed);
         drop(transcript.claim);
         drop(transcript.prefactor);
         drop(transcript.coefficients);
-        bind_arm_owners_final(ledger, &owners);
-        drop(claim_point);
+        retire_arm_owners(ledger, &owners);
         drop(eq_low);
         drop(partials);
         let memory = observer.finish();
@@ -3214,15 +3607,14 @@ fn run_first_pass_legacy_capacity_probe(
     continuation_program: &gpu_gkr_compiler::ContinuationLayerProgram,
     top_bits: &[u32],
     folding_steps: usize,
-    point_host: &[E4],
-    callbacks: &mut Callbacks<'_>,
+    inputs: &Task8DeviceInputs,
+    _callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<Task8CapacityEvidence> {
     let entry = context.get_device_memory_usage();
     let observer = context.observe_device_memory_high_water();
     let (publication_bytes, overlap_event) = {
-        let (claim_point, point_staging) = upload(context, point_host)?;
-        let (claim_symbol_staging, _) = write_claim_point_symbol(context, point_host)?;
+        let _ = copy_claim_point_symbol(context, inputs)?;
         let mut eq_low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::BestFit)?;
         let mut partials = context.alloc(
             window_partials_len(1usize << folding_steps),
@@ -3230,7 +3622,7 @@ fn run_first_pass_legacy_capacity_probe(
         )?;
 
         launch_build_eq_high_and_low_groups_from_point(
-            claim_point.as_ptr(),
+            inputs.point_ptr(),
             4,
             folding_steps - 4,
             get_eq_high_constant_device_ptr(),
@@ -3248,16 +3640,11 @@ fn run_first_pass_legacy_capacity_probe(
             top_bits,
             context,
         )?;
-        let external_host: Vec<_> = (0..32).map(|i| deterministic_e4(0x100 + i)).collect();
-        let (external, external_staging) = upload(context, &external_host)?;
-        let (lookup_mul, lookup_mul_staging) = upload(context, &[deterministic_e4(0x201)])?;
-        let (lookup_add, lookup_add_staging) = upload(context, &[deterministic_e4(0x202)])?;
-        let (batching, batching_staging) = upload(context, &[deterministic_e4(0x203)])?;
         let _ = rounds.schedule_bank_fill(
-            external.as_ptr(),
-            lookup_mul.as_ptr(),
-            lookup_add.as_ptr(),
-            batching.as_ptr(),
+            inputs.external_ptr(),
+            inputs.lookup_mul_ptr(),
+            inputs.lookup_add_ptr(),
+            inputs.batching_ptr(),
             context,
         )?;
         let mut publication_bytes = 0usize;
@@ -3289,21 +3676,7 @@ fn run_first_pass_legacy_capacity_probe(
             rounds.peak_live_publications(),
             (2, publication_bytes + publication_bytes / 2)
         );
-        if let Some(bank_staging) = rounds.take_bank_staging() {
-            retain_in_callback(bank_staging, callbacks, context)?;
-        }
-        retain_in_callback(point_staging, callbacks, context)?;
-        retain_in_callback(claim_symbol_staging, callbacks, context)?;
-        retain_in_callback(external_staging, callbacks, context)?;
-        retain_in_callback(lookup_mul_staging, callbacks, context)?;
-        retain_in_callback(lookup_add_staging, callbacks, context)?;
-        retain_in_callback(batching_staging, callbacks, context)?;
         drop(rounds);
-        drop(external);
-        drop(lookup_mul);
-        drop(lookup_add);
-        drop(batching);
-        drop(claim_point);
         drop(eq_low);
         drop(partials);
         (publication_bytes, overlap_event)
@@ -3502,6 +3875,47 @@ fn compare_observations(
         + window.claim.len()
         + window.eq_prefactor.len()
         + 1)
+}
+
+/// Host model of the Eq bytes one arm reads back without any recorded device
+/// producer having written them: the full low buffer and both high slabs are
+/// read back before and after the tail, and the union of the arm's real
+/// builds — one per prior pass plus the comparison build, each writing both
+/// slab sentinels, its used group tables, and its `2^low` prefix — is what the
+/// recorded write spans cover. The finalize folds rewrite prefixes of built
+/// slots, never extending coverage.
+fn task8_expected_eq_resident_bytes(
+    folding_steps: usize,
+    start_round: usize,
+    legacy: bool,
+) -> usize {
+    let element = std::mem::size_of::<E4>();
+    let mut counts: Vec<usize> = (3..start_round)
+        .step_by(3)
+        .map(|pass_start| folding_steps - pass_start - 3)
+        .collect();
+    counts.push(if legacy {
+        folding_steps - start_round - 1
+    } else {
+        folding_steps - start_round - 3
+    });
+    let mut low = 0usize;
+    // Every build writes both slab sentinels.
+    let mut high = [1usize, 1usize];
+    for count in counts {
+        let sizes = make_eq_sizes(count);
+        low = low.max(1usize << sizes.low);
+        for (slot, bits) in sizes.high.iter().enumerate() {
+            if *bits > 0 {
+                high[slot] = high[slot].max(1usize << bits);
+            }
+        }
+    }
+    let uncovered = (GKR_EQ_GROUP_TABLE_LEN - low.min(GKR_EQ_GROUP_TABLE_LEN))
+        + (GKR_EQ_GROUP_TABLE_LEN - high[0])
+        + (GKR_EQ_GROUP_TABLE_LEN - high[1]);
+    // Read back twice: the pre-tail and post-tail observations.
+    2 * uncovered * element
 }
 
 /// Host model of one arm's factored-Eq state: the ascending coordinates each
@@ -3965,6 +4379,7 @@ struct CorpusCensus {
     layouts: usize,
     layers: usize,
     coordinates: usize,
+    non_identity_coordinates: usize,
     folding_steps: Vec<usize>,
     start_rounds: Vec<usize>,
     masks: Vec<u16>,
@@ -3988,6 +4403,7 @@ fn build_corpus_census() -> CorpusCensus {
     let mut layers = 0usize;
     let mut max_sources = 0usize;
     let mut max_legacy_displacement = 0usize;
+    let mut non_identity_coordinates = 0usize;
     let mut publication_over_2gib = 0usize;
 
     for (layout, _) in crate::backward::CONTINUATION_GOLDEN_CORPUS {
@@ -4046,6 +4462,7 @@ fn build_corpus_census() -> CorpusCensus {
             }
             assert!(seen.into_iter().all(|seen| seen), "{layout} layer {layer}");
             max_legacy_displacement = max_legacy_displacement.max(displaced);
+            non_identity_coordinates += usize::from(displaced > 0);
         }
     }
 
@@ -4053,6 +4470,7 @@ fn build_corpus_census() -> CorpusCensus {
         layouts: crate::backward::CONTINUATION_GOLDEN_CORPUS.len(),
         layers,
         coordinates: layers,
+        non_identity_coordinates,
         folding_steps: folding_steps_seen.into_iter().collect(),
         start_rounds: start_rounds_seen.into_iter().collect(),
         masks: masks_seen.into_iter().collect(),
@@ -4064,6 +4482,135 @@ fn build_corpus_census() -> CorpusCensus {
 
 #[cfg(test)]
 mod cpu_tests {
+    #[test]
+    fn cpu_non_containing_partial_overlap_reports_full_culprit_and_nested_view_is_valid() {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        let outer = ledger
+            .open(
+                TASK8_WINDOW_ARM,
+                "outer",
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+                0x1000,
+                0x100,
+            )
+            .unwrap();
+        let nested = ledger
+            .open(
+                TASK8_WINDOW_ARM,
+                "nested",
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+                0x1040,
+                0x20,
+            )
+            .unwrap();
+        assert_ne!(outer.generation, nested.generation);
+        let error = ledger
+            .open(
+                TASK8_WINDOW_ARM,
+                "partial",
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+                0x10f0,
+                0x40,
+            )
+            .unwrap_err();
+        match error {
+            Task8LedgerError::OverlappingLiveDeclaration(culprit) => {
+                assert_eq!(culprit.arm, TASK8_WINDOW_ARM);
+                assert_eq!(culprit.label, "outer");
+                assert_eq!(culprit.generation, outer.generation);
+                assert_eq!(culprit.covered, (0x1000, 0x1100));
+                assert_eq!(culprit.final_enqueue, None);
+                assert_eq!(culprit.released, None);
+            }
+            other => panic!("expected non-containing overlap, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cpu_actual_transcript_open_retire_seam_requires_freed_for_every_allocation() {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        let owners = open_and_use_actual_transcript_seam(&mut ledger);
+        retire_transcript_owners(&mut ledger, &owners);
+        for owner in [
+            owners.seed,
+            owners.claim,
+            owners.prefactor,
+            owners.coefficients,
+        ] {
+            let generation = ledger.generation(owner.token);
+            assert_eq!(generation.allowed_end, Task8OwnershipEnd::Freed);
+            assert_eq!(generation.final_enqueue, generation.last_enqueue());
+            assert_eq!(
+                generation.released,
+                Some(Task8Release {
+                    at_enqueue: 1,
+                    end: Task8OwnershipEnd::Freed,
+                })
+            );
+        }
+
+        for owner_index in 0..4 {
+            for wrong_end in [
+                Task8OwnershipEnd::BorrowClosed,
+                Task8OwnershipEnd::SymbolReleased,
+            ] {
+                let mut mutated = Task8OwnerGenerationLedger::default();
+                let owners = open_and_use_actual_transcript_seam(&mut mutated);
+                let owner = [
+                    owners.seed,
+                    owners.claim,
+                    owners.prefactor,
+                    owners.coefficients,
+                ][owner_index];
+                let final_enqueue = ledger_bind_final(&mut mutated, &owner);
+                let before = mutated.generation(owner.token).clone();
+                match mutated.release(owner.token, wrong_end) {
+                    Err(Task8LedgerError::ReleaseKindMismatch(culprit)) => {
+                        assert_eq!(culprit.arm, owner.arm);
+                        assert_eq!(culprit.label, owner.label);
+                        assert_eq!(culprit.generation, before.generation);
+                        assert_eq!(culprit.covered, (owner.base, owner.base + owner.bytes));
+                        assert_eq!(culprit.final_enqueue, Some(final_enqueue));
+                        assert_eq!(culprit.released, None);
+                    }
+                    other => panic!("wrong transcript end must reject, got {other:?}"),
+                }
+                assert_eq!(mutated.generation(owner.token).released, None);
+                assert_eq!(
+                    mutated.release(owner.token, Task8OwnershipEnd::Freed),
+                    Ok(1),
+                    "wrong-kind rejection must leave the generation releasable"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn probe_phase_registration_order_is_explicit() {
+        let source = include_str!("differential_tests.rs");
+        let bank = source.find("let bank_spans = bank.schedule").unwrap();
+        let bank_reg = source[bank..]
+            .find("open_reported_symbols(ledger, &mut owners);")
+            .unwrap()
+            + bank;
+        let bank_absorb = source[bank_reg..]
+            .find("ledger.absorb(TASK8_WINDOW_ARM, &probe);")
+            .unwrap()
+            + bank_reg;
+        let fold = source
+            .find("launch_bwd_seg_build_fold_weights(start_round as u32, context)?")
+            .unwrap();
+        let fold_reg = source[fold..]
+            .find("open_reported_symbols(ledger, &mut owners);")
+            .unwrap()
+            + fold;
+        let fold_absorb = source[fold_reg..]
+            .find("ledger.absorb(TASK8_WINDOW_ARM, &probe);")
+            .unwrap()
+            + fold_reg;
+        assert!(bank < bank_reg && bank_reg < bank_absorb);
+        assert!(fold < fold_reg && fold_reg < fold_absorb);
+    }
     use gpu_prover_context::{PoolMemoryHighWaterReport, PoolMemoryUsage};
 
     use super::super::abi::{
@@ -4073,33 +4620,33 @@ mod cpu_tests {
     use super::super::binding::{task8_window_plan, task8_window_spans};
     use super::E4;
     use super::{
-        allocation_group_record, bind_arm_owners_final, bind_challenge_owners_final,
-        bind_transcript_owners_final, build_corpus_census, deterministic_e4, eq_readback_spans,
-        ledger_bind_final, ledger_open, record_active_eq_slot_fold, signed_snapshot_delta,
-        task8_enqueue, task8_enqueue_plan, task8_eq_coordinates, task8_register_symbol,
+        allocation_group_record, build_corpus_census, close_challenge_owners, deterministic_e4,
+        eq_readback_spans, ledger_bind_final, ledger_open, ledger_retire, open_transcript_owners,
+        record_active_eq_slot_fold, retire_arm_owners, retire_transcript_owners,
+        signed_snapshot_delta, task8_eq_coordinates, task8_register_symbol,
         validate_owner_generation_ledger, validate_owner_generation_structure,
-        validate_single_owner_topology, BTreeSet, Field, Task8AllocationRecord, Task8ArmOwners,
-        Task8CarriedSymbols, Task8ChallengeOwners, Task8EnqueueKind, Task8EnqueuePlan,
-        Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord, Task8OwnerGeneration,
-        Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard, Task8QueuedUse, Task8Span,
-        Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
-        MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
-        TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
+        validate_single_owner_topology, BTreeSet, Field, Task8AbsorbedEnqueue,
+        Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols, Task8ChallengeOwners,
+        Task8Culprit, Task8EnqueueKind, Task8EnqueuePlan, Task8GenerationToken, Task8LedgerError,
+        Task8LedgerOwner, Task8LedgerRecord, Task8OwnerGeneration, Task8OwnerGenerationLedger,
+        Task8OwnerOrigin, Task8OwnershipEnd, Task8ProbeGuard, Task8QueuedUse, Task8Release,
+        Task8Span, Task8TopologyError, Task8TranscriptOwnerRanges, Task8TranscriptOwners,
+        GKR_EQ_HIGH_SLOTS, MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM,
+        TASK8_PRODUCTION_STORAGE, TASK8_SHARED_DEVICE_INPUTS, TASK8_SHARED_DEVICE_SYMBOLS,
+        TASK8_WINDOW_ARM,
     };
     use crate::backward::kernels::{task8_dual_finalize_spans, task8_eq_build_spans};
-    use crate::backward::main_layer::execution_plan::{
-        main_continuation_post_tail_eq_boundary, WINDOW_WIDTH,
-    };
+    use crate::backward::main_layer::execution_plan::WINDOW_WIDTH;
     use crate::backward::task8_probe::task8_register_descriptor_sources;
+    use crate::backward::task8_probe::{task8_enqueue, task8_enqueue_plan};
     use crate::backward::vm::production_bind::{
         drained_eq_sizes, foldable_eq_variables, task8_challenge_prefix_spans,
         task8_challenge_slot_spans, task8_differential_eq_plan, EqDrainSchedule,
     };
     use crate::backward::vm::seg::{task8_fold_weight_spans, task8_seg_plan, task8_seg_spans};
     use crate::backward::vm::seg_coeff_eval::{
-        task8_coeff_eval_reads, task8_coeff_fill_spans, SegCoeffEvalBlob, SegCoeffMonomial,
-        SegCoeffRecipe, BWD_SEG_BLOB_BYTES, BWD_SEG_CHALLENGE_ABSENT,
-        BWD_SEG_CHALLENGE_CLAIM_BATCHING,
+        task8_coeff_fill_spans, SegCoeffEvalBlob, SegCoeffEvalChunks, SegCoeffMonomial,
+        SegCoeffRecipe, BWD_SEG_CHALLENGE_ABSENT, BWD_SEG_CHALLENGE_CLAIM_BATCHING,
     };
     use crate::backward::vm::seg_desc::{
         bwd_seg_fold_weight_run, bwd_seg_lane, BwdSegAddrSlot, BwdSegDesc,
@@ -4165,12 +4712,119 @@ mod cpu_tests {
         );
     }
 
+    /// The exact split the consumed v18 run rejected: the resident-read bytes
+    /// of an Eq readback must equal the full readback range minus the union of
+    /// the arm's real recorded producer writes. Green: a faithful build stream
+    /// matches the host model, including a full-coverage low table with zero
+    /// low residents. Red: a producer write span shortened to half its real
+    /// extent shifts the recorded split away from the model.
+    #[test]
+    fn cpu_main_continuation_task8_eq_resident_bytes_track_producer_spans() {
+        use crate::backward::kernels::GKR_EQ_GROUP_TABLE_LEN;
+        let element = std::mem::size_of::<E4>();
+        let low_base = 0x91_0000usize;
+        let high_base = 0x92_0000usize;
+        let point_base = 0x93_0000usize;
+        let count = 16usize; // {high[0] = 8, low = 8}: a full low table.
+        let sizes = make_eq_sizes(count);
+        assert_eq!((sizes.high, sizes.low), ([8, 0], 8));
+
+        let run = |shorten_low: bool| -> usize {
+            let mut ledger = Task8OwnerGenerationLedger::default();
+            let probe = Task8ProbeGuard::install();
+            let arm = TASK8_WINDOW_ARM;
+            let _point = borrow(
+                &mut ledger,
+                arm,
+                "claim_point",
+                point_base,
+                (count + 1) * element,
+            );
+            let owners_low = ledger_open(
+                &mut ledger,
+                arm,
+                "eq",
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::Freed),
+                low_base,
+                GKR_EQ_GROUP_TABLE_LEN * element,
+            );
+            let owners_high = ledger_open(
+                &mut ledger,
+                arm,
+                "eq_high_symbol",
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::SymbolReleased),
+                high_base,
+                2 * GKR_EQ_GROUP_TABLE_LEN * element,
+            );
+            let mut spans = task8_eq_build_spans(point_base, 0, count, high_base, low_base);
+            if shorten_low {
+                for span in &mut spans {
+                    if span.address == low_base {
+                        span.bytes /= 2;
+                    }
+                }
+            }
+            enqueue(
+                &mut ledger,
+                &probe,
+                arm,
+                "eq-build",
+                Task8EnqueueKind::Kernel,
+                spans,
+            );
+            let low = eq_readback_spans(&ledger, &owners_low);
+            readback(&mut ledger, &probe, arm, "pre-eq-readback", low);
+            let high = eq_readback_spans(&ledger, &owners_high);
+            readback(&mut ledger, &probe, arm, "pre-eq-readback", high);
+            assert!(probe.finish().is_empty());
+            ledger.resident_read_bytes(arm)
+        };
+
+        // One readback pass over one build: the full ranges minus the union of
+        // the recorded producer writes — a fully covered low table, a fully
+        // covered slab 0, and a sentinel-only slab 1.
+        let expected = ((GKR_EQ_GROUP_TABLE_LEN - (1 << sizes.low))
+            + (GKR_EQ_GROUP_TABLE_LEN - (1 << sizes.high[0]))
+            + (GKR_EQ_GROUP_TABLE_LEN - 1))
+            * element;
+        assert_eq!(run(false), expected);
+        assert_eq!(
+            run(true),
+            expected + (1 << (sizes.low - 1)) * element,
+            "a shortened producer write span must surface as resident bytes"
+        );
+        assert_ne!(run(true), expected);
+    }
+
+    /// The exact shape the consumed v17 run rejected: the window arm's bank
+    /// slab is retired right after the fill, the pool's best-fit reuse hands
+    /// its base to a later transcript buffer, and only a record that tells the
+    /// truth about the early retirement is a valid topology. A record claiming
+    /// the slab lived to the arm's end must be rejected as an address overlap.
+    #[test]
+    fn cpu_main_continuation_task8_topology_accepts_early_retired_bank_reuse() {
+        let reused_base = 7;
+        let mut reuse = valid_topology();
+        reuse.push(record("bank", reused_base, 1, 2));
+        reuse.push(record("transcript_seed", reused_base, 4, 8));
+        validate_single_owner_topology(&reuse).unwrap();
+
+        let mut stale = valid_topology();
+        stale.push(record("bank", reused_base, 1, 8));
+        stale.push(record("transcript_seed", reused_base, 4, 8));
+        assert_eq!(
+            validate_single_owner_topology(&stale),
+            Err(Task8TopologyError::OverlappingOwner)
+        );
+    }
+
     #[test]
     fn cpu_main_continuation_task8_corpus_census() {
         let census = build_corpus_census();
         assert_eq!(census.layouts, 12);
         assert_eq!(census.layers, 57);
         assert_eq!(census.coordinates, 57);
+        assert_eq!(census.non_identity_coordinates, 23);
         assert_eq!(census.folding_steps, [20, 22, 23, 24]);
         assert_eq!(census.start_rounds, [3, 6, 9, 12, 15, 18]);
         assert_eq!(census.masks, [0x00, 0x01, 0x03, 0x07, 0x13, 0x17, 0x1f]);
@@ -4229,7 +4883,9 @@ mod cpu_tests {
     const TASK8_TEST_ROW_TILES: usize = 4;
     const TASK8_TEST_CHALLENGES: usize = 11;
     const TASK8_TEST_HIGH_TABLE: usize = 256;
-    const TASK8_TEST_BANK_ELEMS: usize = 16;
+    // Matches the test blob's recipe count: the registered symbol extent is
+    // exactly the filled bank prefix, as in the real fill.
+    const TASK8_TEST_BANK_ELEMS: usize = 2;
     const TASK8_TEST_FOLD_WEIGHT_ELEMS: usize = 11;
     const TASK8_TEST_SLAB_ELEMS: usize = 10;
     const TASK8_TEST_PUBLICATION_ELEMS: usize = 128;
@@ -4254,6 +4910,45 @@ mod cpu_tests {
     const TASK8_TEST_TRANSCRIPT_BASE: usize = 0x90_0000;
     const TASK8_TEST_REDUCED_TENSOR: usize =
         TASK8_TEST_PARTIALS + MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * TASK8_TEST_ROW_TILES * 16;
+
+    struct CpuTranscriptOwnerRanges([(usize, usize); 4]);
+
+    impl Task8TranscriptOwnerRanges for CpuTranscriptOwnerRanges {
+        fn task8_transcript_owner_ranges(&self) -> [(usize, usize); 4] {
+            self.0
+        }
+    }
+
+    fn open_and_use_actual_transcript_seam(
+        ledger: &mut Task8OwnerGenerationLedger,
+    ) -> Task8TranscriptOwners {
+        let ranges = CpuTranscriptOwnerRanges([
+            (TASK8_TEST_TRANSCRIPT_BASE, 8 * std::mem::size_of::<u32>()),
+            (TASK8_TEST_TRANSCRIPT_BASE + 0x1000, TASK8_TEST_ELEMENT),
+            (TASK8_TEST_TRANSCRIPT_BASE + 0x2000, TASK8_TEST_ELEMENT),
+            (TASK8_TEST_TRANSCRIPT_BASE + 0x3000, 12 * TASK8_TEST_ELEMENT),
+        ]);
+        let owners = open_transcript_owners(ledger, TASK8_WINDOW_ARM, &ranges);
+        let probe = Task8ProbeGuard::install();
+        enqueue(
+            ledger,
+            &probe,
+            TASK8_WINDOW_ARM,
+            "transcript-state-copy",
+            Task8EnqueueKind::Copy,
+            [
+                &owners.seed,
+                &owners.claim,
+                &owners.prefactor,
+                &owners.coefficients,
+            ]
+            .into_iter()
+            .map(|owner| Task8Span::write(owner.label, owner.base, owner.bytes))
+            .collect(),
+        );
+        assert!(probe.finish().is_empty());
+        owners
+    }
 
     fn task8_test_sizes() -> GkrEqSizes {
         make_eq_sizes(TASK8_TEST_CHALLENGES)
@@ -4408,7 +5103,31 @@ mod cpu_tests {
         base: usize,
         bytes: usize,
     ) -> Task8LedgerOwner {
-        ledger_open(ledger, arm, label, Task8OwnerOrigin::ArmOwned, base, bytes)
+        ledger_open(
+            ledger,
+            arm,
+            label,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+            base,
+            bytes,
+        )
+    }
+
+    fn open_symbol(
+        ledger: &mut Task8OwnerGenerationLedger,
+        arm: &'static str,
+        label: &'static str,
+        base: usize,
+        bytes: usize,
+    ) -> Task8LedgerOwner {
+        ledger_open(
+            ledger,
+            arm,
+            label,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::SymbolReleased),
+            base,
+            bytes,
+        )
     }
 
     /// Opens one pre-enqueue scope, lets the "call" run inside it, closes it and
@@ -4464,7 +5183,26 @@ mod cpu_tests {
         );
     }
 
-    fn upload(
+    fn borrow(
+        ledger: &mut Task8OwnerGenerationLedger,
+        arm: &'static str,
+        label: &'static str,
+        base: usize,
+        bytes: usize,
+    ) -> Task8LedgerOwner {
+        ledger_open(
+            ledger,
+            arm,
+            label,
+            Task8OwnerOrigin::Borrowed(TASK8_SHARED_DEVICE_INPUTS, Task8OwnershipEnd::BorrowClosed),
+            base,
+            bytes,
+        )
+    }
+
+    /// One arm-owned buffer initialized device-to-device from the seam, as the
+    /// real transcript buffers are.
+    fn state_copy(
         ledger: &mut Task8OwnerGenerationLedger,
         probe: &Task8ProbeGuard,
         arm: &'static str,
@@ -4477,9 +5215,9 @@ mod cpu_tests {
             ledger,
             probe,
             arm,
-            "host-upload",
+            "transcript-state-copy",
             Task8EnqueueKind::Copy,
-            vec![Task8Span::write("upload", base, bytes)],
+            vec![Task8Span::write(label, base, bytes)],
         );
         owner
     }
@@ -4522,7 +5260,6 @@ mod cpu_tests {
         challenges: Task8ChallengeOwners,
         transcript: Task8TranscriptOwners,
         slab: Task8LedgerOwner,
-        tables: Task8LedgerOwner,
         publication: Task8LedgerOwner,
         reduced_tensor: Option<Task8LedgerOwner>,
     }
@@ -4536,9 +5273,8 @@ mod cpu_tests {
         arm: &'static str,
         carried: &Task8CarriedSymbols,
     ) -> Task8ArmFixture {
-        let claim_point = upload(
+        let claim_point = borrow(
             ledger,
-            probe,
             arm,
             "claim_point",
             TASK8_TEST_CLAIM_POINT,
@@ -4549,7 +5285,7 @@ mod cpu_tests {
             TASK8_TEST_CLAIM_POINT_SYMBOL,
             TASK8_TEST_POINT_LEN * TASK8_TEST_ELEMENT,
         );
-        let claim_point_symbol = open(
+        let claim_point_symbol = open_symbol(
             ledger,
             arm,
             "claim_point_symbol",
@@ -4569,36 +5305,34 @@ mod cpu_tests {
             )],
         );
         let challenges = Task8ChallengeOwners {
-            external: upload(
+            external: borrow(
                 ledger,
-                probe,
                 arm,
                 "external_challenges",
                 TASK8_TEST_CHALLENGE_BASE,
-                32 * TASK8_TEST_ELEMENT,
+                7 * TASK8_TEST_ELEMENT,
             ),
-            lookup_multiplicative: upload(
+            lookup_multiplicative: borrow(
                 ledger,
-                probe,
                 arm,
                 "lookup_multiplicative",
-                TASK8_TEST_CHALLENGE_BASE + 0x1000,
+                TASK8_TEST_CHALLENGE_BASE + 7 * TASK8_TEST_ELEMENT,
                 TASK8_TEST_ELEMENT,
             ),
-            lookup_additive: upload(
+            lookup_additive: borrow(
                 ledger,
-                probe,
                 arm,
                 "lookup_additive",
-                TASK8_TEST_CHALLENGE_BASE + 0x2000,
+                TASK8_TEST_CHALLENGE_BASE + 8 * TASK8_TEST_ELEMENT,
                 TASK8_TEST_ELEMENT,
             ),
-            claim_batching: upload(
+            // Nested inside the borrowed claim point, as the real batching slot
+            // is its last element; the narrowest declaration wins the reads.
+            claim_batching: borrow(
                 ledger,
-                probe,
                 arm,
                 "claim_batching",
-                TASK8_TEST_CHALLENGE_BASE + 0x3000,
+                TASK8_TEST_CLAIM_POINT + (TASK8_TEST_POINT_LEN - 1) * TASK8_TEST_ELEMENT,
                 TASK8_TEST_ELEMENT,
             ),
         };
@@ -4608,13 +5342,6 @@ mod cpu_tests {
             "challenge_slab",
             TASK8_TEST_SLAB,
             TASK8_TEST_SLAB_ELEMS * TASK8_TEST_ELEMENT,
-        );
-        let tables = open(
-            ledger,
-            arm,
-            "coefficient_tables",
-            TASK8_TEST_TABLES,
-            BWD_SEG_BLOB_BYTES,
         );
         let prefix = 7;
         enqueue(
@@ -4639,46 +5366,40 @@ mod cpu_tests {
                 task8_challenge_slot_spans(source.base, slab.base, slot),
             );
         }
-        enqueue(
-            ledger,
-            probe,
-            arm,
-            "coefficient-table-copy",
-            Task8EnqueueKind::Copy,
-            vec![Task8Span::write(
-                "coefficient_tables",
-                tables.base,
-                tables.bytes,
-            )],
-        );
         task8_register_symbol(
             "ab_gkr_bwd_seg_coeff_bank",
             carried.coefficient_bank.unwrap().0,
             carried.coefficient_bank.unwrap().1,
         );
-        let bank = open(
+        let bank = open_symbol(
             ledger,
             arm,
             "coefficient_bank",
             carried.coefficient_bank.unwrap().0,
             carried.coefficient_bank.unwrap().1,
         );
-        let reads = task8_coeff_eval_reads(&task8_test_blob());
-        enqueue_planned(
-            ledger,
-            probe,
-            arm,
-            "coefficient-bank-fill",
-            task8_coeff_fill_spans(&reads, tables.base, slab.base, bank.base, bank.bytes),
-            Task8EnqueuePlan::CoefficientFill {
-                tables: tables.base,
-                table_ranges: reads.table_ranges.clone(),
-                slab: slab.base,
-                challenge_slots: reads.challenge_slots.clone(),
-                bank: bank.base,
-                bank_bytes: bank.bytes,
-            },
-        );
+        let chunks = SegCoeffEvalChunks::build(&task8_test_blob());
+        for ((first, count), slots) in chunks
+            .task8_chunk_ranges()
+            .into_iter()
+            .zip(chunks.task8_challenge_slots())
+        {
+            let bank_first = bank.base + first as usize * TASK8_TEST_ELEMENT;
+            let bank_bytes = count as usize * TASK8_TEST_ELEMENT;
+            enqueue_planned(
+                ledger,
+                probe,
+                arm,
+                "coefficient-bank-fill",
+                task8_coeff_fill_spans(slots, slab.base, bank_first, bank_bytes),
+                Task8EnqueuePlan::CoefficientFill {
+                    slab: slab.base,
+                    challenge_slots: slots.to_vec(),
+                    bank_first,
+                    bank_bytes,
+                },
+            );
+        }
         let owners = Task8ArmOwners {
             arm,
             claim_point,
@@ -4687,7 +5408,7 @@ mod cpu_tests {
                 ledger,
                 arm,
                 "eq",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::Freed),
                 TASK8_TEST_EQ_LOW,
                 TASK8_TEST_HIGH_TABLE * TASK8_TEST_ELEMENT,
             ),
@@ -4695,7 +5416,7 @@ mod cpu_tests {
                 ledger,
                 arm,
                 "eq_high_symbol",
-                Task8OwnerOrigin::FactoredEq,
+                Task8OwnerOrigin::FactoredEq(Task8OwnershipEnd::SymbolReleased),
                 carried.eq_high.0,
                 carried.eq_high.1,
             ),
@@ -4712,7 +5433,10 @@ mod cpu_tests {
                 ledger,
                 arm,
                 "source_backing",
-                Task8OwnerOrigin::Borrowed(TASK8_PRODUCTION_STORAGE),
+                Task8OwnerOrigin::Borrowed(
+                    TASK8_PRODUCTION_STORAGE,
+                    Task8OwnershipEnd::BorrowClosed,
+                ),
                 TASK8_TEST_SOURCE,
                 TASK8_TEST_SOURCE_BYTES,
             )],
@@ -4720,7 +5444,7 @@ mod cpu_tests {
             coefficient_bank: Some(bank),
         };
         let transcript = Task8TranscriptOwners {
-            seed: upload(
+            seed: state_copy(
                 ledger,
                 probe,
                 arm,
@@ -4728,7 +5452,7 @@ mod cpu_tests {
                 TASK8_TEST_TRANSCRIPT_BASE,
                 8 * std::mem::size_of::<u32>(),
             ),
-            claim: upload(
+            claim: state_copy(
                 ledger,
                 probe,
                 arm,
@@ -4736,7 +5460,7 @@ mod cpu_tests {
                 TASK8_TEST_TRANSCRIPT_BASE + 0x1000,
                 TASK8_TEST_ELEMENT,
             ),
-            prefactor: upload(
+            prefactor: state_copy(
                 ledger,
                 probe,
                 arm,
@@ -4757,7 +5481,6 @@ mod cpu_tests {
             challenges,
             transcript,
             slab,
-            tables,
             publication: open(
                 ledger,
                 arm,
@@ -4802,7 +5525,7 @@ mod cpu_tests {
             TASK8_TEST_FOLD_WEIGHT_ELEMS * TASK8_TEST_ELEMENT,
         );
         if owners.fold_weights.is_none() {
-            owners.fold_weights = Some(open(
+            owners.fold_weights = Some(open_symbol(
                 ledger,
                 owners.arm,
                 "fold_weights_symbol",
@@ -4888,15 +5611,14 @@ mod cpu_tests {
     }
 
     fn finish_arm(ledger: &mut Task8OwnerGenerationLedger, fixture: &Task8ArmFixture) {
-        ledger_bind_final(ledger, &fixture.publication);
+        ledger_retire(ledger, &fixture.publication);
         if let Some(reduced_tensor) = fixture.reduced_tensor.as_ref() {
-            ledger_bind_final(ledger, reduced_tensor);
+            ledger_retire(ledger, reduced_tensor);
         }
-        ledger_bind_final(ledger, &fixture.slab);
-        ledger_bind_final(ledger, &fixture.tables);
-        bind_challenge_owners_final(ledger, &fixture.challenges);
-        bind_transcript_owners_final(ledger, &fixture.transcript);
-        bind_arm_owners_final(ledger, &fixture.owners);
+        ledger_retire(ledger, &fixture.slab);
+        close_challenge_owners(ledger, &fixture.challenges);
+        retire_transcript_owners(ledger, &fixture.transcript);
+        retire_arm_owners(ledger, &fixture.owners);
     }
 
     /// The window arm's stream, with every launch's spans produced by the
@@ -5104,6 +5826,841 @@ mod cpu_tests {
         validator_rejection(ledger, first, second).is_some()
     }
 
+    /// The retirement lifecycle the differential's two arms run over one
+    /// shared ledger, kept as a whole-fixture control: every owner both arms
+    /// open is retired exactly once, and the second arm's declarations take
+    /// the addresses the first arm released.
+    #[test]
+    fn cpu_legacy_multi_pass_retirement_lifecycle_mutations() {
+        let green = replay_both_orders(TASK8_LEGACY_ARM, TASK8_WINDOW_ARM);
+        assert!(validate(&green, TASK8_LEGACY_ARM, TASK8_WINDOW_ARM) > 0);
+        for entry in &green.generations {
+            let released = entry
+                .released
+                .unwrap_or_else(|| panic!("{} never released ownership", entry.label));
+            assert!(released.end.admits(entry.origin));
+            assert_eq!(released.end, entry.allowed_end);
+            assert_eq!(entry.final_enqueue, entry.last_enqueue());
+        }
+        // Every ownership class rejects the opposite end kind while retaining
+        // the exact six-field culprit.
+        for (slot, entry) in green.generations.iter().enumerate() {
+            let mut wrong = green.clone();
+            wrong.generations[slot].released = None;
+            let wrong_end = match entry.allowed_end {
+                Task8OwnershipEnd::Freed => Task8OwnershipEnd::SymbolReleased,
+                Task8OwnershipEnd::SymbolReleased => Task8OwnershipEnd::Freed,
+                Task8OwnershipEnd::BorrowClosed => Task8OwnershipEnd::Freed,
+            };
+            let token = Task8GenerationToken {
+                slot,
+                owner: entry.owner,
+                generation: entry.generation,
+            };
+            match wrong.release(token, wrong_end) {
+                Err(Task8LedgerError::ReleaseKindMismatch(culprit)) => {
+                    assert_eq!(culprit.arm, entry.arm);
+                    assert_eq!(culprit.label, entry.label);
+                    assert_eq!(culprit.generation, entry.generation);
+                    assert_eq!(culprit.covered, (entry.covered.start, entry.covered.end));
+                    assert_eq!(culprit.final_enqueue, entry.final_enqueue);
+                    assert!(culprit.released.is_none());
+                }
+                other => panic!("wrong end must reject with culprit, got {other:?}"),
+            }
+        }
+
+        // Retirement is exactly once: the ledger refuses a second `Final` and a
+        // second end of ownership on the same generation.
+        let mut repeated = green.clone();
+        let token = {
+            let entry = &repeated.generations[0];
+            Task8GenerationToken {
+                slot: 0,
+                owner: entry.owner,
+                generation: entry.generation,
+            }
+        };
+        assert!(matches!(
+            repeated.bind_final(token),
+            Err(Task8LedgerError::FinalAlreadyBound(_))
+        ));
+        assert!(matches!(
+            repeated.release(token, Task8OwnershipEnd::Freed),
+            Err(Task8LedgerError::AlreadyReleased(_))
+        ));
+
+        // Premature Final must reproduce the UseAfterFinal/last-use failure.
+        let slot = green
+            .generations
+            .iter()
+            .position(|entry| entry.arm == TASK8_LEGACY_ARM && entry.label == "publication")
+            .expect("legacy publication generation");
+        let mut premature = green.clone();
+        premature.generations[slot].final_enqueue = Some(
+            premature.generations[slot]
+                .records
+                .first()
+                .expect("publication use")
+                .enqueue,
+        );
+        assert!(validator_rejects(
+            &premature,
+            TASK8_LEGACY_ARM,
+            TASK8_WINDOW_ARM
+        ));
+
+        // Omitting Final is rejected by the structural validator.
+        let mut omitted = green.clone();
+        omitted.generations[slot].final_enqueue = None;
+        assert!(validator_rejects(
+            &omitted,
+            TASK8_LEGACY_ARM,
+            TASK8_WINDOW_ARM
+        ));
+
+        // A successor at an overlapping address must be generation-aware and
+        // must not satisfy the predecessor's retirement predicate.
+        assert_eq!(overlap_successor_owner(TASK8_LEGACY_ARM), "reduced_tensor");
+    }
+
+    // ------------------------------------------------------------------
+    // Release-aware prior-publication lifecycle
+    //
+    // The GPU failure this replays is a legacy `published_column` write landing
+    // on bytes a retired window-arm generation still claimed. Nothing about it
+    // needs a device: it is the ledger deciding which generation owns an
+    // address after the pool recycled it. The replay drives the ledger through
+    // the real control flow of `build_prior_level` plus each arm's own
+    // comparison launch, over a pool that recycles exactly as the device pool
+    // did, and asserts ownership by identity rather than by "it did not panic".
+    // ------------------------------------------------------------------
+
+    /// Every admitted comparison start round.
+    const TASK8_REPLAY_START_ROUNDS: [usize; 6] = [3, 6, 9, 12, 15, 18];
+    /// A synthetic arena base, well clear of the fixed fixture addresses above.
+    const TASK8_REPLAY_ARENA: usize = 0x1000_0000;
+    /// One published column, the size the rejected run named.
+    const TASK8_REPLAY_COLUMN: usize = 1 << 20;
+    const TASK8_REPLAY_COLUMNS: usize = 2;
+
+    /// A deterministic stand-in for the device pool: first fit over a
+    /// coalescing free list. An arm that frees adjacent blocks hands the next
+    /// arm one wider block, so the second arm's first publication lands on top
+    /// of storage the first arm's narrower generations used to own -- the
+    /// recycling that put a retired window generation under a legacy column.
+    struct Task8ReplayPool {
+        cursor: usize,
+        free: Vec<(usize, usize)>,
+    }
+
+    impl Task8ReplayPool {
+        fn new() -> Self {
+            Self {
+                cursor: TASK8_REPLAY_ARENA,
+                free: Vec::new(),
+            }
+        }
+
+        fn alloc(&mut self, bytes: usize) -> usize {
+            if let Some(index) = self.free.iter().position(|&(_, size)| size >= bytes) {
+                let (base, size) = self.free.remove(index);
+                if size > bytes {
+                    self.free.push((base + bytes, size - bytes));
+                    self.free.sort();
+                }
+                return base;
+            }
+            let base = self.cursor;
+            self.cursor += bytes;
+            base
+        }
+
+        fn free(&mut self, base: usize, bytes: usize) {
+            self.free.push((base, bytes));
+            self.free.sort();
+            let mut merged: Vec<(usize, usize)> = Vec::new();
+            for (base, bytes) in self.free.drain(..) {
+                match merged.last_mut() {
+                    Some((prior_base, prior_bytes)) if *prior_base + *prior_bytes == base => {
+                        *prior_bytes += bytes;
+                    }
+                    _ => merged.push((base, bytes)),
+                }
+            }
+            self.free = merged;
+        }
+    }
+
+    /// The publication a pass folds into: every three rounds fold three
+    /// variables, so each pass publishes an eighth of the rows the last one did.
+    fn replay_publication_bytes(pass_index: usize) -> usize {
+        ((TASK8_REPLAY_COLUMNS * TASK8_REPLAY_COLUMN) >> (3 * pass_index))
+            .max(TASK8_REPLAY_COLUMNS * 16)
+    }
+
+    /// What one coordinate's replay does differently from the accepted flow.
+    /// Each value changes exactly one fact, so the control it drives has one
+    /// cause.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Task8ReplayMutation {
+        /// The accepted flow.
+        None,
+        /// Bind `Final` at the producing launch instead of at the consumer that
+        /// still reads the generation, and never release.
+        PrematureFinal,
+        /// Bind `Final` at the right consumer but never end ownership, on a
+        /// generation nothing later reuses.
+        OmittedRelease,
+        /// Declare the second arm's first publication over half its real
+        /// extent, so its later columns have no successor to own them.
+        TruncatedSuccessor,
+        /// Leave a first-arm allocation `Final`-bound and unreleased, so the
+        /// second arm's publication intersects storage that was never handed
+        /// back.
+        UnreleasedIntersection,
+    }
+
+    /// One arm's replayed owners, the enqueues that consumed them, and which
+    /// generation owned the recycled column while this arm's first declaration
+    /// over it was still live.
+    struct Task8ReplayArm {
+        scratch: Option<Task8LedgerOwner>,
+        priors: Vec<Task8LedgerOwner>,
+        publication: Task8LedgerOwner,
+        prior_launches: Vec<u64>,
+        comparison_launch: u64,
+        recycled_column_owner: Option<Result<u64, Task8LedgerError>>,
+    }
+
+    /// Opens a declaration the way production does, but fallibly: the controls
+    /// assert the typed rejection rather than catching a panic.
+    fn replay_open(
+        ledger: &mut Task8OwnerGenerationLedger,
+        arm: &'static str,
+        label: &'static str,
+        base: usize,
+        bytes: usize,
+    ) -> Result<Task8LedgerOwner, Task8LedgerError> {
+        let token = ledger.open(
+            arm,
+            label,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+            base,
+            bytes,
+        )?;
+        Ok(Task8LedgerOwner {
+            token,
+            arm,
+            label,
+            base,
+            bytes,
+        })
+    }
+
+    /// Absorbs one enqueue exactly as [`Task8OwnerGenerationLedger::absorb`]
+    /// does -- same ordinals, same per-arm probe order, same record order --
+    /// and returns the ledger's own error instead of panicking on it.
+    fn replay_enqueue(
+        ledger: &mut Task8OwnerGenerationLedger,
+        arm: &'static str,
+        site: &'static str,
+        spans: &[Task8Span],
+    ) -> Result<u64, Task8LedgerError> {
+        let ordinal = ledger.enqueues.len() as u64;
+        let probe_ordinal = ledger
+            .enqueues
+            .iter()
+            .rev()
+            .find(|enqueue| enqueue.arm == arm)
+            .map_or(0, |enqueue| enqueue.probe_ordinal + 1);
+        let enqueue = Task8AbsorbedEnqueue {
+            ordinal,
+            probe_ordinal,
+            arm,
+            site,
+            kind: Task8EnqueueKind::Kernel,
+            plan: None,
+            records: 0,
+            issued_at_open: probe_ordinal,
+            issued_at_close: probe_ordinal + 1,
+        };
+        ledger.enqueues.push(enqueue.clone());
+        for span in spans {
+            let use_kind = if span.write {
+                Task8QueuedUse::Write
+            } else {
+                Task8QueuedUse::Read
+            };
+            ledger.record(&enqueue, span.role, span.address, span.bytes, use_kind)?;
+        }
+        Ok(ordinal)
+    }
+
+    /// One publication's columns, as the window binding reports them.
+    fn replay_columns(owner: &Task8LedgerOwner, write: bool) -> Vec<Task8Span> {
+        let column = owner.bytes / TASK8_REPLAY_COLUMNS;
+        (0..TASK8_REPLAY_COLUMNS)
+            .map(|index| {
+                let address = owner.base + index * column;
+                if write {
+                    Task8Span::write("published_column", address, column)
+                } else {
+                    Task8Span::read("published_column", address, column)
+                }
+            })
+            .collect()
+    }
+
+    /// Ends one replayed owner's ownership, unless it is the generation a
+    /// mutation deliberately leaves owning its bytes after `Final`.
+    fn replay_end_ownership(
+        ledger: &mut Task8OwnerGenerationLedger,
+        owner: &Task8LedgerOwner,
+        unreleased: Option<u64>,
+    ) {
+        if unreleased == Some(owner.token.generation) {
+            ledger_bind_final(ledger, owner);
+        } else {
+            ledger_retire(ledger, owner);
+        }
+    }
+
+    /// Replays one arm at one coordinate: the prior passes `build_prior_level`
+    /// runs, then the arm's own comparison launch, then the arm's frees.
+    ///
+    /// The first arm also holds one tail scratch block the second arm does not,
+    /// which is what leaves the two arms' layouts different enough for the
+    /// second arm's first publication to land over the first arm's storage.
+    fn replay_prior_lifecycle_arm(
+        ledger: &mut Task8OwnerGenerationLedger,
+        pool: &mut Task8ReplayPool,
+        arm: &'static str,
+        start_round: usize,
+        mutation: Task8ReplayMutation,
+        first_arm: bool,
+    ) -> Result<Task8ReplayArm, Task8LedgerError> {
+        let passes = start_round / 3 - 1;
+        let premature = mutation == Task8ReplayMutation::PrematureFinal;
+        // The one generation `UnreleasedIntersection` leaves owning its bytes:
+        // this arm's second allocation, which sits above the tail scratch and
+        // so intersects the next arm's first publication from a different base.
+        let mut unreleased: Option<u64> = None;
+        let mut recycled_column_owner = None;
+        let column = TASK8_REPLAY_ARENA..TASK8_REPLAY_ARENA + TASK8_REPLAY_COLUMN;
+        let scratch = if first_arm {
+            let base = pool.alloc(TASK8_REPLAY_COLUMN);
+            let scratch = replay_open(ledger, arm, "tail_scratch", base, TASK8_REPLAY_COLUMN)?;
+            replay_enqueue(
+                ledger,
+                arm,
+                "tail-scratch-init",
+                &[Task8Span::write("tail_scratch", base, TASK8_REPLAY_COLUMN)],
+            )?;
+            if premature {
+                ledger_bind_final(ledger, &scratch);
+            }
+            Some(scratch)
+        } else {
+            None
+        };
+        let mut prior: Option<Task8LedgerOwner> = None;
+        let mut priors = Vec::new();
+        let mut prior_launches = Vec::new();
+        for pass_index in 0..passes {
+            let bytes = replay_publication_bytes(pass_index);
+            let base = pool.alloc(bytes);
+            // Production opens the new publication after the launch allocated
+            // it and before the probe is absorbed.
+            let published = replay_open(ledger, arm, "prior_publication", base, bytes)?;
+            if pass_index == 0 {
+                if first_arm && mutation == Task8ReplayMutation::UnreleasedIntersection {
+                    unreleased = Some(published.token.generation);
+                }
+                if !first_arm {
+                    recycled_column_owner = Some(
+                        ledger
+                            .owner_of(&column)
+                            .map(|slot| ledger.generations[slot].generation),
+                    );
+                }
+            }
+            let mut spans = replay_columns(&published, true);
+            if let Some(prior) = prior.as_ref() {
+                spans.extend(replay_columns(prior, false));
+            }
+            let launch = replay_enqueue(ledger, arm, "prior-window-launch", &spans)?;
+            prior_launches.push(launch);
+            if premature {
+                ledger_bind_final(ledger, &published);
+            }
+            if let Some(consumed) = prior.replace(published) {
+                if !premature {
+                    replay_end_ownership(ledger, &consumed, unreleased);
+                }
+                pool.free(consumed.base, consumed.bytes);
+            }
+            priors.push(published);
+        }
+        let bytes = replay_publication_bytes(passes);
+        let base = pool.alloc(bytes);
+        let declared = if mutation == Task8ReplayMutation::TruncatedSuccessor && !first_arm {
+            bytes / TASK8_REPLAY_COLUMNS
+        } else {
+            bytes
+        };
+        let publication = replay_open(ledger, arm, "publication", base, declared)?;
+        if passes == 0 {
+            if first_arm && mutation == Task8ReplayMutation::UnreleasedIntersection {
+                unreleased = Some(publication.token.generation);
+            }
+            if !first_arm {
+                recycled_column_owner = Some(
+                    ledger
+                        .owner_of(&column)
+                        .map(|slot| ledger.generations[slot].generation),
+                );
+            }
+        }
+        let mut spans: Vec<Task8Span> = (0..TASK8_REPLAY_COLUMNS)
+            .map(|index| {
+                let column = bytes / TASK8_REPLAY_COLUMNS;
+                Task8Span::write("published_column", base + index * column, column)
+            })
+            .collect();
+        if let Some(prior) = prior.as_ref() {
+            spans.extend(replay_columns(prior, false));
+        }
+        if let Some(scratch) = scratch.as_ref() {
+            spans.push(Task8Span::read("tail_scratch", scratch.base, scratch.bytes));
+        }
+        let comparison_launch = replay_enqueue(ledger, arm, "comparison-launch", &spans)?;
+        if !premature {
+            if let Some(consumed) = prior.take() {
+                replay_end_ownership(ledger, &consumed, unreleased);
+                pool.free(consumed.base, consumed.bytes);
+            }
+            if mutation == Task8ReplayMutation::OmittedRelease && !first_arm {
+                // Nothing reuses the second arm's own publication, so the only
+                // thing that can object to the missing end is the validator.
+                ledger_bind_final(ledger, &publication);
+            } else {
+                replay_end_ownership(ledger, &publication, unreleased);
+            }
+            pool.free(base, bytes);
+            if let Some(scratch) = scratch.as_ref() {
+                ledger_retire(ledger, scratch);
+                pool.free(scratch.base, scratch.bytes);
+            }
+        }
+        Ok(Task8ReplayArm {
+            scratch,
+            priors,
+            publication,
+            prior_launches,
+            comparison_launch,
+            recycled_column_owner,
+        })
+    }
+
+    struct Task8ReplayCoordinate {
+        ledger: Task8OwnerGenerationLedger,
+        window: Task8ReplayArm,
+        legacy: Task8ReplayArm,
+    }
+
+    /// Both arms of one coordinate over one pool, window arm first, exactly as
+    /// the differential runs them against one shared ledger.
+    fn replay_prior_lifecycle(
+        start_round: usize,
+        mutation: Task8ReplayMutation,
+    ) -> Result<Task8ReplayCoordinate, Task8LedgerError> {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        let mut pool = Task8ReplayPool::new();
+        let window = replay_prior_lifecycle_arm(
+            &mut ledger,
+            &mut pool,
+            TASK8_WINDOW_ARM,
+            start_round,
+            mutation,
+            true,
+        )?;
+        let legacy = replay_prior_lifecycle_arm(
+            &mut ledger,
+            &mut pool,
+            TASK8_LEGACY_ARM,
+            start_round,
+            mutation,
+            false,
+        )?;
+        Ok(Task8ReplayCoordinate {
+            ledger,
+            window,
+            legacy,
+        })
+    }
+
+    /// The generation a token names, by identity rather than by slot.
+    fn replay_generation<'a>(
+        ledger: &'a Task8OwnerGenerationLedger,
+        owner: &Task8LedgerOwner,
+    ) -> &'a Task8OwnerGeneration {
+        ledger
+            .generations
+            .iter()
+            .find(|entry| entry.generation == owner.token.generation)
+            .expect("the replay owner names a generation")
+    }
+
+    /// The culprit identity a rejection must carry for `owner`, in the state
+    /// the mutation left it in.
+    fn replay_culprit(
+        ledger: &Task8OwnerGenerationLedger,
+        owner: &Task8LedgerOwner,
+        final_enqueue: Option<u64>,
+        released: Option<Task8Release>,
+    ) -> Task8Culprit {
+        let entry = replay_generation(ledger, owner);
+        Task8Culprit {
+            arm: owner.arm,
+            label: owner.label,
+            generation: entry.generation,
+            covered: (owner.base, owner.base + owner.bytes),
+            final_enqueue,
+            released,
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_prior_publication_lifecycle_retires_exactly_once() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let passes = start_round / 3 - 1;
+            let replayed = replay_prior_lifecycle(start_round, Task8ReplayMutation::None)
+                .unwrap_or_else(|error| {
+                    panic!("start round {start_round} replays cleanly, got {error:?}")
+                });
+            let ledger = &replayed.ledger;
+            validate_owner_generation_structure(ledger, TASK8_WINDOW_ARM, TASK8_LEGACY_ARM, &[]);
+
+            // Exact counts. The window arm holds one tail scratch the legacy
+            // arm does not; both open one publication per prior pass plus their
+            // own.
+            assert_eq!(replayed.window.priors.len(), passes);
+            assert_eq!(replayed.legacy.priors.len(), passes);
+            assert_eq!(
+                ledger.label_generations(TASK8_WINDOW_ARM, "prior_publication"),
+                passes
+            );
+            assert_eq!(
+                ledger.label_generations(TASK8_LEGACY_ARM, "prior_publication"),
+                passes
+            );
+            assert_eq!(ledger.generations.len(), 2 * passes + 3);
+            assert_eq!(ledger.enqueues.len() as u64, 2 * passes as u64 + 3);
+
+            // Every generation retires exactly once: `Final` on its own last
+            // enqueue, then one end of ownership, and every one of these is a
+            // pool allocation the arm dropped.
+            for entry in &ledger.generations {
+                assert_eq!(
+                    entry.final_enqueue,
+                    entry.last_enqueue(),
+                    "{} bound Final away from its last enqueue",
+                    entry.label
+                );
+                let released = entry
+                    .released
+                    .unwrap_or_else(|| panic!("{} never released ownership", entry.label));
+                assert_eq!(released.end, Task8OwnershipEnd::Freed);
+                assert!(released.at_enqueue >= entry.final_enqueue.unwrap());
+            }
+
+            // Owner identity: each intermediate prior is retired by the pass
+            // that still reads it, and the last one by the arm's own comparison
+            // launch.
+            for arm in [&replayed.window, &replayed.legacy] {
+                for (index, prior) in arm.priors.iter().enumerate() {
+                    let expected = if index + 1 < passes {
+                        arm.prior_launches[index + 1]
+                    } else {
+                        arm.comparison_launch
+                    };
+                    let entry = replay_generation(ledger, prior);
+                    assert_eq!(
+                        entry.final_enqueue,
+                        Some(expected),
+                        "prior {index} of start round {start_round} retired away from its consumer"
+                    );
+                    assert_eq!(
+                        ledger.enqueues[expected as usize].site,
+                        if index + 1 < passes {
+                            "prior-window-launch"
+                        } else {
+                            "comparison-launch"
+                        }
+                    );
+                }
+            }
+
+            // Successor ownership. The legacy arm's first publication covers
+            // the exact bytes the window arm's tail scratch used to own; the
+            // released predecessor must not shadow the live successor.
+            let scratch = replayed.window.scratch.as_ref().expect("window scratch");
+            assert_eq!(scratch.base, TASK8_REPLAY_ARENA);
+            assert_eq!(scratch.bytes, TASK8_REPLAY_COLUMN);
+            assert!(replay_generation(ledger, scratch).released.is_some());
+            let successor = if passes > 0 {
+                &replayed.legacy.priors[0]
+            } else {
+                &replayed.legacy.publication
+            };
+            assert_eq!(successor.base, TASK8_REPLAY_ARENA);
+            assert!(successor.bytes > TASK8_REPLAY_COLUMN);
+
+            // Every generation a successor takes back had already released, and
+            // is taken back at its own base by a later declaration.
+            for entry in ledger.generations.iter() {
+                let Some(successor_generation) = entry.superseded_by else {
+                    continue;
+                };
+                assert!(
+                    entry.released.is_some(),
+                    "{} was taken back unreleased",
+                    entry.label
+                );
+                let taker = ledger
+                    .generations
+                    .iter()
+                    .find(|candidate| candidate.generation == successor_generation)
+                    .expect("the successor generation exists");
+                assert!(taker.generation > entry.generation);
+                assert_eq!(taker.owner, entry.owner, "reuse is admitted at one base");
+            }
+            assert_eq!(
+                replay_generation(ledger, scratch).superseded_by,
+                Some(successor.token.generation),
+                "the tail scratch must be taken back by the legacy successor"
+            );
+
+            // While that successor was live, the recycled column resolved to it
+            // and not to the released predecessor it covers.
+            assert_eq!(
+                replayed.legacy.recycled_column_owner,
+                Some(Ok(successor.token.generation)),
+                "start round {start_round} must hand the recycled column to the live successor"
+            );
+            // And the ledger's own record of that column names the successor.
+            let column = TASK8_REPLAY_ARENA..TASK8_REPLAY_ARENA + TASK8_REPLAY_COLUMN;
+            let entry = replay_generation(ledger, successor);
+            assert_eq!(entry.arm, TASK8_LEGACY_ARM);
+            assert!(
+                entry.records.iter().any(
+                    |record| record.range == column && record.use_kind == Task8QueuedUse::Write
+                ),
+                "the successor must hold the write of the recycled column"
+            );
+            let stale = replay_generation(ledger, scratch);
+            assert!(
+                stale.records.iter().all(|record| record.enqueue
+                    < replayed
+                        .legacy
+                        .prior_launches
+                        .first()
+                        .copied()
+                        .unwrap_or(replayed.legacy.comparison_launch)),
+                "the released predecessor must record nothing from the second arm"
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_premature_final_names_the_stale_generation() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let passes = start_round / 3 - 1;
+            let error = replay_prior_lifecycle(start_round, Task8ReplayMutation::PrematureFinal)
+                .err()
+                .unwrap_or_else(|| {
+                    panic!("start round {start_round} must reject a premature Final")
+                });
+            // The first generation a later enqueue still reads: the pass-0
+            // publication where there are prior passes, and the tail scratch the
+            // comparison launch reduces through where there are none.
+            let reference = replay_prior_lifecycle(start_round, Task8ReplayMutation::None)
+                .expect("the accepted flow replays");
+            let (owner, bound) = if passes > 0 {
+                (
+                    &reference.window.priors[0],
+                    reference.window.prior_launches[0],
+                )
+            } else {
+                (
+                    reference.window.scratch.as_ref().expect("window scratch"),
+                    reference
+                        .window
+                        .prior_launches
+                        .first()
+                        .copied()
+                        .unwrap_or(0),
+                )
+            };
+            let expected = replay_culprit(&reference.ledger, owner, Some(bound), None);
+            assert_eq!(
+                error,
+                Task8LedgerError::UseAfterFinal(expected),
+                "start round {start_round} must name the prematurely retired generation"
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_omitted_release_is_rejected_as_a_missing_end() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let replayed = replay_prior_lifecycle(start_round, Task8ReplayMutation::OmittedRelease)
+                .expect("an omitted end is not a ledger error until validation");
+            let entry = replay_generation(&replayed.ledger, &replayed.legacy.publication);
+            assert_eq!(entry.final_enqueue, entry.last_enqueue());
+            assert!(entry.released.is_none());
+            let rejection = replay_structure_rejection(&replayed.ledger).unwrap_or_else(|| {
+                panic!("start round {start_round} must reject a generation that never released")
+            });
+            assert!(
+                rejection.contains("Task 8 publication never released ownership"),
+                "expected the missing end to be the objection, got {rejection:?}"
+            );
+
+            // Isolation: the same replay without the mutation is accepted.
+            let accepted = replay_prior_lifecycle(start_round, Task8ReplayMutation::None)
+                .expect("the accepted flow replays");
+            assert!(replay_structure_rejection(&accepted.ledger).is_none());
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_wrong_successor_does_not_inherit_ownership() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let error =
+                replay_prior_lifecycle(start_round, Task8ReplayMutation::TruncatedSuccessor)
+                    .err()
+                    .unwrap_or_else(|| {
+                        panic!("start round {start_round} must reject an uncovered column")
+                    });
+            // The bytes the truncated successor left out belong to no live
+            // generation: ownership follows the successor's own declaration and
+            // is never inherited from the retired generations under it.
+            assert_eq!(
+                error,
+                Task8LedgerError::UnownedSpan,
+                "start round {start_round} must not hand the column to a stale owner"
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_intersecting_reuse_requires_the_release() {
+        for start_round in TASK8_REPLAY_START_ROUNDS {
+            let error =
+                replay_prior_lifecycle(start_round, Task8ReplayMutation::UnreleasedIntersection)
+                    .err()
+                    .unwrap_or_else(|| {
+                        panic!("start round {start_round} must reject unreleased reuse")
+                    });
+            let reference = replay_prior_lifecycle(start_round, Task8ReplayMutation::None)
+                .expect("the accepted flow replays");
+            let passes = start_round / 3 - 1;
+            // The first-arm allocation that keeps its bytes is its second one:
+            // the pass-0 publication where prior passes exist, the arm's own
+            // publication otherwise. Either way it sits above the tail scratch,
+            // so the second arm's first publication intersects it from a
+            // different base and never reaches `admit_reuse`.
+            let owner = if passes > 0 {
+                &reference.window.priors[0]
+            } else {
+                &reference.window.publication
+            };
+            let bound = replay_generation(&reference.ledger, owner)
+                .final_enqueue
+                .expect("the accepted flow binds Final");
+            assert_ne!(owner.base, TASK8_REPLAY_ARENA);
+            let successor = TASK8_REPLAY_ARENA..TASK8_REPLAY_ARENA + 2 * TASK8_REPLAY_COLUMN;
+            assert!(
+                owner.base > successor.start && owner.base < successor.end,
+                "the control must intersect the successor from a different base"
+            );
+            let expected = replay_culprit(&reference.ledger, owner, Some(bound), None);
+            assert_eq!(
+                error,
+                Task8LedgerError::ReuseWithoutRelease(expected),
+                "start round {start_round} must name the generation that never released"
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_main_continuation_task8_open_preserves_live_nested_declarations() {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        let base = TASK8_REPLAY_ARENA;
+        let allocation = replay_open(&mut ledger, TASK8_WINDOW_ARM, "publication", base, 4096)
+            .expect("the allocation opens");
+        replay_enqueue(
+            &mut ledger,
+            TASK8_WINDOW_ARM,
+            "comparison-launch",
+            &[Task8Span::write("published_column", base, 4096)],
+        )
+        .expect("the allocation is written");
+
+        // A narrower view at the same base as a live allocation is a nested
+        // declaration, not reuse of that address.
+        let nested = replay_open(&mut ledger, TASK8_WINDOW_ARM, "reduced_tensor", base, 1024)
+            .expect("a live allocation admits a nested view at its own base");
+        assert_eq!(
+            ledger.owner_of(&(base..base + 1024)),
+            Ok(nested.token.slot),
+            "the narrowest live declaration owns the span"
+        );
+        assert_eq!(
+            ledger.owner_of(&(base + 2048..base + 3072)),
+            Ok(allocation.token.slot),
+            "bytes outside the view still belong to the allocation"
+        );
+
+        // The same range while the allocation is live is reuse of a live
+        // generation, and is rejected as such.
+        assert_eq!(
+            ledger.open(
+                TASK8_WINDOW_ARM,
+                "publication",
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+                base,
+                4096
+            ),
+            Err(Task8LedgerError::ReuseWithoutFinal(replay_culprit(
+                &ledger,
+                &allocation,
+                None,
+                None
+            )))
+        );
+    }
+
+    /// Runs the structural validator over a replayed ledger and reports the
+    /// assertion that rejected it, or `None` if it was accepted.
+    fn replay_structure_rejection(ledger: &Task8OwnerGenerationLedger) -> Option<String> {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            validate_owner_generation_structure(ledger, TASK8_WINDOW_ARM, TASK8_LEGACY_ARM, &[]);
+        }));
+        std::panic::set_hook(previous);
+        outcome.err().map(|payload| {
+            payload
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| payload.downcast_ref::<&str>().map(|text| text.to_string()))
+                .unwrap_or_default()
+        })
+    }
+
     /// How the exact census names one range, so a control can assert which
     /// range the validator objected to and not merely that it objected.
     fn census_entry(role: &str, use_kind: Task8QueuedUse, address: usize, bytes: usize) -> String {
@@ -5233,6 +6790,31 @@ mod cpu_tests {
         );
         record.address = address;
         record.range = address..address + bytes;
+        ledger
+    }
+
+    /// A capture whose first coefficient-bank-fill enqueue of `arm` reported a
+    /// plan naming a different bank range. The records are untouched, so the
+    /// census — records against the plan — is the only thing that disagrees.
+    fn mutate_fill_plan(
+        base: &Task8OwnerGenerationLedger,
+        arm: &'static str,
+        mutate: impl Fn(&mut usize, &mut usize),
+    ) -> Task8OwnerGenerationLedger {
+        let mut ledger = base.clone();
+        let enqueue = ledger
+            .enqueues
+            .iter_mut()
+            .find(|enqueue| enqueue.arm == arm && enqueue.site == "coefficient-bank-fill")
+            .expect("the arm must carry a coefficient-bank-fill enqueue");
+        match enqueue.plan.as_mut() {
+            Some(Task8EnqueuePlan::CoefficientFill {
+                bank_first,
+                bank_bytes,
+                ..
+            }) => mutate(bank_first, bank_bytes),
+            other => panic!("the fill enqueue carries an unexpected plan: {other:?}"),
+        }
         ledger
     }
 
@@ -5814,29 +7396,39 @@ mod cpu_tests {
             assert_eq!(cached[0].use_kind, Task8QueuedUse::Write);
             assert_eq!(cached[1].use_kind, Task8QueuedUse::Read);
 
-            // The coefficient fill records exactly the live recipe and monomial
-            // records and the challenge slots those monomials name.
-            let reads = task8_coeff_eval_reads(&task8_test_blob());
-            assert_eq!(reads.challenge_slots, vec![0, 3, 9]);
-            let fill = records_of(&ledger, "coefficient-bank-fill");
-            let tables: Vec<_> = fill
+            // The coefficient fill's chunks ride the launch parameters by
+            // value, so its only reads are the challenge slots the chunk's
+            // monomials name, and its writes cover the bank prefix exactly.
+            let chunks = SegCoeffEvalChunks::build(&task8_test_blob());
+            let expected_slots: Vec<usize> = chunks
+                .task8_challenge_slots()
                 .iter()
-                .filter(|record| record.role == "coefficient_tables")
-                .map(|record| {
-                    record.range.start - TASK8_TEST_TABLES..record.range.end - TASK8_TEST_TABLES
-                })
+                .flatten()
+                .copied()
                 .collect();
-            assert_eq!(tables, reads.table_ranges);
+            assert_eq!(expected_slots, vec![0, 3, 9]);
+            let fill = records_of(&ledger, "coefficient-bank-fill");
             assert!(
-                tables.iter().map(|range| range.len()).sum::<usize>() < BWD_SEG_BLOB_BYTES,
-                "the fill reads its live records, not the whole staged blob"
+                fill.iter()
+                    .all(|record| record.role != "coefficient_tables"),
+                "a by-value fill reads no device table"
             );
             let slots: Vec<_> = fill
                 .iter()
                 .filter(|record| record.role == "challenge_slab")
                 .map(|record| (record.address - TASK8_TEST_SLAB) / element)
                 .collect();
-            assert_eq!(slots, reads.challenge_slots);
+            assert_eq!(slots, expected_slots);
+            let written: usize = fill
+                .iter()
+                .filter(|record| record.role == "coefficient_bank")
+                .map(|record| record.range.len())
+                .sum();
+            assert_eq!(
+                written,
+                chunks.num_coefficients() as usize * element,
+                "the chunk writes must cover the bank prefix exactly"
+            );
         }
     }
 
@@ -5942,7 +7534,7 @@ mod cpu_tests {
             );
             let mut families = BTreeSet::new();
             let element = TASK8_TEST_ELEMENT;
-            let reads = task8_coeff_eval_reads(&task8_test_blob());
+            let chunks = SegCoeffEvalChunks::build(&task8_test_blob());
 
             // Every mutation below changes exactly one range a production
             // builder reported — dropping it, narrowing it, widening it or
@@ -6053,66 +7645,60 @@ mod cpu_tests {
             }
             families.insert("inexact-fold-weight-run");
 
-            // Either half of the coefficient fill's staged-table census: the
-            // live recipe records, or the monomials those recipes reference.
+            // The chunk's bank write: the plan pins the exact contiguous
+            // range, so a builder whose plan narrows it, moves it, or covers a
+            // different prefix disagrees with the recorded write.
             assert_eq!(
-                reads.table_ranges.len(),
-                2,
-                "the fill's census names the recipe section and the monomial section"
+                chunks.task8_chunk_ranges(),
+                vec![(0, chunks.num_coefficients())],
+                "the test blob must ride one chunk"
             );
-            let table_target = |index: usize| Task8OmittedRange {
-                arm: first_arm,
-                site: "coefficient-bank-fill",
-                occurrence: 0,
-                use_kind: Task8QueuedUse::Read,
-                address: TASK8_TEST_TABLES + reads.table_ranges[index].start,
-                bytes: reads.table_ranges[index].len(),
-            };
-            for index in 0..2 {
-                let target = table_target(index);
-                census_rejected_by(
-                    &omit_range(&base, target),
-                    first_arm,
-                    second_arm,
-                    "coefficient-bank-fill",
-                    &census_entry(
-                        "coefficient_tables",
-                        Task8QueuedUse::Read,
-                        target.address,
-                        target.bytes,
-                    ),
-                );
-            }
+            let bank_bytes = chunks.num_coefficients() as usize * element;
+            let narrowed = mutate_fill_plan(&base, first_arm, |bank_first, bytes| {
+                let _ = bank_first;
+                *bytes -= element;
+            });
+            census_rejected_by(
+                &narrowed,
+                first_arm,
+                second_arm,
+                "coefficient-bank-fill",
+                &census_entry(
+                    "coefficient_bank",
+                    Task8QueuedUse::Write,
+                    TASK8_TEST_BANK,
+                    bank_bytes - element,
+                ),
+            );
             families.insert("missing-coefficient-record");
 
-            // The recipe range widened by one record and the monomial range
-            // moved on by one record. The staged blob is written whole, so both
-            // stay inside initialized bytes.
-            for (index, address, bytes) in [
-                (
-                    0,
-                    table_target(0).address,
-                    table_target(0).bytes + std::mem::size_of::<SegCoeffRecipe>(),
+            let moved = mutate_fill_plan(&base, first_arm, |bank_first, bytes| {
+                let _ = bytes;
+                *bank_first += element;
+            });
+            census_rejected_by(
+                &moved,
+                first_arm,
+                second_arm,
+                "coefficient-bank-fill",
+                &census_entry(
+                    "coefficient_bank",
+                    Task8QueuedUse::Write,
+                    TASK8_TEST_BANK + element,
+                    bank_bytes,
                 ),
-                (
-                    1,
-                    table_target(1).address + std::mem::size_of::<SegCoeffMonomial>(),
-                    table_target(1).bytes,
-                ),
-            ] {
-                census_rejected_by(
-                    &retune_range(&base, table_target(index), address, bytes),
-                    first_arm,
-                    second_arm,
-                    "coefficient-bank-fill",
-                    &census_entry("coefficient_tables", Task8QueuedUse::Read, address, bytes),
-                );
-            }
+            );
             families.insert("inexact-coefficient-record");
 
             // Every challenge slot the fill's live monomials name, batching and
             // non-batching alike.
-            for slot in &reads.challenge_slots {
+            let fill_challenge_slots: Vec<usize> = chunks
+                .task8_challenge_slots()
+                .iter()
+                .flatten()
+                .copied()
+                .collect();
+            for slot in &fill_challenge_slots {
                 let target = Task8OmittedRange {
                     arm: first_arm,
                     site: "coefficient-bank-fill",
@@ -6353,14 +7939,14 @@ mod cpu_tests {
         };
         assert_eq!(
             ledger.owner_of(&(base..base + bytes)),
-            Err(Task8LedgerError::UseAfterFinal),
-            "a finalized sub-buffer must not fall back to the allocation it lives in"
+            Err(Task8LedgerError::UnownedSpan),
+            "a released sub-buffer must not fall back to the allocation it lived in"
         );
         let successor = ledger
             .open(
                 TASK8_LEGACY_ARM,
                 "reduced_tensor",
-                Task8OwnerOrigin::ArmOwned,
+                Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
                 base,
                 bytes,
             )
@@ -6468,6 +8054,7 @@ mod cpu_tests {
 struct Task8DifferentialAccumulator {
     layers: usize,
     coordinates: usize,
+    non_identity_coordinates: usize,
     folding_steps: BTreeSet<usize>,
     start_rounds: BTreeSet<usize>,
     masks: BTreeSet<u16>,
@@ -6634,13 +8221,12 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
         "{TASK8_DIAGNOSTIC}: fixture selected zero continuation passes"
     );
 
-    let point_host: Vec<_> = (0..=folding_steps)
-        .map(|coordinate| deterministic_e4(0x300 + coordinate as u32))
-        .collect();
+    let device_inputs = prepare_task8_device_inputs(folding_steps, context)?;
     let layers = programs.runtime_circuit().layers.len();
     let accumulator = Arc::new(Mutex::new(Task8DifferentialAccumulator {
         layers,
         coordinates: layers,
+        non_identity_coordinates: 0,
         folding_steps: BTreeSet::from([folding_steps]),
         start_rounds: BTreeSet::new(),
         masks: BTreeSet::new(),
@@ -6677,6 +8263,33 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
         ledger_owner_records: 0,
     }));
     let mut readback_scratch = alloc_static_pinned_box_uninit(TASK8_READBACK_CHUNK_BYTES)?;
+    // The host learns the seam's device-squeezed values only through this
+    // observation readback; every host oracle below consumes it.
+    let master_readback = schedule_read_device_chunked(
+        &device_inputs.master[..],
+        &mut readback_scratch,
+        callbacks,
+        context,
+        "input-readback",
+        |_, _| Vec::new(),
+    )?;
+    let master_table: Arc<Mutex<Option<Vec<E4>>>> = Arc::new(Mutex::new(None));
+    {
+        let sink = Arc::clone(&master_table);
+        let pending = Mutex::new(Some(master_readback));
+        callbacks.schedule(
+            move || {
+                let values = pending
+                    .lock()
+                    .expect("Task 8 master readback mutex poisoned")
+                    .take()
+                    .expect("Task 8 master readback consumed twice")
+                    .materialize();
+                *sink.lock().expect("Task 8 master table mutex poisoned") = Some(values);
+            },
+            context.get_exec_stream(),
+        )?;
+    }
     let storage_owner = storage as *const _ as usize;
     for layer in 0..layers {
         let window_program = programs.main_continuation_window_layer(layer);
@@ -6793,7 +8406,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             continuation_program,
             inits_and_teardowns_top_bits,
             folding_steps,
-            &point_host,
+            &device_inputs,
             callbacks,
             context,
         )?;
@@ -6841,7 +8454,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                 inits_and_teardowns_top_bits,
                 folding_steps,
                 start_round,
-                &point_host,
+                &device_inputs,
                 &mut readback_scratch,
                 callbacks,
                 context,
@@ -6854,7 +8467,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                 inits_and_teardowns_top_bits,
                 folding_steps,
                 start_round,
-                &point_host,
+                &device_inputs,
                 &mut readback_scratch,
                 callbacks,
                 context,
@@ -6863,7 +8476,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             )?;
             let callback_accumulator = Arc::clone(&accumulator);
             let callback_source_table = Arc::clone(&source_table);
-            let callback_point_host = point_host.clone();
+            let callback_master_table = Arc::clone(&master_table);
             let callback_folding_steps = folding_steps;
             let coordinate_payload = Mutex::new(Some((
                 window,
@@ -6881,6 +8494,19 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                             .expect("Task 8 coordinate payload mutex poisoned")
                             .take()
                             .expect("Task 8 coordinate payload consumed twice");
+                    let master = callback_master_table
+                        .lock()
+                        .expect("Task 8 master table mutex poisoned")
+                        .clone()
+                        .expect("Task 8 master observation did not materialize before use");
+                    let callback_point_host = master[Task8DeviceInputs::point_offset()..]
+                        [..callback_folding_steps + 1]
+                        .to_vec();
+                    let state = Task8DeviceInputs::point_offset() + callback_folding_steps + 1;
+                    assert!(
+                        !master[state + 1].is_zero(),
+                        "Task 8 device-squeezed Eq prefactor must be invertible"
+                    );
                     let ledger_shared_symbol_transitions = validate_owner_generation_ledger(
                         &owner_ledger,
                         TASK8_WINDOW_ARM,
@@ -6918,11 +8544,29 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                         1 + usize::from(start_round > 3),
                         "Task 8 legacy arm did not retire the bank its prior passes read"
                     );
-                    assert!(
-                        owner_ledger.resident_reads(TASK8_WINDOW_ARM) > 0
-                            && owner_ledger.resident_reads(TASK8_LEGACY_ARM) > 0,
-                        "Task 8 arms read back Eq bytes they never wrote without recording them"
-                    );
+                    // The Eq readbacks split into covered reads and resident
+                    // reads exactly along the union of the arm's real device
+                    // producer write spans: one build per pass plus the
+                    // comparison build (each writing both high sentinels, its
+                    // used group tables, and its low prefix; the finalize
+                    // folds rewrite subsets). The expected resident bytes are
+                    // derived from that model, so an omitted or shortened
+                    // producer span shifts the recorded split away from it —
+                    // including the zero at full-coverage coordinates.
+                    for (arm, legacy_arm) in
+                        [(TASK8_WINDOW_ARM, false), (TASK8_LEGACY_ARM, true)]
+                    {
+                        assert_eq!(
+                            owner_ledger.resident_read_bytes(arm),
+                            task8_expected_eq_resident_bytes(
+                                callback_folding_steps,
+                                start_round,
+                                legacy_arm,
+                            ),
+                            "Task 8 {arm} arm's Eq readbacks disagree with its \
+                             recorded device producer coverage"
+                        );
+                    }
                     let window_sites = owner_ledger.enqueue_sites(TASK8_WINDOW_ARM);
                     let legacy_sites = owner_ledger.enqueue_sites(TASK8_LEGACY_ARM);
                     let passes = start_round / 3;
@@ -6982,7 +8626,13 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                     assert!(
                         window_memory.logical_live_peak_bytes
                             <= legacy_memory.logical_live_peak_bytes,
-                        "Task 8 window arm increased corrected logical peak"
+                        "Task 8 window arm increased corrected logical peak: window_peak={} legacy_peak={} window_start={:?} legacy_start={:?} window_allocations={:?} legacy_allocations={:?}",
+                        window_memory.logical_live_peak_bytes,
+                        legacy_memory.logical_live_peak_bytes,
+                        window_memory.start,
+                        legacy_memory.start,
+                        window_allocations,
+                        legacy_allocations
                     );
                     let semantic_comparisons = compare_observations(&window, &legacy)
                         .unwrap_or_else(|error| {
@@ -7163,6 +8813,9 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                         .lock()
                         .expect("Task 8 differential accumulator mutex poisoned");
                     state.start_rounds.insert(start_round);
+                    if start_round == 3 {
+                        state.non_identity_coordinates += usize::from(displaced > 0);
+                    }
                     state.max_legacy_displacement = state.max_legacy_displacement.max(displaced);
                     state.semantic_comparisons += semantic_comparisons;
                     state.publication_elements_compared += window.publication.len();
@@ -7220,6 +8873,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             assert!(state.semantic_comparisons > 0);
             assert!(state.mutation_checks > 0);
             assert_eq!(state.coordinates, state.layers);
+            assert!(state.non_identity_coordinates <= state.coordinates);
             assert_eq!(state.source_table_identity_rows, state.layers);
             assert_eq!(state.start_rounds.len(), usize::from(plan));
             assert_eq!(state.topology_coordinates, state.layers * usize::from(plan));
@@ -7335,6 +8989,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             let report = MainContinuationDifferentialReport {
                 layers: state.layers,
                 coordinates: state.coordinates,
+                non_identity_coordinates: state.non_identity_coordinates,
                 folding_steps: std::mem::take(&mut state.folding_steps)
                     .into_iter()
                     .collect(),
