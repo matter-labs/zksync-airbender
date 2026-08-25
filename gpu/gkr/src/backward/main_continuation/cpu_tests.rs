@@ -548,3 +548,95 @@ fn cpu_main_continuation_reference_rejects_noncanonical_or_misshaped_inputs() {
         Err(ContinuationWindowReferenceError::EmptySuffixEq),
     );
 }
+
+#[test]
+fn cpu_task8_differential_is_standalone_from_prove() {
+    let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    fn rust_sources(root: &std::path::Path, output: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(root)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", root.display()))
+        {
+            let path = entry
+                .expect("source-directory entry must be readable")
+                .path();
+            if path.is_dir() {
+                rust_sources(&path, output);
+            } else if path.extension().is_some_and(|extension| extension == "rs") {
+                output.push(path);
+            }
+        }
+    }
+
+    let mut production_sources = Vec::new();
+    rust_sources(
+        &crate_root.join("../circuit_prover/src/proof"),
+        &mut production_sources,
+    );
+    rust_sources(&crate_root.join("src/backward"), &mut production_sources);
+    let standalone_only = [
+        crate_root.join("src/backward/main_continuation/cpu_tests.rs"),
+        crate_root.join("src/backward/main_continuation/differential_tests.rs"),
+        crate_root.join("src/backward/main_continuation/tests.rs"),
+    ];
+    production_sources.retain(|path| !standalone_only.contains(path));
+    production_sources.sort();
+    assert!(
+        production_sources.len() > 20,
+        "the prove/backward source census unexpectedly collapsed"
+    );
+    let forbidden = [
+        "task8_continuation_differential_test",
+        "task8_",
+        "Task8",
+        "Task 8",
+        "schedule_prepared_main_continuation_differential",
+        "requesting_main_continuation_differential",
+        "prove_main_continuation_differential",
+        "task8_enqueue_scope!",
+        "task8_register_symbol",
+        "task8_register_descriptor_sources",
+        "Task8MainContinuationLaunchCounterGuard::install",
+    ];
+
+    for path in production_sources {
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        for needle in forbidden {
+            assert!(
+                !source.contains(needle),
+                "Task 8 differential instrumentation `{needle}` remains in prove-transitive source {}",
+                path.display(),
+            );
+        }
+    }
+
+    let module_source =
+        std::fs::read_to_string(crate_root.join("src/backward/main_continuation/mod.rs"))
+            .expect("main-continuation module source must be readable");
+    assert!(
+        module_source.contains("#[cfg(test)]\nmod differential_tests;"),
+        "the Task 8 differential model must compile only as standalone test code",
+    );
+    assert!(
+        module_source.contains("#[cfg(all(test, not(no_cuda)))]\nmod tests;"),
+        "the standalone GPU component harness must remain test-only",
+    );
+    let standalone_source =
+        std::fs::read_to_string(crate_root.join("src/backward/main_continuation/tests.rs"))
+            .expect("standalone main-continuation test source must be readable");
+    for required in [
+        "fn main_continuation_standalone_differential_gpu_oracle()",
+        "bind_first_main_continuation_window(",
+        "bind_later_main_continuation_window(",
+        "launch_main_continuation_window(",
+        "launch_window_tensor_round_tail(",
+        "memory_copy_async(",
+        "Callbacks::new()",
+        ".schedule(",
+    ] {
+        assert!(
+            standalone_source.contains(required),
+            "standalone component harness lost `{required}`",
+        );
+    }
+}

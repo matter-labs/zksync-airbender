@@ -348,7 +348,7 @@ pub(super) fn stage1_subcaps_from_cap(
         .collect_vec()
 }
 
-fn canonical_serialized_bytes_for_test<T: serde::Serialize>(value: &T) -> Vec<u8> {
+pub(super) fn canonical_serialized_bytes_for_test<T: serde::Serialize>(value: &T) -> Vec<u8> {
     let mut bytes = Vec::new();
     serde_json::to_writer_pretty(&mut bytes, value).unwrap();
     bytes

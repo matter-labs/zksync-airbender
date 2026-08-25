@@ -35,12 +35,16 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan {
     pub(crate) folding_steps: usize,
     pub(crate) claim_terms: Vec<(usize, GKRAddress)>,
     pub(crate) folding_evaluation_sources: Vec<crate::upstream::GKRAddress>,
+    pub(crate) canonical_final_addresses: Vec<(usize, crate::upstream::GKRAddress)>,
     pub(crate) round_scratch: GpuGKRMainLayerRoundScratch,
     pub(crate) bwd_vm_r0: MainLayerR0Binding,
     pub(crate) bwd_vm_ext: super::super::vm::production_bind::BwdVmExtLaunch,
     pub(crate) main_execution_plan:
         super::super::main_layer::execution_plan::MainLayerExecutionPlan,
     pub(crate) main_continuation: super::super::main_continuation::MainContinuationWindowSequence,
+    pub(crate) main_tail_program: Option<super::super::main_tail::MainTailProgram>,
+    pub(crate) main_tail_launched: Option<super::super::main_tail::MainTailLaunched>,
+    pub(crate) main_chain_selected: bool,
     pub(crate) eq_sizes: GkrEqSizes,
 }
 

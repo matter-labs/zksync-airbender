@@ -5,7 +5,7 @@ pub(crate) mod execution_plan {
     pub(crate) use crate::main_layer_execution_plan::{
         derive_main_layer_execution_plan, main_continuation_post_tail_eq_boundary,
         try_derive_main_layer_execution_plan, MainEqBoundaryWitness, MainLayerExecutionPlan,
-        MainTailRoundBudget, LEGACY_MAIN_TAIL_MIN_ROUNDS,
+        MainTailRoundBudget, LEGACY_MAIN_TAIL_MIN_ROUNDS, WINDOW_WIDTH,
     };
 }
 pub(super) mod extras;

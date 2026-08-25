@@ -5,6 +5,7 @@ use super::dr_tail::resources::{DrTailPlanCursor, DrTailScheduleError};
 use super::kernels::*;
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
+use crate::MainLayerScheduleError;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::UnsafeMutAccessor;
@@ -171,7 +172,7 @@ impl GpuGKRDimensionReducingBackwardState {
         stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink>>,
         callbacks: &mut Callbacks<'_>,
         context: &ProverContext,
-    ) -> Result<GpuGKRBackwardScheduledExecution, DrTailScheduleError> {
+    ) -> Result<GpuGKRBackwardScheduledExecution, BackwardScheduleError> {
         let stream = context.get_exec_stream();
         // Defence in depth only. The load-bearing rejection is the typed
         // resource preflight that runs before any transfer is constructed;
@@ -322,7 +323,7 @@ impl GpuGKRDimensionReducingBackwardState {
             main_backward_state.prepare_next_layer_static(options, context)?
         {
             let layer_idx = prepared_layer.layer_idx;
-            let mut execution = prepared_layer.schedule_execute_main_layer(
+            let execution_result = prepared_layer.schedule_execute_main_layer(
                 shared_device_seed,
                 shared_device_claim_point,
                 shared_device_claims,
@@ -334,7 +335,8 @@ impl GpuGKRDimensionReducingBackwardState {
                 backward_layer_slot,
                 &mut main_backward_state.storage,
                 context,
-            )?;
+            );
+            let mut execution = execution_result?;
             if let Some(output) = stage_snapshots {
                 schedule_stage_snapshot(
                     layer_idx,

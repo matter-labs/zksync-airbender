@@ -44,6 +44,23 @@ const _: () = assert!(BWD_SEG_ADDR_SLOTS == MAX_SOURCE_WINDOWS);
 /// coefficient is the difference form's implicit 1), packed per delta.
 pub(crate) const BWD_SEG_FOLD_WEIGHT_SLOTS: usize = 11;
 
+/// First slot of each delta's packed run. A depth-DELTA fold reads only its own
+/// run, so a launch's fold-weight reads are the union of the runs its live
+/// source records name. Only the Task-8 read census needs the split.
+#[cfg(test)]
+pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D1: usize = 0;
+#[cfg(test)]
+pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D2: usize = 1;
+#[cfg(test)]
+pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D3: usize = 4;
+
+#[cfg(test)]
+const _: () = {
+    assert!(BWD_SEG_FOLD_WEIGHT_BASE_D2 == BWD_SEG_FOLD_WEIGHT_BASE_D1 + 1);
+    assert!(BWD_SEG_FOLD_WEIGHT_BASE_D3 == BWD_SEG_FOLD_WEIGHT_BASE_D2 + 3);
+    assert!(BWD_SEG_FOLD_WEIGHT_SLOTS == BWD_SEG_FOLD_WEIGHT_BASE_D3 + 7);
+};
+
 /// Source-table slots rounded to a 16-slot boundary.
 pub(crate) const BWD_SEG_MAX_SOURCES: usize = 1_072;
 
@@ -159,6 +176,18 @@ mod cuda_abi_tests {
             (
                 "BWD_SEG_FOLD_WEIGHT_SLOTS",
                 BWD_SEG_FOLD_WEIGHT_SLOTS as u64,
+            ),
+            (
+                "BWD_SEG_FOLD_WEIGHT_BASE_D1",
+                BWD_SEG_FOLD_WEIGHT_BASE_D1 as u64,
+            ),
+            (
+                "BWD_SEG_FOLD_WEIGHT_BASE_D2",
+                BWD_SEG_FOLD_WEIGHT_BASE_D2 as u64,
+            ),
+            (
+                "BWD_SEG_FOLD_WEIGHT_BASE_D3",
+                BWD_SEG_FOLD_WEIGHT_BASE_D3 as u64,
             ),
             ("BWD_SEG_OUTPUT_BANK", BWD_SEG_OUTPUT_BANK as u64),
             ("BWD_SEG_C_INIT_NONE", BWD_SEG_C_INIT_NONE as u64),

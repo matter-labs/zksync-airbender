@@ -1,8 +1,13 @@
 use crate::proof::{
     admit_dr_tail_before_transfers, construct_after_windowed_backward_preflight,
     preflight_windowed_backward, prove, resolve_backward_execution_strategy,
-    DrTailPreflightRequest, GpuGKRProofJob, GpuProveResult,
+    DrTailPreflightRequest, GpuGKRProofJob, GpuProveError, GpuProveResult,
 };
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+use crate::proof::{
+    schedule_main_acceptance_proof, MainAcceptanceOperation, MainAcceptanceScheduledJob,
+};
+#[cfg(not(feature = "task8_continuation_differential_test"))]
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -18,6 +23,11 @@ use gpu_gkr::{
     BackwardExecutionStrategy, DrTailProofPlan, GkrBackwardOptions, GkrPrograms, WindowTailArm,
 };
 use gpu_prover_context::ProverContext;
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+use gpu_prover_context::{
+    DeviceMemoryHighWaterObserver, PoolMemoryHighWaterReport, PoolMemoryHighWaterSnapshot,
+    PoolMemoryUsage,
+};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::commit_memory;
 use gpu_trace::trace::tracing_data::{
@@ -56,9 +66,58 @@ use riscv_transpiler::witness::{
     NonMemDestinationHolder, NonMemoryOpcodeTracingDataWithTimestamp, UnifiedDestinationHolder,
 };
 use std::alloc::Global;
+#[cfg(feature = "task8_continuation_differential_test")]
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 use worker::Worker;
+
+#[cfg(feature = "task8_continuation_differential_test")]
+#[derive(Clone, Copy, Debug)]
+struct Task8ConfiguredContext {
+    config: gpu_prover_context::ProverContextConfig,
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+thread_local! {
+    static TASK8_CONFIGURED_CONTEXT: RefCell<Option<Task8ConfiguredContext>> = const {
+        RefCell::new(None)
+    };
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+fn make_test_context_with_device_allocator_block_log_size(
+    max_device_allocation_blocks_count: usize,
+    host_pool_size_mb: usize,
+    device_allocator_block_log_size: u32,
+) -> ProverContext {
+    let mut config = gpu_prover_context::ProverContextConfig {
+        allocator_block_log_size: device_allocator_block_log_size,
+        max_device_allocation_blocks_count: Some(max_device_allocation_blocks_count),
+        ..Default::default()
+    };
+    let host_block_size = 1usize << config.host_allocator_block_log_size;
+    config.host_allocator_blocks_count = (host_pool_size_mb * 1024 * 1024) / host_block_size;
+    if config
+        .small_allocator_log_chunk_size
+        .is_some_and(|log_chunk_size| log_chunk_size >= device_allocator_block_log_size)
+    {
+        config.small_allocator_log_chunk_size = None;
+    }
+    TASK8_CONFIGURED_CONTEXT.with(|slot| {
+        slot.replace(Some(Task8ConfiguredContext { config }));
+    });
+    ProverContext::new(&config).unwrap()
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+fn take_task8_configured_context() -> Task8ConfiguredContext {
+    TASK8_CONFIGURED_CONTEXT.with(|slot| {
+        slot.borrow_mut()
+            .take()
+            .expect("Task 8 fixture constructor did not record its exact ProverContextConfig")
+    })
+}
 
 const BASIC_UNROLLED_CPU_PARITY_BINARY_PATH: &str =
     "riscv_transpiler/examples/keccak_f1600/app.bin";
@@ -73,6 +132,7 @@ const MEM_SUBWORD_ONLY_LAYOUT_PATH: &str = "cs/compiled_circuits/mem_subword_onl
 
 mod asserts;
 mod commit_memory;
+mod cpu_lde_labeling;
 mod fixtures;
 mod inits_and_teardowns;
 mod lsb_commit_pipeline;
@@ -232,6 +292,63 @@ pub(crate) struct BasicUnrolledFixture {
 }
 
 type BasicUnrolledTransfers<'a> = crate::proof::inputs::GpuGKRProofTransfer<'a, Global>;
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+struct Task8ExactMemoryJob<'context> {
+    job: MainAcceptanceScheduledJob<'static, 'context, Global>,
+    whole: DeviceMemoryHighWaterObserver<'context>,
+    stable_entry: PoolMemoryUsage,
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+struct Task8ExactMemoryOutput {
+    proof: GKRProof<BF, E4, DefaultTreeConstructor>,
+    proof_time_ms: f32,
+    backward: PoolMemoryHighWaterReport,
+    backward_peak_window: PoolMemoryHighWaterSnapshot,
+    whole: PoolMemoryHighWaterReport,
+    whole_peak_window: PoolMemoryHighWaterSnapshot,
+    operations: Vec<MainAcceptanceOperation>,
+}
+
+#[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+impl Task8ExactMemoryJob<'_> {
+    fn finish(self) -> CudaResult<Task8ExactMemoryOutput> {
+        let Task8ExactMemoryJob {
+            job,
+            whole,
+            stable_entry,
+        } = self;
+        let mut finished = job.finish()?;
+        let mut whole = whole;
+        let whole_peak_window = whole.seal();
+        let whole = whole.finish();
+        finished
+            .operations
+            .push(MainAcceptanceOperation::WholeObserverFinished);
+        assert_eq!(
+            whole.start, stable_entry,
+            "Task 8 whole observer did not start at the stable proof entry"
+        );
+        assert_eq!(
+            whole.return_to_entry, whole.start,
+            "Task 8 whole observer did not return to the stable proof entry"
+        );
+        assert_eq!(
+            finished.backward.return_to_entry, whole.return_to_entry,
+            "Task 8 backward observer return did not match the whole-proof return"
+        );
+        Ok(Task8ExactMemoryOutput {
+            proof: finished.proof,
+            proof_time_ms: finished.proof_time_ms,
+            backward: finished.backward,
+            backward_peak_window: finished.backward_peak_window,
+            whole,
+            whole_peak_window,
+            operations: finished.operations,
+        })
+    }
+}
 
 pub(crate) struct BasicUnrolledProofFixture {
     pub(crate) base: BasicUnrolledFixture,
@@ -623,6 +740,40 @@ impl BasicUnrolledFixture {
                 // D2H/callback; Task 7 adds no transfer or callback site.
                 operation_trace,
             },
+        })
+    }
+
+    #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
+    fn schedule_exact_memory(
+        &self,
+        options: GkrBackwardOptions,
+    ) -> Result<Task8ExactMemoryJob<'_>, GpuProveError> {
+        let stable_entry = self.context.get_device_memory_usage();
+        let whole = self.context.observe_device_memory_high_water();
+        assert_eq!(self.context.get_device_memory_usage(), stable_entry);
+        let strategy =
+            resolve_backward_execution_strategy(&self.gkr_programs, &self.prover_config, options);
+        let mut transfers = construct_after_windowed_backward_preflight(
+            &self.gkr_programs,
+            strategy,
+            options,
+            self.final_trace_size_log_2,
+            || self.create_transfers(),
+        )
+        .unwrap()?;
+        transfers.schedule(&self.context)?;
+        let job = schedule_main_acceptance_proof(
+            &self.gkr_programs,
+            &self.prover_config,
+            self.final_trace_size_log_2,
+            transfers,
+            options,
+            &self.context,
+        )?;
+        Ok(Task8ExactMemoryJob {
+            job,
+            whole,
+            stable_entry,
         })
     }
 }

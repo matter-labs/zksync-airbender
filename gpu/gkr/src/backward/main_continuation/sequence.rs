@@ -7,7 +7,7 @@ use gpu_prover_context::ProverContext;
 
 use super::binding::{
     bind_first_main_continuation_window, bind_later_main_continuation_window,
-    launch_main_continuation_window, MainContinuationWindowBindError,
+    bind_main_r0_publication, launch_main_continuation_window, MainContinuationWindowBindError,
     MainContinuationWindowRuntimeScratch,
 };
 use super::ContinuationPublishedLevel;
@@ -21,7 +21,7 @@ use crate::backward::main_layer::execution_plan::{
 use crate::backward::round_timing::First3Recorder;
 use crate::backward::vm::seg::launch_bwd_seg_build_fold_weights;
 use crate::backward::window::tail::{launch_window_tensor_round_tail, WindowTailState};
-use crate::{GkrPrograms, GpuGKRStorage, WindowTailArm};
+use crate::{GkrPrograms, GpuGKRStorage, MainLayerScheduleError, WindowTailArm};
 
 /// Owns the canonical publication that links consecutive continuation passes.
 /// The previous level is released only after its reader kernel has been
@@ -67,6 +67,48 @@ impl MainContinuationWindowSequence {
 
     pub(crate) fn final_eq_boundary(&self) -> Option<MainEqBoundaryWitness> {
         self.final_eq_boundary
+    }
+
+    /// Materialize the canonical depth-zero E4 arena consumed by a tail that
+    /// starts immediately after R0. This is a device producer launch, not a
+    /// fabricated publication and not a host/device copy.
+    pub(crate) fn schedule_r0_publication(
+        &mut self,
+        storage: &mut GpuGKRStorage<BF, E4>,
+        folding_steps: usize,
+        scratch: MainContinuationWindowRuntimeScratch,
+        r0_eq_sizes: crate::backward::GkrEqSizes,
+        mut recorder: Option<&mut First3Recorder>,
+        context: &ProverContext,
+    ) -> Result<(), MainLayerScheduleError> {
+        assert_eq!(
+            self.window_count(),
+            0,
+            "the R0 publication-only launch belongs only to a zero-window plan"
+        );
+        assert!(
+            self.published.is_none() && self.final_eq_boundary.is_none(),
+            "a continuation sequence may be scheduled only once"
+        );
+        let program = self.programs.main_continuation_window_layer(self.layer_idx);
+        let launch = bind_main_r0_publication(program, storage, folding_steps, scratch, context)
+            .map_err(|error| MainLayerScheduleError::MainContinuation {
+                layer: self.layer_idx,
+                pass_start: 0,
+                detail: error.to_string(),
+            })?;
+        let launched = launch_main_continuation_window(launch, context)?;
+        if let Some(recorder) = recorder.as_mut() {
+            recorder.mark("window_r0_publication", context.get_exec_stream())?;
+        }
+        self.published = Some(launched.into_published_level());
+        self.final_eq_boundary = Some(main_continuation_post_tail_eq_boundary(
+            0,
+            folding_steps,
+            r0_eq_sizes,
+        ));
+        storage.purge_up_to_layer(self.layer_idx);
+        Ok(())
     }
 
     fn unwrap_binding<T>(

@@ -173,7 +173,7 @@ template <u16 Shape> DEVICE_FORCEINLINE void bwd_main_cont_window_execute(const 
                                       MinBlocks) void Name(const __grid_constant__ airbender::gkr::backward::bwd_main_cont_window_desc desc) {                 \
     if (blockDim.x != airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_BLOCK_THREADS || gridDim.x != desc.row_tiles)                                             \
       return;                                                                                                                                                  \
-    if (desc.source_count > airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_MAX_SOURCES ||                                                                      \
+    if ((desc.publication_fold != 0 && desc.publication_fold != 3) || desc.source_count > airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_MAX_SOURCES ||        \
         desc.fold_list_offsets[airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_WARPS] != desc.source_count ||                                                   \
         desc.program_words > airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_PROGRAM_WORD_CAP || desc.program_words % BWD_SEG_WORDS_PER_TERM != 0)              \
       return;                                                                                                                                                  \

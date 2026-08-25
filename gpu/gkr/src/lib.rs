@@ -42,7 +42,7 @@ pub(crate) use gpu_gkr_model::transform;
 pub use programs::{
     DrWindowLayerProgram, DrWindowLoweringRejection, DrWindowProgramBundle, GkrPrograms,
     MainContinuationWindowLoweringRejection, MainContinuationWindowProgramBundle,
-    WindowLoweringRejection, WindowProgramBundle,
+    MainTailLoweringRejection, WindowLoweringRejection, WindowProgramBundle,
 };
 pub(crate) use storage_types::*;
 // Keep the public path `gpu_gkr::gkr_initial_inner_products` (apex proof).
@@ -66,9 +66,9 @@ pub struct GkrBackwardOptions {
     /// [`backward_execution_strategy`]. Clearing it is the escape hatch back to
     /// the per-round arm.
     pub windowed_r0: bool,
-    /// Request width-3 main-layer continuation windows after the landed R0
-    /// window. The library default stays off for diagnostic compatibility;
-    /// the production worker enables the accepted complete chain.
+    /// Select the production windowed continuation chain after the landed R0
+    /// window. Unsupported geometry is a typed preflight failure; production
+    /// never falls back to the legacy path.
     pub windowed_main_continuations: bool,
     /// Prepare the dimension-reducing windowed-R0 bundle and per-layer launch
     /// objects consumed by the complete DR-tail production chain.
@@ -85,7 +85,7 @@ impl Default for GkrBackwardOptions {
         Self {
             dr_tail_megakernel: false,
             windowed_r0: true,
-            windowed_main_continuations: false,
+            windowed_main_continuations: true,
             windowed_dr: false,
             windowed_dr_continuations: false,
             window_tail: WindowTailArm::Split,
@@ -279,6 +279,17 @@ pub fn validate_dr_window_continuation_capability(
     Ok(())
 }
 
+/// True only for the complete R0 -> continuation/publication -> main-tail
+/// production chain. Clearing either option is an explicit diagnostic request
+/// for the legacy per-round remainder.
+#[doc(hidden)]
+pub fn production_main_chain_selected(
+    options: GkrBackwardOptions,
+    strategy: BackwardExecutionStrategy,
+) -> bool {
+    strategy == BackwardExecutionStrategy::WindowedR0 && options.windowed_main_continuations
+}
+
 /// A checked main-layer continuation plan could not represent or satisfy the
 /// requested geometry. Exposed for the apex preflight without exposing the
 /// crate-internal plan representation.
@@ -292,6 +303,7 @@ pub enum MainTailRoundBudgetKind {
 #[doc(hidden)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MainLayerExecutionPlanError {
+    WindowedStrategyUnavailable,
     ZeroTailRoundBudget,
     FoldingStepsBeforeWindowedR0 {
         folding_steps: usize,
@@ -307,6 +319,65 @@ pub enum MainLayerExecutionPlanError {
         tail_start_round: usize,
     },
 }
+
+/// A main-layer schedule failed after preflight. The production tail handoff
+/// keeps publication, bind, and launch failures distinct so callers cannot
+/// mistake a rejected chain for a retryable CUDA status.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MainLayerScheduleError {
+    Cuda(era_cudart_sys::CudaError),
+    MainContinuation {
+        layer: usize,
+        pass_start: usize,
+        detail: String,
+    },
+    MissingPublication {
+        layer: usize,
+        tail_start: u8,
+    },
+    MainTailBind {
+        layer: usize,
+        detail: String,
+    },
+    MainTailLaunch {
+        layer: usize,
+        detail: String,
+    },
+}
+
+impl From<era_cudart_sys::CudaError> for MainLayerScheduleError {
+    fn from(error: era_cudart_sys::CudaError) -> Self {
+        Self::Cuda(error)
+    }
+}
+
+impl core::fmt::Display for MainLayerScheduleError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Cuda(error) => write!(formatter, "CUDA scheduling failed: {error:?}"),
+            Self::MainContinuation {
+                layer,
+                pass_start,
+                detail,
+            } => write!(
+                formatter,
+                "main continuation scheduling failed for layer {layer} at round {pass_start}: {detail}"
+            ),
+            Self::MissingPublication { layer, tail_start } => write!(
+                formatter,
+                "main-tail publication is missing for layer {layer} at round {tail_start}"
+            ),
+            Self::MainTailBind { layer, detail } => {
+                write!(formatter, "main-tail binding failed for layer {layer}: {detail}")
+            }
+            Self::MainTailLaunch { layer, detail } => {
+                write!(formatter, "main-tail launch failed for layer {layer}: {detail}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for MainLayerScheduleError {}
 
 /// Returns the continuation window count selected by the legacy-tail policy.
 /// This narrow query is the only plan detail the apex preflight consumes.
@@ -373,7 +444,7 @@ mod cpu_windowed_selector_tests {
     fn cpu_windowed_selector_defaults_to_the_windowed_arm() {
         let options = GkrBackwardOptions::default();
         assert!(options.windowed_r0);
-        assert!(!options.windowed_main_continuations);
+        assert!(options.windowed_main_continuations);
         assert!(!options.windowed_dr);
         assert!(!options.windowed_dr_continuations);
         assert_eq!(options.window_tail, WindowTailArm::Split);

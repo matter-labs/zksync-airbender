@@ -20,9 +20,16 @@ pub struct GKRBackwardStageSnapshot {
 }
 
 #[doc(hidden)]
-#[derive(Default)]
 pub struct GKRBackwardStageSnapshotSink {
     snapshots: Vec<GKRBackwardStageSnapshot>,
+}
+
+impl Default for GKRBackwardStageSnapshotSink {
+    fn default() -> Self {
+        Self {
+            snapshots: Vec::new(),
+        }
+    }
 }
 
 impl GKRBackwardStageSnapshotSink {

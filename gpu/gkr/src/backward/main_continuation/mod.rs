@@ -7,6 +7,8 @@ mod publication;
 mod reference;
 mod sequence;
 
+#[cfg(test)]
+mod differential_tests;
 #[allow(unused_imports)] // Task 6 consumes this staged production seam.
 pub(crate) use binding::{
     bind_first_main_continuation_window, bind_later_main_continuation_window,

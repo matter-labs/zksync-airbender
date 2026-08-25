@@ -192,6 +192,7 @@ fn initial_transcript_input_matches_cpu_order_with_and_without_setup_caps() {
         <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&expected_without_setup_seed)
     );
 }
+
 /// Caller gate for the top-layer claim eq: `prepare_backward_handoff` builds
 /// `eq_values_for_init` with exactly this call shape (offset 0,
 /// `challenge_count = final_trace_size_log_2`, `acc_size = 1 << count`). Its
@@ -282,10 +283,14 @@ fn cpu_windowed_backward_preflight_reports_an_r0_lowering_rejection() {
 
     let (programs, _) =
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let per_round_options = GkrBackwardOptions {
+        windowed_r0: false,
+        ..GkrBackwardOptions::default()
+    };
     assert!(preflight_windowed_backward(
         &programs,
         BackwardExecutionStrategy::PerRound,
-        GkrBackwardOptions::default(),
+        per_round_options,
         4,
     )
     .is_ok());
@@ -341,22 +346,36 @@ fn cpu_windowed_backward_preflight_resolves_only_required_lazy_bundles() {
 
     let (per_round, _) =
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
-    preflight_windowed_backward(&per_round, BackwardExecutionStrategy::PerRound, enabled, 4)
-        .unwrap();
+    let explicit_per_round = GkrBackwardOptions {
+        windowed_r0: false,
+        ..enabled
+    };
+    preflight_windowed_backward(
+        &per_round,
+        BackwardExecutionStrategy::PerRound,
+        explicit_per_round,
+        4,
+    )
+    .unwrap();
     assert!(!per_round.window_programs_ready());
     assert!(!per_round.main_continuation_window_programs_ready());
 
     let (disabled, _) =
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let diagnostic = GkrBackwardOptions {
+        windowed_main_continuations: false,
+        ..GkrBackwardOptions::default()
+    };
     preflight_windowed_backward(
         &disabled,
         BackwardExecutionStrategy::WindowedR0,
-        GkrBackwardOptions::default(),
+        diagnostic,
         4,
     )
     .unwrap();
     assert!(disabled.window_programs_ready());
     assert!(!disabled.main_continuation_window_programs_ready());
+    assert!(!disabled.main_tail_programs_ready());
 
     let (required, layer_count) =
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
@@ -369,6 +388,7 @@ fn cpu_windowed_backward_preflight_resolves_only_required_lazy_bundles() {
         .unwrap();
     assert!(required.window_programs_ready());
     assert!(required.main_continuation_window_programs_ready());
+    assert!(required.main_tail_programs_ready());
     assert_eq!(
         required
             .resolve_main_continuation_window_programs()
@@ -377,6 +397,35 @@ fn cpu_windowed_backward_preflight_resolves_only_required_lazy_bundles() {
             .len(),
         layer_count
     );
+}
+
+#[test]
+fn cpu_runtime_main_errors_remain_typed_at_the_public_prove_boundary() {
+    use super::GpuProveError;
+    use gpu_gkr::MainLayerScheduleError;
+
+    for schedule_error in [
+        MainLayerScheduleError::MissingPublication {
+            layer: 2,
+            tail_start: 3,
+        },
+        MainLayerScheduleError::MainTailBind {
+            layer: 2,
+            detail: "injected bind".to_owned(),
+        },
+        MainLayerScheduleError::MainTailLaunch {
+            layer: 2,
+            detail: "injected post-launch failure".to_owned(),
+        },
+    ] {
+        let public = GpuProveError::from(schedule_error.clone());
+        assert_eq!(
+            public,
+            GpuProveError::MainLayerSchedule {
+                error: schedule_error
+            }
+        );
+    }
 }
 
 #[test]
@@ -657,6 +706,81 @@ fn cpu_windowed_arm_selection_covers_every_corpus_family() {
          security levels, or the both-arm byte gate covers less than it claims; \
          selected: {selected:?}",
     );
+}
+
+#[test]
+fn cpu_checked_main_strategy_is_fail_closed_and_keeps_diagnostic_per_round() {
+    use super::{resolve_backward_execution_strategy_checked, GpuProveError};
+    use crate::config::prover_config;
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let config = prover_config(
+        programs.circuit_type(),
+        crate::upstream::SecurityLevel::Sec80,
+    )
+    .unwrap();
+    assert_eq!(
+        resolve_backward_execution_strategy_checked(
+            &programs,
+            &config,
+            GkrBackwardOptions::default(),
+        )
+        .unwrap(),
+        BackwardExecutionStrategy::WindowedR0,
+    );
+
+    let mut unsupported = config.clone();
+    unsupported.same_size_sumcheck_schedule.clear();
+    let error = resolve_backward_execution_strategy_checked(
+        &programs,
+        &unsupported,
+        GkrBackwardOptions::default(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::MainLayerExecutionPlan {
+            error: gpu_gkr::MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+        }
+    );
+
+    let diagnostic = GkrBackwardOptions {
+        windowed_r0: false,
+        ..GkrBackwardOptions::default()
+    };
+    assert_eq!(
+        resolve_backward_execution_strategy_checked(&programs, &unsupported, diagnostic).unwrap(),
+        BackwardExecutionStrategy::PerRound,
+    );
+}
+
+#[test]
+fn cpu_partial_main_option_rejects_before_transfer_construction() {
+    use super::{construct_after_windowed_backward_preflight, GpuProveError};
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let mut transfer_construction_calls = 0usize;
+    let error = construct_after_windowed_backward_preflight(
+        &programs,
+        BackwardExecutionStrategy::PerRound,
+        GkrBackwardOptions::default(),
+        4,
+        || {
+            transfer_construction_calls += 1;
+        },
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::MainLayerExecutionPlan {
+            error: gpu_gkr::MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+        }
+    );
+    assert_eq!(transfer_construction_calls, 0);
 }
 
 #[test]

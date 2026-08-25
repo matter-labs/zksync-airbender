@@ -71,20 +71,31 @@ cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_seg_build_fold_weights_kernel(fold_weights: *mut E4, round: u32)
 );
 
+/// The fold-weight bank one launch fills: the symbol address the launch passed
+/// and the bytes its slots occupy. Returned so a caller that must account for a
+/// launch's pointer arguments reuses the address that launch used instead of
+/// resolving the symbol again.
+pub(crate) type BwdSegFoldWeightSpan = (usize, usize);
+
 pub(crate) fn launch_bwd_seg_build_fold_weights(
     round: u32,
     context: &ProverContext,
-) -> CudaResult<()> {
+) -> CudaResult<BwdSegFoldWeightSpan> {
     assert!(round >= 1, "fold weights are continuation-only");
     let config = CudaLaunchConfig::builder()
         .grid_dim(1)
         .block_dim(WARP_SIZE)
         .stream(context.get_exec_stream())
         .build();
+    let fold_weights = bwd_seg_fold_weights_device_ptr();
     GkrBwdSegBuildFoldWeightsFunction(ab_gkr_bwd_seg_build_fold_weights_kernel).launch(
         &config,
-        &GkrBwdSegBuildFoldWeightsArguments::new(bwd_seg_fold_weights_device_ptr(), round),
-    )
+        &GkrBwdSegBuildFoldWeightsArguments::new(fold_weights, round),
+    )?;
+    Ok((
+        fold_weights as usize,
+        BWD_SEG_FOLD_WEIGHT_SLOTS * size_of::<E4>(),
+    ))
 }
 
 const fn plane_smem_bytes(k: u32) -> usize {
@@ -127,9 +138,10 @@ pub(crate) fn launch_bwd_seg_continuation(
     round: u32,
     setup: &BwdSegSetup,
     context: &ProverContext,
-) -> CudaResult<()> {
-    launch_bwd_seg_build_fold_weights(round, context)?;
-    launch(setup, ab_gkr_bwd_seg_cont_const_epi_plane_kernel, context)
+) -> CudaResult<BwdSegFoldWeightSpan> {
+    let fold_weights = launch_bwd_seg_build_fold_weights(round, context)?;
+    launch(setup, ab_gkr_bwd_seg_cont_const_epi_plane_kernel, context)?;
+    Ok(fold_weights)
 }
 
 fn blocks_per_sm(symbol: GkrBwdSegSignature, k: u32) -> CudaResult<i32> {

@@ -42,6 +42,9 @@ fft = { workspace = true }
 rand = "0.9"
 itertools = "0.14"
 
+[features]
+task8_continuation_differential_test = []
+
 [[bin]]
 name = "generate_windowed_continuation_golden"
 path = "src/bin/generate_windowed_continuation_golden.rs"

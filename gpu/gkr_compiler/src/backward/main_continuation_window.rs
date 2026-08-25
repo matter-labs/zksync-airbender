@@ -148,6 +148,32 @@ pub struct MainContinuationWindowProgram {
     pub coefficients: CoeffLayer,
 }
 
+/// Canonical SourceId-ordered runtime identity of one continuation source: a
+/// storage read, or the procedural virtual-setup column at that SourceId.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CanonicalSourceIdentity {
+    Read(gkr_eval_ir::ReadPlace),
+    VirtualSetup { kind: gkr_eval_ir::VirtualSetupKind },
+}
+
+impl MainContinuationWindowProgram {
+    /// Canonical SourceId-ordered identities for runtime final repointing.
+    /// Every source, virtual included, owns its dense publication column.
+    pub fn canonical_source_identities(&self) -> Vec<CanonicalSourceIdentity> {
+        self.sources
+            .iter()
+            .map(|source| match &source.origin.origin {
+                super::common::source::OriginLeaf::Read(place) => {
+                    CanonicalSourceIdentity::Read(place.clone())
+                }
+                super::common::source::OriginLeaf::VirtualSetup { kind } => {
+                    CanonicalSourceIdentity::VirtualSetup { kind: *kind }
+                }
+            })
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MainContinuationWindowLoweringError {
     Codec(LeanCodecError),

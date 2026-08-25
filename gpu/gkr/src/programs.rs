@@ -20,7 +20,11 @@ use gpu_trace::witness::circuit_type::{
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use crate::backward::{derive_dimension_reducing_inputs, window_dr};
+use crate::backward::{
+    derive_dimension_reducing_inputs,
+    main_tail::{lower_main_tail_program, MainTailProgram},
+    window_dr,
+};
 use crate::storage_layout::GpuGKRStorageLayout;
 use crate::transform::normalize_compiled_circuit_for_gpu;
 use crate::upstream::{
@@ -187,6 +191,12 @@ pub struct WindowProgramBundle {
 #[derive(Debug)]
 pub struct MainContinuationWindowProgramBundle {
     pub layers: Vec<MainContinuationWindowProgram>,
+}
+
+/// The dealt main-tail program for every main layer.
+#[derive(Debug)]
+pub struct MainTailProgramBundle {
+    pub layers: Vec<MainTailProgram>,
 }
 
 /// A window lowering the circuit's shape does not support. Carries the origin
@@ -403,6 +413,28 @@ impl core::fmt::Display for MainContinuationWindowLoweringRejection {
 
 impl std::error::Error for MainContinuationWindowLoweringRejection {}
 
+/// A main-tail lowering the circuit's shape does not support. Rejections are
+/// cached alongside successful bundles, so an enabled arm can never fall back
+/// after a later preflight.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MainTailLoweringRejection {
+    pub circuit: String,
+    pub layer: usize,
+    pub resource: String,
+}
+
+impl core::fmt::Display for MainTailLoweringRejection {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            formatter,
+            "main-tail lowering rejected for {}/{}: {}",
+            self.circuit, self.layer, self.resource
+        )
+    }
+}
+
+impl std::error::Error for MainTailLoweringRejection {}
+
 /// Symbolic programs compiled once with the circuit's other precomputations.
 ///
 /// R0 and continuation remain separate compiler products and separate runtime
@@ -428,6 +460,10 @@ pub struct GkrPrograms {
     main_continuation_window: OnceLock<
         Result<MainContinuationWindowProgramBundle, MainContinuationWindowLoweringRejection>,
     >,
+    /// Lowered independently from the continuation-window program on the first
+    /// proof that requests the main-tail arm. Success and typed failure are
+    /// retained equally.
+    main_tail: OnceLock<Result<MainTailProgramBundle, MainTailLoweringRejection>>,
 }
 
 impl GkrPrograms {
@@ -473,6 +509,7 @@ impl GkrPrograms {
             window: OnceLock::new(),
             dr_window: Mutex::new(BTreeMap::new()),
             main_continuation_window: OnceLock::new(),
+            main_tail: OnceLock::new(),
         })
     }
 
@@ -642,6 +679,39 @@ impl GkrPrograms {
         matches!(self.main_continuation_window.get(), Some(Ok(_)))
     }
 
+    /// Lower every layer's static tail program once. A lowering failure remains
+    /// in the once-cell, making repeated preflights stable and preventing any
+    /// fallback into the scheduling path.
+    pub fn resolve_main_tail_programs(
+        &self,
+    ) -> Result<&MainTailProgramBundle, &MainTailLoweringRejection> {
+        self.main_tail
+            .get_or_init(|| {
+                let circuit = forward_artifact(self.circuit_type).1;
+                let mut layers = Vec::with_capacity(self.continuations.layers.len());
+                for layer in &self.continuations.layers {
+                    match lower_main_tail_program(layer) {
+                        Ok(program) => layers.push(program),
+                        Err(error) => {
+                            return Err(MainTailLoweringRejection {
+                                circuit: circuit.to_owned(),
+                                layer: layer.layer,
+                                resource: error.to_string(),
+                            });
+                        }
+                    }
+                }
+                Ok(MainTailProgramBundle { layers })
+            })
+            .as_ref()
+    }
+
+    /// Whether main-tail scheduling may begin: the bundle has been resolved and
+    /// every layer was accepted.
+    pub fn main_tail_programs_ready(&self) -> bool {
+        matches!(self.main_tail.get(), Some(Ok(_)))
+    }
+
     /// Seat a rejection in the once-cell so the preflight boundary can be tested
     /// on circuits the real lowering accepts. Returns whether it took effect.
     #[doc(hidden)]
@@ -656,6 +726,12 @@ impl GkrPrograms {
         rejection: MainContinuationWindowLoweringRejection,
     ) -> bool {
         self.main_continuation_window.set(Err(rejection)).is_ok()
+    }
+
+    /// Seat a main-tail rejection for pre-transfer preflight tests.
+    #[doc(hidden)]
+    pub fn reject_main_tail_programs_for_test(&self, rejection: MainTailLoweringRejection) -> bool {
+        self.main_tail.set(Err(rejection)).is_ok()
     }
 
     pub(crate) fn window_layer(&self, layer: usize) -> &WindowProgram {

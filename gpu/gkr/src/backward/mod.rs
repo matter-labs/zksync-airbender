@@ -14,6 +14,7 @@ mod dr_tail;
 pub mod kernels;
 pub mod main_continuation;
 mod main_layer;
+pub mod main_tail;
 pub mod round_timing;
 mod scheduled_execution;
 mod stage_snapshots;

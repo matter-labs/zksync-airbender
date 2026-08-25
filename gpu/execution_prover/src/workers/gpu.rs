@@ -8,8 +8,8 @@ use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::{
-    admit_dr_tail_before_transfers, resolve_backward_execution_strategy, DrTailPreflightRequest,
-    ExactMemoryConfig, GpuGKRProofJob, GpuProveError, GpuProveResult,
+    admit_dr_tail_before_transfers, resolve_backward_execution_strategy_checked,
+    DrTailPreflightRequest, ExactMemoryConfig, GpuGKRProofJob, GpuProveError, GpuProveResult,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -513,21 +513,24 @@ fn schedule_phase_one<'a, 'context>(
     // Every preflight the request needs runs at this boundary, before the
     // first transfer is constructed, so a rejection leaves no H2D allocation,
     // no enqueue, and no execution-arm selection behind.
-    let preflight_request =
-        proof_prover_config
-            .as_ref()
-            .map(|prover_config| DrTailPreflightRequest {
+    let preflight_request = proof_prover_config
+        .as_ref()
+        .map(|prover_config| {
+            resolve_backward_execution_strategy_checked(
+                &state.precomputations.gkr_programs,
+                prover_config,
+                backward_options,
+            )
+            .map(|strategy| DrTailPreflightRequest {
                 gkr_programs: &state.precomputations.gkr_programs,
-                strategy: resolve_backward_execution_strategy(
-                    &state.precomputations.gkr_programs,
-                    prover_config,
-                    backward_options,
-                ),
+                strategy,
                 options: backward_options,
                 final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
                 device_id,
                 entry,
-            });
+            })
+        })
+        .transpose()?;
 
     let mut exact_memory = exact_memory;
     let inputs = admit_dr_tail_before_transfers(

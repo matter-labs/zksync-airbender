@@ -22,9 +22,10 @@ use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::{
     backward_execution_strategy, main_continuation_window_count, select_dr_window_complete_chain,
-    BackwardExecutionStrategy, DrWindowChainStages, DrWindowContinuationPreflightError,
-    DrWindowLoweringRejection, GkrBackwardOptions, GkrPrograms,
-    MainContinuationWindowLoweringRejection, MainLayerExecutionPlanError, WindowLoweringRejection,
+    BackwardExecutionStrategy, BackwardScheduleError, DrWindowChainStages,
+    DrWindowContinuationPreflightError, DrWindowLoweringRejection, GkrBackwardOptions, GkrPrograms,
+    MainContinuationWindowLoweringRejection, MainLayerExecutionPlanError, MainLayerScheduleError,
+    MainTailLoweringRejection, WindowLoweringRejection,
 };
 use gpu_prover_context::ProverContext;
 use gpu_prover_context::{
@@ -60,8 +61,16 @@ pub enum GpuProveError {
         layer: usize,
         resource: String,
     },
+    MainTailLowering {
+        circuit: String,
+        layer: usize,
+        resource: String,
+    },
     MainLayerExecutionPlan {
         error: MainLayerExecutionPlanError,
+    },
+    MainLayerSchedule {
+        error: MainLayerScheduleError,
     },
     DrWindowContinuationPreflight {
         error: DrWindowContinuationPreflightError,
@@ -849,8 +858,19 @@ impl std::fmt::Display for GpuProveError {
                 formatter,
                 "dimension-reducing windowed R0 lowering rejected for {circuit}/{layer}: {resource}"
             ),
+            Self::MainTailLowering {
+                circuit,
+                layer,
+                resource,
+            } => write!(
+                formatter,
+                "main-tail lowering rejected for {circuit}/{layer}: {resource}"
+            ),
             Self::MainLayerExecutionPlan { error } => {
                 write!(formatter, "main-layer execution plan rejected: {error:?}")
+            }
+            Self::MainLayerSchedule { error } => {
+                write!(formatter, "main-layer scheduling rejected: {error}")
             }
             Self::DrWindowContinuationPreflight { error } => {
                 write!(formatter, "DR continuation preflight rejected: {error:?}")
@@ -869,6 +889,21 @@ impl std::fmt::Display for GpuProveError {
 }
 
 impl std::error::Error for GpuProveError {}
+
+impl From<MainLayerScheduleError> for GpuProveError {
+    fn from(error: MainLayerScheduleError) -> Self {
+        Self::MainLayerSchedule { error }
+    }
+}
+
+impl From<BackwardScheduleError> for GpuProveError {
+    fn from(error: BackwardScheduleError) -> Self {
+        match error {
+            BackwardScheduleError::DrTail(error) => Self::DrTailSchedule { error },
+            BackwardScheduleError::MainLayer(error) => Self::MainLayerSchedule { error },
+        }
+    }
+}
 
 impl From<&WindowLoweringRejection> for GpuProveError {
     fn from(rejection: &WindowLoweringRejection) -> Self {
@@ -900,6 +935,16 @@ impl From<&DrWindowLoweringRejection> for GpuProveError {
     }
 }
 
+impl From<&MainTailLoweringRejection> for GpuProveError {
+    fn from(rejection: &MainTailLoweringRejection) -> Self {
+        Self::MainTailLowering {
+            circuit: rejection.circuit.clone(),
+            layer: rejection.layer,
+            resource: rejection.resource.clone(),
+        }
+    }
+}
+
 impl From<DrWindowContinuationPreflightError> for GpuProveError {
     fn from(error: DrWindowContinuationPreflightError) -> Self {
         Self::DrWindowContinuationPreflight { error }
@@ -918,6 +963,27 @@ pub fn resolve_backward_execution_strategy(
         options,
         validated_schedule_class(gkr_programs, prover_config),
     )
+}
+
+/// Production-only resolver. An enabled production request is never
+/// converted into the legacy per-round strategy: a schedule that cannot run
+/// the complete windowed MAIN chain is rejected before transfer construction.
+pub fn resolve_backward_execution_strategy_checked(
+    gkr_programs: &GkrPrograms,
+    prover_config: &ProverConfig,
+    options: GkrBackwardOptions,
+) -> Result<BackwardExecutionStrategy, GpuProveError> {
+    if !options.windowed_r0 {
+        return Ok(BackwardExecutionStrategy::PerRound);
+    }
+    if validated_schedule_class(gkr_programs, prover_config)
+        != Some(SumcheckScheduleClass::Windowed)
+    {
+        return Err(GpuProveError::MainLayerExecutionPlan {
+            error: MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+        });
+    }
+    Ok(BackwardExecutionStrategy::WindowedR0)
 }
 
 fn validated_schedule_class(
@@ -944,6 +1010,11 @@ pub fn preflight_windowed_backward(
     options: GkrBackwardOptions,
     final_trace_size_log_2: u32,
 ) -> Result<(), GpuProveError> {
+    if options.windowed_r0 && matches!(strategy, BackwardExecutionStrategy::PerRound) {
+        return Err(GpuProveError::MainLayerExecutionPlan {
+            error: MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+        });
+    }
     match strategy {
         BackwardExecutionStrategy::PerRound => {}
         BackwardExecutionStrategy::WindowedR0 => gkr_programs
@@ -951,12 +1022,16 @@ pub fn preflight_windowed_backward(
             .map(|_| ())
             .map_err(GpuProveError::from)?,
     }
-    let window_count =
+    let _window_count =
         main_continuation_window_count(options, strategy, main_folding_steps(gkr_programs))
             .map_err(|error| GpuProveError::MainLayerExecutionPlan { error })?;
-    if window_count > 0 {
+    if gpu_gkr::production_main_chain_selected(options, strategy) {
         gkr_programs
             .resolve_main_continuation_window_programs()
+            .map(|_| ())
+            .map_err(GpuProveError::from)?;
+        gkr_programs
+            .resolve_main_tail_programs()
             .map(|_| ())
             .map_err(GpuProveError::from)?;
     }
@@ -1240,29 +1315,33 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
 ) -> GpuProveResult<GpuGKRProofJob<'a, 'context, A>> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let backward_strategy =
-        resolve_backward_execution_strategy(gkr_programs, prover_config, backward_options);
+        resolve_backward_execution_strategy_checked(gkr_programs, prover_config, backward_options)?;
     match backward_strategy {
-        BackwardExecutionStrategy::PerRound if backward_options.windowed_r0 => log::info!(
-            "windowed R0 was requested but the same-size sumcheck schedule validates as {:?}; \
-             proving with the per-round path",
-            validated_schedule_class(gkr_programs, prover_config)
-        ),
+        BackwardExecutionStrategy::PerRound if backward_options.windowed_r0 => {
+            return Err(GpuProveError::MainLayerExecutionPlan {
+                error: MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+            });
+        }
         BackwardExecutionStrategy::WindowedR0 => assert!(
             gkr_programs.window_programs_ready(),
             "prove() with the windowed arm requires preflight_windowed_backward first"
         ),
         BackwardExecutionStrategy::PerRound => {}
     }
-    let continuation_window_count = main_continuation_window_count(
+    let _continuation_window_count = main_continuation_window_count(
         backward_options,
         backward_strategy,
         main_folding_steps(gkr_programs),
     )
     .expect("prove() requires a main-layer execution plan accepted by preflight");
-    if continuation_window_count > 0 {
+    if gpu_gkr::production_main_chain_selected(backward_options, backward_strategy) {
         assert!(
             gkr_programs.main_continuation_window_programs_ready(),
-            "continuation scheduling requires preflight_windowed_backward first"
+            "the production main chain requires continuation preflight"
+        );
+        assert!(
+            gkr_programs.main_tail_programs_ready(),
+            "the production main chain requires main-tail preflight"
         );
     }
     if backward_options.windowed_dr {
@@ -1563,3 +1642,27 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, feature = "task8_continuation_differential_test"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub(crate) enum MainAcceptanceOperation {
+    InitialInputsTransferEnsured,
+    Stage1AndForwardPrepared,
+    ForwardScheduled,
+    BackwardHandoffPrepared,
+    BackwardObserverStarted,
+    BackwardScheduled,
+    BackwardObserverSealed,
+    WhirScheduled,
+    FinalSlabD2hAndProofAssemblyScheduled,
+    ProofOwnedDeviceBuffersReleased,
+    ProofJobReturned,
+    ProofJobFinished,
+    BackwardObserverFinished,
+    WholeObserverFinished,
+}
+
+#[cfg(all(test, feature = "task8_continuation_differential_test", not(no_cuda)))]
+mod main_acceptance;
+#[cfg(all(test, feature = "task8_continuation_differential_test", not(no_cuda)))]
+pub(crate) use main_acceptance::{schedule_main_acceptance_proof, MainAcceptanceScheduledJob};
