@@ -180,6 +180,7 @@ struct Task8OwnerGeneration {
     covered: std::ops::Range<usize>,
     generation: u64,
     origin: Task8OwnerOrigin,
+    allowed_end: Task8OwnershipEnd,
     superseded_by: Option<u64>,
     released: Option<Task8Release>,
     initialized: Vec<std::ops::Range<usize>>,
@@ -475,6 +476,21 @@ impl Task8OwnerGenerationLedger {
             Task8OwnerOrigin::ArmOwned | Task8OwnerOrigin::FactoredEq => Vec::new(),
             Task8OwnerOrigin::Borrowed(_) => vec![covered.clone()],
         };
+        let allowed_end = match origin {
+            Task8OwnerOrigin::Borrowed(_) => Task8OwnershipEnd::BorrowClosed,
+            Task8OwnerOrigin::FactoredEq if label.contains("symbol") => {
+                Task8OwnershipEnd::SymbolReleased
+            }
+            Task8OwnerOrigin::FactoredEq => Task8OwnershipEnd::Freed,
+            Task8OwnerOrigin::ArmOwned
+                if label.contains("symbol")
+                    || label == "coefficient_bank"
+                    || label == "fold_weights" =>
+            {
+                Task8OwnershipEnd::SymbolReleased
+            }
+            Task8OwnerOrigin::ArmOwned => Task8OwnershipEnd::Freed,
+        };
         self.generations.push(Task8OwnerGeneration {
             arm,
             label,
@@ -482,6 +498,7 @@ impl Task8OwnerGenerationLedger {
             covered,
             generation: self.next_generation,
             origin,
+            allowed_end,
             superseded_by: None,
             released: None,
             initialized,
@@ -618,7 +635,7 @@ impl Task8OwnerGenerationLedger {
         if entry.released.is_some() {
             return Err(Task8LedgerError::AlreadyReleased(culprit));
         }
-        if !end.admits(entry.origin) {
+        if end != entry.allowed_end {
             return Err(Task8LedgerError::ReleaseKindMismatch(culprit));
         }
         entry.released = Some(Task8Release { at_enqueue, end });
@@ -5597,6 +5614,29 @@ mod cpu_tests {
                 .unwrap_or_else(|| panic!("{} never released ownership", entry.label));
             assert!(released.end.admits(entry.origin));
             assert_eq!(entry.final_enqueue, entry.last_enqueue());
+        }
+        // Every ownership class rejects the opposite end kind while retaining
+        // the exact six-field culprit.
+        for (slot, entry) in green.generations.iter().enumerate() {
+            let mut wrong = green.clone();
+            wrong.generations[slot].released = None;
+            let wrong_end = match entry.allowed_end {
+                Task8OwnershipEnd::Freed => Task8OwnershipEnd::SymbolReleased,
+                Task8OwnershipEnd::SymbolReleased => Task8OwnershipEnd::Freed,
+                Task8OwnershipEnd::BorrowClosed => Task8OwnershipEnd::Freed,
+            };
+            let token = Task8GenerationToken { slot, owner: entry.owner, generation: entry.generation };
+            match wrong.release(token, wrong_end) {
+                Err(Task8LedgerError::ReleaseKindMismatch(culprit)) => {
+                    assert_eq!(culprit.arm, entry.arm);
+                    assert_eq!(culprit.label, entry.label);
+                    assert_eq!(culprit.generation, entry.generation);
+                    assert_eq!(culprit.covered, (entry.covered.start, entry.covered.end));
+                    assert_eq!(culprit.final_enqueue, entry.final_enqueue);
+                    assert!(culprit.released.is_none());
+                }
+                other => panic!("wrong end must reject with culprit, got {other:?}"),
+            }
         }
 
         // Retirement is exactly once: the ledger refuses a second `Final` and a
