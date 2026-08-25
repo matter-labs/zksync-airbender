@@ -2428,9 +2428,6 @@ fn run_window_arm(
             2,
             &bank_report,
         ));
-        // Register production bank symbols before the first bank enqueue; the
-        // probe boundary is host-side and does not alter production ordering.
-        open_reported_symbols(ledger, &mut owners);
         let bank_spans = bank.schedule(
             external.as_ptr(),
             lookup_mul.as_ptr(),
@@ -2441,6 +2438,8 @@ fn run_window_arm(
         assert_eq!(bank_spans.slab.0, bank.challenge_slab().as_ptr() as usize);
         let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
         carried.coefficient_bank = Some(bank_spans.bank);
+        // Bank-fill reporting precedes registration; absorb follows both.
+        open_reported_symbols(ledger, &mut owners);
         ledger.absorb(TASK8_WINDOW_ARM, &probe);
         launch_build_eq_high_and_low_groups_from_point(
             claim_point.as_ptr(),
@@ -4073,6 +4072,32 @@ fn build_corpus_census() -> CorpusCensus {
 
 #[cfg(test)]
 mod cpu_tests {
+    #[test]
+    fn probe_phase_registration_order_is_explicit() {
+        let source = include_str!("differential_tests.rs");
+        let bank = source.find("let bank_spans = bank.schedule").unwrap();
+        let bank_reg = source[bank..]
+            .find("open_reported_symbols(ledger, &mut owners);")
+            .unwrap()
+            + bank;
+        let bank_absorb = source[bank_reg..]
+            .find("ledger.absorb(TASK8_WINDOW_ARM, &probe);")
+            .unwrap()
+            + bank_reg;
+        let fold = source
+            .find("launch_bwd_seg_build_fold_weights(start_round as u32, context)?")
+            .unwrap();
+        let fold_reg = source[fold..]
+            .find("open_reported_symbols(ledger, &mut owners);")
+            .unwrap()
+            + fold;
+        let fold_absorb = source[fold_reg..]
+            .find("ledger.absorb(TASK8_WINDOW_ARM, &probe);")
+            .unwrap()
+            + fold_reg;
+        assert!(bank < bank_reg && bank_reg < bank_absorb);
+        assert!(fold < fold_reg && fold_reg < fold_absorb);
+    }
     use gpu_prover_context::{PoolMemoryHighWaterReport, PoolMemoryUsage};
 
     use super::super::abi::{
