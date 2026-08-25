@@ -85,6 +85,7 @@ impl Default for GKRBackwardStageSnapshotSink {
 #[doc(hidden)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MainContinuationDifferentialReport {
+    pub non_identity_coordinates: usize,
     pub layers: usize,
     pub coordinates: usize,
     pub folding_steps: Vec<usize>,

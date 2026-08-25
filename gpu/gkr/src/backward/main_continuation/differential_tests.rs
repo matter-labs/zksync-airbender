@@ -919,8 +919,9 @@ fn validate_enqueue_census(ledger: &Task8OwnerGenerationLedger) {
             Task8EnqueuePlan::CoefficientFill {
                 slab,
                 challenge_slots,
-                bank_first,
+                bank,
                 bank_bytes,
+                ..
             } => {
                 for slot in challenge_slots {
                     expected.push((
@@ -933,7 +934,7 @@ fn validate_enqueue_census(ledger: &Task8OwnerGenerationLedger) {
                 expected.push((
                     "coefficient_bank",
                     Task8QueuedUse::Write,
-                    *bank_first,
+                    *bank,
                     *bank_bytes,
                 ));
             }
@@ -4645,7 +4646,7 @@ mod cpu_tests {
     };
     use crate::backward::vm::seg::{task8_fold_weight_spans, task8_seg_plan, task8_seg_spans};
     use crate::backward::vm::seg_coeff_eval::{
-        task8_coeff_fill_spans, SegCoeffEvalBlob, SegCoeffEvalChunks, SegCoeffMonomial,
+        task8_coeff_eval_reads, task8_coeff_fill_spans, SegCoeffEvalBlob, SegCoeffMonomial,
         SegCoeffRecipe, BWD_SEG_CHALLENGE_ABSENT, BWD_SEG_CHALLENGE_CLAIM_BATCHING,
     };
     use crate::backward::vm::seg_desc::{
@@ -5378,28 +5379,25 @@ mod cpu_tests {
             carried.coefficient_bank.unwrap().0,
             carried.coefficient_bank.unwrap().1,
         );
-        let chunks = SegCoeffEvalChunks::build(&task8_test_blob());
-        for ((first, count), slots) in chunks
-            .task8_chunk_ranges()
-            .into_iter()
-            .zip(chunks.task8_challenge_slots())
-        {
-            let bank_first = bank.base + first as usize * TASK8_TEST_ELEMENT;
-            let bank_bytes = count as usize * TASK8_TEST_ELEMENT;
-            enqueue_planned(
-                ledger,
-                probe,
-                arm,
-                "coefficient-bank-fill",
-                task8_coeff_fill_spans(slots, slab.base, bank_first, bank_bytes),
-                Task8EnqueuePlan::CoefficientFill {
-                    slab: slab.base,
-                    challenge_slots: slots.to_vec(),
-                    bank_first,
-                    bank_bytes,
-                },
-            );
-        }
+        let blob = task8_test_blob();
+        let reads = task8_coeff_eval_reads(&blob);
+        let bank_first = bank.base;
+        let bank_bytes = blob.monomials.len() * TASK8_TEST_ELEMENT;
+        enqueue_planned(
+            ledger,
+            probe,
+            arm,
+            "coefficient-bank-fill",
+            task8_coeff_fill_spans(&reads, 0, slab.base, bank_first, bank_bytes),
+            Task8EnqueuePlan::CoefficientFill {
+                tables: 0,
+                table_ranges: reads.table_ranges.clone(),
+                slab: slab.base,
+                challenge_slots: reads.challenge_slots.clone(),
+                bank: bank_first,
+                bank_bytes,
+            },
+        );
         let owners = Task8ArmOwners {
             arm,
             claim_point,
@@ -6809,10 +6807,8 @@ mod cpu_tests {
             .expect("the arm must carry a coefficient-bank-fill enqueue");
         match enqueue.plan.as_mut() {
             Some(Task8EnqueuePlan::CoefficientFill {
-                bank_first,
-                bank_bytes,
-                ..
-            }) => mutate(bank_first, bank_bytes),
+                bank, bank_bytes, ..
+            }) => mutate(bank, bank_bytes),
             other => panic!("the fill enqueue carries an unexpected plan: {other:?}"),
         }
         ledger
@@ -7399,13 +7395,8 @@ mod cpu_tests {
             // The coefficient fill's chunks ride the launch parameters by
             // value, so its only reads are the challenge slots the chunk's
             // monomials name, and its writes cover the bank prefix exactly.
-            let chunks = SegCoeffEvalChunks::build(&task8_test_blob());
-            let expected_slots: Vec<usize> = chunks
-                .task8_challenge_slots()
-                .iter()
-                .flatten()
-                .copied()
-                .collect();
+            let blob = task8_test_blob();
+            let expected_slots = task8_coeff_eval_reads(&blob).challenge_slots;
             assert_eq!(expected_slots, vec![0, 3, 9]);
             let fill = records_of(&ledger, "coefficient-bank-fill");
             assert!(
@@ -7426,8 +7417,8 @@ mod cpu_tests {
                 .sum();
             assert_eq!(
                 written,
-                chunks.num_coefficients() as usize * element,
-                "the chunk writes must cover the bank prefix exactly"
+                blob.monomials.len() * element,
+                "the coefficient fill must cover the bank prefix exactly"
             );
         }
     }
@@ -7534,7 +7525,8 @@ mod cpu_tests {
             );
             let mut families = BTreeSet::new();
             let element = TASK8_TEST_ELEMENT;
-            let chunks = SegCoeffEvalChunks::build(&task8_test_blob());
+            let blob = task8_test_blob();
+            let reads = task8_coeff_eval_reads(&blob);
 
             // Every mutation below changes exactly one range a production
             // builder reported — dropping it, narrowing it, widening it or
@@ -7648,12 +7640,8 @@ mod cpu_tests {
             // The chunk's bank write: the plan pins the exact contiguous
             // range, so a builder whose plan narrows it, moves it, or covers a
             // different prefix disagrees with the recorded write.
-            assert_eq!(
-                chunks.task8_chunk_ranges(),
-                vec![(0, chunks.num_coefficients())],
-                "the test blob must ride one chunk"
-            );
-            let bank_bytes = chunks.num_coefficients() as usize * element;
+            assert_eq!(reads.table_ranges.len(), 1);
+            let bank_bytes = blob.monomials.len() * element;
             let narrowed = mutate_fill_plan(&base, first_arm, |bank_first, bytes| {
                 let _ = bank_first;
                 *bytes -= element;
@@ -7692,12 +7680,7 @@ mod cpu_tests {
 
             // Every challenge slot the fill's live monomials name, batching and
             // non-batching alike.
-            let fill_challenge_slots: Vec<usize> = chunks
-                .task8_challenge_slots()
-                .iter()
-                .flatten()
-                .copied()
-                .collect();
+            let fill_challenge_slots = reads.challenge_slots;
             for slot in &fill_challenge_slots {
                 let target = Task8OmittedRange {
                     arm: first_arm,
