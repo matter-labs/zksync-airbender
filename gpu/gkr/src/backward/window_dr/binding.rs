@@ -371,6 +371,12 @@ pub(crate) enum DrWindowBindError {
         expected_log2_stride: u32,
         observed_log2_stride: u32,
     },
+    FinalPublicationStrideMismatch {
+        owner_log2_stride: u32,
+        planned_log2_stride: u32,
+        planned_per_poly_len: usize,
+        selected_log2_stride: u32,
+    },
     BaseSlotOverflow {
         required: usize,
         capacity: usize,
@@ -582,8 +588,21 @@ pub(crate) fn dr_window_row_tiles(folding_steps: usize) -> usize {
         .max(1)
 }
 
+pub(crate) fn dr_window_log_rows(folding_steps: usize) -> u32 {
+    assert!(folding_steps >= DR_WINDOW_COORDINATES);
+    (folding_steps - DR_WINDOW_COORDINATES) as u32
+}
+
 pub(crate) fn dr_window_partials_len(folding_steps: usize) -> usize {
     DR_WINDOW_TENSOR_CELLS * (dr_window_row_tiles(folding_steps) + 1)
+}
+
+pub(crate) fn dr_window_reduced_tensor(partials: *mut E4, row_tiles: usize) -> *mut E4 {
+    assert!(!partials.is_null());
+    assert!(row_tiles > 0);
+    // SAFETY: every binding path first checks capacity for the row-tile matrix
+    // plus this 27-cell reduced-tensor suffix.
+    unsafe { partials.add(DR_WINDOW_TENSOR_CELLS * row_tiles) }
 }
 
 /// Pure capacity seam shared by layer planning and D3 tests. The retained
@@ -642,17 +661,6 @@ pub(crate) struct DrWindowContinuationLaunch {
     pub(crate) reduced_tensor: *mut E4,
     pub(crate) folding_steps: usize,
     pub(crate) start_round: usize,
-}
-
-/// Static R0 preparation retained by Task 6. Unlike `DrWindowLaunch`, this has
-/// no runtime partials or reduced-tensor pointer and therefore admits no scratch
-/// capacity for the future complete-chain launch.
-pub(crate) struct DrWindowR0Preparation {
-    pub(crate) batch: GpuGKRDimensionReducingBatch<E4>,
-    pub(crate) kernel: &'static DrWindowKernelEntry,
-    pub(crate) row_tiles: usize,
-    pub(crate) folding_steps: usize,
-    pub(crate) required_future_partials_len: usize,
 }
 
 impl DrWindowLaunch {
@@ -943,9 +951,7 @@ pub(super) fn bind_dr_window_continuation_launch(
         });
     }
     let row_tiles = dr_window_row_tiles(suffix_log);
-    // SAFETY: the checked scratch capacity reserves the complete row-tile
-    // matrix followed by the 27-cell reduced tensor.
-    let reduced_tensor = unsafe { scratch.partials.add(DR_WINDOW_TENSOR_CELLS * row_tiles) };
+    let reduced_tensor = dr_window_reduced_tensor(scratch.partials, row_tiles);
     Ok(DrWindowContinuationLaunch {
         binding: Box::new(DrWindowContinuationLaunchBinding {
             batch,
@@ -953,7 +959,7 @@ pub(super) fn bind_dr_window_continuation_launch(
             eq_high_1: eq.high_1.cast_const(),
             partials: scratch.partials,
             claim_point,
-            log_rows: (suffix_log - DR_WINDOW_COORDINATES) as u32,
+            log_rows: dr_window_log_rows(suffix_log),
             start_round: start_round as u32,
             reserved: [0; 2],
         }),
@@ -1017,14 +1023,12 @@ fn bind_dr_window_launch<B>(
 
     let row_tiles = dr_window_row_tiles(folding_steps);
     let batch = build_dr_window_batch(program, storage, eq.as_view())?;
-    // SAFETY: the capacity check reserves the complete partial matrix before
-    // the 27-cell reduced-tensor suffix.
-    let reduced_tensor = unsafe { scratch.partials.add(DR_WINDOW_TENSOR_CELLS * row_tiles) };
+    let reduced_tensor = dr_window_reduced_tensor(scratch.partials, row_tiles);
     Ok(DrWindowLaunch {
         binding: Box::new(DrWindowLaunchBinding {
             batch,
             partials: scratch.partials,
-            log_rows: (folding_steps - DR_WINDOW_COORDINATES) as u32,
+            log_rows: dr_window_log_rows(folding_steps),
             reserved: 0,
         }),
         kernel,
@@ -1197,16 +1201,16 @@ pub(crate) fn bind_dr_window_continuations<B>(
     Ok(())
 }
 
-/// Prepare the allocation-neutral Task 6 seam. The caller supplies a typed
-/// view of the common round Eq owner and checked metadata for the future
-/// complete-chain scratch requirement; no runtime scratch pointer is accepted.
+/// Prepare the Task 6 seam. The hook takes ownership of the common round Eq
+/// allocation and retains the shared producer/tail scratch pointer.
 pub(crate) fn prepare_dr_window_r0<B>(
     program: &DrWindowProgram,
     projection: &DrWindowInputProjection,
     storage: &GpuGKRStorage<B, E4>,
     folding_steps: usize,
-    eq: DrWindowPassEqView,
+    eq: DrWindowPassEqState,
     required_future_partials_len: usize,
+    partials: *mut E4,
 ) -> Result<DrWindowLayerPreparationHook, DrWindowBindError> {
     validate_dr_window_folding_steps(folding_steps)?;
     let kernel = resolve_dr_window_kernel(program.enabled_mask())?;
@@ -1214,25 +1218,35 @@ pub(crate) fn prepare_dr_window_r0<B>(
     let expected_partials_len = dr_window_partials_len(folding_steps);
     assert_eq!(
         required_future_partials_len, expected_partials_len,
-        "Task 6 must retain the exact future complete-chain partials requirement as metadata",
+        "Task 6 must retain the exact complete-chain partials requirement",
     );
     let raw_inputs = DrWindowRawInputKeepalive::from_projection(storage, projection)?;
     let row_tiles = dr_window_row_tiles(folding_steps);
-    let batch = build_dr_window_batch(program, storage, eq)?;
+    let batch = build_dr_window_batch(program, storage, eq.as_view())?;
     assert_eq!(
-        batch.eq_low, eq.eq_low,
-        "the prepared descriptor must borrow its non-owning Eq view",
+        batch.eq_low,
+        eq.eq_low.as_ptr(),
+        "the prepared descriptor must point at its owned common Eq allocation",
     );
-    Ok(DrWindowLayerPreparationHook::new(
-        DrWindowR0Preparation {
+    let launch = DrWindowLaunch {
+        binding: Box::new(DrWindowLaunchBinding {
             batch,
-            kernel,
-            row_tiles,
-            folding_steps,
-            required_future_partials_len,
-        },
+            partials,
+            log_rows: dr_window_log_rows(folding_steps),
+            reserved: 0,
+        }),
+        kernel,
+        row_tiles,
+        reduced_tensor: dr_window_reduced_tensor(partials, row_tiles),
+        folding_steps,
+    };
+    Ok(DrWindowLayerPreparationHook::new(
+        launch,
         eq,
         raw_inputs,
+        required_future_partials_len,
+        program.clone(),
+        projection.clone(),
     ))
 }
 

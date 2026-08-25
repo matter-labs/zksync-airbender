@@ -1,6 +1,7 @@
 use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
 
+use super::dr_tail::resources::{DrTailLayerIdentity, DrTailPlanCursor};
 use super::kernels::*;
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
@@ -14,16 +15,13 @@ use gpu_prover_context::ProverContext;
 use super::stage_snapshots::{schedule_stage_snapshot, GKRBackwardStageSnapshotSink};
 
 impl GpuGKRBackwardScheduledExecution {
-    /// Number of dimension-reducing layers actually scheduled through the
-    /// accepted legacy executor. Task 6's release harness uses this as a
-    /// reachability count while the prepared DR hook remains launch-inert.
+    /// Number of dimension-reducing layers actually scheduled.
     #[doc(hidden)]
     pub fn dimension_reducing_layer_count(&self) -> usize {
         self.dimension_reducing_layers.len()
     }
 
-    /// Number of actually scheduled legacy layers whose prepared plan retained
-    /// a real DR composition hook.
+    /// Number of scheduled layers that entered with a real DR composition hook.
     #[doc(hidden)]
     pub fn dr_prepared_layer_count(&self) -> usize {
         self.dimension_reducing_layers
@@ -151,7 +149,15 @@ impl GpuGKRDimensionReducingBackwardState {
                 dr_tail_plan.is_some(),
                 "DR-tail scheduling requires the resource plan admitted before transfers"
             );
+        } else {
+            assert!(
+                dr_tail_plan.is_none(),
+                "a DR-tail resource plan may only accompany the explicit production selector",
+            );
         }
+        let mut dr_tail_plan_cursor = dr_tail_plan
+            .as_ref()
+            .map(|plan| DrTailPlanCursor::new(plan.layers()));
         let device_lookup_challenges_ptr = device_lookup_challenges.as_ptr();
         let mut tracing_ranges = Vec::new();
         let workflow_range = Range::new("gkr.backward.schedule")?;
@@ -213,6 +219,20 @@ impl GpuGKRDimensionReducingBackwardState {
                 proof_slab,
                 proof_layout,
                 backward_layer_slot,
+                dr_tail_plan_cursor.as_mut().map(|cursor| {
+                    cursor
+                        .bind(DrTailLayerIdentity::new(
+                            prepared_layer.layer_idx,
+                            prepared_layer.folding_steps,
+                            &prepared_layer.folding_addresses,
+                        ))
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "DR-tail admitted identity must match the prepared layer before activation: {error:?}"
+                            )
+                        })
+                }),
+                options.window_tail,
                 &mut self.storage,
                 context,
             )?;
@@ -254,6 +274,11 @@ impl GpuGKRDimensionReducingBackwardState {
                 .expect("dim-reducing scheduler must return the claim layout");
             dimension_reducing_layers.push(execution);
             backward_layer_slot += 1;
+        }
+        if let Some(cursor) = dr_tail_plan_cursor {
+            cursor.finish().unwrap_or_else(|error| {
+                panic!("DR-tail admitted plan must be consumed exactly once: {error:?}")
+            });
         }
         dimension_reducing_layers_range.end(stream)?;
         tracing_ranges.push(dimension_reducing_layers_range);

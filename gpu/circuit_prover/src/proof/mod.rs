@@ -357,18 +357,20 @@ pub fn preflight_windowed_backward(
             .map(|_| ())
             .map_err(|rejection| GpuProveError::from(&rejection))?;
     }
-    if options.windowed_dr_continuations {
+    if options.windowed_dr_continuations || options.dr_tail_megakernel {
         if options.windowed_dr && !gkr_programs.dr_window_programs_ready(final_trace_size_log_2) {
             return Err(DrWindowContinuationPreflightError::BundleNotReady.into());
         }
-        let stages = DrWindowChainStages::new(options.windowed_dr, true, false);
-        match select_dr_window_complete_chain(strategy, stages) {
-            Ok(_) => unreachable!(
-                "Red cannot preflight a complete DR continuation chain before the recursive \
-                 consumer lands"
-            ),
-            Err(error) => return Err(error.into()),
-        }
+        // The production DR-tail selector owns the complete chain: windowed R0,
+        // continuations, and the megakernel consumer. Keep the old incomplete
+        // rejection for diagnostic/test callers that request continuation
+        // producers without the production consumer.
+        let stages = DrWindowChainStages::new(
+            options.windowed_dr,
+            options.windowed_dr_continuations,
+            options.dr_tail_megakernel,
+        );
+        select_dr_window_complete_chain(strategy, stages).map_err(GpuProveError::from)?;
     }
     Ok(())
 }

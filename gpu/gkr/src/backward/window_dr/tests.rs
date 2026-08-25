@@ -11,9 +11,9 @@ use gpu_gkr_compiler::{
 };
 
 use super::binding::{
-    assemble_dr_window_continuation_batch, bind_dr_window_continuation_launch,
-    dr_window_partials_len, dr_window_partials_maximum, dr_window_row_tiles,
-    resolve_dr_global_active_eq_slot, resolve_dr_window_continuation_kernel,
+    assemble_dr_window_continuation_batch, bind_dr_window_continuation_launch, dr_window_log_rows,
+    dr_window_partials_len, dr_window_partials_maximum, dr_window_reduced_tensor,
+    dr_window_row_tiles, resolve_dr_global_active_eq_slot, resolve_dr_window_continuation_kernel,
     resolve_dr_window_kernel, validate_dr_r0_eq_contract,
     validate_dr_window_continuation_eq_contract, validate_dr_window_folding_steps,
     DrCompactSourceTableBuilder, DrContinuationFactoredEqView, DrWindowBindError,
@@ -22,19 +22,20 @@ use super::binding::{
 use super::composition::{
     build_raw_input_owner, continuation_window_count, dr_window_continuation_pass_geometry,
     dr_window_continuation_readiness, megakernel_entry_round, plan_dr_window_continuations,
-    DrWindowContinuationParity, DrWindowContinuationPlannedSource, DrWindowContinuationReadiness,
-    DrWindowRawInputKeepalive,
+    validate_dr_window_final_publication_stride, DrWindowContinuationParity,
+    DrWindowContinuationPlannedSource, DrWindowContinuationReadiness, DrWindowRawInputKeepalive,
 };
 use super::generated_registry::{
     DR_WINDOWED_CONT_DEFINED_MASK, DR_WINDOWED_CONT_UNIVERSAL_KERNEL, DR_WINDOWED_R0_DEFINED_MASK,
     DR_WINDOWED_R0_UNIVERSAL_KERNEL,
 };
 use crate::backward::dim_reducing_sumcheck_plan::{
-    execute_dr_window_whole_layer_for_test, DrWindowWholeLayerSelectionForTest,
+    schedule_dr_layer_execution, DrLayerExecutionSelection, DrLayerExecutionStage,
 };
 use crate::backward::kernels::{
     make_eq_sizes, pack_cache_u16, pack_source_u16, FoldingArenaBinding,
-    GpuGKRDimensionReducingBatch, GpuGKRSourceRecord, GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
+    GpuGKRDimensionReducingBatch, GpuGKRSourceRecord, SingleTransferOwner,
+    GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
 };
 use crate::backward::GKR_EQ_GROUP_TABLE_LEN;
 use crate::backward::{
@@ -173,47 +174,145 @@ fn cpu_dr_window_preflight_rejects_geometry_resources_and_partial_chains() {
 }
 
 #[test]
-fn cpu_dr_window_preflight_post_launch_error_never_retries_legacy() {
-    use std::cell::Cell;
-
-    let new_chain_launches = Cell::new(0usize);
-    let legacy_launches = Cell::new(0usize);
-    let injected = execute_dr_window_whole_layer_for_test(
-        DrWindowWholeLayerSelectionForTest::CompleteNewChain,
-        || {
-            new_chain_launches.set(new_chain_launches.get() + 1);
-            Err::<(), _>("injected post-launch failure")
+fn cpu_dr_complete_chain_reachability_is_exact_and_has_no_legacy_prefix() {
+    let mut observed = Vec::new();
+    schedule_dr_layer_execution(
+        DrLayerExecutionSelection::CompleteNewChain {
+            continuation_count: 4,
         },
-        || {
-            legacy_launches.set(legacy_launches.get() + 1);
-            Ok(())
-        },
-    );
-    assert_eq!(injected, Err("injected post-launch failure"));
-    assert_eq!(new_chain_launches.get(), 1);
-    assert_eq!(
-        legacy_launches.get(),
-        0,
-        "new-chain failure must not retry legacy"
-    );
-
-    execute_dr_window_whole_layer_for_test(
-        DrWindowWholeLayerSelectionForTest::LegacyDiagnostic,
-        || {
-            new_chain_launches.set(new_chain_launches.get() + 1);
+        |stage| {
+            observed.push(stage);
             Ok::<(), &str>(())
-        },
-        || {
-            legacy_launches.set(legacy_launches.get() + 1);
-            Ok(())
         },
     )
     .unwrap();
-    assert_eq!(new_chain_launches.get(), 1);
     assert_eq!(
-        legacy_launches.get(),
-        1,
-        "diagnostic control selects one whole legacy layer"
+        observed,
+        [
+            DrLayerExecutionStage::R0,
+            DrLayerExecutionStage::Continuation(0),
+            DrLayerExecutionStage::Continuation(1),
+            DrLayerExecutionStage::Continuation(2),
+            DrLayerExecutionStage::Continuation(3),
+            DrLayerExecutionStage::Megakernel,
+        ],
+        "production must schedule R0, every continuation, and the megakernel in stream order",
+    );
+
+    for fail_at in 0..observed.len() {
+        let mut attempted = Vec::new();
+        let mut legacy_launches = 0;
+        let result = schedule_dr_layer_execution(
+            DrLayerExecutionSelection::CompleteNewChain {
+                continuation_count: 4,
+            },
+            |stage| {
+                if stage == DrLayerExecutionStage::LegacyDiagnostic {
+                    legacy_launches += 1;
+                }
+                attempted.push(stage);
+                if attempted.len() - 1 == fail_at {
+                    Err("injected launch failure")
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(result, Err("injected launch failure"));
+        assert_eq!(attempted, observed[..=fail_at]);
+        assert_eq!(legacy_launches, 0, "an error must not retry legacy");
+    }
+
+    let mut diagnostic = Vec::new();
+    schedule_dr_layer_execution(DrLayerExecutionSelection::LegacyDiagnostic, |stage| {
+        diagnostic.push(stage);
+        Ok::<(), &str>(())
+    })
+    .unwrap();
+    assert_eq!(diagnostic, [DrLayerExecutionStage::LegacyDiagnostic]);
+}
+
+#[test]
+fn cpu_dr_complete_chain_reduced_tensor_is_after_the_partial_matrix() {
+    let storage = vec![E4::default(); dr_window_partials_len(24)];
+    let partials = storage.as_ptr().cast_mut();
+    for folding_steps in 4..=24 {
+        let row_tiles = dr_window_row_tiles(folding_steps);
+        assert_eq!(
+            dr_window_log_rows(folding_steps),
+            (folding_steps - 3) as u32
+        );
+        let reduced = dr_window_reduced_tensor(partials, row_tiles);
+        assert_eq!(
+            reduced as usize - partials as usize,
+            27 * row_tiles * size_of::<E4>(),
+        );
+        assert!(
+            (reduced as usize - partials as usize) / size_of::<E4>() + 27
+                <= dr_window_partials_len(folding_steps),
+        );
+    }
+}
+
+#[test]
+fn cpu_dr_complete_chain_final_publication_uses_the_last_pass_stride() {
+    for folding_steps in 4..=24 {
+        let window_count = continuation_window_count(folding_steps);
+        let entry = megakernel_entry_round(folding_steps);
+        let passes = plan_dr_window_continuations(folding_steps, window_count, entry).unwrap();
+        if let Some(last) = passes.last() {
+            let owner = passes
+                .iter()
+                .find(|pass| pass.destination == last.destination)
+                .expect("the final parity owner has a first use");
+            assert_eq!(
+                validate_dr_window_final_publication_stride(
+                    owner.log2_stride,
+                    last.log2_stride,
+                    last.per_poly_len,
+                    last.log2_stride,
+                )
+                .unwrap(),
+                last.per_poly_len,
+            );
+            assert_eq!(last.start_round + 3, entry);
+        } else {
+            assert_eq!(entry, 3);
+        }
+    }
+
+    let passes = plan_dr_window_continuations(24, 4, 15).unwrap();
+    let last = passes.last().unwrap();
+    let owner = passes
+        .iter()
+        .find(|pass| pass.destination == last.destination)
+        .unwrap();
+    assert!(owner.log2_stride > last.log2_stride);
+    assert_eq!(
+        validate_dr_window_final_publication_stride(
+            owner.log2_stride,
+            last.log2_stride,
+            last.per_poly_len,
+            owner.log2_stride,
+        ),
+        Err(DrWindowBindError::FinalPublicationStrideMismatch {
+            owner_log2_stride: owner.log2_stride,
+            planned_log2_stride: last.log2_stride,
+            planned_per_poly_len: last.per_poly_len,
+            selected_log2_stride: owner.log2_stride,
+        }),
+        "the reused owner's first-use stride must be rejected for final publication",
+    );
+}
+
+#[test]
+fn cpu_dr_complete_chain_eq_owner_transfers_once() {
+    let mut owner = SingleTransferOwner::new("common Eq");
+    assert_eq!(owner.try_take(), Some("common Eq"));
+    assert_eq!(
+        owner.try_take(),
+        None,
+        "a duplicate common-Eq ownership transfer must be rejected",
     );
 }
 

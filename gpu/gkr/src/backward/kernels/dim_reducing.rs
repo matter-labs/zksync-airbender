@@ -102,8 +102,53 @@ pub(crate) fn schedule_dim_reducing_batch_challenge_table_prelude(
     gpu_ops::powers::get_powers_by_ref::<E4>(base, 0, table, context.get_exec_stream())
 }
 
+pub(crate) struct SingleTransferOwner<T> {
+    owner: Option<T>,
+}
+
+impl<T> SingleTransferOwner<T> {
+    pub(crate) fn new(owner: T) -> Self {
+        Self { owner: Some(owner) }
+    }
+
+    pub(crate) fn try_take(&mut self) -> Option<T> {
+        self.owner.take()
+    }
+}
+
+pub(crate) struct GpuGKRDimensionReducingEqLowGroup {
+    owner: SingleTransferOwner<DeviceAllocation<E4>>,
+    pointer: *mut E4,
+}
+
+impl GpuGKRDimensionReducingEqLowGroup {
+    pub(crate) fn owned(mut allocation: DeviceAllocation<E4>) -> Self {
+        let pointer = allocation.as_mut_ptr();
+        Self {
+            owner: SingleTransferOwner::new(allocation),
+            pointer,
+        }
+    }
+
+    pub(crate) fn as_ptr(&self) -> *const E4 {
+        self.pointer.cast_const()
+    }
+
+    pub(crate) fn as_mut_ptr(&mut self) -> *mut E4 {
+        self.pointer
+    }
+
+    pub(crate) fn take_owner(&mut self) -> DeviceAllocation<E4> {
+        self.owner
+            .try_take()
+            .expect("dimension-reducing Eq ownership may transfer only once")
+    }
+}
+
 pub(crate) struct GpuGKRDimensionReducingRoundScratch {
-    pub(crate) eq_low_group: DeviceAllocation<E4>,
+    /// Owns the Eq allocation for legacy layers. A prepared DR hook takes the
+    /// same allocation while this field retains its non-owning launch pointer.
+    pub(crate) eq_low_group: GpuGKRDimensionReducingEqLowGroup,
     pub(crate) accumulator: DeviceAllocation<E4>,
     /// Per-block partials buffer for the fused tail (stage-1 dual-reduce
     /// output, stage-2 mega-finalize input).
@@ -160,10 +205,8 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     pub(crate) layer_slots: GpuGKRDimensionReducingLayerSlots,
     pub(crate) folding_addresses: Vec<GKRAddress>,
     pub(crate) round0_batch_template_compact: GpuGKRDimensionReducingBatch<E4>,
-    /// Preparation-only owner for the future complete DR window chain. The
-    /// Task 6 scheduler deliberately leaves this hook untouched and executes
-    /// the accepted legacy per-round layer.
-    #[allow(dead_code)]
+    /// Prepared owner consumed by the production R0/continuation/tail chain.
+    /// Explicit diagnostic selection may retain it while running legacy.
     pub(crate) dr_window: Option<crate::backward::window_dr::DrWindowLayerPreparationHook>,
     /// Final-log identity of the canonical bundle that produced `dr_window`.
     /// It is `None` exactly when no hook was prepared.

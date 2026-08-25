@@ -17,9 +17,9 @@ use crate::upstream::GKRAddress;
 use crate::GpuGKRStorage;
 
 use super::binding::{
-    dr_window_partials_len, resolve_storage_e4, DrContinuationFactoredEqScratch,
-    DrContinuationFactoredEqView, DrWindowBindError, DrWindowContinuationArena,
-    DrWindowContinuationLaunch, DrWindowLaunch, DrWindowR0Preparation,
+    bind_dr_window_continuations, dr_window_partials_len, resolve_storage_e4,
+    DrContinuationFactoredEqScratch, DrContinuationFactoredEqView, DrWindowBindError,
+    DrWindowContinuationArena, DrWindowContinuationLaunch, DrWindowLaunch,
 };
 
 #[derive(Clone, Copy)]
@@ -85,6 +85,40 @@ impl DrWindowRawInputKeepalive {
             canonical_sources: owner.canonical_sources,
             backings: owner.backings,
         })
+    }
+
+    fn canonical_source_pointers<B>(
+        &self,
+        storage: &GpuGKRStorage<B, E4>,
+    ) -> Result<Vec<*const E4>, DrWindowBindError> {
+        self.canonical_sources
+            .iter()
+            .copied()
+            .map(|address| {
+                let resolved = resolve_storage_e4(storage, address)?;
+                assert!(
+                    self.backings
+                        .iter()
+                        .any(|backing| Arc::ptr_eq(backing, resolved.backing)),
+                    "the prepared raw-input keepalive must own the resolved backing",
+                );
+                let stride = 1usize.checked_shl(resolved.log2_stride).ok_or(
+                    DrWindowBindError::ArenaGeometryOverflow {
+                        log2_stride: resolved.log2_stride,
+                        poly_count: resolved.poly_index + 1,
+                    },
+                )?;
+                let offset = resolved.poly_index.checked_mul(stride).ok_or(
+                    DrWindowBindError::ArenaGeometryOverflow {
+                        log2_stride: resolved.log2_stride,
+                        poly_count: resolved.poly_index + 1,
+                    },
+                )?;
+                // SAFETY: `resolve_storage_e4` returns the exact live backing,
+                // stride, and polynomial index retained by this keepalive.
+                Ok(unsafe { resolved.backing.as_ptr().add(offset) })
+            })
+            .collect()
     }
 }
 
@@ -215,6 +249,30 @@ pub(crate) fn plan_dr_window_continuations(
         .collect()
 }
 
+/// Resolve the exact logical stride published by the final continuation.
+/// A parity arena retains its larger first-use owner geometry, so selecting
+/// the owner stride here would cross polynomial boundaries on reused arenas.
+pub(crate) fn validate_dr_window_final_publication_stride(
+    owner_log2_stride: u32,
+    planned_log2_stride: u32,
+    planned_per_poly_len: usize,
+    selected_log2_stride: u32,
+) -> Result<usize, DrWindowBindError> {
+    let expected = 1usize.checked_shl(planned_log2_stride);
+    if owner_log2_stride < planned_log2_stride
+        || selected_log2_stride != planned_log2_stride
+        || expected != Some(planned_per_poly_len)
+    {
+        return Err(DrWindowBindError::FinalPublicationStrideMismatch {
+            owner_log2_stride,
+            planned_log2_stride,
+            planned_per_poly_len,
+            selected_log2_stride,
+        });
+    }
+    Ok(planned_per_poly_len)
+}
+
 #[derive(Default)]
 pub(crate) struct DrWindowContinuationArenaOwners {
     pub(crate) even: Option<DrWindowContinuationArena>,
@@ -298,6 +356,44 @@ impl DrWindowLayerCompositionHook {
             continuation_keepalives: Vec::new(),
         }
     }
+
+    /// Canonical input pointers at the exact state consumed by the recursive
+    /// tail. With W'=0 the megakernel performs the first three folds from raw
+    /// storage. Otherwise it consumes the last continuation's destination;
+    /// the megakernel itself folds that pass's three pending challenges.
+    pub(crate) fn megakernel_source_pointers<B>(
+        &self,
+        storage: &GpuGKRStorage<B, E4>,
+    ) -> Result<Vec<*const E4>, DrWindowBindError> {
+        let canonical_count = self.continuation_projection.canonical_sources().len();
+        assert_eq!(self.raw_inputs.canonical_sources.len(), canonical_count);
+        if let Some(last) = self.continuation_launches.last() {
+            let arena = self
+                .continuation_arenas
+                .get(last.geometry.destination)
+                .expect("the final continuation destination must remain owned");
+            assert_eq!(arena.poly_count(), canonical_count);
+            let binding = arena.binding();
+            // Parity owners retain their first-use (largest) geometry. A later
+            // same-parity pass reuses the base with a smaller logical stride,
+            // which is recorded on that immutable pass rather than the owner.
+            let stride = validate_dr_window_final_publication_stride(
+                binding.log2_stride,
+                last.geometry.log2_stride,
+                last.geometry.per_poly_len,
+                last.geometry.log2_stride,
+            )?;
+            Ok((0..canonical_count)
+                .map(|poly_idx| {
+                    // SAFETY: the arena owns `canonical_count * stride` E4
+                    // cells and remains live through every queued consumer.
+                    unsafe { binding.base.cast::<E4>().add(poly_idx * stride) }
+                })
+                .collect())
+        } else {
+            self.raw_inputs.canonical_source_pointers(storage)
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -330,36 +426,65 @@ pub(crate) fn dr_window_continuation_readiness(
     Ok(DrWindowContinuationReadiness::ProducerReady)
 }
 
-/// Allocation-neutral Task 6 preparation retained for a future complete-chain
-/// launch. The non-owning Eq view borrows the common round scratch; no runtime
-/// partials pointer or launch-ready descriptor is retained here.
+/// Task 6 preparation retained until the complete-chain launch is bound. It
+/// owns the common round Eq allocation while round scratch keeps only the same
+/// launch pointer; the partials owner remains in the enclosing layer plan.
 pub(crate) struct DrWindowLayerPreparationHook {
-    pub(crate) r0: DrWindowR0Preparation,
+    pub(crate) r0_launch: DrWindowLaunch,
     pub(crate) continuation_window_count: usize,
     pub(crate) megakernel_entry_round: usize,
     pub(crate) continuation_readiness: DrWindowContinuationReadiness,
-    pub(crate) r0_eq: DrWindowPassEqView,
+    pub(crate) r0_eq: DrWindowPassEqState,
     pub(crate) raw_inputs: DrWindowRawInputKeepalive,
     pub(crate) required_future_partials_len: usize,
+    pub(crate) continuation_program: DrWindowProgram,
+    pub(crate) continuation_projection: DrWindowInputProjection,
 }
 
 impl DrWindowLayerPreparationHook {
     pub(crate) fn new(
-        r0: DrWindowR0Preparation,
-        r0_eq: DrWindowPassEqView,
+        r0_launch: DrWindowLaunch,
+        r0_eq: DrWindowPassEqState,
         raw_inputs: DrWindowRawInputKeepalive,
+        required_future_partials_len: usize,
+        continuation_program: DrWindowProgram,
+        continuation_projection: DrWindowInputProjection,
     ) -> Self {
-        let folding_steps = r0.folding_steps;
-        let required_future_partials_len = r0.required_future_partials_len;
+        let folding_steps = r0_launch.folding_steps;
         Self {
-            r0,
+            r0_launch,
             continuation_window_count: continuation_window_count(folding_steps),
             megakernel_entry_round: megakernel_entry_round(folding_steps),
             continuation_readiness: DrWindowContinuationReadiness::Disabled,
             r0_eq,
             raw_inputs,
             required_future_partials_len,
+            continuation_program,
+            continuation_projection,
         }
+    }
+
+    pub(crate) fn activate<B>(
+        self,
+        storage: &GpuGKRStorage<B, E4>,
+        claim_point: *const E4,
+        context: &ProverContext,
+    ) -> Result<DrWindowLayerCompositionHook, DrWindowBindError> {
+        assert_eq!(
+            self.continuation_readiness,
+            DrWindowContinuationReadiness::ProducerReady,
+            "production activation requires the preflighted continuation chain",
+        );
+        let mut hook = DrWindowLayerCompositionHook::new(
+            self.r0_launch,
+            self.r0_eq,
+            self.raw_inputs,
+            self.required_future_partials_len,
+            self.continuation_program,
+            self.continuation_projection,
+        );
+        bind_dr_window_continuations(&mut hook, storage, claim_point, context)?;
+        Ok(hook)
     }
 
     pub(crate) fn configure_continuation_readiness(

@@ -660,7 +660,7 @@ fn cpu_windowed_arm_selection_covers_every_corpus_family() {
 }
 
 #[test]
-fn dr_window_continuation_preflight_is_default_off_and_incomplete_on_red() {
+fn dr_window_continuation_preflight_is_default_off_and_requires_the_complete_chain() {
     use super::{
         construct_after_windowed_backward_preflight_with_dr_selection,
         DrWindowExecutionSelectionSpy, DrWindowTestWholeLayerSelection, GpuProveError,
@@ -716,6 +716,29 @@ fn dr_window_continuation_preflight_is_default_off_and_incomplete_on_red() {
     assert_eq!(transfer_constructions.get(), 0);
     assert_eq!(spy.complete_new_chain_count(), 0);
     assert_eq!(spy.legacy_diagnostic_count(), 0);
+
+    let tail_only = GkrBackwardOptions {
+        windowed_dr: true,
+        windowed_dr_continuations: false,
+        dr_tail_megakernel: true,
+        ..GkrBackwardOptions::default()
+    };
+    assert_eq!(
+        super::preflight_windowed_backward(
+            &programs,
+            BackwardExecutionStrategy::WindowedR0,
+            tail_only,
+            4,
+        ),
+        Err(GpuProveError::DrWindowContinuationPreflight {
+            error: DrWindowContinuationPreflightError::IncompleteChain {
+                windowed_r0: true,
+                continuations: false,
+                recursive_tail: true,
+            }
+        }),
+        "the recursive tail may not reach resource admission without both producer stages",
+    );
 }
 
 #[test]
@@ -979,7 +1002,8 @@ fn cpu_dr_tail_seam_preflight_precedes_every_transfer_construction() {
 
     let options = GkrBackwardOptions {
         windowed_main_continuations: true,
-        windowed_dr_continuations: false,
+        windowed_dr: true,
+        windowed_dr_continuations: true,
         dr_tail_megakernel: true,
         ..GkrBackwardOptions::default()
     };
@@ -1116,14 +1140,21 @@ fn cpu_dr_tail_seam_forced_legacy_issues_zero_resource_queries() {
     let run = |dr_tail_megakernel: bool| {
         let admissions = Cell::new(0usize);
         let plans = Cell::new(0usize);
+        let options = if dr_tail_megakernel {
+            GkrBackwardOptions {
+                dr_tail_megakernel: true,
+                windowed_dr: true,
+                windowed_dr_continuations: true,
+                ..base
+            }
+        } else {
+            base
+        };
         let result = admit_dr_tail_before_transfers_with(
             Some(DrTailPreflightRequest {
                 gkr_programs: &programs,
                 strategy: BackwardExecutionStrategy::WindowedR0,
-                options: GkrBackwardOptions {
-                    dr_tail_megakernel,
-                    ..base
-                },
+                options,
                 final_trace_size_log_2: 4,
                 device_id: 0,
             }),

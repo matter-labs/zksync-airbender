@@ -51,15 +51,15 @@ pub(crate) fn get_gpu_worker_func(
     }
 }
 
-/// The worker's backward-phase options. Single construction site for the
-/// windowed-R0 arm selection; clearing `windowed_r0` is the escape hatch back
-/// to the per-round arm.
+/// The worker's backward-phase options. Production selects the inseparable
+/// R0/continuation/recursive-tail chain; legacy requires a separate explicit
+/// diagnostic configuration with all DR production stages disabled.
 const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
-    dr_tail_megakernel: false,
+    dr_tail_megakernel: true,
     windowed_r0: true,
-    windowed_main_continuations: false,
-    windowed_dr: false,
-    windowed_dr_continuations: false,
+    windowed_main_continuations: true,
+    windowed_dr: true,
+    windowed_dr_continuations: true,
     window_tail: WindowTailArm::Split,
 };
 

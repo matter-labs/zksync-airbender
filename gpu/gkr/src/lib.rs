@@ -32,7 +32,7 @@ pub(crate) mod upstream;
 pub use backward::window::tail::WindowTailArm;
 pub use backward::{
     preflight_dr_tail_resources, DrTailCapacityDecision, DrTailCapacityRejection,
-    DrTailKernelResources, DrTailProofPlan, DrTailResourceError,
+    DrTailKernelResources, DrTailLayerPlan, DrTailProofPlan, DrTailResourceError,
 };
 pub(crate) use forward::kernels::ForwardKernels;
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
@@ -66,16 +66,15 @@ pub struct GkrBackwardOptions {
     /// the per-round arm.
     pub windowed_r0: bool,
     /// Request width-3 main-layer continuation windows after the landed R0
-    /// window. This stays default-off until the continuation execution path has
-    /// passed its proof-byte and performance gates.
+    /// window. The library default stays off for diagnostic compatibility;
+    /// the production worker enables the accepted complete chain.
     pub windowed_main_continuations: bool,
-    /// Prepare the dimension-reducing windowed-R0 bundle and per-layer
-    /// composition hooks. Task 6 does not use this as an execution selector:
-    /// the accepted legacy scheduler remains the only DR execution path.
+    /// Prepare the dimension-reducing windowed-R0 bundle and per-layer launch
+    /// objects consumed by the complete DR-tail production chain.
     pub windowed_dr: bool,
     /// Request the width-3 dimension-reducing continuation producers after
-    /// windowed R0. Red keeps this default-off and preflight-rejected until the
-    /// recursive tail consumer lands; it is not an execution selector by itself.
+    /// windowed R0. Preflight accepts them only as part of the complete chain
+    /// with the recursive-tail consumer.
     pub windowed_dr_continuations: bool,
     pub window_tail: WindowTailArm,
 }

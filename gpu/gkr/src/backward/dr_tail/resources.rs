@@ -11,9 +11,11 @@
 //! therefore only meaningful once the ceiling has been raised to the maximum
 //! selected dynamic size. [`admit_dr_tail_resources`] enforces that sequence.
 
+use std::collections::BTreeSet;
+
 use super::capacity::{DrTailCapacityDecision, DrTailCapacityRejection, DrTailCapacityRequest};
 use super::census::dr_tail_layer_inputs;
-use crate::upstream::{GKRCircuitArtifact, PrimeField};
+use crate::upstream::{GKRAddress, GKRCircuitArtifact, PrimeField};
 
 /// Threads per DR-tail block; occupancy is queried at exactly this width.
 pub(crate) const DR_TAIL_OCCUPANCY_THREADS: u32 = super::kernels::DR_TAIL_BLOCK_THREADS;
@@ -76,7 +78,7 @@ impl DrTailKernelResources {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DrTailProofPlan {
     resources: DrTailKernelResources,
-    layers: Vec<DrTailCapacityDecision>,
+    layers: Vec<DrTailLayerPlan>,
 }
 
 impl DrTailProofPlan {
@@ -84,8 +86,164 @@ impl DrTailProofPlan {
         &self.resources
     }
 
-    pub fn layers(&self) -> &[DrTailCapacityDecision] {
+    pub fn layers(&self) -> &[DrTailLayerPlan] {
         &self.layers
+    }
+}
+
+/// One admitted capacity bound to the exact artifact-layer identity that
+/// produced it. The absolute layer key is retained because production walks
+/// the DR tower in reverse while the census emits it in ascending order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DrTailLayerPlan {
+    layer_idx: usize,
+    folding_steps: usize,
+    canonical_sources: Vec<GKRAddress>,
+    capacity: DrTailCapacityDecision,
+}
+
+impl DrTailLayerPlan {
+    pub const fn layer_idx(&self) -> usize {
+        self.layer_idx
+    }
+
+    pub const fn folding_steps(&self) -> usize {
+        self.folding_steps
+    }
+
+    pub fn canonical_source_count(&self) -> usize {
+        self.canonical_sources.len()
+    }
+
+    pub(crate) fn canonical_sources(&self) -> &[GKRAddress] {
+        &self.canonical_sources
+    }
+
+    pub const fn capacity(&self) -> &DrTailCapacityDecision {
+        &self.capacity
+    }
+
+    pub const fn dynamic_smem_bytes(&self) -> usize {
+        self.capacity.dynamic_smem_bytes()
+    }
+
+    fn validate(&self, expected: DrTailLayerIdentity<'_>) -> Result<(), DrTailPlanIdentityError> {
+        if self.layer_idx != expected.layer_idx {
+            return Err(DrTailPlanIdentityError::LayerMismatch {
+                expected: expected.layer_idx,
+                observed: self.layer_idx,
+            });
+        }
+        if self.folding_steps != expected.folding_steps {
+            return Err(DrTailPlanIdentityError::FoldingStepsMismatch {
+                layer_idx: expected.layer_idx,
+                expected: expected.folding_steps,
+                observed: self.folding_steps,
+            });
+        }
+        if self.canonical_sources != expected.canonical_sources {
+            return Err(DrTailPlanIdentityError::CanonicalSourcesMismatch {
+                layer_idx: expected.layer_idx,
+                expected: expected.canonical_sources.to_vec(),
+                observed: self.canonical_sources.clone(),
+            });
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DrTailLayerIdentity<'a> {
+    layer_idx: usize,
+    folding_steps: usize,
+    canonical_sources: &'a [GKRAddress],
+}
+
+impl<'a> DrTailLayerIdentity<'a> {
+    pub(crate) const fn new(
+        layer_idx: usize,
+        folding_steps: usize,
+        canonical_sources: &'a [GKRAddress],
+    ) -> Self {
+        Self {
+            layer_idx,
+            folding_steps,
+            canonical_sources,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum DrTailPlanIdentityError {
+    MissingLayer {
+        layer_idx: usize,
+    },
+    DuplicateLayer {
+        layer_idx: usize,
+    },
+    LayerMismatch {
+        expected: usize,
+        observed: usize,
+    },
+    FoldingStepsMismatch {
+        layer_idx: usize,
+        expected: usize,
+        observed: usize,
+    },
+    CanonicalSourcesMismatch {
+        layer_idx: usize,
+        expected: Vec<GKRAddress>,
+        observed: Vec<GKRAddress>,
+    },
+    UnconsumedLayers {
+        planned: usize,
+        consumed: usize,
+    },
+}
+
+/// Runtime cursor shared by production scheduling and host-only identity
+/// tests. Binding is by absolute layer key; execution order is irrelevant.
+pub(crate) struct DrTailPlanCursor<'a> {
+    layers: &'a [DrTailLayerPlan],
+    consumed: BTreeSet<usize>,
+}
+
+impl<'a> DrTailPlanCursor<'a> {
+    pub(crate) fn new(layers: &'a [DrTailLayerPlan]) -> Self {
+        Self {
+            layers,
+            consumed: BTreeSet::new(),
+        }
+    }
+
+    pub(crate) fn bind(
+        &mut self,
+        expected: DrTailLayerIdentity<'_>,
+    ) -> Result<&'a DrTailCapacityDecision, DrTailPlanIdentityError> {
+        let planned = self
+            .layers
+            .iter()
+            .find(|planned| planned.layer_idx == expected.layer_idx)
+            .ok_or(DrTailPlanIdentityError::MissingLayer {
+                layer_idx: expected.layer_idx,
+            })?;
+        planned.validate(expected)?;
+        if !self.consumed.insert(expected.layer_idx) {
+            return Err(DrTailPlanIdentityError::DuplicateLayer {
+                layer_idx: expected.layer_idx,
+            });
+        }
+        Ok(planned.capacity())
+    }
+
+    pub(crate) fn finish(self) -> Result<(), DrTailPlanIdentityError> {
+        if self.consumed.len() != self.layers.len() {
+            return Err(DrTailPlanIdentityError::UnconsumedLayers {
+                planned: self.layers.len(),
+                consumed: self.consumed.len(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -128,7 +286,7 @@ pub(crate) fn plan_dr_tail_layers<F: PrimeField>(
     final_trace_log_2: usize,
     static_smem_bytes: usize,
     device_cap_bytes: usize,
-) -> Result<Vec<DrTailCapacityDecision>, DrTailResourceError> {
+) -> Result<Vec<DrTailLayerPlan>, DrTailResourceError> {
     let inputs = dr_tail_layer_inputs(artifact, final_trace_log_2).map_err(|rejection| {
         DrTailResourceError::Capacity {
             layer_idx: usize::MAX,
@@ -141,10 +299,12 @@ pub(crate) fn plan_dr_tail_layers<F: PrimeField>(
     inputs
         .into_iter()
         .map(|input| {
-            DrTailCapacityRequest {
+            let canonical_sources = input.order.sorted_canonical;
+            assert_eq!(canonical_sources.len(), input.canonical_sources);
+            let capacity = DrTailCapacityRequest {
                 folding_steps: input.folding_steps,
                 entry_round: input.entry_round,
-                canonical_sources: input.canonical_sources,
+                canonical_sources: canonical_sources.len(),
                 static_smem_bytes,
                 device_cap_bytes,
             }
@@ -152,6 +312,12 @@ pub(crate) fn plan_dr_tail_layers<F: PrimeField>(
             .map_err(|rejection| DrTailResourceError::Capacity {
                 layer_idx: input.layer_idx,
                 rejection,
+            })?;
+            Ok(DrTailLayerPlan {
+                layer_idx: input.layer_idx,
+                folding_steps: input.folding_steps,
+                canonical_sources,
+                capacity,
             })
         })
         .collect()
@@ -193,7 +359,7 @@ pub(crate) fn admit_dr_tail_resources<F: PrimeField, Q: DrTailDeviceQueries>(
 
     let mut selected: Vec<usize> = layers
         .iter()
-        .map(DrTailCapacityDecision::dynamic_smem_bytes)
+        .map(DrTailLayerPlan::dynamic_smem_bytes)
         .collect();
     selected.sort_unstable();
     selected.dedup();
@@ -347,8 +513,104 @@ mod tests {
         );
         assert!(!layers.is_empty(), "the corpus layout has DR layers");
         for (decision, input) in layers.iter().zip(inputs.iter()) {
-            assert_eq!(decision.entry_round(), input.entry_round);
+            assert_eq!(decision.layer_idx(), input.layer_idx);
+            assert_eq!(decision.folding_steps(), input.folding_steps);
+            assert_eq!(
+                decision.canonical_sources(),
+                input.order.sorted_canonical.as_slice()
+            );
+            assert_eq!(decision.capacity().entry_round(), input.entry_round);
         }
+    }
+
+    #[test]
+    fn cpu_dr_tail_plan_binds_reversed_execution_by_absolute_identity() {
+        fn layer(
+            layer_idx: usize,
+            folding_steps: usize,
+            canonical_sources: Vec<GKRAddress>,
+        ) -> DrTailLayerPlan {
+            let capacity = DrTailCapacityRequest {
+                folding_steps,
+                entry_round: super::super::capacity::portable_entry(folding_steps).unwrap(),
+                canonical_sources: canonical_sources.len(),
+                static_smem_bytes: 0,
+                device_cap_bytes: DEVICE_CAP,
+            }
+            .decide()
+            .unwrap();
+            DrTailLayerPlan {
+                layer_idx,
+                folding_steps,
+                canonical_sources,
+                capacity,
+            }
+        }
+
+        let low_sources = vec![GKRAddress::ScratchSpace(1), GKRAddress::ScratchSpace(2)];
+        let high_sources = (10..17).map(GKRAddress::ScratchSpace).collect::<Vec<_>>();
+        let ascending = vec![
+            layer(11, 10, low_sources.clone()),
+            layer(29, 20, high_sources.clone()),
+        ];
+        let high = DrTailLayerIdentity::new(29, 20, &high_sources);
+        let low = DrTailLayerIdentity::new(11, 10, &low_sources);
+        let mut cursor = DrTailPlanCursor::new(&ascending);
+        assert_eq!(cursor.bind(high).unwrap().entry_round(), 15);
+        assert_eq!(cursor.bind(low).unwrap().entry_round(), 9);
+        assert_eq!(cursor.finish(), Ok(()));
+
+        assert_eq!(
+            ascending[0].validate(high),
+            Err(DrTailPlanIdentityError::LayerMismatch {
+                expected: 29,
+                observed: 11,
+            }),
+            "the rejected ordinal lookup binds the low-fold plan to the high-fold layer",
+        );
+
+        let reversed_capacities = vec![
+            DrTailLayerPlan {
+                layer_idx: 11,
+                folding_steps: 20,
+                canonical_sources: high_sources.clone(),
+                capacity: *ascending[1].capacity(),
+            },
+            DrTailLayerPlan {
+                layer_idx: 29,
+                folding_steps: 10,
+                canonical_sources: low_sources.clone(),
+                capacity: *ascending[0].capacity(),
+            },
+        ];
+        let mut reversed = DrTailPlanCursor::new(&reversed_capacities);
+        assert_eq!(
+            reversed.bind(low),
+            Err(DrTailPlanIdentityError::FoldingStepsMismatch {
+                layer_idx: 11,
+                expected: 10,
+                observed: 20,
+            }),
+            "reversing the admitted capacities must fail before activation",
+        );
+
+        let mut duplicate = DrTailPlanCursor::new(&ascending);
+        duplicate.bind(low).unwrap();
+        assert_eq!(
+            duplicate.bind(low),
+            Err(DrTailPlanIdentityError::DuplicateLayer { layer_idx: 11 }),
+        );
+
+        let mut wrong_sources = DrTailPlanCursor::new(&ascending);
+        let wrong_source_identity = vec![GKRAddress::ScratchSpace(1), GKRAddress::ScratchSpace(99)];
+        assert_eq!(
+            wrong_sources.bind(DrTailLayerIdentity::new(11, 10, &wrong_source_identity)),
+            Err(DrTailPlanIdentityError::CanonicalSourcesMismatch {
+                layer_idx: 11,
+                expected: wrong_source_identity,
+                observed: low_sources,
+            }),
+        );
     }
 
     /// Test 2: fake-cap rejection. One byte below the largest selected layer
@@ -363,7 +625,7 @@ mod tests {
             .expect("baseline plan");
         let largest = layers
             .iter()
-            .map(DrTailCapacityDecision::dynamic_smem_bytes)
+            .map(DrTailLayerPlan::dynamic_smem_bytes)
             .max()
             .expect("non-empty");
         // The first planned layer at the largest size is the one the
@@ -422,7 +684,7 @@ mod tests {
         let largest = plan_dr_tail_layers(artifact.as_ref(), FINAL_TRACE_LOG, 0, DEVICE_CAP)
             .expect("baseline plan")
             .iter()
-            .map(DrTailCapacityDecision::dynamic_smem_bytes)
+            .map(DrTailLayerPlan::dynamic_smem_bytes)
             .max()
             .expect("non-empty");
         let starved_ceiling = largest - 1;
@@ -543,7 +805,7 @@ mod tests {
             plan_dr_tail_layers(artifact, FINAL_TRACE_LOG, 0, DEVICE_CAP)
                 .expect("baseline plan")
                 .iter()
-                .map(DrTailCapacityDecision::dynamic_smem_bytes)
+                .map(DrTailLayerPlan::dynamic_smem_bytes)
                 .collect();
         distinct.sort_unstable();
         distinct.dedup();
@@ -569,7 +831,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("{layout_name}: {error:?}"));
             let largest = layers
                 .iter()
-                .map(DrTailCapacityDecision::dynamic_smem_bytes)
+                .map(DrTailLayerPlan::dynamic_smem_bytes)
                 .max()
                 .expect("non-empty");
             per_layout_largest.push((layout_name, largest));
@@ -618,7 +880,7 @@ mod tests {
         let largest = plan
             .layers()
             .iter()
-            .map(DrTailCapacityDecision::dynamic_smem_bytes)
+            .map(DrTailLayerPlan::dynamic_smem_bytes)
             .max()
             .expect("non-empty");
         assert!(plan.resources().effective_max_dynamic_smem_bytes() >= largest);

@@ -17,7 +17,7 @@ pub(crate) use binding::{
     resolve_dr_global_active_eq_slot, DrCompactSourceTableBuilder, DrContinuationFactoredEqScratch,
     DrContinuationFactoredEqView, DrWindowBindError, DrWindowContinuationArena,
     DrWindowContinuationLaunch, DrWindowContinuationLaunchBinding, DrWindowContinuationSource,
-    DrWindowLaunch, DrWindowLaunchBinding, DrWindowR0Preparation, DrWindowRuntimeScratch,
+    DrWindowLaunch, DrWindowLaunchBinding, DrWindowRuntimeScratch,
 };
 // D1/DR-cont consumes the composition policy and persistent ownership seam.
 #[allow(unused_imports)]
@@ -25,8 +25,8 @@ pub(crate) use composition::{
     continuation_window_count, dr_window_continuation_pass_geometry, megakernel_entry_round,
     plan_dr_window_continuations, DrWindowContinuationArenaOwners, DrWindowContinuationParity,
     DrWindowContinuationPass, DrWindowContinuationPassGeometry, DrWindowContinuationPlannedSource,
-    DrWindowLayerCompositionHook, DrWindowLayerPreparationHook, DrWindowPassEqState,
-    DrWindowPassEqView, DrWindowRawInputKeepalive,
+    DrWindowContinuationReadiness, DrWindowLayerCompositionHook, DrWindowLayerPreparationHook,
+    DrWindowPassEqState, DrWindowPassEqView, DrWindowRawInputKeepalive,
 };
 
 pub(crate) fn validate_dr_window_folding_steps(
