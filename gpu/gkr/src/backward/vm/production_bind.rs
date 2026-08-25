@@ -961,7 +961,7 @@ pub(crate) fn repoint_final_evaluations_from_buffer<E>(
 impl BwdVmExtLaunch {
     pub(crate) fn set_external_final_evaluation_offsets(
         &mut self,
-        addresses: impl IntoIterator<Item = GKRAddress>,
+        addresses: impl IntoIterator<Item = (usize, GKRAddress)>,
     ) -> Result<(), &'static str> {
         let mut seen = std::collections::BTreeSet::new();
         let entries: Vec<_> = addresses.into_iter().collect();
@@ -970,7 +970,6 @@ impl BwdVmExtLaunch {
         }
         self.final_evaluations = entries
             .into_iter()
-            .enumerate()
             .map(|(column, address)| {
                 (
                     address,

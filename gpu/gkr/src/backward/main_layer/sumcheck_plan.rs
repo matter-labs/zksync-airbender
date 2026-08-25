@@ -615,7 +615,7 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             let expected: std::collections::BTreeSet<_> =
                 self.folding_evaluation_sources.iter().copied().collect();
             let actual: std::collections::BTreeSet<_> =
-                self.canonical_final_addresses.iter().copied().collect();
+                self.canonical_final_addresses.iter().map(|(_, address)| *address).collect();
             if expected != actual {
                 return Err(MainLayerScheduleError::MainTailBind {
                     layer: self.layer_idx,

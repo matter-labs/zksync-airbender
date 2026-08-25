@@ -197,26 +197,28 @@ impl GpuGKRMainLayerBackwardState {
             .filter(|address| *address != GKRAddress::placeholder())
             .map(logicalize)
             .collect();
-        let canonical_final_addresses = self
-            .programs
-            .main_continuation_window_layer(layer_idx)
-            .canonical_read_places()
-            .into_iter()
-            .flatten()
-            .map(|place| {
-                let address = crate::forward::vm::lower::read_place_to_gkr_address(&place);
-                self.storage
-                    .layout
-                    .as_ref()
-                    .map(|layout| {
-                        crate::transform::logical_protocol_address(
-                            address,
-                            &layout.scratch_space_mapping_rev,
-                        )
+        let canonical_final_addresses = if main_chain_selected {
+            self.programs
+                .main_continuation_window_layer(layer_idx)
+                .canonical_read_places()
+                .into_iter()
+                .enumerate()
+                .filter_map(|(column, place)| {
+                    place.map(|place| {
+                        let address = crate::forward::vm::lower::read_place_to_gkr_address(&place);
+                        let address = self.storage.layout.as_ref().map(|layout| {
+                            crate::transform::logical_protocol_address(
+                                address,
+                                &layout.scratch_space_mapping_rev,
+                            )
+                        }).unwrap_or(address);
+                        (column, address)
                     })
-                    .unwrap_or(address)
-            })
-            .collect();
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let claim_terms = layer_plan
             .claims
             .iter()
