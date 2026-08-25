@@ -1304,12 +1304,12 @@ fn expected_published_shape(
     // policy derives the currently legal corpus starts {15,18,21}; keeping the
     // binder generic admits new folding widths without hardcoding that census.
     assert!(
-        tail_start_round >= 6 && tail_start_round.is_multiple_of(3),
-        "a continuation remainder must follow at least one complete width-three continuation window"
+        tail_start_round >= 3 && tail_start_round.is_multiple_of(3),
+        "a main-tail entry must begin at a valid width-three boundary"
     );
     let depth = tail_start_round
         .checked_sub(BWD_COEFF_MAX_FOLD_DEPTH)
-        .expect("a continuation remainder must follow a full width-three window");
+        .expect("a main-tail entry must have a valid publication depth");
     let remaining = folding_steps
         .checked_sub(usize::from(depth))
         .expect("the published depth must be inside the layer's folding width");
@@ -1340,10 +1340,21 @@ pub(crate) fn build_bwd_vm_ext_rounds_after_continuations<E: Copy>(
     let suffix_len = folding_steps
         .checked_sub(usize::from(tail_start_round))
         .expect("the tail start must be inside the layer's folding width");
-    assert!(
-        suffix_len > 0,
-        "the tail start must leave a legacy consumer"
-    );
+    if tail_start_round == 3 {
+        return build_bwd_vm_ext_rounds_inner(
+            storage,
+            program,
+            folding_steps as u8,
+            folding_steps,
+            eq_low,
+            make_eq_sizes(0),
+            EqDrainSchedule::PerRound,
+            partials,
+            inits_and_teardowns_top_bits,
+            context,
+            Some(published_shape),
+        );
+    }
     build_bwd_vm_ext_rounds_inner(
         storage,
         program,
