@@ -974,25 +974,32 @@ pub(crate) fn repoint_final_evaluations_from_buffer<E>(
     .unwrap_or_else(|error| panic!("final-evaluation repoint: {error:?}"));
 }
 
+/// Build the canonical final-evaluation byte-offset map: every column offset
+/// is computed with checked arithmetic over both factors, and one address may
+/// own only one column. The complete map is validated before any caller state
+/// changes.
+pub(crate) fn build_canonical_final_evaluation_offsets(
+    addresses: impl IntoIterator<Item = (usize, GKRAddress)>,
+) -> Result<BTreeMap<GKRAddress, usize>, &'static str> {
+    let mut final_evaluations = BTreeMap::new();
+    for (column, address) in addresses {
+        let byte_offset = column
+            .checked_mul(MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS)
+            .and_then(|elements| elements.checked_mul(size_of::<E4>()))
+            .ok_or("canonical final-evaluation byte offset overflowed")?;
+        if final_evaluations.insert(address, byte_offset).is_some() {
+            return Err("duplicate canonical final-evaluation address");
+        }
+    }
+    Ok(final_evaluations)
+}
+
 impl BwdVmExtLaunch {
     pub(crate) fn set_external_final_evaluation_offsets(
         &mut self,
         addresses: impl IntoIterator<Item = (usize, GKRAddress)>,
     ) -> Result<(), &'static str> {
-        let mut seen = std::collections::BTreeSet::new();
-        let entries: Vec<_> = addresses.into_iter().collect();
-        if entries.iter().any(|address| !seen.insert(*address)) {
-            return Err("duplicate canonical final-evaluation address");
-        }
-        self.final_evaluations = entries
-            .into_iter()
-            .map(|(column, address)| {
-                (
-                    address,
-                    column * MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS * size_of::<E4>(),
-                )
-            })
-            .collect();
+        self.final_evaluations = build_canonical_final_evaluation_offsets(addresses)?;
         Ok(())
     }
     #[cfg(all(
@@ -2516,4 +2523,43 @@ fn retired_buffer_depths_after_round(round: u8, slots: &[FoldingBufferSlot]) -> 
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+#[cfg(test)]
+mod cpu_canonical_final_evaluation_offsets {
+    use super::*;
+
+    #[test]
+    fn cpu_canonical_final_offsets_are_exact_checked_and_duplicate_free() {
+        let a = GKRAddress::BaseLayerWitness(0);
+        let b = GKRAddress::BaseLayerMemory(2);
+        let c = GKRAddress::BaseLayerWitness(7);
+        let column_bytes = MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS * size_of::<E4>();
+        assert_eq!(column_bytes, 32);
+
+        let offsets = build_canonical_final_evaluation_offsets([(0, a), (1, b), (2, c)]).unwrap();
+        assert_eq!(offsets.len(), 3);
+        assert_eq!(offsets[&a], 0);
+        assert_eq!(offsets[&b], column_bytes);
+        assert_eq!(offsets[&c], 2 * column_bytes);
+
+        assert_eq!(
+            build_canonical_final_evaluation_offsets([(0, a), (1, b), (2, a)]),
+            Err("duplicate canonical final-evaluation address"),
+            "one address at two different columns must be rejected"
+        );
+
+        assert_eq!(
+            build_canonical_final_evaluation_offsets([(0, a), (usize::MAX, b)]),
+            Err("canonical final-evaluation byte offset overflowed"),
+        );
+        assert_eq!(
+            build_canonical_final_evaluation_offsets([(
+                usize::MAX / MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS,
+                a,
+            )]),
+            Err("canonical final-evaluation byte offset overflowed"),
+            "the second factor must be checked as well"
+        );
+    }
 }
