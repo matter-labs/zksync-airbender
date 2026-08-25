@@ -966,7 +966,14 @@ impl BwdVmExtLaunch {
         self.final_evaluations = addresses
             .into_iter()
             .enumerate()
-            .map(|(column, address)| (address, column * MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS))
+            .map(|(column, address)| {
+                (
+                    address,
+                    column
+                        * MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS
+                        * size_of::<E4>(),
+                )
+            })
             .collect();
     }
     #[cfg(all(
