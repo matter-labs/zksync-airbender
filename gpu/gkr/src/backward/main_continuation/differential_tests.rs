@@ -2036,6 +2036,37 @@ struct TranscriptBuffers {
     allocations: Vec<Task8AllocationRecord>,
 }
 
+/// Byte ranges of the four arm-owned transcript allocations. The production
+/// implementation is backed by real `DeviceAllocation`s; CPU lifecycle tests
+/// implement the same seam with inert addresses so they exercise the exact
+/// open/retire functions without touching CUDA.
+trait Task8TranscriptOwnerRanges {
+    fn task8_transcript_owner_ranges(&self) -> [(usize, usize); 4];
+}
+
+impl Task8TranscriptOwnerRanges for TranscriptBuffers {
+    fn task8_transcript_owner_ranges(&self) -> [(usize, usize); 4] {
+        [
+            (
+                self.seed.as_ptr() as usize,
+                self.seed.len() * std::mem::size_of::<u32>(),
+            ),
+            (
+                self.claim.as_ptr() as usize,
+                self.claim.len() * std::mem::size_of::<E4>(),
+            ),
+            (
+                self.prefactor.as_ptr() as usize,
+                self.prefactor.len() * std::mem::size_of::<E4>(),
+            ),
+            (
+                self.coefficients.as_ptr() as usize,
+                self.coefficients.len() * std::mem::size_of::<E4>(),
+            ),
+        ]
+    }
+}
+
 /// The arm's mutable transcript state, initialized device-to-device from the
 /// seam's squeezed master values so both arms start from the same
 /// device-produced seed, claim and Eq prefactor. No host value and no staging
@@ -2146,40 +2177,27 @@ fn transcript_buffers(
     })
 }
 
-fn open_transcript_owners(
+fn open_transcript_owners<T: Task8TranscriptOwnerRanges>(
     ledger: &mut Task8OwnerGenerationLedger,
     arm: &'static str,
-    transcript: &TranscriptBuffers,
+    transcript: &T,
 ) -> Task8TranscriptOwners {
+    let [seed, claim, prefactor, coefficients] = transcript.task8_transcript_owner_ranges();
+    let mut open = |label, (base, bytes)| {
+        ledger_open(
+            ledger,
+            arm,
+            label,
+            Task8OwnerOrigin::ArmOwned(Task8OwnershipEnd::Freed),
+            base,
+            bytes,
+        )
+    };
     Task8TranscriptOwners {
-        seed: ledger_open_allocation(
-            ledger,
-            arm,
-            "transcript_seed",
-            Task8OwnershipEnd::BorrowClosed,
-            &transcript.seed,
-        ),
-        claim: ledger_open_allocation(
-            ledger,
-            arm,
-            "transcript_claim",
-            Task8OwnershipEnd::BorrowClosed,
-            &transcript.claim,
-        ),
-        prefactor: ledger_open_allocation(
-            ledger,
-            arm,
-            "transcript_prefactor",
-            Task8OwnershipEnd::BorrowClosed,
-            &transcript.prefactor,
-        ),
-        coefficients: ledger_open_allocation(
-            ledger,
-            arm,
-            "coefficients",
-            Task8OwnershipEnd::BorrowClosed,
-            &transcript.coefficients,
-        ),
+        seed: open("transcript_seed", seed),
+        claim: open("transcript_claim", claim),
+        prefactor: open("transcript_prefactor", prefactor),
+        coefficients: open("coefficients", coefficients),
     }
 }
 
@@ -4361,6 +4379,7 @@ struct CorpusCensus {
     layouts: usize,
     layers: usize,
     coordinates: usize,
+    non_identity_coordinates: usize,
     folding_steps: Vec<usize>,
     start_rounds: Vec<usize>,
     masks: Vec<u16>,
@@ -4384,6 +4403,7 @@ fn build_corpus_census() -> CorpusCensus {
     let mut layers = 0usize;
     let mut max_sources = 0usize;
     let mut max_legacy_displacement = 0usize;
+    let mut non_identity_coordinates = 0usize;
     let mut publication_over_2gib = 0usize;
 
     for (layout, _) in crate::backward::CONTINUATION_GOLDEN_CORPUS {
@@ -4442,6 +4462,7 @@ fn build_corpus_census() -> CorpusCensus {
             }
             assert!(seen.into_iter().all(|seen| seen), "{layout} layer {layer}");
             max_legacy_displacement = max_legacy_displacement.max(displaced);
+            non_identity_coordinates += usize::from(displaced > 0);
         }
     }
 
@@ -4449,6 +4470,7 @@ fn build_corpus_census() -> CorpusCensus {
         layouts: crate::backward::CONTINUATION_GOLDEN_CORPUS.len(),
         layers,
         coordinates: layers,
+        non_identity_coordinates,
         folding_steps: folding_steps_seen.into_iter().collect(),
         start_rounds: start_rounds_seen.into_iter().collect(),
         masks: masks_seen.into_iter().collect(),
@@ -4505,6 +4527,65 @@ mod cpu_tests {
     }
 
     #[test]
+    fn cpu_actual_transcript_open_retire_seam_requires_freed_for_every_allocation() {
+        let mut ledger = Task8OwnerGenerationLedger::default();
+        let owners = open_and_use_actual_transcript_seam(&mut ledger);
+        retire_transcript_owners(&mut ledger, &owners);
+        for owner in [
+            owners.seed,
+            owners.claim,
+            owners.prefactor,
+            owners.coefficients,
+        ] {
+            let generation = ledger.generation(owner.token);
+            assert_eq!(generation.allowed_end, Task8OwnershipEnd::Freed);
+            assert_eq!(generation.final_enqueue, generation.last_enqueue());
+            assert_eq!(
+                generation.released,
+                Some(Task8Release {
+                    at_enqueue: 1,
+                    end: Task8OwnershipEnd::Freed,
+                })
+            );
+        }
+
+        for owner_index in 0..4 {
+            for wrong_end in [
+                Task8OwnershipEnd::BorrowClosed,
+                Task8OwnershipEnd::SymbolReleased,
+            ] {
+                let mut mutated = Task8OwnerGenerationLedger::default();
+                let owners = open_and_use_actual_transcript_seam(&mut mutated);
+                let owner = [
+                    owners.seed,
+                    owners.claim,
+                    owners.prefactor,
+                    owners.coefficients,
+                ][owner_index];
+                let final_enqueue = ledger_bind_final(&mut mutated, &owner);
+                let before = mutated.generation(owner.token).clone();
+                match mutated.release(owner.token, wrong_end) {
+                    Err(Task8LedgerError::ReleaseKindMismatch(culprit)) => {
+                        assert_eq!(culprit.arm, owner.arm);
+                        assert_eq!(culprit.label, owner.label);
+                        assert_eq!(culprit.generation, before.generation);
+                        assert_eq!(culprit.covered, (owner.base, owner.base + owner.bytes));
+                        assert_eq!(culprit.final_enqueue, Some(final_enqueue));
+                        assert_eq!(culprit.released, None);
+                    }
+                    other => panic!("wrong transcript end must reject, got {other:?}"),
+                }
+                assert_eq!(mutated.generation(owner.token).released, None);
+                assert_eq!(
+                    mutated.release(owner.token, Task8OwnershipEnd::Freed),
+                    Ok(1),
+                    "wrong-kind rejection must leave the generation releasable"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn probe_phase_registration_order_is_explicit() {
         let source = include_str!("differential_tests.rs");
         let bank = source.find("let bank_spans = bank.schedule").unwrap();
@@ -4540,7 +4621,7 @@ mod cpu_tests {
     use super::E4;
     use super::{
         allocation_group_record, build_corpus_census, close_challenge_owners, deterministic_e4,
-        eq_readback_spans, ledger_bind_final, ledger_open, ledger_retire,
+        eq_readback_spans, ledger_bind_final, ledger_open, ledger_retire, open_transcript_owners,
         record_active_eq_slot_fold, retire_arm_owners, retire_transcript_owners,
         signed_snapshot_delta, task8_eq_coordinates, task8_register_symbol,
         validate_owner_generation_ledger, validate_owner_generation_structure,
@@ -4549,9 +4630,10 @@ mod cpu_tests {
         Task8Culprit, Task8EnqueueKind, Task8EnqueuePlan, Task8GenerationToken, Task8LedgerError,
         Task8LedgerOwner, Task8LedgerRecord, Task8OwnerGeneration, Task8OwnerGenerationLedger,
         Task8OwnerOrigin, Task8OwnershipEnd, Task8ProbeGuard, Task8QueuedUse, Task8Release,
-        Task8Span, Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
-        MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
-        TASK8_SHARED_DEVICE_INPUTS, TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
+        Task8Span, Task8TopologyError, Task8TranscriptOwnerRanges, Task8TranscriptOwners,
+        GKR_EQ_HIGH_SLOTS, MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM,
+        TASK8_PRODUCTION_STORAGE, TASK8_SHARED_DEVICE_INPUTS, TASK8_SHARED_DEVICE_SYMBOLS,
+        TASK8_WINDOW_ARM,
     };
     use crate::backward::kernels::{task8_dual_finalize_spans, task8_eq_build_spans};
     use crate::backward::main_layer::execution_plan::WINDOW_WIDTH;
@@ -4742,6 +4824,7 @@ mod cpu_tests {
         assert_eq!(census.layouts, 12);
         assert_eq!(census.layers, 57);
         assert_eq!(census.coordinates, 57);
+        assert_eq!(census.non_identity_coordinates, 23);
         assert_eq!(census.folding_steps, [20, 22, 23, 24]);
         assert_eq!(census.start_rounds, [3, 6, 9, 12, 15, 18]);
         assert_eq!(census.masks, [0x00, 0x01, 0x03, 0x07, 0x13, 0x17, 0x1f]);
@@ -4827,6 +4910,45 @@ mod cpu_tests {
     const TASK8_TEST_TRANSCRIPT_BASE: usize = 0x90_0000;
     const TASK8_TEST_REDUCED_TENSOR: usize =
         TASK8_TEST_PARTIALS + MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * TASK8_TEST_ROW_TILES * 16;
+
+    struct CpuTranscriptOwnerRanges([(usize, usize); 4]);
+
+    impl Task8TranscriptOwnerRanges for CpuTranscriptOwnerRanges {
+        fn task8_transcript_owner_ranges(&self) -> [(usize, usize); 4] {
+            self.0
+        }
+    }
+
+    fn open_and_use_actual_transcript_seam(
+        ledger: &mut Task8OwnerGenerationLedger,
+    ) -> Task8TranscriptOwners {
+        let ranges = CpuTranscriptOwnerRanges([
+            (TASK8_TEST_TRANSCRIPT_BASE, 8 * std::mem::size_of::<u32>()),
+            (TASK8_TEST_TRANSCRIPT_BASE + 0x1000, TASK8_TEST_ELEMENT),
+            (TASK8_TEST_TRANSCRIPT_BASE + 0x2000, TASK8_TEST_ELEMENT),
+            (TASK8_TEST_TRANSCRIPT_BASE + 0x3000, 12 * TASK8_TEST_ELEMENT),
+        ]);
+        let owners = open_transcript_owners(ledger, TASK8_WINDOW_ARM, &ranges);
+        let probe = Task8ProbeGuard::install();
+        enqueue(
+            ledger,
+            &probe,
+            TASK8_WINDOW_ARM,
+            "transcript-state-copy",
+            Task8EnqueueKind::Copy,
+            [
+                &owners.seed,
+                &owners.claim,
+                &owners.prefactor,
+                &owners.coefficients,
+            ]
+            .into_iter()
+            .map(|owner| Task8Span::write(owner.label, owner.base, owner.bytes))
+            .collect(),
+        );
+        assert!(probe.finish().is_empty());
+        owners
+    }
 
     fn task8_test_sizes() -> GkrEqSizes {
         make_eq_sizes(TASK8_TEST_CHALLENGES)
@@ -7932,6 +8054,7 @@ mod cpu_tests {
 struct Task8DifferentialAccumulator {
     layers: usize,
     coordinates: usize,
+    non_identity_coordinates: usize,
     folding_steps: BTreeSet<usize>,
     start_rounds: BTreeSet<usize>,
     masks: BTreeSet<u16>,
@@ -8103,6 +8226,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
     let accumulator = Arc::new(Mutex::new(Task8DifferentialAccumulator {
         layers,
         coordinates: layers,
+        non_identity_coordinates: 0,
         folding_steps: BTreeSet::from([folding_steps]),
         start_rounds: BTreeSet::new(),
         masks: BTreeSet::new(),
@@ -8689,6 +8813,9 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                         .lock()
                         .expect("Task 8 differential accumulator mutex poisoned");
                     state.start_rounds.insert(start_round);
+                    if start_round == 3 {
+                        state.non_identity_coordinates += usize::from(displaced > 0);
+                    }
                     state.max_legacy_displacement = state.max_legacy_displacement.max(displaced);
                     state.semantic_comparisons += semantic_comparisons;
                     state.publication_elements_compared += window.publication.len();
@@ -8746,6 +8873,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             assert!(state.semantic_comparisons > 0);
             assert!(state.mutation_checks > 0);
             assert_eq!(state.coordinates, state.layers);
+            assert!(state.non_identity_coordinates <= state.coordinates);
             assert_eq!(state.source_table_identity_rows, state.layers);
             assert_eq!(state.start_rounds.len(), usize::from(plan));
             assert_eq!(state.topology_coordinates, state.layers * usize::from(plan));
@@ -8861,6 +8989,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             let report = MainContinuationDifferentialReport {
                 layers: state.layers,
                 coordinates: state.coordinates,
+                non_identity_coordinates: state.non_identity_coordinates,
                 folding_steps: std::mem::take(&mut state.folding_steps)
                     .into_iter()
                     .collect(),

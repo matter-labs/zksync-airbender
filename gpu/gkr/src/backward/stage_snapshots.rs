@@ -87,6 +87,7 @@ impl Default for GKRBackwardStageSnapshotSink {
 pub struct MainContinuationDifferentialReport {
     pub layers: usize,
     pub coordinates: usize,
+    pub non_identity_coordinates: usize,
     pub folding_steps: Vec<usize>,
     pub start_rounds: Vec<usize>,
     pub masks: Vec<u16>,
@@ -257,6 +258,7 @@ impl Task8ContinuationDifferentialRequest {
             );
             assert_eq!(report.source_id_census.len(), report.layers);
             assert_eq!(report.source_backing_census.len(), report.layers);
+            assert!(report.non_identity_coordinates <= report.coordinates);
             assert!(report.topology_owner_records > report.allocation_records);
             assert!(!report.topology_owner_kinds.is_empty());
             assert!(
