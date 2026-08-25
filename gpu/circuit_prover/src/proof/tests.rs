@@ -430,6 +430,160 @@ fn cpu_windowed_backward_preflight_rejection_constructs_zero_transfers_and_is_st
     assert!(!programs.main_continuation_window_programs_ready());
 }
 
+#[test]
+fn cpu_dr_window_preflight_is_default_off_and_caches_exact_final_logs() {
+    use super::preflight_windowed_backward;
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let initial_trace_log = programs.compiled_circuit().trace_len.trailing_zeros();
+    let first_final_log = initial_trace_log - 2;
+    let second_final_log = initial_trace_log - 1;
+
+    preflight_windowed_backward(
+        &programs,
+        BackwardExecutionStrategy::PerRound,
+        GkrBackwardOptions::default(),
+        first_final_log,
+    )
+    .unwrap();
+    assert!(!programs.dr_window_programs_ready(first_final_log));
+
+    let enabled = GkrBackwardOptions {
+        windowed_dr: true,
+        ..GkrBackwardOptions::default()
+    };
+    preflight_windowed_backward(
+        &programs,
+        BackwardExecutionStrategy::PerRound,
+        enabled,
+        first_final_log,
+    )
+    .unwrap();
+    assert!(programs.dr_window_programs_ready(first_final_log));
+    assert!(!programs.dr_window_programs_ready(second_final_log));
+    let first = programs
+        .resolve_dr_window_programs(first_final_log)
+        .unwrap();
+    let first_again = programs
+        .resolve_dr_window_programs(first_final_log)
+        .unwrap();
+    assert!(std::sync::Arc::ptr_eq(&first, &first_again));
+    assert_eq!(first.final_trace_log(), first_final_log);
+
+    preflight_windowed_backward(
+        &programs,
+        BackwardExecutionStrategy::PerRound,
+        enabled,
+        second_final_log,
+    )
+    .unwrap();
+    assert!(programs.dr_window_programs_ready(second_final_log));
+    assert_eq!(
+        programs
+            .resolve_dr_window_programs(second_final_log)
+            .unwrap()
+            .final_trace_log(),
+        second_final_log
+    );
+}
+
+#[test]
+fn cpu_dr_window_preflight_typed_rejection_constructs_zero_transfers() {
+    use super::{construct_after_windowed_backward_preflight, GpuProveError};
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+    use std::cell::Cell;
+
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let initial_trace_log = programs.compiled_circuit().trace_len.trailing_zeros();
+    let invalid_final_log = initial_trace_log + 1;
+    let options = GkrBackwardOptions {
+        windowed_dr: true,
+        ..GkrBackwardOptions::default()
+    };
+    let transfer_constructions = Cell::new(0usize);
+
+    let error = construct_after_windowed_backward_preflight(
+        &programs,
+        BackwardExecutionStrategy::PerRound,
+        options,
+        invalid_final_log,
+        || transfer_constructions.set(transfer_constructions.get() + 1),
+    )
+    .unwrap_err();
+    assert_eq!(transfer_constructions.get(), 0);
+    let rejection = programs
+        .resolve_dr_window_programs(invalid_final_log)
+        .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::DrWindowLowering {
+            circuit: rejection.circuit().to_owned(),
+            layer: rejection.layer(),
+            resource: rejection.resource().to_owned(),
+        }
+    );
+    assert!(!programs.dr_window_programs_ready(invalid_final_log));
+    assert_eq!(
+        programs
+            .resolve_dr_window_programs(invalid_final_log)
+            .unwrap_err(),
+        rejection,
+        "typed rejection must remain stable in the final-log keyed cache"
+    );
+}
+
+#[test]
+fn cpu_dr_window_preflight_cached_geometry_rejection_constructs_zero_transfers() {
+    use super::{construct_after_windowed_backward_preflight, GpuProveError};
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+    use std::cell::Cell;
+
+    const INVALID_FINAL_LOG: u32 = 3;
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let options = GkrBackwardOptions {
+        windowed_dr: true,
+        ..GkrBackwardOptions::default()
+    };
+    let transfer_constructions = Cell::new(0usize);
+
+    let error = construct_after_windowed_backward_preflight(
+        &programs,
+        BackwardExecutionStrategy::PerRound,
+        options,
+        INVALID_FINAL_LOG,
+        || transfer_constructions.set(transfer_constructions.get() + 1),
+    )
+    .unwrap_err();
+    assert_eq!(transfer_constructions.get(), 0);
+    let rejection = programs
+        .resolve_dr_window_programs(INVALID_FINAL_LOG)
+        .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::DrWindowLowering {
+            circuit: rejection.circuit().to_owned(),
+            layer: rejection.layer(),
+            resource: rejection.resource().to_owned(),
+        }
+    );
+    assert_eq!(
+        rejection.resource(),
+        "UnsupportedFoldingSteps { folding_steps: 3 }"
+    );
+    assert!(!programs.dr_window_programs_ready(INVALID_FINAL_LOG));
+    assert_eq!(
+        programs
+            .resolve_dr_window_programs(INVALID_FINAL_LOG)
+            .unwrap_err(),
+        rejection,
+        "producer geometry rejection must remain stable in the final-log cache"
+    );
+}
+
 /// Which corpus families the windowed arm is selected for, per supported
 /// security level. This is the both-arm byte gate's zero-selection guard: the
 /// gate's wrappers run the windowed arm only where

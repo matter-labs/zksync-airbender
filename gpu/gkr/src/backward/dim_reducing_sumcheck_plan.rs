@@ -149,6 +149,13 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         const DIMENSION_REDUCING_LAYER_RANGE_MIN_FOLDING_STEPS: usize = 19;
 
         let stream = context.get_exec_stream();
+        let dr_window_prepared = self.dr_window.is_some();
+        assert_eq!(
+            dr_window_prepared,
+            self.dr_window_bundle_final_log.is_some(),
+            "a prepared DR hook must carry its resolved bundle final-log identity"
+        );
+        let dr_window_bundle_final_log = self.dr_window_bundle_final_log;
         let mut tracing_ranges = Vec::new();
         assert!(self.folding_steps >= 2);
         let last_step = self.folding_steps - 1;
@@ -471,6 +478,8 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         drop(device_claims_in);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
+            dr_window_prepared,
+            dr_window_bundle_final_log,
             device_seed: Some(device_seed),
             device_claim_point_for_next_layer: Some(DeviceClaimPointAndBatching::from_allocation(
                 device_next_claim_point,
