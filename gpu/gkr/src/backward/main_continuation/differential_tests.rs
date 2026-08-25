@@ -2373,9 +2373,10 @@ fn build_prior_level(
         );
         ledger.absorb(owners.arm, probe);
         let consumed = prior.take();
-        if let Some(consumed_owner) = prior_owner.replace(published) {
-            ledger_bind_final(ledger, &consumed_owner);
-        }
+        // The previously published level remains a read input to the next
+        // continuation enqueue. Its Final is bound by that consumer's
+        // retirement facts, not at replacement time.
+        let _consumed_owner = prior_owner.replace(published);
         prior = Some(launched.into_published_level());
         drop(consumed);
     }
