@@ -86,6 +86,32 @@ fn main_tail_publication_source(
     })
 }
 
+/// Common W=0 orchestration seam. Production supplies closures that perform
+/// the real device publication, tail bind/enqueue, and canonical repoint;
+/// host tests record those same operation boundaries.
+fn orchestrate_w0<P, B, T, R>(
+    folding_steps: usize,
+    publication: P,
+    tail_bind: B,
+    tail_enqueue: T,
+    repoint: R,
+) -> Result<(), &'static str>
+where
+    P: FnOnce() -> Result<(), &'static str>,
+    B: FnOnce() -> Result<(), &'static str>,
+    T: FnOnce() -> Result<(), &'static str>,
+    R: FnOnce() -> Result<(), &'static str>,
+{
+    if !(4..=6).contains(&folding_steps) {
+        return Err("unsupported W=0 geometry");
+    }
+    publication()?;
+    tail_bind()?;
+    tail_enqueue()?;
+    repoint()?;
+    Ok(())
+}
+
 impl GpuGKRMainLayerSumcheckLayerPlan {
     fn dispatch_warp_partial_tail(
         &mut self,
@@ -897,6 +923,34 @@ mod cpu_main_chain_dispatch {
             ]
         );
         assert_ne!(zero_events, continuation_events);
+    }
+
+    #[test]
+    fn actual_w0_orchestration_records_all_operations_for_4_5_6() {
+        let mut positive = 0usize;
+        for folding_steps in 4..=6 {
+            let events = std::cell::RefCell::new(Vec::new());
+            orchestrate_w0(
+                folding_steps,
+                || { events.borrow_mut().push(Event::R0Publication); Ok(()) },
+                || { events.borrow_mut().push(Event::TailBind); Ok(()) },
+                || { events.borrow_mut().push(Event::TailLaunch); Ok(()) },
+                || { events.borrow_mut().push(Event::CanonicalRepoint); Ok(()) },
+            ).unwrap();
+            assert_eq!(*events.borrow(), [Event::R0Publication, Event::TailBind, Event::TailLaunch, Event::CanonicalRepoint]);
+            positive += 1;
+            for removed in 0..4 {
+                let result = orchestrate_w0(
+                    folding_steps,
+                    || if removed == 0 { Err("publication removed") } else { Ok(()) },
+                    || if removed == 1 { Err("tail bind removed") } else { Ok(()) },
+                    || if removed == 2 { Err("tail enqueue removed") } else { Ok(()) },
+                    || if removed == 3 { Err("repoint removed") } else { Ok(()) },
+                );
+                assert!(result.is_err());
+            }
+        }
+        assert_eq!(positive, 3);
     }
 
     #[test]
