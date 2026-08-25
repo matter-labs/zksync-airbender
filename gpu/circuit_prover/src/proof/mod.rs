@@ -64,6 +64,15 @@ pub enum GpuProveError {
     DrWindowContinuationPreflight {
         error: DrWindowContinuationPreflightError,
     },
+    DrTailResources {
+        error: gpu_gkr::DrTailResourceError,
+    },
+}
+
+impl From<gpu_gkr::DrTailResourceError> for GpuProveError {
+    fn from(error: gpu_gkr::DrTailResourceError) -> Self {
+        Self::DrTailResources { error }
+    }
 }
 
 #[cfg(test)]
@@ -243,6 +252,9 @@ impl std::fmt::Display for GpuProveError {
             Self::DrWindowContinuationPreflight { error } => {
                 write!(formatter, "DR continuation preflight rejected: {error:?}")
             }
+            Self::DrTailResources { error } => {
+                write!(formatter, "DR-tail resource admission rejected: {error}")
+            }
         }
     }
 }
@@ -361,6 +373,83 @@ pub fn preflight_windowed_backward(
     Ok(())
 }
 
+/// What the DR preflight boundary needs in order to admit a proof request.
+///
+/// `None` at the boundary means the request is not a proof, so neither the
+/// windowed lowering preflight nor DR-tail resource admission applies.
+#[derive(Clone, Copy)]
+pub struct DrTailPreflightRequest<'a> {
+    pub gkr_programs: &'a GkrPrograms,
+    pub strategy: BackwardExecutionStrategy,
+    pub options: GkrBackwardOptions,
+    pub final_trace_size_log_2: u32,
+    pub device_id: i32,
+}
+
+/// Preflight and admit before anything is constructed.
+///
+/// Both the windowed lowering preflight and DR-tail resource admission run to
+/// completion before `construct_transfers` is invoked, and neither reaches it on
+/// the rejection path. A rejection therefore provably leaves zero transfer
+/// constructions, zero enqueues, and zero execution-arm selections behind.
+///
+/// The admitted plan is handed to the closure so the constructed inputs can own
+/// it for the whole proof.
+pub fn admit_dr_tail_before_transfers<T>(
+    request: Option<DrTailPreflightRequest<'_>>,
+    construct_transfers: impl FnOnce(Option<gpu_gkr::DrTailProofPlan>) -> T,
+) -> Result<T, GpuProveError> {
+    admit_dr_tail_before_transfers_with(
+        request,
+        |request| {
+            gpu_gkr::preflight_dr_tail_resources(
+                request.gkr_programs,
+                request.final_trace_size_log_2,
+                request.device_id,
+            )
+            .map_err(GpuProveError::from)
+        },
+        construct_transfers,
+    )
+}
+
+/// The ordering itself, with the device-touching admission injected.
+///
+/// `admit` is called at most once, only after the pure window preflight has
+/// accepted and only when the DR-tail arm is selected. `construct_transfers` is
+/// called at most once, only after both have accepted.
+///
+/// Generic over the admitted plan so the seam tests can drive the ordering
+/// with a token; production instantiates it with the real admission and
+/// `gpu_gkr::DrTailProofPlan`, whose only constructor is device admission.
+fn admit_dr_tail_before_transfers_with<P, T>(
+    request: Option<DrTailPreflightRequest<'_>>,
+    admit: impl FnOnce(&DrTailPreflightRequest<'_>) -> Result<P, GpuProveError>,
+    construct_transfers: impl FnOnce(Option<P>) -> T,
+) -> Result<T, GpuProveError> {
+    let Some(request) = request else {
+        return Ok(construct_transfers(None));
+    };
+    // Lower every selected window family before constructing any proof
+    // transfer. A cached rejection therefore leaves no H2D allocation or
+    // scheduling side effect behind.
+    preflight_windowed_backward(
+        request.gkr_programs,
+        request.strategy,
+        request.options,
+        request.final_trace_size_log_2,
+    )?;
+    // Resource admission is part of the same pre-transfer boundary: the
+    // linked kernel's attributes and occupancy are queried, and the opt-in
+    // ceiling raised, before any transfer exists to unwind.
+    let dr_tail_plan = if request.options.dr_tail_megakernel {
+        Some(admit(&request)?)
+    } else {
+        None
+    };
+    Ok(construct_transfers(dr_tail_plan))
+}
+
 #[cfg(test)]
 pub(crate) fn construct_after_windowed_backward_preflight<T>(
     gkr_programs: &GkrPrograms,
@@ -435,6 +524,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
+    dr_tail_plan: Option<gpu_gkr::DrTailProofPlan>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     prove_inner(
@@ -443,6 +533,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         inputs,
         backward_options,
+        dr_tail_plan,
         None,
         #[cfg(test)]
         None,
@@ -465,6 +556,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         inputs,
         backward_options,
+        None,
         Some(Box::default()),
         None,
         context,
@@ -488,6 +580,7 @@ pub(crate) fn prove_measured<'a, 'context, A: GoodAllocator + 'a>(
         inputs,
         backward_options,
         None,
+        None,
         Some(sink),
         context,
     )
@@ -499,6 +592,7 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
+    dr_tail_plan: Option<gpu_gkr::DrTailProofPlan>,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     #[cfg(test)] mut memory_high_water: Option<&mut ProofMemoryHighWaterSink<'context>>,
     context: &'context ProverContext,
@@ -670,6 +764,7 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
         top_bits_host.clone(),
         Arc::clone(gkr_programs),
         backward_options,
+        dr_tail_plan,
         backward_strategy,
         final_trace_size_log_2,
         external_challenges.device.as_ptr(),

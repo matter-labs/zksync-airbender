@@ -21,8 +21,9 @@ use super::reference::{
     DrTailReferenceInput, DrTailReferenceOutput, DrTailReferenceSlot, DrTailSlotKind,
 };
 use super::{
-    launch_dr_tail_megakernel_e4, DrTailMegakernelDesc, DrTailSlot, DR_TAIL_BLOCK_THREADS,
-    DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE, DR_TAIL_MAX_REMAINING_ROUNDS, DR_TAIL_MAX_SOURCES,
+    launch_dr_tail_megakernel_e4, DrTailMegakernelDesc, DrTailMegakernelE4Function, DrTailSlot,
+    DR_TAIL_BLOCK_THREADS, DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE, DR_TAIL_MAX_REMAINING_ROUNDS,
+    DR_TAIL_MAX_SOURCES,
 };
 use crate::backward::kernels::{
     get_dim_reducing_layer_claim_point_device_ptr, get_eq_high_constant_device_ptr,
@@ -643,6 +644,19 @@ fn run_megakernel_arm(
             metadata,
         ))
     } else {
+        // Production raises the ceiling once, at admission, to the proof
+        // maximum; this harness drives the kernel directly, so it raises to
+        // the fixture's admitted size here.
+        let function = DrTailMegakernelE4Function::default();
+        unsafe {
+            cudaFuncSetAttribute(
+                function.as_ptr(),
+                CudaFuncAttribute::MaxDynamicSharedMemorySize,
+                admitted.dynamic_smem_bytes as i32,
+            )
+        }
+        .wrap()
+        .unwrap();
         launch_dr_tail_megakernel_e4(desc, &admitted, context).unwrap();
         None
     };

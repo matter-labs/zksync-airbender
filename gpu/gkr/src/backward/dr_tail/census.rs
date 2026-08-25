@@ -50,6 +50,57 @@ pub(super) struct DrTailCorpusCensus {
     pub(super) merge_layers: usize,
 }
 
+/// One production DR layer, resolved from the artifact tower.
+///
+/// This is the single producer of DR-tail per-layer planning inputs. Production
+/// resource preflight and the 229-row corpus census both consume it, so the
+/// census is a regression gate on the production selection rather than a
+/// parallel derivation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DrTailLayerInput {
+    pub(super) layer_idx: usize,
+    pub(super) folding_steps: usize,
+    pub(super) entry_round: usize,
+    pub(super) canonical_sources: usize,
+    pub(super) enabled_mask: u32,
+    pub(super) order: DrTailAddressOrder,
+}
+
+/// Resolve every production DR layer of `artifact` down to `final_trace_log_2`.
+pub(super) fn dr_tail_layer_inputs<F: crate::upstream::PrimeField>(
+    artifact: &crate::upstream::GKRCircuitArtifact<F>,
+    final_trace_log_2: usize,
+) -> Result<Vec<DrTailLayerInput>, DrTailCapacityRejection> {
+    let trace_log = artifact.trace_len.trailing_zeros() as usize;
+    let layout = GpuGKRStorageLayout::from_artifact_with_tower(artifact, final_trace_log_2);
+    let tower = derive_dimension_reducing_inputs(
+        artifact.layers.len(),
+        &artifact.global_output_map,
+        trace_log as u32,
+        final_trace_log_2 as u32,
+    );
+    let mut inputs = Vec::with_capacity(tower.len());
+    for (layer_idx, layer) in tower {
+        let layer_offset = layer_idx - artifact.layers.len();
+        let folding_steps = trace_log
+            .checked_sub(layer_offset)
+            .and_then(|value| value.checked_sub(1))
+            .ok_or(DrTailCapacityRejection::ArithmeticOverflow)?;
+        let slots = build_dimension_reducing_slots_static(&layer);
+        let order = address_order(slots.input_addresses(), &layout.aliases);
+        let entry_round = portable_entry(folding_steps)?;
+        inputs.push(DrTailLayerInput {
+            layer_idx,
+            folding_steps,
+            entry_round,
+            canonical_sources: order.sorted_canonical.len(),
+            enabled_mask: slots.enabled_mask(),
+            order,
+        });
+    }
+    Ok(inputs)
+}
+
 pub(super) fn address_order(
     raw_occurrences: impl IntoIterator<Item = GKRAddress>,
     aliases: &BTreeMap<GKRAddress, GKRAddress>,
@@ -102,21 +153,17 @@ fn build_census() -> DrTailCorpusCensus {
     for (layout_name, _) in CONTINUATION_GOLDEN_CORPUS {
         let (programs, _) = compile_corpus_layout(layout_name);
         let artifact = programs.runtime_circuit();
-        let trace_log = artifact.trace_len.trailing_zeros() as usize;
-        let layout = GpuGKRStorageLayout::from_artifact_with_tower(artifact, FINAL_TRACE_LOG);
-        let tower = derive_dimension_reducing_inputs(
-            artifact.layers.len(),
-            &artifact.global_output_map,
-            trace_log as u32,
-            FINAL_TRACE_LOG as u32,
-        );
-        for (layer_idx, layer) in tower {
-            let layer_offset = layer_idx - artifact.layers.len();
-            let folding_steps = trace_log - layer_offset - 1;
-            let slots = build_dimension_reducing_slots_static(&layer);
-            let order = address_order(slots.input_addresses(), &layout.aliases);
-            let entry_round = portable_entry(folding_steps)
-                .unwrap_or_else(|error| panic!("{layout_name} layer {layer_idx}: {error}"));
+        let inputs = dr_tail_layer_inputs(artifact.as_ref(), FINAL_TRACE_LOG)
+            .unwrap_or_else(|error| panic!("{layout_name}: {error}"));
+        for input in inputs {
+            let DrTailLayerInput {
+                layer_idx,
+                folding_steps,
+                entry_round,
+                canonical_sources,
+                enabled_mask,
+                order,
+            } = input;
             let legal_capacities = (3..folding_steps)
                 .step_by(3)
                 .map(|candidate| {
@@ -125,7 +172,7 @@ fn build_census() -> DrTailCorpusCensus {
                         DrTailCapacityRequest {
                             folding_steps,
                             entry_round: candidate,
-                            canonical_sources: order.sorted_canonical.len(),
+                            canonical_sources,
                             static_smem_bytes: PLANNING_STATIC_SMEM_BYTES,
                             device_cap_bytes: PLANNING_DEVICE_CAP_BYTES,
                         }
@@ -136,7 +183,7 @@ fn build_census() -> DrTailCorpusCensus {
             let capacity = DrTailCapacityRequest {
                 folding_steps,
                 entry_round,
-                canonical_sources: order.sorted_canonical.len(),
+                canonical_sources,
                 static_smem_bytes: PLANNING_STATIC_SMEM_BYTES,
                 device_cap_bytes: PLANNING_DEVICE_CAP_BYTES,
             }
@@ -146,7 +193,7 @@ fn build_census() -> DrTailCorpusCensus {
                 layout_name,
                 layer_idx,
                 folding_steps,
-                enabled_mask: slots.enabled_mask(),
+                enabled_mask,
                 capacity,
                 legal_capacities,
                 order,

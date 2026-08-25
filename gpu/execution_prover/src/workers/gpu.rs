@@ -8,7 +8,8 @@ use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::{
-    preflight_windowed_backward, prove, resolve_backward_execution_strategy, GpuGKRProofJob,
+    admit_dr_tail_before_transfers, prove, resolve_backward_execution_strategy,
+    DrTailPreflightRequest, GpuGKRProofJob,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -54,6 +55,7 @@ pub(crate) fn get_gpu_worker_func(
 /// windowed-R0 arm selection; clearing `windowed_r0` is the escape hatch back
 /// to the per-round arm.
 const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
+    dr_tail_megakernel: false,
     windowed_r0: true,
     windowed_main_continuations: false,
     windowed_dr: false,
@@ -106,7 +108,10 @@ struct PhaseOne<'a> {
 // for no steady-state benefit.
 #[allow(clippy::large_enum_variant)]
 enum PhaseOneInputs<'a> {
-    Proof(gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
+    Proof(
+        gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>,
+        Option<gpu_gkr::DrTailProofPlan>,
+    ),
     MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
     SetupInitialization,
 }
@@ -293,23 +298,25 @@ fn schedule_phase_one<'a>(
         gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
             .expect("ExecutionProverConfiguration validated GPU security level before GPU work")
     });
-    if let Some(prover_config) = proof_prover_config.as_ref() {
-        // Lower every selected window family before constructing any proof
-        // transfer. A cached rejection therefore leaves no H2D allocation or
-        // scheduling side effect behind.
-        preflight_windowed_backward(
-            &state.precomputations.gkr_programs,
-            resolve_backward_execution_strategy(
-                &state.precomputations.gkr_programs,
-                prover_config,
-                BACKWARD_OPTIONS,
-            ),
-            BACKWARD_OPTIONS,
-            FINAL_TRACE_SIZE_LOG_2,
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
-    }
+    // Every preflight the request needs runs at this boundary, before the
+    // first transfer is constructed, so a rejection leaves no H2D allocation,
+    // no enqueue, and no execution-arm selection behind.
+    let preflight_request =
+        proof_prover_config
+            .as_ref()
+            .map(|prover_config| DrTailPreflightRequest {
+                gkr_programs: &state.precomputations.gkr_programs,
+                strategy: resolve_backward_execution_strategy(
+                    &state.precomputations.gkr_programs,
+                    prover_config,
+                    BACKWARD_OPTIONS,
+                ),
+                options: BACKWARD_OPTIONS,
+                final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
+                device_id,
+            });
 
+    let inputs = admit_dr_tail_before_transfers(preflight_request, |dr_tail_plan| {
     let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
         Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
     } else {
@@ -335,7 +342,7 @@ fn schedule_phase_one<'a>(
         None
     };
 
-    let inputs = if is_proof {
+    let inputs: PhaseOneInputs<'a> = if is_proof {
         let setup_transfer =
             if let Some(setup_host) = state.precomputations.setup_host.get_initialized() {
                 Some(GpuGKRSetupTransfer::new(setup_host, context)?)
@@ -393,7 +400,7 @@ fn schedule_phase_one<'a>(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
         bundle.schedule(context)?;
-        PhaseOneInputs::Proof(bundle)
+        PhaseOneInputs::Proof(bundle, dr_tail_plan)
     } else {
         let mut bundle =
             gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
@@ -408,6 +415,9 @@ fn schedule_phase_one<'a>(
         bundle.schedule(context)?;
         PhaseOneInputs::MemoryCommitment(bundle)
     };
+    Ok(inputs)
+    })
+    .unwrap_or_else(|error| panic!("{error}"))?;
 
     Ok(PhaseOne { state, inputs })
 }
@@ -428,7 +438,7 @@ fn enqueue_phase_two<'a>(
     let compiled_circuit_arc = Arc::clone(state.precomputations.gkr_programs.compiled_circuit());
 
     let job = match inputs {
-        PhaseOneInputs::Proof(bundle) => {
+        PhaseOneInputs::Proof(bundle, dr_tail_plan) => {
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
@@ -438,6 +448,7 @@ fn enqueue_phase_two<'a>(
                 final_trace_size_log_2,
                 bundle,
                 BACKWARD_OPTIONS,
+                dr_tail_plan,
                 context,
             )?;
             JobType::Proof(job)

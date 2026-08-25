@@ -912,3 +912,238 @@ fn dr_window_continuation_preflight_rejects_partial_chains_and_forces_whole_lega
     assert_eq!(legacy_spy.complete_new_chain_count(), 0);
     assert_eq!(legacy_spy.legacy_diagnostic_count(), 1);
 }
+
+/// Advisory test 3: the worker seam admits before it constructs.
+///
+/// The production worker's phase-one closure is the only place a transfer is
+/// constructed, an H2D bundle is enqueued, or an execution arm is selected. If
+/// either preflight rejects, that closure must never be entered.
+#[test]
+fn cpu_dr_tail_seam_preflight_precedes_every_transfer_construction() {
+    use super::{
+        admit_dr_tail_before_transfers_with, DrTailPreflightRequest, DrWindowExecutionSelectionSpy,
+        DrWindowTestWholeLayerSelection, GpuProveError,
+    };
+    use gpu_gkr::{
+        BackwardExecutionStrategy, DrTailCapacityRejection, DrTailResourceError,
+        GkrBackwardOptions, MainContinuationWindowLoweringRejection,
+    };
+    use std::cell::Cell;
+
+    struct SeamCounters {
+        admissions: Cell<usize>,
+        constructions: Cell<usize>,
+        enqueues: Cell<usize>,
+        spy: DrWindowExecutionSelectionSpy,
+    }
+    impl SeamCounters {
+        fn new() -> Self {
+            Self {
+                admissions: Cell::new(0),
+                constructions: Cell::new(0),
+                enqueues: Cell::new(0),
+                spy: DrWindowExecutionSelectionSpy::default(),
+            }
+        }
+        fn observed(&self) -> (usize, usize, usize, usize, usize) {
+            (
+                self.admissions.get(),
+                self.constructions.get(),
+                self.enqueues.get(),
+                self.spy.complete_new_chain_count(),
+                self.spy.legacy_diagnostic_count(),
+            )
+        }
+    }
+
+    // The seam is generic over the plan; this token stands in for the real
+    // `DrTailProofPlan`, whose only constructor is device admission. Ordering
+    // is what this test proves — plan minting stays inside `gpu_gkr`.
+    struct PlanToken;
+
+    // Models the worker's closure: construct the transfer, enqueue it, and
+    // select the execution arm the constructed inputs carry.
+    fn construct(counters: &SeamCounters) -> impl FnOnce(Option<PlanToken>) + '_ {
+        move |plan| {
+            assert!(
+                plan.is_some(),
+                "with the DR-tail arm selected, the constructed inputs own the admitted plan"
+            );
+            counters.constructions.set(counters.constructions.get() + 1);
+            counters.enqueues.set(counters.enqueues.get() + 1);
+            counters
+                .spy
+                .record(DrWindowTestWholeLayerSelection::CompleteNewChain);
+        }
+    }
+
+    let options = GkrBackwardOptions {
+        windowed_main_continuations: true,
+        windowed_dr_continuations: false,
+        dr_tail_megakernel: true,
+        ..GkrBackwardOptions::default()
+    };
+    fn request<'a>(
+        programs: &'a gpu_gkr::GkrPrograms,
+        options: GkrBackwardOptions,
+    ) -> DrTailPreflightRequest<'a> {
+        DrTailPreflightRequest {
+            gkr_programs: programs,
+            strategy: BackwardExecutionStrategy::WindowedR0,
+            options,
+            final_trace_size_log_2: 4,
+            device_id: 0,
+        }
+    }
+
+    // Leg A: the pure window preflight rejects. Nothing downstream runs — not
+    // even the device-touching admission.
+    let (rejecting_programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let rejection = MainContinuationWindowLoweringRejection {
+        circuit: "add_sub_lui_auipc_mop".to_owned(),
+        layer: 4,
+        resource:
+            "Capacity { resource: \"main continuation sources\", required: 1073, capacity: 1072 }"
+                .to_owned(),
+    };
+    assert!(rejecting_programs.reject_main_continuation_window_programs_for_test(rejection.clone()));
+    let counters = SeamCounters::new();
+    let error = admit_dr_tail_before_transfers_with(
+        Some(request(&rejecting_programs, options)),
+        |_| {
+            counters.admissions.set(counters.admissions.get() + 1);
+            unreachable!("resource admission must not run after a window rejection")
+        },
+        construct(&counters),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::MainContinuationWindowLowering {
+            circuit: rejection.circuit.clone(),
+            layer: rejection.layer,
+            resource: rejection.resource.clone(),
+        }
+    );
+    assert_eq!(counters.observed(), (0, 0, 0, 0, 0));
+
+    // Leg B: the window preflight accepts and resource admission rejects. The
+    // admission ran exactly once, still before anything was constructed, and
+    // its typed error survives the crate boundary intact.
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let counters = SeamCounters::new();
+    // The exact rejection real admission emits for this layout at a
+    // one-byte-low device cap (69,632-byte largest dynamic request); the
+    // in-crate resource tests prove this variant is the emitted one.
+    let starved = DrTailResourceError::Capacity {
+        layer_idx: 4,
+        rejection: DrTailCapacityRejection::DeviceCapacityExceeded {
+            required_bytes: 69_632,
+            cap_bytes: 69_631,
+        },
+    };
+    let error = admit_dr_tail_before_transfers_with(
+        Some(request(&programs, options)),
+        |_| {
+            counters.admissions.set(counters.admissions.get() + 1);
+            Err(GpuProveError::from(starved.clone()))
+        },
+        construct(&counters),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::DrTailResources {
+            error: starved.clone()
+        },
+        "the typed resource error must not be flattened at the seam"
+    );
+    assert_eq!(counters.observed(), (1, 0, 0, 0, 0));
+
+    // Leg C: both accept. Exactly one construction, one enqueue, one non-legacy
+    // selection — so the zeros above are refusals, not a dead seam.
+    let counters = SeamCounters::new();
+    let admitted = std::cell::Cell::new(false);
+    admit_dr_tail_before_transfers_with(
+        Some(request(&programs, options)),
+        |seam_request| {
+            counters.admissions.set(counters.admissions.get() + 1);
+            assert_eq!(seam_request.final_trace_size_log_2, 4);
+            assert_eq!(seam_request.device_id, 0);
+            admitted.set(true);
+            Err(GpuProveError::from(DrTailResourceError::MissingLayerPlan))
+        },
+        construct(&counters),
+    )
+    .unwrap_err();
+    assert!(admitted.get());
+    assert_eq!(counters.observed(), (1, 0, 0, 0, 0));
+
+    let counters = SeamCounters::new();
+    admit_dr_tail_before_transfers_with(
+        Some(request(&programs, options)),
+        |_| {
+            counters.admissions.set(counters.admissions.get() + 1);
+            Ok(PlanToken)
+        },
+        construct(&counters),
+    )
+    .expect("both preflights accept");
+    assert_eq!(counters.observed(), (1, 1, 1, 1, 0));
+}
+
+/// Advisory test 4: the forced-legacy control issues zero resource queries.
+#[test]
+fn cpu_dr_tail_seam_forced_legacy_issues_zero_resource_queries() {
+    use super::{admit_dr_tail_before_transfers_with, DrTailPreflightRequest, GpuProveError};
+    use gpu_gkr::{BackwardExecutionStrategy, DrTailResourceError, GkrBackwardOptions};
+    use std::cell::Cell;
+
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let base = GkrBackwardOptions {
+        windowed_main_continuations: true,
+        windowed_dr_continuations: false,
+        ..GkrBackwardOptions::default()
+    };
+    assert!(
+        !base.dr_tail_megakernel,
+        "the DR-tail arm must stay off by default"
+    );
+
+    let run = |dr_tail_megakernel: bool| {
+        let admissions = Cell::new(0usize);
+        let plans = Cell::new(0usize);
+        let result = admit_dr_tail_before_transfers_with(
+            Some(DrTailPreflightRequest {
+                gkr_programs: &programs,
+                strategy: BackwardExecutionStrategy::WindowedR0,
+                options: GkrBackwardOptions {
+                    dr_tail_megakernel,
+                    ..base
+                },
+                final_trace_size_log_2: 4,
+                device_id: 0,
+            }),
+            |_| {
+                admissions.set(admissions.get() + 1);
+                Err(GpuProveError::from(DrTailResourceError::MissingLayerPlan))
+            },
+            |plan: Option<()>| {
+                if plan.is_some() {
+                    plans.set(plans.get() + 1);
+                }
+            },
+        );
+        (admissions.get(), plans.get(), result.is_ok())
+    };
+
+    // Forced legacy: the device is never queried and the constructed inputs
+    // carry no plan.
+    assert_eq!(run(false), (0, 0, true));
+    // Control: with the arm selected the very same seam does query, so the zero
+    // above is a real refusal rather than an inert path.
+    assert_eq!(run(true), (1, 0, false));
+}

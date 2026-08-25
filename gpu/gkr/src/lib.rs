@@ -30,6 +30,10 @@ pub(crate) mod support;
 pub(crate) mod upstream;
 
 pub use backward::window::tail::WindowTailArm;
+pub use backward::{
+    preflight_dr_tail_resources, DrTailCapacityDecision, DrTailCapacityRejection,
+    DrTailKernelResources, DrTailProofPlan, DrTailResourceError,
+};
 pub(crate) use forward::kernels::ForwardKernels;
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
 pub(crate) use gpu_gkr_model::storage_layout;
@@ -54,6 +58,8 @@ use crate::upstream::SumcheckScheduleClass;
 /// down to layer preparation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GkrBackwardOptions {
+    /// Select the complete DR-tail megakernel chain after resource preflight.
+    pub dr_tail_megakernel: bool,
     /// Request the window-3 sectioned executor for main-layer rounds 0-2. The
     /// request is honoured only for a windowed sumcheck schedule; see
     /// [`backward_execution_strategy`]. Clearing it is the escape hatch back to
@@ -77,6 +83,7 @@ pub struct GkrBackwardOptions {
 impl Default for GkrBackwardOptions {
     fn default() -> Self {
         Self {
+            dr_tail_megakernel: false,
             windowed_r0: true,
             windowed_main_continuations: false,
             windowed_dr: false,

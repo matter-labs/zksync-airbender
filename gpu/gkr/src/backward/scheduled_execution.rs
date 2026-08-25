@@ -118,6 +118,7 @@ impl GpuGKRDimensionReducingBackwardState {
         // Resolved once per proof by `crate::backward_execution_strategy`; the
         // options carry the tail arm the windowed path launches.
         options: crate::GkrBackwardOptions,
+        dr_tail_plan: Option<crate::DrTailProofPlan>,
         strategy: crate::BackwardExecutionStrategy,
         final_trace_size_log_2: u32,
         device_external_challenges_ptr: *const E4,
@@ -140,6 +141,17 @@ impl GpuGKRDimensionReducingBackwardState {
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution> {
         let stream = context.get_exec_stream();
+        // Defence in depth only. The load-bearing rejection is the typed
+        // resource preflight that runs before any transfer is constructed;
+        // reaching scheduling without an admitted plan is a caller bug.
+        // `windowed_dr` is not an execution selector, so this keys on the
+        // DR-tail selector itself.
+        if options.dr_tail_megakernel {
+            assert!(
+                dr_tail_plan.is_some(),
+                "DR-tail scheduling requires the resource plan admitted before transfers"
+            );
+        }
         let device_lookup_challenges_ptr = device_lookup_challenges.as_ptr();
         let mut tracing_ranges = Vec::new();
         let workflow_range = Range::new("gkr.backward.schedule")?;

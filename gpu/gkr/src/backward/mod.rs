@@ -24,6 +24,10 @@ pub(crate) mod window_dr;
 #[doc(hidden)]
 pub use dr_tail::dr_tail_first_order_mismatch;
 
+pub use dr_tail::{
+    preflight_dr_tail_resources, DrTailCapacityDecision, DrTailCapacityRejection,
+    DrTailKernelResources, DrTailProofPlan, DrTailResourceError,
+};
 pub(crate) use kernels::*;
 pub use kernels::{
     eq_group_count, eq_group_tables_len, gkr_dim_reducing_launch_config,

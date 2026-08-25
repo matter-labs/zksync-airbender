@@ -16,8 +16,14 @@ pub(crate) struct DrTailCapacityRequest {
     pub(crate) device_cap_bytes: usize,
 }
 
+/// One admitted per-layer capacity decision.
+///
+/// Fields stay crate-private: a decision is only meaningful when it came from
+/// [`DrTailCapacityRequest::decide`]. Consumers outside the crate read the two
+/// values they need through the accessors below, so no external caller can
+/// assemble a decision that never passed the capacity pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DrTailCapacityDecision {
+pub struct DrTailCapacityDecision {
     pub(crate) entry_round: usize,
     pub(crate) remaining_rounds: usize,
     pub(crate) entry_cells_per_source: usize,
@@ -31,8 +37,22 @@ pub(crate) struct DrTailCapacityDecision {
     pub(crate) total_smem_bytes: usize,
 }
 
+impl DrTailCapacityDecision {
+    pub const fn entry_round(&self) -> usize {
+        self.entry_round
+    }
+
+    pub const fn dynamic_smem_bytes(&self) -> usize {
+        self.dynamic_smem_bytes
+    }
+
+    pub const fn total_smem_bytes(&self) -> usize {
+        self.total_smem_bytes
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DrTailCapacityRejection {
+pub enum DrTailCapacityRejection {
     FoldingStepsTooSmall,
     EntryBeforeFirstWindow,
     EntryNotWidthThreeBoundary,

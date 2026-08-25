@@ -351,6 +351,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             transfers,
             backward_options,
+            None,
             &self.context,
         )
     }
