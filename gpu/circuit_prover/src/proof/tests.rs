@@ -335,6 +335,7 @@ fn cpu_windowed_backward_preflight_resolves_only_required_lazy_bundles() {
 
     let enabled = GkrBackwardOptions {
         windowed_main_continuations: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
 
@@ -398,6 +399,7 @@ fn cpu_windowed_backward_preflight_rejection_constructs_zero_transfers_and_is_st
     assert!(programs.reject_main_continuation_window_programs_for_test(rejection.clone()));
     let options = GkrBackwardOptions {
         windowed_main_continuations: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
     let transfer_constructions = Cell::new(0usize);
@@ -452,6 +454,7 @@ fn cpu_dr_window_preflight_is_default_off_and_caches_exact_final_logs() {
 
     let enabled = GkrBackwardOptions {
         windowed_dr: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
     preflight_windowed_backward(
@@ -501,6 +504,7 @@ fn cpu_dr_window_preflight_typed_rejection_constructs_zero_transfers() {
     let invalid_final_log = initial_trace_log + 1;
     let options = GkrBackwardOptions {
         windowed_dr: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
     let transfer_constructions = Cell::new(0usize);
@@ -546,6 +550,7 @@ fn cpu_dr_window_preflight_cached_geometry_rejection_constructs_zero_transfers()
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
     let options = GkrBackwardOptions {
         windowed_dr: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
     let transfer_constructions = Cell::new(0usize);
@@ -617,6 +622,7 @@ fn cpu_windowed_arm_selection_covers_every_corpus_family() {
 
     let windowed = GkrBackwardOptions {
         windowed_r0: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
     let mut selected = Vec::new();
@@ -632,6 +638,7 @@ fn cpu_windowed_arm_selection_covers_every_corpus_family() {
                     &config,
                     GkrBackwardOptions {
                         windowed_r0: false,
+                        windowed_dr_continuations: false,
                         ..GkrBackwardOptions::default()
                     }
                 ),
@@ -650,4 +657,258 @@ fn cpu_windowed_arm_selection_covers_every_corpus_family() {
          security levels, or the both-arm byte gate covers less than it claims; \
          selected: {selected:?}",
     );
+}
+
+#[test]
+fn dr_window_continuation_preflight_is_default_off_and_incomplete_on_red() {
+    use super::{
+        construct_after_windowed_backward_preflight_with_dr_selection,
+        DrWindowExecutionSelectionSpy, DrWindowTestWholeLayerSelection, GpuProveError,
+    };
+    use gpu_gkr::{
+        BackwardExecutionStrategy, DrWindowContinuationPreflightError, GkrBackwardOptions,
+    };
+    use std::cell::Cell;
+
+    let (default_programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let defaults = GkrBackwardOptions::default();
+    assert!(!defaults.windowed_dr_continuations);
+    super::preflight_windowed_backward(
+        &default_programs,
+        BackwardExecutionStrategy::WindowedR0,
+        defaults,
+        4,
+    )
+    .unwrap();
+    assert!(!default_programs.dr_window_programs_ready(4));
+
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let options = GkrBackwardOptions {
+        windowed_dr: true,
+        windowed_dr_continuations: true,
+        ..GkrBackwardOptions::default()
+    };
+    let spy = DrWindowExecutionSelectionSpy::default();
+    let transfer_constructions = Cell::new(0usize);
+    let error = construct_after_windowed_backward_preflight_with_dr_selection(
+        &programs,
+        BackwardExecutionStrategy::WindowedR0,
+        options,
+        4,
+        DrWindowTestWholeLayerSelection::CompleteNewChain,
+        &spy,
+        || transfer_constructions.set(transfer_constructions.get() + 1),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        GpuProveError::DrWindowContinuationPreflight {
+            error: DrWindowContinuationPreflightError::IncompleteChain {
+                windowed_r0: true,
+                continuations: true,
+                recursive_tail: false,
+            }
+        }
+    );
+    assert!(programs.dr_window_programs_ready(4));
+    assert_eq!(transfer_constructions.get(), 0);
+    assert_eq!(spy.complete_new_chain_count(), 0);
+    assert_eq!(spy.legacy_diagnostic_count(), 0);
+}
+
+#[test]
+fn dr_window_continuation_preflight_bundle_failure_selects_nothing_and_builds_no_transfer() {
+    use super::{
+        construct_after_windowed_backward_preflight_with_dr_selection,
+        DrWindowExecutionSelectionSpy, DrWindowTestWholeLayerSelection, GpuProveError,
+    };
+    use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
+    use std::cell::Cell;
+
+    const INVALID_FINAL_LOG: u32 = 3;
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let options = GkrBackwardOptions {
+        windowed_dr: true,
+        windowed_dr_continuations: true,
+        ..GkrBackwardOptions::default()
+    };
+    let spy = DrWindowExecutionSelectionSpy::default();
+    let transfer_constructions = Cell::new(0usize);
+    let error = construct_after_windowed_backward_preflight_with_dr_selection(
+        &programs,
+        BackwardExecutionStrategy::WindowedR0,
+        options,
+        INVALID_FINAL_LOG,
+        DrWindowTestWholeLayerSelection::CompleteNewChain,
+        &spy,
+        || transfer_constructions.set(transfer_constructions.get() + 1),
+    )
+    .unwrap_err();
+    assert!(matches!(error, GpuProveError::DrWindowLowering { .. }));
+    assert!(!programs.dr_window_programs_ready(INVALID_FINAL_LOG));
+    assert_eq!(transfer_constructions.get(), 0);
+    assert_eq!(spy.complete_new_chain_count(), 0);
+    assert_eq!(spy.legacy_diagnostic_count(), 0);
+}
+
+#[test]
+fn dr_window_continuation_preflight_forced_capability_failures_select_nothing() {
+    use super::{
+        construct_after_dr_window_capability_preflight, DrWindowExecutionSelectionSpy,
+        DrWindowTestWholeLayerSelection, GpuProveError,
+    };
+    use gpu_gkr::{DrWindowContinuationCapabilityProbe, DrWindowContinuationPreflightError};
+    use std::cell::Cell;
+
+    let cases = [
+        (
+            DrWindowContinuationCapabilityProbe::new(3, 3, 0, 0, 0, true),
+            DrWindowContinuationPreflightError::UnsupportedFoldingSteps { folding_steps: 3 },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(25, 3, 19, 0, 0, true),
+            DrWindowContinuationPreflightError::UnsupportedFoldingSteps { folding_steps: 25 },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(23, 4, 16, 0, 0, true),
+            DrWindowContinuationPreflightError::InvalidContinuationBoundary {
+                folding_steps: 23,
+                start_round: 4,
+            },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(23, 3, 16, 0, 0, true),
+            DrWindowContinuationPreflightError::InvalidContinuationSuffix {
+                folding_steps: 23,
+                start_round: 3,
+                expected_suffix_count: 17,
+                observed_suffix_count: 16,
+            },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(23, 3, 17, 8193, 8192, true),
+            DrWindowContinuationPreflightError::SharedMemoryCapacity {
+                required_bytes: 8193,
+                capacity_bytes: 8192,
+            },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(23, 3, 17, 8192, 8192, false),
+            DrWindowContinuationPreflightError::DeviceResourceUnavailable,
+        ),
+    ];
+
+    for (probe, expected) in cases {
+        let spy = DrWindowExecutionSelectionSpy::default();
+        let transfer_constructions = Cell::new(0usize);
+        assert_eq!(
+            construct_after_dr_window_capability_preflight(
+                probe,
+                DrWindowTestWholeLayerSelection::CompleteNewChain,
+                &spy,
+                || transfer_constructions.set(transfer_constructions.get() + 1),
+            ),
+            Err(GpuProveError::DrWindowContinuationPreflight { error: expected })
+        );
+        assert_eq!(transfer_constructions.get(), 0);
+        assert_eq!(spy.complete_new_chain_count(), 0);
+        assert_eq!(spy.legacy_diagnostic_count(), 0);
+    }
+}
+
+#[test]
+fn dr_window_continuation_preflight_rejects_partial_chains_and_forces_whole_legacy_only() {
+    use super::{
+        construct_after_dr_window_selection_preflight, DrWindowExecutionSelectionSpy, GpuProveError,
+    };
+    use gpu_gkr::{
+        BackwardExecutionStrategy, DrWindowChainStages, DrWindowContinuationPreflightError,
+    };
+    use std::cell::Cell;
+
+    for stages in [
+        DrWindowChainStages::new(true, false, false),
+        DrWindowChainStages::new(false, true, true),
+        DrWindowChainStages::new(true, true, false),
+    ] {
+        let spy = DrWindowExecutionSelectionSpy::default();
+        let transfer_constructions = Cell::new(0usize);
+        assert_eq!(
+            construct_after_dr_window_selection_preflight(
+                BackwardExecutionStrategy::WindowedR0,
+                stages,
+                false,
+                &spy,
+                || transfer_constructions.set(transfer_constructions.get() + 1),
+            ),
+            Err(GpuProveError::DrWindowContinuationPreflight {
+                error: DrWindowContinuationPreflightError::IncompleteChain {
+                    windowed_r0: stages.windowed_r0(),
+                    continuations: stages.continuations(),
+                    recursive_tail: stages.recursive_tail(),
+                }
+            })
+        );
+        assert_eq!(transfer_constructions.get(), 0);
+        assert_eq!(spy.complete_new_chain_count(), 0);
+        assert_eq!(spy.legacy_diagnostic_count(), 0);
+    }
+
+    let complete = DrWindowChainStages::new(true, true, true);
+    let mixed_spy = DrWindowExecutionSelectionSpy::default();
+    let mixed_transfers = Cell::new(0usize);
+    assert_eq!(
+        construct_after_dr_window_selection_preflight(
+            BackwardExecutionStrategy::WindowedR0,
+            complete,
+            true,
+            &mixed_spy,
+            || mixed_transfers.set(mixed_transfers.get() + 1),
+        ),
+        Err(GpuProveError::DrWindowContinuationPreflight {
+            error: DrWindowContinuationPreflightError::MixedLegacyAndWindowed {
+                windowed_r0: true,
+                continuations: true,
+                recursive_tail: true,
+            }
+        })
+    );
+    assert_eq!(mixed_transfers.get(), 0);
+    assert_eq!(mixed_spy.complete_new_chain_count(), 0);
+    assert_eq!(mixed_spy.legacy_diagnostic_count(), 0);
+
+    let new_spy = DrWindowExecutionSelectionSpy::default();
+    let new_transfers = Cell::new(0usize);
+    assert_eq!(
+        construct_after_dr_window_selection_preflight(
+            BackwardExecutionStrategy::WindowedR0,
+            complete,
+            false,
+            &new_spy,
+            || new_transfers.set(new_transfers.get() + 1),
+        ),
+        Ok(Some(()))
+    );
+    assert_eq!(new_transfers.get(), 1);
+    assert_eq!(new_spy.complete_new_chain_count(), 1);
+    assert_eq!(new_spy.legacy_diagnostic_count(), 0);
+
+    let legacy_spy = DrWindowExecutionSelectionSpy::default();
+    let legacy_transfers = Cell::new(0usize);
+    assert_eq!(
+        construct_after_dr_window_selection_preflight(
+            BackwardExecutionStrategy::PerRound,
+            DrWindowChainStages::new(false, false, false),
+            true,
+            &legacy_spy,
+            || legacy_transfers.set(legacy_transfers.get() + 1),
+        ),
+        Ok(Some(()))
+    );
+    assert_eq!(legacy_transfers.get(), 1);
+    assert_eq!(legacy_spy.complete_new_chain_count(), 0);
+    assert_eq!(legacy_spy.legacy_diagnostic_count(), 1);
 }

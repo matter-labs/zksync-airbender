@@ -186,9 +186,12 @@ impl GpuGKRDimensionReducingBackwardState {
             )?;
         }
         let mut backward_layer_slot: usize = 0;
-        while let Some(mut prepared_layer) =
-            self.prepare_next_layer_static(dr_window_programs.as_deref(), context)?
-        {
+        while let Some(mut prepared_layer) = self.prepare_next_layer_static(
+            dr_window_programs.as_deref(),
+            options,
+            strategy,
+            context,
+        )? {
             let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer.schedule_execute_dimension_reducing_layer(
                 shared_device_seed,

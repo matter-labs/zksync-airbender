@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
-const TASK6_EXACT_MEMORY_SCHEMA_VERSION: u32 = 1;
+const TASK6_EXACT_MEMORY_SCHEMA_VERSION: u32 = 2;
 const TASK6_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 const TASK6_DEVICE_ARENA_BYTES: u64 = 64u64 << 30;
 const TASK6_MAX_DEVICE_BLOCKS: u64 = TASK6_DEVICE_ARENA_BYTES >> TASK6_ALLOCATOR_BLOCK_LOG_SIZE;
@@ -61,6 +61,7 @@ struct Task6ExactMemoryRecord {
     whole_return_physical_backing_bytes: u64,
     whole_return_logical_live_bytes: u64,
     proof_sha256: String,
+    host_end_to_end_time_ns: u64,
     proof_time_ms: u64,
     cuda_proof_time_ms: f32,
     selected_strategy: String,
@@ -348,6 +349,7 @@ const TASK6_RAW_U64_FIELDS: &[&str] = &[
     "whole_peak_window_end_logical_live_bytes",
     "whole_return_physical_backing_bytes",
     "whole_return_logical_live_bytes",
+    "host_end_to_end_time_ns",
 ];
 
 fn validate_task6_exact_memory_schema(value: &serde_json::Value) -> Result<(), String> {
@@ -411,6 +413,7 @@ fn task6_exact_memory_record_for_test(arm: &str) -> Task6ExactMemoryRecord {
         whole_return_physical_backing_bytes: 100,
         whole_return_logical_live_bytes: 10,
         proof_sha256: "proof".to_owned(),
+        host_end_to_end_time_ns: 1_000_000,
         proof_time_ms: 1,
         cuda_proof_time_ms: 1.0,
         selected_strategy: "WindowedR0".to_owned(),
@@ -556,17 +559,76 @@ fn cpu_exact_memory_fixture_trace_len_provenance_rejects_prepared_mismatch() {
     }
 }
 
+#[test]
+fn cpu_exact_memory_host_interval_starts_before_preflight_and_transfers() {
+    const SOURCE: &str = include_str!("proof_matrix.rs");
+    let schedule_start = SOURCE
+        .find("\n    fn schedule_task6_exact_memory_prove(")
+        .map(|offset| offset + 1)
+        .expect("exact-memory scheduling seam must remain present");
+    let schedule_end = SOURCE[schedule_start..]
+        .find("fn task6_checked_u64(")
+        .map(|offset| schedule_start + offset)
+        .expect("exact-memory scheduling seam must have a stable end anchor");
+    let schedule = &SOURCE[schedule_start..schedule_end];
+    let check_order = |candidate: &str| {
+        let timer_start = candidate
+            .find("let host_start = Instant::now();")
+            .ok_or("raw host timer must remain explicit")?;
+        let preflight = candidate
+            .find("construct_after_windowed_backward_preflight(")
+            .ok_or("shared preflight must remain in the measured seam")?;
+        let transfer_schedule = candidate
+            .find("transfers.schedule(&self.context)?;")
+            .ok_or("H2D scheduling must remain in the measured seam")?;
+        let backward_observer = candidate
+            .find("ProofMemoryHighWaterSink::new")
+            .ok_or("backward observer boundary must remain explicit")?;
+        if timer_start >= preflight {
+            return Err("host timer starts after arm-dependent preflight");
+        }
+        if timer_start >= transfer_schedule {
+            return Err("host timer starts after H2D transfer scheduling");
+        }
+        if transfer_schedule >= backward_observer {
+            return Err("backward observer starts before preflight/transfers finish");
+        }
+        Ok(())
+    };
+    check_order(schedule).unwrap();
+    assert!(
+        SOURCE.contains("host_end_to_end_time_ns"),
+        "the accepted interval must retain an unrounded integer-nanosecond record"
+    );
+
+    let moved_late = schedule
+        .replacen("        let host_start = Instant::now();\n", "", 1)
+        .replacen(
+            "        let mem_before_prove =",
+            "        let host_start = Instant::now();\n        let mem_before_prove =",
+            1,
+        );
+    assert_eq!(
+        check_order(&moved_late),
+        Err("host timer starts after arm-dependent preflight"),
+        "moving the timer to its former late boundary must fail the oracle"
+    );
+}
+
 struct Task6MeasuredProofJob<'context> {
     job: GpuGKRProofJob<'static, Global>,
     backward: crate::proof::ProofMemoryHighWaterSink<'context>,
     whole: gpu_prover_context::DeviceMemoryHighWaterObserver<'context>,
     sequence: Arc<AtomicUsize>,
     whole_start_sequence: usize,
+    host_start_sequence: usize,
+    transfer_schedule_sequence: usize,
     host_start: Instant,
 }
 
 struct Task6MeasuredProof {
     proof: GKRProof<BF, E4, DefaultTreeConstructor>,
+    host_end_to_end_time_ns: u64,
     proof_time_ms: u64,
     cuda_proof_time_ms: f32,
     backward: gpu_prover_context::PoolMemoryHighWaterReport,
@@ -585,15 +647,19 @@ impl Task6MeasuredProofJob<'_> {
         let whole = self.whole.finish();
         let whole_finish_sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
 
-        assert!(self.whole_start_sequence < backward.start_sequence);
+        assert!(self.whole_start_sequence < self.host_start_sequence);
+        assert!(self.host_start_sequence < self.transfer_schedule_sequence);
+        assert!(self.transfer_schedule_sequence < backward.start_sequence);
         assert!(backward.start_sequence < backward.seal_sequence);
         assert!(backward.seal_sequence < job_finish_sequence);
         assert!(job_finish_sequence < backward_finish_sequence);
         assert!(backward_finish_sequence <= whole_finish_sequence);
 
+        let host_elapsed = self.host_start.elapsed();
         Ok(Task6MeasuredProof {
             proof,
-            proof_time_ms: self.host_start.elapsed().as_millis().try_into().unwrap(),
+            host_end_to_end_time_ns: host_elapsed.as_nanos().try_into().unwrap(),
+            proof_time_ms: host_elapsed.as_millis().try_into().unwrap(),
             cuda_proof_time_ms,
             backward: backward.backward,
             whole,
@@ -612,6 +678,8 @@ impl BasicUnrolledFixture {
         let sequence = Arc::new(AtomicUsize::new(0));
         let whole = self.context.observe_device_memory_high_water();
         let whole_start_sequence = sequence.fetch_add(1, Ordering::SeqCst);
+        let host_start_sequence = sequence.fetch_add(1, Ordering::SeqCst);
+        let host_start = Instant::now();
         let strategy = resolve_backward_execution_strategy(
             &self.gkr_programs,
             &self.prover_config,
@@ -631,10 +699,10 @@ impl BasicUnrolledFixture {
         transfer_range.start(h2d_stream)?;
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
+        let transfer_schedule_sequence = sequence.fetch_add(1, Ordering::SeqCst);
 
         let mem_before_prove = self.context.get_device_memory_usage();
         let mut backward = crate::proof::ProofMemoryHighWaterSink::new(Arc::clone(&sequence));
-        let host_start = Instant::now();
         let mut job = crate::proof::prove_measured::<Global>(
             &self.gkr_programs,
             &self.prover_config,
@@ -656,6 +724,8 @@ impl BasicUnrolledFixture {
             whole,
             sequence,
             whole_start_sequence,
+            host_start_sequence,
+            transfer_schedule_sequence,
             host_start,
         })
     }
@@ -831,6 +901,7 @@ fn task6_record_from_finished(
             "whole_return_logical_live_bytes",
         ),
         proof_sha256: task6_proof_sha256(&finished.proof),
+        host_end_to_end_time_ns: finished.host_end_to_end_time_ns,
         proof_time_ms: finished.proof_time_ms,
         cuda_proof_time_ms: finished.cuda_proof_time_ms,
         selected_strategy: format!("{selected_strategy:?}"),
@@ -963,10 +1034,12 @@ fn run_dr_task6_exact_memory_review() {
 
     let baseline_options = GkrBackwardOptions {
         windowed_dr: false,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
     let new_options = GkrBackwardOptions {
         windowed_dr: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
     let baseline_strategy = resolve_backward_execution_strategy(
@@ -1158,6 +1231,8 @@ fn run_dr_task6_exact_memory_review() {
         "matched_cpu_reference_proof_count": matched_cpu_reference_proof_count,
         "distinct_proof_sha256_count": distinct_proof_sha256_count,
         "counterbalanced_order": "A,B,B,A x 3",
+        "host_acceptance_interval": "before_preflight_and_transfers_through_finish",
+        "host_acceptance_time_unit": "integer_nanoseconds",
         "allocator_block_log_size": TASK6_ALLOCATOR_BLOCK_LOG_SIZE,
         "max_device_allocation_blocks_count": TASK6_MAX_DEVICE_BLOCKS,
         "actual_device_arena_bytes": actual_device_arena_bytes,
@@ -1209,6 +1284,7 @@ fn run_dr_task6_exact_memory_review() {
 fn windowed_options() -> GkrBackwardOptions {
     GkrBackwardOptions {
         windowed_r0: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     }
 }
@@ -1218,6 +1294,7 @@ fn windowed_options() -> GkrBackwardOptions {
 fn per_round_options() -> GkrBackwardOptions {
     GkrBackwardOptions {
         windowed_r0: false,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     }
 }

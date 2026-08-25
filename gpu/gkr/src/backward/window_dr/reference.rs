@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use gpu_core::primitives::field::E4;
 use gpu_gkr_compiler::DrWindowProgram;
 
+use crate::backward::kernels::{make_eq_sizes, record_active_eq_slot_fold};
+use crate::backward::GkrEqSizes;
 use crate::upstream::{Field, GKRAddress};
 
 const DR_SLOT_COUNT: usize = 5;
@@ -265,6 +267,296 @@ pub(super) fn batch_challenge_power(base: E4, exponent: u16) -> E4 {
         result.mul_assign(&base);
     }
     result
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct DrContinuationGeometryReference {
+    pub(super) published_values_per_source: usize,
+    pub(super) high_rows: usize,
+    pub(super) row_tiles: usize,
+    pub(super) partials_len: usize,
+}
+
+pub(super) fn dr_continuation_geometry_reference(
+    folding_steps: usize,
+    start_round: usize,
+) -> Option<DrContinuationGeometryReference> {
+    if start_round < 3 || start_round % 3 != 0 || start_round + 3 >= folding_steps {
+        return None;
+    }
+    let suffix_log = folding_steps - start_round;
+    let published_values_per_source =
+        1usize.checked_shl((folding_steps + 1 - start_round) as u32)?;
+    let high_rows = 1usize.checked_shl((suffix_log - 3) as u32)?;
+    let row_tiles = high_rows.div_ceil(32).max(1);
+    Some(DrContinuationGeometryReference {
+        published_values_per_source,
+        high_rows,
+        row_tiles,
+        partials_len: 27 * (row_tiles + 1),
+    })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum DrContinuationReferenceError {
+    InvalidPackedFoldLength {
+        values: usize,
+    },
+    InvalidProgram(DrTensorOracleError),
+    MissingInput {
+        address: GKRAddress,
+    },
+    InputLengthMismatch {
+        address: GKRAddress,
+        expected: usize,
+        observed: usize,
+    },
+    InvalidEqBoundary {
+        folding_steps: usize,
+        start_round: usize,
+        tau_len: usize,
+    },
+    FinalCellCount {
+        expected: usize,
+        observed: usize,
+    },
+    MissingCanonicalFinalSource {
+        address: GKRAddress,
+    },
+}
+
+/// Direct packed depth-3 fold of E4 sources laid out as `2 * Y + b`.
+/// Bit `j` of the eight-leaf index selects `challenges[j]`; the retained gate
+/// bit remains the low physical lane.
+pub(super) fn fold_dr_continuation_depth3(
+    source: &[E4],
+    challenges: [E4; 3],
+) -> Result<Vec<E4>, DrContinuationReferenceError> {
+    if source.is_empty() || source.len() % 16 != 0 {
+        return Err(DrContinuationReferenceError::InvalidPackedFoldLength {
+            values: source.len(),
+        });
+    }
+    let output_pairs = source.len() / 16;
+    let mut output = vec![E4::ZERO; 2 * output_pairs];
+    for output_y in 0..output_pairs {
+        for gate_bit in 0..2 {
+            let mut folded = E4::ZERO;
+            for leaf in 0..8 {
+                let mut weight = E4::ONE;
+                for (bit, challenge) in challenges.iter().copied().enumerate() {
+                    weight.mul_assign(&eq_weight((leaf >> bit) & 1, challenge));
+                }
+                let mut value = source[2 * (8 * output_y + leaf) + gate_bit];
+                value.mul_assign(&weight);
+                folded.add_assign(&value);
+            }
+            output[2 * output_y + gate_bit] = folded;
+        }
+    }
+    Ok(output)
+}
+
+fn continuation_extension_value(
+    column: &[E4],
+    suffix_row: usize,
+    selectors: [usize; 3],
+    gate_bit: usize,
+) -> E4 {
+    let mut total = E4::ZERO;
+    for boolean_y in 0..8 {
+        let mut weight = E4::ONE;
+        for axis in 0..3 {
+            weight.mul_assign(&selector_weight(selectors[axis], (boolean_y >> axis) & 1));
+        }
+        let mut value = column[2 * ((suffix_row << 3) | boolean_y) + gate_bit];
+        value.mul_assign(&weight);
+        total.add_assign(&value);
+    }
+    total
+}
+
+/// Complete input-only continuation tensor derived from upstream `gate_batch`,
+/// `scalar_fold_fetch4`, and `scalar_continuing_chunk`. Unlike the R0 oracle,
+/// Boolean cells retain the fixed relation and no materialized output/product-
+/// excess term participates.
+pub(super) fn dr_continuation_tensor_reference(
+    program: &DrTensorOracleProgram,
+    columns: &BTreeMap<GKRAddress, Vec<E4>>,
+    batch_challenge_base: E4,
+    suffix_point: &[E4],
+) -> Result<[E4; DR_TENSOR_CELLS], DrContinuationReferenceError> {
+    validate_program(program).map_err(DrContinuationReferenceError::InvalidProgram)?;
+    let suffix_rows = 1usize.checked_shl(suffix_point.len() as u32).ok_or(
+        DrContinuationReferenceError::InvalidPackedFoldLength {
+            values: suffix_point.len(),
+        },
+    )?;
+    let expected_len = 16 * suffix_rows;
+    for slot in &program.slots {
+        for source_id in &slot.source_ids[..DR_INPUTS_PER_SLOT] {
+            let address = program.sources[usize::from(*source_id)];
+            let column = columns
+                .get(&address)
+                .ok_or(DrContinuationReferenceError::MissingInput { address })?;
+            if column.len() != expected_len {
+                return Err(DrContinuationReferenceError::InputLengthMismatch {
+                    address,
+                    expected: expected_len,
+                    observed: column.len(),
+                });
+            }
+        }
+    }
+
+    let mut tensor = [E4::ZERO; DR_TENSOR_CELLS];
+    for a0 in 0..3 {
+        for a1 in 0..3 {
+            for a2 in 0..3 {
+                let selectors = [a0, a1, a2];
+                let mut contracted = E4::ZERO;
+                for suffix_row in 0..suffix_rows {
+                    let mut row_value = E4::ZERO;
+                    for slot in &program.slots {
+                        let addresses = slot.source_ids[..DR_INPUTS_PER_SLOT]
+                            .iter()
+                            .map(|source_id| program.sources[usize::from(*source_id)])
+                            .collect::<Vec<_>>();
+                        let values = addresses
+                            .iter()
+                            .map(|address| {
+                                [
+                                    continuation_extension_value(
+                                        &columns[address],
+                                        suffix_row,
+                                        selectors,
+                                        0,
+                                    ),
+                                    continuation_extension_value(
+                                        &columns[address],
+                                        suffix_row,
+                                        selectors,
+                                        1,
+                                    ),
+                                ]
+                            })
+                            .collect::<Vec<_>>();
+                        let weights = slot
+                            .batch_exponents
+                            .map(|exponent| batch_challenge_power(batch_challenge_base, exponent));
+                        if is_pairwise_slot(slot.slot) {
+                            for tower in 0..DR_INPUTS_PER_SLOT {
+                                let mut term = values[tower][0];
+                                term.mul_assign(&values[tower][1]);
+                                term.mul_assign(&weights[tower]);
+                                row_value.add_assign(&term);
+                            }
+                        } else {
+                            let mut numerator = values[0][0];
+                            numerator.mul_assign(&values[1][1]);
+                            let mut cross = values[0][1];
+                            cross.mul_assign(&values[1][0]);
+                            numerator.add_assign(&cross);
+                            numerator.mul_assign(&weights[0]);
+                            row_value.add_assign(&numerator);
+                            let mut denominator = values[1][0];
+                            denominator.mul_assign(&values[1][1]);
+                            denominator.mul_assign(&weights[1]);
+                            row_value.add_assign(&denominator);
+                        }
+                    }
+                    let mut suffix_weight = E4::ONE;
+                    for (bit, coordinate) in suffix_point.iter().copied().enumerate() {
+                        suffix_weight.mul_assign(&eq_weight((suffix_row >> bit) & 1, coordinate));
+                    }
+                    row_value.mul_assign(&suffix_weight);
+                    contracted.add_assign(&row_value);
+                }
+                tensor[9 * a0 + 3 * a1 + a2] = contracted;
+            }
+        }
+    }
+    Ok(tensor)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DrContinuationEqReference {
+    pub(super) challenge_offset: usize,
+    pub(super) challenge_count: usize,
+    pub(super) suffix: Vec<E4>,
+    pub(super) entry_sizes: GkrEqSizes,
+    pub(super) one_fold_boundary_sizes: GkrEqSizes,
+}
+
+pub(super) fn dr_continuation_eq_reference(
+    tau: &[E4],
+    folding_steps: usize,
+    start_round: usize,
+) -> Result<DrContinuationEqReference, DrContinuationReferenceError> {
+    if start_round < 3
+        || start_round % 3 != 0
+        || start_round + 3 >= folding_steps
+        || tau.len() < folding_steps
+    {
+        return Err(DrContinuationReferenceError::InvalidEqBoundary {
+            folding_steps,
+            start_round,
+            tau_len: tau.len(),
+        });
+    }
+    let challenge_offset = start_round + 3;
+    let challenge_count = folding_steps - challenge_offset;
+    let entry_sizes = make_eq_sizes(challenge_count);
+    let mut one_fold_boundary_sizes = entry_sizes;
+    record_active_eq_slot_fold(&mut one_fold_boundary_sizes);
+    Ok(DrContinuationEqReference {
+        challenge_offset,
+        challenge_count,
+        suffix: tau[challenge_offset..folding_steps].to_vec(),
+        entry_sizes,
+        one_fold_boundary_sizes,
+    })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DrFinalLookupReference {
+    pub(super) publication_indices: Vec<usize>,
+    pub(super) cells: Vec<E4>,
+}
+
+/// Resolve canonical four-cell publications in independently sorted raw-input
+/// order, matching the unchanged final epilogue seam.
+pub(super) fn dr_final_lookup_four_cells(
+    canonical_sources: &[GKRAddress],
+    raw_sources: &[GKRAddress],
+    aliases: &BTreeMap<GKRAddress, GKRAddress>,
+    canonical_cells: &[E4],
+) -> Result<DrFinalLookupReference, DrContinuationReferenceError> {
+    let expected = 4 * canonical_sources.len();
+    if canonical_cells.len() != expected {
+        return Err(DrContinuationReferenceError::FinalCellCount {
+            expected,
+            observed: canonical_cells.len(),
+        });
+    }
+    let raw_sources = raw_sources
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut publication_indices = Vec::with_capacity(raw_sources.len());
+    let mut cells = Vec::with_capacity(4 * raw_sources.len());
+    for raw in raw_sources {
+        let canonical = aliases.get(&raw).copied().unwrap_or(raw);
+        let publication_index = canonical_sources.binary_search(&canonical).map_err(|_| {
+            DrContinuationReferenceError::MissingCanonicalFinalSource { address: canonical }
+        })?;
+        publication_indices.push(publication_index);
+        cells.extend_from_slice(&canonical_cells[4 * publication_index..4 * publication_index + 4]);
+    }
+    Ok(DrFinalLookupReference {
+        publication_indices,
+        cells,
+    })
 }
 
 fn validate_program(program: &DrTensorOracleProgram) -> Result<(), DrTensorOracleError> {

@@ -197,6 +197,8 @@ impl GpuGKRDimensionReducingBackwardState {
         layer_slots: GpuGKRDimensionReducingLayerSlots,
         dr_window_program: Option<&crate::DrWindowLayerProgram>,
         dr_window_bundle_final_log: Option<u32>,
+        options: crate::GkrBackwardOptions,
+        strategy: crate::BackwardExecutionStrategy,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingSumcheckLayerPlan> {
         let trace_len_after_reduction = self.next_trace_len_after_reduction;
@@ -266,7 +268,7 @@ impl GpuGKRDimensionReducingBackwardState {
             let required_future_partials_len = allocation_policy
                 .required_future_partials_len
                 .expect("prepared DR window policy must retain its future partials requirement");
-            let prepared = window_dr::prepare_dr_window_r0(
+            let mut prepared = window_dr::prepare_dr_window_r0(
                 program.program(),
                 program.input_projection(),
                 &self.storage,
@@ -278,6 +280,12 @@ impl GpuGKRDimensionReducingBackwardState {
                 "preflighted DR window preparation contract (geometry, Eq contract, mask, \
                  storage, and raw keepalive) must bind to runtime storage",
             );
+            prepared
+                .configure_continuation_readiness(options, strategy, true)
+                .expect(
+                    "preflighted DR continuation prerequisites must remain valid during \
+                     absolute-layer preparation",
+                );
             assert_eq!(
                 prepared.r0.batch.eq_low,
                 round_scratch.eq_low_group.as_ptr(),
@@ -307,6 +315,8 @@ impl GpuGKRDimensionReducingBackwardState {
     pub(crate) fn prepare_next_layer_static(
         &mut self,
         dr_window_programs: Option<&crate::DrWindowProgramBundle>,
+        options: crate::GkrBackwardOptions,
+        strategy: crate::BackwardExecutionStrategy,
         context: &ProverContext,
     ) -> CudaResult<Option<GpuGKRDimensionReducingSumcheckLayerPlan>> {
         let Some((layer_idx, layer)) = self.pending_layers.pop_front() else {
@@ -326,6 +336,8 @@ impl GpuGKRDimensionReducingBackwardState {
             layer_slots,
             dr_window_program,
             dr_window_bundle_final_log,
+            options,
+            strategy,
             context,
         )?))
     }

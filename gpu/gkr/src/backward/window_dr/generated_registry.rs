@@ -2,16 +2,24 @@
 
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 
-use super::binding::DrWindowLaunchBinding;
+use super::binding::{DrWindowContinuationLaunchBinding, DrWindowLaunchBinding};
 
 // Task 4's binder consumes the generated dispatch domain.
 pub(crate) const DR_WINDOWED_R0_DEFINED_MASK: u32 = 0x1f;
 // Task 4's launcher consumes the generated block geometry.
 pub(crate) const DR_WINDOWED_R0_BLOCK_THREADS: u32 = 288;
 
+pub(crate) const DR_WINDOWED_CONT_DEFINED_MASK: u32 = 0x1f;
+pub(crate) const DR_WINDOWED_CONT_BLOCK_THREADS: u32 = 288;
+
 cuda_kernel_signature_arguments_and_function!(
 pub(crate) GkrDrR0Window3,
 desc: DrWindowLaunchBinding,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+pub(crate) GkrDrContinuationWindow3,
+desc: DrWindowContinuationLaunchBinding,
 );
 
 // Task 4's binder and launcher consume this generated entry.
@@ -20,8 +28,17 @@ pub(crate) struct DrWindowKernelEntry {
     pub symbol: GkrDrR0Window3Signature,
 }
 
+pub(crate) struct DrWindowContinuationKernelEntry {
+    pub symbol_name: &'static str,
+    pub symbol: GkrDrContinuationWindow3Signature,
+}
+
 cuda_kernel_declaration!(
 pub(crate) ab_gkr_dr_r0_window3_universal_kernel(desc: DrWindowLaunchBinding)
+);
+
+cuda_kernel_declaration!(
+pub(crate) ab_gkr_dr_cont_window3_universal_kernel(desc: DrWindowContinuationLaunchBinding)
 );
 
 // Task 4's binder selects this entry for every valid mask.
@@ -29,3 +46,10 @@ pub(crate) const DR_WINDOWED_R0_UNIVERSAL_KERNEL: DrWindowKernelEntry = DrWindow
     symbol_name: "ab_gkr_dr_r0_window3_universal_kernel",
     symbol: ab_gkr_dr_r0_window3_universal_kernel,
 };
+
+// D2's binder selects this entry for every valid continuation mask.
+pub(crate) const DR_WINDOWED_CONT_UNIVERSAL_KERNEL: DrWindowContinuationKernelEntry =
+    DrWindowContinuationKernelEntry {
+        symbol_name: "ab_gkr_dr_cont_window3_universal_kernel",
+        symbol: ab_gkr_dr_cont_window3_universal_kernel,
+    };

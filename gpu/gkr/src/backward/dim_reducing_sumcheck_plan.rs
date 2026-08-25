@@ -490,11 +490,153 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
     }
 }
 
-/// Materializes the next layer's claim point in variable order: the end-of-layer
-/// challenge binds the gate bit (coordinate 0 of the polys the next layer
-/// reads), so it LEADS, then the round challenges, then batching. The layer's
-/// own scratch stays in DRAW order because the continuation kernels index it by
-/// round.
+/// Test-only continuation executor used by the locked D3 differential. R0 is
+/// deliberately absent: callers must have already played its three rounds.
+/// Every continuation snapshots one Eq entry and validates exactly one fold;
+/// no mutable Eq state crosses the pass boundary.
+#[cfg(test)]
+pub(crate) struct DrWindowContinuationEqSnapshot {
+    pub(crate) entry_sizes: GkrEqSizes,
+    pub(crate) entry_active_size: u32,
+    pub(crate) entry_active_values: Vec<E4>,
+    pub(crate) one_fold_sizes: GkrEqSizes,
+    pub(crate) one_fold_active_size: u32,
+    pub(crate) one_fold_active_values: Vec<E4>,
+}
+
+#[cfg(test)]
+fn snapshot_dr_window_active_eq(
+    active_eq_slot: *const E4,
+    active_eq_size: u32,
+    context: &ProverContext,
+) -> CudaResult<Vec<E4>> {
+    let len = 1usize << active_eq_size;
+    let mut host = vec![E4::default(); len];
+    // SAFETY: the pass-local view points into a live 256-entry Eq group and
+    // `active_eq_size <= 8` by construction.
+    let device = unsafe { DeviceSlice::from_raw_parts(active_eq_slot, len) };
+    memory_copy_async(&mut host[..], device, context.get_exec_stream())?;
+    context.get_exec_stream().synchronize()?;
+    Ok(host)
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_dr_window_continuation_chain_for_test(
+    hook: &crate::backward::window_dr::DrWindowLayerCompositionHook,
+    tail_arm: crate::backward::window::tail::WindowTailArm,
+    claim_point: *mut E4,
+    coeffs: *mut E4,
+    seed: *mut u32,
+    claim: *mut E4,
+    eq_prefactor: *mut E4,
+    context: &ProverContext,
+    mut observe_pass: impl FnMut(
+        &crate::backward::window_dr::DrWindowContinuationPass,
+    ) -> CudaResult<()>,
+) -> CudaResult<Vec<DrWindowContinuationEqSnapshot>> {
+    use crate::backward::window::tail::{launch_window_tensor_round_tail, WindowTailState};
+    use crate::backward::window_dr::{
+        launch_dr_window_continuation, resolve_dr_global_active_eq_slot,
+    };
+
+    assert_eq!(
+        hook.continuation_launches.len(),
+        hook.continuation_window_count,
+    );
+    let mut eq_snapshots = Vec::with_capacity(hook.continuation_launches.len());
+    for pass in &hook.continuation_launches {
+        launch_dr_window_continuation(&pass.launch, context)?;
+        let (active_eq_slot_base, active_eq_size_before_fold) =
+            resolve_dr_global_active_eq_slot(&pass.eq_entry);
+        let entry_active_values = snapshot_dr_window_active_eq(
+            active_eq_slot_base.cast_const(),
+            active_eq_size_before_fold,
+            context,
+        )?;
+        let start_round = pass.geometry.start_round;
+        // SAFETY: the layer-owned claim-point allocation has `folding_steps`
+        // round slots, and every planned boundary is validated before binding.
+        let challenge_alias = unsafe { claim_point.add(start_round) };
+        // SAFETY: the proof slab reserves four coefficients per round.
+        let coeffs_out = unsafe { coeffs.add(4 * start_round) };
+        let state = WindowTailState {
+            partials: pass.launch.binding.partials,
+            row_tiles: pass.launch.row_tiles,
+            reduced_tensor: pass.launch.reduced_tensor,
+            prev_claim_coords: challenge_alias.cast_const(),
+            seed,
+            claim,
+            eq_prefactor,
+            coeffs_out,
+            challenges_out: challenge_alias,
+            active_eq_slot_base,
+            active_eq_size_before_fold,
+        };
+        launch_window_tensor_round_tail(tail_arm, &state, context)?;
+
+        let mut one_fold_sizes = pass.eq_entry.sizes;
+        super::kernels::record_active_eq_slot_fold(&mut one_fold_sizes);
+        assert_eq!(one_fold_sizes, pass.one_fold_boundary_sizes);
+        assert_eq!(one_fold_sizes, pass.geometry.one_fold_boundary_sizes);
+        let one_fold_active_size = active_eq_size_before_fold - 1;
+        let one_fold_active_values = snapshot_dr_window_active_eq(
+            active_eq_slot_base.cast_const(),
+            one_fold_active_size,
+            context,
+        )?;
+        eq_snapshots.push(DrWindowContinuationEqSnapshot {
+            entry_sizes: pass.eq_entry.sizes,
+            entry_active_size: active_eq_size_before_fold,
+            entry_active_values,
+            one_fold_sizes,
+            one_fold_active_size,
+            one_fold_active_values,
+        });
+        observe_pass(pass)?;
+    }
+    Ok(eq_snapshots)
+}
+
+/// Test-only whole-layer dispatcher for the no-retry contract. An error from
+/// the complete new chain is returned directly; it never invokes the legacy
+/// closure. The legacy closure is reachable only through the explicit
+/// whole-layer diagnostic selection.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DrWindowWholeLayerSelectionForTest {
+    CompleteNewChain,
+    LegacyDiagnostic,
+}
+
+#[cfg(test)]
+pub(crate) fn execute_dr_window_whole_layer_for_test<E>(
+    selection: DrWindowWholeLayerSelectionForTest,
+    execute_complete_new_chain: impl FnOnce() -> Result<(), E>,
+    execute_legacy_diagnostic: impl FnOnce() -> Result<(), E>,
+) -> Result<(), E> {
+    match selection {
+        DrWindowWholeLayerSelectionForTest::CompleteNewChain => execute_complete_new_chain(),
+        DrWindowWholeLayerSelectionForTest::LegacyDiagnostic => execute_legacy_diagnostic(),
+    }
+}
+
+/// Materializes the claim point handed to the next backward layer in plain
+/// variable order (coordinate 0 first).
+///
+/// CPU authority: `prover/src/gkr/prover/sumcheck_loop/mod.rs:306-310` builds
+/// `folding_challenges` as `[r_last, r_0, .., r_{n-1}]` — the end-of-layer
+/// challenge `r_last` binds the gate bit, which is coordinate 0 of the polys
+/// the next layer reads ("r_last actually binds a bit 0 in enumeration"), so it
+/// LEADS the point and the round challenges follow. The next layer then consumes
+/// the point untouched (`let tau: &[E] = &prev_challenges[..]`, same file).
+///
+/// `layer_out` is the shared `ab_gkr_dim_reducing_layer_claim_point` view this
+/// layer wrote in DRAW order (`[r_0, .., r_{n-1}, r_last, batching]`), which is
+/// the layout the continuation kernels require — they read round `step`'s
+/// challenge from `ab_gkr_dim_reducing_layer_claim_point[step - 1]`
+/// (`native/gkr/support/lookup_helpers.cuh:288`). The coordinate order is
+/// therefore established on the way OUT, into a separate buffer no round writes.
 pub(crate) fn schedule_dim_reducing_next_layer_claim_point(
     layer_out: &DeviceClaimPointAndBatching,
     folding_steps: usize,
