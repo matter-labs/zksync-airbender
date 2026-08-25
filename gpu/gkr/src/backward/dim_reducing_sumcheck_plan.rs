@@ -648,6 +648,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 stream,
             )?;
         }
+        // The combined-claim kernel is the final exec-stream use of the
+        // previous layer's claim buffer.  Dropping its handle here permits
+        // stream-ordered pool reuse before the next-layer claim allocation;
+        // all queued pointer uses remain valid under the scheduling contract.
+        drop(device_claims_in);
 
         let next_claim_point_and_batching_len = self.folding_steps + 2;
         assert!(
@@ -1098,7 +1103,6 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         drop(device_eq_prefactor);
         drop(device_last_evals);
         drop(device_claim_point_in);
-        drop(device_claims_in);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
             dr_window_prepared,
