@@ -2359,6 +2359,41 @@ fn run_window_arm(
             fold_weights: None,
             coefficient_bank: None,
         };
+        // The filled static bank is required by every prior fold-weight
+        // enqueue; prepare and schedule it before build_prior_level.
+        let bank_observer = context.observe_device_memory_high_water();
+        let mut bank =
+            prepare_continuation_differential_bank(continuation_program, top_bits, context)?;
+        let bank_report = bank_observer.finish();
+        allocations.push(allocation_group_record(
+            "bank",
+            bank.challenge_slab().as_ptr() as usize,
+            1,
+            8,
+            1,
+            "mixed",
+            1,
+            &bank_report,
+        ));
+        let bank_spans = bank.schedule(
+            external.as_ptr(),
+            lookup_mul.as_ptr(),
+            lookup_add.as_ptr(),
+            batching.as_ptr(),
+            context,
+        )?;
+        assert_eq!(bank_spans.slab.0, bank.challenge_slab().as_ptr() as usize);
+        let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
+        carried.coefficient_bank = Some(bank_spans.bank);
+        open_reported_symbols(ledger, &mut owners);
+        ledger.absorb(TASK8_WINDOW_ARM, &probe);
+        if let Some(staging) = bank.take_bank_staging() {
+            retain_in_callback(staging, callbacks, context)?;
+        }
+        ledger_bind_final(ledger, &slab);
+        ledger_bind_final(ledger, &coefficient_tables);
+        drop(bank);
+
         let before_prior = context.get_device_memory_usage();
         let prior_observer = context.observe_device_memory_high_water();
         let (prior, prior_owner) = build_prior_level(
@@ -2409,38 +2444,6 @@ fn run_window_arm(
                 Some(readback)
             }
         };
-        // Defer bank construction until after the prior publication has been
-        // prepared/read back.  This matches the legacy arm's enqueue lifetime:
-        // the bank's transient allocation is not simultaneously live with the
-        // arm's first publication and keeps the corrected logical peak
-        // independent of allocator placement.
-        let bank_observer = context.observe_device_memory_high_water();
-        let mut bank =
-            prepare_continuation_differential_bank(continuation_program, top_bits, context)?;
-        let bank_report = bank_observer.finish();
-        allocations.push(allocation_group_record(
-            "bank",
-            bank.challenge_slab().as_ptr() as usize,
-            2,
-            8,
-            1,
-            "mixed",
-            2,
-            &bank_report,
-        ));
-        let bank_spans = bank.schedule(
-            external.as_ptr(),
-            lookup_mul.as_ptr(),
-            lookup_add.as_ptr(),
-            batching.as_ptr(),
-            context,
-        )?;
-        assert_eq!(bank_spans.slab.0, bank.challenge_slab().as_ptr() as usize);
-        let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
-        carried.coefficient_bank = Some(bank_spans.bank);
-        // Bank-fill reporting precedes registration; absorb follows both.
-        open_reported_symbols(ledger, &mut owners);
-        ledger.absorb(TASK8_WINDOW_ARM, &probe);
         launch_build_eq_high_and_low_groups_from_point(
             claim_point.as_ptr(),
             start_round + 3,
@@ -2726,9 +2729,6 @@ fn run_window_arm(
             ledger_bind_final(ledger, prior_owner);
         }
         drop(prior);
-        if let Some(bank_staging) = bank.take_bank_staging() {
-            retain_in_callback(bank_staging, callbacks, context)?;
-        }
         retain_in_callback(point_staging, callbacks, context)?;
         retain_in_callback(claim_symbol_staging, callbacks, context)?;
         retain_in_callback(external_staging, callbacks, context)?;
@@ -2742,9 +2742,6 @@ fn run_window_arm(
         ledger_bind_final(ledger, &publication_owner);
         ledger_bind_final(ledger, &reduced_tensor);
         drop(launched);
-        ledger_bind_final(ledger, &slab);
-        ledger_bind_final(ledger, &coefficient_tables);
-        drop(bank);
         bind_challenge_owners_final(ledger, &challenge_owners);
         drop(external);
         drop(lookup_mul);
