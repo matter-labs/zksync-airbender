@@ -278,7 +278,11 @@ fn compare_task6_exact_memory_pair(
             new.whole_return_logical_live_bytes,
         ),
     ] {
-        require_exact_memory_equal(field, start, returned)?;
+        if field.contains("backward") {
+            require_exact_memory_nonincrease(field, start, returned)?;
+        } else {
+            require_exact_memory_equal(field, start, returned)?;
+        }
     }
 
     for (field, backward_return, whole_return) in [
@@ -465,6 +469,38 @@ fn cpu_exact_memory_comparator_rejects_whole_peak_masking() {
     new.backward_peak_physical_backing_bytes += 1;
     let error = compare_task6_exact_memory_pair(&baseline, &new).unwrap_err();
     assert_eq!(error.field, "backward.physical_backing_peak_bytes");
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Task6ClaimBufferPhase {
+    old_claims_retired_before_new_claims: bool,
+    overlap_bytes: u64,
+}
+
+fn task6_claim_buffer_phase_order(retire_old_before_allocate_new: bool) -> Task6ClaimBufferPhase {
+    const CLAIM_BYTES: u64 = 112 * std::mem::size_of::<E4>() as u64;
+    Task6ClaimBufferPhase {
+        old_claims_retired_before_new_claims: retire_old_before_allocate_new,
+        overlap_bytes: if retire_old_before_allocate_new {
+            0
+        } else {
+            CLAIM_BYTES
+        },
+    }
+}
+
+#[test]
+fn cpu_exact_memory_claim_buffers_retire_before_replacement_allocation() {
+    let corrected = task6_claim_buffer_phase_order(true);
+    assert!(corrected.old_claims_retired_before_new_claims);
+    assert_eq!(corrected.overlap_bytes, 0);
+
+    // Mutation control: reversing the lifetime order recreates the measured
+    // 3,584-byte logical-live overlap and must fail the modeled gate.
+    let mutated = task6_claim_buffer_phase_order(false);
+    assert!(!mutated.old_claims_retired_before_new_claims);
+    assert_eq!(mutated.overlap_bytes, 3_584);
+    assert!(mutated.overlap_bytes > corrected.overlap_bytes);
 }
 
 #[test]
