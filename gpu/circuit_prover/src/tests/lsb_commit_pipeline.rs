@@ -243,15 +243,8 @@ fn gpu_commit_and_query(
                 let layers_count = shape.log_leaves_count() + 1
                     - PARTIAL_TREE_REDUCTION_LAYERS
                     - shape.log_subtree_cap_size();
-                let mut staging = context
-                    .alloc::<Digest>(
-                        cosets_count << shape.log_leaves_count(),
-                        AllocationPlacement::BestFit,
-                    )
-                    .unwrap();
                 build_partial_merkle_tree_multi_coset_physical(
                     &cosets[..],
-                    &mut staging,
                     &mut backing[..],
                     shape.log_rows_per_leaf,
                     layers_count,

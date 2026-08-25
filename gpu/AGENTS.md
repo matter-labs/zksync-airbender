@@ -218,11 +218,12 @@ from upstream library code (`full_statement_verifier::host_utils` /
   kernel). When an order conversion is required, move it to an axis where a
   permutation is free: a warp-uniform index (row slot within a leaf, coset), a
   32-byte digest slot (sector-aligned, same DRAM sectors scattered as
-  coalesced), or query/cap emission (tiny). Splitting one fused kernel into a
-  contiguous bulk pass plus a permuted digest pass is the accepted pattern
-  (`ab_blake2s_partial_tree_from_physical_digests_kernel`, the staged WHIR
-  leaf/reduce kernels). Review question for any new commitment kernel: does any
-  lane index feeding a VALUES pointer pass through `bitreverse_low_bits`?
+  coalesced), or query/cap emission (tiny). The physical partial-tree builder
+  (`ab_blake2s_partial_tree_multi_coset_physical_kernel`) enumerates boundary
+  roots in physical order and keeps the within-root leaf offset warp-uniform;
+  staged WHIR leaf/reduce kernels instead split the contiguous bulk pass from
+  the permuted digest pass. Review question for any new commitment kernel: does
+  any lane index feeding a VALUES pointer pass through `bitreverse_low_bits`?
 
 ## Profiling
 

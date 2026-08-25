@@ -9,10 +9,8 @@ use super::{bitreverse_index, random_digest};
 use crate::upstream::{Blake2sState, USE_REDUCED_BLAKE2_ROUNDS};
 use gpu_core::primitives::utils::LOG_WARP_SIZE;
 
-/// `(log_rows_per_coset, log_rows_per_hash, cosets_count)`. Every entry keeps
-/// `log_leaves_per_coset >= 9`, so a 512-leaf CTA never spans two cosets — the
-/// only regime the partial-tree kernels are valid in.
-const SHAPES: [(u32, u32, usize); 2] = [(11, 1, 2), (14, 5, 2)];
+/// `(log_rows_per_coset, log_rows_per_hash, cosets_count)`.
+const SHAPES: [(u32, u32, usize); 3] = [(8, 0, 2), (11, 1, 2), (14, 5, 2)];
 const COLS_COUNTS: [usize; 2] = [1, 3];
 const LOG_CAPS: [u32; 2] = [0, 2];
 
@@ -34,9 +32,9 @@ pub(super) fn host_layer_above(layer: &[Digest]) -> Vec<Digest> {
         .collect()
 }
 
-/// One coset's partial-tree backing as the GPU lays it out: the CTA reduction
-/// roots (`LOG_WARP_SIZE` layers above the leaves) followed by every node layer
-/// the tower writes, `layers_count` layers in total.
+/// One coset's partial-tree backing as the GPU lays it out: the fused boundary
+/// roots (`LOG_WARP_SIZE` layers above the leaves) followed by every cached node
+/// layer through the cap, `layers_count` layers in total.
 fn host_partial_tower(leaves: &[Digest], layers_count: u32) -> Vec<Digest> {
     let mut layer = leaves.to_vec();
     for _ in 0..LOG_WARP_SIZE {
@@ -59,7 +57,7 @@ fn check_partial_tree(
     log_cap: u32,
 ) {
     let log_leaves_count = log_rows_per_coset - log_rows_per_hash;
-    assert!(log_leaves_count >= 9);
+    assert!(log_leaves_count >= LOG_WARP_SIZE);
     let rows_count = 1usize << log_rows_per_coset;
     let leaves_count = 1usize << log_leaves_count;
     let values_stride = cols_count * rows_count;
@@ -95,11 +93,8 @@ fn check_partial_tree(
         stream,
     )
     .unwrap();
-    let mut staging_device =
-        DeviceAllocation::<Digest>::alloc(leaves_count * cosets_count).unwrap();
     build_partial_merkle_tree_multi_coset_physical(
         &physical_device[..physical.len()],
-        &mut staging_device,
         &mut new_device,
         log_rows_per_hash,
         layers_count,
@@ -180,29 +175,4 @@ fn physical_partial_tree_matches_old_kernel() {
             }
         }
     }
-}
-
-#[test]
-#[should_panic(expected = "one coset")]
-fn physical_partial_tree_rejects_cta_spanning_cosets() {
-    let stream = CudaStream::default();
-    let (log_rows_per_coset, log_rows_per_hash, cosets_count, cols_count) = (8u32, 0u32, 2usize, 1);
-    let rows_count = 1usize << log_rows_per_coset;
-    let leaves_count = rows_count >> log_rows_per_hash;
-    let tree_stride = (leaves_count << 1) >> LOG_WARP_SIZE;
-    let values = random_values(cols_count * rows_count * cosets_count);
-    let values_device = upload(&values, &stream);
-    let mut tree_device = DeviceAllocation::<Digest>::alloc(tree_stride * cosets_count).unwrap();
-    let mut staging_device =
-        DeviceAllocation::<Digest>::alloc(leaves_count * cosets_count).unwrap();
-    build_partial_merkle_tree_multi_coset_physical(
-        &values_device[..values.len()],
-        &mut staging_device,
-        &mut tree_device,
-        log_rows_per_hash,
-        log_rows_per_coset + 1 - LOG_WARP_SIZE,
-        cosets_count,
-        &stream,
-    )
-    .unwrap();
 }

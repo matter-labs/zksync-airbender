@@ -179,55 +179,70 @@ EXTERN __launch_bounds__(256) __global__
   }
 }
 
-// LSB sibling of the reduction half of `ab_blake2s_partial_tree_multi_coset_kernel`,
-// operating on leaf DIGESTS that `ab_blake2s_leaves_multi_coset_physical_kernel`
-// already hashed block-contiguously from the BITREVERSED-order codeword.
-// INVARIANT: a hashing kernel must never permute its lane->leaf axis over the
-// leaf VALUES (scattered value reads are catastrophic); the logical->physical
-// translation instead rides this 32-byte digest axis, where a scattered
-// sector-aligned load costs the same DRAM sectors as a coalesced one. Each
-// lane loads logical leaf `l` from physical digest slot `bitreverse(l)` inside
-// its own coset; the reducer and the root placement are byte-identical to the
-// natural-order builder's.
-//
-// Valid only while a CTA's 512 leaves stay inside one coset
-// (`log_per_coset_count >= 9`), which the launcher asserts.
-EXTERN __launch_bounds__(256) __global__
-    void ab_blake2s_partial_tree_from_physical_digests_kernel(const u32 *leaf_digests, u32 *tree_backing, const unsigned log_per_coset_count,
-                                                              const unsigned per_coset_digests_stride, const unsigned per_coset_tree_stride_digests,
-                                                              const unsigned count) {
-  constexpr unsigned ROOTS_PER_BLOCK = 16;
-  constexpr unsigned LEAVES_PER_BLOCK = ROOTS_PER_BLOCK << LOG_WARP_SIZE;
-  const unsigned leaf_base = blockIdx.x * LEAVES_PER_BLOCK;
-  const unsigned valid_leaves = min(LEAVES_PER_BLOCK, count - leaf_base);
-  extern __shared__ __align__(32) uint8_t reducer_smem[];
-  auto shared_values = reinterpret_cast<digest *>(reducer_smem);
+DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
+  digest children[2] = {left, right};
+  digest state;
+  initialize(state.words);
+  u32 t = 0;
+  compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+  return state;
+}
 
-  const unsigned per_coset_count = 1u << log_per_coset_count;
-  auto load_logical = [=](const unsigned leaf_logical) {
-    const unsigned coset = leaf_logical >> log_per_coset_count;
-    const unsigned l = leaf_logical & (per_coset_count - 1u);
-    const unsigned j = bitreverse_low_bits(l, log_per_coset_count);
-    return load_cs(reinterpret_cast<const digest *>(leaf_digests) + static_cast<size_t>(coset) * per_coset_digests_stride + j);
-  };
-
-  const unsigned leaf = leaf_base + threadIdx.x;
-  if (threadIdx.x < valid_leaves)
-    shared_values[threadIdx.x] = load_logical(leaf);
-  if (threadIdx.x + blockDim.x < valid_leaves)
-    shared_values[threadIdx.x + blockDim.x] = load_logical(leaf + blockDim.x);
-  __syncthreads();
-
-  reduce_merkle_subtrees_block(shared_values, valid_leaves >> 1);
-  const unsigned valid_roots = valid_leaves >> LOG_WARP_SIZE;
-  if (threadIdx.x < valid_roots) {
-    const unsigned global_root = blockIdx.x * ROOTS_PER_BLOCK + threadIdx.x;
-    const unsigned log_roots_per_coset = log_per_coset_count - LOG_WARP_SIZE;
-    const unsigned coset = global_root >> log_roots_per_coset;
-    const unsigned root_in_coset = global_root & ((1u << log_roots_per_coset) - 1u);
-    auto roots = reinterpret_cast<digest *>(tree_backing) + static_cast<size_t>(coset) * per_coset_tree_stride_digests;
-    store_cs(roots + root_in_coset, shared_values[threadIdx.x]);
+template <unsigned LEVEL> DEVICE_FORCEINLINE bool insert_merkle_node(digest (&pending)[LOG_WARP_SIZE], digest &node, const unsigned leaf) {
+  if ((leaf & (1u << LEVEL)) == 0) {
+    pending[LEVEL] = node;
+    return true;
   }
+  node = hash_node(pending[LEVEL], node);
+  return false;
+}
+
+// Fused LSB partial-tree builder. One thread produces one boundary root from
+// 32 logical leaves without materializing their digests. Threads enumerate
+// roots in PHYSICAL order; for a warp-uniform logical offset `t`, consecutive
+// lanes therefore read consecutive physical leaf blocks at
+//
+//   bitreverse(t, 5) * roots_per_coset + physical_root.
+//
+// Only the final 32-byte root store is permuted back to logical order, so the
+// existing upper tree and query-path layout stay byte-identical to the natural
+// builder while the bulk values reads never permute the lane axis.
+EXTERN __launch_bounds__(128) __global__
+    void ab_blake2s_partial_tree_multi_coset_physical_kernel(const bf *values, u32 *tree_backing, const unsigned log_rows_count, const unsigned cols_count,
+                                                             const unsigned log_per_coset_count, const unsigned per_coset_values_stride_bf,
+                                                             const unsigned per_coset_tree_stride_digests, const unsigned count) {
+  constexpr unsigned LEAVES_PER_ROOT = 1u << LOG_WARP_SIZE;
+  const unsigned roots_count = count >> LOG_WARP_SIZE;
+  const unsigned root_global = threadIdx.x + blockIdx.x * blockDim.x;
+  if (root_global >= roots_count)
+    return;
+
+  const unsigned log_roots_per_coset = log_per_coset_count - LOG_WARP_SIZE;
+  const unsigned roots_per_coset = 1u << log_roots_per_coset;
+  const unsigned coset = root_global >> log_roots_per_coset;
+  const unsigned physical_root = root_global & (roots_per_coset - 1u);
+
+  digest pending[LOG_WARP_SIZE];
+  digest node;
+#pragma unroll 1
+  for (unsigned t = 0; t < LEAVES_PER_ROOT; t++) {
+    const unsigned physical_leaf = (bitreverse_low_bits(t, LOG_WARP_SIZE) << log_roots_per_coset) | physical_root;
+    const unsigned leaf_global = (coset << log_per_coset_count) | physical_leaf;
+    node = hash_leaf_multi_coset_physical(values, log_rows_count, cols_count, log_per_coset_count, per_coset_values_stride_bf, leaf_global);
+    if (insert_merkle_node<0>(pending, node, t))
+      continue;
+    if (insert_merkle_node<1>(pending, node, t))
+      continue;
+    if (insert_merkle_node<2>(pending, node, t))
+      continue;
+    if (insert_merkle_node<3>(pending, node, t))
+      continue;
+    insert_merkle_node<4>(pending, node, t);
+  }
+
+  const unsigned logical_root = bitreverse_low_bits(physical_root, log_roots_per_coset);
+  auto roots = reinterpret_cast<digest *>(tree_backing) + static_cast<size_t>(coset) * per_coset_tree_stride_digests;
+  store_cs(roots + logical_root, node);
 }
 
 // Fused leaves-from-NTT kernel: reads the natural multi-coset NTT output and

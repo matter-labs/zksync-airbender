@@ -568,11 +568,6 @@ impl TraceHolder<BF> {
                 )?;
             }
             TreesHolder::Partial(backing) => {
-                // Freed on scope exit, after all launches are enqueued.
-                let mut leaf_digests: DeviceAllocation<Digest> = context.alloc(
-                    lde_factor << (log_domain_size - log_rows_per_leaf),
-                    AllocationPlacement::BestFit,
-                )?;
                 build_partial_trees_from_physical(
                     evals_backing,
                     backing,
@@ -582,7 +577,6 @@ impl TraceHolder<BF> {
                     log_tree_cap_size,
                     columns_count,
                     lde_factor,
-                    &mut leaf_digests,
                     stream,
                 )?;
             }
@@ -724,10 +718,6 @@ impl TraceHolder<BF> {
             TreesHolder::Partial(backing) => backing,
             _ => panic!("build_and_cache_partial_trees requires TreesHolder::Partial"),
         };
-        let mut leaf_digests: DeviceAllocation<Digest> = context.alloc(
-            instances_count << (log_domain_size - log_rows_per_leaf),
-            AllocationPlacement::BestFit,
-        )?;
         build_partial_trees_from_physical(
             evals_backing,
             trees_backing,
@@ -737,7 +727,6 @@ impl TraceHolder<BF> {
             log_tree_cap_size,
             columns_count,
             instances_count,
-            &mut leaf_digests,
             stream,
         )?;
         Ok(())
@@ -1184,8 +1173,9 @@ pub(crate) fn commit_trace_with_partial_tree_multi_coset(
 }
 
 /// LSB sibling of [`commit_trace_with_partial_tree_multi_coset`]: each coset
-/// slab is the BITREVERSED-order codeword, so the warp-level bottom reduction
-/// reads logical leaf `l` from physical block `bitreverse(l)`. The result is
+/// slab is the BITREVERSED-order codeword. The fused bottom-five-level kernel
+/// writes logical boundary roots, then the ordinary node builder materializes
+/// every cached level through the cap. The result and cached query subtree are
 /// byte-identical to [`commit_trace_with_partial_tree_multi_coset`] over the
 /// natural-order codeword.
 #[doc(hidden)]
@@ -1198,7 +1188,6 @@ pub fn build_partial_trees_from_physical(
     log_tree_cap_size: u32,
     columns_count: usize,
     cosets_in_tile: usize,
-    leaf_digests: &mut DeviceSlice<Digest>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(log_tree_cap_size >= log_lde_factor);
@@ -1216,10 +1205,8 @@ pub fn build_partial_trees_from_physical(
         - log_rows_per_leaf
         - PARTIAL_TREE_REDUCTION_LAYERS
         - log_coset_tree_cap_size;
-    assert_eq!(leaf_digests.len(), per_coset_leaves_count * cosets_in_tile);
     build_partial_merkle_tree_multi_coset_physical(
         evals_backing,
-        leaf_digests,
         tree_backing,
         log_rows_per_leaf,
         layers_count,

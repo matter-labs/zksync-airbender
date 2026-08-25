@@ -317,10 +317,8 @@ fn check_partial_path_gather(
             stream,
         )
         .unwrap();
-        let mut staging = DeviceAllocation::<Digest>::alloc(leaves_count * cosets_count).unwrap();
         build_partial_merkle_tree_multi_coset_physical(
             &physical_device[..physical.len()],
-            &mut staging,
             &mut new_tree,
             log_rows_per_hash,
             builder_layers_count,
@@ -589,10 +587,8 @@ fn check_paths_from_rows(
         stream,
     )
     .unwrap();
-    let mut staging = DeviceAllocation::<Digest>::alloc(leaves_count).unwrap();
     build_partial_merkle_tree_multi_coset_physical(
         &physical_device[..physical.len()],
-        &mut staging,
         &mut new_tree,
         log_rows_per_hash,
         builder_layers_count,
