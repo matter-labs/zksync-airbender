@@ -180,14 +180,21 @@ EXTERN __launch_bounds__(256) __global__
 }
 
 DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
-  digest children[2];
-  children[0] = left;
-  children[1] = right;
+  digest children[2] = {left, right};
   digest state;
   initialize(state.words);
   u32 t = 0;
   compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
   return state;
+}
+
+template <unsigned LEVEL> DEVICE_FORCEINLINE bool insert_merkle_node(digest (&pending)[LOG_WARP_SIZE], digest &node, const unsigned leaf) {
+  if ((leaf & (1u << LEVEL)) == 0) {
+    pending[LEVEL] = node;
+    return true;
+  }
+  node = hash_node(pending[LEVEL], node);
+  return false;
 }
 
 // Fused LSB partial-tree builder. One thread produces one boundary root from
@@ -215,43 +222,22 @@ EXTERN __launch_bounds__(128) __global__
   const unsigned coset = root_global >> log_roots_per_coset;
   const unsigned physical_root = root_global & (roots_per_coset - 1u);
 
-  digest level_0;
-  digest level_1;
-  digest level_2;
-  digest level_3;
-  digest level_4;
+  digest pending[LOG_WARP_SIZE];
   digest node;
 #pragma unroll 1
   for (unsigned t = 0; t < LEAVES_PER_ROOT; t++) {
     const unsigned physical_leaf = (bitreverse_low_bits(t, LOG_WARP_SIZE) << log_roots_per_coset) | physical_root;
     const unsigned leaf_global = (coset << log_per_coset_count) | physical_leaf;
     node = hash_leaf_multi_coset_physical(values, log_rows_count, cols_count, log_per_coset_count, per_coset_values_stride_bf, leaf_global);
-
-    if ((t & 1u) == 0) {
-      level_0 = node;
+    if (insert_merkle_node<0>(pending, node, t))
       continue;
-    }
-    node = hash_node(level_0, node);
-    if ((t & 3u) != 3u) {
-      level_1 = node;
+    if (insert_merkle_node<1>(pending, node, t))
       continue;
-    }
-    node = hash_node(level_1, node);
-    if ((t & 7u) != 7u) {
-      level_2 = node;
+    if (insert_merkle_node<2>(pending, node, t))
       continue;
-    }
-    node = hash_node(level_2, node);
-    if ((t & 15u) != 15u) {
-      level_3 = node;
+    if (insert_merkle_node<3>(pending, node, t))
       continue;
-    }
-    node = hash_node(level_3, node);
-    if ((t & 31u) != 31u) {
-      level_4 = node;
-      continue;
-    }
-    node = hash_node(level_4, node);
+    insert_merkle_node<4>(pending, node, t);
   }
 
   const unsigned logical_root = bitreverse_low_bits(physical_root, log_roots_per_coset);
