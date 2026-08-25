@@ -57,6 +57,7 @@ const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
     windowed_r0: true,
     windowed_main_continuations: false,
     windowed_dr: false,
+    windowed_dr_continuations: false,
     window_tail: WindowTailArm::Split,
 };
 

@@ -21,12 +21,16 @@ use super::binding::{
 };
 use super::composition::{
     build_raw_input_owner, continuation_window_count, dr_window_continuation_pass_geometry,
-    megakernel_entry_round, plan_dr_window_continuations, DrWindowContinuationParity,
-    DrWindowContinuationPlannedSource, DrWindowRawInputKeepalive,
+    dr_window_continuation_readiness, megakernel_entry_round, plan_dr_window_continuations,
+    DrWindowContinuationParity, DrWindowContinuationPlannedSource, DrWindowContinuationReadiness,
+    DrWindowRawInputKeepalive,
 };
 use super::generated_registry::{
     DR_WINDOWED_CONT_DEFINED_MASK, DR_WINDOWED_CONT_UNIVERSAL_KERNEL, DR_WINDOWED_R0_DEFINED_MASK,
     DR_WINDOWED_R0_UNIVERSAL_KERNEL,
+};
+use crate::backward::dim_reducing_sumcheck_plan::{
+    execute_dr_window_whole_layer_for_test, DrWindowWholeLayerSelectionForTest,
 };
 use crate::backward::kernels::{
     make_eq_sizes, pack_cache_u16, pack_source_u16, FoldingArenaBinding,
@@ -42,7 +46,12 @@ use crate::storage_layout::{
     address_storage_layer, FieldType, GpuGKRLayerLayout, GpuGKRStorageLayout,
 };
 use crate::upstream::{GKRAddress, OutputType};
-use crate::{DrWindowLayerProgram, DrWindowProgramBundle, GpuGKRStorage};
+use crate::{
+    select_dr_window_complete_chain, validate_dr_window_continuation_capability,
+    BackwardExecutionStrategy, DrWindowChainStages, DrWindowContinuationCapabilityProbe,
+    DrWindowContinuationPreflightError, DrWindowLayerProgram, DrWindowProgramBundle,
+    GkrBackwardOptions, GpuGKRStorage,
+};
 
 const CORPUS_FINAL_TRACE_LOG: u32 = 4;
 
@@ -55,6 +64,157 @@ struct PortMutationObservation {
     endpoints: [u32; 5],
     lanes: Vec<(usize, usize, u16)>,
     batch_exponents: Vec<[u16; 2]>,
+}
+
+#[test]
+fn cpu_dr_window_preflight_rejects_geometry_resources_and_partial_chains() {
+    assert_eq!(
+        dr_window_continuation_readiness(
+            GkrBackwardOptions::default(),
+            BackwardExecutionStrategy::PerRound,
+            false,
+        ),
+        Ok(DrWindowContinuationReadiness::Disabled),
+        "default-off must not depend on sticky bundle readiness or strategy",
+    );
+    let enabled = GkrBackwardOptions {
+        windowed_dr: true,
+        windowed_dr_continuations: true,
+        ..GkrBackwardOptions::default()
+    };
+    assert_eq!(
+        dr_window_continuation_readiness(enabled, BackwardExecutionStrategy::WindowedR0, true,),
+        Ok(DrWindowContinuationReadiness::ProducerReady),
+    );
+    assert_eq!(
+        dr_window_continuation_readiness(enabled, BackwardExecutionStrategy::WindowedR0, false,),
+        Err(DrWindowContinuationPreflightError::BundleNotReady),
+    );
+    assert_eq!(
+        dr_window_continuation_readiness(enabled, BackwardExecutionStrategy::PerRound, true),
+        Err(DrWindowContinuationPreflightError::RequiresWindowedSchedule),
+    );
+
+    let valid = DrWindowContinuationCapabilityProbe::new(23, 3, 17, 8192, 8192, true);
+    assert_eq!(validate_dr_window_continuation_capability(valid), Ok(()));
+
+    for (probe, expected) in [
+        (
+            DrWindowContinuationCapabilityProbe::new(3, 3, 0, 0, 0, true),
+            DrWindowContinuationPreflightError::UnsupportedFoldingSteps { folding_steps: 3 },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(25, 3, 19, 0, 0, true),
+            DrWindowContinuationPreflightError::UnsupportedFoldingSteps { folding_steps: 25 },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(23, 4, 16, 0, 0, true),
+            DrWindowContinuationPreflightError::InvalidContinuationBoundary {
+                folding_steps: 23,
+                start_round: 4,
+            },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(23, 3, 16, 0, 0, true),
+            DrWindowContinuationPreflightError::InvalidContinuationSuffix {
+                folding_steps: 23,
+                start_round: 3,
+                expected_suffix_count: 17,
+                observed_suffix_count: 16,
+            },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(23, 3, 17, 8193, 8192, true),
+            DrWindowContinuationPreflightError::SharedMemoryCapacity {
+                required_bytes: 8193,
+                capacity_bytes: 8192,
+            },
+        ),
+        (
+            DrWindowContinuationCapabilityProbe::new(23, 3, 17, 8192, 8192, false),
+            DrWindowContinuationPreflightError::DeviceResourceUnavailable,
+        ),
+    ] {
+        assert_eq!(
+            validate_dr_window_continuation_capability(probe),
+            Err(expected)
+        );
+    }
+
+    let strategy = BackwardExecutionStrategy::WindowedR0;
+    for stages in [
+        DrWindowChainStages::new(true, false, false),
+        DrWindowChainStages::new(false, true, true),
+        DrWindowChainStages::new(true, true, false),
+    ] {
+        assert_eq!(
+            select_dr_window_complete_chain(strategy, stages),
+            Err(DrWindowContinuationPreflightError::IncompleteChain {
+                windowed_r0: stages.windowed_r0(),
+                continuations: stages.continuations(),
+                recursive_tail: stages.recursive_tail(),
+            })
+        );
+    }
+
+    let complete = DrWindowChainStages::new(true, true, true);
+    assert_eq!(
+        select_dr_window_complete_chain(BackwardExecutionStrategy::PerRound, complete),
+        Err(DrWindowContinuationPreflightError::RequiresWindowedSchedule)
+    );
+    assert_eq!(
+        select_dr_window_complete_chain(strategy, complete),
+        Ok(true)
+    );
+    assert_eq!(
+        select_dr_window_complete_chain(strategy, DrWindowChainStages::new(false, false, false),),
+        Ok(false)
+    );
+}
+
+#[test]
+fn cpu_dr_window_preflight_post_launch_error_never_retries_legacy() {
+    use std::cell::Cell;
+
+    let new_chain_launches = Cell::new(0usize);
+    let legacy_launches = Cell::new(0usize);
+    let injected = execute_dr_window_whole_layer_for_test(
+        DrWindowWholeLayerSelectionForTest::CompleteNewChain,
+        || {
+            new_chain_launches.set(new_chain_launches.get() + 1);
+            Err::<(), _>("injected post-launch failure")
+        },
+        || {
+            legacy_launches.set(legacy_launches.get() + 1);
+            Ok(())
+        },
+    );
+    assert_eq!(injected, Err("injected post-launch failure"));
+    assert_eq!(new_chain_launches.get(), 1);
+    assert_eq!(
+        legacy_launches.get(),
+        0,
+        "new-chain failure must not retry legacy"
+    );
+
+    execute_dr_window_whole_layer_for_test(
+        DrWindowWholeLayerSelectionForTest::LegacyDiagnostic,
+        || {
+            new_chain_launches.set(new_chain_launches.get() + 1);
+            Ok::<(), &str>(())
+        },
+        || {
+            legacy_launches.set(legacy_launches.get() + 1);
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert_eq!(new_chain_launches.get(), 1);
+    assert_eq!(
+        legacy_launches.get(),
+        1,
+        "diagnostic control selects one whole legacy layer"
+    );
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1037,11 +1197,26 @@ fn cpu_dr_window_r0_native_source_pins_tensor_and_constant_eq_contracts() {
         TU.matches("ab_gkr_dr_r0_window3_universal_kernel").count(),
         1,
     );
+    let r0_launcher_start = BINDING
+        .find("pub(crate) fn launch_dr_window_r0(")
+        .expect("the R0 launcher must remain present");
+    let continuation_launcher_start = BINDING
+        .find("pub(crate) fn launch_dr_window_continuation(")
+        .expect("the continuation launcher must remain present");
+    let r0_launcher = &BINDING[r0_launcher_start..continuation_launcher_start];
+    assert_eq!(
+        r0_launcher
+            .matches("launch_build_eq_high_and_low_groups_from_point(")
+            .count(),
+        1,
+        "R0 must build its pass-local Eq exactly once",
+    );
     assert_eq!(
         BINDING
             .matches("launch_build_eq_high_and_low_groups_from_point(")
             .count(),
-        1,
+        2,
+        "R0 and continuation launchers each build one independent Eq view",
     );
     assert!(!BINDING.contains("launch_build_eq_values_from_point("));
 
@@ -1585,6 +1760,7 @@ fn cpu_dr_window_hook_composes_landed_r0() {
         "r0_launch:",
         "continuation_window_count:",
         "megakernel_entry_round:",
+        "continuation_readiness:",
         "r0_eq:",
         "raw_inputs:",
         "partials_capacity:",

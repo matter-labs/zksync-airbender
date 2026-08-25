@@ -963,10 +963,12 @@ fn run_dr_task6_exact_memory_review() {
 
     let baseline_options = GkrBackwardOptions {
         windowed_dr: false,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
     let new_options = GkrBackwardOptions {
         windowed_dr: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     };
     let baseline_strategy = resolve_backward_execution_strategy(
@@ -1209,6 +1211,7 @@ fn run_dr_task6_exact_memory_review() {
 fn windowed_options() -> GkrBackwardOptions {
     GkrBackwardOptions {
         windowed_r0: true,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     }
 }
@@ -1218,6 +1221,7 @@ fn windowed_options() -> GkrBackwardOptions {
 fn per_round_options() -> GkrBackwardOptions {
     GkrBackwardOptions {
         windowed_r0: false,
+        windowed_dr_continuations: false,
         ..GkrBackwardOptions::default()
     }
 }

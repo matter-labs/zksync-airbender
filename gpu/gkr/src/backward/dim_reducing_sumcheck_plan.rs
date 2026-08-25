@@ -598,6 +598,29 @@ pub(crate) fn launch_dr_window_continuation_chain_for_test(
     Ok(eq_snapshots)
 }
 
+/// Test-only whole-layer dispatcher for the no-retry contract. An error from
+/// the complete new chain is returned directly; it never invokes the legacy
+/// closure. The legacy closure is reachable only through the explicit
+/// whole-layer diagnostic selection.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DrWindowWholeLayerSelectionForTest {
+    CompleteNewChain,
+    LegacyDiagnostic,
+}
+
+#[cfg(test)]
+pub(crate) fn execute_dr_window_whole_layer_for_test<E>(
+    selection: DrWindowWholeLayerSelectionForTest,
+    execute_complete_new_chain: impl FnOnce() -> Result<(), E>,
+    execute_legacy_diagnostic: impl FnOnce() -> Result<(), E>,
+) -> Result<(), E> {
+    match selection {
+        DrWindowWholeLayerSelectionForTest::CompleteNewChain => execute_complete_new_chain(),
+        DrWindowWholeLayerSelectionForTest::LegacyDiagnostic => execute_legacy_diagnostic(),
+    }
+}
+
 /// Materializes the claim point handed to the next backward layer in plain
 /// variable order (coordinate 0 first).
 ///

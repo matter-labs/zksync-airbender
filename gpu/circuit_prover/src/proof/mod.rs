@@ -2,6 +2,8 @@ pub mod inputs;
 mod orchestration;
 
 #[cfg(test)]
+use std::cell::Cell;
+#[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -19,7 +21,8 @@ use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::{
-    backward_execution_strategy, main_continuation_window_count, BackwardExecutionStrategy,
+    backward_execution_strategy, main_continuation_window_count, select_dr_window_complete_chain,
+    BackwardExecutionStrategy, DrWindowChainStages, DrWindowContinuationPreflightError,
     DrWindowLoweringRejection, GkrBackwardOptions, GkrPrograms,
     MainContinuationWindowLoweringRejection, MainLayerExecutionPlanError, WindowLoweringRejection,
 };
@@ -58,6 +61,45 @@ pub enum GpuProveError {
     MainLayerExecutionPlan {
         error: MainLayerExecutionPlanError,
     },
+    DrWindowContinuationPreflight {
+        error: DrWindowContinuationPreflightError,
+    },
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DrWindowTestWholeLayerSelection {
+    CompleteNewChain,
+    LegacyDiagnostic,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct DrWindowExecutionSelectionSpy {
+    complete_new_chain: Cell<usize>,
+    legacy_diagnostic: Cell<usize>,
+}
+
+#[cfg(test)]
+impl DrWindowExecutionSelectionSpy {
+    fn record(&self, selection: DrWindowTestWholeLayerSelection) {
+        match selection {
+            DrWindowTestWholeLayerSelection::CompleteNewChain => self
+                .complete_new_chain
+                .set(self.complete_new_chain.get() + 1),
+            DrWindowTestWholeLayerSelection::LegacyDiagnostic => {
+                self.legacy_diagnostic.set(self.legacy_diagnostic.get() + 1)
+            }
+        }
+    }
+
+    pub(crate) fn complete_new_chain_count(&self) -> usize {
+        self.complete_new_chain.get()
+    }
+
+    pub(crate) fn legacy_diagnostic_count(&self) -> usize {
+        self.legacy_diagnostic.get()
+    }
 }
 
 #[cfg(test)]
@@ -198,6 +240,9 @@ impl std::fmt::Display for GpuProveError {
             Self::MainLayerExecutionPlan { error } => {
                 write!(formatter, "main-layer execution plan rejected: {error:?}")
             }
+            Self::DrWindowContinuationPreflight { error } => {
+                write!(formatter, "DR continuation preflight rejected: {error:?}")
+            }
         }
     }
 }
@@ -231,6 +276,12 @@ impl From<&DrWindowLoweringRejection> for GpuProveError {
             layer: rejection.layer(),
             resource: rejection.resource().to_owned(),
         }
+    }
+}
+
+impl From<DrWindowContinuationPreflightError> for GpuProveError {
+    fn from(error: DrWindowContinuationPreflightError) -> Self {
+        Self::DrWindowContinuationPreflight { error }
     }
 }
 
@@ -294,6 +345,19 @@ pub fn preflight_windowed_backward(
             .map(|_| ())
             .map_err(|rejection| GpuProveError::from(&rejection))?;
     }
+    if options.windowed_dr_continuations {
+        if options.windowed_dr && !gkr_programs.dr_window_programs_ready(final_trace_size_log_2) {
+            return Err(DrWindowContinuationPreflightError::BundleNotReady.into());
+        }
+        let stages = DrWindowChainStages::new(options.windowed_dr, true, false);
+        match select_dr_window_complete_chain(strategy, stages) {
+            Ok(_) => unreachable!(
+                "Red cannot preflight a complete DR continuation chain before the recursive \
+                 consumer lands"
+            ),
+            Err(error) => return Err(error.into()),
+        }
+    }
     Ok(())
 }
 
@@ -307,6 +371,62 @@ pub(crate) fn construct_after_windowed_backward_preflight<T>(
 ) -> Result<T, GpuProveError> {
     preflight_windowed_backward(gkr_programs, strategy, options, final_trace_size_log_2)?;
     Ok(construct_transfers())
+}
+
+#[cfg(test)]
+pub(crate) fn construct_after_windowed_backward_preflight_with_dr_selection<T>(
+    gkr_programs: &GkrPrograms,
+    strategy: BackwardExecutionStrategy,
+    options: GkrBackwardOptions,
+    final_trace_size_log_2: u32,
+    selection: DrWindowTestWholeLayerSelection,
+    selection_spy: &DrWindowExecutionSelectionSpy,
+    construct_transfers: impl FnOnce() -> T,
+) -> Result<T, GpuProveError> {
+    preflight_windowed_backward(gkr_programs, strategy, options, final_trace_size_log_2)?;
+    selection_spy.record(selection);
+    Ok(construct_transfers())
+}
+
+#[cfg(test)]
+pub(crate) fn construct_after_dr_window_capability_preflight<T>(
+    probe: gpu_gkr::DrWindowContinuationCapabilityProbe,
+    selection: DrWindowTestWholeLayerSelection,
+    selection_spy: &DrWindowExecutionSelectionSpy,
+    construct_transfers: impl FnOnce() -> T,
+) -> Result<T, GpuProveError> {
+    gpu_gkr::validate_dr_window_continuation_capability(probe).map_err(GpuProveError::from)?;
+    selection_spy.record(selection);
+    Ok(construct_transfers())
+}
+
+#[cfg(test)]
+pub(crate) fn construct_after_dr_window_selection_preflight<T>(
+    strategy: BackwardExecutionStrategy,
+    stages: DrWindowChainStages,
+    force_legacy_diagnostic: bool,
+    selection_spy: &DrWindowExecutionSelectionSpy,
+    construct_transfers: impl FnOnce() -> T,
+) -> Result<Option<T>, GpuProveError> {
+    if force_legacy_diagnostic {
+        if stages.any_stage() {
+            return Err(DrWindowContinuationPreflightError::MixedLegacyAndWindowed {
+                windowed_r0: stages.windowed_r0(),
+                continuations: stages.continuations(),
+                recursive_tail: stages.recursive_tail(),
+            }
+            .into());
+        }
+        selection_spy.record(DrWindowTestWholeLayerSelection::LegacyDiagnostic);
+        return Ok(Some(construct_transfers()));
+    }
+    let selected =
+        select_dr_window_complete_chain(strategy, stages).map_err(GpuProveError::from)?;
+    if !selected {
+        return Ok(None);
+    }
+    selection_spy.record(DrWindowTestWholeLayerSelection::CompleteNewChain);
+    Ok(Some(construct_transfers()))
 }
 
 pub fn prove<'a, A: GoodAllocator + 'a>(
@@ -416,6 +536,10 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
             "DR window preparation requires preflight_windowed_backward first"
         );
     }
+    assert!(
+        !backward_options.windowed_dr_continuations,
+        "DR continuation execution is incomplete on Red and requires preflight rejection"
+    );
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]

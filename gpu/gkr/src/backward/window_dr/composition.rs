@@ -249,6 +249,7 @@ pub(crate) struct DrWindowLayerCompositionHook {
     pub(crate) r0_launch: DrWindowLaunch,
     pub(crate) continuation_window_count: usize,
     pub(crate) megakernel_entry_round: usize,
+    pub(crate) continuation_readiness: DrWindowContinuationReadiness,
     pub(crate) r0_eq: DrWindowPassEqState,
     pub(crate) raw_inputs: DrWindowRawInputKeepalive,
     pub(crate) partials_capacity: usize,
@@ -285,6 +286,7 @@ impl DrWindowLayerCompositionHook {
             r0_launch,
             continuation_window_count: continuation_window_count(folding_steps),
             megakernel_entry_round: megakernel_entry_round(folding_steps),
+            continuation_readiness: DrWindowContinuationReadiness::Disabled,
             r0_eq,
             raw_inputs,
             partials_capacity,
@@ -298,6 +300,36 @@ impl DrWindowLayerCompositionHook {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DrWindowContinuationReadiness {
+    Disabled,
+    ProducerReady,
+}
+
+pub(crate) fn dr_window_continuation_readiness(
+    options: crate::GkrBackwardOptions,
+    strategy: crate::BackwardExecutionStrategy,
+    bundle_ready: bool,
+) -> Result<DrWindowContinuationReadiness, crate::DrWindowContinuationPreflightError> {
+    if !options.windowed_dr_continuations {
+        return Ok(DrWindowContinuationReadiness::Disabled);
+    }
+    if strategy != crate::BackwardExecutionStrategy::WindowedR0 {
+        return Err(crate::DrWindowContinuationPreflightError::RequiresWindowedSchedule);
+    }
+    if !options.windowed_dr {
+        return Err(crate::DrWindowContinuationPreflightError::IncompleteChain {
+            windowed_r0: false,
+            continuations: true,
+            recursive_tail: false,
+        });
+    }
+    if !bundle_ready {
+        return Err(crate::DrWindowContinuationPreflightError::BundleNotReady);
+    }
+    Ok(DrWindowContinuationReadiness::ProducerReady)
+}
+
 /// Allocation-neutral Task 6 preparation retained for a future complete-chain
 /// launch. The non-owning Eq view borrows the common round scratch; no runtime
 /// partials pointer or launch-ready descriptor is retained here.
@@ -305,6 +337,7 @@ pub(crate) struct DrWindowLayerPreparationHook {
     pub(crate) r0: DrWindowR0Preparation,
     pub(crate) continuation_window_count: usize,
     pub(crate) megakernel_entry_round: usize,
+    pub(crate) continuation_readiness: DrWindowContinuationReadiness,
     pub(crate) r0_eq: DrWindowPassEqView,
     pub(crate) raw_inputs: DrWindowRawInputKeepalive,
     pub(crate) required_future_partials_len: usize,
@@ -322,9 +355,21 @@ impl DrWindowLayerPreparationHook {
             r0,
             continuation_window_count: continuation_window_count(folding_steps),
             megakernel_entry_round: megakernel_entry_round(folding_steps),
+            continuation_readiness: DrWindowContinuationReadiness::Disabled,
             r0_eq,
             raw_inputs,
             required_future_partials_len,
         }
+    }
+
+    pub(crate) fn configure_continuation_readiness(
+        &mut self,
+        options: crate::GkrBackwardOptions,
+        strategy: crate::BackwardExecutionStrategy,
+        bundle_ready: bool,
+    ) -> Result<(), crate::DrWindowContinuationPreflightError> {
+        self.continuation_readiness =
+            dr_window_continuation_readiness(options, strategy, bundle_ready)?;
+        Ok(())
     }
 }

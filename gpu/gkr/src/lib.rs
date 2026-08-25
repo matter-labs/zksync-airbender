@@ -67,6 +67,10 @@ pub struct GkrBackwardOptions {
     /// composition hooks. Task 6 does not use this as an execution selector:
     /// the accepted legacy scheduler remains the only DR execution path.
     pub windowed_dr: bool,
+    /// Request the width-3 dimension-reducing continuation producers after
+    /// windowed R0. Red keeps this default-off and preflight-rejected until the
+    /// recursive tail consumer lands; it is not an execution selector by itself.
+    pub windowed_dr_continuations: bool,
     pub window_tail: WindowTailArm,
 }
 
@@ -76,6 +80,7 @@ impl Default for GkrBackwardOptions {
             windowed_r0: true,
             windowed_main_continuations: false,
             windowed_dr: false,
+            windowed_dr_continuations: false,
             window_tail: WindowTailArm::Split,
         }
     }
@@ -86,6 +91,185 @@ impl Default for GkrBackwardOptions {
 pub enum BackwardExecutionStrategy {
     PerRound,
     WindowedR0,
+}
+
+/// The three inseparable stages of the complete windowed DR chain.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DrWindowChainStages {
+    windowed_r0: bool,
+    continuations: bool,
+    recursive_tail: bool,
+}
+
+impl DrWindowChainStages {
+    pub const fn new(windowed_r0: bool, continuations: bool, recursive_tail: bool) -> Self {
+        Self {
+            windowed_r0,
+            continuations,
+            recursive_tail,
+        }
+    }
+
+    pub const fn windowed_r0(self) -> bool {
+        self.windowed_r0
+    }
+
+    pub const fn continuations(self) -> bool {
+        self.continuations
+    }
+
+    pub const fn recursive_tail(self) -> bool {
+        self.recursive_tail
+    }
+
+    pub const fn any_stage(self) -> bool {
+        self.windowed_r0 || self.continuations || self.recursive_tail
+    }
+
+    const fn complete(self) -> bool {
+        self.windowed_r0 && self.continuations && self.recursive_tail
+    }
+}
+
+/// A pure DR continuation/whole-layer preflight rejection.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DrWindowContinuationPreflightError {
+    RequiresWindowedSchedule,
+    BundleNotReady,
+    IncompleteChain {
+        windowed_r0: bool,
+        continuations: bool,
+        recursive_tail: bool,
+    },
+    MixedLegacyAndWindowed {
+        windowed_r0: bool,
+        continuations: bool,
+        recursive_tail: bool,
+    },
+    UnsupportedFoldingSteps {
+        folding_steps: usize,
+    },
+    InvalidContinuationBoundary {
+        folding_steps: usize,
+        start_round: usize,
+    },
+    InvalidContinuationSuffix {
+        folding_steps: usize,
+        start_round: usize,
+        expected_suffix_count: usize,
+        observed_suffix_count: usize,
+    },
+    SharedMemoryCapacity {
+        required_bytes: usize,
+        capacity_bytes: usize,
+    },
+    DeviceResourceUnavailable,
+}
+
+/// Already-observed geometry/resource values consumed by the pure capability
+/// validator. Purple supplies the real device query later; this type performs
+/// no CUDA call and cannot make Red's incomplete chain runnable.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DrWindowContinuationCapabilityProbe {
+    folding_steps: usize,
+    start_round: usize,
+    suffix_count: usize,
+    required_shared_memory_bytes: usize,
+    shared_memory_capacity_bytes: usize,
+    device_resources_available: bool,
+}
+
+impl DrWindowContinuationCapabilityProbe {
+    pub const fn new(
+        folding_steps: usize,
+        start_round: usize,
+        suffix_count: usize,
+        required_shared_memory_bytes: usize,
+        shared_memory_capacity_bytes: usize,
+        device_resources_available: bool,
+    ) -> Self {
+        Self {
+            folding_steps,
+            start_round,
+            suffix_count,
+            required_shared_memory_bytes,
+            shared_memory_capacity_bytes,
+            device_resources_available,
+        }
+    }
+}
+
+/// Validate production whole-layer selection without exposing a legacy path.
+/// `Ok(false)` is the default-off state and `Ok(true)` selects only the
+/// complete new chain.
+#[doc(hidden)]
+pub fn select_dr_window_complete_chain(
+    strategy: BackwardExecutionStrategy,
+    stages: DrWindowChainStages,
+) -> Result<bool, DrWindowContinuationPreflightError> {
+    if !stages.any_stage() {
+        return Ok(false);
+    }
+    if strategy != BackwardExecutionStrategy::WindowedR0 {
+        return Err(DrWindowContinuationPreflightError::RequiresWindowedSchedule);
+    }
+    if !stages.complete() {
+        return Err(DrWindowContinuationPreflightError::IncompleteChain {
+            windowed_r0: stages.windowed_r0,
+            continuations: stages.continuations,
+            recursive_tail: stages.recursive_tail,
+        });
+    }
+    Ok(true)
+}
+
+/// Validate one continuation coordinate and already-observed capacity record.
+/// This is deliberately allocation- and CUDA-free so every failure remains a
+/// pre-transfer decision.
+#[doc(hidden)]
+pub fn validate_dr_window_continuation_capability(
+    probe: DrWindowContinuationCapabilityProbe,
+) -> Result<(), DrWindowContinuationPreflightError> {
+    if backward::window_dr::validate_dr_window_folding_steps(probe.folding_steps).is_err() {
+        return Err(
+            DrWindowContinuationPreflightError::UnsupportedFoldingSteps {
+                folding_steps: probe.folding_steps,
+            },
+        );
+    }
+    let geometry = backward::window_dr::dr_window_continuation_pass_geometry(
+        probe.folding_steps,
+        probe.start_round,
+    )
+    .map_err(
+        |_| DrWindowContinuationPreflightError::InvalidContinuationBoundary {
+            folding_steps: probe.folding_steps,
+            start_round: probe.start_round,
+        },
+    )?;
+    if probe.suffix_count != geometry.challenge_count {
+        return Err(
+            DrWindowContinuationPreflightError::InvalidContinuationSuffix {
+                folding_steps: probe.folding_steps,
+                start_round: probe.start_round,
+                expected_suffix_count: geometry.challenge_count,
+                observed_suffix_count: probe.suffix_count,
+            },
+        );
+    }
+    if probe.required_shared_memory_bytes > probe.shared_memory_capacity_bytes {
+        return Err(DrWindowContinuationPreflightError::SharedMemoryCapacity {
+            required_bytes: probe.required_shared_memory_bytes,
+            capacity_bytes: probe.shared_memory_capacity_bytes,
+        });
+    }
+    if !probe.device_resources_available {
+        return Err(DrWindowContinuationPreflightError::DeviceResourceUnavailable);
+    }
+    Ok(())
 }
 
 /// A checked main-layer continuation plan could not represent or satisfy the
@@ -184,6 +368,7 @@ mod cpu_windowed_selector_tests {
         assert!(options.windowed_r0);
         assert!(!options.windowed_main_continuations);
         assert!(!options.windowed_dr);
+        assert!(!options.windowed_dr_continuations);
         assert_eq!(options.window_tail, WindowTailArm::Split);
         assert_eq!(
             backward_execution_strategy(options, Some(SumcheckScheduleClass::Windowed)),
@@ -195,10 +380,15 @@ mod cpu_windowed_selector_tests {
     fn cpu_dr_window_preparation_option_is_not_a_backward_execution_selector() {
         let enabled = GkrBackwardOptions {
             windowed_dr: true,
+            windowed_dr_continuations: false,
             ..GkrBackwardOptions::default()
         };
         let disabled = GkrBackwardOptions {
             windowed_dr: false,
+            ..enabled
+        };
+        let continuations = GkrBackwardOptions {
+            windowed_dr_continuations: true,
             ..enabled
         };
         for class in [
@@ -212,6 +402,11 @@ mod cpu_windowed_selector_tests {
                 backward_execution_strategy(disabled, class),
                 "DR preparation must not select a production execution arm"
             );
+            assert_eq!(
+                backward_execution_strategy(continuations, class),
+                backward_execution_strategy(disabled, class),
+                "DR continuations must not add a backward-strategy arm"
+            );
         }
     }
 
@@ -219,6 +414,7 @@ mod cpu_windowed_selector_tests {
     fn cpu_windowed_selector_honours_the_per_round_escape_hatch() {
         let options = GkrBackwardOptions {
             windowed_r0: false,
+            windowed_dr_continuations: false,
             ..GkrBackwardOptions::default()
         };
         for class in [
