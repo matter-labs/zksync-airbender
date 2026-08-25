@@ -144,6 +144,44 @@ impl DrTailProofPlan {
         self.entry
     }
 
+    /// Complete host-side identity of the resource plan admitted for one
+    /// measured proof. This records decisions already made by preflight; it
+    /// performs no device query and schedules no work.
+    #[doc(hidden)]
+    pub fn exact_memory_identity_json(&self, device_id: i32) -> serde_json::Value {
+        serde_json::json!({
+            "device_id": device_id,
+            "admitted": true,
+            "entry": self.entry.label(),
+            "kernel": {
+                "static_smem_bytes": self.resources.static_smem_bytes,
+                "local_bytes": self.resources.local_bytes,
+                "registers": self.resources.registers,
+                "device_optin_cap_bytes": self.resources.device_optin_cap_bytes,
+                "effective_max_dynamic_smem_bytes": self.resources.effective_max_dynamic_smem_bytes,
+                "occupancy_by_dynamic_bytes": self.resources.occupancy_by_dynamic_bytes,
+            },
+            "layers": self.layers.iter().map(|layer| serde_json::json!({
+                "layer_idx": layer.layer_idx,
+                "folding_steps": layer.folding_steps,
+                "canonical_sources": layer.canonical_sources.iter()
+                    .map(|address| format!("{address:?}"))
+                    .collect::<Vec<_>>(),
+                "entry_round": layer.capacity.entry_round,
+                "remaining_rounds": layer.capacity.remaining_rounds,
+                "entry_cells_per_source": layer.capacity.entry_cells_per_source,
+                "state_bytes": layer.capacity.state_bytes,
+                "eq_suffix_offset": layer.capacity.eq_suffix_offset,
+                "eq_suffix_bits": layer.capacity.eq_suffix_bits,
+                "eq_group_count": layer.capacity.eq_group_count,
+                "factored_eq_bytes": layer.capacity.factored_eq_bytes,
+                "dynamic_smem_bytes": layer.capacity.dynamic_smem_bytes,
+                "static_smem_bytes": layer.capacity.static_smem_bytes,
+                "total_smem_bytes": layer.capacity.total_smem_bytes,
+            })).collect::<Vec<_>>(),
+        })
+    }
+
     /// Validate the complete admitted identity before the scheduler can enqueue
     /// any work.  Recomputing the census here also binds capacities, not just
     /// the layer labels, so swapped or stale decisions cannot launch.

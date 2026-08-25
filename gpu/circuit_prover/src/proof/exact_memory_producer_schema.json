@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "memory_row_keys": [
+    "arm",
+    "backward",
+    "backward_sealed",
+    "dr_bundle_final_log",
+    "dr_layers",
+    "dr_prepared_layers",
+    "entry",
+    "geometry",
+    "invocation",
+    "operations",
+    "options",
+    "phase",
+    "proof",
+    "resource",
+    "sample",
+    "sequence",
+    "whole",
+    "whole_sealed",
+    "work"
+  ],
+  "proof_keys": [
+    "batch_id",
+    "circuit_type",
+    "device_id",
+    "key",
+    "sequence_id"
+  ],
+  "timing_row_keys": [
+    "arm",
+    "folding_steps",
+    "invocation",
+    "kind",
+    "layer_idx",
+    "measured_arm",
+    "phase",
+    "proof",
+    "sample",
+    "segments",
+    "sequence",
+    "thread",
+    "total_ms"
+  ],
+  "work_keys": [
+    "canonical_source_count",
+    "coordinate",
+    "entry_round",
+    "executor",
+    "folding_steps",
+    "kind",
+    "layer_idx",
+    "segments"
+  ],
+  "operation_order": [
+    "resource_preflight",
+    "initial_input_h2d",
+    "prove_enqueue",
+    "final_slab_d2h",
+    "proof_assembly_after_final_d2h"
+  ]
+}

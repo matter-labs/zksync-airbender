@@ -240,6 +240,12 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution {
     pub(crate) dr_window_prepared: bool,
     /// Identity carried from the successfully resolved canonical bundle.
     pub(crate) dr_window_bundle_final_log: Option<u32>,
+    /// Exact schedule-time work identity retained for the opt-in measurement
+    /// row. These are existing host values; retaining them adds no device work.
+    pub(crate) layer_idx: usize,
+    pub(crate) folding_steps: usize,
+    pub(crate) canonical_source_count: usize,
+    pub(crate) dr_tail_entry_round: Option<usize>,
     /// Device-resident Fiat-Shamir seed passed in by the caller, consumed by
     /// this layer's per-round + end-of-layer transcript work, and returned
     /// via `.take()` for the next backward layer scheduler to reuse. `None`

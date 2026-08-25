@@ -113,6 +113,17 @@ impl<'a, 'context, A: GoodAllocator> GpuGKRProofJob<'a, 'context, A> {
             .elapsed()?;
 
         if let Some(sink) = exact_memory {
+            let timing_rows =
+                gpu_gkr::backward::round_timing::dump_first3_timing().map_err(|error| {
+                    GpuProveError::ExactMemoryMeasurement {
+                        message: format!("timing report write failed after proof finish: {error}"),
+                    }
+                })?;
+            if timing_rows == 0 {
+                return Err(GpuProveError::ExactMemoryMeasurement {
+                    message: "timing report contained no rows for the measured proof".to_owned(),
+                });
+            }
             let job_finish_sequence = crate::proof::next_exact_memory_sequence();
             let (output, row) = sink.finish_report(job_finish_sequence).map_err(|message| {
                 GpuProveError::ExactMemoryMeasurement {

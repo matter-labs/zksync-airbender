@@ -254,6 +254,7 @@ pub use gpu_gkr::DrTailEntrySelection;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExactMemoryConfig {
     output: PathBuf,
+    timing_output: PathBuf,
     arm: &'static str,
     entry: DrTailEntrySelection,
     invocation: String,
@@ -266,8 +267,9 @@ impl ExactMemoryConfig {
     /// Read every measurement variable once. Returns `Ok(None)` when no
     /// measurement variable is present at all, which is the production default.
     pub fn from_environment(options: GkrBackwardOptions) -> GpuProveResult<Option<Self>> {
-        const VARS: [&str; 6] = [
+        const VARS: [&str; 7] = [
             "GKR_EXACT_MEMORY_OUT",
+            "GKR_BWD_FIRST3_TIMING_OUT",
             "GKR_EXACT_MEMORY_ARM",
             "GKR_EXACT_MEMORY_PHASE",
             "GKR_EXACT_MEMORY_SAMPLE",
@@ -300,6 +302,17 @@ impl ExactMemoryConfig {
         if output.as_os_str().is_empty() {
             return Err(GpuProveError::ExactMemoryMeasurement {
                 message: "GKR_EXACT_MEMORY_OUT must be a non-empty path".to_owned(),
+            });
+        }
+        let timing_output = PathBuf::from(text("GKR_BWD_FIRST3_TIMING_OUT")?);
+        if timing_output.as_os_str().is_empty() {
+            return Err(GpuProveError::ExactMemoryMeasurement {
+                message: "GKR_BWD_FIRST3_TIMING_OUT must be a non-empty path".to_owned(),
+            });
+        }
+        if timing_output == output {
+            return Err(GpuProveError::ExactMemoryMeasurement {
+                message: "memory and timing outputs must be distinct paths".to_owned(),
             });
         }
         let arm = match text("GKR_EXACT_MEMORY_ARM")?.as_str() {
@@ -372,6 +385,7 @@ impl ExactMemoryConfig {
         }
         Ok(Some(Self {
             output,
+            timing_output,
             arm,
             entry,
             invocation,
@@ -383,6 +397,10 @@ impl ExactMemoryConfig {
 
     pub const fn entry(&self) -> DrTailEntrySelection {
         self.entry
+    }
+
+    pub fn timing_output(&self) -> &std::path::Path {
+        &self.timing_output
     }
 
     fn identity_json(&self) -> serde_json::Value {
@@ -427,6 +445,10 @@ pub struct ExactMemoryGateSink<'context> {
     backward: Option<DeviceMemoryHighWaterObserver<'context>>,
     backward_sealed: Option<PoolMemoryHighWaterSnapshot>,
     config: ExactMemoryConfig,
+    proof: gpu_gkr::backward::round_timing::RoundTimingProofIdentity,
+    resource: Option<serde_json::Value>,
+    work: Option<serde_json::Value>,
+    _timing_scope: gpu_gkr::backward::round_timing::RoundTimingProofScope,
     geometry: serde_json::Value,
     whole_start_sequence: usize,
     backward_start_sequence: Option<usize>,
@@ -450,17 +472,31 @@ pub const EXACT_MEMORY_OPERATION_ORDER: [&str; 5] = [
     "proof_assembly_after_final_d2h",
 ];
 
+#[cfg(test)]
+pub(crate) const EXACT_MEMORY_PRODUCER_SCHEMA: &str =
+    include_str!("exact_memory_producer_schema.json");
+
 impl<'context> ExactMemoryGateSink<'context> {
     /// Open the whole-proof observation. The caller must invoke this before any
     /// proof-owned allocation, preflight, or transfer construction.
-    pub fn begin(context: &'context ProverContext, config: ExactMemoryConfig) -> Self {
+    pub fn begin(
+        context: &'context ProverContext,
+        config: ExactMemoryConfig,
+        proof: gpu_gkr::backward::round_timing::RoundTimingProofIdentity,
+    ) -> GpuProveResult<Self> {
+        let timing_scope = gpu_gkr::backward::round_timing::begin_proof(proof.clone())
+            .map_err(|message| GpuProveError::ExactMemoryMeasurement { message })?;
         let whole = context.observe_device_memory_high_water();
         let whole_start_sequence = next_exact_memory_sequence();
-        Self {
+        Ok(Self {
             whole,
             backward: None,
             backward_sealed: None,
             config,
+            proof,
+            resource: None,
+            work: None,
+            _timing_scope: timing_scope,
             geometry: allocator_geometry_json(context),
             whole_start_sequence,
             backward_start_sequence: None,
@@ -469,7 +505,7 @@ impl<'context> ExactMemoryGateSink<'context> {
             dr_prepared_layers: 0,
             dr_bundle_final_log: None,
             operations: Vec::with_capacity(EXACT_MEMORY_OPERATION_ORDER.len()),
-        }
+        })
     }
 
     pub const fn entry(&self) -> DrTailEntrySelection {
@@ -492,6 +528,28 @@ impl<'context> ExactMemoryGateSink<'context> {
         self.operations.push(operation);
     }
 
+    /// Bind the exact preflight result before any transfer is constructed.
+    pub fn record_resource_plan(
+        &mut self,
+        device_id: i32,
+        plan: Option<&gpu_gkr::DrTailProofPlan>,
+    ) {
+        assert!(
+            self.resource.is_none(),
+            "resource identity must be recorded once"
+        );
+        self.resource = Some(match plan {
+            Some(plan) => plan.exact_memory_identity_json(device_id),
+            None => serde_json::json!({
+                "device_id": device_id,
+                "admitted": false,
+                "entry": self.config.entry.label(),
+                "kernel": null,
+                "layers": [],
+            }),
+        });
+    }
+
     fn start_backward(&mut self, context: &'context ProverContext) {
         assert!(self.backward.is_none(), "backward observer must start once");
         self.backward = Some(context.observe_device_memory_high_water());
@@ -508,6 +566,7 @@ impl<'context> ExactMemoryGateSink<'context> {
         self.dr_layers = scheduled.dimension_reducing_layer_count();
         self.dr_prepared_layers = scheduled.dr_prepared_layer_count();
         self.dr_bundle_final_log = scheduled.dr_prepared_bundle_final_log();
+        self.work = Some(scheduled.exact_memory_work_json());
     }
 
     /// Finalize both observations. `job_finish_sequence` is taken by the caller
@@ -564,8 +623,19 @@ impl<'context> ExactMemoryGateSink<'context> {
                 self.operations
             ));
         }
+        let resource = self
+            .resource
+            .take()
+            .ok_or_else(|| "resource identity was never recorded".to_owned())?;
+        let work = self
+            .work
+            .take()
+            .ok_or_else(|| "scheduled work identity was never recorded".to_owned())?;
         let row = exact_memory_row_json(
             self.config.identity_json(),
+            self.proof.to_json(),
+            resource,
+            work,
             self.geometry,
             sequence,
             ExactMemoryLayerCounts {
@@ -597,6 +667,9 @@ pub(crate) struct ExactMemoryLayerCounts {
 /// consumes, so it is pure and directly testable.
 pub(crate) fn exact_memory_row_json(
     identity: serde_json::Value,
+    proof: serde_json::Value,
+    resource: serde_json::Value,
+    work: serde_json::Value,
     geometry: serde_json::Value,
     sequence: ExactMemorySequence,
     counts: ExactMemoryLayerCounts,
@@ -610,6 +683,9 @@ pub(crate) fn exact_memory_row_json(
     let object = row
         .as_object_mut()
         .expect("the measurement identity is a JSON object");
+    object.insert("proof".to_owned(), proof);
+    object.insert("resource".to_owned(), resource);
+    object.insert("work".to_owned(), work);
     object.insert("geometry".to_owned(), geometry);
     object.insert("sequence".to_owned(), sequence.to_json());
     object.insert("dr_layers".to_owned(), counts.dr_layers.into());

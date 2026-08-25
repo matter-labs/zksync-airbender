@@ -439,6 +439,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             "a prepared DR hook must carry its resolved bundle final-log identity"
         );
         let dr_window_bundle_final_log = self.dr_window_bundle_final_log;
+        let exact_memory_layer_idx = self.layer_idx;
+        let exact_memory_folding_steps = self.folding_steps;
+        let exact_memory_canonical_source_count = self.folding_addresses.len();
+        let exact_memory_dr_tail_entry_round =
+            dr_tail_capacity.map(DrTailCapacityDecision::entry_round);
         let mut tracing_ranges = Vec::new();
         assert!(self.folding_steps >= 2);
         let last_step = self.folding_steps - 1;
@@ -966,6 +971,10 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             tracing_ranges,
             dr_window_prepared,
             dr_window_bundle_final_log,
+            layer_idx: exact_memory_layer_idx,
+            folding_steps: exact_memory_folding_steps,
+            canonical_source_count: exact_memory_canonical_source_count,
+            dr_tail_entry_round: exact_memory_dr_tail_entry_round,
             device_seed: Some(device_seed),
             device_claim_point_for_next_layer: Some(DeviceClaimPointAndBatching::from_allocation(
                 device_next_claim_point,

@@ -50,6 +50,40 @@ impl GpuGKRBackwardScheduledExecution {
         Some(first)
     }
 
+    /// Exact dimension-reducing work scheduled by this proof, in execution
+    /// order. The expected segment list is derived from the same admitted
+    /// entry round (complete arm) or folding count (legacy diagnostic arm)
+    /// that selected the real scheduler path.
+    #[doc(hidden)]
+    pub fn exact_memory_work_json(&self) -> serde_json::Value {
+        serde_json::Value::Array(
+            self.dimension_reducing_layers
+                .iter()
+                .enumerate()
+                .map(|(coordinate, layer)| {
+                    let executor = if layer.dr_tail_entry_round.is_some() {
+                        "mega_dr"
+                    } else {
+                        "per_round"
+                    };
+                    serde_json::json!({
+                        "coordinate": coordinate,
+                        "kind": "dim_reducing",
+                        "layer_idx": layer.layer_idx,
+                        "folding_steps": layer.folding_steps,
+                        "canonical_source_count": layer.canonical_source_count,
+                        "executor": executor,
+                        "entry_round": layer.dr_tail_entry_round,
+                        "segments": super::round_timing::expected_dim_reducing_segments(
+                            layer.folding_steps,
+                            layer.dr_tail_entry_round,
+                        ),
+                    })
+                })
+                .collect(),
+        )
+    }
+
     pub fn final_device_seed_and_claim_point_mut(
         &mut self,
     ) -> (

@@ -256,6 +256,10 @@ fn gpu_worker(
     // proof rereads the process environment.
     let measurement = ExactMemoryConfig::from_environment(backward_options)
         .unwrap_or_else(|error| panic!("GPU_WORKER[{device_id}] {error}"));
+    gpu_gkr::backward::round_timing::configure_first3_timing(
+        measurement.as_ref().map(ExactMemoryConfig::timing_output),
+    )
+    .map_err(|message| GpuProveError::ExactMemoryMeasurement { message })?;
     if measurement.is_some() {
         info!(
             "GPU_WORKER[{device_id}] exact-memory measurement enabled; using the serialized measurement topology"
@@ -482,7 +486,19 @@ fn schedule_phase_one<'a, 'context>(
     let exact_memory = if is_proof {
         measurement
             .cloned()
-            .map(|config| gpu_circuit_prover::proof::ExactMemoryGateSink::begin(context, config))
+            .map(|config| {
+                gpu_circuit_prover::proof::ExactMemoryGateSink::begin(
+                    context,
+                    config,
+                    gpu_gkr::backward::round_timing::RoundTimingProofIdentity {
+                        batch_id,
+                        circuit_type: format!("{circuit_type:?}"),
+                        sequence_id,
+                        device_id,
+                    },
+                )
+            })
+            .transpose()?
     } else {
         None
     };
@@ -520,6 +536,7 @@ fn schedule_phase_one<'a, 'context>(
             // Admission has returned, so the first production operation of a
             // measured proof is complete before any transfer is constructed.
             if let Some(sink) = exact_memory.as_mut() {
+                sink.record_resource_plan(device_id, dr_tail_plan.as_ref());
                 sink.record_operation("resource_preflight");
             }
             let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {

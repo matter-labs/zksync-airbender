@@ -1357,16 +1357,18 @@ fn cpu_exact_memory_config_requires_complete_consistent_identity() {
     use super::{ExactMemoryConfig, GpuProveError};
     use gpu_gkr::{DrTailEntrySelection, GkrBackwardOptions, WindowTailArm};
 
-    const VARS: [&str; 6] = [
+    const VARS: [&str; 7] = [
         "GKR_EXACT_MEMORY_OUT",
+        "GKR_BWD_FIRST3_TIMING_OUT",
         "GKR_EXACT_MEMORY_ARM",
         "GKR_EXACT_MEMORY_PHASE",
         "GKR_EXACT_MEMORY_SAMPLE",
         "GKR_EXACT_MEMORY_INVOCATION",
         "GKR_DR_ENTRY",
     ];
-    let complete_on: [(&str, &str); 6] = [
-        ("GKR_EXACT_MEMORY_OUT", "/dev/null"),
+    let complete_on: [(&str, &str); 7] = [
+        ("GKR_EXACT_MEMORY_OUT", "/dev/null/memory"),
+        ("GKR_BWD_FIRST3_TIMING_OUT", "/dev/null/timing"),
         ("GKR_EXACT_MEMORY_ARM", "on"),
         ("GKR_EXACT_MEMORY_PHASE", "retained"),
         ("GKR_EXACT_MEMORY_SAMPLE", "3"),
@@ -1442,7 +1444,7 @@ fn cpu_exact_memory_config_requires_complete_consistent_identity() {
     assert!(error.contains("disagrees with resolved options"), "{error}");
 
     let mut off_arm = complete_on;
-    off_arm[1] = ("GKR_EXACT_MEMORY_ARM", "off");
+    off_arm[2] = ("GKR_EXACT_MEMORY_ARM", "off");
     apply(&off_arm);
     assert_eq!(
         ExactMemoryConfig::from_environment(legacy)
@@ -1458,11 +1460,12 @@ fn cpu_exact_memory_config_requires_complete_consistent_identity() {
 
     // Each field's own red mutation.
     for (index, bad, needle) in [
-        (1usize, "unset", "must be on or off"),
-        (2, "steady", "must be warmup or retained"),
-        (3, "many", "must be an integer"),
-        (4, "", "must be non-empty"),
-        (5, "r-3", "must be portable, minus3, or plus3"),
+        (1usize, "", "must be a non-empty path"),
+        (2, "unset", "must be on or off"),
+        (3, "steady", "must be warmup or retained"),
+        (4, "many", "must be an integer"),
+        (5, "", "must be non-empty"),
+        (6, "r-3", "must be portable, minus3, or plus3"),
     ] {
         let mut mutated = complete_on;
         mutated[index] = (complete_on[index].0, bad);
@@ -1476,8 +1479,8 @@ fn cpu_exact_memory_config_requires_complete_consistent_identity() {
 
     // A diagnostic entry is only meaningful on the complete-chain arm.
     let mut diagnostic_off = complete_on;
-    diagnostic_off[1] = ("GKR_EXACT_MEMORY_ARM", "off");
-    diagnostic_off[5] = ("GKR_DR_ENTRY", "plus3");
+    diagnostic_off[2] = ("GKR_EXACT_MEMORY_ARM", "off");
+    diagnostic_off[6] = ("GKR_DR_ENTRY", "plus3");
     apply(&diagnostic_off);
     let error = message(
         ExactMemoryConfig::from_environment(legacy)
@@ -1488,7 +1491,7 @@ fn cpu_exact_memory_config_requires_complete_consistent_identity() {
     // Both diagnostic neighbours resolve on the production arm.
     for label in ["minus3", "plus3"] {
         let mut diagnostic = complete_on;
-        diagnostic[5] = ("GKR_DR_ENTRY", label);
+        diagnostic[6] = ("GKR_DR_ENTRY", label);
         apply(&diagnostic);
         assert_eq!(
             ExactMemoryConfig::from_environment(production)
@@ -1547,6 +1550,36 @@ fn cpu_exact_memory_row_schema_matches_the_durable_analyzer() {
     });
     let row = exact_memory_row_json(
         identity,
+        serde_json::json!({
+            "key": "batch:17:circuit:MainVM:sequence:23:device:0",
+            "batch_id": 17,
+            "circuit_type": "MainVM",
+            "sequence_id": 23,
+            "device_id": 0,
+        }),
+        serde_json::json!({
+            "device_id": 0,
+            "admitted": true,
+            "entry": "portable",
+            "kernel": {"static_smem_bytes": 9696},
+            "layers": [{"layer_idx": 3, "folding_steps": 24}],
+        }),
+        serde_json::json!([{
+            "coordinate": 0,
+            "kind": "dim_reducing",
+            "layer_idx": 3,
+            "folding_steps": 24,
+            "canonical_source_count": 2,
+            "executor": "mega_dr",
+            "entry_round": 9,
+            "segments": [
+                "window_r0",
+                "window_continuation_0",
+                "window_continuation_1",
+                "megakernel",
+                "layer",
+            ],
+        }]),
         serde_json::json!({"block_log_size": 20, "blocks_count": 4}),
         ExactMemorySequence {
             whole_start: 0,
@@ -1576,27 +1609,19 @@ fn cpu_exact_memory_row_schema_matches_the_durable_analyzer() {
         .map(String::as_str)
         .collect();
     keys.sort_unstable();
-    assert_eq!(
-        keys,
-        [
-            "arm",
-            "backward",
-            "backward_sealed",
-            "dr_bundle_final_log",
-            "dr_layers",
-            "dr_prepared_layers",
-            "entry",
-            "geometry",
-            "invocation",
-            "operations",
-            "options",
-            "phase",
-            "sample",
-            "sequence",
-            "whole",
-            "whole_sealed",
-        ]
-    );
+    let producer_schema: serde_json::Value =
+        serde_json::from_str(super::EXACT_MEMORY_PRODUCER_SCHEMA).unwrap();
+    let schema_keys: Vec<&str> = producer_schema["memory_row_keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect();
+    assert_eq!(keys, schema_keys);
+
+    assert_eq!(row["proof"]["sequence_id"], 23);
+    assert_eq!(row["resource"]["entry"], "portable");
+    assert_eq!(row["work"][0]["segments"][1], "window_continuation_0");
 
     // The production-shaped operation trace, in the accepted order.
     assert_eq!(
@@ -1606,7 +1631,21 @@ fn cpu_exact_memory_row_schema_matches_the_durable_analyzer() {
             .iter()
             .map(|value| value.as_str().expect("each operation is a string"))
             .collect::<Vec<_>>(),
-        super::EXACT_MEMORY_OPERATION_ORDER,
+        producer_schema["operation_order"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap())
+            .collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        super::EXACT_MEMORY_OPERATION_ORDER.as_slice(),
+        producer_schema["operation_order"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap())
+            .collect::<Vec<_>>()
     );
 
     // The analyzer reads these option fields by name.
@@ -1757,5 +1796,42 @@ fn cpu_exact_memory_operation_marks_are_wired_at_worker_boundaries() {
     assert!(
         schedule < h2d,
         "the H2D mark must follow the real bundle schedule"
+    );
+}
+
+/// The durable timing stream is not a detached process-wide sample: the
+/// worker binds the same request identity as the memory row, and proof finish
+/// must write it successfully before the memory row can be accepted.
+#[test]
+fn cpu_exact_memory_timing_stream_is_proof_bound_and_typed() {
+    const WORKER: &str = include_str!("../../../execution_prover/src/workers/gpu.rs");
+    const FINISH: &str = include_str!("orchestration/mod.rs");
+    const TIMING: &str = include_str!("../../../gkr/src/backward/round_timing.rs");
+
+    for identity in ["batch_id", "circuit_type", "sequence_id", "device_id"] {
+        assert!(
+            WORKER.contains(identity) && TIMING.contains(identity),
+            "proof identity field {identity} must reach both producers"
+        );
+    }
+    assert!(WORKER.contains("configure_first3_timing("));
+    assert!(WORKER.contains("sink.record_resource_plan(device_id, dr_tail_plan.as_ref())"));
+    let dump = FINISH
+        .find("dump_first3_timing()")
+        .expect("proof finish must durably emit timing rows");
+    let memory = FINISH
+        .find("sink.finish_report(job_finish_sequence)")
+        .expect("proof finish must durably emit the memory row");
+    assert!(
+        dump < memory,
+        "timing failure must prevent a detached memory row"
+    );
+    assert!(
+        FINISH[dump..memory].contains("GpuProveError::ExactMemoryMeasurement"),
+        "timing write failure must remain a typed proof error"
+    );
+    assert!(
+        !TIMING.contains("std::env::var("),
+        "the timing recorder must consume the worker's one resolved config"
     );
 }
