@@ -25,8 +25,8 @@ use super::binding::{
 };
 use super::composition::{DrWindowLayerCompositionHook, DrWindowPassEqState};
 use super::reference::{
-    compare_dr_tensors, dr_continuation_tensor_reference, dr_r0_tensor_reference,
-    fold_dr_continuation_depth3, DrTensorMismatch, DrTensorOracleProgram,
+    compare_dr_tensors, dr_continuation_tensor_reference, dr_final_lookup_four_cells,
+    dr_r0_tensor_reference, fold_dr_continuation_depth3, DrTensorMismatch, DrTensorOracleProgram,
 };
 use crate::backward::dim_reducing_encoder::{
     build_continuation_batch_compact_for_arenas, build_round0_batch_compact,
@@ -42,10 +42,13 @@ use crate::backward::kernels::{
     GpuGKRDimensionReducingBatch, GpuGKRDimensionReducingLayerSlots, GKR_EQ_GROUP_TABLE_LEN,
     MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN,
 };
-use crate::backward::legacy_dimension_reducing_slots_for_test;
 use crate::backward::window::reference::tensor_round_tail_reference;
 use crate::backward::window::tail::{
     launch_window_tensor_round_tail, WindowTailArm, WindowTailState,
+};
+use crate::backward::{
+    derive_dimension_reducing_inputs, legacy_dimension_reducing_slots_for_test,
+    CONTINUATION_GOLDEN_CORPUS,
 };
 use crate::gkr_address_audit::AddressClass;
 use crate::storage_layout::{FieldType, GpuGKRLayerLayout, GpuGKRStorageLayout};
@@ -61,6 +64,68 @@ const PEELED_COORDINATES: usize = 3;
 const OBSERVED_MASKS: [u32; 4] = [0x01, 0x0d, 0x0f, 0x1f];
 const UNOBSERVED_WELL_FORMED_MASK: u32 = 0x02;
 const TENSOR_INSTANCES_PER_MASK: usize = 32;
+const CORPUS_FINAL_TRACE_LOG: u32 = 4;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProductionDrFinalOrderMismatch {
+    layout_name: &'static str,
+    absolute_layer: usize,
+    enabled_mask: u32,
+    publication_indices: Vec<usize>,
+}
+
+fn production_dr_final_order_mismatches() -> Vec<ProductionDrFinalOrderMismatch> {
+    let mut checked_layers = 0usize;
+    let mut merge_layers = 0usize;
+    let mut mismatches = Vec::new();
+    for (layout_name, _) in CONTINUATION_GOLDEN_CORPUS {
+        let (programs, main_layers) = crate::backward::compile_corpus_layout(layout_name);
+        let runtime = programs.runtime_circuit();
+        let initial_trace_log = runtime.trace_len.trailing_zeros();
+        let legacy_layers = derive_dimension_reducing_inputs(
+            main_layers,
+            &runtime.global_output_map,
+            initial_trace_log,
+            CORPUS_FINAL_TRACE_LOG,
+        );
+        let layout =
+            GpuGKRStorageLayout::from_artifact_with_tower(runtime, CORPUS_FINAL_TRACE_LOG as usize);
+        let bundle = programs
+            .resolve_dr_window_programs(CORPUS_FINAL_TRACE_LOG)
+            .unwrap();
+        for (absolute_layer, legacy_description) in legacy_layers {
+            let legacy_slots = legacy_dimension_reducing_slots_for_test(&legacy_description);
+            let canonical = bundle
+                .layer(absolute_layer)
+                .unwrap()
+                .input_projection()
+                .canonical_sources();
+            let raw = legacy_slots.input_addresses().collect::<Vec<_>>();
+            let raw_sorted = raw.iter().copied().collect::<BTreeSet<_>>();
+            merge_layers += usize::from(raw_sorted.len() != canonical.len());
+            let publication_indices = raw_sorted
+                .iter()
+                .map(|raw| {
+                    let canonical_address = layout.aliases.get(raw).copied().unwrap_or(*raw);
+                    canonical.binary_search(&canonical_address).unwrap()
+                })
+                .collect::<Vec<_>>();
+            if publication_indices != (0..canonical.len()).collect::<Vec<_>>() {
+                mismatches.push(ProductionDrFinalOrderMismatch {
+                    layout_name,
+                    absolute_layer,
+                    enabled_mask: legacy_slots.enabled_mask(),
+                    publication_indices,
+                });
+            }
+            checked_layers += 1;
+        }
+    }
+    assert_eq!(checked_layers, 229);
+    assert_eq!(merge_layers, 0);
+    assert_eq!(mismatches.len(), 9);
+    mismatches
+}
 
 fn output_type(slot: usize) -> OutputType {
     match slot {
@@ -77,6 +142,13 @@ fn input_address(slot: usize, operand: usize) -> GKRAddress {
     GKRAddress::InnerLayer {
         layer: INPUT_LAYER,
         offset: 2 * slot + operand,
+    }
+}
+
+fn aliased_input_address(publication_index: usize) -> GKRAddress {
+    GKRAddress::InnerLayer {
+        layer: INPUT_LAYER,
+        offset: 2 * DR_SLOT_COUNT + publication_index,
     }
 }
 
@@ -308,6 +380,33 @@ fn compare_three_round_states(
     Ok(())
 }
 
+#[test]
+fn cpu_dr_window_production_final_order_mismatch_descriptor_is_exact() {
+    let mismatches = production_dr_final_order_mismatches();
+    assert_eq!(mismatches.len(), 9);
+    for mismatch in mismatches {
+        assert!((1..=0x1f).contains(&mismatch.enabled_mask));
+        assert_eq!(
+            mismatch
+                .publication_indices
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>(),
+            (0..mismatch.publication_indices.len()).collect(),
+            "{} layer {} must remain a no-merge permutation",
+            mismatch.layout_name,
+            mismatch.absolute_layer,
+        );
+        assert_ne!(
+            mismatch.publication_indices,
+            (0..mismatch.publication_indices.len()).collect::<Vec<_>>(),
+            "{} layer {} must remain a canonical/raw mismatch",
+            mismatch.layout_name,
+            mismatch.absolute_layer,
+        );
+    }
+}
+
 struct DrGpuFixture<'a> {
     context: &'a ProverContext,
     folding_steps: usize,
@@ -315,6 +414,7 @@ struct DrGpuFixture<'a> {
     projection: DrWindowInputProjection,
     oracle_program: DrTensorOracleProgram,
     legacy_slots: GpuGKRDimensionReducingLayerSlots,
+    aliases: BTreeMap<GKRAddress, GKRAddress>,
     columns: BTreeMap<GKRAddress, Vec<E4>>,
     storage: GpuGKRStorage<(), E4>,
     input_backing: Arc<DeviceAllocation<E4>>,
@@ -328,8 +428,35 @@ struct DrGpuFixture<'a> {
 
 impl<'a> DrGpuFixture<'a> {
     fn new(context: &'a ProverContext, mask: u32, folding_steps: usize, seed: u64) -> Self {
+        Self::new_with_publication_permutation(context, mask, folding_steps, seed, None)
+    }
+
+    fn new_with_publication_permutation(
+        context: &'a ProverContext,
+        mask: u32,
+        folding_steps: usize,
+        seed: u64,
+        publication_permutation: Option<&[usize]>,
+    ) -> Self {
         assert!((1..=0x1f).contains(&mask));
         assert!((4..=12).contains(&folding_steps));
+        let raw_inputs = (0..DR_SLOT_COUNT)
+            .filter(|slot| mask & (1 << slot) != 0)
+            .flat_map(|slot| (0..2).map(move |operand| input_address(slot, operand)))
+            .collect::<Vec<_>>();
+        let aliases = publication_permutation.map_or_else(BTreeMap::new, |permutation| {
+            assert_eq!(permutation.len(), raw_inputs.len());
+            assert_eq!(
+                permutation.iter().copied().collect::<BTreeSet<_>>(),
+                (0..raw_inputs.len()).collect(),
+            );
+            raw_inputs
+                .iter()
+                .copied()
+                .zip(permutation.iter().copied())
+                .map(|(raw, publication_index)| (raw, aliased_input_address(publication_index)))
+                .collect()
+        });
         let input_stride = 1usize << (folding_steps + 1);
         let output_stride = 1usize << folding_steps;
         let mut rng = StdRng::seed_from_u64(seed);
@@ -353,7 +480,10 @@ impl<'a> DrGpuFixture<'a> {
                 let poly = 2 * slot + operand;
                 input_backing_host[poly * input_stride..(poly + 1) * input_stride]
                     .copy_from_slice(&values);
-                columns.insert(inputs[operand], values);
+                columns.insert(inputs[operand], values.clone());
+                if let Some(&canonical) = aliases.get(&inputs[operand]) {
+                    columns.insert(canonical, values);
+                }
             }
 
             if slot == 0 || slot == 4 {
@@ -392,7 +522,7 @@ impl<'a> DrGpuFixture<'a> {
 
         let program = lower_dr_window_program(&rows).expect("nonzero five-bit DR mask lowers");
         assert_eq!(program.enabled_mask(), mask);
-        let projection = project_dr_window_inputs(&program, &BTreeMap::new());
+        let projection = project_dr_window_inputs(&program, &aliases);
         let oracle_program = DrTensorOracleProgram::from_production(&program);
         let legacy_rows = rows
             .iter()
@@ -421,8 +551,10 @@ impl<'a> DrGpuFixture<'a> {
                 continue;
             }
             for operand in 0..2 {
+                let raw_input = input_address(slot, operand);
+                let canonical_input = aliases.get(&raw_input).copied().unwrap_or(raw_input);
                 layout_layers[INPUT_LAYER].index.insert(
-                    input_address(slot, operand),
+                    canonical_input,
                     (input_class, FieldType::Ext, (2 * slot + operand) as u32),
                 );
                 layout_layers[OUTPUT_LAYER].index.insert(
@@ -435,7 +567,7 @@ impl<'a> DrGpuFixture<'a> {
             trace_len: input_stride,
             artifact_log2_stride: (folding_steps + 1) as u32,
             layers: layout_layers,
-            aliases: BTreeMap::new(),
+            aliases: aliases.clone(),
             scratch_space_mapping_rev: BTreeMap::new(),
         };
         let mut storage = GpuGKRStorage::<(), E4>::default();
@@ -468,6 +600,7 @@ impl<'a> DrGpuFixture<'a> {
             projection,
             oracle_program,
             legacy_slots,
+            aliases,
             columns,
             storage,
             input_backing,
@@ -1919,4 +2052,355 @@ fn dr_window_continuation_chain_matches_legacy() {
             );
         }
     }
+}
+
+#[test]
+#[ignore = "requires CUDA; execute only through an independently approved D5 GPU lock packet"]
+fn dr_window_continuation_mismatch_lsb_seam_matches_legacy() {
+    let mismatch = production_dr_final_order_mismatches()
+        .into_iter()
+        .next()
+        .expect("the production corpus has nine canonical/raw mismatch layers");
+    assert_ne!(
+        mismatch.publication_indices,
+        (0..mismatch.publication_indices.len()).collect::<Vec<_>>(),
+    );
+
+    let context = make_test_context(256, 64);
+    let fixture = DrGpuFixture::new_with_publication_permutation(
+        &context,
+        mismatch.enabled_mask,
+        7,
+        0xd500_0000_0000_0001,
+        Some(&mismatch.publication_indices),
+    );
+    let canonical = fixture.projection.canonical_sources();
+    let raw = fixture.legacy_slots.input_addresses().collect::<Vec<_>>();
+    assert_eq!(canonical.len(), raw.len());
+    let identity = (0..canonical.len()).collect::<Vec<_>>();
+    let zero_cells = vec![E4::ZERO; 4 * canonical.len()];
+    let lookup_shape =
+        dr_final_lookup_four_cells(canonical, &raw, &fixture.aliases, &zero_cells).unwrap();
+    assert_eq!(
+        lookup_shape.publication_indices, mismatch.publication_indices,
+        "{} layer {} permutation must reach the GPU fixture unchanged",
+        mismatch.layout_name, mismatch.absolute_layer,
+    );
+    assert_ne!(lookup_shape.publication_indices, identity);
+
+    let source_before = fixture.source_snapshot();
+    let expected_r0_tensor = fixture.expected_tensor();
+    let mut prepared = fixture.prepare();
+    bind_dr_window_continuations(
+        &mut prepared.hook,
+        &fixture.storage,
+        prepared.claim_point.as_ptr(),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(prepared.hook.continuation_launches.len(), 1);
+    assert_eq!(prepared.hook.megakernel_entry_round, 6);
+
+    let mut seed = upload(&context, &fixture.tail_seed);
+    let initial_claim = fixture.initial_claim(&expected_r0_tensor);
+    let mut claim = upload(&context, &[initial_claim]);
+    let mut eq_prefactor = upload(&context, &[E4::ONE]);
+    let mut coefficients: DeviceAllocation<E4> = context
+        .alloc(
+            4 * prepared.hook.megakernel_entry_round,
+            AllocationPlacement::BestFit,
+        )
+        .unwrap();
+
+    let (r0_active_slot, r0_active_size) = resolve_active_eq_slot(
+        &prepared.hook.r0_eq.eq_sizes,
+        prepared.hook.r0_eq.eq_low.as_mut_ptr(),
+    );
+    let r0_tail = WindowTailState {
+        partials: prepared.scratch.as_ptr(),
+        row_tiles: prepared.hook.r0_launch.row_tiles,
+        reduced_tensor: prepared.hook.r0_launch.reduced_tensor,
+        prev_claim_coords: prepared.claim_point.as_ptr(),
+        seed: seed.as_mut_ptr(),
+        claim: claim.as_mut_ptr(),
+        eq_prefactor: eq_prefactor.as_mut_ptr(),
+        coeffs_out: coefficients.as_mut_ptr(),
+        challenges_out: prepared.claim_point.as_mut_ptr(),
+        active_eq_slot_base: r0_active_slot,
+        active_eq_size_before_fold: r0_active_size,
+    };
+    launch_window_tensor_round_tail(WindowTailArm::Split, &r0_tail, &context).unwrap();
+
+    let mut expected_seed = fixture.tail_seed;
+    let mut expected_claim = initial_claim;
+    let mut expected_eq_prefactor = E4::ONE;
+    let mut expected_claim_point = fixture.claim_point.clone();
+    let r0_rho: [E4; 3] = expected_claim_point[..3].try_into().unwrap();
+    let (r0_coefficients, r0_challenges) = tensor_round_tail_reference(
+        expected_r0_tensor,
+        &r0_rho,
+        &mut expected_seed,
+        &mut expected_claim,
+        &mut expected_eq_prefactor,
+    );
+    let mut expected_coefficients = vec![E4::ZERO; 24];
+    expected_coefficients[..12].copy_from_slice(&r0_coefficients);
+    expected_claim_point[..3].copy_from_slice(&r0_challenges);
+
+    let claim_point_ptr = prepared.claim_point.as_mut_ptr();
+    let coeffs_ptr = coefficients.as_mut_ptr();
+    let seed_ptr = seed.as_mut_ptr();
+    let claim_ptr = claim.as_mut_ptr();
+    let eq_prefactor_ptr = eq_prefactor.as_mut_ptr();
+    let mut expected_publication = None;
+    let mut observed_publication = None;
+    let snapshots = launch_dr_window_continuation_chain_for_test(
+        &prepared.hook,
+        WindowTailArm::Split,
+        claim_point_ptr,
+        coeffs_ptr,
+        seed_ptr,
+        claim_ptr,
+        eq_prefactor_ptr,
+        &context,
+        |pass| {
+            assert_eq!(pass.geometry.start_round, 3);
+            let folding_challenges: [E4; 3] = expected_claim_point[..3].try_into().unwrap();
+            let expected_canonical = canonical
+                .iter()
+                .copied()
+                .map(|address| {
+                    (
+                        address,
+                        fold_dr_continuation_depth3(&fixture.columns[&address], folding_challenges)
+                            .unwrap(),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            let mut expected_columns = expected_canonical.clone();
+            for raw_address in fixture.legacy_slots.input_addresses() {
+                let canonical_address = fixture
+                    .aliases
+                    .get(&raw_address)
+                    .copied()
+                    .unwrap_or(raw_address);
+                expected_columns
+                    .insert(raw_address, expected_canonical[&canonical_address].clone());
+            }
+            let expected_tensor = dr_continuation_tensor_reference(
+                &fixture.oracle_program,
+                &expected_columns,
+                fixture.batch_base,
+                &expected_claim_point[6..fixture.folding_steps],
+            )
+            .unwrap();
+
+            let partial_values = download(
+                &context,
+                raw_device_slice(
+                    pass.launch.binding.partials,
+                    TENSOR_CELLS * pass.launch.row_tiles,
+                ),
+            );
+            let first_slot = pass.launch.binding.batch.enabled_mask.trailing_zeros() as usize;
+            let destination_record = pass.launch.binding.batch.slots[first_slot].io[0];
+            let destination_slot = usize::from((destination_record.cache >> 11) & 0x0f);
+            let destination_base =
+                pass.launch.binding.batch.tables.bases[destination_slot].cast::<E4>();
+            let published_len = canonical.len() * pass.geometry.per_poly_len;
+            let published = download(&context, raw_device_slice(destination_base, published_len));
+
+            let rho: [E4; 3] = expected_claim_point[3..6].try_into().unwrap();
+            let (tail_coefficients, tail_challenges) = tensor_round_tail_reference(
+                expected_tensor,
+                &rho,
+                &mut expected_seed,
+                &mut expected_claim,
+                &mut expected_eq_prefactor,
+            );
+            expected_coefficients[12..24].copy_from_slice(&tail_coefficients);
+            expected_claim_point[3..6].copy_from_slice(&tail_challenges);
+
+            let observed_coefficients = download(
+                &context,
+                raw_device_slice(coeffs_ptr.cast_const(), expected_coefficients.len()),
+            );
+            let observed_claim_point = download(
+                &context,
+                raw_device_slice(claim_point_ptr.cast_const(), fixture.folding_steps),
+            );
+            let observed_seed = download(&context, raw_device_slice(seed_ptr.cast_const(), 8));
+            let observed_claim = download(&context, raw_device_slice(claim_ptr.cast_const(), 1));
+            let observed_eq_prefactor =
+                download(&context, raw_device_slice(eq_prefactor_ptr.cast_const(), 1));
+            context.get_exec_stream().synchronize().unwrap();
+
+            let mut observed_tensor = [E4::ZERO; TENSOR_CELLS];
+            for (index, value) in partial_values.into_iter().enumerate() {
+                observed_tensor[index % TENSOR_CELLS].add_assign(&value);
+            }
+            compare_dr_tensors(&expected_tensor, &observed_tensor).unwrap();
+            let expected_flat = canonical
+                .iter()
+                .flat_map(|address| expected_canonical[address].iter().copied())
+                .collect::<Vec<_>>();
+            assert_eq!(published, expected_flat);
+            assert_eq!(observed_coefficients, expected_coefficients);
+            assert_eq!(observed_claim_point, expected_claim_point);
+            assert_eq!(observed_seed, expected_seed);
+            assert_eq!(observed_claim, vec![expected_claim]);
+            assert_eq!(observed_eq_prefactor, vec![expected_eq_prefactor]);
+            expected_publication = Some(expected_flat);
+            observed_publication = Some(published);
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert_eq!(snapshots.len(), 1);
+
+    let expected_publication = expected_publication.unwrap();
+    let observed_publication = observed_publication.unwrap();
+    assert_eq!(observed_publication, expected_publication);
+    let continuation_stride = observed_publication.len() / canonical.len();
+    assert_eq!(continuation_stride, 32);
+    let close_challenges: [E4; 3] = expected_claim_point[3..6].try_into().unwrap();
+    let observed_canonical_four = observed_publication
+        .chunks_exact(continuation_stride)
+        .flat_map(|column| fold_dr_continuation_depth3(column, close_challenges).unwrap())
+        .collect::<Vec<_>>();
+    let expected_canonical_four = canonical
+        .iter()
+        .flat_map(|address| {
+            let after_r0 = fold_dr_continuation_depth3(
+                &fixture.columns[address],
+                expected_claim_point[..3].try_into().unwrap(),
+            )
+            .unwrap();
+            fold_dr_continuation_depth3(&after_r0, close_challenges).unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(observed_canonical_four, expected_canonical_four);
+    assert_eq!(observed_canonical_four.len(), 4 * canonical.len());
+
+    let lookup =
+        dr_final_lookup_four_cells(canonical, &raw, &fixture.aliases, &observed_canonical_four)
+            .unwrap();
+    assert_eq!(lookup.publication_indices, mismatch.publication_indices);
+    assert_ne!(lookup.cells, observed_canonical_four);
+    assert!(dr_final_lookup_four_cells(
+        canonical,
+        &raw,
+        &fixture.aliases,
+        &observed_canonical_four[..2 * canonical.len()],
+    )
+    .is_err());
+
+    let mut permuted_four = observed_canonical_four.clone();
+    for cells in permuted_four.chunks_exact_mut(4) {
+        cells.swap(1, 2);
+    }
+    let permuted_lookup =
+        dr_final_lookup_four_cells(canonical, &raw, &fixture.aliases, &permuted_four).unwrap();
+    assert_ne!(permuted_lookup.cells, lookup.cells);
+    let mut wrong_indices = lookup.publication_indices.clone();
+    wrong_indices.rotate_left(1);
+    let wrong_lookup_cells = wrong_indices
+        .iter()
+        .flat_map(|index| {
+            observed_canonical_four[4 * index..4 * index + 4]
+                .iter()
+                .copied()
+        })
+        .collect::<Vec<_>>();
+    assert_ne!(wrong_lookup_cells, lookup.cells);
+
+    let r_before_last = expected_claim_point[6];
+    let r_last = fixture.batch_base;
+    let d_last_evals = upload(&context, &lookup.cells);
+    let d_challenges = upload(&context, &[r_before_last, r_last]);
+    let mut d_lines: DeviceAllocation<E4> = context
+        .alloc(2 * canonical.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    crate::gkr_ops::backward_dim_reducing_lsb_lines(
+        &d_last_evals[..],
+        &d_challenges[..1],
+        &mut d_lines[..],
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    let mut d_two_var: DeviceAllocation<E4> = context
+        .alloc(canonical.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    crate::gkr_ops::backward_new_claims_two_var(
+        &d_last_evals[..],
+        &d_challenges[..],
+        &mut d_two_var[..],
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    let mut d_from_lines: DeviceAllocation<E4> = context
+        .alloc(canonical.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    crate::gkr_ops::backward_new_claims_linear(
+        &d_lines[..],
+        &d_challenges[1..],
+        &mut d_from_lines[..],
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    let observed_lines = download(&context, &d_lines[..]);
+    let observed_two_var = download(&context, &d_two_var[..]);
+    let observed_from_lines = download(&context, &d_from_lines[..]);
+    let observed_seed: [u32; 8] = download(&context, &seed[..]).try_into().unwrap();
+    let observed_claim = download(&context, &claim[..])[0];
+    let observed_eq_prefactor = download(&context, &eq_prefactor[..])[0];
+    let source_after = fixture.source_snapshot();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let one_minus_r_before_last = {
+        let mut value = E4::ONE;
+        value.sub_assign(&r_before_last);
+        value
+    };
+    let one_minus_r_last = {
+        let mut value = E4::ONE;
+        value.sub_assign(&r_last);
+        value
+    };
+    let expected_lines = lookup
+        .cells
+        .chunks_exact(4)
+        .flat_map(|cells| {
+            [0, 1].map(|gate_bit| {
+                add(
+                    mul(cells[gate_bit], one_minus_r_before_last),
+                    mul(cells[2 + gate_bit], r_before_last),
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    let expected_claims = expected_lines
+        .chunks_exact(2)
+        .map(|line| add(mul(line[0], one_minus_r_last), mul(line[1], r_last)))
+        .collect::<Vec<_>>();
+    assert_eq!(observed_lines, expected_lines);
+    assert_eq!(observed_two_var, expected_claims);
+    assert_eq!(observed_from_lines, expected_claims);
+    assert_eq!(observed_seed, expected_seed);
+    assert_eq!(observed_claim, expected_claim);
+    assert_eq!(observed_eq_prefactor, expected_eq_prefactor);
+    assert_eq!(source_after, source_before);
+
+    let canonical_iteration_lines = observed_canonical_four
+        .chunks_exact(4)
+        .flat_map(|cells| {
+            [0, 1].map(|gate_bit| {
+                add(
+                    mul(cells[gate_bit], one_minus_r_before_last),
+                    mul(cells[2 + gate_bit], r_before_last),
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_ne!(canonical_iteration_lines, expected_lines);
 }
