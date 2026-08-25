@@ -90,6 +90,19 @@ pub struct DrTailProofPlan {
 pub enum DrTailScheduleError {
     Cuda(CudaError),
     Identity(DrTailPlanIdentityError),
+    DuplicateEqOwner {
+        observed: usize,
+    },
+    FinalPublicationStrideMismatch {
+        owner_log2_stride: u32,
+        planned_log2_stride: u32,
+        planned_per_poly_len: usize,
+        selected_log2_stride: u32,
+    },
+    WindowBinding {
+        detail: String,
+    },
+    MissingCompleteChainContract,
 }
 
 impl From<CudaError> for DrTailScheduleError {
@@ -103,6 +116,14 @@ impl From<DrTailPlanIdentityError> for DrTailScheduleError {
         Self::Identity(error)
     }
 }
+
+impl core::fmt::Display for DrTailScheduleError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(formatter, "{self:?}")
+    }
+}
+
+impl std::error::Error for DrTailScheduleError {}
 
 impl DrTailProofPlan {
     pub fn resources(&self) -> &DrTailKernelResources {
@@ -241,7 +262,7 @@ impl<'a> DrTailLayerIdentity<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DrTailPlanIdentityError {
+pub enum DrTailPlanIdentityError {
     CountMismatch {
         expected: usize,
         observed: usize,
@@ -564,6 +585,10 @@ mod fake {
 mod tests {
     use super::fake::{FakeDeviceEvent, FakeQueries};
     use super::*;
+    use crate::backward::dim_reducing_sumcheck_plan::{
+        schedule_dr_layer_execution, DrLayerExecutionContract, DrLayerExecutionSelection,
+        DrLayerExecutionStage,
+    };
     use crate::backward::{compile_corpus_layout, CONTINUATION_GOLDEN_CORPUS};
 
     const FINAL_TRACE_LOG: usize = 4;
@@ -612,37 +637,115 @@ mod tests {
                 .expect("production fixture must admit");
             (artifact, plan)
         }
-        fn rejected(mutate: impl FnOnce(&mut DrTailProofPlan)) {
+        fn rejected(
+            mutate: impl FnOnce(&mut DrTailProofPlan),
+            expected: impl FnOnce(&DrTailPlanIdentityError) -> bool,
+        ) {
             let (artifact, mut plan) = admitted();
             mutate(&mut plan);
-            let launches = 0usize;
-            assert!(plan
+            let contract = DrLayerExecutionContract::minimal_valid_for_test();
+            let mut observed = Vec::new();
+            let mut launched = Vec::new();
+            let mut observer = |stage| observed.push(stage);
+            let result = plan
                 .validate_before_enqueue(artifact.as_ref(), FINAL_TRACE_LOG)
-                .is_err());
-            assert_eq!(launches, 0, "identity rejection must precede launch");
+                .map_err(DrTailScheduleError::from)
+                .and_then(|()| {
+                    schedule_dr_layer_execution(
+                        Some(&contract),
+                        DrLayerExecutionSelection::CompleteNewChain {
+                            continuation_count: 0,
+                        },
+                        Some(&mut observer),
+                        |stage| {
+                            launched.push(stage);
+                            Ok(())
+                        },
+                    )
+                });
+            let Err(DrTailScheduleError::Identity(error)) = result else {
+                panic!("mutation must return its typed identity error: {result:?}");
+            };
+            assert!(expected(&error), "unexpected identity error: {error:?}");
+            assert!(
+                observed.is_empty(),
+                "preflight rejection reached enqueue spy"
+            );
+            assert!(launched.is_empty(), "preflight rejection reached launcher");
         }
 
-        rejected(|plan| {
-            plan.layers.pop();
-        });
-        rejected(|plan| {
-            let layer = plan.layers[0].clone();
-            plan.layers.push(layer);
-        });
-        rejected(|plan| {
-            plan.layers[1].layer_idx = plan.layers[0].layer_idx;
-        });
-        rejected(|plan| plan.layers.reverse());
-        rejected(|plan| {
-            let (first, rest) = plan.layers.split_at_mut(1);
-            std::mem::swap(&mut first[0].capacity, &mut rest[0].capacity);
-        });
-        rejected(|plan| {
-            plan.layers[0].folding_steps += 1;
-        });
-        rejected(|plan| {
-            plan.layers[0].canonical_sources[0] = GKRAddress::ScratchSpace(usize::MAX);
-        });
+        rejected(
+            |plan| {
+                plan.layers.pop();
+            },
+            |error| matches!(error, DrTailPlanIdentityError::CountMismatch { .. }),
+        );
+        rejected(
+            |plan| {
+                let layer = plan.layers[0].clone();
+                plan.layers.push(layer);
+            },
+            |error| matches!(error, DrTailPlanIdentityError::CountMismatch { .. }),
+        );
+        rejected(
+            |plan| {
+                plan.layers[1].layer_idx = plan.layers[0].layer_idx;
+            },
+            |error| matches!(error, DrTailPlanIdentityError::DuplicateLayer { .. }),
+        );
+        rejected(
+            |plan| plan.layers.reverse(),
+            |error| matches!(error, DrTailPlanIdentityError::LayerMismatch { .. }),
+        );
+        rejected(
+            |plan| {
+                let (first, rest) = plan.layers.split_at_mut(1);
+                std::mem::swap(&mut first[0].capacity, &mut rest[0].capacity);
+            },
+            |error| matches!(error, DrTailPlanIdentityError::CapacityMismatch { .. }),
+        );
+        rejected(
+            |plan| {
+                plan.layers[0].folding_steps += 1;
+            },
+            |error| matches!(error, DrTailPlanIdentityError::FoldingStepsMismatch { .. }),
+        );
+        rejected(
+            |plan| {
+                plan.layers[0].canonical_sources[0] = GKRAddress::ScratchSpace(usize::MAX);
+            },
+            |error| {
+                matches!(
+                    error,
+                    DrTailPlanIdentityError::CanonicalSourcesMismatch { .. }
+                )
+            },
+        );
+
+        let (artifact, plan) = admitted();
+        plan.validate_before_enqueue(artifact.as_ref(), FINAL_TRACE_LOG)
+            .unwrap();
+        let contract = DrLayerExecutionContract::minimal_valid_for_test();
+        let mut observed = Vec::new();
+        let mut launched = Vec::new();
+        let mut observer = |stage| observed.push(stage);
+        schedule_dr_layer_execution(
+            Some(&contract),
+            DrLayerExecutionSelection::CompleteNewChain {
+                continuation_count: 0,
+            },
+            Some(&mut observer),
+            |stage| {
+                launched.push(stage);
+                Ok::<(), DrTailScheduleError>(())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            observed,
+            [DrLayerExecutionStage::R0, DrLayerExecutionStage::Megakernel]
+        );
+        assert_eq!(launched, observed);
     }
 
     #[test]

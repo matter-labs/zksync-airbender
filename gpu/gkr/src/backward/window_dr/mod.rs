@@ -23,8 +23,9 @@ pub(crate) use binding::{
 #[allow(unused_imports)]
 pub(crate) use composition::{
     continuation_window_count, dr_window_continuation_pass_geometry, megakernel_entry_round,
-    plan_dr_window_continuations, DrWindowContinuationArenaOwners, DrWindowContinuationParity,
-    DrWindowContinuationPass, DrWindowContinuationPassGeometry, DrWindowContinuationPlannedSource,
+    plan_dr_window_continuations, validate_dr_window_final_publication_stride,
+    DrWindowContinuationArenaOwners, DrWindowContinuationParity, DrWindowContinuationPass,
+    DrWindowContinuationPassGeometry, DrWindowContinuationPlannedSource,
     DrWindowContinuationReadiness, DrWindowLayerCompositionHook, DrWindowLayerPreparationHook,
     DrWindowPassEqState, DrWindowPassEqView, DrWindowRawInputKeepalive,
 };

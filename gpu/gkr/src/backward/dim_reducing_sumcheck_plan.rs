@@ -12,7 +12,8 @@ use super::dr_tail::{
 use super::window::tail::{launch_window_tensor_round_tail, WindowTailArm, WindowTailState};
 use super::window_dr::{
     launch_dr_window_continuation, launch_dr_window_r0, resolve_dr_global_active_eq_slot,
-    DrWindowBindError, DrWindowContinuationReadiness,
+    validate_dr_window_final_publication_stride, DrWindowBindError, DrWindowContinuationReadiness,
+    DrWindowLayerCompositionHook,
 };
 use super::{dim_reducing_encoder, kernels::*};
 use crate::proof_layout::ProofLayout;
@@ -36,6 +37,67 @@ pub(crate) enum DrLayerExecutionStage {
 pub(crate) enum DrLayerExecutionSelection {
     CompleteNewChain { continuation_count: usize },
     LegacyDiagnostic,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DrFinalPublicationContract {
+    owner_log2_stride: u32,
+    planned_log2_stride: u32,
+    planned_per_poly_len: usize,
+    selected_log2_stride: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DrLayerExecutionContract {
+    common_eq_owner_count: usize,
+    final_publication: Option<DrFinalPublicationContract>,
+}
+
+impl DrLayerExecutionContract {
+    fn from_hook(hook: &DrWindowLayerCompositionHook) -> Self {
+        let final_publication = hook.continuation_launches.last().map(|last| {
+            let owner = hook
+                .continuation_arenas
+                .get(last.geometry.destination)
+                .expect("the final continuation destination must remain owned");
+            DrFinalPublicationContract {
+                owner_log2_stride: owner.binding().log2_stride,
+                planned_log2_stride: last.geometry.log2_stride,
+                planned_per_poly_len: last.geometry.per_poly_len,
+                selected_log2_stride: last.geometry.log2_stride,
+            }
+        });
+        Self {
+            common_eq_owner_count: hook.r0_eq.owner_count,
+            final_publication,
+        }
+    }
+
+    fn validate(self) -> Result<(), DrTailScheduleError> {
+        if self.common_eq_owner_count != 1 {
+            return Err(DrTailScheduleError::DuplicateEqOwner {
+                observed: self.common_eq_owner_count,
+            });
+        }
+        if let Some(final_publication) = self.final_publication {
+            validate_dr_window_final_publication_stride(
+                final_publication.owner_log2_stride,
+                final_publication.planned_log2_stride,
+                final_publication.planned_per_poly_len,
+                final_publication.selected_log2_stride,
+            )
+            .map_err(dr_window_schedule_error)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn minimal_valid_for_test() -> Self {
+        Self {
+            common_eq_owner_count: 1,
+            final_publication: None,
+        }
+    }
 }
 
 struct DrLayerExecutionStages {
@@ -74,66 +136,159 @@ impl Iterator for DrLayerExecutionStages {
     }
 }
 
-pub(crate) fn schedule_dr_layer_execution<E>(
+pub(crate) fn schedule_dr_layer_execution<E: From<DrTailScheduleError>>(
+    contract: Option<&DrLayerExecutionContract>,
     selection: DrLayerExecutionSelection,
+    #[cfg(test)] mut observer: Option<&mut dyn FnMut(DrLayerExecutionStage)>,
     mut launch: impl FnMut(DrLayerExecutionStage) -> Result<(), E>,
 ) -> Result<(), E> {
+    if matches!(
+        selection,
+        DrLayerExecutionSelection::CompleteNewChain { .. }
+    ) {
+        contract
+            .ok_or(DrTailScheduleError::MissingCompleteChainContract)
+            .and_then(|contract| contract.validate())
+            .map_err(E::from)?;
+    }
     for stage in DrLayerExecutionStages::new(selection) {
+        #[cfg(test)]
+        if let Some(observer) = observer.as_deref_mut() {
+            observer(stage);
+        }
         launch(stage)?;
     }
     Ok(())
+}
+
+fn dr_window_schedule_error(error: DrWindowBindError) -> DrTailScheduleError {
+    match error {
+        DrWindowBindError::Cuda(error) => DrTailScheduleError::Cuda(error),
+        DrWindowBindError::FinalPublicationStrideMismatch {
+            owner_log2_stride,
+            planned_log2_stride,
+            planned_per_poly_len,
+            selected_log2_stride,
+        } => DrTailScheduleError::FinalPublicationStrideMismatch {
+            owner_log2_stride,
+            planned_log2_stride,
+            planned_per_poly_len,
+            selected_log2_stride,
+        },
+        error => DrTailScheduleError::WindowBinding {
+            detail: format!("{error:?}"),
+        },
+    }
 }
 
 #[cfg(test)]
 mod stage_dispatch_tests {
     use super::*;
 
-    fn assert_r0_rejection_stops_chain(reason: &'static str) {
-        let mut r0 = 0;
-        let mut continuations = 0;
-        let mut tail = 0;
-        let mut legacy = 0;
+    use crate::backward::window_dr::plan_dr_window_continuations;
+
+    fn production_contract() -> DrLayerExecutionContract {
+        let passes = plan_dr_window_continuations(24, 4, 15).unwrap();
+        let last = passes.last().unwrap();
+        let owner = passes
+            .iter()
+            .find(|pass| pass.destination == last.destination)
+            .unwrap();
+        assert!(owner.log2_stride > last.log2_stride);
+        DrLayerExecutionContract {
+            common_eq_owner_count: 1,
+            final_publication: Some(DrFinalPublicationContract {
+                owner_log2_stride: owner.log2_stride,
+                planned_log2_stride: last.log2_stride,
+                planned_per_poly_len: last.per_poly_len,
+                selected_log2_stride: last.log2_stride,
+            }),
+        }
+    }
+
+    fn dispatch(
+        contract: &DrLayerExecutionContract,
+    ) -> (
+        Result<(), DrTailScheduleError>,
+        Vec<DrLayerExecutionStage>,
+        Vec<DrLayerExecutionStage>,
+    ) {
+        let mut observed = Vec::new();
+        let mut launched = Vec::new();
+        let mut observer = |stage| observed.push(stage);
         let result = schedule_dr_layer_execution(
+            Some(contract),
             DrLayerExecutionSelection::CompleteNewChain {
-                continuation_count: 3,
+                continuation_count: 4,
             },
-            |stage| -> Result<(), &'static str> {
-                match stage {
-                    DrLayerExecutionStage::R0 => {
-                        r0 += 1;
-                        return Err(reason);
-                    }
-                    DrLayerExecutionStage::Continuation(_) => continuations += 1,
-                    DrLayerExecutionStage::Megakernel => tail += 1,
-                    DrLayerExecutionStage::LegacyDiagnostic => legacy += 1,
-                }
+            Some(&mut observer),
+            |stage| {
+                launched.push(stage);
                 Ok(())
             },
         );
-        assert_eq!(result, Err(reason));
-        assert_eq!((r0, continuations, tail, legacy), (1, 0, 0, 0));
+        (result, observed, launched)
+    }
+
+    #[test]
+    fn cpu_complete_chain_observer_is_the_production_enqueue_boundary() {
+        let (result, observed, launched) = dispatch(&production_contract());
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            observed,
+            [
+                DrLayerExecutionStage::R0,
+                DrLayerExecutionStage::Continuation(0),
+                DrLayerExecutionStage::Continuation(1),
+                DrLayerExecutionStage::Continuation(2),
+                DrLayerExecutionStage::Continuation(3),
+                DrLayerExecutionStage::Megakernel,
+            ]
+        );
+        assert_eq!(launched, observed);
     }
 
     #[test]
     fn cpu_wrong_final_stride_dispatch_rejects_without_retry() {
-        assert_r0_rejection_stops_chain("wrong final stride");
+        let mut contract = production_contract();
+        let final_publication = contract.final_publication.as_mut().unwrap();
+        final_publication.selected_log2_stride = final_publication.owner_log2_stride;
+        let expected = DrTailScheduleError::FinalPublicationStrideMismatch {
+            owner_log2_stride: final_publication.owner_log2_stride,
+            planned_log2_stride: final_publication.planned_log2_stride,
+            planned_per_poly_len: final_publication.planned_per_poly_len,
+            selected_log2_stride: final_publication.owner_log2_stride,
+        };
+        let (result, observed, launched) = dispatch(&contract);
+        assert_eq!(result, Err(expected));
+        assert!(observed.is_empty());
+        assert!(launched.is_empty());
     }
 
     #[test]
     fn cpu_duplicate_eq_dispatch_rejects_without_legacy_fallback() {
-        assert_r0_rejection_stops_chain("duplicate Eq owner");
+        let mut contract = production_contract();
+        contract.common_eq_owner_count = 2;
+        let (result, observed, launched) = dispatch(&contract);
+        assert_eq!(
+            result,
+            Err(DrTailScheduleError::DuplicateEqOwner { observed: 2 })
+        );
+        assert!(observed.is_empty());
+        assert!(launched.is_empty());
     }
 }
 
 fn preflighted_dr_window_result<T>(
     result: Result<T, DrWindowBindError>,
     contract: &'static str,
-) -> CudaResult<T> {
-    match result {
-        Ok(value) => Ok(value),
-        Err(DrWindowBindError::Cuda(error)) => Err(error),
-        Err(error) => panic!("{contract}: {error}"),
-    }
+) -> Result<T, DrTailScheduleError> {
+    result.map_err(|error| match dr_window_schedule_error(error) {
+        DrTailScheduleError::WindowBinding { detail } => DrTailScheduleError::WindowBinding {
+            detail: format!("{contract}: {detail}"),
+        },
+        error => error,
+    })
 }
 
 impl GpuGKRDimensionReducingSumcheckLayerPlan {
@@ -422,6 +577,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 hook.megakernel_source_pointers(storage),
                 "preflighted DR tail publication binding drifted",
             )?;
+            let execution_contract = DrLayerExecutionContract::from_hook(&hook);
             assert_eq!(canonical_sources.len(), folding_poly_count);
             assert!(folding_poly_count <= DR_TAIL_MAX_SOURCES);
             let mut source_ptrs = [std::ptr::null(); DR_TAIL_MAX_SOURCES];
@@ -458,8 +614,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
 
             let continuation_count = hook.continuation_launches.len();
             schedule_dr_layer_execution(
+                Some(&execution_contract),
                 DrLayerExecutionSelection::CompleteNewChain { continuation_count },
-                |stage| -> CudaResult<()> {
+                #[cfg(test)]
+                None,
+                |stage| -> Result<(), DrTailScheduleError> {
                     match stage {
                         DrLayerExecutionStage::R0 => {
                             launch_dr_window_r0(&hook, device_claim_point_out.as_ptr(), context)?;
@@ -562,8 +721,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             // A prepared window hook may exist for host diagnostics, but no
             // production call can arrive here without an admitted plan.
             schedule_dr_layer_execution(
+                None,
                 DrLayerExecutionSelection::LegacyDiagnostic,
-                |stage| -> CudaResult<()> {
+                #[cfg(test)]
+                None,
+                |stage| -> Result<(), DrTailScheduleError> {
                     assert_eq!(stage, DrLayerExecutionStage::LegacyDiagnostic);
                     for step in 0..last_step {
                         let acc_size = 1usize << (self.folding_steps - step - 1);

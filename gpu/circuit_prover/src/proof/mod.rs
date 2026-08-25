@@ -8,7 +8,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
-use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
@@ -40,9 +39,12 @@ use orchestration::{
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
-/// A proof request rejected before any GPU work is scheduled.
+/// A proof request rejected during preflight or GPU scheduling.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GpuProveError {
+    Cuda {
+        error: era_cudart_sys::CudaError,
+    },
     WindowLowering {
         circuit: String,
         layer: usize,
@@ -70,6 +72,14 @@ pub enum GpuProveError {
     DrTailSchedule {
         error: gpu_gkr::DrTailScheduleError,
     },
+}
+
+pub type GpuProveResult<T> = Result<T, GpuProveError>;
+
+impl From<era_cudart_sys::CudaError> for GpuProveError {
+    fn from(error: era_cudart_sys::CudaError) -> Self {
+        Self::Cuda { error }
+    }
 }
 
 impl From<gpu_gkr::DrTailResourceError> for GpuProveError {
@@ -231,6 +241,7 @@ impl<'context> ProofMemoryHighWaterSink<'context> {
 impl std::fmt::Display for GpuProveError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Cuda { error } => write!(formatter, "CUDA proving failure: {error:?}"),
             Self::WindowLowering {
                 circuit,
                 layer,
@@ -540,7 +551,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     backward_options: GkrBackwardOptions,
     dr_tail_plan: Option<gpu_gkr::DrTailProofPlan>,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> GpuProveResult<GpuGKRProofJob<'a, A>> {
     prove_inner(
         gkr_programs,
         prover_config,
@@ -563,7 +574,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> GpuProveResult<GpuGKRProofJob<'a, A>> {
     prove_inner(
         gkr_programs,
         prover_config,
@@ -586,7 +597,7 @@ pub(crate) fn prove_measured<'a, 'context, A: GoodAllocator + 'a>(
     backward_options: GkrBackwardOptions,
     sink: &mut ProofMemoryHighWaterSink<'context>,
     context: &'context ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> GpuProveResult<GpuGKRProofJob<'a, A>> {
     prove_inner(
         gkr_programs,
         prover_config,
@@ -610,7 +621,7 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     #[cfg(test)] mut memory_high_water: Option<&mut ProofMemoryHighWaterSink<'context>>,
     context: &'context ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> GpuProveResult<GpuGKRProofJob<'a, A>> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let backward_strategy =
         resolve_backward_execution_strategy(gkr_programs, prover_config, backward_options);
@@ -792,11 +803,7 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
         stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
         &mut callbacks,
         context,
-    )
-    .map_err(|error| {
-        log::error!("typed backward scheduling rejection: {error}");
-        era_cudart_sys::CudaError::ErrorInvalidValue
-    })?;
+    )?;
     #[cfg(test)]
     if let Some(memory_high_water) = memory_high_water.as_deref_mut() {
         memory_high_water.seal(&backward_scheduled);

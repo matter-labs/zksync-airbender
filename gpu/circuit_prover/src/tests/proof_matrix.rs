@@ -674,7 +674,7 @@ impl BasicUnrolledFixture {
     fn schedule_task6_exact_memory_prove(
         &self,
         backward_options: GkrBackwardOptions,
-    ) -> CudaResult<Task6MeasuredProofJob<'_>> {
+    ) -> GpuProveResult<Task6MeasuredProofJob<'_>> {
         let sequence = Arc::new(AtomicUsize::new(0));
         let whole = self.context.observe_device_memory_high_water();
         let whole_start_sequence = sequence.fetch_add(1, Ordering::SeqCst);

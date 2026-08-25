@@ -26,8 +26,8 @@ pub use dr_tail::dr_tail_first_order_mismatch;
 
 pub use dr_tail::{
     preflight_dr_tail_resources, DrTailCapacityDecision, DrTailCapacityRejection,
-    DrTailKernelResources, DrTailLayerPlan, DrTailProofPlan, DrTailResourceError,
-    DrTailScheduleError,
+    DrTailKernelResources, DrTailLayerPlan, DrTailPlanIdentityError, DrTailProofPlan,
+    DrTailResourceError, DrTailScheduleError,
 };
 pub(crate) use kernels::*;
 pub use kernels::{
@@ -271,6 +271,7 @@ impl GpuGKRDimensionReducingBackwardState {
                 eq_low: round_scratch.eq_low_group.take_owner(),
                 eq_sizes: eq_geometry.eq_sizes,
                 build_offset: eq_geometry.build_offset,
+                owner_count: 1,
             };
             debug_assert_eq!(eq.eq_sizes, eq_geometry.eq_sizes);
             assert_eq!(eq.eq_low.as_ptr(), eq_pointer);

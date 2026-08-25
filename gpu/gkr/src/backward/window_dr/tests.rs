@@ -30,7 +30,8 @@ use super::generated_registry::{
     DR_WINDOWED_R0_UNIVERSAL_KERNEL,
 };
 use crate::backward::dim_reducing_sumcheck_plan::{
-    schedule_dr_layer_execution, DrLayerExecutionSelection, DrLayerExecutionStage,
+    schedule_dr_layer_execution, DrLayerExecutionContract, DrLayerExecutionSelection,
+    DrLayerExecutionStage,
 };
 use crate::backward::kernels::{
     make_eq_sizes, pack_cache_u16, pack_source_u16, FoldingArenaBinding,
@@ -47,6 +48,7 @@ use crate::storage_layout::{
     address_storage_layer, FieldType, GpuGKRLayerLayout, GpuGKRStorageLayout,
 };
 use crate::upstream::{GKRAddress, OutputType};
+use crate::DrTailScheduleError;
 use crate::{
     select_dr_window_complete_chain, validate_dr_window_continuation_capability,
     BackwardExecutionStrategy, DrWindowChainStages, DrWindowContinuationCapabilityProbe,
@@ -176,13 +178,16 @@ fn cpu_dr_window_preflight_rejects_geometry_resources_and_partial_chains() {
 #[test]
 fn cpu_dr_complete_chain_reachability_is_exact_and_has_no_legacy_prefix() {
     let mut observed = Vec::new();
+    let contract = DrLayerExecutionContract::minimal_valid_for_test();
     schedule_dr_layer_execution(
+        Some(&contract),
         DrLayerExecutionSelection::CompleteNewChain {
             continuation_count: 4,
         },
+        None,
         |stage| {
             observed.push(stage);
-            Ok::<(), &str>(())
+            Ok::<(), DrTailScheduleError>(())
         },
     )
     .unwrap();
@@ -202,32 +207,42 @@ fn cpu_dr_complete_chain_reachability_is_exact_and_has_no_legacy_prefix() {
     for fail_at in 0..observed.len() {
         let mut attempted = Vec::new();
         let mut legacy_launches = 0;
+        let injected = DrTailScheduleError::WindowBinding {
+            detail: format!("injected launch failure at {fail_at}"),
+        };
         let result = schedule_dr_layer_execution(
+            Some(&contract),
             DrLayerExecutionSelection::CompleteNewChain {
                 continuation_count: 4,
             },
+            None,
             |stage| {
                 if stage == DrLayerExecutionStage::LegacyDiagnostic {
                     legacy_launches += 1;
                 }
                 attempted.push(stage);
                 if attempted.len() - 1 == fail_at {
-                    Err("injected launch failure")
+                    Err(injected.clone())
                 } else {
                     Ok(())
                 }
             },
         );
-        assert_eq!(result, Err("injected launch failure"));
+        assert_eq!(result, Err(injected));
         assert_eq!(attempted, observed[..=fail_at]);
         assert_eq!(legacy_launches, 0, "an error must not retry legacy");
     }
 
     let mut diagnostic = Vec::new();
-    schedule_dr_layer_execution(DrLayerExecutionSelection::LegacyDiagnostic, |stage| {
-        diagnostic.push(stage);
-        Ok::<(), &str>(())
-    })
+    schedule_dr_layer_execution(
+        None,
+        DrLayerExecutionSelection::LegacyDiagnostic,
+        None,
+        |stage| {
+            diagnostic.push(stage);
+            Ok::<(), DrTailScheduleError>(())
+        },
+    )
     .unwrap();
     assert_eq!(diagnostic, [DrLayerExecutionStage::LegacyDiagnostic]);
 }

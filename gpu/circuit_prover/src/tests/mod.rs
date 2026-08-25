@@ -1,6 +1,6 @@
 use crate::proof::{
     construct_after_windowed_backward_preflight, preflight_windowed_backward, prove,
-    resolve_backward_execution_strategy, GpuGKRProofJob,
+    resolve_backward_execution_strategy, GpuGKRProofJob, GpuProveResult,
 };
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
@@ -321,7 +321,7 @@ impl BasicUnrolledFixture {
     fn prove(
         &self,
         transfers: BasicUnrolledTransfers<'static>,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
         self.prove_with(transfers, GkrBackwardOptions::default())
     }
 
@@ -332,7 +332,7 @@ impl BasicUnrolledFixture {
         &self,
         transfers: BasicUnrolledTransfers<'static>,
         backward_options: GkrBackwardOptions,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
         let strategy = resolve_backward_execution_strategy(
             &self.gkr_programs,
             &self.prover_config,
@@ -356,14 +356,14 @@ impl BasicUnrolledFixture {
         )
     }
 
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    fn schedule_prove(&self) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
         self.schedule_prove_with(GkrBackwardOptions::default())
     }
 
     fn schedule_prove_with(
         &self,
         backward_options: GkrBackwardOptions,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
         let strategy = resolve_backward_execution_strategy(
             &self.gkr_programs,
             &self.prover_config,
@@ -406,14 +406,14 @@ impl BasicUnrolledFixture {
 }
 
 impl BasicUnrolledProofFixture {
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    fn schedule_prove(&self) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
         self.base.schedule_prove()
     }
 
     fn schedule_prove_with(
         &self,
         backward_options: GkrBackwardOptions,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
         self.base.schedule_prove_with(backward_options)
     }
 }

@@ -1178,3 +1178,23 @@ fn cpu_dr_tail_seam_forced_legacy_issues_zero_resource_queries() {
     // above is a real refusal rather than an inert path.
     assert_eq!(run(true), (1, 0, false));
 }
+
+#[test]
+fn cpu_public_proof_result_preserves_typed_dr_tail_identity_error() {
+    use super::{GpuProveError, GpuProveResult};
+    use gpu_gkr::{DrTailPlanIdentityError, DrTailScheduleError};
+
+    let identity = DrTailPlanIdentityError::CountMismatch {
+        expected: 3,
+        observed: 2,
+    };
+    let result: GpuProveResult<()> = Err(GpuProveError::from(DrTailScheduleError::Identity(
+        identity.clone(),
+    )));
+    assert_eq!(
+        result,
+        Err(GpuProveError::DrTailSchedule {
+            error: DrTailScheduleError::Identity(identity),
+        })
+    );
+}

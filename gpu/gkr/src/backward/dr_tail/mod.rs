@@ -11,8 +11,8 @@ pub(crate) use kernels::{
     DR_TAIL_SLOTS,
 };
 pub use resources::{
-    DrTailKernelResources, DrTailLayerPlan, DrTailProofPlan, DrTailResourceError,
-    DrTailScheduleError,
+    DrTailKernelResources, DrTailLayerPlan, DrTailPlanIdentityError, DrTailProofPlan,
+    DrTailResourceError, DrTailScheduleError,
 };
 
 /// Production entry point: admit DR-tail kernel resources for this proof.

@@ -9,7 +9,7 @@ use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, prove, resolve_backward_execution_strategy,
-    DrTailPreflightRequest, GpuGKRProofJob,
+    DrTailPreflightRequest, GpuGKRProofJob, GpuProveError, GpuProveResult,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -133,13 +133,42 @@ enum JobType<'a> {
     SetupInitialization,
 }
 
+#[derive(Debug)]
+enum GpuWorkerError {
+    Cuda(era_cudart_sys::CudaError),
+    Prove(GpuProveError),
+}
+
+impl From<era_cudart_sys::CudaError> for GpuWorkerError {
+    fn from(error: era_cudart_sys::CudaError) -> Self {
+        Self::Cuda(error)
+    }
+}
+
+impl From<GpuProveError> for GpuWorkerError {
+    fn from(error: GpuProveError) -> Self {
+        Self::Prove(error)
+    }
+}
+
+impl std::fmt::Display for GpuWorkerError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cuda(error) => write!(formatter, "CUDA worker failure: {error:?}"),
+            Self::Prove(error) => write!(formatter, "GPU proof failure: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for GpuWorkerError {}
+
 fn gpu_worker(
     device_id: i32,
     prover_context_config: ProverContextConfig,
     is_initialized: Sender<()>,
     requests: Receiver<Option<GpuWorkRequest<A>>>,
     results: Sender<Option<GpuWorkResult<A>>>,
-) -> CudaResult<()> {
+) -> Result<(), GpuWorkerError> {
     trace!("GPU_WORKER[{device_id}] started");
     set_device(device_id)?;
     let props = get_device_properties(device_id)?;
@@ -426,7 +455,7 @@ fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
     p1: PhaseOne<'a>,
-) -> CudaResult<PhaseTwo<'a>> {
+) -> GpuProveResult<PhaseTwo<'a>> {
     let PhaseOne { state, inputs } = p1;
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;

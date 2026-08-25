@@ -48,6 +48,10 @@ pub(crate) struct DrWindowPassEqState {
     pub(crate) eq_low: DeviceAllocation<E4>,
     pub(crate) eq_sizes: GkrEqSizes,
     pub(crate) build_offset: usize,
+    /// Number of owners represented by this production Eq state. Complete-chain
+    /// dispatch accepts exactly one; tests mutate this same field to prove that
+    /// duplicate ownership cannot reach an enqueue.
+    pub(crate) owner_count: usize,
 }
 
 impl DrWindowPassEqState {
@@ -60,6 +64,7 @@ impl DrWindowPassEqState {
             eq_low: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
             eq_sizes: make_eq_sizes(challenge_count),
             build_offset,
+            owner_count: 1,
         })
     }
 
