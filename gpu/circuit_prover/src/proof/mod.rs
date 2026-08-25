@@ -19,6 +19,7 @@ use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::{
     backward_execution_strategy, main_continuation_window_count, BackwardExecutionStrategy,
     GkrBackwardOptions, GkrPrograms, MainContinuationWindowLoweringRejection,
+    MainTailLoweringRejection,
     MainLayerExecutionPlanError, WindowLoweringRejection,
 };
 #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
@@ -99,6 +100,16 @@ impl From<&MainContinuationWindowLoweringRejection> for GpuProveError {
     }
 }
 
+impl From<&MainTailLoweringRejection> for GpuProveError {
+    fn from(rejection: &MainTailLoweringRejection) -> Self {
+        Self::MainContinuationWindowLowering {
+            circuit: rejection.circuit.clone(),
+            layer: rejection.layer,
+            resource: rejection.resource.clone(),
+        }
+    }
+}
+
 /// The main-layer arm this proof request runs, from the caller's options and the
 /// prover config's validated same-size schedule. Pure; `prove()` computes the
 /// same value and logs a requested-but-unavailable window once per proof.
@@ -155,6 +166,7 @@ pub fn preflight_windowed_backward(
             .resolve_main_continuation_window_programs()
             .map(|_| ())
             .map_err(GpuProveError::from)?;
+        gkr_programs.resolve_main_tail_programs().map(|_| ()).map_err(GpuProveError::from)?;
     }
     Ok(())
 }
@@ -281,9 +293,8 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     let backward_strategy =
         resolve_backward_execution_strategy(gkr_programs, prover_config, backward_options);
     match backward_strategy {
-        BackwardExecutionStrategy::PerRound if backward_options.windowed_r0 => log::info!(
-            "windowed R0 was requested but the same-size sumcheck schedule validates as {:?}; \
-             proving with the per-round path",
+        BackwardExecutionStrategy::PerRound if backward_options.windowed_r0 => panic!(
+            "windowed MAIN production path is unavailable for validated schedule {:?}; refusing legacy fallback",
             validated_schedule_class(gkr_programs, prover_config)
         ),
         BackwardExecutionStrategy::WindowedR0 => assert!(

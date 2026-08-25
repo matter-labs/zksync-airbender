@@ -36,7 +36,7 @@ pub(crate) use gpu_gkr_model::storage_layout;
 pub(crate) use gpu_gkr_model::transform;
 pub use programs::{
     GkrPrograms, MainContinuationWindowLoweringRejection, MainContinuationWindowProgramBundle,
-    WindowLoweringRejection, WindowProgramBundle,
+    MainTailLoweringRejection, WindowLoweringRejection, WindowProgramBundle,
 };
 pub(crate) use storage_types::*;
 // Keep the public path `gpu_gkr::gkr_initial_inner_products` (apex proof).
@@ -58,9 +58,9 @@ pub struct GkrBackwardOptions {
     /// [`backward_execution_strategy`]. Clearing it is the escape hatch back to
     /// the per-round arm.
     pub windowed_r0: bool,
-    /// Request width-3 main-layer continuation windows after the landed R0
-    /// window. This stays default-off until the continuation execution path has
-    /// passed its proof-byte and performance gates.
+    /// Select the production windowed continuation chain after the landed R0
+    /// window. Unsupported geometry is a typed preflight failure; production
+    /// never falls back to the legacy path.
     pub windowed_main_continuations: bool,
     pub window_tail: WindowTailArm,
 }
@@ -69,7 +69,7 @@ impl Default for GkrBackwardOptions {
     fn default() -> Self {
         Self {
             windowed_r0: true,
-            windowed_main_continuations: false,
+            windowed_main_continuations: true,
             window_tail: WindowTailArm::Split,
         }
     }
@@ -176,7 +176,7 @@ mod cpu_windowed_selector_tests {
     fn cpu_windowed_selector_defaults_to_the_windowed_arm() {
         let options = GkrBackwardOptions::default();
         assert!(options.windowed_r0);
-        assert!(!options.windowed_main_continuations);
+        assert!(options.windowed_main_continuations);
         assert_eq!(options.window_tail, WindowTailArm::Split);
         assert_eq!(
             backward_execution_strategy(options, Some(SumcheckScheduleClass::Windowed)),
