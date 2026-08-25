@@ -509,6 +509,17 @@ impl Task8OwnerGenerationLedger {
             .count()
     }
 
+    /// Bytes the arm read back that no recorded device producer had written.
+    fn resident_read_bytes(&self, arm: &'static str) -> usize {
+        self.generations
+            .iter()
+            .filter(|entry| entry.arm == arm)
+            .flat_map(|entry| entry.records.iter())
+            .filter(|record| record.use_kind == Task8QueuedUse::ResidentRead)
+            .map(|record| record.range.len())
+            .sum()
+    }
+
     fn enqueue_sites(&self, arm: &'static str) -> std::collections::BTreeMap<&'static str, usize> {
         let mut sites = std::collections::BTreeMap::new();
         for enqueue in self.enqueues.iter().filter(|enqueue| enqueue.arm == arm) {
@@ -3585,6 +3596,47 @@ fn compare_observations(
         + 1)
 }
 
+/// Host model of the Eq bytes one arm reads back without any recorded device
+/// producer having written them: the full low buffer and both high slabs are
+/// read back before and after the tail, and the union of the arm's real
+/// builds — one per prior pass plus the comparison build, each writing both
+/// slab sentinels, its used group tables, and its `2^low` prefix — is what the
+/// recorded write spans cover. The finalize folds rewrite prefixes of built
+/// slots, never extending coverage.
+fn task8_expected_eq_resident_bytes(
+    folding_steps: usize,
+    start_round: usize,
+    legacy: bool,
+) -> usize {
+    let element = std::mem::size_of::<E4>();
+    let mut counts: Vec<usize> = (3..start_round)
+        .step_by(3)
+        .map(|pass_start| folding_steps - pass_start - 3)
+        .collect();
+    counts.push(if legacy {
+        folding_steps - start_round - 1
+    } else {
+        folding_steps - start_round - 3
+    });
+    let mut low = 0usize;
+    // Every build writes both slab sentinels.
+    let mut high = [1usize, 1usize];
+    for count in counts {
+        let sizes = make_eq_sizes(count);
+        low = low.max(1usize << sizes.low);
+        for (slot, bits) in sizes.high.iter().enumerate() {
+            if *bits > 0 {
+                high[slot] = high[slot].max(1usize << bits);
+            }
+        }
+    }
+    let uncovered = (GKR_EQ_GROUP_TABLE_LEN - low.min(GKR_EQ_GROUP_TABLE_LEN))
+        + (GKR_EQ_GROUP_TABLE_LEN - high[0])
+        + (GKR_EQ_GROUP_TABLE_LEN - high[1]);
+    // Read back twice: the pre-tail and post-tail observations.
+    2 * uncovered * element
+}
+
 /// Host model of one arm's factored-Eq state: the ascending coordinates each
 /// slot holds. The build kernel assigns group 0 — the top eight coordinates —
 /// to `high[0]`, the next eight to `high[1]`, and the last group, the lowest
@@ -4267,6 +4319,90 @@ mod cpu_tests {
             validate_single_owner_topology(&duplicate_raw),
             Err(Task8TopologyError::DuplicateRawBacking)
         );
+    }
+
+    /// The exact split the consumed v18 run rejected: the resident-read bytes
+    /// of an Eq readback must equal the full readback range minus the union of
+    /// the arm's real recorded producer writes. Green: a faithful build stream
+    /// matches the host model, including a full-coverage low table with zero
+    /// low residents. Red: a producer write span shortened to half its real
+    /// extent shifts the recorded split away from the model.
+    #[test]
+    fn cpu_main_continuation_task8_eq_resident_bytes_track_producer_spans() {
+        use crate::backward::kernels::GKR_EQ_GROUP_TABLE_LEN;
+        let element = std::mem::size_of::<E4>();
+        let low_base = 0x91_0000usize;
+        let high_base = 0x92_0000usize;
+        let point_base = 0x93_0000usize;
+        let count = 16usize; // {high[0] = 8, low = 8}: a full low table.
+        let sizes = make_eq_sizes(count);
+        assert_eq!((sizes.high, sizes.low), ([8, 0], 8));
+
+        let run = |shorten_low: bool| -> usize {
+            let mut ledger = Task8OwnerGenerationLedger::default();
+            let probe = Task8ProbeGuard::install();
+            let arm = TASK8_WINDOW_ARM;
+            let _point = borrow(
+                &mut ledger,
+                arm,
+                "claim_point",
+                point_base,
+                (count + 1) * element,
+            );
+            let owners_low = ledger_open(
+                &mut ledger,
+                arm,
+                "eq",
+                Task8OwnerOrigin::FactoredEq,
+                low_base,
+                GKR_EQ_GROUP_TABLE_LEN * element,
+            );
+            let owners_high = ledger_open(
+                &mut ledger,
+                arm,
+                "eq_high_symbol",
+                Task8OwnerOrigin::FactoredEq,
+                high_base,
+                2 * GKR_EQ_GROUP_TABLE_LEN * element,
+            );
+            let mut spans = task8_eq_build_spans(point_base, 0, count, high_base, low_base);
+            if shorten_low {
+                for span in &mut spans {
+                    if span.address == low_base {
+                        span.bytes /= 2;
+                    }
+                }
+            }
+            enqueue(
+                &mut ledger,
+                &probe,
+                arm,
+                "eq-build",
+                Task8EnqueueKind::Kernel,
+                spans,
+            );
+            let low = eq_readback_spans(&ledger, &owners_low);
+            readback(&mut ledger, &probe, arm, "pre-eq-readback", low);
+            let high = eq_readback_spans(&ledger, &owners_high);
+            readback(&mut ledger, &probe, arm, "pre-eq-readback", high);
+            assert!(probe.finish().is_empty());
+            ledger.resident_read_bytes(arm)
+        };
+
+        // One readback pass over one build: the full ranges minus the union of
+        // the recorded producer writes — a fully covered low table, a fully
+        // covered slab 0, and a sentinel-only slab 1.
+        let expected = ((GKR_EQ_GROUP_TABLE_LEN - (1 << sizes.low))
+            + (GKR_EQ_GROUP_TABLE_LEN - (1 << sizes.high[0]))
+            + (GKR_EQ_GROUP_TABLE_LEN - 1))
+            * element;
+        assert_eq!(run(false), expected);
+        assert_eq!(
+            run(true),
+            expected + (1 << (sizes.low - 1)) * element,
+            "a shortened producer write span must surface as resident bytes"
+        );
+        assert_ne!(run(true), expected);
     }
 
     /// The exact shape the consumed v17 run rejected: the window arm's bank
@@ -7113,11 +7249,29 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                         1 + usize::from(start_round > 3),
                         "Task 8 legacy arm did not retire the bank its prior passes read"
                     );
-                    assert!(
-                        owner_ledger.resident_reads(TASK8_WINDOW_ARM) > 0
-                            && owner_ledger.resident_reads(TASK8_LEGACY_ARM) > 0,
-                        "Task 8 arms read back Eq bytes they never wrote without recording them"
-                    );
+                    // The Eq readbacks split into covered reads and resident
+                    // reads exactly along the union of the arm's real device
+                    // producer write spans: one build per pass plus the
+                    // comparison build (each writing both high sentinels, its
+                    // used group tables, and its low prefix; the finalize
+                    // folds rewrite subsets). The expected resident bytes are
+                    // derived from that model, so an omitted or shortened
+                    // producer span shifts the recorded split away from it —
+                    // including the zero at full-coverage coordinates.
+                    for (arm, legacy_arm) in
+                        [(TASK8_WINDOW_ARM, false), (TASK8_LEGACY_ARM, true)]
+                    {
+                        assert_eq!(
+                            owner_ledger.resident_read_bytes(arm),
+                            task8_expected_eq_resident_bytes(
+                                callback_folding_steps,
+                                start_round,
+                                legacy_arm,
+                            ),
+                            "Task 8 {arm} arm's Eq readbacks disagree with its \
+                             recorded device producer coverage"
+                        );
+                    }
                     let window_sites = owner_ledger.enqueue_sites(TASK8_WINDOW_ARM);
                     let legacy_sites = owner_ledger.enqueue_sites(TASK8_LEGACY_ARM);
                     let passes = start_round / 3;
