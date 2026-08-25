@@ -479,8 +479,8 @@ fn apply_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
 
                 (
                     default_next_pc,
-                    default_of_value,
                     default_intermediate_of_value,
+                    default_of_value,
                 )
             };
 

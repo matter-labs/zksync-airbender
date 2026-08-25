@@ -237,18 +237,18 @@ fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_38 = W::U16::overflowing_add(&v_0, &v_37).1;
     let v_39 = W::U16::overflowing_add(&v_8, &v_2).1;
     let v_40 = W::U16::overflowing_add(&v_0, &v_2).1;
-    let v_41 = W::U32::overflowing_add(&v_14, &v_15).1;
-    let v_42 = W::Mask::select(&v_27, &v_40, &v_41);
-    let v_43 = W::Mask::select(&v_4, &v_40, &v_42);
-    let v_44 = W::Mask::select(&v_5, &v_39, &v_43);
-    let v_45 = W::Mask::select(&v_6, &v_38, &v_44);
-    witness_proxy.set_witness_place_boolean(13usize, v_45);
+    let v_41 = W::Mask::select(&v_27, &v_40, &v_38);
+    let v_42 = W::Mask::select(&v_4, &v_40, &v_41);
+    let v_43 = W::Mask::select(&v_5, &v_39, &v_42);
+    let v_44 = W::Mask::select(&v_6, &v_38, &v_43);
+    witness_proxy.set_witness_place_boolean(13usize, v_44);
+    let v_46 = W::U32::overflowing_add(&v_14, &v_15).1;
     let v_47 = W::U32::overflowing_add(&v_20, &v_24).1;
     let v_48 = W::U32::overflowing_add(&v_14, &v_24).1;
-    let v_49 = W::Mask::select(&v_27, &v_48, &v_38);
+    let v_49 = W::Mask::select(&v_27, &v_48, &v_46);
     let v_50 = W::Mask::select(&v_4, &v_48, &v_49);
     let v_51 = W::Mask::select(&v_5, &v_47, &v_50);
-    let v_52 = W::Mask::select(&v_6, &v_41, &v_51);
+    let v_52 = W::Mask::select(&v_6, &v_46, &v_51);
     witness_proxy.set_witness_place_boolean(14usize, v_52);
     witness_proxy.set_witness_place_boolean(19usize, v_27);
 }

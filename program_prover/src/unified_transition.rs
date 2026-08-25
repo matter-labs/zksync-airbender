@@ -16,9 +16,10 @@
 //!    permutation-argument Fiat-Shamir requires the FULL witness, so witness
 //!    evaluation happens once for the commit and once inside proving.
 //! 3. The unified circuit's [`ProverConfig`] is an EXPLICIT parameter (the
-//!    high-LDE "L1 feeder" schedule), and the proof runs with the RS/tree
-//!    RECOMPUTATION storage policy — the feeder LDE factors make materialized
-//!    codewords too large for memory.
+//!    high-LDE "L1 feeder" schedule), and the WHIR oracle storage policy is
+//!    caller-chosen: RS/tree RECOMPUTATION on memory-constrained machines
+//!    (the feeder LDE factors make materialized codewords large), fully
+//!    in-memory on large boxes where recompute dominates the proving time.
 //!
 //! Proofs made here verify ONLY with the matching merged-mode generated
 //! verifier (`.../unified_reduced_machine/sec_100_l1_feeder`).
@@ -57,9 +58,29 @@ use std::collections::HashMap;
 use trace_and_split::commit_merged_tree_for_unified_circuits;
 use trace_and_split::fs_transform_unified_for_permutation_argument;
 
+/// Wall-clock breakdown of one [`prove_unified_transition_with_replayer_timed`]
+/// run, so callers (the L1 compression driver) can report setup-commitment
+/// work separately from proving work.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnifiedTransitionTimings {
+    /// Circuit setup construction (`unified_reduced_machine_circuit_setup`:
+    /// compile/caches + table driver + setup hypercube evals).
+    pub setup_ms: u128,
+    /// Pre-challenge MERGED memory+witness tree commitments (all chunks).
+    pub merged_tree_commit_ms: u128,
+    /// The setup oracle commitment (`GKRSetup::commit`).
+    pub setup_commit_ms: u128,
+    /// GKR witness evaluation (all chunks).
+    pub witness_eval_ms: u128,
+    /// The `prove_configured_*` calls themselves (all chunks).
+    pub prove_ms: u128,
+}
+
 /// Prove a delegation-free execution as unified circuits committed in
-/// `MergedMemoryAndWitness` mode under an explicit (feeder) [`ProverConfig`].
-/// Panics if the traced program performed ANY delegation call.
+/// `MergedMemoryAndWitness` mode under an explicit (feeder) [`ProverConfig`],
+/// with the RECOMPUTATION oracle storage policy (the memory-light default the
+/// local research tests use). Panics if the traced program performed ANY
+/// delegation call.
 #[allow(clippy::too_many_arguments)]
 pub fn prove_unified_transition_with_replayer<
     B: Backend<BabyBearField, BabyBearExt4>,
@@ -81,6 +102,50 @@ pub fn prove_unified_transition_with_replayer<
     full_statement_verifier::program_proof::ProgramProof,
     BTreeMap<u32, UnrolledCircuitSetupParams>,
 ) {
+    let (proof, setup_params, _timings) = prove_unified_transition_with_replayer_timed(
+        cycles_bound,
+        binary_image,
+        text_section,
+        use_caches,
+        non_determinism,
+        ram_bound,
+        worker,
+        security_level,
+        permutation_argument_pow_bits,
+        unified_prover_config,
+        WhirOracleStorage::fully_recompute(),
+        backend,
+        gkr_backend,
+    );
+    (proof, setup_params)
+}
+
+/// [`prove_unified_transition_with_replayer`] with an explicit WHIR oracle
+/// storage policy, also returning the wall-clock breakdown of its phases.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_unified_transition_with_replayer_timed<
+    B: Backend<BabyBearField, BabyBearExt4>,
+    GB: GKRBackend<BabyBearField, BabyBearExt4>,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
+    ram_bound: usize,
+    worker: &worker::Worker,
+    security_level: SecurityLevel,
+    permutation_argument_pow_bits: u32,
+    unified_prover_config: &prover::gkr::prover_config::ProverConfig,
+    whir_oracle_storage: WhirOracleStorage,
+    backend: &B,
+    gkr_backend: &GB,
+) -> (
+    full_statement_verifier::program_proof::ProgramProof,
+    BTreeMap<u32, UnrolledCircuitSetupParams>,
+    UnifiedTransitionTimings,
+) {
+    let mut timings = UnifiedTransitionTimings::default();
     let mut program_proof = full_statement_verifier::program_proof::ProgramProof {
         riscv_proofs: BTreeMap::new(),
         compiled_riscv_circuits: BTreeMap::new(),
@@ -155,12 +220,14 @@ pub fn prove_unified_transition_with_replayer<
         num_unified_calls,
     );
 
+    let setup_started = std::time::Instant::now();
     let unified_setup = setups::unified_reduced_machine_circuit_setup::<Global>(
         binary_image,
         text_section,
         use_caches,
         worker,
     );
+    timings.setup_ms = setup_started.elapsed().as_millis();
 
     program_proof.compiled_riscv_circuits.insert(
         REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
@@ -231,6 +298,7 @@ pub fn prove_unified_transition_with_replayer<
     // permutation-argument challenges (the merged cap plays the "memory cap"
     // role of the separate-mode flow).
     let mut memory_trees: Vec<(Vec<u32>, MerkleTreeCapVarLength)> = vec![];
+    let merged_commit_started = std::time::Instant::now();
     {
         let twiddles_for_size = &twiddles[&trace_len];
         for (i, unified_buffer) in unified_buffers.iter().enumerate() {
@@ -256,6 +324,7 @@ pub fn prove_unified_transition_with_replayer<
             memory_trees.push((top_bits, cap));
         }
     }
+    timings.merged_tree_commit_ms = merged_commit_started.elapsed().as_millis();
 
     // Fiat-Shamir over the committed merged trees; no delegation circuits.
     let all_challenges_seed = fs_transform_unified_for_permutation_argument::<true>(
@@ -301,12 +370,13 @@ pub fn prove_unified_transition_with_replayer<
     let mut aux_memory_trees: Vec<(Vec<u32>, MerkleTreeCapVarLength)> = vec![];
 
     // Prove every unified chunk in MERGED mode under the feeder config, with
-    // RS codewords and trees served by recomputation (the feeder LDE factors
-    // make materialized codewords too large for memory).
+    // RS codewords and trees served per the caller's storage policy
+    // (recompute on memory-constrained machines, in-memory on large ones).
     {
         let twiddles_for_size = &twiddles[&trace_len];
         // GKRSetup::commit runs on the naive backend internally and consumes
         // only the plain radix-2 tables (not performance-sensitive).
+        let setup_commit_started = std::time::Instant::now();
         let setup_commitment = unified_setup.setup.commit::<DefaultTreeConstructor>(
             twiddles_for_size.plain(),
             prover_config.lde_factor,
@@ -315,6 +385,7 @@ pub fn prove_unified_transition_with_replayer<
             trace_len.trailing_zeros() as usize,
             worker,
         );
+        timings.setup_commit_ms = setup_commit_started.elapsed().as_millis();
 
         risc_v_setup_params.insert(
             REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
@@ -349,6 +420,7 @@ pub fn prove_unified_transition_with_replayer<
                 decoder_table,
             };
 
+            let witness_eval_started = std::time::Instant::now();
             let witness_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
                 &unified_setup.compiled_circuit,
                 *witness_fn,
@@ -360,6 +432,7 @@ pub fn prove_unified_transition_with_replayer<
                 Global,
                 Global,
             );
+            timings.witness_eval_ms += witness_eval_started.elapsed().as_millis();
 
             let now = std::time::Instant::now();
             let proof = prove_configured_with_gkr_with_storage_and_backend::<
@@ -378,13 +451,14 @@ pub fn prove_unified_transition_with_replayer<
                 twiddles_for_size,
                 &prover_config,
                 CommitmentMode::MergedMemoryAndWitness,
-                WhirOracleStorage::fully_recompute(),
+                whir_oracle_storage,
                 top_bits.clone(),
                 trace_len,
                 backend,
                 gkr_backend,
                 worker,
             );
+            timings.prove_ms += now.elapsed().as_millis();
             println!(
                 "Proving time for unified transition circuit is {:?}",
                 now.elapsed()
@@ -423,5 +497,15 @@ pub fn prove_unified_transition_with_replayer<
 
     assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
 
-    (program_proof, risc_v_setup_params)
+    println!(
+        "[timing] transition: circuit setup {}s | merged tree commits {}s | setup commit {}s | \
+         witness eval {}s | proving {}s",
+        timings.setup_ms / 1000,
+        timings.merged_tree_commit_ms / 1000,
+        timings.setup_commit_ms / 1000,
+        timings.witness_eval_ms / 1000,
+        timings.prove_ms / 1000,
+    );
+
+    (program_proof, risc_v_setup_params, timings)
 }
