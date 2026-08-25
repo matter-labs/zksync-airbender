@@ -962,8 +962,13 @@ impl BwdVmExtLaunch {
     pub(crate) fn set_external_final_evaluation_offsets(
         &mut self,
         addresses: impl IntoIterator<Item = GKRAddress>,
-    ) {
-        self.final_evaluations = addresses
+    ) -> Result<(), &'static str> {
+        let mut seen = std::collections::BTreeSet::new();
+        let entries: Vec<_> = addresses.into_iter().collect();
+        if entries.iter().any(|address| !seen.insert(*address)) {
+            return Err("duplicate canonical final-evaluation address");
+        }
+        self.final_evaluations = entries
             .into_iter()
             .enumerate()
             .map(|(column, address)| {
@@ -975,6 +980,7 @@ impl BwdVmExtLaunch {
                 )
             })
             .collect();
+        Ok(())
     }
     #[cfg(all(
         any(test, feature = "task8_continuation_differential_test"),

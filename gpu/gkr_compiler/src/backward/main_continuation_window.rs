@@ -148,6 +148,20 @@ pub struct MainContinuationWindowProgram {
     pub coefficients: CoeffLayer,
 }
 
+impl MainContinuationWindowProgram {
+    /// Canonical SourceId-ordered read identities for runtime final repointing.
+    /// Virtual sources intentionally return None and are never address targets.
+    pub fn canonical_read_places(&self) -> Vec<Option<gkr_eval_ir::ReadPlace>> {
+        self.sources
+            .iter()
+            .map(|source| match &source.origin.origin {
+                super::common::source::OriginLeaf::Read(place) => Some(place.clone()),
+                super::common::source::OriginLeaf::VirtualSetup { .. } => None,
+            })
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MainContinuationWindowLoweringError {
     Codec(LeanCodecError),

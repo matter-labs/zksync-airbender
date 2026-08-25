@@ -35,6 +35,7 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan {
     pub(crate) folding_steps: usize,
     pub(crate) claim_terms: Vec<(usize, GKRAddress)>,
     pub(crate) folding_evaluation_sources: Vec<crate::upstream::GKRAddress>,
+    pub(crate) canonical_final_addresses: Vec<crate::upstream::GKRAddress>,
     pub(crate) round_scratch: GpuGKRMainLayerRoundScratch,
     pub(crate) bwd_vm_r0: MainLayerR0Binding,
     pub(crate) bwd_vm_ext: super::super::vm::production_bind::BwdVmExtLaunch,
