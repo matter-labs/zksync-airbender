@@ -83,6 +83,47 @@ pub(crate) fn schedule_dr_layer_execution<E>(
     Ok(())
 }
 
+#[cfg(test)]
+mod stage_dispatch_tests {
+    use super::*;
+
+    fn assert_r0_rejection_stops_chain(reason: &'static str) {
+        let mut r0 = 0;
+        let mut continuations = 0;
+        let mut tail = 0;
+        let mut legacy = 0;
+        let result = schedule_dr_layer_execution(
+            DrLayerExecutionSelection::CompleteNewChain {
+                continuation_count: 3,
+            },
+            |stage| -> Result<(), &'static str> {
+                match stage {
+                    DrLayerExecutionStage::R0 => {
+                        r0 += 1;
+                        return Err(reason);
+                    }
+                    DrLayerExecutionStage::Continuation(_) => continuations += 1,
+                    DrLayerExecutionStage::Megakernel => tail += 1,
+                    DrLayerExecutionStage::LegacyDiagnostic => legacy += 1,
+                }
+                Ok(())
+            },
+        );
+        assert_eq!(result, Err(reason));
+        assert_eq!((r0, continuations, tail, legacy), (1, 0, 0, 0));
+    }
+
+    #[test]
+    fn cpu_wrong_final_stride_dispatch_rejects_without_retry() {
+        assert_r0_rejection_stops_chain("wrong final stride");
+    }
+
+    #[test]
+    fn cpu_duplicate_eq_dispatch_rejects_without_legacy_fallback() {
+        assert_r0_rejection_stops_chain("duplicate Eq owner");
+    }
+}
+
 fn preflighted_dr_window_result<T>(
     result: Result<T, DrWindowBindError>,
     contract: &'static str,

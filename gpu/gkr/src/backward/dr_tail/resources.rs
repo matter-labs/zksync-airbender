@@ -67,6 +67,10 @@ impl DrTailKernelResources {
         self.effective_max_dynamic_smem_bytes
     }
 
+    pub(crate) const fn device_optin_cap_bytes(&self) -> usize {
+        self.device_optin_cap_bytes
+    }
+
     pub fn occupancy_by_dynamic_bytes(&self) -> &[(usize, u32)] {
         &self.occupancy_by_dynamic_bytes
     }
@@ -88,6 +92,50 @@ impl DrTailProofPlan {
 
     pub fn layers(&self) -> &[DrTailLayerPlan] {
         &self.layers
+    }
+
+    /// Validate the complete admitted identity before the scheduler can enqueue
+    /// any work.  Recomputing the census here also binds capacities, not just
+    /// the layer labels, so swapped or stale decisions cannot launch.
+    pub(crate) fn validate_before_enqueue(
+        &self,
+        artifact: &GKRCircuitArtifact<crate::upstream::BabyBearField>,
+        final_trace_log_2: usize,
+    ) -> Result<(), DrTailPlanIdentityError> {
+        let expected = plan_dr_tail_layers(
+            artifact,
+            final_trace_log_2,
+            self.resources.static_smem_bytes,
+            self.resources.device_optin_cap_bytes,
+        )
+        .map_err(|error| DrTailPlanIdentityError::CapacityDerivation {
+            detail: format!("{error:?}"),
+        })?;
+        if expected.len() != self.layers.len() {
+            return Err(DrTailPlanIdentityError::CountMismatch {
+                expected: expected.len(),
+                observed: self.layers.len(),
+            });
+        }
+        let mut seen = BTreeSet::new();
+        for (expected, observed) in expected.iter().zip(&self.layers) {
+            if !seen.insert(observed.layer_idx) {
+                return Err(DrTailPlanIdentityError::DuplicateLayer {
+                    layer_idx: observed.layer_idx,
+                });
+            }
+            observed.validate(DrTailLayerIdentity::new(
+                expected.layer_idx,
+                expected.folding_steps,
+                &expected.canonical_sources,
+            ))?;
+            if observed.capacity != expected.capacity {
+                return Err(DrTailPlanIdentityError::CapacityMismatch {
+                    layer_idx: expected.layer_idx,
+                });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -175,6 +223,16 @@ impl<'a> DrTailLayerIdentity<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum DrTailPlanIdentityError {
+    CountMismatch {
+        expected: usize,
+        observed: usize,
+    },
+    CapacityDerivation {
+        detail: String,
+    },
+    CapacityMismatch {
+        layer_idx: usize,
+    },
     MissingLayer {
         layer_idx: usize,
     },

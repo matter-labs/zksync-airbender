@@ -155,9 +155,16 @@ impl GpuGKRDimensionReducingBackwardState {
                 "a DR-tail resource plan may only accompany the explicit production selector",
             );
         }
-        let mut dr_tail_plan_cursor = dr_tail_plan
-            .as_ref()
-            .map(|plan| DrTailPlanCursor::new(plan.layers()));
+        let mut dr_tail_plan_cursor = dr_tail_plan.as_ref().map(|plan| {
+            plan.validate_before_enqueue(
+                programs.runtime_circuit().as_ref(),
+                final_trace_size_log_2 as usize,
+            )
+            .unwrap_or_else(|error| {
+                panic!("DR-tail plan identity rejected before any enqueue: {error:?}")
+            });
+            DrTailPlanCursor::new(plan.layers())
+        });
         let device_lookup_challenges_ptr = device_lookup_challenges.as_ptr();
         let mut tracing_ranges = Vec::new();
         let workflow_range = Range::new("gkr.backward.schedule")?;
