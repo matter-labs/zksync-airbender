@@ -1037,9 +1037,10 @@ struct PlannedExtRound {
 ///
 /// The production tail folds once at every round, which is what
 /// [`record_active_eq_slot_fold`] does and what [`drained_eq_sizes`] mirrors.
-/// A caller whose arm folds on a different rhythm must say so: the prepared
-/// differential's legacy sequence stands in for one window kernel and folds
-/// only at the last of its three comparison rounds.
+/// A descriptor is built before its own round's finalizer runs, so an entry
+/// counts only previously completed folds: the prepared differential's legacy
+/// sequence also folds after every round, and its explicit schedule is
+/// therefore `0, 1, 1, ..` — descriptor `i` sees `i` completed folds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum EqDrainSchedule<'a> {
     /// One drain per round, for every round in the sequence.
@@ -2097,25 +2098,19 @@ impl PreparedContinuationDifferentialRounds {
     }
 }
 
-/// The Eq base and drain rhythm a prepared-state differential arm runs against.
-///
-/// Both arms seed the factored Eq at the windowed consumer boundary with
-/// `launch_build_eq_high_and_low_groups_from_point(point, round + WINDOW_WIDTH,
-/// folding_steps - round - WINDOW_WIDTH, ..)`, and both fold it exactly once, at
-/// the fused finalize that follows the third comparison round.
+/// The Eq base and drain rhythm the prepared-state differential's legacy arm
+/// runs against.
 ///
 /// A descriptor is built before its own round runs, so it must describe the Eq
-/// state left by the finalizers that have already completed. All three rounds
-/// this differential schedules therefore see the **undrained** base: the single
-/// fold belongs to the finalize that follows the third of them, and
-/// [`EqDrainSchedule::drains_through`] is inclusive, so that fold is carried by
-/// the entry one position past the last scheduled round. Nothing after it folds
-/// again, because this differential schedules no further round.
+/// state left by the finalizers that have already completed — and it must keep
+/// the production invariant every planned round keeps: the descriptor's factored
+/// Eq covers exactly the round's accumulator row bits,
+/// `folding_steps - round - 1`, with the round's next variable on row bit 0.
 ///
-/// Seeding from `folding_steps - comparison_round` instead — the production
-/// tail's base — would describe an Eq-low table wider than the arm ever built,
-/// which is what the consumed packet-v7 run reported as
-/// `UseBeforeInitialization`.
+/// The arm builds its Eq at offset `comparison_round + 1` over
+/// `folding_steps - comparison_round - 1` coordinates and every finalize folds
+/// once, so descriptor `i` sees the base drained `i` times — the same absolute
+/// coordinate coverage the production tail's `PerRound` planner yields.
 #[cfg(any(test, feature = "task8_continuation_differential_test"))]
 pub(crate) fn task8_differential_eq_plan(
     comparison_round: u8,
@@ -2124,17 +2119,17 @@ pub(crate) fn task8_differential_eq_plan(
     let rounds = folding_steps
         .checked_sub(usize::from(comparison_round))
         .expect("the differential comparison round is outside the layer folding width");
-    let base = make_eq_sizes(
-        rounds
-            .checked_sub(WINDOW_WIDTH)
-            .expect("the differential window extends past the layer folding steps"),
-    );
     assert!(
         rounds > WINDOW_WIDTH,
-        "the differential needs a round after its window for the single Eq fold"
+        "the differential needs a round after its window"
     );
-    let mut schedule = vec![0u8; rounds];
-    schedule[WINDOW_WIDTH] = 1;
+    let base = make_eq_sizes(
+        rounds
+            .checked_sub(1)
+            .expect("the differential sequence must contain a round"),
+    );
+    let mut schedule = vec![1u8; rounds];
+    schedule[0] = 0;
     (base, schedule)
 }
 

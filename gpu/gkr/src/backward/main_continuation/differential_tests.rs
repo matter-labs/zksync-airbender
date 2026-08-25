@@ -41,9 +41,9 @@ use crate::backward::task8_probe::{
     Task8EnqueuePlan, Task8ProbeGuard, Task8Span,
 };
 use crate::backward::vm::production_bind::{
-    canonicalize_legacy_publication, family_read_place, prepare_continuation_differential_bank,
-    prepare_continuation_differential_rounds, BwdSegBankFillSpans,
-    LegacyPublicationCanonicalizationError, Task8LivePublicationEvent,
+    canonicalize_legacy_publication, family_read_place, foldable_eq_variables,
+    prepare_continuation_differential_bank, prepare_continuation_differential_rounds,
+    BwdSegBankFillSpans, LegacyPublicationCanonicalizationError, Task8LivePublicationEvent,
 };
 use crate::backward::vm::seg::launch_bwd_seg_build_fold_weights;
 use crate::backward::vm::seg_desc::bwd_seg_fold_weight_run;
@@ -70,8 +70,7 @@ const TASK8_RESIDENT_COEFFICIENT_BANK: &str =
     "the coefficient bank a previous fill left in place, which the legacy arm's prior passes read before its own fill";
 const TASK8_PRODUCTION_STORAGE: &str =
     "production-owned trace storage the differential borrows and never writes";
-const TASK8_NON_PUBLICATION_COMPARISONS: usize =
-    12 + 3 + 8 + 1 + 1 + 2 * GKR_EQ_GROUP_TABLE_LEN * (1 + GKR_EQ_HIGH_SLOTS) + 3;
+const TASK8_NON_PUBLICATION_COMPARISONS: usize = 12 + 3 + 8 + 1 + 1 + 1;
 
 /// What one ledger row states about the byte range it names. Every row comes
 /// from a span the enqueue reported before it ran.
@@ -1222,7 +1221,7 @@ struct PreparedObservation {
     eq_prefactor: Vec<E4>,
     pre_eq: EqObservation,
     post_eq: EqObservation,
-    boundary: (u8, u8, GkrEqSizes),
+    boundary: (u8, u8, u32),
 }
 
 struct ScheduledReadback<T> {
@@ -1338,7 +1337,7 @@ struct ScheduledPreparedObservation {
     eq_prefactor: ScheduledReadback<E4>,
     pre_eq: ScheduledEqObservation,
     post_eq: ScheduledEqObservation,
-    boundary: (u8, u8, GkrEqSizes),
+    boundary: (u8, u8, u32),
     memory: PoolMemoryHighWaterReport,
     allocations: Vec<Task8AllocationRecord>,
     live_mutations: ScheduledLiveMutationEvidence,
@@ -1597,6 +1596,61 @@ where
     )
 }
 
+/// Reads the three drawn challenges back from the claim-point symbol slots the
+/// finalizers wrote them into, exactly where production keeps its output claim
+/// point.
+fn schedule_challenge_symbol_readback(
+    symbol: usize,
+    owner: &Task8LedgerOwner,
+    start_round: usize,
+    scratch: &mut StaticPinnedBox<u8>,
+    callbacks: &mut Callbacks<'_>,
+    context: &ProverContext,
+) -> CudaResult<ScheduledReadback<E4>> {
+    let element = std::mem::size_of::<E4>();
+    let base = symbol + start_round * element;
+    assert!(base + 3 * element <= owner.base + owner.bytes);
+    // SAFETY: the three challenge slots live inside the registered symbol.
+    let slots = unsafe { DeviceSlice::from_raw_parts(base as *const E4, 3) };
+    let label = owner.label;
+    schedule_read_device_chunked(
+        &slots,
+        scratch,
+        callbacks,
+        context,
+        "challenge-readback",
+        move |offset, bytes| vec![Task8Span::read(label, base + offset, bytes)],
+    )
+}
+
+/// The legacy arm's post-sequence Eq witness: its per-round finalizes fold the
+/// arm's own production-coverage base exactly three times. The remaining
+/// variable set is the window arm's post-tail set; only the slot partition may
+/// differ, so the cross-arm comparison carries the remaining variable count.
+fn task8_legacy_eq_boundary(
+    start_round: u8,
+    folding_steps: usize,
+    actual_eq_sizes: GkrEqSizes,
+) -> crate::backward::main_layer::execution_plan::MainEqBoundaryWitness {
+    let (base, _) = crate::backward::vm::production_bind::task8_differential_eq_plan(
+        start_round,
+        folding_steps,
+    );
+    let expected = crate::backward::vm::production_bind::drained_eq_sizes(base, 3);
+    assert_eq!(
+        actual_eq_sizes, expected,
+        "the legacy arm must fold its production-coverage Eq base exactly three times"
+    );
+    let consumer_round = usize::from(start_round) + 3;
+    crate::backward::main_layer::execution_plan::MainEqBoundaryWitness {
+        consumer_round: u8::try_from(consumer_round)
+            .expect("legacy consumer round does not fit the runtime field"),
+        semantic_suffix_offset: u8::try_from(consumer_round + 1)
+            .expect("legacy Eq suffix offset does not fit the runtime field"),
+        eq_sizes: actual_eq_sizes,
+    }
+}
+
 /// Reads back both factored Eq tables. The high table is addressed through the
 /// symbol pointer the arm's own Eq builds already handed the runtime, never a
 /// fresh symbol lookup, and each readback is split into the bytes this arm's
@@ -1664,7 +1718,6 @@ struct TranscriptBuffers {
     claim: DeviceAllocation<E4>,
     prefactor: DeviceAllocation<E4>,
     coefficients: DeviceAllocation<E4>,
-    challenges: DeviceAllocation<E4>,
     _seed_staging: StaticPinnedBox<u32>,
     _claim_staging: StaticPinnedBox<E4>,
     _prefactor_staging: StaticPinnedBox<E4>,
@@ -1726,25 +1779,11 @@ fn transcript_buffers(context: &ProverContext) -> CudaResult<TranscriptBuffers> 
         before_coefficients,
         after_coefficients,
     ));
-    let before_challenges = after_coefficients;
-    let challenges = context.alloc(3, AllocationPlacement::BestFit)?;
-    let after_challenges = context.get_device_memory_usage();
-    allocations.push(allocation_record_with_usage(
-        "challenges",
-        &challenges,
-        4,
-        8,
-        2,
-        "best_fit",
-        before_challenges,
-        after_challenges,
-    ));
     Ok(TranscriptBuffers {
         seed,
         claim,
         prefactor,
         coefficients,
-        challenges,
         _seed_staging: seed_staging,
         _claim_staging: claim_staging,
         _prefactor_staging: prefactor_staging,
@@ -1767,7 +1806,6 @@ fn open_transcript_owners(
             &transcript.prefactor,
         ),
         coefficients: ledger_open_allocation(ledger, arm, "coefficients", &transcript.coefficients),
-        challenges: ledger_open_allocation(ledger, arm, "challenges", &transcript.challenges),
     }
 }
 
@@ -1969,7 +2007,6 @@ struct Task8TranscriptOwners {
     claim: Task8LedgerOwner,
     prefactor: Task8LedgerOwner,
     coefficients: Task8LedgerOwner,
-    challenges: Task8LedgerOwner,
 }
 
 /// Opens the two device symbols whose addresses only a production enqueue
@@ -2023,7 +2060,6 @@ fn expected_arm_owner_labels(
 ) -> BTreeSet<&'static str> {
     let mut labels = BTreeSet::from([
         "challenge_slab",
-        "challenges",
         "claim_batching",
         "claim_point",
         "claim_point_symbol",
@@ -2126,7 +2162,6 @@ fn bind_transcript_owners_final(
         &transcript.claim,
         &transcript.prefactor,
         &transcript.coefficients,
-        &transcript.challenges,
     ] {
         ledger_bind_final(ledger, owner);
     }
@@ -2511,7 +2546,7 @@ fn run_window_arm(
             claim: transcript.claim.as_mut_ptr(),
             eq_prefactor: transcript.prefactor.as_mut_ptr(),
             coeffs_out: transcript.coefficients.as_mut_ptr(),
-            challenges_out: transcript.challenges.as_mut_ptr(),
+            challenges_out: unsafe { (claim_point_symbol as *mut E4).add(start_round) },
             active_eq_slot_base,
             active_eq_size_before_fold,
         };
@@ -2536,10 +2571,10 @@ fn run_window_arm(
             callbacks,
             context,
         )?;
-        let challenges = schedule_owner_readback(
-            &transcript.challenges,
-            &transcript_owners.challenges,
-            "challenge-readback",
+        let challenges = schedule_challenge_symbol_readback(
+            claim_point_symbol,
+            &owners.claim_point_symbol,
+            start_round,
             readback_scratch,
             callbacks,
             context,
@@ -2620,8 +2655,8 @@ fn run_window_arm(
             live_mutations.e4.push(schedule_live_device_mutation(
                 "challenges",
                 Task8LiveMutationTarget::Challenge(index),
-                &transcript_owners.challenges,
-                index,
+                &owners.claim_point_symbol,
+                start_round + index,
                 deterministic_e4(tag),
                 readback_scratch,
                 callbacks,
@@ -2712,7 +2747,6 @@ fn run_window_arm(
         drop(transcript.claim);
         drop(transcript.prefactor);
         drop(transcript.coefficients);
-        drop(transcript.challenges);
         bind_arm_owners_final(ledger, &owners);
         drop(claim_point);
         drop(eq_low);
@@ -2731,7 +2765,7 @@ fn run_window_arm(
                 boundary: (
                     boundary.consumer_round,
                     boundary.semantic_suffix_offset,
-                    boundary.eq_sizes,
+                    foldable_eq_variables(&boundary.eq_sizes),
                 ),
                 memory,
                 allocations: Vec::new(),
@@ -2893,14 +2927,14 @@ fn run_legacy_arm(
         }
         launch_build_eq_high_and_low_groups_from_point(
             claim_point.as_ptr(),
-            start_round + 3,
-            folding_steps - start_round - 3,
+            start_round + 1,
+            folding_steps - start_round - 1,
             owners.eq_high.base as *mut E4,
             eq_low.as_mut_ptr(),
             context,
         )?;
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
-        let pre_sizes = make_eq_sizes(folding_steps - start_round - 3);
+        let pre_sizes = make_eq_sizes(folding_steps - start_round - 1);
         let pre_eq = schedule_read_all_eq(
             pre_sizes,
             &eq_low,
@@ -2966,6 +3000,8 @@ fn run_legacy_arm(
             publications.insert(start_round as u8 - 3, *prior_owner);
         }
         let mut raw_publication = None;
+        let challenges_symbol = claim_point_symbol;
+        let mut live_eq_sizes = pre_sizes;
         for local_round in 0..3 {
             let round = start_round + local_round;
             let acc_size = 1usize << (folding_steps - round - 1);
@@ -3013,11 +3049,8 @@ fn run_legacy_arm(
                 )?);
                 ledger.absorb(TASK8_LEGACY_ARM, &probe);
             }
-            let (active_eq_slot_base, active_eq_size_before_fold) = if local_round == 2 {
-                resolve_active_eq_slot(&pre_sizes, eq_low.as_mut_ptr())
-            } else {
-                (eq_low.as_mut_ptr(), 0)
-            };
+            let (active_eq_slot_base, active_eq_size_before_fold) =
+                resolve_active_eq_slot(&live_eq_sizes, eq_low.as_mut_ptr());
             launch_backward_dual_finalize_from_partials(
                 partials.as_ptr(),
                 warp_partial_count(acc_size),
@@ -3026,15 +3059,15 @@ fn run_legacy_arm(
                 transcript.claim.as_mut_ptr(),
                 transcript.prefactor.as_mut_ptr(),
                 unsafe { transcript.coefficients.as_mut_ptr().add(4 * local_round) },
-                unsafe { transcript.challenges.as_mut_ptr().add(local_round) },
+                unsafe { (challenges_symbol as *mut E4).add(round) },
                 active_eq_slot_base,
                 active_eq_size_before_fold,
                 context,
             )?;
+            record_active_eq_slot_fold(&mut live_eq_sizes);
             ledger.absorb(TASK8_LEGACY_ARM, &probe);
         }
-        let mut post_sizes = pre_sizes;
-        record_active_eq_slot_fold(&mut post_sizes);
+        let post_sizes = live_eq_sizes;
         let source_columns = rounds.source_columns().to_vec();
         let shape = rounds.publication_shape();
         assert_eq!(shape.depth, start_round as u8);
@@ -3048,10 +3081,10 @@ fn run_legacy_arm(
             callbacks,
             context,
         )?;
-        let challenges = schedule_owner_readback(
-            &transcript.challenges,
-            &transcript_owners.challenges,
-            "challenge-readback",
+        let challenges = schedule_challenge_symbol_readback(
+            challenges_symbol,
+            &owners.claim_point_symbol,
+            start_round,
             readback_scratch,
             callbacks,
             context,
@@ -3092,8 +3125,7 @@ fn run_legacy_arm(
             ledger,
         )?;
         ledger.absorb(TASK8_LEGACY_ARM, &probe);
-        let boundary =
-            main_continuation_post_tail_eq_boundary(start_round as u8, folding_steps, post_sizes);
+        let boundary = task8_legacy_eq_boundary(start_round as u8, folding_steps, post_sizes);
         let adoption = Task8AdoptionEvidence {
             had_prior: start_round > 3,
             input_live_before,
@@ -3130,7 +3162,6 @@ fn run_legacy_arm(
         drop(transcript.claim);
         drop(transcript.prefactor);
         drop(transcript.coefficients);
-        drop(transcript.challenges);
         bind_arm_owners_final(ledger, &owners);
         drop(claim_point);
         drop(eq_low);
@@ -3149,7 +3180,7 @@ fn run_legacy_arm(
                 boundary: (
                     boundary.consumer_round,
                     boundary.semantic_suffix_offset,
-                    boundary.eq_sizes,
+                    foldable_eq_variables(&boundary.eq_sizes),
                 ),
                 memory,
                 allocations: Vec::new(),
@@ -3200,8 +3231,8 @@ fn run_first_pass_legacy_capacity_probe(
 
         launch_build_eq_high_and_low_groups_from_point(
             claim_point.as_ptr(),
-            6,
-            folding_steps - 6,
+            4,
+            folding_steps - 4,
             get_eq_high_constant_device_ptr(),
             eq_low.as_mut_ptr(),
             context,
@@ -3436,12 +3467,6 @@ enum ObservationMismatch {
     Seed,
     Claim,
     EqPrefactor,
-    PreEqSizes,
-    PreEqLow,
-    PreEqHigh,
-    PostEqSizes,
-    PostEqLow,
-    PostEqHigh,
     Boundary,
 }
 
@@ -3467,24 +3492,6 @@ fn compare_observations(
     if window.eq_prefactor != legacy.eq_prefactor {
         return Err(ObservationMismatch::EqPrefactor);
     }
-    if window.pre_eq.sizes != legacy.pre_eq.sizes {
-        return Err(ObservationMismatch::PreEqSizes);
-    }
-    if window.pre_eq.low != legacy.pre_eq.low {
-        return Err(ObservationMismatch::PreEqLow);
-    }
-    if window.pre_eq.high != legacy.pre_eq.high {
-        return Err(ObservationMismatch::PreEqHigh);
-    }
-    if window.post_eq.sizes != legacy.post_eq.sizes {
-        return Err(ObservationMismatch::PostEqSizes);
-    }
-    if window.post_eq.low != legacy.post_eq.low {
-        return Err(ObservationMismatch::PostEqLow);
-    }
-    if window.post_eq.high != legacy.post_eq.high {
-        return Err(ObservationMismatch::PostEqHigh);
-    }
     if window.boundary != legacy.boundary {
         return Err(ObservationMismatch::Boundary);
     }
@@ -3494,11 +3501,191 @@ fn compare_observations(
         + window.seed.len()
         + window.claim.len()
         + window.eq_prefactor.len()
-        + window.pre_eq.low.len()
-        + window.pre_eq.high.len()
-        + window.post_eq.low.len()
-        + window.post_eq.high.len()
-        + 3)
+        + 1)
+}
+
+/// Host model of one arm's factored-Eq state: the ascending coordinates each
+/// slot holds. The build kernel assigns group 0 — the top eight coordinates —
+/// to `high[0]`, the next eight to `high[1]`, and the last group, the lowest
+/// coordinates, to the low buffer, pairing slot bit `j` with the slot's j-th
+/// lowest coordinate. A fold removes the lowest coordinate of the lowest
+/// non-empty slot, low before high[1] before high[0].
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Task8EqCoordinates {
+    high: [Vec<usize>; GKR_EQ_HIGH_SLOTS],
+    low: Vec<usize>,
+}
+
+fn task8_eq_coordinates(offset: usize, count: usize) -> Task8EqCoordinates {
+    let mut group_sizes = Vec::new();
+    let mut consumed = 0usize;
+    while consumed < count {
+        let size = (count - consumed).min(8);
+        group_sizes.push(size);
+        consumed += size;
+    }
+    let mut high: [Vec<usize>; GKR_EQ_HIGH_SLOTS] = Default::default();
+    let mut low = Vec::new();
+    let mut top = offset + count;
+    for (group, size) in group_sizes.iter().copied().enumerate() {
+        let span: Vec<usize> = (top - size..top).collect();
+        if group + 1 == group_sizes.len() {
+            low = span;
+        } else {
+            high[group] = span;
+        }
+        top -= size;
+    }
+    assert_eq!(top, offset);
+    Task8EqCoordinates { high, low }
+}
+
+impl Task8EqCoordinates {
+    fn fold(&mut self) {
+        if !self.low.is_empty() {
+            self.low.remove(0);
+        } else if !self.high[1].is_empty() {
+            self.high[1].remove(0);
+        } else {
+            assert!(
+                !self.high[0].is_empty(),
+                "the modeled factored Eq drained past empty"
+            );
+            self.high[0].remove(0);
+        }
+    }
+
+    fn sizes(&self) -> GkrEqSizes {
+        GkrEqSizes {
+            high: [self.high[0].len() as u32, self.high[1].len() as u32],
+            low: self.low.len() as u32,
+        }
+    }
+
+    fn remaining(&self) -> BTreeSet<usize> {
+        self.high
+            .iter()
+            .flatten()
+            .chain(&self.low)
+            .copied()
+            .collect()
+    }
+}
+
+/// The exact slot table over `coords` (ascending): entry `i` is the product of
+/// `point[c_j]` where bit `j` of `i` is set and `1 - point[c_j]` where it is
+/// clear. The empty set yields `[ONE]` — both the build's sentinel and the
+/// exact sum a fully drained slot leaves in place.
+fn task8_expected_eq_table(point: &[E4], coords: &[usize]) -> Vec<E4> {
+    let mut table = Vec::with_capacity(1 << coords.len());
+    for entry in 0..1usize << coords.len() {
+        let mut value = E4::ONE;
+        for (bit, coordinate) in coords.iter().enumerate() {
+            let mut weight = point[*coordinate];
+            if entry & (1 << bit) == 0 {
+                let mut one = E4::ONE;
+                one.sub_assign(&weight);
+                weight = one;
+            }
+            value.mul_assign(&weight);
+        }
+        table.push(value);
+    }
+    table
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Task8EqOracleMismatch {
+    Sizes,
+    LowContent,
+    HighContent(usize),
+}
+
+/// Validates one arm's Eq readback against the host-expected state: the exact
+/// sizes and the exact built (or folded) prefix of every slot. Returns the
+/// number of compared elements.
+fn validate_arm_eq_observation(
+    point: &[E4],
+    offset: usize,
+    count: usize,
+    folds: usize,
+    observation: &EqObservation,
+) -> Result<usize, Task8EqOracleMismatch> {
+    let mut coords = task8_eq_coordinates(offset, count);
+    for _ in 0..folds {
+        coords.fold();
+    }
+    let mut expected_sizes = make_eq_sizes(count);
+    for _ in 0..folds {
+        record_active_eq_slot_fold(&mut expected_sizes);
+    }
+    assert_eq!(
+        coords.sizes(),
+        expected_sizes,
+        "the host Eq coordinate model diverged from the production drain order"
+    );
+    if observation.sizes != expected_sizes {
+        return Err(Task8EqOracleMismatch::Sizes);
+    }
+    let mut compared = 0usize;
+    let expected_low = task8_expected_eq_table(point, &coords.low);
+    if observation.low.len() < expected_low.len()
+        || observation.low[..expected_low.len()] != expected_low[..]
+    {
+        return Err(Task8EqOracleMismatch::LowContent);
+    }
+    compared += expected_low.len();
+    for slot in 0..GKR_EQ_HIGH_SLOTS {
+        let expected = task8_expected_eq_table(point, &coords.high[slot]);
+        let base = slot * GKR_EQ_GROUP_TABLE_LEN;
+        if observation.high.len() < base + expected.len()
+            || observation.high[base..base + expected.len()] != expected[..]
+        {
+            return Err(Task8EqOracleMismatch::HighContent(slot));
+        }
+        compared += expected.len();
+    }
+    Ok(compared)
+}
+
+/// Proves the per-arm Eq oracle notices every field it validates: the baseline
+/// accepts and each single-property mutation of sizes, low content and high
+/// content is rejected, for both the pre and the post state.
+#[allow(clippy::too_many_arguments)]
+fn run_eq_oracle_coverage_checks(
+    point: &[E4],
+    offset: usize,
+    count: usize,
+    pre: &EqObservation,
+    post: &EqObservation,
+    pre_folds: usize,
+    post_folds: usize,
+) -> usize {
+    let mut checks = 0usize;
+    for (folds, observation) in [(pre_folds, pre), (post_folds, post)] {
+        validate_arm_eq_observation(point, offset, count, folds, observation)
+            .expect("Task 8 arm Eq observation failed its host oracle");
+        let mut sizes = observation.clone();
+        sizes.sizes.low ^= 1;
+        assert_eq!(
+            validate_arm_eq_observation(point, offset, count, folds, &sizes),
+            Err(Task8EqOracleMismatch::Sizes)
+        );
+        let mut low = observation.clone();
+        low.low[0] = deterministic_e4(0x906);
+        assert_eq!(
+            validate_arm_eq_observation(point, offset, count, folds, &low),
+            Err(Task8EqOracleMismatch::LowContent)
+        );
+        let mut high = observation.clone();
+        high.high[0] = deterministic_e4(0x916);
+        assert_eq!(
+            validate_arm_eq_observation(point, offset, count, folds, &high),
+            Err(Task8EqOracleMismatch::HighContent(0))
+        );
+        checks += 3;
+    }
+    checks
 }
 
 fn run_comparator_field_coverage_checks(
@@ -3547,32 +3734,12 @@ fn run_comparator_field_coverage_checks(
             Box::new(|value| value.eq_prefactor[0] = deterministic_e4(0x905)),
         ),
         (
-            ObservationMismatch::PreEqSizes,
-            Box::new(|value| value.pre_eq.sizes.low ^= 1),
-        ),
-        (
-            ObservationMismatch::PreEqLow,
-            Box::new(|value| value.pre_eq.low[0] = deterministic_e4(0x906)),
-        ),
-        (
-            ObservationMismatch::PreEqHigh,
-            Box::new(|value| value.pre_eq.high[0] = deterministic_e4(0x916)),
-        ),
-        (
-            ObservationMismatch::PostEqSizes,
-            Box::new(|value| value.post_eq.sizes.low ^= 1),
-        ),
-        (
-            ObservationMismatch::PostEqLow,
-            Box::new(|value| value.post_eq.low[0] = deterministic_e4(0x917)),
-        ),
-        (
-            ObservationMismatch::PostEqHigh,
-            Box::new(|value| value.post_eq.high[0] = deterministic_e4(0x907)),
+            ObservationMismatch::Boundary,
+            Box::new(|value| value.boundary.0 ^= 1),
         ),
         (
             ObservationMismatch::Boundary,
-            Box::new(|value| value.boundary.0 ^= 1),
+            Box::new(|value| value.boundary.2 ^= 1),
         ),
     ];
     for (expected, mutate) in &mutations {
@@ -3590,8 +3757,10 @@ fn run_comparator_field_coverage_checks(
 fn validate_live_observation_mutations(
     window: &PreparedObservation,
     legacy: &PreparedObservation,
+    window_eq: (&[E4], usize, usize, usize),
     mutations: ScheduledLiveMutationEvidence,
 ) -> (usize, BTreeSet<String>) {
+    let (point, eq_offset, eq_count, post_folds) = window_eq;
     let mut checks = 0usize;
     let mut families = BTreeSet::new();
     for mutation in mutations.materialize() {
@@ -3636,8 +3805,16 @@ fn validate_live_observation_mutations(
                 ObservationMismatch::EqPrefactor
             }
             Task8LiveMutationTarget::PostEqLow(index) => {
-                changed.post_eq.low[index] = e4_value.expect("E4 post-Eq mutation");
-                ObservationMismatch::PostEqLow
+                let mut stale = window.post_eq.clone();
+                stale.low[index] = e4_value.expect("E4 post-Eq mutation");
+                assert_eq!(
+                    validate_arm_eq_observation(point, eq_offset, eq_count, post_folds, &stale),
+                    Err(Task8EqOracleMismatch::LowContent),
+                    "Task 8 live {family} mutation did not reach its Eq oracle"
+                );
+                families.insert(family.to_owned());
+                checks += 1;
+                continue;
             }
             Task8LiveMutationTarget::PriorPublication => unreachable!(),
         };
@@ -3897,14 +4074,15 @@ mod cpu_tests {
     use super::E4;
     use super::{
         allocation_group_record, bind_arm_owners_final, bind_challenge_owners_final,
-        bind_transcript_owners_final, build_corpus_census, eq_readback_spans, ledger_bind_final,
-        ledger_open, signed_snapshot_delta, task8_enqueue, task8_enqueue_plan,
-        task8_register_symbol, validate_owner_generation_ledger,
-        validate_owner_generation_structure, validate_single_owner_topology, BTreeSet,
-        Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols, Task8ChallengeOwners,
-        Task8EnqueueKind, Task8EnqueuePlan, Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord,
-        Task8OwnerGeneration, Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard,
-        Task8QueuedUse, Task8Span, Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
+        bind_transcript_owners_final, build_corpus_census, deterministic_e4, eq_readback_spans,
+        ledger_bind_final, ledger_open, record_active_eq_slot_fold, signed_snapshot_delta,
+        task8_enqueue, task8_enqueue_plan, task8_eq_coordinates, task8_register_symbol,
+        validate_owner_generation_ledger, validate_owner_generation_structure,
+        validate_single_owner_topology, BTreeSet, Field, Task8AllocationRecord, Task8ArmOwners,
+        Task8CarriedSymbols, Task8ChallengeOwners, Task8EnqueueKind, Task8EnqueuePlan,
+        Task8LedgerError, Task8LedgerOwner, Task8LedgerRecord, Task8OwnerGeneration,
+        Task8OwnerGenerationLedger, Task8OwnerOrigin, Task8ProbeGuard, Task8QueuedUse, Task8Span,
+        Task8TopologyError, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
         MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
         TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
     };
@@ -4207,7 +4385,7 @@ mod cpu_tests {
             claim: transcript.claim.base as *mut E4,
             eq_prefactor: transcript.prefactor.base as *mut E4,
             coeffs_out: transcript.coefficients.base as *mut E4,
-            challenges_out: transcript.challenges.base as *mut E4,
+            challenges_out: (TASK8_TEST_CLAIM_POINT_SYMBOL + 3 * TASK8_TEST_ELEMENT) as *mut E4,
             active_eq_slot_base: TASK8_TEST_EQ_LOW as *mut E4,
             active_eq_size_before_fold: task8_test_sizes().low,
         }
@@ -4573,13 +4751,6 @@ mod cpu_tests {
                 TASK8_TEST_TRANSCRIPT_BASE + 0x3000,
                 12 * TASK8_TEST_ELEMENT,
             ),
-            challenges: open(
-                ledger,
-                arm,
-                "challenges",
-                TASK8_TEST_TRANSCRIPT_BASE + 0x4000,
-                3 * TASK8_TEST_ELEMENT,
-            ),
         };
         Task8ArmFixture {
             owners,
@@ -4670,10 +4841,21 @@ mod cpu_tests {
         probe: &Task8ProbeGuard,
         arm: &'static str,
         transcript: &Task8TranscriptOwners,
+        challenge_slots_start: usize,
     ) {
+        readback(
+            ledger,
+            probe,
+            arm,
+            "challenge-readback",
+            vec![Task8Span::read(
+                "claim_point_symbol",
+                TASK8_TEST_CLAIM_POINT_SYMBOL + challenge_slots_start * TASK8_TEST_ELEMENT,
+                3 * TASK8_TEST_ELEMENT,
+            )],
+        );
         for (owner, site) in [
             (&transcript.coefficients, "coefficient-readback"),
-            (&transcript.challenges, "challenge-readback"),
             (&transcript.seed, "transcript-seed-readback"),
             (&transcript.claim, "transcript-claim-readback"),
             (&transcript.prefactor, "transcript-prefactor-readback"),
@@ -4778,14 +4960,19 @@ mod cpu_tests {
                 TASK8_TEST_ELEMENT << TASK8_TEST_PUBLISH_STRIDE_LOG2,
             )],
         );
-        replay_readbacks(ledger, &probe, arm, &fixture.transcript);
+        replay_readbacks(ledger, &probe, arm, &fixture.transcript, 3);
         replay_eq_readback(ledger, &probe, &fixture.owners, "post-eq-readback");
         live_mutation(ledger, &probe, &fixture.publication, 0);
         for index in [0usize, 4, 8, 1] {
             live_mutation(ledger, &probe, &fixture.transcript.coefficients, index);
         }
         for index in 0..3 {
-            live_mutation(ledger, &probe, &fixture.transcript.challenges, index);
+            live_mutation(
+                ledger,
+                &probe,
+                &fixture.owners.claim_point_symbol,
+                3 + index,
+            );
         }
         live_mutation(ledger, &probe, &fixture.transcript.claim, 0);
         live_mutation(ledger, &probe, &fixture.transcript.prefactor, 0);
@@ -4845,17 +5032,19 @@ mod cpu_tests {
                     fixture.transcript.claim.base,
                     fixture.transcript.prefactor.base,
                     fixture.transcript.coefficients.base + 4 * local_round * TASK8_TEST_ELEMENT,
-                    fixture.transcript.challenges.base + local_round * TASK8_TEST_ELEMENT,
+                    TASK8_TEST_CLAIM_POINT_SYMBOL + round * TASK8_TEST_ELEMENT,
                     TASK8_TEST_EQ_LOW,
-                    if local_round == 2 {
-                        task8_test_sizes().low
-                    } else {
-                        0
+                    {
+                        let mut live = task8_test_sizes();
+                        for _ in 0..local_round {
+                            record_active_eq_slot_fold(&mut live);
+                        }
+                        live.low
                     },
                 ),
             );
         }
-        replay_readbacks(ledger, &probe, arm, &fixture.transcript);
+        replay_readbacks(ledger, &probe, arm, &fixture.transcript, TASK8_TEST_ROUND);
         replay_eq_readback(ledger, &probe, &fixture.owners, "post-eq-readback");
         replay_retentions(ledger, &probe, arm);
         finish_arm(ledger, &fixture);
@@ -5150,194 +5339,368 @@ mod cpu_tests {
         })
     }
 
-    /// The Eq-low prefix an arm's own build covers at one coordinate.
-    fn task8_built_eq(folding_steps: usize, start_round: usize) -> (GkrEqSizes, usize) {
-        let built = make_eq_sizes(folding_steps - start_round - WINDOW_WIDTH);
-        (built, (1usize << built.low) * std::mem::size_of::<E4>())
+    /// One planned legacy round's declared Eq state, from the plan the
+    /// differential actually hands the segmented planner.
+    fn task8_declared_eq(base: GkrEqSizes, schedule: &[u8], round_index: usize) -> GkrEqSizes {
+        let plan = EqDrainSchedule::Explicit(schedule);
+        drained_eq_sizes(base, plan.drains_through(round_index, schedule.len()))
     }
 
-    /// The Eq state a descriptor at `round_index` must describe: what the
-    /// finalizers that already completed have left. The legacy arm folds once,
-    /// at the finalize that follows its third comparison round, so all three
-    /// scheduled descriptors see the undrained base and the one-fold state
-    /// begins only at the position after them.
-    fn task8_live_eq(base: GkrEqSizes, round_index: usize) -> GkrEqSizes {
-        if round_index < WINDOW_WIDTH {
-            base
-        } else {
-            drained_eq_sizes(base, 1)
-        }
-    }
-
-    /// The plan the differential hands the segmented round planner must describe
-    /// exactly the Eq the arm builds and folds, at every coordinate. The
-    /// consumed packet-v7 run failed here: a first segmented round declared
-    /// sixteen Eq-low slots against a build that had covered four.
+    /// The production coverage invariant: at every planned round, the
+    /// descriptor's factored Eq covers exactly the round's accumulator row
+    /// bits. The consumed packet-v8 run failed because the previous plan's
+    /// first two scheduled rounds declared the window-shaped base against row
+    /// spaces two and one variables wider, so `gkr_compute_eq_inline`
+    /// mis-weighted every row.
     #[test]
     fn cpu_main_continuation_differential_eq_plan_matches_every_selector_coordinate() {
-        let element = std::mem::size_of::<E4>();
         let mut coordinates = 0usize;
         for (folding_steps, start_round) in task8_selector_coordinates() {
-            let (built, built_bytes) = task8_built_eq(folding_steps, start_round);
             let (base, schedule) = task8_differential_eq_plan(start_round as u8, folding_steps);
-            assert_eq!(
-                base, built,
-                "the differential Eq base is not what the arm seeds at \
-                 folding_steps={folding_steps} start_round={start_round}"
-            );
-
-            // Exactly one fold, carried by the entry after the last scheduled
-            // round, and one entry per planned round of the bound sequence.
+            assert_eq!(base, make_eq_sizes(folding_steps - start_round - 1));
             assert_eq!(schedule.len(), folding_steps - start_round);
-            assert_eq!(
-                schedule
-                    .iter()
-                    .map(|drains| usize::from(*drains))
-                    .sum::<usize>(),
-                1
-            );
-            assert_eq!(schedule[WINDOW_WIDTH], 1);
-            assert!(schedule
-                .iter()
-                .enumerate()
-                .all(|(index, drains)| *drains == u8::from(index == WINDOW_WIDTH)));
+            assert_eq!(schedule[0], 0);
+            assert!(schedule[1..].iter().all(|drains| *drains == 1));
 
-            // The three descriptors this differential actually schedules must
-            // each describe the undrained base the arm built: their rounds run
-            // before any finalize has folded.
-            let plan = EqDrainSchedule::Explicit(&schedule);
-            for index in 0..WINDOW_WIDTH {
-                assert_eq!(
-                    plan.drains_through(index, schedule.len()),
-                    0,
-                    "scheduled descriptor {index} claims a fold that has not happened at \
-                     folding_steps={folding_steps} start_round={start_round}"
-                );
-                assert_eq!(
-                    drained_eq_sizes(base, plan.drains_through(index, schedule.len())),
-                    built,
-                    "scheduled descriptor {index} does not describe the built base at \
-                     folding_steps={folding_steps} start_round={start_round}"
-                );
-            }
-            // The finalize that follows the third scheduled round is the single
-            // fold, and nothing after it folds again.
-            assert_eq!(plan.drains_through(WINDOW_WIDTH, schedule.len()), 1);
-            assert_eq!(
-                plan.drains_through(schedule.len() - 1, schedule.len()),
-                1,
-                "the differential folds Eq more than once at \
-                 folding_steps={folding_steps} start_round={start_round}"
-            );
-
+            // Every planned round, not only the three the differential runs:
+            // declared Eq bits == accumulator row bits == fs - round - 1.
             for index in 0..schedule.len() {
-                let declared = drained_eq_sizes(base, plan.drains_through(index, schedule.len()));
-                let live = task8_live_eq(base, index);
+                let declared = task8_declared_eq(base, &schedule, index);
+                let rows_bits = folding_steps - (start_round + index) - 1;
                 assert_eq!(
-                    declared, live,
-                    "round {index} declares an Eq state the arm is not in at \
-                     folding_steps={folding_steps} start_round={start_round}"
-                );
-                assert!(
-                    (1usize << declared.low) * element <= built_bytes,
-                    "round {index} declares {} Eq-low bytes of {built_bytes} built at \
+                    foldable_eq_variables(&declared) as usize,
+                    rows_bits,
+                    "round {index} declares {} Eq variables against {rows_bits} row bits at \
                      folding_steps={folding_steps} start_round={start_round}",
-                    (1usize << declared.low) * element
+                    foldable_eq_variables(&declared),
                 );
             }
 
-            // The two arms are compared on their post-tail boundary witness, so
-            // the legacy arm's single fold must land on the window arm's state.
-            let post = drained_eq_sizes(base, 1);
+            // The three scheduled rounds' declared coordinate coverage is the
+            // production absolute set [round + 1, folding_steps).
+            for index in 0..WINDOW_WIDTH {
+                let mut coords =
+                    task8_eq_coordinates(start_round + 1, folding_steps - start_round - 1);
+                for _ in 0..index {
+                    coords.fold();
+                }
+                assert_eq!(coords.sizes(), task8_declared_eq(base, &schedule, index));
+                assert_eq!(
+                    coords.remaining(),
+                    (start_round + index + 1..folding_steps).collect::<BTreeSet<_>>(),
+                    "round {index} covers the wrong coordinates at \
+                     folding_steps={folding_steps} start_round={start_round}"
+                );
+            }
+
+            // Post-sequence boundary: three folds leave the window arm's exact
+            // remaining coordinate set; only the slot partition may differ.
+            let mut legacy_post =
+                task8_eq_coordinates(start_round + 1, folding_steps - start_round - 1);
+            for _ in 0..3 {
+                legacy_post.fold();
+            }
+            let mut window_post = task8_eq_coordinates(
+                start_round + WINDOW_WIDTH,
+                folding_steps - start_round - WINDOW_WIDTH,
+            );
+            window_post.fold();
+            assert_eq!(legacy_post.remaining(), window_post.remaining());
             assert_eq!(
-                main_continuation_post_tail_eq_boundary(start_round as u8, folding_steps, post),
-                main_continuation_post_tail_eq_boundary(
-                    start_round as u8,
-                    folding_steps,
-                    drained_eq_sizes(make_eq_sizes(folding_steps - start_round - WINDOW_WIDTH), 1),
-                ),
-                "the legacy boundary witness diverges at \
-                 folding_steps={folding_steps} start_round={start_round}"
+                legacy_post.remaining(),
+                (start_round + 4..folding_steps).collect::<BTreeSet<_>>()
+            );
+            let mut legacy_sizes = base;
+            for _ in 0..3 {
+                record_active_eq_slot_fold(&mut legacy_sizes);
+            }
+            assert_eq!(legacy_post.sizes(), legacy_sizes);
+            assert_eq!(
+                foldable_eq_variables(&legacy_sizes),
+                foldable_eq_variables(&window_post.sizes()),
             );
             coordinates += 1;
         }
         assert_eq!(coordinates, 23, "the selector's coordinate corpus changed");
     }
 
-    /// Each way of getting the drain schedule wrong must be visible to the
-    /// oracle above, at some coordinate the selector covers.
+    /// Every wrong schedule or base the diagnosis predicted must violate the
+    /// coverage invariant at some scheduled round of every coordinate — the
+    /// consumed v8 plan first among them.
     #[test]
     fn cpu_main_continuation_differential_eq_plan_rejects_wrong_schedules() {
-        let element = std::mem::size_of::<E4>();
         let mut caught: BTreeSet<&'static str> = BTreeSet::new();
         for (folding_steps, start_round) in task8_selector_coordinates() {
-            let (built, built_bytes) = task8_built_eq(folding_steps, start_round);
             let (base, schedule) = task8_differential_eq_plan(start_round as u8, folding_steps);
             let rounds = schedule.len();
+            let covers = |base: GkrEqSizes, schedule: &[u8]| {
+                (0..WINDOW_WIDTH).all(|index| {
+                    let plan = EqDrainSchedule::Explicit(schedule);
+                    let drains = plan.drains_through(index, schedule.len());
+                    u32::from(drains) <= foldable_eq_variables(&base)
+                        && foldable_eq_variables(&drained_eq_sizes(base, drains)) as usize
+                            == folding_steps - (start_round + index) - 1
+                })
+            };
+            assert!(covers(base, &schedule));
 
-            // One drain per round: the production tail's rhythm, which this arm
-            // does not have. It over-drains the arm's live state.
-            let all_drain = EqDrainSchedule::PerRound;
-            if (0..rounds).any(|index| {
-                u32::from(all_drain.drains_through(index, rounds)) <= foldable_eq_variables(&base)
-                    && drained_eq_sizes(base, all_drain.drains_through(index, rounds))
-                        != task8_live_eq(base, index)
-            }) {
-                caught.insert("all-drain");
+            // The consumed v8 plan: window-shaped base, single deferred fold.
+            // Its first two scheduled rounds under-cover their row spaces.
+            let stale_base = make_eq_sizes(folding_steps - start_round - WINDOW_WIDTH);
+            let mut stale_schedule = vec![0u8; rounds];
+            stale_schedule[WINDOW_WIDTH] = 1;
+            if !covers(stale_base, &stale_schedule) {
+                caught.insert("consumed-v8-plan");
             }
-            // Never folding: the boundary witness never reaches the window arm's.
-            let never = vec![0u8; rounds];
-            let plan = EqDrainSchedule::Explicit(&never);
-            if drained_eq_sizes(base, plan.drains_through(rounds - 1, rounds))
-                != task8_live_eq(base, rounds - 1)
-            {
+            // Draining from the very first round over-covers nothing and
+            // under-covers every round by one.
+            let all_drain = vec![1u8; rounds];
+            if !covers(base, &all_drain) {
+                caught.insert("all-drain-from-start");
+            }
+            // Never draining leaves rounds one and two over-covered.
+            let no_drain = vec![0u8; rounds];
+            if !covers(base, &no_drain) {
                 caught.insert("no-drain");
             }
-            // Folding a round early.
-            let mut shifted = vec![0u8; rounds];
-            shifted[WINDOW_WIDTH - 2] = 1;
-            let plan = EqDrainSchedule::Explicit(&shifted);
-            if (0..rounds).any(|index| {
-                drained_eq_sizes(base, plan.drains_through(index, rounds))
-                    != task8_live_eq(base, index)
-            }) {
+            // The drain shifted one round late.
+            let mut shifted = vec![1u8; rounds];
+            shifted[0] = 0;
+            shifted[1] = 0;
+            if rounds > 2 {
+                shifted[2] = 2;
+            }
+            if !covers(base, &shifted) {
                 caught.insert("shifted-drain");
             }
-            // The fold moved from after the third scheduled round to before it:
-            // descriptor 2 would claim the post-fold shape while its own
-            // finalize has not run. This is the shape the previous child had.
-            let mut before_third = vec![0u8; rounds];
-            before_third[WINDOW_WIDTH - 1] = 1;
-            let plan = EqDrainSchedule::Explicit(&before_third);
-            if drained_eq_sizes(base, plan.drains_through(WINDOW_WIDTH - 1, rounds))
-                != task8_live_eq(base, WINDOW_WIDTH - 1)
-            {
-                caught.insert("drain-before-third-descriptor");
-            }
-            // The production tail's base under this arm's own sequence length:
-            // it carries three fewer variables than the rounds would drain.
-            let stale = make_eq_sizes(folding_steps - start_round);
-            if (1usize << drained_eq_sizes(stale, 1).low) * element > built_bytes {
-                caught.insert("post-tail-overrun");
-            }
-            if u32::from(EqDrainSchedule::PerRound.drains_through(rounds - 1, rounds))
-                > foldable_eq_variables(&base)
-            {
+            // More drains than the base carries: the planner's fail-closed
+            // bound, checked here as arithmetic.
+            let overrun = vec![1u8; rounds];
+            if (0..rounds).any(|index| {
+                u32::from(EqDrainSchedule::Explicit(&overrun).drains_through(index, rounds))
+                    > foldable_eq_variables(&base)
+            }) {
                 caught.insert("post-tail-underflow");
             }
         }
         assert_eq!(
             caught.iter().copied().collect::<Vec<_>>(),
             vec![
-                "all-drain",
-                "drain-before-third-descriptor",
+                "all-drain-from-start",
+                "consumed-v8-plan",
                 "no-drain",
-                "post-tail-overrun",
                 "post-tail-underflow",
                 "shifted-drain",
             ],
-            "a wrong schedule is invisible to the oracle"
+            "a wrong schedule is invisible to the coverage oracle"
         );
+    }
+
+    /// The upstream transcript algebra distinguishes the challenge-feedback
+    /// defect: a legacy arm that binds later rounds with the original claim
+    /// coordinates instead of the drawn challenges agrees on round 0 and
+    /// diverges first at `coefficients[4]` — the D1-only prediction of the
+    /// bound diagnosis.
+    #[test]
+    fn cpu_main_continuation_stale_challenge_binding_diverges_at_coefficients_4() {
+        use crate::backward::window::reference::tensor_round_tail_reference;
+
+        fn eq_weight(bit: usize, coordinate: E4) -> E4 {
+            if bit == 0 {
+                let mut weight = E4::ONE;
+                weight.sub_assign(&coordinate);
+                weight
+            } else {
+                coordinate
+            }
+        }
+
+        fn bind_univariate(at_zero: E4, at_one: E4, leading: E4, challenge: E4) -> E4 {
+            let mut linear = at_one;
+            linear.sub_assign(&leading);
+            linear.sub_assign(&at_zero);
+            linear.mul_assign(&challenge);
+            let mut quadratic = leading;
+            quadratic.mul_assign(&challenge);
+            quadratic.mul_assign(&challenge);
+            let mut bound = at_zero;
+            bound.add_assign(&linear);
+            bound.add_assign(&quadratic);
+            bound
+        }
+
+        fn round_update(
+            at_zero: E4,
+            leading: E4,
+            prev_coordinate: E4,
+            seed: &mut crate::upstream::Seed,
+            claim: &mut E4,
+            eq_prefactor: &mut E4,
+        ) -> ([E4; 4], E4) {
+            use crate::upstream::{
+                commit_field_els, draw_random_field_els, evaluate_eq_poly,
+                evaluate_small_univariate_poly, output_univariate_monomial_form_max_quadratic,
+                BabyBearField, Blake2sTranscript,
+            };
+            let mut normalized_claim = *claim;
+            normalized_claim.mul_assign(&eq_prefactor.inverse().expect("eq prefactor non-zero"));
+            let coeffs = output_univariate_monomial_form_max_quadratic::<BabyBearField, E4>(
+                prev_coordinate,
+                normalized_claim,
+                at_zero,
+                leading,
+            );
+            commit_field_els::<BabyBearField, E4, Blake2sTranscript>(seed, &coeffs);
+            let challenge =
+                draw_random_field_els::<BabyBearField, E4, Blake2sTranscript>(seed, 1)[0];
+            *claim = evaluate_small_univariate_poly::<BabyBearField, E4, 4>(&coeffs, &challenge);
+            *eq_prefactor = evaluate_eq_poly::<BabyBearField, E4>(&challenge, &prev_coordinate);
+            (coeffs, challenge)
+        }
+
+        /// The three rounds with each later round's tensor binding taken at
+        /// `bind[k]` — the drawn challenge in production, the stale original
+        /// coordinate under the D2 defect.
+        fn play_rounds(
+            tensor: &[E4; 27],
+            rho: &[E4; 3],
+            seed: [u32; 8],
+            claim: E4,
+            eq_prefactor: E4,
+            stale_bind: [Option<E4>; 2],
+        ) -> ([E4; 12], [E4; 3]) {
+            let pair_weights: [E4; 4] = core::array::from_fn(|index| {
+                let mut weight = eq_weight(index >> 1, rho[1]);
+                weight.mul_assign(&eq_weight(index & 1, rho[2]));
+                weight
+            });
+            let single_weights: [E4; 2] = core::array::from_fn(|index| eq_weight(index, rho[2]));
+            let contract9 = |cells: &[E4]| {
+                let mut accumulator = E4::ZERO;
+                for x1 in 0..2 {
+                    for x2 in 0..2 {
+                        let mut value = cells[3 * x1 + x2];
+                        value.mul_assign(&pair_weights[2 * x1 + x2]);
+                        accumulator.add_assign(&value);
+                    }
+                }
+                accumulator
+            };
+            let contract3 = |cells: &[E4]| {
+                let mut accumulator = E4::ZERO;
+                for x2 in 0..2 {
+                    let mut value = cells[x2];
+                    value.mul_assign(&single_weights[x2]);
+                    accumulator.add_assign(&value);
+                }
+                accumulator
+            };
+            let mut seed = crate::upstream::Seed(seed);
+            let mut claim = claim;
+            let mut eq_prefactor = eq_prefactor;
+            let mut coeffs = [E4::ZERO; 12];
+            let mut challenges = [E4::ZERO; 3];
+            let (round, challenge) = round_update(
+                contract9(&tensor[0..9]),
+                contract9(&tensor[18..27]),
+                rho[0],
+                &mut seed,
+                &mut claim,
+                &mut eq_prefactor,
+            );
+            coeffs[0..4].copy_from_slice(&round);
+            challenges[0] = challenge;
+            let bound0 = stale_bind[0].unwrap_or(challenges[0]);
+            let bound_nine: [E4; 9] = core::array::from_fn(|index| {
+                bind_univariate(tensor[index], tensor[9 + index], tensor[18 + index], bound0)
+            });
+            let (round, challenge) = round_update(
+                contract3(&bound_nine[0..3]),
+                contract3(&bound_nine[6..9]),
+                rho[1],
+                &mut seed,
+                &mut claim,
+                &mut eq_prefactor,
+            );
+            coeffs[4..8].copy_from_slice(&round);
+            challenges[1] = challenge;
+            let bound1 = stale_bind[1].unwrap_or(challenges[1]);
+            let bound_three: [E4; 3] = core::array::from_fn(|index| {
+                bind_univariate(
+                    bound_nine[index],
+                    bound_nine[3 + index],
+                    bound_nine[6 + index],
+                    bound1,
+                )
+            });
+            let (round, challenge) = round_update(
+                bound_three[0],
+                bound_three[2],
+                rho[2],
+                &mut seed,
+                &mut claim,
+                &mut eq_prefactor,
+            );
+            coeffs[8..12].copy_from_slice(&round);
+            challenges[2] = challenge;
+            (coeffs, challenges)
+        }
+
+        let tensor: [E4; 27] = core::array::from_fn(|index| deterministic_e4(0x700 + index as u32));
+        let rho = [
+            deterministic_e4(0x7a0),
+            deterministic_e4(0x7a1),
+            deterministic_e4(0x7a2),
+        ];
+        let seed = [0x1020_3040u32, 0x5060_7080, 1, 2, 3, 5, 8, 13];
+        let claim0 = deterministic_e4(0x51);
+        let prefactor0 = deterministic_e4(0x71);
+
+        let mut reference_seed = seed;
+        let mut reference_claim = claim0;
+        let mut reference_prefactor = prefactor0;
+        let (reference_coeffs, reference_challenges) = tensor_round_tail_reference(
+            tensor,
+            &rho,
+            &mut reference_seed,
+            &mut reference_claim,
+            &mut reference_prefactor,
+        );
+
+        // The correct binding reproduces the reviewed window reference exactly.
+        let (correct_coeffs, correct_challenges) =
+            play_rounds(&tensor, &rho, seed, claim0, prefactor0, [None, None]);
+        assert_eq!(correct_coeffs, reference_coeffs);
+        assert_eq!(correct_challenges, reference_challenges);
+
+        // D2, with D1 repaired: binding round 1 at the original coordinate
+        // instead of the drawn challenge agrees on round 0 and diverges first
+        // at coefficients[4].
+        let (stale_coeffs, _) = play_rounds(
+            &tensor,
+            &rho,
+            seed,
+            claim0,
+            prefactor0,
+            [Some(rho[0]), None],
+        );
+        assert_eq!(stale_coeffs[0..4], reference_coeffs[0..4]);
+        assert_ne!(
+            stale_coeffs[4], reference_coeffs[4],
+            "the stale challenge feedback must first surface at coefficients[4]"
+        );
+
+        // The same defect one round later: rounds 0-1 agree, round 2 diverges.
+        let (late_stale_coeffs, _) = play_rounds(
+            &tensor,
+            &rho,
+            seed,
+            claim0,
+            prefactor0,
+            [None, Some(rho[1])],
+        );
+        assert_eq!(late_stale_coeffs[0..8], reference_coeffs[0..8]);
+        assert_ne!(late_stale_coeffs[8], reference_coeffs[8]);
     }
 
     /// A schedule that does not cover the sequence exactly fails closed.
@@ -6500,6 +6863,8 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             )?;
             let callback_accumulator = Arc::clone(&accumulator);
             let callback_source_table = Arc::clone(&source_table);
+            let callback_point_host = point_host.clone();
+            let callback_folding_steps = folding_steps;
             let coordinate_payload = Mutex::new(Some((
                 window,
                 legacy,
@@ -6623,13 +6988,90 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                         .unwrap_or_else(|error| {
                             panic!("Task 8 prepared-state differential mismatch: {error:?}")
                         });
+                    let window_eq_build =
+                        (start_round + 3, callback_folding_steps - start_round - 3);
+                    let legacy_eq_build =
+                        (start_round + 1, callback_folding_steps - start_round - 1);
+                    for (build, arm, pre, post, post_folds) in [
+                        (
+                            window_eq_build,
+                            "window",
+                            &window.pre_eq,
+                            &window.post_eq,
+                            1usize,
+                        ),
+                        (
+                            legacy_eq_build,
+                            "legacy",
+                            &legacy.pre_eq,
+                            &legacy.post_eq,
+                            3usize,
+                        ),
+                    ] {
+                        for (folds, observation) in [(0usize, pre), (post_folds, post)] {
+                            validate_arm_eq_observation(
+                                &callback_point_host,
+                                build.0,
+                                build.1,
+                                folds,
+                                observation,
+                            )
+                            .unwrap_or_else(|error| {
+                                panic!("Task 8 {arm} arm Eq observation mismatch: {error:?}")
+                            });
+                        }
+                    }
+                    let mut window_post_coords =
+                        task8_eq_coordinates(window_eq_build.0, window_eq_build.1);
+                    window_post_coords.fold();
+                    let mut legacy_post_coords =
+                        task8_eq_coordinates(legacy_eq_build.0, legacy_eq_build.1);
+                    for _ in 0..3 {
+                        legacy_post_coords.fold();
+                    }
+                    let expected_remaining: BTreeSet<usize> =
+                        (start_round + 4..callback_folding_steps).collect();
+                    assert_eq!(
+                        window_post_coords.remaining(),
+                        expected_remaining,
+                        "Task 8 window arm's post-tail Eq coordinate set is wrong"
+                    );
+                    assert_eq!(
+                        legacy_post_coords.remaining(),
+                        expected_remaining,
+                        "Task 8 legacy arm's post-sequence Eq coordinate set is wrong"
+                    );
                     let comparator_field_coverage_checks =
-                        run_comparator_field_coverage_checks(&window, &legacy);
+                        run_comparator_field_coverage_checks(&window, &legacy)
+                            + run_eq_oracle_coverage_checks(
+                                &callback_point_host,
+                                window_eq_build.0,
+                                window_eq_build.1,
+                                &window.pre_eq,
+                                &window.post_eq,
+                                0,
+                                1,
+                            )
+                            + run_eq_oracle_coverage_checks(
+                                &callback_point_host,
+                                legacy_eq_build.0,
+                                legacy_eq_build.1,
+                                &legacy.pre_eq,
+                                &legacy.post_eq,
+                                0,
+                                3,
+                            );
                     let mut mutation_checks = 0usize;
                     let (live_mutation_checks, mut mutation_families) =
                         validate_live_observation_mutations(
                             &window,
                             &legacy,
+                            (
+                                &callback_point_host,
+                                window_eq_build.0,
+                                window_eq_build.1,
+                                1,
+                            ),
                             window_live_mutations,
                         );
                     mutation_checks += live_mutation_checks;
@@ -6804,7 +7246,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             );
             assert_eq!(
                 state.allocation_records,
-                19 * state.topology_coordinates + 2 * later_coordinates
+                17 * state.topology_coordinates + 2 * later_coordinates
             );
             assert_eq!(
                 state.mutation_checks,
@@ -6812,7 +7254,7 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
             );
             assert_eq!(
                 state.comparator_field_coverage_checks,
-                17 * state.topology_coordinates
+                24 * state.topology_coordinates
             );
             assert_eq!(
                 state.semantic_comparisons,
@@ -6847,7 +7289,6 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                 state.topology_owner_kinds,
                 [
                     "bank",
-                    "challenges",
                     "coefficients",
                     "descriptor",
                     "eq",

@@ -235,12 +235,12 @@ impl Task8ContinuationDifferentialRequest {
             );
             assert_eq!(
                 report.semantic_comparisons,
-                report.publication_elements_compared + 1_564 * report.topology_coordinates,
+                report.publication_elements_compared + 26 * report.topology_coordinates,
                 "Task 8 semantic comparison census omitted a live field"
             );
             assert_eq!(
                 report.comparator_field_coverage_checks,
-                17 * report.topology_coordinates,
+                24 * report.topology_coordinates,
                 "Task 8 comparator field-coverage census omitted a field"
             );
             assert_eq!(

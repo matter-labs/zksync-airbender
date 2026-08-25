@@ -1810,7 +1810,6 @@ fn main_continuation_prepared_differential() {
     ]);
     let expected_topology_owner_kinds = std::collections::BTreeSet::from([
         "bank".to_owned(),
-        "challenges".to_owned(),
         "coefficients".to_owned(),
         "descriptor".to_owned(),
         "eq".to_owned(),
@@ -1885,7 +1884,7 @@ fn main_continuation_prepared_differential() {
         );
         assert_eq!(
             report.allocation_records,
-            19 * report.topology_coordinates + 2 * later_coordinates,
+            17 * report.topology_coordinates + 2 * later_coordinates,
             "{workload}"
         );
         assert_eq!(
@@ -1895,12 +1894,12 @@ fn main_continuation_prepared_differential() {
         );
         assert_eq!(
             report.comparator_field_coverage_checks,
-            17 * report.topology_coordinates,
+            24 * report.topology_coordinates,
             "{workload}"
         );
         assert_eq!(
             report.semantic_comparisons,
-            report.publication_elements_compared + 1_564 * report.topology_coordinates,
+            report.publication_elements_compared + 26 * report.topology_coordinates,
             "{workload}"
         );
         assert_eq!(report.capacity_overlap_rows, report.layers, "{workload}");
@@ -2083,9 +2082,9 @@ fn main_continuation_prepared_differential() {
     assert_eq!(mutation_families, expected_mutation_families);
     assert_eq!(
         semantic_comparisons,
-        publication_elements_compared + 1_564 * topology_coordinates
+        publication_elements_compared + 26 * topology_coordinates
     );
-    assert_eq!(comparator_field_coverage_checks, 17 * topology_coordinates);
+    assert_eq!(comparator_field_coverage_checks, 24 * topology_coordinates);
     assert_eq!(
         mutation_checks,
         16 * layers + 22 * later_start_shared_prior_coordinates + 2 * multi_source_coordinates
