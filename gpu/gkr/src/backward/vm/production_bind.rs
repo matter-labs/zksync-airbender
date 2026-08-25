@@ -959,6 +959,16 @@ pub(crate) fn repoint_final_evaluations_from_buffer<E>(
 }
 
 impl BwdVmExtLaunch {
+    pub(crate) fn set_external_final_evaluation_offsets(
+        &mut self,
+        addresses: impl IntoIterator<Item = GKRAddress>,
+    ) {
+        self.final_evaluations = addresses
+            .into_iter()
+            .enumerate()
+            .map(|(column, address)| (address, column * MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS))
+            .collect();
+    }
     #[cfg(all(
         any(test, feature = "task8_continuation_differential_test"),
         not(no_cuda)

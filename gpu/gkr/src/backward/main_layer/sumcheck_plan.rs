@@ -586,6 +586,9 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             .map(|address| (*address, std::ptr::null()))
             .collect();
         if let Some(main_tail) = self.main_tail_launched.as_ref() {
+            self.bwd_vm_ext.set_external_final_evaluation_offsets(
+                self.folding_evaluation_sources.iter().copied(),
+            );
             self.bwd_vm_ext
                 .repoint_final_evaluations_from_external_buffer(
                     main_tail.final_level().allocation(),
