@@ -1,7 +1,7 @@
 use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
 
-use super::dr_tail::resources::{DrTailLayerIdentity, DrTailPlanCursor};
+use super::dr_tail::resources::{DrTailLayerIdentity, DrTailPlanCursor, DrTailScheduleError};
 use super::kernels::*;
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
@@ -137,7 +137,7 @@ impl GpuGKRDimensionReducingBackwardState {
         stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink>>,
         callbacks: &mut Callbacks<'_>,
         context: &ProverContext,
-    ) -> CudaResult<GpuGKRBackwardScheduledExecution> {
+    ) -> Result<GpuGKRBackwardScheduledExecution, DrTailScheduleError> {
         let stream = context.get_exec_stream();
         // Defence in depth only. The load-bearing rejection is the typed
         // resource preflight that runs before any transfer is constructed;
@@ -155,16 +155,15 @@ impl GpuGKRDimensionReducingBackwardState {
                 "a DR-tail resource plan may only accompany the explicit production selector",
             );
         }
-        let mut dr_tail_plan_cursor = dr_tail_plan.as_ref().map(|plan| {
+        let mut dr_tail_plan_cursor = if let Some(plan) = dr_tail_plan.as_ref() {
             plan.validate_before_enqueue(
                 programs.runtime_circuit().as_ref(),
                 final_trace_size_log_2 as usize,
-            )
-            .unwrap_or_else(|error| {
-                panic!("DR-tail plan identity rejected before any enqueue: {error:?}")
-            });
-            DrTailPlanCursor::new(plan.layers())
-        });
+            )?;
+            Some(DrTailPlanCursor::new(plan.layers()))
+        } else {
+            None
+        };
         let device_lookup_challenges_ptr = device_lookup_challenges.as_ptr();
         let mut tracing_ranges = Vec::new();
         let workflow_range = Range::new("gkr.backward.schedule")?;
@@ -226,19 +225,16 @@ impl GpuGKRDimensionReducingBackwardState {
                 proof_slab,
                 proof_layout,
                 backward_layer_slot,
-                dr_tail_plan_cursor.as_mut().map(|cursor| {
-                    cursor
-                        .bind(DrTailLayerIdentity::new(
+                dr_tail_plan_cursor
+                    .as_mut()
+                    .map(|cursor| {
+                        cursor.bind(DrTailLayerIdentity::new(
                             prepared_layer.layer_idx,
                             prepared_layer.folding_steps,
                             &prepared_layer.folding_addresses,
                         ))
-                        .unwrap_or_else(|error| {
-                            panic!(
-                                "DR-tail admitted identity must match the prepared layer before activation: {error:?}"
-                            )
-                        })
-                }),
+                    })
+                    .transpose()?,
                 options.window_tail,
                 &mut self.storage,
                 context,
@@ -283,9 +279,7 @@ impl GpuGKRDimensionReducingBackwardState {
             backward_layer_slot += 1;
         }
         if let Some(cursor) = dr_tail_plan_cursor {
-            cursor.finish().unwrap_or_else(|error| {
-                panic!("DR-tail admitted plan must be consumed exactly once: {error:?}")
-            });
+            cursor.finish()?;
         }
         dimension_reducing_layers_range.end(stream)?;
         tracing_ranges.push(dimension_reducing_layers_range);

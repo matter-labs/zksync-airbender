@@ -67,11 +67,20 @@ pub enum GpuProveError {
     DrTailResources {
         error: gpu_gkr::DrTailResourceError,
     },
+    DrTailSchedule {
+        error: gpu_gkr::DrTailScheduleError,
+    },
 }
 
 impl From<gpu_gkr::DrTailResourceError> for GpuProveError {
     fn from(error: gpu_gkr::DrTailResourceError) -> Self {
         Self::DrTailResources { error }
+    }
+}
+
+impl From<gpu_gkr::DrTailScheduleError> for GpuProveError {
+    fn from(error: gpu_gkr::DrTailScheduleError) -> Self {
+        Self::DrTailSchedule { error }
     }
 }
 
@@ -254,6 +263,9 @@ impl std::fmt::Display for GpuProveError {
             }
             Self::DrTailResources { error } => {
                 write!(formatter, "DR-tail resource admission rejected: {error}")
+            }
+            Self::DrTailSchedule { error } => {
+                write!(formatter, "DR-tail scheduling rejected: {error:?}")
             }
         }
     }
@@ -780,7 +792,11 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
         stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
         &mut callbacks,
         context,
-    )?;
+    )
+    .map_err(|error| {
+        log::error!("typed backward scheduling rejection: {error}");
+        era_cudart_sys::CudaError::ErrorInvalidValue
+    })?;
     #[cfg(test)]
     if let Some(memory_high_water) = memory_high_water.as_deref_mut() {
         memory_high_water.seal(&backward_scheduled);

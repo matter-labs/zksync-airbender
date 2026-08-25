@@ -16,6 +16,7 @@ use std::collections::BTreeSet;
 use super::capacity::{DrTailCapacityDecision, DrTailCapacityRejection, DrTailCapacityRequest};
 use super::census::dr_tail_layer_inputs;
 use crate::upstream::{GKRAddress, GKRCircuitArtifact, PrimeField};
+use era_cudart_sys::CudaError;
 
 /// Threads per DR-tail block; occupancy is queried at exactly this width.
 pub(crate) const DR_TAIL_OCCUPANCY_THREADS: u32 = super::kernels::DR_TAIL_BLOCK_THREADS;
@@ -83,6 +84,24 @@ impl DrTailKernelResources {
 pub struct DrTailProofPlan {
     resources: DrTailKernelResources,
     layers: Vec<DrTailLayerPlan>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DrTailScheduleError {
+    Cuda(CudaError),
+    Identity(DrTailPlanIdentityError),
+}
+
+impl From<CudaError> for DrTailScheduleError {
+    fn from(error: CudaError) -> Self {
+        Self::Cuda(error)
+    }
+}
+
+impl From<DrTailPlanIdentityError> for DrTailScheduleError {
+    fn from(error: DrTailPlanIdentityError) -> Self {
+        Self::Identity(error)
+    }
 }
 
 impl DrTailProofPlan {
@@ -579,6 +598,51 @@ mod tests {
             );
             assert_eq!(decision.capacity().entry_round(), input.entry_round);
         }
+    }
+
+    #[test]
+    fn cpu_plan_identity_mutations_reject_before_any_launch() {
+        fn admitted() -> (
+            std::sync::Arc<GKRCircuitArtifact<gpu_core::primitives::field::BF>>,
+            DrTailProofPlan,
+        ) {
+            let artifact = artifact();
+            let queries = FakeQueries::healthy(DEVICE_CAP);
+            let plan = admit_dr_tail_resources(&queries, artifact.as_ref(), FINAL_TRACE_LOG)
+                .expect("production fixture must admit");
+            (artifact, plan)
+        }
+        fn rejected(mutate: impl FnOnce(&mut DrTailProofPlan)) {
+            let (artifact, mut plan) = admitted();
+            mutate(&mut plan);
+            let launches = 0usize;
+            assert!(plan
+                .validate_before_enqueue(artifact.as_ref(), FINAL_TRACE_LOG)
+                .is_err());
+            assert_eq!(launches, 0, "identity rejection must precede launch");
+        }
+
+        rejected(|plan| {
+            plan.layers.pop();
+        });
+        rejected(|plan| {
+            let layer = plan.layers[0].clone();
+            plan.layers.push(layer);
+        });
+        rejected(|plan| {
+            plan.layers[1].layer_idx = plan.layers[0].layer_idx;
+        });
+        rejected(|plan| plan.layers.reverse());
+        rejected(|plan| {
+            let (first, rest) = plan.layers.split_at_mut(1);
+            std::mem::swap(&mut first[0].capacity, &mut rest[0].capacity);
+        });
+        rejected(|plan| {
+            plan.layers[0].folding_steps += 1;
+        });
+        rejected(|plan| {
+            plan.layers[0].canonical_sources[0] = GKRAddress::ScratchSpace(usize::MAX);
+        });
     }
 
     #[test]

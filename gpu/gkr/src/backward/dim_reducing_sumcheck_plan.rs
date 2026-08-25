@@ -4,6 +4,7 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
 
+use super::dr_tail::resources::DrTailScheduleError;
 use super::dr_tail::{
     launch_dr_tail_megakernel_e4, DrTailCapacityDecision, DrTailMegakernelDesc, DrTailSlot,
     DR_TAIL_MAX_SOURCES, DR_TAIL_SLOTS,
@@ -268,7 +269,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         window_tail: WindowTailArm,
         storage: &mut GpuGKRStorage<BF, E4>,
         context: &ProverContext,
-    ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution> {
+    ) -> Result<GpuGKRDimensionReducingScheduledLayerExecution, DrTailScheduleError> {
         const DIMENSION_REDUCING_LAYER_RANGE_MIN_FOLDING_STEPS: usize = 19;
 
         let stream = context.get_exec_stream();

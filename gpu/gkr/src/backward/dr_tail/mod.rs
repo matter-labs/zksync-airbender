@@ -10,7 +10,10 @@ pub(crate) use kernels::{
     launch_dr_tail_megakernel_e4, DrTailMegakernelDesc, DrTailSlot, DR_TAIL_MAX_SOURCES,
     DR_TAIL_SLOTS,
 };
-pub use resources::{DrTailKernelResources, DrTailLayerPlan, DrTailProofPlan, DrTailResourceError};
+pub use resources::{
+    DrTailKernelResources, DrTailLayerPlan, DrTailProofPlan, DrTailResourceError,
+    DrTailScheduleError,
+};
 
 /// Production entry point: admit DR-tail kernel resources for this proof.
 ///

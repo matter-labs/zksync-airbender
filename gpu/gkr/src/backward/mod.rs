@@ -27,6 +27,7 @@ pub use dr_tail::dr_tail_first_order_mismatch;
 pub use dr_tail::{
     preflight_dr_tail_resources, DrTailCapacityDecision, DrTailCapacityRejection,
     DrTailKernelResources, DrTailLayerPlan, DrTailProofPlan, DrTailResourceError,
+    DrTailScheduleError,
 };
 pub(crate) use kernels::*;
 pub use kernels::{

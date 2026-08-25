@@ -33,6 +33,7 @@ pub use backward::window::tail::WindowTailArm;
 pub use backward::{
     preflight_dr_tail_resources, DrTailCapacityDecision, DrTailCapacityRejection,
     DrTailKernelResources, DrTailLayerPlan, DrTailProofPlan, DrTailResourceError,
+    DrTailScheduleError,
 };
 pub(crate) use forward::kernels::ForwardKernels;
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
