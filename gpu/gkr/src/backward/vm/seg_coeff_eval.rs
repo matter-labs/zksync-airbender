@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
@@ -18,8 +19,12 @@ use crate::upstream::{
     ChallengeKey, ChallengePower, ChallengeRef, Field, FieldExtension, PermutationSlot, PrimeField,
     NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES,
 };
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
+use gpu_core::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use gpu_prover_context::ProverContext;
 
 // ── The challenge slab ───────────────────────────────────────────────────────
 
@@ -365,71 +370,63 @@ pub(crate) const BWD_SEG_EVAL_MONOMIALS: usize = 2_304;
 /// Interned window plans one layer may name, reserved literals excluded.
 pub(crate) const BWD_SEG_WINDOW_PLANS: usize = 1_728;
 
-/// CUDA mirror: `BWD_SEG_COEFF_CHUNK_RECIPES`. Recipes one by-value fill
-/// chunk carries.
-pub(crate) const BWD_SEG_COEFF_CHUNK_RECIPES: usize = 1_024;
-/// CUDA mirror: `BWD_SEG_COEFF_CHUNK_MONOMIALS`. Monomials one by-value fill
-/// chunk carries.
-pub(crate) const BWD_SEG_COEFF_CHUNK_MONOMIALS: usize = 1_536;
+/// Byte offset of the plan section inside the device blob.
+pub(crate) const BWD_SEG_BLOB_RECIPES_OFFSET: usize = 0;
+/// Byte offset of the monomial section inside the device blob.
+pub(crate) const BWD_SEG_BLOB_MONOMIALS_OFFSET: usize = 21_504;
+/// The device blob's total size. Fixed by the capacities, not by a layer.
+pub(crate) const BWD_SEG_BLOB_BYTES: usize = 49_152;
 
-/// CUDA mirror: `bwd_seg_coeff_chunk_desc`. One by-value fill chunk: a
-/// contiguous bank range's recipes and exactly the monomials those recipes
-/// reference, rebased so `monomial_offset` indexes `monomials`. The whole plan
-/// rides the launch parameter space in bounded chunks — no host staging and no
-/// device table buffer exist. Only the challenges are round state, and they
-/// stay a device-resident input.
+/// CUDA mirror: `bwd_seg_coeff_eval_desc`. The evaluator's LAUNCH HEADER.
+///
+/// The plan and monomial tables are a pure function of the compiled layer, so
+/// they are known at SCHEDULING time — but they are far too large for the
+/// by-value parameter space, so they live in a device blob staged once per layer
+/// through `SchedulerHostAllocator` and reached through [`Self::tables`]. Only
+/// the challenges are round state the transcript squeezed on the device.
 #[repr(C)]
-#[derive(Clone)]
-pub(crate) struct SegCoeffChunkDesc {
-    /// First bank slot this chunk fills.
-    pub bank_first: u32,
-    /// Bank slots this chunk fills == live entries in `recipes`.
-    pub bank_count: u32,
-    /// Live entries in `monomials`.
-    pub monomial_count: u32,
+#[derive(Clone, Copy)]
+pub(crate) struct SegCoeffEvalDesc {
+    /// Device base of the serialized blob.
+    pub tables: *const u8,
+    /// Bank slots to fill, reserved literals included.
+    pub num_coefficients: u32,
+    pub num_monomials: u32,
+    pub recipes_offset: u32,
+    pub monomials_offset: u32,
+    pub blob_bytes: u32,
     pub _pad: u32,
-    pub recipes: [SegCoeffRecipe; BWD_SEG_COEFF_CHUNK_RECIPES],
-    pub monomials: [SegCoeffMonomial; BWD_SEG_COEFF_CHUNK_MONOMIALS],
-}
-
-impl Default for SegCoeffChunkDesc {
-    fn default() -> Self {
-        Self {
-            bank_first: 0,
-            bank_count: 0,
-            monomial_count: 0,
-            _pad: 0,
-            recipes: [SegCoeffRecipe::default(); BWD_SEG_COEFF_CHUNK_RECIPES],
-            monomials: [SegCoeffMonomial::default(); BWD_SEG_COEFF_CHUNK_MONOMIALS],
-        }
-    }
 }
 
 const _: () = {
-    // The CUDA half asserts the same offsets, the same size, and the same
-    // launch-parameter bound — which is what makes the capacities above a gate
-    // rather than a hope.
-    assert!(std::mem::offset_of!(SegCoeffChunkDesc, recipes) == 16);
+    // The CUDA half asserts the same size, the same four offsets, the same blob
+    // layout, and the same header bound — which is what makes the capacities
+    // above a gate rather than a hope.
+    assert!(std::mem::size_of::<SegCoeffEvalDesc>() == 32);
+    assert!(std::mem::offset_of!(SegCoeffEvalDesc, num_coefficients) == 8);
+    assert!(std::mem::offset_of!(SegCoeffEvalDesc, recipes_offset) == 16);
+    assert!(std::mem::offset_of!(SegCoeffEvalDesc, monomials_offset) == 20);
+    assert!(std::mem::offset_of!(SegCoeffEvalDesc, blob_bytes) == 24);
     assert!(
-        std::mem::offset_of!(SegCoeffChunkDesc, monomials)
-            == 16 + BWD_SEG_COEFF_CHUNK_RECIPES * std::mem::size_of::<SegCoeffRecipe>()
+        std::mem::size_of::<SegCoeffEvalDesc>() + 2 * std::mem::size_of::<*const E4>() < 4 * 1_024
+    );
+
+    assert!(BWD_SEG_BLOB_RECIPES_OFFSET == 0);
+    assert!(
+        BWD_SEG_BLOB_MONOMIALS_OFFSET
+            == BWD_SEG_EVAL_RECIPES * std::mem::size_of::<SegCoeffRecipe>()
     );
     assert!(
-        std::mem::size_of::<SegCoeffChunkDesc>()
-            == 16
-                + BWD_SEG_COEFF_CHUNK_RECIPES * std::mem::size_of::<SegCoeffRecipe>()
-                + BWD_SEG_COEFF_CHUNK_MONOMIALS * std::mem::size_of::<SegCoeffMonomial>()
+        BWD_SEG_BLOB_BYTES
+            == BWD_SEG_BLOB_MONOMIALS_OFFSET
+                + BWD_SEG_EVAL_MONOMIALS * std::mem::size_of::<SegCoeffMonomial>()
     );
-    // The whole chunk plus the two device pointers must fit the 32,764-byte
-    // kernel-parameter space (CUDA >= 12.1 ABI; the build targets sm_120).
-    assert!(
-        std::mem::size_of::<SegCoeffChunkDesc>() + 2 * std::mem::size_of::<*const E4>() <= 32_764
-    );
+    assert!(BWD_SEG_BLOB_BYTES.is_multiple_of(std::mem::size_of::<E4>()));
 
     // Every filled bank slot needs a plan entry.
     assert!(BWD_SEG_EVAL_RECIPES >= BWD_SEG_OUTPUT_BANK);
-    // A chunk-local monomial offset rides the plan header as a u16.
-    assert!(BWD_SEG_COEFF_CHUNK_MONOMIALS <= u16::MAX as usize);
+    // A monomial offset rides the plan header as a u16.
+    assert!(BWD_SEG_EVAL_MONOMIALS <= u16::MAX as usize);
     // The windowed arm's plan ids are biased past the reserved literals, and the
     // bias IS the reserved-literal count both arms share.
     assert!(BWD_SEG_WINDOW_PLANS == WINDOW_MAX_COEFFICIENT_PLANS);
@@ -523,11 +520,29 @@ impl SegCoeffEvalBlob {
         );
     }
 
+    /// The blob's fixed serialized layout: the plan section at
+    /// [`BWD_SEG_BLOB_RECIPES_OFFSET`], the monomial section at
+    /// [`BWD_SEG_BLOB_MONOMIALS_OFFSET`], zeros everywhere else.
+    fn serialize(&self) -> Vec<u8> {
+        let mut bytes = vec![0u8; BWD_SEG_BLOB_BYTES];
+        write_records(&mut bytes, BWD_SEG_BLOB_RECIPES_OFFSET, &self.recipes);
+        write_records(&mut bytes, BWD_SEG_BLOB_MONOMIALS_OFFSET, &self.monomials);
+        bytes
+    }
+
     fn monomials_of(&self, slot: usize) -> &[SegCoeffMonomial] {
         let recipe = self.recipes[slot];
         let start = usize::from(recipe.monomial_offset);
         &self.monomials[start..start + usize::from(recipe.monomial_count)]
     }
+}
+
+fn write_records<T: Copy>(bytes: &mut [u8], offset: usize, records: &[T]) {
+    let len = std::mem::size_of_val(records);
+    // SAFETY: `T` is a `repr(C)` POD of integers and base-field limbs whose every
+    // byte, explicit padding included, is initialized by construction.
+    let source = unsafe { std::slice::from_raw_parts(records.as_ptr().cast::<u8>(), len) };
+    bytes[offset..offset + len].copy_from_slice(source);
 }
 
 /// Translate a lean layer's coefficient bank into the per-round arm's blob.
@@ -538,12 +553,19 @@ pub(crate) fn build_seg_coeff_eval_blob(
     recipes: &[NormalizedCoefficientRecipe],
     runtime_top_bits: &[u32],
 ) -> Result<SegCoeffEvalBlob, SegCoeffEvalError> {
-    let mut blob = SegCoeffEvalBlob::new(CoefficientRecipeId::RESERVED as usize + recipes.len())?;
+    let mut blob =
+        SegCoeffEvalBlob::new(CoefficientRecipeId::RESERVED as usize + recipes.len())?;
     blob.push_reserved_literals()?;
     for (recipe_index, recipe) in recipes.iter().enumerate() {
         let translated = translate_recipe_inner(recipe, recipe_index, runtime_top_bits)?;
         let slot = CoefficientRecipeId::RESERVED as usize + recipe_index;
-        blob.push(slot, &translated, BWD_SEG_COEFF_PLAN_DIRECT, BF::ZERO, 0)?;
+        blob.push(
+            slot,
+            &translated,
+            BWD_SEG_COEFF_PLAN_DIRECT,
+            BF::ZERO,
+            0,
+        )?;
     }
     blob.check_batching_invariant();
     Ok(blob)
@@ -621,256 +643,222 @@ fn literal_monomial(value: E4) -> SegCoeffMonomial {
     }
 }
 
-// ── The by-value chunks ──────────────────────────────────────────────────────
+// ── The device staging ───────────────────────────────────────────────────────
 
-/// One arm's fill, split into bounded by-value chunks that together cover the
-/// bank prefix `[0, num_coefficients)` contiguously and without overlap. Built
-/// on host at scheduling time from the compiled plan; nothing here is staged,
-/// copied, or retained for the device.
-pub(crate) struct SegCoeffEvalChunks {
-    chunks: Vec<Box<SegCoeffChunkDesc>>,
-    num_coefficients: u32,
-    /// The challenge slots each chunk's evaluation reads.
+/// One arm's staged evaluator tables: the launch header, the pinned host blob
+/// the H2D reads, and the device blob it lands in.
+///
+/// The host blob is `SchedulerHostAllocator`-backed and written ONCE here; every
+/// stream operation afterwards only reads it. It must be moved into a keepalive
+/// that outlives the scheduled copies, which is what
+/// [`Self::take_host_staging`] is for.
+pub(crate) struct SegCoeffEvalTables {
+    desc: SegCoeffEvalDesc,
+    host: Option<StaticPinnedBox<u8>>,
+    device: DeviceAllocation<E4>,
+    /// The exact table bytes and challenge slots one fill's evaluation reads,
+    /// computed from the blob it stages.
     #[cfg(all(
         any(test, feature = "task8_continuation_differential_test"),
         not(no_cuda)
     ))]
-    task8_chunk_challenge_slots: Vec<Vec<usize>>,
+    task8_reads: Task8CoeffEvalReads,
 }
 
-impl SegCoeffEvalChunks {
-    /// Splits the blob greedily at recipe granularity: a chunk closes when the
-    /// next recipe would overflow its recipe or monomial capacity. Recipes
-    /// reference ascending, contiguous monomial runs by construction, so each
-    /// chunk carries exactly its recipes' monomials, rebased to chunk-local
-    /// offsets. Fails closed on any hole or overlap.
-    pub(crate) fn build(blob: &SegCoeffEvalBlob) -> Self {
-        let mut chunks: Vec<Box<SegCoeffChunkDesc>> = Vec::new();
-        let mut chunk = Box::new(SegCoeffChunkDesc::default());
-        let mut chunk_monomial_base = 0usize;
-        let mut consumed_monomials = 0usize;
-        for (slot, recipe) in blob.recipes.iter().enumerate() {
-            assert_eq!(
-                usize::from(recipe.monomial_offset),
-                consumed_monomials,
-                "recipe {slot} does not extend the blob's contiguous monomial run"
-            );
-            let count = usize::from(recipe.monomial_count);
-            assert!(
-                count <= BWD_SEG_COEFF_CHUNK_MONOMIALS,
-                "recipe {slot} carries {count} monomials, above the chunk capacity"
-            );
-            let full = usize::try_from(chunk.bank_count).expect("chunk recipe count fits usize")
-                == BWD_SEG_COEFF_CHUNK_RECIPES
-                || consumed_monomials - chunk_monomial_base + count > BWD_SEG_COEFF_CHUNK_MONOMIALS;
-            if full {
-                chunks.push(std::mem::take(&mut chunk));
-                chunk.bank_first = slot as u32;
-                chunk_monomial_base = consumed_monomials;
-            }
-            let local = usize::try_from(chunk.bank_count).expect("chunk recipe count fits usize");
-            chunk.recipes[local] = SegCoeffRecipe {
-                monomial_offset: u16::try_from(consumed_monomials - chunk_monomial_base)
-                    .expect("a chunk-local monomial offset fits u16"),
-                ..*recipe
-            };
-            let local_monomials =
-                usize::try_from(chunk.monomial_count).expect("chunk monomial count fits usize");
-            chunk.monomials[local_monomials..local_monomials + count]
-                .copy_from_slice(&blob.monomials[consumed_monomials..consumed_monomials + count]);
-            chunk.bank_count += 1;
-            chunk.monomial_count += count as u32;
-            consumed_monomials += count;
-        }
-        assert_eq!(consumed_monomials, blob.monomials.len());
-        if chunk.bank_count > 0 || chunks.is_empty() {
-            chunks.push(chunk);
-        }
-        let built = Self {
-            chunks,
-            num_coefficients: blob.recipes.len() as u32,
-            #[cfg(all(
-                any(test, feature = "task8_continuation_differential_test"),
-                not(no_cuda)
-            ))]
-            task8_chunk_challenge_slots: Vec::new(),
-        };
-        built.assert_covers_bank();
-        #[cfg(all(
-            any(test, feature = "task8_continuation_differential_test"),
-            not(no_cuda)
-        ))]
-        let built = Self {
-            task8_chunk_challenge_slots: built
-                .chunks
-                .iter()
-                .map(|chunk| task8_chunk_challenge_slots(chunk))
-                .collect(),
-            ..built
-        };
-        built
-    }
-
-    /// The coverage gate: chunks are non-empty, start at slot 0, are exactly
-    /// contiguous, never overlap, and end at the bank prefix's length.
-    pub(crate) fn assert_covers_bank(&self) {
-        assert!(
-            !self.chunks.is_empty(),
-            "a fill must carry at least one chunk"
-        );
-        let mut next = 0u32;
-        for (index, chunk) in self.chunks.iter().enumerate() {
-            assert_eq!(
-                chunk.bank_first, next,
-                "chunk {index} does not start where the previous chunk ended"
-            );
-            assert!(
-                index + 1 == self.chunks.len() || chunk.bank_count > 0,
-                "chunk {index} covers no bank slot"
-            );
-            assert_eq!(
-                usize::from(u16::try_from(chunk.monomial_count).expect("chunk monomials fit u16")),
-                chunk
-                    .recipes
-                    .iter()
-                    .take(chunk.bank_count as usize)
-                    .map(|recipe| usize::from(recipe.monomial_count))
-                    .sum::<usize>(),
-                "chunk {index} carries monomials no recipe references"
-            );
-            next = next
-                .checked_add(chunk.bank_count)
-                .expect("the bank prefix fits u32");
-        }
-        assert_eq!(
-            next, self.num_coefficients,
-            "the chunks do not cover the bank prefix exactly"
-        );
-    }
-
-    pub(crate) fn num_coefficients(&self) -> u32 {
-        self.num_coefficients
-    }
-
-    /// The challenge slots each chunk's evaluation reads, in chunk order.
-    #[cfg(all(
-        any(test, feature = "task8_continuation_differential_test"),
-        not(no_cuda)
-    ))]
-    pub(crate) fn task8_challenge_slots(&self) -> &[Vec<usize>] {
-        &self.task8_chunk_challenge_slots
-    }
-
-    /// The contiguous bank ranges the chunks cover, in element units.
-    #[cfg(all(
-        any(test, feature = "task8_continuation_differential_test"),
-        not(no_cuda)
-    ))]
-    pub(crate) fn task8_chunk_ranges(&self) -> Vec<(u32, u32)> {
-        self.chunks
-            .iter()
-            .map(|chunk| (chunk.bank_first, chunk.bank_count))
-            .collect()
-    }
-
-    #[cfg(test)]
-    fn chunk_bounds(&self) -> Vec<(u32, u32)> {
-        self.chunks
-            .iter()
-            .map(|chunk| (chunk.bank_first, chunk.bank_count))
-            .collect()
-    }
-}
-
-/// The challenge slots one chunk's evaluation reads: the batching slot plus
-/// every challenge index its live monomials name.
+/// The byte ranges of the staged blob, and the challenge slots, that
+/// `bwd_seg_eval_coefficient` reads for one staged program: the recipe record
+/// of every live coefficient, each monomial those recipes reference, and the
+/// batching slot plus the challenge indices those monomials name.
 #[cfg(all(
     any(test, feature = "task8_continuation_differential_test"),
     not(no_cuda)
 ))]
-fn task8_chunk_challenge_slots(chunk: &SegCoeffChunkDesc) -> Vec<usize> {
-    let mut slots = std::collections::BTreeSet::from([BWD_SEG_CHALLENGE_CLAIM_BATCHING as usize]);
-    for monomial in &chunk.monomials[..chunk.monomial_count as usize] {
-        for index in [monomial.challenge_idx_0, monomial.challenge_idx_1] {
-            if index != BWD_SEG_CHALLENGE_ABSENT {
-                slots.insert(index as usize);
-            }
-        }
-    }
-    slots.into_iter().collect()
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Task8CoeffEvalReads {
+    pub(crate) table_ranges: Vec<std::ops::Range<usize>>,
+    pub(crate) challenge_slots: Vec<usize>,
 }
 
-/// The pointer arguments one fill chunk's evaluation names: the challenge slots
-/// its monomials use and the bank range it writes. The recipes and monomials
-/// ride the launch parameters by value, so no table read exists.
+/// The pointer arguments one coefficient-bank fill's evaluation names: the
+/// recipe and monomial records it reads, the challenge slots those monomials
+/// use, and the bank prefix it writes.
 #[cfg(all(
     any(test, feature = "task8_continuation_differential_test"),
     not(no_cuda)
 ))]
 pub(crate) fn task8_coeff_fill_spans(
-    challenge_slots: &[usize],
+    reads: &Task8CoeffEvalReads,
+    tables_base: usize,
     slab: usize,
-    bank_first_byte: usize,
+    bank: usize,
     bank_bytes: usize,
 ) -> Vec<crate::backward::task8_probe::Task8Span> {
     use crate::backward::task8_probe::Task8Span;
     let element = std::mem::size_of::<E4>();
-    let mut spans = Vec::with_capacity(challenge_slots.len() + 1);
-    for slot in challenge_slots {
+    let mut spans = Vec::with_capacity(reads.table_ranges.len() + reads.challenge_slots.len() + 1);
+    for range in &reads.table_ranges {
+        spans.push(Task8Span::read(
+            "coefficient_tables",
+            tables_base + range.start,
+            range.end - range.start,
+        ));
+    }
+    for slot in &reads.challenge_slots {
         spans.push(Task8Span::read(
             "challenge_slab",
             slab + slot * element,
             element,
         ));
     }
-    spans.push(Task8Span::write(
-        "coefficient_bank",
-        bank_first_byte,
-        bank_bytes,
-    ));
+    spans.push(Task8Span::write("coefficient_bank", bank, bank_bytes));
     spans
 }
 
+#[cfg(all(
+    any(test, feature = "task8_continuation_differential_test"),
+    not(no_cuda)
+))]
+pub(crate) fn task8_coeff_eval_reads(blob: &SegCoeffEvalBlob) -> Task8CoeffEvalReads {
+    let recipe_bytes = std::mem::size_of::<SegCoeffRecipe>();
+    let monomial_bytes = std::mem::size_of::<SegCoeffMonomial>();
+    let mut table_ranges = Vec::new();
+    if !blob.recipes.is_empty() {
+        table_ranges.push(
+            BWD_SEG_BLOB_RECIPES_OFFSET
+                ..BWD_SEG_BLOB_RECIPES_OFFSET + blob.recipes.len() * recipe_bytes,
+        );
+    }
+    let mut challenge_slots =
+        std::collections::BTreeSet::from([BWD_SEG_CHALLENGE_CLAIM_BATCHING as usize]);
+    let mut monomials: Vec<std::ops::Range<usize>> = Vec::new();
+    for recipe in &blob.recipes {
+        let start = recipe.monomial_offset as usize;
+        let end = start + recipe.monomial_count as usize;
+        if start == end {
+            continue;
+        }
+        monomials.push(
+            BWD_SEG_BLOB_MONOMIALS_OFFSET + start * monomial_bytes
+                ..BWD_SEG_BLOB_MONOMIALS_OFFSET + end * monomial_bytes,
+        );
+        for monomial in &blob.monomials[start..end] {
+            for index in [monomial.challenge_idx_0, monomial.challenge_idx_1] {
+                if index != BWD_SEG_CHALLENGE_ABSENT {
+                    challenge_slots.insert(index as usize);
+                }
+            }
+        }
+    }
+    monomials.sort_by_key(|range| range.start);
+    for range in monomials {
+        match table_ranges.last_mut() {
+            Some(last) if last.end >= range.start => last.end = last.end.max(range.end),
+            _ => table_ranges.push(range),
+        }
+    }
+    Task8CoeffEvalReads {
+        table_ranges,
+        challenge_slots: challenge_slots.into_iter().collect(),
+    }
+}
+
+impl SegCoeffEvalTables {
+    pub(crate) fn stage(blob: &SegCoeffEvalBlob, context: &ProverContext) -> CudaResult<Self> {
+        let host = alloc_static_pinned_box_from_slice(&blob.serialize())?;
+        let device: DeviceAllocation<E4> = context.alloc(
+            BWD_SEG_BLOB_BYTES / std::mem::size_of::<E4>(),
+            AllocationPlacement::BestFit,
+        )?;
+        let desc = SegCoeffEvalDesc {
+            tables: device.as_ptr().cast::<u8>(),
+            num_coefficients: blob.recipes.len() as u32,
+            num_monomials: blob.monomials.len() as u32,
+            recipes_offset: BWD_SEG_BLOB_RECIPES_OFFSET as u32,
+            monomials_offset: BWD_SEG_BLOB_MONOMIALS_OFFSET as u32,
+            blob_bytes: BWD_SEG_BLOB_BYTES as u32,
+            _pad: 0,
+        };
+        Ok(Self {
+            desc,
+            host: Some(host),
+            device,
+            #[cfg(all(
+                any(test, feature = "task8_continuation_differential_test"),
+                not(no_cuda)
+            ))]
+            task8_reads: task8_coeff_eval_reads(blob),
+        })
+    }
+
+    pub(crate) fn take_host_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
+        self.host.take()
+    }
+}
+
+// ── The device fill ──────────────────────────────────────────────────────────
+
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) GkrBwdSegEvalCoefficients,
-    desc: SegCoeffChunkDesc,
+    desc: SegCoeffEvalDesc,
     challenges: *const E4,
     coefficients: *mut E4,
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_seg_eval_coefficients_kernel(
-        desc: SegCoeffChunkDesc,
+        desc: SegCoeffEvalDesc,
         challenges: *const E4,
         coefficients: *mut E4,
     )
 );
 
-/// What one coefficient-bank fill touches: the bank prefix its chunk sequence
-/// writes. Returned so a caller that must account for the fill's pointer
-/// arguments reuses the address and extent this fill used.
+/// What one coefficient-bank fill touches: the staged table blob it copies up,
+/// and the bank prefix its evaluation writes. Returned so a caller that must
+/// account for the fill's pointer arguments reuses the addresses and extents
+/// this fill used.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BwdSegCoeffBankFillSpans {
+    pub(crate) tables: (usize, usize),
     pub(crate) bank: (usize, usize),
 }
 
-/// Fill the coefficient bank from the round's challenges, on `stream`, one
-/// bounded by-value chunk launch per contiguous bank range.
+/// Copy one arm's table blob to device and fill the coefficient bank from the
+/// round's challenges, on `stream`.
 ///
-/// `slab` is a device pointer to [`BWD_SEG_CHALLENGE_SLOTS`] E4 values in slot
-/// order; `bank` is the output-bank symbol returned by
+/// `slab` is a device pointer to [`BWD_SEG_CHALLENGE_SLOTS`] E4 values in slot order;
+/// `bank` is the output-bank symbol returned by
 /// `super::seg::bwd_seg_coeff_bank_device_ptr()`.
 ///
 /// Enqueue after challenge writes and before the round's segment launches. All
 /// segment reads must finish before the next fill overwrites the bank.
 pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
-    chunks: &SegCoeffEvalChunks,
+    tables: &mut SegCoeffEvalTables,
     slab: *const E4,
     bank: *mut E4,
     stream: &CudaStream,
 ) -> CudaResult<BwdSegCoeffBankFillSpans> {
-    chunks.assert_covers_bank();
-    let element = std::mem::size_of::<E4>();
-    let bank_bytes = chunks.num_coefficients as usize * element;
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let task8_reads = tables.task8_reads.clone();
+    let SegCoeffEvalTables {
+        desc, host, device, ..
+    } = tables;
+    let host = host
+        .as_ref()
+        .expect("the coefficient blob's host staging must outlive its H2D copy");
+    // SAFETY: the device allocation and the host blob are both exactly
+    // `BWD_SEG_BLOB_BYTES` long, and E4 carries no invalid bit patterns.
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let tables_base = device.as_ptr() as usize;
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    let bank_bytes = desc.num_coefficients as usize * std::mem::size_of::<E4>();
     #[cfg(all(
         any(test, feature = "task8_continuation_differential_test"),
         not(no_cuda)
@@ -880,49 +868,54 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
         bank as usize,
         bank_bytes,
     );
-    for (index, chunk) in chunks.chunks.iter().enumerate() {
-        let count = chunk.bank_count;
-        let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
-        let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-        let function = GkrBwdSegEvalCoefficientsFunction(ab_gkr_bwd_seg_eval_coefficients_kernel);
-        #[cfg(all(
-            any(test, feature = "task8_continuation_differential_test"),
-            not(no_cuda)
-        ))]
-        let chunk_slots = &chunks.task8_chunk_challenge_slots[index];
-        #[cfg(not(all(
-            any(test, feature = "task8_continuation_differential_test"),
-            not(no_cuda)
-        )))]
-        let _ = index;
-        crate::backward::task8_enqueue_scope!(
-            _task8,
-            "coefficient-bank-fill",
-            Kernel,
-            {
-                task8_coeff_fill_spans(
-                    chunk_slots,
-                    slab as usize,
-                    bank as usize + chunk.bank_first as usize * element,
-                    chunk.bank_count as usize * element,
-                )
-            },
-            plan = crate::backward::task8_probe::Task8EnqueuePlan::CoefficientFill {
-                slab: slab as usize,
-                challenge_slots: chunk_slots.clone(),
-                bank_first: bank as usize + chunk.bank_first as usize * element,
-                bank_bytes: chunk.bank_count as usize * element,
-            }
-        );
-        function.launch(
-            &config,
-            &GkrBwdSegEvalCoefficientsArguments::new(SegCoeffChunkDesc::clone(chunk), slab, bank),
-        )?;
+    unsafe {
+        let destination = (&mut device[..]).transmute_mut::<u8>();
+        crate::backward::task8_enqueue_scope!(_task8, "coefficient-table-copy", Copy, {
+            use crate::backward::task8_probe::Task8Span;
+            vec![Task8Span::write(
+                "coefficient_tables",
+                tables_base,
+                BWD_SEG_BLOB_BYTES,
+            )]
+        });
+        memory_copy_async(destination, &host[..], stream)?;
     }
+    let count = desc.num_coefficients;
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let function = GkrBwdSegEvalCoefficientsFunction(ab_gkr_bwd_seg_eval_coefficients_kernel);
+    crate::backward::task8_enqueue_scope!(
+        _task8,
+        "coefficient-bank-fill",
+        Kernel,
+        {
+            task8_coeff_fill_spans(
+                &task8_reads,
+                tables_base,
+                slab as usize,
+                bank as usize,
+                bank_bytes,
+            )
+        },
+        plan = crate::backward::task8_probe::Task8EnqueuePlan::CoefficientFill {
+            tables: tables_base,
+            table_ranges: task8_reads.table_ranges.clone(),
+            slab: slab as usize,
+            challenge_slots: task8_reads.challenge_slots.clone(),
+            bank: bank as usize,
+            bank_bytes,
+        }
+    );
+    function.launch(
+        &config,
+        &GkrBwdSegEvalCoefficientsArguments::new(*desc, slab, bank),
+    )?;
     Ok(BwdSegCoeffBankFillSpans {
-        bank: (bank as usize, bank_bytes),
+        tables: (device.as_ptr() as usize, BWD_SEG_BLOB_BYTES),
+        bank: (bank as usize, count as usize * std::mem::size_of::<E4>()),
     })
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -1282,7 +1275,11 @@ mod tests {
             kinds,
             vec![
                 (BWD_SEG_COEFF_PLAN_DIRECT, 0, BF::ZERO),
-                (BWD_SEG_COEFF_PLAN_SCALED, 0, BF::from_u32_with_reduction(5)),
+                (
+                    BWD_SEG_COEFF_PLAN_SCALED,
+                    0,
+                    BF::from_u32_with_reduction(5)
+                ),
                 (BWD_SEG_COEFF_PLAN_LINEAR_BASIS, 3, BF::ZERO),
             ]
         );
@@ -1310,91 +1307,31 @@ mod tests {
     }
 
     #[test]
-    fn cpu_seg_coeff_chunks_cover_a_small_bank_in_one_chunk() {
+    fn seg_coeff_eval_blob_serializes_at_the_pinned_offsets() {
         let blob = build_seg_coeff_eval_tables(&[recipe(vec![product(3, Vec::new())])])
             .expect("one recipe fits");
-        let chunks = SegCoeffEvalChunks::build(&blob);
-        assert_eq!(chunks.num_coefficients() as usize, blob.recipes.len());
+        let bytes = blob.serialize();
+        assert_eq!(bytes.len(), BWD_SEG_BLOB_BYTES);
+        let recipe_bytes = std::mem::size_of::<SegCoeffRecipe>() * blob.recipes.len();
         assert_eq!(
-            chunks.chunk_bounds(),
-            vec![(0, blob.recipes.len() as u32)],
-            "a small plan must ride one chunk"
-        );
-    }
-
-    /// Full-bank equivalence: every bank slot's recipe and monomial payload in
-    /// the chunked by-value layout is byte-equal to the blob's, with only the
-    /// monomial offset rebased to the owning chunk.
-    fn assert_chunks_equal_blob(blob: &SegCoeffEvalBlob, chunks: &SegCoeffEvalChunks) {
-        chunks.assert_covers_bank();
-        assert_eq!(chunks.num_coefficients() as usize, blob.recipes.len());
-        for chunk in &chunks.chunks {
-            for local in 0..chunk.bank_count as usize {
-                let slot = chunk.bank_first as usize + local;
-                let chunked = chunk.recipes[local];
-                let original = blob.recipes[slot];
-                assert_eq!(
-                    SegCoeffRecipe {
-                        monomial_offset: original.monomial_offset,
-                        ..chunked
-                    },
-                    original,
-                    "bank slot {slot} lost recipe payload in its chunk"
-                );
-                let local_run = usize::from(chunked.monomial_offset)
-                    ..usize::from(chunked.monomial_offset) + usize::from(chunked.monomial_count);
-                assert_eq!(
-                    &chunk.monomials[local_run],
-                    blob.monomials_of(slot),
-                    "bank slot {slot} lost monomial payload in its chunk"
-                );
+            &bytes[BWD_SEG_BLOB_RECIPES_OFFSET..BWD_SEG_BLOB_RECIPES_OFFSET + recipe_bytes],
+            unsafe {
+                std::slice::from_raw_parts(blob.recipes.as_ptr().cast::<u8>(), recipe_bytes)
             }
-        }
-    }
-
-    #[test]
-    fn cpu_seg_coeff_chunks_split_at_recipe_capacity_without_holes() {
-        let recipes: Vec<NormalizedCoefficientRecipe> = (0..BWD_SEG_COEFF_CHUNK_RECIPES as u32 + 7)
-            .map(|value| recipe(vec![product(value + 1, Vec::new())]))
-            .collect();
-        let blob = build_seg_coeff_eval_tables(&recipes).expect("the recipes fit the blob caps");
-        let chunks = SegCoeffEvalChunks::build(&blob);
-        assert!(
-            chunks.chunk_bounds().len() > 1,
-            "the recipe count must force a second chunk"
         );
-        assert_chunks_equal_blob(&blob, &chunks);
-    }
-
-    #[test]
-    fn cpu_seg_coeff_chunks_split_at_monomial_capacity_without_holes() {
-        // Each recipe carries 24 non-mergeable monomials (distinct lookup-alpha
-        // powers), so the monomial capacity closes a chunk long before its
-        // recipe capacity does.
-        let many = |base: u32| {
-            recipe(
-                (0..24u32)
-                    .map(|term| {
-                        product(
-                            base + term,
-                            vec![challenge(
-                                ChallengeKey::LookupMultiplicative,
-                                ChallengePower::Static(term + 1),
-                            )],
-                        )
-                    })
-                    .collect(),
-            )
-        };
-        let recipes: Vec<NormalizedCoefficientRecipe> = (0..90).map(|i| many(1 + 30 * i)).collect();
-        let blob = build_seg_coeff_eval_tables(&recipes).expect("the recipes fit the blob caps");
-        assert!(blob.monomials.len() > BWD_SEG_COEFF_CHUNK_MONOMIALS);
-        let chunks = SegCoeffEvalChunks::build(&blob);
-        assert!(
-            chunks.chunk_bounds().len() > 1,
-            "the monomial mass must force a second chunk"
+        let monomial_bytes = std::mem::size_of::<SegCoeffMonomial>() * blob.monomials.len();
+        assert_eq!(
+            &bytes[BWD_SEG_BLOB_MONOMIALS_OFFSET..BWD_SEG_BLOB_MONOMIALS_OFFSET + monomial_bytes],
+            unsafe {
+                std::slice::from_raw_parts(blob.monomials.as_ptr().cast::<u8>(), monomial_bytes)
+            }
         );
-        assert_chunks_equal_blob(&blob, &chunks);
+        assert!(
+            bytes[BWD_SEG_BLOB_MONOMIALS_OFFSET - 16..BWD_SEG_BLOB_MONOMIALS_OFFSET]
+                .iter()
+                .all(|byte| *byte == 0),
+            "the plan section's unfilled tail must stay zero"
+        );
     }
 }
 
@@ -1453,8 +1390,7 @@ mod corpus_capacity_tests {
     fn measure() -> &'static CorpusMaxima {
         static MEASURED: OnceLock<CorpusMaxima> = OnceLock::new();
         MEASURED.get_or_init(|| {
-            let directory =
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+            let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
             let mut maxima = CorpusMaxima::default();
             for layout in CORPUS {
                 let artifact: GKRCircuitArtifact<BF> =
@@ -1487,10 +1423,7 @@ mod corpus_capacity_tests {
                     maxima.window_plans = maxima.window_plans.max(plans);
                 }
             }
-            assert_eq!(
-                maxima.coordinates, 57,
-                "the retained corpus is 57 coordinates"
-            );
+            assert_eq!(maxima.coordinates, 57, "the retained corpus is 57 coordinates");
             maxima
         })
     }
@@ -1516,10 +1449,7 @@ mod corpus_capacity_tests {
     #[test]
     fn cpu_corpus_fits_the_output_bank() {
         let observed = measure().bank_slots;
-        assert_eq!(
-            observed, 1_667,
-            "corpus maximum reserved-inclusive bank slots"
-        );
+        assert_eq!(observed, 1_667, "corpus maximum reserved-inclusive bank slots");
         assert!(observed <= BWD_SEG_OUTPUT_BANK);
     }
 
@@ -1533,10 +1463,7 @@ mod corpus_capacity_tests {
     #[test]
     fn cpu_corpus_fits_the_eval_monomial_table() {
         let observed = measure().monomials;
-        assert_eq!(
-            observed, 1_672,
-            "corpus maximum monomials in one layer's tables"
-        );
+        assert_eq!(observed, 1_672, "corpus maximum monomials in one layer's tables");
         assert!(observed <= BWD_SEG_EVAL_MONOMIALS);
     }
 

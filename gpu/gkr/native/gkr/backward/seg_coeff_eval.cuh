@@ -51,33 +51,33 @@ constexpr u8 BWD_SEG_CHALLENGE_CLAIM_BATCHING = 9;
 constexpr unsigned BWD_SEG_CHALLENGE_SLOTS = 10;
 constexpr u8 BWD_SEG_CHALLENGE_ABSENT = 0xff;
 
-// The plan capacities: the output bank (`BWD_SEG_OUTPUT_BANK`) is a
-// __constant__ symbol; these bound the compiled plan a layer may carry.
+// The four capacities are independent on purpose: the output bank
+// (`BWD_SEG_OUTPUT_BANK`) is a __constant__ symbol, these three are device-memory
+// table capacities, and one shared constant is what overflowed the by-value
+// kernel-argument ceiling.
 constexpr unsigned BWD_SEG_EVAL_RECIPES = 1792;
 constexpr unsigned BWD_SEG_EVAL_MONOMIALS = 2304;
 constexpr unsigned BWD_SEG_WINDOW_PLANS = 1728;
 // Reserved literal slots the windowed arm's plan ids are biased by.
 constexpr unsigned BWD_SEG_WINDOW_BANK_BIAS = 2;
 
-// One by-value fill chunk: a contiguous bank range's recipes and exactly the
-// monomials those recipes reference, rebased so `monomial_offset` indexes
-// `monomials`. The whole plan rides the launch parameter space in bounded
-// chunks — no host staging and no device table buffer exist. Sized for the
-// 32,764-byte kernel-parameter space of the CUDA >= 12.1 ABI the sm_120
-// build uses.
-constexpr unsigned BWD_SEG_COEFF_CHUNK_RECIPES = 1024;
-constexpr unsigned BWD_SEG_COEFF_CHUNK_MONOMIALS = 1536;
+// The device blob's fixed serialized layout, as literals so both halves pin the
+// same bytes rather than the same formula.
+constexpr unsigned BWD_SEG_BLOB_RECIPES_OFFSET = 0;
+constexpr unsigned BWD_SEG_BLOB_MONOMIALS_OFFSET = 21504;
+constexpr unsigned BWD_SEG_BLOB_BYTES = 49152;
 
-struct bwd_seg_coeff_chunk_desc {
-  // First bank slot this chunk fills.
-  u32 bank_first;
-  // Bank slots this chunk fills == live entries in `recipes`.
-  u32 bank_count;
-  // Live entries in `monomials`.
-  u32 monomial_count;
+// The evaluator's launch header: counts, blob offsets, and the device table
+// pointer. The tables themselves are device-resident, staged once per layer.
+struct bwd_seg_coeff_eval_desc {
+  const u8 *tables;
+  // Bank slots to fill, reserved literals included.
+  u32 num_coefficients;
+  u32 num_monomials;
+  u32 recipes_offset;
+  u32 monomials_offset;
+  u32 blob_bytes;
   u32 _pad;
-  bwd_seg_coeff_recipe recipes[BWD_SEG_COEFF_CHUNK_RECIPES];
-  bwd_seg_coeff_monomial monomials[BWD_SEG_COEFF_CHUNK_MONOMIALS];
 };
 
 static_assert(sizeof(bwd_seg_coeff_recipe) == 12, "bwd_seg_coeff_recipe must be 12 bytes");
@@ -89,34 +89,45 @@ static_assert(__builtin_offsetof(bwd_seg_coeff_monomial, batch_power) == 4, "mon
 static_assert(__builtin_offsetof(bwd_seg_coeff_monomial, challenge_idx_0) == 6, "monomial challenge_idx_0 ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_coeff_monomial, power_0) == 8, "monomial power_0 ABI offset drift");
 
+static_assert(BWD_SEG_BLOB_MONOMIALS_OFFSET == BWD_SEG_EVAL_RECIPES * sizeof(bwd_seg_coeff_recipe), "blob recipe section size drift");
+static_assert(BWD_SEG_BLOB_BYTES == BWD_SEG_BLOB_MONOMIALS_OFFSET + BWD_SEG_EVAL_MONOMIALS * sizeof(bwd_seg_coeff_monomial),
+              "blob monomial section size drift");
+static_assert(BWD_SEG_BLOB_BYTES % 16 == 0, "the blob must be a whole number of 16-byte quanta");
 // Every filled bank slot needs a plan entry, and every plan id must be nameable
 // by the thirteen coefficient bits of the lean header.
 static_assert(BWD_SEG_EVAL_RECIPES >= BWD_SEG_OUTPUT_BANK, "the plan table must cover every output bank slot");
 static_assert(BWD_SEG_WINDOW_PLANS + BWD_SEG_WINDOW_BANK_BIAS <= BWD_SEG_OUTPUT_BANK, "window plans exceed the output bank");
-// An offset into a chunk's monomial array must be addressable by the plan
-// header's `u16`.
-static_assert(BWD_SEG_COEFF_CHUNK_MONOMIALS <= 0xffffu, "the chunk monomial cap must stay inside the plan header's u16 offset");
+// An offset into the monomial array must be addressable by the plan header's `u16`.
+static_assert(BWD_SEG_EVAL_MONOMIALS <= 0xffffu, "the monomial cap must stay inside the plan header's u16 offset");
 
-static_assert(__builtin_offsetof(bwd_seg_coeff_chunk_desc, recipes) == 16, "chunk recipes ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_coeff_chunk_desc, monomials) == 16 + BWD_SEG_COEFF_CHUNK_RECIPES * sizeof(bwd_seg_coeff_recipe),
-              "chunk monomials ABI offset drift");
-static_assert(sizeof(bwd_seg_coeff_chunk_desc) ==
-                  16 + BWD_SEG_COEFF_CHUNK_RECIPES * sizeof(bwd_seg_coeff_recipe) + BWD_SEG_COEFF_CHUNK_MONOMIALS * sizeof(bwd_seg_coeff_monomial),
-              "bwd_seg_coeff_chunk_desc ABI size drift");
-// The whole chunk plus the two device pointers must fit the 32,764-byte
-// kernel-parameter space (CUDA >= 12.1 ABI; the build targets sm_120).
-static_assert(sizeof(bwd_seg_coeff_chunk_desc) + 2 * sizeof(void *) <= 32764, "the coefficient chunk must stay inside the by-value kernel-argument space");
+static_assert(sizeof(bwd_seg_coeff_eval_desc) == 32, "bwd_seg_coeff_eval_desc ABI size drift");
+static_assert(__builtin_offsetof(bwd_seg_coeff_eval_desc, num_coefficients) == 8, "desc num_coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_coeff_eval_desc, recipes_offset) == 16, "desc recipes_offset ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_coeff_eval_desc, monomials_offset) == 20, "desc monomials_offset ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_coeff_eval_desc, blob_bytes) == 24, "desc blob_bytes ABI offset drift");
+// The header plus the two device pointers the kernel also takes. The whole point
+// of the split: the launch argument list is now a rounding error against the cap.
+static_assert(sizeof(bwd_seg_coeff_eval_desc) + 2 * sizeof(void *) < 4 * 1024,
+              "the coefficient evaluator's launch header must stay well inside the by-value kernel-argument cap");
 
-// Evaluate one bank slot of one chunk.
+DEVICE_FORCEINLINE const bwd_seg_coeff_recipe *bwd_seg_coeff_recipes(const bwd_seg_coeff_eval_desc &desc) {
+  return reinterpret_cast<const bwd_seg_coeff_recipe *>(desc.tables + desc.recipes_offset);
+}
+
+DEVICE_FORCEINLINE const bwd_seg_coeff_monomial *bwd_seg_coeff_monomials(const bwd_seg_coeff_eval_desc &desc) {
+  return reinterpret_cast<const bwd_seg_coeff_monomial *>(desc.tables + desc.monomials_offset);
+}
+
+// Evaluate one bank slot.
 //
 // `pow` is square-and-multiply over Montgomery products, each reduced to the
 // canonical representative, so the value is bit-identical to the host oracle's
 // repeated multiplication of the individual challenge factors
 // (`NormalizedCoefficientRecipe::evaluate`) even though neither the factor order
 // nor the exponentiation shape matches.
-DEVICE_FORCEINLINE e4 bwd_seg_eval_coefficient(const bwd_seg_coeff_chunk_desc &desc, const unsigned slot, const e4 *challenges) {
-  const bwd_seg_coeff_recipe recipe = desc.recipes[slot];
-  const bwd_seg_coeff_monomial *monomials = desc.monomials + recipe.monomial_offset;
+DEVICE_FORCEINLINE e4 bwd_seg_eval_coefficient(const bwd_seg_coeff_eval_desc &desc, const unsigned slot, const e4 *challenges) {
+  const bwd_seg_coeff_recipe recipe = bwd_seg_coeff_recipes(desc)[slot];
+  const bwd_seg_coeff_monomial *monomials = bwd_seg_coeff_monomials(desc) + recipe.monomial_offset;
   const e4 batch_base = challenges[BWD_SEG_CHALLENGE_CLAIM_BATCHING];
   e4 acc = e4::ZERO();
   for (unsigned i = 0; i < recipe.monomial_count; i++) {

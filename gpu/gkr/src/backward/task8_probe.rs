@@ -102,13 +102,13 @@ pub(crate) enum Task8EnqueuePlan {
         fold_weights: usize,
         fold_weight_bytes: usize,
     },
-    /// Evaluates one by-value chunk of the live coefficient recipes into its
-    /// contiguous bank range. The recipes and monomials ride the launch
-    /// parameters, so the only pointer inputs are the challenge slab slots.
+    /// Evaluates the live coefficient recipes into the bank prefix.
     CoefficientFill {
+        tables: usize,
+        table_ranges: Vec<std::ops::Range<usize>>,
         slab: usize,
         challenge_slots: Vec<usize>,
-        bank_first: usize,
+        bank: usize,
         bank_bytes: usize,
     },
     /// Folds one set of sources: the depths they fold at, and the columns the
