@@ -149,10 +149,63 @@ pub(crate) struct GpuGKRDimensionReducingRoundScratch {
     /// Owns the Eq allocation for legacy layers. A prepared DR hook takes the
     /// same allocation while this field retains its non-owning launch pointer.
     pub(crate) eq_low_group: GpuGKRDimensionReducingEqLowGroup,
-    pub(crate) accumulator: DeviceAllocation<E4>,
+    pub(crate) accumulator: GpuGKRDimensionReducingAccumulator,
     /// Per-block partials buffer for the fused tail (stage-1 dual-reduce
     /// output, stage-2 mega-finalize input).
     pub(crate) partials: DeviceAllocation<E4>,
+}
+
+/// The legacy dual-reduction accumulator cannot exist in an admitted
+/// complete-chain plan. Keeping the selector in the owner type makes an
+/// accidental post-admission legacy call fail before it can obtain a device
+/// pointer; there is no production fallback allocation.
+enum GpuGKRDimensionReducingAccumulatorState {
+    ProductionChain,
+    LegacyDiagnostic(DeviceAllocation<E4>),
+}
+
+pub(crate) struct GpuGKRDimensionReducingAccumulator {
+    state: GpuGKRDimensionReducingAccumulatorState,
+}
+
+impl GpuGKRDimensionReducingAccumulator {
+    pub(crate) const fn production_chain() -> Self {
+        Self {
+            state: GpuGKRDimensionReducingAccumulatorState::ProductionChain,
+        }
+    }
+
+    pub(crate) fn legacy_diagnostic(allocation: DeviceAllocation<E4>) -> Self {
+        Self {
+            state: GpuGKRDimensionReducingAccumulatorState::LegacyDiagnostic(allocation),
+        }
+    }
+
+    pub(crate) fn legacy_diagnostic_mut(&mut self) -> &mut DeviceAllocation<E4> {
+        match &mut self.state {
+            GpuGKRDimensionReducingAccumulatorState::LegacyDiagnostic(allocation) => allocation,
+            GpuGKRDimensionReducingAccumulatorState::ProductionChain => panic!(
+                "an admitted DR complete-chain plan cannot construct or access the legacy accumulator"
+            ),
+        }
+    }
+
+    pub(crate) fn legacy_diagnostic_ref(&self) -> &DeviceAllocation<E4> {
+        match &self.state {
+            GpuGKRDimensionReducingAccumulatorState::LegacyDiagnostic(allocation) => allocation,
+            GpuGKRDimensionReducingAccumulatorState::ProductionChain => panic!(
+                "an admitted DR complete-chain plan cannot construct or access the legacy accumulator"
+            ),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn is_production_chain(&self) -> bool {
+        matches!(
+            self.state,
+            GpuGKRDimensionReducingAccumulatorState::ProductionChain
+        )
+    }
 }
 
 /// Host-side plan for one enabled slot: its 2 input and 2 output addresses, and

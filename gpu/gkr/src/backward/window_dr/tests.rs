@@ -16,14 +16,16 @@ use super::binding::{
     dr_window_row_tiles, resolve_dr_global_active_eq_slot, resolve_dr_window_continuation_kernel,
     resolve_dr_window_kernel, validate_dr_r0_eq_contract,
     validate_dr_window_continuation_eq_contract, validate_dr_window_folding_steps,
-    DrCompactSourceTableBuilder, DrContinuationFactoredEqView, DrWindowBindError,
-    DrWindowContinuationLaunchBinding, DrWindowLaunchBinding, DrWindowRuntimeScratch,
+    DrCompactSourceTableBuilder, DrContinuationFactoredEqCapacities, DrContinuationFactoredEqView,
+    DrWindowBindError, DrWindowContinuationLaunchBinding, DrWindowLaunchBinding,
+    DrWindowRuntimeScratch,
 };
 use super::composition::{
     build_raw_input_owner, continuation_window_count, dr_window_continuation_pass_geometry,
     dr_window_continuation_readiness, megakernel_entry_round, plan_dr_window_continuations,
     validate_dr_window_final_publication_stride, DrWindowContinuationParity,
-    DrWindowContinuationPlannedSource, DrWindowContinuationReadiness, DrWindowRawInputKeepalive,
+    DrWindowContinuationPassGeometry, DrWindowContinuationPlannedSource,
+    DrWindowContinuationReadiness, DrWindowRawInputKeepalive,
 };
 use super::generated_registry::{
     DR_WINDOWED_CONT_DEFINED_MASK, DR_WINDOWED_CONT_UNIVERSAL_KERNEL, DR_WINDOWED_R0_DEFINED_MASK,
@@ -45,7 +47,7 @@ use crate::backward::{
 };
 use crate::gkr_address_audit::AddressClass;
 use crate::storage_layout::{
-    address_storage_layer, FieldType, GpuGKRLayerLayout, GpuGKRStorageLayout,
+    address_storage_layer, FieldType, GpuGKRLayerLayout, GpuGKRStorageLayout, StorageSlot,
 };
 use crate::upstream::{GKRAddress, OutputType};
 use crate::DrTailScheduleError;
@@ -1182,6 +1184,541 @@ fn cpu_dr_window_legacy_port_corpus() {
 }
 
 #[test]
+fn cpu_dr_exact_memory_raw_input_backing_census() {
+    for (layout_name, _) in CONTINUATION_GOLDEN_CORPUS {
+        let (programs, main_layers) = crate::backward::compile_corpus_layout(layout_name);
+        let runtime = programs.runtime_circuit();
+        let initial_trace_log = usize::try_from(runtime.trace_len.trailing_zeros()).unwrap();
+        let layout =
+            GpuGKRStorageLayout::from_artifact_with_tower(runtime, CORPUS_FINAL_TRACE_LOG as usize);
+        let bundle = programs
+            .resolve_dr_window_programs(CORPUS_FINAL_TRACE_LOG)
+            .unwrap_or_else(|error| panic!("{layout_name}: {error}"));
+        let first_layer = main_layers + initial_trace_log - 1 - CORPUS_FINAL_TRACE_LOG as usize;
+        let layer = bundle
+            .layer(first_layer)
+            .unwrap_or_else(|| panic!("{layout_name}: missing first executed DR layer"));
+        assert_eq!(layer.folding_steps(), CORPUS_FINAL_TRACE_LOG as usize);
+
+        let backings = layer
+            .input_projection()
+            .canonical_sources()
+            .iter()
+            .copied()
+            .map(|address| {
+                let logical_layer = address_storage_layer(address);
+                let (canonical_layer, class, field, _) = layout
+                    .lookup(logical_layer, &address)
+                    .unwrap_or_else(|| panic!("{layout_name}: missing {address:?}"));
+                assert_eq!(field, FieldType::Ext, "{layout_name}: {address:?}");
+                (canonical_layer, StorageSlot { class, field })
+            })
+            .collect::<BTreeSet<_>>();
+        let cells = backings
+            .iter()
+            .map(|(canonical_layer, slot)| {
+                let layer_layout = &layout.layers[*canonical_layer];
+                usize::try_from(layer_layout.slot_poly_counts[slot]).unwrap()
+                    << layer_layout.log2_stride
+            })
+            .sum::<usize>();
+        eprintln!(
+            "raw-input-backing-census\t{layout_name}\tlayer={first_layer}\tbackings={}\tcells={cells}\tbytes={}",
+            backings.len(),
+            cells * size_of::<E4>(),
+        );
+    }
+}
+
+#[derive(Default)]
+struct ExactMemoryTraceModel {
+    live: isize,
+    peak: isize,
+    peak_event: String,
+}
+
+impl ExactMemoryTraceModel {
+    fn change(&mut self, bytes: usize, allocate: bool, event: impl Into<String>) {
+        let bytes = isize::try_from(bytes).unwrap();
+        if allocate {
+            self.live += bytes;
+        } else {
+            self.live -= bytes;
+        }
+        if self.live > self.peak {
+            self.peak = self.live;
+            self.peak_event = event.into();
+        }
+    }
+}
+
+fn exact_memory_corrected_bytes(requested_bytes: usize) -> usize {
+    let chunk = if requested_bytes <= 1 << 18 {
+        1 << 8
+    } else {
+        1 << 20
+    };
+    requested_bytes.next_multiple_of(chunk)
+}
+
+fn exact_memory_e4_allocation_bytes(cells: usize) -> usize {
+    exact_memory_corrected_bytes(cells * size_of::<E4>())
+}
+
+#[test]
+fn cpu_dr_continuation_eq_capacity_is_exact_independent_and_mutation_sensitive() {
+    let mut checked_layers = 0usize;
+    let mut rejected_capacity_mutations = 0usize;
+    for folding_steps in 4usize..=23 {
+        let geometries = plan_dr_window_continuations(
+            folding_steps,
+            continuation_window_count(folding_steps),
+            megakernel_entry_round(folding_steps),
+        )
+        .unwrap();
+        if geometries.is_empty() {
+            continue;
+        }
+        let capacities = DrContinuationFactoredEqCapacities::from_geometries(&geometries);
+        assert!(
+            geometries
+                .iter()
+                .all(|geometry| capacities.supports(geometry.eq_entry_sizes)),
+            "fold f={folding_steps} exact owner must cover every immutable pass",
+        );
+
+        for slot in 0..3 {
+            let mut mutated = capacities;
+            match slot {
+                0 | 1 => mutated.high[slot] -= 1,
+                2 => mutated.low -= 1,
+                _ => unreachable!(),
+            }
+            assert!(
+                geometries
+                    .iter()
+                    .any(|geometry| !mutated.supports(geometry.eq_entry_sizes)),
+                "fold f={folding_steps} slot {slot} overcapacity mutation survived",
+            );
+            rejected_capacity_mutations += 1;
+        }
+
+        if folding_steps == 7 {
+            assert_eq!(capacities.high, [1, 1]);
+            assert_eq!(capacities.low, 2);
+            assert_eq!(capacities.total_cells(), 4);
+            assert_eq!(
+                capacities
+                    .high
+                    .into_iter()
+                    .chain([capacities.low])
+                    .map(exact_memory_e4_allocation_bytes)
+                    .sum::<usize>(),
+                768,
+            );
+            assert_eq!(
+                exact_memory_e4_allocation_bytes(3 * GKR_EQ_GROUP_TABLE_LEN),
+                12_288,
+                "the historical full-table owner is the measured causal mutation",
+            );
+        }
+        checked_layers += 1;
+    }
+    assert_eq!(checked_layers, 17);
+    assert_eq!(rejected_capacity_mutations, 51);
+}
+
+fn exact_memory_storage_backings(
+    layout: &GpuGKRStorageLayout,
+) -> BTreeMap<(usize, StorageSlot), usize> {
+    layout
+        .layers
+        .iter()
+        .enumerate()
+        .flat_map(|(layer_idx, layer)| {
+            layer
+                .slot_poly_counts
+                .iter()
+                .map(move |(slot, poly_count)| {
+                    let element_bytes = match slot.field {
+                        FieldType::Base => size_of::<u32>(),
+                        FieldType::Ext => size_of::<E4>(),
+                    };
+                    let requested = usize::try_from(*poly_count).unwrap()
+                        * (1usize << layer.log2_stride)
+                        * element_bytes;
+                    ((layer_idx, *slot), exact_memory_corrected_bytes(requested))
+                })
+        })
+        .collect()
+}
+
+fn exact_memory_raw_backing_keys(
+    layout: &GpuGKRStorageLayout,
+    layer: &DrWindowLayerProgram,
+) -> BTreeSet<(usize, StorageSlot)> {
+    layer
+        .input_projection()
+        .canonical_sources()
+        .iter()
+        .copied()
+        .map(|address| {
+            let logical_layer = address_storage_layer(address);
+            let (canonical_layer, class, field, _) = layout
+                .lookup(logical_layer, &address)
+                .unwrap_or_else(|| panic!("missing storage layout entry for {address:?}"));
+            (canonical_layer, StorageSlot { class, field })
+        })
+        .collect()
+}
+
+fn exact_memory_continuation_eq_bytes(
+    geometries: &[DrWindowContinuationPassGeometry],
+    exact_independent_capacity: bool,
+) -> usize {
+    if geometries.is_empty() {
+        return 0;
+    }
+    if exact_independent_capacity {
+        let capacities = DrContinuationFactoredEqCapacities::from_geometries(geometries);
+        capacities
+            .high
+            .into_iter()
+            .chain([capacities.low])
+            .map(exact_memory_e4_allocation_bytes)
+            .sum()
+    } else {
+        exact_memory_e4_allocation_bytes(3 * GKR_EQ_GROUP_TABLE_LEN)
+    }
+}
+
+fn exact_memory_dr_trace_model(
+    programs: &crate::GkrPrograms,
+    main_layers: usize,
+    layout: &GpuGKRStorageLayout,
+    production: bool,
+    compact_continuation_eq: bool,
+    omit_production_legacy_accumulator: bool,
+) -> ExactMemoryTraceModel {
+    let bundle = programs
+        .resolve_dr_window_programs(CORPUS_FINAL_TRACE_LOG)
+        .unwrap();
+    let census = programs.dimension_reducing_claim_count_census_for_test(CORPUS_FINAL_TRACE_LOG);
+    let mut storage_backings = exact_memory_storage_backings(layout);
+    let mut trace = ExactMemoryTraceModel::default();
+    let mut incoming_claim_bytes = exact_memory_e4_allocation_bytes(census[0].1);
+    let first_folding_steps = bundle.layer(census[0].0).unwrap().folding_steps();
+    let mut incoming_point_bytes = exact_memory_e4_allocation_bytes(first_folding_steps + 1);
+
+    for (layer_ordinal, &(layer_idx, incoming_claims, replacement_claims)) in
+        census.iter().enumerate()
+    {
+        let layer = bundle.layer(layer_idx).unwrap();
+        let folding_steps = layer.folding_steps();
+        assert_eq!(
+            incoming_claim_bytes,
+            exact_memory_e4_allocation_bytes(incoming_claims)
+        );
+        let source_count = layer.input_projection().canonical_sources().len();
+        let max_acc_size = 1usize << (folding_steps - 1);
+        let legacy_partials = crate::backward::kernels::max_partials_len(max_acc_size);
+        let partials = if production {
+            legacy_partials.max(dr_window_partials_len(folding_steps))
+        } else {
+            legacy_partials
+        };
+        let accumulator_bytes = if production && omit_production_legacy_accumulator {
+            crate::backward::dr_legacy_accumulator_len(max_acc_size, true)
+                .map(exact_memory_e4_allocation_bytes)
+                .unwrap_or(0)
+        } else {
+            exact_memory_e4_allocation_bytes(max_acc_size * 2)
+        };
+        let plan_allocations = [
+            (exact_memory_e4_allocation_bytes(partials), "partials"),
+            (
+                exact_memory_e4_allocation_bytes(GKR_EQ_GROUP_TABLE_LEN),
+                "r0-eq",
+            ),
+            (accumulator_bytes, "accumulator"),
+        ];
+        for (bytes, label) in plan_allocations {
+            trace.change(bytes, true, format!("layer-{layer_idx}-{label}"));
+        }
+        let common_allocations = 2 * exact_memory_e4_allocation_bytes(1);
+        trace.change(
+            common_allocations,
+            true,
+            format!("layer-{layer_idx}-claim-and-eq-prefactor"),
+        );
+        trace.change(
+            incoming_claim_bytes,
+            false,
+            format!("layer-{layer_idx}-incoming-claims-retired"),
+        );
+
+        let raw_keys = if production {
+            exact_memory_raw_backing_keys(layout, layer)
+        } else {
+            BTreeSet::new()
+        };
+        let mut deferred_raw_frees = Vec::new();
+        if production {
+            let geometries = plan_dr_window_continuations(
+                folding_steps,
+                continuation_window_count(folding_steps),
+                megakernel_entry_round(folding_steps),
+            )
+            .unwrap();
+            if let Some(even) = geometries
+                .iter()
+                .find(|geometry| geometry.destination == DrWindowContinuationParity::Even)
+            {
+                trace.change(
+                    exact_memory_e4_allocation_bytes(source_count * even.per_poly_len),
+                    true,
+                    format!("layer-{layer_idx}-continuation-even"),
+                );
+            }
+            if let Some(odd) = geometries
+                .iter()
+                .find(|geometry| geometry.destination == DrWindowContinuationParity::Odd)
+            {
+                trace.change(
+                    exact_memory_e4_allocation_bytes(source_count * odd.per_poly_len),
+                    true,
+                    format!("layer-{layer_idx}-continuation-odd"),
+                );
+            }
+            if !geometries.is_empty() {
+                let continuation_eq_bytes =
+                    exact_memory_continuation_eq_bytes(&geometries, compact_continuation_eq);
+                trace.change(
+                    continuation_eq_bytes,
+                    true,
+                    format!("layer-{layer_idx}-continuation-eq"),
+                );
+            }
+        }
+
+        let purged = storage_backings
+            .keys()
+            .copied()
+            .filter(|(storage_layer, _)| *storage_layer > layer_idx)
+            .collect::<Vec<_>>();
+        for key in purged {
+            let bytes = storage_backings.remove(&key).unwrap();
+            if raw_keys.contains(&key) {
+                deferred_raw_frees.push(bytes);
+            } else {
+                trace.change(bytes, false, format!("layer-{layer_idx}-storage-purge"));
+            }
+        }
+
+        let terminal_arena_bytes;
+        if production {
+            terminal_arena_bytes = exact_memory_e4_allocation_bytes(source_count * 4);
+            trace.change(
+                terminal_arena_bytes,
+                true,
+                format!("layer-{layer_idx}-megakernel-output"),
+            );
+            for bytes in deferred_raw_frees.drain(..) {
+                trace.change(bytes, false, format!("layer-{layer_idx}-raw-owner-retired"));
+            }
+            let geometries = plan_dr_window_continuations(
+                folding_steps,
+                continuation_window_count(folding_steps),
+                megakernel_entry_round(folding_steps),
+            )
+            .unwrap();
+            if let Some(even) = geometries
+                .iter()
+                .find(|geometry| geometry.destination == DrWindowContinuationParity::Even)
+            {
+                trace.change(
+                    exact_memory_e4_allocation_bytes(source_count * even.per_poly_len),
+                    false,
+                    format!("layer-{layer_idx}-continuation-even-retired"),
+                );
+            }
+            if let Some(odd) = geometries
+                .iter()
+                .find(|geometry| geometry.destination == DrWindowContinuationParity::Odd)
+            {
+                trace.change(
+                    exact_memory_e4_allocation_bytes(source_count * odd.per_poly_len),
+                    false,
+                    format!("layer-{layer_idx}-continuation-odd-retired"),
+                );
+            }
+            if !geometries.is_empty() {
+                let continuation_eq_bytes =
+                    exact_memory_continuation_eq_bytes(&geometries, compact_continuation_eq);
+                trace.change(
+                    continuation_eq_bytes,
+                    false,
+                    format!("layer-{layer_idx}-continuation-eq-retired"),
+                );
+            }
+            trace.change(
+                exact_memory_e4_allocation_bytes(GKR_EQ_GROUP_TABLE_LEN),
+                false,
+                format!("layer-{layer_idx}-r0-eq-retired"),
+            );
+        } else {
+            let last_step = folding_steps - 1;
+            let trace_len_after_reduction = 1usize << folding_steps;
+            let mut current = None;
+            for step in 1..last_step {
+                let destination_len = trace_len_after_reduction >> (step - 1);
+                let bytes = exact_memory_e4_allocation_bytes(source_count * destination_len);
+                trace.change(bytes, true, format!("layer-{layer_idx}-legacy-{step}"));
+                if let Some(old) = current.replace(bytes) {
+                    trace.change(
+                        old,
+                        false,
+                        format!("layer-{layer_idx}-legacy-{step}-replace"),
+                    );
+                }
+            }
+            let destination_len = trace_len_after_reduction >> (last_step - 1);
+            terminal_arena_bytes = exact_memory_e4_allocation_bytes(source_count * destination_len);
+            trace.change(
+                terminal_arena_bytes,
+                true,
+                format!("layer-{layer_idx}-legacy-final"),
+            );
+            if let Some(old) = current {
+                trace.change(
+                    old,
+                    false,
+                    format!("layer-{layer_idx}-legacy-final-replace"),
+                );
+            }
+        }
+
+        let last_evals_bytes = exact_memory_e4_allocation_bytes(replacement_claims * 4);
+        trace.change(
+            last_evals_bytes,
+            true,
+            format!("layer-{layer_idx}-last-evals"),
+        );
+        trace.change(
+            terminal_arena_bytes,
+            false,
+            format!("layer-{layer_idx}-terminal-arena-retired"),
+        );
+        let replacement_claim_bytes = exact_memory_e4_allocation_bytes(replacement_claims);
+        trace.change(
+            replacement_claim_bytes,
+            true,
+            format!("layer-{layer_idx}-replacement-claims"),
+        );
+        let next_point_bytes = exact_memory_e4_allocation_bytes(folding_steps + 2);
+        trace.change(
+            next_point_bytes,
+            true,
+            format!("layer-{layer_idx}-next-point"),
+        );
+        trace.change(
+            common_allocations,
+            false,
+            format!("layer-{layer_idx}-claim-and-eq-prefactor-retired"),
+        );
+        trace.change(
+            last_evals_bytes,
+            false,
+            format!("layer-{layer_idx}-last-evals-retired"),
+        );
+        trace.change(
+            incoming_point_bytes,
+            false,
+            format!("layer-{layer_idx}-incoming-point-retired"),
+        );
+        trace.change(
+            exact_memory_e4_allocation_bytes(partials),
+            false,
+            format!("layer-{layer_idx}-partials-retired"),
+        );
+        if !production {
+            trace.change(
+                exact_memory_e4_allocation_bytes(GKR_EQ_GROUP_TABLE_LEN),
+                false,
+                format!("layer-{layer_idx}-r0-eq-retired"),
+            );
+        }
+        trace.change(
+            accumulator_bytes,
+            false,
+            format!("layer-{layer_idx}-accumulator-retired"),
+        );
+        incoming_claim_bytes = replacement_claim_bytes;
+        incoming_point_bytes = next_point_bytes;
+        assert_eq!(layer_idx, census[layer_ordinal].0);
+    }
+    let _ = main_layers;
+    trace
+}
+
+#[test]
+fn cpu_dr_exact_memory_trace_model_localizes_peak_owner() {
+    let mut compact_only_regressions = 0usize;
+    for (layout_name, _) in CONTINUATION_GOLDEN_CORPUS {
+        let (programs, main_layers) = crate::backward::compile_corpus_layout(layout_name);
+        let runtime = programs.runtime_circuit();
+        let layout =
+            GpuGKRStorageLayout::from_artifact_with_tower(runtime, CORPUS_FINAL_TRACE_LOG as usize);
+        let production =
+            exact_memory_dr_trace_model(&programs, main_layers, &layout, true, false, false);
+        let compact =
+            exact_memory_dr_trace_model(&programs, main_layers, &layout, true, true, false);
+        let candidate =
+            exact_memory_dr_trace_model(&programs, main_layers, &layout, true, true, true);
+        let legacy =
+            exact_memory_dr_trace_model(&programs, main_layers, &layout, false, false, false);
+        let expected_historical_delta = match *layout_name {
+            "blake2_g_function_layout_gkr.json"
+            | "blake2_with_extended_control_layout_gkr.json"
+            | "keccak_special5_layout_gkr.json" => 6_400,
+            "inits_and_teardowns_layout_gkr.json" => -3_657_984,
+            "unified_reduced_machine_layout_gkr.json" => 768,
+            _ => 3_584,
+        };
+        assert_eq!(
+            production.peak - legacy.peak,
+            expected_historical_delta,
+            "{layout_name}: the causal model must reproduce the frozen trace delta before testing either repair",
+        );
+        compact_only_regressions += usize::from(compact.peak > legacy.peak);
+        eprintln!(
+            "exact-memory-trace-model\t{layout_name}\tproduction={}\tproduction_event={}\tlegacy={}\tlegacy_event={}\tdelta={}\tcompact={}\tcompact_event={}\tcompact_delta={}\tcandidate={}\tcandidate_event={}\tcandidate_delta={}",
+            production.peak,
+            production.peak_event,
+            legacy.peak,
+            legacy.peak_event,
+            production.peak - legacy.peak,
+            compact.peak,
+            compact.peak_event,
+            compact.peak - legacy.peak,
+            candidate.peak,
+            candidate.peak_event,
+            candidate.peak - legacy.peak,
+        );
+        assert!(
+            candidate.peak <= legacy.peak,
+            "{layout_name}: candidate still exceeds legacy: {} > {}",
+            candidate.peak,
+            legacy.peak,
+        );
+    }
+    assert_eq!(
+        compact_only_regressions, 3,
+        "compacting only continuation Eq must remain an insufficient mutation control",
+    );
+}
+
+#[test]
 fn cpu_dr_window_r0_abi_and_linked_symbol_contract() {
     assert_eq!(size_of::<GpuGKRDimensionReducingBatch<E4>>(), 336);
     assert_eq!(size_of::<DrWindowLaunchBinding>(), 352);
@@ -1325,13 +1862,11 @@ fn cpu_dr_window_r0_native_source_pins_tensor_and_constant_eq_contracts() {
         1,
         "R0 must build its pass-local Eq exactly once",
     );
-    assert_eq!(
-        BINDING
-            .matches("launch_build_eq_high_and_low_groups_from_point(")
-            .count(),
-        2,
-        "R0 and continuation launchers each build one independent Eq view",
-    );
+    let continuation_launcher = &BINDING[continuation_launcher_start..];
+    assert!(continuation_launcher.contains("launch_build_eq_independent_groups_from_point("));
+    assert!(continuation_launcher.contains("launch.binding.eq_high_0.cast_mut()"));
+    assert!(continuation_launcher.contains("launch.binding.eq_high_1.cast_mut()"));
+    assert!(continuation_launcher.contains("launch.binding.batch.eq_low.cast_mut()"));
     assert!(!BINDING.contains("launch_build_eq_values_from_point("));
 
     // DR owns a different descriptor, so it cannot call bwd_window_publish
@@ -1553,7 +2088,7 @@ fn cpu_dr_window_continuation_d2_abi_registry_binder_and_native_contract() {
         validate_dr_window_continuation_eq_contract(folding_steps, start_round, wrong_sizes,),
         Err(DrWindowBindError::EqSizeMismatch),
     );
-    let noncontiguous = DrContinuationFactoredEqView::new(
+    let independent = DrContinuationFactoredEqView::new(
         high_0,
         (high_1 as usize + size_of::<E4>()) as *mut E4,
         low,
@@ -1561,10 +2096,25 @@ fn cpu_dr_window_continuation_d2_abi_registry_binder_and_native_contract() {
         challenge_offset as u32,
         challenge_count as u32,
     );
-    assert!(matches!(
-        validate_dr_window_continuation_eq_contract(folding_steps, start_round, noncontiguous,),
-        Err(DrWindowBindError::ContinuationEqHighLayout { .. })
-    ));
+    assert_eq!(
+        validate_dr_window_continuation_eq_contract(folding_steps, start_round, independent),
+        Ok(()),
+    );
+    let aliased = DrContinuationFactoredEqView::new(
+        high_0,
+        high_0,
+        low,
+        eq.sizes,
+        challenge_offset as u32,
+        challenge_count as u32,
+    );
+    assert_eq!(
+        validate_dr_window_continuation_eq_contract(folding_steps, start_round, aliased),
+        Err(DrWindowBindError::ContinuationEqAliasedPointers {
+            first: "eq_high_0",
+            second: "eq_high_1",
+        }),
+    );
     let null_high = DrContinuationFactoredEqView::new(
         std::ptr::null_mut(),
         high_1,
@@ -1771,7 +2321,7 @@ fn cpu_dr_window_continuation_d2_abi_registry_binder_and_native_contract() {
     let launch_source = &BINDING[BINDING
         .find("pub(crate) fn launch_dr_window_continuation")
         .expect("continuation launcher is present")..];
-    assert!(launch_source.contains("launch_build_eq_high_and_low_groups_from_point("));
+    assert!(launch_source.contains("launch_build_eq_independent_groups_from_point("));
     assert!(!launch_source.contains("get_eq_high_constant_device_ptr()"));
     assert!(!continuation.contains("ab_gkr_eq_high"));
 }

@@ -14,12 +14,12 @@ use gpu_gkr_compiler::{DrWindowInputProjection, DrWindowProgram, KERNEL_ARGUMENT
 use gpu_prover_context::ProverContext;
 
 use crate::backward::kernels::{
-    get_eq_high_constant_device_ptr, launch_build_eq_high_and_low_groups_from_point, make_eq_sizes,
-    pack_source_u16, FoldingArenaBinding, GpuGKRDimensionReducingBatch,
-    GpuGKRDimensionReducingSlot, GpuGKRDimensionReducingTables, GpuGKRSourceRecord,
-    GKR_BACKWARD_MAX_TRACE_LEN_LOG2, GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_POLY_CAPACITY,
+    get_eq_high_constant_device_ptr, launch_build_eq_high_and_low_groups_from_point,
+    launch_build_eq_independent_groups_from_point, make_eq_sizes, pack_source_u16,
+    FoldingArenaBinding, GpuGKRDimensionReducingBatch, GpuGKRDimensionReducingSlot,
+    GpuGKRDimensionReducingTables, GpuGKRSourceRecord, GKR_BACKWARD_MAX_TRACE_LEN_LOG2,
+    GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_POLY_CAPACITY,
 };
-use crate::backward::GKR_EQ_GROUP_TABLE_LEN;
 use crate::gkr_address_audit::AddressClass;
 use crate::storage_layout::{address_storage_layer, FieldType};
 use crate::upstream::GKRAddress;
@@ -28,8 +28,9 @@ use crate::GpuGKRStorage;
 use super::composition::{
     continuation_window_count, megakernel_entry_round, plan_dr_window_continuations,
     DrWindowContinuationArenaOwners, DrWindowContinuationParity, DrWindowContinuationPass,
-    DrWindowContinuationPlannedSource, DrWindowLayerCompositionHook, DrWindowLayerPreparationHook,
-    DrWindowPassEqState, DrWindowPassEqView, DrWindowRawInputKeepalive,
+    DrWindowContinuationPassGeometry, DrWindowContinuationPlannedSource,
+    DrWindowLayerCompositionHook, DrWindowLayerPreparationHook, DrWindowPassEqState,
+    DrWindowPassEqView, DrWindowRawInputKeepalive,
 };
 use super::generated_registry::{
     DrWindowContinuationKernelEntry, DrWindowKernelEntry, GkrDrContinuationWindow3Arguments,
@@ -44,24 +45,78 @@ const DR_WINDOW_ROWS_PER_TILE: usize = 32;
 const DR_WINDOW_TENSOR_CELLS: usize = 27;
 const DR_WINDOW_MIN_FOLDING_STEPS: usize = 4;
 const DR_WINDOW_MAX_FOLDING_STEPS: usize = GKR_BACKWARD_MAX_TRACE_LEN_LOG2;
-const DR_CONTINUATION_EQ_GROUPS: usize = 3;
 const DR_CONTINUATION_FIRST_ACCESS_BIT: u16 = 1 << 15;
 
-/// One layer-owned global factored-Eq allocation for every continuation pass.
-/// The physical order is `[high_0, high_1, low]`; later passes overwrite the
-/// same allocation in exec-stream order rather than carrying an R0 or prior
-/// continuation view forward.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DrContinuationFactoredEqCapacities {
+    pub(crate) high: [usize; 2],
+    pub(crate) low: usize,
+}
+
+impl DrContinuationFactoredEqCapacities {
+    fn table_cells(bits: u32) -> usize {
+        1usize << bits
+    }
+
+    pub(crate) fn from_geometries(geometries: &[DrWindowContinuationPassGeometry]) -> Self {
+        assert!(
+            !geometries.is_empty(),
+            "continuation Eq capacities require at least one prepared pass",
+        );
+        let mut max_bits = [0u32; 3];
+        for geometry in geometries {
+            for (destination, observed) in max_bits.iter_mut().zip([
+                geometry.eq_entry_sizes.high[0],
+                geometry.eq_entry_sizes.high[1],
+                geometry.eq_entry_sizes.low,
+            ]) {
+                *destination = (*destination).max(observed);
+            }
+        }
+        Self {
+            high: [
+                Self::table_cells(max_bits[0]),
+                Self::table_cells(max_bits[1]),
+            ],
+            low: Self::table_cells(max_bits[2]),
+        }
+    }
+
+    pub(crate) fn supports(self, sizes: crate::backward::GkrEqSizes) -> bool {
+        self.high[0] >= Self::table_cells(sizes.high[0])
+            && self.high[1] >= Self::table_cells(sizes.high[1])
+            && self.low >= Self::table_cells(sizes.low)
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn total_cells(self) -> usize {
+        self.high[0] + self.high[1] + self.low
+    }
+}
+
+/// Three independently owned factored-Eq tables shared in exec-stream order
+/// by one layer's continuation passes. Inactive high tables retain one E4
+/// identity sentinel; active tables retain the exact maximum required by the
+/// immutable prepared pass geometry.
 pub(crate) struct DrContinuationFactoredEqScratch {
-    allocation: DeviceAllocation<E4>,
+    high: [DeviceAllocation<E4>; 2],
+    low: DeviceAllocation<E4>,
+    capacities: DrContinuationFactoredEqCapacities,
 }
 
 impl DrContinuationFactoredEqScratch {
-    pub(crate) fn allocate(context: &ProverContext) -> CudaResult<Self> {
+    pub(crate) fn allocate(
+        context: &ProverContext,
+        geometries: &[DrWindowContinuationPassGeometry],
+    ) -> CudaResult<Self> {
+        let capacities = DrContinuationFactoredEqCapacities::from_geometries(geometries);
         Ok(Self {
-            allocation: context.alloc(
-                DR_CONTINUATION_EQ_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
-                AllocationPlacement::Top,
-            )?,
+            high: [
+                context.alloc(capacities.high[0], AllocationPlacement::Top)?,
+                context.alloc(capacities.high[1], AllocationPlacement::Top)?,
+            ],
+            low: context.alloc(capacities.low, AllocationPlacement::Top)?,
+            capacities,
         })
     }
 
@@ -70,12 +125,18 @@ impl DrContinuationFactoredEqScratch {
         folding_steps: usize,
         start_round: usize,
     ) -> Result<DrContinuationFactoredEqView, DrWindowBindError> {
-        let high_0 = self.allocation.as_ptr().cast_mut();
-        // SAFETY: the allocation contains exactly three consecutive groups.
-        let high_1 = unsafe { high_0.add(GKR_EQ_GROUP_TABLE_LEN) };
-        // SAFETY: the allocation contains exactly three consecutive groups.
-        let low = unsafe { high_1.add(GKR_EQ_GROUP_TABLE_LEN) };
-        DrContinuationFactoredEqView::for_pass(high_0, high_1, low, folding_steps, start_round)
+        let view = DrContinuationFactoredEqView::for_pass(
+            self.high[0].as_ptr().cast_mut(),
+            self.high[1].as_ptr().cast_mut(),
+            self.low.as_ptr().cast_mut(),
+            folding_steps,
+            start_round,
+        )?;
+        assert!(
+            self.capacities.supports(view.sizes),
+            "prepared continuation Eq capacity must cover every pass",
+        );
+        Ok(view)
     }
 }
 
@@ -394,9 +455,9 @@ pub(crate) enum DrWindowBindError {
         table_slot: usize,
         destination: bool,
     },
-    ContinuationEqHighLayout {
-        high_0: usize,
-        high_1: usize,
+    ContinuationEqAliasedPointers {
+        first: &'static str,
+        second: &'static str,
     },
     ContinuationEqLowMismatch,
     ContinuationContributionsMustBeNull,
@@ -859,19 +920,17 @@ pub(super) fn validate_dr_window_continuation_eq_contract(
     if eq.low.is_null() {
         return Err(DrWindowBindError::NullContinuationPointer { pointer: "eq_low" });
     }
-    let Some(expected_high_1) =
-        (eq.high_0 as usize).checked_add(GKR_EQ_GROUP_TABLE_LEN * size_of::<E4>())
-    else {
-        return Err(DrWindowBindError::ContinuationEqHighLayout {
-            high_0: eq.high_0 as usize,
-            high_1: eq.high_1 as usize,
-        });
-    };
-    if eq.high_1 as usize != expected_high_1 {
-        return Err(DrWindowBindError::ContinuationEqHighLayout {
-            high_0: eq.high_0 as usize,
-            high_1: eq.high_1 as usize,
-        });
+    for (first_name, first, second_name, second) in [
+        ("eq_high_0", eq.high_0, "eq_high_1", eq.high_1),
+        ("eq_high_0", eq.high_0, "eq_low", eq.low),
+        ("eq_high_1", eq.high_1, "eq_low", eq.low),
+    ] {
+        if first == second {
+            return Err(DrWindowBindError::ContinuationEqAliasedPointers {
+                first: first_name,
+                second: second_name,
+            });
+        }
     }
     Ok(())
 }
@@ -1127,7 +1186,7 @@ pub(crate) fn bind_dr_window_continuations<B>(
             poly_count,
         )?);
     }
-    let eq_scratch = DrContinuationFactoredEqScratch::allocate(context)?;
+    let eq_scratch = DrContinuationFactoredEqScratch::allocate(context, &geometries)?;
     let mut launches = Vec::with_capacity(geometries.len());
 
     for geometry in geometries {
@@ -1319,15 +1378,12 @@ pub(crate) fn launch_dr_window_continuation(
         launch.binding.batch.eq_sizes,
         make_eq_sizes(challenge_count)
     );
-    debug_assert_eq!(
-        launch.binding.eq_high_1 as usize,
-        launch.binding.eq_high_0 as usize + GKR_EQ_GROUP_TABLE_LEN * size_of::<E4>(),
-    );
-    launch_build_eq_high_and_low_groups_from_point(
+    launch_build_eq_independent_groups_from_point(
         launch.binding.claim_point,
         challenge_offset,
         challenge_count,
         launch.binding.eq_high_0.cast_mut(),
+        launch.binding.eq_high_1.cast_mut(),
         launch.binding.batch.eq_low.cast_mut(),
         context,
     )?;

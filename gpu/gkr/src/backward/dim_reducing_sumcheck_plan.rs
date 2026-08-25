@@ -293,6 +293,14 @@ mod stage_dispatch_tests {
             include_str!("kernels/dim_reducing.rs"),
         ),
         (
+            "backward/kernels/launchers.rs",
+            include_str!("kernels/launchers.rs"),
+        ),
+        (
+            "native/gkr/backward/dim_reducing.cu",
+            include_str!("../../native/gkr/backward/dim_reducing.cu"),
+        ),
+        (
             "backward/window_dr/binding.rs",
             include_str!("window_dr/binding.rs"),
         ),
@@ -303,6 +311,11 @@ mod stage_dispatch_tests {
     ];
     const BOUNDARY_TOKENS: &[&str] = &[
         "memory_copy_async",
+        "cudaMemcpy",
+        "copy_to",
+        "copy_from",
+        "DtoH",
+        "HtoD",
         "launch_host_fn",
         "callbacks.schedule",
         "Callbacks::schedule",
@@ -419,7 +432,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         let mut batch = self.round0_batch_template_compact;
         batch.eq_low = self.round_scratch.eq_low_group.as_ptr();
         batch.eq_sizes = self.eq_sizes;
-        batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
+        batch.contributions = self
+            .round_scratch
+            .accumulator
+            .legacy_diagnostic_mut()
+            .as_mut_ptr();
         launch_dim_reducing_round0_batched_compact(&batch, acc_size, context)
     }
 
@@ -432,7 +449,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
     ) -> CudaResult<()> {
         batch.eq_low = self.round_scratch.eq_low_group.as_ptr();
         batch.eq_sizes = self.eq_sizes;
-        batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
+        batch.contributions = self
+            .round_scratch
+            .accumulator
+            .legacy_diagnostic_mut()
+            .as_mut_ptr();
         launch_dim_reducing_continuation_batched_compact(&batch, acc_size, step, context)
     }
 
@@ -449,7 +470,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         fold_eq: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let acc_ptr = self.round_scratch.accumulator.as_ptr();
+        let acc_ptr = self
+            .round_scratch
+            .accumulator
+            .legacy_diagnostic_ref()
+            .as_ptr();
         let eq_low_ptr = self.round_scratch.eq_low_group.as_mut_ptr();
         let partials_ptr = self.round_scratch.partials.as_mut_ptr();
 

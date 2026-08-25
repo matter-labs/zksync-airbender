@@ -23,7 +23,10 @@ use super::binding::{
     launch_dr_window_r0, DrContinuationFactoredEqScratch, DrWindowContinuationArena,
     DrWindowContinuationSource, DrWindowRuntimeScratch,
 };
-use super::composition::{DrWindowLayerCompositionHook, DrWindowPassEqState};
+use super::composition::{
+    continuation_window_count, megakernel_entry_round, plan_dr_window_continuations,
+    DrWindowLayerCompositionHook, DrWindowPassEqState,
+};
 use super::reference::{
     compare_dr_tensors, dr_continuation_tensor_reference, dr_final_lookup_four_cells,
     dr_r0_tensor_reference, fold_dr_continuation_depth3, DrTensorMismatch, DrTensorOracleProgram,
@@ -36,6 +39,7 @@ use crate::backward::dim_reducing_sumcheck_plan::launch_dr_window_continuation_c
 use crate::backward::kernels::{
     eq_group_count, get_dim_reducing_layer_claim_point_device_ptr, get_eq_high_constant_device_ptr,
     launch_backward_dual_finalize_from_acc, launch_build_eq_high_and_low_groups_from_point,
+    launch_build_eq_independent_groups_from_point,
     launch_dim_reducing_continuation_batched_compact, launch_dim_reducing_round0_batched_compact,
     make_eq_sizes, record_active_eq_slot_fold, resolve_active_eq_slot,
     schedule_dim_reducing_batch_challenge_table_prelude, FoldingArenaBinding, GkrEqSizes,
@@ -63,6 +67,19 @@ const TENSOR_CELLS: usize = 27;
 const PEELED_COORDINATES: usize = 3;
 const OBSERVED_MASKS: [u32; 4] = [0x01, 0x0d, 0x0f, 0x1f];
 const UNOBSERVED_WELL_FORMED_MASK: u32 = 0x02;
+
+fn continuation_eq_scratch(
+    context: &ProverContext,
+    folding_steps: usize,
+) -> DrContinuationFactoredEqScratch {
+    let geometries = plan_dr_window_continuations(
+        folding_steps,
+        continuation_window_count(folding_steps),
+        megakernel_entry_round(folding_steps),
+    )
+    .unwrap();
+    DrContinuationFactoredEqScratch::allocate(context, &geometries).unwrap()
+}
 const TENSOR_INSTANCES_PER_MASK: usize = 32;
 const CORPUS_FINAL_TRACE_LOG: u32 = 4;
 
@@ -1492,7 +1509,7 @@ fn dr_window_continuation_first_raw_matches_legacy() {
     let context = make_test_context(256, 64);
     let fixture = DrGpuFixture::new(&context, 0x1f, 10, 0xd220_0000_0000_0001);
     let (destination_allocation, destination) = fixture.continuation_arena(3);
-    let eq_scratch = DrContinuationFactoredEqScratch::allocate(&context).unwrap();
+    let eq_scratch = continuation_eq_scratch(&context, fixture.folding_steps);
     let mut partials: DeviceAllocation<E4> = context
         .alloc(dr_window_partials_len(7), AllocationPlacement::BestFit)
         .unwrap();
@@ -1525,7 +1542,7 @@ fn dr_window_continuation_later_arena_matches_legacy() {
     let fixture = DrGpuFixture::new(&context, 0x1f, 10, 0xd221_0000_0000_0001);
     let (first_allocation, first_arena) = fixture.continuation_arena(3);
     let (second_allocation, second_arena) = fixture.continuation_arena(6);
-    let eq_scratch = DrContinuationFactoredEqScratch::allocate(&context).unwrap();
+    let eq_scratch = continuation_eq_scratch(&context, fixture.folding_steps);
     let mut partials: DeviceAllocation<E4> = context
         .alloc(dr_window_partials_len(7), AllocationPlacement::BestFit)
         .unwrap();
@@ -1590,7 +1607,7 @@ fn dr_window_continuation_eq_is_independent() {
     context.get_exec_stream().synchronize().unwrap();
 
     let (destination_allocation, destination) = fixture.continuation_arena(3);
-    let eq_scratch = DrContinuationFactoredEqScratch::allocate(&context).unwrap();
+    let eq_scratch = continuation_eq_scratch(&context, fixture.folding_steps);
     let mut partials: DeviceAllocation<E4> = context
         .alloc(dr_window_partials_len(7), AllocationPlacement::BestFit)
         .unwrap();
@@ -1629,15 +1646,16 @@ fn dr_window_continuation_global_eq_builder_matches_reference() {
         .map(|_| random_e4(&mut rng))
         .collect::<Vec<_>>();
     let claim_point = upload(&context, &claim_host);
-    let eq_scratch = DrContinuationFactoredEqScratch::allocate(&context).unwrap();
+    let eq_scratch = continuation_eq_scratch(&context, folding_steps);
     let view = eq_scratch
         .view_for_pass(folding_steps, start_round)
         .unwrap();
-    launch_build_eq_high_and_low_groups_from_point(
+    launch_build_eq_independent_groups_from_point(
         claim_point.as_ptr(),
         challenge_offset,
         challenge_count,
         view.high_0,
+        view.high_1,
         view.low,
         &context,
     )

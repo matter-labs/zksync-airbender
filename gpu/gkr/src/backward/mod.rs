@@ -112,6 +112,14 @@ fn dr_window_preparation_allocation_policy(
     }
 }
 
+fn dr_legacy_accumulator_len(max_acc_size: usize, admitted_complete_chain: bool) -> Option<usize> {
+    (!admitted_complete_chain).then(|| {
+        max_acc_size
+            .checked_mul(2)
+            .expect("legacy DR accumulator length must fit usize")
+    })
+}
+
 fn dr_window_pass_eq_geometry(folding_steps: usize) -> DrWindowPassEqGeometry {
     const BUILD_OFFSET: usize = 3;
     let challenge_count = folding_steps
@@ -243,6 +251,7 @@ impl GpuGKRDimensionReducingBackwardState {
                 ))
             })
             .transpose()?;
+        let admitted_complete_chain = dr_execution_plan.is_some();
         if dr_execution_plan.is_some() {
             assert!(
                 dr_window_program.is_some(),
@@ -274,7 +283,12 @@ impl GpuGKRDimensionReducingBackwardState {
             eq_low_group: GpuGKRDimensionReducingEqLowGroup::owned(
                 context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
             ),
-            accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
+            accumulator: match dr_legacy_accumulator_len(max_acc_size, admitted_complete_chain) {
+                Some(len) => GpuGKRDimensionReducingAccumulator::legacy_diagnostic(
+                    context.alloc(len, AllocationPlacement::Top)?,
+                ),
+                None => GpuGKRDimensionReducingAccumulator::production_chain(),
+            },
             partials,
         };
 
@@ -606,6 +620,42 @@ mod cpu_dr_window_composition_preparation_tests {
         assert_eq!(observed_deltas[&18], 917_504);
         assert_eq!(observed_deltas[&19], 786_432);
         assert_eq!(observed_deltas[&22], 5_242_880);
+    }
+
+    #[test]
+    fn cpu_dr_window_admitted_plan_cannot_own_or_access_legacy_accumulator() {
+        assert_canonical_allocator_rounding_contract();
+        for folding_steps in CANONICAL_FIXTURE_FINAL_TRACE_LOG..CANONICAL_FIXTURE_INITIAL_TRACE_LOG
+        {
+            let max_acc_size = 1usize << (folding_steps - 1);
+            assert_eq!(
+                dr_legacy_accumulator_len(max_acc_size, true),
+                None,
+                "admitted fold f={folding_steps} must not construct legacy-only storage",
+            );
+            assert_eq!(
+                dr_legacy_accumulator_len(max_acc_size, false),
+                Some(max_acc_size * 2),
+                "diagnostic fold f={folding_steps} must retain its explicit legacy owner",
+            );
+
+            // Mutation control: admitting the chain under the legacy arm
+            // recreates at least one allocator chunk and must remain distinct.
+            assert!(
+                corrected_logical_allocation_bytes(max_acc_size * 2) > 0,
+                "legacy accumulator mutation must be observable at f={folding_steps}",
+            );
+        }
+
+        let production = GpuGKRDimensionReducingAccumulator::production_chain();
+        assert!(production.is_production_chain());
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            production.legacy_diagnostic_ref()
+        }));
+        assert!(
+            rejected.is_err(),
+            "an admitted production owner must fail closed before exposing a legacy pointer",
+        );
     }
 
     fn address(offset: usize) -> GKRAddress {

@@ -108,7 +108,8 @@ cuda_kernel_signature_arguments_and_function!(
     claim_point: *const T,
     challenge_offset: u32,
     challenge_count: u32,
-    high_slab: *mut T,
+    high_0: *mut T,
+    high_1: *mut T,
     low_buffer: *mut T,
 );
 
@@ -176,7 +177,8 @@ cuda_kernel_declaration!(pub(crate)
         claim_point: *const E4,
         challenge_offset: u32,
         challenge_count: u32,
-        high_slab: *mut E4,
+        high_0: *mut E4,
+        high_1: *mut E4,
         low_buffer: *mut E4,
     )
 );
@@ -344,6 +346,30 @@ pub(crate) fn launch_build_eq_high_and_low_groups_from_point(
     low_buffer: *mut E4,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    launch_build_eq_independent_groups_from_point(
+        claim_point,
+        challenge_offset,
+        challenge_count,
+        high_slab,
+        high_slab.wrapping_add(GKR_EQ_GROUP_TABLE_LEN),
+        low_buffer,
+        context,
+    )
+}
+
+/// Builds the same strict three-slot factored Eq representation as
+/// [`launch_build_eq_high_and_low_groups_from_point`], but permits each slot
+/// to have an independent exact-capacity owner. This is used by DR
+/// continuations so inactive high sentinels do not force three full tables.
+pub(crate) fn launch_build_eq_independent_groups_from_point(
+    claim_point: *const E4,
+    challenge_offset: usize,
+    challenge_count: usize,
+    high_0: *mut E4,
+    high_1: *mut E4,
+    low_buffer: *mut E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
     assert!(challenge_offset <= u32::MAX as usize);
     assert!(challenge_count <= u32::MAX as usize);
     let group_count = eq_group_count(challenge_count);
@@ -360,7 +386,8 @@ pub(crate) fn launch_build_eq_high_and_low_groups_from_point(
         claim_point,
         challenge_offset as u32,
         challenge_count as u32,
-        high_slab,
+        high_0,
+        high_1,
         low_buffer,
     );
     GpuDimensionReducingBuildEqHighLowFromPointFunction(
