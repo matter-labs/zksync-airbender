@@ -2428,6 +2428,17 @@ fn run_window_arm(
             2,
             &bank_report,
         ));
+        let bank_spans = bank.schedule(
+            external.as_ptr(),
+            lookup_mul.as_ptr(),
+            lookup_add.as_ptr(),
+            batching.as_ptr(),
+            context,
+        )?;
+        assert_eq!(bank_spans.slab.0, bank.challenge_slab().as_ptr() as usize);
+        let (slab, coefficient_tables) = open_bank_owners(ledger, &mut owners, bank_spans);
+        carried.coefficient_bank = Some(bank_spans.bank);
+        ledger.absorb(TASK8_WINDOW_ARM, &probe);
         launch_build_eq_high_and_low_groups_from_point(
             claim_point.as_ptr(),
             start_round + 3,
