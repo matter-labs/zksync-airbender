@@ -168,14 +168,15 @@ impl GpuGKRMainLayerBackwardState {
                 layer_idx,
                 self.programs.clone(),
             ),
-            main_tail_program: (main_execution_plan.window_count() > 0).then(|| {
+            main_tail_program: Some(
                 self.programs
                     .resolve_main_tail_programs()
                     .expect("main-tail preflight must complete before layer preparation")
                     .layers[layer_idx]
-                    .clone()
-            }),
+                    .clone(),
+            ),
             main_tail_launched: None,
+            main_chain_selected: true,
             eq_sizes: GkrEqSizes::zeroed(),
         })
     }

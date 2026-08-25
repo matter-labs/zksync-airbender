@@ -413,17 +413,17 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                     },
                     context,
                 )
-                .unwrap_or_else(|error| panic!("main-tail binding rejected: {error}"));
+                .map_err(|_| era_cudart_sys::CudaError::ErrorInvalidValue)?;
                 self.main_tail_launched = Some(
                     launch_main_tail(tail_launch, context)
-                        .unwrap_or_else(|error| panic!("main-tail launch failed: {error}")),
+                        .map_err(|_| era_cudart_sys::CudaError::ErrorInvalidValue)?,
                 );
             } else {
-                storage.purge_up_to_layer(self.layer_idx);
+                return Err(era_cudart_sys::CudaError::ErrorInvalidValue);
             }
         }
 
-        if self.main_tail_launched.is_none() {
+        if !self.main_chain_selected {
         for step in first_round_in_loop..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
