@@ -1554,6 +1554,24 @@ struct ScheduledPreparedObservation {
     memory: PoolMemoryHighWaterReport,
     allocations: Vec<Task8AllocationRecord>,
     live_mutations: ScheduledLiveMutationEvidence,
+    coefficient_fill_enqueues: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Task8CoefficientFillCountMismatch {
+    actual: usize,
+    expected: usize,
+}
+
+fn validate_coefficient_bank_fill_enqueue_count(
+    actual: usize,
+    expected: usize,
+) -> Result<(), Task8CoefficientFillCountMismatch> {
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(Task8CoefficientFillCountMismatch { actual, expected })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -2761,6 +2779,7 @@ fn run_window_arm(
         let bank_observer = context.observe_device_memory_high_water();
         let mut bank =
             prepare_continuation_differential_bank(continuation_program, top_bits, context)?;
+        let coefficient_fill_enqueues = bank.task8_coefficient_fill_enqueues();
         let bank_report = bank_observer.finish();
         // The window arm retires the bank slab right after the fill enqueue
         // (`drop(bank)` below), before the prior build: the record must say so,
@@ -3170,6 +3189,7 @@ fn run_window_arm(
                 memory,
                 allocations: Vec::new(),
                 live_mutations,
+                coefficient_fill_enqueues,
             },
             allocations,
         )
@@ -3373,6 +3393,7 @@ fn run_legacy_arm(
             top_bits,
             context,
         )?;
+        let coefficient_fill_enqueues = rounds.task8_coefficient_fill_enqueues();
         let bank_report = bank_observer.finish();
         allocations.push(allocation_group_record(
             "bank",
@@ -3578,6 +3599,7 @@ fn run_legacy_arm(
                 memory,
                 allocations: Vec::new(),
                 live_mutations: ScheduledLiveMutationEvidence::empty(),
+                coefficient_fill_enqueues,
             },
             source_columns,
             shape,
@@ -4586,6 +4608,25 @@ mod cpu_tests {
     }
 
     #[test]
+    fn cpu_coefficient_bank_fill_count_uses_the_producer_chunk_count() {
+        assert_eq!(validate_coefficient_bank_fill_enqueue_count(2, 2), Ok(()));
+        assert_eq!(
+            validate_coefficient_bank_fill_enqueue_count(1, 2),
+            Err(Task8CoefficientFillCountMismatch {
+                actual: 1,
+                expected: 2,
+            })
+        );
+        assert_eq!(
+            validate_coefficient_bank_fill_enqueue_count(2, 1),
+            Err(Task8CoefficientFillCountMismatch {
+                actual: 2,
+                expected: 1,
+            })
+        );
+    }
+
+    #[test]
     fn probe_phase_registration_order_is_explicit() {
         let source = include_str!("differential_tests.rs");
         let bank = source.find("let bank_spans = bank.schedule").unwrap();
@@ -4624,16 +4665,16 @@ mod cpu_tests {
         eq_readback_spans, ledger_bind_final, ledger_open, ledger_retire, open_transcript_owners,
         record_active_eq_slot_fold, retire_arm_owners, retire_transcript_owners,
         signed_snapshot_delta, task8_eq_coordinates, task8_register_symbol,
-        validate_owner_generation_ledger, validate_owner_generation_structure,
-        validate_single_owner_topology, BTreeSet, Field, Task8AbsorbedEnqueue,
-        Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols, Task8ChallengeOwners,
-        Task8Culprit, Task8EnqueueKind, Task8EnqueuePlan, Task8GenerationToken, Task8LedgerError,
-        Task8LedgerOwner, Task8LedgerRecord, Task8OwnerGeneration, Task8OwnerGenerationLedger,
-        Task8OwnerOrigin, Task8OwnershipEnd, Task8ProbeGuard, Task8QueuedUse, Task8Release,
-        Task8Span, Task8TopologyError, Task8TranscriptOwnerRanges, Task8TranscriptOwners,
-        GKR_EQ_HIGH_SLOTS, MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM,
-        TASK8_PRODUCTION_STORAGE, TASK8_SHARED_DEVICE_INPUTS, TASK8_SHARED_DEVICE_SYMBOLS,
-        TASK8_WINDOW_ARM,
+        validate_coefficient_bank_fill_enqueue_count, validate_owner_generation_ledger,
+        validate_owner_generation_structure, validate_single_owner_topology, BTreeSet, Field,
+        Task8AbsorbedEnqueue, Task8AllocationRecord, Task8ArmOwners, Task8CarriedSymbols,
+        Task8ChallengeOwners, Task8CoefficientFillCountMismatch, Task8Culprit, Task8EnqueueKind,
+        Task8EnqueuePlan, Task8GenerationToken, Task8LedgerError, Task8LedgerOwner,
+        Task8LedgerRecord, Task8OwnerGeneration, Task8OwnerGenerationLedger, Task8OwnerOrigin,
+        Task8OwnershipEnd, Task8ProbeGuard, Task8QueuedUse, Task8Release, Task8Span,
+        Task8TopologyError, Task8TranscriptOwnerRanges, Task8TranscriptOwners, GKR_EQ_HIGH_SLOTS,
+        MAIN_CONTINUATION_WINDOW_TENSOR_CELLS, TASK8_LEGACY_ARM, TASK8_PRODUCTION_STORAGE,
+        TASK8_SHARED_DEVICE_INPUTS, TASK8_SHARED_DEVICE_SYMBOLS, TASK8_WINDOW_ARM,
     };
     use crate::backward::kernels::{task8_dual_finalize_spans, task8_eq_build_spans};
     use crate::backward::main_layer::execution_plan::WINDOW_WIDTH;
@@ -8584,8 +8625,25 @@ pub(crate) fn schedule_prepared_main_continuation_differential(
                         (passes > 1).then_some(&(passes - 1))
                     );
                     assert!(!legacy_sites.contains_key("window-tail-reduce"));
-                    for sites in [&window_sites, &legacy_sites] {
-                        assert_eq!(sites["coefficient-bank-fill"], 1);
+                    for (arm, sites, expected) in [
+                        (
+                            TASK8_WINDOW_ARM,
+                            &window_sites,
+                            window.coefficient_fill_enqueues,
+                        ),
+                        (
+                            TASK8_LEGACY_ARM,
+                            &legacy_sites,
+                            legacy.coefficient_fill_enqueues,
+                        ),
+                    ] {
+                        validate_coefficient_bank_fill_enqueue_count(
+                            sites["coefficient-bank-fill"],
+                            expected,
+                        )
+                        .unwrap_or_else(|error| {
+                            panic!("Task 8 {arm} arm coefficient fill count: {error:?}")
+                        });
                         assert_eq!(sites["challenge-slab-slot-copy"], 3);
                         assert_eq!(sites["claim-point-symbol-write"], 1);
                     }

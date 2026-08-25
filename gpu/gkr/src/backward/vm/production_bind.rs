@@ -1425,6 +1425,14 @@ impl PreparedContinuationDifferentialBank {
         &self.slab
     }
 
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    pub(crate) fn task8_coefficient_fill_enqueues(&self) -> usize {
+        self.chunks.task8_chunk_count()
+    }
+
     pub(crate) fn schedule(
         &mut self,
         external_challenges: *const E4,
@@ -1950,6 +1958,14 @@ impl PreparedContinuationDifferentialRounds {
     ))]
     pub(crate) fn challenge_slab(&self) -> &DeviceAllocation<E4> {
         &self.launch.slab
+    }
+
+    #[cfg(all(
+        any(test, feature = "task8_continuation_differential_test"),
+        not(no_cuda)
+    ))]
+    pub(crate) fn task8_coefficient_fill_enqueues(&self) -> usize {
+        self.launch.chunks.task8_chunk_count()
     }
 
     pub(crate) fn schedule_bank_fill(

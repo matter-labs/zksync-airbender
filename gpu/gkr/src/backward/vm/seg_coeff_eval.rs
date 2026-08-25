@@ -752,6 +752,14 @@ impl SegCoeffEvalChunks {
         self.num_coefficients
     }
 
+    /// The number of by-value kernel enqueues the production fill performs.
+    /// Task 8 must compare its observed enqueue census with this partition,
+    /// rather than treating one logical bank fill as one kernel launch.
+    #[cfg(any(test, feature = "task8_continuation_differential_test"))]
+    pub(crate) fn task8_chunk_count(&self) -> usize {
+        self.chunks.len()
+    }
+
     /// The challenge slots each chunk's evaluation reads, in chunk order.
     #[cfg(all(
         any(test, feature = "task8_continuation_differential_test"),
@@ -1363,6 +1371,7 @@ mod tests {
             chunks.chunk_bounds().len() > 1,
             "the recipe count must force a second chunk"
         );
+        assert_eq!(chunks.task8_chunk_count(), chunks.chunk_bounds().len());
         assert_chunks_equal_blob(&blob, &chunks);
     }
 
@@ -1435,6 +1444,7 @@ mod corpus_capacity_tests {
         recipe_entries: usize,
         monomials: usize,
         window_plans: usize,
+        ext_chunks: usize,
     }
 
     fn monomial_total(recipes: &[NormalizedCoefficientRecipe], label: &str) -> usize {
@@ -1480,11 +1490,16 @@ mod corpus_capacity_tests {
                     let monomials = monomial_total(&r0_layer.coefficient_recipes, &label)
                         .max(monomial_total(&ext_layer.coefficient_recipes, &label))
                         .max(window_monomial_total(&window.coefficient_plans, &label));
+                    let ext_blob =
+                        build_seg_coeff_eval_blob(&ext_layer.coefficient_recipes, TOP_BITS)
+                            .unwrap_or_else(|error| panic!("{label} Ext blob: {error:?}"));
+                    let ext_chunks = SegCoeffEvalChunks::build(&ext_blob).task8_chunk_count();
                     maxima.coordinates += 1;
                     maxima.bank_slots = maxima.bank_slots.max(slots);
                     maxima.recipe_entries = maxima.recipe_entries.max(slots);
                     maxima.monomials = maxima.monomials.max(monomials);
                     maxima.window_plans = maxima.window_plans.max(plans);
+                    maxima.ext_chunks = maxima.ext_chunks.max(ext_chunks);
                 }
             }
             assert_eq!(
@@ -1545,5 +1560,10 @@ mod corpus_capacity_tests {
         let observed = measure().window_plans;
         assert_eq!(observed, 1_665, "corpus maximum interned window plans");
         assert!(observed <= BWD_SEG_WINDOW_PLANS);
+    }
+
+    #[test]
+    fn cpu_corpus_ext_fill_chunk_count_is_not_assumed_single() {
+        assert_eq!(measure().ext_chunks, 2);
     }
 }
