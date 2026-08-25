@@ -144,6 +144,12 @@ enum MainContinuationInputKind {
     Later,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MainContinuationLaunchKind {
+    R0Publication,
+    Continuation { start_round: usize },
+}
+
 impl MainContinuationInputKind {
     fn address_slot_max(self) -> usize {
         match self {
@@ -162,6 +168,12 @@ pub(crate) struct MainContinuationWindowLaunch<'input> {
     row_tiles: usize,
     reduced_tensor: *mut E4,
     _input_keepalive: PhantomData<&'input ()>,
+}
+
+impl MainContinuationWindowLaunch<'_> {
+    pub(crate) fn is_continuation_window(&self) -> bool {
+        self.binding.publication_fold == MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES as u32
+    }
 }
 
 /// Output ownership returned only after the reader launch has been enqueued.
@@ -391,6 +403,40 @@ fn publication_shape(
     ))
 }
 
+fn r0_publication_shape(
+    program: &MainContinuationWindowProgram,
+    folding_steps: usize,
+) -> Result<(ContinuationPublishedShape, usize, usize), MainContinuationWindowBindError> {
+    if folding_steps < MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES || folding_steps > u8::MAX as usize
+    {
+        return Err(MainContinuationWindowBindError::InvalidGeometry {
+            folding_steps,
+            start_round: 0,
+        });
+    }
+    let logical_rows = checked_pow2(
+        folding_steps - MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES,
+        folding_steps,
+        0,
+    )?;
+    let column_elems =
+        logical_rows
+            .checked_mul(8)
+            .ok_or(MainContinuationWindowBindError::InvalidGeometry {
+                folding_steps,
+                start_round: 0,
+            })?;
+    Ok((
+        ContinuationPublishedShape {
+            depth: 0,
+            columns: program.sources.len(),
+            column_elems,
+        },
+        logical_rows,
+        logical_rows.div_ceil(MAIN_CONTINUATION_WINDOW_ROWS_PER_TILE),
+    ))
+}
+
 fn canonical_sources(
     program: &MainContinuationWindowProgram,
 ) -> Result<(), MainContinuationWindowBindError> {
@@ -617,7 +663,7 @@ fn encode_main_continuation_immediate_prefix(canonical: &[u32], destination: &mu
 fn assemble_launch<'input>(
     program: &MainContinuationWindowProgram,
     folding_steps: usize,
-    start_round: usize,
+    launch_kind: MainContinuationLaunchKind,
     scratch: MainContinuationWindowRuntimeScratch,
     context: &ProverContext,
     input_kind: MainContinuationInputKind,
@@ -635,7 +681,12 @@ fn assemble_launch<'input>(
             resource: "partials",
         });
     }
-    let (shape, _, row_tiles) = publication_shape(program, folding_steps, start_round)?;
+    let (shape, _, row_tiles) = match launch_kind {
+        MainContinuationLaunchKind::R0Publication => r0_publication_shape(program, folding_steps)?,
+        MainContinuationLaunchKind::Continuation { start_round } => {
+            publication_shape(program, folding_steps, start_round)?
+        }
+    };
     for (resource, required, capacity) in [
         (
             "program words",
@@ -715,8 +766,10 @@ fn assemble_launch<'input>(
     // SAFETY: every descriptor field is valid at zero. Required pointers,
     // counts and live array prefixes are filled below before launch.
     let mut binding: Box<MainContinuationWindowLaunchBinding> = unsafe { zeroed_box() };
-    binding.program[..program.program.words.len()].copy_from_slice(&program.program.words);
-    binding.program_words = program.program.words.len() as u16;
+    if matches!(launch_kind, MainContinuationLaunchKind::Continuation { .. }) {
+        binding.program[..program.program.words.len()].copy_from_slice(&program.program.words);
+        binding.program_words = program.program.words.len() as u16;
+    }
     binding.source_count = shape.columns as u16;
     binding.fold_list_offsets = fold_list_offsets;
     binding.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
@@ -727,10 +780,21 @@ fn assemble_launch<'input>(
         };
     }
     binding.slot[..table.len].copy_from_slice(&table.slots[..table.len]);
-    binding.c_init_coeff = program
-        .c_init
-        .map_or(BWD_SEG_C_INIT_NONE, |coefficient| coefficient.0);
-    encode_main_continuation_immediate_prefix(&program.immediates, &mut binding.immediates);
+    binding.c_init_coeff = match launch_kind {
+        MainContinuationLaunchKind::R0Publication => BWD_SEG_C_INIT_NONE,
+        MainContinuationLaunchKind::Continuation { .. } => program
+            .c_init
+            .map_or(BWD_SEG_C_INIT_NONE, |coefficient| coefficient.0),
+    };
+    if matches!(launch_kind, MainContinuationLaunchKind::Continuation { .. }) {
+        encode_main_continuation_immediate_prefix(&program.immediates, &mut binding.immediates);
+    }
+    binding.publication_fold = match launch_kind {
+        MainContinuationLaunchKind::R0Publication => 0,
+        MainContinuationLaunchKind::Continuation { .. } => {
+            MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES as u32
+        }
+    };
     binding.eq_low = scratch.eq_low;
     binding.partials = scratch.partials;
     binding.row_tiles =
@@ -739,7 +803,14 @@ fn assemble_launch<'input>(
             required: row_tiles,
             capacity: u32::MAX as usize,
         })?;
-    binding.eq_sizes = make_eq_sizes(folding_steps - start_round - 3);
+    binding.eq_sizes = make_eq_sizes(match launch_kind {
+        MainContinuationLaunchKind::R0Publication => {
+            folding_steps - MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES
+        }
+        MainContinuationLaunchKind::Continuation { start_round } => {
+            folding_steps - start_round - MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES
+        }
+    });
 
     let kernel = resolve_kernel(program.shape)?;
     // SAFETY: the capacity check above reserves one trailing 27-cell tensor for
@@ -776,7 +847,25 @@ pub(crate) fn bind_first_main_continuation_window<'input, E: Copy>(
     assemble_launch(
         program,
         folding_steps,
-        start_round,
+        MainContinuationLaunchKind::Continuation { start_round },
+        scratch,
+        context,
+        MainContinuationInputKind::First,
+        |destination, table| raw_input_lanes(program, storage, folding_steps, destination, table),
+    )
+}
+
+pub(crate) fn bind_main_r0_publication<'input, E: Copy>(
+    program: &MainContinuationWindowProgram,
+    storage: &'input GpuGKRStorage<BF, E>,
+    folding_steps: usize,
+    scratch: MainContinuationWindowRuntimeScratch,
+    context: &ProverContext,
+) -> Result<MainContinuationWindowLaunch<'input>, MainContinuationWindowBindError> {
+    assemble_launch(
+        program,
+        folding_steps,
+        MainContinuationLaunchKind::R0Publication,
         scratch,
         context,
         MainContinuationInputKind::First,
@@ -806,7 +895,7 @@ pub(crate) fn bind_later_main_continuation_window<'input>(
     assemble_launch(
         program,
         folding_steps,
-        start_round,
+        MainContinuationLaunchKind::Continuation { start_round },
         scratch,
         context,
         MainContinuationInputKind::Later,
@@ -1030,6 +1119,36 @@ mod cpu_main_continuation_binding {
     }
 
     #[test]
+    fn cpu_r0_publication_geometry_is_depth_zero_for_every_zero_window_width() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json");
+        let artifact: GKRCircuitArtifact<CpuBf> =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
+        let source = compile_continuations(&dag)
+            .unwrap()
+            .layers
+            .into_iter()
+            .next()
+            .unwrap();
+        let program = lower_main_continuation_window_program(&source).unwrap();
+        for folding_steps in 4usize..=6 {
+            let (shape, logical_rows, row_tiles) =
+                r0_publication_shape(&program, folding_steps).unwrap();
+            assert_eq!(shape.depth, 0);
+            assert_eq!(shape.columns, program.sources.len());
+            assert_eq!(shape.column_elems, 1usize << folding_steps);
+            assert_eq!(logical_rows, 1usize << (folding_steps - 3));
+            assert_eq!(row_tiles, 1);
+        }
+        assert_ne!(
+            r0_publication_shape(&program, 6).unwrap().0,
+            publication_shape(&program, 6, 3).unwrap().0,
+            "substituting the folded continuation publication must be detected"
+        );
+    }
+
+    #[test]
     fn cpu_main_continuation_binding_lpt_is_deterministic_and_a_permutation() {
         let weights = [4, 1, 4, 1, 1, 4, 4, 1, 4, 1, 4, 1, 1, 4, 1, 4, 1, 4];
         let items = fold_items(&weights);
@@ -1247,6 +1366,7 @@ mod cpu_main_continuation_binding {
             include_str!("../../../native/gkr/backward/main_continuation_window/fold_prologue.cuh");
         for required in [
             "const u32 cell = 9 * x2 + warp_id;",
+            "desc.publication_fold != 0 && desc.publication_fold != 3",
             "desc.c_init_coeff != BWD_SEG_C_INIT_NONE",
             "BWD_MAIN_CONT_WINDOW_SHAPE_BANKED_GROUP_IMMEDIATE",
             "BWD_MAIN_CONT_WINDOW_SHAPE_NEGATIVE_GROUP_IMMEDIATE",
@@ -1258,6 +1378,9 @@ mod cpu_main_continuation_binding {
             );
         }
         assert!(PROLOGUE.contains("store<bwd_main_cont_e4_pair, st_modifier::wb>"));
+        assert!(PROLOGUE.contains("desc.publication_fold == 0"));
+        assert!(PROLOGUE.contains("gkr_virtual_base_value(kind, output_index)"));
+        assert!(PROLOGUE.contains("e4::from_scalar(load<bf, ld_modifier::cs>"));
         assert!(PROLOGUE.contains("load<bwd_main_cont_bf8, ld_modifier::cs>"));
         assert!(PROLOGUE.contains("load<bwd_main_cont_e4_pair, ld_modifier::cs>"));
     }

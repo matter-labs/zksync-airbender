@@ -46,9 +46,9 @@ pub(crate) struct MainContinuationWindowDesc {
     pub(crate) slot: [BwdSegAddrSlot; MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY],
     pub(crate) c_init_coeff: u32,
     pub(crate) immediates: [u32; MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY],
-    /// The ABI's explicit four-byte tail pad; it keeps `eq_low` at 16-byte
-    /// offset 22,480 without relying on compiler-inserted implicit padding.
-    pub(crate) tail_padding: u32,
+    /// Coordinates folded by the publication prologue: zero for the R0
+    /// depth-zero materializer, three for a continuation pass.
+    pub(crate) publication_fold: u32,
     pub(crate) eq_low: *const E4,
     pub(crate) partials: *mut E4,
     pub(crate) row_tiles: u32,
@@ -82,7 +82,7 @@ const _: () = {
     assert!(offset_of!(MainContinuationWindowDesc, slot) == 19_400);
     assert!(offset_of!(MainContinuationWindowDesc, c_init_coeff) == 20_424);
     assert!(offset_of!(MainContinuationWindowDesc, immediates) == 20_428);
-    assert!(offset_of!(MainContinuationWindowDesc, tail_padding) == 22_476);
+    assert!(offset_of!(MainContinuationWindowDesc, publication_fold) == 22_476);
     assert!(offset_of!(MainContinuationWindowDesc, eq_low) == 22_480);
     assert!(offset_of!(MainContinuationWindowDesc, partials) == 22_488);
     assert!(offset_of!(MainContinuationWindowDesc, row_tiles) == 22_496);
@@ -120,7 +120,10 @@ mod cpu_main_continuation_binding {
         assert_eq!(offset_of!(MainContinuationWindowDesc, slot), 19_400);
         assert_eq!(offset_of!(MainContinuationWindowDesc, c_init_coeff), 20_424);
         assert_eq!(offset_of!(MainContinuationWindowDesc, immediates), 20_428);
-        assert_eq!(offset_of!(MainContinuationWindowDesc, tail_padding), 22_476);
+        assert_eq!(
+            offset_of!(MainContinuationWindowDesc, publication_fold),
+            22_476
+        );
         assert_eq!(offset_of!(MainContinuationWindowDesc, eq_low), 22_480);
         assert_eq!(offset_of!(MainContinuationWindowDesc, partials), 22_488);
         assert_eq!(offset_of!(MainContinuationWindowDesc, row_tiles), 22_496);
@@ -132,7 +135,7 @@ mod cpu_main_continuation_binding {
         for assertion in [
             "sizeof(bwd_main_cont_window_desc) == 22512",
             "alignof(bwd_main_cont_window_desc) == 16",
-            "__builtin_offsetof(bwd_main_cont_window_desc, tail_padding) == 22476",
+            "__builtin_offsetof(bwd_main_cont_window_desc, publication_fold) == 22476",
             "__builtin_offsetof(bwd_main_cont_window_desc, eq_low) == 22480",
             "__builtin_offsetof(bwd_main_cont_window_desc, partials) == 22488",
             "__builtin_offsetof(bwd_main_cont_window_desc, row_tiles) == 22496",

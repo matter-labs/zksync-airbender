@@ -7,12 +7,13 @@ use era_cudart::slice::{CudaSlice, DeviceSlice};
 use crate::GpuGKRStorage;
 
 use super::super::kernels::*;
+use super::super::main_tail::{bind_main_tail, launch_main_tail, MainTailRuntimeState};
 use super::super::window::binding::{launch_window_program, BWD_WINDOW_COORDINATES};
 use super::super::window::tail::{launch_window_tensor_round_tail, WindowTailState};
-use super::super::main_tail::{bind_main_tail, launch_main_tail, MainTailRuntimeState};
 use super::extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
+use crate::MainLayerScheduleError;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
@@ -38,6 +39,51 @@ pub(crate) fn main_layer_ext_bank_fill_count_for_test() -> usize {
 #[cfg(test)]
 fn record_main_layer_ext_bank_fill_for_test() {
     MAIN_LAYER_EXT_BANK_FILL_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+fn require_main_tail_publication<T>(
+    publication: Option<T>,
+    layer: usize,
+    tail_start: u8,
+) -> Result<T, MainLayerScheduleError> {
+    publication.ok_or(MainLayerScheduleError::MissingPublication { layer, tail_start })
+}
+
+fn preserve_main_tail_bind_error<T, E: core::fmt::Display>(
+    result: Result<T, E>,
+    layer: usize,
+) -> Result<T, MainLayerScheduleError> {
+    result.map_err(|error| MainLayerScheduleError::MainTailBind {
+        layer,
+        detail: error.to_string(),
+    })
+}
+
+fn preserve_main_tail_launch_error<T, E: core::fmt::Display>(
+    result: Result<T, E>,
+    layer: usize,
+) -> Result<T, MainLayerScheduleError> {
+    result.map_err(|error| MainLayerScheduleError::MainTailLaunch {
+        layer,
+        detail: error.to_string(),
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MainTailPublicationSource {
+    R0,
+    Continuation,
+}
+
+fn main_tail_publication_source(
+    main_chain_selected: bool,
+    window_count: u8,
+) -> Option<MainTailPublicationSource> {
+    main_chain_selected.then_some(if window_count == 0 {
+        MainTailPublicationSource::R0
+    } else {
+        MainTailPublicationSource::Continuation
+    })
 }
 
 impl GpuGKRMainLayerSumcheckLayerPlan {
@@ -203,7 +249,7 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
         layer_slot: usize,
         storage: &mut GpuGKRStorage<BF, E4>,
         context: &ProverContext,
-    ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution> {
+    ) -> Result<GpuGKRMainLayerScheduledLayerExecution, MainLayerScheduleError> {
         let stream = context.get_exec_stream();
         let mut tracing_ranges = Vec::new();
         let layer_name = format!("gkr.backward.main.layer.{}", self.layer_idx);
@@ -339,11 +385,11 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 recorder.as_mut(),
                 context,
             )?;
-            if self.main_execution_plan.window_count() > 0 {
+            if self.main_chain_selected {
                 let tail_arm = match &self.bwd_vm_r0 {
                     MainLayerR0Binding::Windowed(windowed) => windowed.tail_arm,
                     MainLayerR0Binding::PerRound(_) => {
-                        unreachable!("continuation windows require windowed R0")
+                        unreachable!("the production main chain requires windowed R0")
                     }
                 };
                 let scratch =
@@ -352,24 +398,46 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                         partials: self.round_scratch.partials.as_mut_ptr(),
                         partials_capacity: self.round_scratch.partials.len(),
                     };
-                self.main_continuation.schedule_windows(
-                    storage,
-                    self.folding_steps,
-                    scratch,
-                    device_claim_point_in.as_ptr(),
-                    device_seed.as_mut_ptr(),
-                    device_claim.as_mut_ptr(),
-                    device_eq_prefactor.as_mut_ptr(),
-                    coeffs_buffer_ptr,
-                    device_claim_point_out.as_mut_ptr(),
-                    tail_arm,
-                    recorder.as_mut(),
-                    context,
-                )?;
-                let boundary = self
-                    .main_continuation
-                    .final_eq_boundary()
-                    .expect("a non-empty continuation sequence records an Eq boundary");
+                match main_tail_publication_source(
+                    self.main_chain_selected,
+                    self.main_execution_plan.window_count(),
+                )
+                .expect("the selected production chain has one publication source")
+                {
+                    MainTailPublicationSource::R0 => {
+                        self.main_continuation.schedule_r0_publication(
+                            storage,
+                            self.folding_steps,
+                            scratch,
+                            self.eq_sizes,
+                            recorder.as_mut(),
+                            context,
+                        )?
+                    }
+                    MainTailPublicationSource::Continuation => {
+                        self.main_continuation.schedule_windows(
+                            storage,
+                            self.folding_steps,
+                            scratch,
+                            device_claim_point_in.as_ptr(),
+                            device_seed.as_mut_ptr(),
+                            device_claim.as_mut_ptr(),
+                            device_eq_prefactor.as_mut_ptr(),
+                            coeffs_buffer_ptr,
+                            device_claim_point_out.as_mut_ptr(),
+                            tail_arm,
+                            recorder.as_mut(),
+                            context,
+                        )?
+                    }
+                }
+                let boundary = self.main_continuation.final_eq_boundary().ok_or_else(|| {
+                    MainLayerScheduleError::MainContinuation {
+                        layer: self.layer_idx,
+                        pass_start: usize::from(continuation_tail_start.saturating_sub(3)),
+                        detail: "the producer did not publish its Eq boundary".to_owned(),
+                    }
+                })?;
                 assert_eq!(
                     boundary.consumer_round, continuation_tail_start,
                     "the final continuation boundary must name the prepared remainder"
@@ -383,132 +451,130 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                     "the final pass-local Eq state must equal the first legacy descriptor"
                 );
                 self.eq_sizes = boundary.eq_sizes;
-                assert!(
-                    self.main_continuation.published_level().is_some(),
-                    "the final continuation publication must remain owned until handoff"
-                );
-                let published = self
-                    .main_continuation
-                    .take_published_level()
-                    .expect("main-tail consumes the final continuation publication");
+                let published = require_main_tail_publication(
+                    self.main_continuation.take_published_level(),
+                    self.layer_idx,
+                    continuation_tail_start,
+                )?;
                 let tail_program = self
                     .main_tail_program
                     .as_ref()
                     .expect("windowed production path requires a preflighted main-tail program");
-                let tail_launch = bind_main_tail(
+                let tail_launch = preserve_main_tail_bind_error(
+                    bind_main_tail(
+                        self.layer_idx,
+                        tail_program,
+                        &published,
+                        usize::from(continuation_tail_start),
+                        self.folding_steps,
+                        boundary,
+                        MainTailRuntimeState {
+                            eq_low: self.round_scratch.eq_low_group.as_mut_ptr(),
+                            prev_claim_coordinates: device_claim_point_in.as_ptr(),
+                            seed: device_seed.as_mut_ptr(),
+                            claim: device_claim.as_mut_ptr(),
+                            eq_prefactor: device_eq_prefactor.as_mut_ptr(),
+                            coefficients_out: coeffs_buffer_ptr,
+                            challenges_out: device_claim_point_out.as_mut_ptr(),
+                        },
+                        context,
+                    ),
                     self.layer_idx,
-                    tail_program,
-                    &published,
-                    usize::from(continuation_tail_start),
-                    self.folding_steps,
-                    boundary,
-                    MainTailRuntimeState {
-                        eq_low: self.round_scratch.eq_low_group.as_mut_ptr(),
-                        prev_claim_coordinates: device_claim_point_in.as_ptr(),
-                        seed: device_seed.as_mut_ptr(),
-                        claim: device_claim.as_mut_ptr(),
-                        eq_prefactor: device_eq_prefactor.as_mut_ptr(),
-                        coefficients_out: coeffs_buffer_ptr,
-                        challenges_out: device_claim_point_out.as_mut_ptr(),
-                    },
-                    context,
-                )
-                .map_err(|_| era_cudart_sys::CudaError::ErrorInvalidValue)?;
-                self.main_tail_launched = Some(
-                    launch_main_tail(tail_launch, context)
-                        .map_err(|_| era_cudart_sys::CudaError::ErrorInvalidValue)?,
-                );
-            } else {
-                return Err(era_cudart_sys::CudaError::ErrorInvalidValue);
+                )?;
+                self.main_tail_launched = Some(preserve_main_tail_launch_error(
+                    launch_main_tail(tail_launch, context),
+                    self.layer_idx,
+                )?);
             }
         }
 
         if !self.main_chain_selected {
-        for step in first_round_in_loop..last_step {
-            let acc_size = 1usize << (self.folding_steps - step - 1);
-            if step == 0 {
-                let MainLayerR0Binding::PerRound(round0) = &mut self.bwd_vm_r0 else {
-                    panic!("step 0 runs the per-round R0 VM");
-                };
-                super::super::vm::production_bind::schedule_bwd_vm_round0(
-                    round0,
-                    device_external_challenges_ptr,
-                    cont_lookup_mul_ptr,
-                    cont_lookup_add_ptr,
-                    cont_batch_base_ptr,
-                    acc_size as u32,
-                    context,
-                )?;
-            } else {
-                if step == 1 {
-                    super::super::vm::production_bind::schedule_bwd_vm_ext_bank_fill(
-                        &mut self.bwd_vm_ext,
+            for step in first_round_in_loop..last_step {
+                let acc_size = 1usize << (self.folding_steps - step - 1);
+                if step == 0 {
+                    let MainLayerR0Binding::PerRound(round0) = &mut self.bwd_vm_r0 else {
+                        panic!("step 0 runs the per-round R0 VM");
+                    };
+                    super::super::vm::production_bind::schedule_bwd_vm_round0(
+                        round0,
                         device_external_challenges_ptr,
                         cont_lookup_mul_ptr,
                         cont_lookup_add_ptr,
                         cont_batch_base_ptr,
+                        acc_size as u32,
                         context,
                     )?;
-                    #[cfg(test)]
-                    record_main_layer_ext_bank_fill_for_test();
+                } else {
+                    if step == 1 {
+                        super::super::vm::production_bind::schedule_bwd_vm_ext_bank_fill(
+                            &mut self.bwd_vm_ext,
+                            device_external_challenges_ptr,
+                            cont_lookup_mul_ptr,
+                            cont_lookup_add_ptr,
+                            cont_batch_base_ptr,
+                            context,
+                        )?;
+                        #[cfg(test)]
+                        record_main_layer_ext_bank_fill_for_test();
+                    }
+                    super::super::vm::production_bind::schedule_bwd_vm_ext_round(
+                        &mut self.bwd_vm_ext,
+                        step as u32,
+                        acc_size as u32,
+                        context,
+                    )?;
                 }
-                super::super::vm::production_bind::schedule_bwd_vm_ext_round(
-                    &mut self.bwd_vm_ext,
-                    step as u32,
-                    acc_size as u32,
+
+                if step == 0 {
+                    storage.purge_up_to_layer(self.layer_idx);
+                }
+
+                let prev_coord_slice = device_claim_point_in.slice(step, 1);
+                // SAFETY: `step < folding_steps`, and every round owns four slab elements.
+                let coeffs_round_slice =
+                    unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
+                let challenge_slot = device_claim_point_out.slice_mut(step, 1);
+
+                self.dispatch_warp_partial_tail(
+                    acc_size,
+                    prev_coord_slice.as_ptr(),
+                    device_seed.as_mut_ptr(),
+                    device_claim.as_mut_ptr(),
+                    device_eq_prefactor.as_mut_ptr(),
+                    coeffs_round_slice.as_mut_ptr(),
+                    challenge_slot.as_mut_ptr(),
+                    context,
+                )?;
+                if let Some(recorder) = recorder.as_mut() {
+                    recorder.mark_round_end(step, stream)?;
+                }
+            }
+            super::super::vm::production_bind::schedule_bwd_vm_ext_round(
+                &mut self.bwd_vm_ext,
+                last_step as u32,
+                1,
+                context,
+            )?;
+            {
+                let prev_coord_slice = device_claim_point_in.slice(last_step, 1);
+                // SAFETY: `last_step < folding_steps`, and every round owns four slab elements.
+                let coeffs_round_slice = unsafe {
+                    DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(last_step * 4), 4)
+                };
+                let challenge_slot = device_claim_point_out.slice_mut(last_step, 1);
+                let eq_low_ptr = self.round_scratch.eq_low_group.as_mut_ptr();
+                self.dispatch_warp_partial_tail_inner(
+                    1,
+                    (eq_low_ptr, 0),
+                    prev_coord_slice.as_ptr(),
+                    device_seed.as_mut_ptr(),
+                    device_claim.as_mut_ptr(),
+                    device_eq_prefactor.as_mut_ptr(),
+                    coeffs_round_slice.as_mut_ptr(),
+                    challenge_slot.as_mut_ptr(),
                     context,
                 )?;
             }
-
-            if step == 0 {
-                storage.purge_up_to_layer(self.layer_idx);
-            }
-
-            let prev_coord_slice = device_claim_point_in.slice(step, 1);
-            // SAFETY: `step < folding_steps`, and every round owns four slab elements.
-            let coeffs_round_slice =
-                unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
-            let challenge_slot = device_claim_point_out.slice_mut(step, 1);
-
-            self.dispatch_warp_partial_tail(
-                acc_size,
-                prev_coord_slice.as_ptr(),
-                device_seed.as_mut_ptr(),
-                device_claim.as_mut_ptr(),
-                device_eq_prefactor.as_mut_ptr(),
-                coeffs_round_slice.as_mut_ptr(),
-                challenge_slot.as_mut_ptr(),
-                context,
-            )?;
-            if let Some(recorder) = recorder.as_mut() {
-                recorder.mark_round_end(step, stream)?;
-            }
-        }
-        super::super::vm::production_bind::schedule_bwd_vm_ext_round(
-            &mut self.bwd_vm_ext,
-            last_step as u32,
-            1,
-            context,
-        )?;
-        {
-            let prev_coord_slice = device_claim_point_in.slice(last_step, 1);
-            // SAFETY: `last_step < folding_steps`, and every round owns four slab elements.
-            let coeffs_round_slice =
-                unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(last_step * 4), 4) };
-            let challenge_slot = device_claim_point_out.slice_mut(last_step, 1);
-            let eq_low_ptr = self.round_scratch.eq_low_group.as_mut_ptr();
-            self.dispatch_warp_partial_tail_inner(
-                1,
-                (eq_low_ptr, 0),
-                prev_coord_slice.as_ptr(),
-                device_seed.as_mut_ptr(),
-                device_claim.as_mut_ptr(),
-                device_eq_prefactor.as_mut_ptr(),
-                coeffs_round_slice.as_mut_ptr(),
-                challenge_slot.as_mut_ptr(),
-                context,
-            )?;
-        }
         }
         if let Some(recorder) = recorder.take() {
             recorder.finish(stream)?;
@@ -520,10 +586,11 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             .map(|address| (*address, std::ptr::null()))
             .collect();
         if let Some(main_tail) = self.main_tail_launched.as_ref() {
-            self.bwd_vm_ext.repoint_final_evaluations_from_external_buffer(
-                main_tail.final_level().allocation(),
-                &mut transcript_input_sources,
-            );
+            self.bwd_vm_ext
+                .repoint_final_evaluations_from_external_buffer(
+                    main_tail.final_level().allocation(),
+                    &mut transcript_input_sources,
+                );
         } else {
             self.bwd_vm_ext
                 .repoint_final_evaluations(&mut transcript_input_sources);
@@ -660,10 +727,18 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             MainLayerR0Binding::PerRound(round0) => round0.take_bank_staging(),
             MainLayerR0Binding::Windowed(windowed) => windowed.bank.take_bank_staging(),
         };
-        let coeff_bank_staging = [r0_bank_staging, self.bwd_vm_ext.take_bank_staging()]
-            .into_iter()
-            .flatten()
-            .collect();
+        let main_tail_staging = self
+            .main_tail_launched
+            .as_mut()
+            .and_then(super::super::main_tail::MainTailLaunched::take_host_staging);
+        let coeff_bank_staging = [
+            r0_bank_staging,
+            self.bwd_vm_ext.take_bank_staging(),
+            main_tail_staging,
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             device_seed: Some(device_seed),
@@ -677,5 +752,195 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             #[cfg(test)]
             device_final_eq_prefactor_for_test,
         })
+    }
+}
+
+#[cfg(test)]
+mod cpu_main_chain_dispatch {
+    use super::*;
+    use crate::{
+        production_main_chain_selected, BackwardExecutionStrategy, GkrBackwardOptions,
+        WindowTailArm,
+    };
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Event {
+        R0,
+        R0Publication,
+        Continuation,
+        TailBind,
+        TailLaunch,
+        CanonicalRepoint,
+        Legacy,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Inject {
+        None,
+        MissingPublication,
+        Bind,
+        Launch,
+    }
+
+    fn host_schedule(
+        options: GkrBackwardOptions,
+        strategy: BackwardExecutionStrategy,
+        window_count: u8,
+        inject: Inject,
+    ) -> (Vec<Event>, Result<(), MainLayerScheduleError>) {
+        let mut events = Vec::new();
+        if strategy == BackwardExecutionStrategy::WindowedR0 {
+            events.push(Event::R0);
+        }
+        let selected = production_main_chain_selected(options, strategy);
+        let Some(source) = main_tail_publication_source(selected, window_count) else {
+            events.push(Event::Legacy);
+            return (events, Ok(()));
+        };
+        events.push(match source {
+            MainTailPublicationSource::R0 => Event::R0Publication,
+            MainTailPublicationSource::Continuation => Event::Continuation,
+        });
+        let publication = (inject != Inject::MissingPublication).then_some(());
+        let publication = match require_main_tail_publication(publication, 7, 3) {
+            Ok(publication) => publication,
+            Err(error) => return (events, Err(error)),
+        };
+        let _ = publication;
+        events.push(Event::TailBind);
+        if let Err(error) = preserve_main_tail_bind_error(
+            if inject == Inject::Bind {
+                Err("injected bind")
+            } else {
+                Ok(())
+            },
+            7,
+        ) {
+            return (events, Err(error));
+        }
+        events.push(Event::TailLaunch);
+        if let Err(error) = preserve_main_tail_launch_error(
+            if inject == Inject::Launch {
+                Err("injected post-launch failure")
+            } else {
+                Ok(())
+            },
+            7,
+        ) {
+            return (events, Err(error));
+        }
+        events.push(Event::CanonicalRepoint);
+        (events, Ok(()))
+    }
+
+    fn production_options() -> GkrBackwardOptions {
+        GkrBackwardOptions {
+            windowed_r0: true,
+            windowed_main_continuations: true,
+            window_tail: WindowTailArm::Split,
+        }
+    }
+
+    #[test]
+    fn zero_and_continuation_windows_reach_the_tail_through_the_exact_source() {
+        let (zero_events, zero_result) = host_schedule(
+            production_options(),
+            BackwardExecutionStrategy::WindowedR0,
+            0,
+            Inject::None,
+        );
+        assert_eq!(zero_result, Ok(()));
+        assert_eq!(
+            zero_events,
+            [
+                Event::R0,
+                Event::R0Publication,
+                Event::TailBind,
+                Event::TailLaunch,
+                Event::CanonicalRepoint,
+            ]
+        );
+
+        let (continuation_events, continuation_result) = host_schedule(
+            production_options(),
+            BackwardExecutionStrategy::WindowedR0,
+            2,
+            Inject::None,
+        );
+        assert_eq!(continuation_result, Ok(()));
+        assert_eq!(
+            continuation_events,
+            [
+                Event::R0,
+                Event::Continuation,
+                Event::TailBind,
+                Event::TailLaunch,
+                Event::CanonicalRepoint,
+            ]
+        );
+        assert_ne!(zero_events, continuation_events);
+    }
+
+    #[test]
+    fn publication_bind_and_launch_failures_remain_typed_without_legacy_retry() {
+        for (inject, expected) in [
+            (Inject::MissingPublication, "missing"),
+            (Inject::Bind, "bind"),
+            (Inject::Launch, "launch"),
+        ] {
+            let (events, result) = host_schedule(
+                production_options(),
+                BackwardExecutionStrategy::WindowedR0,
+                0,
+                inject,
+            );
+            assert!(
+                !events.contains(&Event::Legacy),
+                "{expected} retried legacy"
+            );
+            let error = result.expect_err("the injected production failure must propagate");
+            match (expected, error) {
+                ("missing", MainLayerScheduleError::MissingPublication { layer: 7, .. })
+                | ("bind", MainLayerScheduleError::MainTailBind { layer: 7, .. })
+                | ("launch", MainLayerScheduleError::MainTailLaunch { layer: 7, .. }) => {}
+                (_, error) => panic!("wrong typed error for {expected}: {error:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn only_explicit_diagnostic_configuration_enters_the_legacy_loop() {
+        let mut diagnostic = production_options();
+        diagnostic.windowed_main_continuations = false;
+        let (events, result) = host_schedule(
+            diagnostic,
+            BackwardExecutionStrategy::WindowedR0,
+            0,
+            Inject::None,
+        );
+        assert_eq!(result, Ok(()));
+        assert_eq!(events, [Event::R0, Event::Legacy]);
+
+        let mut per_round = production_options();
+        per_round.windowed_r0 = false;
+        let (events, result) = host_schedule(
+            per_round,
+            BackwardExecutionStrategy::PerRound,
+            0,
+            Inject::None,
+        );
+        assert_eq!(result, Ok(()));
+        assert_eq!(events, [Event::Legacy]);
+
+        // Proven-fail mutations: either production selector or either window
+        // count must change the observed arm/source.
+        assert_ne!(
+            main_tail_publication_source(true, 0),
+            main_tail_publication_source(false, 0)
+        );
+        assert_ne!(
+            main_tail_publication_source(true, 0),
+            main_tail_publication_source(true, 1)
+        );
     }
 }

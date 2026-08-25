@@ -40,7 +40,7 @@ struct alignas(16) bwd_main_cont_window_desc {
   bwd_seg_addr_slot slot[BWD_MAIN_CONT_WINDOW_ADDR_SLOTS];
   u32 c_init_coeff;
   u32 immediates[BWD_MAIN_CONT_WINDOW_MAX_IMMEDIATES];
-  u32 tail_padding;
+  u32 publication_fold;
   const e4 *eq_low;
   e4 *partials;
   u32 row_tiles;
@@ -79,7 +79,7 @@ static_assert(__builtin_offsetof(bwd_main_cont_window_desc, source) == 15112, "s
 static_assert(__builtin_offsetof(bwd_main_cont_window_desc, slot) == 19400, "slot ABI offset drift");
 static_assert(__builtin_offsetof(bwd_main_cont_window_desc, c_init_coeff) == 20424, "c_init_coeff ABI offset drift");
 static_assert(__builtin_offsetof(bwd_main_cont_window_desc, immediates) == 20428, "immediates ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, tail_padding) == 22476, "tail_padding ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, publication_fold) == 22476, "publication_fold ABI offset drift");
 static_assert(__builtin_offsetof(bwd_main_cont_window_desc, eq_low) == 22480, "eq_low ABI offset drift");
 static_assert(__builtin_offsetof(bwd_main_cont_window_desc, partials) == 22488, "partials ABI offset drift");
 static_assert(__builtin_offsetof(bwd_main_cont_window_desc, row_tiles) == 22496, "row_tiles ABI offset drift");

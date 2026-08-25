@@ -1,6 +1,6 @@
 use crate::proof::{
     construct_after_windowed_backward_preflight, preflight_windowed_backward, prove,
-    resolve_backward_execution_strategy, GpuGKRProofJob,
+    resolve_backward_execution_strategy, GpuGKRProofJob, GpuProveError,
 };
 #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
 use crate::proof::{prove_main_continuation_differential, prove_with_exact_memory};
@@ -479,7 +479,7 @@ impl BasicUnrolledFixture {
     fn prove(
         &self,
         transfers: BasicUnrolledTransfers<'static>,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> Result<GpuGKRProofJob<'static, Global>, GpuProveError> {
         self.prove_with(transfers, GkrBackwardOptions::default())
     }
 
@@ -490,7 +490,7 @@ impl BasicUnrolledFixture {
         &self,
         transfers: BasicUnrolledTransfers<'static>,
         backward_options: GkrBackwardOptions,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> Result<GpuGKRProofJob<'static, Global>, GpuProveError> {
         let strategy = resolve_backward_execution_strategy(
             &self.gkr_programs,
             &self.prover_config,
@@ -513,14 +513,14 @@ impl BasicUnrolledFixture {
         )
     }
 
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    fn schedule_prove(&self) -> Result<GpuGKRProofJob<'static, Global>, GpuProveError> {
         self.schedule_prove_with(GkrBackwardOptions::default())
     }
 
     fn schedule_prove_with(
         &self,
         backward_options: GkrBackwardOptions,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> Result<GpuGKRProofJob<'static, Global>, GpuProveError> {
         let strategy = resolve_backward_execution_strategy(
             &self.gkr_programs,
             &self.prover_config,
@@ -562,7 +562,9 @@ impl BasicUnrolledFixture {
     }
 
     #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
-    fn schedule_main_continuation_differential(&self) -> CudaResult<Task8PreparedDifferentialJob> {
+    fn schedule_main_continuation_differential(
+        &self,
+    ) -> Result<Task8PreparedDifferentialJob, GpuProveError> {
         let options = GkrBackwardOptions {
             windowed_r0: true,
             windowed_main_continuations: true,
@@ -597,7 +599,7 @@ impl BasicUnrolledFixture {
     fn schedule_exact_memory(
         &self,
         options: GkrBackwardOptions,
-    ) -> CudaResult<Task8ExactMemoryJob<'_>> {
+    ) -> Result<Task8ExactMemoryJob<'_>, GpuProveError> {
         let stable_entry = self.context.get_device_memory_usage();
         let whole = self.context.observe_device_memory_high_water();
         let finish_sequence = Arc::new(AtomicUsize::new(0));
@@ -636,14 +638,14 @@ impl BasicUnrolledFixture {
 }
 
 impl BasicUnrolledProofFixture {
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    fn schedule_prove(&self) -> Result<GpuGKRProofJob<'static, Global>, GpuProveError> {
         self.base.schedule_prove()
     }
 
     fn schedule_prove_with(
         &self,
         backward_options: GkrBackwardOptions,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> Result<GpuGKRProofJob<'static, Global>, GpuProveError> {
         self.base.schedule_prove_with(backward_options)
     }
 }

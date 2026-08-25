@@ -9,6 +9,7 @@ use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::{
     preflight_windowed_backward, prove, resolve_backward_execution_strategy, GpuGKRProofJob,
+    GpuProveError,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -51,11 +52,11 @@ pub(crate) fn get_gpu_worker_func(
 }
 
 /// The worker's backward-phase options. Single construction site for the
-/// windowed-R0 arm selection; clearing `windowed_r0` is the escape hatch back
-/// to the per-round arm.
+/// complete production arm selection; clearing either windowed selector is an
+/// explicit diagnostic escape hatch back to the per-round remainder.
 const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
     windowed_r0: true,
-    windowed_main_continuations: false,
+    windowed_main_continuations: true,
     window_tail: WindowTailArm::Split,
 };
 
@@ -66,6 +67,37 @@ enum RequestKind {
     Proof,
     SetupInitialization,
 }
+
+#[derive(Debug)]
+enum GpuWorkerError {
+    Cuda(era_cudart_sys::CudaError),
+    Prove(GpuProveError),
+}
+
+impl From<era_cudart_sys::CudaError> for GpuWorkerError {
+    fn from(error: era_cudart_sys::CudaError) -> Self {
+        Self::Cuda(error)
+    }
+}
+
+impl From<GpuProveError> for GpuWorkerError {
+    fn from(error: GpuProveError) -> Self {
+        Self::Prove(error)
+    }
+}
+
+impl core::fmt::Display for GpuWorkerError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Cuda(error) => write!(formatter, "CUDA worker failure: {error:?}"),
+            Self::Prove(error) => write!(formatter, "proof worker failure: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for GpuWorkerError {}
+
+type GpuWorkerResult<T> = Result<T, GpuWorkerError>;
 
 /// Per-request bookkeeping carried across all three phases. Owns the
 /// precomputations Arc (which holds the compiled circuit, lazy-init setup
@@ -132,7 +164,7 @@ fn gpu_worker(
     is_initialized: Sender<()>,
     requests: Receiver<Option<GpuWorkRequest<A>>>,
     results: Sender<Option<GpuWorkResult<A>>>,
-) -> CudaResult<()> {
+) -> GpuWorkerResult<()> {
     trace!("GPU_WORKER[{device_id}] started");
     set_device(device_id)?;
     let props = get_device_properties(device_id)?;
@@ -190,7 +222,7 @@ fn schedule_phase_one<'a>(
     device_id: i32,
     context: &ProverContext,
     request: GpuWorkRequest<A>,
-) -> CudaResult<PhaseOne<'a>> {
+) -> GpuWorkerResult<PhaseOne<'a>> {
     if let GpuWorkRequest::SetupInitialization(request) = request {
         let SetupInitializationRequest {
             batch_id,
@@ -304,8 +336,7 @@ fn schedule_phase_one<'a>(
             ),
             BACKWARD_OPTIONS,
             FINAL_TRACE_SIZE_LOG_2,
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
+        )?;
     }
 
     let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
@@ -414,7 +445,7 @@ fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
     p1: PhaseOne<'a>,
-) -> CudaResult<PhaseTwo<'a>> {
+) -> GpuWorkerResult<PhaseTwo<'a>> {
     let PhaseOne { state, inputs } = p1;
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;

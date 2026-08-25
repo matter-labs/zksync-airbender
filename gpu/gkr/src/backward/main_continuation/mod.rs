@@ -23,9 +23,9 @@ mod binding {
 
     pub(crate) use super::binding_impl::{
         bind_first_main_continuation_window, bind_later_main_continuation_window,
-        task8_window_plan, task8_window_spans, MainContinuationWindowBindError,
-        MainContinuationWindowLaunchBinding, MainContinuationWindowLaunched,
-        MainContinuationWindowRuntimeScratch,
+        bind_main_r0_publication, task8_window_plan, task8_window_spans,
+        MainContinuationWindowBindError, MainContinuationWindowLaunchBinding,
+        MainContinuationWindowLaunched, MainContinuationWindowRuntimeScratch,
     };
 
     thread_local! {
@@ -77,16 +77,19 @@ mod binding {
         launch: super::binding_impl::MainContinuationWindowLaunch<'_>,
         context: &ProverContext,
     ) -> CudaResult<MainContinuationWindowLaunched> {
+        let count_as_continuation = launch.is_continuation_window();
         let launched = super::binding_impl::launch_main_continuation_window(launch, context)?;
-        ACTIVE_TASK8_LAUNCH_COUNT.with(|counter| {
-            if let Some(launches) = counter.get() {
-                counter.set(Some(
-                    launches
-                        .checked_add(1)
-                        .expect("Task 8 continuation launch count overflow"),
-                ));
-            }
-        });
+        if count_as_continuation {
+            ACTIVE_TASK8_LAUNCH_COUNT.with(|counter| {
+                if let Some(launches) = counter.get() {
+                    counter.set(Some(
+                        launches
+                            .checked_add(1)
+                            .expect("Task 8 continuation launch count overflow"),
+                    ));
+                }
+            });
+        }
         Ok(launched)
     }
 }
@@ -110,7 +113,7 @@ pub(crate) use binding::Task8MainContinuationLaunchCounterGuard;
 #[allow(unused_imports)] // Task 6 consumes this staged production seam.
 pub(crate) use binding::{
     bind_first_main_continuation_window, bind_later_main_continuation_window,
-    launch_main_continuation_window, MainContinuationWindowBindError,
+    bind_main_r0_publication, launch_main_continuation_window, MainContinuationWindowBindError,
     MainContinuationWindowLaunched, MainContinuationWindowRuntimeScratch,
 };
 

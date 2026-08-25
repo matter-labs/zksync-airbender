@@ -31,15 +31,20 @@ impl GpuGKRMainLayerBackwardState {
         .unwrap_or_else(|error| {
             panic!("main-layer execution plan for layer {layer_idx}: {error:?}")
         });
-        if main_execution_plan.window_count() > 0 {
+        let main_chain_selected = crate::production_main_chain_selected(options, self.strategy);
+        if main_chain_selected {
             assert_eq!(
                 self.strategy,
                 BackwardExecutionStrategy::WindowedR0,
-                "continuation windows require the landed windowed R0 arm"
+                "the production main chain requires the landed windowed R0 arm"
             );
             assert!(
                 self.programs.main_continuation_window_programs_ready(),
-                "continuation scheduling requires an accepted preflight bundle"
+                "the production main chain requires an accepted continuation bundle"
+            );
+            assert!(
+                self.programs.main_tail_programs_ready(),
+                "the production main chain requires an accepted main-tail bundle"
             );
         }
 
@@ -104,7 +109,7 @@ impl GpuGKRMainLayerBackwardState {
                 )
             }
         };
-        let bwd_vm_ext = if main_execution_plan.window_count() > 0 {
+        let bwd_vm_ext = if main_chain_selected {
             super::super::vm::production_bind::build_bwd_vm_ext_rounds_after_continuations(
                 &self.storage,
                 self.programs.continuation_layer(layer_idx),
@@ -168,15 +173,15 @@ impl GpuGKRMainLayerBackwardState {
                 layer_idx,
                 self.programs.clone(),
             ),
-            main_tail_program: Some(
+            main_tail_program: main_chain_selected.then(|| {
                 self.programs
                     .resolve_main_tail_programs()
                     .expect("main-tail preflight must complete before layer preparation")
                     .layers[layer_idx]
-                    .clone(),
-            ),
+                    .clone()
+            }),
             main_tail_launched: None,
-            main_chain_selected: true,
+            main_chain_selected,
             eq_sizes: GkrEqSizes::zeroed(),
         })
     }

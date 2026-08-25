@@ -4,7 +4,6 @@ mod orchestration;
 use std::sync::Arc;
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
-use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
@@ -19,8 +18,8 @@ use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::{
     backward_execution_strategy, main_continuation_window_count, BackwardExecutionStrategy,
     GkrBackwardOptions, GkrPrograms, MainContinuationWindowLoweringRejection,
-    MainTailLoweringRejection,
-    MainLayerExecutionPlanError, WindowLoweringRejection,
+    MainLayerExecutionPlanError, MainLayerScheduleError, MainTailLoweringRejection,
+    WindowLoweringRejection,
 };
 #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
 use gpu_prover_context::DeviceMemoryHighWaterObserver;
@@ -34,9 +33,10 @@ use orchestration::{
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
-/// A proof request rejected before any GPU work is scheduled.
+/// A typed preflight or enqueue-time proof failure.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GpuProveError {
+    Cuda(era_cudart_sys::CudaError),
     WindowLowering {
         circuit: String,
         layer: usize,
@@ -47,14 +47,23 @@ pub enum GpuProveError {
         layer: usize,
         resource: String,
     },
+    MainTailLowering {
+        circuit: String,
+        layer: usize,
+        resource: String,
+    },
     MainLayerExecutionPlan {
         error: MainLayerExecutionPlanError,
+    },
+    MainLayerSchedule {
+        error: MainLayerScheduleError,
     },
 }
 
 impl std::fmt::Display for GpuProveError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Cuda(error) => write!(formatter, "CUDA proof scheduling failed: {error:?}"),
             Self::WindowLowering {
                 circuit,
                 layer,
@@ -71,14 +80,37 @@ impl std::fmt::Display for GpuProveError {
                 formatter,
                 "main continuation window lowering rejected for {circuit}/{layer}: {resource}"
             ),
+            Self::MainTailLowering {
+                circuit,
+                layer,
+                resource,
+            } => write!(
+                formatter,
+                "main-tail lowering rejected for {circuit}/{layer}: {resource}"
+            ),
             Self::MainLayerExecutionPlan { error } => {
                 write!(formatter, "main-layer execution plan rejected: {error:?}")
+            }
+            Self::MainLayerSchedule { error } => {
+                write!(formatter, "main-layer scheduling rejected: {error}")
             }
         }
     }
 }
 
 impl std::error::Error for GpuProveError {}
+
+impl From<era_cudart_sys::CudaError> for GpuProveError {
+    fn from(error: era_cudart_sys::CudaError) -> Self {
+        Self::Cuda(error)
+    }
+}
+
+impl From<MainLayerScheduleError> for GpuProveError {
+    fn from(error: MainLayerScheduleError) -> Self {
+        Self::MainLayerSchedule { error }
+    }
+}
 
 impl From<&WindowLoweringRejection> for GpuProveError {
     fn from(rejection: &WindowLoweringRejection) -> Self {
@@ -102,7 +134,7 @@ impl From<&MainContinuationWindowLoweringRejection> for GpuProveError {
 
 impl From<&MainTailLoweringRejection> for GpuProveError {
     fn from(rejection: &MainTailLoweringRejection) -> Self {
-        Self::MainContinuationWindowLowering {
+        Self::MainTailLowering {
             circuit: rejection.circuit.clone(),
             layer: rejection.layer,
             resource: rejection.resource.clone(),
@@ -166,12 +198,15 @@ pub fn preflight_windowed_backward(
     let window_count =
         main_continuation_window_count(options, strategy, main_folding_steps(gkr_programs))
             .map_err(|error| GpuProveError::MainLayerExecutionPlan { error })?;
-    if window_count > 0 {
+    if gpu_gkr::production_main_chain_selected(options, strategy) {
         gkr_programs
             .resolve_main_continuation_window_programs()
             .map(|_| ())
             .map_err(GpuProveError::from)?;
-        gkr_programs.resolve_main_tail_programs().map(|_| ()).map_err(GpuProveError::from)?;
+        gkr_programs
+            .resolve_main_tail_programs()
+            .map(|_| ())
+            .map_err(GpuProveError::from)?;
     }
     Ok(())
 }
@@ -195,7 +230,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> Result<GpuGKRProofJob<'a, A>, GpuProveError> {
     prove_inner(
         gkr_programs,
         prover_config,
@@ -217,7 +252,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> Result<GpuGKRProofJob<'a, A>, GpuProveError> {
     prove_inner(
         gkr_programs,
         prover_config,
@@ -240,7 +275,7 @@ pub(crate) fn prove_main_continuation_differential<'a, A: GoodAllocator + 'a>(
     backward_options: GkrBackwardOptions,
     sink: Box<GKRBackwardStageSnapshotSink>,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> Result<GpuGKRProofJob<'a, A>, GpuProveError> {
     prove_inner(
         gkr_programs,
         prover_config,
@@ -262,10 +297,13 @@ pub(crate) fn prove_with_exact_memory<'a, 'context, A: GoodAllocator + 'a>(
     backward_options: GkrBackwardOptions,
     sink: Box<GKRBackwardStageSnapshotSink>,
     context: &'context ProverContext,
-) -> CudaResult<(
-    GpuGKRProofJob<'a, A>,
-    DeviceMemoryHighWaterObserver<'context>,
-)> {
+) -> Result<
+    (
+        GpuGKRProofJob<'a, A>,
+        DeviceMemoryHighWaterObserver<'context>,
+    ),
+    GpuProveError,
+> {
     let mut backward_observer = None;
     let job = prove_inner(
         gkr_programs,
@@ -293,13 +331,15 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
     #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
     mut backward_observer_out: Option<&mut Option<DeviceMemoryHighWaterObserver<'context>>>,
     context: &'context ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> Result<GpuGKRProofJob<'a, A>, GpuProveError> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let backward_strategy =
         resolve_backward_execution_strategy(gkr_programs, prover_config, backward_options);
     match backward_strategy {
         BackwardExecutionStrategy::PerRound if backward_options.windowed_r0 => {
-            return Err(era_cudart_sys::CudaError::ErrorInvalidValue);
+            return Err(GpuProveError::MainLayerExecutionPlan {
+                error: MainLayerExecutionPlanError::WindowedStrategyUnavailable,
+            });
         }
         BackwardExecutionStrategy::WindowedR0 => assert!(
             gkr_programs.window_programs_ready(),
@@ -307,16 +347,20 @@ fn prove_inner<'a, 'context, A: GoodAllocator + 'a>(
         ),
         BackwardExecutionStrategy::PerRound => {}
     }
-    let continuation_window_count = main_continuation_window_count(
+    let _continuation_window_count = main_continuation_window_count(
         backward_options,
         backward_strategy,
         main_folding_steps(gkr_programs),
     )
     .expect("prove() requires a main-layer execution plan accepted by preflight");
-    if continuation_window_count > 0 {
+    if gpu_gkr::production_main_chain_selected(backward_options, backward_strategy) {
         assert!(
             gkr_programs.main_continuation_window_programs_ready(),
-            "continuation scheduling requires preflight_windowed_backward first"
+            "the production main chain requires continuation preflight"
+        );
+        assert!(
+            gkr_programs.main_tail_programs_ready(),
+            "the production main chain requires main-tail preflight"
         );
     }
     assert_eq!(

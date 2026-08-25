@@ -254,9 +254,13 @@ mod cpu_main_layer_execution_plan {
     }
 
     #[test]
-    fn disabled_per_round_and_enabled_zero_window_plans_keep_legacy_boundaries() {
+    fn diagnostic_per_round_and_enabled_zero_window_plans_keep_exact_boundaries() {
+        let diagnostic = GkrBackwardOptions {
+            windowed_main_continuations: false,
+            ..GkrBackwardOptions::default()
+        };
         let disabled = try_derive_main_layer_execution_plan(
-            GkrBackwardOptions::default(),
+            diagnostic,
             BackwardExecutionStrategy::WindowedR0,
             24,
             MainTailRoundBudget::AtLeast { min_tail_rounds: 1 },

@@ -164,7 +164,7 @@ pub(in crate::proof) fn schedule_backward_phase(
     stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink>>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
-) -> CudaResult<BackwardPhaseResult> {
+) -> Result<BackwardPhaseResult, super::super::GpuProveError> {
     let backward_scheduled = backward_state.schedule_execute_backward_workflow(
         inits_and_teardowns_top_bits,
         gkr_programs,

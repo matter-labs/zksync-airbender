@@ -4,6 +4,7 @@ use era_cudart::slice::CudaSlice;
 use super::kernels::*;
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
+use crate::MainLayerScheduleError;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::UnsafeMutAccessor;
@@ -99,7 +100,7 @@ impl GpuGKRDimensionReducingBackwardState {
         stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink>>,
         callbacks: &mut Callbacks<'_>,
         context: &ProverContext,
-    ) -> CudaResult<GpuGKRBackwardScheduledExecution> {
+    ) -> Result<GpuGKRBackwardScheduledExecution, MainLayerScheduleError> {
         let stream = context.get_exec_stream();
         let device_lookup_challenges_ptr = device_lookup_challenges.as_ptr();
         let mut tracing_ranges = Vec::new();

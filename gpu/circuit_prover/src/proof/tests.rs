@@ -282,10 +282,14 @@ fn cpu_windowed_backward_preflight_reports_an_r0_lowering_rejection() {
 
     let (programs, _) =
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let per_round_options = GkrBackwardOptions {
+        windowed_r0: false,
+        ..GkrBackwardOptions::default()
+    };
     assert!(preflight_windowed_backward(
         &programs,
         BackwardExecutionStrategy::PerRound,
-        GkrBackwardOptions::default(),
+        per_round_options,
         4,
     )
     .is_ok());
@@ -340,22 +344,36 @@ fn cpu_windowed_backward_preflight_resolves_only_required_lazy_bundles() {
 
     let (per_round, _) =
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
-    preflight_windowed_backward(&per_round, BackwardExecutionStrategy::PerRound, enabled, 4)
-        .unwrap();
+    let explicit_per_round = GkrBackwardOptions {
+        windowed_r0: false,
+        ..enabled
+    };
+    preflight_windowed_backward(
+        &per_round,
+        BackwardExecutionStrategy::PerRound,
+        explicit_per_round,
+        4,
+    )
+    .unwrap();
     assert!(!per_round.window_programs_ready());
     assert!(!per_round.main_continuation_window_programs_ready());
 
     let (disabled, _) =
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
+    let diagnostic = GkrBackwardOptions {
+        windowed_main_continuations: false,
+        ..GkrBackwardOptions::default()
+    };
     preflight_windowed_backward(
         &disabled,
         BackwardExecutionStrategy::WindowedR0,
-        GkrBackwardOptions::default(),
+        diagnostic,
         4,
     )
     .unwrap();
     assert!(disabled.window_programs_ready());
     assert!(!disabled.main_continuation_window_programs_ready());
+    assert!(!disabled.main_tail_programs_ready());
 
     let (required, layer_count) =
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
@@ -368,6 +386,7 @@ fn cpu_windowed_backward_preflight_resolves_only_required_lazy_bundles() {
         .unwrap();
     assert!(required.window_programs_ready());
     assert!(required.main_continuation_window_programs_ready());
+    assert!(required.main_tail_programs_ready());
     assert_eq!(
         required
             .resolve_main_continuation_window_programs()
@@ -376,6 +395,35 @@ fn cpu_windowed_backward_preflight_resolves_only_required_lazy_bundles() {
             .len(),
         layer_count
     );
+}
+
+#[test]
+fn cpu_runtime_main_errors_remain_typed_at_the_public_prove_boundary() {
+    use super::GpuProveError;
+    use gpu_gkr::MainLayerScheduleError;
+
+    for schedule_error in [
+        MainLayerScheduleError::MissingPublication {
+            layer: 2,
+            tail_start: 3,
+        },
+        MainLayerScheduleError::MainTailBind {
+            layer: 2,
+            detail: "injected bind".to_owned(),
+        },
+        MainLayerScheduleError::MainTailLaunch {
+            layer: 2,
+            detail: "injected post-launch failure".to_owned(),
+        },
+    ] {
+        let public = GpuProveError::from(schedule_error.clone());
+        assert_eq!(
+            public,
+            GpuProveError::MainLayerSchedule {
+                error: schedule_error
+            }
+        );
+    }
 }
 
 #[test]

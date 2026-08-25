@@ -47,6 +47,21 @@ DEVICE_FORCEINLINE e4 bwd_main_cont_fold_e4_packets(const bwd_main_cont_e4_pair 
 
 DEVICE_FORCEINLINE e4 bwd_main_cont_fold_output(const bwd_main_cont_window_desc &desc, const bwd_main_cont_window_source_record &record,
                                                 const bwd_seg_addr_slot &input_slot, const u32 output_index) {
+  if (desc.publication_fold == 0) {
+    // The zero-continuation chain needs the exact depth-zero source arena in
+    // canonical E4 form. Base and virtual sources are embedded without a host
+    // round trip; extension sources retain their original bytes.
+    if (input_slot.origin == BWD_COEFF_ORIGIN_PROCEDURAL) {
+      const gkr_base_source_kind kind = bwd_coeff_procedural_source_kind(input_slot.procedural_kind);
+      return e4::from_scalar(gkr_virtual_base_value(kind, output_index));
+    }
+    if (input_slot.origin == BWD_COEFF_ORIGIN_READ_EXT) {
+      const e4 *input = bwd_main_cont_window_column<e4>(desc, record.src);
+      return load<e4, ld_modifier::cs>(input, output_index);
+    }
+    const bf *input = bwd_main_cont_window_column<bf>(desc, record.src);
+    return e4::from_scalar(load<bf, ld_modifier::cs>(input, output_index));
+  }
   const u32 leaf_index = output_index << 3;
   if (input_slot.origin == BWD_COEFF_ORIGIN_PROCEDURAL) {
     const gkr_base_source_kind kind = bwd_coeff_procedural_source_kind(input_slot.procedural_kind);
