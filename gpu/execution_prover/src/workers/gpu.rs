@@ -51,10 +51,12 @@ pub(crate) fn get_gpu_worker_func(
     }
 }
 
-/// The worker's backward-phase options. Production selects the inseparable
-/// R0/continuation/recursive-tail chain; legacy requires a separate explicit
-/// diagnostic configuration with all DR production stages disabled.
-const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
+const DR_TAIL_TUNING_ENV: &str = "AB_GKR_DR_TAIL";
+
+/// Default production selects the inseparable R0/continuation/recursive-tail
+/// chain. The only override is a worker-start diagnostic switch that disables
+/// the whole DR layer; no scheduler, binder, or kernel reads the environment.
+const PRODUCTION_BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
     dr_tail_megakernel: true,
     windowed_r0: true,
     windowed_main_continuations: true,
@@ -63,7 +65,82 @@ const BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
     window_tail: WindowTailArm::Split,
 };
 
+const LEGACY_DIAGNOSTIC_BACKWARD_OPTIONS: GkrBackwardOptions = GkrBackwardOptions {
+    dr_tail_megakernel: false,
+    windowed_r0: true,
+    windowed_main_continuations: true,
+    windowed_dr: false,
+    windowed_dr_continuations: false,
+    window_tail: WindowTailArm::Split,
+};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum DrTailTuningError {
+    InvalidValue(String),
+    NonUnicode,
+}
+
+impl core::fmt::Display for DrTailTuningError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidValue(value) => write!(
+                formatter,
+                "{DR_TAIL_TUNING_ENV} must be exactly 0 or 1, got {value:?}"
+            ),
+            Self::NonUnicode => write!(formatter, "{DR_TAIL_TUNING_ENV} must be valid UTF-8"),
+        }
+    }
+}
+
+fn backward_options_from_tail_tuning(
+    value: Option<&str>,
+) -> Result<GkrBackwardOptions, DrTailTuningError> {
+    match value {
+        None | Some("1") => Ok(PRODUCTION_BACKWARD_OPTIONS),
+        Some("0") => Ok(LEGACY_DIAGNOSTIC_BACKWARD_OPTIONS),
+        Some(value) => Err(DrTailTuningError::InvalidValue(value.to_owned())),
+    }
+}
+
+fn backward_options_from_environment() -> Result<GkrBackwardOptions, DrTailTuningError> {
+    match std::env::var_os(DR_TAIL_TUNING_ENV) {
+        None => backward_options_from_tail_tuning(None),
+        Some(value) => value
+            .into_string()
+            .map_err(|_| DrTailTuningError::NonUnicode)
+            .and_then(|value| backward_options_from_tail_tuning(Some(&value))),
+    }
+}
+
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
+
+#[cfg(test)]
+mod task7_tests {
+    use super::*;
+
+    #[test]
+    fn cpu_task7_worker_tail_tuning_is_single_value_and_whole_layer() {
+        let production = backward_options_from_tail_tuning(None).unwrap();
+        let forced_production = backward_options_from_tail_tuning(Some("1")).unwrap();
+        let legacy = backward_options_from_tail_tuning(Some("0")).unwrap();
+
+        assert_eq!(production, forced_production);
+        assert!(production.dr_tail_megakernel);
+        assert!(production.windowed_r0);
+        assert!(production.windowed_main_continuations);
+        assert!(production.windowed_dr);
+        assert!(production.windowed_dr_continuations);
+        assert!(!legacy.dr_tail_megakernel);
+        assert!(legacy.windowed_r0);
+        assert!(legacy.windowed_main_continuations);
+        assert!(!legacy.windowed_dr);
+        assert!(!legacy.windowed_dr_continuations);
+        assert_eq!(
+            backward_options_from_tail_tuning(Some("invalid")),
+            Err(DrTailTuningError::InvalidValue("invalid".to_owned())),
+        );
+    }
+}
 
 enum RequestKind {
     MemoryCommitment,
@@ -170,6 +247,8 @@ fn gpu_worker(
     results: Sender<Option<GpuWorkResult<A>>>,
 ) -> Result<(), GpuWorkerError> {
     trace!("GPU_WORKER[{device_id}] started");
+    let backward_options = backward_options_from_environment()
+        .unwrap_or_else(|error| panic!("GPU_WORKER[{device_id}] {error}"));
     set_device(device_id)?;
     let props = get_device_properties(device_id)?;
     let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
@@ -194,14 +273,24 @@ fn gpu_worker(
     for request in requests {
         context.set_reversed_allocation_placement(even_odd_index == 1);
         let mut phase_one = if let Some(request) = request {
-            Some(schedule_phase_one(device_id, &context, request)?)
+            Some(schedule_phase_one(
+                device_id,
+                &context,
+                backward_options,
+                request,
+            )?)
         } else {
             None
         };
         mem::swap(&mut current_phase_one, &mut phase_one);
         context.set_reversed_allocation_placement(even_odd_index == 0);
         let mut phase_two = if let Some(p1) = phase_one {
-            Some(enqueue_phase_two(device_id, &context, p1)?)
+            Some(enqueue_phase_two(
+                device_id,
+                &context,
+                backward_options,
+                p1,
+            )?)
         } else {
             None
         };
@@ -225,8 +314,9 @@ fn gpu_worker(
 fn schedule_phase_one<'a>(
     device_id: i32,
     context: &ProverContext,
+    backward_options: GkrBackwardOptions,
     request: GpuWorkRequest<A>,
-) -> CudaResult<PhaseOne<'a>> {
+) -> Result<PhaseOne<'a>, GpuWorkerError> {
     if let GpuWorkRequest::SetupInitialization(request) = request {
         let SetupInitializationRequest {
             batch_id,
@@ -338,115 +428,118 @@ fn schedule_phase_one<'a>(
                 strategy: resolve_backward_execution_strategy(
                     &state.precomputations.gkr_programs,
                     prover_config,
-                    BACKWARD_OPTIONS,
+                    backward_options,
                 ),
-                options: BACKWARD_OPTIONS,
+                options: backward_options,
                 final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
                 device_id,
             });
 
-    let inputs = admit_dr_tail_before_transfers(preflight_request, |dr_tail_plan| {
-    let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
-        Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
-    } else {
-        None
-    };
-
-    // Captured before the host buffer is consumed below. `None` covers both
-    // circuits that carry no i&t at all and the TRIVIAL (dummy) leading unified
-    // chunks — only a unified execution's trailing circuits hold real i&t data.
-    let carried_top_bits = inits_and_teardowns_host
-        .as_ref()
-        .map(|host| host.top_bits.clone());
-
-    let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
-        Some(InitsAndTeardownsTransfer::new(host, context)?)
-    } else {
-        None
-    };
-
-    let tracing_data_transfer = if let Some(tracing_data_host) = tracing_data_host {
-        Some(TracingDataTransfer::new(tracing_data_host, context)?)
-    } else {
-        None
-    };
-
-    let inputs: PhaseOneInputs<'a> = if is_proof {
-        let setup_transfer =
-            if let Some(setup_host) = state.precomputations.setup_host.get_initialized() {
-                Some(GpuGKRSetupTransfer::new(setup_host, context)?)
+    let inputs = admit_dr_tail_before_transfers(
+        preflight_request,
+        |dr_tail_plan| -> CudaResult<PhaseOneInputs<'a>> {
+            let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
+                Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
             } else {
                 None
             };
-        // Geometry must match the configuration used to commit the caps.
-        // `circuit_type.get_lde_factor()` / `get_tree_cap_size()` are derived
-        // from `OPTIMAL_FOLDING_PROPERTIES` and can disagree with the
-        // `prover_config` the commit phase actually used, so use the
-        // prover_config geometry directly here.
-        let prover_config = proof_prover_config
-            .as_ref()
-            .expect("proof requests construct their prover config before transfers");
-        let log_lde_factor = prover_config.lde_factor.trailing_zeros();
-        let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
-        let memory_caps = state
-            .memory_caps
-            .as_ref()
-            .expect("Proof requires memory_caps");
-        let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
-            memory_caps,
-            log_lde_factor,
-            log_tree_cap_size,
-        )?;
-        let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
-        let external_challenges_value = state
-            .external_challenges
-            .expect("Proof requires external_challenges");
-        let compiled_circuit = state
-            .precomputations
-            .gkr_programs
-            .compiled_circuit()
-            .as_ref();
-        // Without i&t data the windows are all zero, which is what the unified
-        // verifier requires of its leading instances.
-        let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
-        let top_bits = carried_top_bits.unwrap_or_else(|| vec![0u32; num_teardown_sets]);
-        assert_eq!(
-            top_bits.len(),
-            num_teardown_sets,
-            "inits-and-teardowns top bits must cover every teardown set of {circuit_type:?}"
-        );
-        let mut bundle = gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
-            setup_transfer,
-            decoder_transfer,
-            inits_and_teardowns_transfer,
-            tracing_data_transfer,
-            memory_transfer,
-            &top_bits,
-            external_challenges_value,
-            context,
-        )?;
-        trace!(
+
+            // Captured before the host buffer is consumed below. `None` covers both
+            // circuits that carry no i&t at all and the TRIVIAL (dummy) leading unified
+            // chunks — only a unified execution's trailing circuits hold real i&t data.
+            let carried_top_bits = inits_and_teardowns_host
+                .as_ref()
+                .map(|host| host.top_bits.clone());
+
+            let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
+                Some(InitsAndTeardownsTransfer::new(host, context)?)
+            } else {
+                None
+            };
+
+            let tracing_data_transfer = if let Some(tracing_data_host) = tracing_data_host {
+                Some(TracingDataTransfer::new(tracing_data_host, context)?)
+            } else {
+                None
+            };
+
+            let inputs: PhaseOneInputs<'a> = if is_proof {
+                let setup_transfer =
+                    if let Some(setup_host) = state.precomputations.setup_host.get_initialized() {
+                        Some(GpuGKRSetupTransfer::new(setup_host, context)?)
+                    } else {
+                        None
+                    };
+                // Geometry must match the configuration used to commit the caps.
+                // `circuit_type.get_lde_factor()` / `get_tree_cap_size()` are derived
+                // from `OPTIMAL_FOLDING_PROPERTIES` and can disagree with the
+                // `prover_config` the commit phase actually used, so use the
+                // prover_config geometry directly here.
+                let prover_config = proof_prover_config
+                    .as_ref()
+                    .expect("proof requests construct their prover config before transfers");
+                let log_lde_factor = prover_config.lde_factor.trailing_zeros();
+                let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
+                let memory_caps = state
+                    .memory_caps
+                    .as_ref()
+                    .expect("Proof requires memory_caps");
+                let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
+                    memory_caps,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                )?;
+                let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
+                let external_challenges_value = state
+                    .external_challenges
+                    .expect("Proof requires external_challenges");
+                let compiled_circuit = state
+                    .precomputations
+                    .gkr_programs
+                    .compiled_circuit()
+                    .as_ref();
+                // Without i&t data the windows are all zero, which is what the unified
+                // verifier requires of its leading instances.
+                let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
+                let top_bits = carried_top_bits.unwrap_or_else(|| vec![0u32; num_teardown_sets]);
+                assert_eq!(
+                top_bits.len(),
+                num_teardown_sets,
+                "inits-and-teardowns top bits must cover every teardown set of {circuit_type:?}"
+            );
+                let mut bundle =
+                    gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
+                        setup_transfer,
+                        decoder_transfer,
+                        inits_and_teardowns_transfer,
+                        tracing_data_transfer,
+                        memory_transfer,
+                        &top_bits,
+                        external_challenges_value,
+                        context,
+                    )?;
+                trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
-        bundle.schedule(context)?;
-        PhaseOneInputs::Proof(bundle, dr_tail_plan)
-    } else {
-        let mut bundle =
-            gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
-                decoder_transfer,
-                inits_and_teardowns_transfer,
-                tracing_data_transfer,
-                context,
-            )?;
-        trace!(
+                bundle.schedule(context)?;
+                PhaseOneInputs::Proof(bundle, dr_tail_plan)
+            } else {
+                let mut bundle =
+                    gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
+                        decoder_transfer,
+                        inits_and_teardowns_transfer,
+                        tracing_data_transfer,
+                        context,
+                    )?;
+                trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
-        bundle.schedule(context)?;
-        PhaseOneInputs::MemoryCommitment(bundle)
-    };
-    Ok(inputs)
-    })
-    .unwrap_or_else(|error| panic!("{error}"))?;
+                bundle.schedule(context)?;
+                PhaseOneInputs::MemoryCommitment(bundle)
+            };
+            Ok(inputs)
+        },
+    )??;
 
     Ok(PhaseOne { state, inputs })
 }
@@ -454,6 +547,7 @@ fn schedule_phase_one<'a>(
 fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
+    backward_options: GkrBackwardOptions,
     p1: PhaseOne<'a>,
 ) -> GpuProveResult<PhaseTwo<'a>> {
     let PhaseOne { state, inputs } = p1;
@@ -476,7 +570,7 @@ fn enqueue_phase_two<'a>(
                 &prover_config,
                 final_trace_size_log_2,
                 bundle,
-                BACKWARD_OPTIONS,
+                backward_options,
                 dr_tail_plan,
                 context,
             )?;

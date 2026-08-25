@@ -1,6 +1,7 @@
 use crate::proof::{
-    construct_after_windowed_backward_preflight, preflight_windowed_backward, prove,
-    resolve_backward_execution_strategy, GpuGKRProofJob, GpuProveResult,
+    admit_dr_tail_before_transfers, construct_after_windowed_backward_preflight,
+    preflight_windowed_backward, prove, resolve_backward_execution_strategy,
+    DrTailPreflightRequest, GpuGKRProofJob, GpuProveResult,
 };
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
@@ -14,7 +15,7 @@ use gpu_core::primitives::nvtx::scoped_range;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use gpu_gkr::{
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
-    GkrBackwardOptions, GkrPrograms,
+    BackwardExecutionStrategy, DrTailProofPlan, GkrBackwardOptions, GkrPrograms, WindowTailArm,
 };
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
@@ -237,6 +238,109 @@ pub(crate) struct BasicUnrolledProofFixture {
     pub(crate) expected_cpu_proof: GKRProof<BF, E4, DefaultTreeConstructor>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Task7DrTailArm {
+    CompleteNewChain,
+    LegacyDiagnostic,
+}
+
+impl Task7DrTailArm {
+    pub(super) const fn backward_options(self) -> GkrBackwardOptions {
+        let dr_production = matches!(self, Self::CompleteNewChain);
+        GkrBackwardOptions {
+            dr_tail_megakernel: dr_production,
+            windowed_r0: true,
+            windowed_main_continuations: true,
+            windowed_dr: dr_production,
+            windowed_dr_continuations: dr_production,
+            window_tail: WindowTailArm::Split,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Task7MegakernelCoordinate {
+    pub(super) layer_idx: usize,
+    pub(super) folding_steps: usize,
+    pub(super) entry_round: usize,
+    pub(super) canonical_source_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Task7ProofOperation {
+    ResourcePreflight,
+    InitialInputH2d,
+    ProveEnqueue,
+    FinalSlabD2h,
+    ProofAssemblyAfterFinalD2h,
+}
+
+const TASK7_EXPECTED_OPERATION_TRACE: [Task7ProofOperation; 5] = [
+    Task7ProofOperation::ResourcePreflight,
+    Task7ProofOperation::InitialInputH2d,
+    Task7ProofOperation::ProveEnqueue,
+    Task7ProofOperation::FinalSlabD2h,
+    Task7ProofOperation::ProofAssemblyAfterFinalD2h,
+];
+
+fn record_task7_operation(trace: &mut Vec<Task7ProofOperation>, operation: Task7ProofOperation) {
+    assert_eq!(
+        TASK7_EXPECTED_OPERATION_TRACE.get(trace.len()),
+        Some(&operation),
+        "Task 7 proof operations must preserve the accepted stream order"
+    );
+    trace.push(operation);
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Task7ExecutionEvidence {
+    pub(super) arm: Task7DrTailArm,
+    pub(super) strategy: BackwardExecutionStrategy,
+    pub(super) megakernel_coordinates: Vec<Task7MegakernelCoordinate>,
+    pub(super) operation_trace: Vec<Task7ProofOperation>,
+}
+
+impl Task7ExecutionEvidence {
+    pub(super) fn assert_complete(&self) {
+        assert_eq!(self.strategy, BackwardExecutionStrategy::WindowedR0);
+        assert_eq!(self.operation_trace, TASK7_EXPECTED_OPERATION_TRACE);
+        match self.arm {
+            Task7DrTailArm::CompleteNewChain => {
+                assert!(
+                    !self.megakernel_coordinates.is_empty(),
+                    "production must dispatch at least one admitted DR-tail megakernel"
+                );
+            }
+            Task7DrTailArm::LegacyDiagnostic => assert!(
+                self.megakernel_coordinates.is_empty(),
+                "the forced whole-layer legacy diagnostic must not dispatch the DR-tail megakernel"
+            ),
+        }
+    }
+}
+
+pub(super) struct Task7ProofJob {
+    job: GpuGKRProofJob<'static, Global>,
+    evidence: Task7ExecutionEvidence,
+}
+
+impl Task7ProofJob {
+    pub(super) fn finish(
+        mut self,
+    ) -> CudaResult<(
+        GKRProof<BF, E4, DefaultTreeConstructor>,
+        f32,
+        Task7ExecutionEvidence,
+    )> {
+        let (proof, proof_time_ms) = self.job.finish()?;
+        record_task7_operation(
+            &mut self.evidence.operation_trace,
+            Task7ProofOperation::ProofAssemblyAfterFinalD2h,
+        );
+        Ok((proof, proof_time_ms, self.evidence))
+    }
+}
+
 impl BasicUnrolledFixture {
     fn create_transfers(&self) -> CudaResult<BasicUnrolledTransfers<'static>> {
         self.create_transfers_for_context(&self.context)
@@ -364,25 +468,42 @@ impl BasicUnrolledFixture {
         &self,
         backward_options: GkrBackwardOptions,
     ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
-        let strategy = resolve_backward_execution_strategy(
-            &self.gkr_programs,
-            &self.prover_config,
-            backward_options,
-        );
-        let mut transfers = construct_after_windowed_backward_preflight(
-            &self.gkr_programs,
-            strategy,
-            backward_options,
-            self.final_trace_size_log_2,
-            || self.create_transfers(),
-        )
-        .unwrap()?;
+        self.schedule_prove_with_prepared(backward_options, None, None)
+    }
 
+    fn schedule_prove_with_prepared(
+        &self,
+        backward_options: GkrBackwardOptions,
+        prepared: Option<(BasicUnrolledTransfers<'static>, Option<DrTailProofPlan>)>,
+        mut task7_trace: Option<&mut Vec<Task7ProofOperation>>,
+    ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
+        let (mut transfers, dr_tail_plan) = match prepared {
+            Some(prepared) => prepared,
+            None => {
+                let strategy = resolve_backward_execution_strategy(
+                    &self.gkr_programs,
+                    &self.prover_config,
+                    backward_options,
+                );
+                let transfers = construct_after_windowed_backward_preflight(
+                    &self.gkr_programs,
+                    strategy,
+                    backward_options,
+                    self.final_trace_size_log_2,
+                    || self.create_transfers(),
+                )
+                .unwrap()?;
+                (transfers, None)
+            }
+        };
         let h2d_stream = self.context.get_h2d_stream();
         let transfer_range = Range::new("gkr.proof.h2d_transfers")?;
         transfer_range.start(h2d_stream)?;
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
+        if let Some(trace) = task7_trace.as_deref_mut() {
+            record_task7_operation(trace, Task7ProofOperation::InitialInputH2d);
+        }
 
         // Invariant: prove() is balanced — it releases every device allocation
         // it makes (stream-ordered) before returning, so used device memory
@@ -390,7 +511,35 @@ impl BasicUnrolledFixture {
         // it was called. The transfers above are allocated before this point
         // and ride on in the job's keepalive, so they appear on both sides.
         let mem_before_prove = self.context.get_used_mem_current();
-        let mut proof_job = self.prove_with(transfers, backward_options)?;
+        let strategy = resolve_backward_execution_strategy(
+            &self.gkr_programs,
+            &self.prover_config,
+            backward_options,
+        );
+        preflight_windowed_backward(
+            &self.gkr_programs,
+            strategy,
+            backward_options,
+            self.final_trace_size_log_2,
+        )
+        .unwrap();
+        if let Some(trace) = task7_trace.as_deref_mut() {
+            record_task7_operation(trace, Task7ProofOperation::ProveEnqueue);
+        }
+        let mut proof_job = prove::<Global>(
+            &self.gkr_programs,
+            &self.prover_config,
+            self.final_trace_size_log_2,
+            transfers,
+            backward_options,
+            dr_tail_plan,
+            &self.context,
+        )?;
+        if let Some(trace) = task7_trace.as_deref_mut() {
+            // `prove()` schedules the unique terminal D2H before returning;
+            // successful `finish()` below proves its assembly callback ran.
+            record_task7_operation(trace, Task7ProofOperation::FinalSlabD2h);
+        }
         let mem_after_prove = self.context.get_used_mem_current();
         assert_eq!(
             mem_after_prove,
@@ -402,6 +551,73 @@ impl BasicUnrolledFixture {
         );
         proof_job.ranges.insert(0, transfer_range);
         Ok(proof_job)
+    }
+
+    /// Production-shaped Task 7 scheduling: admit the exact DR-tail plan
+    /// before constructing the one existing input transfer, then pass that
+    /// owned plan into the unchanged `prove()` call graph.
+    fn schedule_task7_prove(&self, arm: Task7DrTailArm) -> GpuProveResult<Task7ProofJob> {
+        let backward_options = arm.backward_options();
+        let strategy = resolve_backward_execution_strategy(
+            &self.gkr_programs,
+            &self.prover_config,
+            backward_options,
+        );
+        assert_eq!(
+            strategy,
+            BackwardExecutionStrategy::WindowedR0,
+            "Task 7 fixtures must execute the complete windowed main-layer chain"
+        );
+        let request = DrTailPreflightRequest {
+            gkr_programs: &self.gkr_programs,
+            strategy,
+            options: backward_options,
+            final_trace_size_log_2: self.final_trace_size_log_2,
+            device_id: era_cudart::device::get_device()?,
+        };
+        let mut operation_trace = Vec::with_capacity(TASK7_EXPECTED_OPERATION_TRACE.len());
+        let admitted = admit_dr_tail_before_transfers(Some(request), |dr_tail_plan| {
+            record_task7_operation(&mut operation_trace, Task7ProofOperation::ResourcePreflight);
+            let coordinates = dr_tail_plan
+                .as_ref()
+                .map(DrTailProofPlan::layers)
+                .unwrap_or_default()
+                .iter()
+                .map(|layer| Task7MegakernelCoordinate {
+                    layer_idx: layer.layer_idx(),
+                    folding_steps: layer.folding_steps(),
+                    entry_round: layer.capacity().entry_round(),
+                    canonical_source_count: layer.canonical_source_count(),
+                })
+                .collect::<Vec<_>>();
+            self.create_transfers()
+                .map(|transfers| (transfers, dr_tail_plan, coordinates))
+        })
+        .expect("Task 7 resource preflight must accept before any transfer construction")?;
+        let (transfers, dr_tail_plan, megakernel_coordinates) = admitted;
+        assert_eq!(
+            dr_tail_plan.is_some(),
+            matches!(arm, Task7DrTailArm::CompleteNewChain),
+            "the selected Task 7 arm and admitted plan must agree"
+        );
+
+        let proof_job = self.schedule_prove_with_prepared(
+            backward_options,
+            Some((transfers, dr_tail_plan)),
+            Some(&mut operation_trace),
+        )?;
+        Ok(Task7ProofJob {
+            job: proof_job,
+            evidence: Task7ExecutionEvidence {
+                arm,
+                strategy,
+                megakernel_coordinates,
+                // This records the production-shaped call graph. It contains
+                // exactly the pre-existing initial H2D and proof terminal
+                // D2H/callback; Task 7 adds no transfer or callback site.
+                operation_trace,
+            },
+        })
     }
 }
 
@@ -415,6 +631,10 @@ impl BasicUnrolledProofFixture {
         backward_options: GkrBackwardOptions,
     ) -> GpuProveResult<GpuGKRProofJob<'static, Global>> {
         self.base.schedule_prove_with(backward_options)
+    }
+
+    fn schedule_task7_prove(&self, arm: Task7DrTailArm) -> GpuProveResult<Task7ProofJob> {
+        self.base.schedule_task7_prove(arm)
     }
 }
 

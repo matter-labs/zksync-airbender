@@ -1280,87 +1280,149 @@ fn run_dr_task6_exact_memory_review() {
 // Generic test bodies
 // ---------------------------------------------------------------------------
 
-/// The windowed-arm options every both-arm wrapper requests.
-fn windowed_options() -> GkrBackwardOptions {
-    GkrBackwardOptions {
-        windowed_r0: true,
-        windowed_dr_continuations: false,
-        ..GkrBackwardOptions::default()
-    }
+#[test]
+fn cpu_task7_dr_tail_arm_controls_are_distinct_and_complete() {
+    let production = Task7DrTailArm::CompleteNewChain.backward_options();
+    let legacy = Task7DrTailArm::LegacyDiagnostic.backward_options();
+
+    assert!(production.dr_tail_megakernel);
+    assert!(production.windowed_dr);
+    assert!(production.windowed_dr_continuations);
+    assert!(production.windowed_main_continuations);
+    assert!(!legacy.dr_tail_megakernel);
+    assert!(!legacy.windowed_dr);
+    assert!(!legacy.windowed_dr_continuations);
+    assert!(legacy.windowed_main_continuations);
+    assert_ne!(production, legacy);
 }
 
-/// The per-round arm, pinned so a both-arm wrapper keeps comparing two arms
-/// regardless of which one the defaults select.
-fn per_round_options() -> GkrBackwardOptions {
-    GkrBackwardOptions {
-        windowed_r0: false,
-        windowed_dr_continuations: false,
-        ..GkrBackwardOptions::default()
-    }
+#[test]
+fn cpu_task7_selected_matrix_contains_the_census_mismatch_layout() {
+    let (mismatch_layout, _, canonical, raw_lookup) =
+        gpu_gkr::backward::dr_tail_first_order_mismatch();
+    assert_ne!(canonical, raw_lookup);
+    assert!(task7_selected_layouts()
+        .iter()
+        .any(|path| std::path::Path::new(path).file_name().unwrap() == mismatch_layout));
 }
 
-/// Full GPU proof == CPU reference, on BOTH backward arms in the same binary.
-///
-/// The per-round arm always runs. The windowed arm runs whenever this family's
-/// validated schedule class selects it, and is then compared against the CPU
-/// fixture AND, serialized, against the per-round arm's own bytes — the
-/// arm-vs-arm equality the windowed R0 integration is contracted on. A family
-/// whose config does not select the windowed arm must say so through
-/// `resolve_backward_execution_strategy`, so a schedule-class change cannot
-/// silently turn a both-arm row into a second per-round run.
-pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
-    let (per_round, _ms) = fixture
-        .schedule_prove_with(per_round_options())
-        .unwrap()
-        .finish()
-        .unwrap();
-    assert_gkr_proof_eq_for_test(&per_round, &fixture.expected_cpu_proof);
+#[test]
+fn cpu_task7_production_operation_trace_is_exact() {
+    let mut trace = Vec::new();
+    for operation in TASK7_EXPECTED_OPERATION_TRACE {
+        record_task7_operation(&mut trace, operation);
+    }
+    assert_eq!(trace, TASK7_EXPECTED_OPERATION_TRACE);
+}
 
-    let strategy = crate::proof::resolve_backward_execution_strategy(
-        &fixture.base.gkr_programs,
-        &fixture.base.prover_config,
-        windowed_options(),
-    );
-    eprintln!("proof_parity backward arms: per-round + {strategy:?}");
-    if strategy != gpu_gkr::BackwardExecutionStrategy::WindowedR0 {
+#[test]
+#[should_panic(expected = "accepted stream order")]
+fn cpu_task7_production_operation_trace_rejects_reordering() {
+    let mut trace = vec![Task7ProofOperation::ResourcePreflight];
+    record_task7_operation(&mut trace, Task7ProofOperation::ProveEnqueue);
+}
+
+fn task7_selected_layouts() -> [&'static str; 12] {
+    [
+        BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+        JUMP_BRANCH_SLT_LAYOUT_PATH,
+        SHIFT_BINOP_LAYOUT_PATH,
+        UNSIGNED_MUL_DIV_LAYOUT_PATH,
+        MEM_WORD_ONLY_LAYOUT_PATH,
+        MEM_SUBWORD_ONLY_LAYOUT_PATH,
+        BIGINT_DELEGATION_LAYOUT_PATH,
+        KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH,
+        BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
+        BLAKE2_G_FUNCTION_LAYOUT_PATH,
+        TASK6_FIXTURE_LAYOUT_PATH,
+        "cs/compiled_circuits/inits_and_teardowns_layout_gkr.json",
+    ]
+}
+
+pub(super) fn assert_task7_execution(evidence: &Task7ExecutionEvidence, layout_path: &str) {
+    evidence.assert_complete();
+    if evidence.arm == Task7DrTailArm::CompleteNewChain {
+        let unique_layers = evidence
+            .megakernel_coordinates
+            .iter()
+            .map(|coordinate| coordinate.layer_idx)
+            .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(
-            strategy,
-            gpu_gkr::BackwardExecutionStrategy::PerRound,
-            "an arm this wrapper does not know how to gate",
+            unique_layers.len(),
+            evidence.megakernel_coordinates.len(),
+            "production must dispatch the DR-tail megakernel exactly once per layer"
         );
-        return;
+        for coordinate in &evidence.megakernel_coordinates {
+            assert!(coordinate.folding_steps > coordinate.entry_round);
+            assert!(coordinate.canonical_source_count > 0);
+            eprintln!(
+                "Task 7 megakernel dispatched: layer={} folding_steps={} entry_round={} canonical_sources={}",
+                coordinate.layer_idx,
+                coordinate.folding_steps,
+                coordinate.entry_round,
+                coordinate.canonical_source_count,
+            );
+        }
+        let (mismatch_layout, mismatch_layer, canonical, raw_lookup) =
+            gpu_gkr::backward::dr_tail_first_order_mismatch();
+        assert_ne!(
+            canonical, raw_lookup,
+            "the census mismatch control is vacuous"
+        );
+        if std::path::Path::new(layout_path).file_name().unwrap() == mismatch_layout {
+            assert!(
+                evidence
+                    .megakernel_coordinates
+                    .iter()
+                    .any(|coordinate| coordinate.layer_idx == mismatch_layer),
+                "the canonical/raw mismatch layer must reach the production megakernel"
+            );
+        }
     }
-    let (windowed, _ms) = fixture
-        .schedule_prove_with(windowed_options())
+}
+
+/// Full GPU proof == CPU reference on the complete production DR chain and an
+/// explicitly forced whole-layer legacy diagnostic control.
+pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture, layout_path: &str) {
+    let (production, _ms, production_evidence) = fixture
+        .schedule_task7_prove(Task7DrTailArm::CompleteNewChain)
         .unwrap()
         .finish()
         .unwrap();
-    assert_gkr_proof_eq_for_test(&windowed, &fixture.expected_cpu_proof);
-    assert_serialized_proof_bytes_eq(&per_round, &windowed);
+    assert_task7_execution(&production_evidence, layout_path);
+    assert_gkr_proof_eq_for_test(&production, &fixture.expected_cpu_proof);
+
+    let (legacy, _ms, legacy_evidence) = fixture
+        .schedule_task7_prove(Task7DrTailArm::LegacyDiagnostic)
+        .unwrap()
+        .finish()
+        .unwrap();
+    assert_task7_execution(&legacy_evidence, layout_path);
+    assert_gkr_proof_eq_for_test(&legacy, &fixture.expected_cpu_proof);
+    assert_serialized_proof_bytes_eq(&production, &legacy);
 }
 
 /// Two concurrently-scheduled proofs on a recycled-block arena (the
 /// uninitialized-witness regression guard). schedule -> schedule -> finish -> finish.
 ///
-/// The second job takes the windowed arm wherever the family selects it, so the
-/// arena-recycling guard covers both arms without a third proof: both are
-/// compared against the CPU fixture, and their serialized bytes against each
-/// other.
-pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
+/// The first job takes the complete production chain and the second the forced
+/// whole-layer legacy diagnostic. Both are compared against the CPU fixture and
+/// their serialized bytes against each other.
+pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture, layout_path: &str) {
     let baseline = fixture.base.context.get_used_mem_current();
-    let strategy = crate::proof::resolve_backward_execution_strategy(
-        &fixture.base.gkr_programs,
-        &fixture.base.prover_config,
-        windowed_options(),
-    );
-    eprintln!("multi_schedule backward arms: per-round + {strategy:?}");
-    let job0 = fixture.schedule_prove_with(per_round_options()).unwrap();
-    let job1 = fixture.schedule_prove_with(windowed_options()).unwrap();
-    let (p0, ms0) = job0.finish().unwrap();
+    let job0 = fixture
+        .schedule_task7_prove(Task7DrTailArm::CompleteNewChain)
+        .unwrap();
+    let job1 = fixture
+        .schedule_task7_prove(Task7DrTailArm::LegacyDiagnostic)
+        .unwrap();
+    let (p0, ms0, evidence0) = job0.finish().unwrap();
     eprintln!("proof_job_0 proof time: {ms0} ms");
+    assert_task7_execution(&evidence0, layout_path);
     assert_gkr_proof_eq_for_test(&p0, &fixture.expected_cpu_proof);
-    let (p1, ms1) = job1.finish().unwrap();
+    let (p1, ms1, evidence1) = job1.finish().unwrap();
     eprintln!("proof_job_1 proof time: {ms1} ms");
+    assert_task7_execution(&evidence1, layout_path);
     assert_gkr_proof_eq_for_test(&p1, &fixture.expected_cpu_proof);
     assert_serialized_proof_bytes_eq(&p0, &p1);
     drop(p0);
@@ -1569,13 +1631,19 @@ fn run_blake2_compression_delegation_stage1_buffer_parity_test() {
 #[test]
 #[ignore]
 fn run_add_sub_proof_parity_test_sec100() {
-    run_proof_parity(&prepare_basic_unrolled_proof_fixture_sec100());
+    run_proof_parity(
+        &prepare_basic_unrolled_proof_fixture_sec100(),
+        BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_add_sub_multi_schedule_test() {
-    run_multi_schedule(&prepare_basic_unrolled_proof_fixture());
+    run_multi_schedule(
+        &prepare_basic_unrolled_proof_fixture(),
+        BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -1620,13 +1688,19 @@ fn prepare_jump_branch_slt_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_jump_branch_slt_proof_parity_test() {
-    run_proof_parity(&prepare_jump_branch_slt_proof_fixture());
+    run_proof_parity(
+        &prepare_jump_branch_slt_proof_fixture(),
+        JUMP_BRANCH_SLT_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_jump_branch_slt_multi_schedule_test() {
-    run_multi_schedule(&prepare_jump_branch_slt_proof_fixture());
+    run_multi_schedule(
+        &prepare_jump_branch_slt_proof_fixture(),
+        JUMP_BRANCH_SLT_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -1671,13 +1745,19 @@ fn prepare_shift_binop_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_shift_binop_proof_parity_test() {
-    run_proof_parity(&prepare_shift_binop_proof_fixture());
+    run_proof_parity(
+        &prepare_shift_binop_proof_fixture(),
+        SHIFT_BINOP_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_shift_binop_multi_schedule_test() {
-    run_multi_schedule(&prepare_shift_binop_proof_fixture());
+    run_multi_schedule(
+        &prepare_shift_binop_proof_fixture(),
+        SHIFT_BINOP_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -1722,13 +1802,19 @@ fn prepare_mul_div_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_mul_div_proof_parity_test() {
-    run_proof_parity(&prepare_mul_div_proof_fixture());
+    run_proof_parity(
+        &prepare_mul_div_proof_fixture(),
+        UNSIGNED_MUL_DIV_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_mul_div_multi_schedule_test() {
-    run_multi_schedule(&prepare_mul_div_proof_fixture());
+    run_multi_schedule(
+        &prepare_mul_div_proof_fixture(),
+        UNSIGNED_MUL_DIV_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -1789,13 +1875,19 @@ fn prepare_load_store_word_only_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_load_store_word_only_proof_parity_test() {
-    run_proof_parity(&prepare_load_store_word_only_proof_fixture());
+    run_proof_parity(
+        &prepare_load_store_word_only_proof_fixture(),
+        MEM_WORD_ONLY_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_load_store_word_only_multi_schedule_test() {
-    run_multi_schedule(&prepare_load_store_word_only_proof_fixture());
+    run_multi_schedule(
+        &prepare_load_store_word_only_proof_fixture(),
+        MEM_WORD_ONLY_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -1859,13 +1951,19 @@ fn prepare_load_store_subword_only_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_load_store_subword_only_proof_parity_test() {
-    run_proof_parity(&prepare_load_store_subword_only_proof_fixture());
+    run_proof_parity(
+        &prepare_load_store_subword_only_proof_fixture(),
+        MEM_SUBWORD_ONLY_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_load_store_subword_only_multi_schedule_test() {
-    run_multi_schedule(&prepare_load_store_subword_only_proof_fixture());
+    run_multi_schedule(
+        &prepare_load_store_subword_only_proof_fixture(),
+        MEM_SUBWORD_ONLY_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -1988,13 +2086,19 @@ fn prepare_bigint_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_bigint_proof_parity_test() {
-    run_proof_parity(&prepare_bigint_proof_fixture());
+    run_proof_parity(
+        &prepare_bigint_proof_fixture(),
+        BIGINT_DELEGATION_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_bigint_multi_schedule_test() {
-    run_multi_schedule(&prepare_bigint_proof_fixture());
+    run_multi_schedule(
+        &prepare_bigint_proof_fixture(),
+        BIGINT_DELEGATION_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -2088,13 +2192,19 @@ fn prepare_keccak_special5_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_keccak_special5_proof_parity_test() {
-    run_proof_parity(&prepare_keccak_special5_proof_fixture());
+    run_proof_parity(
+        &prepare_keccak_special5_proof_fixture(),
+        KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_keccak_special5_multi_schedule_test() {
-    run_multi_schedule(&prepare_keccak_special5_proof_fixture());
+    run_multi_schedule(
+        &prepare_keccak_special5_proof_fixture(),
+        KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -2207,13 +2317,19 @@ fn prepare_blake2_with_compression_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_blake2_with_compression_proof_parity_test() {
-    run_proof_parity(&prepare_blake2_with_compression_proof_fixture());
+    run_proof_parity(
+        &prepare_blake2_with_compression_proof_fixture(),
+        BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_blake2_with_compression_multi_schedule_test() {
-    run_multi_schedule(&prepare_blake2_with_compression_proof_fixture());
+    run_multi_schedule(
+        &prepare_blake2_with_compression_proof_fixture(),
+        BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -2315,13 +2431,19 @@ fn prepare_blake2_g_function_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_blake2_g_function_proof_parity_test() {
-    run_proof_parity(&prepare_blake2_g_function_proof_fixture());
+    run_proof_parity(
+        &prepare_blake2_g_function_proof_fixture(),
+        BLAKE2_G_FUNCTION_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_blake2_g_function_multi_schedule_test() {
-    run_multi_schedule(&prepare_blake2_g_function_proof_fixture());
+    run_multi_schedule(
+        &prepare_blake2_g_function_proof_fixture(),
+        BLAKE2_G_FUNCTION_LAYOUT_PATH,
+    );
 }
 
 #[test]
@@ -2337,7 +2459,7 @@ fn run_blake2_g_function_profile_test() {
 #[test]
 #[ignore]
 fn run_unified_proof_parity_test() {
-    run_proof_parity(&prepare_unified_proof_fixture());
+    run_proof_parity(&prepare_unified_proof_fixture(), TASK6_FIXTURE_LAYOUT_PATH);
 }
 
 /// Full e2e unified proof parity + closure-to-ONE.
@@ -2375,11 +2497,16 @@ fn run_unified_multi_schedule_test() {
     // Schedule both jobs before finishing either: the second proof reuses the
     // first's freed (written) device blocks, exercising the cross-proof recycling
     // path that surfaced the uninitialized-witness read.
-    let proof_job_0 = fixture.schedule_prove().unwrap();
-    let proof_job_1 = fixture.schedule_prove().unwrap();
+    let proof_job_0 = fixture
+        .schedule_task7_prove(Task7DrTailArm::CompleteNewChain)
+        .unwrap();
+    let proof_job_1 = fixture
+        .schedule_task7_prove(Task7DrTailArm::LegacyDiagnostic)
+        .unwrap();
 
-    let (gpu_proof_0, proof_time_ms_0) = proof_job_0.finish().unwrap();
+    let (gpu_proof_0, proof_time_ms_0, evidence_0) = proof_job_0.finish().unwrap();
     eprintln!("unified proof_job_0 proof time: {proof_time_ms_0} ms");
+    assert_task7_execution(&evidence_0, TASK6_FIXTURE_LAYOUT_PATH);
     assert_gkr_proof_eq_for_test(&gpu_proof_0, &fixture.expected_cpu_proof);
 
     // No-filter grand-product accumulator closure, driven by the GPU proof's
@@ -2402,13 +2529,14 @@ fn run_unified_multi_schedule_test() {
         E4::ONE,
         "unified grand-product accumulator must close to ONE"
     );
-    drop(gpu_proof_0);
-
     // The concurrently-scheduled second proof must be bit-exact too (this is the
     // one that ran on recycled blocks) and device memory must return to baseline.
-    let (gpu_proof_1, proof_time_ms_1) = proof_job_1.finish().unwrap();
+    let (gpu_proof_1, proof_time_ms_1, evidence_1) = proof_job_1.finish().unwrap();
     eprintln!("unified proof_job_1 proof time: {proof_time_ms_1} ms");
+    assert_task7_execution(&evidence_1, TASK6_FIXTURE_LAYOUT_PATH);
     assert_gkr_proof_eq_for_test(&gpu_proof_1, &fixture.expected_cpu_proof);
+    assert_serialized_proof_bytes_eq(&gpu_proof_0, &gpu_proof_1);
+    drop(gpu_proof_0);
     drop(gpu_proof_1);
 
     assert_eq!(
@@ -2452,13 +2580,19 @@ fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixtur
 #[test]
 #[ignore]
 fn run_inits_and_teardowns_proof_parity_test() {
-    run_proof_parity(&prepare_inits_and_teardowns_matrix_proof_fixture());
+    run_proof_parity(
+        &prepare_inits_and_teardowns_matrix_proof_fixture(),
+        "cs/compiled_circuits/inits_and_teardowns_layout_gkr.json",
+    );
 }
 
 #[test]
 #[ignore]
 fn run_inits_and_teardowns_multi_schedule_test() {
-    run_multi_schedule(&prepare_inits_and_teardowns_matrix_proof_fixture());
+    run_multi_schedule(
+        &prepare_inits_and_teardowns_matrix_proof_fixture(),
+        "cs/compiled_circuits/inits_and_teardowns_layout_gkr.json",
+    );
 }
 
 // run_profile checks proof structure + peak memory only (no CPU comparison),

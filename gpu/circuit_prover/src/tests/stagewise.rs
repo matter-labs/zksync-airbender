@@ -181,12 +181,28 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
     expected
 }
 
-fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
-    let backward_options = gpu_gkr::GkrBackwardOptions::default();
+fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture, layout_path: &str) {
+    // Run the exact production chain through the plan-owning Task 7 path. The
+    // stagewise diagnostic API currently accepts no DR-tail plan, so snapshots
+    // remain on the explicitly forced whole-layer legacy arm below.
+    let (production_proof, _, production_evidence) = fixture
+        .schedule_task7_prove(Task7DrTailArm::CompleteNewChain)
+        .unwrap()
+        .finish()
+        .unwrap();
+    super::proof_matrix::assert_task7_execution(&production_evidence, layout_path);
+    assert_gkr_proof_eq_for_test(&production_proof, &fixture.expected_cpu_proof);
+
+    let backward_options = Task7DrTailArm::LegacyDiagnostic.backward_options();
     let strategy = resolve_backward_execution_strategy(
         &fixture.base.gkr_programs,
         &fixture.base.prover_config,
         backward_options,
+    );
+    assert_eq!(
+        strategy,
+        gpu_gkr::BackwardExecutionStrategy::WindowedR0,
+        "the stagewise legacy control must keep the production main-layer chain"
     );
     let mut transfers = crate::proof::construct_after_windowed_backward_preflight(
         &fixture.base.gkr_programs,
@@ -264,16 +280,23 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
         }
     }
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    assert_serialized_proof_bytes_eq(&production_proof, &gpu_proof);
 }
 
 #[test]
 #[ignore]
 fn run_add_sub_stagewise_parity_test() {
-    run_stagewise_parity(&prepare_basic_unrolled_proof_fixture());
+    run_stagewise_parity(
+        &prepare_basic_unrolled_proof_fixture(),
+        BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+    );
 }
 
 #[test]
 #[ignore]
 fn run_unified_stagewise_parity_test() {
-    run_stagewise_parity(&prepare_unified_proof_fixture());
+    run_stagewise_parity(
+        &prepare_unified_proof_fixture(),
+        "cs/compiled_circuits/unified_reduced_machine_layout_gkr.json",
+    );
 }
