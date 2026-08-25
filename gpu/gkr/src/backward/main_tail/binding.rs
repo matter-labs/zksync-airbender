@@ -1,6 +1,5 @@
 //! Exact descriptor binding and enqueue-only launch for the main-layer tail.
 
-use core::marker::PhantomData;
 use core::mem::{align_of, offset_of, size_of};
 
 use era_cudart::cuda_kernel;
@@ -191,8 +190,9 @@ cuda_kernel!(
     ab_gkr_bwd_main_tail_kernel(desc: MainTailDesc)
 );
 
-/// Prepared owner. The incoming publication stays borrowed until enqueue.
-pub(crate) struct MainTailLaunch<'input> {
+/// Prepared owner. The incoming publication is owned until the sole enqueue,
+/// so a bound tail cannot outlive or skip its real entry.
+pub(crate) struct MainTailLaunch {
     desc: MainTailDesc,
     tail_rounds: usize,
     final_shape: ContinuationPublishedShape,
@@ -202,17 +202,17 @@ pub(crate) struct MainTailLaunch<'input> {
     program_blob_device: DeviceAllocation<u8>,
     ping: DeviceAllocation<E4>,
     pong: DeviceAllocation<E4>,
-    _entry_keepalive: PhantomData<&'input ContinuationPublishedLevel>,
+    entry_keepalive: ContinuationPublishedLevel,
 }
 
 /// Fully published ownership prepared before the sole CUDA enqueue.
-struct PreparedMainTailLaunch<'input> {
+struct PreparedMainTailLaunch {
     desc: MainTailDesc,
     final_level: ContinuationPublishedLevel,
     scratch: DeviceAllocation<E4>,
     program_blob_host: StaticPinnedBox<u8>,
     program_blob_device: DeviceAllocation<u8>,
-    _entry_keepalive: PhantomData<&'input ContinuationPublishedLevel>,
+    entry_keepalive: ContinuationPublishedLevel,
 }
 
 /// Launched ownership. The final buffer remains canonical and dense; the
@@ -341,16 +341,16 @@ fn require_pointer<T>(resource: &'static str, pointer: *const T) -> Result<(), M
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn bind_main_tail<'input>(
+pub(crate) fn bind_main_tail(
     expected_layer: usize,
     program: &MainTailProgram,
-    entry: &'input ContinuationPublishedLevel,
+    entry: ContinuationPublishedLevel,
     tail_start: usize,
     folding_steps: usize,
     eq_boundary: MainEqBoundaryWitness,
     runtime: MainTailRuntimeState,
     context: &ProverContext,
-) -> Result<MainTailLaunch<'input>, MainTailBindError> {
+) -> Result<MainTailLaunch, MainTailBindError> {
     validate_program(program)?;
     if program.layer != expected_layer {
         return Err(MainTailBindError::ProgramLayerMismatch {
@@ -486,13 +486,13 @@ pub(crate) fn bind_main_tail<'input>(
         program_blob_device,
         ping,
         pong,
-        _entry_keepalive: PhantomData,
+        entry_keepalive: entry,
     })
 }
 
 fn prepare_main_tail_launch(
-    launch: MainTailLaunch<'_>,
-) -> Result<PreparedMainTailLaunch<'_>, MainTailBindError> {
+    launch: MainTailLaunch,
+) -> Result<PreparedMainTailLaunch, MainTailBindError> {
     let (mut final_allocation, scratch) = if launch.tail_rounds % 2 == 1 {
         (launch.ping, launch.pong)
     } else {
@@ -511,17 +511,20 @@ fn prepare_main_tail_launch(
         scratch,
         program_blob_host: launch.program_blob_host,
         program_blob_device: launch.program_blob_device,
-        _entry_keepalive: launch._entry_keepalive,
+        entry_keepalive: launch.entry_keepalive,
     })
 }
 
 fn enqueue_prepared_main_tail(
-    prepared: PreparedMainTailLaunch<'_>,
+    prepared: PreparedMainTailLaunch,
     context: &ProverContext,
 ) -> Result<MainTailLaunched, MainTailBindError> {
     let config = CudaLaunchConfig::basic(1, MAIN_TAIL_BLOCK_THREADS, context.get_exec_stream());
     GkrBwdMainTailFunction::default()
         .launch(&config, &GkrBwdMainTailArguments::new(prepared.desc))?;
+    // The kernel reading the entry has been enqueued; the stream-ordered pool
+    // makes releasing its owner safe from here.
+    drop(prepared.entry_keepalive);
     Ok(MainTailLaunched {
         final_level: prepared.final_level,
         scratch: prepared.scratch,
@@ -532,7 +535,7 @@ fn enqueue_prepared_main_tail(
 
 /// Prepare exact publication ownership, enqueue the sole kernel, and return it.
 pub(crate) fn launch_main_tail(
-    launch: MainTailLaunch<'_>,
+    launch: MainTailLaunch,
     context: &ProverContext,
 ) -> Result<MainTailLaunched, MainTailBindError> {
     let prepared = prepare_main_tail_launch(launch)?;
@@ -551,8 +554,8 @@ pub(crate) struct MainTailDispatchCounters {
 }
 
 #[cfg(test)]
-pub(crate) fn launch_main_tail_counted<'input>(
-    launch: MainTailLaunch<'input>,
+pub(crate) fn launch_main_tail_counted(
+    launch: MainTailLaunch,
     context: &ProverContext,
     counters: &mut MainTailDispatchCounters,
 ) -> Result<MainTailLaunched, MainTailBindError> {

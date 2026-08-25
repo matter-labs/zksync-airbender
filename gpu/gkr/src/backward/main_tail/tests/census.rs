@@ -321,6 +321,80 @@ fn cpu_main_tail_program_bundle_caches_success_and_typed_rejection() {
     assert!(!rejected.main_tail_programs_ready());
 }
 
+/// D2 proof for the canonical repoint gate: on the full corpus, every layer's
+/// SourceId-ordered addresses — reads and virtual-setup sources alike — are
+/// exactly the layer's final-evaluation inputs, every source owns its dense
+/// publication column, and the map is duplicate-free. Both sides are compared
+/// raw; production logicalizes both through the same map, which preserves set
+/// equality.
+#[test]
+fn cpu_main_tail_canonical_final_addresses_cover_corpus() {
+    use crate::backward::vm::production_bind::virtual_setup_poly_address;
+    use crate::forward::vm::lower::read_place_to_gkr_address;
+    use crate::upstream::GKRAddress;
+    use gpu_gkr_compiler::CanonicalSourceIdentity;
+    use std::collections::BTreeSet;
+
+    let mut layers_checked = 0usize;
+    let mut virtual_sources_seen = 0usize;
+    for (layout, _) in CONTINUATION_GOLDEN_CORPUS {
+        let (programs, layers) = compile_corpus_layout(layout);
+        let bundle = programs
+            .resolve_main_continuation_window_programs()
+            .unwrap();
+        assert_eq!(bundle.layers.len(), layers);
+        for (layer_idx, window_program) in bundle.layers.iter().enumerate() {
+            let identities = window_program.canonical_source_identities();
+            assert_eq!(identities.len(), window_program.sources.len());
+            let entries: Vec<(usize, GKRAddress)> = identities
+                .into_iter()
+                .enumerate()
+                .map(|(column, identity)| {
+                    let address = match identity {
+                        CanonicalSourceIdentity::Read(place) => read_place_to_gkr_address(&place),
+                        CanonicalSourceIdentity::VirtualSetup { kind } => {
+                            virtual_sources_seen += 1;
+                            virtual_setup_poly_address(kind)
+                        }
+                    };
+                    (column, address)
+                })
+                .collect();
+            assert!(!entries.is_empty(), "{layout}/{layer_idx}: no sources");
+            let columns: Vec<usize> = entries.iter().map(|(column, _)| *column).collect();
+            assert_eq!(
+                columns,
+                (0..entries.len()).collect::<Vec<_>>(),
+                "{layout}/{layer_idx}: every source must own its dense column"
+            );
+            let canonical: BTreeSet<GKRAddress> =
+                entries.iter().map(|(_, address)| *address).collect();
+            assert_eq!(
+                canonical.len(),
+                entries.len(),
+                "{layout}/{layer_idx}: duplicate canonical address"
+            );
+
+            let inputs: BTreeSet<GKRAddress> = programs.backward_layers[layer_idx]
+                .inputs
+                .iter()
+                .copied()
+                .filter(|address| *address != GKRAddress::placeholder())
+                .collect();
+            assert_eq!(
+                canonical, inputs,
+                "{layout}/{layer_idx}: canonical source set must equal the final-evaluation inputs"
+            );
+            layers_checked += 1;
+        }
+    }
+    assert_eq!(layers_checked, 57);
+    assert!(
+        virtual_sources_seen > 0,
+        "the corpus must exercise virtual-setup columns in the canonical map"
+    );
+}
+
 #[test]
 fn cpu_main_tail_program_bundle_covers_the_full_corpus_and_source_maximum() {
     let mut coordinates = 0usize;

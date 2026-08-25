@@ -742,7 +742,7 @@ fn run_main_tail_arm(
     let launch = bind_main_tail(
         fixture.program.layer,
         &fixture.tail_program,
-        &entry,
+        entry,
         usize::from(fixture.entry_round),
         fixture.claim_coordinates.len(),
         fixture.eq_boundary,
@@ -1228,7 +1228,7 @@ fn gpu_main_tail_gpu_mutation() {
         bind_main_tail(
             cumulative_eq.program.layer,
             &cumulative_eq.tail_program,
-            &cumulative_entry,
+            cumulative_entry,
             usize::from(cumulative_eq.entry_round),
             cumulative_eq.claim_coordinates.len(),
             cumulative_eq.eq_boundary,
@@ -1297,7 +1297,7 @@ fn gpu_main_tail_smoke_matches_reference() {
     let launch = bind_main_tail(
         fixture.program.layer,
         &fixture.tail_program,
-        &entry,
+        entry,
         usize::from(fixture.entry_round),
         folding_steps,
         fixture.eq_boundary,

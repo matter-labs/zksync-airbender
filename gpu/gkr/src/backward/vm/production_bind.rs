@@ -285,13 +285,17 @@ struct FoldingBufferSlot {
     byte_offset: usize,
 }
 
-fn virtual_setup_address(kind: u8) -> GKRAddress {
-    GKRAddress::VirtualSetup(match KIND_ORDER[kind as usize] {
+pub(crate) fn virtual_setup_poly_address(kind: VirtualSetupKind) -> GKRAddress {
+    GKRAddress::VirtualSetup(match kind {
         VirtualSetupKind::RangeCheck16Bits => VirtualSetupPoly::RangeCheck16Bits,
         VirtualSetupKind::RangeCheckTimestamp => VirtualSetupPoly::RangeCheckTimestamp,
         VirtualSetupKind::InitsAndTeardownsLow => VirtualSetupPoly::InitsAndTeardownsLow,
         VirtualSetupKind::InitsAndTeardownsHigh => VirtualSetupPoly::InitsAndTeardownsHigh,
     })
+}
+
+fn virtual_setup_address(kind: u8) -> GKRAddress {
+    virtual_setup_poly_address(KIND_ORDER[kind as usize])
 }
 
 // ── Pointer resolution (production) ──────────────────────────────────────────
@@ -938,6 +942,18 @@ struct ExtRoundLaunch {
     slots: Vec<FoldingBufferSlot>,
 }
 
+/// Proof that the canonical external-buffer repoint ran. Constructible in
+/// production only by [`BwdVmExtLaunch::repoint_final_evaluations_from_external_buffer`],
+/// so an orchestration step cannot report a repoint it did not perform.
+pub(crate) struct MainChainRepointReceipt(());
+
+#[cfg(test)]
+impl MainChainRepointReceipt {
+    pub(crate) fn for_test() -> Self {
+        Self(())
+    }
+}
+
 pub(crate) fn repoint_final_evaluations_from_buffer<E>(
     allocation: &DeviceAllocation<E4>,
     elements_per_address: usize,
@@ -973,9 +989,7 @@ impl BwdVmExtLaunch {
             .map(|(column, address)| {
                 (
                     address,
-                    column
-                        * MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS
-                        * size_of::<E4>(),
+                    column * MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS * size_of::<E4>(),
                 )
             })
             .collect();
@@ -1025,13 +1039,14 @@ impl BwdVmExtLaunch {
         &self,
         buffer: &DeviceAllocation<E4>,
         sources: &mut BTreeMap<GKRAddress, *const E>,
-    ) {
+    ) -> MainChainRepointReceipt {
         repoint_final_evaluations_from_buffer(
             buffer,
             MAIN_FINAL_EVALUATION_ELEMENTS_PER_ADDRESS,
             &self.final_evaluations,
             sources,
         );
+        MainChainRepointReceipt(())
     }
 
     #[allow(dead_code)] // Task 6 wires the continuation producer to this consumer.
@@ -1400,8 +1415,9 @@ pub(crate) fn build_zero_round_ext_carrier(
     inits_and_teardowns_top_bits: &[u32],
     context: &ProverContext,
 ) -> CudaResult<BwdVmExtLaunch> {
-    let blob = build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
-        .unwrap_or_else(|error| panic!("zero-round Ext carrier translation: {error:?}"));
+    let blob =
+        build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
+            .unwrap_or_else(|error| panic!("zero-round Ext carrier translation: {error:?}"));
     let tables = SegCoeffEvalTables::stage(&blob, context)?;
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
     Ok(BwdVmExtLaunch {
@@ -1413,13 +1429,25 @@ pub(crate) fn build_zero_round_ext_carrier(
         tables,
         slab,
         filled: false,
-        #[cfg(all(any(test, feature = "task8_continuation_differential_test"), not(no_cuda)))]
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
         task8_scheduled_rounds: 0,
-        #[cfg(all(any(test, feature = "task8_continuation_differential_test"), not(no_cuda)))]
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
         task8_peak_live_publication_owners: 0,
-        #[cfg(all(any(test, feature = "task8_continuation_differential_test"), not(no_cuda)))]
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
         task8_peak_live_publication_bytes: 0,
-        #[cfg(all(any(test, feature = "task8_continuation_differential_test"), not(no_cuda)))]
+        #[cfg(all(
+            any(test, feature = "task8_continuation_differential_test"),
+            not(no_cuda)
+        ))]
         task8_live_publication_events: Vec::new(),
     })
 }

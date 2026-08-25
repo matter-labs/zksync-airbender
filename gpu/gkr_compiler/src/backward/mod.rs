@@ -48,7 +48,7 @@ pub use continuation::{
 };
 pub use main_continuation_window::{
     interpret_main_continuation_window_shape, lower_main_continuation_window_program,
-    MainContinuationWindowCapacities, MainContinuationWindowGroupRecord,
+    CanonicalSourceIdentity, MainContinuationWindowCapacities, MainContinuationWindowGroupRecord,
     MainContinuationWindowLoweringError, MainContinuationWindowProgram,
     MainContinuationWindowSection, MainContinuationWindowSections, MainContinuationWindowShape,
     MainContinuationWindowShapeEvaluationError, MainContinuationWindowSource,

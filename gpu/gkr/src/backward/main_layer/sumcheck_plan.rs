@@ -8,6 +8,7 @@ use crate::GpuGKRStorage;
 
 use super::super::kernels::*;
 use super::super::main_tail::{bind_main_tail, launch_main_tail, MainTailRuntimeState};
+use super::super::vm::production_bind::MainChainRepointReceipt;
 use super::super::window::binding::{launch_window_program, BWD_WINDOW_COORDINATES};
 use super::super::window::tail::{launch_window_tensor_round_tail, WindowTailState};
 use super::extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
@@ -86,30 +87,31 @@ fn main_tail_publication_source(
     })
 }
 
-/// Common W=0 orchestration seam. Production supplies closures that perform
-/// the real device publication, tail bind/enqueue, and canonical repoint;
-/// host tests record those same operation boundaries.
-fn orchestrate_w0<P, B, T, R>(
-    folding_steps: usize,
-    publication: P,
-    tail_bind: B,
-    tail_enqueue: T,
-    repoint: R,
-) -> Result<(), &'static str>
+/// The production main-chain tail sequence: publication -> tail bind -> tail
+/// enqueue -> canonical repoint, fail-closed at every step with no retry.
+/// Production routes both chain arms through this exact function; the host
+/// orchestration test executes it with injected operations. The production
+/// operation types (`ContinuationPublishedLevel`, `MainTailLaunch`,
+/// `MainTailLaunched`, `MainChainRepointReceipt`) are constructible only by
+/// the real producers, so a production step cannot skip its call and still
+/// type-check.
+fn run_main_chain_tail<Published, Bound, Launched, FPublish, FBind, FLaunch, FRepoint>(
+    publish: FPublish,
+    bind: FBind,
+    launch: FLaunch,
+    repoint: FRepoint,
+) -> Result<Launched, MainLayerScheduleError>
 where
-    P: FnOnce() -> Result<(), &'static str>,
-    B: FnOnce() -> Result<(), &'static str>,
-    T: FnOnce() -> Result<(), &'static str>,
-    R: FnOnce() -> Result<(), &'static str>,
+    FPublish: FnOnce() -> Result<Published, MainLayerScheduleError>,
+    FBind: FnOnce(Published) -> Result<Bound, MainLayerScheduleError>,
+    FLaunch: FnOnce(Bound) -> Result<Launched, MainLayerScheduleError>,
+    FRepoint: FnOnce(&Launched) -> Result<MainChainRepointReceipt, MainLayerScheduleError>,
 {
-    if !(4..=6).contains(&folding_steps) {
-        return Err("unsupported W=0 geometry");
-    }
-    publication()?;
-    tail_bind()?;
-    tail_enqueue()?;
-    repoint()?;
-    Ok(())
+    let published = publish()?;
+    let bound = bind(published)?;
+    let launched = launch(bound)?;
+    let _repointed: MainChainRepointReceipt = repoint(&launched)?;
+    Ok(launched)
 }
 
 impl GpuGKRMainLayerSumcheckLayerPlan {
@@ -392,6 +394,11 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 next_claim_point_and_batching_len,
             )
         };
+        let mut transcript_input_sources: BTreeMap<GKRAddress, *const E4> = self
+            .folding_evaluation_sources
+            .iter()
+            .map(|address| (*address, std::ptr::null()))
+            .collect();
         if matches!(self.bwd_vm_r0, MainLayerR0Binding::Windowed(_)) {
             let coeffs_out = coeffs_buffer_ptr;
             let challenges_out = device_claim_point_out
@@ -418,99 +425,150 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                         unreachable!("the production main chain requires windowed R0")
                     }
                 };
+                let source = main_tail_publication_source(
+                    self.main_chain_selected,
+                    self.main_execution_plan.window_count(),
+                )
+                .expect("the selected production chain has one publication source");
                 let scratch =
                     super::super::main_continuation::MainContinuationWindowRuntimeScratch {
                         eq_low: self.round_scratch.eq_low_group.as_ptr(),
                         partials: self.round_scratch.partials.as_mut_ptr(),
                         partials_capacity: self.round_scratch.partials.len(),
                     };
-                match main_tail_publication_source(
-                    self.main_chain_selected,
-                    self.main_execution_plan.window_count(),
-                )
-                .expect("the selected production chain has one publication source")
-                {
-                    MainTailPublicationSource::R0 => {
-                        self.main_continuation.schedule_r0_publication(
-                            storage,
-                            self.folding_steps,
-                            scratch,
-                            self.eq_sizes,
-                            recorder.as_mut(),
+                let layer_idx = self.layer_idx;
+                let folding_steps = self.folding_steps;
+                let eq_low_group_ptr = self.round_scratch.eq_low_group.as_mut_ptr();
+                let claim_point_in_ptr = device_claim_point_in.as_ptr();
+                let seed_ptr = device_seed.as_mut_ptr();
+                let claim_ptr = device_claim.as_mut_ptr();
+                let eq_prefactor_ptr = device_eq_prefactor.as_mut_ptr();
+                let claim_point_out_ptr = device_claim_point_out.as_mut_ptr();
+                let main_continuation = &mut self.main_continuation;
+                let eq_sizes = &mut self.eq_sizes;
+                let main_tail_program = &self.main_tail_program;
+                let bwd_vm_ext = &mut self.bwd_vm_ext;
+                let folding_evaluation_sources = &self.folding_evaluation_sources;
+                let canonical_final_addresses = &self.canonical_final_addresses;
+                let recorder_slot = &mut recorder;
+                let transcript_sources = &mut transcript_input_sources;
+                let publish_storage = &mut *storage;
+                let publish = || {
+                    match source {
+                        MainTailPublicationSource::R0 => main_continuation
+                            .schedule_r0_publication(
+                                publish_storage,
+                                folding_steps,
+                                scratch,
+                                *eq_sizes,
+                                recorder_slot.as_mut(),
+                                context,
+                            )?,
+                        MainTailPublicationSource::Continuation => main_continuation
+                            .schedule_windows(
+                                publish_storage,
+                                folding_steps,
+                                scratch,
+                                claim_point_in_ptr,
+                                seed_ptr,
+                                claim_ptr,
+                                eq_prefactor_ptr,
+                                coeffs_buffer_ptr,
+                                claim_point_out_ptr,
+                                tail_arm,
+                                recorder_slot.as_mut(),
+                                context,
+                            )?,
+                    }
+                    let boundary = main_continuation.final_eq_boundary().ok_or_else(|| {
+                        MainLayerScheduleError::MainContinuation {
+                            layer: layer_idx,
+                            pass_start: usize::from(continuation_tail_start.saturating_sub(3)),
+                            detail: "the producer did not publish its Eq boundary".to_owned(),
+                        }
+                    })?;
+                    assert_eq!(
+                        boundary.consumer_round, continuation_tail_start,
+                        "the final continuation boundary must name the prepared remainder"
+                    );
+                    let expected_remainder_eq = super::super::vm::production_bind::drained_eq_sizes(
+                        make_eq_sizes(folding_steps - usize::from(continuation_tail_start)),
+                        1,
+                    );
+                    assert_eq!(
+                        boundary.eq_sizes, expected_remainder_eq,
+                        "the final pass-local Eq state must equal the first legacy descriptor"
+                    );
+                    *eq_sizes = boundary.eq_sizes;
+                    let published = require_main_tail_publication(
+                        main_continuation.take_published_level(),
+                        layer_idx,
+                        continuation_tail_start,
+                    )?;
+                    Ok((published, boundary))
+                };
+                let bind = |(published, boundary): (
+                    super::super::main_continuation::ContinuationPublishedLevel,
+                    super::execution_plan::MainEqBoundaryWitness,
+                )| {
+                    let tail_program = main_tail_program.as_ref().expect(
+                        "windowed production path requires a preflighted main-tail program",
+                    );
+                    preserve_main_tail_bind_error(
+                        bind_main_tail(
+                            layer_idx,
+                            tail_program,
+                            published,
+                            usize::from(continuation_tail_start),
+                            folding_steps,
+                            boundary,
+                            MainTailRuntimeState {
+                                eq_low: eq_low_group_ptr,
+                                prev_claim_coordinates: claim_point_in_ptr,
+                                seed: seed_ptr,
+                                claim: claim_ptr,
+                                eq_prefactor: eq_prefactor_ptr,
+                                coefficients_out: coeffs_buffer_ptr,
+                                challenges_out: claim_point_out_ptr,
+                            },
                             context,
-                        )?
+                        ),
+                        layer_idx,
+                    )
+                };
+                let launch = |bound| {
+                    preserve_main_tail_launch_error(launch_main_tail(bound, context), layer_idx)
+                };
+                let repoint = |launched: &super::super::main_tail::MainTailLaunched| {
+                    let expected: std::collections::BTreeSet<_> =
+                        folding_evaluation_sources.iter().copied().collect();
+                    let actual: std::collections::BTreeSet<_> = canonical_final_addresses
+                        .iter()
+                        .map(|(_, address)| *address)
+                        .collect();
+                    if expected != actual {
+                        return Err(MainLayerScheduleError::MainTailBind {
+                            layer: layer_idx,
+                            detail:
+                                "canonical final-evaluation source set is incomplete or mismatched"
+                                    .to_owned(),
+                        });
                     }
-                    MainTailPublicationSource::Continuation => {
-                        self.main_continuation.schedule_windows(
-                            storage,
-                            self.folding_steps,
-                            scratch,
-                            device_claim_point_in.as_ptr(),
-                            device_seed.as_mut_ptr(),
-                            device_claim.as_mut_ptr(),
-                            device_eq_prefactor.as_mut_ptr(),
-                            coeffs_buffer_ptr,
-                            device_claim_point_out.as_mut_ptr(),
-                            tail_arm,
-                            recorder.as_mut(),
-                            context,
-                        )?
-                    }
-                }
-                let boundary = self.main_continuation.final_eq_boundary().ok_or_else(|| {
-                    MainLayerScheduleError::MainContinuation {
-                        layer: self.layer_idx,
-                        pass_start: usize::from(continuation_tail_start.saturating_sub(3)),
-                        detail: "the producer did not publish its Eq boundary".to_owned(),
-                    }
-                })?;
-                assert_eq!(
-                    boundary.consumer_round, continuation_tail_start,
-                    "the final continuation boundary must name the prepared remainder"
-                );
-                let expected_remainder_eq = super::super::vm::production_bind::drained_eq_sizes(
-                    make_eq_sizes(self.folding_steps - usize::from(continuation_tail_start)),
-                    1,
-                );
-                assert_eq!(
-                    boundary.eq_sizes, expected_remainder_eq,
-                    "the final pass-local Eq state must equal the first legacy descriptor"
-                );
-                self.eq_sizes = boundary.eq_sizes;
-                let published = require_main_tail_publication(
-                    self.main_continuation.take_published_level(),
-                    self.layer_idx,
-                    continuation_tail_start,
-                )?;
-                let tail_program = self
-                    .main_tail_program
-                    .as_ref()
-                    .expect("windowed production path requires a preflighted main-tail program");
-                let tail_launch = preserve_main_tail_bind_error(
-                    bind_main_tail(
-                        self.layer_idx,
-                        tail_program,
-                        &published,
-                        usize::from(continuation_tail_start),
-                        self.folding_steps,
-                        boundary,
-                        MainTailRuntimeState {
-                            eq_low: self.round_scratch.eq_low_group.as_mut_ptr(),
-                            prev_claim_coordinates: device_claim_point_in.as_ptr(),
-                            seed: device_seed.as_mut_ptr(),
-                            claim: device_claim.as_mut_ptr(),
-                            eq_prefactor: device_eq_prefactor.as_mut_ptr(),
-                            coefficients_out: coeffs_buffer_ptr,
-                            challenges_out: device_claim_point_out.as_mut_ptr(),
-                        },
-                        context,
-                    ),
-                    self.layer_idx,
-                )?;
-                self.main_tail_launched = Some(preserve_main_tail_launch_error(
-                    launch_main_tail(tail_launch, context),
-                    self.layer_idx,
-                )?);
+                    bwd_vm_ext
+                        .set_external_final_evaluation_offsets(
+                            canonical_final_addresses.iter().copied(),
+                        )
+                        .map_err(|detail| MainLayerScheduleError::MainTailBind {
+                            layer: layer_idx,
+                            detail: detail.to_owned(),
+                        })?;
+                    Ok(bwd_vm_ext.repoint_final_evaluations_from_external_buffer(
+                        launched.final_level().allocation(),
+                        transcript_sources,
+                    ))
+                };
+                self.main_tail_launched =
+                    Some(run_main_chain_tail(publish, bind, launch, repoint)?);
             }
         }
 
@@ -606,36 +664,10 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             recorder.finish(stream)?;
         }
 
-        let mut transcript_input_sources: BTreeMap<GKRAddress, *const E4> = self
-            .folding_evaluation_sources
-            .iter()
-            .map(|address| (*address, std::ptr::null()))
-            .collect();
-        if let Some(main_tail) = self.main_tail_launched.as_ref() {
-            let expected: std::collections::BTreeSet<_> =
-                self.folding_evaluation_sources.iter().copied().collect();
-            let actual: std::collections::BTreeSet<_> =
-                self.canonical_final_addresses.iter().map(|(_, address)| *address).collect();
-            if expected != actual {
-                return Err(MainLayerScheduleError::MainTailBind {
-                    layer: self.layer_idx,
-                    detail: "canonical final-evaluation source set is incomplete or mismatched"
-                        .to_owned(),
-                });
-            }
-            self.bwd_vm_ext.set_external_final_evaluation_offsets(
-                self.canonical_final_addresses.iter().copied(),
-            )
-            .map_err(|detail| MainLayerScheduleError::MainTailBind {
-                layer: self.layer_idx,
-                detail: detail.to_owned(),
-            })?;
-            self.bwd_vm_ext
-                .repoint_final_evaluations_from_external_buffer(
-                    main_tail.final_level().allocation(),
-                    &mut transcript_input_sources,
-                );
-        } else {
+        // The production chain repointed through its canonical receipt inside
+        // `run_main_chain_tail`; only the explicit diagnostic arms repoint from
+        // the legacy per-round folding buffers here.
+        if self.main_tail_launched.is_none() {
             self.bwd_vm_ext
                 .repoint_final_evaluations(&mut transcript_input_sources);
         }
@@ -925,32 +957,135 @@ mod cpu_main_chain_dispatch {
         assert_ne!(zero_events, continuation_events);
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Remove {
+        Nothing,
+        Publication,
+        TailBind,
+        TailEnqueue,
+        CanonicalRepoint,
+    }
+
+    /// Execute the exact production sequence function with recording
+    /// operations. Every stage records before it (optionally) fails, so a red
+    /// mutation is distinguishable from a stage that never ran.
+    fn run_recorded_chain(
+        source: MainTailPublicationSource,
+        remove: Remove,
+    ) -> (Vec<Event>, Result<(), MainLayerScheduleError>) {
+        use crate::backward::vm::production_bind::MainChainRepointReceipt;
+        let events = std::cell::RefCell::new(Vec::new());
+        let record = |event: Event| events.borrow_mut().push(event);
+        let result = run_main_chain_tail(
+            || {
+                record(match source {
+                    MainTailPublicationSource::R0 => Event::R0Publication,
+                    MainTailPublicationSource::Continuation => Event::Continuation,
+                });
+                if remove == Remove::Publication {
+                    return Err(MainLayerScheduleError::MissingPublication {
+                        layer: 7,
+                        tail_start: 3,
+                    });
+                }
+                Ok(())
+            },
+            |(): ()| {
+                record(Event::TailBind);
+                preserve_main_tail_bind_error(
+                    if remove == Remove::TailBind {
+                        Err("tail bind removed")
+                    } else {
+                        Ok(())
+                    },
+                    7,
+                )
+            },
+            |(): ()| {
+                record(Event::TailLaunch);
+                preserve_main_tail_launch_error(
+                    if remove == Remove::TailEnqueue {
+                        Err("tail enqueue removed")
+                    } else {
+                        Ok(())
+                    },
+                    7,
+                )
+            },
+            |_launched: &()| {
+                record(Event::CanonicalRepoint);
+                if remove == Remove::CanonicalRepoint {
+                    return Err(MainLayerScheduleError::MainTailBind {
+                        layer: 7,
+                        detail: "canonical repoint removed".to_owned(),
+                    });
+                }
+                Ok(MainChainRepointReceipt::for_test())
+            },
+        );
+        (events.into_inner(), result.map(|()| ()))
+    }
+
     #[test]
-    fn actual_w0_orchestration_records_all_operations_for_4_5_6() {
-        let mut positive = 0usize;
-        for folding_steps in 4..=6 {
-            let events = std::cell::RefCell::new(Vec::new());
-            orchestrate_w0(
-                folding_steps,
-                || { events.borrow_mut().push(Event::R0Publication); Ok(()) },
-                || { events.borrow_mut().push(Event::TailBind); Ok(()) },
-                || { events.borrow_mut().push(Event::TailLaunch); Ok(()) },
-                || { events.borrow_mut().push(Event::CanonicalRepoint); Ok(()) },
-            ).unwrap();
-            assert_eq!(*events.borrow(), [Event::R0Publication, Event::TailBind, Event::TailLaunch, Event::CanonicalRepoint]);
-            positive += 1;
-            for removed in 0..4 {
-                let result = orchestrate_w0(
-                    folding_steps,
-                    || if removed == 0 { Err("publication removed") } else { Ok(()) },
-                    || if removed == 1 { Err("tail bind removed") } else { Ok(()) },
-                    || if removed == 2 { Err("tail enqueue removed") } else { Ok(()) },
-                    || if removed == 3 { Err("repoint removed") } else { Ok(()) },
-                );
-                assert!(result.is_err());
+    fn cpu_main_chain_tail_orchestration() {
+        // The W=0 plans admitted for folding_steps 4..=6 and every W>0 plan
+        // route through the same production sequence; only the publication
+        // source differs.
+        for (folding_steps, window_count) in [(4u8, 0u8), (5, 0), (6, 0), (7, 1)] {
+            let source = main_tail_publication_source(true, window_count)
+                .expect("the production chain always has a publication source");
+            let expected_first = if window_count == 0 {
+                assert!((4..=6).contains(&folding_steps));
+                Event::R0Publication
+            } else {
+                Event::Continuation
+            };
+            let (events, result) = run_recorded_chain(source, Remove::Nothing);
+            assert!(result.is_ok());
+            assert_eq!(
+                events,
+                [
+                    expected_first,
+                    Event::TailBind,
+                    Event::TailLaunch,
+                    Event::CanonicalRepoint,
+                ],
+                "folding_steps={folding_steps}"
+            );
+
+            for (remove, surviving_events) in [
+                (Remove::Publication, 1),
+                (Remove::TailBind, 2),
+                (Remove::TailEnqueue, 3),
+                (Remove::CanonicalRepoint, 4),
+            ] {
+                let (events, result) = run_recorded_chain(source, remove);
+                let error = result.expect_err("a removed production operation must be red");
+                match (remove, &error) {
+                    (
+                        Remove::Publication,
+                        MainLayerScheduleError::MissingPublication { layer: 7, .. },
+                    )
+                    | (Remove::TailBind, MainLayerScheduleError::MainTailBind { layer: 7, .. })
+                    | (
+                        Remove::TailEnqueue,
+                        MainLayerScheduleError::MainTailLaunch { layer: 7, .. },
+                    )
+                    | (
+                        Remove::CanonicalRepoint,
+                        MainLayerScheduleError::MainTailBind { layer: 7, .. },
+                    ) => {}
+                    (remove, error) => panic!("wrong typed error for {remove:?}: {error:?}"),
+                }
+                // Fail-closed with zero retry: the sequence stops at the
+                // removed stage and never re-enters an earlier one.
+                assert_eq!(events.len(), surviving_events, "{remove:?}");
+                assert!(!events.contains(&Event::Legacy), "{remove:?} fell back");
+                let unique: std::collections::BTreeSet<_> =
+                    events.iter().map(|event| format!("{event:?}")).collect();
+                assert_eq!(unique.len(), events.len(), "{remove:?} retried a stage");
             }
         }
-        assert_eq!(positive, 3);
     }
 
     #[test]

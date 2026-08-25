@@ -11,38 +11,6 @@ use super::super::window::binding::{
 };
 use crate::{BackwardExecutionStrategy, GkrBackwardOptions};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct W0DispatchPlan {
-    pub(crate) folding_steps: usize,
-    pub(crate) publication: bool,
-    pub(crate) tail_bind: bool,
-    pub(crate) tail_enqueue: bool,
-    pub(crate) canonical_repoint: bool,
-}
-
-pub(crate) fn prepare_w0_dispatch_plan(
-    folding_steps: usize,
-    selected: bool,
-    publication: bool,
-    tail_bind: bool,
-    tail_enqueue: bool,
-    canonical_repoint: bool,
-) -> Result<W0DispatchPlan, &'static str> {
-    if !selected || !(4..=6).contains(&folding_steps) {
-        return Err("W=0 production plan is not selected for this geometry");
-    }
-    if !publication || !tail_bind || !tail_enqueue || !canonical_repoint {
-        return Err("W=0 production chain is incomplete");
-    }
-    Ok(W0DispatchPlan {
-        folding_steps,
-        publication,
-        tail_bind,
-        tail_enqueue,
-        canonical_repoint,
-    })
-}
-
 impl GpuGKRMainLayerBackwardState {
     fn prepare_layer(
         &mut self,
@@ -64,10 +32,6 @@ impl GpuGKRMainLayerBackwardState {
             panic!("main-layer execution plan for layer {layer_idx}: {error:?}")
         });
         let main_chain_selected = crate::production_main_chain_selected(options, self.strategy);
-        if main_chain_selected && main_execution_plan.window_count() == 0 {
-            let _ = prepare_w0_dispatch_plan(folding_steps, true, true, true, true, true)
-                .expect("the selected W=0 production chain must be complete");
-        }
         if main_chain_selected {
             assert_eq!(
                 self.strategy,
@@ -200,20 +164,19 @@ impl GpuGKRMainLayerBackwardState {
         let canonical_final_addresses = if main_chain_selected {
             self.programs
                 .main_continuation_window_layer(layer_idx)
-                .canonical_read_places()
+                .canonical_source_identities()
                 .into_iter()
                 .enumerate()
-                .filter_map(|(column, place)| {
-                    place.map(|place| {
-                        let address = crate::forward::vm::lower::read_place_to_gkr_address(&place);
-                        let address = self.storage.layout.as_ref().map(|layout| {
-                            crate::transform::logical_protocol_address(
-                                address,
-                                &layout.scratch_space_mapping_rev,
-                            )
-                        }).unwrap_or(address);
-                        (column, address)
-                    })
+                .map(|(column, identity)| {
+                    let address = match identity {
+                        gpu_gkr_compiler::CanonicalSourceIdentity::Read(place) => {
+                            crate::forward::vm::lower::read_place_to_gkr_address(&place)
+                        }
+                        gpu_gkr_compiler::CanonicalSourceIdentity::VirtualSetup { kind } => {
+                            super::super::vm::production_bind::virtual_setup_poly_address(kind)
+                        }
+                    };
+                    (column, logicalize(address))
                 })
                 .collect()
         } else {
@@ -756,31 +719,5 @@ mod main_continuation_option_history {
             option_on, option_off,
             "continuation windows must preserve the full layer's coefficients and transcript state"
         );
-    }
-
-    #[test]
-    fn w0_prepare_dispatch_mutations_are_fail_closed() {
-        let mut positive = 0usize;
-        for folding_steps in 4..=6 {
-            let plan = prepare_w0_dispatch_plan(folding_steps, true, true, true, true, true)
-                .expect("option-on prepare_layer W=0 helper must produce the real chain");
-            assert_eq!(plan.folding_steps, folding_steps);
-            assert!(plan.publication && plan.tail_bind && plan.tail_enqueue && plan.canonical_repoint);
-            positive += 1;
-            for mutation in 0..4 {
-                let flags = match mutation {
-                    0 => (false, true, true, true),
-                    1 => (true, false, true, true),
-                    2 => (true, true, false, true),
-                    _ => (true, true, true, false),
-                };
-                assert!(
-                    prepare_w0_dispatch_plan(folding_steps, true, flags.0, flags.1, flags.2, flags.3)
-                        .is_err(),
-                    "mutation {mutation} must reject for folding_steps={folding_steps}"
-                );
-            }
-        }
-        assert_eq!(positive, 3);
     }
 }
