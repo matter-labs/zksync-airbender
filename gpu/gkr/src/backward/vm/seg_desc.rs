@@ -92,8 +92,7 @@ const _: () = {
             >= MAX_BACKWARD_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize
     );
     assert!(
-        BWD_SEG_OUTPUT_BANK
-            >= WINDOW_MAX_COEFFICIENT_PLANS + WINDOW_COEFFICIENT_BANK_BIAS as usize
+        BWD_SEG_OUTPUT_BANK >= WINDOW_MAX_COEFFICIENT_PLANS + WINDOW_COEFFICIENT_BANK_BIAS as usize
     );
     assert!(BWD_SEG_OUTPUT_BANK <= MAX_COEFFICIENT_ENCODINGS);
     assert!(BWD_SEG_OUTPUT_BANK * size_of::<E4>() == 28 * 1_024);
@@ -112,10 +111,10 @@ const _: () = {
 mod cuda_abi_tests {
     use super::*;
     use crate::backward::vm::seg_coeff_eval::{
-        BWD_SEG_BLOB_BYTES, BWD_SEG_BLOB_MONOMIALS_OFFSET, BWD_SEG_BLOB_RECIPES_OFFSET,
-        BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_SLOTS, BWD_SEG_COEFF_PLAN_DIRECT,
-        BWD_SEG_COEFF_PLAN_LINEAR_BASIS, BWD_SEG_COEFF_PLAN_SCALED, BWD_SEG_EVAL_MONOMIALS,
-        BWD_SEG_EVAL_RECIPES, BWD_SEG_WINDOW_PLANS,
+        BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_SLOTS, BWD_SEG_COEFF_CHUNK_MONOMIALS,
+        BWD_SEG_COEFF_CHUNK_RECIPES, BWD_SEG_COEFF_PLAN_DIRECT, BWD_SEG_COEFF_PLAN_LINEAR_BASIS,
+        BWD_SEG_COEFF_PLAN_SCALED, BWD_SEG_EVAL_MONOMIALS, BWD_SEG_EVAL_RECIPES,
+        BWD_SEG_WINDOW_PLANS,
     };
     use crate::backward::vm::seg_lower::SourceClass;
     use gpu_gkr_compiler::{
@@ -307,14 +306,13 @@ mod cuda_abi_tests {
                 WINDOW_COEFFICIENT_BANK_BIAS as u64,
             ),
             (
-                "BWD_SEG_BLOB_RECIPES_OFFSET",
-                BWD_SEG_BLOB_RECIPES_OFFSET as u64,
+                "BWD_SEG_COEFF_CHUNK_RECIPES",
+                BWD_SEG_COEFF_CHUNK_RECIPES as u64,
             ),
             (
-                "BWD_SEG_BLOB_MONOMIALS_OFFSET",
-                BWD_SEG_BLOB_MONOMIALS_OFFSET as u64,
+                "BWD_SEG_COEFF_CHUNK_MONOMIALS",
+                BWD_SEG_COEFF_CHUNK_MONOMIALS as u64,
             ),
-            ("BWD_SEG_BLOB_BYTES", BWD_SEG_BLOB_BYTES as u64),
             (
                 "BWD_SEG_COEFF_PLAN_DIRECT",
                 BWD_SEG_COEFF_PLAN_DIRECT as u64,

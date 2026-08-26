@@ -81,8 +81,8 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
                     // The GPU prover follows the CPU Blake2sTranscript path,
                     // which does not synthesize an intermediate Keccak seed.
                     intermediate_transcript_seed: None,
-                    // Ground on device by the pow-aware challenge draws (0 at
-                    // Sec80, non-zero at Sec100) and read back from the slab.
+                    // Ground on device by the pow-aware challenge draws and
+                    // read back from the slab.
                     lookup_challenges_pow_nonce: proof_layout_for_parse
                         .lookup_pow_nonce_host(slab_bytes),
                     batched_proximity_check_pow_nonce: proof_layout_for_parse

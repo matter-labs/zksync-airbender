@@ -513,6 +513,54 @@ impl GkrPrograms {
         })
     }
 
+    /// Returns `(layer_idx, incoming_claims, replacement_claims)` for every
+    /// dimension-reducing layer in backward execution order. This is a
+    /// host-only corpus oracle for allocation-lifetime regression tests.
+    #[doc(hidden)]
+    pub fn dimension_reducing_claim_count_census_for_test(
+        &self,
+        final_trace_log: u32,
+    ) -> Vec<(usize, usize, usize)> {
+        let initial_layer = self.runtime_circuit.layers.len();
+        let initial_trace_log = self.runtime_circuit.trace_len.trailing_zeros();
+        let layers = derive_dimension_reducing_inputs(
+            initial_layer,
+            &self.runtime_circuit.global_output_map,
+            initial_trace_log,
+            final_trace_log,
+        );
+        let mut incoming_addresses = layers
+            .iter()
+            .next_back()
+            .expect("dimension-reducing claim census requires at least one layer")
+            .1
+            .values()
+            .flat_map(|reduced| reduced.output.iter().copied())
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut census = Vec::with_capacity(layers.len());
+        for (layer_idx, layer) in layers.iter().rev() {
+            let outputs = layer
+                .values()
+                .flat_map(|reduced| reduced.output.iter().copied())
+                .collect::<std::collections::BTreeSet<_>>();
+            assert_eq!(
+                outputs, incoming_addresses,
+                "layer {layer_idx} outputs must exactly identify device_claims_in",
+            );
+            let replacement_addresses = layer
+                .values()
+                .flat_map(|reduced| reduced.inputs.iter().copied())
+                .collect::<std::collections::BTreeSet<_>>();
+            census.push((
+                *layer_idx,
+                incoming_addresses.len(),
+                replacement_addresses.len(),
+            ));
+            incoming_addresses = replacement_addresses;
+        }
+        census
+    }
+
     /// Lower every layer's window program, once per `GkrPrograms`. A rejection
     /// is cached too: a circuit the sectioned lowering cannot express must fail
     /// the same way on every later request, never fall back silently.

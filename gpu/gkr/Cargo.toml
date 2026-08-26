@@ -14,6 +14,8 @@ links = "gpu_gkr_native"
 [features]
 default = []
 dr_tail_trace = []
+gpu_component_differential_test = []
+task8_continuation_differential_test = []
 
 [dependencies]
 gpu_core = { workspace = true }
@@ -41,9 +43,6 @@ worker = { workspace = true }
 fft = { workspace = true }
 rand = "0.9"
 itertools = "0.14"
-
-[features]
-task8_continuation_differential_test = []
 
 [[bin]]
 name = "generate_windowed_continuation_golden"

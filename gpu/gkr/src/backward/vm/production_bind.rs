@@ -26,7 +26,7 @@ use super::seg::{
 };
 use super::seg_coeff_eval::{
     build_seg_coeff_eval_blob, build_seg_coeff_eval_window_blob, schedule_bwd_seg_coeff_bank_fill,
-    SegCoeffEvalTables, BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE,
+    SegCoeffEvalChunks, BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE,
     BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE,
     BWD_SEG_CHALLENGE_SLOTS,
 };
@@ -40,6 +40,8 @@ use crate::backward::main_continuation::{
     validate_adoption_state, validate_canonical_publication, ContinuationPublicationError,
     ContinuationPublishedLevel, ContinuationPublishedShape,
 };
+#[cfg(any(test, feature = "gpu_component_differential_test"))]
+use crate::backward::main_layer::execution_plan::WINDOW_WIDTH;
 use crate::backward::{make_eq_sizes, record_active_eq_slot_fold, GkrEqSizes};
 use crate::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
 use crate::forward::vm::production_bind::resolve_storage_column;
@@ -51,7 +53,6 @@ use crate::GpuGKRStorage;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_prover_context::ProverContext;
 
 // ── The separate `K` policies ────────────────────────────────────────────────
@@ -717,14 +718,8 @@ fn addressed_columns<'a>(
 
 pub(crate) struct BwdVmRound0Launch {
     setup: BwdSegSetup,
-    tables: SegCoeffEvalTables,
+    chunks: SegCoeffEvalChunks,
     slab: DeviceAllocation<E4>,
-}
-
-impl BwdVmRound0Launch {
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.tables.take_host_staging()
-    }
 }
 
 pub(crate) fn build_bwd_vm_round0<E: Copy>(
@@ -742,7 +737,7 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
     let blob =
         build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
             .unwrap_or_else(|error| panic!("backward VM R0 bank translation: {error:?}"));
-    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let chunks = SegCoeffEvalChunks::build(&blob);
 
     let bytes_per_row = seg_r0_bytes_per_row(&bound.slots, &bound.sources);
     let k = seg_r0_policy_k(bytes_per_row, seg_k_ceiling(BwdRegime::R0)?);
@@ -766,7 +761,7 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
     Ok(BwdVmRound0Launch {
         setup,
-        tables,
+        chunks,
         slab,
     })
 }
@@ -798,7 +793,7 @@ pub(crate) fn schedule_bwd_vm_round0(
         context,
     )?;
     schedule_bwd_seg_coeff_bank_fill(
-        &mut launch.tables,
+        &launch.chunks,
         launch.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         stream,
@@ -877,7 +872,7 @@ pub(crate) struct BwdVmExtLaunch {
     #[allow(dead_code)] // Task 6 adopts the level after constructing the remainder.
     expected_published_shape: Option<ContinuationPublishedShape>,
     final_evaluations: BTreeMap<GKRAddress, usize>,
-    tables: SegCoeffEvalTables,
+    chunks: SegCoeffEvalChunks,
     slab: DeviceAllocation<E4>,
     filled: bool,
 }
@@ -949,9 +944,6 @@ impl BwdVmExtLaunch {
         Ok(())
     }
 
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.tables.take_host_staging()
-    }
     pub(crate) fn repoint_final_evaluations<E>(
         &self,
         sources: &mut BTreeMap<GKRAddress, *const E>,
@@ -1022,18 +1014,31 @@ struct PlannedExtRound {
 /// The production tail folds once at every round, which is what
 /// [`record_active_eq_slot_fold`] does and what [`drained_eq_sizes`] mirrors.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EqDrainSchedule {
+pub(crate) enum EqDrainSchedule<'a> {
     /// One drain per round, for every round in the sequence.
     PerRound,
+    /// One entry per planned round, in sequence order.
+    Explicit(&'a [u8]),
 }
 
-impl EqDrainSchedule {
+impl EqDrainSchedule<'_> {
     /// Total drains applied by the end of round `index`, counting from the
     /// sequence's first round. Fails closed on a schedule that does not cover
     /// the sequence exactly.
-    pub(crate) fn drains_through(&self, index: usize, _rounds: usize) -> u8 {
+    pub(crate) fn drains_through(&self, index: usize, rounds: usize) -> u8 {
         match self {
             Self::PerRound => u8::try_from(index + 1).expect("planned sequence exceeds u8 rounds"),
+            Self::Explicit(schedule) => {
+                assert_eq!(
+                    schedule.len(),
+                    rounds,
+                    "the Eq drain schedule must carry one entry per planned round"
+                );
+                schedule[..=index]
+                    .iter()
+                    .try_fold(0u8, |total, drains| total.checked_add(*drains))
+                    .expect("the Eq drain schedule overflowed u8")
+            }
         }
     }
 }
@@ -1050,7 +1055,7 @@ fn plan_ext_rounds(
     folding_steps: usize,
     eq_low: *const E4,
     base_eq_sizes: GkrEqSizes,
-    eq_drains: EqDrainSchedule,
+    eq_drains: EqDrainSchedule<'_>,
     partials: *mut E4,
     ceiling: usize,
     published_shape: Option<ContinuationPublishedShape>,
@@ -1158,7 +1163,7 @@ fn build_bwd_vm_ext_rounds_inner<E: Copy>(
     folding_steps: usize,
     eq_low: *const E4,
     base_eq_sizes: GkrEqSizes,
-    eq_drains: EqDrainSchedule,
+    eq_drains: EqDrainSchedule<'_>,
     partials: *mut E4,
     inits_and_teardowns_top_bits: &[u32],
     context: &ProverContext,
@@ -1167,7 +1172,7 @@ fn build_bwd_vm_ext_rounds_inner<E: Copy>(
     let blob =
         build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
             .unwrap_or_else(|error| panic!("backward VM Ext bank translation: {error:?}"));
-    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let chunks = SegCoeffEvalChunks::build(&blob);
 
     let ceiling = seg_k_ceiling(BwdRegime::Ext)?;
     let (planned, final_evaluations) = plan_ext_rounds(
@@ -1197,7 +1202,7 @@ fn build_bwd_vm_ext_rounds_inner<E: Copy>(
         live: BTreeMap::new(),
         expected_published_shape: published_shape,
         final_evaluations,
-        tables,
+        chunks,
         slab,
         filled: false,
     })
@@ -1315,7 +1320,7 @@ pub(crate) fn build_zero_round_ext_carrier(
     let blob =
         build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
             .unwrap_or_else(|error| panic!("zero-round Ext carrier translation: {error:?}"));
-    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let chunks = SegCoeffEvalChunks::build(&blob);
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
     Ok(BwdVmExtLaunch {
         start_round: 0,
@@ -1323,19 +1328,18 @@ pub(crate) fn build_zero_round_ext_carrier(
         live: BTreeMap::new(),
         expected_published_shape: None,
         final_evaluations: BTreeMap::new(),
-        tables,
+        chunks,
         slab,
         filled: false,
     })
 }
 /// What one bank fill touches: the challenge slab it fills and then reads, plus
-/// the staged tables and the bank prefix its coefficient evaluation uses.
+/// the bank prefix its coefficient evaluation uses.
 /// Returned so a caller that must account for the fill's pointer arguments
 /// reuses the addresses and extents this fill used.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BwdSegBankFillSpans {
     pub(crate) slab: (usize, usize),
-    pub(crate) tables: (usize, usize),
     pub(crate) bank: (usize, usize),
 }
 
@@ -1360,7 +1364,7 @@ pub(crate) fn schedule_bwd_vm_ext_bank_fill(
         context,
     )?;
     let spans = schedule_bwd_seg_coeff_bank_fill(
-        &mut launch.tables,
+        &launch.chunks,
         launch.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         context.get_exec_stream(),
@@ -1368,14 +1372,13 @@ pub(crate) fn schedule_bwd_vm_ext_bank_fill(
     launch.filled = true;
     Ok(BwdSegBankFillSpans {
         slab: slab_span(&launch.slab),
-        tables: spans.tables,
         bank: spans.bank,
     })
 }
 
 #[cfg(any(test, feature = "gpu_component_differential_test"))]
 pub(crate) struct PreparedContinuationDifferentialBank {
-    tables: SegCoeffEvalTables,
+    chunks: SegCoeffEvalChunks,
     slab: DeviceAllocation<E4>,
 }
 
@@ -1384,10 +1387,6 @@ impl PreparedContinuationDifferentialBank {
     #[cfg(all(any(test, feature = "gpu_component_differential_test"), not(no_cuda)))]
     pub(crate) fn challenge_slab(&self) -> &DeviceAllocation<E4> {
         &self.slab
-    }
-
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.tables.take_host_staging()
     }
 
     pub(crate) fn schedule(
@@ -1407,14 +1406,13 @@ impl PreparedContinuationDifferentialBank {
             context,
         )?;
         let spans = schedule_bwd_seg_coeff_bank_fill(
-            &mut self.tables,
+            &self.chunks,
             self.slab.as_ptr(),
             bwd_seg_coeff_bank_device_ptr(),
             context.get_exec_stream(),
         )?;
         Ok(BwdSegBankFillSpans {
             slab: slab_span(&self.slab),
-            tables: spans.tables,
             bank: spans.bank,
         })
     }
@@ -1428,10 +1426,12 @@ pub(crate) fn prepare_continuation_differential_bank(
 ) -> CudaResult<PreparedContinuationDifferentialBank> {
     let blob =
         build_seg_coeff_eval_blob(&program.coefficient_recipes, inits_and_teardowns_top_bits)
-            .unwrap_or_else(|error| panic!("Task 8 Ext bank translation: {error:?}"));
-    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+            .unwrap_or_else(|error| {
+                panic!("continuation differential Ext bank translation: {error:?}")
+            });
+    let chunks = SegCoeffEvalChunks::build(&blob);
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
-    Ok(PreparedContinuationDifferentialBank { tables, slab })
+    Ok(PreparedContinuationDifferentialBank { chunks, slab })
 }
 // ── The windowed arm's bank ──────────────────────────────────────────────────
 
@@ -1439,14 +1439,8 @@ pub(crate) fn prepare_continuation_differential_bank(
 /// arm's second fill is the shared [`schedule_bwd_vm_ext_bank_fill`] above, so
 /// both arms are two-fill and the ext refill is identical between them.
 pub(crate) struct BwdVmWindowBank {
-    tables: SegCoeffEvalTables,
+    chunks: SegCoeffEvalChunks,
     slab: DeviceAllocation<E4>,
-}
-
-impl BwdVmWindowBank {
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.tables.take_host_staging()
-    }
 }
 
 pub(crate) fn build_bwd_vm_window_bank(
@@ -1457,16 +1451,16 @@ pub(crate) fn build_bwd_vm_window_bank(
     let blob =
         build_seg_coeff_eval_window_blob(&program.coefficient_plans, inits_and_teardowns_top_bits)
             .unwrap_or_else(|error| panic!("backward VM window bank translation: {error:?}"));
-    let tables = SegCoeffEvalTables::stage(&blob, context)?;
+    let chunks = SegCoeffEvalChunks::build(&blob);
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
-    Ok(BwdVmWindowBank { tables, slab })
+    Ok(BwdVmWindowBank { chunks, slab })
 }
 
 /// Fill the output bank with this layer's window plans.
 ///
 /// Schedule position, fixed here and consumed by the windowed scheduler path:
-/// window blob H2D copy + window-plan bank fill (this call) -> window kernel ->
-/// ext blob copy + ext-recipe bank refill ([`schedule_bwd_vm_ext_bank_fill`]) ->
+/// window-plan bank fill (this call) -> window kernel -> ext-recipe bank refill
+/// ([`schedule_bwd_vm_ext_bank_fill`]) ->
 /// `TensorRoundTail` -> round-3 VM. The window kernel's bank reads must all be
 /// enqueued before the ext refill overwrites the bank.
 pub(crate) fn schedule_bwd_vm_window_bank_fill(
@@ -1486,7 +1480,7 @@ pub(crate) fn schedule_bwd_vm_window_bank_fill(
         context,
     )?;
     schedule_bwd_seg_coeff_bank_fill(
-        &mut bank.tables,
+        &bank.chunks,
         bank.slab.as_ptr(),
         bwd_seg_coeff_bank_device_ptr(),
         context.get_exec_stream(),
@@ -1936,10 +1930,6 @@ impl PreparedContinuationDifferentialRounds {
         )
     }
 
-    pub(crate) fn take_bank_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.launch.take_bank_staging()
-    }
-
     /// The pointer arguments one segmented-VM round enqueue names: the
     /// fold-weight bank it rebuilds and reads, the level it publishes, the live
     /// publications its descriptor slots resolve against, and the depths it
@@ -1961,7 +1951,7 @@ impl PreparedContinuationDifferentialRounds {
             self.launch
                 .live
                 .get(&(round as u8))
-                .expect("Task 8 round must leave its own publication live"),
+                .expect("differential round must leave its own publication live"),
         );
         let round_index = (round - u32::from(self.launch.start_round)) as usize;
         let reads = self.launch.rounds[round_index]
@@ -1975,7 +1965,7 @@ impl PreparedContinuationDifferentialRounds {
                     .get(&depth)
                     .copied()
                     .or_else(|| self.launch.live.get(&depth).map(publication_span))
-                    .expect("Task 8 round read a publication that was never live");
+                    .expect("differential round read a publication that was never live");
                 (depth, span.0, span.1)
             })
             .collect();
@@ -1996,7 +1986,7 @@ impl PreparedContinuationDifferentialRounds {
         self.launch
             .live
             .get(&self.comparison_round)
-            .expect("Task 8 comparison publication must be live after its producer round")
+            .expect("differential comparison publication must be live after its producer round")
     }
 
     pub(crate) fn expected_input_is_live(&self) -> bool {
@@ -2019,7 +2009,6 @@ impl PreparedContinuationDifferentialRounds {
     pub(crate) fn first_reads_only_published(&self) -> bool {
         self.first_reads_only_published
     }
-
 }
 
 /// The Eq base and drain rhythm the prepared-state differential's legacy arm
@@ -2075,7 +2064,7 @@ pub(crate) fn prepare_continuation_differential_rounds<E: Copy>(
     assert_eq!(
         adopted_shape.is_some(),
         comparison_round > 3,
-        "Task 8 later-start legacy arms require exactly one adopted prior"
+        "later-start differential legacy arms require exactly one adopted prior"
     );
     let legacy_start = comparison_round;
     let bound = bind_ext_round_sources(
@@ -2085,38 +2074,42 @@ pub(crate) fn prepare_continuation_differential_rounds<E: Copy>(
         folding_steps,
         adopted_shape,
     )
-    .unwrap_or_else(|error| panic!("Task 8 legacy source binding: {error:?}"));
+    .unwrap_or_else(|error| panic!("differential legacy source binding: {error:?}"));
     let publication = bound
         .rounds
         .iter()
         .find(|round| round.round == comparison_round)
-        .expect("Task 8 legacy sequence must contain the comparison round");
+        .expect("differential legacy sequence must contain the comparison round");
     let mut source_columns = Vec::with_capacity(publication.sources.len());
     for (source, binding) in publication.sources.iter().enumerate() {
         let (slot, local_column) = binding.publish.unwrap_or_else(|| {
-            panic!("Task 8 source {source} did not publish at legacy round {comparison_round}")
+            panic!(
+                "differential source {source} did not publish at legacy round {comparison_round}"
+            )
         });
         let patch = publication
             .folding_buffer_slots
             .iter()
             .find(|patch| patch.slot == slot)
             .unwrap_or_else(|| {
-                panic!("Task 8 source {source} publish slot {slot} has no folding-buffer patch")
+                panic!(
+                    "differential source {source} publish slot {slot} has no folding-buffer patch"
+                )
             });
         assert_eq!(patch.buffer_round, comparison_round);
         let stride_bytes = publication.folding_buffer.stride_bytes() as usize;
         let chunk_bytes = SOURCE_WINDOW_COLUMNS
             .checked_mul(stride_bytes)
-            .expect("Task 8 folding-buffer chunk bytes must fit usize");
+            .expect("differential folding-buffer chunk bytes must fit usize");
         assert_eq!(patch.byte_offset % chunk_bytes, 0);
         let chunk = patch.byte_offset / chunk_bytes;
         let column = chunk
             .checked_mul(SOURCE_WINDOW_COLUMNS)
             .and_then(|base| base.checked_add(local_column))
-            .expect("Task 8 absolute legacy publication column must fit usize");
+            .expect("differential absolute legacy publication column must fit usize");
         assert!(
             column < publication.folding_buffer.columns,
-            "Task 8 source {source} resolved publication column {column} outside {} columns",
+            "differential source {source} resolved publication column {column} outside {} columns",
             publication.folding_buffer.columns
         );
         source_columns.push((SourceId(source as u32), column));
@@ -2129,7 +2122,7 @@ pub(crate) fn prepare_continuation_differential_rounds<E: Copy>(
     let first = bound
         .rounds
         .first()
-        .expect("Task 8 legacy sequence must contain a first round");
+        .expect("differential legacy sequence must contain a first round");
     let first_deltas = first
         .sources
         .iter()
@@ -2157,13 +2150,13 @@ pub(crate) fn prepare_continuation_differential_rounds<E: Copy>(
     )?;
     if let Some(prior) = prior {
         if let Err((_prior, error)) = launch.adopt_published_level(prior) {
-            panic!("Task 8 legacy prior adoption failed: {error:?}");
+            panic!("differential legacy prior adoption failed: {error:?}");
         }
     }
     let adopted_depth = adopted_shape.map(|shape| shape.depth);
     assert!(
         adopted_depth.is_none_or(|depth| launch.live.contains_key(&depth)),
-        "Task 8 adopted prior must be live before its first legacy reader"
+        "differential adopted prior must be live before its first legacy reader"
     );
     Ok(PreparedContinuationDifferentialRounds {
         launch,

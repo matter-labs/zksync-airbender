@@ -4,11 +4,9 @@ use core::mem::{align_of, offset_of, size_of};
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::memory::memory_copy_async;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
 use gpu_gkr_compiler::{SourceId, KERNEL_ARGUMENT_CEILING_BYTES};
 use gpu_prover_context::ProverContext;
 
@@ -26,11 +24,13 @@ use crate::upstream::PrimeField;
 
 pub(crate) const MAIN_TAIL_BLOCK_THREADS: u32 = 256;
 pub(crate) const MAIN_TAIL_DESCRIPTOR_BYTES: usize = 128;
+pub(crate) const MAIN_TAIL_KERNEL_ARGUMENT_BYTES: usize =
+    MAIN_TAIL_DESCRIPTOR_BYTES + MAIN_TAIL_BLOB_BYTES;
 pub(crate) const MAIN_TAIL_PARAMETER_HEADROOM: usize =
-    KERNEL_ARGUMENT_CEILING_BYTES - MAIN_TAIL_DESCRIPTOR_BYTES;
+    KERNEL_ARGUMENT_CEILING_BYTES - MAIN_TAIL_KERNEL_ARGUMENT_BYTES;
 
-/// Rust half of `bwd_main_tail_desc`. The fixed program blob stays in device
-/// memory and this exact 128-byte descriptor is passed by value.
+/// Rust half of `bwd_main_tail_desc`. This exact 128-byte descriptor and its
+/// fixed program blob are passed by value as separate kernel arguments.
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MainTailDesc {
@@ -85,7 +85,19 @@ const _: () = {
     assert!(offset_of!(MainTailDesc, reserved) == 115);
     assert!(offset_of!(MainTailDesc, blob_bytes) == 116);
     assert!(offset_of!(MainTailDesc, tail_padding) == 120);
-    assert!(MAIN_TAIL_PARAMETER_HEADROOM == 32_636);
+    assert!(MAIN_TAIL_KERNEL_ARGUMENT_BYTES == 15_152);
+    assert!(MAIN_TAIL_PARAMETER_HEADROOM == 17_612);
+};
+
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+pub(crate) struct MainTailProgramBlob {
+    pub(crate) bytes: [u8; MAIN_TAIL_BLOB_BYTES],
+}
+
+const _: () = {
+    assert!(size_of::<MainTailProgramBlob>() == MAIN_TAIL_BLOB_BYTES);
+    assert!(align_of::<MainTailProgramBlob>() == MAIN_TAIL_BLOB_ALIGNMENT);
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -187,7 +199,7 @@ pub(crate) fn serialize_main_tail_program_blob(
 
 cuda_kernel!(
     GkrBwdMainTail,
-    ab_gkr_bwd_main_tail_kernel(desc: MainTailDesc)
+    ab_gkr_bwd_main_tail_kernel(desc: MainTailDesc, program_blob: MainTailProgramBlob)
 );
 
 /// Prepared owner. The incoming publication is owned until the sole enqueue,
@@ -198,8 +210,7 @@ pub(crate) struct MainTailLaunch {
     final_shape: ContinuationPublishedShape,
     ping_pong_elems: usize,
     final_elems: usize,
-    program_blob_host: StaticPinnedBox<u8>,
-    program_blob_device: DeviceAllocation<u8>,
+    program_blob: MainTailProgramBlob,
     ping: DeviceAllocation<E4>,
     pong: DeviceAllocation<E4>,
     entry_keepalive: ContinuationPublishedLevel,
@@ -210,18 +221,15 @@ struct PreparedMainTailLaunch {
     desc: MainTailDesc,
     final_level: ContinuationPublishedLevel,
     scratch: DeviceAllocation<E4>,
-    program_blob_host: StaticPinnedBox<u8>,
-    program_blob_device: DeviceAllocation<u8>,
+    program_blob: MainTailProgramBlob,
     entry_keepalive: ContinuationPublishedLevel,
 }
 
 /// Launched ownership. The final buffer remains canonical and dense; the
-/// other ping-pong buffer and program staging remain available as keepalives.
+/// other ping-pong buffer remains available as a keepalive.
 pub(crate) struct MainTailLaunched {
     final_level: ContinuationPublishedLevel,
     scratch: DeviceAllocation<E4>,
-    program_blob_host: Option<StaticPinnedBox<u8>>,
-    program_blob_device: DeviceAllocation<u8>,
 }
 
 impl MainTailLaunched {
@@ -233,16 +241,8 @@ impl MainTailLaunched {
         self.final_level
     }
 
-    pub(crate) fn take_host_staging(&mut self) -> Option<StaticPinnedBox<u8>> {
-        self.program_blob_host.take()
-    }
-
     pub(crate) fn scratch(&self) -> &DeviceAllocation<E4> {
         &self.scratch
-    }
-
-    pub(crate) fn program_blob_device(&self) -> &DeviceAllocation<u8> {
-        &self.program_blob_device
     }
 }
 
@@ -432,27 +432,21 @@ pub(crate) fn bind_main_tail(
     let mut ping = context.alloc(ping_pong_elems, AllocationPlacement::BestFit)?;
     let mut pong = context.alloc(ping_pong_elems, AllocationPlacement::BestFit)?;
 
-    let blob = serialize_main_tail_program_blob(program);
-    debug_assert!(blob
+    let program_blob = MainTailProgramBlob {
+        bytes: serialize_main_tail_program_blob(program),
+    };
+    debug_assert!(program_blob.bytes
         [MAIN_TAIL_PROGRAM_OFFSET + program.program_words.len() * 2..MAIN_TAIL_IMMEDIATE_OFFSET]
         .iter()
         .all(|&byte| byte == 0));
     debug_assert!(
-        blob[MAIN_TAIL_IMMEDIATE_OFFSET + program.immediates.len() * 4..]
+        program_blob.bytes[MAIN_TAIL_IMMEDIATE_OFFSET + program.immediates.len() * 4..]
             .iter()
             .all(|&byte| byte == 0)
     );
-    let program_blob_host = alloc_static_pinned_box_from_slice(&blob)?;
-    let mut program_blob_device =
-        context.alloc(MAIN_TAIL_BLOB_BYTES, AllocationPlacement::BestFit)?;
-    memory_copy_async(
-        &mut program_blob_device[..],
-        &program_blob_host[..],
-        context.get_exec_stream(),
-    )?;
 
     let desc = MainTailDesc {
-        program_blob: program_blob_device.as_ptr(),
+        program_blob: core::ptr::null(),
         entry: entry.as_ptr(),
         ping: ping.as_mut_ptr(),
         pong: pong.as_mut_ptr(),
@@ -482,8 +476,7 @@ pub(crate) fn bind_main_tail(
         final_shape,
         ping_pong_elems,
         final_elems,
-        program_blob_host,
-        program_blob_device,
+        program_blob,
         ping,
         pong,
         entry_keepalive: entry,
@@ -509,8 +502,7 @@ fn prepare_main_tail_launch(
         desc: launch.desc,
         final_level,
         scratch,
-        program_blob_host: launch.program_blob_host,
-        program_blob_device: launch.program_blob_device,
+        program_blob: launch.program_blob,
         entry_keepalive: launch.entry_keepalive,
     })
 }
@@ -520,16 +512,16 @@ fn enqueue_prepared_main_tail(
     context: &ProverContext,
 ) -> Result<MainTailLaunched, MainTailBindError> {
     let config = CudaLaunchConfig::basic(1, MAIN_TAIL_BLOCK_THREADS, context.get_exec_stream());
-    GkrBwdMainTailFunction::default()
-        .launch(&config, &GkrBwdMainTailArguments::new(prepared.desc))?;
+    GkrBwdMainTailFunction::default().launch(
+        &config,
+        &GkrBwdMainTailArguments::new(prepared.desc, prepared.program_blob),
+    )?;
     // The kernel reading the entry has been enqueued; the stream-ordered pool
     // makes releasing its owner safe from here.
     drop(prepared.entry_keepalive);
     Ok(MainTailLaunched {
         final_level: prepared.final_level,
         scratch: prepared.scratch,
-        program_blob_host: Some(prepared.program_blob_host),
-        program_blob_device: prepared.program_blob_device,
     })
 }
 

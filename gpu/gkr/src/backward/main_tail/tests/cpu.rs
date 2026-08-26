@@ -19,7 +19,8 @@ use crate::upstream::{Field, FieldExtension, PrimeField};
 
 use super::super::binding::{
     serialize_main_tail_program_blob, validate_main_tail_final_publication_capacity,
-    MainTailBindError, MainTailDesc, MAIN_TAIL_DESCRIPTOR_BYTES, MAIN_TAIL_PARAMETER_HEADROOM,
+    MainTailBindError, MainTailDesc, MainTailProgramBlob, MAIN_TAIL_DESCRIPTOR_BYTES,
+    MAIN_TAIL_KERNEL_ARGUMENT_BYTES, MAIN_TAIL_PARAMETER_HEADROOM,
 };
 
 fn lift(value: u32) -> E4 {
@@ -604,7 +605,10 @@ fn cpu_main_tail_descriptor_abi_and_blob_sections_are_exact() {
         assert_eq!(actual, expected, "{field}");
     }
     assert_eq!(MAIN_TAIL_DESCRIPTOR_BYTES, 128);
-    assert_eq!(MAIN_TAIL_PARAMETER_HEADROOM, 32_636);
+    assert_eq!(size_of::<MainTailProgramBlob>(), 15_024);
+    assert_eq!(align_of::<MainTailProgramBlob>(), 16);
+    assert_eq!(MAIN_TAIL_KERNEL_ARGUMENT_BYTES, 15_152);
+    assert_eq!(MAIN_TAIL_PARAMETER_HEADROOM, 17_612);
 
     let program = super::super::lower_main_tail_program(&rich_program()).unwrap();
     let blob = serialize_main_tail_program_blob(&program);
@@ -630,7 +634,8 @@ fn cpu_main_tail_descriptor_abi_and_blob_sections_are_exact() {
         "__builtin_offsetof(bwd_main_tail_desc, source_count) == 104",
         "__builtin_offsetof(bwd_main_tail_desc, tail_start) == 112",
         "__builtin_offsetof(bwd_main_tail_desc, blob_bytes) == 116",
-        "BWD_MAIN_TAIL_PARAMETER_CEILING - sizeof(bwd_main_tail_desc) == 32636",
+        "sizeof(bwd_main_tail_desc) + sizeof(bwd_main_tail_program_blob) == 15152",
+        "BWD_MAIN_TAIL_PARAMETER_CEILING - sizeof(bwd_main_tail_desc) - sizeof(bwd_main_tail_program_blob) == 17612",
     ] {
         assert!(
             cuda.contains(assertion),

@@ -1,11 +1,10 @@
-use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
 
-use super::dr_tail::resources::{DrTailPlanCursor, DrTailScheduleError};
+use super::dr_tail::resources::DrTailPlanCursor;
 use super::kernels::*;
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
-use crate::MainLayerScheduleError;
+use crate::BackwardScheduleError;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::UnsafeMutAccessor;

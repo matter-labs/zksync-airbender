@@ -495,20 +495,25 @@ fn cpu_dr_window_preflight_is_default_off_and_caches_exact_final_logs() {
     preflight_windowed_backward(
         &programs,
         BackwardExecutionStrategy::PerRound,
-        GkrBackwardOptions::default(),
+        GkrBackwardOptions {
+            windowed_r0: false,
+            windowed_main_continuations: false,
+            ..GkrBackwardOptions::default()
+        },
         first_final_log,
     )
     .unwrap();
     assert!(!programs.dr_window_programs_ready(first_final_log));
 
     let enabled = GkrBackwardOptions {
+        dr_tail_megakernel: true,
         windowed_dr: true,
-        windowed_dr_continuations: false,
+        windowed_dr_continuations: true,
         ..GkrBackwardOptions::default()
     };
     preflight_windowed_backward(
         &programs,
-        BackwardExecutionStrategy::PerRound,
+        BackwardExecutionStrategy::WindowedR0,
         enabled,
         first_final_log,
     )
@@ -526,7 +531,7 @@ fn cpu_dr_window_preflight_is_default_off_and_caches_exact_final_logs() {
 
     preflight_windowed_backward(
         &programs,
-        BackwardExecutionStrategy::PerRound,
+        BackwardExecutionStrategy::WindowedR0,
         enabled,
         second_final_log,
     )
@@ -552,15 +557,16 @@ fn cpu_dr_window_preflight_typed_rejection_constructs_zero_transfers() {
     let initial_trace_log = programs.compiled_circuit().trace_len.trailing_zeros();
     let invalid_final_log = initial_trace_log + 1;
     let options = GkrBackwardOptions {
+        dr_tail_megakernel: true,
         windowed_dr: true,
-        windowed_dr_continuations: false,
+        windowed_dr_continuations: true,
         ..GkrBackwardOptions::default()
     };
     let transfer_constructions = Cell::new(0usize);
 
     let error = construct_after_windowed_backward_preflight(
         &programs,
-        BackwardExecutionStrategy::PerRound,
+        BackwardExecutionStrategy::WindowedR0,
         options,
         invalid_final_log,
         || transfer_constructions.set(transfer_constructions.get() + 1),
@@ -598,15 +604,16 @@ fn cpu_dr_window_preflight_cached_geometry_rejection_constructs_zero_transfers()
     let (programs, _) =
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
     let options = GkrBackwardOptions {
+        dr_tail_megakernel: true,
         windowed_dr: true,
-        windowed_dr_continuations: false,
+        windowed_dr_continuations: true,
         ..GkrBackwardOptions::default()
     };
     let transfer_constructions = Cell::new(0usize);
 
     let error = construct_after_windowed_backward_preflight(
         &programs,
-        BackwardExecutionStrategy::PerRound,
+        BackwardExecutionStrategy::WindowedR0,
         options,
         INVALID_FINAL_LOG,
         || transfer_constructions.set(transfer_constructions.get() + 1),
@@ -650,7 +657,6 @@ fn cpu_dr_window_preflight_cached_geometry_rejection_constructs_zero_transfers()
 fn cpu_windowed_arm_selection_covers_every_corpus_family() {
     use crate::config::prover_config;
     use crate::proof::resolve_backward_execution_strategy;
-    use crate::upstream::SecurityLevel;
     use gpu_gkr::{BackwardExecutionStrategy, GkrBackwardOptions};
 
     /// One layout per family the proof matrix gates.
@@ -701,9 +707,9 @@ fn cpu_windowed_arm_selection_covers_every_corpus_family() {
     }
     assert_eq!(
         selected.len(),
-        2 * FAMILIES.len(),
-        "every corpus family must select the windowed arm at both supported \
-         security levels, or the both-arm byte gate covers less than it claims; \
+        crate::config::GPU_SUPPORTED_SECURITY_LEVELS.len() * FAMILIES.len(),
+        "every corpus family must select the windowed arm at every supported \
+         security level, or the both-arm byte gate covers less than it claims; \
          selected: {selected:?}",
     );
 }
@@ -718,7 +724,7 @@ fn cpu_checked_main_strategy_is_fail_closed_and_keeps_diagnostic_per_round() {
         gpu_gkr::backward::compile_corpus_layout("add_sub_lui_auipc_mop_layout_gkr.json");
     let config = prover_config(
         programs.circuit_type(),
-        crate::upstream::SecurityLevel::Sec80,
+        crate::upstream::SecurityLevel::Sec100,
     )
     .unwrap();
     assert_eq!(

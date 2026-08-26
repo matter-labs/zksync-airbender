@@ -25,7 +25,7 @@ use super::reference::{
     MainTailReferenceEntry, MainTailReferenceError, MainTailReferenceInput,
     MainTailReferenceMutation, MainTailReferenceOutput,
 };
-use super::{lower_main_tail_program, MainTailProgram, MAIN_TAIL_BLOB_BYTES};
+use super::{lower_main_tail_program, MainTailProgram};
 use crate::backward::kernels::{
     launch_backward_dual_finalize_from_partials, max_partials_len, record_active_eq_slot_fold,
     warp_partial_count,
@@ -1287,6 +1287,7 @@ fn gpu_main_tail_smoke_matches_reference() {
     let fixture = Fixture::deterministic();
     assert!(fixture.tail_rounds >= 2);
     let expected = main_tail_reference(fixture.reference_input()).unwrap();
+    let entry_bytes = fixture.columns.len() * size_of::<E4>();
 
     let (entry_allocation, _entry_staging) = upload(&context, &fixture.columns);
     let entry = ContinuationPublishedLevel::try_new(
@@ -1349,7 +1350,21 @@ fn gpu_main_tail_smoke_matches_reference() {
         launch_snapshot.start.logical_live_bytes
     );
     assert_eq!(launch_snapshot.summed_requested_bytes, 0);
-    assert_eq!(launch_snapshot.peak_window_end, launch_snapshot.start);
+    let reclaimed_physical_bytes = launch_snapshot
+        .start
+        .physical_backing_bytes
+        .checked_sub(launch_snapshot.peak_window_end.physical_backing_bytes)
+        .expect("main-tail launch must not increase physical backing");
+    let reclaimed_logical_bytes = launch_snapshot
+        .start
+        .logical_live_bytes
+        .checked_sub(launch_snapshot.peak_window_end.logical_live_bytes)
+        .expect("main-tail launch must not increase logical live memory");
+    assert_eq!(reclaimed_physical_bytes, reclaimed_logical_bytes);
+    assert!(
+        reclaimed_logical_bytes >= entry_bytes,
+        "launch must reclaim at least the requested entry allocation"
+    );
     assert_eq!(launch_report.start, launch_snapshot.start);
     assert_eq!(
         launch_report.physical_backing_peak_bytes,
@@ -1360,8 +1375,14 @@ fn gpu_main_tail_smoke_matches_reference() {
         launch_snapshot.start.logical_live_bytes
     );
     assert_eq!(launch_report.summed_requested_bytes, 0);
-    assert_eq!(launch_report.peak_window_end, launch_snapshot.start);
-    assert_eq!(launch_report.return_to_entry, launch_snapshot.start);
+    assert_eq!(
+        launch_report.peak_window_end,
+        launch_snapshot.peak_window_end
+    );
+    assert_eq!(
+        launch_report.return_to_entry,
+        launch_snapshot.peak_window_end
+    );
 
     let final_elems = fixture.source_ids.len() * 2;
     let final_bytes = final_elems * size_of::<E4>();
@@ -1381,7 +1402,6 @@ fn gpu_main_tail_smoke_matches_reference() {
     );
     assert_eq!(launched.scratch().len(), fixture.source_ids.len() * 16);
     assert!(final_bytes < scratch_bytes);
-    assert_eq!(launched.program_blob_device().len(), MAIN_TAIL_BLOB_BYTES);
     assert!(fixture.source_ids.len() > 2);
     for source in [0, 1, fixture.source_ids.len() - 1] {
         assert_eq!(

@@ -473,34 +473,88 @@ fn cpu_task6_exact_memory_comparator_rejects_whole_peak_masking() {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Task6ClaimBufferPhase {
-    old_claims_retired_before_new_claims: bool,
-    overlap_bytes: u64,
+    incoming_device_claims_in_retired_before_device_new_claims: bool,
+    retained_incoming_device_claims_in_bytes: u64,
 }
 
-fn task6_claim_buffer_phase_order(retire_old_before_allocate_new: bool) -> Task6ClaimBufferPhase {
-    const CLAIM_BYTES: u64 = 112 * std::mem::size_of::<E4>() as u64;
+fn task6_claim_buffer_phase_order(
+    observed_retained_incoming_device_claims_in_bytes: u64,
+    retire_incoming_before_allocate_new: bool,
+) -> Task6ClaimBufferPhase {
     Task6ClaimBufferPhase {
-        old_claims_retired_before_new_claims: retire_old_before_allocate_new,
-        overlap_bytes: if retire_old_before_allocate_new {
+        incoming_device_claims_in_retired_before_device_new_claims:
+            retire_incoming_before_allocate_new,
+        retained_incoming_device_claims_in_bytes: if retire_incoming_before_allocate_new {
             0
         } else {
-            CLAIM_BYTES
+            observed_retained_incoming_device_claims_in_bytes
         },
     }
 }
 
+fn task6_incoming_claim_retirement_precedes_replacement(source: &str) -> bool {
+    let Some(final_use) = source.find("crate::gkr_ops::build_combined_claim") else {
+        return false;
+    };
+    let Some(retirement) = source.find("drop(device_claims_in);") else {
+        return false;
+    };
+    let Some(replacement) = source.find("let mut device_new_claims") else {
+        return false;
+    };
+    final_use < retirement && retirement < replacement
+}
+
 #[test]
 fn cpu_exact_memory_claim_buffers_retire_before_replacement_allocation() {
-    let corrected = task6_claim_buffer_phase_order(true);
-    assert!(corrected.old_claims_retired_before_new_claims);
-    assert_eq!(corrected.overlap_bytes, 0);
+    const OBSERVED_RETAINED_INCOMING_DEVICE_CLAIMS_IN_BYTES: u64 = 3_584;
+    assert_eq!(std::mem::size_of::<E4>(), 16);
+    let (programs, _) =
+        gpu_gkr::backward::compile_corpus_layout("bigint_with_extended_control_layout_gkr.json");
+    let census = programs.dimension_reducing_claim_count_census_for_test(4);
+    assert_eq!(census.len(), 18);
+    assert_eq!(
+        census
+            .iter()
+            .filter(|&&(_, incoming_claims, replacement_claims)| {
+                incoming_claims == 8 && replacement_claims == 8
+            })
+            .count(),
+        census.len(),
+        "BigIntWithControl dimension-reducing claim layouts changed: {census:?}",
+    );
+    assert_eq!(
+        OBSERVED_RETAINED_INCOMING_DEVICE_CLAIMS_IN_BYTES / std::mem::size_of::<E4>() as u64,
+        224,
+        "the measured retained incoming allocation is 224 E4-equivalent bytes, not a \
+         224-entry claim_layout",
+    );
+
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../gkr/src/backward/dim_reducing_sumcheck_plan.rs"
+    ));
+    assert!(task6_incoming_claim_retirement_precedes_replacement(source));
+    let mutated_source = source.replacen("drop(device_claims_in);", "", 1);
+    assert!(!task6_incoming_claim_retirement_precedes_replacement(
+        &mutated_source
+    ));
+
+    let corrected =
+        task6_claim_buffer_phase_order(OBSERVED_RETAINED_INCOMING_DEVICE_CLAIMS_IN_BYTES, true);
+    assert!(corrected.incoming_device_claims_in_retired_before_device_new_claims);
+    assert_eq!(corrected.retained_incoming_device_claims_in_bytes, 0);
 
     // Mutation control: reversing the lifetime order recreates the measured
-    // 3,584-byte logical-live overlap and must fail the modeled gate.
-    let mutated = task6_claim_buffer_phase_order(false);
-    assert!(!mutated.old_claims_retired_before_new_claims);
-    assert_eq!(mutated.overlap_bytes, 3_584);
-    assert!(mutated.overlap_bytes > corrected.overlap_bytes);
+    // 3,584-byte incoming-buffer retention and must fail the modeled gate.
+    let mutated =
+        task6_claim_buffer_phase_order(OBSERVED_RETAINED_INCOMING_DEVICE_CLAIMS_IN_BYTES, false);
+    assert!(!mutated.incoming_device_claims_in_retired_before_device_new_claims);
+    assert_eq!(mutated.retained_incoming_device_claims_in_bytes, 3_584);
+    assert!(
+        mutated.retained_incoming_device_claims_in_bytes
+            > corrected.retained_incoming_device_claims_in_bytes
+    );
 }
 
 #[test]
@@ -556,7 +610,7 @@ fn cpu_task6_exact_memory_record_rejects_entry_config_and_return_drift() {
     baseline.whole_start_logical_live_bytes += 1;
     new.whole_start_logical_live_bytes += 1;
     let error = compare_task6_exact_memory_pair(&baseline, &new).unwrap_err();
-    assert_eq!(error.field, "baseline.backward.return.logical_live_bytes");
+    assert_eq!(error.field, "baseline.whole.return.logical_live_bytes");
 }
 
 #[test]
@@ -1058,10 +1112,10 @@ fn run_dr_task6_exact_memory_review() {
     assert_eq!(fixture.base.final_trace_size_log_2, 4);
     assert_eq!(
         fixture.base.prover_config.security_level,
-        SecurityLevel::Sec80
+        SecurityLevel::Sec100
     );
     let workload_id = format!(
-        "canonical-unified-reduced-machine-layout-trace-{prepared_fixture_trace_len}-final-log-{}-sec80-fixed-nd",
+        "canonical-unified-reduced-machine-layout-trace-{prepared_fixture_trace_len}-final-log-{}-sec100-fixed-nd",
         fixture.base.final_trace_size_log_2
     );
     let actual_device_arena_bytes = fixture.base.context.get_mem_size();

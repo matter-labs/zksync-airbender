@@ -54,6 +54,10 @@ struct __align__(16) bwd_main_tail_desc {
   u8 tail_padding[8];
 };
 
+struct __align__(16) bwd_main_tail_program_blob {
+  u8 bytes[BWD_MAIN_TAIL_BLOB_BYTES];
+};
+
 static_assert(sizeof(bwd_main_tail_desc) == 128, "main-tail descriptor size drift");
 static_assert(alignof(bwd_main_tail_desc) == 16, "main-tail descriptor alignment drift");
 static_assert(__builtin_offsetof(bwd_main_tail_desc, program_blob) == 0, "program_blob ABI offset drift");
@@ -79,7 +83,11 @@ static_assert(__builtin_offsetof(bwd_main_tail_desc, k) == 114, "k ABI offset dr
 static_assert(__builtin_offsetof(bwd_main_tail_desc, reserved) == 115, "reserved ABI offset drift");
 static_assert(__builtin_offsetof(bwd_main_tail_desc, blob_bytes) == 116, "blob_bytes ABI offset drift");
 static_assert(__builtin_offsetof(bwd_main_tail_desc, tail_padding) == 120, "tail_padding ABI offset drift");
-static_assert(BWD_MAIN_TAIL_PARAMETER_CEILING - sizeof(bwd_main_tail_desc) == 32636, "main-tail parameter headroom drift");
+static_assert(sizeof(bwd_main_tail_program_blob) == BWD_MAIN_TAIL_BLOB_BYTES, "main-tail program blob size drift");
+static_assert(alignof(bwd_main_tail_program_blob) == 16, "main-tail program blob alignment drift");
+static_assert(sizeof(bwd_main_tail_desc) + sizeof(bwd_main_tail_program_blob) == 15152, "main-tail argument size drift");
+static_assert(BWD_MAIN_TAIL_PARAMETER_CEILING - sizeof(bwd_main_tail_desc) - sizeof(bwd_main_tail_program_blob) == 17612,
+              "main-tail parameter headroom drift");
 
 DEVICE_FORCEINLINE const u16 *bwd_main_tail_list_offsets(const bwd_main_tail_desc &desc) {
   return reinterpret_cast<const u16 *>(desc.program_blob + BWD_MAIN_TAIL_LIST_OFFSETS_OFFSET);
