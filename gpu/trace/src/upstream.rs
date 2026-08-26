@@ -74,7 +74,7 @@ pub(crate) use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32Merk
 pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
 #[cfg(test)]
-pub(crate) use prover::merkle_trees::PathQueriable;
+pub(crate) use prover::merkle_trees::PathQueryable;
 
 // -----------------------------------------------------------------------
 // `setups` — compiled-circuit binary loading

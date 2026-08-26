@@ -37,7 +37,7 @@ use gpu_trace::trace::holder::{
 };
 
 #[cfg(test)]
-use crate::upstream::PathQueriable;
+use crate::upstream::PathQueryable;
 #[cfg(test)]
 use crate::upstream::{extension_field_from_base_coeffs, Field, MerkleTreeCapVarLength};
 use era_cudart::memory::memory_copy_async;
@@ -941,7 +941,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             gpu.get_tree_cap(&context).unwrap(),
-            PathQueriable::get_cap(&cpu.tree)
+            PathQueryable::get_cap(&cpu.tree)
         );
 
         let query_indexes = [
@@ -1453,7 +1453,7 @@ pub(crate) mod tests {
                 if transform_leaves_to_multilinear_coeffs {
                     assert_eq!(
                         gpu.get_tree_cap(&context).unwrap(),
-                        PathQueriable::get_cap(&cpu.tree),
+                        PathQueryable::get_cap(&cpu.tree),
                     );
                     let leaves_count = monomial_coeffs.len() * lde_factor / values_per_leaf;
                     for query_index in [0, leaves_count / 2, leaves_count - 1] {
@@ -1581,7 +1581,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             gpu.get_tree_cap(&context).unwrap(),
-            PathQueriable::get_cap(&cpu.tree)
+            PathQueryable::get_cap(&cpu.tree)
         );
 
         for query_index in [0usize, 1, 7, 13] {

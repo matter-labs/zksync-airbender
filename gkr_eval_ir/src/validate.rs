@@ -109,7 +109,7 @@ fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
         return Ok(());
     }
     let reachable = collect_root_reachable_exprs(layer);
-    for (&leaf, strat) in &layer.resolutions {
+    for (&leaf, strategy) in &layer.resolutions {
         if leaf.0 as usize >= layer.exprs.len() {
             return Err(format!(
                 "layer {li}: resolution keys out-of-range expr {:?}",
@@ -119,10 +119,10 @@ fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
         if !reachable[leaf.0 as usize] {
             return Err(format!(
                 "layer {li}: resolution leaf {:?} ({:?}) is not reachable from any root",
-                leaf, strat
+                leaf, strategy
             ));
         }
-        match strat {
+        match strategy {
             ResolutionStrategy::PeekSingleColumn { set_index, width } => {
                 let Some(SourceKind::LookupValue {
                     kind,
@@ -559,7 +559,7 @@ pub(crate) fn validate(dag: &DagCircuit) -> Result<(), String> {
             let id = RootId(ri as u32);
             // A root with neither a sink nor a claim is a degenerate shape that
             // lowering never emits; reject it explicitly so hand-crafted or
-            // mis-generated DAGs are caught before any downstream pass.
+            // incorrectly generated DAGs are caught before any downstream pass.
             if root.materialize.is_none() && root.claim.is_none() {
                 return Err(format!(
                     "layer {li} root {ri}: root carries neither materialize nor claim \

@@ -15,7 +15,7 @@ use crate::fold::debug::{
     copy_back, copy_small_to_device, query_base_trace_holder_for_folded_index,
 };
 use crate::upstream::{
-    Blake2sU32MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor, PathQueriable, PrimeField,
+    Blake2sU32MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor, PathQueryable, PrimeField,
 };
 
 #[test]
@@ -88,7 +88,7 @@ fn base_query_paths_match_cpu_tree() {
         let (_, _, gpu_query) =
             query_base_trace_holder_for_folded_index(&mut trace_holder, query_index, &context)
                 .unwrap();
-        let (_, cpu_path) = PathQueriable::get_proof(&cpu_tree, query_index);
+        let (_, cpu_path) = PathQueryable::get_proof(&cpu_tree, query_index);
         assert_eq!(gpu_query.path, cpu_path, "query_index={}", query_index);
     }
 }

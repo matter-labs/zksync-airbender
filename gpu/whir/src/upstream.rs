@@ -29,7 +29,7 @@ pub(crate) use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32Merk
 #[cfg(test)]
 pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 #[cfg(test)]
-pub(crate) use prover::merkle_trees::PathQueriable;
+pub(crate) use prover::merkle_trees::PathQueryable;
 #[cfg(test)]
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(test)]

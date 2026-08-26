@@ -84,8 +84,8 @@ pub fn get_input_layer_ensure_same(
 //     }
 //     for (coeff, a) in linear_part.into_iter() {
 //         let a = graph.get_address_for_variable(a);
-//         let exising = linear_sorted.insert(a, coeff.as_u32_reduced());
-//         assert!(exising.is_none());
+//         let existing = linear_sorted.insert(a, coeff.as_u32_reduced());
+//         assert!(existing.is_none());
 //     }
 
 //     let quadratic_terms = quadratic_sorted
@@ -164,8 +164,8 @@ pub fn no_field_gkr_max_quadratic_from_expr_and_constraint<F: PrimeField>(
     }
     for (coeff, a) in linear_part.into_iter() {
         let a = graph.get_address_for_variable(a);
-        let exising = linear_sorted.insert(a, coeff);
-        assert!(exising.is_none());
+        let existing = linear_sorted.insert(a, coeff);
+        assert!(existing.is_none());
     }
 
     let quadratic_terms = quadratic_sorted
