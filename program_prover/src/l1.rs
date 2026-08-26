@@ -7,7 +7,8 @@
 //! opposite storage policy: the packed setup is committed fully in memory
 //! (`GKRSetup::commit_packed`, no coset recomputation and no on-disk staging)
 //! and the memory/witness base + intermediate WHIR oracles are fully
-//! materialized (`WhirOracleStorage::fully_in_memory()`). Meant for large
+//! materialized, intermediates in one contiguous buffer per oracle
+//! (`WhirOracleStorage::fully_in_memory_continuous()`). Meant for large
 //! machines that can hold the ~2^31 packed RS codewords (several hundred GiB
 //! working set); the produced proof is byte-identical to the recompute-based
 //! run. Mirrors the storage choices of the prover test
@@ -173,7 +174,7 @@ pub fn prove_l1_wrap_in_memory(
         &packed_twiddles,
         &prover_config,
         commitment_mode.clone(),
-        WhirOracleStorage::fully_in_memory(),
+        WhirOracleStorage::fully_in_memory_continuous(),
         top_bits,
         trace_len,
         &Proth120WorkStealingLazyBackend,

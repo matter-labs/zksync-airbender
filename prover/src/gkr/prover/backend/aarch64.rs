@@ -237,6 +237,32 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         })
     }
 
+    fn lde_ext_poly_from_monomial_form_continuous(
+        &self,
+        monomial_form_normal_order: &[BabyBearExt4],
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        worker: &Worker,
+    ) -> (Box<[BabyBearExt4]>, Vec<BabyBearField>) {
+        let ext = &twiddles.forward_ext;
+        // The NEON kernel composes with an enclosing rayon task through the
+        // shared pool and degenerates to the serial flat schedule when every
+        // thread already owns a coset (see `lde_ext_poly_from_monomial_form`),
+        // so it serves as both the serial and the parallel kernel here.
+        ws_lde_single_poly_continuous(
+            monomial_form_normal_order,
+            &twiddles.plain,
+            lde_factor,
+            &|m, o, t, out| {
+                fft::baby_bear_neon::ext4::lde_coset_parallel_into(m, o, t, ext, worker, out)
+            },
+            &|m, o, t, w, out| {
+                fft::baby_bear_neon::ext4::lde_coset_parallel_into(m, o, t, ext, w, out)
+            },
+            worker,
+        )
+    }
+
     fn lde_base_poly_from_monomial_form(
         &self,
         monomial_form_normal_order: &[BabyBearField],

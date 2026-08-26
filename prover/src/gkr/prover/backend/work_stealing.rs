@@ -83,6 +83,23 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
         )
     }
 
+    fn lde_ext_poly_from_monomial_form_continuous(
+        &self,
+        monomial_form_normal_order: &[E],
+        twiddles: &Twiddles<F, Global>,
+        lde_factor: usize,
+        worker: &Worker,
+    ) -> (Box<[E]>, Vec<F>) {
+        ws_lde_single_poly_continuous(
+            monomial_form_normal_order,
+            twiddles,
+            lde_factor,
+            &|m, o, t, out| fft::lde_coset_natural_seq_fused_into(m, o, t, out),
+            &|m, o, t, w, out| lde_coset_canonical_parallel_into(m, o, t, w, out),
+            worker,
+        )
+    }
+
     fn lde_base_poly_from_monomial_form(
         &self,
         monomial_form_normal_order: &[F],

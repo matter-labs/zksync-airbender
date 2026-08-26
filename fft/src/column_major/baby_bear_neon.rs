@@ -599,23 +599,40 @@ pub mod ext4 {
         ext: &NeonTwiddleExt,
     ) -> Vec<BabyBearExt4> {
         let n = input.len();
-        if n < 16 {
-            return crate::lde_coset_natural_seq_fused(input, offset, twiddles);
-        }
-        let log_n = n.trailing_zeros();
-        let tw_raw: &[u32] =
-            unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
-
         let mut v: Vec<BabyBearExt4> = Vec::with_capacity(n);
         #[allow(clippy::uninit_vec)]
         unsafe {
             v.set_len(n)
         };
+        lde_coset_into(input, offset, twiddles, ext, &mut v);
+        v
+    }
+
+    /// [`lde_coset`] writing into a caller-provided buffer (e.g. one coset's
+    /// chunk of a contiguous LDE codeword). `out` is WRITE-FIRST: every
+    /// element is overwritten by the scaled-copy pass before any read, so it
+    /// may be freshly allocated uninitialized memory.
+    pub fn lde_coset_into(
+        input: &[BabyBearExt4],
+        offset: BabyBearField,
+        twiddles: &[BabyBearField],
+        ext: &NeonTwiddleExt,
+        out: &mut [BabyBearExt4],
+    ) {
+        let n = input.len();
+        assert_eq!(out.len(), n);
+        if n < 16 {
+            return crate::lde_coset_natural_seq_fused_into(input, offset, twiddles, out);
+        }
+        let log_n = n.trailing_zeros();
+        let tw_raw: &[u32] =
+            unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
+
         if offset != BabyBearField::ONE {
             let sp = SplitPowersRaw::new(offset, log_n);
             unsafe {
                 let src = input.as_ptr();
-                let dst = v.as_mut_ptr();
+                let dst = out.as_mut_ptr();
                 for i in 0..n {
                     let f =
                         vdupq_n_u32(super::mont_mul_scalar(sp.lo[i & sp.mask], sp.hi[i >> sp.h]));
@@ -623,13 +640,12 @@ pub mod ext4 {
                 }
             }
         } else {
-            v.copy_from_slice(input);
+            out.copy_from_slice(input);
         }
-        crate::utils::bitreverse_enumeration_inplace(&mut v);
+        crate::utils::bitreverse_enumeration_inplace(out);
         unsafe {
-            ntt_fwd(&mut v, &tw_raw[..n / 2], ext);
+            ntt_fwd(out, &tw_raw[..n / 2], ext);
         }
-        v
     }
 
     /// Worker-PARALLEL LDE coset over Ext4: every pass (scaled copy, bit
@@ -644,21 +660,39 @@ pub mod ext4 {
         worker: &Worker,
     ) -> Vec<BabyBearExt4> {
         let n = input.len();
-        const PAR_THRESHOLD: usize = 1 << 12;
-        if n < PAR_THRESHOLD {
-            return lde_coset(input, offset, twiddles, ext);
-        }
-        let log_n = n.trailing_zeros();
-        let tw_raw: &[u32] =
-            unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
-
         let mut v: Vec<BabyBearExt4> = Vec::with_capacity(n);
         #[allow(clippy::uninit_vec)]
         unsafe {
             v.set_len(n)
         };
+        lde_coset_parallel_into(input, offset, twiddles, ext, worker, &mut v);
+        v
+    }
+
+    /// [`lde_coset_parallel`] writing into a caller-provided buffer (e.g. one
+    /// coset's chunk of a contiguous LDE codeword). `out` is WRITE-FIRST:
+    /// every element is overwritten by the scaled-copy pass before any read,
+    /// so it may be freshly allocated uninitialized memory.
+    pub fn lde_coset_parallel_into(
+        input: &[BabyBearExt4],
+        offset: BabyBearField,
+        twiddles: &[BabyBearField],
+        ext: &NeonTwiddleExt,
+        worker: &Worker,
+        out: &mut [BabyBearExt4],
+    ) {
+        let n = input.len();
+        assert_eq!(out.len(), n);
+        const PAR_THRESHOLD: usize = 1 << 12;
+        if n < PAR_THRESHOLD {
+            return lde_coset_into(input, offset, twiddles, ext, out);
+        }
+        let log_n = n.trailing_zeros();
+        let tw_raw: &[u32] =
+            unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
+
         let src_addr = input.as_ptr() as usize;
-        let dst_addr = v.as_mut_ptr() as usize;
+        let dst_addr = out.as_mut_ptr() as usize;
 
         if offset != BabyBearField::ONE {
             let sp = SplitPowersRaw::new(offset, log_n);
@@ -694,11 +728,11 @@ pub mod ext4 {
             });
         }
 
-        crate::utils::parallel_bitreverse_enumeration_inplace(&mut v, worker);
+        crate::utils::parallel_bitreverse_enumeration_inplace(out, worker);
 
         // parallel forward NTT: one worker scope per fused pass
         let tw = &tw_raw[..n / 2];
-        let base_addr = v.as_mut_ptr() as usize;
+        let base_addr = out.as_mut_ptr() as usize;
         let mut ppg = 1usize;
         let mut num_groups = n / 2;
         while num_groups >= 4 {
@@ -768,8 +802,6 @@ pub mod ext4 {
             }
             _ => unreachable!(),
         }
-
-        v
     }
 
     /// INVERSE-direction (CT, natural -> bit-reversed) radix-4 fused pass with

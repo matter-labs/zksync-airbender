@@ -104,6 +104,17 @@ pub struct WhirOracleStorage {
 }
 
 impl WhirOracleStorage {
+    /// Everything materialized, with every intermediate oracle in ONE
+    /// contiguous buffer (`WhirIntermediateOracleMode::InMemoryContinuous`).
+    /// Byte-identical proofs to [`Self::fully_in_memory`]; far cheaper LDEs
+    /// for huge-LDE intermediate oracles (tiny poly, millions of cosets).
+    pub const fn fully_in_memory_continuous() -> Self {
+        Self {
+            base_rs_source: RsCodewordSource::InMemory,
+            intermediate_oracles: WhirIntermediateOracleMode::InMemoryContinuous,
+        }
+    }
+
     /// Everything materialized (the historical non-packed default).
     pub const fn fully_in_memory() -> Self {
         Self {

@@ -46,10 +46,10 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_WHIR_GEN     = 3425356216587033636351364223179792077;
     uint256 constant __TEMPLATE_WHIR_GEN_INV = 3409408011976041282043764725012079139;
 
-    uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS = 5;
+    uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS = 6;
     uint256 constant __TEMPLATE_WHIR_NZ          = 26;  // WHIR eval-point coords = trace_log2 + pack_log2
     uint256 constant __TEMPLATE_WHIR_GCOUNT      = 9;   // gamma-batched base columns + 1
-    uint256 constant __TEMPLATE_WHIR_RFIN        = 8;   // final-poly log2 = message_log2 - sum(folds)
+    uint256 constant __TEMPLATE_WHIR_RFIN        = 4;   // final-poly log2 = message_log2 - sum(folds)
     uint256 constant __TEMPLATE_WHIR_NBCAPS      = 2;   // base-oracle merkle caps (witness, setup)
     uint256 constant __TEMPLATE_WHIR_MERGED_MW   = 7;   // merged memory+witness base columns
     uint256 constant __TEMPLATE_WHIR_SETUP_MERGED = 1;  // merged setup base columns
@@ -104,7 +104,7 @@ contract WhirVerifier {
     // offset of every region after it — depends on the schedule. The regions
     // live past the end of the static map.
     uint256 constant __TEMPLATE_WHIR_MONO_PTR  = 31680;  // first free offset past the static map
-    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR = 39872;  // = MONO_PTR + 2^RFIN * 32
+    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR = 32192;  // = MONO_PTR + 2^RFIN * 32
     uint256 constant MONO_PTR  = __TEMPLATE_WHIR_MONO_PTR; // final monomials (2^RFIN * 32 bytes)
     uint256 constant FEVAL_PTR = __TEMPLATE_WHIR_FEVAL_PTR; // tail absorb + halving-fold scratch (32 + 2^RFIN * 32)
 
@@ -573,7 +573,8 @@ contract WhirVerifier {
             case 1 { fold := 4 q := 12 pow_bits := 30 qib := 27 vp := 16 cb := 7 }
             case 2 { fold := 4 q := 8 pow_bits := 27 qib := 27 vp := 16 cb := 11 }
             case 3 { fold := 4 q := 6 pow_bits := 25 qib := 27 vp := 16 cb := 15 }
-            default { fold := 4 q := 5 pow_bits := 21 qib := 27 vp := 16 cb := 19 }
+            case 4 { fold := 4 q := 5 pow_bits := 21 qib := 27 vp := 16 cb := 19 }
+            default { fold := 4 q := 4 pow_bits := 24 qib := 27 vp := 16 cb := 23 }
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let idx_mask := sub(shl(qib, 1), 1)
 

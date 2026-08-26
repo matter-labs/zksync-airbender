@@ -196,13 +196,13 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
         whir_schedule: WhirSchedule {
             base_lde_factor: 1 << 5,
             cap_size: 8,
-            // 5 rounds; the former 6th round (an LDE of the 2^8 poly onto a
-            // 2^31 domain + its queries) is dropped and the 2^8 tail ships in
-            // plain text — smaller calldata AND less prover time.
-            whir_steps_schedule: vec![2, 4, 4, 4, 4],
-            whir_queries_schedule: vec![17, 12, 8, 6, 5],
-            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19],
-            whir_pow_schedule: vec![30, 30, 27, 25, 21],
+            // 6 rounds ending in a 2^4 plain-text tail; the 6th round's
+            // huge-LDE oracle (the 2^8 poly on a 2^31 domain) is cheap with
+            // the continuous intermediate-oracle mode.
+            whir_steps_schedule: vec![2, 4, 4, 4, 4, 4],
+            whir_queries_schedule: vec![17, 12, 8, 6, 5, 4],
+            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
+            whir_pow_schedule: vec![30, 30, 27, 25, 21, 24],
         },
     }
 }

@@ -86,6 +86,23 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         )
     }
 
+    fn lde_ext_poly_from_monomial_form_continuous(
+        &self,
+        monomial_form_normal_order: &[Proth120],
+        twiddles: &Twiddles<Proth120, Global>,
+        lde_factor: usize,
+        worker: &Worker,
+    ) -> (Box<[Proth120]>, Vec<Proth120>) {
+        ws_lde_single_poly_continuous(
+            monomial_form_normal_order,
+            twiddles,
+            lde_factor,
+            &|m, o, t, out| fft::proth120_lazy::lde_coset_lazy_r8_into(m, o, t, out),
+            &|m, o, t, w, out| fft::proth120_lazy::lde_coset_lazy_parallel_r8_into(m, o, t, w, out),
+            worker,
+        )
+    }
+
     fn lde_base_poly_from_monomial_form(
         &self,
         monomial_form_normal_order: &[Proth120],

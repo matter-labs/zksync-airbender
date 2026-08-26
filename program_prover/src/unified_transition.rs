@@ -539,6 +539,11 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
     security_level: SecurityLevel,
     permutation_argument_pow_bits: u32,
     unified_prover_config: &prover::gkr::prover_config::ProverConfig,
+    // WHIR oracle storage for the proofs; the base source must be
+    // `RsCodewordSource::InMemory` (the whole point of this path is consuming
+    // the precommitted in-memory merged oracles), the intermediate-oracle
+    // mode is the caller's choice.
+    storage: WhirOracleStorage,
     backend: &B,
     gkr_backend: &GB,
 ) -> (
@@ -832,7 +837,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
                 twiddles_for_size,
                 &prover_config,
                 CommitmentMode::MergedMemoryAndWitness,
-                WhirOracleStorage::fully_in_memory(),
+                storage,
                 top_bits.clone(),
                 trace_len,
                 backend,

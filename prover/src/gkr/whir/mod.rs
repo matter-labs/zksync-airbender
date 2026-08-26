@@ -665,11 +665,102 @@ impl<
 /// Selects how `whir_fold` materializes each intermediate (folded) RS oracle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WhirIntermediateOracleMode {
-    /// Build the whole `ColumnMajorExtensionOracleForLDE` (the entire RS codeword).
+    /// Build the whole `ColumnMajorExtensionOracleForLDE` (the entire RS codeword,
+    /// one boxed allocation per coset).
     Monolithic,
     /// Coset-by-coset: keep only the folded monomial form and recompute the coset a
     /// query lands in (memory-light; see `coset_commit::CosetByCosetExtCommitment`).
     CosetByCoset,
+    /// The whole RS codeword in ONE contiguous buffer
+    /// ([`ContinuousExtensionOracleForLDE`]): same data and byte-identical
+    /// commitment as [`Self::Monolithic`], but a single allocation and a
+    /// bounded task grid — the per-coset boxing of `Monolithic` dominates the
+    /// LDE wall time for huge-LDE oracles (a tiny polynomial across millions
+    /// of cosets).
+    InMemoryContinuous,
+}
+
+/// The buffer-continuous twin of [`ColumnMajorExtensionOracleForLDE`]: all
+/// LDE cosets live in ONE contiguous allocation (coset-major, each coset in
+/// natural order, leaf coeff-conversion applied), with the per-coset
+/// multiplicative offsets alongside. Serves the same accesses — coset slices,
+/// tree construction, folded-index queries — with byte-identical results.
+#[derive(Debug)]
+pub struct ContinuousExtensionOracleForLDE<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+> {
+    /// `lde_factor * 2^trace_len_log2` elements, coset-major.
+    pub buffer: Box<[E]>,
+    /// Per-coset multiplicative offsets, natural coset order.
+    pub coset_offsets: Vec<F>,
+    /// log2 of one coset (the folded polynomial size).
+    pub trace_len_log2: usize,
+    pub tree: T,
+    pub values_per_leaf: usize,
+}
+
+impl<
+        F: PrimeField + TwoAdicField,
+        E: FieldExtension<F> + Field,
+        T: ColumnMajorMerkleTreeConstructor<F>,
+    > ContinuousExtensionOracleForLDE<F, E, T>
+{
+    pub fn num_cosets(&self) -> usize {
+        self.coset_offsets.len()
+    }
+
+    /// The `coset_index`-th coset's values (natural order within the coset).
+    pub fn coset(&self, coset_index: usize) -> &[E] {
+        let n = 1usize << self.trace_len_log2;
+        &self.buffer[coset_index * n..(coset_index + 1) * n]
+    }
+
+    /// Same leaf gathering as
+    /// [`ColumnMajorExtensionOracleForCoset::values_for_folded_index`], over a
+    /// coset slice.
+    fn values_for_folded_index(coset: &[E], index: usize, values_per_leaf: usize) -> Vec<E> {
+        let trace_len = coset.len();
+        assert!(values_per_leaf.is_power_of_two());
+        assert!(
+            index < trace_len / values_per_leaf,
+            "folded index {} is too large for a coset of size 2^{} and {} values packed per leaf",
+            index,
+            trace_len.trailing_zeros(),
+            values_per_leaf
+        );
+        let offsets = offsets_vec_for_leaf_construction(trace_len, values_per_leaf);
+        offsets.iter().map(|offset| coset[offset + index]).collect()
+    }
+
+    /// Identical to [`ColumnMajorExtensionOracleForLDE::query_for_folded_index`].
+    pub fn query_for_folded_index(
+        &self,
+        index: usize,
+    ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
+        let num_cosets = self.num_cosets();
+        let coset_index = index & (num_cosets - 1);
+        let internal_index = index / num_cosets;
+        let coset_tree_size = (1 << self.trace_len_log2) / self.values_per_leaf;
+        let values = Self::values_for_folded_index(
+            self.coset(coset_index),
+            internal_index,
+            self.values_per_leaf,
+        );
+
+        let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
+        let tree_index = coset_dest_index * coset_tree_size + internal_index;
+
+        let (_leaf_hash, path) = self.tree.get_proof(tree_index);
+        let query = ExtensionFieldQuery {
+            index: tree_index,
+            leaf_values_concatenated: values.clone(),
+            path,
+            _marker: core::marker::PhantomData,
+        };
+        (coset_index, values, query)
+    }
 }
 
 /// Intermediate (folded) WHIR oracle. Like [`ColumnMajorBaseOracleForLDE`], the
@@ -691,6 +782,7 @@ where
     T: ColumnMajorMerkleTreeConstructor<F>,
 {
     Monolithic(ColumnMajorExtensionOracleForLDE<F, E, T>),
+    InMemoryContinuous(ContinuousExtensionOracleForLDE<F, E, T>),
     CosetRecompute(coset_commit::CosetByCosetExtCommitment<F, E, T>),
 }
 
@@ -705,6 +797,7 @@ where
     fn num_cosets(&self) -> usize {
         match self {
             Self::Monolithic(oracle) => oracle.cosets.len(),
+            Self::InMemoryContinuous(oracle) => oracle.num_cosets(),
             Self::CosetRecompute(c) => c.lde_factor,
         }
     }
@@ -720,6 +813,10 @@ where
     ) -> Vec<(usize, Vec<E>, ExtensionFieldQuery<F, E, T>)> {
         match self {
             Self::Monolithic(oracle) => query_indices
+                .iter()
+                .map(|&qi| oracle.query_for_folded_index(qi))
+                .collect(),
+            Self::InMemoryContinuous(oracle) => query_indices
                 .iter()
                 .map(|&qi| oracle.query_for_folded_index(qi))
                 .collect(),
@@ -772,6 +869,33 @@ where
             );
             let cap = oracle.tree.get_cap();
             (cap, IntermediateOracle::Monolithic(oracle))
+        }
+        WhirIntermediateOracleMode::InMemoryContinuous => {
+            let t_lde = std::time::Instant::now();
+            let (buffer, coset_offsets) = backend.lde_ext_poly_from_monomial_form_continuous(
+                monomial_form,
+                twiddles,
+                lde_factor,
+                worker,
+            );
+            let t_lde = t_lde.elapsed();
+            let t_tree = std::time::Instant::now();
+            let conv = backend.ext_coeff_conv(monomial_form.len(), values_per_leaf);
+            let oracle = commit_single_ext_poly_continuous::<F, E, T>(
+                buffer,
+                coset_offsets,
+                values_per_leaf,
+                tree_cap_size,
+                &conv,
+                worker,
+            );
+            println!(
+                "  [timing]   (intermediate split: LDE {:.3?}, tree {:.3?})",
+                t_lde,
+                t_tree.elapsed()
+            );
+            let cap = oracle.tree.get_cap();
+            (cap, IntermediateOracle::InMemoryContinuous(oracle))
         }
         WhirIntermediateOracleMode::CosetByCoset => {
             let commitment = coset_commit::CosetByCosetExtCommitment::<F, E, T>::commit(
@@ -1416,17 +1540,13 @@ where
             t_queries.elapsed()
         );
 
-        // Every round-0 query has been served: the (potentially large) base oracles
-        // can be dropped before the memory-heavy folding rounds. NOTE: for
-        // fully in-memory base oracles this deallocates hundreds of GB — the
-        // page-table teardown is seconds of wall time, hence the timer.
-        let t_drop = std::time::Instant::now();
-        drop(mem_oracle);
-        drop(wit_oracle);
-        println!(
-            "  [timing] base oracle drop (dealloc): {:.3?}",
-            t_drop.elapsed()
-        );
+        // Every round-0 query has been served: the (potentially large) base
+        // oracles can be dropped before the memory-heavy folding rounds. For
+        // fully in-memory base oracles this deallocates hundreds of GB —
+        // seconds of page-table teardown — so the drop runs on a DETACHED
+        // thread and overlaps the folding rounds instead of stalling them.
+        std::thread::spawn(move || drop((mem_oracle, wit_oracle)));
+        println!("  [timing] base oracle drop offloaded to background thread");
 
         for &query_index in query_indexes.iter() {
             assert!(query_index < query_domain_size as usize);
@@ -2426,6 +2546,86 @@ where
         tree,
         values_per_leaf,
         trace_len_log2,
+    }
+}
+
+/// [`commit_single_ext_poly`] over a CONTINUOUS coset buffer: applies the
+/// leaf coeff-conversion per coset (skipped under `eval_leaves`, matching the
+/// per-coset twin) and builds the same tree over the coset slices — the
+/// commitment is byte-identical to the boxed-coset path.
+fn commit_single_ext_poly_continuous<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    buffer: Box<[E]>,
+    coset_offsets: Vec<F>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    conv: &impl crate::gkr::prover::backend::ExtCoeffConversion<F, E>,
+    worker: &Worker,
+) -> ContinuousExtensionOracleForLDE<F, E, T>
+where
+    [(); E::DEGREE]: Sized,
+{
+    let mut buffer = buffer;
+    let num_cosets = coset_offsets.len();
+    assert!(num_cosets.is_power_of_two());
+    assert_eq!(buffer.len() % num_cosets, 0);
+    let trace_len = buffer.len() / num_cosets;
+    assert!(trace_len.is_power_of_two());
+    let trace_len_log2 = trace_len.trailing_zeros() as usize;
+
+    #[cfg(not(feature = "eval_leaves"))]
+    {
+        // Same scheduling policy as the boxed twin: with at least as many
+        // cosets as threads convert them in parallel with the serial kernel,
+        // otherwise loop sequentially with the worker-parallel kernel.
+        let t_conv = std::time::Instant::now();
+        if num_cosets >= worker.get_num_cores() {
+            use worker::rayon::prelude::*;
+            worker.pool.install(|| {
+                buffer
+                    .par_chunks_mut(trace_len)
+                    .zip(coset_offsets.par_iter())
+                    .for_each(|(column, offset)| {
+                        conv.apply_serial(column, *offset);
+                    })
+            });
+        } else {
+            for (column, offset) in buffer.chunks_mut(trace_len).zip(coset_offsets.iter()) {
+                conv.apply(column, *offset, worker);
+            }
+        }
+        println!(
+            "  [timing]   (leaf coeff-conversion: {:.3?})",
+            t_conv.elapsed()
+        );
+    }
+    #[cfg(feature = "eval_leaves")]
+    let _ = conv;
+
+    let source: Vec<Vec<&[E]>> = buffer.chunks(trace_len).map(|coset| vec![coset]).collect();
+    let source_ref: Vec<&[&[E]]> = source.iter().map(|el| &el[..]).collect();
+
+    let tree = T::construct_from_cosets::<E>(
+        &source_ref[..],
+        values_per_leaf,
+        tree_cap_size,
+        true,
+        true,
+        false,
+        worker,
+    );
+    drop(source_ref);
+    drop(source);
+
+    ContinuousExtensionOracleForLDE {
+        buffer,
+        coset_offsets,
+        trace_len_log2,
+        tree,
+        values_per_leaf,
     }
 }
 

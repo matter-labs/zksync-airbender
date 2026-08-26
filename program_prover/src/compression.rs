@@ -34,7 +34,8 @@ use full_statement_verifier::host_utils::{
 use full_statement_verifier::program_proof::ProgramProof;
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover::{
-    CommitmentMode, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, WhirOracleStorage,
+    CommitmentMode, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, RsCodewordSource,
+    WhirOracleStorage,
 };
 use prover::tests::gkr::orchestration::common::ProgramConfig;
 use prover::worker::Worker;
@@ -75,10 +76,10 @@ pub struct L1CompressionResult {
 /// * `proth120_circuit_layout_path` — the compiled
 ///   `unified_reduced_machine_layout_gkr_proth120.json`.
 /// * `feeder_storage` — the WHIR oracle storage policy of the BabyBear feeder
-///   stages 1-2: `fully_in_memory()` on large machines (oracle recompute
-///   otherwise dominates the chunk proving time), `fully_recompute()` where
-///   the feeder-LDE codewords don't fit RAM. Stage 3 is always in-memory
-///   ([`prove_l1_wrap_in_memory`]).
+///   stages 1-2: `fully_in_memory_continuous()` on large machines (oracle
+///   recompute otherwise dominates the chunk proving time),
+///   `fully_recompute()` where the feeder-LDE codewords don't fit RAM. Stage
+///   3 is always in-memory-continuous ([`prove_l1_wrap_in_memory`]).
 pub fn compress_fixed_point_to_l1(
     input_proof: &ProgramProof,
     input_setups: &Setups,
@@ -159,11 +160,12 @@ pub fn compress_fixed_point_to_l1(
         );
 
         let stream = build_unified_stream(&setups, &proof);
-        // Fully in-memory storage takes the precommitted single-pass path:
+        // An in-memory base source takes the precommitted single-pass path:
         // witness evaluation and the merged commitment happen once per chunk,
-        // and the proofs consume the pre-committed oracles.
+        // and the proofs consume the pre-committed oracles (the
+        // intermediate-oracle mode of `feeder_storage` is passed through).
         let (mut new_proof, new_setups, timings) =
-            if feeder_storage == WhirOracleStorage::fully_in_memory() {
+            if feeder_storage.base_rs_source == RsCodewordSource::InMemory {
                 prove_unified_transition_with_replayer_precommitted_timed(
                     UNIFIED_CYCLES_BOUND,
                     run_bin,
@@ -175,6 +177,7 @@ pub fn compress_fixed_point_to_l1(
                     SecurityLevel::Sec100,
                     verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                     &feeder_config,
+                    feeder_storage,
                     &DefaultBabyBearBackend::default(),
                     &DefaultBabyBearGKRBackend::default(),
                 )

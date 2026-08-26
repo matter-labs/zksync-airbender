@@ -142,12 +142,13 @@ fn main() {
     println!("l1_compression: using {} worker threads", worker.num_cores);
 
     // This program targets large machines, so the feeder stages default to
-    // fully in-memory oracles (oracle recompute otherwise dominates);
-    // --feeder-recompute restores the memory-light policy.
+    // fully in-memory oracles (oracle recompute otherwise dominates), with
+    // contiguous-buffer intermediate oracles; --feeder-recompute restores the
+    // memory-light policy.
     let feeder_storage = if args.feeder_recompute {
         WhirOracleStorage::fully_recompute()
     } else {
-        WhirOracleStorage::fully_in_memory()
+        WhirOracleStorage::fully_in_memory_continuous()
     };
 
     // The GKR prover phases run recursion-heavy code on the calling thread;
