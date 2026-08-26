@@ -65,7 +65,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
             variable_names.insert(
                 borrow_var,
                 format!(
-                    "indirect access query {}, register acccess interm ts borrow",
+                    "indirect access query {}, register access intermediate timestamp borrow",
                     query_idx
                 ),
             );
@@ -238,7 +238,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 variable_names.insert(
                     borrow_var,
                     format!(
-                        "indirect access query {}, indirect acccess {} interm ts borrow",
+                        "indirect access query {}, indirect access {} intermediate timestamp borrow",
                         query_idx, indirect_access_idx
                     ),
                 );

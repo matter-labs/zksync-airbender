@@ -38,8 +38,8 @@ use crate::gkr::whir::{
 };
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueriable,
-    RSQueriable,
+    ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueryable,
+    RSQueryable,
 };
 use crate::worker::Worker;
 use common_constants::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
@@ -132,9 +132,9 @@ impl WhirOracleStorage {
 /// Wraps the setup commitment, decoupling how its RS codewords and Merkle tree are
 /// stored from the prover configuration. `InMemory` is the representation used
 /// today (RS codewords + tree both in RAM). `OnDisk` anticipates serving RS
-/// codewords from a [`RSQueriable`] source and Merkle paths from an mmap'd on-disk
+/// codewords from a [`RSQueryable`] source and Merkle paths from an mmap'd on-disk
 /// tree (`ColumnMajorMerkleTreeConstructor::open_disk_artifacts`); there is no on-disk
-/// `RSQueriable` implementation yet, so that variant is not yet usable end-to-end.
+/// `RSQueryable` implementation yet, so that variant is not yet usable end-to-end.
 pub enum SetupCommitment<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> {
     /// RS codewords + Merkle tree both in memory (owned).
     InMemory(ColumnMajorBaseOracleForLDE<F, T>),
@@ -142,7 +142,7 @@ pub enum SetupCommitment<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeC
     /// mmap'd on-disk tree — either a single monolithic tree file or per-coset
     /// subtree files ([`OnDiskTree`](crate::merkle_trees::on_disk::OnDiskTree)).
     OnDisk {
-        rs: Box<dyn RSQueriable<F>>,
+        rs: Box<dyn RSQueryable<F>>,
         tree: crate::merkle_trees::on_disk::OnDiskTree<T>,
         values_per_leaf: usize,
         coset_size_log2: usize,
@@ -154,7 +154,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     pub fn get_cap(&self) -> MerkleTreeCapVarLength {
         match self {
             SetupCommitment::InMemory(oracle) => oracle.get_cap(),
-            SetupCommitment::OnDisk { tree, .. } => PathQueriable::get_cap(tree),
+            SetupCommitment::OnDisk { tree, .. } => PathQueryable::get_cap(tree),
         }
     }
 
@@ -232,7 +232,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
                     let coset_dest_index =
                         crate::fft::bitreverse_index(coset_index, num_cosets.trailing_zeros());
                     let tree_index = coset_dest_index * coset_tree_size + internal_index;
-                    let (_leaf_hash, path) = PathQueriable::get_proof(tree, tree_index);
+                    let (_leaf_hash, path) = PathQueryable::get_proof(tree, tree_index);
                     let leaf_values_concatenated = values.iter().flatten().copied().collect();
                     let query = BaseFieldQuery::<F, T> {
                         index: tree_index,
@@ -1241,7 +1241,7 @@ where
         worker
     ));
 
-    println!("Forward sumcheck loop is done, outputing explicit small polynomials");
+    println!("Forward sumcheck loop is done, outputting explicit small polynomials");
 
     // get final evaluations
     let mut final_explicit_evaluations = BTreeMap::new();

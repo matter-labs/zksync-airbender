@@ -135,7 +135,7 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
     // and bigint is only called one by one, so it is simple
     if needs_delegation_data {
         let mut witness = BigintDelegationWitness::empty();
-        let write_ts = state.timestamp | DELEGATION_INVOCATION_OFFET;
+        let write_ts = state.timestamp | DELEGATION_INVOCATION_OFFSET;
         witness.write_timestamp = write_ts;
 
         let (x10, x10_ts) = read_register_with_ts::<C, 3>(state, 10);

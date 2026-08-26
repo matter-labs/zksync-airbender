@@ -145,7 +145,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
 
             for _call_round in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
                 let mut witness = KeccakSpecial5DelegationWitness::empty();
-                witness.write_timestamp = current_timestamp | DELEGATION_INVOCATION_OFFET;
+                witness.write_timestamp = current_timestamp | DELEGATION_INVOCATION_OFFSET;
 
                 let (precompile, iteration, round) =
                     keccak_special5_impl_decode_control(control_flow_reg);

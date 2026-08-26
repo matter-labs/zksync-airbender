@@ -842,7 +842,7 @@ pub fn lsb_soa_bounded_parallel<
 /// Ext-only uniskip pass for the folded stages of the LSB chain: every poly is
 /// an ext column, forms are built in ext SoA from the folded grids, and all
 /// terms run through the SoA ext-mul path into the `reduced` scratch (no lazy
-/// u64 -- there are no base*base products left). `quads`/`lins` index the
+/// u64 -- there are no base*base products left). `quads`/`linear_terms` index the
 /// combined folded slot space (base-origin polys first). Returns the 16-point
 /// packed q accumulator.
 pub fn lsb_soa_ext_pass_parallel<
@@ -862,7 +862,7 @@ pub fn lsb_soa_ext_pass_parallel<
     forms: &[FormDesc<F>],
     products: &[(FormRef, FormRef, E)],
     quads: &[(u16, u16, E)],
-    lins: &[(u16, E)],
+    linear_terms: &[(u16, E)],
     additive_constant: &E,
     t_suffix: &[E],
     rows: usize,
@@ -913,7 +913,8 @@ pub fn lsb_soa_ext_pass_parallel<
                     products.iter().map(|(_, _, c)| tab(c)).collect();
                 let tables_q: Vec<neon::SoaExtTable> =
                     quads.iter().map(|(_, _, c)| tab(c)).collect();
-                let tables_l: Vec<neon::SoaExtTable> = lins.iter().map(|(_, c)| tab(c)).collect();
+                let tables_l: Vec<neon::SoaExtTable> =
+                    linear_terms.iter().map(|(_, c)| tab(c)).collect();
 
                 let mut block = chunk_start;
                 while block < chunk_start + chunk_size {
@@ -987,7 +988,7 @@ pub fn lsb_soa_ext_pass_parallel<
                             );
                         }
                     }
-                    for ((i, _), tb) in lins.iter().zip(tables_l.iter()) {
+                    for ((i, _), tb) in linear_terms.iter().zip(tables_l.iter()) {
                         for u in 0..U {
                             // linear terms touch real evaluation cells only
                             // (all of them for uniskip, the binary cells for
@@ -1198,7 +1199,7 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
     forms: &[FormDesc<F>],
     products: &[(FormRef, FormRef, E)],
     quads: &[(u16, u16, E)],
-    lins: &[(u16, E)],
+    linear_terms: &[(u16, E)],
     additive_constant: &E,
     tables: &LsbLdeAny,
     t_suffix: &[E], // len = pass-1 rows
@@ -1250,7 +1251,8 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
                     products.iter().map(|(_, _, c)| tab(c)).collect();
                 let tables_q: Vec<neon::SoaExtTable> =
                     quads.iter().map(|(_, _, c)| tab(c)).collect();
-                let tables_l: Vec<neon::SoaExtTable> = lins.iter().map(|(_, c)| tab(c)).collect();
+                let tables_l: Vec<neon::SoaExtTable> =
+                    linear_terms.iter().map(|(_, c)| tab(c)).collect();
 
                 let mut ext_flat = vec![0u32; (nb + ne) * es];
                 let mut form_flat = vec![0u32; forms.len() * es];
@@ -1350,7 +1352,7 @@ pub fn lsb_fold_and_ext_pass_parallel<F: PrimeField, E: FieldExtension<F> + Fiel
                             r11v,
                         );
                     }
-                    for ((i, _), tb) in lins.iter().zip(tables_l.iter()) {
+                    for ((i, _), tb) in linear_terms.iter().zip(tables_l.iter()) {
                         neon::soa_lin_ext_lazy::<NG>(lptr, xptr.add(*i as usize * es), tb);
                     }
                     neon::soa_lazy_finalize::<NG>(lptr, lazy_out.as_mut_ptr());

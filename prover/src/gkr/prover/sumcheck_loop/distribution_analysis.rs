@@ -22,16 +22,16 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         let batched_description = self.make_batched_description(&challenge_constants, self.layer);
 
         #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
-        struct Occurances {
+        struct Occurrences {
             quad_terms_with_base: BTreeSet<GKRAddress>,
             quad_terms_with_ext: BTreeSet<GKRAddress>,
             linear_terms: bool,
         }
 
-        let mut occurances_of_base = BTreeMap::<_, Occurances>::new();
-        let mut occurances_of_ext = BTreeMap::<_, Occurances>::new();
+        let mut occurrences_of_base = BTreeMap::<_, Occurrences>::new();
+        let mut occurrences_of_ext = BTreeMap::<_, Occurrences>::new();
         for (a, other) in batched_description.quadratic_part_base_by_base.iter() {
-            let e = occurances_of_base.entry(*a).or_default();
+            let e = occurrences_of_base.entry(*a).or_default();
             for (b, _) in other.iter() {
                 if *a == *b {
                     continue;
@@ -43,12 +43,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 if *a == *b {
                     continue;
                 }
-                let e = occurances_of_base.entry(*b).or_default();
+                let e = occurrences_of_base.entry(*b).or_default();
                 e.quad_terms_with_base.insert(*a);
             }
         }
         for (a, other) in batched_description.quadratic_part_base_by_ext.iter() {
-            let e = occurances_of_base.entry(*a).or_default();
+            let e = occurrences_of_base.entry(*a).or_default();
             for (b, _) in other.iter() {
                 if *a == *b {
                     continue;
@@ -60,12 +60,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 if *a == *b {
                     continue;
                 }
-                let e = occurances_of_ext.entry(*b).or_default();
+                let e = occurrences_of_ext.entry(*b).or_default();
                 e.quad_terms_with_base.insert(*a);
             }
         }
         for (a, other) in batched_description.quadratic_part_base_by_ext.iter() {
-            let e = occurances_of_ext.entry(*a).or_default();
+            let e = occurrences_of_ext.entry(*a).or_default();
             for (b, _) in other.iter() {
                 if *a == *b {
                     continue;
@@ -77,27 +77,27 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 if *a == *b {
                     continue;
                 }
-                let e = occurances_of_ext.entry(*b).or_default();
+                let e = occurrences_of_ext.entry(*b).or_default();
                 e.quad_terms_with_ext.insert(*a);
             }
         }
         for (a, _) in batched_description.linear_part_base_by_everything.iter() {
-            let e = occurances_of_base.entry(*a).or_default();
+            let e = occurrences_of_base.entry(*a).or_default();
             e.linear_terms = true;
         }
         for (a, _) in batched_description.linear_part_ext_by_everything.iter() {
-            let e = occurances_of_ext.entry(*a).or_default();
+            let e = occurrences_of_ext.entry(*a).or_default();
             e.linear_terms = true;
         }
 
-        for (a, o) in occurances_of_base.iter() {
+        for (a, o) in occurrences_of_base.iter() {
             let with_base = o.quad_terms_with_base.len();
             let with_ext = o.quad_terms_with_ext.len();
             let in_linear = o.linear_terms as usize;
             println!("Base variable {:?} happens in {} quad terms with base, {} quad terms with ext and {} linear terms", a, with_base, with_ext, in_linear);
         }
 
-        for (a, o) in occurances_of_ext.iter() {
+        for (a, o) in occurrences_of_ext.iter() {
             let with_base = o.quad_terms_with_base.len();
             let with_ext = o.quad_terms_with_ext.len();
             let in_linear = o.linear_terms as usize;
@@ -1357,25 +1357,25 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
         panic!("Last layer is usually not interesting");
     }
 
-    let mut occurance_matrix: BTreeMap<usize, BTreeSet<GKRAddress>> = BTreeMap::new();
-    let mut inv_occurance_matrix: BTreeMap<GKRAddress, BTreeSet<usize>> = BTreeMap::new();
+    let mut occurrence_matrix: BTreeMap<usize, BTreeSet<GKRAddress>> = BTreeMap::new();
+    let mut inv_occurrence_matrix: BTreeMap<GKRAddress, BTreeSet<usize>> = BTreeMap::new();
 
     for (idx, gate) in layer.gates.iter().enumerate() {
         let mut set = BTreeSet::new();
         gate.enforced_relation.dump_inputs(&mut set);
         for el in set.iter() {
-            inv_occurance_matrix
+            inv_occurrence_matrix
                 .entry(*el)
                 .or_insert(BTreeSet::new())
                 .insert(idx);
         }
 
-        occurance_matrix.insert(idx, set);
+        occurrence_matrix.insert(idx, set);
     }
 
     let mut matrix = vec![];
-    for (a, inputs) in occurance_matrix.iter() {
-        for (b, other_inputs) in occurance_matrix.iter() {
+    for (a, inputs) in occurrence_matrix.iter() {
+        for (b, other_inputs) in occurrence_matrix.iter() {
             if *a >= *b {
                 continue;
             }
@@ -1439,12 +1439,12 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
         }
 
         alive_set.retain(|k, _| {
-            let occurance_in_gates = inv_occurance_matrix
+            let occurrence_in_gates = inv_occurrence_matrix
                 .get(k)
-                .expect("exists in occurance matrix");
+                .expect("exists in occurrence matrix");
             let mut still_alive = false;
             for gate_idx in remaining_gates.iter() {
-                if occurance_in_gates.contains(gate_idx) {
+                if occurrence_in_gates.contains(gate_idx) {
                     still_alive = true;
                     break;
                 }
@@ -1460,7 +1460,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
             remaining_gates,
             0,
             &mut reports,
-            &inv_occurance_matrix,
+            &inv_occurrence_matrix,
         );
     }
 
@@ -1478,7 +1478,7 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
     // reports: &mut BTreeMap<Vec<usize>, BTreeMap<GKRAddress, Range<usize>>>,
     // mut stats: BTreeMap<GKRAddress, Range<usize>>,
     // occurange_matrix: &BTreeMap<usize, BTreeSet<GKRAddress>>,
-    inv_occurance_matrix: &BTreeMap<GKRAddress, BTreeSet<usize>>,
+    inv_occurrence_matrix: &BTreeMap<GKRAddress, BTreeSet<usize>>,
 ) {
     let epoch = epoch + 1;
 
@@ -1577,15 +1577,15 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         }
         // maybe some variables die after we do this gate
         alive_set.retain(|k, _| {
-            let occurance_in_gates = inv_occurance_matrix
+            let occurrence_in_gates = inv_occurrence_matrix
                 .get(k)
-                .expect("exists in occurance matrix");
+                .expect("exists in occurrence matrix");
             let mut still_alive = false;
             for other_gate_idx in remaining_gates.iter() {
                 if gate_idx == *other_gate_idx {
                     continue;
                 }
-                if occurance_in_gates.contains(other_gate_idx) {
+                if occurrence_in_gates.contains(other_gate_idx) {
                     still_alive = true;
                     break;
                 }
@@ -1594,7 +1594,7 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         });
         let num_alive = alive_set.len();
         if num_alive < all_live_variables.len() {
-            // only consider paths that immediatelly eliminate live set
+            // only consider paths that immediately eliminate live set
             elimination_stats.insert(gate_idx, num_alive);
         }
     }
@@ -1638,12 +1638,12 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         }
         // maybe some variables die after we do this gate
         alive_set.retain(|k, _| {
-            let occurance_in_gates = inv_occurance_matrix
+            let occurrence_in_gates = inv_occurrence_matrix
                 .get(k)
-                .expect("exists in occurance matrix");
+                .expect("exists in occurrence matrix");
             let mut still_alive = false;
             for gate_idx in new_remaining_gates.iter() {
-                if occurance_in_gates.contains(gate_idx) {
+                if occurrence_in_gates.contains(gate_idx) {
                     still_alive = true;
                     break;
                 }
@@ -1664,7 +1664,7 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
             new_remaining_gates,
             new_max_cache_size,
             reports,
-            inv_occurance_matrix,
+            inv_occurrence_matrix,
         );
     }
 }

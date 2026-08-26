@@ -2554,7 +2554,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             next_ptr := ptr
             next_claim := claim
         }}
-        function transcriptNto1(ptr, input_elements) -> alpha {{
+        function transcriptNTo1(ptr, input_elements) -> alpha {{
             let input_bytes := mul(input_elements, 16)
             calldatacopy(add(SEED_PTR(), 32), ptr, input_bytes)
             let seed := keccak256(SEED_PTR(), add(32, input_bytes)) // absorb evals
@@ -2568,7 +2568,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             if is_odd {{
                 next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
             }}
-            next_alpha := transcriptNto1(ptr, points)
+            next_alpha := transcriptNTo1(ptr, points)
             let even_points := sub(points, is_odd)
             let pairs := shr(1, even_points)
             for {{ let pair := sub(pairs, 1) }} lt(pair, pairs) {{ pair := sub(pair, 1) }} {{
