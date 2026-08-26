@@ -25,6 +25,7 @@
 
 use crate::l1::{prove_l1_wrap_in_memory, L1Proof, L1WrapTimings};
 use crate::unified_transition::{
+    prove_unified_transition_with_replayer_precommitted_timed,
     prove_unified_transition_with_replayer_timed, UnifiedTransitionTimings,
 };
 use full_statement_verifier::host_utils::{
@@ -158,21 +159,42 @@ pub fn compress_fixed_point_to_l1(
         );
 
         let stream = build_unified_stream(&setups, &proof);
-        let (mut new_proof, new_setups, timings) = prove_unified_transition_with_replayer_timed(
-            UNIFIED_CYCLES_BOUND,
-            run_bin,
-            run_text,
-            use_caches,
-            QuasiUARTSource::new_with_reads(stream),
-            RAM_BOUND,
-            worker,
-            SecurityLevel::Sec100,
-            verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-            &feeder_config,
-            feeder_storage,
-            &DefaultBabyBearBackend::default(),
-            &DefaultBabyBearGKRBackend::default(),
-        );
+        // Fully in-memory storage takes the precommitted single-pass path:
+        // witness evaluation and the merged commitment happen once per chunk,
+        // and the proofs consume the pre-committed oracles.
+        let (mut new_proof, new_setups, timings) =
+            if feeder_storage == WhirOracleStorage::fully_in_memory() {
+                prove_unified_transition_with_replayer_precommitted_timed(
+                    UNIFIED_CYCLES_BOUND,
+                    run_bin,
+                    run_text,
+                    use_caches,
+                    QuasiUARTSource::new_with_reads(stream),
+                    RAM_BOUND,
+                    worker,
+                    SecurityLevel::Sec100,
+                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                    &feeder_config,
+                    &DefaultBabyBearBackend::default(),
+                    &DefaultBabyBearGKRBackend::default(),
+                )
+            } else {
+                prove_unified_transition_with_replayer_timed(
+                    UNIFIED_CYCLES_BOUND,
+                    run_bin,
+                    run_text,
+                    use_caches,
+                    QuasiUARTSource::new_with_reads(stream),
+                    RAM_BOUND,
+                    worker,
+                    SecurityLevel::Sec100,
+                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                    &feeder_config,
+                    feeder_storage,
+                    &DefaultBabyBearBackend::default(),
+                    &DefaultBabyBearGKRBackend::default(),
+                )
+            };
         new_proof.set_recursion_chain(&chain);
         stage_timings[stage] = timings;
 

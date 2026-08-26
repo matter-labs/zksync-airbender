@@ -9,7 +9,8 @@ use prover::gkr::prover_config::ProverConfig;
 /// Base-layer packing factor from the prover's `CommitmentMode` (2^22 base trace -> 2^26 message).
 pub const PACK_LOG2: usize = 4;
 
-/// Mirrors `prover/src/tests/gkr/large_field.rs` (Sec100, 2^22, 6 WHIR rounds).
+/// Mirrors `prover/src/tests/gkr/large_field.rs` (Sec100, 2^22, 5 WHIR rounds
+/// with the 2^8 plain-text tail).
 pub fn production_prover_config() -> ProverConfig {
     ProverConfig {
         // circuit trace length; the WHIR message is 2^(22 + PACK_LOG2) = 2^26
@@ -26,10 +27,10 @@ pub fn production_prover_config() -> ProverConfig {
         whir_schedule: WhirSchedule {
             base_lde_factor: 1 << 5,
             cap_size: 8,
-            whir_steps_schedule: vec![2, 4, 4, 4, 4, 4],
-            whir_queries_schedule: vec![17, 12, 8, 6, 5, 4],
-            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
-            whir_pow_schedule: vec![30, 30, 27, 25, 21, 24],
+            whir_steps_schedule: vec![2, 4, 4, 4, 4],
+            whir_queries_schedule: vec![17, 12, 8, 6, 5],
+            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19],
+            whir_pow_schedule: vec![30, 30, 27, 25, 21],
         },
     }
 }

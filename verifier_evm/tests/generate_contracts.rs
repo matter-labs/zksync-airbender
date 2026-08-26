@@ -18,8 +18,8 @@ const EXTERNAL_POW_BITS: u32 = 20;
 // Terminal PC of `fsv_unified_recursion_layer_sec_100_l1_feeder` (special-
 // opcodes blake variant) — the merged-mode L1-feeder full-statement verifier
 // whose execution the L1 proof attests (it verifies the final BabyBear
-// recursion artifact). 0x001a3480.
-const EXPECTED_FINAL_PC: u32 = 1717376;
+// recursion artifact). 0x001a3098 for the reproducible-build binaries.
+const EXPECTED_FINAL_PC: u32 = 1716376;
 
 /// The registry address baked into both verifiers (they mark their committed
 /// state to it). Default = the fixed address the local anvil harness etches

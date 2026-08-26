@@ -160,3 +160,49 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         }
     }
 }
+
+/// Base trace length of the EVM-production packed mode (the single 2^22
+/// unified circuit chunk the L1 verifies).
+pub const EVM_PRODUCTION_TRACE_LEN_LOG2: usize = 22;
+/// Base-layer packing factor of the EVM-production packed mode: the 2^22 base
+/// trace becomes a single 2^26-variate multilinear per packed column.
+pub const EVM_PRODUCTION_PACK_LOG2: usize = 4;
+/// PoW bits gating the self-derived external challenges of the packed mode.
+pub const EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
+
+/// The EVM-production prover config: a 2^22 base trace packed by
+/// [`EVM_PRODUCTION_PACK_LOG2`] into the `message_log2 = 26` WHIR input — the
+/// exact parameters the deployed gkr.sol/whir.sol pair is generated for.
+/// Reused by the packed fibonacci fixture test AND the L1 compression /
+/// wrap drivers.
+pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig {
+    ProverConfig {
+        // circuit trace length; the WHIR message is 2^(22 + pack_log2) = 2^26
+        trace_len_log2: EVM_PRODUCTION_TRACE_LEN_LOG2,
+        // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
+        // keep these proofs on the windowed schedule (transcript-identical
+        // to naive)
+        same_size_sumcheck_schedule: windowed_same_size_schedule(EVM_PRODUCTION_TRACE_LEN_LOG2),
+        dimension_reducing_sumcheck_schedule: Default::default(),
+        lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)
+        cap_size: 8,
+        // round-0 values-per-leaf = 2^whir_steps_schedule[0] = 2^2
+        base_oracles_values_per_leaf: 1 << 2,
+        // The GKR dimension-reduction stops at 2^4 and outputs explicit
+        // evaluations (this is the GKR-side knob gkr.sol is generated for —
+        // NOT the WHIR plain-text tail, which the WHIR schedule determines).
+        sumcheck_explicit_output_size_log_2: 4,
+        security_level: level,
+        whir_schedule: WhirSchedule {
+            base_lde_factor: 1 << 5,
+            cap_size: 8,
+            // 5 rounds; the former 6th round (an LDE of the 2^8 poly onto a
+            // 2^31 domain + its queries) is dropped and the 2^8 tail ships in
+            // plain text — smaller calldata AND less prover time.
+            whir_steps_schedule: vec![2, 4, 4, 4, 4],
+            whir_queries_schedule: vec![17, 12, 8, 6, 5],
+            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19],
+            whir_pow_schedule: vec![30, 30, 27, 25, 21],
+        },
+    }
+}

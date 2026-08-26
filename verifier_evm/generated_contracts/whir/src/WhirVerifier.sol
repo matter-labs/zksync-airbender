@@ -46,10 +46,10 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_WHIR_GEN     = 3425356216587033636351364223179792077;
     uint256 constant __TEMPLATE_WHIR_GEN_INV = 3409408011976041282043764725012079139;
 
-    uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS = 6;
+    uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS = 5;
     uint256 constant __TEMPLATE_WHIR_NZ          = 26;  // WHIR eval-point coords = trace_log2 + pack_log2
     uint256 constant __TEMPLATE_WHIR_GCOUNT      = 9;   // gamma-batched base columns + 1
-    uint256 constant __TEMPLATE_WHIR_RFIN        = 4;   // final-poly log2 = message_log2 - sum(folds)
+    uint256 constant __TEMPLATE_WHIR_RFIN        = 8;   // final-poly log2 = message_log2 - sum(folds)
     uint256 constant __TEMPLATE_WHIR_NBCAPS      = 2;   // base-oracle merkle caps (witness, setup)
     uint256 constant __TEMPLATE_WHIR_MERGED_MW   = 7;   // merged memory+witness base columns
     uint256 constant __TEMPLATE_WHIR_SETUP_MERGED = 1;  // merged setup base columns
@@ -89,7 +89,6 @@ contract WhirVerifier {
     uint256 constant REG_ZIOFF    = 22496;
     uint256 constant REG_CC       = 22560;
     uint256 constant REG_CURDELIN = 22592;
-    uint256 constant MONO_PTR     = 22752;  // final monomials (<=16*32)
     // cap regions (each holds up to CAP*32 bytes)
     uint256 constant BCAP0_PTR    = 23296;  // witness base-oracle cap
     uint256 constant BCAP1_PTR    = 24320;  // setup base-oracle cap
@@ -100,6 +99,14 @@ contract WhirVerifier {
     //   DRAW_BUF holds the little-endian u32 words squeezed from the seed.
     uint256 constant QIDX_BUF_PTR = 28416;  // drawn query indices
     uint256 constant DRAW_BUF_PTR = 30016;  // squeezed LE u32 words (one per slot)
+    // do_final scratch, GENERATOR-DERIVED from the prover config: the plain-
+    // text tail is 2^RFIN monomials, so the monomial region's size — and the
+    // offset of every region after it — depends on the schedule. The regions
+    // live past the end of the static map.
+    uint256 constant __TEMPLATE_WHIR_MONO_PTR  = 31680;  // first free offset past the static map
+    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR = 39872;  // = MONO_PTR + 2^RFIN * 32
+    uint256 constant MONO_PTR  = __TEMPLATE_WHIR_MONO_PTR; // final monomials (2^RFIN * 32 bytes)
+    uint256 constant FEVAL_PTR = __TEMPLATE_WHIR_FEVAL_PTR; // tail absorb + halving-fold scratch (32 + 2^RFIN * 32)
 
     fallback() external {
         assembly {
@@ -438,8 +445,11 @@ contract WhirVerifier {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let nmono := shl(rfin, 1)
             let cp := mload(REG_CD)
-            calldatacopy(add(SEED_PTR, 32), cp, mul(nmono, 16))
-            mstore(SEED_PTR, keccak256(SEED_PTR, add(32, mul(nmono, 16))))
+            // absorb via the large FEVAL scratch: 32 + nmono*16 bytes would
+            // overrun the SEED region (into z / pow) for the 2^8 tail
+            mstore(FEVAL_PTR, mload(SEED_PTR))
+            calldatacopy(add(FEVAL_PTR, 32), cp, mul(nmono, 16))
+            mstore(SEED_PTR, keccak256(FEVAL_PTR, add(32, mul(nmono, 16))))
             for { let wj := 0 } lt(wj, shr(1, nmono)) { wj := add(wj, 1) } {
                 let w := calldataload(add(cp, mul(wj, 32)))
                 let hi := shr(128, w)
@@ -477,20 +487,20 @@ contract WhirVerifier {
             mstore(REG_CD, cp)
 
             for { let i := 0 } lt(i, nmono) { i := add(i, 1) } {
-                mstore(add(FBUF_PTR, mul(i, 32)), mload(add(MONO_PTR, mul(i, 32))))
+                mstore(add(FEVAL_PTR, mul(i, 32)), mload(add(MONO_PTR, mul(i, 32))))
             }
             let active := nmono
             for { let level := 0 } lt(level, rfin) { level := add(level, 1) } {
                 let half := shr(1, active)
                 let zj := mload(add(Z_PTR, add(zi_off, mul(level, 32))))
                 for { let i := 0 } lt(i, half) { i := add(i, 1) } {
-                    let c0 := mload(add(FBUF_PTR, mul(mul(i, 2), 32)))
-                    let c1 := mload(add(FBUF_PTR, mul(add(mul(i, 2), 1), 32)))
-                    mstore(add(FBUF_PTR, mul(i, 32)), addmod(c0, mulmod(c1, zj, P), P))
+                    let c0 := mload(add(FEVAL_PTR, mul(mul(i, 2), 32)))
+                    let c1 := mload(add(FEVAL_PTR, mul(add(mul(i, 2), 1), 32)))
+                    mstore(add(FEVAL_PTR, mul(i, 32)), addmod(c0, mulmod(c1, zj, P), P))
                 }
                 active := half
             }
-            let expected := mulmod(mload(ACC_PREF_PTR), mload(FBUF_PTR), P)
+            let expected := mulmod(mload(ACC_PREF_PTR), mload(FEVAL_PTR), P)
             let n := mload(REG_NUMPOW)
             for { let e := 0 } lt(e, n) { e := add(e, 1) } {
                 let b := add(POW_PTR, mul(e, 96))
@@ -563,8 +573,7 @@ contract WhirVerifier {
             case 1 { fold := 4 q := 12 pow_bits := 30 qib := 27 vp := 16 cb := 7 }
             case 2 { fold := 4 q := 8 pow_bits := 27 qib := 27 vp := 16 cb := 11 }
             case 3 { fold := 4 q := 6 pow_bits := 25 qib := 27 vp := 16 cb := 15 }
-            case 4 { fold := 4 q := 5 pow_bits := 21 qib := 27 vp := 16 cb := 19 }
-            default { fold := 4 q := 4 pow_bits := 24 qib := 27 vp := 16 cb := 23 }
+            default { fold := 4 q := 5 pow_bits := 21 qib := 27 vp := 16 cb := 19 }
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let idx_mask := sub(shl(qib, 1), 1)
 
@@ -593,7 +602,7 @@ contract WhirVerifier {
                 mstore(REG_ZIOFF, add(zi_off, 32))
             }
 
-            switch lt(r, 5)
+            switch lt(r, sub(__TEMPLATE_WHIR_NUM_ROUNDS, 1))
             case 1 { do_internal(r, fold, q, pow_bits, qib, vp, idx_mask, cb) }
             default { do_final(fold, q, pow_bits, qib, vp, idx_mask, mload(REG_ZIOFF), rfin, cb) }
         }

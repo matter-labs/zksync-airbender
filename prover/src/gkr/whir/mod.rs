@@ -1090,6 +1090,7 @@ where
         "  [timing] batching stage (columns+IFFT+hc evals): {:.3?}",
         t_batching.elapsed()
     );
+    let t_round = std::time::Instant::now();
 
     let mut batched_claim = E::ZERO;
     for (challenges_set, values_set) in [base_mem_powers, base_witness_powers, base_setup_powers]
@@ -1416,9 +1417,16 @@ where
         );
 
         // Every round-0 query has been served: the (potentially large) base oracles
-        // can be dropped before the memory-heavy folding rounds.
+        // can be dropped before the memory-heavy folding rounds. NOTE: for
+        // fully in-memory base oracles this deallocates hundreds of GB — the
+        // page-table teardown is seconds of wall time, hence the timer.
+        let t_drop = std::time::Instant::now();
         drop(mem_oracle);
         drop(wit_oracle);
+        println!(
+            "  [timing] base oracle drop (dealloc): {:.3?}",
+            t_drop.elapsed()
+        );
 
         for &query_index in query_indexes.iter() {
             assert!(query_index < query_domain_size as usize);
@@ -1525,6 +1533,8 @@ where
         claim.add_assign(&claim_correction);
     }
 
+    println!("  [timing] initial round total: {:.3?}", t_round.elapsed());
+
     let num_internal_whir_steps = num_whir_steps - 1;
     println!(
         "Initial queries and folding are complete, now can proceed into {} internal rounds",
@@ -1537,6 +1547,7 @@ where
     // - query previous(!) RS oracle
     // - update claim and eq poly
     for internal_round in 0..num_internal_whir_steps {
+        let t_round = std::time::Instant::now();
         // commit
         let num_folding_steps = *whir_steps_schedule.next().unwrap();
         let num_queries = *whir_queries_schedule.next().unwrap();
@@ -1836,10 +1847,16 @@ where
 
         // and remember new sumcheck claim
         claim.add_assign(&claim_correction);
+
+        println!(
+            "  [timing] internal round {internal_round} total: {:.3?}",
+            t_round.elapsed()
+        );
     }
 
     // and final step is almost the same as the first one - we can fold few times, output evaluation form, and draw final query indexes,
     // check consistency between them, and perform final explicit sumcheck
+    let t_round = std::time::Instant::now();
     {
         let num_folding_steps = *whir_steps_schedule.next().unwrap();
         let num_queries = *whir_queries_schedule.next().unwrap();
@@ -2031,6 +2048,8 @@ where
     assert!(whir_steps_schedule.next().is_none());
     assert!(whir_queries_schedule.next().is_none());
     assert!(whir_pow_schedule.next().is_none());
+
+    println!("  [timing] final round total: {:.3?}", t_round.elapsed());
 
     proof.final_monomials = sumchecked_poly_monomial_form;
 

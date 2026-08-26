@@ -738,6 +738,211 @@ where
     )
 }
 
+/// [`prove_configured_with_gkr_with_storage_and_backend`] restricted to
+/// `CommitmentMode::MergedMemoryAndWitness` with the merged memory+witness
+/// base oracle COMMITTED BY THE CALLER (`RsCodewordSource::InMemory`): the
+/// pre-challenge commitment pass and the proof share ONE witness evaluation
+/// and ONE merged commitment instead of repeating both. The caller must pass
+/// the exact oracle whose cap seeded the permutation-argument Fiat-Shamir.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_configured_with_gkr_merged_with_precommitted_oracle<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    merged_oracle: ColumnMajorBaseOracleForLDE<F, T>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &B::TwiddleSet,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    storage: WhirOracleStorage,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    backend: &B,
+    gkr_backend: &GB,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
+    prove_configured_with_gkr_merged_precommitted_impl::<F, E, T, TR, B, GB>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        merged_oracle,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        storage,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        backend,
+        gkr_backend,
+        worker,
+    )
+}
+
+/// The merged-mode analog of [`prove_configured_with_gkr_impl`] that consumes
+/// a caller-committed in-memory merged base oracle instead of evaluating and
+/// committing it itself.
+#[allow(clippy::too_many_arguments)]
+fn prove_configured_with_gkr_merged_precommitted_impl<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    merged_oracle: ColumnMajorBaseOracleForLDE<F, T>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &B::TwiddleSet,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    storage: WhirOracleStorage,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    backend: &B,
+    gkr_backend: &GB,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
+    assert!(
+        matches!(commitment_mode, CommitmentMode::MergedMemoryAndWitness),
+        "the precommitted-oracle entry supports only CommitmentMode::MergedMemoryAndWitness"
+    );
+    assert_eq!(
+        storage.base_rs_source,
+        RsCodewordSource::InMemory,
+        "the precommitted-oracle entry serves round-0 queries from the caller's in-memory oracle"
+    );
+    assert!(
+        matches!(merged_oracle, ColumnMajorBaseOracleForLDE::InMemory(_)),
+        "the caller must supply a fully materialized (in-memory) merged oracle"
+    );
+    assert_eq!(compiled_circuit.trace_len, trace_len);
+    assert!(trace_len.is_power_of_two());
+    assert_eq!(
+        prover_config.trace_len_log2,
+        trace_len.trailing_zeros() as usize,
+        "the prover config was computed for trace length 2^{} but this circuit's \
+         trace length is {trace_len}",
+        prover_config.trace_len_log2,
+    );
+    prover_config.validate_for_whir_message_size(prover_config.trace_len_log2);
+    if witness_eval_data.column_major_memory_trace.len() > 0 {
+        assert_eq!(
+            witness_eval_data.column_major_memory_trace[0].len(),
+            trace_len
+        );
+    }
+    if witness_eval_data.column_major_witness_trace.len() > 0 {
+        assert_eq!(
+            witness_eval_data.column_major_witness_trace[0].len(),
+            trace_len
+        );
+    }
+    assert_eq!(
+        inits_and_teardowns_top_bits.len(),
+        compiled_circuit.memory_layout.teardown_sets.len()
+    );
+
+    let external_challenges = *external_challenges;
+
+    // Transcript init: IDENTICAL to the `MergedMemoryAndWitness` arm of
+    // [`prove_configured_with_gkr_impl`], with the caller's oracle cap.
+    let mut transcript_input = vec![];
+    transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
+    external_challenges.flatten_into_buffer(&mut transcript_input);
+    if setup.hypercube_evals.len() > 0 {
+        flatten_merkle_caps_iter_into(
+            Some(setup_commitment.get_cap()).into_iter(),
+            &mut transcript_input,
+        );
+    }
+    flatten_merkle_caps_iter_into(
+        Some(merged_oracle.get_cap()).into_iter(),
+        &mut transcript_input,
+    );
+
+    let mut seed = <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
+
+    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+        prover_config.security_level.security_bits(),
+        pow_bits::lookup_identity_degree(compiled_circuit),
+    );
+    let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+        draw_random_field_els_with_pow::<F, E, TR>(
+            &mut seed,
+            2,
+            lookup_challenges_pow_bits,
+            worker,
+        );
+    let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
+
+    let t_gkr_phase = std::time::Instant::now();
+
+    let (gkr_storage, preprocessed_generic_lookup, decoder_lookup_fill_value) =
+        prepare_layer0_gkr_storage::<F, E>(
+            compiled_circuit,
+            setup,
+            lookup_alpha,
+            trace_len,
+            &inits_and_teardowns_top_bits,
+            worker,
+        );
+
+    let wit_oracle = ColumnMajorBaseOracleForLDE::empty(
+        prover_config.base_oracles_values_per_leaf,
+        trace_len.trailing_zeros() as usize,
+        prover_config.lde_factor,
+    );
+
+    prove_configured_with_gkr_from_forward_eval::<F, E, T, TR, B, GB>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        storage,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        seed,
+        merged_oracle,
+        wit_oracle,
+        lookup_challenges_pow_nonce,
+        lookup_alpha,
+        lookup_additive_part,
+        gkr_storage,
+        preprocessed_generic_lookup,
+        decoder_lookup_fill_value,
+        t_gkr_phase,
+        backend,
+        gkr_backend,
+        worker,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn prove_configured_with_gkr_impl<
     F: PrimeField + TwoAdicField,
@@ -1108,6 +1313,55 @@ where
 
     // then GKR is the same until the end of backward pass and derivation of claims
 
+    let (gkr_storage, preprocessed_generic_lookup, decoder_lookup_fill_value) =
+        prepare_layer0_gkr_storage::<F, E>(
+            compiled_circuit,
+            setup,
+            lookup_alpha,
+            trace_len,
+            &inits_and_teardowns_top_bits,
+            worker,
+        );
+
+    prove_configured_with_gkr_from_forward_eval::<F, E, T, TR, B, GB>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        storage,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        seed,
+        mem_oracle,
+        wit_oracle,
+        lookup_challenges_pow_nonce,
+        lookup_alpha,
+        lookup_additive_part,
+        gkr_storage,
+        preprocessed_generic_lookup,
+        decoder_lookup_fill_value,
+        t_gkr_phase,
+        backend,
+        gkr_backend,
+        worker,
+    )
+}
+
+/// Layer-0 GKR storage preparation shared by the proving entries: the
+/// preprocessed generic lookups plus the materialized virtual setup
+/// polynomials.
+fn prepare_layer0_gkr_storage<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    setup: &GKRSetup<F>,
+    lookup_alpha: E,
+    trace_len: usize,
+    inits_and_teardowns_top_bits: &[u32],
+    worker: &Worker,
+) -> (GKRStorage<F, E>, Box<[E]>, E) {
     let mut gkr_storage = GKRStorage::<F, E>::default();
 
     // Now we can use lookup challenges to preprocess tables into values like (column_0 + alpha * column_1 + ...),
@@ -1159,6 +1413,54 @@ where
         }
     }
 
+    (
+        gkr_storage,
+        preprocessed_generic_lookup,
+        decoder_lookup_fill_value,
+    )
+}
+
+/// The shared back half of [`prove_configured_with_gkr_impl`]: everything from
+/// the GKR forward evaluation on, once the base oracle(s) are committed, the
+/// transcript is seeded and the lookup challenges are drawn.
+#[allow(clippy::too_many_arguments)]
+fn prove_configured_with_gkr_from_forward_eval<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &B::TwiddleSet,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    storage: WhirOracleStorage,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    mut seed: TR::Seed,
+    mem_oracle: ColumnMajorBaseOracleForLDE<F, T>,
+    wit_oracle: ColumnMajorBaseOracleForLDE<F, T>,
+    lookup_challenges_pow_nonce: u64,
+    lookup_alpha: E,
+    lookup_additive_part: E,
+    mut gkr_storage: GKRStorage<F, E>,
+    preprocessed_generic_lookup: Box<[E]>,
+    decoder_lookup_fill_value: E,
+    t_gkr_phase: std::time::Instant,
+    backend: &B,
+    gkr_backend: &GB,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
     // now we should perform "forward" evaluation, and fill the GKR storage
     let mut witness_eval_data = witness_eval_data;
     // Go from layer 0 to the end, and produce intermediate polynomials. We do not need to commit to them
