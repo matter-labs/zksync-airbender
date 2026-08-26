@@ -298,6 +298,7 @@ struct Task8ExactMemoryJob<'context> {
     job: MainAcceptanceScheduledJob<'static, 'context, Global>,
     whole: DeviceMemoryHighWaterObserver<'context>,
     stable_entry: PoolMemoryUsage,
+    dr_plan_identity: Option<serde_json::Value>,
 }
 
 #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
@@ -308,16 +309,22 @@ struct Task8ExactMemoryOutput {
     backward_peak_window: PoolMemoryHighWaterSnapshot,
     whole: PoolMemoryHighWaterReport,
     whole_peak_window: PoolMemoryHighWaterSnapshot,
+    dimension_reducing_layer_count: usize,
+    dr_prepared_layer_count: usize,
+    dr_prepared_bundle_final_log: Option<u32>,
+    dr_plan_identity: Option<serde_json::Value>,
+    dr_work: serde_json::Value,
     operations: Vec<MainAcceptanceOperation>,
 }
 
 #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
 impl Task8ExactMemoryJob<'_> {
-    fn finish(self) -> CudaResult<Task8ExactMemoryOutput> {
+    fn finish(self) -> Result<Task8ExactMemoryOutput, GpuProveError> {
         let Task8ExactMemoryJob {
             job,
             whole,
             stable_entry,
+            dr_plan_identity,
         } = self;
         let mut finished = job.finish()?;
         let mut whole = whole;
@@ -345,6 +352,11 @@ impl Task8ExactMemoryJob<'_> {
             backward_peak_window: finished.backward_peak_window,
             whole,
             whole_peak_window,
+            dimension_reducing_layer_count: finished.dimension_reducing_layer_count,
+            dr_prepared_layer_count: finished.dr_prepared_layer_count,
+            dr_prepared_bundle_final_log: finished.dr_prepared_bundle_final_log,
+            dr_plan_identity,
+            dr_work: finished.dr_work,
             operations: finished.operations,
         })
     }
@@ -753,14 +765,22 @@ impl BasicUnrolledFixture {
         assert_eq!(self.context.get_device_memory_usage(), stable_entry);
         let strategy =
             resolve_backward_execution_strategy(&self.gkr_programs, &self.prover_config, options);
-        let mut transfers = construct_after_windowed_backward_preflight(
-            &self.gkr_programs,
+        let request = DrTailPreflightRequest {
+            gkr_programs: &self.gkr_programs,
             strategy,
             options,
-            self.final_trace_size_log_2,
-            || self.create_transfers(),
-        )
-        .unwrap()?;
+            final_trace_size_log_2: self.final_trace_size_log_2,
+            device_id: era_cudart::device::get_device()?,
+            entry: gpu_gkr::DrTailEntrySelection::Portable,
+        };
+        let admitted = admit_dr_tail_before_transfers(Some(request), |dr_tail_plan| {
+            let dr_plan_identity = dr_tail_plan
+                .as_ref()
+                .map(|plan| plan.exact_memory_identity_json(request.device_id));
+            self.create_transfers()
+                .map(|transfers| (transfers, dr_tail_plan, dr_plan_identity))
+        })?;
+        let (mut transfers, dr_tail_plan, dr_plan_identity) = admitted?;
         transfers.schedule(&self.context)?;
         let job = schedule_main_acceptance_proof(
             &self.gkr_programs,
@@ -768,12 +788,14 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             transfers,
             options,
+            dr_tail_plan,
             &self.context,
         )?;
         Ok(Task8ExactMemoryJob {
             job,
             whole,
             stable_entry,
+            dr_plan_identity,
         })
     }
 }

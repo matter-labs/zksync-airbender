@@ -13,9 +13,13 @@ use gpu_prover_context::{
 };
 
 pub(crate) struct MainAcceptanceScheduledJob<'a, 'context, A: GoodAllocator> {
-    job: GpuGKRProofJob<'a, A>,
+    job: GpuGKRProofJob<'a, 'context, A>,
     backward_observer: DeviceMemoryHighWaterObserver<'context>,
     backward_peak_window: PoolMemoryHighWaterSnapshot,
+    dimension_reducing_layer_count: usize,
+    dr_prepared_layer_count: usize,
+    dr_prepared_bundle_final_log: Option<u32>,
+    dr_work: serde_json::Value,
     operations: Vec<MainAcceptanceOperation>,
 }
 
@@ -28,15 +32,23 @@ pub(crate) struct MainAcceptanceFinishedJob {
     pub(crate) proof_time_ms: f32,
     pub(crate) backward: PoolMemoryHighWaterReport,
     pub(crate) backward_peak_window: PoolMemoryHighWaterSnapshot,
+    pub(crate) dimension_reducing_layer_count: usize,
+    pub(crate) dr_prepared_layer_count: usize,
+    pub(crate) dr_prepared_bundle_final_log: Option<u32>,
+    pub(crate) dr_work: serde_json::Value,
     pub(crate) operations: Vec<MainAcceptanceOperation>,
 }
 
 impl<A: GoodAllocator> MainAcceptanceScheduledJob<'_, '_, A> {
-    pub(crate) fn finish(self) -> era_cudart::result::CudaResult<MainAcceptanceFinishedJob> {
+    pub(crate) fn finish(self) -> GpuProveResult<MainAcceptanceFinishedJob> {
         let Self {
             job,
             backward_observer,
             backward_peak_window,
+            dimension_reducing_layer_count,
+            dr_prepared_layer_count,
+            dr_prepared_bundle_final_log,
+            dr_work,
             mut operations,
         } = self;
         let (proof, proof_time_ms) = job.finish()?;
@@ -48,6 +60,10 @@ impl<A: GoodAllocator> MainAcceptanceScheduledJob<'_, '_, A> {
             proof_time_ms,
             backward,
             backward_peak_window,
+            dimension_reducing_layer_count,
+            dr_prepared_layer_count,
+            dr_prepared_bundle_final_log,
+            dr_work,
             operations,
         })
     }
@@ -62,6 +78,7 @@ pub(crate) fn schedule_main_acceptance_proof<'a, 'context, A: GoodAllocator + 'a
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     backward_options: GkrBackwardOptions,
+    dr_tail_plan: Option<gpu_gkr::DrTailProofPlan>,
     context: &'context ProverContext,
 ) -> Result<MainAcceptanceScheduledJob<'a, 'context, A>, GpuProveError> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
@@ -213,7 +230,9 @@ pub(crate) fn schedule_main_acceptance_proof<'a, 'context, A: GoodAllocator + 'a
         top_bits_host.clone(),
         Arc::clone(gkr_programs),
         backward_options,
+        dr_tail_plan,
         backward_strategy,
+        final_trace_size_log_2,
         external_challenges.device.as_ptr(),
         d_seed,
         d_evaluation_point_and_batching,
@@ -226,6 +245,10 @@ pub(crate) fn schedule_main_acceptance_proof<'a, 'context, A: GoodAllocator + 'a
         &mut callbacks,
         context,
     )?;
+    let dimension_reducing_layer_count = backward_scheduled.dimension_reducing_layer_count();
+    let dr_prepared_layer_count = backward_scheduled.dr_prepared_layer_count();
+    let dr_prepared_bundle_final_log = backward_scheduled.dr_prepared_bundle_final_log();
+    let dr_work = backward_scheduled.exact_memory_work_json();
     let backward_peak_window = backward_observer.seal();
     operations.push(MainAcceptanceOperation::BackwardScheduled);
     operations.push(MainAcceptanceOperation::BackwardObserverSealed);
@@ -308,6 +331,7 @@ pub(crate) fn schedule_main_acceptance_proof<'a, 'context, A: GoodAllocator + 'a
         proof,
         ranges,
         stage_snapshots: None,
+        exact_memory: None,
         keepalive: GpuGKRProofJobKeepalive {
             _stage1: stage1_output.into_keepalive(),
             _inputs: inputs_keepalive,
@@ -323,6 +347,10 @@ pub(crate) fn schedule_main_acceptance_proof<'a, 'context, A: GoodAllocator + 'a
         job,
         backward_observer,
         backward_peak_window,
+        dimension_reducing_layer_count,
+        dr_prepared_layer_count,
+        dr_prepared_bundle_final_log,
+        dr_work,
         operations,
     })
 }

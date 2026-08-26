@@ -899,6 +899,7 @@ impl From<MainLayerScheduleError> for GpuProveError {
 impl From<BackwardScheduleError> for GpuProveError {
     fn from(error: BackwardScheduleError) -> Self {
         match error {
+            BackwardScheduleError::Cuda(error) => Self::Cuda { error },
             BackwardScheduleError::DrTail(error) => Self::DrTailSchedule { error },
             BackwardScheduleError::MainLayer(error) => Self::MainLayerSchedule { error },
         }

@@ -379,6 +379,52 @@ impl core::fmt::Display for MainLayerScheduleError {
 
 impl std::error::Error for MainLayerScheduleError {}
 
+/// A typed backward-workflow failure. Keeping the DR and main-layer variants
+/// distinct prevents the apex prover from collapsing either production chain
+/// into a generic CUDA status or retry path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BackwardScheduleError {
+    Cuda(era_cudart_sys::CudaError),
+    DrTail(DrTailScheduleError),
+    MainLayer(MainLayerScheduleError),
+}
+
+impl From<era_cudart_sys::CudaError> for BackwardScheduleError {
+    fn from(error: era_cudart_sys::CudaError) -> Self {
+        Self::Cuda(error)
+    }
+}
+
+impl From<DrTailPlanIdentityError> for BackwardScheduleError {
+    fn from(error: DrTailPlanIdentityError) -> Self {
+        Self::DrTail(error.into())
+    }
+}
+
+impl From<DrTailScheduleError> for BackwardScheduleError {
+    fn from(error: DrTailScheduleError) -> Self {
+        Self::DrTail(error)
+    }
+}
+
+impl From<MainLayerScheduleError> for BackwardScheduleError {
+    fn from(error: MainLayerScheduleError) -> Self {
+        Self::MainLayer(error)
+    }
+}
+
+impl core::fmt::Display for BackwardScheduleError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Cuda(error) => write!(formatter, "CUDA scheduling failed: {error:?}"),
+            Self::DrTail(error) => write!(formatter, "{error}"),
+            Self::MainLayer(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for BackwardScheduleError {}
+
 /// Returns the continuation window count selected by the legacy-tail policy.
 /// This narrow query is the only plan detail the apex preflight consumes.
 #[doc(hidden)]

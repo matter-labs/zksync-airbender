@@ -914,6 +914,7 @@ mod cpu_main_chain_dispatch {
             windowed_r0: true,
             windowed_main_continuations: true,
             window_tail: WindowTailArm::Split,
+            ..GkrBackwardOptions::default()
         }
     }
 

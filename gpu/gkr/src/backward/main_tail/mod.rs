@@ -1,7 +1,9 @@
 mod binding;
 mod program;
 
-pub(crate) use binding::{bind_main_tail, launch_main_tail, MainTailLaunched, MainTailRuntimeState};
+pub(crate) use binding::{
+    bind_main_tail, launch_main_tail, MainTailLaunched, MainTailRuntimeState,
+};
 
 pub use program::MainTailProgram;
 #[allow(unused_imports)] // Task 4 consumes the fixed blob metadata and typed error.

@@ -431,7 +431,7 @@ fn task6_exact_memory_record_for_test(arm: &str) -> Task6ExactMemoryRecord {
 }
 
 #[test]
-fn cpu_exact_memory_comparator_rejects_each_positive_byte_delta() {
+fn cpu_task6_exact_memory_comparator_rejects_each_positive_byte_delta() {
     let baseline = task6_exact_memory_record_for_test("baseline");
     for (field, mutate) in [
         ("backward.physical_backing_peak_bytes", 0usize),
@@ -454,7 +454,7 @@ fn cpu_exact_memory_comparator_rejects_each_positive_byte_delta() {
 }
 
 #[test]
-fn cpu_exact_memory_comparator_rejects_hidden_small_pool_growth() {
+fn cpu_task6_exact_memory_comparator_rejects_hidden_small_pool_growth() {
     let baseline = task6_exact_memory_record_for_test("baseline");
     let mut new = task6_exact_memory_record_for_test("new");
     new.backward_peak_logical_live_bytes += 1;
@@ -463,7 +463,7 @@ fn cpu_exact_memory_comparator_rejects_hidden_small_pool_growth() {
 }
 
 #[test]
-fn cpu_exact_memory_comparator_rejects_whole_peak_masking() {
+fn cpu_task6_exact_memory_comparator_rejects_whole_peak_masking() {
     let baseline = task6_exact_memory_record_for_test("baseline");
     let mut new = task6_exact_memory_record_for_test("new");
     new.backward_peak_physical_backing_bytes += 1;
@@ -504,7 +504,7 @@ fn cpu_exact_memory_claim_buffers_retire_before_replacement_allocation() {
 }
 
 #[test]
-fn cpu_exact_memory_record_is_raw_integer_bytes() {
+fn cpu_task6_exact_memory_record_is_raw_integer_bytes() {
     let record = task6_exact_memory_record_for_test("baseline");
     let mut value = serde_json::to_value(record).unwrap();
     validate_task6_exact_memory_schema(&value).unwrap();
@@ -517,7 +517,7 @@ fn cpu_exact_memory_record_is_raw_integer_bytes() {
 }
 
 #[test]
-fn cpu_exact_memory_record_rejects_entry_config_and_return_drift() {
+fn cpu_task6_exact_memory_record_rejects_entry_config_and_return_drift() {
     let baseline = task6_exact_memory_record_for_test("baseline");
     for (field, mutate) in [
         ("backward.start.physical_backing_bytes", 0usize),
@@ -1631,6 +1631,11 @@ struct Task8ExactMemoryRecord {
     main_tail_launch_count: usize,
     legacy_layer_count: usize,
     legacy_round_count: usize,
+    dimension_reducing_layer_count: usize,
+    dr_prepared_layer_count: usize,
+    dr_prepared_bundle_final_log: Option<u32>,
+    dr_plan_identity: Option<serde_json::Value>,
+    dr_work: serde_json::Value,
     operation_trace: Vec<crate::proof::MainAcceptanceOperation>,
     runtime_operation_census: Task8RuntimeOperationCensus,
 }
@@ -1673,10 +1678,10 @@ fn compare_task8_exact_memory(
     baseline: &Task8ExactMemoryRecord,
     new: &Task8ExactMemoryRecord,
 ) -> Result<(), String> {
-    if baseline.schema_version != 2 || new.schema_version != 2 {
+    if baseline.schema_version != 3 || new.schema_version != 3 {
         return Err("Task 8 row has an unsupported schema version".to_owned());
     }
-    if baseline.harness_contract != "main-integrated-production-vs-whole-legacy-v1"
+    if baseline.harness_contract != "main-dr-integrated-production-vs-whole-legacy-v1"
         || new.harness_contract != baseline.harness_contract
     {
         return Err("Task 8 integrated harness contract differs".to_owned());
@@ -1691,6 +1696,18 @@ fn compare_task8_exact_memory(
         || !new
             .backward_options
             .contains("windowed_main_continuations: true")
+        || !baseline
+            .backward_options
+            .contains("dr_tail_megakernel: false")
+        || !baseline.backward_options.contains("windowed_dr: false")
+        || !baseline
+            .backward_options
+            .contains("windowed_dr_continuations: false")
+        || !new.backward_options.contains("dr_tail_megakernel: true")
+        || !new.backward_options.contains("windowed_dr: true")
+        || !new
+            .backward_options
+            .contains("windowed_dr_continuations: true")
     {
         return Err("Task 8 paired rows have invalid arm/options labels".to_owned());
     }
@@ -1727,6 +1744,7 @@ fn compare_task8_exact_memory(
     {
         return Err("Task 8 paired rows have invalid MAIN layer coverage".to_owned());
     }
+    validate_task8_joined_dr_work(baseline, new)?;
     if baseline.artifact_head != new.artifact_head
         || baseline.artifact_tree != new.artifact_tree
         || baseline.release_executable != new.release_executable
@@ -1847,6 +1865,123 @@ fn compare_task8_exact_memory(
 }
 
 #[cfg(feature = "task8_continuation_differential_test")]
+fn validate_task8_joined_dr_work(
+    baseline: &Task8ExactMemoryRecord,
+    new: &Task8ExactMemoryRecord,
+) -> Result<(), String> {
+    if baseline.dimension_reducing_layer_count == 0
+        || baseline.dimension_reducing_layer_count != new.dimension_reducing_layer_count
+        || baseline.dr_prepared_layer_count != 0
+        || baseline.dr_prepared_bundle_final_log.is_some()
+        || baseline.dr_plan_identity.is_some()
+        || new.dr_prepared_layer_count != new.dimension_reducing_layer_count
+        || new.dr_prepared_bundle_final_log != Some(new.final_trace_size_log_2)
+    {
+        return Err("Task 8 paired rows have invalid DR admission/coverage identity".to_owned());
+    }
+    let baseline_work = baseline
+        .dr_work
+        .as_array()
+        .ok_or_else(|| "Task 8 legacy DR work is not an array".to_owned())?;
+    let new_work = new
+        .dr_work
+        .as_array()
+        .ok_or_else(|| "Task 8 production DR work is not an array".to_owned())?;
+    if baseline_work.len() != baseline.dimension_reducing_layer_count
+        || new_work.len() != new.dimension_reducing_layer_count
+    {
+        return Err("Task 8 DR work count differs from scheduled layer count".to_owned());
+    }
+    let identity = new
+        .dr_plan_identity
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "Task 8 production DR plan identity is absent".to_owned())?;
+    if identity
+        .get("admitted")
+        .and_then(serde_json::Value::as_bool)
+        != Some(true)
+        || identity.get("entry").and_then(serde_json::Value::as_str) != Some("portable")
+    {
+        return Err("Task 8 production DR plan is not the admitted portable plan".to_owned());
+    }
+    let planned_layers = identity
+        .get("layers")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "Task 8 production DR plan layers are absent".to_owned())?;
+    if planned_layers.len() != new_work.len() {
+        return Err("Task 8 admitted and scheduled DR layer counts differ".to_owned());
+    }
+    for (coordinate, ((legacy, production), planned)) in baseline_work
+        .iter()
+        .zip(new_work)
+        .zip(planned_layers)
+        .enumerate()
+    {
+        let field = |value: &serde_json::Value, name: &str| value.get(name).cloned();
+        for name in [
+            "coordinate",
+            "kind",
+            "layer_idx",
+            "folding_steps",
+            "canonical_source_count",
+        ] {
+            if field(legacy, name) != field(production, name) {
+                return Err(format!(
+                    "Task 8 DR coordinate {coordinate} changes {name} between arms"
+                ));
+            }
+        }
+        if legacy.get("executor").and_then(serde_json::Value::as_str) != Some("per_round")
+            || legacy.get("entry_round") != Some(&serde_json::Value::Null)
+            || production
+                .get("executor")
+                .and_then(serde_json::Value::as_str)
+                != Some("mega_dr")
+        {
+            return Err(format!(
+                "Task 8 DR coordinate {coordinate} did not execute legacy/production paths"
+            ));
+        }
+        let entry = production
+            .get("entry_round")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| format!("Task 8 DR coordinate {coordinate} has no entry round"))?;
+        if planned
+            .get("entry_round")
+            .and_then(serde_json::Value::as_u64)
+            != Some(entry)
+            || planned.get("layer_idx") != production.get("layer_idx")
+            || planned.get("folding_steps") != production.get("folding_steps")
+            || planned
+                .get("canonical_sources")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::len)
+                != production
+                    .get("canonical_source_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|count| count as usize)
+        {
+            return Err(format!(
+                "Task 8 DR coordinate {coordinate} differs from its admitted plan"
+            ));
+        }
+        for (arm, work) in [("legacy", legacy), ("production", production)] {
+            if work
+                .get("segments")
+                .and_then(serde_json::Value::as_array)
+                .is_none_or(Vec::is_empty)
+            {
+                return Err(format!(
+                    "Task 8 {arm} DR coordinate {coordinate} has empty scheduled work"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
 fn expected_task8_operation_trace() -> Vec<crate::proof::MainAcceptanceOperation> {
     vec![
         crate::proof::MainAcceptanceOperation::InitialInputsTransferEnsured,
@@ -1891,8 +2026,8 @@ fn equal_task8_memory_record() -> Task8ExactMemoryRecord {
         return_logical_live_bytes: 90,
     };
     Task8ExactMemoryRecord {
-        schema_version: 2,
-        harness_contract: "main-integrated-production-vs-whole-legacy-v1".to_owned(),
+        schema_version: 3,
+        harness_contract: "main-dr-integrated-production-vs-whole-legacy-v1".to_owned(),
         artifact_head: "head".to_owned(),
         artifact_tree: "tree".to_owned(),
         release_executable: "/durable/test-binary".to_owned(),
@@ -1901,9 +2036,7 @@ fn equal_task8_memory_record() -> Task8ExactMemoryRecord {
         pair_index: 0,
         order_in_pair: 0,
         arm: "legacy".to_owned(),
-        backward_options:
-            "GkrBackwardOptions { windowed_r0: false, windowed_main_continuations: false }"
-                .to_owned(),
+        backward_options: "GkrBackwardOptions { dr_tail_megakernel: false, windowed_r0: false, windowed_main_continuations: false, windowed_dr: false, windowed_dr_continuations: false }".to_owned(),
         final_trace_size_log_2: 24,
         configuration: Task8AllocatorConfiguration {
             powers_of_w_coarse_log_count: 13,
@@ -1932,6 +2065,20 @@ fn equal_task8_memory_record() -> Task8ExactMemoryRecord {
         main_tail_launch_count: 0,
         legacy_layer_count: 1,
         legacy_round_count: 23,
+        dimension_reducing_layer_count: 1,
+        dr_prepared_layer_count: 0,
+        dr_prepared_bundle_final_log: None,
+        dr_plan_identity: None,
+        dr_work: serde_json::json!([{
+            "coordinate": 0,
+            "kind": "dim_reducing",
+            "layer_idx": 4,
+            "folding_steps": 23,
+            "canonical_source_count": 1,
+            "executor": "per_round",
+            "entry_round": null,
+            "segments": ["legacy_round_0"],
+        }]),
         operation_trace: expected_task8_operation_trace(),
         runtime_operation_census: Task8RuntimeOperationCensus {
             initial_input_h2d: 1,
@@ -1952,14 +2099,35 @@ fn paired_new_task8_memory_record() -> Task8ExactMemoryRecord {
     record.arm = "production".to_owned();
     record.sample_index = 1;
     record.order_in_pair = 1;
-    record.backward_options =
-        "GkrBackwardOptions { windowed_r0: true, windowed_main_continuations: true }".to_owned();
+    record.backward_options = "GkrBackwardOptions { dr_tail_megakernel: true, windowed_r0: true, windowed_main_continuations: true, windowed_dr: true, windowed_dr_continuations: true }".to_owned();
     record.selected_strategy = "WindowedR0".to_owned();
     record.main_r0_launch_count = 1;
     record.main_continuation_planned_window_count = 1;
     record.main_tail_launch_count = 1;
     record.legacy_layer_count = 0;
     record.legacy_round_count = 0;
+    record.dr_prepared_layer_count = 1;
+    record.dr_prepared_bundle_final_log = Some(24);
+    record.dr_plan_identity = Some(serde_json::json!({
+        "admitted": true,
+        "entry": "portable",
+        "layers": [{
+            "layer_idx": 4,
+            "folding_steps": 23,
+            "canonical_sources": ["GKRAddress(0)"],
+            "entry_round": 15,
+        }],
+    }));
+    record.dr_work = serde_json::json!([{
+        "coordinate": 0,
+        "kind": "dim_reducing",
+        "layer_idx": 4,
+        "folding_steps": 23,
+        "canonical_source_count": 1,
+        "executor": "mega_dr",
+        "entry_round": 15,
+        "segments": ["r0", "continuation_0", "mega_tail"],
+    }]);
     record
 }
 
@@ -2023,11 +2191,47 @@ fn cpu_integrated_comparator_rejects_trace_and_coverage_mutations() {
         .unwrap_err()
         .contains("planned work counts"));
 
-    let mut mutated = production;
+    let mut mutated = production.clone();
     mutated.main_tail_launch_count = 0;
     assert!(compare_task8_exact_memory(&baseline, &mutated)
         .unwrap_err()
         .contains("planned work counts"));
+
+    let mutation = |mut record: Task8ExactMemoryRecord,
+                    mutate: &dyn Fn(&mut Task8ExactMemoryRecord)| {
+        mutate(&mut record);
+        compare_task8_exact_memory(&baseline, &record).unwrap_err()
+    };
+    let error = mutation(production.clone(), &|row| {
+        row.dr_work[0]["executor"] = serde_json::json!("per_round");
+    });
+    assert!(
+        error.contains("did not execute legacy/production paths"),
+        "{error}"
+    );
+    let error = mutation(production.clone(), &|row| {
+        row.dr_work[0]["entry_round"] = serde_json::json!(12);
+    });
+    assert!(error.contains("differs from its admitted plan"), "{error}");
+    let error = mutation(production.clone(), &|row| {
+        row.dr_prepared_layer_count = 0;
+    });
+    assert!(error.contains("DR admission/coverage identity"), "{error}");
+    let error = mutation(production.clone(), &|row| {
+        row.dr_plan_identity = None;
+    });
+    assert!(
+        error.contains("production DR plan identity is absent"),
+        "{error}"
+    );
+
+    let mut legacy_mutated = baseline.clone();
+    legacy_mutated.dr_work[0]["segments"] = serde_json::json!([]);
+    let error = compare_task8_exact_memory(&legacy_mutated, &production).unwrap_err();
+    assert!(
+        error.contains("legacy DR coordinate 0 has empty scheduled work"),
+        "{error}"
+    );
 }
 
 #[cfg(feature = "task8_continuation_differential_test")]
@@ -3441,8 +3645,11 @@ impl Task8IntegratedArm {
                 ..GkrBackwardOptions::default()
             },
             Self::Production => GkrBackwardOptions {
+                dr_tail_megakernel: true,
                 windowed_r0: true,
                 windowed_main_continuations: true,
+                windowed_dr: true,
+                windowed_dr_continuations: true,
                 ..GkrBackwardOptions::default()
             },
         }
@@ -3583,8 +3790,8 @@ fn task8_run_integrated_sample(
             .unwrap() as usize;
     let production = arm == Task8IntegratedArm::Production;
     let record = Task8ExactMemoryRecord {
-        schema_version: 2,
-        harness_contract: "main-integrated-production-vs-whole-legacy-v1".to_owned(),
+        schema_version: 3,
+        harness_contract: "main-dr-integrated-production-vs-whole-legacy-v1".to_owned(),
         artifact_head: binding.artifact_head.clone(),
         artifact_tree: binding.artifact_tree.clone(),
         release_executable: binding.release_executable.clone(),
@@ -3609,6 +3816,11 @@ fn task8_run_integrated_sample(
         main_tail_launch_count: usize::from(production) * main_layer_count,
         legacy_layer_count: usize::from(!production) * main_layer_count,
         legacy_round_count: usize::from(!production) * main_layer_count * main_folding_steps,
+        dimension_reducing_layer_count: output.dimension_reducing_layer_count,
+        dr_prepared_layer_count: output.dr_prepared_layer_count,
+        dr_prepared_bundle_final_log: output.dr_prepared_bundle_final_log,
+        dr_plan_identity: output.dr_plan_identity,
+        dr_work: output.dr_work,
         operation_trace: output.operations,
         runtime_operation_census: Task8RuntimeOperationCensus {
             initial_input_h2d: 1,
@@ -3624,10 +3836,10 @@ fn task8_run_integrated_sample(
     (record, proof_bytes)
 }
 
-/// Production-shaped, same-binary MAIN acceptance harness.
+/// Production-shaped, same-binary joined MAIN+DR acceptance harness.
 ///
 /// This selector is intentionally ignored and may run only through the frozen
-/// packet. It performs two excluded warmups (legacy then production) followed
+/// packet. It performs two excluded warmups (whole legacy then joined production) followed
 /// by six counterbalanced pairs (`A,B,B,A` repeated three times) for every one
 /// of the twelve production fixture families.
 #[cfg(all(feature = "task8_continuation_differential_test", not(no_cuda)))]
