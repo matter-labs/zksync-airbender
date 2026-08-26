@@ -84,32 +84,33 @@ DEVICE_FORCEINLINE e4 bwd_main_cont_fold_output(const bwd_main_cont_window_desc 
   return bwd_main_cont_fold_bf_packet(leaves);
 }
 
-// Every lane publishes the eight Boolean corners for one suffix row. The input
-// indices are `(row << 6) + (corner << 3) + q`: corner carries the three window
-// coordinates and q carries the preceding delta-3 fold coordinates.
-DEVICE_FORCEINLINE void bwd_main_cont_fold_source(const bwd_main_cont_window_desc &desc, const u16 source_id, const u32 row, const bool active) {
+// Four adjacent lanes cooperatively publish one suffix row. Each lane owns one
+// aligned pair of Boolean corners, so the canonical row-major arena remains
+// unchanged while the fold's live state is two E4 values instead of eight.
+// Input indices are `(row << 6) + (corner << 3) + q`: corner carries the three
+// window coordinates and q carries the preceding delta-3 fold coordinates.
+DEVICE_FORCEINLINE void bwd_main_cont_fold_source_pair(const bwd_main_cont_window_desc &desc, const u16 source_id, const u32 row, const bool active,
+                                                       const u32 corner_pair) {
   const bwd_main_cont_window_source_record record = desc.source[source_id];
   const bwd_seg_addr_slot &input_slot = desc.slot[bwd_main_cont_window_lane_slot(record.src)];
-  e4 outputs[8];
+  e4 outputs[2];
 #pragma unroll
-  for (u32 corner = 0; corner < 8; corner++)
-    outputs[corner] = bwd_main_cont_fold_output(desc, record, input_slot, (row << 3) + corner);
+  for (u32 offset = 0; offset < 2; offset++)
+    outputs[offset] = bwd_main_cont_fold_output(desc, record, input_slot, (row << 3) + 2 * corner_pair + offset);
 
   if (!active)
     return;
-  e4 *publish = bwd_main_cont_window_column_mut(desc, record.publish) + (row << 3);
-#pragma unroll
-  for (u32 pair = 0; pair < 4; pair++) {
-    const bwd_main_cont_e4_pair values{{outputs[2 * pair], outputs[2 * pair + 1]}};
-    store<bwd_main_cont_e4_pair, st_modifier::wb>(reinterpret_cast<bwd_main_cont_e4_pair *>(publish) + pair, values);
-  }
+  e4 *publish = bwd_main_cont_window_column_mut(desc, record.publish) + (row << 3) + 2 * corner_pair;
+  const bwd_main_cont_e4_pair values{{outputs[0], outputs[1]}};
+  store<bwd_main_cont_e4_pair, st_modifier::wb>(reinterpret_cast<bwd_main_cont_e4_pair *>(publish), values);
 }
 
-DEVICE_FORCEINLINE void bwd_main_cont_fold_prologue(const bwd_main_cont_window_desc &desc, const u32 warp_id, const u32 row, const bool active) {
+DEVICE_FORCEINLINE void bwd_main_cont_fold_prologue_pair(const bwd_main_cont_window_desc &desc, const u32 warp_id, const u32 row, const bool active,
+                                                         const u32 corner_pair) {
   const u32 begin = desc.fold_list_offsets[warp_id];
   const u32 end = desc.fold_list_offsets[warp_id + 1];
   for (u32 position = begin; position < end; position++)
-    bwd_main_cont_fold_source(desc, desc.fold_sources[position], row, active);
+    bwd_main_cont_fold_source_pair(desc, desc.fold_sources[position], row, active, corner_pair);
 }
 
 } // namespace airbender::gkr::backward

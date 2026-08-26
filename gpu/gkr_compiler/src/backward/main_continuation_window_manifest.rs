@@ -16,16 +16,18 @@ use super::main_continuation_window::{
 
 /// `(compiled shape mask, minimum blocks per SM)`, sorted by mask.
 ///
-/// Bounds begin conservatively at one. They are updated only after the ruled
-/// linked-image launch-bound sweep proves a stronger bound spill-free.
+/// The three-selector block partition admits four resident blocks at the
+/// existing 148-register per-thread budget. The bound is kept explicit so a
+/// later block-shape change cannot silently inflate registers and erase that
+/// occupancy.
 pub const MAIN_CONTINUATION_WINDOW_KERNEL_BANK: [(u16, u32); 7] = [
-    (0x00, 1),
-    (0x01, 1),
-    (0x03, 1),
-    (0x07, 1),
-    (0x13, 1),
-    (0x17, 1),
-    (0x1f, 1),
+    (0x00, 4),
+    (0x01, 4),
+    (0x03, 4),
+    (0x07, 4),
+    (0x13, 4),
+    (0x17, 4),
+    (0x1f, 4),
 ];
 
 /// Universal executor used for well-formed masks absent from the exact bank.
@@ -33,7 +35,7 @@ pub const MAIN_CONTINUATION_WINDOW_FALLBACK_MASK: u16 = MAIN_CONTINUATION_WINDOW
 /// Number of generated continuation-window entry points.
 pub const MAIN_CONTINUATION_WINDOW_KERNEL_COUNT: usize = 7;
 /// Threads per block for every continuation-window kernel.
-pub const MAIN_CONTINUATION_WINDOW_BLOCK_THREADS: u32 = 288;
+pub const MAIN_CONTINUATION_WINDOW_BLOCK_THREADS: u32 = 96;
 
 const EXPECTED_MASKS: [u16; MAIN_CONTINUATION_WINDOW_KERNEL_COUNT] =
     [0x00, 0x01, 0x03, 0x07, 0x13, 0x17, 0x1f];
@@ -127,6 +129,14 @@ pub fn main_continuation_window_kernel_symbol(mask: u16, min_blocks: u32) -> Str
     format!("ab_gkr_bwd_main_cont_window3_shape_{mask:02x}_b{min_blocks}_kernel")
 }
 
+pub fn main_continuation_window_x01_kernel_symbol(mask: u16, min_blocks: u32) -> String {
+    format!("ab_gkr_bwd_main_cont_window3_shape_{mask:02x}_b{min_blocks}_x01_kernel")
+}
+
+pub fn main_continuation_window_publication_kernel_symbol(mask: u16, min_blocks: u32) -> String {
+    format!("ab_gkr_bwd_main_cont_window3_shape_{mask:02x}_b{min_blocks}_publish_kernel")
+}
+
 pub fn main_continuation_window_translation_unit_name(mask: u16) -> String {
     format!("main_continuation_window_shape_{mask:02x}.cu")
 }
@@ -180,6 +190,8 @@ pub fn render_main_continuation_window_manifest(bank: &[(u16, u32)]) -> String {
 
 pub fn render_main_continuation_window_translation_unit(mask: u16, min_blocks: u32) -> String {
     let symbol = main_continuation_window_kernel_symbol(mask, min_blocks);
+    let x01_symbol = main_continuation_window_x01_kernel_symbol(mask, min_blocks);
+    let publication_symbol = main_continuation_window_publication_kernel_symbol(mask, min_blocks);
     format!(
         "{GENERATED_HEADER}\n\
          #include \"../executor.cuh\"\n\
@@ -187,7 +199,9 @@ pub fn render_main_continuation_window_translation_unit(mask: u16, min_blocks: u
          \n\
          namespace airbender::gkr::backward {{\n\
          \n\
+         AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_PUBLICATION_KERNEL({publication_symbol});\n\
          AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_KERNEL({symbol}, {mask:#04x}, {min_blocks});\n\
+         AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_KERNEL({x01_symbol}, {mask:#04x}, {min_blocks});\n\
          \n\
          static_assert(BWD_MAIN_CONTINUATION_WINDOW_KERNEL_COUNT == {MAIN_CONTINUATION_WINDOW_KERNEL_COUNT}, \"shape_{mask:02x} continuation-window manifest drift\");\n\
          \n\
@@ -228,13 +242,25 @@ pub fn render_main_continuation_window_registry(bank: &[(u16, u32)]) -> String {
     out.push_str("pub(crate) struct MainContinuationWindowKernelEntry {\n");
     out.push_str("    pub mask: u16,\n");
     out.push_str("    pub min_blocks: u32,\n");
+    out.push_str("    pub publication_symbol_name: &'static str,\n");
+    out.push_str("    pub publication_symbol: GkrBwdMainContinuationWindow3Signature,\n");
     out.push_str("    pub symbol_name: &'static str,\n");
     out.push_str("    pub symbol: GkrBwdMainContinuationWindow3Signature,\n");
+    out.push_str("    pub x01_symbol_name: &'static str,\n");
+    out.push_str("    pub x01_symbol: GkrBwdMainContinuationWindow3Signature,\n");
     out.push_str("}\n\n");
     for &(mask, min_blocks) in bank {
         out.push_str(&format!(
             "cuda_kernel_declaration!(\n    pub(crate) {}(desc: MainContinuationWindowLaunchBinding)\n);\n",
             main_continuation_window_kernel_symbol(mask, min_blocks)
+        ));
+        out.push_str(&format!(
+            "cuda_kernel_declaration!(\n    pub(crate) {}(desc: MainContinuationWindowLaunchBinding)\n);\n",
+            main_continuation_window_publication_kernel_symbol(mask, min_blocks)
+        ));
+        out.push_str(&format!(
+            "cuda_kernel_declaration!(\n    pub(crate) {}(desc: MainContinuationWindowLaunchBinding)\n);\n",
+            main_continuation_window_x01_kernel_symbol(mask, min_blocks)
         ));
     }
     out.push('\n');
@@ -244,11 +270,22 @@ pub fn render_main_continuation_window_registry(bank: &[(u16, u32)]) -> String {
     ));
     for &(mask, min_blocks) in bank {
         let symbol = main_continuation_window_kernel_symbol(mask, min_blocks);
+        let x01_symbol = main_continuation_window_x01_kernel_symbol(mask, min_blocks);
+        let publication_symbol =
+            main_continuation_window_publication_kernel_symbol(mask, min_blocks);
         out.push_str("    MainContinuationWindowKernelEntry {\n");
         out.push_str(&format!("        mask: {mask:#04x},\n"));
         out.push_str(&format!("        min_blocks: {min_blocks},\n"));
+        out.push_str(&format!(
+            "        publication_symbol_name: \"{publication_symbol}\",\n"
+        ));
+        out.push_str(&format!(
+            "        publication_symbol: {publication_symbol},\n"
+        ));
         out.push_str(&format!("        symbol_name: \"{symbol}\",\n"));
         out.push_str(&format!("        symbol: {symbol},\n"));
+        out.push_str(&format!("        x01_symbol_name: \"{x01_symbol}\",\n"));
+        out.push_str(&format!("        x01_symbol: {x01_symbol},\n"));
         out.push_str("    },\n");
     }
     out.push_str("];\n");
@@ -291,13 +328,13 @@ mod tests {
     use super::*;
 
     const RULED_BANK: [(u16, u32); 7] = [
-        (0x00, 1),
-        (0x01, 1),
-        (0x03, 1),
-        (0x07, 1),
-        (0x13, 1),
-        (0x17, 1),
-        (0x1f, 1),
+        (0x00, 4),
+        (0x01, 4),
+        (0x03, 4),
+        (0x07, 4),
+        (0x13, 4),
+        (0x17, 4),
+        (0x1f, 4),
     ];
 
     #[test]
@@ -321,7 +358,7 @@ mod tests {
                 .iter()
                 .copied()
                 .find(|row| row.0 == mask)
-                .unwrap_or((MAIN_CONTINUATION_WINDOW_FALLBACK_MASK, 1));
+                .unwrap_or((MAIN_CONTINUATION_WINDOW_FALLBACK_MASK, 4));
             assert_eq!(
                 resolve_main_continuation_window_kernel(mask).unwrap(),
                 expected
@@ -385,6 +422,7 @@ mod tests {
         assert!(artifacts.iter().any(|(path, contents)| {
             path.ends_with("main_continuation_window_shape_00.cu")
                 && contents.contains("ab_gkr_bwd_main_cont_window3_shape_00_b4_kernel")
+                && contents.contains("ab_gkr_bwd_main_cont_window3_shape_00_b4_publish_kernel")
         }));
         let registry = artifacts
             .iter()
@@ -392,6 +430,9 @@ mod tests {
             .unwrap();
         assert!(registry.1.contains("(0x00, 4)"));
         assert!(registry.1.contains("(0x1f, 2)"));
+        assert!(registry
+            .1
+            .contains("ab_gkr_bwd_main_cont_window3_shape_00_b4_publish_kernel"));
     }
 
     #[test]
