@@ -3,8 +3,16 @@
 //! partition total cycles. No i&t dim: always 1 on unrolled recursion layers,
 //! inline on unified.
 //!
-//! Sec80 guests only. Regenerate via `emit_census_tables` when a guest
-//! changes. blake2 g-function is unpriced → `UnpricedCircuit`.
+//! The committed table is calibrated for the Sec100 Compression verifier
+//! programs. Regenerate it locally via `emit_census_tables` when a guest
+//! changes; see that test for fixture generation. blake2 g-function is
+//! unpriced → `UnpricedCircuit`.
+//!
+//! `CENSUS_TABLES` is currently keyed by `(FsvProgram, BlakeMode)`, not
+//! `SecurityLevel`, because every active `FsvProgram` resolves to the sole
+//! Sec100 verifier set. Adding another security level requires extending the
+//! estimator key and calibrating a separate table; Sec100 coefficients must not
+//! be reused for it.
 
 use super::{proof_counts, CircuitId, EstimateError};
 use crate::program_proof::ProgramProof;
@@ -103,43 +111,43 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
         FsvProgram::UnrolledBaseLayer,
         BlakeMode::Compression,
         CensusTable {
-            c0: [454009, 56003, 32149, 0, 287238, 0, 25746, 0, 0, 0],
+            c0: [565278, 70809, 42335, 0, 330374, 0, 32872, 0, 0, 0],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [522423, 59420, 36769, 0, 218194, 0, 43645, 0, 0, 0],
+                    [637992, 77394, 48384, 0, 267897, 0, 57484, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [536122, 60337, 37061, 0, 226872, 0, 44555, 0, 0, 0],
+                    [653666, 78524, 48657, 0, 277832, 0, 58730, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [543888, 61141, 37396, 0, 229454, 0, 44625, 0, 0, 0],
+                    [662737, 79347, 48950, 0, 281888, 0, 58800, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(4),
-                    [535569, 60406, 38577, 0, 225300, 0, 44170, 0, 0, 0],
+                    [651119, 78484, 50225, 0, 274923, 0, 58177, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [514011, 58893, 37056, 0, 218622, 0, 43652, 0, 0, 0],
+                    [626727, 76766, 48652, 0, 267016, 0, 57491, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(17),
-                    [524806, 59571, 37260, 0, 222573, 0, 44121, 0, 0, 0],
+                    [639292, 77496, 48985, 0, 272097, 0, 58128, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1517337, 129358, 46803, 0, 635083, 0, 83475, 0, 0, 0],
+                    [1919497, 164176, 57240, 0, 799263, 0, 111489, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1994),
-                    [811680, 74387, 41698, 0, 335707, 0, 51688, 0, 0, 0],
+                    [1006439, 95029, 52310, 0, 414521, 0, 68432, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1995),
-                    [797932, 73985, 40196, 0, 328734, 0, 51170, 0, 0, 0],
+                    [996938, 94891, 50844, 0, 408702, 0, 67914, 0, 0, 0],
                 ),
             ],
         },
@@ -148,35 +156,35 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
         FsvProgram::UnrolledRecursionLayer,
         BlakeMode::Compression,
         CensusTable {
-            c0: [451345, 55433, 31734, 0, 278849, 0, 25620, 0, 0, 0],
+            c0: [563484, 70945, 41716, 0, 322001, 0, 32746, 0, 0, 0],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [522423, 59420, 36769, 0, 218194, 0, 43645, 0, 0, 0],
+                    [637992, 77394, 48384, 0, 267897, 0, 57484, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [536122, 60337, 37061, 0, 226872, 0, 44555, 0, 0, 0],
+                    [653666, 78524, 48657, 0, 277832, 0, 58730, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [543888, 61141, 37396, 0, 229454, 0, 44625, 0, 0, 0],
+                    [662737, 79347, 48950, 0, 281888, 0, 58800, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [514011, 58893, 37056, 0, 218622, 0, 43652, 0, 0, 0],
+                    [626727, 76766, 48652, 0, 267016, 0, 57491, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1517337, 129358, 46803, 0, 635083, 0, 83475, 0, 0, 0],
+                    [1919497, 164176, 57240, 0, 799263, 0, 111489, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1994),
-                    [811680, 74387, 41698, 0, 335707, 0, 51688, 0, 0, 0],
+                    [1006439, 95029, 52310, 0, 414521, 0, 68432, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1995),
-                    [797932, 73985, 40196, 0, 328734, 0, 51170, 0, 0, 0],
+                    [996938, 94891, 50844, 0, 408702, 0, 67914, 0, 0, 0],
                 ),
             ],
         },

@@ -50,7 +50,7 @@ done
 
 case "$SEC" in
     100) ;;
-    *) echo "ERROR: --sec must be 100 (the 80-bit mode was removed; got '$SEC')" >&2; exit 1 ;;
+    *) echo "ERROR: --sec currently supports only 100 (got '$SEC')" >&2; exit 1 ;;
 esac
 
 # Remaining args are circuits, or default to all (filtered by --sec).

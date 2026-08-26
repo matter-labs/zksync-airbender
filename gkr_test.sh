@@ -140,7 +140,7 @@ Options:
   --variant V           caches (default) | no_caches
   --encoding ENC        coeff (default) | eval (WHIR leaf encoding)
                         Forwarded as the eval_leaves feature to prover + generator.
-  --security-level L    100 (the only supported level; flag kept for compatibility)
+  --security-level L    Security level (currently: 100)
   --prove-empty         Prove every applicable circuit even if program made 0 calls.
                         Forwarded via GKR_PROVE_EMPTY.
   --no-self-checks      Disable in-prove sumcheck/cache/at-point-eval checks.
@@ -386,7 +386,7 @@ esac
 
 case "$SECURITY_LEVEL" in
   100) ;;
-  *) die "--security-level must be 100 (the 80-bit mode was removed). Got: $SECURITY_LEVEL" ;;
+  *) die "--security-level currently supports only 100. Got: $SECURITY_LEVEL" ;;
 esac
 
 if [[ ${#SELECTED_CIRCUITS[@]} -gt 0 ]]; then

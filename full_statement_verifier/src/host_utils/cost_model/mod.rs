@@ -133,7 +133,7 @@ mod order_tests {
     #[test]
     fn base_layer_riscv_order_matches_verifier_list() {
         let actual: Vec<u32> =
-            crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_80::<I, E>(
+            crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<I, E>(
             )
             .iter()
             .map(|(k, _)| *k)
@@ -147,7 +147,7 @@ mod order_tests {
     #[test]
     fn recursion_layer_riscv_order_matches_verifier_list() {
         let actual: Vec<u32> =
-            crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_recursion_layer_sec_80::<
+            crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_recursion_layer_sec_100::<
                 I,
                 E,
             >()
@@ -162,12 +162,12 @@ mod order_tests {
 
     #[test]
     fn delegation_order_matches_verifier_functions() {
-        let actual = crate::delegation_params::all_delegation_circuit_verifiers_sec_80::<I, E>();
+        let actual = crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>();
         let expected: [DelegVerifier; 4] = [
-            imports::blake2_with_extended_control_sec_80::verify::<I, E>,
-            imports::bigint_with_extended_control_sec_80::verify::<I, E>,
-            imports::keccak_special5_sec_80::verify::<I, E>,
-            imports::blake2_g_function_sec_80::verify::<I, E>,
+            imports::blake2_with_extended_control_sec_100::verify::<I, E>,
+            imports::bigint_with_extended_control_sec_100::verify::<I, E>,
+            imports::keccak_special5_sec_100::verify::<I, E>,
+            imports::blake2_g_function_sec_100::verify::<I, E>,
         ];
         for (i, (a, b)) in actual.iter().zip(expected.iter()).enumerate() {
             assert_eq!(
