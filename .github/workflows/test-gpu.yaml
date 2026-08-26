@@ -51,6 +51,9 @@ jobs:
         run: |
           nvcc --version
 
+      - name: GPU test serialization drift guard
+        run: cargo +$RUST_TOOLCHAIN test -p gpu_core --release --target x86_64-unknown-linux-gnu cpu_nextest_config_covers_all_gpu_crates
+
       - name: Build CLI and GPU tests
         shell: bash
         run: |
