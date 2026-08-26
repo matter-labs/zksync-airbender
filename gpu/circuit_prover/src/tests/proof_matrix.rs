@@ -1912,12 +1912,19 @@ fn validate_task8_joined_dr_work(
     if planned_layers.len() != new_work.len() {
         return Err("Task 8 admitted and scheduled DR layer counts differ".to_owned());
     }
-    for (coordinate, ((legacy, production), planned)) in baseline_work
-        .iter()
-        .zip(new_work)
-        .zip(planned_layers)
-        .enumerate()
-    {
+    let mut planned_by_layer = std::collections::BTreeMap::new();
+    for planned in planned_layers {
+        let layer_idx = planned
+            .get("layer_idx")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| "Task 8 admitted DR plan has no absolute layer key".to_owned())?;
+        if planned_by_layer.insert(layer_idx, planned).is_some() {
+            return Err(format!(
+                "Task 8 admitted DR plan repeats absolute layer {layer_idx}"
+            ));
+        }
+    }
+    for (coordinate, (legacy, production)) in baseline_work.iter().zip(new_work).enumerate() {
         let field = |value: &serde_json::Value, name: &str| value.get(name).cloned();
         for name in [
             "coordinate",
@@ -1947,6 +1954,15 @@ fn validate_task8_joined_dr_work(
             .get("entry_round")
             .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| format!("Task 8 DR coordinate {coordinate} has no entry round"))?;
+        let layer_idx = production
+            .get("layer_idx")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| {
+                format!("Task 8 DR coordinate {coordinate} has no absolute layer key")
+            })?;
+        let planned = planned_by_layer.get(&layer_idx).ok_or_else(|| {
+            format!("Task 8 DR coordinate {coordinate} has no admitted absolute-layer plan")
+        })?;
         if planned
             .get("entry_round")
             .and_then(serde_json::Value::as_u64)
@@ -1979,6 +1995,62 @@ fn validate_task8_joined_dr_work(
         }
     }
     Ok(())
+}
+
+#[cfg(feature = "task8_continuation_differential_test")]
+#[test]
+fn cpu_integrated_dr_join_keys_admission_by_absolute_layer() {
+    let legacy_layer = |coordinate: usize, layer_idx: usize, folding_steps: usize| {
+        serde_json::json!({
+            "coordinate": coordinate,
+            "kind": "dim_reducing",
+            "layer_idx": layer_idx,
+            "folding_steps": folding_steps,
+            "canonical_source_count": 1,
+            "executor": "per_round",
+            "entry_round": null,
+            "segments": ["round0", "layer"],
+        })
+    };
+    let production_layer = |coordinate: usize, layer_idx: usize, folding_steps: usize| {
+        serde_json::json!({
+            "coordinate": coordinate,
+            "kind": "dim_reducing",
+            "layer_idx": layer_idx,
+            "folding_steps": folding_steps,
+            "canonical_source_count": 1,
+            "executor": "mega_dr",
+            "entry_round": 15,
+            "segments": ["window_r0", "megakernel", "layer"],
+        })
+    };
+    let planned_layer = |layer_idx: usize, folding_steps: usize| {
+        serde_json::json!({
+            "layer_idx": layer_idx,
+            "folding_steps": folding_steps,
+            "canonical_sources": ["GKRAddress(0)"],
+            "entry_round": 15,
+        })
+    };
+    let mut baseline = equal_task8_memory_record();
+    let mut production = paired_new_task8_memory_record();
+    baseline.dimension_reducing_layer_count = 2;
+    production.dimension_reducing_layer_count = 2;
+    production.dr_prepared_layer_count = 2;
+    baseline.dr_work = serde_json::json!([legacy_layer(0, 9, 23), legacy_layer(1, 4, 22),]);
+    production.dr_work =
+        serde_json::json!([production_layer(0, 9, 23), production_layer(1, 4, 22),]);
+    production.dr_plan_identity.as_mut().unwrap()["layers"] =
+        serde_json::json!([planned_layer(4, 22), planned_layer(9, 23),]);
+    compare_task8_exact_memory(&baseline, &production).unwrap();
+
+    production.dr_plan_identity.as_mut().unwrap()["layers"][1]["entry_round"] =
+        serde_json::json!(12);
+    let error = compare_task8_exact_memory(&baseline, &production).unwrap_err();
+    assert!(
+        error.contains("coordinate 0 differs from its admitted plan"),
+        "{error}"
+    );
 }
 
 #[cfg(feature = "task8_continuation_differential_test")]
