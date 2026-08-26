@@ -14,7 +14,7 @@ use gpu_core::primitives::device_structures::{
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::{
-    get_grid_block_dims_for_threads_count, GetChunksCount, WARP_SIZE,
+    GetChunksCount, WARP_SIZE, get_grid_block_dims_for_threads_count,
 };
 
 /// Number of passes for the multi-stage NTT kernels at a given `log_n`.
@@ -55,11 +55,13 @@ pub(crate) use forward::{monomials_to_evals_2_pass_smem, monomials_to_evals_3_pa
 #[cfg(test)]
 pub(crate) use inverse::{evals_to_monomials_2_pass, evals_to_monomials_3_pass};
 pub use lde::{
-    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_to_multi_coset_evals_fused,
+    MAX_LOG_N_FOR_SINGLE_KERNEL_LDE, bitreversed_monomials_to_natural_evals_multi_coset,
+    hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20,
+    hypercube_to_multi_coset_bitrev_evals_fused, hypercube_to_multi_coset_evals_fused,
     lde_with_coset_range, natural_monomials_to_bitreversed_evals_coset_range,
-    natural_monomials_to_bitreversed_evals_multi_coset, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
+    natural_monomials_to_bitreversed_evals_multi_coset,
 };
-pub(crate) use strategy::{select_ntt_strategy, NttDirection, NttKernelKind, NttStrategy};
+pub(crate) use strategy::{NttDirection, NttKernelKind, NttStrategy, select_ntt_strategy};
 
 mod hypercube;
 pub use hypercube::hypercube_evals_to_monomials;

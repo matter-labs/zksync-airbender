@@ -1,12 +1,12 @@
 use std::alloc::Global;
 
-use era_cudart::memory::{memory_copy_async, DeviceAllocation};
+use era_cudart::memory::{DeviceAllocation, memory_copy_async};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use worker::Worker;
 
 use super::{
-    hypercube_coeffs_to_evals, hypercube_evals_to_monomial_coeffs,
+    hypercube_coeffs_to_evals, hypercube_evals_to_monomial_coeffs, hypercube_evals_to_monomials,
     natural_evals_to_bitreversed_coeffs,
 };
 use crate::ntt_twiddles::DeviceContext;
@@ -117,6 +117,48 @@ fn hypercube_evals_to_monomial_coeffs_matches_cpu() {
         memory_copy_async(&mut actual, &dst, stream).unwrap();
         stream.synchronize().unwrap();
         assert_eq!(actual, expected, "log_n={}", log_n);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn hypercube_evals_to_monomials_two_pass_compact_range_matches_cpu() {
+    let context = make_context();
+    let stream = context.get_exec_stream();
+    for log_n in 13usize..=20 {
+        let n = 1usize << log_n;
+        let evals = (0..n)
+            .map(|idx| BF::new((17 + idx * 13) as u32))
+            .collect::<Vec<_>>();
+        let mut expected = evals.clone();
+        multivariate_hypercube_evals_into_coeffs(&mut expected, log_n as u32);
+
+        let mut src = context.alloc(n).unwrap();
+        let mut dst = context.alloc(n).unwrap();
+        memory_copy_async(&mut src, &evals, stream).unwrap();
+        hypercube_evals_to_monomials(
+            &src[..],
+            &mut dst[..],
+            log_n,
+            false,
+            stream,
+            context.get_device_properties(),
+        )
+        .unwrap();
+
+        let mut actual = vec![BF::ZERO; n];
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
+        if let Some((row, (actual, expected))) = actual
+            .iter()
+            .zip(expected.iter())
+            .enumerate()
+            .find(|(_, (actual, expected))| actual != expected)
+        {
+            panic!(
+                "log_n={log_n} first mismatch at row {row}: actual={actual:?}, expected={expected:?}"
+            );
+        }
     }
 }
 
@@ -1016,7 +1058,8 @@ mod host_oracle {
                 let base = coset_offset * cols_size + col * stride;
                 for k in 0..n {
                     assert_eq!(
-                        outputs_host[base + k], expected[k],
+                        outputs_host[base + k],
+                        expected[k],
                         "log_n={log_n}, log_lde_factor={log_lde_factor}, num_cosets={num_cosets}, coset_index_base={coset_index_base}, coset_offset={coset_offset}, col={col}, k={k}, seed={seed:#x}"
                     );
                 }
@@ -1591,8 +1634,8 @@ fn run_subwarp_vs_host_parity(
     num_cosets: usize,
     num_cols: usize,
 ) {
-    use super::forward::monomials_to_evals_subwarp;
     use super::OMEGA_LOG_ORDER;
+    use super::forward::monomials_to_evals_subwarp;
     use fft::precompute_twiddles_for_fft;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
     use std::alloc::Global;
@@ -1661,7 +1704,8 @@ fn run_subwarp_vs_host_parity(
             let base = coset_index * cols_size + col * stride;
             for k in 0..n {
                 assert_eq!(
-                    candidate_host[base + k], expected[k],
+                    candidate_host[base + k],
+                    expected[k],
                     "log_n={log_n}, log_ipb={log_instances_per_block}, num_cosets={num_cosets}, num_cols={num_cols}, coset={coset_index}, col={col}, k={k}"
                 );
             }
@@ -1768,14 +1812,15 @@ mod natural_to_bitrev {
         natural_monomials_to_bitrev_evals_3_pass,
     };
     use super::super::{
+        bitreversed_monomials_to_natural_evals_multi_coset,
         natural_monomials_to_bitreversed_evals_coset_range,
         natural_monomials_to_bitreversed_evals_multi_coset,
     };
     use super::helpers::transpose_monomials;
-    use super::{make_context, NttTestContext};
+    use super::{NttTestContext, make_context};
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use crate::upstream::{
-        bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,
+        Field, bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
     };
     use era_cudart::memory::memory_copy_async;
     use era_cudart::stream::CudaStream;
@@ -2129,6 +2174,90 @@ mod natural_to_bitrev {
             (shape(21, 2, 2, 2, 1, 1, true), 0xc2),
         ] {
             oracle_c_cpu_naive(shape, seed);
+        }
+    }
+
+    /// The fused natural boundary (hypercube coarse tail + monomial writeback
+    /// + coset scale + DIT initial in one launch, over the fine->coarse
+    /// pre-tail) must reproduce the unfused sequence bit-exactly: the
+    /// multi-coset LDE output AND the materialized natural monomials.
+    #[test]
+    fn natural_fused_boundary_matches_unfused() {
+        use super::super::{
+            hypercube_evals_to_monomials, hypercube_to_multi_coset_bitrev_evals_fused,
+        };
+        for (sh, seed) in [
+            (shape(21, 1, 2, 0, 1, 1, false), 0xf1),
+            (shape(21, 2, 4, 0, 2, 3, false), 0xf2),
+        ] {
+            let context = make_context();
+            let stream = context.get_exec_stream();
+            let n = sh.n();
+            let logical = random_columns(&sh, seed);
+            let inputs_host = layout_columns(&logical, false);
+            let mut inputs_device = context.alloc(inputs_host.len()).unwrap();
+            memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+
+            // Unfused reference: full hypercube iNTT, then the natural LDE.
+            let mut ref_monomials_device = context.alloc(sh.num_cols * n).unwrap();
+            let mut ref_outputs_device = context.alloc(sh.output_len()).unwrap();
+            {
+                let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+                let mut monomials_matrix =
+                    DeviceMatrixChunkMut::new(&mut ref_monomials_device[..], n, 0, n);
+                hypercube_evals_to_monomials(
+                    &inputs_matrix,
+                    &mut monomials_matrix,
+                    sh.log_n,
+                    false,
+                    stream,
+                    context.get_device_properties(),
+                )
+                .unwrap();
+                let monomials_matrix = DeviceMatrixChunk::new(&ref_monomials_device[..], n, 0, n);
+                natural_monomials_to_bitreversed_evals_multi_coset(
+                    &monomials_matrix,
+                    &mut ref_outputs_device[..],
+                    sh.log_n,
+                    sh.log_lde_factor,
+                    sh.stride_cols,
+                    false,
+                    context.device_context(),
+                    None,
+                    stream,
+                    context.get_device_properties(),
+                )
+                .unwrap();
+            }
+
+            // Fused arm (monomials are transient in the coset-0 slab; no scratch).
+            let mut fused_outputs_device = context.alloc(sh.output_len()).unwrap();
+            let fused = {
+                let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+                hypercube_to_multi_coset_bitrev_evals_fused(
+                    &inputs_matrix,
+                    &mut fused_outputs_device[..],
+                    sh.log_n,
+                    sh.log_lde_factor,
+                    sh.stride_cols,
+                    false,
+                    None,
+                    stream,
+                    context.get_device_properties(),
+                )
+                .unwrap()
+            };
+            assert!(
+                fused,
+                "shape {sh:?} must be eligible for the fused boundary"
+            );
+
+            let mut ref_outputs = vec![BF::ZERO; sh.output_len()];
+            let mut fused_outputs = vec![BF::ZERO; sh.output_len()];
+            memory_copy_async(&mut ref_outputs, &ref_outputs_device, stream).unwrap();
+            memory_copy_async(&mut fused_outputs, &fused_outputs_device, stream).unwrap();
+            stream.synchronize().unwrap();
+            compare_slices(&fused_outputs, &ref_outputs, "multi-coset LDE output");
         }
     }
 
