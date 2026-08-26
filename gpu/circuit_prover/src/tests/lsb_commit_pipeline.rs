@@ -4,19 +4,12 @@
 use super::*;
 
 use era_cudart::slice::DeviceSlice;
-use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_hash::blake2s::{
-    build_partial_merkle_tree_multi_coset_physical, gather_leaves_for_queries_physical,
-    gather_merkle_paths_full_for_queries, gather_merkle_paths_partial_for_queries_physical,
-    gather_tree_caps_inline, Digest, OracleGatherDesc, OraclePartialPathDesc, STATE_SIZE,
+    gather_leaves_for_queries_physical, gather_merkle_paths_full_for_queries,
+    gather_merkle_paths_partial_for_queries_physical, Digest, OracleGatherDesc,
+    OraclePartialPathDesc, STATE_SIZE,
 };
-use gpu_ntt::ntt::{
-    hypercube_evals_to_monomials, natural_monomials_to_bitreversed_evals_multi_coset,
-};
-use gpu_trace::trace::holder::{
-    build_full_trees_from_physical, TraceHolder, TreesCacheMode, TreesHolder,
-    PARTIAL_TREE_REDUCTION_LAYERS,
-};
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use prover::gkr::whir::ColumnMajorBaseOracleForLDE;
 
 const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 8usize << 30;
@@ -162,7 +155,6 @@ struct GpuResult {
     leaf_values: Vec<BF>,
     path_nodes: Vec<Digest>,
 }
-
 fn gpu_commit_and_query(
     context: &ProverContext,
     shape: &Shape,
@@ -171,9 +163,7 @@ fn gpu_commit_and_query(
     trees_cache_mode: TreesCacheMode,
 ) -> GpuResult {
     let stream = context.get_exec_stream();
-    let device_properties = context.get_device_properties();
     let log_n = shape.log_domain_size;
-    let rows = shape.rows();
     let cosets_count = shape.cosets_count();
     let columns_count = shape.columns_count;
 
@@ -194,108 +184,7 @@ fn gpu_commit_and_query(
     )
     .unwrap();
 
-    let mut monomials = context
-        .alloc::<BF>(columns_count * rows, AllocationPlacement::BestFit)
-        .unwrap();
-    {
-        let source = DeviceMatrix::new(holder.get_hypercube_evals(), rows);
-        let mut destination = DeviceMatrixMut::new(&mut monomials, rows);
-        hypercube_evals_to_monomials(
-            &source,
-            &mut destination,
-            log_n as usize,
-            false,
-            stream,
-            device_properties,
-        )
-        .unwrap();
-    }
-    {
-        let (cosets, trees) = holder.get_uninit_cosets_and_tree_mut();
-        let source = DeviceMatrix::new(&monomials[..], rows);
-        natural_monomials_to_bitreversed_evals_multi_coset(
-            &source,
-            &mut cosets[..],
-            log_n as usize,
-            shape.log_lde_factor as usize,
-            columns_count,
-            false,
-            context.ntt_device_context(),
-            None,
-            stream,
-            device_properties,
-        )
-        .unwrap();
-        match trees {
-            TreesHolder::Full(backing) => build_full_trees_from_physical(
-                &cosets[..],
-                &mut backing[..],
-                log_n,
-                shape.log_lde_factor,
-                shape.log_rows_per_leaf,
-                shape.log_tree_cap_size(),
-                columns_count,
-                cosets_count,
-                stream,
-            )
-            .unwrap(),
-            TreesHolder::Partial(backing) => {
-                let layers_count = shape.log_leaves_count() + 1
-                    - PARTIAL_TREE_REDUCTION_LAYERS
-                    - shape.log_subtree_cap_size();
-                build_partial_merkle_tree_multi_coset_physical(
-                    &cosets[..],
-                    &mut backing[..],
-                    shape.log_rows_per_leaf,
-                    layers_count,
-                    cosets_count,
-                    stream,
-                )
-                .unwrap()
-            }
-            TreesHolder::None => panic!("composed pipeline needs a cached tree"),
-        }
-    }
-    holder.mark_cosets_materialized();
-
-    let per_coset_segment_len = match trees_cache_mode {
-        TreesCacheMode::CacheFull => 1usize << (shape.log_leaves_count() + 1),
-        TreesCacheMode::CachePartial => {
-            1usize << (shape.log_leaves_count() + 1 - PARTIAL_TREE_REDUCTION_LAYERS)
-        }
-        TreesCacheMode::CacheNone => unreachable!(),
-    };
-    let cap_size = 1usize << shape.log_tree_cap_size();
-    let cap_words_per_coset = ((1usize << shape.log_subtree_cap_size()) * STATE_SIZE) as u32;
-    let cap_offset_in_u32_words =
-        (per_coset_segment_len - (1usize << (shape.log_subtree_cap_size() + 1))) * STATE_SIZE;
-    let stride_in_u32_words = (per_coset_segment_len * STATE_SIZE) as u32;
-    let tree_base_u32 = holder.get_consolidated_tree().unwrap().as_ptr() as *const u32;
-    let mut device_cap: DeviceAllocation<Digest> = context
-        .alloc(cap_size, AllocationPlacement::BestFit)
-        .unwrap();
-    {
-        // SAFETY: `device_cap` owns `cap_size` digests; `Digest == [u32; 8]` so
-        // the same bytes are a `cap_size * STATE_SIZE` u32 slice.
-        let dst_u32 = unsafe {
-            DeviceSlice::from_raw_parts_mut(
-                device_cap.as_mut_ptr() as *mut u32,
-                cap_size * STATE_SIZE,
-            )
-        };
-        // SAFETY: the offset stays inside the first per-coset segment.
-        let cap_base = unsafe { tree_base_u32.add(cap_offset_in_u32_words) };
-        gather_tree_caps_inline(
-            cap_base,
-            cap_words_per_coset,
-            stride_in_u32_words,
-            shape.log_lde_factor,
-            dst_u32,
-            stream,
-        )
-        .unwrap();
-    }
-    holder.install_unified_device_cap(device_cap);
+    holder.commit_all(context).unwrap();
     let cap = holder.read_full_cap_synchronously(context).unwrap().cap;
 
     let queries_device = upload_slice_to_device_for_test(queries, context);
@@ -443,11 +332,21 @@ fn assert_composed_pipeline_matches_cpu(shape: Shape) {
 }
 
 #[test]
-fn composed_lsb_commit_pipeline_matches_cpu_log21() {
+fn composed_lsb_trace_holder_fused_pipeline_matches_cpu_log21() {
     assert_composed_pipeline_matches_cpu(Shape {
         log_domain_size: 21,
         log_rows_per_leaf: 1,
         log_lde_factor: 1,
-        columns_count: 1,
+        columns_count: 4,
+    });
+}
+
+#[test]
+fn composed_lsb_trace_holder_fused_pipeline_matches_cpu_log20() {
+    assert_composed_pipeline_matches_cpu(Shape {
+        log_domain_size: 20,
+        log_rows_per_leaf: 1,
+        log_lde_factor: 1,
+        columns_count: 4,
     });
 }

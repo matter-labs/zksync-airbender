@@ -27,8 +27,10 @@ use gpu_hash::blake2s::{
 };
 use gpu_ntt::ntt::{
     bitreversed_monomials_to_natural_evals_multi_coset, hypercube_evals_to_monomials,
-    log_size_supports_natural_to_bitrev_lde, log_size_supports_transposed_monomials,
-    natural_monomials_to_bitreversed_evals_multi_coset, MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
+    hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20,
+    hypercube_to_multi_coset_bitrev_evals_fused, log_size_supports_natural_to_bitrev_lde,
+    log_size_supports_transposed_monomials, natural_monomials_to_bitreversed_evals_multi_coset,
+    MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
 };
 use gpu_ops::bit_reverse::bit_reverse_in_place;
 use gpu_prover_context::ProverContext;
@@ -392,6 +394,7 @@ impl TraceHolder<BF> {
         };
         let use_transposed_monomials =
             !natural_to_bitrev && log_size_supports_transposed_monomials(log_n);
+        let mut current_finest_already_computed = false;
         for column in 0..self.columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
@@ -405,6 +408,47 @@ impl TraceHolder<BF> {
                     // columns_count to write each coset's slab in one launch,
                     // replacing the per-coset NTT loop.
                     let backing_from_col = &mut backing[offset..];
+                    if natural_to_bitrev && log_n == 20 {
+                        hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20(
+                            source_column,
+                            &mut coeff_scratch[0..domain_size],
+                            backing_from_col,
+                            self.log_lde_factor as usize,
+                            self.columns_count,
+                            stream,
+                            context.get_device_properties(),
+                        )?;
+                        current_finest_already_computed = false;
+                        continue;
+                    }
+                    // Natural arm: fused boundary first — the hypercube coarse
+                    // tail, monomial writeback, coset scale, and the first
+                    // coset's DIT initial stages run as one launch.
+                    let fused = if natural_to_bitrev {
+                        // The last tail launch also performs the NEXT
+                        // column's hypercube finest pass. The next iteration
+                        // therefore starts at the in-place middle pass.
+                        let next_column_hypercube = (column + 1 < self.columns_count)
+                            .then(|| source[offset + domain_size..].as_ptr());
+                        hypercube_to_multi_coset_bitrev_evals_fused(
+                            source_column,
+                            backing_from_col,
+                            log_n,
+                            self.log_lde_factor as usize,
+                            self.columns_count,
+                            current_finest_already_computed,
+                            next_column_hypercube,
+                            stream,
+                            context.get_device_properties(),
+                        )?
+                    } else {
+                        false
+                    };
+                    if fused {
+                        current_finest_already_computed = column + 1 < self.columns_count;
+                        continue;
+                    }
+                    current_finest_already_computed = false;
                     hypercube_evals_to_monomials(
                         source_column,
                         &mut coeff_scratch[0..domain_size],
