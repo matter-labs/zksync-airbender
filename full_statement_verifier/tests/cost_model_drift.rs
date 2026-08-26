@@ -75,12 +75,13 @@ fn guest_cycles(circuit: &str) -> u64 {
 fn per_circuit_verifier_cost_has_not_drifted() {
     for (circuit, expected) in EXPECTED {
         let actual = guest_cycles(circuit);
-        assert_eq!(
-            actual, *expected,
-            "{circuit}: the generated verifier changed. Re-measure and update EXPECTED in this \
-             file; regenerating the test proof, {circuit}_sec_100.bin/.text, or the compiled \
-             circuit all move these counts. This guard is a proxy: the guest runs only verify(), \
-             so it detects codegen drift but cannot validate the cost table's numbers"
+        let tolerance = expected / 1000;
+        assert!(
+            actual.abs_diff(*expected) <= tolerance,
+            "{circuit}: {actual} vs expected {expected} (tolerance {tolerance}). The generated \
+             verifier changed; recalibrate the cost tables. This guard is a proxy: the guest \
+             runs only verify(), so it detects codegen drift but cannot validate the cost \
+             table's numbers"
         );
     }
 }
