@@ -11,14 +11,8 @@ type BF = BaseField;
 pub(super) struct NaturalFinalOutputTensorMap {
     opaque: [u64; 16],
 }
-
-::era_cudart_sys::cuda_fn_and_stub! {
-    pub(super) fn ab_encode_natural_final_output_tensor_map(
-        tensor_map: *mut NaturalFinalOutputTensorMap,
-        output: *mut BF,
-        n: u64,
-    ) -> ::era_cudart_sys::CudaError;
-}
+const _: () = assert!(std::mem::size_of::<NaturalFinalOutputTensorMap>() == 128);
+const _: () = assert!(std::mem::align_of::<NaturalFinalOutputTensorMap>() == 128);
 
 cuda_kernel_signature_and_arguments!(
     pub(super) StridedTilesStages,

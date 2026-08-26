@@ -2265,7 +2265,12 @@ mod natural_to_bitrev {
         shape: Shape,
         seed: u64,
         what: &str,
-        launch: impl FnOnce(&DeviceMatrixChunk<BF>, &mut DeviceMatrixChunkMut<BF>, &CudaStream),
+        launch: impl FnOnce(
+            &DeviceMatrixChunk<BF>,
+            &mut DeviceMatrixChunkMut<BF>,
+            &DeviceProperties,
+            &CudaStream,
+        ),
     ) {
         let context = make_context();
         let stream = context.get_exec_stream();
@@ -2278,7 +2283,12 @@ mod natural_to_bitrev {
         {
             let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
             let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut outputs_device[..], n, 0, n);
-            launch(&inputs_matrix, &mut outputs_matrix, stream);
+            launch(
+                &inputs_matrix,
+                &mut outputs_matrix,
+                context.get_device_properties(),
+                stream,
+            );
         }
         let mut outputs = vec![BF::ZERO; shape.output_len()];
         memory_copy_async(&mut outputs, &outputs_device, stream).unwrap();
@@ -2298,7 +2308,7 @@ mod natural_to_bitrev {
             shape,
             0xc3,
             "forced launch tiling",
-            |inputs_matrix, outputs_matrix, stream| {
+            |inputs_matrix, outputs_matrix, device_properties, stream| {
                 natural_monomials_to_bitrev_evals_3_pass(
                     inputs_matrix,
                     outputs_matrix,
@@ -2310,6 +2320,7 @@ mod natural_to_bitrev {
                     1, // cosets_per_launch
                     1, // columns_per_launch
                     shape.transposed,
+                    device_properties,
                     stream,
                 )
                 .unwrap();
@@ -2584,7 +2595,7 @@ mod natural_to_bitrev {
             shape,
             0xd8,
             "two-pass-compact forced launch tiling",
-            |inputs_matrix, outputs_matrix, stream| {
+            |inputs_matrix, outputs_matrix, _device_properties, stream| {
                 natural_monomials_to_bitrev_evals_2_pass_compact(
                     inputs_matrix,
                     outputs_matrix,

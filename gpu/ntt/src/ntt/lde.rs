@@ -479,6 +479,7 @@ pub fn hypercube_to_multi_coset_bitrev_evals_fused(
                 inputs_matrix,
                 &mut coset0_matrix,
                 log_n,
+                device_properties,
                 stream,
             )?;
         } else {
@@ -486,6 +487,7 @@ pub fn hypercube_to_multi_coset_bitrev_evals_fused(
                 inputs_matrix,
                 &mut coset0_matrix,
                 log_n,
+                device_properties,
                 stream,
             )?;
         }
@@ -512,6 +514,7 @@ pub fn hypercube_to_multi_coset_bitrev_evals_fused(
         num_cols_per_coset_stride,
         num_cols,
         cross_column_finest,
+        device_properties,
         stream,
     )?;
     Ok(true)
@@ -936,6 +939,7 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
                 strategy.cosets_per_launch,
                 strategy.columns_per_launch,
                 transposed_monomials,
+                device_properties,
                 stream,
             )
         }

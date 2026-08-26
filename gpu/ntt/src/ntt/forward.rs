@@ -1,12 +1,13 @@
 #![allow(non_snake_case)]
 
 use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
-use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
 use super::kernels::*;
 use super::shared;
+use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
     MutPtrAndStride, PtrAndStride,
@@ -14,23 +15,99 @@ use gpu_core::primitives::device_structures::{
 use gpu_core::primitives::field::BaseField;
 use gpu_core::primitives::utils::GetChunksCount;
 
+use std::ffi::{c_char, c_void};
 use std::mem::{size_of, MaybeUninit};
+use std::sync::OnceLock;
 
 type BF = BaseField;
+
+type CuTensorMapEncodeTiled = unsafe extern "C" fn(
+    tensor_map: *mut NaturalFinalOutputTensorMap,
+    tensor_data_type: i32,
+    tensor_rank: u32,
+    global_address: *mut c_void,
+    global_dims: *const u64,
+    global_strides: *const u64,
+    box_dims: *const u32,
+    element_strides: *const u32,
+    interleave: i32,
+    swizzle: i32,
+    l2_promotion: i32,
+    oob_fill: i32,
+) -> i32;
+
+::era_cudart_sys::cuda_fn_and_stub! {
+    fn cudaGetDriverEntryPointByVersion(
+        symbol: *const c_char,
+        function: *mut *mut c_void,
+        cuda_version: u32,
+        flags: u64,
+        query_result: *mut i32,
+    ) -> ::era_cudart_sys::CudaError;
+}
+
+static NATURAL_FINAL_TENSOR_MAP_ENCODER: OnceLock<CudaResult<CuTensorMapEncodeTiled>> =
+    OnceLock::new();
+
+fn natural_final_tensor_map_encoder() -> CudaResult<CuTensorMapEncodeTiled> {
+    *NATURAL_FINAL_TENSOR_MAP_ENCODER.get_or_init(|| {
+        let mut raw_function = std::ptr::null_mut();
+        let mut query_result = -1;
+        let status = unsafe {
+            cudaGetDriverEntryPointByVersion(
+                c"cuTensorMapEncodeTiled".as_ptr(),
+                &mut raw_function,
+                12_000,
+                0,
+                &mut query_result,
+            )
+        };
+        if status != era_cudart_sys::CudaError::Success {
+            return Err(status);
+        }
+        if raw_function.is_null() || query_result != 0 {
+            return Err(era_cudart_sys::CudaError::ErrorNotSupported);
+        }
+        // SAFETY: cudart reported a successful lookup of the exact CUDA
+        // driver symbol at the ABI version used by this signature.
+        Ok(unsafe { std::mem::transmute::<*mut c_void, CuTensorMapEncodeTiled>(raw_function) })
+    })
+}
 
 fn encode_natural_final_output_tensor_map(
     output: MutPtrAndStride<BF>,
     n: usize,
 ) -> CudaResult<NaturalFinalOutputTensorMap> {
-    let tensor_map = MaybeUninit::<NaturalFinalOutputTensorMap>::uninit();
-    unsafe {
-        ab_encode_natural_final_output_tensor_map(
-            tensor_map.as_ptr() as *mut NaturalFinalOutputTensorMap,
-            output.ptr,
-            n as u64,
-        )
-        .wrap_maybe_uninit(tensor_map)
+    if output.ptr as usize & 127 != 0 || n < 1024 || n & 1023 != 0 {
+        return Err(era_cudart_sys::CudaError::ErrorInvalidValue);
     }
+    let encoder = natural_final_tensor_map_encoder()?;
+    let mut tensor_map = MaybeUninit::<NaturalFinalOutputTensorMap>::uninit();
+    debug_assert_eq!(tensor_map.as_ptr() as usize & 127, 0);
+    let global_dims = [32_u64, (n / 32) as u64];
+    let global_strides = [(32 * size_of::<BF>()) as u64];
+    let box_dims = [32_u32, 32];
+    let element_strides = [1_u32, 1];
+    let result = unsafe {
+        encoder(
+            tensor_map.as_mut_ptr(),
+            2, // CU_TENSOR_MAP_DATA_TYPE_UINT32
+            2,
+            output.ptr.cast(),
+            global_dims.as_ptr(),
+            global_strides.as_ptr(),
+            box_dims.as_ptr(),
+            element_strides.as_ptr(),
+            0, // CU_TENSOR_MAP_INTERLEAVE_NONE
+            3, // CU_TENSOR_MAP_SWIZZLE_128B
+            0, // CU_TENSOR_MAP_L2_PROMOTION_NONE
+            0, // CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE
+        )
+    };
+    if result != 0 {
+        return Err(era_cudart_sys::CudaError::ErrorInvalidValue);
+    }
+    Ok(unsafe { tensor_map.assume_init() })
 }
 
 /// The two forward noninitial passes for one (column-chunk, coset-tile). The
@@ -215,6 +292,7 @@ fn launch_natural_to_bitrev_tail(
     log_cosets_in_tile: i32,
     prefetch_src: Option<*const BF>,
     cross_column_finest: Option<(PtrAndStride<BF>, MutPtrAndStride<BF>)>,
+    device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1usize << log_n;
@@ -336,6 +414,7 @@ fn launch_natural_to_bitrev_tail(
         if matches!(log_n, 21..=24)
             && log_cosets_in_tile == 0
             && (output_matrix_mut.ptr as usize & 127) == 0
+            && shared::supports_tma_pdl(device_properties.compute_capability_major)
         {
             let output_tensor_map = encode_natural_final_output_tensor_map(output_matrix_mut, n)?;
             let args = NaturalToBitrevFinalPrefetchTmaArguments::new(
@@ -387,6 +466,7 @@ fn launch_natural_to_bitrev_tail(
         && ntts_in_launch == 1
         && log_cosets_in_tile == 0
         && (output_matrix_mut.ptr as usize & 127) == 0
+        && shared::supports_tma_pdl(device_properties.compute_capability_major)
     {
         let output_tensor_map = encode_natural_final_output_tensor_map(output_matrix_mut, n)?;
         let args = NaturalToBitrevFinalTmaArguments::new(
@@ -433,6 +513,7 @@ pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
     cosets_per_launch: usize,
     columns_per_launch: usize,
     transposed_monomials: bool,
+    device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1 << log_n;
@@ -516,6 +597,7 @@ pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
                 log_cosets_in_tile,
                 None,
                 None,
+                device_properties,
                 stream,
             )?;
             coset_tile_start += cosets_in_tile;
@@ -949,6 +1031,7 @@ pub(crate) fn natural_fused_multi_coset_3_pass(
     num_cols_per_coset: usize,
     num_cols: usize,
     cross_column_finest: Option<(PtrAndStride<BF>, MutPtrAndStride<BF>)>,
+    device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1 << log_n;
@@ -1094,6 +1177,7 @@ pub(crate) fn natural_fused_multi_coset_3_pass(
             0,
             prefetch,
             cross_column,
+            device_properties,
             stream,
         )
     };

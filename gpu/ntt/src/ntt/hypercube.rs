@@ -357,9 +357,17 @@ pub(crate) fn hypercube_evals_to_pre_tail_monomials_lsb_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
+    device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    hypercube_evals_to_monomials_lsb_fine_first(inputs_matrix, outputs_matrix, log_n, false, stream)
+    hypercube_evals_to_monomials_lsb_fine_first(
+        inputs_matrix,
+        outputs_matrix,
+        log_n,
+        false,
+        device_properties,
+        stream,
+    )
 }
 
 /// Continue the fine->coarse pre-tail after a preceding cross-column kernel
@@ -368,9 +376,17 @@ pub(crate) fn hypercube_evals_to_pre_tail_monomials_lsb_3_pass_after_finest(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
+    device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    hypercube_evals_to_monomials_lsb_fine_first(inputs_matrix, outputs_matrix, log_n, true, stream)
+    hypercube_evals_to_monomials_lsb_fine_first(
+        inputs_matrix,
+        outputs_matrix,
+        log_n,
+        true,
+        device_properties,
+        stream,
+    )
 }
 
 fn hypercube_evals_to_monomials_lsb_fine_first(
@@ -378,6 +394,7 @@ fn hypercube_evals_to_monomials_lsb_fine_first(
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     finest_already_computed: bool,
+    device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1 << log_n;
@@ -454,7 +471,9 @@ fn hypercube_evals_to_monomials_lsb_fine_first(
         );
         let mut grid_dim: Dim3 = (blocks_per_exchg_region as u32).into();
         grid_dim.y = num_exchg_regions as u32;
-        let pdl_middle = finest_already_computed && matches!(log_n, 22..=24);
+        let pdl_middle = finest_already_computed
+            && matches!(log_n, 22..=24)
+            && shared::supports_tma_pdl(device_properties.compute_capability_major);
         let pdl_attributes = [CudaLaunchAttribute::ProgrammaticStreamSerialization(true)];
         let mut config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
         if pdl_middle {

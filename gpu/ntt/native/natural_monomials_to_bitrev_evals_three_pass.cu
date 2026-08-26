@@ -6,39 +6,6 @@
 
 namespace airbender::ntt {
 
-// Encode the rank-2 view used by the non-cross terminal TMA egress. The
-// global buffer is viewed as N/32 consecutive rows of 32 bf values, and each
-// warp writes one 32x32 box. Resolve the driver entry point through cudart so
-// the Rust final link does not acquire a direct libcuda dependency.
-EXTERN cudaError_t ab_encode_natural_final_output_tensor_map(CUtensorMap *tensor_map, bf *output, const unsigned long long n) {
-  struct Encoder {
-    decltype(&cuTensorMapEncodeTiled) function;
-    cudaError_t status;
-  };
-  static const Encoder encoder = [] {
-    void *raw_function = nullptr;
-    cudaDriverEntryPointQueryResult query_result{};
-    cudaError_t status = cudaGetDriverEntryPointByVersion("cuTensorMapEncodeTiled", &raw_function, 12000, cudaEnableDefault, &query_result);
-    if (status == cudaSuccess && (raw_function == nullptr || query_result != cudaDriverEntryPointSuccess))
-      status = cudaErrorNotSupported;
-    return Encoder{reinterpret_cast<decltype(&cuTensorMapEncodeTiled)>(raw_function), status};
-  }();
-  if (encoder.status != cudaSuccess)
-    return encoder.status;
-  if ((reinterpret_cast<uintptr_t>(tensor_map) & 127u) != 0 || (reinterpret_cast<uintptr_t>(output) & 127u) != 0 || n < 1024 || (n & 1023u) != 0)
-    return cudaErrorInvalidValue;
-
-  constexpr unsigned RANK = 2;
-  const cuuint64_t global_dims[RANK] = {32, static_cast<cuuint64_t>(n / 32)};
-  const cuuint64_t global_strides[RANK - 1] = {32 * sizeof(bf)};
-  const cuuint32_t box_dims[RANK] = {32, 32};
-  const cuuint32_t element_strides[RANK] = {1, 1};
-  const CUresult result =
-      encoder.function(tensor_map, CU_TENSOR_MAP_DATA_TYPE_UINT32, RANK, output, global_dims, global_strides, box_dims, element_strides,
-                       CU_TENSOR_MAP_INTERLEAVE_NONE, CU_TENSOR_MAP_SWIZZLE_128B, CU_TENSOR_MAP_L2_PROMOTION_NONE, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE);
-  return result == CUDA_SUCCESS ? cudaSuccess : cudaErrorInvalidValue;
-}
-
 // Natural-order monomials -> bitreversed-order evaluations, three-pass regime
 // (log_n in [21, 24]): out_k[p] = f(g_k * omega^rev_n(p)). Descending-stride
 // DIT network (pass structure cloned from evals_to_monomials_three_pass.cu)
@@ -776,6 +743,7 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_final_up_to_8_stages_w
   __syncthreads();
 
   smem_warp = smem_block + warp_id * VALS_PER_WARP;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
   if constexpr (TMA_EGRESS) {
     // CU_TENSOR_MAP_SWIZZLE_128B XORs 16-byte chunks, not individual bf
     // values. A lane owns one logical 128-byte row. Its eight STS.128
@@ -806,7 +774,9 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_final_up_to_8_stages_w
       asm volatile("cp.async.bulk.commit_group;" : : : "memory");
       asm volatile("cp.async.bulk.wait_group.read 0;" : : : "memory");
     }
-  } else {
+  } else
+#endif
+  {
     if constexpr (PACKED_SMEM_TRANSPOSE)
       warp_transpose_swizzled_v4<VALS_PER_THREAD>(smem_warp, vals, lane_id);
     else
@@ -1005,8 +975,10 @@ DEVICE_FORCEINLINE void natural_final_cross_column(bf_matrix_getter<ld_modifier:
       gmem_in, gmem_out, log_n, 1, 0, smem_block, nullptr, nullptr, next_hypercube_in.ptr);
   __syncthreads();
   if constexpr (PDL) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
     if (threadIdx.x == 0)
       cudaTriggerProgrammaticLaunchCompletion();
+#endif
   }
   cross_column_hypercube_finest<STAGES>(next_hypercube_in, next_pre_tail_out, smem_block);
 }

@@ -115,7 +115,9 @@ EXTERN __launch_bounds__(256, 3) __global__
 EXTERN __launch_bounds__(256, 3) __global__
     void ab_hypercube_evals_to_monomials_8_stages_pdl_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                              const int log_n, const int start_stage) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
   cudaGridDependencySynchronize();
+#endif
   __shared__ bf smem_block[8192];
   hypercube_evals_to_monomials_8_stages<2>(gmem_in, gmem_out, log_n, start_stage, smem_block);
 }
