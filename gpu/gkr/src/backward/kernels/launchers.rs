@@ -5,7 +5,6 @@ use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
-use super::encoding::GpuGKRDimensionReducingBatch;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use gpu_prover_context::ProverContext;
@@ -108,7 +107,8 @@ cuda_kernel_signature_arguments_and_function!(
     claim_point: *const T,
     challenge_offset: u32,
     challenge_count: u32,
-    high_slab: *mut T,
+    high_0: *mut T,
+    high_1: *mut T,
     low_buffer: *mut T,
 );
 
@@ -150,19 +150,6 @@ cuda_kernel_signature_arguments_and_function!(
     blocks_count: u32,
 );
 
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuDimensionReducingRound0BatchedCompact<T>,
-    batch: GpuGKRDimensionReducingBatch<T>,
-    acc_size: u32,
-);
-
-cuda_kernel_signature_arguments_and_function!(
-    pub(crate) GpuDimensionReducingContinuationBatchedCompact<T>,
-    batch: GpuGKRDimensionReducingBatch<T>,
-    acc_size: u32,
-    step: u32,
-);
-
 cuda_kernel_declaration!(pub(crate)
     ab_gkr_dim_reducing_build_eq_group_tables_from_point_e4_kernel(
         claim_point: *const E4,
@@ -176,7 +163,8 @@ cuda_kernel_declaration!(pub(crate)
         claim_point: *const E4,
         challenge_offset: u32,
         challenge_count: u32,
-        high_slab: *mut E4,
+        high_0: *mut E4,
+        high_1: *mut E4,
         low_buffer: *mut E4,
     )
 );
@@ -218,20 +206,6 @@ cuda_kernel_declaration!(pub(crate)
         blocks_count: u32,
     )
 );
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_round0_batched_compact_e4_kernel(
-        batch: GpuGKRDimensionReducingBatch<E4>,
-        acc_size: u32,
-    )
-);
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel(
-        batch: GpuGKRDimensionReducingBatch<E4>,
-        acc_size: u32,
-        step: u32,
-    )
-);
-
 pub fn gkr_dim_reducing_launch_config(count: u32, context: &ProverContext) -> CudaLaunchConfig<'_> {
     let (grid_dim, block_dim) =
         get_grid_block_dims_for_threads_count(GKR_DIM_REDUCING_THREADS_PER_BLOCK, count.max(1));
@@ -247,37 +221,6 @@ pub(crate) fn gkr_trace_holder_partials_launch_config(
         GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK,
         context.get_exec_stream(),
     )
-}
-
-pub(crate) fn launch_dim_reducing_round0_batched_compact(
-    batch: &GpuGKRDimensionReducingBatch<E4>,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingRound0BatchedCompactArguments::new(*batch, acc_size as u32);
-    GpuDimensionReducingRound0BatchedCompactFunction(
-        ab_gkr_dim_reducing_round0_batched_compact_e4_kernel,
-    )
-    .launch(&config, &args)
-}
-
-pub(crate) fn launch_dim_reducing_continuation_batched_compact(
-    batch: &GpuGKRDimensionReducingBatch<E4>,
-    acc_size: usize,
-    step: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingContinuationBatchedCompactArguments::new(
-        *batch,
-        acc_size as u32,
-        step as u32,
-    );
-    GpuDimensionReducingContinuationBatchedCompactFunction(
-        ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel,
-    )
-    .launch(&config, &args)
 }
 
 pub fn launch_build_eq_values_from_point(
@@ -344,6 +287,30 @@ pub(crate) fn launch_build_eq_high_and_low_groups_from_point(
     low_buffer: *mut E4,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    launch_build_eq_independent_groups_from_point(
+        claim_point,
+        challenge_offset,
+        challenge_count,
+        high_slab,
+        high_slab.wrapping_add(GKR_EQ_GROUP_TABLE_LEN),
+        low_buffer,
+        context,
+    )
+}
+
+/// Builds the same strict three-slot factored Eq representation as
+/// [`launch_build_eq_high_and_low_groups_from_point`], but permits each slot
+/// to have an independent exact-capacity owner. This is used by DR
+/// continuations so inactive high sentinels do not force three full tables.
+pub(crate) fn launch_build_eq_independent_groups_from_point(
+    claim_point: *const E4,
+    challenge_offset: usize,
+    challenge_count: usize,
+    high_0: *mut E4,
+    high_1: *mut E4,
+    low_buffer: *mut E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
     assert!(challenge_offset <= u32::MAX as usize);
     assert!(challenge_count <= u32::MAX as usize);
     let group_count = eq_group_count(challenge_count);
@@ -360,7 +327,8 @@ pub(crate) fn launch_build_eq_high_and_low_groups_from_point(
         claim_point,
         challenge_offset as u32,
         challenge_count as u32,
-        high_slab,
+        high_0,
+        high_1,
         low_buffer,
     );
     GpuDimensionReducingBuildEqHighLowFromPointFunction(

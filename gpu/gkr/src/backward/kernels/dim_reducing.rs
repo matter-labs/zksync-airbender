@@ -7,8 +7,6 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::super::GpuGKRStorage;
-use super::encoding::GpuGKRDimensionReducingBatch;
-use super::launchers::GkrEqSizes;
 use super::shared::{
     ClaimBufferLayout, DeviceClaimPointAndBatching, GKR_BACKWARD_MAX_TRACE_LEN_LOG2,
 };
@@ -102,14 +100,6 @@ pub(crate) fn schedule_dim_reducing_batch_challenge_table_prelude(
     gpu_ops::powers::get_powers_by_ref::<E4>(base, 0, table, context.get_exec_stream())
 }
 
-pub(crate) struct GpuGKRDimensionReducingRoundScratch {
-    pub(crate) eq_low_group: DeviceAllocation<E4>,
-    pub(crate) accumulator: DeviceAllocation<E4>,
-    /// Per-block partials buffer for the fused tail (stage-1 dual-reduce
-    /// output, stage-2 mega-finalize input).
-    pub(crate) partials: DeviceAllocation<E4>,
-}
-
 /// Host-side plan for one enabled slot: its 2 input and 2 output addresses, and
 /// the batch-challenge table index carried by each output.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -155,16 +145,12 @@ impl GpuGKRDimensionReducingLayerSlots {
 #[doc(hidden)]
 pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     pub layer_idx: usize,
-    pub(crate) trace_len_after_reduction: usize,
     pub(crate) folding_steps: usize,
     pub(crate) layer_slots: GpuGKRDimensionReducingLayerSlots,
     pub(crate) folding_addresses: Vec<GKRAddress>,
-    pub(crate) round0_batch_template_compact: GpuGKRDimensionReducingBatch<E4>,
-    pub(crate) round_scratch: GpuGKRDimensionReducingRoundScratch,
-    /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
-    /// `make_eq_sizes(folding_steps - 1)`, updated between sumcheck rounds,
-    /// and passed by value into the dim-reducing consumer kernel arguments.
-    pub(crate) eq_sizes: GkrEqSizes,
+    pub(crate) dr_window: Option<crate::backward::window_dr::DrWindowLayerPreparationHook>,
+    pub(crate) dr_execution_plan: crate::backward::dr_tail::resources::DrLayerExecutionPlan,
+    pub(crate) _partials: DeviceAllocation<E4>,
 }
 
 // SAFETY: descriptor raw pointers are only forwarded to stream-ordered kernels.
