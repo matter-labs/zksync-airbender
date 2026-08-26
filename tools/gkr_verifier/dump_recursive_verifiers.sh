@@ -8,7 +8,7 @@
 #   fsv_unrolled_recursion_layer_sec_100 : blake2_with_compression, blake2_g_function
 #   fsv_unified_recursion_layer_sec_100  : blake2_with_compression, blake2_g_function, special_opcodes_extension
 #
-# `--sec 100` is the only (and default) security level — the 80-bit mode was removed.
+# `--sec` defaults to 100, the currently supported security level.
 #
 # `special_opcodes_extension` does blake inline with the reduced machine's
 # tri-add / xor-rotate opcodes — the correct mop-style path for the reduced ISA
@@ -42,7 +42,7 @@ done
 
 case "$SEC" in
     100)  SEC_LEVELS="100" ;;
-    *) echo "ERROR: --sec must be 100 (the 80-bit mode was removed; got '$SEC')" >&2; exit 1 ;;
+    *) echo "ERROR: --sec currently supports only 100 (got '$SEC')" >&2; exit 1 ;;
 esac
 
 build_variant() {
