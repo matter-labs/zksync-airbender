@@ -1,6 +1,6 @@
 use std::alloc::Global;
 
-use era_cudart::memory::{DeviceAllocation, memory_copy_async};
+use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use worker::Worker;
@@ -1634,8 +1634,8 @@ fn run_subwarp_vs_host_parity(
     num_cosets: usize,
     num_cols: usize,
 ) {
-    use super::OMEGA_LOG_ORDER;
     use super::forward::monomials_to_evals_subwarp;
+    use super::OMEGA_LOG_ORDER;
     use fft::precompute_twiddles_for_fft;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
     use std::alloc::Global;
@@ -1817,10 +1817,10 @@ mod natural_to_bitrev {
         natural_monomials_to_bitreversed_evals_multi_coset,
     };
     use super::helpers::transpose_monomials;
-    use super::{NttTestContext, make_context};
+    use super::{make_context, NttTestContext};
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use crate::upstream::{
-        Field, bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
+        bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,
     };
     use era_cudart::memory::memory_copy_async;
     use era_cudart::stream::CudaStream;

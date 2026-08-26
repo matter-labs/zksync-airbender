@@ -3,7 +3,7 @@
 //! scratch (the fused kernel's in-place side output) versus the unfused
 //! hypercube-final + multi-coset-initial sequence.
 
-use era_cudart::memory::{DeviceAllocation, memory_copy_async};
+use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 
 use super::super::{
     bitreversed_monomials_to_natural_evals_multi_coset, hypercube_evals_to_monomials,

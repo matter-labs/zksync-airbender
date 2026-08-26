@@ -5,9 +5,9 @@ use super::*;
 
 use era_cudart::slice::DeviceSlice;
 use gpu_hash::blake2s::{
-    Digest, OracleGatherDesc, OraclePartialPathDesc, STATE_SIZE,
     gather_leaves_for_queries_physical, gather_merkle_paths_full_for_queries,
-    gather_merkle_paths_partial_for_queries_physical,
+    gather_merkle_paths_partial_for_queries_physical, Digest, OracleGatherDesc,
+    OraclePartialPathDesc, STATE_SIZE,
 };
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use prover::gkr::whir::ColumnMajorBaseOracleForLDE;

@@ -14,7 +14,7 @@ use gpu_core::primitives::device_structures::{
 use gpu_core::primitives::field::BaseField;
 use gpu_core::primitives::utils::GetChunksCount;
 
-use std::mem::{MaybeUninit, size_of};
+use std::mem::{size_of, MaybeUninit};
 
 type BF = BaseField;
 
