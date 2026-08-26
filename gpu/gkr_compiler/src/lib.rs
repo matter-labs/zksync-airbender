@@ -1,7 +1,7 @@
 //! CPU-only offline search and symbolic compiler for GPU GKR evaluation.
 
 mod analysis;
-mod backward;
+pub mod backward;
 mod forward;
 mod interval_pack;
 #[cfg(feature = "search")]

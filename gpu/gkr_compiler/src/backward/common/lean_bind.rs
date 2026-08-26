@@ -1,4 +1,4 @@
-//! Source-window binding for segmented backward programs.
+//! Source-window binding for backward window programs.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -17,9 +17,6 @@ pub(crate) const LEAN_PROCEDURAL_KINDS: u8 = 4;
 // ── Output ───────────────────────────────────────────────────────────────────
 
 /// One addressable column of one window.
-///
-/// The source is artifactized as a `u32` slot: [`SourceId`] carries no serde
-/// derives and this struct nests inside the serialized coordinate.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeanBoundColumn {
     /// The backing's OWN column, not the window-relative offset.
@@ -74,9 +71,27 @@ impl LeanBoundWindow {
 /// typed layer program, and duplicating it here would create a second place for
 /// it to be wrong.
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeanSourceSlot {
+    pub window: u8,
+    pub column: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeanSourceBinding {
     pub windows: Vec<LeanBoundWindow>,
-    pub source_count: usize,
+    pub source_slots: Vec<LeanSourceSlot>,
+}
+
+impl LeanSourceBinding {
+    pub fn resolve(&self, window: u8, column: u16) -> Option<SourceId> {
+        let entry = self.windows.get(window as usize)?;
+        let absolute = entry.first_column.checked_add(usize::from(column))?;
+        entry
+            .columns
+            .binary_search_by_key(&absolute, |candidate| candidate.column)
+            .ok()
+            .map(|index| SourceId(entry.columns[index].source))
+    }
 }
 
 // ── Errors ───────────────────────────────────────────────────────────────────
@@ -195,7 +210,7 @@ pub(crate) fn bind_lean_sources(
     };
 
     // The resolution sequence: one entry per operand word of every ordered term,
-    // which in a VM with no residency is one entry per physical source resolution.
+    // With no residency, this is one entry per physical source resolution.
     let mut sequence: Vec<SourceId> = Vec::with_capacity(2 * order.len());
     for id in order {
         let term = layer.terms.get(id.0 as usize).unwrap_or_else(|| {
@@ -288,9 +303,26 @@ pub(crate) fn bind_lean_sources(
 
     validate_windows(&windows, layer, cross_fields, SOURCE_WINDOW_COLUMNS)?;
 
+    let mut source_slots = vec![
+        LeanSourceSlot {
+            window: 0,
+            column: 0
+        };
+        layer.sources.len()
+    ];
+    for (window_index, window) in windows.iter().enumerate() {
+        for column in &window.columns {
+            source_slots[column.source as usize] = LeanSourceSlot {
+                window: window_index as u8,
+                column: u16::try_from(column.column - window.first_column)
+                    .expect("a bound source offset fits the fixed window"),
+            };
+        }
+    }
+
     Ok(LeanSourceBinding {
         windows,
-        source_count: layer.sources.len(),
+        source_slots,
     })
 }
 

@@ -284,6 +284,17 @@ pub struct StaticAllocation<T, B: StaticAllocationBackend, W: InnerStaticAllocat
     nvtx_span: nvtx::MemSpanId,
 }
 
+impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAllocation<T, B, W> {
+    /// Shrinks the visible element count without changing the owned allocation.
+    pub fn shrink_len_to(&mut self, len: usize) {
+        assert!(
+            len <= self.data.len,
+            "StaticAllocation::shrink_len_to cannot grow"
+        );
+        self.data.len = len;
+    }
+}
+
 impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Drop
     for StaticAllocation<T, B, W>
 {
