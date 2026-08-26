@@ -12,11 +12,21 @@ constexpr u32 BWD_MAIN_CONT_WINDOW_PROGRAM_WORD_CAP = 6472;
 constexpr u32 BWD_MAIN_CONT_WINDOW_MAX_SOURCES = 1072;
 constexpr u32 BWD_MAIN_CONT_WINDOW_ADDR_SLOTS = 64;
 constexpr u32 BWD_MAIN_CONT_WINDOW_MAX_IMMEDIATES = 512;
+// Nine logical selector/fold lists are partitioned across three blocks of
+// three physical warps. Each physical warp still owns exactly one selector.
 constexpr u32 BWD_MAIN_CONT_WINDOW_WARPS = 9;
+constexpr u32 BWD_MAIN_CONT_WINDOW_BLOCK_WARPS = 3;
+constexpr u32 BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS = 3;
 constexpr u32 BWD_MAIN_CONT_WINDOW_FOLD_LIST_ENDPOINTS = BWD_MAIN_CONT_WINDOW_WARPS + 1;
 constexpr u32 BWD_MAIN_CONT_WINDOW_ROWS_PER_TILE = 32;
 constexpr u32 BWD_MAIN_CONT_WINDOW_TENSOR_CELLS = 27;
-constexpr u32 BWD_MAIN_CONT_WINDOW_BLOCK_THREADS = 288;
+constexpr u32 BWD_MAIN_CONT_WINDOW_BLOCK_THREADS = 96;
+constexpr u32 BWD_MAIN_CONT_WINDOW_PUBLICATION_BLOCK_THREADS = BWD_MAIN_CONT_WINDOW_BLOCK_WARPS * BWD_SEG_WARP_LANES;
+constexpr u32 BWD_MAIN_CONT_WINDOW_PUBLICATION_LANES_PER_ROW = 4;
+constexpr u32 BWD_MAIN_CONT_WINDOW_PUBLICATION_ROWS_PER_BLOCK = BWD_SEG_WARP_LANES / BWD_MAIN_CONT_WINDOW_PUBLICATION_LANES_PER_ROW;
+constexpr u32 BWD_MAIN_CONT_WINDOW_PUBLICATION_SUBBLOCKS_PER_TILE = BWD_MAIN_CONT_WINDOW_ROWS_PER_TILE / BWD_MAIN_CONT_WINDOW_PUBLICATION_ROWS_PER_BLOCK;
+constexpr u32 BWD_MAIN_CONT_WINDOW_PUBLICATION_BLOCKS_PER_TILE = BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS * BWD_MAIN_CONT_WINDOW_PUBLICATION_SUBBLOCKS_PER_TILE;
+constexpr u32 BWD_MAIN_CONT_WINDOW_DYNAMIC_X0 = 3;
 
 constexpr u16 BWD_MAIN_CONT_WINDOW_SHAPE_PLAIN_LINEAR = 1u << 0;
 constexpr u16 BWD_MAIN_CONT_WINDOW_SHAPE_GROUPED = 1u << 1;
@@ -54,7 +64,15 @@ static_assert(BWD_MAIN_CONT_WINDOW_MAX_IMMEDIATES == BWD_SEG_MAX_IMMEDIATES, "co
 static_assert(BWD_MAIN_CONT_WINDOW_MAX_SOURCES < BWD_SEG_SOURCE_NONE, "semantic SourceId collides with source-none sentinel");
 static_assert(BWD_MAIN_CONT_WINDOW_ADDR_SLOTS * (1u << BWD_SEG_ADDR_COLUMN_BITS) <= BWD_SEG_ADDR_NONE,
               "continuation address lane collides with lane-none sentinel");
-static_assert(BWD_MAIN_CONT_WINDOW_BLOCK_THREADS == BWD_MAIN_CONT_WINDOW_WARPS * BWD_SEG_WARP_LANES, "one warp per selector pair");
+static_assert(BWD_MAIN_CONT_WINDOW_BLOCK_THREADS == BWD_MAIN_CONT_WINDOW_BLOCK_WARPS * BWD_SEG_WARP_LANES, "one physical warp per selector");
+static_assert(BWD_MAIN_CONT_WINDOW_PUBLICATION_BLOCK_THREADS == 96, "publication block covers one fold-list partition");
+static_assert(BWD_MAIN_CONT_WINDOW_PUBLICATION_LANES_PER_ROW == 4, "publication uses one lane per aligned corner pair");
+static_assert(BWD_MAIN_CONT_WINDOW_PUBLICATION_ROWS_PER_BLOCK == 8, "publication block row coverage drift");
+static_assert(BWD_MAIN_CONT_WINDOW_PUBLICATION_SUBBLOCKS_PER_TILE == 4, "publication tile partition drift");
+static_assert(BWD_MAIN_CONT_WINDOW_PUBLICATION_BLOCKS_PER_TILE == 12, "publication blocks-per-tile drift");
+static_assert(BWD_MAIN_CONT_WINDOW_DYNAMIC_X0 == 3, "dynamic x0 sentinel must follow the ternary selectors");
+static_assert(BWD_MAIN_CONT_WINDOW_WARPS == BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS * BWD_MAIN_CONT_WINDOW_BLOCK_WARPS,
+              "selector-block partition must cover every logical selector");
 static_assert(BWD_MAIN_CONT_WINDOW_TENSOR_CELLS == 3 * BWD_MAIN_CONT_WINDOW_WARPS, "continuation tensor geometry drift");
 static_assert(BWD_MAIN_CONT_WINDOW_ROWS_PER_TILE == BWD_SEG_WARP_LANES, "continuation row tile drift");
 static_assert(BWD_MAIN_CONT_WINDOW_SHAPE_DEFINED_BITS == 0x1f, "continuation shape width drift");
