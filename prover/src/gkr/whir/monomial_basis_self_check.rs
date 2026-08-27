@@ -180,14 +180,14 @@ fn quick_test_binding_poly_and_sumcheck() {
     let size = 8usize;
 
     let num_vars = size.trailing_zeros() as usize;
-    let challenge_coordiantes: Vec<_> = (1..=num_vars)
+    let challenge_coordinates: Vec<_> = (1..=num_vars)
         .map(|el| F::from_nonreduced_u32((el * 10) as u32))
         .collect();
-    // let challenge_coordiantes: Vec<_> = (1..=num_vars)
+    // let challenge_coordinates: Vec<_> = (1..=num_vars)
     //     .map(|el| F::from_nonreduced_u32(1 as u32))
     //     .collect();
     let mut eqs_at_zero_inf =
-        make_eq_poly_for_zero_infinity_basis_impl::<F, F, true>(&challenge_coordiantes);
+        make_eq_poly_for_zero_infinity_basis_impl::<F, F, true>(&challenge_coordinates);
 
     let a: Vec<_> = (1..=size)
         .map(|el| F::from_nonreduced_u32(el as u32))
@@ -239,7 +239,7 @@ fn quick_test_binding_poly_and_sumcheck() {
     // and prover will compute G(0) (because it's nice to compute), getting
     // `e` and then we get G(1) = (r0 + 1) * (c + d + e),
     // and then compute G(infinity) as it's also nice to compute, getting `c`, so we have enough points
-    // to get all the values. But such aproach only works for the first round,
+    // to get all the values. But such approach only works for the first round,
     // so we will have output(r) = claim = \sum_{x_0 = {0, 1}, x_{1,...} = {0, inf}^{N-1}} eq_{0/1}(x, r0) * eq_{0/inf}(x1, ..., r1, ...) * a(x) * b(x)
 
     // Here we self-check our second approach
@@ -324,9 +324,9 @@ fn quick_test_binding_poly_and_sumcheck() {
 
     // highest
     let mut c = g_at_inf;
-    c.mul_assign(&challenge_coordiantes[0].inverse().unwrap());
+    c.mul_assign(&challenge_coordinates[0].inverse().unwrap());
 
-    let mut t = challenge_coordiantes[0];
+    let mut t = challenge_coordinates[0];
     t.add_assign(&F::ONE);
     let mut d = g_at_1;
     d.mul_assign(&t.inverse().unwrap());
@@ -337,15 +337,15 @@ fn quick_test_binding_poly_and_sumcheck() {
     let mut coeffs = vec![];
     coeffs.push(e);
     let mut t = e;
-    t.mul_assign(&challenge_coordiantes[0]);
+    t.mul_assign(&challenge_coordinates[0]);
     t.add_assign(&d);
     coeffs.push(t);
     let mut t = d;
-    t.mul_assign(&challenge_coordiantes[0]);
+    t.mul_assign(&challenge_coordinates[0]);
     t.add_assign(&c);
     coeffs.push(t);
     let mut t = c;
-    t.mul_assign(&challenge_coordiantes[0]);
+    t.mul_assign(&challenge_coordinates[0]);
     assert_eq!(t, g_at_inf);
     coeffs.push(t);
 
@@ -378,10 +378,10 @@ fn quick_test_binding_poly_and_sumcheck() {
     dbg!(&new_a);
     dbg!(&new_b);
 
-    // we should bind equality poly, but we have evaluation table for eq(coordiantes except first)
-    // already, and eq(X, challenge_coordiantes[0]) at new_challenge is just 1 + new_challenge * challenge_coordiantes[0]
+    // we should bind equality poly, but we have evaluation table for eq(coordinates except first)
+    // already, and eq(X, challenge_coordinates[0]) at new_challenge is just 1 + new_challenge * challenge_coordinates[0]
 
-    let mut t0 = challenge_coordiantes[0];
+    let mut t0 = challenge_coordinates[0];
     t0.mul_assign(&challenge);
     t0.add_assign(&F::ONE);
 
@@ -485,9 +485,9 @@ fn quick_test_binding_poly_and_sumcheck() {
 
     // highest
     let mut c = g_at_inf;
-    c.mul_assign(&challenge_coordiantes[1].inverse().unwrap());
+    c.mul_assign(&challenge_coordinates[1].inverse().unwrap());
 
-    let mut t = challenge_coordiantes[1];
+    let mut t = challenge_coordinates[1];
     t.add_assign(&F::ONE);
     let mut d = g_at_1;
     d.mul_assign(&t.inverse().unwrap());
@@ -498,15 +498,15 @@ fn quick_test_binding_poly_and_sumcheck() {
     let mut coeffs = vec![];
     coeffs.push(e);
     let mut t = e;
-    t.mul_assign(&challenge_coordiantes[1]);
+    t.mul_assign(&challenge_coordinates[1]);
     t.add_assign(&d);
     coeffs.push(t);
     let mut t = d;
-    t.mul_assign(&challenge_coordiantes[1]);
+    t.mul_assign(&challenge_coordinates[1]);
     t.add_assign(&c);
     coeffs.push(t);
     let mut t = c;
-    t.mul_assign(&challenge_coordiantes[1]);
+    t.mul_assign(&challenge_coordinates[1]);
     assert_eq!(t, g_at_inf);
     coeffs.push(t);
 
@@ -539,7 +539,7 @@ fn quick_test_binding_poly_and_sumcheck() {
     dbg!(&new_new_a);
     dbg!(&new_new_b);
 
-    let mut t1 = challenge_coordiantes[1];
+    let mut t1 = challenge_coordinates[1];
     t1.mul_assign(&challenge);
     t1.add_assign(&F::ONE);
 
@@ -586,4 +586,205 @@ fn quick_test_binding_poly_and_sumcheck() {
     }
 
     assert_eq!(naive_eval, new_claim);
+}
+
+/// LSB-consistency baseline for the natural-order (variable b <-> exponent
+/// bit b) convention: commitment (coeffs + RS codeword WITHOUT either
+/// bitreverse), at-point evaluation, an identity (copy-gate) sumcheck through
+/// the converted LSB kernels with the monomial track folded in lockstep, and
+/// one WHIR-style codeword fold -- each stage asserted against the previous.
+#[test]
+fn quick_lsb_consistency_chain() {
+    use crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first;
+    let worker = Worker::new_with_num_threads(1);
+    let size = 8usize;
+    let num_vars = size.trailing_zeros() as usize;
+    let lde_factor = 2usize;
+    let domain_size = size * lde_factor;
+
+    // hypercube evals in natural order: index bit b <-> variable b
+    let evals: Vec<F> = (0..size)
+        .map(|el| F::from_nonreduced_u32((el * el + 3 * el + 7) as u32))
+        .collect();
+
+    // ---- commitment side ----
+    // multilinear-natural monomial form: NO bitreverse before the transform
+    let mut coeffs = evals.clone();
+    crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs(
+        &mut coeffs,
+        num_vars as u32,
+    );
+    // round-trip sanity
+    {
+        let mut back = coeffs.clone();
+        multivariate_coeffs_into_hypercube_evals(&mut back, num_vars as u32);
+        assert_eq!(back, evals, "zeta round trip");
+    }
+    // RS codeword over the LDE domain: the multilinear-natural coefficient
+    // order IS the bitreversed univariate order the bitreversed->natural NTT
+    // consumes, so NO explicit bitreverse happens here either. The encoded
+    // univariate is P(X) = sum_m c_m X^int(m) with exponent bit b = variable
+    // b (int(m) = m since the array is in natural multilinear order).
+    let twiddles = Twiddles::<F, Global>::new(domain_size, &worker);
+    let mut rs_code_word = vec![F::ZERO; domain_size];
+    rs_code_word[..size].copy_from_slice(&coeffs);
+    // zero-padded univariate coeffs in natural order -> bitreverse the FULL
+    // padded vector to feed the bitreversed->natural NTT
+    bitreverse_enumeration_inplace(&mut rs_code_word);
+    fft::naive::serial_ct_ntt_bitreversed_to_natural(
+        &mut rs_code_word[..],
+        domain_size.trailing_zeros(),
+        &twiddles.forward_twiddles,
+    );
+    // consistency: codeword[i] == multilinear at (w^i, w^2i, w^4i) with the
+    // NATURAL eq read (bit b <-> pows[b]), for every domain point
+    let generator = domain_generator_for_size::<F>(domain_size as u64);
+    for i in 0..domain_size {
+        let omega_i = generator.pow(i as u32);
+        let pows = make_pows(omega_i, num_vars);
+        let eq = make_eq_table_lsb_first::<F>(&pows, &worker);
+        let mut eval_from_multilinear = F::ZERO;
+        for (e, w) in evals.iter().zip(eq.iter()) {
+            let mut t = *e;
+            t.mul_assign(w);
+            eval_from_multilinear.add_assign(&t);
+        }
+        assert_eq!(
+            rs_code_word[i], eval_from_multilinear,
+            "codeword vs powers-eq multilinear at domain index {i}"
+        );
+    }
+
+    // ---- eval-storing oracle loop: main-domain encode -> inverse == coeffs ----
+    {
+        let trace_twiddles = Twiddles::<F, Global>::new(size, &worker);
+        // main-domain values = P_new(w8^k): natural coeffs -> bitreverse -> NTT
+        let mut main_vals = coeffs.clone();
+        bitreverse_enumeration_inplace(&mut main_vals);
+        fft::naive::serial_ct_ntt_bitreversed_to_natural(
+            &mut main_vals[..],
+            size.trailing_zeros(),
+            &trace_twiddles.forward_twiddles,
+        );
+        let recovered = crate::gkr::prover::backend::test_helpers_monomial_from_main_domain::<F>(
+            main_vals.clone(),
+            &trace_twiddles,
+            &worker,
+        );
+        assert_eq!(recovered, coeffs, "main-domain inverse round trip");
+    }
+
+    // ---- at-point claim + identity (copy-gate) sumcheck ----
+    let point: Vec<E> = (0..num_vars)
+        .map(|b| {
+            let mut v = E::from_base(F::from_nonreduced_u32((17 * b + 5) as u32));
+            v.mul_assign(&E::from_base(F::from_nonreduced_u32(1000)));
+            v
+        })
+        .collect();
+    let eq_full = make_eq_table_lsb_first::<E>(&point, &worker);
+    let mut claim = E::ZERO;
+    for (e, w) in evals.iter().zip(eq_full.iter()) {
+        let mut t = *w;
+        t.mul_assign_by_base(e);
+        claim.add_assign(&t);
+    }
+
+    // sumcheck over eq(point, x) * f(x) with the converted LSB kernels; the
+    // monomial track folds in lockstep and must agree with the evaluation
+    // track after every round
+    let mut eval_form: Vec<E> = evals.iter().map(|e| E::from_base(*e)).collect();
+    let mut eval_slice = &mut eval_form[..];
+    let mut eq_vec = eq_full.clone();
+    let mut eq_slice = &mut eq_vec[..];
+    let mut mono_form: Vec<E> = coeffs.iter().map(|c| E::from_base(*c)).collect();
+    let mut mono_buffer: Vec<E> = Vec::with_capacity(size / 2);
+    let mut running = claim;
+    let mut challenges_drawn: Vec<E> = Vec::new();
+    for round in 0..num_vars {
+        let (f0, f1, _f_half) =
+            special_three_point_eval::<F, E>(&eval_slice[..], &eq_slice[..], &worker);
+        let mut s01 = f0;
+        s01.add_assign(&f1);
+        assert_eq!(s01, running, "round {round} claim chaining");
+        // deterministic "challenge"
+        let r = E::from_base(F::from_nonreduced_u32((round * 7 + 3) as u32));
+        challenges_drawn.push(r);
+        // next claim from the quadratic through (f0, f1) plus the half point
+        // is what production does; here evaluate directly after folding
+        eval_slice = fold_evaluation_form::<F, E>(eval_slice, &r, &worker);
+        eq_slice = fold_eq_poly::<F, E>(eq_slice, &r, &worker);
+        fold_monomial_form(&mut mono_form, &mut mono_buffer, &r, &worker);
+        // monomial track consistency each round
+        let mut mono_as_evals = mono_form.clone();
+        multivariate_coeffs_into_hypercube_evals(
+            &mut mono_as_evals,
+            mono_form.len().trailing_zeros(),
+        );
+        assert_eq!(
+            &mono_as_evals[..],
+            &eval_slice[..],
+            "round {round} monomial/evaluation track divergence"
+        );
+        // new running claim = sum over remaining cube of eq * f
+        let mut next = E::ZERO;
+        for (e, w) in eval_slice.iter().zip(eq_slice.iter()) {
+            let mut t = *e;
+            t.mul_assign(w);
+            next.add_assign(&t);
+        }
+        running = next;
+    }
+    assert_eq!(eval_slice.len(), 1);
+    // final: f(r0, r1, r2) * eq(point, r) == running claim
+    let mut expected = eval_slice[0];
+    expected.mul_assign(&eq_slice[0]);
+    assert_eq!(expected, running, "final at-point identity");
+    // and the monomial form collapsed to the same value
+    assert_eq!(mono_form.len(), 1);
+    assert_eq!(mono_form[0], eval_slice[0], "final monomial value");
+
+    // ---- WHIR-style codeword fold, one round ----
+    // fold the codeword by r0 pairing v(x), v(-x):
+    //   folded(x^2) = (v(x) + v(-x)) / 2 + r * (v(x) - v(-x)) / (2x)
+    // and compare against the NTT of the r0-folded monomial form on the
+    // half domain (generator w^2)
+    let r0 = challenges_drawn[0];
+    let mut folded_mono: Vec<E> = coeffs.iter().map(|c| E::from_base(*c)).collect();
+    let mut buf: Vec<E> = Vec::with_capacity(size / 2);
+    fold_monomial_form(&mut folded_mono, &mut buf, &r0, &worker);
+
+    let half_domain = domain_size / 2;
+    let two_inv = F::from_nonreduced_u32(2).inverse().unwrap();
+    for i in 0..half_domain {
+        let x = generator.pow(i as u32);
+        let v_pos = rs_code_word[i];
+        let v_neg = rs_code_word[i + half_domain];
+        let mut even = v_pos;
+        even.add_assign(&v_neg);
+        even.mul_assign(&two_inv);
+        let mut odd = v_pos;
+        odd.sub_assign(&v_neg);
+        odd.mul_assign(&two_inv);
+        odd.mul_assign(&x.inverse().unwrap());
+        let mut folded_val = r0;
+        folded_val.mul_assign_by_base(&odd);
+        folded_val.add_assign(&E::from_base(even));
+        // evaluate the folded monomial form (univariate, natural exponent
+        // order) at x^2
+        let mut x2 = x;
+        x2.square();
+        let mut acc = E::ZERO;
+        let mut p = F::ONE;
+        for c in folded_mono.iter() {
+            let mut t = *c;
+            t.mul_assign_by_base(&p);
+            acc.add_assign(&t);
+            p.mul_assign(&x2);
+        }
+        assert_eq!(
+            folded_val, acc,
+            "codeword fold vs folded monomial at half-domain index {i}"
+        );
+    }
 }

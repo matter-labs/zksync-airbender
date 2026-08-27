@@ -227,7 +227,7 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
     }
 }
 
-impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool> PathQueriable
+impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool> PathQueryable
     for Blake2sU32MerkleTreeWithCap<B, USE_REDUCED_BLAKE2_ROUNDS>
 {
     fn get_cap(&self) -> MerkleTreeCapVarLength {

@@ -8,6 +8,6 @@
 # `rust-src` is required by `-Z build-std` (core/alloc are recompiled from
 # source); `llvm-tools` provides the `objcopy` used to extract .bin/.elf/.text.
 [toolchain]
-channel = "1.97.1"
+channel = "1.98.0"
 components = ["rust-src", "llvm-tools"]
 targets = ["riscv32i-unknown-none-elf"]

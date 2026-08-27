@@ -1,11 +1,11 @@
 use super::*;
 use crate::gkr::prover::forward_loop::utils::memory_query_as_flattened_relation;
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation;
+use cs::gkr_compiler::SpecialMemoryContributionRelation;
 
 #[derive(Debug)]
 pub struct MaterializeMemoryTermGKRRelation {
-    pub relation: NoFieldSpecialMemoryContributionRelation,
+    pub relation: SpecialMemoryContributionRelation,
     pub output: GKRAddress,
 }
 

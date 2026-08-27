@@ -16,8 +16,7 @@ usage() {
     echo "Options:"
     echo "  --blake MODE    blake2_with_compression (default), blake2_g_function, mop_extension"
     echo "  --variant VAR   no_caches (default) or caches"
-    echo "  --sec LEVEL     80, 100, or both (default) — selects the security level of the"
-    echo "                  default circuit set (ignored when circuits are named explicitly)"
+    echo "  --sec LEVEL     only 100 bits is accepted"
     echo "  --warnings      show compiler warnings (suppressed by default)"
     echo "  -h, --help      show this message"
     echo ""
@@ -25,9 +24,8 @@ usage() {
     ls src/bin/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|  |'
     echo ""
     echo "Examples:"
-    echo "  $0                                                # all circuits (80+100), defaults"
-    echo "  $0 --sec 100                                       # only the 100-bit circuits"
-    echo "  $0 --sec 80                                        # only the 80-bit circuits"
+    echo "  $0                                                # all circuits, defaults"
+    echo "  $0 --sec 100                                       # only the 100-bit security level individual verifiers"
     echo "  $0 --blake mop_extension                          # all circuits, mop_extension"
     echo "  $0 --blake mop_extension blake2_with_extended_control  # single circuit"
     echo "  $0 --variant caches                               # all circuits, cached variant"
@@ -36,7 +34,7 @@ usage() {
 
 BLAKE_MODE="blake2_with_compression"
 VARIANT="no_caches"
-SEC="both"
+SEC="100"
 SHOW_WARNINGS=false
 
 while [ $# -gt 0 ]; do
@@ -51,8 +49,8 @@ while [ $# -gt 0 ]; do
 done
 
 case "$SEC" in
-    80|100|both) ;;
-    *) echo "ERROR: --sec must be 80, 100, or both (got '$SEC')" >&2; exit 1 ;;
+    100) ;;
+    *) echo "ERROR: --sec currently supports only 100 (got '$SEC')" >&2; exit 1 ;;
 esac
 
 # Remaining args are circuits, or default to all (filtered by --sec).
@@ -61,9 +59,7 @@ if [ $# -gt 0 ]; then
 else
     ALL=$(ls src/bin/*.rs | sed 's|.*/||;s|\.rs||')
     case "$SEC" in
-        80)   CIRCUITS=$(echo "$ALL" | grep '_sec_80$') ;;
         100)  CIRCUITS=$(echo "$ALL" | grep '_sec_100$') ;;
-        both) CIRCUITS="$ALL" ;;
     esac
 fi
 

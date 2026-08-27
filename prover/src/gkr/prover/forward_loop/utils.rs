@@ -1,15 +1,15 @@
 use super::*;
 use crate::gkr::prover::apply_row_wise;
 use cs::definitions::gkr::AddressSpaceType;
-use cs::definitions::gkr::NoFieldLinearRelation;
-use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
-use cs::definitions::gkr::NoFieldVectorLookupRelation;
-use cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation;
+use cs::definitions::gkr::LinearRelation;
+use cs::definitions::gkr::SingleColumnLookupRelation;
+use cs::definitions::gkr::VectorLookupRelation;
+use cs::gkr_compiler::SpecialMemoryContributionRelation;
 use field::{Field, FieldExtension, PrimeField};
 use std::alloc::Global;
 
 pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldVectorLookupRelation<F>,
+    rel: &VectorLookupRelation<F>,
     gkr_storage: &GKRStorage<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
@@ -159,7 +159,7 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
 }
 
 pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldSpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation,
     gkr_storage: &GKRStorage<F, E>,
     trace_len: usize,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -216,7 +216,7 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
 }
 
 pub(crate) fn evaluate_linear_relation_at_row<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldLinearRelation<F>,
+    rel: &LinearRelation<F>,
     gkr_storage: &GKRStorage<F, E>,
     row: usize,
 ) -> F {
@@ -247,7 +247,7 @@ pub(crate) fn mem_access_fn<F: PrimeField>(
 }
 
 pub(crate) fn evaluate_memory_query<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldSpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation,
     row: usize,
     base_layer_memory_sources: &[&[F]],
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -411,7 +411,7 @@ pub(crate) fn evaluate_memory_query<F: PrimeField, E: FieldExtension<F> + Field>
 }
 
 pub(crate) fn memory_query_as_flattened_relation<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldSpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation,
     external_challenges: &GKRExternalChallenges<F, E>,
 ) -> (BTreeMap<GKRAddress, E>, E) {
     let mut result = BTreeMap::new();
@@ -584,7 +584,7 @@ pub(crate) fn single_column_lookup_as_flattened_relation<
     E: FieldExtension<F> + Field,
     const WITH_ADDITIVE_PART: bool,
 >(
-    rel: &NoFieldSingleColumnLookupRelation<F>,
+    rel: &SingleColumnLookupRelation<F>,
     lookup_challenges_additive_part: E,
 ) -> (BTreeMap<GKRAddress, E>, E) {
     let mut result = BTreeMap::new();
@@ -606,7 +606,7 @@ pub(crate) fn vector_lookup_as_flattened_relation<
     E: FieldExtension<F> + Field,
     const WITH_ADDITIVE_PART: bool,
 >(
-    rel: &NoFieldVectorLookupRelation<F>,
+    rel: &VectorLookupRelation<F>,
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
 ) -> (BTreeMap<GKRAddress, E>, E) {

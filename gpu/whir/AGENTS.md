@@ -2,25 +2,27 @@
 
 `gpu_whir` owns the WHIR polynomial-commitment folding rounds (`fold/`) and
 the PoW-verify/query-index scheduling (`pow.rs`), plus the recursive WHIR
-extension oracle (`lib.rs`). It carries the `gpu_whir_native` CUDA archive
+extension oracle (`lib.rs`) and its LDE/Merkle commitment scheduler
+(`oracle_commit.rs`). It carries the `gpu_whir_native` CUDA archive
 (the WHIR/PoW protocol kernels that used to live under
 `circuit_prover/native/whir/`).
 
 ## Layer position
 
-`gpu_core < { gpu_ntt, gpu_ops, gpu_hash, gpu_cub } < gpu_prover_context <
+`gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
 gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
 gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. Dependencies point only down: this crate depends on `gpu_core`,
-`gpu_ntt`, `gpu_ops`, `gpu_hash`, `gpu_cub`, `gpu_prover_context`, `gpu_trace`,
+`gpu_ntt`, `gpu_ops`, `gpu_hash`, `gpu_prover_context`, `gpu_trace`,
 and `gpu_gkr`, plus the upstream crates below; `gpu_circuit_prover` depends on
 it, never the reverse.
 
 ## GPU Scheduling Contract
 
-`fold` and `pow` schedule GPU work directly (kernel launches, host callbacks,
-pool allocations, D2H readback for query answers). Before editing either, or
-anything else that launches kernels or manages streams, read
+`fold`, `pow`, and `oracle_commit` schedule GPU work directly (kernel launches,
+host callbacks, pool allocations, D2H readback for query answers, and the
+recursive-commit `side_stream` fork/join). Before editing them, or anything
+else that launches kernels or manages streams, read
 [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md) in
 full.
 
@@ -56,17 +58,24 @@ rather than letting the duplicate drift by convention.
 - **Archive / `links` key**: `gpu_whir_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_whir_native", "GPU_WHIR").build()`
   — no `export_include`; nothing above this crate includes its headers).
-- **Kernel count**: 17 `__global__` kernels (verified by grep, across
-  `whir/{accumulate_eq,columns,fold,leaves}.cu`). No `__constant__` symbols
-  (all 8 cluster-wide ones live in `gpu_gkr`).
+- **Kernel count**: 25 `__global__` kernels — `accumulate_eq.cu` 4,
+  `columns.cu` 3, `fold.cu` 9, `leaves.cu` 9. Count with
+  `rg -c '__global__' gpu/whir/native/whir/*.cu`, or equivalently
+  `rg -o 'ab_[a-z0-9_]*_kernel' gpu/whir/native/whir/*.cu | sort -u | wc -l`.
+  Never count `__global__ void`: five of `leaves.cu`'s nine kernels are spelled
+  `EXTERN __launch_bounds__(…) __global__` with the `void` on the next line, so
+  that grep reports 20 and is how this absolute number drifted before. No
+  `__constant__` symbols (all 8 cluster-wide ones live in `gpu_gkr`).
 - **Namespace**: `airbender::whir`.
 - **Header relationships**: `accumulate_eq.cu` includes `gpu_gkr`'s
   `gkr/support/{eq_inline,kernel_helpers}.cuh` via
   `DEP_GPU_GKR_NATIVE_INCLUDE` (forwarded because `gpu_gkr`'s build.rs sets
   `export_include(true)`); `leaves.cu` includes `gpu_hash`'s `hash.cuh` via
-  `DEP_GPU_HASH_NATIVE_INCLUDE`. Both directories resolve automatically as
-  CMake `-D` defines that `gpu_native_build` forwards. This crate also reads
-  `gpu_core`'s base headers. `deterministic_pow` is not a native `#define`
+  `DEP_GPU_HASH_NATIVE_INCLUDE`, and gpu_ntt's reusable
+  `whir_leaf_transform.cuh` via `DEP_GPU_NTT_NATIVE_INCLUDE`. All three
+  directories resolve automatically as CMake `-D` defines that
+  `gpu_native_build` forwards. This crate also reads gpu_core's base headers.
+  `deterministic_pow` is not a native `#define`
   here: the PoW search kernel itself lives in `gpu_hash`, so
   `gpu_whir/deterministic_pow` forwards to `gpu_hash/deterministic_pow`
   (and to `prover/deterministic_pow`, above) instead of defining

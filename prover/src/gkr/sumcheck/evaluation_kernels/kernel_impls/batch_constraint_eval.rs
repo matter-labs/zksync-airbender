@@ -1,16 +1,16 @@
 use super::*;
-use cs::{definitions::GKRAddress, gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation};
+use cs::{definitions::GKRAddress, gkr_compiler::MaxQuadraticConstraintsGKRRelation};
 
 #[derive(Debug)]
 pub struct BatchConstraintEvalGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
-    pub relation: NoFieldMaxQuadraticConstraintsGKRRelation<F>,
+    pub relation: MaxQuadraticConstraintsGKRRelation<F>,
     pub kernel: BatchConstraintEvalGKRRelationKernel<F, E>,
     pub inputs: Vec<GKRAddress>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchConstraintEvalGKRRelation<F, E> {
     pub fn new(
-        input: &NoFieldMaxQuadraticConstraintsGKRRelation<F>,
+        input: &MaxQuadraticConstraintsGKRRelation<F>,
         challenge_for_constraints: E,
     ) -> Self {
         let mut remapper = DenseInputRemapper::default();

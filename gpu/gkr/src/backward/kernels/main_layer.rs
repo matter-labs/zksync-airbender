@@ -13,15 +13,27 @@ pub(crate) struct GpuGKRMainLayerRoundScratch {
     pub(crate) partials: DeviceAllocation<E4>,
 }
 
+/// The windowed rounds 0-2 and the bank fill that precedes them.
+pub(crate) struct WindowedR0Launch {
+    pub(crate) bank: super::super::window::bank::WindowCoefficientBank,
+    pub(crate) window: super::super::window::binding::WindowLaunch,
+}
+
 #[doc(hidden)]
 pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan {
     pub layer_idx: usize,
     pub(crate) folding_steps: usize,
     pub(crate) claim_terms: Vec<(usize, GKRAddress)>,
     pub(crate) folding_evaluation_sources: Vec<crate::upstream::GKRAddress>,
+    pub(crate) canonical_final_addresses: Vec<(usize, crate::upstream::GKRAddress)>,
     pub(crate) round_scratch: GpuGKRMainLayerRoundScratch,
-    pub(crate) bwd_vm_round0: super::super::vm::production_bind::BwdVmRound0Launch,
-    pub(crate) bwd_vm_ext: super::super::vm::production_bind::BwdVmExtLaunch,
+    pub(crate) windowed_r0: WindowedR0Launch,
+    pub(crate) main_continuation_bank: super::super::window::bank::MainContinuationCoefficientBank,
+    pub(crate) main_execution_plan:
+        super::super::main_layer::execution_plan::MainLayerExecutionPlan,
+    pub(crate) main_continuation: super::super::main_continuation::MainContinuationWindowSequence,
+    pub(crate) main_tail_program: super::super::main_tail::MainTailProgram,
+    pub(crate) main_tail_launched: Option<super::super::main_tail::MainTailLaunched>,
     pub(crate) eq_sizes: GkrEqSizes,
 }
 

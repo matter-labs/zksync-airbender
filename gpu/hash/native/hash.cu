@@ -2,18 +2,6 @@
 
 namespace airbender::hash {
 
-// Hash one 64-byte block (2 adjacent digests) into a single output digest.
-DEVICE_FORCEINLINE void hash_two_digests(const digest *in2, digest *out) {
-  digest state;
-  digest block[2];
-  block[0] = load_cs(in2);
-  block[1] = load_cs(in2 + 1);
-  initialize(state.words);
-  u32 t = 0;
-  compress<true>(state.words, t, reinterpret_cast<const u32 *>(block), BLOCK_SIZE);
-  store_cs(out, state);
-}
-
 // One transcript squeeze round: seed_io <- Blake2s(seed_io), in place.
 DEVICE_FORCEINLINE void advance_seed(u32 seed_io[STATE_SIZE]) {
   u32 state[STATE_SIZE];
@@ -60,23 +48,43 @@ EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, 
   store_cs(reinterpret_cast<digest *>(results) + gid, state);
 }
 
-// Multi-coset leaves kernel: hashes `(1 << log_per_coset_count) *
-// cosets_in_tile` leaves in one launch. Each coset's leaf inputs and tree
-// outputs sit in per-coset slabs offset by `per_coset_values_stride_bf` and
-// `per_coset_results_stride_digests` respectively; cosets are independent so
-// the kernel just decomposes `gid_global` into `(coset, gid_in_coset)` and
-// advances the base pointers by the coset stride.
-EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u32 *results, const unsigned log_rows_count, const unsigned cols_count,
-                                                            const unsigned log_per_coset_count, const unsigned per_coset_values_stride_bf,
-                                                            const unsigned per_coset_results_stride_digests, const unsigned count) {
-  const unsigned gid_global = threadIdx.x + blockIdx.x * blockDim.x;
-  if (gid_global >= count)
+// LSB (physical-block) siblings of the leaf hashers in this file: the input is the
+// BITREVERSED-order codeword, in which logical leaf `rev(gid)` is the contiguous
+// run starting at `gid << log_rows_count`. Absorb enumeration, value counts, coset
+// selection and digest destinations are unchanged, so the digests are byte-identical
+// to the natural-order donors' — only enumerated in bitreversed leaf order.
+DEVICE_FORCEINLINE digest hash_leaf_physical(const bf *values, const unsigned log_rows_count, const unsigned cols_count, const unsigned count,
+                                             const unsigned gid) {
+  const unsigned row_mask = (1u << log_rows_count) - 1;
+  const unsigned domain_size = count << log_rows_count;
+  auto read = [=](const unsigned offset) {
+    const unsigned row_slot = offset & row_mask;
+    const unsigned col = offset >> log_rows_count;
+    const unsigned row = (gid << log_rows_count) + row_slot;
+    return col < cols_count ? bf::into_raw_u32(load_cs(values + row + col * domain_size)) : 0;
+  };
+  digest state;
+  initialize(state.words);
+  u32 t = 0;
+  absorb_stream(state.words, t, cols_count << log_rows_count, read);
+  return state;
+}
+
+EXTERN __global__ void ab_blake2s_leaves_physical_kernel(const bf *values, u32 *results, const unsigned log_rows_count, const unsigned cols_count,
+                                                         const unsigned count) {
+  const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid >= count)
     return;
+  const digest state = hash_leaf_physical(values, log_rows_count, cols_count, count, gid);
+  store_cs(reinterpret_cast<digest *>(results) + gid, state);
+}
+
+DEVICE_FORCEINLINE digest hash_leaf_multi_coset(const bf *values, const unsigned log_rows_count, const unsigned cols_count, const unsigned log_per_coset_count,
+                                                const unsigned per_coset_values_stride_bf, const unsigned gid_global) {
   const unsigned per_coset_count = 1u << log_per_coset_count;
   const unsigned coset = gid_global >> log_per_coset_count;
   const unsigned gid = gid_global & (per_coset_count - 1u);
   values += static_cast<size_t>(coset) * per_coset_values_stride_bf;
-  digest *results_d = reinterpret_cast<digest *>(results) + static_cast<size_t>(coset) * per_coset_results_stride_digests + gid;
   const unsigned row_mask = (1u << log_rows_count) - 1;
   const unsigned domain_size = per_coset_count << log_rows_count;
   auto read = [=](const unsigned offset) {
@@ -89,7 +97,152 @@ EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u3
   initialize(state.words);
   u32 t = 0;
   absorb_stream(state.words, t, cols_count << log_rows_count, read);
+  return state;
+}
+
+EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u32 *results, const unsigned log_rows_count, const unsigned cols_count,
+                                                            const unsigned log_per_coset_count, const unsigned per_coset_values_stride_bf,
+                                                            const unsigned per_coset_results_stride_digests, const unsigned count) {
+  const unsigned gid_global = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid_global >= count)
+    return;
+  const unsigned coset = gid_global >> log_per_coset_count;
+  const unsigned gid = gid_global & ((1u << log_per_coset_count) - 1u);
+  digest *results_d = reinterpret_cast<digest *>(results) + static_cast<size_t>(coset) * per_coset_results_stride_digests + gid;
+  const digest state = hash_leaf_multi_coset(values, log_rows_count, cols_count, log_per_coset_count, per_coset_values_stride_bf, gid_global);
   store_cs(results_d, state);
+}
+
+DEVICE_FORCEINLINE digest hash_leaf_multi_coset_physical(const bf *values, const unsigned log_rows_count, const unsigned cols_count,
+                                                         const unsigned log_per_coset_count, const unsigned per_coset_values_stride_bf,
+                                                         const unsigned gid_global) {
+  const unsigned per_coset_count = 1u << log_per_coset_count;
+  const unsigned coset = gid_global >> log_per_coset_count;
+  const unsigned gid_local = gid_global & (per_coset_count - 1u);
+  values += static_cast<size_t>(coset) * per_coset_values_stride_bf;
+  const unsigned row_mask = (1u << log_rows_count) - 1;
+  const unsigned domain_size = per_coset_count << log_rows_count;
+  auto read = [=](const unsigned offset) {
+    const unsigned row_slot = offset & row_mask;
+    const unsigned col = offset >> log_rows_count;
+    const unsigned row = (gid_local << log_rows_count) + row_slot;
+    return col < cols_count ? bf::into_raw_u32(load_cs(values + row + col * domain_size)) : 0;
+  };
+  digest state;
+  initialize(state.words);
+  u32 t = 0;
+  absorb_stream(state.words, t, cols_count << log_rows_count, read);
+  return state;
+}
+
+EXTERN __global__ void ab_blake2s_leaves_multi_coset_physical_kernel(const bf *values, u32 *results, const unsigned log_rows_count, const unsigned cols_count,
+                                                                     const unsigned log_per_coset_count, const unsigned per_coset_values_stride_bf,
+                                                                     const unsigned per_coset_results_stride_digests, const unsigned count) {
+  const unsigned gid_global = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid_global >= count)
+    return;
+  const unsigned coset = gid_global >> log_per_coset_count;
+  const unsigned gid = gid_global & ((1u << log_per_coset_count) - 1u);
+  digest *results_d = reinterpret_cast<digest *>(results) + static_cast<size_t>(coset) * per_coset_results_stride_digests + gid;
+  const digest state = hash_leaf_multi_coset_physical(values, log_rows_count, cols_count, log_per_coset_count, per_coset_values_stride_bf, gid_global);
+  store_cs(results_d, state);
+}
+
+EXTERN __launch_bounds__(256) __global__
+    void ab_blake2s_partial_tree_multi_coset_kernel(const bf *values, u32 *tree_backing, const unsigned log_rows_count, const unsigned cols_count,
+                                                    const unsigned log_per_coset_count, const unsigned per_coset_values_stride_bf,
+                                                    const unsigned per_coset_tree_stride_digests, const unsigned count) {
+  constexpr unsigned ROOTS_PER_BLOCK = 16;
+  constexpr unsigned LEAVES_PER_BLOCK = ROOTS_PER_BLOCK << LOG_WARP_SIZE;
+  const unsigned leaf_base = blockIdx.x * LEAVES_PER_BLOCK;
+  const unsigned valid_leaves = min(LEAVES_PER_BLOCK, count - leaf_base);
+  extern __shared__ __align__(32) uint8_t reducer_smem[];
+  auto shared_values = reinterpret_cast<digest *>(reducer_smem);
+
+  const unsigned leaf = leaf_base + threadIdx.x;
+  if (threadIdx.x < valid_leaves)
+    shared_values[threadIdx.x] = hash_leaf_multi_coset(values, log_rows_count, cols_count, log_per_coset_count, per_coset_values_stride_bf, leaf);
+  if (threadIdx.x + blockDim.x < valid_leaves)
+    shared_values[threadIdx.x + blockDim.x] =
+        hash_leaf_multi_coset(values, log_rows_count, cols_count, log_per_coset_count, per_coset_values_stride_bf, leaf + blockDim.x);
+  __syncthreads();
+
+  reduce_merkle_subtrees_block(shared_values, valid_leaves >> 1);
+  const unsigned valid_roots = valid_leaves >> LOG_WARP_SIZE;
+  if (threadIdx.x < valid_roots) {
+    const unsigned global_root = blockIdx.x * ROOTS_PER_BLOCK + threadIdx.x;
+    const unsigned log_roots_per_coset = log_per_coset_count - LOG_WARP_SIZE;
+    const unsigned coset = global_root >> log_roots_per_coset;
+    const unsigned root_in_coset = global_root & ((1u << log_roots_per_coset) - 1u);
+    auto roots = reinterpret_cast<digest *>(tree_backing) + static_cast<size_t>(coset) * per_coset_tree_stride_digests;
+    store_cs(roots + root_in_coset, shared_values[threadIdx.x]);
+  }
+}
+
+DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
+  digest children[2] = {left, right};
+  digest state;
+  initialize(state.words);
+  u32 t = 0;
+  compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+  return state;
+}
+
+template <unsigned LEVEL> DEVICE_FORCEINLINE bool insert_merkle_node(digest (&pending)[LOG_WARP_SIZE], digest &node, const unsigned leaf) {
+  if ((leaf & (1u << LEVEL)) == 0) {
+    pending[LEVEL] = node;
+    return true;
+  }
+  node = hash_node(pending[LEVEL], node);
+  return false;
+}
+
+// Fused LSB partial-tree builder. One thread produces one boundary root from
+// 32 logical leaves without materializing their digests. Threads enumerate
+// roots in PHYSICAL order; for a warp-uniform logical offset `t`, consecutive
+// lanes therefore read consecutive physical leaf blocks at
+//
+//   bitreverse(t, 5) * roots_per_coset + physical_root.
+//
+// Only the final 32-byte root store is permuted back to logical order, so the
+// existing upper tree and query-path layout stay byte-identical to the natural
+// builder while the bulk values reads never permute the lane axis.
+EXTERN __launch_bounds__(128) __global__
+    void ab_blake2s_partial_tree_multi_coset_physical_kernel(const bf *values, u32 *tree_backing, const unsigned log_rows_count, const unsigned cols_count,
+                                                             const unsigned log_per_coset_count, const unsigned per_coset_values_stride_bf,
+                                                             const unsigned per_coset_tree_stride_digests, const unsigned count) {
+  constexpr unsigned LEAVES_PER_ROOT = 1u << LOG_WARP_SIZE;
+  const unsigned roots_count = count >> LOG_WARP_SIZE;
+  const unsigned root_global = threadIdx.x + blockIdx.x * blockDim.x;
+  if (root_global >= roots_count)
+    return;
+
+  const unsigned log_roots_per_coset = log_per_coset_count - LOG_WARP_SIZE;
+  const unsigned roots_per_coset = 1u << log_roots_per_coset;
+  const unsigned coset = root_global >> log_roots_per_coset;
+  const unsigned physical_root = root_global & (roots_per_coset - 1u);
+
+  digest pending[LOG_WARP_SIZE];
+  digest node;
+#pragma unroll 1
+  for (unsigned t = 0; t < LEAVES_PER_ROOT; t++) {
+    const unsigned physical_leaf = (bitreverse_low_bits(t, LOG_WARP_SIZE) << log_roots_per_coset) | physical_root;
+    const unsigned leaf_global = (coset << log_per_coset_count) | physical_leaf;
+    node = hash_leaf_multi_coset_physical(values, log_rows_count, cols_count, log_per_coset_count, per_coset_values_stride_bf, leaf_global);
+    if (insert_merkle_node<0>(pending, node, t))
+      continue;
+    if (insert_merkle_node<1>(pending, node, t))
+      continue;
+    if (insert_merkle_node<2>(pending, node, t))
+      continue;
+    if (insert_merkle_node<3>(pending, node, t))
+      continue;
+    insert_merkle_node<4>(pending, node, t);
+  }
+
+  const unsigned logical_root = bitreverse_low_bits(physical_root, log_roots_per_coset);
+  auto roots = reinterpret_cast<digest *>(tree_backing) + static_cast<size_t>(coset) * per_coset_tree_stride_digests;
+  store_cs(roots + logical_root, node);
 }
 
 // Fused leaves-from-NTT kernel: reads the natural multi-coset NTT output and
@@ -110,6 +263,30 @@ EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u3
 // packed cosets backing; the existing blake-leaves kernel then hashes flat
 // row `dst_row` and stores at `dst_row * STATE_SIZE`. This kernel inlines the
 // source-side index math into `read()` and computes `dst_leaf_idx` directly.
+DEVICE_FORCEINLINE digest hash_leaf_from_ntt(const bf *ntt_output, const unsigned log_values_per_leaf, const unsigned src_cols_per_coset,
+                                             const unsigned src_coset, const unsigned leaf_in_coset, const unsigned per_coset_count, const unsigned trace_len) {
+  const unsigned cols_count = src_cols_per_coset << log_values_per_leaf;
+  const unsigned values_per_leaf = 1u << log_values_per_leaf;
+  const unsigned col_mask = src_cols_per_coset - 1u;
+  const unsigned log_src_cols_per_coset = __ffs(src_cols_per_coset) - 1u;
+
+  auto read = [=](const unsigned offset) -> u32 {
+    const unsigned col_in_leaf = offset & col_mask;               // FAST (low log_src_cols_per_coset bits)
+    const unsigned value_slot = offset >> log_src_cols_per_coset; // SLOW (high log_values_per_leaf bits)
+    if (value_slot >= values_per_leaf)
+      return 0;
+    const unsigned src_row = leaf_in_coset + bitreverse_low_bits(value_slot, log_values_per_leaf) * per_coset_count;
+    const unsigned src_col_global = src_coset * src_cols_per_coset + col_in_leaf;
+    return bf::into_raw_u32(load_cs(ntt_output + src_row + static_cast<size_t>(src_col_global) * trace_len));
+  };
+
+  digest state;
+  initialize(state.words);
+  u32 t = 0;
+  absorb_stream(state.words, t, cols_count, read);
+  return state;
+}
+
 EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_kernel(const bf *ntt_output, u32 *results, const unsigned log_values_per_leaf,
                                                                      const unsigned src_cols_per_coset, const unsigned log_lde_factor,
                                                                      const unsigned coset_index_base, const unsigned per_coset_count,
@@ -122,10 +299,44 @@ EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_kernel(const bf *n
   const unsigned leaf_in_coset = gid_global & (per_coset_count - 1u);
   const unsigned coset_global = coset_index_base + coset_in_tile;
   const unsigned bitrev_coset = bitreverse_low_bits(coset_global, log_lde_factor);
-
   const unsigned dst_leaf_idx = leaf_in_coset + bitrev_coset * per_coset_count;
   digest *results_d = reinterpret_cast<digest *>(results) + dst_leaf_idx;
+  const digest state = hash_leaf_from_ntt(ntt_output, log_values_per_leaf, src_cols_per_coset, coset_in_tile, leaf_in_coset, per_coset_count, trace_len);
+  store_cs(results_d, state);
+}
 
+EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_to_staging_kernel(const bf *ntt_output, u32 *staging, const unsigned log_values_per_leaf,
+                                                                                const unsigned src_cols_per_coset, const unsigned per_coset_count,
+                                                                                const unsigned log_per_coset_count, const unsigned trace_len,
+                                                                                const unsigned count) {
+  const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid >= count)
+    return;
+  const unsigned coset_in_tile = gid >> log_per_coset_count;
+  const unsigned leaf_in_coset = gid & (per_coset_count - 1u);
+  const digest state = hash_leaf_from_ntt(ntt_output, log_values_per_leaf, src_cols_per_coset, coset_in_tile, leaf_in_coset, per_coset_count, trace_len);
+  store_cs(reinterpret_cast<digest *>(staging) + gid, state);
+}
+
+EXTERN __global__ void ab_blake2s_leaves_from_ntt_flat_range_to_staging_kernel(const bf *ntt_output, u32 *staging, const unsigned log_values_per_leaf,
+                                                                               const unsigned src_cols_per_coset, const unsigned log_lde_factor,
+                                                                               const unsigned flat_leaf_base, const unsigned per_coset_count,
+                                                                               const unsigned log_per_coset_count, const unsigned trace_len,
+                                                                               const unsigned count) {
+  const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid >= count)
+    return;
+  const unsigned flat_leaf = flat_leaf_base + gid;
+  const unsigned bitrev_coset = flat_leaf >> log_per_coset_count;
+  const unsigned leaf_in_coset = flat_leaf & (per_coset_count - 1u);
+  const unsigned natural_coset = bitreverse_low_bits(bitrev_coset, log_lde_factor);
+  const digest state = hash_leaf_from_ntt(ntt_output, log_values_per_leaf, src_cols_per_coset, natural_coset, leaf_in_coset, per_coset_count, trace_len);
+  store_cs(reinterpret_cast<digest *>(staging) + gid, state);
+}
+
+DEVICE_FORCEINLINE digest hash_leaf_from_ntt_physical(const bf *ntt_output, const unsigned log_values_per_leaf, const unsigned src_cols_per_coset,
+                                                      const unsigned src_coset, const unsigned leaf_in_coset, const unsigned per_coset_count,
+                                                      const unsigned trace_len) {
   const unsigned cols_count = src_cols_per_coset << log_values_per_leaf;
   const unsigned values_per_leaf = 1u << log_values_per_leaf;
   const unsigned col_mask = src_cols_per_coset - 1u;
@@ -136,8 +347,8 @@ EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_kernel(const bf *n
     const unsigned value_slot = offset >> log_src_cols_per_coset; // SLOW (high log_values_per_leaf bits)
     if (value_slot >= values_per_leaf)
       return 0;
-    const unsigned src_row = leaf_in_coset + bitreverse_low_bits(value_slot, log_values_per_leaf) * per_coset_count;
-    const unsigned src_col_global = coset_in_tile * src_cols_per_coset + col_in_leaf;
+    const unsigned src_row = (leaf_in_coset << log_values_per_leaf) + value_slot;
+    const unsigned src_col_global = src_coset * src_cols_per_coset + col_in_leaf;
     return bf::into_raw_u32(load_cs(ntt_output + src_row + static_cast<size_t>(src_col_global) * trace_len));
   };
 
@@ -145,35 +356,117 @@ EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_kernel(const bf *n
   initialize(state.words);
   u32 t = 0;
   absorb_stream(state.words, t, cols_count, read);
-  store_cs(results_d, state);
+  return state;
 }
 
-EXTERN __global__ void ab_blake2s_nodes_kernel(const u32 *values, u32 *results, const unsigned count) {
-  const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
-  if (gid >= count)
-    return;
-  // Input block = 64 B = 2 digests; address is 64-aligned, so hash_two_digests
-  // loads via two 256-bit ops (LDG.E.ENL2.256 on sm_100+ / 2× LDG.E.128 on
-  // older) instead of 16× LDG.E.
-  hash_two_digests(reinterpret_cast<const digest *>(values) + gid * 2, reinterpret_cast<digest *>(results) + gid);
-}
-
-// Multi-coset nodes kernel: hashes `(1 << log_per_coset_count) *
-// cosets_in_tile` pairs of digests into the same number of output digests.
-// Each coset's layer-input and layer-output sit in independent slabs offset
-// by `per_coset_values_stride_digests` and `per_coset_results_stride_digests`.
-EXTERN __global__ void ab_blake2s_nodes_multi_coset_kernel(const u32 *values, u32 *results, const unsigned log_per_coset_count,
-                                                           const unsigned per_coset_values_stride_digests, const unsigned per_coset_results_stride_digests,
-                                                           const unsigned count) {
+EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_physical_kernel(const bf *ntt_output, u32 *results, const unsigned log_values_per_leaf,
+                                                                              const unsigned src_cols_per_coset, const unsigned log_lde_factor,
+                                                                              const unsigned coset_index_base, const unsigned per_coset_count,
+                                                                              const unsigned log_per_coset_count, const unsigned trace_len,
+                                                                              const unsigned count) {
   const unsigned gid_global = threadIdx.x + blockIdx.x * blockDim.x;
   if (gid_global >= count)
     return;
-  const unsigned coset = gid_global >> log_per_coset_count;
-  const unsigned gid = gid_global & ((1u << log_per_coset_count) - 1u);
-  // Each leaf pair is 2 adjacent digests (64 B), 64-aligned at every (coset, gid).
-  const digest *values_d = reinterpret_cast<const digest *>(values) + static_cast<size_t>(coset) * per_coset_values_stride_digests + gid * 2;
-  digest *results_d = reinterpret_cast<digest *>(results) + static_cast<size_t>(coset) * per_coset_results_stride_digests + gid;
-  hash_two_digests(values_d, results_d);
+
+  const unsigned coset_in_tile = gid_global >> log_per_coset_count;
+  const unsigned leaf_in_coset = gid_global & (per_coset_count - 1u);
+  const unsigned coset_global = coset_index_base + coset_in_tile;
+  const unsigned bitrev_coset = bitreverse_low_bits(coset_global, log_lde_factor);
+  const unsigned dst_leaf_idx = leaf_in_coset + bitrev_coset * per_coset_count;
+  digest *results_d = reinterpret_cast<digest *>(results) + dst_leaf_idx;
+  const digest state =
+      hash_leaf_from_ntt_physical(ntt_output, log_values_per_leaf, src_cols_per_coset, coset_in_tile, leaf_in_coset, per_coset_count, trace_len);
+  store_cs(results_d, state);
+}
+
+EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_to_staging_physical_kernel(const bf *ntt_output, u32 *staging, const unsigned log_values_per_leaf,
+                                                                                         const unsigned src_cols_per_coset, const unsigned per_coset_count,
+                                                                                         const unsigned log_per_coset_count, const unsigned trace_len,
+                                                                                         const unsigned count) {
+  const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid >= count)
+    return;
+  const unsigned coset_in_tile = gid >> log_per_coset_count;
+  const unsigned leaf_in_coset = gid & (per_coset_count - 1u);
+  const digest state =
+      hash_leaf_from_ntt_physical(ntt_output, log_values_per_leaf, src_cols_per_coset, coset_in_tile, leaf_in_coset, per_coset_count, trace_len);
+  store_cs(reinterpret_cast<digest *>(staging) + gid, state);
+}
+
+EXTERN __global__ void ab_blake2s_leaves_from_ntt_flat_range_to_staging_physical_kernel(const bf *ntt_output, u32 *staging, const unsigned log_values_per_leaf,
+                                                                                        const unsigned src_cols_per_coset, const unsigned log_lde_factor,
+                                                                                        const unsigned flat_leaf_base, const unsigned per_coset_count,
+                                                                                        const unsigned log_per_coset_count, const unsigned trace_len,
+                                                                                        const unsigned count) {
+  const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid >= count)
+    return;
+  const unsigned flat_leaf = flat_leaf_base + gid;
+  const unsigned bitrev_coset = flat_leaf >> log_per_coset_count;
+  const unsigned leaf_in_coset = flat_leaf & (per_coset_count - 1u);
+  const unsigned natural_coset = bitreverse_low_bits(bitrev_coset, log_lde_factor);
+  const digest state =
+      hash_leaf_from_ntt_physical(ntt_output, log_values_per_leaf, src_cols_per_coset, natural_coset, leaf_in_coset, per_coset_count, trace_len);
+  store_cs(reinterpret_cast<digest *>(staging) + gid, state);
+}
+
+// Fused node tower: one launch folds `layers` Merkle layers instead of one
+// launch per layer. Every intermediate layer is still written at its flat
+// prefix-sum offset, because gather.cu resolves a layer by closed form
+// (`(1<<(L+1)) - (1<<(L+1-layer))`) with no per-layer pointer table — no layer
+// may be skipped or displaced. `src`/`dst` are independent bases so this serves
+// both the flat single-tree build and the multi-coset build.
+EXTERN __global__ void ab_blake2s_nodes_tower_multi_coset_kernel(const u32 *src, u32 *dst, const unsigned layers, const unsigned log_blocks_per_coset,
+                                                                 const unsigned stride_digests, const unsigned src_count_per_coset) {
+  extern __shared__ digest values[];
+  const unsigned threads = blockDim.x;
+  const unsigned coset = blockIdx.x >> log_blocks_per_coset;
+  const unsigned block_in_coset = blockIdx.x & ((1u << log_blocks_per_coset) - 1u);
+
+  const digest *src_d = reinterpret_cast<const digest *>(src) + static_cast<size_t>(coset) * stride_digests + static_cast<size_t>(block_in_coset) * 2 * threads;
+  digest *dst_d = reinterpret_cast<digest *>(dst) + static_cast<size_t>(coset) * stride_digests;
+
+  unsigned layer_count = src_count_per_coset >> 1;
+  unsigned layer_off = 0;
+
+  // Layer 0 reads from gmem; only its output is staged in smem, which halves
+  // the footprint and doubles the block-per-SM limit.
+  {
+    digest children[2];
+    children[0] = load_cs(src_d + 2 * threadIdx.x);
+    children[1] = load_cs(src_d + 2 * threadIdx.x + 1);
+    digest state;
+    initialize(state.words);
+    u32 t = 0;
+    compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+    values[threadIdx.x] = state;
+    store_cs(dst_d + layer_off + static_cast<size_t>(block_in_coset) * threads + threadIdx.x, state);
+  }
+  __syncthreads();
+  layer_off += layer_count;
+  layer_count >>= 1;
+
+  for (unsigned layer = 1; layer < layers; layer++) {
+    const unsigned n_active = threads >> layer;
+    const bool enabled = threadIdx.x < n_active;
+    digest children[2];
+    if (enabled) {
+      children[0] = values[2 * threadIdx.x];
+      children[1] = values[2 * threadIdx.x + 1];
+    }
+    __syncthreads(); // children read before any thread overwrites the lower half
+    if (enabled) {
+      digest state;
+      initialize(state.words);
+      u32 t = 0;
+      compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+      values[threadIdx.x] = state;
+      store_cs(dst_d + layer_off + static_cast<size_t>(block_in_coset) * n_active + threadIdx.x, state);
+    }
+    __syncthreads();
+    layer_off += layer_count;
+    layer_count >>= 1;
+  }
 }
 
 EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {

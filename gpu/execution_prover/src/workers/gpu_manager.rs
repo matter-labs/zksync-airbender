@@ -247,6 +247,9 @@ fn handle_new_request(
                 GpuWorkRequest::Proof(_) => {
                     trace!("BATCH[{batch_id}] GPU_MANAGER received proof request for circuit {circuit_type:?}[{sequence_id}]")
                 }
+                GpuWorkRequest::SetupInitialization(_) => trace!(
+                    "BATCH[{batch_id}] GPU_MANAGER received setup initialization request for circuit {circuit_type:?}[{sequence_id}]"
+                ),
             };
             work_queue.push_back(request);
         }
@@ -285,6 +288,10 @@ fn handle_worker_result(
             GpuWorkResult::Proof(result) => {
                 assert_eq!(result.batch_id, batch_id);
                 trace!("BATCH[{batch_id}] GPU_MANAGER received proof from GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]");
+            }
+            GpuWorkResult::SetupInitialization(result) => {
+                assert_eq!(result.batch_id, batch_id);
+                trace!("BATCH[{batch_id}] GPU_MANAGER received setup initialization for circuit {circuit_type:?}[{sequence_id}] from GPU_WORKER[{worker_id}]");
             }
         };
         let result = WorkerResult::GpuWorkResult(result);
@@ -343,6 +350,7 @@ fn handle_worker_ready(
             match &request {
                 GpuWorkRequest::MemoryCommitment(_) => "memory commitment",
                 GpuWorkRequest::Proof(_) => "proof",
+                GpuWorkRequest::SetupInitialization(_) => "setup initialization",
             }
         );
         (Some(request), Some(batch_id))
@@ -377,6 +385,7 @@ fn drain_eager_dispatch(
                 match &request {
                     GpuWorkRequest::MemoryCommitment(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending memory commitment request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                     GpuWorkRequest::Proof(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending proof request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
+                    GpuWorkRequest::SetupInitialization(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending setup initialization request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                 };
                 op.send(&worker_senders[worker_id], Some(request))
                     .expect("GPU manager failed to eagerly queue work for GPU worker");

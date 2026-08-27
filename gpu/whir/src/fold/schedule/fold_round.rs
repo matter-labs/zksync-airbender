@@ -78,18 +78,30 @@ pub(super) fn schedule_fold_round(
 
         let current_len = state.current_len;
         let next_len = current_len / 2;
-        whir_fold_split_half_in_place_vectorized(
-            &mut state.sumchecked_poly_monomial_form,
+        whir_fold_adjacent_vectorized(
+            &state.sumchecked_poly_monomial_form,
+            &mut state.monomial_form_fold_dst,
             &d_challenge[0],
             next_len,
             stream,
         )?;
-        whir_fold_split_half_in_place_pair(
-            &mut state.sumchecked_poly_evaluation_form[..current_len],
-            &mut state.eq_poly[..current_len],
+        whir_fold_adjacent_pair(
+            &state.sumchecked_poly_evaluation_form[..current_len],
+            &mut state.eval_form_fold_dst[..next_len],
+            &state.eq_poly[..current_len],
+            &mut state.eq_poly_fold_dst[..next_len],
             &d_challenge[0],
             stream,
         )?;
+        std::mem::swap(
+            &mut state.sumchecked_poly_monomial_form,
+            &mut state.monomial_form_fold_dst,
+        );
+        std::mem::swap(
+            &mut state.sumchecked_poly_evaluation_form,
+            &mut state.eval_form_fold_dst,
+        );
+        std::mem::swap(&mut state.eq_poly, &mut state.eq_poly_fold_dst);
         state.current_len = next_len;
         *scheduled_sumcheck_poly_idx += 1;
     }

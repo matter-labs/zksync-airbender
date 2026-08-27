@@ -8,13 +8,12 @@ use fft::domain_generator_for_size;
 use fft::materialize_powers_serial_starting_with_one;
 
 #[cfg(test)]
-use crate::kernels::whir_fold_split_half_in_place;
+use crate::kernels::whir_fold_adjacent;
 use crate::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
-    deserialize_whir_e4_columns, launch_batched_accumulate_eq_samples,
-    launch_split_accumulate_eq_samples, launch_whir_three_point_partials,
-    partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens,
-    whir_fold_split_half_in_place_pair, whir_fold_split_half_in_place_vectorized,
+    launch_batched_accumulate_eq_samples, launch_split_accumulate_eq_samples,
+    launch_whir_three_point_partials, partially_evaluate_monomials_by_ref,
+    split_eq_factor_scratch_lens, whir_fold_adjacent_pair, whir_fold_adjacent_vectorized, whir_sum,
 };
 use crate::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 #[cfg(test)]
@@ -32,14 +31,9 @@ use gpu_core::primitives::device_structures::{
 };
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_cub::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
-use gpu_cub::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use gpu_gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use gpu_gkr::proof_layout::ProofLayout;
-use gpu_ntt::ntt::{
-    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
-    natural_evals_to_bitreversed_monomials,
-};
+use gpu_ntt::ntt::hypercube_evals_to_monomials;
 #[cfg(test)]
 use gpu_ops::simple::{add, mul, mul_into_x};
 use gpu_ops::transpose::transpose;
@@ -57,12 +51,16 @@ pub(super) struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation<BF>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,
+    /// Out-of-place fold destinations. Half length suffices because the live
+    /// length halves every round.
+    monomial_form_fold_dst: DeviceMatrixOwnsAllocation<BF>,
+    eval_form_fold_dst: DeviceAllocation<E4>,
+    eq_poly_fold_dst: DeviceAllocation<E4>,
     eq_group_tables: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
     scratch1: DeviceAllocation<E4>,
     #[cfg(test)]
     scalar: DeviceAllocation<E4>,
-    reduce_temp: DeviceAllocation<u8>,
     reduce_out: DeviceAllocation<E4>,
     current_len: usize,
     original_trace_len: usize,
@@ -108,10 +106,6 @@ pub struct GpuWhirFoldScheduledExecution {
     // so they outlive the kernels reading them.
     #[allow(dead_code)]
     _delinearization_ephemerals: Vec<DeviceAllocation<E4>>,
-    // Trace holders of retired intermediate WHIR oracles — kept alive so any
-    // scheduled D2D/D2H reads against their unified device cap remain valid.
-    #[allow(dead_code)]
-    _recursive_caps_keepalive: Vec<crate::GpuWhirExtensionOracleKeepalive>,
 }
 
 impl GpuWhirFoldScheduledExecution {
@@ -133,8 +127,6 @@ impl GpuWhirFoldScheduledExecution {
         self._delinearization_ephemerals.clear();
         // PoW raw-bits + assembled query-index device buffers.
         self._pow_round_state.clear();
-        // Retired intermediate-oracle trace holders (their unified device caps).
-        self._recursive_caps_keepalive.clear();
     }
 }
 
@@ -144,8 +136,6 @@ impl GpuWhirState {
         assert!(trace_len >= 2);
         let half_len = trace_len / 2;
         let max_log_n = trace_len.trailing_zeros() as usize;
-        let reduce_temp_bytes =
-            get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, half_len as i32)?;
         Ok(Self {
             sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation::new(
                 context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?,
@@ -154,6 +144,12 @@ impl GpuWhirState {
             sumchecked_poly_evaluation_form: context
                 .alloc(trace_len, AllocationPlacement::BestFit)?,
             eq_poly: context.alloc(trace_len, AllocationPlacement::BestFit)?,
+            monomial_form_fold_dst: DeviceMatrixOwnsAllocation::new(
+                context.alloc(half_len * EXT4_DEGREE, AllocationPlacement::BestFit)?,
+                half_len,
+            ),
+            eval_form_fold_dst: context.alloc(half_len, AllocationPlacement::BestFit)?,
+            eq_poly_fold_dst: context.alloc(half_len, AllocationPlacement::BestFit)?,
             eq_group_tables: context.alloc(
                 eq_group_tables_len(max_log_n).max(1),
                 AllocationPlacement::BestFit,
@@ -162,11 +158,6 @@ impl GpuWhirState {
             scratch1: context.alloc(half_len, AllocationPlacement::BestFit)?,
             #[cfg(test)]
             scalar: context.alloc(1, AllocationPlacement::BestFit)?,
-            reduce_temp: context
-                .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
-                    reduce_temp_bytes,
-                    AllocationPlacement::BestFit,
-                )?,
             reduce_out: context.alloc(3, AllocationPlacement::BestFit)?,
             current_len: trace_len,
             original_trace_len: trace_len,
@@ -202,6 +193,18 @@ pub(super) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     index.reverse_bits() >> (usize::BITS - num_bits)
 }
 
+/// The WHIR fold only supports batching the base oracles from their hypercube
+/// evaluations. A coset-0 source would also need the natural-order row layout
+/// and a monomial form carrying the multilinear coefficient labeling — the
+/// univariate IFFT of a codeword does not.
+pub(super) fn assert_batching_source_supported(use_hypercube_evals_for_batching: bool) {
+    assert!(
+        use_hypercube_evals_for_batching,
+        "WHIR base batching from coset 0 evaluations is not supported: the committed base \
+         backing is stored in bitreversed row order, but this path requires natural row order"
+    );
+}
+
 pub(super) fn get_base_columns<'a>(
     trace_holder: &'a TraceHolder<BF>,
     rows: usize,
@@ -224,7 +227,7 @@ pub(super) fn get_base_columns<'a>(
     values
 }
 
-// Also initializes evaluation form if use_hypercube_evals_for_batching was false.
+/// Derives the monomial form from the batched evaluation form.
 pub(super) fn initialize_batched_monomial_form(
     log_domain_size: usize,
     use_hypercube_evals_for_batching: bool,
@@ -232,6 +235,7 @@ pub(super) fn initialize_batched_monomial_form(
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = 1 << log_domain_size;
     assert_eq!(vectorized_scratch.len(), trace_len * EXT4_DEGREE);
     let stream = context.get_exec_stream();
@@ -240,38 +244,14 @@ pub(super) fn initialize_batched_monomial_form(
     // `state.sumchecked_poly_evaluation_form`, so no separate serialize pass.
     let vectorized_batched_evals_matrix = DeviceMatrix::new(&*vectorized_scratch, trace_len);
 
-    if use_hypercube_evals_for_batching {
-        hypercube_x1_msb_evals_to_x1_msb_monomials(
-            &vectorized_batched_evals_matrix,
-            &mut state.sumchecked_poly_monomial_form,
-            log_domain_size,
-            false, // transpsoed_monomials,
-            stream,
-            context.get_device_properties(),
-        )?;
-        // If we're in this branch, it means state.sumchecked_poly_evaluation_form was
-        // directly created by batching base hypercube evaluation columns, so we're done.
-    } else {
-        natural_evals_to_bitreversed_monomials(
-            &vectorized_batched_evals_matrix,
-            &mut state.sumchecked_poly_monomial_form,
-            log_domain_size,
-            false, // transposed_monomials
-            stream,
-            context.get_device_properties(),
-        )?;
-        let monomials_slice = state.sumchecked_poly_monomial_form.slice();
-        for column in 0..EXT4_DEGREE {
-            let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
-            let dst = &mut vectorized_scratch[column * trace_len..(column + 1) * trace_len];
-            hypercube_coeffs_bitrev_to_bitrev_evals(src, dst, log_domain_size, stream)?;
-        }
-        deserialize_whir_e4_columns(
-            &*vectorized_scratch,
-            &mut state.sumchecked_poly_evaluation_form[..trace_len],
-            stream,
-        )?;
-    }
+    hypercube_evals_to_monomials(
+        &vectorized_batched_evals_matrix,
+        &mut state.sumchecked_poly_monomial_form,
+        log_domain_size,
+        false, // transposed_monomials
+        stream,
+        context.get_device_properties(),
+    )?;
 
     Ok(())
 }
@@ -288,6 +268,7 @@ pub(super) fn schedule_initialize_batched_forms(
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = state.current_len;
     assert_eq!(
         memory_trace_holder.log_domain_size,
@@ -327,7 +308,7 @@ pub(super) fn schedule_initialize_batched_forms(
     let (device_witness_weights, device_setup_weights) = rest.split_at_mut(wit_polys_claims_len);
     assert_eq!(device_setup_weights.len(), setup_polys_claims_len);
 
-    let rows = state.sumchecked_poly_evaluation_form.len();
+    let rows = state.original_trace_len;
     let memory_values =
         get_base_columns(memory_trace_holder, rows, use_hypercube_evals_for_batching);
     let witness_values =
@@ -363,10 +344,11 @@ pub(super) fn schedule_initialize_batched_forms(
 }
 
 /// Computes the three sumcheck reductions needed per WHIR fold round into
-/// `state.reduce_out[0..3]`. Output layout:
-///   [0] = ⟨eval_low, eq_low⟩          = f(0)
-///   [1] = ⟨eval_high, eq_high⟩        = f(1)
-///   [2] = ⟨eval_low+eval_high, eq_low+eq_high⟩   (callers scale by 1/4 to get f(1/2))
+/// `state.reduce_out[0..3]`. LSB binding pairs ADJACENT entries, so "even" and
+/// "odd" below are the two halves of each pair `(2i, 2i + 1)`. Output layout:
+///   [0] = ⟨eval_even, eq_even⟩        = f(0)
+///   [1] = ⟨eval_odd, eq_odd⟩          = f(1)
+///   [2] = ⟨eval_even+eval_odd, eq_even+eq_odd⟩   (callers scale by 1/4 to get f(1/2))
 ///
 /// Leaves the result on the device; callers that need a host copy must follow
 /// up with `schedule_reduce_outputs_readback(3, ...)`.
@@ -405,14 +387,12 @@ pub(super) fn schedule_monomial_eval_device_impl(
         stream,
     )?;
 
-    let reduce_temp_bytes =
-        get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, partials_count as i32)?;
-    assert!(state.reduce_temp.len() >= reduce_temp_bytes);
-
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
+    // `scratch1` is free again here: its only prior use this round
+    // (`z_chunk_adjustment`) has been consumed by the stream-ordered
+    // monomial-eval kernel above.
+    whir_sum(
         &state.scratch0[..partials_count],
+        &mut state.scratch1[..],
         out,
         stream,
     )
@@ -426,7 +406,7 @@ pub(super) fn schedule_monomial_eval_device(
 ) -> CudaResult<Vec<HostAllocation<[E4]>>> {
     // SAFETY: `state.reduce_out[0]` is a live, disjoint single-`E4` slot inside
     // `state.reduce_out`. The impl below only mutably borrows
-    // `state.{reduce_temp, scratch0, scratch1, sumchecked_poly_monomial_form,
+    // `state.{scratch0, scratch1, sumchecked_poly_monomial_form,
     // current_len}`, none of which overlap with `state.reduce_out`. Aliasing
     // through a raw pointer here sidesteps the borrow checker's inability to
     // split-borrow disjoint fields across a method call; the schedule-time
@@ -457,8 +437,8 @@ pub(super) fn schedule_accumulate_eq_samples_batched(
             challenges.as_ptr(),
             num_queries,
             challenge_count,
-            eq_high_scratch.as_mut_ptr(),
-            eq_low_scratch.as_mut_ptr(),
+            &mut eq_high_scratch[..],
+            &mut eq_low_scratch[..],
             state.eq_poly.as_mut_ptr(),
             state.current_len,
             context,

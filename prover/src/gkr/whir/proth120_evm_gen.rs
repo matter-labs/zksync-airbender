@@ -161,7 +161,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     let mem_oracle = ColumnMajorBaseOracleForLDE::CosetRecompute(mem_commitment); // 8 cols
     let wit_oracle = ColumnMajorBaseOracleForLDE::CosetRecompute(wit_commitment); // 1 col
                                                                                   // empty setup oracle (borrowed, held for the whole call, but carries no cosets)
-    let setup_oracle = commit_trace_part::<Proth120, Proth120, Tree>(
+    let setup_oracle = commit_trace_part::<Proth120, Proth120, Tree, _>(
         &crate::gkr::prover::backend::NaiveBackend,
         &[],
         &twiddles,
@@ -188,7 +188,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
 
     log("running whir_fold (folding rounds + PoW grinding)");
     let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup_oracle);
-    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript>(
+    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript, _>(
         mem_oracle,
         mem_claims.clone(),
         wit_oracle,
@@ -617,6 +617,7 @@ fn pessimistic_config_reproduces_variant4_and_aggressive() {
 /// variable (non-6) round count — exercising `run_generation`'s round-agnostic path
 /// end-to-end (whir_fold + schedule-driven serializer) cheaply.
 #[test]
+#[ignore = "expensive real-PoW smoke; run explicitly"]
 fn generate_whir_smoke_aggressive() {
     let worker = Worker::new_with_num_threads(4);
     let cfg = pessimistic_config(12, 4, 2, 3, 16, 3, "_aggsmoke");

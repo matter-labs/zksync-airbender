@@ -17,6 +17,72 @@ mod layer_sources;
 pub use self::input_in_base::*;
 pub use self::input_in_extension::*;
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DisjointAccessQuasiSlice<T: Send + Sync, const INITIAL_ACCESS: bool> {
+    pub(crate) ptr: *mut T,
+    pub(crate) len: usize,
+}
+
+unsafe impl<T: Send + Sync, const INITIAL_ACCESS: bool> Send
+    for DisjointAccessQuasiSlice<T, INITIAL_ACCESS>
+{
+}
+unsafe impl<T: Send + Sync, const INITIAL_ACCESS: bool> Sync
+    for DisjointAccessQuasiSlice<T, INITIAL_ACCESS>
+{
+}
+
+impl<T: Send + Sync, const INITIAL_ACCESS: bool> DisjointAccessQuasiSlice<T, INITIAL_ACCESS> {
+    #[inline(always)]
+    pub(crate) fn write(&mut self, idx: usize, value: T) {
+        debug_assert!(idx < self.len);
+        unsafe {
+            self.ptr.add(idx).write(value);
+        }
+    }
+
+    pub(crate) fn from_init_slice_mut(src: &mut [T]) -> Self {
+        assert!(src.len().is_power_of_two());
+        let (ptr, len) = (src.as_mut_ptr(), src.len());
+        Self { ptr, len }
+    }
+
+    pub(crate) fn from_init_slice(src: &[T]) -> Self {
+        assert!(src.len().is_power_of_two());
+        let (ptr, len) = (src.as_ptr(), src.len());
+        Self {
+            ptr: ptr.cast_mut(),
+            len,
+        }
+    }
+
+    pub(crate) fn from_uninit_slice_mut(src: &mut [MaybeUninit<T>]) -> Self {
+        assert!(src.len().is_power_of_two());
+        let (ptr, len) = (src.as_mut_ptr(), src.len());
+        Self {
+            ptr: ptr.cast(),
+            len,
+        }
+    }
+
+    pub(crate) fn from_uninit_slice(src: &[MaybeUninit<T>]) -> Self {
+        assert!(src.len().is_power_of_two());
+        let (ptr, len) = (src.as_ptr(), src.len());
+        Self {
+            ptr: ptr.cast_mut().cast(),
+            len,
+        }
+    }
+}
+
+impl<T: Send + Sync> DisjointAccessQuasiSlice<T, false> {
+    #[inline(always)]
+    pub(crate) fn read(&self, idx: usize) -> T {
+        debug_assert!(idx < self.len);
+        unsafe { self.ptr.add(idx).read() }
+    }
+}
+
 #[derive(Default)]
 pub struct GKRLayerSource<F: PrimeField, E: FieldExtension<F> + Field> {
     pub layer_idx: usize,

@@ -214,7 +214,6 @@ pub fn schedule_forward_pass(
     schedule_prepared_dimension_reduction_forward(
         &prepared_reductions,
         vm::desc::FUSED_REDUCTION_ROUNDS as u32,
-        &mut tracing_ranges,
         context,
     )?;
     dimension_reduction_range.end(stream)?;

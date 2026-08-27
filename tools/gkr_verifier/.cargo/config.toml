@@ -6,6 +6,15 @@ rustflags = [
   "-C", "link-arg=-Tlink.x",
   "-C", "link-arg=--save-temps",
   "-C", "force-frame-pointers",
+  # Reproducibility. Mirrors matter-labs/zksync-os#243.
+  # codegen-units=1 removes any dependence on how work is split across codegen threads.
+  # The remaining three keep host-specific data (absolute source paths, a fresh build-id,
+  # debug info) out of the output; they are belt-and-braces here, since these targets are
+  # emitted with `objcopy -O binary`, which already drops ELF metadata.
+  "-C", "codegen-units=1",
+  "-C", "debuginfo=0",
+  "-C", "link-arg=--build-id=sha1",
+  "--remap-path-prefix=/zksync-airbender=/src",
 ]
 
 [unstable]

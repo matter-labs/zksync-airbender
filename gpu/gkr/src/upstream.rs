@@ -9,14 +9,6 @@ pub(crate) use gkr_eval_ir::{
     VirtualSetupKind,
 };
 
-/// Runtime-only launch-family spelling. Compiler policy stays split across
-/// typed R0 and continuation entry points.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum BwdRegime {
-    R0,
-    Ext,
-}
-
 // -----------------------------------------------------------------------
 // `cs` — circuit description, GKR layout, and compilation artifacts
 // -----------------------------------------------------------------------
@@ -32,7 +24,7 @@ pub(crate) use cs::definitions::{
 };
 pub(crate) use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 pub(crate) type GKRLayerDescription = cs::gkr_compiler::GKRLayerDescription<BabyBearField>;
-pub(crate) type NoFieldGKRRelation = cs::gkr_compiler::NoFieldGKRRelation<BabyBearField>;
+pub(crate) type GKRRelation = cs::gkr_compiler::GKRRelation<BabyBearField>;
 pub(crate) use cs::tables::TableType;
 
 // -----------------------------------------------------------------------
@@ -50,8 +42,9 @@ pub(crate) use prover::definitions::GKRExternalChallenges;
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
-pub(crate) use prover::gkr::prover::{SumcheckIntermediateProofValues, WhirSchedule};
-pub(crate) use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
+pub(crate) use prover::gkr::prover::{
+    SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
+};
 pub(crate) use prover::gkr::whir::{
     BaseFieldQuery, ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,
     WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,

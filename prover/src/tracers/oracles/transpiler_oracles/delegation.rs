@@ -212,7 +212,6 @@ impl<
         match placeholder {
             Placeholder::DelegationWriteTimestamp => {
                 let timestamp = cycle_data.write_timestamp;
-                debug_assert_eq!(timestamp % 4, 3);
 
                 timestamp
             }

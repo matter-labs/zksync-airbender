@@ -81,6 +81,46 @@ fn circuit_tester_config() -> ProgramConfig {
 
 const TRACE_LEN_LOG2: usize = 22;
 
+/// Base-trace packing factor of the EVM-production commitment: the 2^22 trace
+/// becomes a single 2^26-variate multilinear per packed column.
+pub const EVM_PRODUCTION_PACK_LOG2: usize = 4;
+/// PoW bits gating the self-derived external challenges of the packed mode.
+pub const EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
+
+/// The EVM-production prover config: a 2^22 base trace packed by
+/// [`EVM_PRODUCTION_PACK_LOG2`] into the `message_log2 = 26` WHIR input of
+/// `generate_whir_input_for_evm_production` — the exact parameters the
+/// deployed gkr.sol/whir.sol pair is generated for. Reused by the packed
+/// fibonacci fixture test AND the L1 wrap driver in `prover_examples`.
+pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig {
+    ProverConfig {
+        // circuit trace length; the WHIR message is 2^(22 + pack_log2) = 2^26
+        trace_len_log2: TRACE_LEN_LOG2,
+        // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
+        // keep these proofs on the windowed schedule (transcript-identical
+        // to naive)
+        same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
+            TRACE_LEN_LOG2,
+        ),
+        dimension_reducing_sumcheck_schedule: Default::default(),
+        lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)
+        cap_size: 8,
+        // round-0 values-per-leaf = 2^whir_steps_schedule[0] = 2^2
+        base_oracles_values_per_leaf: 1 << 2,
+        // final poly has 2^(26 - 22) = 2^4 monomials
+        sumcheck_explicit_output_size_log_2: 4,
+        security_level: level,
+        whir_schedule: WhirSchedule {
+            base_lde_factor: 1 << 5,
+            cap_size: 8,
+            whir_steps_schedule: vec![2, 4, 4, 4, 4, 4],
+            whir_queries_schedule: vec![17, 12, 8, 6, 5, 4],
+            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
+            whir_pow_schedule: vec![30, 30, 27, 25, 21, 24],
+        },
+    }
+}
+
 /// Load the serialized `CommitmentMode` aux data and build the transcript prefix the packed
 /// prover now prepends before the top-bits/caps: the 32 register final states as
 /// (value, ts_low, ts_high) u32 triples, then (final_pc, final_ts_low, final_ts_high).
@@ -130,6 +170,7 @@ fn load_boundary_transcript_prefix() -> (
 }
 
 #[test]
+#[ignore = "production-scale packed proof; run explicitly"]
 fn gkr_unified_packed_commitment_basic_fibonacci() {
     gkr_unified_packed_commitment_basic_fibonacci_impl(8, false, false);
 }
@@ -321,23 +362,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    packed polynomials match that message size exactly, so the same folds /
     //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let prover_config = ProverConfig {
-        lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)
-        cap_size: 8,
-        // round-0 values-per-leaf = 2^whir_steps_schedule[0] = 2^2
-        base_oracles_values_per_leaf: 1 << 2,
-        // final poly has 2^(26 - 22) = 2^4 monomials
-        sumcheck_explicit_output_size_log_2: 4,
-        security_level: level,
-        whir_schedule: WhirSchedule {
-            base_lde_factor: 1 << 5,
-            cap_size: 8,
-            whir_steps_schedule: vec![2, 4, 4, 4, 4, 4],
-            whir_queries_schedule: vec![17, 12, 8, 6, 5, 4],
-            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
-            whir_pow_schedule: vec![30, 30, 27, 25, 21, 24],
-        },
-    };
+    let prover_config = evm_production_packed_prover_config(level);
 
     println!("Computing setup");
     // The proof function's twiddles are of unified circuit size * (1 << pack_log2):
@@ -358,7 +383,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     use crate::gkr::whir::coset_commit::serialize_packed_base_commitment_split_to_disk;
     use crate::gkr::whir::rs_on_disk::{coset_file_path, OnDiskRsCodewords};
     use crate::merkle_trees::on_disk::{top_tree_file_path, OnDiskTreeLayout};
-    use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, RSQueriable};
+    use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, RSQueryable};
 
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
 
@@ -416,7 +441,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         // memory-mapped and read lazily.
         let setup_rs =
             OnDiskRsCodewords::<Proth120>::open(setup_coset_paths).expect("open on-disk setup RS");
-        let setup_coset_size_log2 = RSQueriable::coset_size_log2(&setup_rs);
+        let setup_coset_size_log2 = RSQueryable::coset_size_log2(&setup_rs);
         let setup_disk_tree = <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<
             Proth120,
         >>::open_disk_artifacts(
@@ -476,6 +501,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         Keccak256MerkleTreeWithCap,
         Keccak256Transcript,
         _,
+        _,
     >(
         &unified_circuit,
         &external_challenges,
@@ -489,6 +515,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         top_bits,
         trace_len,
         &Proth120WorkStealingLazyBackend,
+        &crate::gkr::prover::NaiveGKRBackend,
         &worker,
     );
     println!("Packed unified proving time is {:?}", now.elapsed());
@@ -637,7 +664,9 @@ fn capture_gkr_dim_reduce_reference() {
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
     use crate::gkr::prover_config::pow_bits;
-    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq_ext, make_eq_poly_in_full};
+    use crate::gkr::sumcheck::eq_poly::{
+        evaluate_with_precomputed_eq_ext, make_eq_poly_in_full_lsb,
+    };
     use transcript::Transcript;
 
     let worker = Worker::new_with_num_threads(4);
@@ -712,7 +741,7 @@ fn capture_gkr_dim_reduce_reference() {
     println!("[dimreduce] batching = 0x{:032x}", batching.to_u128());
 
     // --- initial 10 claims: outputs evaluated at eval_point via eq ---
-    let eq_layers = make_eq_poly_in_full::<Proth120>(&eval_point, &worker);
+    let eq_layers = make_eq_poly_in_full_lsb::<Proth120>(&eval_point, &worker);
     let eq = eq_layers.last().unwrap();
     let mut claims: Vec<Proth120> = vec![];
     for (_out_ty, vals) in proof.final_explicit_evaluations.iter() {
@@ -851,9 +880,9 @@ fn verify_permutation_identity_no_inversion() {
 /// Output address for the single-output GKR relation variants (compute_claim kind 1).
 /// Returns None for constraint gates (kind 0) and dual-output lookups (kind 2).
 fn single_output(
-    rel: &crate::cs::gkr_compiler::NoFieldGKRRelation<Proth120>,
+    rel: &crate::cs::gkr_compiler::GKRRelation<Proth120>,
 ) -> Option<&crate::cs::definitions::GKRAddress> {
-    use crate::cs::gkr_compiler::NoFieldGKRRelation as R;
+    use crate::cs::gkr_compiler::GKRRelation as R;
     match rel {
         R::CopyInBaseField { output, .. }
         | R::CopyInExtensionField { output, .. }
@@ -874,9 +903,9 @@ fn single_output(
 
 /// Output pair for the dual-output (lookup, compute_claim kind 2) relation variants.
 fn dual_outputs(
-    rel: &crate::cs::gkr_compiler::NoFieldGKRRelation<Proth120>,
+    rel: &crate::cs::gkr_compiler::GKRRelation<Proth120>,
 ) -> Option<&[crate::cs::definitions::GKRAddress; 2]> {
-    use crate::cs::gkr_compiler::NoFieldGKRRelation as R;
+    use crate::cs::gkr_compiler::GKRRelation as R;
     match rel {
         R::AggregateLookupRationalPair { output, .. }
         | R::LookupPairFromBaseInputs { output, .. }
@@ -916,8 +945,8 @@ fn circuit_layer_g(
     ) -> usize,
 ) -> Proth120 {
     use crate::cs::definitions::GKRAddress;
+    use crate::cs::gkr_compiler::GKRRelation as R;
     use crate::cs::gkr_compiler::InitsOrTeardownsTimestampAndValue as ITV;
-    use crate::cs::gkr_compiler::NoFieldGKRRelation as R;
     use ::field::Field;
     type E = Proth120;
     let mul = |a: &E, b: &E| {
@@ -1134,7 +1163,9 @@ fn verify_dim_reduce_layers() {
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
     use crate::gkr::prover_config::pow_bits;
-    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq_ext, make_eq_poly_in_full};
+    use crate::gkr::sumcheck::eq_poly::{
+        evaluate_with_precomputed_eq_ext, make_eq_poly_in_full_lsb,
+    };
     use ::field::Field;
     use transcript::Transcript;
 
@@ -1195,7 +1226,7 @@ fn verify_dim_reduce_layers() {
     );
     let mut batching = chs.pop().unwrap();
     let mut point = chs; // eval_point (final_trace_size_log_2 coords)
-    let eq = make_eq_poly_in_full::<E>(&point, &worker)
+    let eq = make_eq_poly_in_full_lsb::<E>(&point, &worker)
         .last()
         .unwrap()
         .clone();
@@ -1263,7 +1294,7 @@ fn verify_dim_reduce_layers() {
         {
             let siv = &proof.sumcheck_intermediate_values[&layer];
             for c in siv.internal_round_coefficients.iter() {
-                for e in c.iter() {
+                for e in c.as_multilinear().iter() {
                     push_e(&mut blob, e);
                 }
             }
@@ -1292,7 +1323,7 @@ fn verify_dim_reduce_layers() {
         let mut eq_prefactor = E::ONE;
         let mut new_point: Vec<E> = Vec::with_capacity(folding_steps + 1);
         for round in 0..folding_steps {
-            let c = siv.internal_round_coefficients[round];
+            let c = *siv.internal_round_coefficients[round].as_multilinear();
             let mut s = sum01(&c);
             s.mul_assign(&eq_prefactor);
             assert_eq!(s, claim, "dim layer {layer} round {round} sumcheck check");
@@ -1411,7 +1442,7 @@ fn verify_dim_reduce_layers() {
     // FULL 22 monomial sumcheck rounds, then a per-gate `g` accumulator, final-step check
     // `g*eq==claim`, absorb the at-point evals, draw next_batching, next claims = evals directly.
     use crate::cs::definitions::GKRAddress;
-    use crate::cs::gkr_compiler::NoFieldGKRRelation as R;
+    use crate::cs::gkr_compiler::GKRRelation as R;
     let addr_to_idx = |addr: &GKRAddress, sorted: &[GKRAddress]| -> usize {
         sorted
             .iter()
@@ -1468,7 +1499,7 @@ fn verify_dim_reduce_layers() {
         // Cached/VirtualSetup are computed on the verifier heap, so they're NOT in calldata. ----
         {
             for c in siv.internal_round_coefficients.iter() {
-                for e in c.iter() {
+                for e in c.as_multilinear().iter() {
                     circuit_blob.extend_from_slice(&e.to_u128().to_be_bytes());
                 }
             }
@@ -1546,16 +1577,16 @@ fn verify_dim_reduce_layers() {
         println!(
             "[layer-dbg] layer {config_idx} initial_claim=0x{:032x}  batching=0x{:032x}  round0_c=[{:032x},{:032x},{:032x},{:032x}]",
             claim.to_u128(), batching.to_u128(),
-            siv.internal_round_coefficients[0][0].to_u128(),
-            siv.internal_round_coefficients[0][1].to_u128(),
-            siv.internal_round_coefficients[0][2].to_u128(),
-            siv.internal_round_coefficients[0][3].to_u128(),
+            siv.internal_round_coefficients[0].as_multilinear()[0].to_u128(),
+            siv.internal_round_coefficients[0].as_multilinear()[1].to_u128(),
+            siv.internal_round_coefficients[0].as_multilinear()[2].to_u128(),
+            siv.internal_round_coefficients[0].as_multilinear()[3].to_u128(),
         );
         // ---- 22 monomial sumcheck rounds (same loop as dim-reducing) ----
         let mut eq_prefactor = E::ONE;
         let mut new_point: Vec<E> = Vec::with_capacity(folding_steps);
         for round in 0..folding_steps {
-            let c = siv.internal_round_coefficients[round];
+            let c = *siv.internal_round_coefficients[round].as_multilinear();
             let mut s = sum01(&c);
             s.mul_assign(&eq_prefactor);
             assert_eq!(
@@ -1627,7 +1658,7 @@ fn verify_dim_reduce_layers() {
         // equal the linear/vector-lookup combination of its dependency at-point evals. ----
         {
             use crate::cs::definitions::gkr::RamWordRepresentation as Val;
-            use crate::cs::gkr_compiler::NoFieldGKRCacheRelation as CR;
+            use crate::cs::gkr_compiler::GKRCacheRelation as CR;
             use crate::cs::gkr_compiler::{
                 CompiledAddressSpaceRelationStrict as ASpace, CompiledAddressStrict as Addr,
                 CompiledMemoryTimestamp as Ts,
@@ -2266,7 +2297,7 @@ fn inspect_circuit_layer_relations() {
 /// Inlined analogue of `orchestration::unified::build_unified_full_trace`, but with
 /// the delegation CSRs removed from the preprocessing supported-CSR set (precompiles
 /// disabled at preprocessing) and without the optional memory-consistency cross-check.
-fn build_unified_trace_without_precompiles<C, F: PrimeField>(
+pub fn build_unified_trace_without_precompiles<C, F: PrimeField>(
     vm: &VmRunOutput<C>,
     witness_eval_fn_ptr: fn(&mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, F>),
     unified_circuit: &GKRCircuitArtifact<F>,

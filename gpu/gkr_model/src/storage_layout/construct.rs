@@ -8,9 +8,7 @@ use crate::address_audit::{
     classify, collect_addresses_from_cache_relation, collect_addresses_from_relation, AddressClass,
     GKR_MAX_POLYS_PER_SLOT,
 };
-use crate::upstream::{
-    GKRAddress, GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation, PrimeField,
-};
+use crate::upstream::{GKRAddress, GKRCacheRelation, GKRCircuitArtifact, GKRRelation, PrimeField};
 
 use super::alias::build_alias_redirects;
 use super::tower::append_tower_layers;
@@ -250,8 +248,8 @@ fn build_layer_layout_from_writes(
     layout
 }
 
-fn cache_relation_output_type<F: PrimeField>(rel: &NoFieldGKRCacheRelation<F>) -> FieldType {
-    use NoFieldGKRCacheRelation::*;
+fn cache_relation_output_type<F: PrimeField>(rel: &GKRCacheRelation<F>) -> FieldType {
+    use GKRCacheRelation::*;
     match rel {
         SingleColumnLookup { .. } => FieldType::Base,
         VectorizedLookup(_) | VectorizedLookupSetup(_) | MemoryTuple(_) => FieldType::Ext,
@@ -283,9 +281,9 @@ fn column_index_for_layer0(addr: &GKRAddress) -> u32 {
 /// `MaterializeSingleLookupInput`, `CopyInBaseField`, `MaxQuadratic`) versus
 /// extension-typed polys (everything else with outputs).
 pub(super) fn relation_outputs<F: PrimeField>(
-    rel: &NoFieldGKRRelation<F>,
+    rel: &GKRRelation<F>,
 ) -> Vec<(GKRAddress, FieldType)> {
-    use NoFieldGKRRelation::*;
+    use GKRRelation::*;
     let mut out = Vec::new();
     match rel {
         LinearBaseFieldRelation { output, .. }

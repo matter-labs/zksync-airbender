@@ -1,18 +1,18 @@
 use super::*;
 use crate::gkr::prover::forward_loop::utils::vector_lookup_as_flattened_relation;
-use cs::definitions::{gkr::NoFieldVectorLookupRelation, GKRAddress};
+use cs::definitions::{gkr::VectorLookupRelation, GKRAddress};
 
 #[derive(Debug)]
 pub struct MaterializeVectorLookupInputGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
     pub kernel: MaterializeVectorLookupInputGKRRelationKernel<F, E>,
     pub inputs: Vec<GKRAddress>,
-    pub relation: NoFieldVectorLookupRelation<F>,
+    pub relation: VectorLookupRelation<F>,
     pub output: GKRAddress,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectorLookupInputGKRRelation<F, E> {
     pub fn new(
-        input: &NoFieldVectorLookupRelation<F>,
+        input: &VectorLookupRelation<F>,
         output: GKRAddress,
         lookup_multiplicative_challenge: E,
     ) -> Self {

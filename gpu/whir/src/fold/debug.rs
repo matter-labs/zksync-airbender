@@ -260,6 +260,7 @@ pub(super) fn initialize_batched_forms_impl(
     ) -> CudaResult<Vec<DeviceAllocation<E4>>>,
     context: &ProverContext,
 ) -> CudaResult<[Vec<E4>; 3]> {
+    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = state.current_len;
     assert_eq!(
         memory_trace_holder.log_domain_size,
@@ -429,6 +430,9 @@ pub(super) fn build_initial_state(
     Ok((batch_challenges, batched_claim))
 }
 
+/// Elementwise-op composition of the round's three evaluations. The legs are
+/// deinterleaved first: `whir_fold_adjacent` at challenge 0 keeps `src[2i]`, at
+/// challenge 1 keeps `src[2i + 1]`.
 pub(super) fn special_three_point_eval_device(
     state: &mut GpuWhirState,
     context: &ProverContext,
@@ -437,46 +441,75 @@ pub(super) fn special_three_point_eval_device(
     assert!(half <= state.scratch0.len());
     let stream = context.get_exec_stream();
 
-    {
-        let (eval_low, _) =
-            state.sumchecked_poly_evaluation_form[..state.current_len].split_at(half);
-        let (eq_low, _) = state.eq_poly[..state.current_len].split_at(half);
-        mul(eval_low, eq_low, &mut state.scratch0[..half], stream)?;
+    let mut zero: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
+    let mut one: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
+    memory_copy_async(&mut zero[..], &[E4::ZERO], stream)?;
+    memory_copy_async(&mut one[..], &[E4::ONE], stream)?;
+    let mut eval_even: DeviceAllocation<E4> = context.alloc(half, AllocationPlacement::BestFit)?;
+    let mut eval_odd: DeviceAllocation<E4> = context.alloc(half, AllocationPlacement::BestFit)?;
+    let mut eq_even: DeviceAllocation<E4> = context.alloc(half, AllocationPlacement::BestFit)?;
+    let mut eq_odd: DeviceAllocation<E4> = context.alloc(half, AllocationPlacement::BestFit)?;
+    for (src, dst, pick) in [
+        (
+            &state.sumchecked_poly_evaluation_form,
+            &mut eval_even,
+            &zero,
+        ),
+        (&state.eq_poly, &mut eq_even, &zero),
+    ] {
+        whir_fold_adjacent(&src[..state.current_len], &mut dst[..], &pick[0], stream)?;
     }
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
+    for (src, dst, pick) in [
+        (&state.sumchecked_poly_evaluation_form, &mut eval_odd, &one),
+        (&state.eq_poly, &mut eq_odd, &one),
+    ] {
+        whir_fold_adjacent(&src[..state.current_len], &mut dst[..], &pick[0], stream)?;
+    }
+
+    mul(
+        &eval_even[..],
+        &eq_even[..],
+        &mut state.scratch0[..half],
+        stream,
+    )?;
+    whir_sum(
         &state.scratch0[..half],
+        &mut state.scratch1[..],
         &mut state.reduce_out[0],
         stream,
     )?;
 
-    {
-        let (_, eval_high) =
-            state.sumchecked_poly_evaluation_form[..state.current_len].split_at(half);
-        let (_, eq_high) = state.eq_poly[..state.current_len].split_at(half);
-        mul(eval_high, eq_high, &mut state.scratch0[..half], stream)?;
-    }
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
+    mul(
+        &eval_odd[..],
+        &eq_odd[..],
+        &mut state.scratch0[..half],
+        stream,
+    )?;
+    whir_sum(
         &state.scratch0[..half],
+        &mut state.scratch1[..],
         &mut state.reduce_out[1],
         stream,
     )?;
 
-    {
-        let (eval_low, eval_high) =
-            state.sumchecked_poly_evaluation_form[..state.current_len].split_at(half);
-        let (eq_low, eq_high) = state.eq_poly[..state.current_len].split_at(half);
-        add(eval_low, eval_high, &mut state.scratch0[..half], stream)?;
-        add(eq_low, eq_high, &mut state.scratch1[..half], stream)?;
-    }
+    add(
+        &eval_even[..],
+        &eval_odd[..],
+        &mut state.scratch0[..half],
+        stream,
+    )?;
+    add(
+        &eq_even[..],
+        &eq_odd[..],
+        &mut state.scratch1[..half],
+        stream,
+    )?;
     mul_into_x(&mut state.scratch0[..half], &state.scratch1[..half], stream)?;
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
+    // `scratch1`'s eq sums were consumed by the stream-ordered `mul_into_x`
+    // above, so it is free to serve as the sum's partials buffer.
+    whir_sum(
         &state.scratch0[..half],
+        &mut state.scratch1[..],
         &mut state.reduce_out[2],
         stream,
     )?;
@@ -497,19 +530,24 @@ pub(super) fn schedule_special_three_point_eval_device(
     schedule_reduce_outputs_readback(3, state, context)
 }
 
-pub(super) fn fold_monomial_form_in_place_device(
+pub(super) fn fold_monomial_form_device(
     state: &mut GpuWhirState,
     challenge: E4,
     context: &ProverContext,
 ) -> CudaResult<()> {
     copy_scalar_to_device(challenge, state, context)?;
     let half = state.current_len / 2;
-    whir_fold_split_half_in_place_vectorized(
-        &mut state.sumchecked_poly_monomial_form,
+    whir_fold_adjacent_vectorized(
+        &state.sumchecked_poly_monomial_form,
+        &mut state.monomial_form_fold_dst,
         &state.scalar[0],
         half,
         context.get_exec_stream(),
     )?;
+    std::mem::swap(
+        &mut state.sumchecked_poly_monomial_form,
+        &mut state.monomial_form_fold_dst,
+    );
     Ok(())
 }
 
@@ -519,11 +557,18 @@ pub(super) fn fold_evaluation_form_in_place_device(
     context: &ProverContext,
 ) -> CudaResult<()> {
     copy_scalar_to_device(challenge, state, context)?;
-    whir_fold_split_half_in_place(
-        &mut state.sumchecked_poly_evaluation_form[..state.current_len],
+    let next_len = state.current_len / 2;
+    whir_fold_adjacent(
+        &state.sumchecked_poly_evaluation_form[..state.current_len],
+        &mut state.eval_form_fold_dst[..next_len],
         &state.scalar[0],
         context.get_exec_stream(),
-    )
+    )?;
+    std::mem::swap(
+        &mut state.sumchecked_poly_evaluation_form,
+        &mut state.eval_form_fold_dst,
+    );
+    Ok(())
 }
 
 pub(super) fn fold_eq_poly_in_place_device(
@@ -532,11 +577,15 @@ pub(super) fn fold_eq_poly_in_place_device(
     context: &ProverContext,
 ) -> CudaResult<()> {
     copy_scalar_to_device(challenge, state, context)?;
-    whir_fold_split_half_in_place(
-        &mut state.eq_poly[..state.current_len],
+    let next_len = state.current_len / 2;
+    whir_fold_adjacent(
+        &state.eq_poly[..state.current_len],
+        &mut state.eq_poly_fold_dst[..next_len],
         &state.scalar[0],
         context.get_exec_stream(),
-    )
+    )?;
+    std::mem::swap(&mut state.eq_poly, &mut state.eq_poly_fold_dst);
+    Ok(())
 }
 
 pub(super) fn evaluate_monomial_form_device(
@@ -549,7 +598,7 @@ pub(super) fn evaluate_monomial_form_device(
 
     // SAFETY: `state.reduce_out[0]` is a live, disjoint single-`E4` slot inside
     // `state.reduce_out`. The impl below only mutably borrows
-    // `state.{reduce_temp, scratch0, scratch1, sumchecked_poly_monomial_form,
+    // `state.{scratch0, scratch1, sumchecked_poly_monomial_form,
     // current_len}`, none of which overlap with `state.reduce_out`. Aliasing
     // through a raw pointer here sidesteps the borrow checker's inability to
     // split-borrow disjoint fields across a method call; the downstream

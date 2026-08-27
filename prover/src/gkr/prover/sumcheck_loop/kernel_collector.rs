@@ -27,7 +27,7 @@ use crate::worker::Worker;
 use field::{Field, FieldExtension, PrimeField};
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation, OutputType};
+use cs::gkr_compiler::{GKRLayerDescription, GKRRelation, OutputType};
 
 macro_rules! define_kernel_variants {
     (
@@ -169,7 +169,7 @@ define_kernel_variants! {
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
     pub fn from_enforced_relations(
-        relation: &NoFieldGKRRelation<F>,
+        relation: &GKRRelation<F>,
         layer_idx: usize,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
@@ -185,7 +185,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
         };
 
         match relation {
-            NoFieldGKRRelation::CopyInBaseField { input, output } => {
+            GKRRelation::CopyInBaseField { input, output } => {
                 let challenge = [get_challenge()];
                 Self::BaseCopy(
                     BaseFieldCopyGKRRelation {
@@ -196,7 +196,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+            GKRRelation::CopyInExtensionField { input, output } => {
                 let challenge = [get_challenge()];
                 Self::ExtCopy(
                     ExtensionCopyGKRRelation {
@@ -207,8 +207,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::InitialGrandProductFromCaches { input, output }
-            | NoFieldGKRRelation::TrivialProduct { input, output } => {
+            GKRRelation::InitialGrandProductFromCaches { input, output }
+            | GKRRelation::TrivialProduct { input, output } => {
                 let challenge = [get_challenge()];
                 Self::Product(
                     SameSizeProductGKRRelation {
@@ -219,7 +219,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::MaskIntoIdentityProduct {
+            GKRRelation::MaskIntoIdentityProduct {
                 input,
                 mask,
                 output,
@@ -235,7 +235,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
+            GKRRelation::AggregateLookupRationalPair { input, output } => {
                 let challenges = [get_challenge(), get_challenge()];
                 Self::AggregateLookupPair(
                     LookupPairGKRRelation {
@@ -246,7 +246,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
+            GKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
                 let challenges = [get_challenge(), get_challenge()];
                 Self::LookupBasePair(
                     LookupBasePairGKRRelation {
@@ -259,7 +259,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
+            GKRRelation::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,
                 output,
@@ -277,7 +277,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
+            GKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
                 remainder,
                 output,
@@ -295,7 +295,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
+            GKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
                 input,
                 remainder,
                 output,
@@ -313,7 +313,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupWithCachedDensAndSetup {
+            GKRRelation::LookupWithCachedDensAndSetup {
                 input,
                 setup,
                 output,
@@ -331,7 +331,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
+            GKRRelation::EnforceConstraintsMaxQuadratic { input } => {
                 unimplemented!("no longer supported");
                 // let challenge = [get_challenge()];
                 // Self::EnforceConstraintsMaxQuadratic(
@@ -339,7 +339,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                 //     challenge,
                 // )
             }
-            NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output } => {
+            GKRRelation::LookupPairFromMaterializedVectorInputs { input, output } => {
                 let challenges = [get_challenge(), get_challenge()];
                 Self::LookupVectorPair(
                     LookupExtensionPairGKRRelation {
@@ -352,7 +352,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
+            GKRRelation::MaxQuadratic { input, output, .. } => {
                 let challenges = [get_challenge()];
                 Self::MaxQuadratic(
                     MaxQuadraticGKRRelation::new(input, *output),
@@ -360,7 +360,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
+            GKRRelation::LookupFromMaterializedVectorInputWithSetup {
                 input,
                 setup,
                 output,
@@ -378,7 +378,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::MaterializedVectorLookupInput { input, output } => {
+            GKRRelation::MaterializedVectorLookupInput { input, output } => {
                 let challenges = [get_challenge()];
                 Self::MaterializeVectorLookupInput(
                     MaterializeVectorLookupInputGKRRelation::new(
@@ -390,7 +390,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output } => {
+            GKRRelation::InitialGrandProductWithoutCaches { input, output } => {
                 let challenges = [get_challenge()];
                 Self::ProductWithoutCaches(
                     SameSizeProductGKRRelationWithoutCaches {
@@ -401,7 +401,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupPairFromBaseInputs { input, output, .. } => {
+            GKRRelation::LookupPairFromBaseInputs { input, output, .. } => {
                 let challenges = [get_challenge(), get_challenge()];
                 Self::LookupBasePairWithoutCaches(
                     LookupBasePairWithoutCachesGKRRelation {
@@ -414,7 +414,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::MaterializeSingleLookupInput { input, output, .. } => {
+            GKRRelation::MaterializeSingleLookupInput { input, output, .. } => {
                 let challenges = [get_challenge()];
                 Self::MaterializeSingleLookupInput(
                     MaterializeSingleLookupInputGKRRelation {
@@ -425,7 +425,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+            GKRRelation::LookupWithDensAndSetupExpressions {
                 input,
                 setup,
                 output,
@@ -441,7 +441,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
+            GKRRelation::LookupPairFromVectorInputs { input, output } => {
                 let challenges = [get_challenge(), get_challenge()];
                 Self::LookupVectorPairWithoutCaches(
                     LookupExtensionPairWithoutCachesGKRRelation {
@@ -452,7 +452,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+            GKRRelation::LookupUnbalancedPairWithVectorInputs {
                 input,
                 remainder,
                 output,
@@ -468,7 +468,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+            GKRRelation::LookupFromVectorInputWithSetup {
                 input,
                 setup,
                 output,
@@ -484,7 +484,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output } => {
+            GKRRelation::MaterializeGrandProductTermExpression { input, output } => {
                 let challenges = [get_challenge()];
                 Self::MaterializeMemoryAccess(
                     MaterializeMemoryTermGKRRelation {
@@ -495,7 +495,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+            GKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 let challenges = [get_challenge()];
                 Self::EnforceSingleMaxQuadraticConstraint(
                     EnforceSingleMaxQuadraticConstraintGKRRelation {
@@ -504,7 +504,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     challenges,
                 )
             }
-            NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+            GKRRelation::InitsOrTeardownsInitialPair {
                 timestamp_and_value,
                 setup,
                 output,
@@ -524,9 +524,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                 )
             }
 
-            // NoFieldGKRRelation::MaterializedVectorLookupInput { .. } => todo!(),
-            // NoFieldGKRRelation::LookupPairFromBaseInputs { .. } => todo!(),
-            // NoFieldGKRRelation::LookupPairFromVectorInputs { .. } => todo!(),
+            // GKRRelation::MaterializedVectorLookupInput { .. } => todo!(),
+            // GKRRelation::LookupPairFromBaseInputs { .. } => todo!(),
+            // GKRRelation::LookupPairFromVectorInputs { .. } => todo!(),
             a @ _ => {
                 panic!("Relation {:?} is not yet implemented", a);
             }

@@ -75,15 +75,12 @@ pub(crate) fn allocate_inline_inits_and_teardowns_sets<F: PrimeField>(
 pub(crate) fn build_inline_inits_and_teardowns_grand_product<F: PrimeField>(
     graph: &mut GKRGraph<F>,
     teardown_sets: &[([GKRAddress; 2], [GKRAddress; 2])],
-) -> (
-    (GKRAddress, NoFieldGKRRelation<F>),
-    (GKRAddress, NoFieldGKRRelation<F>),
-) {
+) -> ((GKRAddress, GKRRelation<F>), (GKRAddress, GKRRelation<F>)) {
     assert!(teardown_sets.len() >= 2);
     assert_eq!(teardown_sets.len() % 2, 0);
 
-    let mut read_set: Vec<(GKRAddress, NoFieldGKRRelation<F>)> = vec![];
-    let mut write_set: Vec<(GKRAddress, NoFieldGKRRelation<F>)> = vec![];
+    let mut read_set: Vec<(GKRAddress, GKRRelation<F>)> = vec![];
+    let mut write_set: Vec<(GKRAddress, GKRRelation<F>)> = vec![];
 
     let mut set_idx = 0;
     for [lhs, rhs] in teardown_sets.as_chunks::<2>().0.iter() {
@@ -102,8 +99,8 @@ pub(crate) fn build_inline_inits_and_teardowns_grand_product<F: PrimeField>(
         expected_output_layer += 1;
         assert_eq!(read_set.len(), write_set.len());
 
-        let mut next_read: Vec<(GKRAddress, NoFieldGKRRelation<F>)> = vec![];
-        let mut next_write: Vec<(GKRAddress, NoFieldGKRRelation<F>)> = vec![];
+        let mut next_read: Vec<(GKRAddress, GKRRelation<F>)> = vec![];
+        let mut next_write: Vec<(GKRAddress, GKRRelation<F>)> = vec![];
 
         for (src, dst, is_write) in [
             (&read_set, &mut next_read, false),

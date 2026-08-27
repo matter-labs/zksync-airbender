@@ -40,7 +40,7 @@ impl<F: PrimeField> GKRGate<F> for OneStepConstraintsEvaluationNode<F> {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         assert_eq!(self.quadratic_parts.len(), self.linear_parts.len());
         assert_eq!(self.quadratic_parts.len(), self.constant_parts.len());
 
@@ -89,13 +89,13 @@ impl<F: PrimeField> GKRGate<F> for OneStepConstraintsEvaluationNode<F> {
 
         let constants = constant_sorted.into_boxed_slice();
 
-        let input = NoFieldMaxQuadraticConstraintsGKRRelation {
+        let input = MaxQuadraticConstraintsGKRRelation {
             quadratic_terms,
             linear_terms,
             constants,
         };
 
-        let node = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input };
+        let node = GKRRelation::EnforceConstraintsMaxQuadratic { input };
         graph.add_enforced_relation(node.clone(), output_layer);
 
         ((), node)
@@ -212,7 +212,7 @@ impl<F: PrimeField> GKRGate<F> for SingleConstraintEvaluationNode<F> {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let mut quadratic_sorted = BTreeMap::<GKRAddress, BTreeMap<_, _>>::new();
         let mut linear_sorted = BTreeMap::new();
 
@@ -261,13 +261,13 @@ impl<F: PrimeField> GKRGate<F> for SingleConstraintEvaluationNode<F> {
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-        let input = NoFieldMaxQuadraticGKRRelation {
+        let input = CompiledMaxQuadraticGKRRelation {
             quadratic_terms,
             linear_terms,
             constant: self.constant_part,
         };
         let expression = expression_into_no_field_expression(&self.structured_expression, &*graph);
-        let node = NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression };
+        let node = GKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression };
         graph.add_enforced_relation(node.clone(), output_layer);
 
         ((), node)
@@ -277,12 +277,12 @@ impl<F: PrimeField> GKRGate<F> for SingleConstraintEvaluationNode<F> {
 pub(crate) fn expression_into_no_field_expression<F: PrimeField>(
     expr: &Expr<F>,
     graph: &impl GraphHolder<F>,
-) -> NoFieldStructuredExpression<F> {
+) -> StructuredExpression<F> {
     match expr {
-        Expr::Constant(c) => NoFieldStructuredExpression::Constant(*c),
+        Expr::Constant(c) => StructuredExpression::Constant(*c),
         Expr::Var(var) => {
             let place = graph.get_address_for_variable(*var);
-            NoFieldStructuredExpression::Place(place)
+            StructuredExpression::Place(place)
         }
         Expr::Sum(sum) => {
             let mut els: Vec<_> = sum
@@ -291,7 +291,7 @@ pub(crate) fn expression_into_no_field_expression<F: PrimeField>(
                 .collect();
             els.sort();
 
-            NoFieldStructuredExpression::Sum(els)
+            StructuredExpression::Sum(els)
         }
         Expr::Product(sum) => {
             let mut els: Vec<_> = sum
@@ -300,7 +300,7 @@ pub(crate) fn expression_into_no_field_expression<F: PrimeField>(
                 .collect();
             els.sort();
 
-            NoFieldStructuredExpression::Product(els)
+            StructuredExpression::Product(els)
         }
     }
 }

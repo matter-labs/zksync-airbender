@@ -4,7 +4,7 @@
 
 ## Build
 
-Default build (`security_80`, verification included):
+Default build (`security_100`, verification included):
 
 ```bash
 cargo build -p cli

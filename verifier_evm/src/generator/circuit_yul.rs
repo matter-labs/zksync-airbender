@@ -1,20 +1,20 @@
 use cs::{
     definitions::{
         gkr::{
-            AddressSpaceType, NoFieldLinearRelation, NoFieldSingleColumnLookupRelation,
-            NoFieldVectorLookupRelation, RamWordRepresentation,
+            AddressSpaceType, LinearRelation, RamWordRepresentation, SingleColumnLookupRelation,
+            VectorLookupRelation,
         },
         GKRAddress::{self, InnerLayer},
         VirtualSetupPoly,
     },
     gkr_compiler::{
-        CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-        GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, InitsOrTeardownsTimestampAndValue,
-        NoFieldGKRCacheRelation, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
-        NoFieldSpecialMemoryContributionRelation,
+        CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMaxQuadraticGKRRelation,
+        CompiledMemoryTimestamp, GKRCacheRelation, GKRCircuitArtifact, GKRLayerDescription,
+        GKRRelation, GateArtifacts, InitsOrTeardownsTimestampAndValue,
+        SpecialMemoryContributionRelation,
     },
 };
-// use cs::gkr_compiler::NoFieldStructuredExpression;
+// use cs::gkr_compiler::StructuredExpression;
 use field::baby_bear::base::BabyBearField;
 use field::Proth120;
 
@@ -505,12 +505,12 @@ fn lookrel_display(cols: &[Dual]) -> String {
 /// Memory-tuple (gkr_memrel_compress) emitter — module-level so BOTH the cache loop
 /// and the gates loop can call it (layer-0 memory deps -> calldataload(idx)).
 fn memrel_to_calldata(
-    tuple: &NoFieldSpecialMemoryContributionRelation,
+    tuple: &SpecialMemoryContributionRelation,
     running_max_group_offsets: &mut (usize, usize, usize, usize),
 ) -> Dual {
     let (running_max_memvar, _running_max_witvar, _running_max_setupvar, _running_max_cachevar) =
         running_max_group_offsets;
-    let NoFieldSpecialMemoryContributionRelation {
+    let SpecialMemoryContributionRelation {
         address_space,
         address,
         timestamp,
@@ -713,10 +713,10 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             // Variant name for comments only. (serde_json::to_value overflows on Proth120 u128 field
             // elements — "number out of range" — so match the variant directly.)
             let relation_name = match cached_relation {
-                NoFieldGKRCacheRelation::SingleColumnLookup { .. } => "SingleColumnLookup",
-                NoFieldGKRCacheRelation::VectorizedLookup(..) => "VectorizedLookup",
-                NoFieldGKRCacheRelation::MemoryTuple(..) => "MemoryTuple",
-                NoFieldGKRCacheRelation::VectorizedLookupSetup(..) => "VectorizedLookupSetup",
+                GKRCacheRelation::SingleColumnLookup { .. } => "SingleColumnLookup",
+                GKRCacheRelation::VectorizedLookup(..) => "VectorizedLookup",
+                GKRCacheRelation::MemoryTuple(..) => "MemoryTuple",
+                GKRCacheRelation::VectorizedLookupSetup(..) => "VectorizedLookupSetup",
             };
 
             fn gkraddress_to_calldata(
@@ -826,8 +826,8 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     _ => todo!("unexpected address {address:?} for layer {expected_layer}"),
                 }
             }
-            // fn linrel_to_calldata(inputs: &NoFieldLinearRelation<BabyBearField>, expected_layer: usize) -> String {
-            //     let NoFieldLinearRelation { linear_terms, constant } = inputs;
+            // fn linrel_to_calldata(inputs: &LinearRelation<BabyBearField>, expected_layer: usize) -> String {
+            //     let LinearRelation { linear_terms, constant } = inputs;
             //     let linear = linear_terms.iter().map(|(c, addr)| {
             //         let input = gkraddress_to_calldata(addr, expected_layer);
             //         format!("{c}{input}")
@@ -836,7 +836,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             // }
 
             match cached_relation {
-                // NoFieldGKRCacheRelation::VectorizedLookup(NoFieldVectorLookupRelation{ columns, lookup_set_index: _}) => {
+                // GKRCacheRelation::VectorizedLookup(VectorLookupRelation{ columns, lookup_set_index: _}) => {
                 //     let term = columns.iter().enumerate().map(|(j, column)| {
                 //         let linear = linrel_to_calldata(column, i);
                 //         let beta_j = "β".to_string() + &superscript(j);
@@ -844,7 +844,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 //     }).collect::<Vec<_>>().join(" + ");
                 //     println!("{relation_name}: {term} = {output}");
                 // }
-                NoFieldGKRCacheRelation::VectorizedLookupSetup(terms) => {
+                GKRCacheRelation::VectorizedLookupSetup(terms) => {
                     let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
                     let setup = {
                         assert_eq!(terms.len(), LOOKUP_TABLES_WIDTH, "layout: generic lookup setup tuple has {} columns, expected {LOOKUP_TABLES_WIDTH}", terms.len());
@@ -876,7 +876,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                NoFieldGKRCacheRelation::VectorizedLookup(NoFieldVectorLookupRelation {
+                GKRCacheRelation::VectorizedLookup(VectorLookupRelation {
                     columns,
                     lookup_set_index: _,
                 }) => {
@@ -887,7 +887,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     let cols: Vec<Dual> = columns
                         .iter()
                         .map(|column| {
-                            let NoFieldLinearRelation {
+                            let LinearRelation {
                                 linear_terms,
                                 constant,
                             } = column;
@@ -929,12 +929,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                NoFieldGKRCacheRelation::SingleColumnLookup {
+                GKRCacheRelation::SingleColumnLookup {
                     relation,
                     range_check_width: _,
                 } => {
                     // cached = constant + Σ coeff·read (plain linear relation over deps).
-                    let NoFieldLinearRelation {
+                    let LinearRelation {
                         linear_terms,
                         constant,
                     } = &relation.input;
@@ -967,7 +967,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                NoFieldGKRCacheRelation::MemoryTuple(rel) => {
+                GKRCacheRelation::MemoryTuple(rel) => {
                     // cached memory-tuple = gkr_memrel_compress(address_space, addr, ts, val)
                     // from the memory-column at-point evals (calldata). Compute + mstore to slot.
                     let memval = memrel_to_calldata(rel, &mut running_max_group_offsets);
@@ -1162,8 +1162,8 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             // A run of quadratic gates ends at the first non-quadratic (special) gate: flush it.
             let is_quad_gate = matches!(
                 enforced_relation,
-                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. }
-                    | NoFieldGKRRelation::MaxQuadratic { .. }
+                GKRRelation::EnforceSingleMaxQuadraticConstraint { .. }
+                    | GKRRelation::MaxQuadratic { .. }
             );
             if i == 0 && !is_quad_gate {
                 if let Some((lo, hi)) = pending_run.take() {
@@ -1272,7 +1272,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             // gkraddress_to_calldata for every operand so the gate-input offsets are still recorded
             // for the transcript "extras" the same way the inline path would. Returns the slot.
             fn collect_quad_terms(
-                input: &NoFieldMaxQuadraticGKRRelation<Proth120>,
+                input: &CompiledMaxQuadraticGKRRelation<Proth120>,
                 expected_layer: usize,
                 layer0_group_widths: (usize, usize, usize, usize),
                 running_max_group_offsets: &mut (usize, usize, usize, usize),
@@ -1282,7 +1282,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             ) -> u32 {
                 let slot = *slot_counter;
                 *slot_counter += 1;
-                let NoFieldMaxQuadraticGKRRelation {
+                let CompiledMaxQuadraticGKRRelation {
                     quadratic_terms,
                     linear_terms,
                     constant,
@@ -1402,12 +1402,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 }
             }
             fn lookrelsingle_to_calldata(
-                tuple: &NoFieldSingleColumnLookupRelation<Proth120>,
+                tuple: &SingleColumnLookupRelation<Proth120>,
                 expected_layer: usize,
                 layer0_group_widths: (usize, usize, usize, usize),
                 running_max_group_offsets: &mut (usize, usize, usize, usize),
             ) -> Dual {
-                let NoFieldSingleColumnLookupRelation {
+                let SingleColumnLookupRelation {
                     input,
                     lookup_set_index: _,
                 } = tuple;
@@ -1424,12 +1424,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 )
             }
             fn lookrelgeneric_to_calldata(
-                tuple: &NoFieldVectorLookupRelation<Proth120>,
+                tuple: &VectorLookupRelation<Proth120>,
                 expected_layer: usize,
                 layer0_group_widths: (usize, usize, usize, usize),
                 running_max_group_offsets: &mut (usize, usize, usize, usize),
             ) -> Dual {
-                let NoFieldVectorLookupRelation {
+                let VectorLookupRelation {
                     columns,
                     lookup_set_index: _,
                 } = tuple;
@@ -1464,12 +1464,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 )
             }
             fn linrel_to_calldata_inner(
-                inputs: &NoFieldLinearRelation<Proth120>,
+                inputs: &LinearRelation<Proth120>,
                 expected_layer: usize,
                 layer0_group_widths: (usize, usize, usize, usize),
                 running_max_group_offsets: &mut (usize, usize, usize, usize),
             ) -> Dual {
-                let NoFieldLinearRelation {
+                let LinearRelation {
                     linear_terms,
                     constant,
                 } = inputs;
@@ -1496,7 +1496,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 )
             }
             fn quadrel_to_calldata_inner(
-                input: &NoFieldMaxQuadraticGKRRelation<Proth120>,
+                input: &CompiledMaxQuadraticGKRRelation<Proth120>,
                 expected_layer: usize,
                 layer0_group_widths: (usize, usize, usize, usize),
                 running_max_group_offsets: &mut (usize, usize, usize, usize),
@@ -1504,7 +1504,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 // eval_max_quadratic: constant + Σ_a read_a·(Σ_b coeff·read_b) + Σ coeff·read.
                 // Products via mulmod (reduced); sums via add (non-canonical, funneled through
                 // the outer mulmod in pointcheck_update). Mirrors the validated Rust kernel.
-                let NoFieldMaxQuadraticGKRRelation {
+                let CompiledMaxQuadraticGKRRelation {
                     quadratic_terms,
                     linear_terms,
                     constant,
@@ -1566,20 +1566,20 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     yul_format!("add(add({constant:x}, {linear:x}), {quadratic:x})"),
                 )
             }
-            // fn expression_to_calldata(expression: &NoFieldStructuredExpression, expected_layer: usize, layer0_group_widths: (usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize)) -> String {
+            // fn expression_to_calldata(expression: &StructuredExpression, expected_layer: usize, layer0_group_widths: (usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize)) -> String {
             //    match expression {
-            //         NoFieldStructuredExpression::Constant(c) => proth120_const_to_evm(c),
-            //         NoFieldStructuredExpression::Place(address) => gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets),
-            //         NoFieldStructuredExpression::Sum(terms) => {
+            //         StructuredExpression::Constant(c) => proth120_const_to_evm(c),
+            //         StructuredExpression::Place(address) => gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets),
+            //         StructuredExpression::Sum(terms) => {
             //             let term = terms.iter().map(|expression| {
             //                 expression_to_calldata(expression, expected_layer, layer0_group_widths, running_max_group_offsets)
             //             }).collect::<Vec<_>>().join(" + ");
             //             format!("({term})")
             //         }
-            //         NoFieldStructuredExpression::Product(terms) => {
+            //         StructuredExpression::Product(terms) => {
             //             // assert!(terms.len() <= 2, "we dont tolerate degree > 2 expressions");
             //             let num_constants = terms.iter().filter(|term| {
-            //                 matches!(term, NoFieldStructuredExpression::Constant(_))
+            //                 matches!(term, StructuredExpression::Constant(_))
             //             }).count();
             //             assert!(num_constants <= 1); // makes rendering faulty if more
             //             let term = terms.iter().map(|expression| {
@@ -1592,7 +1592,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
 
             match enforced_relation {
                 // 3
-                NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
+                GKRRelation::AggregateLookupRationalPair { input, output } => {
                     let [[num1, den1], [num2, den2]] = input.each_ref().map(|pair| {
                         pair.each_ref().map(|addr| {
                             gkraddress_to_calldata(
@@ -1614,7 +1614,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \tacc := gate_aggregatelookuprationalpair(alpha, acc, {num1:o}, {num2:o}, {den1:o}, {den2:o})
                     \t");
                 }
-                NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+                GKRRelation::CopyInExtensionField { input, output } => {
                     let input = gkraddress_to_calldata(
                         input,
                         i,
@@ -1634,7 +1634,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 }
 
                 // 2
-                NoFieldGKRRelation::MaskIntoIdentityProduct {
+                GKRRelation::MaskIntoIdentityProduct {
                     input,
                     mask,
                     output,
@@ -1664,7 +1664,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 }
 
                 // 1
-                NoFieldGKRRelation::CopyInBaseField { input, output } => {
+                GKRRelation::CopyInBaseField { input, output } => {
                     let input = gkraddress_to_calldata(
                         input,
                         i,
@@ -1683,8 +1683,8 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                NoFieldGKRRelation::TrivialProduct { input, output }
-                | NoFieldGKRRelation::InitialGrandProductFromCaches { input, output } => {
+                GKRRelation::TrivialProduct { input, output }
+                | GKRRelation::InitialGrandProductFromCaches { input, output } => {
                     let [lhs, rhs] = input.each_ref().map(|addr| {
                         gkraddress_to_calldata(
                             addr,
@@ -1705,12 +1705,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
+                GKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
                     input,
                     remainder,
                     output,
                 }
-                | NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
+                | GKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
                     input,
                     remainder,
                     output,
@@ -1747,7 +1747,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}");
                 }
                 // (unified)
-                NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
+                GKRRelation::LookupPairFromVectorInputs { input, output } => {
                     let [den1, den2] = input.each_ref().map(|input| {
                         lookrelgeneric_to_calldata(
                             input,
@@ -1776,7 +1776,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+                GKRRelation::LookupUnbalancedPairWithVectorInputs {
                     input,
                     remainder,
                     output,
@@ -1816,7 +1816,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 }
 
                 // 0
-                NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output } => {
+                GKRRelation::InitialGrandProductWithoutCaches { input, output } => {
                     let [lhs, rhs] = input.each_ref().map(|contribution| {
                         memrel_to_calldata(contribution, &mut running_max_group_offsets)
                     });
@@ -1834,7 +1834,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
+                GKRRelation::LookupFromMaterializedBaseInputWithSetup {
                     input,
                     setup,
                     output,
@@ -1870,7 +1870,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
-                NoFieldGKRRelation::LookupPairFromBaseInputs {
+                GKRRelation::LookupPairFromBaseInputs {
                     input,
                     output,
                     range_check_width: _,
@@ -1902,12 +1902,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                NoFieldGKRRelation::MaterializeSingleLookupInput {
+                GKRRelation::MaterializeSingleLookupInput {
                     input,
                     output,
                     range_check_width: _,
                 } => {
-                    let NoFieldSingleColumnLookupRelation {
+                    let SingleColumnLookupRelation {
                         input,
                         lookup_set_index: _,
                     } = input;
@@ -1929,8 +1929,8 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}"
                     );
                 }
-                // NoFieldGKRRelation::LookupWithDensAndCachedSetup { input, setup, output } => {
-                NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+                // GKRRelation::LookupWithDensAndCachedSetup { input, setup, output } => {
+                GKRRelation::LookupWithDensAndSetupExpressions {
                     input,
                     setup,
                     output,
@@ -1996,8 +1996,8 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
-                // NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression } => {
-                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+                // GKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression } => {
+                GKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                     // Constraint gate: contributes a g slot (val==0 when satisfied) but no output
                     // claim — compute_claim skips it (advances the batching slot only).
                     claim_slots.push(None);
@@ -2038,7 +2038,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     }
                 }
                 // (unified)
-                NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+                GKRRelation::InitsOrTeardownsInitialPair {
                     timestamp_and_value,
                     setup,
                     output,
@@ -2103,7 +2103,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
-                NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
+                GKRRelation::MaxQuadratic { input, output, .. } => {
                     let output =
                         gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));
@@ -2142,8 +2142,8 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     }
                 }
 
-                NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output }
-                | NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
+                GKRRelation::LookupPairFromMaterializedVectorInputs { input, output }
+                | GKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
                     // LookupInitialPair with direct-address inputs: den1=γ+in0, den2=γ+in1;
                     // den_out = den1·den2, num_out = den1+den2.
                     let [b, d] = input.each_ref().map(|addr| {
@@ -2172,7 +2172,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
-                NoFieldGKRRelation::LookupWithCachedDensAndSetup {
+                GKRRelation::LookupWithCachedDensAndSetup {
                     input,
                     setup,
                     output,
@@ -2554,7 +2554,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             next_ptr := ptr
             next_claim := claim
         }}
-        function transcriptNto1(ptr, input_elements) -> alpha {{
+        function transcriptNTo1(ptr, input_elements) -> alpha {{
             let input_bytes := mul(input_elements, 16)
             calldatacopy(add(SEED_PTR(), 32), ptr, input_bytes)
             let seed := keccak256(SEED_PTR(), add(32, input_bytes)) // absorb evals
@@ -2568,7 +2568,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             if is_odd {{
                 next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
             }}
-            next_alpha := transcriptNto1(ptr, points)
+            next_alpha := transcriptNTo1(ptr, points)
             let even_points := sub(points, is_odd)
             let pairs := shr(1, even_points)
             for {{ let pair := sub(pairs, 1) }} lt(pair, pairs) {{ pair := sub(pair, 1) }} {{
@@ -2633,21 +2633,20 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
         }}
 
+        // Plain VARIABLE order (LSB binding): index bit k pairs with point coordinate k.
+        // compose_vars sums 2^k * point[skip + k] for k in 0..len (Horner from the top
+        // coordinate down); zero_vars forces the HIGHEST `len` coordinates to zero —
+        // both mirror the CPU generator's plain-order closed forms.
         function gkr_virtual_poly_compose_vars(len, skip) -> eval {{
-            // let total := add(skip, len)
-            let max := sub(__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
-            let min := sub(max, len)
-            // NO NEED FOR THIS CHECK, WE DO IT VIA RUST
-            // if gt(total, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ // abort when bad
-            //     min := max
-            // }}
-            for {{ let i := min }} lt(i, max) {{ i := add(i, 1) }} {{
+            for {{ let i := add(skip, len) }} gt(i, skip) {{ }} {{
+                i := sub(i, 1)
                 eval := add(mul(eval, 2), mload(add(POINT_PTR(), mul(i, 32))))
             }}
         }}
         function gkr_virtual_poly_zero_vars(len) -> eval {{
             eval := 1
-            for {{ let i := 0 }} lt(i, len) {{ i := add(i, 1) }} {{
+            let n := __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS
+            for {{ let i := sub(n, len) }} lt(i, n) {{ i := add(i, 1) }} {{
                 eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR(), mul(i, 32))))), P)
             }}
         }}

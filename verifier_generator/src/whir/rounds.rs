@@ -147,7 +147,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
     // values (acc0, acc1), so the k=1 butterfly below is the only correct fold;
     // supporting k > 1 here would require reworking that batching to produce
     // `values_per_leaf` accumulators. Fail loudly at generation time rather than
-    // emit a verifier that silently mis-folds.
+    // emit a verifier with an incorrect fold.
     assert_eq!(
         params.fold_steps, 1,
         "WHIR initial-round fold_steps must be 1 (got {}); k>1 initial folding is unsupported",

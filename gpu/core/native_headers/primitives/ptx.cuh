@@ -273,4 +273,11 @@ AB_PTX_ST_ALL(st_wt, "wt")
 #undef AB_PTX_ST_V2
 #undef AB_PTX_ST_V1
 
+// Non-binding L2 prefetch hint for a 128-byte line.
+DEVICE_FORCEINLINE void prefetch_l2(const void *p) { asm volatile("prefetch.global.L2 [%0];" ::"l"(p)); }
+
+// L2 prefetch with last-evict priority: the line survives intervening
+// streaming traffic until its consumer reads it.
+DEVICE_FORCEINLINE void prefetch_l2_evict_last(const void *p) { asm volatile("prefetch.global.L2::evict_last [%0];" ::"l"(p)); }
+
 } // namespace airbender::primitives::ptx

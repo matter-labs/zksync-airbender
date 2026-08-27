@@ -1,0 +1,57 @@
+[package]
+name = "prover_pipeline"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# `deterministic_pow` is pinned here, not exposed as a feature: CI builds
+# this crate with `--no-default-features`.
+prover = { workspace = true, features = ["prover", "deterministic_pow"] }
+setups = { workspace = true }
+serde = { workspace = true }
+serde_json = "*"
+program_prover = { workspace = true, default-features = false }
+worker = { path = "../worker" }
+clap = { workspace = true }
+riscv_transpiler = { path = "../riscv_transpiler" }
+riscv_common = { path = "../riscv_common", default-features = false }
+
+verifier_common = { workspace = true }
+
+# Recursion protocol helpers (ND streams, chain, fsv binaries) + native
+# verification (`verifiers` is unconditional: the pipeline calls the
+# native_verify_* wrappers on every proving path).
+full_statement_verifier = { path = "../full_statement_verifier", default-features = false, features = [
+    "proof_utils",
+    "host_utils",
+    "verifiers",
+] }
+sha3 = { package = "sha3", version = "*" }
+log = "0.4"
+
+# GPU proving stack (behind the `gpu` feature).
+gpu_execution_prover = { workspace = true, optional = true, default-features = false, features = [
+    "deterministic_pow",
+] }
+gpu_program_prover = { workspace = true, optional = true, default-features = false, features = [
+    "deterministic_pow",
+] }
+
+[features]
+# The security level is a runtime parameter now; everything the old
+# security_* feature blocks carried that still exists on this branch is
+# unconditional (see the dependency declarations above).
+default = []
+
+debug_logs = ["prover/debug_logs", "program_prover/debug_logs"]
+# if enabled - allow GPU for proving.
+gpu = ["dep:gpu_execution_prover", "dep:gpu_program_prover"]
+# Commit recursive WHIR oracle leaves in eval form (see gpu_circuit_prover); the
+# verifier must be generated with the matching encoding. No-op without `gpu`.
+eval_leaves = ["gpu_execution_prover?/eval_leaves", "gpu_program_prover?/eval_leaves"]

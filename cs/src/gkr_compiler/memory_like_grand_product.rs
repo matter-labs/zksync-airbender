@@ -71,7 +71,7 @@ impl<F: PrimeField> GKRGate<F> for GrandProductAccumulationStep {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         // create caches
         match self {
@@ -84,16 +84,14 @@ impl<F: PrimeField> GKRGate<F> for GrandProductAccumulationStep {
                         let cache_layer = output_layer - 1;
                         graph.add_cached_relation(expr, cache_layer)
                     });
-                    let relation =
-                        NoFieldGKRRelation::InitialGrandProductFromCaches { input, output };
+                    let relation = GKRRelation::InitialGrandProductFromCaches { input, output };
                     graph.add_enforced_relation(relation.clone(), output_layer);
 
                     (output, relation)
                 } else {
                     let input =
                         [lhs, rhs].map(|el| mem_permutation_expr_into_gkr_relation(el, graph));
-                    let relation =
-                        NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output };
+                    let relation = GKRRelation::InitialGrandProductWithoutCaches { input, output };
                     graph.add_enforced_relation(relation.clone(), output_layer);
 
                     (output, relation)
@@ -102,7 +100,7 @@ impl<F: PrimeField> GKRGate<F> for GrandProductAccumulationStep {
             Self::AggregationPair { lhs, rhs, .. } => {
                 assert_ne!(lhs, rhs);
                 let input = [*lhs, *rhs];
-                let relation = NoFieldGKRRelation::TrivialProduct { input, output };
+                let relation = GKRRelation::TrivialProduct { input, output };
                 // println!(
                 //     "Adding memory grand product pairwise accumulation relation {:?}",
                 //     relation
@@ -125,7 +123,7 @@ impl<F: PrimeField> GKRGate<F> for GrandProductAccumulationStep {
                     let input = mem_permutation_expr_into_gkr_relation(access, graph);
                     let output = graph.add_intermediate_variable_at_layer(output_layer);
                     let relation =
-                        NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output };
+                        GKRRelation::MaterializeGrandProductTermExpression { input, output };
 
                     graph.add_enforced_relation(relation.clone(), output_layer);
 
@@ -158,9 +156,9 @@ impl<F: PrimeField> GKRGate<F> for GrandProductAccumulationMaskingNode {
         &self,
         graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation<F>) {
+    ) -> (Self::Output, GKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
-        let relation = NoFieldGKRRelation::MaskIntoIdentityProduct {
+        let relation = GKRRelation::MaskIntoIdentityProduct {
             input: self.lhs,
             mask: self.mask,
             output,
@@ -575,10 +573,7 @@ pub(crate) fn accumulate_memory_like_grand_product<F: PrimeField>(
     mut copied_predicate_for_grand_product_masking: GKRAddress,
     grand_product_read_accumulation_nodes: Vec<GKRAddress>,
     grand_product_write_accumulation_nodes: Vec<GKRAddress>,
-) -> (
-    (GKRAddress, NoFieldGKRRelation<F>),
-    (GKRAddress, NoFieldGKRRelation<F>),
-) {
+) -> ((GKRAddress, GKRRelation<F>), (GKRAddress, GKRRelation<F>)) {
     let mut output_layer = 2;
 
     // println!(

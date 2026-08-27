@@ -16,6 +16,12 @@ use std::mem::size_of;
 
 type BF = BaseField;
 
+/// TMA and programmatic dependent launch were introduced with Hopper.
+/// Ampere kernels must use the ordinary scalar-egress and same-stream paths.
+pub(super) const fn supports_tma_pdl(compute_capability_major: usize) -> bool {
+    compute_capability_major >= 9
+}
+
 /// Assert both NTT operands satisfy the 16-byte alignment the multi-stage
 /// kernels require: base pointer, row stride (`stride * sizeof(BF)`) and offset
 /// (`offset * sizeof(BF)`) of inputs and outputs must all be 16-byte aligned,
@@ -107,4 +113,16 @@ pub(super) fn checked_u32(v: usize, what: &str) -> u32 {
         "{what} ({v}) exceeds u32::MAX for its kernel-argument cast",
     );
     v as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::supports_tma_pdl;
+
+    #[test]
+    fn tma_pdl_requires_compute_capability_9() {
+        assert!(!supports_tma_pdl(8));
+        assert!(supports_tma_pdl(9));
+        assert!(supports_tma_pdl(12));
+    }
 }

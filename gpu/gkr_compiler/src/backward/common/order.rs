@@ -25,7 +25,7 @@ use super::model::{CoeffLayer, CoeffTerm, SourceId, TermId};
 /// Matched to the stride-`K` co-touch effect the order exists to create:
 /// the window stands for the sources the warps running "around" the next term
 /// are still touching, so it is sized for the warp neighbourhood, not for a
-/// resident set — there IS no resident state in this VM.
+/// resident set — the evaluator has no resident state.
 const AFFINITY_WINDOW: usize = 8;
 
 /// The committed term order: greedy source affinity, ties on `TermId`.

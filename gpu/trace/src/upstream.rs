@@ -15,9 +15,9 @@
 // -----------------------------------------------------------------------
 
 pub(crate) use cs::definitions::gkr::{GKRMachineState, GKRMemoryLayout};
-pub(crate) type NoFieldLinearRelation = cs::definitions::gkr::NoFieldLinearRelation<BabyBearField>;
-pub(crate) type NoFieldSingleColumnLookupRelation =
-    cs::definitions::gkr::NoFieldSingleColumnLookupRelation<BabyBearField>;
+pub(crate) type LinearRelation = cs::definitions::gkr::LinearRelation<BabyBearField>;
+pub(crate) type SingleColumnLookupRelation =
+    cs::definitions::gkr::SingleColumnLookupRelation<BabyBearField>;
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use cs::definitions::gkr::DecoderPlacementDescription as CSDecoderPlacementDescription;
 pub(crate) use cs::definitions::gkr::IndirectRamAccessAddress as CSIndirectRamAccessAddress;
@@ -55,7 +55,9 @@ pub(crate) use cs::tables::TableType;
 // -----------------------------------------------------------------------
 
 pub(crate) use field::baby_bear::base::BabyBearField;
-pub(crate) use field::{Field, PrimeField};
+#[cfg(test)]
+pub(crate) use field::Field;
+pub(crate) use field::PrimeField;
 
 // -----------------------------------------------------------------------
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with
@@ -72,7 +74,7 @@ pub(crate) use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32Merk
 pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
 #[cfg(test)]
-pub(crate) use prover::merkle_trees::PathQueriable;
+pub(crate) use prover::merkle_trees::PathQueryable;
 
 // -----------------------------------------------------------------------
 // `setups` — compiled-circuit binary loading

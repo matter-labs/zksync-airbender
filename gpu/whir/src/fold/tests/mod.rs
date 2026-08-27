@@ -8,10 +8,12 @@ use fft::{bitreverse_enumeration_inplace, Twiddles};
 use crate::e4_coeffs_to_vectorized;
 use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_ntt::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
+use gpu_ntt::ntt::{MIN_LOG_N_FOR_MULTISTAGE_KERNELS, MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE};
 use gpu_trace::trace::holder::TreesCacheMode;
 
-use crate::upstream::{make_eq_poly_in_full, multivariate_coeffs_into_hypercube_evals, PrimeField};
+use crate::upstream::{
+    make_eq_poly_in_full_lsb, multivariate_coeffs_into_hypercube_evals, PrimeField,
+};
 use worker::Worker;
 
 fn sample_ext(seed: u32) -> E4 {
@@ -44,29 +46,24 @@ fn fold_monomial_form_for_test(input: &mut Vec<E4>, challenge: E4) {
 
 fn fold_evaluation_form_for_test(input: &mut Vec<E4>, challenge: E4) {
     let half_len = input.len() / 2;
-    let (first_half, second_half) = input.split_at_mut(half_len);
-    for (a, b) in first_half.iter_mut().zip(second_half.iter()) {
+    let mut folded = Vec::with_capacity(half_len);
+    for [a, b] in input.as_chunks::<2>().0.iter() {
         let mut t = *b;
         t.sub_assign(a);
         t.mul_assign(&challenge);
-        a.add_assign(&t);
+        let mut v = *a;
+        v.add_assign(&t);
+        folded.push(v);
     }
-    input.truncate(half_len);
+    *input = folded;
 }
 
 fn special_three_point_eval_for_test(a: &[E4], b: &[E4]) -> (E4, E4, E4) {
-    let half = a.len() / 2;
     let quart = BF::from_u32_unchecked(4).inverse().unwrap();
-    let (a_low, a_high) = a.split_at(half);
-    let (b_low, b_high) = b.split_at(half);
     let mut f0 = E4::ZERO;
     let mut f1 = E4::ZERO;
     let mut f_half = E4::ZERO;
-    for ((a0, a1), (b0, b1)) in a_low
-        .iter()
-        .zip(a_high.iter())
-        .zip(b_low.iter().zip(b_high.iter()))
-    {
+    for ([a0, a1], [b0, b1]) in a.as_chunks::<2>().0.iter().zip(b.as_chunks::<2>().0.iter()) {
         let mut t0 = *a0;
         t0.mul_assign(b0);
         f0.add_assign(&t0);
@@ -232,142 +229,6 @@ fn make_lde_trace_holder(
 
 #[test]
 #[cfg(not(no_cuda))]
-fn whir_fold_helpers_match_cpu() {
-    let context = make_test_context(256, 32);
-    let mut state = GpuWhirState::new(8, &context).unwrap();
-    let challenge = sample_ext(777);
-
-    let monomial = (0..8)
-        .map(|i| sample_ext(20 * i as u32))
-        .collect::<Vec<_>>();
-    let evals = (0..8)
-        .map(|i| sample_ext(200 + 20 * i as u32))
-        .collect::<Vec<_>>();
-    let eq = (0..8)
-        .map(|i| sample_ext(400 + 20 * i as u32))
-        .collect::<Vec<_>>();
-
-    state.current_len = 8;
-    let mut monomial_bitreversed = monomial.clone();
-    bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-    let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
-    state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
-        alloc_and_copy(&monomial_vectorized, &context),
-        state.current_len,
-    );
-    state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
-    state.eq_poly = alloc_and_copy(&eq, &context);
-
-    let mut expected_monomial = monomial.clone();
-    let mut expected_evals = evals.clone();
-    let mut expected_eq = eq.clone();
-
-    fold_monomial_form_for_test(&mut expected_monomial, challenge);
-    fold_evaluation_form_for_test(&mut expected_evals, challenge);
-    fold_evaluation_form_for_test(&mut expected_eq, challenge);
-
-    fold_monomial_form_in_place_device(&mut state, challenge, &context).unwrap();
-    fold_evaluation_form_in_place_device(&mut state, challenge, &context).unwrap();
-    fold_eq_poly_in_place_device(&mut state, challenge, &context).unwrap();
-    state.current_len = 4;
-
-    let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
-    let mut monomial_from_gpu = vectorized_to_e4_coeffs(
-        &monomial_vectorized,
-        state.original_trace_len,
-        state.current_len,
-    );
-    bitreverse_enumeration_inplace(&mut monomial_from_gpu);
-    assert_eq!(monomial_from_gpu, expected_monomial);
-    assert_eq!(
-        copy_back(
-            &state.sumchecked_poly_evaluation_form[..state.current_len],
-            &context
-        ),
-        expected_evals
-    );
-    assert_eq!(
-        copy_back(&state.eq_poly[..state.current_len], &context),
-        expected_eq
-    );
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn whir_multi_step_fold_helpers_match_cpu() {
-    let context = make_test_context(256, 32);
-    let mut state = GpuWhirState::new(16, &context).unwrap();
-
-    let monomial = (0..16)
-        .map(|i| sample_ext(20 * i as u32))
-        .collect::<Vec<_>>();
-    let evals = (0..16)
-        .map(|i| sample_ext(200 + 20 * i as u32))
-        .collect::<Vec<_>>();
-    let eq = (0..16)
-        .map(|i| sample_ext(400 + 20 * i as u32))
-        .collect::<Vec<_>>();
-    let challenges = [
-        sample_ext(777),
-        sample_ext(888),
-        sample_ext(999),
-        sample_ext(1111),
-    ];
-
-    state.current_len = monomial.len();
-    let mut monomial_bitreversed = monomial.clone();
-    bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-    let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
-    state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
-        alloc_and_copy(&monomial_vectorized, &context),
-        state.current_len,
-    );
-    state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
-    state.eq_poly = alloc_and_copy(&eq, &context);
-
-    let mut expected_monomial = monomial;
-    let mut expected_evals = evals;
-    let mut expected_eq = eq;
-
-    for (step_idx, challenge) in challenges.into_iter().enumerate() {
-        fold_monomial_form_for_test(&mut expected_monomial, challenge);
-        fold_evaluation_form_for_test(&mut expected_evals, challenge);
-        fold_evaluation_form_for_test(&mut expected_eq, challenge);
-
-        fold_monomial_form_in_place_device(&mut state, challenge, &context).unwrap();
-        fold_evaluation_form_in_place_device(&mut state, challenge, &context).unwrap();
-        fold_eq_poly_in_place_device(&mut state, challenge, &context).unwrap();
-        state.current_len /= 2;
-
-        let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
-        let mut monomial_from_gpu = vectorized_to_e4_coeffs(
-            &monomial_vectorized,
-            state.original_trace_len,
-            state.current_len,
-        );
-        bitreverse_enumeration_inplace(&mut monomial_from_gpu);
-        assert_eq!(
-            monomial_from_gpu, expected_monomial,
-            "monomial fold diverged at step {step_idx}",
-        );
-        assert_eq!(
-            copy_back(
-                &state.sumchecked_poly_evaluation_form[..state.current_len],
-                &context
-            ),
-            expected_evals,
-            "evaluation fold diverged at step {step_idx}",
-        );
-        assert_eq!(
-            copy_back(&state.eq_poly[..state.current_len], &context),
-            expected_eq,
-            "eq fold diverged at step {step_idx}",
-        );
-    }
-}
-
-#[test]
-#[cfg(not(no_cuda))]
 fn whir_large_multi_step_fold_helpers_match_cpu() {
     const LOG_LEN: usize = 18;
     const LEN: usize = 1 << LOG_LEN;
@@ -393,9 +254,7 @@ fn whir_large_multi_step_fold_helpers_match_cpu() {
     ];
 
     state.current_len = LEN;
-    let mut monomial_bitreversed = monomial.clone();
-    bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-    let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
+    let monomial_vectorized = e4_coeffs_to_vectorized(&monomial);
     state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
         alloc_and_copy(&monomial_vectorized, &context),
         state.current_len,
@@ -412,18 +271,17 @@ fn whir_large_multi_step_fold_helpers_match_cpu() {
         fold_evaluation_form_for_test(&mut expected_evals, challenge);
         fold_evaluation_form_for_test(&mut expected_eq, challenge);
 
-        fold_monomial_form_in_place_device(&mut state, challenge, &context).unwrap();
+        fold_monomial_form_device(&mut state, challenge, &context).unwrap();
         fold_evaluation_form_in_place_device(&mut state, challenge, &context).unwrap();
         fold_eq_poly_in_place_device(&mut state, challenge, &context).unwrap();
         state.current_len /= 2;
 
         let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
-        let mut monomial_from_gpu = vectorized_to_e4_coeffs(
+        let monomial_from_gpu = vectorized_to_e4_coeffs(
             &monomial_vectorized,
-            state.original_trace_len,
+            state.sumchecked_poly_monomial_form.stride(),
             state.current_len,
         );
-        bitreverse_enumeration_inplace(&mut monomial_from_gpu);
         assert_eq!(
             monomial_from_gpu, expected_monomial,
             "large combined fold monomial state diverged at step {step_idx}",
@@ -454,9 +312,7 @@ fn run_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool) {
         .collect::<Vec<_>>();
     let point = sample_ext(999);
     state.current_len = coeffs.len();
-    let mut monomial_bitreversed = coeffs.clone();
-    bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-    let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
+    let monomial_vectorized = e4_coeffs_to_vectorized(&coeffs);
     state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
         alloc_and_copy(&monomial_vectorized, &context),
         state.current_len,
@@ -497,9 +353,7 @@ fn run_scheduled_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool
         .collect::<Vec<_>>();
     let point = sample_ext(999);
     state.current_len = coeffs.len();
-    let mut monomial_bitreversed = coeffs.clone();
-    bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-    let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
+    let monomial_vectorized = e4_coeffs_to_vectorized(&coeffs);
     state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
         alloc_and_copy(&monomial_vectorized, &context),
         state.current_len,
@@ -632,6 +486,10 @@ fn run_whir_initial_state_matches_cpu(
         }
     }
 
+    // `get_evaluations()` is the committed codeword in BITREVERSED row order; the
+    // reference NTT below consumes natural order.
+    bitreverse_enumeration_inplace(&mut expected_evals);
+
     let twiddles = Twiddles::<BF, Global>::new(expected_evals.len(), &worker);
     let mut expected_monomials = expected_evals.clone();
     let expected_log_n = expected_monomials.len().trailing_zeros();
@@ -648,15 +506,17 @@ fn run_whir_initial_state_matches_cpu(
     }
     bitreverse_enumeration_inplace(&mut expected_monomials);
 
+    let natural_to_bitrev = log_count >= MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
+
+    // The eval-form chain consumes the MSB-labeled coefficient array, which only
+    // the sub-floor arm's codeword already carries.
     let mut expected_eval_form = expected_monomials.clone();
+    if natural_to_bitrev {
+        bitreverse_enumeration_inplace(&mut expected_eval_form);
+    }
     let expected_eval_log_n = expected_eval_form.len().trailing_zeros();
     multivariate_coeffs_into_hypercube_evals(&mut expected_eval_form, expected_eval_log_n);
     bitreverse_enumeration_inplace(&mut expected_eval_form);
-
-    let expected_eq = make_eq_poly_in_full::<E4>(&original_evaluation_point, &worker)
-        .pop()
-        .unwrap()
-        .into_vec();
 
     let mut expected_claim = E4::ZERO;
     for (weights, claims) in [
@@ -678,25 +538,101 @@ fn run_whir_initial_state_matches_cpu(
         state.original_trace_len,
         state.current_len,
     );
-    bitreverse_enumeration_inplace(&mut monomial_from_gpu);
+    // Arm split: only the sub-floor compat arm labels the shared Mobius
+    // coefficient array bitreversed, so only there does the reconstructed
+    // expectation need the GPU array relabeled — see the compat-arm note in
+    // `gpu/trace/src/trace/holder/mod.rs::materialize_cosets_from_owned_hypercube`.
+    if !natural_to_bitrev {
+        bitreverse_enumeration_inplace(&mut monomial_from_gpu);
+    }
     assert_eq!(monomial_from_gpu, expected_monomials);
     assert_eq!(
         copy_back(&state.sumchecked_poly_evaluation_form[..count], &context),
         expected_eval_form
     );
-    assert_eq!(copy_back(&state.eq_poly[..count], &context), expected_eq);
+}
+
+/// Nothing here installs an array by hand: the state comes from
+/// `build_initial_state` and every round goes through the production fold
+/// kernels, so a monomial fold binding a different variable than the evaluation
+/// fold reddens this at round 0.
+#[cfg(not(no_cuda))]
+fn run_whir_fold_keeps_monomial_labeling(log_count: usize, rounds: usize, is_large: bool) {
+    let context = if is_large {
+        make_test_context(64 * 1024, 1024)
+    } else {
+        make_test_context(256, 32)
+    };
+    let count = 1usize << log_count;
+    let columns = |base: u32| {
+        vec![(0..count)
+            .map(|i| BF::from_u32_unchecked(base + i as u32))
+            .collect::<Vec<_>>()]
+    };
+    let memory_trace_holder = make_trace_holder(&columns(10), &context);
+    let witness_trace_holder = make_trace_holder(&columns(50), &context);
+    let setup_trace_holder = make_trace_holder(&columns(70), &context);
+
+    let mut state = GpuWhirState::new(count, &context).unwrap();
+    let original_evaluation_point = (0..log_count)
+        .map(|i| sample_ext(10 * i as u32))
+        .collect::<Vec<_>>();
+    build_initial_state(
+        &memory_trace_holder,
+        &[sample_ext(10)],
+        &witness_trace_holder,
+        &[sample_ext(30)],
+        &setup_trace_holder,
+        &[sample_ext(40)],
+        &original_evaluation_point,
+        sample_ext(500),
+        true,
+        &mut state,
+        &context,
+    )
+    .unwrap();
+
+    let assert_forms_consistent = |state: &GpuWhirState, label: &str| {
+        let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
+        let mut monomial_from_gpu = vectorized_to_e4_coeffs(
+            &monomial_vectorized,
+            state.sumchecked_poly_monomial_form.stride(),
+            state.current_len,
+        );
+        multivariate_coeffs_into_hypercube_evals(
+            &mut monomial_from_gpu,
+            state.current_len.trailing_zeros(),
+        );
+        assert_eq!(
+            monomial_from_gpu,
+            copy_back(
+                &state.sumchecked_poly_evaluation_form[..state.current_len],
+                &context
+            ),
+            "{label}: monomial form is not the Mobius transform of the evaluation form",
+        );
+    };
+
+    assert_forms_consistent(&state, "after build_initial_state");
+    for round in 0..rounds {
+        let challenge = sample_ext(1_000 + 111 * round as u32);
+        fold_monomial_form_device(&mut state, challenge, &context).unwrap();
+        fold_evaluation_form_in_place_device(&mut state, challenge, &context).unwrap();
+        state.current_len /= 2;
+        assert_forms_consistent(&state, &format!("after fold round {round}"));
+    }
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-fn whir_initial_state_matches_cpu_use_coset_0_for_batching_small() {
-    run_whir_initial_state_matches_cpu(3, false, false);
+fn whir_fold_keeps_monomial_labeling_small() {
+    run_whir_fold_keeps_monomial_labeling(6, 4, false);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-fn whir_initial_state_matches_cpu_use_coset_0_for_batching_large() {
-    run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, false, true);
+fn whir_fold_keeps_monomial_labeling_above_lde_floor() {
+    run_whir_fold_keeps_monomial_labeling(MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE + 1, 1, false);
 }
 
 #[test]
@@ -711,11 +647,63 @@ fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
     run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true, true);
 }
 
+#[cfg(not(no_cuda))]
+fn run_whir_initial_state_eq_matches_cpu_lsb(log_count: usize, is_large: bool) {
+    let context = if is_large {
+        make_test_context(64 * 1024, 1024)
+    } else {
+        make_test_context(256, 32)
+    };
+    let worker = Worker::new();
+    let count = 1usize << log_count;
+    let point = (0..log_count)
+        .map(|i| sample_ext(10 * i as u32))
+        .collect::<Vec<_>>();
+
+    let mut state = GpuWhirState::new(count, &context).unwrap();
+    let mut point_device: DeviceAllocation<E4> = context
+        .alloc(point.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    copy_small_to_device(&mut point_device[..], &point, &context).unwrap();
+    launch_build_eq_values_from_point(
+        point_device.as_ptr(),
+        0,
+        point.len(),
+        state.eq_group_tables.as_mut_ptr(),
+        state.eq_poly.as_mut_ptr(),
+        count,
+        &context,
+    )
+    .unwrap();
+
+    let expected = make_eq_poly_in_full_lsb::<E4>(&point, &worker)
+        .pop()
+        .unwrap()
+        .into_vec();
+    assert_eq!(copy_back(&state.eq_poly[..count], &context), expected);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn whir_initial_state_eq_matches_cpu_lsb_small() {
+    run_whir_initial_state_eq_matches_cpu_lsb(3, false);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn whir_initial_state_eq_matches_cpu_lsb_large() {
+    run_whir_initial_state_eq_matches_cpu_lsb(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true);
+}
+
 use crate::fold::debug::{
-    build_initial_state, copy_back, evaluate_monomial_form_device, fold_eq_poly_in_place_device,
-    fold_evaluation_form_in_place_device, fold_monomial_form_in_place_device,
+    build_initial_state, copy_back, copy_small_to_device, evaluate_monomial_form_device,
+    fold_eq_poly_in_place_device, fold_evaluation_form_in_place_device, fold_monomial_form_device,
     schedule_special_three_point_eval_device, special_three_point_eval_device,
     vectorized_to_e4_coeffs,
 };
 
 mod query_tests;
+
+mod recursive_commitment_convention;
+
+mod sampled_eq_tests;

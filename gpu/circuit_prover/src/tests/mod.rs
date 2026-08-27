@@ -1,4 +1,4 @@
-use crate::proof::{prove, GpuGKRProofJob};
+use crate::proof::{preflight_windowed_backward, prove, GpuGKRProofJob};
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -71,6 +71,7 @@ mod asserts;
 mod commit_memory;
 mod fixtures;
 mod inits_and_teardowns;
+mod lsb_commit_pipeline;
 mod proof_matrix;
 mod stagewise;
 
@@ -290,11 +291,11 @@ impl BasicUnrolledFixture {
             .map(|host| InitsAndTeardownsTransfer::new(host, context))
             .transpose()?;
 
-        let canonical_top_bits = self
+        let top_bits = self
             .inits_and_teardowns_top_bits
             .clone()
             .unwrap_or_else(|| {
-                crate::proof::canonical_inits_and_teardowns_top_bits(&self.compiled_circuit)
+                (0..self.compiled_circuit.memory_layout.teardown_sets.len() as u32).collect()
             });
         BasicUnrolledTransfers::new(
             setup_transfer,
@@ -302,7 +303,7 @@ impl BasicUnrolledFixture {
             inits_and_teardowns_transfer,
             tracing_data_transfer,
             memory_transfer,
-            &canonical_top_bits,
+            &top_bits,
             self.external_challenges,
             context,
         )
@@ -318,12 +319,27 @@ impl BasicUnrolledFixture {
         &self,
         transfers: BasicUnrolledTransfers<'static>,
     ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+        let dr_tail_plan = self.dr_tail_plan()?;
         prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
+            &dr_tail_plan,
             &self.context,
+        )
+    }
+
+    fn dr_tail_plan(&self) -> CudaResult<gpu_gkr::DrTailProofPlan> {
+        preflight_windowed_backward(
+            &self.gkr_programs,
+            &self.prover_config,
+            self.final_trace_size_log_2,
+        );
+        gpu_gkr::preflight_dr_tail_resources(
+            &self.gkr_programs,
+            self.final_trace_size_log_2,
+            era_cudart::device::get_device()?,
         )
     }
 
@@ -342,11 +358,13 @@ impl BasicUnrolledFixture {
         // it was called. The transfers above are allocated before this point
         // and ride on in the job's keepalive, so they appear on both sides.
         let mem_before_prove = self.context.get_used_mem_current();
+        let dr_tail_plan = self.dr_tail_plan()?;
         let mut proof_job = prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
+            &dr_tail_plan,
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();

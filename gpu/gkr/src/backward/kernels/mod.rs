@@ -1,13 +1,13 @@
 mod dim_reducing;
 mod encoding;
-mod fused_tail;
+mod eq;
 mod launchers;
 mod main_layer;
 mod shared;
 
 pub(crate) use dim_reducing::*;
 pub(crate) use encoding::*;
-pub(crate) use fused_tail::*;
+pub(crate) use eq::*;
 pub(crate) use launchers::*;
 pub(crate) use main_layer::*;
 pub(crate) use shared::*;
@@ -23,6 +23,3 @@ pub use launchers::{
 };
 pub(crate) use shared::DeviceClaimPointAndBatching;
 pub use shared::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
-
-#[cfg(test)]
-mod tests;

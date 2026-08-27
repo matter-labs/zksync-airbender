@@ -427,7 +427,7 @@ pub(super) fn prepare_unrolled_non_memory_proof_fixture<const FAMILY_IDX: u8>(
         &ex.witness_gen_data,
         compute_cpu_reference,
         default_fixture_device_allocator_block_log_size(),
-        crate::upstream::SecurityLevel::Sec80,
+        crate::upstream::SecurityLevel::Sec100,
     )
 }
 
@@ -835,7 +835,7 @@ pub(super) fn prepare_unrolled_memory_proof_fixture<const FAMILY_IDX: u8>(
         &ex.witness_gen_data,
         compute_cpu_reference,
         default_fixture_device_allocator_block_log_size(),
-        crate::upstream::SecurityLevel::Sec80,
+        crate::upstream::SecurityLevel::Sec100,
     )
 }
 
@@ -882,7 +882,7 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixtur
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
-            security_level: crate::upstream::SecurityLevel::Sec80,
+            security_level: crate::upstream::SecurityLevel::Sec100,
         });
     BasicUnrolledProofFixture {
         base,
@@ -928,7 +928,7 @@ pub(super) fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture
             non_determinism_reads: &[],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
-            security_level: crate::upstream::SecurityLevel::Sec80,
+            security_level: crate::upstream::SecurityLevel::Sec100,
         });
     assert!(
         expected_cpu_proof.is_none(),

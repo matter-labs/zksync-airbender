@@ -1379,7 +1379,7 @@ function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {
     next_ptr := ptr
     next_claim := claim
 }
-function transcriptNto1(ptr, input_elements) -> alpha {
+function transcriptNTo1(ptr, input_elements) -> alpha {
     let input_bytes := mul(input_elements, 16)
     calldatacopy(add(SEED_PTR(), 32), ptr, input_bytes)
     let seed := keccak256(SEED_PTR(), add(32, input_bytes)) // absorb evals
@@ -1393,7 +1393,7 @@ function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha 
     if is_odd {
         next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
     }
-    next_alpha := transcriptNto1(ptr, points)
+    next_alpha := transcriptNTo1(ptr, points)
     let even_points := sub(points, is_odd)
     let pairs := shr(1, even_points)
     for { let pair := sub(pairs, 1) } lt(pair, pairs) { pair := sub(pair, 1) } {
@@ -1515,4 +1515,3 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
     let gate := add(mulmod(mask, add(input, neg_one), P), 1)
     next_acc := pointcheck_update(acc, alpha, gate)
 }
-

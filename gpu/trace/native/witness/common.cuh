@@ -24,21 +24,21 @@ struct Address {
   u32 layer;
 };
 
-struct NoFieldLinearTerm {
+struct LinearTerm {
   u32 coefficient;
   Address address;
 };
 
 #define MAX_LINEAR_TERMS_COUNT 4
 
-struct NoFieldLinearRelation {
+struct LinearRelation {
   u32 linear_terms_count;
-  NoFieldLinearTerm linear_terms[MAX_LINEAR_TERMS_COUNT];
+  LinearTerm linear_terms[MAX_LINEAR_TERMS_COUNT];
   u32 constant;
 };
 
 template <typename Memory, typename Witness, typename Scratch>
-DEVICE_FORCEINLINE bf evaluate_linear_relation(const Memory &memory, const Witness &witness, const Scratch &scratch, const NoFieldLinearRelation relation) {
+DEVICE_FORCEINLINE bf evaluate_linear_relation(const Memory &memory, const Witness &witness, const Scratch &scratch, const LinearRelation relation) {
   bf result = relation.constant == 0 ? bf::ZERO() : bf::from_u32_unchecked(relation.constant);
 #pragma unroll
   for (int i = 0; i < MAX_LINEAR_TERMS_COUNT; ++i) {

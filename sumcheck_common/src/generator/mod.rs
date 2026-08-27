@@ -1,5 +1,5 @@
 use ::field::*;
-use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription};
+use cs::gkr_compiler::GKRLayerDescription;
 use proc_macro2::TokenStream;
 
 pub(crate) fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
@@ -13,7 +13,7 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
 }
 
 pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
-    layer: &GKRLayerDescription,
+    layer: &GKRLayerDescription<F>,
 ) -> TokenStream {
     todo!();
 }
@@ -21,6 +21,7 @@ pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 #[test]
 fn test_generation() {
     use ::field::baby_bear::base::BabyBearField;
+    use cs::gkr_compiler::GKRCircuitArtifact;
 
     let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
         "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",

@@ -8,25 +8,47 @@ using namespace ::airbender::trace::witness::memory;
 
 namespace airbender::trace::witness::multiplicities {
 
-EXTERN __global__ void ab_generate_multiplicities_kernel(const u32 *const __restrict__ unique_indexes, const u32 *const __restrict__ counts,
-                                                         const u32 *const __restrict__ num_runs, u32 *const __restrict__ lookup_mapping,
-                                                         const unsigned lookup_mapping_size, const matrix_setter<bf, st_modifier::cs> multiplicities,
-                                                         const unsigned multiplicities_size) {
+static_assert(sizeof(bf) == sizeof(u32));
+static_assert(alignof(bf) == alignof(u32));
+
+EXTERN __global__ void ab_count_multiplicities_kernel(u32 *const __restrict__ lookup_mapping, const unsigned lookup_mapping_size,
+                                                      bf *const __restrict__ counter_shards, const unsigned active_counts_len,
+                                                      const unsigned counter_replicas) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid < lookup_mapping_size && lookup_mapping[gid] == 0xffffffffu)
-    lookup_mapping[gid] = 0;
-  if (gid >= multiplicities_size)
+  const unsigned active_mask = __activemask();
+  const bool in_bounds = gid < lookup_mapping_size;
+  const u32 index = in_bounds ? load<u32, ld_modifier::cs>(lookup_mapping + gid) : 0xffffffffu;
+  const bool countable = in_bounds && index != 0xffffffffu;
+  const bool invalid = countable && index >= active_counts_len;
+  const unsigned invalid_mask = __ballot_sync(active_mask, invalid);
+  const unsigned countable_mask = __ballot_sync(active_mask, countable);
+
+  if (in_bounds && index == 0xffffffffu)
+    store<u32, st_modifier::cs>(lookup_mapping + gid, 0);
+  if (invalid_mask != 0)
+    __trap();
+  if (!countable)
     return;
-  if (gid >= num_runs[0])
+
+  const unsigned peers = __match_any_sync(countable_mask, index);
+  const unsigned lane = threadIdx.x & (warpSize - 1);
+  const unsigned leader = __ffs(peers) - 1;
+  if (lane == leader) {
+    const unsigned replica = blockIdx.x & (counter_replicas - 1);
+    (void)atomicAdd(&counter_shards[replica * active_counts_len + index].limb, __popc(peers));
+  }
+}
+
+// counter_shards may alias multiplicities when the output tail stores the replicas.
+EXTERN __global__ void ab_reduce_convert_multiplicities_kernel(const bf *const counter_shards, bf *const multiplicities, const unsigned active_counts_len,
+                                                               const unsigned counter_replicas) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= active_counts_len)
     return;
-  const unsigned stride = multiplicities.stride;
-  const u32 index = unique_indexes[gid];
-  if (index == 0xffffffffu)
-    return;
-  const unsigned row = index % stride;
-  const unsigned col = index / stride;
-  const bf value = bf::from_u32_unchecked(counts[gid]);
-  multiplicities.set(row, col, value);
+  u32 count = 0;
+  for (unsigned replica = 0; replica < counter_replicas; ++replica)
+    count += counter_shards[replica * active_counts_len + gid].limb;
+  multiplicities[gid] = bf::from_u32_unchecked(count);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__

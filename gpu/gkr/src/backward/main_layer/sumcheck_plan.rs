@@ -7,6 +7,9 @@ use era_cudart::slice::{CudaSlice, DeviceSlice};
 use crate::GpuGKRStorage;
 
 use super::super::kernels::*;
+use super::super::main_tail::{bind_main_tail, launch_main_tail, MainTailRuntimeState};
+use super::super::window::binding::{launch_window_program, BWD_WINDOW_COORDINATES};
+use super::super::window::tail::{launch_window_tensor_round_tail, WindowTailState};
 use super::extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
@@ -17,64 +20,71 @@ use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::ProverContext;
 
 impl GpuGKRMainLayerSumcheckLayerPlan {
-    fn dispatch_warp_partial_tail(
+    /// The coefficient bank is refilled only after the window kernel has been enqueued.
+    fn schedule_windowed_rounds_0_2(
         &mut self,
-        acc_size: usize,
-        prev_claim_coord: *const E4,
+        external_challenges: *const E4,
+        lookup_multiplicative: *const E4,
+        lookup_additive: *const E4,
+        claim_batching: *const E4,
+        prev_claim_coords: *const E4,
         seed: *mut u32,
         claim: *mut E4,
         eq_prefactor: *mut E4,
         coeffs_out: *mut E4,
-        challenge_out: *mut E4,
+        challenges_out: *mut E4,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let eq_low_ptr_mut = self.round_scratch.eq_low_group.as_mut_ptr();
-        let (slot_base, slot_size_before_fold) =
-            super::super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr_mut);
-        self.dispatch_warp_partial_tail_inner(
-            acc_size,
-            (slot_base, slot_size_before_fold),
-            prev_claim_coord,
-            seed,
-            claim,
-            eq_prefactor,
-            coeffs_out,
-            challenge_out,
+        let windowed = &mut self.windowed_r0;
+        super::super::window::bank::schedule_window_coefficient_bank_fill(
+            &mut windowed.bank,
+            external_challenges,
+            lookup_multiplicative,
+            lookup_additive,
+            claim_batching,
             context,
         )?;
-        super::super::kernels::record_active_eq_slot_fold(&mut self.eq_sizes);
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn dispatch_warp_partial_tail_inner(
-        &mut self,
-        acc_size: usize,
-        eq_slot: (*mut E4, u32),
-        prev_claim_coord: *const E4,
-        seed: *mut u32,
-        claim: *mut E4,
-        eq_prefactor: *mut E4,
-        coeffs_out: *mut E4,
-        challenge_out: *mut E4,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        let partials_ptr = self.round_scratch.partials.as_mut_ptr();
-        let num_partials = super::super::kernels::warp_partial_count(acc_size);
-        let (slot_base, slot_size_before_fold) = eq_slot;
-        super::super::kernels::launch_backward_dual_finalize_from_partials(
-            partials_ptr,
-            num_partials,
-            prev_claim_coord,
+        launch_window_program(&windowed.window, context)?;
+        let row_tiles = windowed.window.row_tiles;
+        let reduced_tensor = windowed.window.reduced_tensor;
+        super::super::window::bank::schedule_main_continuation_coefficient_bank_fill(
+            &mut self.main_continuation_bank,
+            external_challenges,
+            lookup_multiplicative,
+            lookup_additive,
+            claim_batching,
+            context,
+        )?;
+        let eq_low_ptr_mut = self.round_scratch.eq_low_group.as_mut_ptr();
+        let (active_eq_slot_base, active_eq_size_before_fold) =
+            super::super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr_mut);
+        let state = WindowTailState {
+            partials: self.round_scratch.partials.as_ptr(),
+            row_tiles,
+            reduced_tensor,
+            prev_claim_coords,
             seed,
             claim,
             eq_prefactor,
             coeffs_out,
-            challenge_out,
-            slot_base,
-            slot_size_before_fold,
-            context,
-        )
+            challenges_out,
+            active_eq_slot_base,
+            active_eq_size_before_fold,
+        };
+        launch_window_tensor_round_tail(&state, context)?;
+        // The tail folds the active slot exactly once, for the three rounds it
+        // played; round 3's descriptor was lowered against the same one-fold
+        // drain of the same built schedule.
+        super::super::kernels::record_active_eq_slot_fold(&mut self.eq_sizes);
+        assert_eq!(
+            self.eq_sizes,
+            super::super::window::bank::drained_eq_sizes(
+                make_eq_sizes(self.folding_steps - BWD_WINDOW_COORDINATES),
+                1,
+            ),
+            "the tail's physical eq state must match the round-3 descriptor's drain"
+        );
+        Ok(())
     }
 
     pub(crate) fn schedule_execute_main_layer(
@@ -120,10 +130,12 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             claim_point_and_batching_len,
             "device claim_point input size must match this layer's folding_steps + 1",
         );
-        let challenge_count = self.folding_steps - 1;
+        let first_ext_round = BWD_WINDOW_COORDINATES;
+        let continuation_tail_start = self.main_continuation.tail_start_round();
+        let challenge_count = self.folding_steps - first_ext_round;
         launch_build_eq_high_and_low_groups_from_point(
             device_claim_point_in.as_ptr(),
-            1,
+            first_ext_round,
             challenge_count,
             get_eq_high_constant_device_ptr() as *mut E4,
             self.round_scratch.eq_low_group.as_mut_ptr(),
@@ -166,91 +178,126 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
                 next_claim_point_and_batching_len,
             )
         };
-        for step in 0..last_step {
-            let acc_size = 1usize << (self.folding_steps - step - 1);
-            if step == 0 {
-                super::super::vm::production_bind::schedule_bwd_vm_round0(
-                    &mut self.bwd_vm_round0,
-                    device_external_challenges_ptr,
-                    cont_lookup_mul_ptr,
-                    cont_lookup_add_ptr,
-                    cont_batch_base_ptr,
-                    acc_size as u32,
-                    context,
-                )?;
-            } else {
-                if step == 1 {
-                    super::super::vm::production_bind::schedule_bwd_vm_ext_bank_fill(
-                        &mut self.bwd_vm_ext,
-                        device_external_challenges_ptr,
-                        cont_lookup_mul_ptr,
-                        cont_lookup_add_ptr,
-                        cont_batch_base_ptr,
-                        context,
-                    )?;
-                }
-                super::super::vm::production_bind::schedule_bwd_vm_ext_round(
-                    &mut self.bwd_vm_ext,
-                    step as u32,
-                    acc_size as u32,
-                    context,
-                )?;
-            }
-
-            if step == 0 {
-                storage.purge_up_to_layer(self.layer_idx);
-            }
-
-            let prev_coord_slice = device_claim_point_in.slice(step, 1);
-            // SAFETY: `step < folding_steps`, and every round owns four slab elements.
-            let coeffs_round_slice =
-                unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
-            let challenge_slot = device_claim_point_out.slice_mut(step, 1);
-
-            self.dispatch_warp_partial_tail(
-                acc_size,
-                prev_coord_slice.as_ptr(),
-                device_seed.as_mut_ptr(),
-                device_claim.as_mut_ptr(),
-                device_eq_prefactor.as_mut_ptr(),
-                coeffs_round_slice.as_mut_ptr(),
-                challenge_slot.as_mut_ptr(),
-                context,
-            )?;
-        }
-        super::super::vm::production_bind::schedule_bwd_vm_ext_round(
-            &mut self.bwd_vm_ext,
-            last_step as u32,
-            1,
-            context,
-        )?;
-        {
-            let prev_coord_slice = device_claim_point_in.slice(last_step, 1);
-            // SAFETY: `last_step < folding_steps`, and every round owns four slab elements.
-            let coeffs_round_slice =
-                unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(last_step * 4), 4) };
-            let challenge_slot = device_claim_point_out.slice_mut(last_step, 1);
-            let eq_low_ptr = self.round_scratch.eq_low_group.as_mut_ptr();
-            self.dispatch_warp_partial_tail_inner(
-                1,
-                (eq_low_ptr, 0),
-                prev_coord_slice.as_ptr(),
-                device_seed.as_mut_ptr(),
-                device_claim.as_mut_ptr(),
-                device_eq_prefactor.as_mut_ptr(),
-                coeffs_round_slice.as_mut_ptr(),
-                challenge_slot.as_mut_ptr(),
-                context,
-            )?;
-        }
-
         let mut transcript_input_sources: BTreeMap<GKRAddress, *const E4> = self
             .folding_evaluation_sources
             .iter()
             .map(|address| (*address, std::ptr::null()))
             .collect();
-        self.bwd_vm_ext
-            .repoint_final_evaluations(&mut transcript_input_sources);
+        {
+            let coeffs_out = coeffs_buffer_ptr;
+            let challenges_out = device_claim_point_out
+                .slice_mut(0, BWD_WINDOW_COORDINATES)
+                .as_mut_ptr();
+            self.schedule_windowed_rounds_0_2(
+                device_external_challenges_ptr,
+                cont_lookup_mul_ptr,
+                cont_lookup_add_ptr,
+                cont_batch_base_ptr,
+                device_claim_point_in.as_ptr(),
+                device_seed.as_mut_ptr(),
+                device_claim.as_mut_ptr(),
+                device_eq_prefactor.as_mut_ptr(),
+                coeffs_out,
+                challenges_out,
+                context,
+            )?;
+            let scratch = super::super::main_continuation::MainContinuationWindowRuntimeScratch {
+                eq_low: self.round_scratch.eq_low_group.as_ptr(),
+                partials: self.round_scratch.partials.as_mut_ptr(),
+                partials_capacity: self.round_scratch.partials.len(),
+            };
+            let layer_idx = self.layer_idx;
+            let folding_steps = self.folding_steps;
+            let eq_low_group_ptr = self.round_scratch.eq_low_group.as_mut_ptr();
+            let claim_point_in_ptr = device_claim_point_in.as_ptr();
+            let seed_ptr = device_seed.as_mut_ptr();
+            let claim_ptr = device_claim.as_mut_ptr();
+            let eq_prefactor_ptr = device_eq_prefactor.as_mut_ptr();
+            let claim_point_out_ptr = device_claim_point_out.as_mut_ptr();
+            let main_continuation = &mut self.main_continuation;
+            let eq_sizes = &mut self.eq_sizes;
+            let main_tail_program = &self.main_tail_program;
+            let main_continuation_bank = &mut self.main_continuation_bank;
+            let folding_evaluation_sources = &self.folding_evaluation_sources;
+            let canonical_final_addresses = &self.canonical_final_addresses;
+            let transcript_sources = &mut transcript_input_sources;
+            let publish_storage = &mut *storage;
+            if self.main_execution_plan.window_count() == 0 {
+                main_continuation.schedule_r0_publication(
+                    publish_storage,
+                    folding_steps,
+                    scratch,
+                    *eq_sizes,
+                    context,
+                )?;
+            } else {
+                main_continuation.schedule_windows(
+                    publish_storage,
+                    folding_steps,
+                    scratch,
+                    claim_point_in_ptr,
+                    seed_ptr,
+                    claim_ptr,
+                    eq_prefactor_ptr,
+                    coeffs_buffer_ptr,
+                    claim_point_out_ptr,
+                    context,
+                )?;
+            }
+            let boundary = main_continuation
+                .final_eq_boundary()
+                .expect("main continuation did not publish its Eq boundary");
+            assert_eq!(
+                boundary.consumer_round, continuation_tail_start,
+                "the final continuation boundary must name the prepared remainder"
+            );
+            let expected_remainder_eq = super::super::window::bank::drained_eq_sizes(
+                make_eq_sizes(folding_steps - usize::from(continuation_tail_start)),
+                1,
+            );
+            assert_eq!(
+                boundary.eq_sizes, expected_remainder_eq,
+                "the final pass-local Eq state must match the tail boundary"
+            );
+            *eq_sizes = boundary.eq_sizes;
+            let published = main_continuation
+                .take_published_level()
+                .expect("main continuation did not publish its final level");
+            let bound = bind_main_tail(
+                layer_idx,
+                main_tail_program,
+                published,
+                usize::from(continuation_tail_start),
+                folding_steps,
+                boundary,
+                MainTailRuntimeState {
+                    eq_low: eq_low_group_ptr,
+                    prev_claim_coordinates: claim_point_in_ptr,
+                    seed: seed_ptr,
+                    claim: claim_ptr,
+                    eq_prefactor: eq_prefactor_ptr,
+                    coefficients_out: coeffs_buffer_ptr,
+                    challenges_out: claim_point_out_ptr,
+                },
+                context,
+            )?;
+            let launched = launch_main_tail(bound, context)?;
+            let expected: std::collections::BTreeSet<_> =
+                folding_evaluation_sources.iter().copied().collect();
+            let actual: std::collections::BTreeSet<_> = canonical_final_addresses
+                .iter()
+                .map(|(_, address)| *address)
+                .collect();
+            assert_eq!(expected, actual);
+            main_continuation_bank
+                .set_external_final_evaluation_offsets(canonical_final_addresses.iter().copied())
+                .expect("main-tail final-evaluation offsets must fit the continuation bank");
+            main_continuation_bank.repoint_final_evaluations_from_external_buffer(
+                launched.final_level().allocation(),
+                transcript_sources,
+            );
+            self.main_tail_launched = Some(launched);
+        }
         let num_addresses = transcript_input_sources.len();
         let last_evals_len = num_addresses * 2;
         let transcript_input_addresses: Vec<GKRAddress> =

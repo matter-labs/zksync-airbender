@@ -6,6 +6,14 @@ use gpu_core::primitives::field::BaseField;
 
 type BF = BaseField;
 
+#[repr(C, align(128))]
+#[derive(Clone, Copy)]
+pub(super) struct NaturalFinalOutputTensorMap {
+    opaque: [u64; 16],
+}
+const _: () = assert!(std::mem::size_of::<NaturalFinalOutputTensorMap>() == 128);
+const _: () = assert!(std::mem::align_of::<NaturalFinalOutputTensorMap>() == 128);
+
 cuda_kernel_signature_and_arguments!(
     pub(super) StridedTilesStages,
     inputs_matrix: PtrAndStride<BF>,
@@ -53,6 +61,63 @@ strided_tiles_stages!(ab_monomials_to_evals_last_10_stages_kernel);
 // 3-pass monomials to evals
 strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_kernel);
 
+strided_tiles_stages!(ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel);
+
+cuda_kernel_signature_and_arguments!(
+    pub(super) NaturalMiddleFixed,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+);
+pub(super) struct NaturalMiddleFixedFunction(pub(super) NaturalMiddleFixedSignature);
+impl era_cudart::execution::KernelFunction for NaturalMiddleFixedFunction {
+    type Signature = NaturalMiddleFixedSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_middle_8_stages_log_n_24_packed_twiddles_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_middle_8_stages_log_n_23_packed_twiddles_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_middle_8_stages_log_n_22_packed_twiddles_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+cuda_kernel_signature_and_arguments!(
+    pub(super) NaturalMiddleLogN21TwoCosets,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    num_cols_per_coset: i32,
+);
+pub(super) struct NaturalMiddleLogN21TwoCosetsFunction(
+    pub(super) NaturalMiddleLogN21TwoCosetsSignature,
+);
+impl era_cudart::execution::KernelFunction for NaturalMiddleLogN21TwoCosetsFunction {
+    type Signature = NaturalMiddleLogN21TwoCosetsSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_middle_8_stages_log_n_21_two_cosets_packed_twiddles_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+        num_cols_per_coset: i32,
+    )
+);
+// evict-first variant for the LAST noninitial pass (hybrid LDE path)
+strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_evict_kernel);
+
 cuda_kernel_signature_and_arguments!(
     pub(super) EvalsToMonomialsFinal,
     inputs_matrix: PtrAndStride<BF>,
@@ -91,6 +156,84 @@ evals_to_monomials_final!(ab_evals_to_monomials_final_6_stages_kernel);
 evals_to_monomials_final!(ab_evals_to_monomials_final_7_stages_kernel);
 evals_to_monomials_final!(ab_evals_to_monomials_final_8_stages_kernel);
 
+cuda_kernel_signature_and_arguments!(
+    pub(super) LdeFusedWriteback,
+    scratch_matrix: MutPtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    coset_index_base: i32,
+    coset_factor_shift: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+);
+pub(super) struct LdeFusedWritebackFunction(pub(super) LdeFusedWritebackSignature);
+impl era_cudart::execution::KernelFunction for LdeFusedWritebackFunction {
+    type Signature = LdeFusedWritebackSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+macro_rules! lde_fused_writeback {
+    ($kernel_name:ident) => {
+        ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
+    scratch_matrix: MutPtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    coset_index_base: i32,
+    coset_factor_shift: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+        ));
+    };
+}
+
+// Fused hypercube-iNTT-final + monomial writeback + coset-scale +
+// forward-initial (transposed path, first coset of a column)
+lde_fused_writeback!(ab_lde_fused_boundary_writeback_5_stages_kernel);
+lde_fused_writeback!(ab_lde_fused_boundary_writeback_6_stages_kernel);
+lde_fused_writeback!(ab_lde_fused_boundary_writeback_7_stages_kernel);
+lde_fused_writeback!(ab_lde_fused_boundary_writeback_8_stages_kernel);
+
+// Natural-order path: hypercube coarse tail + transient monomial writeback +
+// coset scale + DIT initial. The output is streamed because its tail is later.
+lde_fused_writeback!(ab_natural_lde_fused_boundary_writeback_out_cs_kernel);
+
+cuda_kernel_signature_and_arguments!(
+    pub(super) LdeFusedWritebackFixed,
+    scratch_matrix: MutPtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+);
+pub(super) struct LdeFusedWritebackFixedFunction(pub(super) LdeFusedWritebackFixedSignature);
+impl era_cudart::execution::KernelFunction for LdeFusedWritebackFixedFunction {
+    type Signature = LdeFusedWritebackFixedSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_lde_fused_boundary_writeback_out_cs_log_n_24_c1_kernel(
+        scratch_matrix: MutPtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_lde_fused_boundary_writeback_out_cs_log_n_23_c1_kernel(
+        scratch_matrix: MutPtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_lde_fused_boundary_writeback_out_cs_log_n_22_c1_kernel(
+        scratch_matrix: MutPtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_lde_fused_boundary_writeback_out_cs_log_n_21_c1_kernel(
+        scratch_matrix: MutPtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
 cuda_kernel_signature_and_arguments!(
     pub(super) MonomialsToEvalsInitial,
     inputs_matrix: PtrAndStride<BF>,
@@ -204,6 +347,17 @@ monomials_to_evals_compact!(ab_monomials_to_evals_initial_6_stages_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_initial_7_stages_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_initial_8_stages_kernel);
 
+// Shares the multi-coset MonomialsToEvalsCompact signature (shared input
+// column, per-coset output slab, coset pre-scale).
+monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel);
+monomials_to_evals_compact!(
+    ab_natural_monomials_to_bitrev_evals_initial_8_stages_from_hypercube_final_4_kernel
+);
+
+// Same MonomialsToEvalsCompact signature as the three-pass initial pass.
+monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_first_9_stages_kernel);
+monomials_to_evals_compact!(ab_natural_monomials_to_bitrev_evals_first_10_stages_kernel);
+
 // 2-pass first-K-stages compact kernels for log_n in [13, 20]. Pass 1 does the
 // first K = log_n - 8 butterfly stages per chunk of 2^K bitreversed inputs;
 // pass 2 is the existing noninitial_8 starting at start_stage = K. Multi-coset
@@ -253,3 +407,239 @@ lde_intermediate!(ab_lde_first_9_stages_kernel);
 lde_intermediate!(ab_lde_first_8_stages_kernel);
 lde_intermediate!(ab_lde_first_7_stages_kernel);
 lde_intermediate!(ab_lde_first_6_stages_kernel);
+
+// No `transposed_monomials` argument -- the bitreversed codeword is always
+// written in plain row order.
+cuda_kernel_signature_and_arguments!(
+    pub(super) NaturalToBitrevFinal,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+);
+pub(super) struct NaturalToBitrevFinalFunction(pub(super) NaturalToBitrevFinalSignature);
+impl era_cudart::execution::KernelFunction for NaturalToBitrevFinalFunction {
+    type Signature = NaturalToBitrevFinalSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+
+cuda_kernel_signature_and_arguments!(
+    pub(super) NaturalToBitrevFinalTma,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    output_tensor_map: NaturalFinalOutputTensorMap,
+);
+pub(super) struct NaturalToBitrevFinalTmaFunction(pub(super) NaturalToBitrevFinalTmaSignature);
+impl era_cudart::execution::KernelFunction for NaturalToBitrevFinalTmaFunction {
+    type Signature = NaturalToBitrevFinalTmaSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_final_8_stages_evict_tma_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+        log_n: i32,
+        output_tensor_map: NaturalFinalOutputTensorMap,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_final_7_stages_evict_tma_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+        log_n: i32,
+        output_tensor_map: NaturalFinalOutputTensorMap,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_final_6_stages_evict_tma_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+        log_n: i32,
+        output_tensor_map: NaturalFinalOutputTensorMap,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_final_5_stages_evict_tma_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+        log_n: i32,
+        output_tensor_map: NaturalFinalOutputTensorMap,
+    )
+);
+cuda_kernel_signature_and_arguments!(
+    pub(super) NaturalToBitrevFinalPrefetch,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+    prefetch_src: *const BF,
+);
+pub(super) struct NaturalToBitrevFinalPrefetchFunction(
+    pub(super) NaturalToBitrevFinalPrefetchSignature,
+);
+impl era_cudart::execution::KernelFunction for NaturalToBitrevFinalPrefetchFunction {
+    type Signature = NaturalToBitrevFinalPrefetchSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+
+cuda_kernel_signature_and_arguments!(
+    pub(super) NaturalToBitrevFinalPrefetchTma,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    prefetch_src: *const BF,
+    output_tensor_map: NaturalFinalOutputTensorMap,
+);
+pub(super) struct NaturalToBitrevFinalPrefetchTmaFunction(
+    pub(super) NaturalToBitrevFinalPrefetchTmaSignature,
+);
+impl era_cudart::execution::KernelFunction for NaturalToBitrevFinalPrefetchTmaFunction {
+    type Signature = NaturalToBitrevFinalPrefetchTmaSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_final_7_stages_evict_prefetch_packed_smem_tma_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+        log_n: i32,
+        prefetch_src: *const BF,
+        output_tensor_map: NaturalFinalOutputTensorMap,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_final_6_stages_evict_prefetch_packed_smem_tma_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+        log_n: i32,
+        prefetch_src: *const BF,
+        output_tensor_map: NaturalFinalOutputTensorMap,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_final_5_stages_evict_prefetch_packed_smem_tma_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+        log_n: i32,
+        prefetch_src: *const BF,
+        output_tensor_map: NaturalFinalOutputTensorMap,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_monomials_to_bitrev_evals_final_8_stages_evict_prefetch_packed_smem_packed_num2_tma_kernel(
+        inputs_matrix: PtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+        log_n: i32,
+        prefetch_src: *const BF,
+        output_tensor_map: NaturalFinalOutputTensorMap,
+    )
+);
+macro_rules! natural_to_bitrev_final_prefetch {
+    ($kernel_name:ident) => {
+        ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+    prefetch_src: *const BF,
+        ));
+    };
+}
+natural_to_bitrev_final_prefetch!(
+    ab_natural_monomials_to_bitrev_evals_final_5_stages_evict_prefetch_kernel
+);
+natural_to_bitrev_final_prefetch!(
+    ab_natural_monomials_to_bitrev_evals_final_6_stages_evict_prefetch_kernel
+);
+natural_to_bitrev_final_prefetch!(
+    ab_natural_monomials_to_bitrev_evals_final_7_stages_evict_prefetch_kernel
+);
+natural_to_bitrev_final_prefetch!(
+    ab_natural_monomials_to_bitrev_evals_final_8_stages_evict_prefetch_kernel
+);
+
+cuda_kernel_signature_and_arguments!(
+    pub(super) NaturalToBitrevFinalCrossColumn,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    next_hypercube_inputs_matrix: PtrAndStride<BF>,
+    next_pre_tail_outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+);
+pub(super) struct NaturalToBitrevFinalCrossColumnFunction(
+    pub(super) NaturalToBitrevFinalCrossColumnSignature,
+);
+impl era_cudart::execution::KernelFunction for NaturalToBitrevFinalCrossColumnFunction {
+    type Signature = NaturalToBitrevFinalCrossColumnSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+macro_rules! natural_to_bitrev_final_cross_column {
+    ($kernel_name:ident) => {
+        ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    next_hypercube_inputs_matrix: PtrAndStride<BF>,
+    next_pre_tail_outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+        ));
+    };
+}
+natural_to_bitrev_final_cross_column!(
+    ab_natural_monomials_to_bitrev_evals_final_5_stages_evict_delayed_prefetch_packed_smem_cross_column_kernel
+);
+natural_to_bitrev_final_cross_column!(
+    ab_natural_monomials_to_bitrev_evals_final_6_stages_evict_delayed_prefetch_packed_smem_cross_column_pdl_kernel
+);
+natural_to_bitrev_final_cross_column!(
+    ab_natural_monomials_to_bitrev_evals_final_7_stages_evict_delayed_prefetch_packed_smem_cross_column_pdl_kernel
+);
+natural_to_bitrev_final_cross_column!(
+    ab_natural_monomials_to_bitrev_evals_final_8_stages_evict_delayed_prefetch_packed_smem_cross_column_pdl_kernel
+);
+macro_rules! natural_to_bitrev_final {
+    ($kernel_name:ident) => {
+        ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+        ));
+    };
+}
+
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_14_stages_kernel);
+
+// Pass 1 is the three-pass initial kernel. Same NaturalToBitrevFinal
+// signature: in place per coset slab, plain row order out.
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_5_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_6_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_7_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_8_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_9_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_10_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_11_stages_compact_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_last_12_stages_compact_kernel);
+
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_5_stages_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_6_stages_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_7_stages_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_8_stages_kernel);
+// evict-first variants for the LDE's terminal pass
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_5_stages_evict_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_6_stages_evict_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_7_stages_evict_kernel);
+natural_to_bitrev_final!(ab_natural_monomials_to_bitrev_evals_final_8_stages_evict_kernel);

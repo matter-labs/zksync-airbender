@@ -255,6 +255,53 @@ fn setup_host_matches_flattened_cpu_setup_and_caps() {
 
 #[test]
 #[cfg(not(no_cuda))]
+fn setup_host_matches_cpu_setup_caps_at_production_cap_geometry() {
+    let trace_len = 1usize << 16;
+    let lde_factor = 2usize;
+    let tree_cap_size = 16usize;
+    let log_lde_factor = lde_factor.trailing_zeros();
+    let log_rows_per_leaf = 1u32;
+    let log_tree_cap_size = tree_cap_size.trailing_zeros();
+    let setup = make_test_cpu_setup(trace_len, 3, 64);
+    let context = make_test_context(256, 64);
+
+    let host = GpuGKRSetupHost::precompute_from_cpu_setup(
+        &setup,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        &context,
+    )
+    .unwrap();
+    assert_eq!(host.unified_tree_cap().len(), tree_cap_size);
+
+    let worker = Worker::new();
+    let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
+    let setup_commitment = setup.commit::<DefaultTreeConstructor>(
+        &twiddles,
+        lde_factor,
+        log_rows_per_leaf as usize,
+        tree_cap_size,
+        trace_len.trailing_zeros() as usize,
+        &worker,
+    );
+    let subcap_size = tree_cap_size / lde_factor;
+    let setup_caps = setup_commitment
+        .get_cap()
+        .cap
+        .chunks_exact(subcap_size)
+        .map(|chunk| MerkleTreeCapVarLength {
+            cap: chunk.to_vec(),
+        })
+        .collect_vec();
+    assert_eq!(
+        stage1_caps_from_unified_host_cap(host.unified_tree_cap(), log_lde_factor),
+        setup_caps
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
 fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit() {
     let trace_len = 1usize << 10;
     let lde_factor = 2usize;
@@ -554,7 +601,8 @@ fn forward_setup_generic_lookup_fused_kernel_matches_expected_for_max_width() {
 #[test]
 #[cfg(not(no_cuda))]
 fn forward_setup_generic_lookup_fused_kernel_handles_single_column() {
-    let trace_len = 1usize << 8;
+    // The partial-tree physical-leaf builder needs >= 512 leaves per coset.
+    let trace_len = 1usize << 10;
     let generic_lookup_width = 1;
     let generic_lookup_len = 32;
     let setup = make_test_cpu_setup(trace_len, generic_lookup_width, generic_lookup_len);

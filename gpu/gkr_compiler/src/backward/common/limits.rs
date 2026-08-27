@@ -28,7 +28,7 @@ const _: () = assert!(MAX_OPCODES_PER_REGIME == 8);
 pub const LEAN_CONT_GROUP_HEADER_CLASS: u16 = 2;
 
 /// Wire-level cap on one coordinate's immediate table. The GPU
-/// descriptor capacity `BWD_SEG_MAX_IMMEDIATES` mirror-asserts EQUAL to this —
+/// descriptor capacity `BWD_CONTINUATION_MAX_IMMEDIATES` mirrors this —
 /// the crates never import each other's constant.
 pub const LEAN_MAX_IMMEDIATES: usize = 512;
 

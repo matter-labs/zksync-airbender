@@ -41,7 +41,7 @@ fn assert_rejects(variant: &str, expected: impl FnOnce(&VerificationError) -> bo
     let proof = load_malicious_proof(variant);
     common::assert_rejects_with_variant(
         CIRCUIT_NAME,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         variant,
         &proof,
         expected,
@@ -51,10 +51,10 @@ fn assert_rejects(variant: &str, expected: impl FnOnce(&VerificationError) -> bo
 fn assert_accepts(variant: &str) {
     let proof = load_malicious_proof(variant);
     let (nds, external_challenges) =
-        common::proof_to_nds(CIRCUIT_NAME, SecurityLevel::Sec80, &proof);
+        common::proof_to_nds(CIRCUIT_NAME, SecurityLevel::Sec100, &proof);
     match common::verify_nds(
         CIRCUIT_NAME,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         &external_challenges,
         nds,
     ) {
@@ -161,7 +161,7 @@ fn rejects_malicious_memory_value() {
 }
 
 // ---- subword address malleability ----
-// Proof produced by prover `gkr_run_basic_unrolled_test_sec_80` with SUBWORD_ALIAS_FORGE=1,
+// Proof produced by prover `gkr_run_basic_unrolled_test_sec_100` with SUBWORD_ALIAS_FORGE=1,
 // which trades the byte offset (b0,b1) against the word-cell address on an active byte-load
 // row while preserving the address equation (all pre-fix constraints hold). The word-
 // alignment constraint (cleanaddr_lo == 4*(cleanaddr_lo>>2), cleanaddr_lo>>2 range-checked)
@@ -175,7 +175,7 @@ fn rejects_malicious_subword_alias() {
     let proof = load_malicious_proof("subword_alias");
     common::assert_rejects_with_variant(
         SUBWORD_CIRCUIT_NAME,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         "subword_alias",
         &proof,
         |e| {
@@ -208,7 +208,7 @@ fn assert_rejects_unified(variant: &str, expected: impl FnOnce(&VerificationErro
     let proof = load_malicious_unified_proof(variant);
     common::assert_rejects_with_variant(
         UNIFIED_CIRCUIT_NAME,
-        SecurityLevel::Sec80,
+        SecurityLevel::Sec100,
         variant,
         &proof,
         expected,

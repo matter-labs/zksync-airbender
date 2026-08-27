@@ -27,6 +27,11 @@ use super::*;
 pub struct Proth120WorkStealingLazyBackend;
 
 impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
+    type TwiddleSet = Twiddles<Proth120, Global>;
+    fn make_twiddles(&self, domain_size: usize, worker: &Worker) -> Self::TwiddleSet {
+        Twiddles::new(domain_size, worker)
+    }
+
     fn lde_multiple_polys_from_hypercubes(
         &self,
         evals: &[&[Proth120]],

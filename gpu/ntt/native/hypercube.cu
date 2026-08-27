@@ -2,7 +2,7 @@
 
 namespace airbender::ntt {
 
-EXTERN __global__ void ab_hypercube_evals_natural_to_bitreversed_coeffs_stage_kernel(bf *values, const unsigned log_n, const unsigned stage) {
+EXTERN __global__ void ab_hypercube_evals_to_monomial_coeffs_stage_kernel(bf *values, const unsigned log_n, const unsigned stage) {
   const unsigned pair_count = 1u << (log_n - 1);
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= pair_count)

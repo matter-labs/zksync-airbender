@@ -88,6 +88,10 @@ pub struct GpuGKRSetupHost {
 }
 
 impl GpuGKRSetupHost {
+    pub fn unified_tree_cap(&self) -> &[Digest] {
+        &self.unified_tree_cap
+    }
+
     pub fn precompute_from_cpu_setup(
         setup: &CpuGKRSetup<BF>,
         log_lde_factor: u32,

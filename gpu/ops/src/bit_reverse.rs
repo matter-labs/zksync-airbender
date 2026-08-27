@@ -321,10 +321,8 @@ mod tests {
     }
 
     /// Cross-check `bit_reverse_in_place::<E4>` against host
-    /// `fft::bitreverse_enumeration_inplace` over a small E4 buffer. This is
-    /// the device-resident replacement for the WHIR final-round
-    /// `final_monomials` bitreverse callback; if the E4 instantiation diverges
-    /// from the host helper, this test surfaces it before the WHIR smoke runs.
+    /// `fft::bitreverse_enumeration_inplace`. The E4 instantiation has no
+    /// production caller, so this is its only guard.
     #[test]
     fn bit_reverse_e4_matches_host() {
         use fft::bitreverse_enumeration_inplace;

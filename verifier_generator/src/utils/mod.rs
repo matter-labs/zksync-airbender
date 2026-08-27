@@ -5,7 +5,7 @@ use prover::cs::definitions::gkr::RamWordRepresentation;
 use prover::cs::definitions::GKRAddress;
 use prover::cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    GKRLayerDescription, NoFieldGKRRelation, NoFieldSpecialMemoryContributionRelation,
+    GKRLayerDescription, GKRRelation, SpecialMemoryContributionRelation,
 };
 
 pub mod sumcheck;
@@ -22,7 +22,7 @@ pub fn addr_to_idx(addr: &GKRAddress, sorted: &[GKRAddress]) -> usize {
 }
 
 fn collect_mem_expr_addrs(
-    rel: &NoFieldSpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation,
     addrs: &mut BTreeSet<GKRAddress>,
 ) {
     match &rel.address_space {
@@ -89,7 +89,7 @@ pub fn collect_sorted_unique_addrs<F: PrimeField>(
         .iter()
         .chain(layer.gates_with_external_connections.iter())
     {
-        use NoFieldGKRRelation as R;
+        use GKRRelation as R;
         match &gate.enforced_relation {
             R::LinearBaseFieldRelation { input, .. } => {
                 for (_, addr) in input.linear_terms.iter() {

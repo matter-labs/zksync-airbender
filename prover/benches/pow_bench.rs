@@ -1,8 +1,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use prover::definitions::Transcript;
-use transcript::Seed;
+use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
+use transcript::{Blake2sTranscript, Seed};
 use worker::Worker;
+
+type Transcript = Blake2sTranscript<USE_REDUCED_BLAKE2_ROUNDS>;
 
 fn get_random_seed() -> Seed {
     use rand::Rng;
@@ -19,7 +21,11 @@ fn pow_benchmark(c: &mut Criterion) {
 
     for pow_bits in [1, 4, 7, 17, 28].iter() {
         c.bench_function(&format!("PoW for {} bits", pow_bits), |b| {
-            b.iter(|| Transcript::search_pow(&seed, *pow_bits, &worker))
+            b.iter(|| {
+                Blake2sTranscript::<USE_REDUCED_BLAKE2_ROUNDS>::search_pow(
+                    &seed, *pow_bits, &worker,
+                )
+            })
         });
     }
 }

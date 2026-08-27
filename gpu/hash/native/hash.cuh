@@ -26,6 +26,9 @@ using namespace ::airbender::primitives::field;
 constexpr unsigned ROUNDS = 7;
 constexpr unsigned STATE_SIZE = 8;
 constexpr unsigned BLOCK_SIZE = 16;
+constexpr unsigned LOG_WARP_SIZE = 5;
+constexpr unsigned WARP_MASK = (1u << LOG_WARP_SIZE) - 1;
+constexpr u32 FULL_MASK = 0xffffffff;
 
 // 32-byte aligned digest view. Used at every gmem digest boundary so the
 // `load`/`store` PTX dispatch picks the v8 (256-bit) path: one
@@ -111,6 +114,95 @@ template <typename Read> DEVICE_FORCEINLINE void absorb_stream(u32 state[STATE_S
       compress<true>(state, t, block, remaining);
     else
       compress<false>(state, t, block, BLOCK_SIZE);
+  }
+}
+
+// `values_count` counts E4 values, not base-field words.
+template <typename ReadE4> DEVICE_FORCEINLINE void absorb_e4_stream(u32 state[STATE_SIZE], u32 &t, const unsigned values_count, ReadE4 read_e4) {
+  constexpr unsigned E4S_PER_BLOCK = BLOCK_SIZE / 4;
+  u32 block[BLOCK_SIZE];
+  unsigned value_offset = 0;
+  while (value_offset < values_count) {
+    const unsigned remaining = values_count - value_offset;
+    const bool is_final_block = remaining <= E4S_PER_BLOCK;
+#pragma unroll
+    for (unsigned i = 0; i < E4S_PER_BLOCK; i++) {
+      const e4 value = i < remaining ? read_e4(value_offset + i) : e4::ZERO();
+#pragma unroll
+      for (unsigned coeff = 0; coeff < 4; coeff++)
+        block[4 * i + coeff] = bf::into_raw_u32(value.base_coefficient_from_flat_idx(coeff));
+    }
+    const unsigned consumed_values = remaining < E4S_PER_BLOCK ? remaining : E4S_PER_BLOCK;
+    value_offset += E4S_PER_BLOCK;
+    if (is_final_block)
+      compress<true>(state, t, block, consumed_values * 4);
+    else
+      compress<false>(state, t, block, BLOCK_SIZE);
+  }
+}
+
+DEVICE_FORCEINLINE void reduce_merkle_subtrees_block(digest *values, unsigned active) {
+#pragma unroll
+  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
+    const bool enabled = threadIdx.x < active;
+    digest children[2];
+    if (enabled) {
+      children[0] = values[2 * threadIdx.x];
+      children[1] = values[2 * threadIdx.x + 1];
+    }
+    __syncthreads();
+    if (enabled) {
+      digest state;
+      initialize(state.words);
+      u32 t = 0;
+      compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+      values[threadIdx.x] = state;
+    }
+    __syncthreads();
+    active >>= 1;
+  }
+}
+
+// Rebuilds the bottom five layers with warp shuffles before walking the cached tree.
+DEVICE_FORCEINLINE void collect_merkle_path_warp(u32 state[STATE_SIZE], u32 *merkle_paths, const unsigned layer_stride_words, const unsigned lane_idx,
+                                                 const bool is_output_lane, const unsigned query_index, const unsigned log_total_leaves_count,
+                                                 const unsigned layers_count, const u32 *tree_bottom) {
+  u32 block[BLOCK_SIZE];
+#pragma unroll
+  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
+    digest other_state;
+    const bool take_other_first = (lane_idx >> layer) & 1;
+#pragma unroll
+    for (unsigned i = 0; i < STATE_SIZE; i++) {
+      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
+      if (take_other_first) {
+        block[i] = other_state[i];
+        block[i + STATE_SIZE] = state[i];
+      } else {
+        block[i] = state[i];
+        block[i + STATE_SIZE] = other_state[i];
+      }
+    }
+    if (is_output_lane)
+      ::airbender::primitives::memory::store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
+    initialize(state);
+    u32 t = 0;
+    compress<true>(state, t, block, BLOCK_SIZE);
+    merkle_paths += layer_stride_words;
+  }
+  if (lane_idx >= STATE_SIZE)
+    return;
+  unsigned digest_index = query_index >> LOG_WARP_SIZE;
+  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
+  const u32 *tree_layer = tree_bottom + lane_idx;
+  u32 *merkle_paths_dst = merkle_paths + lane_idx;
+  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
+    const unsigned other_index = digest_index ^ 1;
+    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
+    digest_index >>= 1;
+    tree_layer += (1u << log_digests_count) * STATE_SIZE;
+    log_digests_count--;
+    merkle_paths_dst += layer_stride_words;
   }
 }
 

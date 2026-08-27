@@ -10,16 +10,15 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+circuit_common = { workspace = true }
 common_constants = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
+program_prover = { workspace = true, default-features = false }
 riscv_transpiler = { workspace = true }
-trace_and_split = { workspace = true }
 setups = { workspace = true, features = ["witness_eval_fn"] }
-circuit_common = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 bincode = { version = "1.3" }
-itertools = { workspace = true }
 verifier_common = { workspace = true, default-features = false }
 full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "host_utils"]}
 
@@ -30,17 +29,18 @@ serial_test = "3"
 flate2 = "*"
 
 [features]
-verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers", "full_statement_verifier/security_80"]
-security_80 = ["verifier_common/security_80"]
-security_100 = ["verifier_common/security_100"]
+verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
+# L1 wrap driver: prove a delegation-free run as ONE Proth120 packed unified
+# proof with the EVM-production parameters (pulls in prover's test harness for
+# the Proth120 witness path).
+l1 = ["prover/test", "prover/bincode"]
 # When enabled, the crate will print detailed debug logs.
-debug_logs = []
+debug_logs = ["program_prover/debug_logs"]
 # Will perform satisfiability tests on witness
-gkr_self_checks = ["prover/gkr_self_checks"]
+gkr_self_checks = ["program_prover/gkr_self_checks"]
 # Will evaluate quotient on main domain for satisfiability checks
-debug_satisfiable = ["prover/debug_satisfiable"]
+debug_satisfiable = ["program_prover/debug_satisfiable"]
 # Print logs related to timings only.
-timing_logs = []
-# verifiers = ["full_statement_verifier/verifiers"]
+timing_logs = ["program_prover/timing_logs"]
 
-default = ["timing_logs", "security_80", "verifier_common/proof_utils", "gkr_self_checks"]
+default = ["timing_logs", "verifier_common/proof_utils", "gkr_self_checks"]

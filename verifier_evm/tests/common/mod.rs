@@ -12,6 +12,12 @@ pub const PACK_LOG2: usize = 4;
 /// Mirrors `prover/src/tests/gkr/large_field.rs` (Sec100, 2^22, 6 WHIR rounds).
 pub fn production_prover_config() -> ProverConfig {
     ProverConfig {
+        // circuit trace length; the WHIR message is 2^(22 + PACK_LOG2) = 2^26
+        trace_len_log2: 22,
+        // gkr.sol consumes monomial [c0..c3] rounds: plain naive
+        // sumcheck steps only (empty schedule = naive for every round)
+        same_size_sumcheck_schedule: prover::gkr::prover_config::naive_same_size_schedule(),
+        dimension_reducing_sumcheck_schedule: Default::default(),
         lde_factor: 1 << 5,
         cap_size: 8,
         base_oracles_values_per_leaf: 1 << 2,

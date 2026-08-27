@@ -107,16 +107,16 @@ pub(crate) fn simplify_layer(layer: &DagLayer) -> DagLayer {
         })
         .collect();
     let mut resolutions = BTreeMap::new();
-    for (old, strat) in &layer.resolutions {
+    for (old, strategy) in &layer.resolutions {
         // Fenced keys must be root-reachable to survive rewrites; if a key
         // is NOT in the memo map, its subtree was never rebuilt (dead
         // resolution) — drop it rather than panicking.
         let Some(new) = rb.map[old.0 as usize] else {
             continue;
         };
-        if let Some(existing) = resolutions.insert(new, *strat) {
+        if let Some(existing) = resolutions.insert(new, *strategy) {
             assert_eq!(
-                &existing, strat,
+                &existing, strategy,
                 "gkr_eval_ir: resolution CSE collision at {:?}",
                 new
             );

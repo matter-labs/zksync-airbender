@@ -10,6 +10,8 @@ use gpu_core::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
 use gpu_core::primitives::field::{BF, E4};
+use gpu_hash::blake2s::Digest;
+use gpu_ntt::ntt_twiddles::WhirLeafTransformParams;
 use gpu_ops::simple::pow;
 // Production: the (de)serialize / accumulate launchers here read `EXT4_DEGREE`
 // via `<E4 as FieldExtension<BF>>::DEGREE`.
@@ -54,35 +56,6 @@ pub(crate) fn serialize_whir_e4_columns(
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = SerializeWhirE4ColumnsArguments::new(src.as_ptr(), dst.as_mut_ptr(), count);
     SerializeWhirE4ColumnsFunction(ab_serialize_whir_e4_columns_kernel).launch(&config, &args)
-}
-
-cuda_kernel_signature_arguments_and_function!(
-    DeserializeWhirE4Columns,
-    src: *const BF,
-    dst: *mut E4,
-    count: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_deserialize_whir_e4_columns_kernel(
-        src: *const BF,
-        dst: *mut E4,
-        count: u32,
-    )
-);
-
-pub(crate) fn deserialize_whir_e4_columns(
-    src: &DeviceSlice<BF>,
-    dst: &mut DeviceSlice<E4>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert_eq!(src.len(), dst.len() * <E4 as FieldExtension<BF>>::DEGREE);
-    assert!(dst.len() <= u32::MAX as usize);
-    let count = dst.len() as u32;
-    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, count);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = DeserializeWhirE4ColumnsArguments::new(src.as_ptr(), dst.as_mut_ptr(), count);
-    DeserializeWhirE4ColumnsFunction(ab_deserialize_whir_e4_columns_kernel).launch(&config, &args)
 }
 
 const TRACE_CHUNKS: usize = 3;
@@ -251,7 +224,7 @@ pub(crate) fn accumulate_whir_base_columns_with_serialized_bf(
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldSplitHalfVectorized,
+    WhirFoldAdjacentVectorized,
     src: PtrAndStride<BF>,
     dst: MutPtrAndStride<BF>,
     challenge: *const E4,
@@ -259,7 +232,7 @@ cuda_kernel_signature_arguments_and_function!(
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_split_half_vectorized_e4_kernel(
+    ab_whir_fold_adjacent_vectorized_e4_kernel(
         src: PtrAndStride<BF>,
         dst: MutPtrAndStride<BF>,
         challenge: *const E4,
@@ -267,55 +240,676 @@ cuda_kernel_declaration!(
     )
 );
 
-pub(crate) fn whir_fold_split_half_in_place_vectorized(
-    values: &mut impl DeviceMatrixChunkMutImpl<BF>,
+/// Out of place — the adjacent pairing overlaps the read and write ranges
+/// across blocks.
+pub(crate) fn whir_fold_adjacent_vectorized(
+    src: &impl DeviceMatrixChunkImpl<BF>,
+    dst: &mut impl DeviceMatrixChunkMutImpl<BF>,
     challenge: &DeviceVariable<E4>,
     half_len: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(values.rows().is_power_of_two());
-    assert_eq!(values.cols(), 4);
+    assert_eq!(src.cols(), 4);
+    assert_eq!(dst.cols(), 4);
+    assert!(2 * half_len <= src.stride());
+    assert!(half_len <= dst.stride());
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len as u32);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldSplitHalfVectorizedArguments::new(
-        values.as_ptr_and_stride(),
-        values.as_mut_ptr_and_stride(),
+    let args = WhirFoldAdjacentVectorizedArguments::new(
+        src.as_ptr_and_stride(),
+        dst.as_mut_ptr_and_stride(),
         challenge.as_ptr(),
         half_len as i32,
     );
-    WhirFoldSplitHalfVectorizedFunction(ab_whir_fold_split_half_vectorized_e4_kernel)
+    WhirFoldAdjacentVectorizedFunction(ab_whir_fold_adjacent_vectorized_e4_kernel)
         .launch(&config, &args)
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldSplitHalf,
-    values: *mut E4,
+    WhirFoldAdjacent,
+    src: *const E4,
+    dst: *mut E4,
     challenge: *const E4,
     half_len: u32,
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_split_half_e4_kernel(
-        values: *mut E4,
+    ab_whir_fold_adjacent_e4_kernel(
+        src: *const E4,
+        dst: *mut E4,
         challenge: *const E4,
         half_len: u32,
     )
 );
 
+/// Out of place — the adjacent pairing overlaps the read and write ranges
+/// across blocks.
 #[cfg(test)]
-pub(crate) fn whir_fold_split_half_in_place(
-    values: &mut DeviceSlice<E4>,
+pub(crate) fn whir_fold_adjacent(
+    src: &DeviceSlice<E4>,
+    dst: &mut DeviceSlice<E4>,
     challenge: &DeviceVariable<E4>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(values.len().is_power_of_two());
-    assert!(values.len() >= 2);
-    assert!(values.len() / 2 <= u32::MAX as usize);
-    let half_len = (values.len() / 2) as u32;
+    assert!(src.len().is_power_of_two());
+    assert!(src.len() >= 2);
+    assert!(src.len() / 2 <= u32::MAX as usize);
+    let half_len = (src.len() / 2) as u32;
+    assert!(dst.len() >= half_len as usize);
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldSplitHalfArguments::new(values.as_mut_ptr(), challenge.as_ptr(), half_len);
-    WhirFoldSplitHalfFunction(ab_whir_fold_split_half_e4_kernel).launch(&config, &args)
+    let args = WhirFoldAdjacentArguments::new(
+        src.as_ptr(),
+        dst.as_mut_ptr(),
+        challenge.as_ptr(),
+        half_len,
+    );
+    WhirFoldAdjacentFunction(ab_whir_fold_adjacent_e4_kernel).launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    GatherCoefficientLeavesForQueriesFromNtt,
+    src: PtrAndStride<BF>,
+    leaf_dst: *mut BF,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    query_indexes: *const u32,
+    indexes_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_gather_coefficient_leaves_for_queries_from_ntt_kernel(
+        src: PtrAndStride<BF>,
+        leaf_dst: *mut BF,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        query_indexes: *const u32,
+        indexes_count: u32,
+    )
+);
+
+pub(crate) fn gather_coefficient_leaves_for_queries_from_ntt(
+    ntt_output: &DeviceSlice<BF>,
+    leaf_dst: &mut DeviceSlice<BF>,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    log_src_cols_per_coset: u32,
+    transform_params: WhirLeafTransformParams,
+    query_indexes: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!((1..=5).contains(&log_values_per_leaf));
+    assert!(log_trace_len > log_values_per_leaf);
+    assert_eq!(log_src_cols_per_coset, 2, "coefficient queries require E4");
+    assert!(!query_indexes.is_empty());
+    assert!(query_indexes.len() <= u32::MAX as usize);
+    let trace_len = 1usize << log_trace_len;
+    let lde_factor = 1usize << log_lde_factor;
+    assert_eq!(ntt_output.len(), trace_len * lde_factor * 4);
+    let values_per_leaf = 1usize << log_values_per_leaf;
+    assert_eq!(leaf_dst.len(), query_indexes.len() * values_per_leaf * 4);
+
+    let block_dim_x = (query_indexes.len() as u32).min(WARP_SIZE);
+    let block_dim_y = (values_per_leaf / 2) as u32;
+    let grid_dim_x = (query_indexes.len() as u32).div_ceil(block_dim_x);
+    let mut config = CudaLaunchConfig::basic(grid_dim_x, (block_dim_x, block_dim_y), stream);
+    if log_values_per_leaf > 1 {
+        config.dynamic_smem_bytes =
+            2 * block_dim_x as usize * block_dim_y as usize * core::mem::size_of::<E4>()
+                + block_dim_x as usize * block_dim_y as usize * core::mem::size_of::<BF>();
+    }
+    let args = GatherCoefficientLeavesForQueriesFromNttArguments::new(
+        PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+        leaf_dst.as_mut_ptr(),
+        transform_params,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+        query_indexes.as_ptr(),
+        query_indexes.len() as u32,
+    );
+    GatherCoefficientLeavesForQueriesFromNttFunction(
+        ab_gather_coefficient_leaves_for_queries_from_ntt_kernel,
+    )
+    .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    GatherCoefficientLeavesAndMerklePathsPartialForQueriesFromNtt,
+    src: PtrAndStride<BF>,
+    partial_tree: *const u32,
+    leaf_dst: *mut BF,
+    path_dst: *mut u32,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    log_total_leaves_count: u32,
+    layers_count: u32,
+    query_indexes: *const u32,
+    indexes_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_gather_coefficient_leaves_and_merkle_paths_partial_for_queries_from_ntt_kernel(
+        src: PtrAndStride<BF>,
+        partial_tree: *const u32,
+        leaf_dst: *mut BF,
+        path_dst: *mut u32,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        log_total_leaves_count: u32,
+        layers_count: u32,
+        query_indexes: *const u32,
+        indexes_count: u32,
+    )
+);
+
+pub(crate) fn gather_coefficient_leaves_and_merkle_paths_partial_for_queries_from_ntt(
+    ntt_output: &DeviceSlice<BF>,
+    partial_tree: &DeviceSlice<u32>,
+    leaf_dst: &mut DeviceSlice<BF>,
+    path_dst: &mut DeviceSlice<u32>,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    log_src_cols_per_coset: u32,
+    log_packed_leaf_count: u32,
+    log_total_leaves_count: u32,
+    layers_count: u32,
+    transform_params: WhirLeafTransformParams,
+    query_indexes: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!((1..=5).contains(&log_values_per_leaf));
+    assert!(log_trace_len > log_values_per_leaf);
+    assert_eq!(log_src_cols_per_coset, 2, "coefficient queries require E4");
+    assert_eq!(log_packed_leaf_count, log_trace_len - log_values_per_leaf);
+    assert_eq!(
+        log_total_leaves_count,
+        log_packed_leaf_count + log_lde_factor
+    );
+    assert!(log_total_leaves_count >= 6);
+    assert!(layers_count > 5);
+    assert!(!query_indexes.is_empty());
+    assert!(query_indexes.len() <= u32::MAX as usize);
+    let trace_len = 1usize << log_trace_len;
+    let lde_factor = 1usize << log_lde_factor;
+    assert_eq!(ntt_output.len(), trace_len * lde_factor * 4);
+    let values_per_leaf = 1usize << log_values_per_leaf;
+    assert_eq!(leaf_dst.len(), query_indexes.len() * values_per_leaf * 4);
+    assert_eq!(
+        path_dst.len(),
+        query_indexes.len() * layers_count as usize * gpu_hash::blake2s::STATE_SIZE
+    );
+    assert_eq!(
+        partial_tree.len(),
+        (1usize << (log_total_leaves_count + 1 - 5)) * gpu_hash::blake2s::STATE_SIZE
+    );
+
+    let block_dim = (WARP_SIZE, (values_per_leaf / 2) as u32);
+    let mut config = CudaLaunchConfig::basic(query_indexes.len() as u32, block_dim, stream);
+    config.dynamic_smem_bytes = WARP_SIZE as usize * values_per_leaf * core::mem::size_of::<E4>()
+        + if log_values_per_leaf > 1 {
+            WARP_SIZE as usize * (values_per_leaf / 2) * core::mem::size_of::<BF>()
+        } else {
+            0
+        };
+    let args = GatherCoefficientLeavesAndMerklePathsPartialForQueriesFromNttArguments::new(
+        PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+        partial_tree.as_ptr(),
+        leaf_dst.as_mut_ptr(),
+        path_dst.as_mut_ptr(),
+        transform_params,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+        log_total_leaves_count,
+        layers_count,
+        query_indexes.as_ptr(),
+        query_indexes.len() as u32,
+    );
+    GatherCoefficientLeavesAndMerklePathsPartialForQueriesFromNttFunction(
+        ab_gather_coefficient_leaves_and_merkle_paths_partial_for_queries_from_ntt_kernel,
+    )
+    .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    TransformAndHashWhirLeavesFromNttMultiCoset,
+    src: PtrAndStride<BF>,
+    results: *mut u32,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    coset_index_base: u32,
+    leaves_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_kernel(
+        src: PtrAndStride<BF>,
+        results: *mut u32,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        coset_index_base: u32,
+        leaves_count: u32,
+    )
+);
+
+pub(crate) fn transform_and_hash_whir_leaves_from_ntt_multi_coset(
+    ntt_output: &DeviceSlice<BF>,
+    results: &mut DeviceSlice<Digest>,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    coset_index_base: u32,
+    cosets_in_tile: u32,
+    transform_params: WhirLeafTransformParams,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_lde_factor >= 1);
+    assert!((1..=5).contains(&log_values_per_leaf));
+    assert!(log_trace_len > log_values_per_leaf);
+    assert!(cosets_in_tile >= 1);
+    assert!(coset_index_base + cosets_in_tile <= 1u32 << log_lde_factor);
+    let trace_len = 1usize << log_trace_len;
+    let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
+    let leaves_count = packed_leaf_count
+        .checked_mul(cosets_in_tile as usize)
+        .expect("tile leaf count overflow");
+    assert!(leaves_count <= u32::MAX as usize);
+    assert!(ntt_output.len() >= trace_len * 4 * cosets_in_tile as usize);
+
+    let max_bitrev_coset = (0..cosets_in_tile)
+        .map(|offset| (coset_index_base + offset).reverse_bits() >> (u32::BITS - log_lde_factor))
+        .max()
+        .unwrap();
+    assert!(
+        results.len() >= (max_bitrev_coset as usize + 1) * packed_leaf_count,
+        "results do not cover the tile's highest bit-reversed coset",
+    );
+
+    let values_per_leaf = 1usize << log_values_per_leaf;
+    let block_dim_x = if values_per_leaf == 2 {
+        (leaves_count as u32).min(4 * WARP_SIZE)
+    } else {
+        WARP_SIZE
+    };
+    let block_dim_y = (values_per_leaf / 2) as u32;
+    let grid_dim_x = (leaves_count as u32).div_ceil(block_dim_x);
+    let mut config = CudaLaunchConfig::basic(grid_dim_x, (block_dim_x, block_dim_y), stream);
+    config.dynamic_smem_bytes = block_dim_x as usize * values_per_leaf * core::mem::size_of::<E4>()
+        + if log_values_per_leaf > 1 {
+            block_dim_x as usize * block_dim_y as usize * core::mem::size_of::<BF>()
+        } else {
+            0
+        };
+    let args = TransformAndHashWhirLeavesFromNttMultiCosetArguments::new(
+        PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+        results.as_mut_ptr() as *mut u32,
+        transform_params,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+        coset_index_base,
+        leaves_count as u32,
+    );
+    TransformAndHashWhirLeavesFromNttMultiCosetFunction(
+        ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_kernel,
+    )
+    .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    TransformAndHashWhirLeavesFromNttMultiCosetToStaging,
+    src: PtrAndStride<BF>,
+    staging: *mut u32,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    coset_index_base: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_kernel(
+        src: PtrAndStride<BF>,
+        staging: *mut u32,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        coset_index_base: u32,
+    )
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    TransformAndHashWhirLeavesFromNttMultiCosetToStagingRegisterV32,
+    src: PtrAndStride<BF>,
+    staging: *mut u32,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    coset_index_base: u32,
+    leaves_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_register_v32_kernel(
+        src: PtrAndStride<BF>,
+        staging: *mut u32,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        coset_index_base: u32,
+        leaves_count: u32,
+    )
+);
+
+const NATURAL_REGISTER_RESIDENT_V32_MIN_LEAVES_COUNT: usize = 1 << 16;
+
+fn use_register_resident_natural_v32(log_values_per_leaf: u32, leaves_count: usize) -> bool {
+    log_values_per_leaf == 5 && leaves_count >= NATURAL_REGISTER_RESIDENT_V32_MIN_LEAVES_COUNT
+}
+
+pub(crate) fn transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging(
+    ntt_output: &DeviceSlice<BF>,
+    staging: &mut DeviceSlice<Digest>,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    coset_index_base: u32,
+    cosets_in_tile: u32,
+    transform_params: WhirLeafTransformParams,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_lde_factor >= 1);
+    assert!((1..=5).contains(&log_values_per_leaf));
+    assert!(log_trace_len > log_values_per_leaf);
+    assert!(cosets_in_tile >= 1);
+    assert!(coset_index_base + cosets_in_tile <= 1u32 << log_lde_factor);
+    let trace_len = 1usize << log_trace_len;
+    let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
+    let leaves_count = packed_leaf_count
+        .checked_mul(cosets_in_tile as usize)
+        .expect("tile leaf count overflow");
+    assert_eq!(staging.len(), leaves_count);
+    assert!(leaves_count <= u32::MAX as usize);
+    assert!(ntt_output.len() >= trace_len * 4 * cosets_in_tile as usize);
+
+    if use_register_resident_natural_v32(log_values_per_leaf, leaves_count) {
+        let config = CudaLaunchConfig::basic(
+            (leaves_count as u32).div_ceil(WARP_SIZE),
+            (WARP_SIZE, 2u32),
+            stream,
+        );
+        let args = TransformAndHashWhirLeavesFromNttMultiCosetToStagingRegisterV32Arguments::new(
+            PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+            staging.as_mut_ptr() as *mut u32,
+            transform_params,
+            log_trace_len,
+            log_lde_factor,
+            coset_index_base,
+            leaves_count as u32,
+        );
+        return TransformAndHashWhirLeavesFromNttMultiCosetToStagingRegisterV32Function(
+            ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_register_v32_kernel,
+        )
+        .launch(&config, &args);
+    }
+
+    let values_per_leaf = 1usize << log_values_per_leaf;
+    let block_dim_x = if values_per_leaf == 2 {
+        (leaves_count as u32).min(4 * WARP_SIZE)
+    } else {
+        WARP_SIZE
+    };
+    // The transform uses block-wide barriers, so the x-grid cannot have inactive lanes.
+    assert_eq!(leaves_count as u32 % block_dim_x, 0);
+    let block_dim_y = (values_per_leaf / 2) as u32;
+    let grid_dim_x = leaves_count as u32 / block_dim_x;
+    let mut config = CudaLaunchConfig::basic(grid_dim_x, (block_dim_x, block_dim_y), stream);
+    config.dynamic_smem_bytes = block_dim_x as usize * values_per_leaf * core::mem::size_of::<E4>()
+        + if log_values_per_leaf > 1 {
+            block_dim_x as usize * block_dim_y as usize * core::mem::size_of::<BF>()
+        } else {
+            0
+        };
+    let args = TransformAndHashWhirLeavesFromNttMultiCosetToStagingArguments::new(
+        PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+        staging.as_mut_ptr() as *mut u32,
+        transform_params,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+        coset_index_base,
+    );
+    TransformAndHashWhirLeavesFromNttMultiCosetToStagingFunction(
+        ab_transform_and_hash_whir_leaves_from_ntt_multi_coset_to_staging_kernel,
+    )
+    .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    TransformAndHashWhirLeavesFromNttFlatRangeToStaging,
+    src: PtrAndStride<BF>,
+    staging: *mut u32,
+    transform_params: WhirLeafTransformParams,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    flat_leaf_base: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_transform_and_hash_whir_leaves_from_ntt_flat_range_to_staging_kernel(
+        src: PtrAndStride<BF>,
+        staging: *mut u32,
+        transform_params: WhirLeafTransformParams,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        flat_leaf_base: u32,
+    )
+);
+
+pub(crate) fn transform_and_hash_whir_leaves_from_ntt_flat_range_to_staging(
+    ntt_output: &DeviceSlice<BF>,
+    staging: &mut DeviceSlice<Digest>,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    flat_leaf_base: usize,
+    leaves_count: usize,
+    transform_params: WhirLeafTransformParams,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_lde_factor >= 1);
+    assert!((1..=5).contains(&log_values_per_leaf));
+    assert!(log_trace_len > log_values_per_leaf);
+    assert_eq!(flat_leaf_base % WARP_SIZE as usize, 0);
+    assert!(leaves_count > 0);
+    assert_eq!(leaves_count % WARP_SIZE as usize, 0);
+    let trace_len = 1usize << log_trace_len;
+    let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
+    let total_leaves = packed_leaf_count << log_lde_factor;
+    assert!(flat_leaf_base + leaves_count <= total_leaves);
+    assert_eq!(staging.len(), leaves_count);
+    assert!(ntt_output.len() >= trace_len * 4 * (1usize << log_lde_factor));
+
+    let values_per_leaf = 1usize << log_values_per_leaf;
+    let block_dim_x = WARP_SIZE;
+    let block_dim_y = (values_per_leaf / 2) as u32;
+    // The transform uses block-wide barriers, so the x-grid cannot have inactive lanes.
+    let grid_dim_x = leaves_count as u32 / block_dim_x;
+    let mut config = CudaLaunchConfig::basic(grid_dim_x, (block_dim_x, block_dim_y), stream);
+    config.dynamic_smem_bytes = block_dim_x as usize * values_per_leaf * core::mem::size_of::<E4>()
+        + if log_values_per_leaf > 1 {
+            block_dim_x as usize * block_dim_y as usize * core::mem::size_of::<BF>()
+        } else {
+            0
+        };
+    let args = TransformAndHashWhirLeavesFromNttFlatRangeToStagingArguments::new(
+        PtrAndStride::new(ntt_output.as_ptr(), trace_len),
+        staging.as_mut_ptr() as *mut u32,
+        transform_params,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+        flat_leaf_base as u32,
+    );
+    TransformAndHashWhirLeavesFromNttFlatRangeToStagingFunction(
+        ab_transform_and_hash_whir_leaves_from_ntt_flat_range_to_staging_kernel,
+    )
+    .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    ReduceStagedWhirSubtreesFlat,
+    staged: *const u32,
+    boundary_roots: *mut u32,
+    roots_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_reduce_staged_whir_subtrees_flat_kernel(
+        staged: *const u32,
+        boundary_roots: *mut u32,
+        roots_count: u32,
+    )
+);
+
+pub(crate) fn reduce_staged_whir_subtrees_flat(
+    staged: &DeviceSlice<Digest>,
+    boundary_roots: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const ROOTS_PER_BLOCK: u32 = 16;
+    const LEAVES_PER_BLOCK: usize = 512;
+    assert!(!staged.is_empty());
+    assert_eq!(staged.len() % WARP_SIZE as usize, 0);
+    let roots_count = staged.len() / WARP_SIZE as usize;
+    assert!(boundary_roots.len() >= roots_count);
+    assert!(roots_count <= u32::MAX as usize);
+    let mut config = CudaLaunchConfig::basic(
+        (roots_count as u32).div_ceil(ROOTS_PER_BLOCK),
+        256u32,
+        stream,
+    );
+    config.dynamic_smem_bytes = LEAVES_PER_BLOCK * core::mem::size_of::<Digest>();
+    let args = ReduceStagedWhirSubtreesFlatArguments::new(
+        staged.as_ptr() as *const u32,
+        boundary_roots.as_mut_ptr() as *mut u32,
+        roots_count as u32,
+    );
+    ReduceStagedWhirSubtreesFlatFunction(ab_reduce_staged_whir_subtrees_flat_kernel)
+        .launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    ReduceStagedWhirSubtreesNaturalTiles,
+    staged: *const u32,
+    boundary_roots: *mut u32,
+    log_packed_leaf_count: u32,
+    log_lde_factor: u32,
+    first_tile_coset_base: u32,
+    staged_tile_leaves: u32,
+    tiles_count: u32,
+    tile_coset_stride: u32,
+    roots_count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_reduce_staged_whir_subtrees_natural_tiles_kernel(
+        staged: *const u32,
+        boundary_roots: *mut u32,
+        log_packed_leaf_count: u32,
+        log_lde_factor: u32,
+        first_tile_coset_base: u32,
+        staged_tile_leaves: u32,
+        tiles_count: u32,
+        tile_coset_stride: u32,
+        roots_count: u32,
+    )
+);
+
+pub(crate) fn reduce_staged_whir_subtrees_natural_tiles(
+    staged: &DeviceSlice<Digest>,
+    boundary_roots: &mut DeviceSlice<Digest>,
+    log_packed_leaf_count: u32,
+    log_lde_factor: u32,
+    first_tile_coset_base: u32,
+    staged_tile_leaves: u32,
+    tiles_count: u32,
+    tile_coset_stride: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const ROOTS_PER_BLOCK: u32 = 16;
+    const LEAVES_PER_BLOCK: usize = 512;
+    assert!(log_packed_leaf_count >= WARP_SIZE.trailing_zeros());
+    assert!(log_lde_factor < 32);
+    assert!(tiles_count >= 1);
+    assert!(staged_tile_leaves >= WARP_SIZE);
+    assert_eq!(staged_tile_leaves % WARP_SIZE, 0);
+    assert_eq!(
+        staged.len(),
+        staged_tile_leaves as usize * tiles_count as usize
+    );
+    let packed_leaf_count = 1usize << log_packed_leaf_count;
+    let lde_factor = 1usize << log_lde_factor;
+    assert_eq!(staged_tile_leaves as usize % packed_leaf_count, 0);
+    let tile_cosets = staged_tile_leaves as usize / packed_leaf_count;
+    assert!(tiles_count == 1 || tile_coset_stride as usize >= tile_cosets);
+    let last_natural_coset = first_tile_coset_base as usize
+        + (tiles_count as usize - 1) * tile_coset_stride as usize
+        + tile_cosets
+        - 1;
+    assert!(last_natural_coset < lde_factor);
+    let roots_per_coset = packed_leaf_count / WARP_SIZE as usize;
+    let max_bitrev_coset = (0..tiles_count as usize)
+        .flat_map(|tile| {
+            let tile_base = first_tile_coset_base as usize + tile * tile_coset_stride as usize;
+            (0..tile_cosets).map(move |coset| {
+                (tile_base + coset).reverse_bits() >> (usize::BITS - log_lde_factor)
+            })
+        })
+        .max()
+        .unwrap();
+    assert!(boundary_roots.len() >= (max_bitrev_coset + 1) * roots_per_coset);
+    let roots_count = staged.len() / WARP_SIZE as usize;
+    assert!(roots_count <= u32::MAX as usize);
+    let mut config = CudaLaunchConfig::basic(
+        (roots_count as u32).div_ceil(ROOTS_PER_BLOCK),
+        256u32,
+        stream,
+    );
+    config.dynamic_smem_bytes = LEAVES_PER_BLOCK * core::mem::size_of::<Digest>();
+    let args = ReduceStagedWhirSubtreesNaturalTilesArguments::new(
+        staged.as_ptr() as *const u32,
+        boundary_roots.as_mut_ptr() as *mut u32,
+        log_packed_leaf_count,
+        log_lde_factor,
+        first_tile_coset_base,
+        staged_tile_leaves,
+        tiles_count,
+        tile_coset_stride,
+        roots_count as u32,
+    );
+    ReduceStagedWhirSubtreesNaturalTilesFunction(
+        ab_reduce_staged_whir_subtrees_natural_tiles_kernel,
+    )
+    .launch(&config, &args)
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -432,7 +1026,7 @@ cuda_kernel!(
   src: PtrAndStride<BF>,
   dst: *mut E4,
   z: *const E4,
-  z_adjustment_ptr: *const E4,
+  z_stride_ptr: *const E4,
   count: i32,
 );
 
@@ -470,17 +1064,18 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
         .launch(&config, &args)?;
         return Ok(count);
     }
-    let z_chunk_adjustment = &mut scratch1[..1];
-    pow(&point[..1], VALS_PER_THREAD, z_chunk_adjustment, stream)?;
-    let z_adjustment_ptr = z_chunk_adjustment.as_ptr();
-    let (grid_dim, block_dim) =
-        get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32 / VALS_PER_THREAD);
+    // The grid is exact: `count / VALS_PER_THREAD` is a power of two >= BLOCK_DIM.
+    let gmem_stride = count as u32 / VALS_PER_THREAD;
+    let z_stride = &mut scratch1[..1];
+    pow(&point[..1], gmem_stride, z_stride, stream)?;
+    let z_stride_ptr = z_stride.as_ptr();
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, gmem_stride);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = PartiallyEvaluateMonomialFormByRefArguments::new(
         monomials,
         partial_evals,
         z_ptr,
-        z_adjustment_ptr,
+        z_stride_ptr,
         log_count,
     );
     PartiallyEvaluateMonomialFormByRefFunction(ab_partially_evaluate_monomial_form_by_ref_kernel)
@@ -489,41 +1084,51 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldSplitHalfPair,
-    values_a: *mut E4,
-    values_b: *mut E4,
+    WhirFoldAdjacentPair,
+    src_a: *const E4,
+    dst_a: *mut E4,
+    src_b: *const E4,
+    dst_b: *mut E4,
     challenge: *const E4,
     half_len: u32,
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_split_half_pair_e4_kernel(
-        values_a: *mut E4,
-        values_b: *mut E4,
+    ab_whir_fold_adjacent_pair_e4_kernel(
+        src_a: *const E4,
+        dst_a: *mut E4,
+        src_b: *const E4,
+        dst_b: *mut E4,
         challenge: *const E4,
         half_len: u32,
     )
 );
 
-pub(crate) fn whir_fold_split_half_in_place_pair(
-    values_a: &mut DeviceSlice<E4>,
-    values_b: &mut DeviceSlice<E4>,
+pub(crate) fn whir_fold_adjacent_pair(
+    src_a: &DeviceSlice<E4>,
+    dst_a: &mut DeviceSlice<E4>,
+    src_b: &DeviceSlice<E4>,
+    dst_b: &mut DeviceSlice<E4>,
     challenge: &DeviceVariable<E4>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert_eq!(values_a.len(), values_b.len());
-    assert!(values_a.len().is_power_of_two());
-    assert!(values_a.len() >= 2);
-    let half_len = (values_a.len() / 2) as u32;
+    assert_eq!(src_a.len(), src_b.len());
+    assert!(src_a.len().is_power_of_two());
+    assert!(src_a.len() >= 2);
+    let half_len = (src_a.len() / 2) as u32;
+    assert!(dst_a.len() >= half_len as usize);
+    assert!(dst_b.len() >= half_len as usize);
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldSplitHalfPairArguments::new(
-        values_a.as_mut_ptr(),
-        values_b.as_mut_ptr(),
+    let args = WhirFoldAdjacentPairArguments::new(
+        src_a.as_ptr(),
+        dst_a.as_mut_ptr(),
+        src_b.as_ptr(),
+        dst_b.as_mut_ptr(),
         challenge.as_ptr(),
         half_len,
     );
-    WhirFoldSplitHalfPairFunction(ab_whir_fold_split_half_pair_e4_kernel).launch(&config, &args)
+    WhirFoldAdjacentPairFunction(ab_whir_fold_adjacent_pair_e4_kernel).launch(&config, &args)
 }
 
 const WHIR_THREE_POINT_BLOCK_THREADS: u32 = 256;
@@ -622,6 +1227,56 @@ pub(crate) fn launch_whir_three_point_partials(
         WhirThreePointFinalizeArguments::new(partials_ptr, num_blocks, reduce_out.as_mut_ptr());
     WhirThreePointFinalizeFunction(ab_whir_three_point_finalize_e4_kernel)
         .launch(&stage2_config, &stage2_args)
+}
+
+const WHIR_SUM_BLOCK_THREADS: u32 = 256;
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirSum,
+    values: *const E4,
+    count: u32,
+    out: *mut E4,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_sum_e4_kernel(
+        values: *const E4,
+        count: u32,
+        out: *mut E4,
+    )
+);
+
+/// Sums `values` into `out`. Single-launch when `values` fits in one block,
+/// otherwise stage-1 block partials (into `partials`) + stage-2 single-block
+/// finish; `partials` must hold at least `values.len().div_ceil(256)` E4 on
+/// the two-launch path.
+pub(crate) fn whir_sum(
+    values: &DeviceSlice<E4>,
+    partials: &mut DeviceSlice<E4>,
+    out: &mut DeviceVariable<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = values.len();
+    assert!(count >= 1);
+    assert!(count <= u32::MAX as usize);
+
+    let block = WHIR_SUM_BLOCK_THREADS;
+    if count as u32 <= block {
+        let config = CudaLaunchConfig::basic(1, block, stream);
+        let args = WhirSumArguments::new(values.as_ptr(), count as u32, out.as_mut_ptr());
+        return WhirSumFunction(ab_whir_sum_e4_kernel).launch(&config, &args);
+    }
+
+    let num_blocks = count.div_ceil(block as usize) as u32;
+    assert!(partials.len() >= num_blocks as usize);
+    let partials_ptr = partials.as_mut_ptr();
+    let stage1_config = CudaLaunchConfig::basic(num_blocks, block, stream);
+    let stage1_args = WhirSumArguments::new(values.as_ptr(), count as u32, partials_ptr);
+    WhirSumFunction(ab_whir_sum_e4_kernel).launch(&stage1_config, &stage1_args)?;
+
+    let stage2_config = CudaLaunchConfig::basic(1, block, stream);
+    let stage2_args = WhirSumArguments::new(partials_ptr, num_blocks, out.as_mut_ptr());
+    WhirSumFunction(ab_whir_sum_e4_kernel).launch(&stage2_config, &stage2_args)
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -737,6 +1392,14 @@ pub(crate) fn launch_batched_accumulate_eq_samples(
     assert!(num_queries <= u32::MAX as usize);
     assert!(challenge_count <= u32::MAX as usize);
     assert!(acc_size <= u32::MAX as usize);
+    // At `challenge_count == 0` the low eq buffer is never written but
+    // `make_eq_sizes(0)` still reports `low = 0`, so the accumulator would read
+    // uninitialized device memory.
+    assert!(
+        challenge_count >= 1,
+        "challenge_count >= 1: at 0 the low eq buffer is never written and the \
+         accumulator would read uninitialized device memory at eq_low[0]"
+    );
     let blocks_x = eq_group_count(challenge_count).max(GKR_EQ_HIGH_SLOTS);
     let build_config = CudaLaunchConfig::basic(
         (blocks_x as u32, num_queries as u32, 1u32),
@@ -793,9 +1456,13 @@ fn launch_build_split_eq_table(
     bits: usize,
     claim_offset: usize,
     num_queries: usize,
-    out_array: *mut E4,
+    out_array: &mut DeviceSlice<E4>,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    // Both bounds fail silently: an over-large `bits` writes past the
+    // destination while staying inside the pool, so no CUDA error is raised.
+    assert!(claim_offset + bits <= log_n);
+    assert!(out_array.len() >= num_queries << bits);
     let table_size = 1u32 << bits;
     let block = SPLIT_BUILD_BLOCK_THREADS.min(table_size);
     let grid_x = table_size.div_ceil(block);
@@ -810,7 +1477,7 @@ fn launch_build_split_eq_table(
         log_n as u32,
         bits as u32,
         claim_offset as u32,
-        out_array,
+        out_array.as_mut_ptr(),
     );
     WhirBuildSplitEqTableFunction(ab_whir_build_split_eq_table_e4_kernel).launch(&config, &args)
 }
@@ -827,8 +1494,8 @@ pub(crate) fn launch_split_accumulate_eq_samples(
     challenges: *const E4,
     num_queries: usize,
     log_n: usize,
-    eq_high_array: *mut E4,
-    eq_low_array: *mut E4,
+    eq_high_array: &mut DeviceSlice<E4>,
+    eq_low_array: &mut DeviceSlice<E4>,
     eq_poly: *mut E4,
     acc_size: usize,
     context: &ProverContext,
@@ -839,13 +1506,15 @@ pub(crate) fn launch_split_accumulate_eq_samples(
     assert!(acc_size <= u32::MAX as usize);
     let (high_bits, low_bits) = split_eq_bits(log_n);
 
+    // LSB pairing puts coordinates `low_bits..log_n` on the high slab and
+    // `0..low_bits` on the low slab.
     // High slab: no challenge scaling.
     launch_build_split_eq_table(
         claim_points,
         std::ptr::null(),
         log_n,
         high_bits,
-        0,
+        low_bits,
         num_queries,
         eq_high_array,
         context,
@@ -857,7 +1526,7 @@ pub(crate) fn launch_split_accumulate_eq_samples(
         challenges,
         log_n,
         low_bits,
-        high_bits,
+        0,
         num_queries,
         eq_low_array,
         context,
@@ -865,8 +1534,8 @@ pub(crate) fn launch_split_accumulate_eq_samples(
 
     let acc_config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let acc_args = WhirAccumulateEqSplitArguments::new(
-        eq_high_array,
-        eq_low_array,
+        eq_high_array.as_ptr(),
+        eq_low_array.as_ptr(),
         high_bits as u32,
         low_bits as u32,
         eq_poly,

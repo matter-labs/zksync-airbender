@@ -19,9 +19,7 @@ use field::PrimeField;
 
 use cs::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
 use cs::definitions::{GKRAddress, VirtualSetupPoly};
-use cs::gkr_compiler::{
-    GKRCircuitArtifact, GateArtifacts, NoFieldGKRCacheRelation, NoFieldGKRRelation,
-};
+use cs::gkr_compiler::{GKRCacheRelation, GKRCircuitArtifact, GKRRelation, GateArtifacts};
 
 use super::{
     simplify::{simplify_circuit, SIMPLIFY_MODULUS},
@@ -173,17 +171,21 @@ impl LayerOut {
     /// Insert a resolution, erroring if `leaf` is already keyed to a DIFFERENT
     /// strategy (a CSE-identity invariant: identical fold ⇒ identical peek).
     /// Idempotent for an equal re-insert.
-    fn insert_resolution(&mut self, leaf: ExprId, strat: ResolutionStrategy) -> Result<(), String> {
+    fn insert_resolution(
+        &mut self,
+        leaf: ExprId,
+        strategy: ResolutionStrategy,
+    ) -> Result<(), String> {
         if let Some(existing) = self.resolutions.get(&leaf) {
-            if existing != &strat {
+            if existing != &strategy {
                 return Err(format!(
                     "gkr_eval_ir: resolution CSE collision at {:?}: {:?} vs {:?}",
-                    leaf, existing, strat
+                    leaf, existing, strategy
                 ));
             }
             return Ok(());
         }
-        self.resolutions.insert(leaf, strat);
+        self.resolutions.insert(leaf, strategy);
         Ok(())
     }
 
@@ -219,7 +221,7 @@ impl LayerOut {
         if num_columns == 0 {
             return Ok(());
         }
-        let strat = if set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
+        let strategy = if set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
             let predicate = decoder_predicate.ok_or_else(|| {
                 "gkr_eval_ir: decoder lookup fold but circuit has no machine_state predicate"
                     .to_string()
@@ -230,7 +232,7 @@ impl LayerOut {
         } else {
             ResolutionStrategy::PeekAggregate { set_index }
         };
-        self.insert_resolution(leaf, strat)
+        self.insert_resolution(leaf, strategy)
     }
 
     /// Record a folded-setup leaf's forward-peek strategy (row-indexed, zero-padded).
@@ -255,12 +257,12 @@ struct RelationInputs<'a> {
 fn lower_relation<F: PrimeField>(
     arena: &mut ArenaBuilder,
     out: &mut LayerOut,
-    rel: &NoFieldGKRRelation<F>,
+    rel: &GKRRelation<F>,
     group: RootGroup,
     relation_index: usize,
     inputs: RelationInputs<'_>,
 ) -> Result<(), String> {
-    use NoFieldGKRRelation as R;
+    use GKRRelation as R;
     match rel {
         R::LinearBaseFieldRelation { .. }
         | R::EnforceConstraintsMaxQuadratic { .. }
@@ -431,7 +433,7 @@ fn lower_relation<F: PrimeField>(
 /// Materialize one cache relation into a `Cache`-sink `Output` root.
 ///
 /// The expr is built by reusing the matching gate builder per
-/// [`NoFieldGKRCacheRelation`] variant (the same arithmetic the codegen IR's
+/// [`GKRCacheRelation`] variant (the same arithmetic the codegen IR's
 /// `lower_cache` used), and the sink field follows the cache VALUE:
 ///
 /// - `SingleColumnLookup` → [`lookup::single_column_lookup`], `Base` (a base
@@ -445,11 +447,11 @@ fn lower_cache<F: PrimeField>(
     arena: &mut ArenaBuilder,
     out: &mut LayerOut,
     addr: GKRAddress,
-    rel: &NoFieldGKRCacheRelation<F>,
+    rel: &GKRCacheRelation<F>,
     minus_one: u32,
     decoder_predicate: Option<&ReadPlace>,
 ) -> Result<ExprId, String> {
-    use NoFieldGKRCacheRelation as C;
+    use GKRCacheRelation as C;
     let (expr, field) = match rel {
         C::SingleColumnLookup {
             relation,
@@ -489,12 +491,12 @@ fn lower_cache<F: PrimeField>(
 /// `input.1` (mask = `input.0`); the cached consumer reads a decoder
 /// `VectorizedLookup` cache leaf via `input[1]` (mask = `input[0]`).
 fn check_decoder_masks<'a, F: PrimeField + 'a>(
-    relations: impl Iterator<Item = &'a NoFieldGKRRelation<F>>,
-    cached_relations: &BTreeMap<GKRAddress, NoFieldGKRCacheRelation<F>>,
+    relations: impl Iterator<Item = &'a GKRRelation<F>>,
+    cached_relations: &BTreeMap<GKRAddress, GKRCacheRelation<F>>,
     expected_mask: Option<GKRAddress>,
 ) -> Result<(), String> {
-    use NoFieldGKRCacheRelation as C;
-    use NoFieldGKRRelation as R;
+    use GKRCacheRelation as C;
+    use GKRRelation as R;
     let assert_mask = |mask: GKRAddress| -> Result<(), String> {
         match expected_mask {
             Some(exp) if exp == mask => Ok(()),
@@ -655,13 +657,13 @@ fn forward_skip_roots<F: PrimeField>(
         };
         let relation = &gates[claim.relation_index].enforced_relation;
         let skip = match relation {
-            NoFieldGKRRelation::MaxQuadratic { output, .. }
+            GKRRelation::MaxQuadratic { output, .. }
                 if artifact.scratch_space_mapping.contains_key(output) =>
             {
                 true
             }
-            NoFieldGKRRelation::CopyInBaseField { input, .. }
-            | NoFieldGKRRelation::CopyInExtensionField { input, .. } => match map_address(*input) {
+            GKRRelation::CopyInBaseField { input, .. }
+            | GKRRelation::CopyInExtensionField { input, .. } => match map_address(*input) {
                 SourceKind::Read { .. } => true,
                 other => {
                     return Err(format!(

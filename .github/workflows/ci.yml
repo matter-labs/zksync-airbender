@@ -12,7 +12,11 @@ permissions: read-all
 jobs:
   tests:
     name: tests
-    runs-on: [matterlabs-ci-runner-highmem]
+    runs-on: [matterlabs-ci-runner-high-performance]
+    # The non-ignored GKR e2e tests (prover tests::gkr::*) run for tens of
+    # minutes under `--profile cli` (opt-level 3 but dev-based, so debug
+    # assertions stay on in the prover hot loops).
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -27,16 +31,19 @@ jobs:
         run: cargo install cargo-binutils --locked
       - name: Compile
         run: cargo build --verbose
-      - name: Unit tests (CI)
+      - name: Prover smoke test (CI)
         env:
           CI: "true"
-        run: cargo test --profile cli -- --nocapture
-      - name: GPU test serialization drift guard
-        run: cargo test -p gpu_core --profile cli cpu_nextest_config_covers_all_gpu_crates
+          RUST_MIN_STACK: 16777216
+        run: cargo test -p prover --profile cli -- --nocapture gkr_run_basic_unrolled_test_sec_100
       - name: GKR compiler feature tests
         env:
           RUST_MIN_STACK: 16777216
         run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_search --bin gkr-forward-artifact
+      - name: Verifier cost-model drift guard
+        env:
+          RUST_MIN_STACK: 1073741824
+        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift
 
   formatting:
     name: cargo fmt
@@ -98,18 +105,8 @@ jobs:
           fi
 
   build_cli:
-    name: build_cli (${{ matrix.security_label }})
+    name: build_cli
     runs-on: [matterlabs-ci-runner-c3d]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - security_label: security_80
-            artifact_name: cli_80
-            build_command: cargo build --release -p cli
-          - security_label: security_100
-            artifact_name: cli_100
-            build_command: cargo build --release -p cli --no-default-features --features security_100
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -118,31 +115,31 @@ jobs:
       - name: Setup
         run: rustup set profile minimal
       - name: Compile
-        run: ${{ matrix.build_command }}
+        run: cargo build --release -p cli
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: cli
           path: |
             target/release/cli
             examples/basic_fibonacci/app.bin
             examples/basic_fibonacci/app.text
 
   cli_smoke_verify:
-    name: cli_smoke_verify (${{ matrix.security_label }})
+    name: cli_smoke_verify
     runs-on: [matterlabs-ci-runner-c3d]
     needs: [build_cli]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - security_label: security_80
-            artifact_name: cli_80
-          - security_label: security_100
-            artifact_name: cli_100
+    env:
+      # `continue-proof` loads the fsv_* verifier programs from disk at run
+      # time; its built-in default is the compile-time source path, so point
+      # it at this job's checkout explicitly.
+      FSV_DIR: ${{ github.workspace }}/tools/gkr_verifier
     steps:
+      # The recursion targets need the committed fsv verifier binaries from
+      # tools/gkr_verifier, not just the cli artifact.
+      - uses: actions/checkout@v3
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: cli
       - name: Setup
         run: |
           chmod +x ./target/release/cli

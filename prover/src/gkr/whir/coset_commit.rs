@@ -31,7 +31,7 @@ use crate::gkr::prover::stages::commitment_utils::{
 use crate::merkle_trees::keccak256_for_everything_tree::{Digest32, Keccak256MerkleTreeWithCap};
 use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_cosets;
 use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueriable,
+    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable,
 };
 use core::marker::PhantomData;
 use fft::{
@@ -179,7 +179,10 @@ where
             let col = input_on_hypercube[i];
             assert_eq!(col.len(), 1usize << trace_len_log2);
             let mut v = col.to_vec();
-            bitreverse_enumeration_inplace(&mut v);
+            // LSB/natural convention: multilinear variable b <-> univariate
+            // exponent bit b, so the coefficients come straight from the
+            // transform (the old pre-bitreverse encoded the reversed
+            // variable labeling)
             multivariate_hypercube_evals_into_coeffs(&mut v, trace_len_log2 as u32);
             v
         });
@@ -563,9 +566,7 @@ struct ExtCommonCtx<F: PrimeField + TwoAdicField> {
 
 impl<F: PrimeField + TwoAdicField> ExtCommonCtx<F> {
     fn new(trace_len: usize, lde_factor: usize, values_per_leaf: usize) -> Self {
-        let next_root = domain_generator_for_size::<F>((trace_len * lde_factor) as u64);
-        let root_powers =
-            materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
+        let root_powers = crate::gkr::prover::backend::coset_offsets::<F>(trace_len, lde_factor);
         Self {
             root_powers,
             values_per_leaf,
@@ -1035,7 +1036,7 @@ mod test {
         use crate::merkle_trees::on_disk::{
             subtree_file_path, top_tree_file_path, OnDiskTreeLayout,
         };
-        use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueriable, RSQueriable};
+        use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable, RSQueryable};
 
         let worker = Worker::new_with_num_threads(4);
         // 16 columns, base 2^4, pack by 2 -> packed 2^5; LDE 8 cosets, cap 2, vpl 2.
@@ -1055,7 +1056,7 @@ mod test {
         let twiddles = Twiddles::<Proth120, Global>::new(1usize << packed_trace_len_log2, &worker);
 
         let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> =
-            commit_trace_part_packed::<Proth120, Proth120, Tree>(
+            commit_trace_part_packed::<Proth120, Proth120, Tree, _>(
                 &crate::gkr::prover::backend::NaiveBackend,
                 &col_refs,
                 &twiddles,
@@ -1100,16 +1101,16 @@ mod test {
 
         // Cap must match.
         assert_eq!(
-            PathQueriable::get_cap(&split_tree),
-            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            PathQueryable::get_cap(&split_tree),
+            crate::merkle_trees::PathQueryable::get_cap(mono_tree(&mono)),
             "split cap != monolithic cap"
         );
 
         let tree_size = lde_factor * coset_tree_size;
         for idx in 0..tree_size {
             let (mono_leaf, mono_path) =
-                crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), idx);
-            let (split_leaf, split_path) = PathQueriable::get_proof(&split_tree, idx);
+                crate::merkle_trees::PathQueryable::get_proof(mono_tree(&mono), idx);
+            let (split_leaf, split_path) = PathQueryable::get_proof(&split_tree, idx);
             assert_eq!(split_leaf, mono_leaf, "leaf @ idx={idx}");
             assert_eq!(split_path, mono_path, "path @ idx={idx}");
         }
@@ -1157,7 +1158,7 @@ mod test {
         let twiddles = Twiddles::<Proth120, Global>::new(trace_len, &worker);
 
         let mono: ColumnMajorBaseOracleForLDE<Proth120, Tree> =
-            commit_trace_part::<Proth120, Proth120, Tree>(
+            commit_trace_part::<Proth120, Proth120, Tree, _>(
                 &crate::gkr::prover::backend::NaiveBackend,
                 &col_refs,
                 &twiddles,
@@ -1178,7 +1179,7 @@ mod test {
         );
 
         assert_eq!(
-            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            crate::merkle_trees::PathQueryable::get_cap(mono_tree(&mono)),
             coset.get_cap(),
             "cap mismatch"
         );
@@ -1255,6 +1256,7 @@ mod test {
                 Proth120,
                 Proth120,
                 Tree,
+                _,
             >(
                 &crate::gkr::prover::backend::NaiveBackend,
                 &col_refs,
@@ -1275,7 +1277,7 @@ mod test {
             &worker,
         );
         assert_eq!(
-            crate::merkle_trees::PathQueriable::get_cap(mono_tree(&mono)),
+            crate::merkle_trees::PathQueryable::get_cap(mono_tree(&mono)),
             coset.get_cap(),
             "cap mismatch"
         );
@@ -1299,7 +1301,7 @@ mod test {
         for qi in 0..tree_size {
             let q = coset.query(qi, &twiddles, &worker);
             let (leaf_h, expected_path) =
-                crate::merkle_trees::PathQueriable::get_proof(mono_tree(&mono), q.index);
+                crate::merkle_trees::PathQueryable::get_proof(mono_tree(&mono), q.index);
             assert_eq!(q.path, expected_path, "path @ q={qi}");
             assert_eq!(
                 leaf_hash(&q.leaf_values_concatenated),

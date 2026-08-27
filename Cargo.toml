@@ -29,7 +29,6 @@ members = [
 
     "gpu/core",
     "gpu/native_build",
-    "gpu/cub",
     "gpu/hash",
     "gpu/ntt",
     "gpu/ops",
@@ -47,7 +46,6 @@ members = [
     "reduced_keccak",
 
     "tools/cli",
-    "tools/pow_config_generator",
 
     "circuit_defs/blake2_g_function",
     "circuit_defs/blake2_with_compression",
@@ -64,6 +62,8 @@ members = [
     "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 
+    "program_prover",
+    "prover_pipeline",
     "riscv_common",
     "riscv_transpiler",
     "sumcheck_common",
@@ -90,6 +90,7 @@ default-members = [
     "field",
     # "full_statement_verifier",
     "non_determinism_source",
+    "program_prover",
     "prover",
     "reduced_keccak",
     "riscv_transpiler",
@@ -170,7 +171,6 @@ witness_eval_generator = { path = "./witness_eval_generator", default-features =
 gpu_witness_eval_generator = { path = "./gpu/witness_eval_generator", default-features = false }
 gpu_core = { path = "./gpu/core" }
 gpu_native_build = { path = "./gpu/native_build" }
-gpu_cub = { path = "./gpu/cub" }
 gpu_hash = { path = "./gpu/hash" }
 gpu_ntt = { path = "./gpu/ntt" }
 gpu_ops = { path = "./gpu/ops" }
@@ -181,7 +181,9 @@ gpu_whir = { path = "./gpu/whir" }
 gpu_circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
 gpu_execution_prover = { path = "./gpu/execution_prover", default-features = false }
 gpu_program_prover = { path = "./gpu/program_prover", default-features = false }
+program_prover = { path = "./program_prover", default-features = false }
 prover_examples = { path = "./circuit_defs/prover_examples", default-features = false }
+prover_pipeline = { path = "./prover_pipeline", default-features = false }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
 gpu_gkr_compiler = { path = "./gpu/gkr_compiler" }
 gkr_eval_ir = { path = "./gkr_eval_ir" }
@@ -193,7 +195,6 @@ object = "0.37"
 rand = { version = "0.9", default-features = false }
 unroll = "0.1"
 seq-macro = "0.3"
-super-seq-macro = "0.3"
 arrayvec = { version = "0.7", default-features = false }
 itertools = { version = "0.14" }
 inferno = "0.12"
@@ -202,6 +203,7 @@ sha3 = { version = "*", default-features = false }
 insta = "1.47.2"
 tempfile = "3.27.0"
 mmap-io = "1.0"
+cfg-if = "1"
 
 [profile.dev]
 debug-assertions = true

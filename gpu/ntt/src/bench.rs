@@ -404,8 +404,8 @@ const SINGLE_BLOCK_DIM: u32 = 4 * 32; // NUM_WARPS * 32 = 128
 // knob (free `grid` for STREAM, compile-time `k` for FIXED), the borrowed
 // `DeviceContext` triangles, the stream, and device props. Every path asserts
 // exact divisibility so an invalid config panics loudly rather than silently
-// mis-covering the coset range. The fixed workload uses one column, so each
-// driver issues a single launch (no column loop).
+// leaving part of the coset range uncovered. The fixed workload uses one
+// column, so each driver issues a single launch (no column loop).
 // ===========================================================================
 
 /// Two-pass STREAM: caller-chosen launch `grid` (any value in `[1, num_cosets]`).

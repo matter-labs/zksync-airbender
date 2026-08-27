@@ -207,6 +207,69 @@ template <int STRIDE> DEVICE_FORCEINLINE void reg_exchg_final_fwd(bf *vals) {
     exchg_dif_0(vals[i], vals[i + STRIDE]);
 }
 
+// DIT-over-forward-twiddles family: the `_inv` traversal and `exchg_dit`
+// butterfly (twiddle applied BEFORE the add/sub) over the FORWARD twiddle
+// tables. Computes a natural-order-in / bitreversed-order-out forward NTT.
+template <typename T, int STRIDE, int REGION_SIZE, int NUM_REGIONS, const bf *cmem_twiddles>
+DEVICE_FORCEINLINE void reg_exchg_cmem_smem_twiddles_fwd_dit(bf *vals, const int exchg_region_offset, const bf *smem_twiddles) {
+#pragma unroll
+  for (int region{0}; region < NUM_REGIONS; region++) {
+    const bf twiddle = get_cmem_smem_twiddle<T, cmem_twiddles>(exchg_region_offset + region, smem_twiddles);
+    const int region_offset = region * REGION_SIZE;
+#pragma unroll
+    for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
+      const int i = region_offset + lane_in_region;
+      exchg_dit(vals[i], vals[i + STRIDE], twiddle);
+    }
+  }
+}
+
+template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_cmem_twiddles_fwd_dit(bf *vals, const int exchg_region_offset) {
+#pragma unroll
+  for (int region{0}; region < NUM_REGIONS; region++) {
+    const bf twiddle = get_cmem_twiddle<ab_fwd_cmem_twiddles_coarse, ab_fwd_cmem_twiddles_fine>(exchg_region_offset + region);
+    const int region_offset = region * REGION_SIZE;
+#pragma unroll
+    for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
+      const int i = region_offset + lane_in_region;
+      exchg_dit(vals[i], vals[i + STRIDE], twiddle);
+    }
+  }
+}
+
+template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_fwd_dit(bf *vals, const int exchg_region_offset) {
+#pragma unroll
+  for (int region{0}; region < NUM_REGIONS; region++) {
+    const bf twiddle = ab_fwd_cmem_twiddles_coarse[exchg_region_offset + region];
+    const int region_offset = region * REGION_SIZE;
+#pragma unroll
+    for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
+      const int i = region_offset + lane_in_region;
+      exchg_dit(vals[i], vals[i + STRIDE], twiddle);
+    }
+  }
+}
+
+// Specialization for a known-zero exchange-region offset. The first region's
+// twiddle is the identity at every stage, so use the no-multiply butterfly
+// there and load twiddles only for the remaining regions.
+template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_fwd_dit_offset_0(bf *vals) {
+#pragma unroll
+  for (int lane_in_region = 0; lane_in_region < STRIDE; lane_in_region++)
+    exchg_dit_0(vals[lane_in_region], vals[lane_in_region + STRIDE]);
+
+#pragma unroll
+  for (int region = 1; region < NUM_REGIONS; region++) {
+    const bf twiddle = ab_fwd_cmem_twiddles_coarse[region];
+    const int region_offset = region * REGION_SIZE;
+#pragma unroll
+    for (int lane_in_region = 0; lane_in_region < STRIDE; lane_in_region++) {
+      const int i = region_offset + lane_in_region;
+      exchg_dit(vals[i], vals[i + STRIDE], twiddle);
+    }
+  }
+}
+
 template <int GROUP> DEVICE_FORCEINLINE void exchg_pipeline_group(bf *vals, const bf twiddle) {
   exchg_dit_0(vals[GROUP], vals[GROUP + 16]);
   exchg_dit_0(vals[GROUP + 8], vals[GROUP + 24]);

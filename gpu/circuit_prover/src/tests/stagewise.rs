@@ -5,7 +5,7 @@ use cs::definitions::GKRAddress;
 use prover::gkr::prover::transcript_utils::{
     commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
 };
-use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
+use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb;
 
 enum ExpectedClaims {
     Ordered(Vec<E4>),
@@ -87,7 +87,7 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
     let mut initial_challenges =
         draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, final_trace_size_log_2 + 1);
     let batching_challenge = initial_challenges.pop().unwrap();
-    let eq = make_eq_poly_in_full::<E4>(&initial_challenges, &worker)
+    let eq = make_eq_poly_in_full_lsb::<E4>(&initial_challenges, &worker)
         .pop()
         .unwrap();
     let initial_claims = proof
@@ -111,11 +111,13 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
 
     let main_layers = compiled_circuit.layers.len();
     for (&layer_idx, layer) in proof.sumcheck_intermediate_values.iter().rev() {
-        let mut claim_point = Vec::with_capacity(layer.sumcheck_num_rounds + 1);
+        let mut round_challenges = Vec::with_capacity(layer.sumcheck_num_rounds);
         for coefficients in &layer.internal_round_coefficients {
-            commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, coefficients);
-            claim_point.push(draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 1)[0]);
+            commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, coefficients.as_multilinear());
+            round_challenges
+                .push(draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 1)[0]);
         }
+        let mut claim_point = Vec::with_capacity(layer.sumcheck_num_rounds + 1);
 
         let (batching_challenge, claims) = if layer_idx >= main_layers {
             let transcript_values = layer
@@ -126,7 +128,11 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
                 .collect::<Vec<_>>();
             commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, &transcript_values);
             let challenges = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 2);
+            // Plain variable order: the end-of-layer challenge binds the gate
+            // bit, which is coordinate 0 of the polys the next layer reads, so
+            // it LEADS the point.
             claim_point.push(challenges[0]);
+            claim_point.extend_from_slice(&round_challenges);
             let claims = layer
                 .final_step_evaluations
                 .iter()
@@ -162,6 +168,7 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
             commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, &transcript_values);
             let batching_challenge =
                 draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 1)[0];
+            claim_point.extend_from_slice(&round_challenges);
             (batching_challenge, claims)
         };
         expected.push(ExpectedStageSnapshot {

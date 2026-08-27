@@ -10,11 +10,11 @@ used to live under `circuit_prover/native/gkr/` and `native/ops/gkr_ops.cu`).
 
 ## Layer position
 
-`gpu_core < { gpu_ntt, gpu_ops, gpu_hash, gpu_cub } < gpu_prover_context <
+`gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
 gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
 gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. Dependencies point only down: this crate depends on `gpu_core`,
-`gpu_ops`, `gpu_hash`, `gpu_cub`, `gpu_prover_context`, `gpu_trace`,
+`gpu_ops`, `gpu_hash`, `gpu_prover_context`, `gpu_trace`,
 `gpu_gkr_model`, `gpu_gkr_compiler`, and `gkr_eval_ir`, plus the upstream crates below;
 `gpu_whir` and `gpu_circuit_prover` depend on it, never the reverse.
 

@@ -6,8 +6,7 @@ use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransferKeepalive;
 use crate::upstream::{
-    DefaultTreeConstructor, DimensionReducingInputOutput, Field, GKRCircuitArtifact, GKRProof,
-    OutputType,
+    DefaultTreeConstructor, DimensionReducingInputOutput, Field, GKRProof, OutputType,
 };
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::HostAllocation;
@@ -39,7 +38,7 @@ pub(super) use whir::{schedule_whir_phase, WhirPhaseResult};
 pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     pub(super) _stage1: GpuGKRStage1Keepalive,
     /// Holds every per-piece transfer wrapper (setup, decoder, inits_and_teardowns,
-    /// tracing_data, memory caps, canonical_top_bits, external_challenges) plus the
+    /// tracing_data, memory caps, top_bits, external_challenges) plus the
     /// shared `Transfer`'s accumulated `Callbacks`.
     pub(super) _inputs: GpuGKRProofTransferKeepalive<'a, A>,
     pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive,
@@ -190,10 +189,4 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
     }
 
     grand_product_accumulator_computed
-}
-
-pub fn canonical_inits_and_teardowns_top_bits(
-    compiled_circuit: &GKRCircuitArtifact<BF>,
-) -> Vec<u32> {
-    (0..compiled_circuit.memory_layout.teardown_sets.len() as u32).collect()
 }

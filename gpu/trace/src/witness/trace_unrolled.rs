@@ -174,11 +174,18 @@ impl From<&InitsAndTeardownsTraceDevice> for InitsAndTeardownsTraceRaw {
 /// page-aligned (length is a multiple of `1 << PAGE_SIZE_LOG2`); chunks of
 /// `page_indices` carry one entry per page. Per-field chunk lengths sum to
 /// the same total page count.
+///
+/// `page_indices` are **local** to this instance: the high `log2(num_sets)` bits
+/// select the set, the low bits the page within that set's window. `top_bits`
+/// maps each set back to the global window it holds — set `i` covers global
+/// words `[top_bits[i] << trace_len_log2, (top_bits[i] + 1) << trace_len_log2)`.
 #[derive(Clone)]
 pub struct InitsAndTeardownsTraceHost {
     pub page_indices: ChunkedTraceHolder<u32, ConcurrentStaticHostAllocator>,
     pub values_packed: ChunkedTraceHolder<u32, ConcurrentStaticHostAllocator>,
     pub timestamps_packed: ChunkedTraceHolder<TimestampScalar, ConcurrentStaticHostAllocator>,
+    /// One global window index per set, ascending.
+    pub top_bits: Vec<u32>,
 }
 
 impl InitsAndTeardownsTraceHost {
@@ -187,6 +194,7 @@ impl InitsAndTeardownsTraceHost {
             page_indices,
             values_packed,
             timestamps_packed,
+            top_bits: _,
         } = self;
         let mut allocators = page_indices.into_allocators();
         allocators.extend(values_packed.into_allocators());

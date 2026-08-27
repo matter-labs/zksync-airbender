@@ -1,7 +1,6 @@
 use super::*;
 
 use gpu_hash::blake2s::transcript_commit;
-use gpu_ops::bit_reverse::bit_reverse_in_place;
 
 mod fold_round;
 mod round_phases;
@@ -141,7 +140,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
     // Per-WHIR-round device state for the device-side PoW verify +
     // query-index assembly. Later callbacks consume the nonce.
     let mut pow_round_state: Vec<PowAndQueryIndexesState> = Vec::new();
-    let mut recursive_caps_keepalive: Vec<crate::GpuWhirExtensionOracleKeepalive> = Vec::new();
     // Per-round device-resident OOD points produced by `schedule_ood_sample_phase`
     // and consumed by `schedule_delinearization_running_powers_phase`. Kept on
     // the orchestrator so the device buffers outlive all kernels reading them.
@@ -408,7 +406,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
             ],
             slab_ptrs,
         );
-        gpu_hash::blake2s::gather_leaves_for_queries(
+        gpu_hash::blake2s::gather_leaves_for_queries_physical(
             &leaves_descs,
             3,
             log_lde_factor_base,
@@ -422,7 +420,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let base_layers_count = memory_trace_holder.log_domain_size
             - memory_trace_holder.log_rows_per_leaf
             - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor);
-        gpu_hash::blake2s::gather_merkle_paths_partial_for_queries(
+        gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_physical(
             &paths_descs,
             3,
             log_lde_factor_base,
@@ -643,7 +641,10 @@ pub fn schedule_gpu_whir_fold_with_sources(
         )?;
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        recursive_caps_keepalive.push(oracle_to_query.into_host_keepalive());
+        // Cap already gathered into the slab; every scheduled reader of this
+        // oracle's backings is enqueued above on the exec stream, so the drop
+        // is stream-ordered.
+        drop(oracle_to_query);
         delinearization_ephemerals.push(delinearization_device);
         delinearization_ephemerals.push(per_query_pows);
         delinearization_ephemerals.push(eq_high_scratch);
@@ -678,11 +679,13 @@ pub fn schedule_gpu_whir_fold_with_sources(
 
         // Mirror CPU `prover/src/gkr/whir/mod.rs`: after the final fold
         // and before drawing the final PoW/query bits, CPU commits the remaining
-        // monomial-form coefficients into the transcript seed, and later stores them on the
-        // proof as `final_monomials`. This is kept entirely on the
-        // device: transpose writes the monomials directly into the slab
-        // `whir.final_monomials` range, then `bit_reverse_in_place` runs in
-        // place on the same slab range before the transcript commit.
+        // monomial-form coefficients into the transcript seed
+        // (`commit_field_els(&mut transcript_seed, &sumchecked_poly_monomial_form)`)
+        // and later stores that same array on the proof as `final_monomials` —
+        // both in NATURAL coefficient order, with no reordering. This is kept
+        // entirely on the device: the transpose writes the monomials straight
+        // into the slab `whir.final_monomials` range, which the transcript
+        // commit then hashes.
         //
         // Cross-check: confirm that `state.current_len`
         // at the end of the final fold matches the slab-allocated
@@ -693,12 +696,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
             1usize << (trace_len_log2 - total_sumcheck_polys as u32),
             "WHIR final-fold current_len must match slab final_monomials_len",
         );
-        // Transpose writes the pre-bitreverse
-        // monomials directly into the slab `whir.final_monomials` range, then
-        // `bit_reverse_in_place::<E4>` reorders them in place on the same
-        // range. The transcript commit hashes the bit-reversed slab range so
-        // the device-side seed advances identically to the CPU prover's
-        // `commit_field_els`.
         {
             let (dst_ptr, dst_len) = unsafe {
                 proof_layout.whir_final_monomials_device_mut(proof_slab.as_ptr() as *mut u8)
@@ -723,21 +720,11 @@ pub fn schedule_gpu_whir_fold_with_sources(
             let mut transpose_dst_matrix = DeviceMatrixMut::new(slab_bf_view, EXT4_DEGREE);
             let monomials_matrix_chunk = DeviceMatrixChunk::new(
                 state.sumchecked_poly_monomial_form.slice(),
-                state.original_trace_len,
+                state.sumchecked_poly_monomial_form.stride(),
                 0,
                 state.current_len,
             );
             transpose(&monomials_matrix_chunk, &mut transpose_dst_matrix, stream)?;
-            // SAFETY: same slab range viewed as `dst_len` E4 elements. The
-            // previous BF view above is dropped before this point, so the slab
-            // range is exclusively reborrowed here for the in-place
-            // `bit_reverse_in_place::<E4>` reorder.
-            let dst =
-                unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len) };
-            // Device-side bit-reverse in place on the slab range using the
-            // `BIT_REVERSE(e4, bf, 2)` instantiation of `bit_reverse_in_place`.
-            let mut dst_matrix = DeviceMatrixMut::<E4>::new(dst, dst_len);
-            bit_reverse_in_place::<E4>(&mut dst_matrix, stream)?;
             // SAFETY: same slab range, viewed as `state.current_len * EXT4_DEGREE`
             // LE u32 words for transcript_commit.
             let slot_as_u32 = unsafe {
@@ -822,7 +809,10 @@ pub fn schedule_gpu_whir_fold_with_sources(
         }
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        recursive_caps_keepalive.push(oracle_to_query.into_host_keepalive());
+        // Cap already gathered into the slab; every scheduled reader of this
+        // oracle's backings is enqueued above on the exec stream, so the drop
+        // is stream-ordered.
+        drop(oracle_to_query);
         round_range.end(stream)?;
         tracing_ranges.push(round_range);
     }
@@ -836,6 +826,5 @@ pub fn schedule_gpu_whir_fold_with_sources(
         _pow_round_state: pow_round_state,
         _ood_point_devices: ood_point_devices,
         _delinearization_ephemerals: delinearization_ephemerals,
-        _recursive_caps_keepalive: recursive_caps_keepalive,
     })
 }

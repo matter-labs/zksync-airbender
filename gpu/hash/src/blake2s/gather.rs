@@ -158,6 +158,79 @@ pub fn gather_leaves_for_queries(
 }
 
 cuda_kernel!(
+    GatherLeavesForQueriesPhysical,
+    ab_gather_leaves_for_queries_physical_kernel(
+        num_oracles: u32,
+        desc0: OracleGatherDesc,
+        desc1: OracleGatherDesc,
+        desc2: OracleGatherDesc,
+        log_lde_factor: u32,
+        log_domain_size: u32,
+        log_rows_per_leaf: u32,
+        query_indexes: *const u32,
+        indexes_count: u32,
+    )
+);
+
+/// LSB sibling of [`gather_leaves_for_queries`]: every per-coset segment of
+/// each oracle's cosets backing is the BITREVERSED-order codeword, so logical
+/// leaf `l`'s slot `v` is read from row `(bitreverse(l) << log_rows_per_leaf)
+/// + v`.
+pub fn gather_leaves_for_queries_physical(
+    descs: &[OracleGatherDesc; 3],
+    num_oracles: u32,
+    log_lde_factor: u32,
+    log_domain_size: u32,
+    log_rows_per_leaf: u32,
+    query_indexes: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(
+        num_oracles == 1 || num_oracles == 3,
+        "gather_leaves_for_queries_physical supports num_oracles in {{1, 3}}, got {num_oracles}"
+    );
+    assert!(log_domain_size < 32);
+    assert!(log_domain_size >= log_rows_per_leaf);
+    let indexes_count = checked_u32(query_indexes.len());
+    for (i, desc) in descs.iter().enumerate().skip(num_oracles as usize) {
+        desc.assert_inactive(i);
+    }
+    let max_cols = (0..num_oracles as usize)
+        .map(|i| descs[i].columns_count)
+        .max()
+        .unwrap_or(0);
+    assert!(
+        max_cols >= 1,
+        "gather_leaves_for_queries_physical requires at least one active oracle with columns_count >= 1"
+    );
+    let rows_per_leaf = 1u32 << log_rows_per_leaf;
+    let (mut grid_dim, block_dim) = if log_rows_per_leaf < LOG_WARP_SIZE {
+        get_grid_block_dims_for_threads_count(
+            1 << (LOG_WARP_SIZE - log_rows_per_leaf),
+            indexes_count,
+        )
+    } else {
+        (indexes_count.into(), 1.into())
+    };
+    let block_dim = (rows_per_leaf, block_dim.x);
+    grid_dim.y = max_cols;
+    let grid_dim = (grid_dim.x, grid_dim.y, num_oracles);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GatherLeavesForQueriesPhysicalArguments::new(
+        num_oracles,
+        descs[0],
+        descs[1],
+        descs[2],
+        log_lde_factor,
+        log_domain_size,
+        log_rows_per_leaf,
+        query_indexes.as_ptr(),
+        indexes_count,
+    );
+    GatherLeavesForQueriesPhysicalFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
     GatherLeavesForQueriesFromNtt,
     ab_gather_leaves_for_queries_from_ntt_kernel(
         ntt_output: *const BF,
@@ -457,6 +530,76 @@ pub fn gather_merkle_paths_partial_for_queries(
         indexes_count,
     );
     GatherMerklePathsPartialForQueriesFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    GatherMerklePathsPartialForQueriesPhysical,
+    ab_gather_merkle_paths_partial_for_queries_physical_kernel(
+        num_oracles: u32,
+        desc0: OraclePartialPathDesc,
+        desc1: OraclePartialPathDesc,
+        desc2: OraclePartialPathDesc,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_total_leaves_count: u32,
+        stride_per_coset_in_digests: u32,
+        layers_count: u32,
+        query_indexes: *const u32,
+        indexes_count: u32,
+    )
+);
+
+/// LSB sibling of [`gather_merkle_paths_partial_for_queries`]: every per-coset
+/// segment of each oracle's cosets backing is the BITREVERSED-order codeword,
+/// so the on-the-fly bottom-layer hashing reads logical leaf `l` from the
+/// physical block `bitreverse(l)`.
+pub fn gather_merkle_paths_partial_for_queries_physical(
+    descs: &[OraclePartialPathDesc; 3],
+    num_oracles: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_total_leaves_count: u32,
+    layers_count: u32,
+    query_indexes: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(
+        num_oracles == 1 || num_oracles == 3,
+        "gather_merkle_paths_partial_for_queries_physical supports num_oracles in {{1, 3}}, got {num_oracles}"
+    );
+    assert!(layers_count >= LOG_WARP_SIZE);
+    assert!(log_total_leaves_count >= LOG_WARP_SIZE);
+    assert!(layers_count <= log_total_leaves_count);
+    let indexes_count = checked_u32(query_indexes.len());
+    let stride_per_coset_in_digests = 1u32 << (log_total_leaves_count + 1 - LOG_WARP_SIZE);
+    for (i, desc) in descs.iter().enumerate() {
+        if i >= num_oracles as usize {
+            desc.assert_inactive(i);
+        } else if desc.columns_count != 0 {
+            assert_eq!(
+                desc.slab_dst_ptr % 32,
+                0,
+                "oracle {i} slab_dst_ptr must be 32-byte aligned"
+            );
+        }
+    }
+    let grid_dim = (indexes_count, num_oracles);
+    let block_dim = WARP_SIZE;
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GatherMerklePathsPartialForQueriesPhysicalArguments::new(
+        num_oracles,
+        descs[0],
+        descs[1],
+        descs[2],
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_total_leaves_count,
+        stride_per_coset_in_digests,
+        layers_count,
+        query_indexes.as_ptr(),
+        indexes_count,
+    );
+    GatherMerklePathsPartialForQueriesPhysicalFunction::default().launch(&config, &args)
 }
 
 cuda_kernel!(
@@ -822,6 +965,69 @@ pub fn gather_leaf_rows(
 }
 
 cuda_kernel!(
+    GatherLeafRowsPhysical,
+    ab_gather_leaf_rows_physical_kernel(
+        indexes: *const u32,
+        indexes_count: u32,
+        bit_reversed_indexes: bool,
+        log_leaves_count: u32,
+        log_rows_per_leaf: u32,
+        values: PtrAndStride<BF>,
+        results: MutPtrAndStride<BF>,
+    )
+);
+
+/// LSB sibling of [`gather_leaf_rows`]: `values` is the BITREVERSED-order
+/// codeword, so leaf `l`'s slot `s` is read from row
+/// `(bitreverse(l) << log_rows_per_leaf) + s`. Destination rows are unchanged.
+#[doc(hidden)]
+pub fn gather_leaf_rows_physical(
+    indexes: &DeviceSlice<u32>,
+    bit_reverse_indexes: bool,
+    log_rows_per_leaf: u32,
+    values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    result: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let values_cols = values.cols();
+    let values_rows = values.rows();
+    assert!(values_rows.is_power_of_two());
+    let log_rows_count = values_rows.trailing_zeros();
+    assert!(log_rows_count >= log_rows_per_leaf);
+    let log_leaves_count = log_rows_count - log_rows_per_leaf;
+    let result_rows = result.rows();
+    let result_cols = result.cols();
+    let rows_per_leaf = 1 << log_rows_per_leaf;
+    assert_eq!(result_cols, values_cols);
+    assert_eq!(result_rows, indexes.len() << log_rows_per_leaf);
+    let indexes_count = checked_u32(indexes.len());
+    let (mut grid_dim, block_dim) = if log_rows_per_leaf < LOG_WARP_SIZE {
+        get_grid_block_dims_for_threads_count(
+            1 << (LOG_WARP_SIZE - log_rows_per_leaf),
+            indexes_count,
+        )
+    } else {
+        (indexes_count.into(), 1.into())
+    };
+    let block_dim = (rows_per_leaf, block_dim.x);
+    grid_dim.y = checked_u32(result_cols);
+    let indexes = indexes.as_ptr();
+    let values = values.as_ptr_and_stride();
+    let result = result.as_mut_ptr_and_stride();
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GatherLeafRowsPhysicalArguments::new(
+        indexes,
+        indexes_count,
+        bit_reverse_indexes,
+        log_leaves_count,
+        log_rows_per_leaf,
+        values,
+        result,
+    );
+    GatherLeafRowsPhysicalFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
     GatherMerklePaths,
     ab_gather_merkle_paths_kernel(
         indexes: *const u32,
@@ -922,4 +1128,69 @@ pub fn gather_merkle_paths_from_rows(
         merkle_paths,
     );
     GatherMerklePathsFromRowsFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    GatherMerklePathsFromRowsPhysical,
+    ab_gather_merkle_paths_from_rows_physical_kernel(
+        indexes: *const u32,
+        indexes_count: u32,
+        bit_reverse_indexes: bool,
+        values: *const BF,
+        log_rows_per_leaf: u32,
+        cols_count: u32,
+        log_total_leaves_count: u32,
+        tree_bottom: *const Digest,
+        layers_count: u32,
+        merkle_paths: *mut Digest,
+    )
+);
+
+/// LSB sibling of [`gather_merkle_paths_from_rows`]: `values` is the
+/// BITREVERSED-order codeword of one coset, so the on-the-fly bottom-layer
+/// hashing reads logical leaf `l` from the physical block `bitreverse(l)`.
+/// `tree_bottom` and the emitted path node order stay logical.
+#[doc(hidden)]
+pub fn gather_merkle_paths_from_rows_physical(
+    indexes: &DeviceSlice<u32>,
+    bit_reverse_indexes: bool,
+    values: &DeviceSlice<BF>,
+    log_rows_per_leaf: u32,
+    cols_count: usize,
+    tree_bottom: &DeviceSlice<Digest>,
+    merkle_paths: &mut DeviceSlice<Digest>,
+    layers_count: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let values_len = values.len();
+    assert_eq!(values_len % cols_count, 0);
+    let rows_count = values_len / cols_count;
+    assert!(rows_count.is_power_of_two());
+    let log_rows_count = rows_count.trailing_zeros();
+    assert!(log_rows_count >= log_rows_per_leaf);
+    let indexes_count = checked_u32(indexes.len());
+    assert!(layers_count >= LOG_WARP_SIZE);
+    assert_eq!(indexes.len() * layers_count as usize, merkle_paths.len());
+    let cols_count = checked_u32(cols_count);
+    let log_total_leaves_count = log_rows_count - log_rows_per_leaf;
+    assert!(layers_count <= log_total_leaves_count);
+    assert!(tree_bottom.len() >= 1usize << (log_total_leaves_count + 1 - LOG_WARP_SIZE));
+    let config = CudaLaunchConfig::basic(indexes_count, WARP_SIZE, stream);
+    let indexes = indexes.as_ptr();
+    let values = values.as_ptr();
+    let tree_bottom = tree_bottom.as_ptr();
+    let merkle_paths = merkle_paths.as_mut_ptr();
+    let args = GatherMerklePathsFromRowsPhysicalArguments::new(
+        indexes,
+        indexes_count,
+        bit_reverse_indexes,
+        values,
+        log_rows_per_leaf,
+        cols_count,
+        log_total_leaves_count,
+        tree_bottom,
+        layers_count,
+        merkle_paths,
+    );
+    GatherMerklePathsFromRowsPhysicalFunction::default().launch(&config, &args)
 }

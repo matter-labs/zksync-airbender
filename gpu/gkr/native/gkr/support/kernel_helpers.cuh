@@ -38,13 +38,16 @@ template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_value(const gkr_ext_i
   return load<E, ld_modifier::cs>(source.start, index);
 }
 
+DEVICE_FORCEINLINE unsigned gkr_dim_reducing_ancestor_index(const unsigned index) { return GKR_DIM_REDUCING_PAIR_STRIDE * (index & ~1u) + (index & 1u); }
+
 template <typename E>
 DEVICE_FORCEINLINE E gkr_get_continuing_value(const gkr_ext_continuing_source<E> &source, const E folding_challenge, const unsigned index) {
   if (!source.first_access)
     return load<E, ld_modifier::cs>(source.this_layer_start, index);
 
-  const E f0 = load<E, ld_modifier::cs>(source.previous_layer_start, index);
-  const E f1 = load<E, ld_modifier::cs>(source.previous_layer_start, source.this_layer_size + index);
+  const unsigned ancestor = gkr_dim_reducing_ancestor_index(index);
+  const E f0 = load<E, ld_modifier::cs>(source.previous_layer_start, ancestor);
+  const E f1 = load<E, ld_modifier::cs>(source.previous_layer_start, ancestor + GKR_DIM_REDUCING_PAIR_STRIDE);
   const E diff = E::sub(f1, f0);
   const E folded = E::fma(folding_challenge, diff, f0);
   store<E, st_modifier::cs>(source.this_layer_start, folded, index);
@@ -53,7 +56,7 @@ DEVICE_FORCEINLINE E gkr_get_continuing_value(const gkr_ext_continuing_source<E>
 
 template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_delta(const gkr_ext_initial_source<E> &source, const unsigned index) {
   const E f0 = gkr_get_initial_value(source, index);
-  const E f1 = gkr_get_initial_value(source, source.next_layer_size + index);
+  const E f1 = gkr_get_initial_value(source, index + GKR_DIM_REDUCING_PAIR_STRIDE);
   return E::sub(f1, f0);
 }
 
@@ -61,7 +64,7 @@ template <typename E>
 DEVICE_FORCEINLINE void gkr_get_continuing_points(const gkr_ext_continuing_source<E> &source, const E folding_challenge, const unsigned index, E &f0,
                                                   E &delta) {
   f0 = gkr_get_continuing_value(source, folding_challenge, index);
-  const E f1 = gkr_get_continuing_value(source, folding_challenge, source.next_layer_size + index);
+  const E f1 = gkr_get_continuing_value(source, folding_challenge, index + GKR_DIM_REDUCING_PAIR_STRIDE);
   delta = E::sub(f1, f0);
 }
 
@@ -77,10 +80,21 @@ DEVICE_FORCEINLINE unsigned gkr_eq_group_size(const unsigned challenge_count, co
   return remaining < GKR_EQ_GROUP_SIZE ? remaining : GKR_EQ_GROUP_SIZE;
 }
 
-template <typename E>
-DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count,
-                                                             E *eq_group_tables) {
-  const unsigned group_idx = blockIdx.x;
+template <typename E> struct gkr_global_eq_group_table_writer {
+  E *destination;
+
+  DEVICE_FORCEINLINE void operator()(const unsigned index, const E &value) const { store<E, st_modifier::cs>(destination, value, index); }
+};
+
+template <typename E> struct gkr_shared_eq_group_table_writer {
+  E *destination;
+
+  DEVICE_FORCEINLINE void operator()(const unsigned index, const E &value) const { destination[index] = value; }
+};
+
+template <typename E, typename DestinationWriter>
+DEVICE_FORCEINLINE void gkr_build_eq_group_table_from_point(const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count,
+                                                            const unsigned group_idx, const DestinationWriter &write_destination) {
   const unsigned group_size = gkr_eq_group_size(challenge_count, group_idx);
   if (group_size == 0)
     return;
@@ -99,12 +113,14 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_poin
     const unsigned chunk_len = 1u << chunk_size;
     if (chunk_table_idx < chunk_len) {
       const unsigned variable_idx = group_start + variable_offset;
+      // LSB relabeling: the reversal is WITHIN `[challenge_offset, challenge_offset + challenge_count)`.
+      const unsigned first_idx = challenge_offset + challenge_count - 1 - variable_idx;
       const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
-      const E first_challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + variable_idx);
+      const E first_challenge = load<E, ld_modifier::cs>(claim_point, first_idx);
       E value = first_bit ? first_challenge : E::sub(E::ONE(), first_challenge);
       if (chunk_size == 2) {
         const unsigned low_bit = chunk_table_idx & 1u;
-        const E second_challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + variable_idx + 1);
+        const E second_challenge = load<E, ld_modifier::cs>(claim_point, first_idx - 1);
         const E second_term = low_bit ? second_challenge : E::sub(E::ONE(), second_challenge);
         value = E::mul(value, second_term);
       }
@@ -129,7 +145,14 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_poin
     consumed_bits += chunk_size;
   }
 
-  store<E, st_modifier::cs>(eq_group_tables + group_idx * GKR_EQ_GROUP_TABLE_LEN, acc, tid);
+  write_destination(group_idx * GKR_EQ_GROUP_TABLE_LEN + tid, acc);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count,
+                                                             E *eq_group_tables) {
+  const gkr_global_eq_group_table_writer<E> write_destination{eq_group_tables};
+  gkr_build_eq_group_table_from_point<E>(claim_point, challenge_offset, challenge_count, blockIdx.x, write_destination);
 }
 
 template <typename E>
@@ -204,8 +227,17 @@ struct __align__(16) gkr_trace_holder_bf4 {
   bf values[4];
 };
 
-template <typename E>
-DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, const E *eq_values, E *block_partials, const unsigned trace_len,
+template <typename E> struct gkr_trace_holder_eq_dense {
+  const E *eq_values;
+  DEVICE_FORCEINLINE void load4(const unsigned row, E (&eq)[4]) const {
+#pragma unroll
+    for (unsigned i = 0; i < 4; ++i)
+      eq[i] = load<E, ld_modifier::cs>(eq_values, row + i);
+  }
+};
+
+template <typename E, typename EqFn>
+DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, const EqFn eq_fn, E *block_partials, const unsigned trace_len,
                                                         const unsigned column_start, const unsigned chunk_cols, const unsigned blocks_count) {
   static_assert(GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK % GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE == 0);
   static_assert(sizeof(gkr_trace_holder_bf4) == 4 * sizeof(bf));
@@ -225,10 +257,8 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
 
   for (unsigned packed_row = packed_gid; packed_row < packed_trace_len; packed_row += packed_stride) {
     const unsigned row = packed_row << 2;
-    const E eq0 = load<E, ld_modifier::cs>(eq_values, row);
-    const E eq1 = load<E, ld_modifier::cs>(eq_values, row + 1);
-    const E eq2 = load<E, ld_modifier::cs>(eq_values, row + 2);
-    const E eq3 = load<E, ld_modifier::cs>(eq_values, row + 3);
+    E eq[4];
+    eq_fn.load4(row, eq);
 #pragma unroll
     for (unsigned local_col = 0; local_col < GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK; ++local_col) {
       if (local_col >= chunk_cols)
@@ -236,10 +266,10 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
       const unsigned column = column_start + local_col;
       const size_t row_offset = static_cast<size_t>(column) * trace_len + row;
       const auto values = load<gkr_trace_holder_bf4, ld_modifier::cs>(reinterpret_cast<const gkr_trace_holder_bf4 *>(raw_values), row_offset >> 2);
-      E partial = E::mul(values.values[0], eq0);
-      partial = E::fma(eq1, values.values[1], partial);
-      partial = E::fma(eq2, values.values[2], partial);
-      partial = E::fma(eq3, values.values[3], partial);
+      E partial = E::mul(values.values[0], eq[0]);
+      partial = E::fma(eq[1], values.values[1], partial);
+      partial = E::fma(eq[2], values.values[2], partial);
+      partial = E::fma(eq[3], values.values[3], partial);
       accumulators[local_col] = E::add(accumulators[local_col], partial);
     }
   }
@@ -269,6 +299,18 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
       store<E, st_modifier::cs>(block_partials, block_sum, partial_offset);
     }
   }
+}
+
+// Launch contract: blockDim = one warp, blockIdx.x = column.
+template <typename E> DEVICE_FORCEINLINE void gkr_trace_holder_column_sums(const E *block_partials, E *column_sums, const unsigned blocks_count) {
+  const unsigned lane_id = threadIdx.x;
+  const size_t column_base = static_cast<size_t>(blockIdx.x) * blocks_count;
+  E acc = E::ZERO();
+  for (unsigned i = lane_id; i < blocks_count; i += GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE)
+    acc = E::add(acc, load<E, ld_modifier::cs>(block_partials, column_base + i));
+  acc = gkr_trace_holder_partials_warp_reduce_sum(acc);
+  if (lane_id == 0)
+    store<E, st_modifier::cs>(column_sums, acc, blockIdx.x);
 }
 
 } // namespace airbender::gkr

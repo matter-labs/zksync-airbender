@@ -29,7 +29,7 @@ fn verifier_mop_proof() {
         deserialize_from_file(&path);
 
     let name = "add_sub_lui_auipc_mop";
-    let level = SecurityLevel::Sec80;
+    let level = SecurityLevel::Sec100;
     let (nds, external_challenges) = common::proof_to_nds(name, level, &proof);
 
     common::verify_nds(name, level, &external_challenges, nds).unwrap();

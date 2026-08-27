@@ -6,8 +6,228 @@ use crate::gkr::{prover::WhirSchedule, whir::proximity_testing_modes::ProximityT
 pub mod example_configs;
 pub mod pow_bits;
 
+/// One step of a sumcheck schedule: how many variables the step binds and
+/// with which evaluation strategy. The prover binds variables LSB-first
+/// (consistent with monomial ordering and WHIR's RS-codeword folding), so a
+/// step always consumes the CURRENTLY LOWEST variables of the remaining
+/// hypercube.
+///
+/// The grammar is STRICT (see [`validate_sumcheck_schedule`]): a valid
+/// schedule is either all-naive (the empty schedule, or one `NaiveSumcheck`
+/// per variable), or a window chain
+/// (`WindowInitial, FoldInitial, (WindowContinuing, FoldContinuing)*, Tail`).
+/// Pass steps are labeled by what they READ (`*Initial` reads the original
+/// layer inputs, `*Continuing` the folded tables); the non-merged fold that
+/// materializes each pass's binding is an EXPLICIT step with the same
+/// labeling, and the scalar rounds that finish the layer are the explicit
+/// `Tail` step.
+///
+/// Uniskip chains
+/// (`UniskipInitial, FoldInitial, (UniskipContinuing, FoldContinuing)*, Tail`)
+/// are grammatically reserved but currently UNIMPLEMENTED:
+/// [`validate_sumcheck_schedule`] panics on any uniskip step. The redesign
+/// makes a uniskip pass emit a Lagrange WEIGHT-BLOCK claim (8 node-Lagrange
+/// weights over the window corners instead of 3 bound point coordinates),
+/// and neither the same-size engines nor the WHIR handoff carry that claim
+/// shape yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SumcheckStep {
+    /// The classic mode: fold exactly one variable with the per-round batched
+    /// evaluator (one `[E; 4]` message per round; the fold is lazy, merged
+    /// into the next round's evaluation).
+    NaiveSumcheck,
+    /// Univariate-skip pass over the ORIGINAL layer inputs: `window`
+    /// variables packed into ONE univariate round (message = monomial
+    /// coefficients of the packed q, degree `< 2^{window + 1}`). Leaves its
+    /// challenge's Lagrange fold to the following [`SumcheckStep::FoldInitial`].
+    UniskipInitial { window: usize },
+    /// Univariate-skip pass over the PREVIOUSLY FOLDED tables; its fold is
+    /// the following [`SumcheckStep::FoldContinuing`].
+    UniskipContinuing { window: usize },
+    /// Windowed-accumulator pass over the ORIGINAL layer inputs: the
+    /// `{0,1,inf}^window` accumulator is computed in one pass and `window`
+    /// ordinary scalar rounds are emitted from the bind chain. The batched
+    /// eq-tensor fold is the following [`SumcheckStep::FoldInitial`].
+    WindowInitial { window: usize },
+    /// Windowed-accumulator pass over the PREVIOUSLY FOLDED tables; its fold
+    /// is the following [`SumcheckStep::FoldContinuing`].
+    WindowContinuing { window: usize },
+    /// The explicit (non-merged) fold materializing the PRECEDING pass's
+    /// binding, reading the ORIGINAL layer inputs (i.e. after an `*Initial`
+    /// pass) and writing the first dense folded tables. `width` is the
+    /// folding width and must equal the preceding pass's window (validated).
+    FoldInitial { width: usize },
+    /// The explicit fold after a `*Continuing` pass: reads the previous
+    /// dense folded tables, writes the next ones. `width` must equal the
+    /// preceding pass's window (validated).
+    FoldContinuing { width: usize },
+    /// Scalar naive rounds over the dense folded tables, binding ALL
+    /// remaining variables (possibly zero) and finishing the layer. Required
+    /// after uniskip/window chains.
+    Tail,
+}
+
+impl SumcheckStep {
+    /// Number of hypercube variables this step binds. Folds bind none (they
+    /// materialize the preceding pass's binding); [`SumcheckStep::Tail`]
+    /// binds "all remaining", which only [`validate_sumcheck_schedule`] can
+    /// account for.
+    pub fn variables_bound(&self) -> usize {
+        match self {
+            SumcheckStep::NaiveSumcheck => 1,
+            SumcheckStep::UniskipInitial { window }
+            | SumcheckStep::UniskipContinuing { window }
+            | SumcheckStep::WindowInitial { window }
+            | SumcheckStep::WindowContinuing { window } => *window,
+            SumcheckStep::FoldInitial { .. }
+            | SumcheckStep::FoldContinuing { .. }
+            | SumcheckStep::Tail => 0,
+        }
+    }
+}
+
+/// The three valid schedule shapes (see [`validate_sumcheck_schedule`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SumcheckScheduleClass {
+    Naive,
+    Uniskip,
+    Windowed,
+}
+
+/// Checks the STRICT schedule grammar for `folding_steps` variables and
+/// returns the schedule's class. Valid schedules:
+///
+/// * all-naive: the EMPTY schedule (naive for every round), or exactly
+///   `folding_steps` `NaiveSumcheck` steps;
+/// * window chain: `WindowInitial{3}, FoldInitial,
+///   (WindowContinuing{3}, FoldContinuing)*, Tail`.
+///
+/// Chains additionally require `3 * passes <= folding_steps` (the `Tail`
+/// binds the remainder, possibly zero) and at least 6 folding steps (the
+/// engines' shape guard). Fold labels must match their pass (`FoldInitial`
+/// only right after the `*Initial` pass).
+///
+/// Uniskip steps PANIC as unimplemented (see the [`SumcheckStep`] docs); the
+/// uniskip arms of the grammar below are kept as the spec for re-enabling.
+pub fn validate_sumcheck_schedule(
+    schedule: &[SumcheckStep],
+    folding_steps: usize,
+) -> Result<SumcheckScheduleClass, String> {
+    if schedule.iter().any(|s| {
+        matches!(
+            s,
+            SumcheckStep::UniskipInitial { .. } | SumcheckStep::UniskipContinuing { .. }
+        )
+    }) {
+        unimplemented!(
+            "uniskip sumcheck steps: the Lagrange weight-block claim shape is not \
+             wired through the same-size engines and the WHIR handoff"
+        );
+    }
+    if schedule.is_empty() {
+        return Ok(SumcheckScheduleClass::Naive);
+    }
+    if schedule
+        .iter()
+        .all(|s| matches!(s, SumcheckStep::NaiveSumcheck))
+    {
+        if schedule.len() != folding_steps {
+            return Err(format!(
+                "all-naive schedule has {} steps, layer has {} variables",
+                schedule.len(),
+                folding_steps
+            ));
+        }
+        return Ok(SumcheckScheduleClass::Naive);
+    }
+
+    // chain grammar
+    let class = match schedule.first() {
+        Some(SumcheckStep::UniskipInitial { window: 3 }) => SumcheckScheduleClass::Uniskip,
+        Some(SumcheckStep::WindowInitial { window: 3 }) => SumcheckScheduleClass::Windowed,
+        other => {
+            return Err(format!(
+            "a chain schedule must open with UniskipInitial{{3}} or WindowInitial{{3}}, got {:?}",
+            other
+        ))
+        }
+    };
+    if folding_steps < 6 {
+        return Err(format!(
+            "chain schedules need at least 6 folding steps, layer has {folding_steps}"
+        ));
+    }
+    let first_window = schedule[0].variables_bound();
+    match schedule.get(1) {
+        Some(SumcheckStep::FoldInitial { width }) if *width == first_window => {}
+        Some(SumcheckStep::FoldInitial { width }) => {
+            return Err(format!(
+                "FoldInitial width {width} does not match the initial pass window {first_window}"
+            ))
+        }
+        other => {
+            return Err(format!(
+                "the initial pass must be followed by a width-matched FoldInitial, got {other:?}"
+            ))
+        }
+    }
+    let mut passes = 1usize;
+    let mut i = 2usize;
+    loop {
+        match (schedule.get(i), class) {
+            (Some(SumcheckStep::UniskipContinuing { window: 3 }), SumcheckScheduleClass::Uniskip)
+            | (Some(SumcheckStep::WindowContinuing { window: 3 }), SumcheckScheduleClass::Windowed) =>
+            {
+                let pass_window = schedule[i].variables_bound();
+                match schedule.get(i + 1) {
+                    Some(SumcheckStep::FoldContinuing { width }) if *width == pass_window => {}
+                    Some(SumcheckStep::FoldContinuing { width }) => {
+                        return Err(format!(
+                            "FoldContinuing width {width} at position {} does not match the \
+                             pass window {pass_window}",
+                            i + 1
+                        ))
+                    }
+                    other => {
+                        return Err(format!(
+                            "the continuing pass at position {i} must be followed by a \
+                             width-matched FoldContinuing, got {other:?}"
+                        ))
+                    }
+                }
+                passes += 1;
+                i += 2;
+            }
+            (Some(SumcheckStep::Tail), _) => {
+                if i + 1 != schedule.len() {
+                    return Err("Tail must be the last step".to_string());
+                }
+                break;
+            }
+            (other, _) => {
+                return Err(format!(
+                    "unexpected step {:?} at position {i} (expected a matching continuing pass or Tail)",
+                    other
+                ))
+            }
+        }
+    }
+    if 3 * passes > folding_steps {
+        return Err(format!(
+            "{passes} passes bind {} variables, layer has {folding_steps}",
+            3 * passes
+        ));
+    }
+    Ok(class)
+}
+
 #[derive(Clone, Debug)]
 pub struct ProverConfig {
+    /// log2 of the circuit trace length this config was computed for. The
+    /// prove entries assert the caller-supplied `trace_len` matches, so a
+    /// config can never silently be applied to a different-size circuit
+    /// (schedules, query counts and PoW splits are all size-specific).
+    pub trace_len_log2: usize,
     pub lde_factor: usize,
     pub cap_size: usize,
     pub base_oracles_values_per_leaf: usize,
@@ -18,6 +238,104 @@ pub struct ProverConfig {
     // per-circuit from `security_level` via `pow_bits`, so neither is stored here.
     pub security_level: SecurityLevel,
     pub whir_schedule: WhirSchedule,
+    /// Step schedule for the same-size (per-circuit batched relation) layer
+    /// sumchecks, applied to every same-size layer regardless of its input
+    /// poly count. Must satisfy the STRICT grammar of
+    /// [`validate_sumcheck_schedule`] for the trace length's variable count.
+    pub same_size_sumcheck_schedule: Vec<SumcheckStep>,
+    /// Step schedules for the DIMENSION-REDUCING layer sumchecks (pairwise
+    /// products + logup reduction gates only), keyed by the layer's number
+    /// of sumcheck rounds: a layer with `n` rounds uses
+    /// `dimension_reducing_sumcheck_schedule[&n]` if present, and
+    /// NaiveSumcheck for every round otherwise. Each entry must satisfy
+    /// [`validate_sumcheck_schedule`] for its key.
+    pub dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
+}
+
+impl ProverConfig {
+    /// Structural validation of the WHIR schedule for a starting polynomial of
+    /// `message_size_log2` variables — equal to [`Self::trace_len_log2`] for
+    /// the separate/merged commitment modes and `trace_len_log2 + pack_log2`
+    /// for the packed mode. Called by the prove entries after they assert the
+    /// caller's `trace_len` against `trace_len_log2`.
+    ///
+    /// Beyond shape consistency, enforces the plain-text floor: every
+    /// COMMITTED intermediate oracle must be an LDE of a polynomial of at
+    /// least `1 << DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2` monomials. Folding
+    /// below that size must instead TERMINATE the schedule — the tail
+    /// polynomial ships as explicit monomial coefficients, which is strictly
+    /// cheaper than another LDE + Merkle commitment + query round for both
+    /// prover and verifier.
+    pub fn validate_for_whir_message_size(&self, message_size_log2: usize) {
+        use crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
+
+        let schedule = &self.whir_schedule;
+        let num_rounds = schedule.whir_steps_schedule.len();
+        assert!(num_rounds >= 1, "empty WHIR schedule");
+        assert_eq!(schedule.whir_queries_schedule.len(), num_rounds);
+        assert_eq!(schedule.whir_pow_schedule.len(), num_rounds);
+        assert_eq!(schedule.whir_steps_lde_factors.len(), num_rounds - 1);
+        assert_eq!(schedule.base_lde_factor, self.lde_factor);
+        assert_eq!(schedule.cap_size, self.cap_size);
+        assert_eq!(
+            self.base_oracles_values_per_leaf,
+            1usize << schedule.whir_steps_schedule[0],
+            "base-oracle leaves hold exactly one round-0 fold worth of values"
+        );
+
+        let mut poly_size_log2 = message_size_log2;
+        for (round, fold_log2) in schedule.whir_steps_schedule.iter().enumerate() {
+            assert!(*fold_log2 >= 1);
+            assert!(
+                poly_size_log2 >= *fold_log2,
+                "WHIR round {round} folds by 2^{fold_log2} but only a 2^{poly_size_log2} \
+                 polynomial remains"
+            );
+            poly_size_log2 -= *fold_log2;
+            let commits_an_oracle = round + 1 != num_rounds;
+            if commits_an_oracle {
+                assert!(
+                    poly_size_log2 >= DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
+                    "WHIR round {round} would commit an LDE of a 2^{poly_size_log2} polynomial \
+                     (below the 2^{DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2} plain-text floor): \
+                     terminate the schedule here and ship the tail in plain text instead"
+                );
+            }
+        }
+        assert!(
+            poly_size_log2 >= 1,
+            "the WHIR schedule folds the polynomial away completely"
+        );
+        assert!(
+            poly_size_log2 <= DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
+            "the schedule's explicit tail (2^{poly_size_log2}) exceeds the plain-text \
+             envelope 2^{DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2}"
+        );
+    }
+}
+
+/// The DEFAULT same-size schedule: the full window chain for
+/// `folding_steps` variables -- window passes while three variables remain,
+/// then the scalar `Tail`.
+pub fn windowed_same_size_schedule(folding_steps: usize) -> Vec<SumcheckStep> {
+    assert!(folding_steps >= 6);
+    let passes = folding_steps / 3;
+    let mut schedule = Vec::with_capacity(2 * passes + 1);
+    schedule.push(SumcheckStep::WindowInitial { window: 3 });
+    schedule.push(SumcheckStep::FoldInitial { width: 3 });
+    for _ in 1..passes {
+        schedule.push(SumcheckStep::WindowContinuing { window: 3 });
+        schedule.push(SumcheckStep::FoldContinuing { width: 3 });
+    }
+    schedule.push(SumcheckStep::Tail);
+    schedule
+}
+
+/// The all-naive same-size schedule for ProverConfig literals: the EMPTY
+/// schedule, which means NaiveSumcheck for every round (see
+/// [`validate_sumcheck_schedule`]). No windows, no uniskip.
+pub fn naive_same_size_schedule() -> Vec<SumcheckStep> {
+    Vec::new()
 }
 
 impl WhirSchedule {
@@ -301,6 +619,31 @@ mod test {
     use crate::{definitions::*, gkr::whir::proximity_testing_modes::PessimisticConjectureMode};
 
     use super::*;
+
+    #[test]
+    fn example_configs_pass_validation() {
+        for log in [20usize, 22, 23, 24] {
+            let config = example_configs::config_for_100_bits_under_pessimistic_conjecture(log);
+            assert_eq!(config.trace_len_log2, log);
+            config.validate_for_whir_message_size(log);
+        }
+        let feeder = example_configs::l1_feeder_config_for_2_23();
+        assert_eq!(feeder.trace_len_log2, 23);
+        feeder.validate_for_whir_message_size(feeder.trace_len_log2);
+    }
+
+    #[test]
+    #[should_panic(expected = "plain-text floor")]
+    fn sub_plain_text_oracle_is_rejected() {
+        // Re-append the retired sixth round of the 2^23 schedule: its oracle
+        // would be an LDE of a 2^3 polynomial, below the plain-text floor.
+        let mut config = example_configs::config_for_100_bits_under_pessimistic_conjecture(23);
+        config.whir_schedule.whir_steps_schedule.push(2);
+        config.whir_schedule.whir_queries_schedule.push(5);
+        config.whir_schedule.whir_pow_schedule.push(21);
+        config.whir_schedule.whir_steps_lde_factors.push(524288);
+        config.validate_for_whir_message_size(23);
+    }
 
     #[test]
     fn test_try_compute_some_config() {
