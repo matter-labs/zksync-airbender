@@ -4,7 +4,6 @@
 tools/gkr_verifier/target
 /Cargo.lock
 /output
-/.agents/output/
 **/.foundry/
 rustc-ice-*.*
 .DS_Store
