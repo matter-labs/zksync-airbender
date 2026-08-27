@@ -5,6 +5,7 @@
 - Confirmed historical recursion-stage soundness bug
 - Boundary: authenticated recursion-chain output → claim that an artifact reached `RecursionUnrolled`
 - Component: unrolled target verification over either base or prior-unrolled inputs
+- Verifier anchor: `tools/cli/src/prover_utils.rs::verify_artifact` recursion-stage check
 - Security character: stage/type confusion inside an otherwise valid recursive chain
 - Fixed by: [`3e53f3f`](https://github.com/matter-labs/zksync-airbender/commit/3e53f3f3ac68fed1fbbcffbf28d4fcc425bd22e3), PR [#329](https://github.com/matter-labs/zksync-airbender/pull/329)
 - Vulnerable revision: `bd71d8cef62bde7eb72ea22d353df0c41d551663`

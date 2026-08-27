@@ -4,6 +4,7 @@
 
 - Confirmed historical generated STARK verifier soundness bug
 - Component: first/last-row quotient constraints for the memory grand product
+- Verifier anchor: checked-in generated STARK quotient evaluator and its generator
 - Reduction location: AIR boundary constraints → quotient numerator → DEEP/FRI composition
 - Security character: intended accumulator endpoints were unpinned in the generated verifier
 - Fixed by: [`16b5aef`](https://github.com/matter-labs/zksync-airbender/commit/16b5aefcd6210859c5c281b8189ab366fe2b8411)

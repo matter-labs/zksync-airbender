@@ -4,6 +4,7 @@
 
 - Confirmed historical higher-security parameterization gap
 - Component: lookup `alpha/gamma` and WHIR base-oracle batching challenge phases
+- Verifier anchor: Sec100 code emitted by `verifier_generator/src/gkr/mod.rs` and consumed by native verifier tests
 - Budget terms: cleared LogUp identity degree and batched-proximity loss
 - Reachability: derived bits were zero for Sec80; the generator, prover, native verifier tests, and `gkr_test.sh --security-level 100` formed a buildable Sec100 path before the fix, although the fixing PR description inaccurately said `config_for_100` remained unfinished
 - Fixed by: [`bc526de`](https://github.com/matter-labs/zksync-airbender/commit/bc526de6cb89840e8b8bfd67c5aab5ffecc04585), PR [#331](https://github.com/matter-labs/zksync-airbender/pull/331)

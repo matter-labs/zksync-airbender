@@ -1,6 +1,6 @@
 ---
 name: blindeval-zk-verifier-review
-description: Blind-evaluate exactly one zk-verifier-review coordinator specialist against one matching historical bug example. Use when given a verifier-review domain or sub-skill plus an example number, filename, slug, or title—such as "transcript audit example 1"—and asked to launch a fresh Codex or Claude reviewer that must rediscover the bug without examples, later Git history, host memories, the coordinator, other specialists, or the expected fix.
+description: Blind-evaluate exactly one zk-verifier-review coordinator specialist against one matching historical verifier bug example. Use when given a verifier-review domain or sub-skill plus an example number, filename, slug, or title—such as "transcript audit example 1"—and asked to launch a fresh Codex or Claude reviewer that must rediscover the verifier defect without examples, later Git history, host memories, the coordinator, other specialists, or the expected fix.
 ---
 
 # Blind-Evaluate One ZK Verifier Specialist
@@ -15,9 +15,14 @@ can share Git objects, filesystem context, memories, or answer examples with the
 source checkout.
 
 Keep every run authorized, defensive, source-local, and read-only. The evaluator
-may describe a bounded symbolic false-acceptance flow and remediation property,
-but must not create proof-forging tools, runnable malicious provers, deployment
-payloads, network probes, or live-system instructions.
+may describe a minimal bounded correctness counterexample and remediation
+property, but must not create executable demonstrations, deployment payloads,
+network probes, credential/access steps, or live-system instructions.
+
+Frame both manager and evaluator work as a benign historical correctness
+regression. Limit deliverables to root cause, verifier acceptance or rejection
+consequence, remediation, and defensive regression tests. Do not request or
+produce operational exploitation guidance.
 
 ## Resolve the domain and example
 
@@ -34,13 +39,26 @@ Require both values. Map natural names to these canonical domains and skills:
 
 Thus `transcript audit example 1` means `--domain transcript --example 1`.
 Accept an example number, filename, slug, or exact title from that specialist's
-own `examples/` directory. Numbering is local to the selected domain, so a bare
-number is valid after the domain is known. Do not guess a missing domain and do
-not test an example under a different specialist.
+verifier-evaluable corpus: main examples plus `latent/`. Numbering is local to
+the selected domain, so a bare number is valid after the domain is known. Cards
+under `producer-parity/` or `implementation/` are historical reference material,
+not blind-evaluation targets. A domain may temporarily have no evaluable
+historical example; report that honestly instead of promoting a producer bug.
+Every evaluable card must name a concrete `Verifier anchor`; treat its absence
+as malformed corpus metadata rather than inferring one from the fix. Use that
+neutral verifier anchor as the evaluator's bounded starting surface. It may name
+a verifier artifact, entrypoint, generated-code family, or acceptance boundary,
+but must not disclose the hidden failure, fix, reduction location, expected
+relation, or reproduction paths. Immediate verifier callers/callees and the
+corresponding emitted/generator artifacts remain in scope when needed to decide
+the anchor's acceptance predicate; the entire repository does not.
+Do not guess a missing domain and do not test an example under a different
+specialist.
 
 The domain and selector are outer-orchestrator inputs only. Never include the
-example number, filename, slug, title, fix, vulnerable revision, or expected
-failure in the evaluator prompt.
+example number, filename, slug, title, fix, vulnerable revision, failure text,
+impact/fix text, reduction location, or reproduction paths in the evaluator
+prompt.
 
 Default the provider to the invoking client: Codex from Codex and Claude from
 Claude. Accept explicit provider, model, effort, and timeout overrides.
@@ -62,8 +80,9 @@ by Git.
 Preparation must complete automatically. The script:
 
 1. Resolves the example only inside the selected specialist's corpus.
-2. Parses its fix, vulnerable revision, failure domain, and scoped historical
-   paths from the reproduction command.
+2. Parses its fix, vulnerable revision, failure domain, explicit verifier
+   anchor, and historical reproduction paths. Only the neutral verifier anchor
+   scopes the evaluator; the rest remains hidden answer and grading metadata.
 3. Exports the vulnerable revision with `git archive`, without source Git
    metadata or later objects.
 4. Removes repository skills, plans, audits, outputs, Claude/Codex state, nested
@@ -113,6 +132,14 @@ contamination. Request-log inspection is an auditable control rather than a
 perfect hosted-web boundary, and model pretraining may contain public knowledge
 that filesystem isolation cannot remove.
 
+The evaluator prompt must make verifier implementation the primary target. It
+must tell the reviewer to use theory to derive obligations, spend most of the
+run checking the concrete acceptance predicate, use the prover only as a format
+or specification cross-reference, and proceed with the supplied verifier anchor
+without requesting narrower scope. It must also require completion of the
+anchor's verifier obligations after any candidate finding; unrelated leads do
+not end the run.
+
 ## Grade the selected bug
 
 After the run, read only from outside the fixture:
@@ -123,10 +150,10 @@ After the run, read only from outside the fixture:
 
 Grade semantic rediscovery, not wording or commit archaeology:
 
-- **catch** — identifies the same root prover freedom or incorrect verifier
-  relation, locates the materially affected path/component, explains the
-  false-acceptance or honest-proof failure, and supports remediation with source
-  evidence;
+- **catch** — identifies the same incorrect verifier acceptance or rejection
+  relation and resulting prover freedom, locates the materially affected
+  path/component, explains the false-acceptance or honest-proof failure, and
+  supports remediation with source evidence;
 - **partial** — reaches the mechanism or broken invariant but leaves a material
   link unresolved, misstates impact, finds only a strict subset, or keeps it only
   as an unverified lead;
@@ -136,8 +163,9 @@ Grade semantic rediscovery, not wording or commit archaeology:
   malformed fixture, or another condition preventing fair recall scoring.
 
 Do not upgrade the score for unrelated findings. For a completeness case,
-require recognition of the honest-proof failure rather than forcing a soundness
-narrative.
+require a verifier defect that rejects a canonical proof. Producer failure that
+merely causes a correct verifier to reject is not an evaluable completeness
+vulnerability.
 
 Record the grade:
 

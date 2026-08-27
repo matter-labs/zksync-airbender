@@ -46,11 +46,12 @@ Preserve these when revising the coordinator or any specialist.
 - Classify implementation relationships before parity work. Do not demand the
   same proof language from independent outer instances that deliberately use a
   different field, hash, encoding, or commitment scheme.
-- Default to the verifier, where the acceptance predicate converges. Permit an
-  explicitly requested prover-first review, but label its verification contract
-  provisional and schedule verifier-side confirmation. Use the prover as
-  evidence of message format and the papers as evidence of soundness
-  obligations, never the reverse.
+- Require a concrete verifier, generated verifier, aggregator, recursive
+  verifier, or final settlement consumer, because that is where the acceptance
+  predicate converges. Do not substitute a prover-first review when no such
+  consumer exists. Use the prover only as bounded evidence of message format or
+  intended optimization after reconstructing verifier behavior; keep
+  producer-only defects as non-evaluable parity history.
 
 ## Method
 
@@ -74,6 +75,11 @@ Preserve these when revising the coordinator or any specialist.
   configuration.
 - For generated verifiers, require reading the emitted code, not only the
   generator.
+- Root primary findings in a concrete verifier acceptance/rejection relation.
+  Classify a generator branch with no emitted verifier as implementation
+  history, and classify malformed prover/GPU/replay/serializer output rejected
+  by the verifier as producer parity. Reserve latent for exact verifier code or
+  emitted verifier artifacts with a known future activation edge.
 - Overlay implementation-layer coverage on every protocol cell: handwritten
   verifier, generator, emitted artifact, producer/serializer, recursive mirror,
   caller, and settlement boundary. Domain coverage does not imply artifact-layer

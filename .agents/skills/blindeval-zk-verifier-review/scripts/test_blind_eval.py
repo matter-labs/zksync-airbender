@@ -19,8 +19,8 @@ SPECIALISTS = {
 
 class CorpusTests(unittest.TestCase):
     def test_numeric_selector_is_local_to_specialist(self) -> None:
-        selected = blind_eval.resolve_example(SPECIALISTS["gkr-whir"], "12")
-        self.assertEqual(selected.name, "12-dimension-reduction-index-space.md")
+        selected = blind_eval.resolve_example(SPECIALISTS["recursion-l1"], "16")
+        self.assertEqual(selected.name, "16-unified-convergence.md")
 
     def test_numeric_selector_finds_nested_latent_example(self) -> None:
         selected = blind_eval.resolve_example(SPECIALISTS["transcript"], "2")
@@ -41,12 +41,40 @@ class CorpusTests(unittest.TestCase):
             for domain, skill in SPECIALISTS.items()
             for path in blind_eval.example_files(skill)
         ]
-        self.assertEqual(len(examples), 64)
+        self.assertEqual(len(examples), 22)
         parsed = [blind_eval.parse_example(path, domain) for domain, path in examples]
         self.assertTrue(all(item["paths"] for item in parsed))
         self.assertTrue(all(item["failure"] for item in parsed))
         self.assertTrue(all(item["impact_and_fix"] for item in parsed))
+        self.assertTrue(all(item["verifier_anchor"] for item in parsed))
         self.assertEqual({item["domain"] for item in parsed}, set(SPECIALISTS))
+
+    def test_producer_parity_and_implementation_are_not_evaluable(self) -> None:
+        transcript_files = blind_eval.example_files(SPECIALISTS["transcript"])
+        recursion_files = blind_eval.example_files(SPECIALISTS["recursion-l1"])
+        self.assertFalse(any("producer-parity" in path.parts for path in transcript_files))
+        self.assertFalse(any("implementation" in path.parts for path in recursion_files))
+        with self.assertRaises(blind_eval.EvalError):
+            blind_eval.resolve_example(SPECIALISTS["transcript"], "8")
+
+    def test_gkr_producer_only_selector_is_not_evaluable(self) -> None:
+        with self.assertRaises(blind_eval.EvalError):
+            blind_eval.resolve_example(SPECIALISTS["gkr-whir"], "1")
+
+        selected = blind_eval.resolve_example(SPECIALISTS["gkr-whir"], "13")
+        self.assertEqual(selected.name, "13-virtual-setup-evaluations-unpinned.md")
+
+    def test_target_uses_neutral_verifier_anchor_without_reproduction_paths(self) -> None:
+        selected = blind_eval.resolve_example(SPECIALISTS["transcript"], "10")
+        parsed = blind_eval.parse_example(selected, "transcript")
+        self.assertIn("bounded verifier surface", parsed["target"])
+        self.assertIn("verifier/src/generated/mem_subword_only", parsed["target"])
+        self.assertNotIn("prover/src/gkr/prover", parsed["target"])
+        self.assertIn("verifier/src/generated/mem_subword_only", parsed["verifier_anchor"])
+        self.assertIn(
+            "verifier/src/generated/mem_subword_only/sec_100/gkr.rs",
+            parsed["paths"],
+        )
 
     def test_strip_examples_removes_answer_corpus(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -80,6 +108,10 @@ class CorpusTests(unittest.TestCase):
         self.assertIn("$zk-verifier-transcript-review", prompt)
         self.assertNotIn("$zk-verifier-review ", prompt)
         self.assertNotIn("monolith", prompt)
+        self.assertIn("verifier implementation is the primary audit object", prompt)
+        self.assertIn("do not ask the user to choose a narrower target", prompt)
+        self.assertIn("Finish every verifier obligation", prompt)
+        self.assertIn("real soundness or completeness consequence", prompt)
 
 
 class TraceInspectionTests(unittest.TestCase):

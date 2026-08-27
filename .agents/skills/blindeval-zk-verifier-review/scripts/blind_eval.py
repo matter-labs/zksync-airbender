@@ -163,10 +163,13 @@ def example_files(skill: Path) -> list[Path]:
     examples = skill / "examples"
     if not examples.is_dir():
         return []
+    excluded_collections = {"producer-parity", "implementation"}
     return sorted(
         path
         for path in examples.rglob("*.md")
-        if path.name != "INDEX.md" and re.match(r"^[0-9]+-", path.name)
+        if path.name != "INDEX.md"
+        and re.match(r"^[0-9]+-", path.name)
+        and not excluded_collections.intersection(path.relative_to(examples).parts)
     )
 
 
@@ -184,7 +187,7 @@ def example_title(path: Path) -> str:
 def resolve_example(skill: Path, selector: str) -> Path:
     files = example_files(skill)
     if not files:
-        raise EvalError(f"skill has no examples: {skill}")
+        raise EvalError(f"skill has no verifier-evaluable examples: {skill}")
     raw = selector.strip().replace(":", "/")
     domains = {path.parent.name for path in files}
     domain: str | None = None
@@ -247,14 +250,21 @@ def parse_example(path: Path, domain: str | None = None) -> dict[str, Any]:
         r"^- Vulnerable revision(?: for reproduction)?:\s*`([0-9a-f]{7,40})`\s*$",
         "vulnerable revision",
     )
+    verifier_anchor = field(r"^- Verifier anchor:\s*(.+)$", "Verifier anchor")
     paths: list[str] = []
     for line in content.splitlines():
         command = line.strip()
-        if not command.startswith("git diff "):
-            continue
-        tokens = shlex.split(command)
-        if "--" in tokens:
-            paths.extend(tokens[tokens.index("--") + 1 :])
+        if command.startswith("git diff "):
+            tokens = shlex.split(command)
+            if "--" in tokens:
+                paths.extend(tokens[tokens.index("--") + 1 :])
+        elif command.startswith("git show "):
+            for token in shlex.split(command)[2:]:
+                if ":" not in token:
+                    continue
+                _, candidate = token.split(":", 1)
+                if "/" in candidate:
+                    paths.append(candidate)
     paths = list(dict.fromkeys(path for path in paths if "/" in path))
     if not paths:
         raise EvalError(f"example {path.name} has no affected reproduction paths")
@@ -266,8 +276,11 @@ def parse_example(path: Path, domain: str | None = None) -> dict[str, Any]:
         return match.group(1).strip() if match else ""
 
     domain = domain or path.parent.name
-    component = f"{domain} verifier/argument component"
-    target = f"{component}; affected historical paths: {', '.join(paths)}"
+    component = f"{domain} verifier implementation"
+    # Give the evaluator the same kind of neutral, bounded verifier surface that
+    # a real focused audit receives. Keep the defect, reduction location, fix,
+    # and reproduction paths private.
+    target = f"{component}; bounded verifier surface: {verifier_anchor}"
     failure = section("Failure") or section("Vulnerable relation")
     impact_and_fix = section("Impact and fix")
     if not impact_and_fix:
@@ -283,6 +296,7 @@ def parse_example(path: Path, domain: str | None = None) -> dict[str, Any]:
         "fix_ref": fix_ref,
         "vulnerable_ref": vulnerable_ref,
         "component": component,
+        "verifier_anchor": verifier_anchor,
         "paths": paths,
         "target": target,
         "failure": failure,
@@ -574,6 +588,7 @@ def prepare(args: argparse.Namespace) -> int:
             "fix_commit": fix_commit,
             "target": selected["target"],
             "target_component": selected["component"],
+            "verifier_anchor": selected["verifier_anchor"],
             "target_paths": selected["paths"],
             "answer_key": "answer-key.md",
             "repository_label": repo.name,
@@ -756,15 +771,32 @@ def audit_prompt(
 ) -> str:
     invocation = f"${skill_name}" if provider == "codex" else f"/{skill_name}"
     return (
+        "Safety scope: this is a benign defensive code-review benchmark over a local historical snapshot. "
+        "It evaluates whether a reviewer can identify and remediate verifier correctness failures; it does not "
+        "develop, execute, or operationalize exploitation. Limit deliverables to root cause, verifier acceptance "
+        "or rejection consequence, remediation, and defensive regression tests. "
         f"Use {invocation} to perform an authorized, defensive, read-only {domain} specialist review of exactly this historical target: "
         f"{target}\n\n"
-        "Stay within this specialist's domain. Inspect the local dependencies needed to decide the bounded "
-        "target, while stating explicit coverage limits. Follow the skill's "
+        "The verifier implementation is the primary audit object. Begin with the supplied bounded verifier "
+        "surface and its reachable acceptance predicate; inspect immediate verifier callers/callees and matching "
+        "emitted or generator artifacts only as needed to decide that predicate. Do not broaden into a whole-"
+        "repository audit and do not ask the user to choose a narrower target: select a reachable configuration "
+        "inside the supplied surface, state it, and proceed. Use protocol theory to derive the required verifier "
+        "identities and soundness/completeness conditions, then spend most of the run checking their concrete "
+        "implementation. Use prover code only as a proof-format or specification cross-reference after "
+        "reconstructing verifier behavior. Finish every verifier obligation in the selected surface even after "
+        "finding a candidate; record unrelated leads briefly rather than abandoning coverage. "
+        "Independent local subagent delegation is explicitly permitted when the injected specialist calls for "
+        "it. Keep every delegated review inside the same isolated fixture and bounded verifier surface, partition "
+        "concrete implementation obligations, and integrate all cross-file and protocol-seam conclusions in the "
+        "final report. "
+        "Treat a candidate "
+        "as a finding only after establishing an exact verifier acceptance/rejection path and a real soundness or "
+        "completeness consequence. State explicit coverage limits. Follow the skill's "
         "evidence gate and reporting format. Use only minimal bounded symbolic assignments or abstract "
-        "proof flows needed to establish a verifier mismatch. Do not generate or "
-        "execute proof-generation exploits, attack scripts, operational reproduction procedures, "
-        "deployment payloads, network probes, credential/access steps, or instructions for targeting "
-        "a live system. Broad external research is allowed, including source-hosting sites, for "
+        "proof flows needed to establish a concrete verifier acceptance or rejection mismatch. Do not produce "
+        "executable demonstrations, operational reproduction procedures, deployment payloads, network probes, "
+        "credential/access steps, or live-system instructions. Broad external research is allowed, including source-hosting sites, for "
         "normative standards, cryptographic background, auditing techniques, and unrelated reference "
         "implementations. Do not externally search for, fetch, or consult the audited project "
         f"({repository_label}) or any copy, mirror, newer source version, commit, diff, issue, pull "

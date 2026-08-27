@@ -8,11 +8,21 @@ description: Defensively audit one named verifier transcript state machine or bo
 Audit one concrete transcript state machine deeply. Treat every proof word as
 adversarial freedom until timely absorption and a semantic check bind it.
 
+## Defensive correctness scope
+
+This is an authorized, benign, read-only review of verifier correctness. Its
+purpose is to identify implementation flaws so maintainers can patch them.
+Limit deliverables to root cause, the precise verifier acceptance or rejection
+consequence, remediation, and defensive regression tests. Use only minimal
+symbolic counterexamples needed to prove a mismatch. Do not produce executable
+demonstrations, operational reproduction procedures, deployment payloads,
+network probes, credential/access steps, or live-system instructions.
+
 ## Require a bounded target
 
 Resolve the user's target to all of:
 
-- one concrete verifier or prover entrypoint;
+- one concrete verifier entrypoint;
 - one proof-system instance `(field, extension, hash, encoding, parameters)`;
 - either its complete transcript or one named phase with an explicit incoming
   state and outgoing handoff;
@@ -22,11 +32,26 @@ If no target is supplied, ask for a verifier entrypoint or transcript phase. Do
 not choose the whole repository. Review a small coupled pair only when necessary
 to compare mirrors, a serializer/parser pair, or the two sides of one handoff.
 
-Default to the verifier because it defines acceptance. If the user explicitly
-targets a prover, or the verifier does not exist yet, audit the prover's claimed
-interactive schedule and proof encoding as a provisional contract. Label every
-obligation that still requires verifier confirmation; do not report a verifier
-soundness finding from prover behavior alone.
+The verifier defines acceptance and is mandatory. If the user supplies only a
+prover or the matching verifier does not exist yet, ask for the verifier target
+or state that this verifier-review skill cannot establish the requested result.
+Do not replace the missing acceptance predicate with a provisional prover audit.
+
+After reconstructing verifier behavior, inspect only the smallest prover,
+flattener, serializer, or GPU slice needed to explain proof framing, intended
+round order, parameter provenance, or an observed parity failure. A producer
+defect that the verifier rejects is not a primary finding; record it separately
+as producer parity and return to the verifier.
+
+### Verifier-first search discipline
+
+Spend the review context on the selected verifier parser, transcript state,
+acceptance checks, generated verifier artifact, and caller. Reconstruct proof
+framing from verifier reads before opening producer code. Consult at most the
+specific producer/serializer symbols needed to resolve one disputed field or
+ordering edge; do not inventory or audit the prover transcript in parallel. A
+primary finding must name the verifier operation that absorbs, samples, checks,
+or fails to check the adversarial value.
 
 ## Preserve protocol expertise
 
@@ -38,6 +63,40 @@ from what the implementation happens to absorb.
 When another specialist produced a transcript artifact, verify it against source
 before consuming it. When no artifact exists, build it here. A protocol review
 may duplicate the local rounds later; that seam overlap is intentional.
+
+### Treat late special-case data as a primary target
+
+Transcript bugs often appear when a normal round is extended with auxiliary,
+optional, dynamically discovered, cached, deferred, or branch-specific proof
+data. Do not derive a challenge's dependency set merely from the buffer located
+next to its draw. Start from every downstream use of the challenge and enumerate
+**all** prover-controlled values entering the randomized relation.
+
+Before drawing a batching, folding, lookup, permutation, opening, or other
+randomness challenge, every prover-controlled value that the challenge is meant
+to randomize must already be fixed. A value is timely fixed only when it has
+been canonically absorbed into the transcript, is authenticated by an earlier
+commitment already bound into the transcript, or is uniquely recomputable from
+public or previously bound data. Reading or absorbing it after the draw is too
+late; later transcript updates cannot repair causality.
+
+Apply a strict late-data presumption:
+
+- if the verifier consumes a proof value under a challenge sampled before that
+  value was fixed, treat the ordering as a soundness defect unless a concrete
+  prior pin uniquely determines the value independently of that challenge;
+- a later algebraic check, randomized batch, opening, or consistency relation
+  is not by itself a closure. To close the candidate, prove that the late value
+  has no remaining choice because earlier authenticated data uniquely fixes it;
+- do not dismiss the candidate merely because honest implementations share the
+  order or because changing one late value in isolation fails. Correlated or
+  adaptive choices are exactly what timely randomization is intended to defeat;
+- do not require a complete end-to-end forgery or solve a large system of
+  degrees of freedom when the local verifier acceptance relation plainly lets
+  the prover choose an input after learning the challenge intended to bind it.
+  Establish the local late choice, its challenge-dependent consumer, and the
+  absence of a prior unique pin; use deeper algebra only when a purported
+  closing relation could actually determine the value uniquely.
 
 ## Read the applicable references
 
@@ -84,10 +143,15 @@ Read only what the target needs:
    must precede it and the relation the challenge protects.
 3. Walk actual parse order, not function grouping. Record every read, conversion,
    absorb, draw, PoW step, branch, loop count, check, and later use.
+   At every draw, walk forward to all consumers of the challenge, collect every
+   prover-controlled input they use, and walk each input backward to its first
+   transcript absorption or earlier authenticated pin. Flag any gap before
+   analyzing unrelated transcript phases.
 4. Model the transcript state exactly: initialization, domain/context binding,
    pending buffers, grouping, active lengths, padding, canonicalization,
    challenge mapping, draw advancement, forks/clones, and PoW mutation.
-5. Compare verifier and prover only after deriving the verifier schedule. For a
+5. Compare verifier and prover only after deriving the verifier schedule and
+   only when needed to resolve one concrete verifier input or mirror. For a
    same-instance mirror, also compare serializer, recursive verifier, generated
    output, or Solidity/Yul implementation byte-for-byte at the semantic level.
 6. Search for semantic pins on every duplicate, cache, claimed challenge,
@@ -131,6 +195,15 @@ hash/transcript; encoding; statement/context; selected phase; callers
 | Round | Incoming state/claim | Prover message | Exact absorption | Challenge/PoW | Must depend on | First protected check | Outgoing state |
 |---|---|---|---|---|---|---|---|
 
+### Challenge-dependency table
+
+| Challenge | Randomized relation/consumer | Complete prover-controlled input set | Fixed before draw by | Late inputs | Valid prior unique pin or defect |
+|---|---|---|---|---|---|
+
+Populate this table from challenge consumers, not from adjacent absorb calls.
+For every claimed closure, name the earlier authenticated data and the exact
+reason it uniquely determines the allegedly late input.
+
 ### Branch and implementation map
 
 Record conditional transcript shapes and classify comparisons as same-instance
@@ -145,12 +218,24 @@ closing check, reachable configuration, and a bounded symbolic accepting flow
 for a false statement. Keep it non-executable. Demote unresolved items to leads
 or specification questions. Distinguish completeness and robustness failures.
 
-If defective prover or verifier-source code is active but no consuming
-acceptance path and no concrete honest-proof rejection path exists, classify it
-as an **implementation-only defect**, not as soundness or completeness. State
-the conditional consequence of a future matching consumer separately. Do not
-promote a protocol violation merely because a hypothetical verifier could copy
-it.
+For a direct late-ordering violation, the exact prover freedom can be the
+ability to select the late value after observing the challenge that is supposed
+to randomize it. Confirmation does not require reconstructing a full public
+statement forgery when the verifier reaches a concrete challenge-dependent
+consumer and no earlier commitment, absorption, or deterministic recomputation
+uniquely pins that value. Report the result as local/component soundness and
+bound its impact accordingly. Demand deeper degrees-of-freedom analysis only
+when a plausible prior or later check may actually eliminate the late choice.
+
+If defective verifier source is active but no consuming acceptance path and no
+concrete verifier-caused honest-proof rejection path exists, classify it as an
+**implementation-only defect**, not as soundness or completeness. State the
+conditional consequence of a future consumer separately.
+
+If only prover, GPU, replay, or serialization code is defective and the selected
+verifier remains correct, classify it as **producer parity**, not a verifier
+finding. Do not promote it because a hypothetical verifier could copy the bug,
+and do not include it in primary verifier blind evaluation.
 
 Do not discard a concrete defect solely because no current caller, feature, or
 artifact reaches it. Report it separately as a **latent finding** when the
@@ -164,8 +249,8 @@ completeness and robustness failures.
 
 Report the selected target and phase first, then confirmed findings, unverified
 leads, closed candidates, transcript/proof-data artifacts, and exact coverage
-limits. State explicitly whether the review began from a verifier or only a
-provisional prover contract.
+limits. Name the concrete verifier entrypoint and acceptance consumer on which
+the result is based.
 
 Keep the work authorized, source-local, read-only, and defensive. Do not create
 forged proofs, exploit provers, deployment payloads, or live-system procedures.

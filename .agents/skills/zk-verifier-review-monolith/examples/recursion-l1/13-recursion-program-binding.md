@@ -5,6 +5,7 @@
 - Confirmed historical recursion-anchoring soundness bug
 - Boundary: cryptographically authenticated recursive output → `cli verify` claim that the proof belongs to the supplied `--bin`/`--text`
 - Component: `verify_artifact` across base, unrolled, and unified recursion targets
+- Verifier anchor: `tools/cli/src/prover_utils.rs::verify_artifact` authenticated-output comparison
 - Security character: valid-proof replay/substitution across programs sharing a program-independent recursion verifier
 - Fixed by: [`a2d7ad1`](https://github.com/matter-labs/zksync-airbender/commit/a2d7ad19fc37e4ab90bd43ffe409269f591aa7a0), PR [#321](https://github.com/matter-labs/zksync-airbender/pull/321)
 - Vulnerable revision: `180c1c336e4c939e57a54559e0d507e8ef359745`

@@ -4,6 +4,7 @@
 
 - Confirmed historical generated-verifier layout bug
 - Component: delegation RAM/request quotient generation with optional ABI offset limbs
+- Verifier anchor: emitted unrolled-circuit verifier quotients under `circuit_defs/unrolled_circuits/*/verifier/`
 - Reduction location: zero-width layout range → quotient input expression
 - Security character: wrong AIR or unusable generated code for layouts where the absent high limb semantically equals zero
 - Fixed by: [`613c8de`](https://github.com/matter-labs/zksync-airbender/commit/613c8de2c215d498a0646c2c883f029f49fae6e8)

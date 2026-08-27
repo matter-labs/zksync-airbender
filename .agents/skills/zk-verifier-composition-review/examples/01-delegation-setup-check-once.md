@@ -5,6 +5,7 @@
 - Confirmed historical full-statement soundness bug
 - Invariant: every delegation contribution is proved by the verifier-selected circuit/setup for its delegation type
 - Component: unrolled full-statement delegation aggregation
+- Verifier anchor: `full_statement_verifier/src/lib.rs` delegation-proof acceptance loop
 - Fixed by: [`32edde7`](https://github.com/matter-labs/zksync-airbender/commit/32edde78af91101ebcb79c611c95016549895129), PR [#21](https://github.com/matter-labs/zksync-airbender/pull/21)
 - Vulnerable revision: `7d80b89795ca86155290265f100c329f689ed27b`
 

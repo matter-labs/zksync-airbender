@@ -25,6 +25,18 @@ challenge_i = ExpandAndMap(seed_i, round/challenge domain)
 
 Equivalent sponge constructions are valid if they preserve the same properties. Airbender may hash a current seed followed by new data rather than use labeled sponge calls; audit the concrete construction, not the notation.
 
+In a hash-chained transcript, an absorb is a new hash invocation rather than a
+write into persistent sponge state. The implementation frames the prior seed
+and new message into one canonical byte string and computes a new digest. The
+hash function internally divides that byte string into compression blocks and
+applies its specified padding, length, and final-block rules; those internal
+boundaries must not change which bytes the protocol absorbs. In particular,
+hashing one concatenated message and chaining several hash calls are different
+transcript operations unless the protocol explicitly defines the latter. A
+sponge instead retains permutation state across absorb and squeeze operations,
+so its rate, padding, and operation boundaries define the corresponding byte
+stream. Reconstruct whichever model the implementation actually uses.
+
 The essential rule is stronger than “prover and verifier match”: every value whose later choice could help satisfy a challenge-dependent verification equation must be fixed in the transcript before that challenge is sampled. Two implementations can match each other and still implement an unsound schedule.
 
 ## 2. Mandatory reconstruction

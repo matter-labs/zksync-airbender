@@ -5,6 +5,7 @@
 - Confirmed historical verifier-binary completeness bug
 - Boundary: Merkle leaf bytes → Blake2s digest inside the alternative-compression recursive verifier
 - Component: full-round/final-round scheduling for exact-block inputs
+- Verifier anchor: `Blake2sForEverythingVerifierWithAlternativeCompression::verify_leaf_inclusion`
 - Security character: the recursive verifier implemented a different hash function on a boundary length
 - Fixed by: [`0e81150`](https://github.com/matter-labs/zksync-airbender/commit/0e81150273f40637cd926296139f254a2ac64957)
 - Vulnerable revision: `62e23e7cb573251298e9cbb7852e80124fc2c0ba`

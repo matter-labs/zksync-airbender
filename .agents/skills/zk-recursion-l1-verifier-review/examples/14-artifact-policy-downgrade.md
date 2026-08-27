@@ -5,6 +5,7 @@
 - Confirmed historical CLI acceptance-policy bug
 - Boundary: untrusted proof artifact → `cli verify`/`continue-proof` selection of security level, recursion target, and binary/model
 - Component: CLI `verify` and `continue-proof` policy plumbing
+- Verifier anchor: relying-party policy selection in `tools/cli/src/main.rs` and `prover_utils.rs`
 - Security character: policy downgrade and stage confusion before cryptographic verification
 - Fixed by: [`3e53f3f`](https://github.com/matter-labs/zksync-airbender/commit/3e53f3f3ac68fed1fbbcffbf28d4fcc425bd22e3), PR [#329](https://github.com/matter-labs/zksync-airbender/pull/329)
 - Vulnerable revision: `bd71d8cef62bde7eb72ea22d353df0c41d551663`

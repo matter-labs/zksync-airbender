@@ -4,6 +4,7 @@
 
 - Confirmed historical latent transcript-framing defect
 - Component: unfinished unrolled full-statement memory/delegation transcript
+- Verifier anchor: private `full_statement_verifier/src/unrolled_proof_statement.rs` verifier path
 - Exact omission: nonempty main-family tags and the nonempty
   inits/teardowns-family tag
 - Reachability at the vulnerable revision: not integrated; the private verifier

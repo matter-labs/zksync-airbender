@@ -1,6 +1,6 @@
 ---
 name: zk-verifier-review
-description: Coordinate, scope, prioritize, and integrate a multi-run defensive audit of a zero-knowledge verifier system across transcript/input, cross-circuit composition, GKR/WHIR, legacy STARK/FRI, concrete soundness, and recursion/L1 specialists. Use for prover-wide or whole-verifier campaigns, coverage planning, selecting the right specialist when scope is unclear, reconciling specialist artifacts, or reviewing an end-to-end Airbender verifier architecture; route a clearly bounded domain task to its specialist instead of attempting the whole codebase in one run.
+description: Coordinate, scope, prioritize, and integrate a multi-run defensive audit of a zero-knowledge verifier system across transcript/input, cross-circuit composition, GKR/WHIR, legacy STARK/FRI, concrete soundness, and recursion/L1 specialists. Use for whole-verifier campaigns, coverage planning, selecting the right specialist when scope is unclear, reconciling specialist artifacts, or reviewing an end-to-end Airbender verifier architecture; route a clearly bounded domain task to its specialist instead of attempting the whole codebase in one run.
 ---
 
 # ZK Verifier Audit Coordinator
@@ -15,10 +15,29 @@ one concrete entrypoint/component
   × one protocol phase, global invariant, or statement boundary
 ```
 
-Prefer the verifier because every proof message and subargument converges at its
-acceptance predicate. Use prover code as a format/specification cross-reference.
-When a prover is explicitly reviewed before a verifier exists or is ready,
-produce a provisional verification contract and schedule a verifier-side rerun.
+Every campaign cell starts from a concrete verifier, generated verifier, verifier
+binary, recursive wrapper, contract, or final acceptance consumer because every
+proof message and subargument converges at an acceptance predicate. Use prover
+code only as a bounded format/specification cross-reference after the verifier
+schedule is known. If no verifier-side consumer exists yet, the target is outside
+this audit suite; record the missing verifier rather than substituting a
+provisional prover audit.
+
+Producer-only proof-generation, GPU-parity, replay, and serialization bugs are
+not primary verifier findings when the selected verifier rejects them. Preserve
+such history separately as producer-parity knowledge, but do not spend campaign
+coverage or vulnerability-evaluation budget rediscovering it.
+
+## Defensive correctness scope
+
+This coordinator runs authorized, benign, read-only verifier correctness
+reviews whose purpose is to identify implementation flaws so maintainers can
+patch them. Require every specialist deliverable to stay within root cause, the
+precise verifier acceptance or rejection consequence, remediation, and
+defensive regression tests. Permit only minimal symbolic counterexamples needed
+to prove a mismatch. Do not request executable demonstrations, operational
+reproduction procedures, deployment payloads, network probes,
+credential/access steps, or live-system instructions.
 
 ## First principles
 
@@ -82,7 +101,7 @@ its incoming and outgoing boundaries.
 
 | Specialist | Select one bounded target | Owns | Must also check locally |
 |---|---|---|---|
-| `$zk-verifier-transcript-review` | One verifier/prover entrypoint or transcript phase | Complete selected transcript, parser, proof freedoms, encoding | Interactive protocol order for the selected phase |
+| `$zk-verifier-transcript-review` | One verifier entrypoint or transcript phase | Complete selected transcript, parser, proof freedoms, encoding | Interactive protocol order for the selected phase |
 | `$zk-verifier-composition-review` | One global invariant and all necessary participants | RAM/memory, PC/timestamp, delegation, LogUp aggregation, padding, chunk/setup coverage | Commitment timing and shared-challenge continuity |
 | `$zk-gkr-whir-verifier-review` | One Sumcheck/GKR/WHIR phase, generated component, or immediate seam | Layer/claim reduction, PCS handoff, folds/openings | Every protocol-specific transcript round and local error term |
 | `$zk-stark-fri-verifier-review` | One AIR/quotient/DEEP/FRI phase or historical generated component | Constraint/quotient and low-degree claim chain | Every protocol-specific transcript round and local error term |
@@ -98,6 +117,31 @@ directory-local pass. Its target remains one invariant, but that invariant must
 span every producer, verifier output, accumulator, injected boundary term, and
 final consumer required to establish it. Feed it the local artifacts from all
 participating protocol cells and use its discrepancies to reopen those cells.
+
+### Default decomposition for split GKR/WHIR verifiers
+
+When GKR and WHIR/PCS acceptance are implemented by separate contracts,
+transactions, binaries, or verifier entrypoints, make three campaign cells by
+default:
+
+1. a local GKR review from its parsed inputs through terminal-output checks and
+   production of the PCS handoff;
+2. a local WHIR/PCS review from that handoff through openings, queries, and its
+   own success decision; and
+3. a coordinator-owned seam review proving that both sides bind the same
+   statement, commitments, transcript state, point, claims, parameters, and
+   public outputs, and that call order, persistent state, replay protection,
+   authorization, and the final consumer compose correctly.
+
+Apply every relevant specialist lens independently to both local cells when its
+obligations occur on both sides; this commonly includes transcript/input,
+GKR/WHIR algebra, recursion/L1 implementation, and concrete soundness. Do not
+infer coverage of one half from the other. When independent delegation is
+explicitly permitted, use separate reviewers for the two local cells and let
+the coordinator integrate their artifacts; otherwise run the cells
+sequentially with separate reports. A target confined to one half does not
+require an artificial review of the other, but must record the seam as an
+outgoing or incoming dependency.
 
 ## Overlap is a protocol interface
 
@@ -241,13 +285,14 @@ For every final claim:
    acceptance path.
 7. State which matrix cells remain partial or unreviewed.
 
-Keep a separate latent-findings register. An exact defect whose violated
-invariant and activation condition are established must not disappear merely
-because no current caller, feature, generated artifact, binary, contract, or
-deployment reaches it. Label it **latent**, state what would activate it, and
-withhold deployed severity and present false-acceptance claims. Do not use the
-label for speculative TODOs, missing evidence, or reachable completeness and
-robustness failures.
+Keep a separate latent-findings register for exact verifier-side defects whose
+violated acceptance invariant and activation condition are established but no
+current caller, feature, binary, contract, or deployment reaches them. Label
+them **latent**, state what would activate them, and withhold deployed severity
+and present false-acceptance claims. Generator branches that emitted no verifier
+and producer defects rejected by the verifier belong to implementation or
+producer-parity history instead. Do not use latent for speculative TODOs,
+missing evidence, or reachable completeness and robustness failures.
 
 Use [finding-format.md](references/finding-format.md) for the integrated report.
 Read [verifier-threat-model.md](references/verifier-threat-model.md) and

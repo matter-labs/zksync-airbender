@@ -4,6 +4,7 @@
 
 - Confirmed latent verifier soundness bug and debug-build completeness bug
 - Component: Blake2s transcript PoW threshold shared by native and in-circuit verification
+- Verifier anchor: `Blake2sTranscript` nonce predicate called by native and recursive verification
 - Budget term: retry/grinding cost at the maximum supported `u32` threshold
 - Reachability: public API and assertion allowed 32 bits; historical shipped configurations used at most 28
 - Fixed by: [`bbf919d`](https://github.com/matter-labs/zksync-airbender/commit/bbf919d517e693827c81d0f579c74e754399292f), PR [#322](https://github.com/matter-labs/zksync-airbender/pull/322)

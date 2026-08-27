@@ -5,7 +5,19 @@ description: Defensively audit an entire Rust, generated, recursive, Solidity/Yu
 
 # Defensive ZK Verifier Review
 
-Audit the language accepted by the complete verifier system, not the behavior of the honest prover. For a focused request, resolve one complete verification entrypoint and the transitive dependencies of the selected pass. For a prover-wide or whole-system request, include every proof class, circuit family, chunk aggregator, recursion/wrapper boundary, generated/deployed verifier, and equivalent native/EVM implementation that can change the accepted statement. Return a high-precision cryptographic soundness report, not a general Rust code review.
+Audit the language accepted by the complete verifier system, not the behavior of the honest prover. For a focused request, resolve one complete verification entrypoint and the transitive dependencies of the selected pass. For a whole-verifier request, include every proof class, circuit family, chunk aggregator, recursion/wrapper boundary, generated/deployed verifier, and equivalent native/EVM implementation that can change the accepted statement. Return a high-precision cryptographic soundness report, not a general Rust code review.
+
+A verifier-side acceptance predicate is mandatory. If only prover code exists,
+this skill cannot perform the requested verifier audit. Producer, GPU, replay,
+and serializer bugs that a correct verifier rejects are producer-parity defects,
+not primary verifier findings, and must not consume the main audit or blind-eval
+budget.
+
+Spend discovery context on verifier entrypoints, parsers, generated artifacts,
+recursive wrappers, callers, and success exits. Do not broadly inventory prover,
+GPU, witness, replay, or serializer trees. Open only the producer symbols needed
+to decode a verifier message or test one already-identified parity seam, then
+return to the acceptance path.
 
 ## First principle
 
@@ -25,11 +37,12 @@ The second-order form is: **a challenge is random to the prover only when every 
 
 ## Safety and review boundary
 
-Keep the work authorized, source-local, read-only, and defensive.
+Keep the work authorized, benign, source-local, read-only, and defensive. Its
+purpose is to identify implementation flaws so maintainers can patch them.
 
-- Do not generate proof forgeries, executable exploit provers, deployment payloads, network probes, or live-system attack instructions.
-- Establish a soundness defect with verifier-local control-flow and algebraic evidence, a bounded symbolic malicious transcript, or a finite abstract proof flow.
-- Describe the missing invariant and a defensive regression property.
+- Limit deliverables to root cause, the precise verifier acceptance or rejection consequence, remediation, and defensive regression tests.
+- Use only minimal symbolic counterexamples needed to prove a mismatch.
+- Do not produce executable demonstrations, operational reproduction procedures, deployment payloads, network probes, credential/access steps, or live-system instructions.
 - Distinguish soundness, material completeness, robustness/availability, and ordinary implementation quality. Report panics or unsafe-code issues as security findings only when they affect the requested threat model.
 - Unless the request says otherwise, assess computational verifier soundness.
   State zero-knowledge/privacy leakage and proof-of-knowledge or extractor
@@ -210,7 +223,12 @@ Then run the deeper passes in this order while finishing every applicable pass:
 6. **EVM execution semantics and integration (P2).** Check exact calldata exhaustion, zero-padding reads, 256-bit-versus-field arithmetic, memory/spill aliasing, low-level-call success, registry authorization and idempotence, transaction atomicity, caller return handling, deploy-time parameter immutability, proxy/upgradability assumptions, gas/code-size reachability, and chain/fork-specific deployment behavior. A successful transaction is not proof acceptance unless the state-transition caller consumes an authenticated verifier success result.
 7. **Parameters and concrete soundness accounting (P3).** Recompute field-size, algebraic, proximity, query, folding, batching, hash, retry, deployment-lifetime union-bound, and grinding assumptions from the enforced configuration. Ensure runtime sizes respect analyzed bounds and security-level features select coherent constants and binaries.
 
-Use the prover only after the verifier-derived model exists. Read it to identify omitted messages, mismatched order/serialization, intended formulas, unsupported verifier paths, or specification gaps. Never dismiss a candidate because the honest prover does not exercise the malicious freedom.
+Use the prover only after the verifier-derived model exists and only for the
+smallest slice needed to identify omitted messages, mismatched
+order/serialization, intended formulas, unsupported verifier paths, or
+specification gaps. Never dismiss a verifier candidate because the honest prover
+does not exercise the malicious freedom. Conversely, do not promote a
+producer-only defect when the selected verifier rejects it.
 
 ## Analyze candidates adversarially
 
@@ -258,26 +276,29 @@ phases, or infer a system-wide level from one local retry-cost gap. If every
 reachable configuration derives zero bits, the new mechanism is hardening or
 future support rather than evidence of a historical security failure.
 
-Classify active defective protocol code as **implementation-only** when neither
-a consuming acceptance path nor a concrete honest-proof rejection path is
-established. A hypothetical future verifier copying a prover bug is not present
-soundness, and an intended transcript that no verifier implements is not by
-itself present completeness.
+Classify defective verifier/helper code as **implementation-only** when neither
+a consuming acceptance path nor a concrete verifier-caused honest-proof
+rejection path is established. Classify prover/GPU/replay/serializer defects
+rejected by the verifier as **producer parity**. A hypothetical future verifier
+copying a prover bug is neither present nor latent verifier soundness.
 
-Confirm completeness only when the affected generated binary, contract, prover,
-or wrapper was actually buildable/reachable and a canonical honest artifact is
-shown to reject, panic, or fail to compose. A source fragment fixed before the
-first compiling verifier is latent rather than historical completeness.
+Confirm completeness only when the affected verifier binary, contract, or
+verification wrapper was actually buildable/reachable and a canonical honest
+artifact is shown to reject, panic, or fail to compose. A producer that emits an
+invalid proof does not establish verifier completeness. A verifier source
+fragment fixed before the first compiling verifier is latent or implementation
+history depending on whether it was emitted as an exact verifier artifact.
 Canonicalization or field-representation hardening is implementation-only unless
 an exact consumer distinguishes the old representation in an accepting or
 rejecting predicate.
 
-Maintain a separate latent-findings section. Preserve an exact defect when its
-violated invariant and activation condition are established but no current
-caller, feature, generated artifact, binary, contract, or deployment reaches
-it. Label it **latent**, withhold deployed severity and present false-acceptance
-claims, and state what would activate it. Speculative TODOs or missing evidence
-remain leads; reachable completeness and robustness failures are not latent.
+Maintain a separate latent-findings section. Preserve an exact verifier defect
+when its violated acceptance invariant and activation condition are established
+but no current caller, feature, binary, contract, or deployment reaches it.
+Label it **latent**, withhold deployed severity and present false-acceptance
+claims, and state what would activate it. Generator-only and producer-only
+future paths belong to implementation/parity history; speculative TODOs remain
+leads.
 
 ## Independent validation
 

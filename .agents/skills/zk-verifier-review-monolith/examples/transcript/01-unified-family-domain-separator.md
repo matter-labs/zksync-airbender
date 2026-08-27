@@ -4,6 +4,7 @@
 
 - Confirmed historical same-instance Fiat-Shamir parity/completeness bug
 - Component: unified full-statement external-challenge transcript
+- Verifier anchor: `full_statement_verifier/src/unified_circuit_statement.rs` challenge derivation
 - Direct consequence: the provided prover and verifier derived different
   memory/delegation challenges for honest unified proofs
 - Additional security purpose: branch-specific domain separation for the

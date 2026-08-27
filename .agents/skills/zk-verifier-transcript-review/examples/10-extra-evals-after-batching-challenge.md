@@ -1,14 +1,14 @@
-# Cache-dependency evaluations followed the batching challenge
+# Generated GKR verifier drew the batching challenge before cache-dependency evaluations
 
 ## Classification
 
 - Confirmed historical Fiat-Shamir ordering bug
-- Component: GKR layer-claim batching with cache dependencies
-- Security character: confirmed component soundness failure in the generated
-  `mem_subword_only` verifier; prover and verifier shared the bad order
-- Repair started by: [`4e3142e`](https://github.com/matter-labs/zksync-airbender/commit/4e3142ead72767b21139bcaa2f2acb1da6944739)
-- Fixed by: [`2df0dea`](https://github.com/matter-labs/zksync-airbender/commit/2df0dea2b68bd6ab6070484277feb9d16435c934)
-- Vulnerable revision: `bf9bd04f2ac916eb8e65603cdba72f563b98351f`
+- Component: generated `mem_subword_only/sec_100` GKR verifier, main layer 2
+- Verifier anchor: `verifier/src/generated/mem_subword_only/sec_100/gkr.rs` layer-2 handoff
+- Security character: confirmed verifier component soundness failure
+- Generator fixed by: [`3edc1b9a`](https://github.com/matter-labs/zksync-airbender/commit/3edc1b9a2374760be4d6aca7beaf9d4ffae4ad87), PR #365
+- Fixed by: [`1eae11e`](https://github.com/matter-labs/zksync-airbender/commit/1eae11eaf06bd47f67045ae849bed7fb42aa37c2), PR #368
+- Vulnerable revision: `3edc1b9a2374760be4d6aca7beaf9d4ffae4ad87`
 
 ## Protocol context
 
@@ -31,13 +31,17 @@ One absorb of the concatenation is the protocol event. Two separately framed abs
 
 ## Failure
 
-The prover absorbed `new_claims` and immediately drew `next_batching_challenge`. Only afterwards did it discover and absorb extra prover-provided evaluations required by the cache relations. The coefficient used to combine the next layer was therefore independent of part of the message it was meant to batch.
+The same-revision generated `mem_subword_only/sec_100` verifier committed 16
+ordinary evaluations and immediately drew `next_batching`. Only afterward did
+it read and absorb four extra prover-controlled cache dependencies. It merged
+all 20 values into `state.prev_claims`, assigned the already-known challenge to
+`state.batching_challenge`, and used that pair to compute layer 1's initial
+claim. The coefficient was therefore independent of four values it was meant
+to batch.
 
-This is more serious than a CPU/GPU serialization mismatch. The same-revision
-generated `mem_subword_only/sec_100` verifier followed the same order at layer
-2: it committed 16 ordinary evaluations, drew `next_batching`, and only then
-read and absorbed four extra cache dependencies. Those values immediately
-entered the next layer's batched claim.
+This is a verifier acceptance bug, not merely a producer serialization
+mismatch. The values were eventually checked by cache relations, but those
+checks did not make the already-sampled batching coefficient depend on them.
 
 ## Bounded accepting flow
 
@@ -80,15 +84,13 @@ remained unchanged. The review did not establish an end-to-end false public
 machine statement, so the claim is component soundness rather than a broader
 system exploit.
 
-The repair sequence creates one transcript input initialized with ordinary
-claims, extends it with all canonical extra evaluations, absorbs the completed
-vector, and only then draws the batching challenge.
-
-The first repair commit, `4e3142e`, left variable-name and branch-scope build
-errors. `9050461d` repaired the name, and `2df0dea` moved the transition outside
-the optional branch to produce the first complete compilable repair. Together
-the commits show why transcript fixes must be reviewed as complete state-machine
-transitions, not isolated line movements.
+The generator repair in `3edc1b9a` splits each affected layer handoff into a
+pre-draw phase and a post-draw fold. The pre-draw phase appends all extra cache
+evaluations to the ordinary evaluation buffer, absorbs the complete logical
+message once, and only then samples `next_batching`. The post-draw phase merely
+merges/folds the already-bound claims. Commit `1eae11ea` regenerated the actual
+Rust verifier artifacts with that ordering; reviewing only the generator would
+have missed that the artifacts checked in by `3edc1b9a` were still stale.
 
 ## Regression
 
@@ -101,6 +103,6 @@ transitions, not isolated line movements.
 ## Reproduction evidence
 
 ```sh
-git diff bf9bd04f2ac916eb8e65603cdba72f563b98351f 2df0dea2b68bd6ab6070484277feb9d16435c934 -- prover/src/gkr/prover/sumcheck_loop/mod.rs
-git show bf9bd04f2ac916eb8e65603cdba72f563b98351f:verifier/src/generated/mem_subword_only/sec_100/gkr.rs
+git diff 10651d7a1d29e3010e126bc7a78a971ae45d7595 3edc1b9a2374760be4d6aca7beaf9d4ffae4ad87 -- verifier_generator/src/gkr/mod.rs
+git diff 3edc1b9a2374760be4d6aca7beaf9d4ffae4ad87 1eae11eaf06bd47f67045ae849bed7fb42aa37c2 -- verifier/src/generated/mem_subword_only/sec_100/gkr.rs
 ```

@@ -5,6 +5,7 @@
 - Confirmed historical multi-chunk verification bug
 - Invariant: verifier chunk-order and coverage checks rely only on live, constrained protocol state
 - Component: unified full-statement verifier
+- Verifier anchor: `full_statement_verifier/src/unified_circuit_statement.rs` multi-chunk output checks
 - Security character: honest multi-chunk rejection; removing the stale check does not itself prove reorder safety
 - Fixed by: [`85c4925`](https://github.com/matter-labs/zksync-airbender/commit/85c492522717063abc7191f8fb603ca728412e55)
 - Vulnerable revision: `728c6a2edc7d2e271b77627d5a9a5361e09c30de`

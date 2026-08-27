@@ -5,6 +5,7 @@
 - Confirmed historical terminal-statement soundness bug
 - Boundary: valid intermediate unified-recursion proof → artifact eligible for final verification/settlement
 - Component: proof-family count and security-level-specific convergence policy
+- Verifier anchor: `tools/cli/src/prover_utils.rs::verify_artifact` terminal-acceptance policy
 - Security character: an intermediate recursion state was accepted as a terminal state
 - Fixed by: [`3e53f3f`](https://github.com/matter-labs/zksync-airbender/commit/3e53f3f3ac68fed1fbbcffbf28d4fcc425bd22e3), PR [#329](https://github.com/matter-labs/zksync-airbender/pull/329)
 - Vulnerable revision: `bd71d8cef62bde7eb72ea22d353df0c41d551663`

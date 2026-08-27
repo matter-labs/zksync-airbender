@@ -5,6 +5,7 @@
 - Exact latent GKR verifier defect in the unfinished EVM port
 - Boundary: layer-0 base polynomial evaluations → next batched claim and WHIR opening inventory
 - Component: generated point-claim count, transcript helper, and calldata cursor
+- Verifier anchor: unfinished `verifier_evm/circuit.yul` layer-0 acceptance path
 - Security character: 41 base evaluations would be outside the randomized handoff batch if this source were selected
 - Fixed by: [`16a5ceb`](https://github.com/matter-labs/zksync-airbender/commit/16a5cebf46a3ffa378a4dc893a302d33a359d9d7)
 - Vulnerable revision: `fe19aa23dce1c5bdac100756cc2a51f15f6af29e`

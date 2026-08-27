@@ -5,6 +5,7 @@
 - Confirmed soundness bug in the runnable `av_large_field` generated/test contract
 - Boundary: generated GKR proof acceptance → lookup-valid circuit statement in the two-transaction Foundry consumer
 - Component: terminal output checks in `GkrVerifier`
+- Verifier anchor: generated `verifier_evm/src/templates/gkr.sol` contract exercised by the Foundry consumer
 - Security character: three lookup arguments were reduced through GKR but never required to close
 - Fixed by: [`bf9bd04`](https://github.com/matter-labs/zksync-airbender/commit/bf9bd04f2ac916eb8e65603cdba72f563b98351f)
 - Vulnerable revision: `33f2685b8e602eec323c4e470729db09e433f060`

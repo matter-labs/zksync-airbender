@@ -157,6 +157,31 @@ Setup caps may commit to program binaries and fixed tables. Some recursion proof
 
 Check recursion dispatch tags, security-level dispatch, base versus recursion setup sets, unified versus unrolled proof paths, combination of several inner recursion proofs, and final output framing.
 
+The recursion identity is carried as an authenticated chain over verifier
+stages. Each verifier must validate the prior link and bind the current stage's
+program/setup identity and successful execution context into the resulting
+chain according to the target version's exact rule. Merely establishing the
+original program identity does not prove that every required wrapper stage was
+included in the correct order.
+
+Audit each verifier program as one acceptance contract: it verifies the prior
+proof and all terminal argument predicates; closes global memory and public
+state using the same outputs; authenticates the prior chain material; derives
+the current stage identity from trusted verifier context; performs the required
+chain update or propagation; and exposes the result through authenticated output
+or compares it with final trusted policy. Correct chain arithmetic over outputs
+that were not bound by proof and state verification is insufficient.
+
+Do not assume the chain records every repetition or compression step. Recover
+from the target version whether repeated stages extend the chain, propagate an
+existing value, or authenticate a separate counter, proof-shape condition, or
+terminal marker. Whatever termination mechanism the design chooses, the final
+verifier or consumer must enforce it against trusted policy after authenticating
+the relevant state; producer stopping logic is not an acceptance check.
+
+Use [recursion-chain.md](recursion-chain.md) for the complete cross-environment
+base, recursive-step, identity-provenance, and terminal-convergence method.
+
 ## 5. Historical STARK stack
 
 In historical tags, use the staged prover only after deriving the verifier schedule. A representative mapping is:

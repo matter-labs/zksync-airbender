@@ -5,6 +5,7 @@
 - Confirmed soundness bug in the runnable `av_large_field` generated/test contract
 - Boundary: `GKRCircuitArtifact` semantics → assembled Solidity/Yul verifier
 - Component: circuit layer call graph and dimension-reduction boundary permutation
+- Verifier anchor: assembled Solidity/Yul verifier driver emitted by `verifier_evm/src/generator/assemble.rs`
 - Security character: the emitted artifact had five layers, but the driver called only layers 3 through 0; global-output offsets were also stale
 - Fixed by: [`5459c07`](https://github.com/matter-labs/zksync-airbender/commit/5459c07f94f5b6c843c0cb405ee797a4b2e93e7f)
 - Vulnerable revision: `1500f8ba394ecc320955493ac12d4030ffd20271`

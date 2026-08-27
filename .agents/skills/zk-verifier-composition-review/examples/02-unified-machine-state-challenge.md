@@ -5,6 +5,7 @@
 - Confirmed historical global-state soundness bug
 - Invariant: unified circuit state products and outer public-state contributions use one transcript-derived challenge family
 - Component: unified full-statement verifier
+- Verifier anchor: `full_statement_verifier/src/unified_circuit_statement.rs` external-challenge equality checks
 - Fixed by: [`8ef06cf`](https://github.com/matter-labs/zksync-airbender/commit/8ef06cf8dc63b04e4b309b501d54bb571e86a1a9), PR [#225](https://github.com/matter-labs/zksync-airbender/pull/225)
 - Vulnerable revision: `c16b75d2df36af2608fb971c3a75af83cd1c997d`
 

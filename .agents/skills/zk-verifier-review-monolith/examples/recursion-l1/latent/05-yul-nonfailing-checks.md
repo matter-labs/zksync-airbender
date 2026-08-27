@@ -5,6 +5,7 @@
 - Exact latent fail-open defect in the unfinished EVM verifier
 - Boundary: computed Sumcheck/GKR consistency predicates → contract acceptance
 - Component: generated per-round and terminal point checks
+- Verifier anchor: unfinished `verifier_evm/gkr.sol` and `circuit.yul` rejection control flow
 - Security character: core equations had no rejecting edge in source that had not yet produced a passing verifier build
 - Fixed by: [`4f8d993`](https://github.com/matter-labs/zksync-airbender/commit/4f8d993a7c3fbea5e52d4b4ef5cb1e3ad1a316e4)
 - Vulnerable revision: `16a5cebf46a3ffa378a4dc893a302d33a359d9d7`

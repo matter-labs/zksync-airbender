@@ -5,6 +5,7 @@
 - Confirmed reachable Rust/EVM transcript-completeness bug in the generated/test verifier
 - Boundary: canonical Rust/GPU GKR transcript → generated Yul verifier transcript
 - Component: cache-bearing layer point-claim batching
+- Verifier anchor: Yul verifier emitted by `verifier_evm/src/generator/circuit_yul.rs`
 - Security character: generated verifier used a different transcript from the canonical prover; causal soundness risk exists, but no false-accepting assignment is established
 - Fixed by: [`4b0d431`](https://github.com/matter-labs/zksync-airbender/commit/4b0d43104b7a82b5b9bec7fc37a6d6bea0c94cb8)
 - Vulnerable revision: `585e7c9384f83e2d6b98023d8aa5bdd001686faa`

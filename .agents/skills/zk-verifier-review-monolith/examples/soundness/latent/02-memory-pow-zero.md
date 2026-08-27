@@ -4,6 +4,7 @@
 
 - Confirmed latent higher-security budget implementation defect
 - Component: external memory/delegation permutation challenge derivation
+- Verifier anchor: prospective Sec100 `full_statement_verifier` challenge/PoW path
 - Budget term: Schwartz–Zippel collision probability under a bounded total element count, plus retry grinding
 - Reachability: the library exposed a `security_100` feature, but every full-statement wrapper and generated binary still selected Sec80 component verifiers; no working Sec100 full-statement proof path was established
 - Activation condition: import/generate Sec100 component verifiers and expose a matching full-statement caller or binary without first replacing the zero constant

@@ -155,6 +155,31 @@ at one point. Audit:
 - the claims passed to the PCS are the ones the GKR check consumed, not a
   re-read copy.
 
+### Close every terminal claim, including uncommitted virtual polynomials
+
+The terminal gate and Sumcheck identities establish consistency among the
+values supplied to them; they do not establish the provenance of those values.
+Build the complete set of layer-0 claims consumed by the generated gate code and
+partition it into:
+
+```text
+PCS-opened | verifier-computed | public/constant-bound | separately constrained
+```
+
+Require the partition to cover every claim exactly once. Mechanically compare
+the emitted layer address inventory with the emitted PCS claim-index inventory,
+then inspect every item in the set difference. A claim's omission from PCS is
+safe only when a concrete alternative check pins it.
+
+Fixed or virtual setup polynomials are the important case. Avoiding a
+commitment is sound because their MLE evaluations are deterministic functions
+of the final point and public setup. The verifier must compute those evaluations
+itself, or compare prover-supplied copies against its computation, for every
+present variant. Absorbing a claimed value, batching it, or evaluating a gate
+with it merely binds the verifier to a prover-selected relation; none proves
+that the claim equals the fixed polynomial. Do not stop after finding or
+closing one cached/derived claim—finish the complete address inventory.
+
 ## Soundness accounting
 
 Record the error terms so the budget pass can use them:
