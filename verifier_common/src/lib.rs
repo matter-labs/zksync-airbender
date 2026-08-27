@@ -7,7 +7,7 @@
 pub mod security_100;
 pub mod security_80;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SecurityModel {
     Security80,
     Security100,
