@@ -102,19 +102,27 @@ impl Mersenne31Field {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn from_negative_u64_with_reduction(x: u64) -> Self {
-        let x_low = (x as u32) & ((1 << 31) - 1);
-        let x_high = ((x >> 31) as u32) & ((1 << 31) - 1);
-        let x_sign = (x >> 63) as u32;
-        let res_wrapped = x_low.wrapping_add(x_high);
-        let res_wrapped = res_wrapped - x_sign;
-        let msb = res_wrapped & (1 << 31);
-        let mut sum = res_wrapped;
-        sum ^= msb;
-        let mut res = sum + (msb != 0) as u32;
-        if res >= Self::ORDER {
-            res -= Self::ORDER;
+
+        let c0 = (x as u32) & ((1 << 31) - 1);         // bits 0-30
+        let c1 = ((x >> 31) as u32) & ((1 << 31) - 1);  // bits 31-61
+        let top = (x >> 62) as u32;                       // bits 62-63 (0..3)
+        let sign = (x >> 63) as u32;                      // bit 63 (0 or 1)
+
+        let sum = c0 + c1; // max = 2*(2^31-1) = 2^32-2, fits u32
+        let low = sum & ((1 << 31) - 1);
+        let high = sum >> 31;
+        let s = low + high; 
+
+
+        let adjusted = s + top + (Self::ORDER - 4) * sign;
+
+        let msb = adjusted & (1 << 31);
+        let mut result = adjusted ^ msb;
+        result += (msb != 0) as u32;
+        if result >= Self::ORDER {
+            result -= Self::ORDER;
         }
-        Mersenne31Field(res)
+        Mersenne31Field(result)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -510,7 +518,7 @@ impl PrimeField for Mersenne31Field {
     }
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_u64(value: u64) -> Option<Self> {
-        if value as u32 >= Self::ORDER {
+        if value >= Self::ORDER as u64 {
             None
         } else {
             Some(Self(value as u32))
