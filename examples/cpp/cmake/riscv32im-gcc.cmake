@@ -1,0 +1,90 @@
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR riscv32)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+# Resolve all tool paths in one place so this example can use a locally built
+# riscv-gnu-toolchain tree instead of any preinstalled SDK.
+set(RISCV_GCC_TRIPLE "riscv32-unknown-elf" CACHE STRING "RISC-V GCC target triple")
+set(RISCV_GCC_BIN_DIR "" CACHE PATH "Directory that contains ${RISCV_GCC_TRIPLE}-* binaries")
+
+set(RISCV_GCC_C "" CACHE FILEPATH "Optional path to ${RISCV_GCC_TRIPLE}-gcc")
+set(RISCV_GCC_CXX "" CACHE FILEPATH "Optional path to ${RISCV_GCC_TRIPLE}-g++")
+set(RISCV_GCC_ASM "" CACHE FILEPATH "Optional path to assembler driver (defaults to C compiler)")
+set(RISCV_GCC_OBJCOPY "" CACHE FILEPATH "Optional path to ${RISCV_GCC_TRIPLE}-objcopy")
+
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES RISCV_GCC_TRIPLE)
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES RISCV_GCC_BIN_DIR)
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES RISCV_GCC_C)
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES RISCV_GCC_CXX)
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES RISCV_GCC_ASM)
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES RISCV_GCC_OBJCOPY)
+
+set(_RISCV_FIND_ARGS)
+if(RISCV_GCC_BIN_DIR)
+  if(NOT IS_DIRECTORY "${RISCV_GCC_BIN_DIR}")
+    message(FATAL_ERROR "RISCV_GCC_BIN_DIR does not exist: ${RISCV_GCC_BIN_DIR}")
+  endif()
+  list(APPEND _RISCV_FIND_ARGS HINTS "${RISCV_GCC_BIN_DIR}" NO_DEFAULT_PATH)
+endif()
+
+if(RISCV_GCC_C)
+  if(NOT EXISTS "${RISCV_GCC_C}")
+    message(FATAL_ERROR "RISCV_GCC_C does not exist: ${RISCV_GCC_C}")
+  endif()
+  set(_RISCV_GCC_C "${RISCV_GCC_C}")
+else()
+  find_program(
+    _RISCV_GCC_C
+    NAMES ${RISCV_GCC_TRIPLE}-gcc
+    ${_RISCV_FIND_ARGS}
+    REQUIRED
+  )
+endif()
+
+if(RISCV_GCC_CXX)
+  if(NOT EXISTS "${RISCV_GCC_CXX}")
+    message(FATAL_ERROR "RISCV_GCC_CXX does not exist: ${RISCV_GCC_CXX}")
+  endif()
+  set(_RISCV_GCC_CXX "${RISCV_GCC_CXX}")
+else()
+  find_program(
+    _RISCV_GCC_CXX
+    NAMES ${RISCV_GCC_TRIPLE}-g++ ${RISCV_GCC_TRIPLE}-c++
+    ${_RISCV_FIND_ARGS}
+    REQUIRED
+  )
+endif()
+
+if(RISCV_GCC_ASM)
+  if(NOT EXISTS "${RISCV_GCC_ASM}")
+    message(FATAL_ERROR "RISCV_GCC_ASM does not exist: ${RISCV_GCC_ASM}")
+  endif()
+  set(_RISCV_GCC_ASM "${RISCV_GCC_ASM}")
+else()
+  set(_RISCV_GCC_ASM "${_RISCV_GCC_C}")
+endif()
+
+if(RISCV_GCC_OBJCOPY)
+  if(NOT EXISTS "${RISCV_GCC_OBJCOPY}")
+    message(FATAL_ERROR "RISCV_GCC_OBJCOPY does not exist: ${RISCV_GCC_OBJCOPY}")
+  endif()
+  set(_RISCV_GCC_OBJCOPY "${RISCV_GCC_OBJCOPY}")
+else()
+  find_program(
+    _RISCV_GCC_OBJCOPY
+    NAMES ${RISCV_GCC_TRIPLE}-objcopy
+    ${_RISCV_FIND_ARGS}
+    REQUIRED
+  )
+endif()
+
+set(CMAKE_C_COMPILER "${_RISCV_GCC_C}" CACHE FILEPATH "" FORCE)
+set(CMAKE_CXX_COMPILER "${_RISCV_GCC_CXX}" CACHE FILEPATH "" FORCE)
+set(CMAKE_ASM_COMPILER "${_RISCV_GCC_ASM}" CACHE FILEPATH "" FORCE)
+set(CMAKE_OBJCOPY "${_RISCV_GCC_OBJCOPY}" CACHE FILEPATH "" FORCE)
+
+set(COMMON_FLAGS "-march=rv32im_zicsr -mabi=ilp32 -mrelax -mstrict-align")
+
+string(APPEND CMAKE_C_FLAGS_INIT " ${COMMON_FLAGS}")
+string(APPEND CMAKE_CXX_FLAGS_INIT " ${COMMON_FLAGS}")
+string(APPEND CMAKE_ASM_FLAGS_INIT " ${COMMON_FLAGS}")

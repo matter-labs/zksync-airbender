@@ -1,0 +1,9 @@
+/build/
+*.o
+*.elf
+*.bin
+*.text
+*.asm
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
