@@ -5,3 +5,9 @@
 !/bin
 !/.gitignore
 !/gpu_work.md
+!/skills/
+
+# Generated output remains ignored inside otherwise-trackable skill sources.
+/output/
+/skills/output/
+/skills/*/output/
