@@ -7,17 +7,29 @@
 
 use gpu_core::primitives::field::BF;
 use gpu_gkr_compiler::{
-    compile_continuations, compile_forward, compile_r0, parse_forward_artifact,
-    ContinuationProgramBundle, ForwardProgramBundle, R0ProgramBundle, WindowFamily,
+    compile_continuations, compile_forward, compile_r0, lower_dr_window_program,
+    lower_main_continuation_window_program, lower_window_program, parse_forward_artifact,
+    project_dr_window_inputs, ContinuationProgramBundle, DrWindowInputOutput,
+    DrWindowInputProjection, DrWindowProgram, ForwardProgramBundle, MainContinuationWindowProgram,
+    R0ProgramBundle, WindowFamily, WindowProgram,
 };
 use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::backward::{
+    derive_dimension_reducing_inputs,
+    main_tail::{lower_main_tail_program, MainTailProgram},
+    window_dr,
+};
+use crate::storage_layout::GpuGKRStorageLayout;
 use crate::transform::normalize_compiled_circuit_for_gpu;
-use crate::upstream::{GKRAddress, GKRCircuitArtifact, VirtualSetupPoly};
+use crate::upstream::{
+    DimensionReducingInputOutput, GKRAddress, GKRCircuitArtifact, OutputType, VirtualSetupPoly,
+};
 
 #[derive(Clone)]
 pub(crate) struct BackwardLayerPlan {
@@ -170,6 +182,88 @@ fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) 
     }
 }
 
+/// The window-3 lowering of every main layer's R0 program.
+pub struct WindowProgramBundle {
+    pub layers: Vec<WindowProgram>,
+}
+
+/// The canonical window-3 lowering of every main-layer continuation program.
+#[derive(Debug)]
+pub struct MainContinuationWindowProgramBundle {
+    pub layers: Vec<MainContinuationWindowProgram>,
+}
+
+/// The dealt main-tail program for every main layer.
+#[derive(Debug)]
+pub struct MainTailProgramBundle {
+    pub layers: Vec<MainTailProgram>,
+}
+
+/// One dimension-reducing layer's window-3 R0 program and publication view.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DrWindowLayerProgram {
+    layer: usize,
+    folding_steps: usize,
+    program: DrWindowProgram,
+    input_projection: DrWindowInputProjection,
+}
+
+impl DrWindowLayerProgram {
+    pub(crate) fn new(
+        layer: usize,
+        folding_steps: usize,
+        program: DrWindowProgram,
+        input_projection: DrWindowInputProjection,
+    ) -> Self {
+        Self {
+            layer,
+            folding_steps,
+            program,
+            input_projection,
+        }
+    }
+
+    pub const fn layer(&self) -> usize {
+        self.layer
+    }
+
+    pub const fn folding_steps(&self) -> usize {
+        self.folding_steps
+    }
+
+    pub const fn program(&self) -> &DrWindowProgram {
+        &self.program
+    }
+
+    pub const fn input_projection(&self) -> &DrWindowInputProjection {
+        &self.input_projection
+    }
+}
+
+/// Window-3 R0 programs for every dimension-reducing layer at one final log.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DrWindowProgramBundle {
+    final_trace_log: u32,
+    layers: BTreeMap<usize, DrWindowLayerProgram>,
+}
+
+impl DrWindowProgramBundle {
+    pub(crate) fn new(final_trace_log: u32, layers: BTreeMap<usize, DrWindowLayerProgram>) -> Self {
+        Self {
+            final_trace_log,
+            layers,
+        }
+    }
+
+    pub const fn final_trace_log(&self) -> u32 {
+        self.final_trace_log
+    }
+
+    pub fn layer(&self, dr_layer: usize) -> Option<&DrWindowLayerProgram> {
+        self.layers.get(&dr_layer)
+    }
+}
+
 /// Symbolic programs compiled once with the circuit's other precomputations.
 ///
 /// R0 and continuation remain separate compiler products and separate runtime
@@ -182,6 +276,17 @@ pub struct GkrPrograms {
     pub(crate) r0: R0ProgramBundle,
     pub(crate) continuations: ContinuationProgramBundle,
     pub(crate) backward_layers: Vec<BackwardLayerPlan>,
+    /// Lowered on the first windowed proof request, never during compilation:
+    /// `GkrPrograms` is built in circuit precomputations, which have no prover
+    /// config to select an arm with.
+    window: OnceLock<WindowProgramBundle>,
+    /// Dimension-reducing programs depend on proof geometry.
+    dr_window: Mutex<BTreeMap<u32, Arc<DrWindowProgramBundle>>>,
+    /// Lowered independently from R0 on the first proof whose per-layer plan
+    /// selects at least one continuation window.
+    main_continuation_window: OnceLock<MainContinuationWindowProgramBundle>,
+    /// Lowered on the first proof that requests the main-tail arm.
+    main_tail: OnceLock<MainTailProgramBundle>,
 }
 
 impl GkrPrograms {
@@ -224,7 +329,147 @@ impl GkrPrograms {
             r0,
             continuations,
             backward_layers,
+            window: OnceLock::new(),
+            dr_window: Mutex::new(BTreeMap::new()),
+            main_continuation_window: OnceLock::new(),
+            main_tail: OnceLock::new(),
         })
+    }
+
+    pub fn resolve_window_programs(&self) -> &WindowProgramBundle {
+        self.window.get_or_init(|| WindowProgramBundle {
+            layers: self
+                .r0
+                .layers
+                .iter()
+                .map(|layer| lower_window_program(layer).unwrap())
+                .collect(),
+        })
+    }
+
+    pub fn window_programs_ready(&self) -> bool {
+        self.window.get().is_some()
+    }
+
+    pub fn resolve_dr_window_programs(&self, final_trace_log: u32) -> Arc<DrWindowProgramBundle> {
+        {
+            let cache = self
+                .dr_window
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(cached) = cache.get(&final_trace_log) {
+                return cached.clone();
+            }
+        }
+
+        let resolved = self.build_dr_window_programs(final_trace_log);
+        let mut cache = self
+            .dr_window
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match cache.entry(final_trace_log) {
+            std::collections::btree_map::Entry::Occupied(cached) => cached.get().clone(),
+            std::collections::btree_map::Entry::Vacant(vacant) => {
+                vacant.insert(resolved.clone());
+                resolved
+            }
+        }
+    }
+
+    pub fn dr_window_programs_ready(&self, final_trace_log: u32) -> bool {
+        let cache = self
+            .dr_window
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        cache.contains_key(&final_trace_log)
+    }
+
+    fn build_dr_window_programs(&self, final_trace_log: u32) -> Arc<DrWindowProgramBundle> {
+        let initial_layer = self.runtime_circuit.layers.len();
+        let initial_trace_log = self.runtime_circuit.trace_len.trailing_zeros();
+        assert!(final_trace_log <= initial_trace_log);
+
+        let layer_inputs = derive_dimension_reducing_inputs(
+            initial_layer,
+            &self.runtime_circuit.global_output_map,
+            initial_trace_log,
+            final_trace_log,
+        );
+        let layout = GpuGKRStorageLayout::from_artifact_with_tower(
+            self.runtime_circuit.as_ref(),
+            final_trace_log as usize,
+        );
+        let mut layers = BTreeMap::new();
+
+        for (layer, inputs) in layer_inputs {
+            let rows = adapt_dr_window_rows(&inputs);
+            let program = lower_dr_window_program(&rows).unwrap();
+            let input_projection = project_dr_window_inputs(&program, &layout.aliases);
+            let folding_steps = layout
+                .layers
+                .get(layer + 1)
+                .map(|output_layout| output_layout.log2_stride as usize)
+                .unwrap();
+            window_dr::validate_dr_window_folding_steps(folding_steps).unwrap();
+            layers.insert(
+                layer,
+                DrWindowLayerProgram::new(layer, folding_steps, program, input_projection),
+            );
+        }
+
+        Arc::new(DrWindowProgramBundle::new(final_trace_log, layers))
+    }
+
+    pub fn resolve_main_continuation_window_programs(
+        &self,
+    ) -> &MainContinuationWindowProgramBundle {
+        self.main_continuation_window
+            .get_or_init(|| MainContinuationWindowProgramBundle {
+                layers: self
+                    .continuations
+                    .layers
+                    .iter()
+                    .map(|layer| lower_main_continuation_window_program(layer).unwrap())
+                    .collect(),
+            })
+    }
+
+    pub fn main_continuation_window_programs_ready(&self) -> bool {
+        self.main_continuation_window.get().is_some()
+    }
+
+    pub fn resolve_main_tail_programs(&self) -> &MainTailProgramBundle {
+        self.main_tail.get_or_init(|| MainTailProgramBundle {
+            layers: self
+                .continuations
+                .layers
+                .iter()
+                .map(lower_main_tail_program)
+                .collect(),
+        })
+    }
+
+    pub fn main_tail_programs_ready(&self) -> bool {
+        self.main_tail.get().is_some()
+    }
+
+    pub(crate) fn window_layer(&self, layer: usize) -> &WindowProgram {
+        let bundle = self
+            .window
+            .get()
+            .expect("windowed scheduling requires preflight_windowed_backward before prove()");
+        &bundle.layers[layer]
+    }
+
+    pub(crate) fn main_continuation_window_layer(
+        &self,
+        layer: usize,
+    ) -> &MainContinuationWindowProgram {
+        let bundle = self
+            .main_continuation_window
+            .get()
+            .expect("continuation scheduling requires preflight_windowed_backward before prove()");
+        &bundle.layers[layer]
     }
 
     pub fn circuit_type(&self) -> CircuitType {
@@ -239,10 +484,6 @@ impl GkrPrograms {
         &self.runtime_circuit
     }
 
-    pub(crate) fn r0_layer(&self, layer: usize) -> &gpu_gkr_compiler::R0LayerProgram {
-        &self.r0.layers[layer]
-    }
-
     pub(crate) fn continuation_layer(
         &self,
         layer: usize,
@@ -251,57 +492,22 @@ impl GkrPrograms {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gpu_gkr_compiler::{LeanBoundColumn, LeanBoundWindow, LeanSourceBinding};
-    use std::collections::BTreeSet;
+fn adapt_dr_window_rows(
+    source_rows: &BTreeMap<OutputType, DimensionReducingInputOutput>,
+) -> BTreeMap<OutputType, DrWindowInputOutput> {
+    source_rows
+        .iter()
+        .map(|(output_type, source)| (*output_type, adapt_dr_window_row(source)))
+        .collect()
+}
 
-    #[test]
-    fn bound_inputs_include_cache_and_virtual_setup_sources() {
-        let binding = LeanSourceBinding {
-            windows: vec![
-                LeanBoundWindow {
-                    family: WindowFamily::CacheOutput {
-                        layer: 2,
-                        ext: true,
-                    },
-                    first_column: 7,
-                    columns: vec![LeanBoundColumn {
-                        column: 7,
-                        source: 0,
-                    }],
-                },
-                LeanBoundWindow {
-                    family: WindowFamily::VirtualSetup { kind: 0 },
-                    first_column: 0,
-                    columns: vec![LeanBoundColumn {
-                        column: 0,
-                        source: 1,
-                    }],
-                },
-            ],
-            source_count: 0,
-        };
-        let inputs: BTreeSet<_> = binding
-            .windows
-            .iter()
-            .flat_map(|window| {
-                window
-                    .columns
-                    .iter()
-                    .map(|column| bound_window_address(window.family, column.column))
-            })
-            .collect();
-        assert_eq!(
-            inputs,
-            BTreeSet::from([
-                GKRAddress::Cached {
-                    layer: 2,
-                    offset: 7
-                },
-                GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
-            ])
-        );
-    }
+fn adapt_dr_window_row(source: &DimensionReducingInputOutput) -> DrWindowInputOutput {
+    DrWindowInputOutput::new(
+        adapt_dr_window_addresses(&source.inputs),
+        adapt_dr_window_addresses(&source.output),
+    )
+}
+
+fn adapt_dr_window_addresses(addresses: &[GKRAddress]) -> [GKRAddress; 2] {
+    *<&[GKRAddress; 2]>::try_from(addresses).unwrap()
 }

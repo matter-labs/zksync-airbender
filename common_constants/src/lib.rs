@@ -31,5 +31,5 @@ pub const PC_STEP: usize = core::mem::size_of::<u32>();
 pub const INITIAL_PC: u32 = 0;
 pub const NON_DETERMINISM_CSR: u32 = 0x7c0;
 pub const CYCLE_CSR_INDEX: u32 = 3072;
-pub const DELEGATION_INVOCATION_OFFET: TimestampScalar = 1; // delegation register writes are 1 mod 4
-pub const DELEGATION_EXECUTION_OFFET: TimestampScalar = 2; // delegation circuit writes are (1 + 2) mod 4
+pub const DELEGATION_INVOCATION_OFFSET: TimestampScalar = 1; // delegation register writes are 1 mod 4
+pub const DELEGATION_EXECUTION_OFFSET: TimestampScalar = 2; // delegation circuit writes are (1 + 2) mod 4

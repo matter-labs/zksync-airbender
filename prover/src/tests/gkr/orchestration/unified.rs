@@ -24,7 +24,7 @@ use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use crate::merkle_trees::DefaultTreeConstructor;
 use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueriable,
+    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable,
 };
 use crate::tests::gkr::GKRFullWitnessTrace;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};

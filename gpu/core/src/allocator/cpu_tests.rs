@@ -160,6 +160,28 @@ fn disabled_small_allocator_identical_behavior() {
 }
 
 #[test]
+fn static_allocation_shrink_preserves_ownership() {
+    let backend = TestBackend(vec![0u8; 4 * BIG_CHUNK]);
+    let allocator =
+        StaticAllocator::<_, NonConcurrentInnerStaticAllocatorWrapper<_>>::new([backend], BIG_LCS);
+    let mut allocation = allocator
+        .alloc::<u64>(33, AllocationPlacement::BestFit)
+        .unwrap();
+    let ptr = allocation.data.ptr;
+    let alloc_len = allocation.data.alloc_len;
+
+    allocation.shrink_len_to(7);
+    assert_eq!(allocation.data.len, 7);
+    assert_eq!(allocation.data.alloc_len, alloc_len);
+    drop(allocation);
+
+    let reused = allocator
+        .alloc::<u64>(33, AllocationPlacement::BestFit)
+        .unwrap();
+    assert_eq!(reused.data.ptr, ptr);
+}
+
+#[test]
 fn alloc_alignment_exceeding_chunk_rounds_to_alignment() {
     // When the requested alignment exceeds the chunk granularity, the shared
     // allocation tail rounds `alloc_len` up to the *alignment*, not the chunk

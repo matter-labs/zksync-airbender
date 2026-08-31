@@ -96,7 +96,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 kernel
             );
 
-            for (batch_challege, term) in challenges.iter().zip(terms.iter()) {
+            for (batch_challenge, term) in challenges.iter().zip(terms.iter()) {
                 for (a, other_terms) in term.quadratic_part_base_by_base.iter() {
                     for (b, c) in other_terms.iter() {
                         assert!(
@@ -106,7 +106,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                             b
                         );
                         let mut c = *c;
-                        c.mul_assign(batch_challege);
+                        c.mul_assign(batch_challenge);
                         let existing_coeff = draft
                             .quadratic_part_base_by_base
                             .entry(*a)
@@ -120,7 +120,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 for (a, other_terms) in term.quadratic_part_base_by_ext.iter() {
                     for (b, c) in other_terms.iter() {
                         let mut c = *c;
-                        c.mul_assign(batch_challege);
+                        c.mul_assign(batch_challenge);
                         let existing_coeff = draft
                             .quadratic_part_base_by_ext
                             .entry(*a)
@@ -140,7 +140,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                             b
                         );
                         let mut c = *c;
-                        c.mul_assign(batch_challege);
+                        c.mul_assign(batch_challenge);
                         let existing_coeff = draft
                             .quadratic_part_ext_by_ext
                             .entry(*a)
@@ -153,7 +153,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
                 for (b, c) in term.linear_part_base.iter() {
                     let mut c = *c;
-                    c.mul_assign(batch_challege);
+                    c.mul_assign(batch_challenge);
                     let existing_coeff = draft
                         .linear_part_base_by_everything
                         .entry(*b)
@@ -163,7 +163,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
                 for (b, c) in term.linear_part_ext.iter() {
                     let mut c = *c;
-                    c.mul_assign(batch_challege);
+                    c.mul_assign(batch_challenge);
                     let existing_coeff = draft
                         .linear_part_ext_by_everything
                         .entry(*b)
@@ -173,20 +173,20 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
                 if let Some(b) = term.output_in_base {
                     let mut c = E::ONE;
-                    c.mul_assign(batch_challege);
+                    c.mul_assign(batch_challenge);
                     let existing_coeff = draft.outputs_in_base.entry(b).or_insert(E::ZERO);
                     existing_coeff.add_assign(&c);
                 }
 
                 if let Some(b) = term.output_in_extension {
                     let mut c = E::ONE;
-                    c.mul_assign(batch_challege);
+                    c.mul_assign(batch_challenge);
                     let existing_coeff = draft.outputs_in_ext.entry(b).or_insert(E::ZERO);
                     existing_coeff.add_assign(&c);
                 }
 
                 let mut c = term.constant_term;
-                c.mul_assign(batch_challege);
+                c.mul_assign(batch_challenge);
                 draft.constant_term.add_assign(&c);
             }
         }

@@ -31,4 +31,4 @@ pub use full_statement_verifier::host_utils::{
 #[cfg(feature = "verifiers")]
 pub use full_statement_verifier::host_utils::{native_verify_unified, native_verify_unrolled};
 pub use setups::Setups;
-pub use verifier_common::fsv_binaries::FsvProgram;
+pub use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};

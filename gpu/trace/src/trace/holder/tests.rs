@@ -11,7 +11,7 @@ use worker::Worker;
 use super::*;
 use crate::upstream::{
     multivariate_coeffs_into_hypercube_evals, Blake2sU32MerkleTreeWithCap,
-    ColumnMajorMerkleTreeConstructor, Field, MerkleTreeCapVarLength, PathQueriable, PrimeField,
+    ColumnMajorMerkleTreeConstructor, Field, MerkleTreeCapVarLength, PathQueryable, PrimeField,
 };
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_prover_context::ProverContextConfig;
@@ -135,7 +135,7 @@ fn stage1_caps_from_cpu_cosets(
             worker,
         );
     let subcap_size = total_cap_size >> log_lde_factor;
-    PathQueriable::get_cap(&tree)
+    PathQueryable::get_cap(&tree)
         .cap
         .chunks_exact(subcap_size)
         .map(|chunk| MerkleTreeCapVarLength {
@@ -1181,8 +1181,6 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                     &stream,
                 )
                 .unwrap();
-                let mut staging =
-                    RawDeviceAllocation::<Digest>::alloc(leaves_count * cosets_in_tile).unwrap();
                 build_partial_trees_from_physical(
                     &physical_device,
                     &mut new_tree,
@@ -1192,7 +1190,6 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                     log_tree_cap_size,
                     columns_count,
                     cosets_in_tile,
-                    &mut staging,
                     &stream,
                 )
                 .unwrap();

@@ -127,7 +127,7 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
 
     // Draw the WHIR base batching challenge on device from the rolling backward
     // seed. Pow-aware (`draw_random_field_els_with_pow(seed, 1, bits)`): grinds
-    // the batched-proximity PoW (0 bits at Sec80), advances the seed, honors the
+    // the configured batched-proximity PoW, advances the seed, and honors the
     // skip-first-word convention. The nonce lands in its slab slot.
     // SAFETY: `ProofLayout` computes a live, aligned, non-overlapping E4 region
     // inside `proof_slab`. The draw and every WHIR consumer are ordered on the

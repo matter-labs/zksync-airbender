@@ -791,7 +791,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
 
             for i in 0..4 {
                 // `i` marks u16-ish chunks over which we accumulate
-                // schoolbook multplication terms
+                // schoolbook multiplication terms
                 // println!("Computing enforcement on limb {}", i);
 
                 let mut expr = Expr::<F>::zero();

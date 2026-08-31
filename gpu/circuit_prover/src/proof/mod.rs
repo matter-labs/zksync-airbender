@@ -9,14 +9,14 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
-use crate::upstream::ProverConfig;
+use crate::upstream::{validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
-use gpu_gkr::GkrPrograms;
+use gpu_gkr::{main_continuation_window_count, GkrPrograms};
 use gpu_prover_context::ProverContext;
 
 pub use orchestration::GpuGKRProofJob;
@@ -27,11 +27,80 @@ use orchestration::{
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
+pub fn validate_windowed_schedule(gkr_programs: &GkrPrograms, prover_config: &ProverConfig) {
+    assert_eq!(
+        validated_schedule_class(gkr_programs, prover_config),
+        Some(SumcheckScheduleClass::Windowed)
+    );
+}
+
+fn validated_schedule_class(
+    gkr_programs: &GkrPrograms,
+    prover_config: &ProverConfig,
+) -> Option<SumcheckScheduleClass> {
+    validate_sumcheck_schedule(
+        &prover_config.same_size_sumcheck_schedule,
+        main_folding_steps(gkr_programs),
+    )
+    .ok()
+}
+
+fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
+    gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize
+}
+
+pub fn preflight_windowed_backward(
+    gkr_programs: &GkrPrograms,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+) {
+    validate_windowed_schedule(gkr_programs, prover_config);
+    main_continuation_window_count(main_folding_steps(gkr_programs));
+    gkr_programs.resolve_window_programs();
+    gkr_programs.resolve_main_continuation_window_programs();
+    gkr_programs.resolve_main_tail_programs();
+    gkr_programs.resolve_dr_window_programs(final_trace_size_log_2);
+}
+
+/// What the DR preflight boundary needs in order to admit a proof request.
+///
+/// `None` at the boundary means the request is not a proof, so neither the
+/// windowed lowering preflight nor DR-tail resource admission applies.
+#[derive(Clone, Copy)]
+pub struct DrTailPreflightRequest<'a> {
+    pub gkr_programs: &'a GkrPrograms,
+    pub prover_config: &'a ProverConfig,
+    pub final_trace_size_log_2: u32,
+    pub device_id: i32,
+}
+
+/// Preflight before constructing transfers so the plan can be owned by them.
+pub fn admit_dr_tail_before_transfers<T>(
+    request: Option<DrTailPreflightRequest<'_>>,
+    construct_transfers: impl FnOnce(Option<gpu_gkr::DrTailProofPlan>) -> T,
+) -> CudaResult<T> {
+    let Some(request) = request else {
+        return Ok(construct_transfers(None));
+    };
+    preflight_windowed_backward(
+        request.gkr_programs,
+        request.prover_config,
+        request.final_trace_size_log_2,
+    );
+    let plan = gpu_gkr::preflight_dr_tail_resources(
+        request.gkr_programs,
+        request.final_trace_size_log_2,
+        request.device_id,
+    )?;
+    Ok(construct_transfers(Some(plan)))
+}
+
 pub fn prove<'a, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
+    dr_tail_plan: &gpu_gkr::DrTailProofPlan,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     prove_inner(
@@ -39,6 +108,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         prover_config,
         final_trace_size_log_2,
         inputs,
+        dr_tail_plan,
         None,
         context,
     )
@@ -52,11 +122,18 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    preflight_windowed_backward(gkr_programs, prover_config, final_trace_size_log_2);
+    let dr_tail_plan = gpu_gkr::preflight_dr_tail_resources(
+        gkr_programs,
+        final_trace_size_log_2,
+        era_cudart::device::get_device()?,
+    )?;
     prove_inner(
         gkr_programs,
         prover_config,
         final_trace_size_log_2,
         inputs,
+        &dr_tail_plan,
         Some(Box::default()),
         context,
     )
@@ -67,10 +144,16 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
+    dr_tail_plan: &gpu_gkr::DrTailProofPlan,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
+    validate_windowed_schedule(gkr_programs, prover_config);
+    assert!(gkr_programs.window_programs_ready());
+    assert!(gkr_programs.main_continuation_window_programs_ready());
+    assert!(gkr_programs.main_tail_programs_ready());
+    assert!(gkr_programs.dr_window_programs_ready(final_trace_size_log_2));
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -88,7 +171,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         top_bits_host,
         external_challenges,
     } = inputs;
-
     if let Some(setup_transfer) = setup.as_ref() {
         assert_eq!(
             setup_transfer.trace_holder.log_lde_factor,
@@ -195,6 +277,8 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         backward_state,
         top_bits_host.clone(),
         Arc::clone(gkr_programs),
+        dr_tail_plan,
+        final_trace_size_log_2,
         external_challenges.device.as_ptr(),
         d_seed,
         d_evaluation_point_and_batching,
@@ -328,6 +412,3 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         },
     })
 }
-
-#[cfg(test)]
-mod tests;

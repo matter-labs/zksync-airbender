@@ -37,7 +37,9 @@ pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReduc
 pub(crate) use prover::gkr::prover::{GKRProof, WhirSchedule};
 pub(crate) use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
 pub(crate) use prover::gkr::prover_config::pow_bits;
-pub(crate) use prover::gkr::prover_config::ProverConfig;
+pub(crate) use prover::gkr::prover_config::{
+    validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass,
+};
 pub(crate) use prover::merkle_trees::DefaultTreeConstructor;
 
 // -----------------------------------------------------------------------
@@ -94,8 +96,6 @@ pub(crate) use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::stages::initial_commit::commit_separate_memory_and_witness_subtrees;
 #[cfg(test)]
-pub(crate) use prover::gkr::prover::transcript_utils::draw_query_bits;
-#[cfg(test)]
 pub(crate) use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::CommitmentMode;
@@ -116,10 +116,8 @@ pub(crate) use prover::gkr::witness_gen::oracles::{
 #[cfg(test)]
 pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
 #[cfg(test)]
-pub(crate) use prover::query_utils::{assemble_query_index, BitSource};
-#[cfg(test)]
 pub(crate) use prover::tracers::oracles::transpiler_oracles::delegation::{
     BigintDelegationOracle, Blake2sDelegationOracle, KeccakDelegationOracle,
 };
 #[cfg(test)]
-pub(crate) use prover::transcript::{Blake2sTranscript, Seed, Transcript};
+pub(crate) use prover::transcript::{Blake2sTranscript, Transcript};

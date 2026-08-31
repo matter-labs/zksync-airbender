@@ -7,7 +7,7 @@ use era_cudart::memory::memory_copy_async;
 use fft::Twiddles;
 use prover::gkr::prover::backend::{Backend, NaiveBackend};
 use prover::gkr::whir::commit_single_ext_poly_for_test;
-use prover::merkle_trees::{DefaultTreeConstructor, PathQueriable};
+use prover::merkle_trees::{DefaultTreeConstructor, PathQueryable};
 use worker::Worker;
 
 use crate::test_utils::make_test_context;
@@ -74,7 +74,7 @@ fn assert_recursive_commitment_matches_live_cpu(
     )
     .unwrap();
 
-    let cpu_cap = PathQueriable::get_cap(&cpu.tree);
+    let cpu_cap = PathQueryable::get_cap(&cpu.tree);
     assert_eq!(
         gpu.get_tree_cap(&context).unwrap(),
         cpu_cap,

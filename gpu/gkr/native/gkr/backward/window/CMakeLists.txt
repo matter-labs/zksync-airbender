@@ -1,0 +1,23 @@
+target_sources(gpu_gkr_native PRIVATE
+        coefficient_bank.cu
+        coefficient_bank.cuh
+        common.cuh
+        ../generated/r0_window_shape_1b1.cu
+        ../generated/r0_window_shape_3ff.cu
+        ../generated/r0_window_shape_471.cu
+        ../generated/r0_window_shape_4f6.cu
+        ../generated/r0_window_shape_5f7.cu
+        ../generated/r0_window_shape_7f7.cu
+        ../generated/r0_window_shape_7ff.cu
+        ../generated/r0_window_shape_c78.cu
+        ../generated/r0_window_shape_c7a.cu
+        ../generated/r0_window_shape_ffb.cu
+        ../generated/r0_window_shape_fff.cu
+        ../generated/windowed_r0_manifest.cuh
+        state.cu
+        window_abi.cuh
+        window_accumulator.cuh
+        window_control.cuh
+        window_geometry.cuh
+        window_source.cuh
+)

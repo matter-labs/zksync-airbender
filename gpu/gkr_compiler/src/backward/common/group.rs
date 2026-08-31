@@ -81,8 +81,7 @@ fn factor(recipe: &NormalizedCoefficientRecipe) -> Option<(u32, NormalizedCoeffi
 ///
 /// The only decoder of that id space in the crate, so a validator, the interpreter
 /// and the tests cannot disagree with the transform that minted the ids.
-#[cfg(test)]
-pub fn immediate_value(layer: &CoeffLayer, id: ImmediateId) -> Option<u32> {
+pub(crate) fn immediate_value(layer: &CoeffLayer, id: ImmediateId) -> Option<u32> {
     match id.bank_index() {
         None => Some(if id == ImmediateId::NEG_ONE {
             neg_one()
@@ -110,6 +109,119 @@ fn term_sides(term: &CoeffTerm) -> (bool, bool) {
         CoeffTerm::C2Product { .. } => (false, true),
         CoeffTerm::DualProduct { .. } => (true, true),
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CoeffGroupingMemberAnalysis {
+    pub term: TermId,
+    pub immediate: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CoeffGroupingCandidate {
+    pub core: NormalizedCoefficientRecipe,
+    pub members: Vec<CoeffGroupingMemberAnalysis>,
+    pub has_c0: bool,
+    pub has_c2: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CoeffGroupingAnalysis {
+    pub term_recipes: Vec<(TermId, NormalizedCoefficientRecipe)>,
+    pub groups: Vec<CoeffGroupingCandidate>,
+}
+
+fn recipe_for_id(
+    layer: &CoeffLayer,
+    id: CoefficientRecipeId,
+) -> Result<NormalizedCoefficientRecipe, CoeffError> {
+    if id == CoefficientRecipeId::ONE {
+        return Ok(NormalizedCoefficientRecipe::one());
+    }
+    if id == CoefficientRecipeId::NEG_ONE {
+        return Ok(NormalizedCoefficientRecipe::neg_one());
+    }
+    layer
+        .banked_recipe(id)
+        .cloned()
+        .ok_or(CoeffError::UnknownCoefficient { id })
+}
+
+fn reconstruct_term_recipes(
+    layer: &CoeffLayer,
+) -> Result<Vec<(TermId, NormalizedCoefficientRecipe)>, CoeffError> {
+    let mut grouped = BTreeMap::new();
+    for group in &layer.groups {
+        let core = recipe_for_id(layer, group.core)?;
+        for member in &group.members {
+            let immediate =
+                immediate_value(layer, member.immediate).ok_or(CoeffError::UnknownImmediate {
+                    id: member.immediate,
+                })?;
+            grouped.insert(member.term, scale_by(&core, bf(immediate)));
+        }
+    }
+    layer
+        .terms
+        .iter()
+        .map(|term| {
+            let recipe = match grouped.get(&term.id()) {
+                Some(recipe) => recipe.clone(),
+                None => recipe_for_id(layer, term.coefficient())?,
+            };
+            Ok((term.id(), recipe))
+        })
+        .collect()
+}
+
+pub(crate) fn analyze_coeff_grouping(
+    layer: &CoeffLayer,
+) -> Result<CoeffGroupingAnalysis, CoeffError> {
+    let term_recipes = reconstruct_term_recipes(layer)?;
+    let terms_by_id: BTreeMap<_, _> = layer.terms.iter().map(|term| (term.id(), term)).collect();
+    let mut by_core: BTreeMap<NormalizedCoefficientRecipe, Vec<CoeffGroupingMemberAnalysis>> =
+        BTreeMap::new();
+    for (term, recipe) in &term_recipes {
+        let Some((immediate, core)) = factor(recipe) else {
+            continue;
+        };
+        by_core
+            .entry(core)
+            .or_default()
+            .push(CoeffGroupingMemberAnalysis {
+                term: *term,
+                immediate,
+            });
+    }
+
+    let mut groups = Vec::new();
+    for (core, mut members) in by_core {
+        if members.len() < 2 {
+            continue;
+        }
+        members.sort_unstable_by_key(|member| member.term);
+        let mut has_c0 = false;
+        let mut has_c2 = false;
+        for member in &members {
+            if let Some(term) = terms_by_id.get(&member.term) {
+                let sides = term_sides(term);
+                has_c0 |= sides.0;
+                has_c2 |= sides.1;
+            }
+        }
+        groups.push(CoeffGroupingCandidate {
+            core,
+            members,
+            has_c0,
+            has_c2,
+        });
+    }
+    groups.sort_by_key(|group| group.members[0].term);
+
+    Ok(CoeffGroupingAnalysis {
+        term_recipes,
+        groups,
+    })
 }
 
 /// Group continuation terms that share a normalized coefficient core.

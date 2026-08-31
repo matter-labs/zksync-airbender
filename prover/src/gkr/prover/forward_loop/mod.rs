@@ -313,8 +313,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         match &gate.enforced_relation {
             GKRRelation::CopyInBaseField { input, output }
             | GKRRelation::CopyInExtensionField { input, output } => {
-                // even though it's handled above, we may need to copy cache relation to the
-                // next layer after making it, so we try again, but infailable option
+                // Even though it is handled above, we may need to copy the cache relation to the
+                // next layer after creating it, so retry with the infallible option.
                 copy::forward_evaluate_copy::<F, E, true>(
                     *input,
                     *output,

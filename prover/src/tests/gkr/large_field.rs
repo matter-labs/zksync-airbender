@@ -348,7 +348,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     use crate::gkr::whir::coset_commit::serialize_packed_base_commitment_split_to_disk;
     use crate::gkr::whir::rs_on_disk::{coset_file_path, OnDiskRsCodewords};
     use crate::merkle_trees::on_disk::{top_tree_file_path, OnDiskTreeLayout};
-    use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, RSQueriable};
+    use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, RSQueryable};
 
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
 
@@ -406,7 +406,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         // memory-mapped and read lazily.
         let setup_rs =
             OnDiskRsCodewords::<Proth120>::open(setup_coset_paths).expect("open on-disk setup RS");
-        let setup_coset_size_log2 = RSQueriable::coset_size_log2(&setup_rs);
+        let setup_coset_size_log2 = RSQueryable::coset_size_log2(&setup_rs);
         let setup_disk_tree = <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<
             Proth120,
         >>::open_disk_artifacts(

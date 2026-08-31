@@ -708,8 +708,8 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n")
         );
-        // Guard against a mis-resolved root vacuously passing: we must have
-        // found exactly as many artifacts as the table lists.
+        // Guard against an incorrectly resolved root vacuously passing: we
+        // must have found exactly as many artifacts as the table lists.
         assert_eq!(
             found.len(),
             CIRCUITS.len(),

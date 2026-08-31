@@ -2,26 +2,34 @@
 #![feature(generic_const_exprs)]
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
-//! Calibration harness for `src/cost_model/census.rs`. Every test here needs real
-//! recursion proofs, far too large to commit, so all of them are `#[ignore]`d and
-//! run by hand when the table is recalibrated. `cost_model_drift.rs` needs only
-//! committed artifacts, so it runs unignored in CI.
+//! Manual calibration harness for `src/host_utils/cost_model/census.rs`. Every
+//! test here needs freshly generated local recursion proofs, so all of them are
+//! `#[ignore]`d. CI runs only `cost_model_drift.rs`; that detects verifier
+//! codegen drift but does not validate the committed model's accuracy.
 //!
 //! Fixtures live in `$COST_MODEL_FIXTURE_DIR` as `<fixture>_proof.bin` /
 //! `<fixture>_setups.bin`: zlib-compressed bincode of `ProgramProof` and `Setups`.
-//! `circuit_defs/prover_examples`'s `test_recursive_proving_pipeline_zksync_os`
-//! (itself `#[ignore]`d — hours, large RAM) writes exactly that format via
-//! `serialize_compressed_to_file`, but under **different names**, so its output has
-//! to be renamed:
+//! Generate all four Sec100 Compression fixtures with the ignored GPU test
+//! `gpu_program_prover::tests::test_generate_sec100_cost_model_fixtures`. It
+//! proves the recursion layers explicitly instead of depending on the production
+//! scheduling threshold. From the repository root:
 //!
-//! | fixture | producer output | role |
-//! |---|---|---|
-//! | `base` | `base_proofs.bin` / `base_setups.bin` (note the plural) | RISC-V, keccak and bigint coefficients |
-//! | `base_alt` | the same two files from a second run, with the producer's hardcoded zksync_os guest swapped for one whose delegation set differs | a second base-layer delegation presence mask |
-//! | `recursion0` | `recursion_layer_0_proof_<tag>.bin` / `recursion_layer_0_setups_<tag>.bin` | recursion-layer `c0`, blake2 coefficient |
-//! | `recursion1` | `recursion_layer_1_proof_<tag>.bin` / `recursion_layer_1_setups_<tag>.bin` | steady recursion-chain path |
+//! ```text
+//! cargo nextest run -p gpu_program_prover --release --features verifiers --no-run
+//! COST_MODEL_FIXTURE_DIR="$PWD/target/cost-model-fixtures/sec100" \
+//!   .agents/bin/with_gpu_lock.sh cargo nextest run -p gpu_program_prover \
+//!   --release --features verifiers \
+//!   -E 'test(=tests::test_generate_sec100_cost_model_fixtures)' \
+//!   --run-ignored only --no-capture
+//! ```
 //!
-//! `emit_census_tables` prints the tables to paste into `src/cost_model/census.rs`;
+//! `base` is zkSync OS block 23620012; `base_alt` is hashed Fibonacci with
+//! `(n=15, h=1_200_000)`; `recursion0` and `recursion1` explicitly prove the
+//! Sec100 unrolled base and recursion verifiers. The files are non-authoritative
+//! local calibration inputs and must not be committed or consumed by CI.
+//!
+//! `emit_census_tables` prints the tables to paste into
+//! `src/host_utils/cost_model/census.rs`;
 //! `estimate_matches_measurement_on_every_fixture` and its census sibling are
 //! the acceptance gates.
 

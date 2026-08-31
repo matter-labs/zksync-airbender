@@ -56,14 +56,14 @@ fn retained_corpus_matches_the_cpu_codec_oracle() {
 
         for layer in &r0.layers {
             for (row, k) in [(0, 1), (3, 7)] {
-                let expected = interpret_coeff_layer(&layer.semantic, row, &Resolver).unwrap();
+                let expected = interpret_coeff_layer(&layer.coefficients, row, &Resolver).unwrap();
                 let encoded = interpret_r0_program(layer, row, &Resolver, k).unwrap();
                 assert_eq!(encoded, expected, "{layout_name} R0 L{}", layer.layer);
             }
         }
         for layer in &continuations.layers {
             for (row, k) in [(0, 1), (3, 7)] {
-                let expected = interpret_coeff_layer(&layer.semantic, row, &Resolver).unwrap();
+                let expected = interpret_coeff_layer(&layer.coefficients, row, &Resolver).unwrap();
                 let encoded = interpret_continuation_program(layer, row, &Resolver, k).unwrap();
                 assert_eq!(
                     encoded, expected,

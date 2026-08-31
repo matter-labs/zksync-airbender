@@ -171,17 +171,21 @@ impl LayerOut {
     /// Insert a resolution, erroring if `leaf` is already keyed to a DIFFERENT
     /// strategy (a CSE-identity invariant: identical fold ⇒ identical peek).
     /// Idempotent for an equal re-insert.
-    fn insert_resolution(&mut self, leaf: ExprId, strat: ResolutionStrategy) -> Result<(), String> {
+    fn insert_resolution(
+        &mut self,
+        leaf: ExprId,
+        strategy: ResolutionStrategy,
+    ) -> Result<(), String> {
         if let Some(existing) = self.resolutions.get(&leaf) {
-            if existing != &strat {
+            if existing != &strategy {
                 return Err(format!(
                     "gkr_eval_ir: resolution CSE collision at {:?}: {:?} vs {:?}",
-                    leaf, existing, strat
+                    leaf, existing, strategy
                 ));
             }
             return Ok(());
         }
-        self.resolutions.insert(leaf, strat);
+        self.resolutions.insert(leaf, strategy);
         Ok(())
     }
 
@@ -217,7 +221,7 @@ impl LayerOut {
         if num_columns == 0 {
             return Ok(());
         }
-        let strat = if set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
+        let strategy = if set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
             let predicate = decoder_predicate.ok_or_else(|| {
                 "gkr_eval_ir: decoder lookup fold but circuit has no machine_state predicate"
                     .to_string()
@@ -228,7 +232,7 @@ impl LayerOut {
         } else {
             ResolutionStrategy::PeekAggregate { set_index }
         };
-        self.insert_resolution(leaf, strat)
+        self.insert_resolution(leaf, strategy)
     }
 
     /// Record a folded-setup leaf's forward-peek strategy (row-indexed, zero-padded).

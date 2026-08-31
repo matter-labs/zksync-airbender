@@ -1,7 +1,7 @@
 //! Semantic model for backward coefficient programs.
 //!
 //! A source is `s0 + X*ds`. Each row contributes a quadratic polynomial, but
-//! the VM accumulates only its constant and quadratic coefficients; the round
+//! the evaluator accumulates only its constant and quadratic coefficients; the round
 //! update recovers the linear coefficient from the claim.
 
 use std::cmp::Ordering;
@@ -21,7 +21,7 @@ use super::{Bf, Ext};
 /// bodies are merged, pruned, and sorted by stable structural identity, so it
 /// never depends on schedule order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct TermId(pub u32);
+pub struct TermId(pub u32);
 
 /// Dense index of a [`CoeffSource`] in [`CoeffLayer::sources`]. Derived from the
 /// leaf's STRUCTURAL origin ([`OriginLeaf`]), never from the rebuilt `ExprId` or
@@ -89,7 +89,7 @@ impl ImmediateId {
 
 /// One grouped term: which term, and the BF immediate its recipe factors into.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct CoeffGroupMember {
+pub struct CoeffGroupMember {
     pub term: TermId,
     pub immediate: ImmediateId,
 }
@@ -98,7 +98,7 @@ pub(crate) struct CoeffGroupMember {
 /// are ascending by `TermId`; `has_c0`/`has_c2` say which accumulator sides the
 /// group's core multiplies into.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CoeffGroup {
+pub struct CoeffGroup {
     pub core: CoefficientRecipeId,
     pub members: Vec<CoeffGroupMember>,
     pub has_c0: bool,
@@ -107,27 +107,27 @@ pub(crate) struct CoeffGroup {
 
 /// The two source projections.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum Projection {
+pub enum Projection {
     Endpoint0,
     Delta,
 }
 
 /// One projection of one source.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct ProjectionId {
+pub struct ProjectionId {
     pub source: SourceId,
     pub projection: Projection,
 }
 
 impl ProjectionId {
-    pub(crate) fn endpoint0(source: SourceId) -> Self {
+    pub fn endpoint0(source: SourceId) -> Self {
         ProjectionId {
             source,
             projection: Projection::Endpoint0,
         }
     }
 
-    pub(crate) fn delta(source: SourceId) -> Self {
+    pub fn delta(source: SourceId) -> Self {
         ProjectionId {
             source,
             projection: Projection::Delta,
@@ -142,7 +142,7 @@ impl ProjectionId {
 ///
 /// Materialized R0 root outputs use the same source table as expression leaves.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CoeffSource {
+pub struct CoeffSource {
     pub origin: OriginLeaf,
     /// Resolved storage width: the `Ext` fold override in the `Ext` regime, the
     /// native read width (or the sink's field, for a materialized output) at R0.
@@ -464,7 +464,7 @@ impl NormalizedCoefficientRecipe {
 /// contributions are born with the same coefficient and the same factors, so they
 /// are never split and re-fused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CoeffTerm {
+pub enum CoeffTerm {
     C0Linear {
         id: TermId,
         coefficient: CoefficientRecipeId,
@@ -492,7 +492,7 @@ pub(crate) enum CoeffTerm {
 }
 
 impl CoeffTerm {
-    pub(crate) fn id(&self) -> TermId {
+    pub fn id(&self) -> TermId {
         match self {
             CoeffTerm::C0Linear { id, .. }
             | CoeffTerm::C2Product { id, .. }
@@ -505,7 +505,7 @@ impl CoeffTerm {
     ///
     /// Occurrences are not deduplicated. A native dual factor contributes both
     /// projections.
-    pub(crate) fn for_each_projection_use(&self, mut f: impl FnMut(ProjectionId)) {
+    pub fn for_each_projection_use(&self, mut f: impl FnMut(ProjectionId)) {
         match self {
             CoeffTerm::C0Linear { value, .. } => f(*value),
             CoeffTerm::C2Product { lhs, rhs, .. } => {
@@ -521,7 +521,7 @@ impl CoeffTerm {
         }
     }
 
-    pub(crate) fn coefficient(&self) -> CoefficientRecipeId {
+    pub fn coefficient(&self) -> CoefficientRecipeId {
         match self {
             CoeffTerm::C0Linear { coefficient, .. }
             | CoeffTerm::C2Product { coefficient, .. }
@@ -540,7 +540,7 @@ impl CoeffTerm {
 /// it holds neither the reserved `+1`/`-1` literals nor a zero recipe, and it is
 /// sorted by normalized recipe so its order does not depend on term order.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CoeffLayer {
+pub struct CoeffLayer {
     pub(crate) regime: crate::BwdRegime,
     /// The per-thread `acc_c0` initializer, evaluated once per
     /// proof/program. `None` = initialize to zero and consume no coefficient slot.
@@ -560,15 +560,11 @@ pub(crate) struct CoeffLayer {
 impl CoeffLayer {
     /// The banked recipe behind `id`, or `None` for a reserved literal (which has
     /// no bank entry) or an out-of-range id.
-    #[cfg(test)]
-    pub(crate) fn banked_recipe(
-        &self,
-        id: CoefficientRecipeId,
-    ) -> Option<&NormalizedCoefficientRecipe> {
+    pub fn banked_recipe(&self, id: CoefficientRecipeId) -> Option<&NormalizedCoefficientRecipe> {
         self.coefficients.get(id.bank_index()?)
     }
 
-    pub(crate) fn source(&self, id: SourceId) -> Option<&CoeffSource> {
+    pub fn source(&self, id: SourceId) -> Option<&CoeffSource> {
         self.sources.get(id.0 as usize)
     }
 }
@@ -587,7 +583,10 @@ impl CoeffLayer {
 pub enum CoeffError {
     /// The canonical layer and the distilled layer disagree on how many backward
     /// roots exist — they describe different layers.
-    RootCountMismatch { canonical: usize, distilled: usize },
+    RootCountMismatch {
+        canonical: usize,
+        distilled: usize,
+    },
     /// `DistilledLayer::root_terms` disagrees with the canonical `claim_roots`
     /// order (the single source of truth for batching position).
     RootOrderMismatch {
@@ -596,15 +595,28 @@ pub enum CoeffError {
         found: RootId,
     },
     /// A `root_terms` entry names a root outside the canonical layer.
-    UnknownCanonicalRoot { root: RootId },
+    UnknownCanonicalRoot {
+        root: RootId,
+    },
     /// A backward root that is not claim-bearing.
-    RootNotClaimBearing { root: RootId },
+    RootNotClaimBearing {
+        root: RootId,
+    },
     /// A sink kind with no read counterpart (`Export`).
-    UnsupportedSink { root: RootId, sink: SinkKind },
+    UnsupportedSink {
+        root: RootId,
+        sink: SinkKind,
+    },
     /// A root's batching factor is not a `ClaimBatching` challenge leaf.
-    BatchingFactorNotChallenge { root: RootId, expr: ExprId },
+    BatchingFactorNotChallenge {
+        root: RootId,
+        expr: ExprId,
+    },
     /// Relation degree above two. `degree` saturates at 3.
-    DegreeTooHigh { fragment: usize, degree: usize },
+    DegreeTooHigh {
+        fragment: usize,
+        degree: usize,
+    },
     /// The deduplicated coefficient bank plus the two reserved literals does not
     /// fit the thirteen coefficient bits of the u16 header.
     ///
@@ -622,28 +634,42 @@ pub enum CoeffError {
     /// and — like [`CoefficientBankOverflow`](Self::CoefficientBankOverflow) — a
     /// COMPILER ERROR by design: `ImmediateId` is a fixed u16 id space with no
     /// extended encoding.
-    ImmediateTableOverflow { len: usize },
+    ImmediateTableOverflow {
+        len: usize,
+    },
     /// A coefficient recipe factor that is not scalar-pure.
-    NonScalarCoefficientFactor { expr: ExprId },
+    NonScalarCoefficientFactor {
+        expr: ExprId,
+    },
     /// A distilled leaf that cannot be a backward source (a `LookupValue` leaf
     /// should have been erased by distillation).
-    UnsupportedLeaf { expr: ExprId },
+    UnsupportedLeaf {
+        expr: ExprId,
+    },
     /// A cross-layer read whose width is absent from `DistilledLayer::cross_fields`.
-    MissingCrossLayerField { place: ReadPlace },
+    MissingCrossLayerField {
+        place: ReadPlace,
+    },
     /// One structural origin resolved to two different widths.
     SourceFieldConflict {
         origin: OriginLeaf,
         first: FieldKind,
         second: FieldKind,
     },
+    UnknownCoefficient {
+        id: CoefficientRecipeId,
+    },
     #[cfg(test)]
-    UnknownCoefficient { id: CoefficientRecipeId },
+    EncodedZeroCoefficient {
+        id: CoefficientRecipeId,
+    },
+    UnknownImmediate {
+        id: ImmediateId,
+    },
     #[cfg(test)]
-    EncodedZeroCoefficient { id: CoefficientRecipeId },
-    #[cfg(test)]
-    UnknownImmediate { id: ImmediateId },
-    #[cfg(test)]
-    UnknownSource { id: SourceId },
+    UnknownSource {
+        id: SourceId,
+    },
     #[cfg(test)]
     ProjectionRoleMismatch,
 }

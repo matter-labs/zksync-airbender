@@ -80,8 +80,8 @@ use crate::query_utils::assemble_query_index;
 use crate::{
     gkr::prover::apply_row_wise,
     merkle_trees::{
-        ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueriable,
-        RSQueriable, SingleCosetRSQueriable,
+        ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueryable,
+        RSQueryable, SingleCosetRSQueryable,
     },
 };
 use fft::{
@@ -118,7 +118,7 @@ pub struct ColumnMajorBaseOracleForCoset<F: PrimeField + TwoAdicField> {
     pub coset_size_log2: usize,
 }
 
-impl<F: PrimeField + TwoAdicField> SingleCosetRSQueriable<F> for ColumnMajorBaseOracleForCoset<F> {
+impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBaseOracleForCoset<F> {
     fn values_for_folded_index(&self, index: usize, values_per_leaf: usize) -> Vec<Vec<F>> {
         assert!(values_per_leaf.is_power_of_two());
         assert!(index < (1 << self.coset_size_log2) / values_per_leaf);
@@ -190,7 +190,7 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueriable<F> for ColumnMajorBase
 }
 
 /// A full RS codeword held fully materialized in RAM: every LDE coset's
-/// evaluations for every column. Implements [`RSQueriable`] so a base oracle can
+/// evaluations for every column. Implements [`RSQueryable`] so a base oracle can
 /// talk to it (or to a recompute-on-demand source such as
 /// `CosetByCosetBaseCommitment`) behind the same trait object.
 #[derive(Debug)]
@@ -198,7 +198,7 @@ pub struct MaterializedCosets<F: PrimeField + TwoAdicField> {
     pub cosets: Vec<ColumnMajorBaseOracleForCoset<F>>,
 }
 
-impl<F: PrimeField + TwoAdicField> RSQueriable<F> for MaterializedCosets<F> {
+impl<F: PrimeField + TwoAdicField> RSQueryable<F> for MaterializedCosets<F> {
     fn num_columns(&self) -> usize {
         self.cosets[0].original_values_normal_order.len()
     }
@@ -232,10 +232,10 @@ impl<F: PrimeField + TwoAdicField> RSQueriable<F> for MaterializedCosets<F> {
     }
 }
 
-/// Boxed [`RSQueriable`] value source (used by the on-disk setup commitment). The
+/// Boxed [`RSQueryable`] value source (used by the on-disk setup commitment). The
 /// trait object is `Send + Sync + Debug` via the trait's supertraits, so it can
 /// cross the worker boundary.
-pub type BoxedBaseRSSource<F> = Box<dyn RSQueriable<F>>;
+pub type BoxedBaseRSSource<F> = Box<dyn RSQueryable<F>>;
 
 /// The fully materialized base oracle: every LDE coset's evaluations in RAM plus
 /// the full (concretely typed) Merkle tree. Serves main-domain columns in
@@ -341,7 +341,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
 
     /// Hash leaf data the same way `blake2s_leaf_hashes_from_cosets` does:
     /// column-major with bit-reversed offsets. `values_offset_major` is the
-    /// `[offset][column]` leaf produced by [`RSQueriable::values_for_coset_and_index`];
+    /// `[offset][column]` leaf produced by [`RSQueryable::values_for_coset_and_index`];
     /// the tree hashes it column-major (column outer, offset inner), so we transpose.
     #[cfg(feature = "gkr_self_checks")]
     fn compute_base_field_leaf_hash(

@@ -250,6 +250,26 @@ template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void 
   }
 }
 
+// Specialization for a known-zero exchange-region offset. The first region's
+// twiddle is the identity at every stage, so use the no-multiply butterfly
+// there and load twiddles only for the remaining regions.
+template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_fwd_dit_offset_0(bf *vals) {
+#pragma unroll
+  for (int lane_in_region = 0; lane_in_region < STRIDE; lane_in_region++)
+    exchg_dit_0(vals[lane_in_region], vals[lane_in_region + STRIDE]);
+
+#pragma unroll
+  for (int region = 1; region < NUM_REGIONS; region++) {
+    const bf twiddle = ab_fwd_cmem_twiddles_coarse[region];
+    const int region_offset = region * REGION_SIZE;
+#pragma unroll
+    for (int lane_in_region = 0; lane_in_region < STRIDE; lane_in_region++) {
+      const int i = region_offset + lane_in_region;
+      exchg_dit(vals[i], vals[i + STRIDE], twiddle);
+    }
+  }
+}
+
 template <int GROUP> DEVICE_FORCEINLINE void exchg_pipeline_group(bf *vals, const bf twiddle) {
   exchg_dit_0(vals[GROUP], vals[GROUP + 16]);
   exchg_dit_0(vals[GROUP + 8], vals[GROUP + 24]);

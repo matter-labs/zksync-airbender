@@ -233,7 +233,7 @@ fn projection(
     source_pair(layer, p.source, row, resolver)
 }
 
-// ── The lean segmented interpreter ───────────────────────────────────────────
+// ── The partitioned lean-program interpreter ─────────────────────────────────
 
 /// Everything [`interpret_lean_program`] can reject.
 ///
@@ -270,7 +270,7 @@ impl From<CoeffError> for LeanInterpError {
     }
 }
 
-/// Interpret one row under `k`-way whole-atom segmentation.
+/// Interpret one row under a `k`-way whole-atom partition.
 ///
 /// # Panics
 ///
