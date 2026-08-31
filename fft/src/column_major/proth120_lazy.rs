@@ -319,6 +319,25 @@ pub fn lde_coset_lazy_r8(
     lde_coset_lazy_with_kernel(input, offset, twiddles, ntt_lazy_bitreversed_to_natural_r8)
 }
 
+/// [`lde_coset_lazy_r8`] writing into a caller-provided buffer (e.g. one
+/// coset's chunk of a contiguous LDE codeword). `out` is WRITE-FIRST: every
+/// element is overwritten by the scaled-copy pass before any read, so it may
+/// be freshly allocated uninitialized memory.
+pub fn lde_coset_lazy_r8_into(
+    input: &[Proth120],
+    offset: Proth120,
+    twiddles: &[Proth120],
+    out: &mut [Proth120],
+) {
+    lde_coset_lazy_with_kernel_into(
+        input,
+        offset,
+        twiddles,
+        ntt_lazy_bitreversed_to_natural_r8,
+        out,
+    )
+}
+
 /// Worker-PARALLEL counterpart of [`ntt_lazy_bitreversed_to_natural_r8`]:
 /// radix-8 fused passes (radix-4 / fused radix-2 tail for leftover levels),
 /// each pass distributed over the worker with a barrier between passes — so a
@@ -513,9 +532,31 @@ pub fn lde_coset_lazy_parallel_r8(
     worker: &Worker,
 ) -> Vec<Proth120> {
     let n = input.len();
+    let mut out: Vec<Proth120> = Vec::with_capacity(n);
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        out.set_len(n)
+    };
+    lde_coset_lazy_parallel_r8_into(input, offset, twiddles, worker, &mut out);
+    out
+}
+
+/// [`lde_coset_lazy_parallel_r8`] writing into a caller-provided buffer (e.g.
+/// one coset's chunk of a contiguous LDE codeword). `out` is WRITE-FIRST:
+/// every element is overwritten by the scaled-copy pass before any read, so
+/// it may be freshly allocated uninitialized memory.
+pub fn lde_coset_lazy_parallel_r8_into(
+    input: &[Proth120],
+    offset: Proth120,
+    twiddles: &[Proth120],
+    worker: &Worker,
+    out: &mut [Proth120],
+) {
+    let n = input.len();
+    assert_eq!(out.len(), n);
     const PAR_THRESHOLD: usize = 1 << 13;
     if n < PAR_THRESHOLD {
-        return lde_coset_lazy_r8(input, offset, twiddles);
+        return lde_coset_lazy_r8_into(input, offset, twiddles, out);
     }
     let log_n = n.trailing_zeros();
 
@@ -537,11 +578,9 @@ pub fn lde_coset_lazy_parallel_r8(
         cur.mul_assign(&stride);
     }
 
-    let mut v: Vec<u128> = Vec::with_capacity(n);
-    #[allow(clippy::uninit_vec)]
-    unsafe {
-        v.set_len(n)
-    };
+    // SAFETY: Proth120 is repr(transparent) over u128.
+    let v: &mut [u128] =
+        unsafe { core::slice::from_raw_parts_mut(out.as_mut_ptr() as *mut u128, n) };
     let mask = lo_len - 1;
     let scale = offset != Proth120::ONE;
     let src_addr = input.as_ptr() as usize;
@@ -570,11 +609,11 @@ pub fn lde_coset_lazy_parallel_r8(
         }
     });
 
-    crate::utils::parallel_bitreverse_enumeration_inplace(&mut v, worker);
+    crate::utils::parallel_bitreverse_enumeration_inplace(v, worker);
 
-    parallel_ntt_lazy_bitreversed_to_natural_r8(&mut v, log_n, &twiddles[..n / 2], worker);
+    parallel_ntt_lazy_bitreversed_to_natural_r8(v, log_n, &twiddles[..n / 2], worker);
 
-    // parallel canonicalization in place, then reinterpret (repr(transparent))
+    // parallel canonicalization in place
     let dst_addr = v.as_mut_ptr() as usize;
     worker.scope(n, |scope, geometry| {
         for thread_idx in 0..geometry.len() {
@@ -590,9 +629,6 @@ pub fn lde_coset_lazy_parallel_r8(
             });
         }
     });
-    // SAFETY: Proth120 is repr(transparent) over u128 and every value is
-    // canonical after the pass above.
-    unsafe { core::mem::transmute::<Vec<u128>, Vec<Proth120>>(v) }
 }
 
 fn lde_coset_lazy_with_kernel(
@@ -602,6 +638,27 @@ fn lde_coset_lazy_with_kernel(
     ntt: fn(&mut [u128], u32, &[Proth120]),
 ) -> Vec<Proth120> {
     let n = input.len();
+    let mut out: Vec<Proth120> = Vec::with_capacity(n);
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        out.set_len(n)
+    };
+    lde_coset_lazy_with_kernel_into(input, offset, twiddles, ntt, &mut out);
+    out
+}
+
+/// [`lde_coset_lazy_with_kernel`] writing into a caller-provided WRITE-FIRST
+/// buffer: the scaled-copy pass overwrites every element before any read, so
+/// `out` may be freshly allocated uninitialized memory.
+fn lde_coset_lazy_with_kernel_into(
+    input: &[Proth120],
+    offset: Proth120,
+    twiddles: &[Proth120],
+    ntt: fn(&mut [u128], u32, &[Proth120]),
+    out: &mut [Proth120],
+) {
+    let n = input.len();
+    assert_eq!(out.len(), n);
     let log_n = n.trailing_zeros();
 
     // offset power split tables (canonical raw values)
@@ -622,26 +679,28 @@ fn lde_coset_lazy_with_kernel(
         cur.mul_assign(&stride);
     }
 
-    let mut v: Vec<u128> = Vec::with_capacity(n);
+    // SAFETY: Proth120 is repr(transparent) over u128.
+    let v: &mut [u128] =
+        unsafe { core::slice::from_raw_parts_mut(out.as_mut_ptr() as *mut u128, n) };
     let mask = lo_len - 1;
     let scale = offset != Proth120::ONE;
     for (i, x) in input.iter().enumerate() {
         let raw = x.raw_u128_value();
-        v.push(if scale {
+        v[i] = if scale {
             let f = mont_mul_lazy(lo[i & mask], hi[i >> h]);
             mont_mul_lazy(raw, f)
         } else {
             raw
-        });
+        };
     }
 
-    crate::utils::bitreverse_enumeration_inplace(&mut v);
+    crate::utils::bitreverse_enumeration_inplace(v);
 
-    ntt(&mut v, log_n, &twiddles[..n / 2]);
+    ntt(v, log_n, &twiddles[..n / 2]);
 
-    v.into_iter()
-        .map(|x| Proth120::from_raw_u128(canonicalize(x)))
-        .collect()
+    for x in v.iter_mut() {
+        *x = canonicalize(*x);
+    }
 }
 
 #[cfg(test)]

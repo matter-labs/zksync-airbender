@@ -191,6 +191,22 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         worker: &Worker,
     ) -> Vec<(Box<[E]>, F)>;
 
+    /// [`Self::lde_ext_poly_from_monomial_form`] into ONE contiguous buffer
+    /// (coset-major, each coset in natural order) plus the per-coset offsets,
+    /// instead of `lde_factor` individually boxed cosets. For huge-LDE
+    /// intermediate oracles (a tiny polynomial across millions of cosets) the
+    /// per-coset boxing/collection dominates the LDE wall time, so
+    /// implementations must run their coset kernels DIRECTLY into the
+    /// preallocated buffer (no delegate-then-memcpy). Values are identical to
+    /// the per-coset entry.
+    fn lde_ext_poly_from_monomial_form_continuous(
+        &self,
+        monomial_form_normal_order: &[E],
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        worker: &Worker,
+    ) -> (Box<[E]>, Vec<F>);
+
     /// Base-field twin of [`Self::lde_ext_poly_from_monomial_form`]: LDE one
     /// F-valued polynomial (monomial coefficients, normal order) into all
     /// `lde_factor` cosets. Duplicated because the prover holds a single
@@ -343,19 +359,56 @@ fn lde_coset_canonical_parallel<F: Field, E: Field + FieldExtension<F>>(
     worker: &Worker,
 ) -> Vec<E> {
     let n = monomials.len();
+    let mut evals: Vec<E> = Vec::with_capacity(n);
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        evals.set_len(n)
+    };
+    lde_coset_canonical_parallel_into(monomials, offset, twiddles_bit_reversed, worker, &mut evals);
+    evals
+}
+
+/// [`lde_coset_canonical_parallel`] writing into a caller-provided buffer
+/// (e.g. one coset's chunk of a contiguous LDE codeword). `out` is
+/// WRITE-FIRST: every element is overwritten by the worker-parallel copy pass
+/// before any read, so it may be freshly allocated uninitialized memory (a
+/// serial copy would also first-touch-fault a multi-GB destination on one
+/// thread).
+fn lde_coset_canonical_parallel_into<F: Field, E: Field + FieldExtension<F>>(
+    monomials: &[E],
+    offset: F,
+    twiddles_bit_reversed: &[F],
+    worker: &Worker,
+    out: &mut [E],
+) {
+    let n = monomials.len();
+    assert_eq!(out.len(), n);
     let log_n = n.trailing_zeros();
-    let mut evals = monomials.to_vec();
+    let src_addr = monomials.as_ptr() as usize;
+    let dst_addr = out.as_mut_ptr() as usize;
+    worker.scope(n, |scope, geometry| {
+        for thread_idx in 0..geometry.len() {
+            let start = geometry.get_chunk_start_pos(thread_idx);
+            let size = geometry.get_chunk_size(thread_idx);
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                core::ptr::copy_nonoverlapping(
+                    (src_addr as *const E).add(start),
+                    (dst_addr as *mut E).add(start),
+                    size,
+                );
+            });
+        }
+    });
     if offset != F::ONE {
-        fft::distribute_powers_parallel(&mut evals, F::ONE, offset, worker);
+        fft::distribute_powers_parallel(out, F::ONE, offset, worker);
     }
-    fft::parallel_bitreverse_enumeration_inplace(&mut evals, worker);
+    fft::parallel_bitreverse_enumeration_inplace(out, worker);
     fft::naive::parallel_ct_ntt_bitreversed_to_natural(
-        &mut evals,
+        out,
         log_n,
         &twiddles_bit_reversed[..(n / 2).max(1)],
         worker,
     );
-    evals
 }
 
 /// Grid body of [`Backend::lde_multiple_polys_from_hypercubes`] for the
@@ -554,6 +607,93 @@ where
             })
             .collect()
     })
+}
+
+/// [`ws_lde_single_poly_from_monomial_form`] writing straight into ONE
+/// contiguous buffer (coset-major). Targets the huge-LDE degenerate shape —
+/// a tiny polynomial across millions of cosets — where the per-coset task +
+/// boxed-allocation grid measured ~100x overhead over the NTT math. The
+/// into-kernels run DIRECTLY on each coset's chunk of the single preallocated
+/// buffer (no temporaries, no landing copy): the parallel-within-task plan
+/// mirrors the boxed entry's overlapped par-over-cosets schedule (the nested
+/// worker scopes compose on the shared pool), and the flat plan runs a
+/// bounded number of tasks each serially filling a contiguous GROUP of
+/// cosets. Values are identical to the per-coset entry.
+fn ws_lde_single_poly_continuous<F, El>(
+    monomial_form_normal_order: &[El],
+    twiddles: &Twiddles<F, Global>,
+    lde_factor: usize,
+    serial_kernel_into: &(impl Fn(&[El], F, &[F], &mut [El]) + Sync),
+    parallel_kernel_into: &(impl Fn(&[El], F, &[F], &Worker, &mut [El]) + Sync),
+    worker: &Worker,
+) -> (Box<[El]>, Vec<F>)
+where
+    F: PrimeField + TwoAdicField,
+    El: FieldExtension<F> + Field,
+{
+    use worker::rayon::prelude::*;
+
+    let n = monomial_form_normal_order.len();
+    let root_powers = coset_offsets::<F>(n, lde_factor);
+    let tw = &twiddles.forward_twiddles[..];
+
+    let total = n
+        .checked_mul(lde_factor)
+        .expect("LDE output size overflows usize");
+    // SAFETY (write-first): every element belongs to exactly one coset chunk
+    // below, and the into-kernels overwrite their whole chunk (scaled-copy
+    // first pass) before reading from it.
+    #[allow(clippy::uninit_assumed_init)]
+    let mut buffer: Box<[El]> = unsafe { Box::new_uninit_slice(total).assume_init() };
+
+    match plan_coset_grid::<El>(lde_factor, worker) {
+        CosetGridPlan::ParallelWithinTask => {
+            // Few big cosets: all cosets in parallel, each running the
+            // worker-parallel kernel — nested scopes land on the shared pool
+            // and idle threads steal butterfly chunks, exactly as in the
+            // boxed entry (no global barrier between cosets).
+            worker.pool.install(|| {
+                buffer
+                    .par_chunks_mut(n)
+                    .enumerate()
+                    .for_each(|(coset, chunk)| {
+                        parallel_kernel_into(
+                            monomial_form_normal_order,
+                            root_powers[coset],
+                            tw,
+                            worker,
+                            chunk,
+                        )
+                    })
+            });
+        }
+        CosetGridPlan::FlatSerialTasks => {
+            // Many (possibly tiny) cosets: a bounded number of tasks, each
+            // serially filling a contiguous GROUP of cosets. (Capping the
+            // per-task element count as well was tried and measured neutral
+            // on every shape — the group size is not the residual gap vs the
+            // boxed entry at mid-size cosets.)
+            let group = (lde_factor / (worker.get_num_cores() * 8)).max(1);
+            worker.pool.install(|| {
+                buffer
+                    .par_chunks_mut(n * group)
+                    .enumerate()
+                    .for_each(|(group_idx, group_chunk)| {
+                        for (j, chunk) in group_chunk.chunks_mut(n).enumerate() {
+                            let coset = group_idx * group + j;
+                            serial_kernel_into(
+                                monomial_form_normal_order,
+                                root_powers[coset],
+                                tw,
+                                chunk,
+                            );
+                        }
+                    })
+            });
+        }
+    }
+
+    (buffer, root_powers)
 }
 
 /// All-threads eq-poly contribution accumulation for the work-stealing

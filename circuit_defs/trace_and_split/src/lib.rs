@@ -331,6 +331,42 @@ pub fn commit_merged_tree_for_unified_circuits<
     prover_config: &ProverConfig,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength {
+    let (_witness_trace, merged) =
+        commit_merged_tree_and_witness_for_unified_circuits::<EF, T, A, BE>(
+            backend,
+            unified_setup,
+            witness_chunk,
+            inits_and_teardowns,
+            twiddles,
+            prover_config,
+            worker,
+        );
+    merged.get_cap()
+}
+
+/// [`commit_merged_tree_for_unified_circuits`] that also RETURNS the evaluated
+/// witness trace and the committed in-memory merged oracle instead of
+/// discarding them: the caller can feed both straight into
+/// `prove_configured_with_gkr_merged_with_precommitted_oracle`, so the witness
+/// evaluation and the merged commitment happen exactly once per chunk. The
+/// commitment cap is `.get_cap()` of the returned oracle.
+pub fn commit_merged_tree_and_witness_for_unified_circuits<
+    EF: FieldExtension<BabyBearField> + Field,
+    T: ColumnMajorMerkleTreeConstructor<BabyBearField>,
+    A: GoodAllocator + 'static,
+    BE: Backend<BabyBearField, EF>,
+>(
+    backend: &BE,
+    unified_setup: &setups::CircuitSetup<A>,
+    witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
+    inits_and_teardowns: Vec<([Vec<BabyBearField>; 2], [Vec<BabyBearField>; 2])>,
+    twiddles: &BE::TwiddleSet,
+    prover_config: &ProverConfig,
+    worker: &Worker,
+) -> (
+    prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    prover::gkr::whir::ColumnMajorBaseOracleForLDE<BabyBearField, T>,
+) {
     use prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_subtrees;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
     use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
@@ -383,11 +419,9 @@ pub fn commit_merged_tree_for_unified_circuits<
         worker,
     );
 
-    let cap = merged.get_cap();
-
     println!("Unified merged commitment took {:?}", now.elapsed());
 
-    cap
+    (witness_trace, merged)
 }
 
 pub fn commit_memory_tree_for_delegation_circuit<

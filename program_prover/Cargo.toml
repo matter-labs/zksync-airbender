@@ -19,6 +19,9 @@ circuit_common = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 bincode = { version = "1.3" }
+# Only for the `l1` compression path (reads the zlib-compressed bincode caches
+# the prover_examples recursion tests write).
+flate2 = { version = "*", optional = true }
 verifier_common = { workspace = true, default-features = false }
 full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "host_utils"]}
 
@@ -26,8 +29,15 @@ full_statement_verifier = { workspace = true, default-features = false, features
 test_utils = { workspace = true }
 serial_test = "3"
 
+[[bin]]
+name = "l1_compression"
+required-features = ["l1"]
+
 [features]
 verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
+# L1 compression path: prove the recursion stable point down to ONE Proth120
+# packed proof (pulls in prover's test harness for the Proth120 witness path).
+l1 = ["prover/test", "prover/bincode", "dep:flate2"]
 # When enabled, the crate will print detailed debug logs.
 debug_logs = []
 # Will perform satisfiability tests on witness

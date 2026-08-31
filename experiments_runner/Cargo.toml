@@ -27,6 +27,10 @@ riscv_transpiler.workspace = true
 field.workspace = true
 common_constants.workspace = true
 worker.workspace = true
+# Only to turn on `keccak/parallel` (hybrid-array): the cfg-selected
+# `keccak_backend="simd512"` backend imports it, but sha3 pulls keccak
+# without that feature.
+keccak = { version = "0.2.2", features = ["parallel"] }
 
 [dev-dependencies]
 rand = { workspace = true, features = ["std", "thread_rng", "std_rng"] }

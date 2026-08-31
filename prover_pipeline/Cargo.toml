@@ -32,7 +32,7 @@ full_statement_verifier = { path = "../full_statement_verifier", default-feature
     "host_utils",
     "verifiers",
 ] }
-sha3 = { package = "sha3", version = "*" }
+sha3 = { workspace = true }
 log = "0.4"
 
 # GPU proving stack (behind the `gpu` feature).

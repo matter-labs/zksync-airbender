@@ -2390,25 +2390,25 @@ fn eval_fn_56<
     let v_39 = W::U16::overflowing_add(&v_0, &v_38).1;
     let v_40 = W::U16::overflowing_add(&v_8, &v_2).1;
     let v_41 = W::U16::overflowing_add(&v_0, &v_2).1;
-    let v_42 = W::U32::overflowing_add(&v_14, &v_15).1;
-    let v_43 = W::Mask::select(&v_27, &v_41, &v_42);
-    let v_44 = W::Mask::select(&v_4, &v_41, &v_43);
-    let v_45 = W::Mask::select(&v_5, &v_40, &v_44);
-    let v_46 = W::Mask::select(&v_6, &v_39, &v_45);
+    let v_42 = W::Mask::select(&v_27, &v_41, &v_39);
+    let v_43 = W::Mask::select(&v_4, &v_41, &v_42);
+    let v_44 = W::Mask::select(&v_5, &v_40, &v_43);
+    let v_45 = W::Mask::select(&v_6, &v_39, &v_44);
     witness_proxy.set_witness_place_boolean(
         24usize,
         W::Mask::select(
             &v_37,
-            &v_46,
+            &v_45,
             &witness_proxy.get_witness_place_boolean(24usize),
         ),
     );
+    let v_47 = W::U32::overflowing_add(&v_14, &v_15).1;
     let v_48 = W::U32::overflowing_add(&v_20, &v_24).1;
     let v_49 = W::U32::overflowing_add(&v_14, &v_24).1;
-    let v_50 = W::Mask::select(&v_27, &v_49, &v_39);
+    let v_50 = W::Mask::select(&v_27, &v_49, &v_47);
     let v_51 = W::Mask::select(&v_4, &v_49, &v_50);
     let v_52 = W::Mask::select(&v_5, &v_48, &v_51);
-    let v_53 = W::Mask::select(&v_6, &v_42, &v_52);
+    let v_53 = W::Mask::select(&v_6, &v_47, &v_52);
     witness_proxy.set_witness_place_boolean(
         25usize,
         W::Mask::select(

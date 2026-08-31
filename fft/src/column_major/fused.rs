@@ -170,20 +170,39 @@ pub fn lde_coset_natural_seq_fused<F: Field, E: Field + FieldExtension<F>>(
     omegas_bit_reversed: &[F],
 ) -> Vec<E> {
     let n = monomials_natural_order.len();
-    assert!(n.is_power_of_two());
-    let log_n = n.trailing_zeros();
-
     let mut out: Vec<E> = Vec::with_capacity(n);
     #[allow(clippy::uninit_vec)]
     unsafe {
         out.set_len(n)
     };
+    lde_coset_natural_seq_fused_into(
+        monomials_natural_order,
+        offset,
+        omegas_bit_reversed,
+        &mut out,
+    );
+    out
+}
+
+/// [`lde_coset_natural_seq_fused`] writing into a caller-provided buffer
+/// (e.g. one coset's chunk of a contiguous LDE codeword). `out` is
+/// WRITE-FIRST: every element is overwritten by the scaled-copy pass before
+/// any read, so it may be freshly allocated uninitialized memory.
+pub fn lde_coset_natural_seq_fused_into<F: Field, E: Field + FieldExtension<F>>(
+    monomials_natural_order: &[E],
+    offset: F,
+    omegas_bit_reversed: &[F],
+    out: &mut [E],
+) {
+    let n = monomials_natural_order.len();
+    assert!(n.is_power_of_two());
+    assert_eq!(out.len(), n);
+    let log_n = n.trailing_zeros();
 
     let powers = (offset != F::ONE).then(|| SplitPowers::new(offset, n));
-    scaled_copy_sequential(monomials_natural_order, powers.as_ref(), &mut out[..]);
-    crate::utils::bitreverse_enumeration_inplace(&mut out[..]);
-    serial_ct_ntt_bitreversed_to_natural(&mut out, log_n, &omegas_bit_reversed[..(n / 2).max(1)]);
-    out
+    scaled_copy_sequential(monomials_natural_order, powers.as_ref(), out);
+    crate::utils::bitreverse_enumeration_inplace(out);
+    serial_ct_ntt_bitreversed_to_natural(out, log_n, &omegas_bit_reversed[..(n / 2).max(1)]);
 }
 
 /// One serial LDE coset from monomial coefficients (natural order in, natural

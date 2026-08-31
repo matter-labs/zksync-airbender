@@ -306,11 +306,6 @@ impl ProverConfig {
             poly_size_log2 >= 1,
             "the WHIR schedule folds the polynomial away completely"
         );
-        assert!(
-            poly_size_log2 <= DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
-            "the schedule's explicit tail (2^{poly_size_log2}) exceeds the plain-text \
-             envelope 2^{DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2}"
-        );
     }
 }
 

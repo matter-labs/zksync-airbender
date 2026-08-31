@@ -92,6 +92,11 @@ fn checksum_address(addr: &str) -> String {
     out
 }
 
+/// First free memory offset past whir.sol's static region map (the drawn-
+/// query scratch `DRAW_BUF_PTR = 30016` + up to 50 slots, rounded up): the
+/// generator places the schedule-sized final-round regions from here.
+const WHIR_FINAL_SCRATCH_BASE: u128 = 31680;
+
 /// Replace the RHS of the single `uint256 constant <name> = <...>;` (or
 /// `address constant <name> = <...>;`) line with `= <value>;`, preserving
 /// indentation and any trailing `// comment`. Panics unless exactly one such
@@ -314,6 +319,15 @@ pub fn generate_verifiers(
         ("__TEMPLATE_WHIR_NBCAPS", wc.nbcaps as u128),
         ("__TEMPLATE_WHIR_MERGED_MW", wc.merged_mw as u128),
         ("__TEMPLATE_WHIR_SETUP_MERGED", wc.setup_merged as u128),
+        // Final-round scratch layout, derived from the schedule's plain-text
+        // tail size (2^rfin monomials, one 32-byte word each): the monomial
+        // region starts past the static map and the absorb/halving-fold
+        // scratch follows it.
+        ("__TEMPLATE_WHIR_MONO_PTR", WHIR_FINAL_SCRATCH_BASE),
+        (
+            "__TEMPLATE_WHIR_FEVAL_PTR",
+            WHIR_FINAL_SCRATCH_BASE + (1u128 << wc.rfin) * 32,
+        ),
     ] {
         whir = set_const(&whir, name, value);
     }
