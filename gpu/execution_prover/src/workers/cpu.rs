@@ -277,20 +277,20 @@ pub(crate) fn run_replayer<T: TracingType>(
 }
 
 fn collect_inits_and_teardowns(
-    holder: &mut MemoryHolder,
+    holder: &MemoryHolder,
     worker: &Worker,
 ) -> Vec<Vec<InitAndTeardownRecord>> {
     let mut chunks = vec![vec![]; worker.get_num_cores()];
     let mut dst = &mut chunks[..];
-    worker.scope(holder.memory.len(), |scope, geometry| {
+    worker.scope(holder.memory().len(), |scope, geometry| {
         for thread_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(thread_idx);
             let chunk_start = geometry.get_chunk_start_pos(thread_idx);
             let range = chunk_start..(chunk_start + chunk_size);
             let (el, rest) = dst.split_at_mut(1);
             dst = rest;
-            let values = &holder.memory[range.clone()];
-            let timestamps = &holder.timestamps[range];
+            let values = &holder.memory()[range.clone()];
+            let timestamps = &holder.timestamps()[range];
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                 let values_ptr = values.as_ptr() as *mut u32;
                 let timestamps_ptr = timestamps.as_ptr() as *mut TimestampScalar;
@@ -303,12 +303,9 @@ fn collect_inits_and_teardowns(
                         let value_ptr = values_ptr.add(idx);
                         let mut teardown_value = *value_ptr;
                         *value_ptr = 0;
-                        // Documents the 32-bit RAM-word bound: `holder.memory`
-                        // is sized to `NUM_RAM_WORDS = RAM_SIZE / 4` words
-                        // with `RAM_SIZE == 1 << 30` bytes, so word indices
-                        // stay well under `1 << 30` and `<< 2` cannot
-                        // overflow into the address's u32 range today; this
-                        // just guards/documents that architectural bound.
+                        // Documents the 32-bit RAM-word bound: memory holder
+                        // can not back more than 4 Gb, and we take word index into such backing,
+                        // and get raw byte offset
                         debug_assert!(
                             chunk_start + idx < (1usize << 30),
                             "RAM word index {} exceeds 32-bit word-address bound",

@@ -16,8 +16,7 @@ use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use riscv_transpiler::jit::{
-    Context, ContextImpl, JittedCode, MachineState, MemoryHolder, TraceChunk, MAX_NUM_COUNTERS,
-    RAM_SIZE,
+    Context, ContextImpl, JitRunnerRam, JittedCode, MAX_NUM_COUNTERS, MachineState, MemoryHolder, RAM_SIZE, TraceChunk,
 };
 use riscv_transpiler::vm::NonDeterminismCSRSource;
 use std::mem::replace;
@@ -34,15 +33,16 @@ pub(crate) struct LockedBoxedMemoryHolder {
 }
 
 impl LockedBoxedMemoryHolder {
-    pub fn new() -> Self {
+    pub fn new(ram_config: JitRunnerRam) -> Self {
         // SAFETY: `MemoryHolder` is plain-data, so zero-init is sound; the boxed allocation
         // outlives the matching `cudaHostUnregister` call in `Drop`, keeping the pinned
         // registration valid for the holder's lifetime.
         unsafe {
-            let mut holder = Box::<MemoryHolder>::new_zeroed().assume_init();
+            let mut holder = MemoryHolder::allocate_zeroed::<_>(ram_config, Default::default());
+            let total_size_bytes = holder.byte_size();
             cudaHostRegister(
                 holder.as_mut() as *mut MemoryHolder as *mut c_void,
-                size_of::<MemoryHolder>(),
+                total_size_bytes,
                 CudaHostRegisterFlags::DEFAULT.bits(),
             )
             .wrap()
@@ -276,8 +276,9 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             }
         };
         let binary_image_len = binary_image.len();
-        memory_holder.memory[..binary_image_len].copy_from_slice(&binary_image);
-        memory_holder.memory[binary_image_len..ROM_WORD_SIZE].fill(0);
+        memory_holder.reset_buffer();
+        memory_holder.memory_mut()[..binary_image_len].copy_from_slice(&binary_image);
+        // memory_holder.memory_mut()[binary_image_len..].fill(0);
         let mut trace = self
             .free_trace_chunks_receiver
             .recv()

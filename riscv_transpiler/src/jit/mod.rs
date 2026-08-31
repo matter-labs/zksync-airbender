@@ -26,13 +26,6 @@ pub use self::impls::*;
 #[cfg(all(target_arch = "x86_64", feature = "jit", test))]
 mod tests;
 
-pub const RAM_SIZE: usize = 1 << 30;
-const NUM_RAM_WORDS: usize = RAM_SIZE / core::mem::size_of::<u32>();
-
-// Keep the RAM backing store type named so rustdoc does not have to normalize the
-// large inline `[u32; RAM_SIZE]` array at every public trait boundary.
-pub type RamImage = [u32; RAM_SIZE];
-
 // We will measure trace chunk in a number of memory accesses and not in a almost fixed number of cycles that did pass between them.
 // At most we extend a chunk by the number of accesses in delegation
 pub const TRACE_CHUNK_LEN: usize = 1 << 20;
@@ -476,7 +469,7 @@ pub trait ContextImpl {
 
     fn read_nondeterminism(&mut self) -> u32;
 
-    fn write_nondeterminism(&mut self, value: u32, memory: &RamImage);
+    fn write_nondeterminism(&mut self, value: u32, memory: &[u32]);
 
     fn receive_trace(
         &mut self,

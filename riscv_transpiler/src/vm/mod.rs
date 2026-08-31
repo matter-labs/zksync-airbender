@@ -172,9 +172,11 @@ pub trait NonDeterminismCSRSource {
     // we in general can allow CSR source to peek into memory (readonly)
     // to perform adhoc computations to prepare result. This will allow to save on
     // passing large structures
-    fn write_with_memory_access<R: RamPeek>(&mut self, ram: &R, value: u32)
+    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, ram: &R, value: u32)
     where
         Self: Sized;
+
+    fn write_with_memory_access_raw(&mut self, ram: &[u32], value: u32);
 
     // we in general can allow CSR source to peek into memory (readonly)
     // to perform adhoc computations to prepare result. This will allow to save on
@@ -186,7 +188,8 @@ impl NonDeterminismCSRSource for () {
     fn read(&mut self) -> u32 {
         0u32
     }
-    fn write_with_memory_access<R: RamPeek>(&mut self, _ram: &R, _value: u32) {}
+    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, _ram: &R, _value: u32) {}
+    fn write_with_memory_access_raw(&mut self, _ram: &[u32], _value: u32) {}
     fn write_with_memory_access_dyn(&mut self, _ram: &dyn RamPeek, _value: u32) {}
 }
 
@@ -196,7 +199,10 @@ impl NonDeterminismCSRSource for crate::abstractions::non_determinism::QuasiUART
         self.oracle.pop_front().expect("must have an answer")
     }
 
-    fn write_with_memory_access<R: RamPeek>(&mut self, _ram: &R, value: u32) {
+    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, _ram: &R, value: u32) {
+        self.write_state.process_write(value);
+    }
+    fn write_with_memory_access_raw(&mut self, ram: &[u32], value: u32) {
         self.write_state.process_write(value);
     }
     fn write_with_memory_access_dyn(&mut self, _ram: &dyn RamPeek, value: u32) {

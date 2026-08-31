@@ -73,15 +73,13 @@ pub(crate) fn blake_implementation(
         // read blake state, and input
 
         let state_words_offset = (state_ptr as usize) / core::mem::size_of::<u32>();
-
-        let blake_state_full = memory_holder
-            .memory
+        let (mem, ts) = memory_holder.memory_and_timestamps_mut();
+        let blake_state_full = mem
             .as_mut_ptr()
             .add(state_words_offset)
             .cast::<[u32; 24]>()
             .as_mut_unchecked();
-        let state_timestamps = memory_holder
-            .timestamps
+        let state_timestamps = ts
             .as_mut_ptr()
             .add(state_words_offset)
             .cast::<[TimestampScalar; 24]>()
@@ -94,15 +92,13 @@ pub(crate) fn blake_implementation(
         }
 
         let input_words_offset = (input_ptr as usize) / core::mem::size_of::<u32>();
-
-        let input = memory_holder
-            .memory
+        let (mem, ts) = memory_holder.memory_and_timestamps_mut();
+        let input = mem
             .as_ptr()
             .add(input_words_offset)
             .cast::<[u32; 16]>()
             .as_ref_unchecked();
-        let input_timestamps = memory_holder
-            .timestamps
+        let input_timestamps = ts
             .as_mut_ptr()
             .add(input_words_offset)
             .cast::<[TimestampScalar; 16]>()

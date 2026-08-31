@@ -27,6 +27,7 @@ impl ExecutionProver {
             host_allocators_per_device_count,
             min_free_host_allocators_per_job: _,
             security_level,
+            ram_config,
         } = configuration;
         let device_count = get_device_count().expect("CUDA device count query failed") as usize;
         assert_ne!(device_count, 0, "no CUDA capable devices found");
@@ -46,7 +47,7 @@ impl ExecutionProver {
         info!("PROVER creating memory holders cache with {simulator_cache_entries_count} entries");
         let memory_holders_cache = (0..simulator_cache_entries_count)
             .into_par_iter()
-            .map(|_| LockedBoxedMemoryHolder::new())
+            .map(|_| LockedBoxedMemoryHolder::new(ram_config))
             .collect();
         let memory_holders_cache = Arc::new(Mutex::new(memory_holders_cache));
         let trace_chunks_count = replay_worker_threads_count * 2;

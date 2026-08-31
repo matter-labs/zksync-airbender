@@ -73,9 +73,9 @@ impl<'a, const N: usize, A: Allocator> ContextImpl for PreallocatedSnapshots<'a,
         self.non_determinism.read()
     }
     #[inline(always)]
-    fn write_nondeterminism(&mut self, value: u32, memory: &RamImage) {
+    fn write_nondeterminism(&mut self, value: u32, memory: &[u32]) {
         self.non_determinism
-            .write_with_memory_access_dyn(memory, value);
+            .write_with_memory_access_raw(memory, value);
     }
     fn take_final_state(&mut self) -> Option<MachineState> {
         self.final_state_ref().map(|el| *el)

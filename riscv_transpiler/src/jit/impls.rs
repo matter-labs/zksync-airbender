@@ -14,6 +14,7 @@ pub struct JittedCode<I: ContextImpl> {
     code: dynasmrt::ExecutableBuffer,
     start: dynasmrt::AssemblyOffset,
     _marker: core::marker::PhantomData<I>,
+    ram_config: JitRunnerRam,
 }
 
 unsafe impl<I: ContextImpl> Send for JittedCode<I> {}
@@ -1370,6 +1371,14 @@ impl<I: ContextImpl> JittedCode<I> {
         cycles_bound: Option<u32>,
         mop_field: MopField,
     ) -> Self {
+        Self::preprocess_bytecode(program, cycles_bound, mop_field, JitRunnerRam::Medium)
+    }
+    pub fn preprocess_bytecode_for_ram_config(
+        program: &[Instruction],
+        cycles_bound: Option<u32>,
+        mop_field: MopField,
+        ram_config: JitRunnerRam,
+    ) -> Self {
         let mut ops = x64::Assembler::new().unwrap();
         let start = ops.offset();
 
@@ -2686,10 +2695,11 @@ impl<I: ContextImpl> JittedCode<I> {
         initial_trace_chunk: NonNull<TraceChunk>,
         initial_memory: &[u32],
     ) {
-        assert!(initial_memory.len() <= common_constants::rom::ROM_WORD_SIZE);
+        assert_eq!(self.ram_config.ram_size(), memory.ram_size(), "Jitted core was created for the ram size 0x{:08x} bytes, but memory holder received has size of 0x{:08x} bytes", self.ram_config.ram_size(), memory.ram_size());
+        assert!(initial_memory.len() <= memory.memory().len());
         assert!(context.final_state_ref().is_none());
 
-        memory.memory[..initial_memory.len()].copy_from_slice(initial_memory);
+        memory.memory_mut()[..initial_memory.len()].copy_from_slice(initial_memory);
 
         let run_program: extern "sysv64" fn(
             NonNull<TraceChunk>,
@@ -2720,6 +2730,7 @@ impl<I: ContextImpl> JittedCode<I> {
         memory: &mut MemoryHolder,
         initial_trace_chunk: NonNull<TraceChunk>,
     ) {
+        assert_eq!(self.ram_config.ram_size(), memory.ram_size(), "Jitted core was created for the ram size 0x{:08x} bytes, but memory holder received has size of 0x{:08x} bytes", self.ram_config.ram_size(), memory.ram_size());
         let run_program: extern "sysv64" fn(
             NonNull<TraceChunk>,
             &mut MemoryHolder,

@@ -229,7 +229,7 @@ impl ExecutionProver {
                     if cache.is_empty() {
                         drop(cache);
                         warn!("BATCH[{batch_id}] PROVER memory holders cache is empty, creating a new memory holder");
-                        LockedBoxedMemoryHolder::new()
+                        LockedBoxedMemoryHolder::new(self.configuration.ram_config)
                     } else {
                         cache.pop().unwrap()
                     }

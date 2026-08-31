@@ -51,25 +51,126 @@ impl TraceChunk {
     pub(crate) const LEN_OFFSET: usize = offset_of!(Self, len);
 }
 
-#[repr(C, align(4096))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[repr(u64)]
+pub enum JitRunnerRam {
+    Tiny = 32 * (1 << 20),
+    Small = 128 * (1 << 20),
+    Medium = 1 << 30,
+    Full = 1 << 32,
+}
+
+impl JitRunnerRam {
+    pub fn ram_size(&self) -> usize {
+        (*self as u64) as usize
+    }
+
+    // Offset in bytes to the timestamps
+    pub(crate) fn timestamps_offset(&self) -> u64 {
+        *self as u64
+    }
+}
+
+// Memory holder is defined as unsized, and it can/should only be constructed via
+// boxed allocation
+#[repr(align(4096))]
 pub struct MemoryHolder {
-    pub memory: [u32; NUM_RAM_WORDS],
-    pub timestamps: [TimestampScalar; NUM_RAM_WORDS],
+    buffer: [u64],
 }
 
 impl MemoryHolder {
-    pub fn empty() -> Self {
-        Self {
-            memory: [0u32; NUM_RAM_WORDS],
-            timestamps: [0; NUM_RAM_WORDS],
+    fn num_words(&self) -> usize {
+        assert_eq!((self.buffer.len() * 2) % 3, 0);
+        self.buffer.len() * 2 / 3
+    }
+
+    pub fn ram_size(&self) -> usize {
+        self.num_words() * core::mem::size_of::<u32>()
+    }
+
+    fn timestamps_offset(&self) -> usize {
+        self.ram_size()
+    }
+
+    pub fn memory(&self) -> &[u32] {
+        unsafe {
+            let num_words = self.num_words();
+            core::slice::from_raw_parts(self.buffer.as_ptr().cast(), num_words)
         }
     }
 
-    pub(crate) const TIMESTAMPS_OFFSET: usize = offset_of!(Self, timestamps);
+    pub fn timestamps(&self) -> &[TimestampScalar] {
+        unsafe {
+            let num_words = self.num_words();
+            core::slice::from_raw_parts(
+                self.buffer
+                    .as_ptr()
+                    .cast::<u32>()
+                    .add(num_words)
+                    .cast::<TimestampScalar>(),
+                num_words,
+            )
+        }
+    }
+
+    pub fn memory_mut(&mut self) -> &mut [u32] {
+        unsafe {
+            let num_words = self.num_words();
+            core::slice::from_raw_parts_mut(self.buffer.as_mut_ptr().cast(), num_words)
+        }
+    }
+
+    pub fn timestamps_mut(&mut self) -> &mut [TimestampScalar] {
+        unsafe {
+            let num_words = self.num_words();
+            core::slice::from_raw_parts_mut(
+                self.buffer
+                    .as_mut_ptr()
+                    .cast::<u32>()
+                    .add(num_words)
+                    .cast::<TimestampScalar>(),
+                num_words,
+            )
+        }
+    }
+
+    pub fn memory_and_timestamps_mut(&mut self) -> (&mut [u32], &mut [TimestampScalar]) {
+        unsafe {
+            let num_words = self.num_words();
+            let mem = core::slice::from_raw_parts_mut(self.buffer.as_mut_ptr().cast(), num_words);
+            let ts = core::slice::from_raw_parts_mut(
+                self.buffer
+                    .as_mut_ptr()
+                    .cast::<u32>()
+                    .add(num_words)
+                    .cast::<TimestampScalar>(),
+                num_words,
+            );
+
+            (mem, ts)
+        }
+    }
+
+    pub fn allocate_uninit<A: Allocator>(size: JitRunnerRam, allocator: A) -> Box<Self, A> {
+        // performed via raw layout construction
+        todo!();
+    }
+
+    pub fn allocate_zeroed<A: Allocator>(size: JitRunnerRam, allocator: A) -> Box<Self, A> {
+        // performed via raw layout construction
+        todo!();
+    }
+
+    pub fn byte_size(&self) -> usize {
+        self.buffer.len() * core::mem::size_of::<u64>()
+    }
+
+    pub fn reset_buffer(&mut self) {
+        self.buffer.fill(0);
+    }
 
     pub fn reset<A: Allocator>(this: &mut Box<Self, A>) {
-        this.memory.fill(0);
-        this.timestamps.fill(0);
+        this.buffer.fill(0);
     }
 
     pub fn collect_inits_and_teardowns<A: Allocator + Clone + Send + Sync>(
@@ -82,15 +183,16 @@ impl MemoryHolder {
         let mut chunks: Vec<Vec<(u32, (TimestampScalar, u32)), A>> =
             vec![Vec::new_in(allocator).clone(); worker.get_num_cores()];
         let mut dst = &mut chunks[..];
-        worker.scope(NUM_RAM_WORDS, |scope, geometry| {
+        let work_size = self.num_words();
+        worker.scope(work_size, |scope, geometry| {
             for thread_idx in 0..geometry.len() {
                 let chunk_size = geometry.get_chunk_size(thread_idx);
                 let chunk_start = geometry.get_chunk_start_pos(thread_idx);
                 let range = chunk_start..(chunk_start + chunk_size);
                 let (el, rest) = dst.split_at_mut(1);
                 dst = rest;
-                let values = &self.memory[range.clone()];
-                let timestamps = &self.timestamps[range];
+                let values = &self.memory()[range.clone()];
+                let timestamps = &self.timestamps()[range];
 
                 worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                     let el = &mut el[0];
@@ -238,7 +340,7 @@ impl<'a, N: NonDeterminismCSRSource> ContextImpl for DefaultContextImpl<'a, N> {
         self.non_determinism_source.read()
     }
 
-    fn write_nondeterminism(&mut self, value: u32, memory: &RamImage) {
+    fn write_nondeterminism(&mut self, value: u32, memory: &[u32]) {
         self.non_determinism_source
             .write_with_memory_access(memory, value);
     }
@@ -347,7 +449,7 @@ impl<'a> ContextImpl for FlattenedContextImpl<'a> {
         value[0]
     }
 
-    fn write_nondeterminism(&mut self, _value: u32, _memory: &RamImage) {
+    fn write_nondeterminism(&mut self, _value: u32, _memory: &[u32]) {
         // nothing
     }
 
