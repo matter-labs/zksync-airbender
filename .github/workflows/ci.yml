@@ -92,14 +92,14 @@ jobs:
 
       - name: Build fresh verifiers
         run: |
-          tools/reproduce/reproduce.sh
+          build.sh
 
       - name: Fail if any files were modified
         run: |
           git status --porcelain
           git diff --name-only
           if [ -n "$(git diff --name-only)" ]; then
-            echo "❌ The following files were modified. Did you run tools/reproduce/reproduce.sh?:"
+            echo "❌ The following files were modified. Did you run build.sh?:"
             git diff --name-only
             exit 1
           fi
