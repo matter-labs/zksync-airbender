@@ -3,6 +3,20 @@
 > External deliverable profile. These requirements organize the Airbender
 > specification; they do not define Airbender's accepted relation.
 
+## Authoritative sources
+
+- EF Cryptography Team,
+  [W2 Soundness Requirements for zkVM Submissions](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf),
+  2 June 2026. This is the controlling W2 checklist.
+- EF Cryptography Team,
+  [Towards a zkVM architecture whitepaper](https://crypto.ethereum.org/docs/zkvm_architecture_whitepaper_details.pdf),
+  29 January 2026. W2 requires the W1 architecture submission described in
+  sections 3.1--3.5 as its basis.
+- Ethereum Foundation,
+  [Cryptography Research Update](https://zkevm.ethereum.foundation/blog/cryptography-research-update).
+  This announcement supplies program context; it is not a substitute for the two
+  requirements documents above.
+
 ## Target
 
 W2 prepares the zkVM for an end-to-end security argument. It must identify every
@@ -40,16 +54,17 @@ overview.
 The retained architecture must identify:
 
 - program, execution trace, VM state, supported instructions, and final root claim;
-- segment boundaries, carried state, chip partition, and separately proved
-  precompiles or special operations;
-- every bus and memory domain, the values transferred, its consistency argument,
-  and the source of its challenges;
+- execution-trace segmentation, segment boundaries, carried state, chip partition,
+  and separately proved precompiles or special operations;
+- every memory organization and bus, the values transferred, its consistency
+  argument, and the source of its challenges;
 - instruction fetching, program/code binding, and the relation between fetched
   instruction, `pc`, and control flow;
 - the conversion from each segment/chip to circuit or algebraic relation, including
-  circuit types, boundary values, and auxiliary protocols;
-- recursion topology, node relation, propagated public values, and mapping from each
-  node to a concrete circuit/proof instance.
+  boundary values, circuit types, the number and parameters of each circuit type,
+  commitment schemes, argument types, and auxiliary protocols;
+- recursion topology, each node's NP relation, propagated public values, and mapping
+  from every node to a concrete circuit/proof instance.
 
 ### REQ-W2-002 — Source artifact
 
@@ -80,12 +95,16 @@ circuits, aggregation, and compression.
 ### REQ-W2-005 — Soundness sketch
 
 State why acceptance implies `R_i`, subject to `epsilon_i` and explicit assumptions.
-Classify every supporting lemma as standard, adapted, or new. A complete formal or
-end-to-end knowledge-soundness proof is not required at W2.
+The sketch may be an informal proof, a chain of lemmas, standard references plus new
+obligations, or a combination of these. Classify every supporting lemma as standard,
+adapted, or new. A complete formal or end-to-end knowledge-soundness proof is not
+required at W2.
 
 ### REQ-W2-006 — Baseline and production deviations
 
-Either prove the production design directly from established component results, or:
+Either describe the production design directly, treating third-party components as
+black boxes under explicit established results and assumptions, or use the following
+baseline-and-deviation strategy:
 
 1. define a sound vanilla construction;
 2. list every soundness-relevant production deviation;
@@ -122,24 +141,39 @@ List every lemma or composition argument still needed to conclude:
 W2 need not supply the final proof, full knowledge-soundness proof, implementation
 formal verification, or documentation of non-semantic optimizations.
 
+## Completion test
+
+An external reviewer must be able to answer all of the following from the W2
+deliverable:
+
+- What exact relation does each proof-system invocation prove? `REQ-W2-003..004`.
+- What is the clean vanilla proof system for each relation? `REQ-W2-006..007`.
+- How does the production protocol differ from that vanilla construction?
+  `REQ-W2-006..007`.
+- Which differences change the proof system rather than only its implementation?
+  `REQ-W2-006`.
+- What soundness theorem is expected for the vanilla construction? `REQ-W2-005..007`.
+- Which lemmas are standard, adapted from literature, or new? `REQ-W2-005`.
+- Which proof and composition obligations remain for W3? `REQ-W2-008`.
+
 ## Current Airbender coverage
 
 | Requirement | Current material | Coverage |
 |---|---|---|
-| `REQ-W2-001` | `MACH`, `BASE`, architecture references | partial; segmentation, full interactions, and recursion need current modules |
+| `REQ-W2-001` | `UPROF`, `UNIFIED`, `PRECOMP`, shared machine modules, `MACH`, `BASE`, and `TOPO` | partial; exact segmentation/cardinality and complete recursion interfaces remain open |
 | `REQ-W2-002` | Markdown source under `spec/` | partial; PDF packaging deferred |
-| `REQ-W2-003` | module DAG in `INDEX.md` | gap; this is not yet an invocation-level topology |
-| `REQ-W2-004` | `ADD` prototype; draft `MACH` and `BASE` | partial; most proof invocations have no precise relation module |
-| `REQ-W2-005` | none | gap; component and composition soundness sketches required |
-| `REQ-W2-006` | none | gap; vanilla baseline and deviation ledger required |
-| `REQ-W2-007` | planned `GARG`, `TRANS`, `WHIR` modules | gap; auxiliary arguments need dedicated relations and reductions |
-| `REQ-W2-008` | semantic `GAP-*` records | partial; proof-theoretic W3 obligations are not yet enumerated |
+| `REQ-W2-003` | invocation hierarchy and known producer/consumer edges in `TOPO` | partial; exact counts, field-level interfaces, auxiliary edges, and the selected terminal path remain open |
+| `REQ-W2-004` | `ADD`, `BSHIFT`, `JUMP`, `MULDIV`, `MWORD`, `MEMSUB`, shared machine modules, `LOOKUP`, and `BASE` | partial; unified embedded relations, precompile computations, and several proof-layer invocation relations remain incomplete |
+| `REQ-W2-005` | theorem schema and obligation inventory in `SOUND` | partial; component sketches, concrete errors, and supporting lemmas remain gaps |
+| `REQ-W2-006` | baseline/deviation requirements and empty production ledger in `SOUND` | partial; no adopted vanilla baselines or complete deviation ledger yet |
+| `REQ-W2-007` | machine-side lookup/range relation in `LOOKUP` and placement in `TOPO` | partial; transcript order, PIOP reduction, committed polynomials, openings, and error terms remain gaps |
+| `REQ-W2-008` | explicit W3-obligation structure in `SOUND` plus module `GAP-*` records | partial; the final obligation set depends on completing topology, relations, and error accounting |
 
 ## Coverage gaps
 
-- **GAP-W2-001 — Invocation topology.** Inventory the exact active base, GKR,
-  auxiliary, WHIR, recursion, aggregation, and final-verifier calls and their public
-  input/output edges.
+- **GAP-W2-001 — Invocation topology.** Complete `TOPO` with the exact active base,
+  GKR, auxiliary, WHIR, recursion, aggregation, and final-verifier calls and every
+  field-level public input/output edge.
 - **GAP-W2-002 — Relation inventory.** Assign one relation module to every invocation
   in `GAP-W2-001`.
 - **GAP-W2-003 — Vanilla/deviation ledger.** Choose the W3 proof strategy and record
@@ -154,26 +188,16 @@ formal verification, or documentation of non-semantic optimizations.
 
 | ID | Authority | Source |
 |---|---|---|
-| `REQ-W2-001` | external deliverable | W2 `Required W2 Deliverables §0`; W1 requirements §§3.1–3.5 |
-| `REQ-W2-002` | external deliverable | W2 `Required W2 Deliverables §0` |
-| `REQ-W2-003` | external deliverable | W2 §1 `Recursion Topology` |
-| `REQ-W2-004` | external deliverable | W2 §2 `Precise Relation for Each Proof-System Invocation` |
-| `REQ-W2-005` | external deliverable | W2 §3 `Soundness Proof Sketch` |
-| `REQ-W2-006` | external deliverable | W2 §3 baseline-and-deviation strategy |
-| `REQ-W2-007` | external deliverable | W2 `Placement of Auxiliary Arguments` |
-| `REQ-W2-008` | external deliverable | W2 `Expected Level of Detail`; `W2 does not require` |
-| `GAP-W2-001` | local coverage assessment; open | module DAG is not an invocation topology at `dfb1b2a8a+dirty` |
+| `REQ-W2-001` | external deliverable | [W2](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf) `Required W2 Deliverables §0`; [W1](https://crypto.ethereum.org/docs/zkvm_architecture_whitepaper_details.pdf) §§3.1–3.5 |
+| `REQ-W2-002` | external deliverable | [W2](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf) `Required W2 Deliverables §0` |
+| `REQ-W2-003` | external deliverable | [W2](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf) §1 `Recursion Topology` |
+| `REQ-W2-004` | external deliverable | [W2](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf) §2 `Precise Relation for Each Proof-System Invocation` |
+| `REQ-W2-005` | external deliverable | [W2](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf) §3 `Soundness Proof Sketch` |
+| `REQ-W2-006` | external deliverable | [W2](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf) §3 baseline-and-deviation strategy |
+| `REQ-W2-007` | external deliverable | [W2](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf) `Placement of Auxiliary Arguments` |
+| `REQ-W2-008` | external deliverable | [W2](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf) `Expected Level of Detail`; `W2 does not require` |
+| `GAP-W2-001` | local coverage assessment; open | `TOPO` identifies the hierarchy and several stream edges, but its invocation-count, field-interface, auxiliary-edge, and terminal-path gaps remain open |
 | `GAP-W2-002` | local coverage assessment; open | current relation modules at `dfb1b2a8a+dirty` |
 | `GAP-W2-003` | local coverage assessment; open | no selected vanilla construction or deviation ledger |
 | `GAP-W2-004` | local coverage assessment; open | no architecture-wide soundness-obligation ledger |
 | `GAP-W2-005` | local coverage assessment; open | no complete architecture-to-implementation crosswalk |
-
-Primary source: EF Cryptography Team,
-[W2 Soundness Requirements for zkVM Submissions](https://github.com/khovratovich/zkvm-ef-security-sprint/blob/a7726ff41058bb96f8c8d12975339f4bfe75878c/resources/w2-requirements.pdf),
-2 June 2026. The retained architecture checklist and applicability boundary come from
-the earlier
-[zkVM Architecture Whitepaper Requirements](https://crypto.ethereum.org/docs/zkvm_architecture_whitepaper_details.pdf).
-The
-[security-sprint announcement](https://zkevm.ethereum.foundation/blog/cryptography-research-update)
-defines W2 as architecture details for buses, memory, instruction fetching, circuit
-construction, and deeper recursion.

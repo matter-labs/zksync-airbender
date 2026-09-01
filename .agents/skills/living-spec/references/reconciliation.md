@@ -1,4 +1,4 @@
-a# Living Specification Reconciliation
+# Living Specification Reconciliation
 
 Use this procedure to decide whether an existing specification statement remains
 supported after its implementation, profile, authority source, anchor, or check changes.
@@ -40,8 +40,9 @@ new relation.
 - Update the canonical claim and cite the authority for the change.
 - Reconcile its decision-tree branch, activation, dependencies, derived `INV`/`REJ`,
   exported `OUT`, and direct consumers.
-- Preserve the ID when the proposition retains the same role. Retire it with
-  `superseded-by` when the old and new propositions cannot honestly share one identity.
+- Preserve the ID when the proposition retains the same role. During prototype
+  cleanup, delete or replace obsolete IDs without maintaining a retired-ID ledger;
+  explicitly migrate any external references to adopted IDs.
 - Do not infer intendedness from the implementation change itself.
 
 ### 3. Implementation mismatch

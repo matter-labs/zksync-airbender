@@ -5,12 +5,12 @@
 
 ## Record model
 
-Each statement has one permanent ID. The statement beside that ID in the module body
-is its claim. The final metadata section supplies the remaining fields.
+Each statement has one stable ID. The statement beside that ID in the module body is
+its claim. The final metadata section supplies the remaining fields.
 
 | Field | Meaning |
 |---|---|
-| `id` | permanent `KIND-MODULE-NNN` identifier |
+| `id` | stable `KIND-MODULE-NNN` identifier |
 | `authority` | why the project treats the claim as intended |
 | `activation` | predicate/domain under which the claim applies, or `always` |
 | `depends` | exact statement IDs required to interpret or derive the claim |
@@ -21,10 +21,10 @@ is its claim. The final metadata section supplies the remaining fields.
 | `binding` | derived strength of the implementation connection |
 | `exported` | whether an `OUT` crosses a system/public boundary rather than only a module boundary |
 | `tags` | optional classification, such as a bug class or W2 obligation |
-| `superseded-by` | permanent replacement for a retired ID |
 
-Do not duplicate the claim in metadata. Do not delete or renumber an established ID;
-retire it with `superseded-by`.
+Do not duplicate the claim in metadata. Prototype cleanup may delete or renumber IDs;
+do not maintain a retired-ID ledger. Once an adopted ID is cited by an external
+artifact, preserve it or explicitly migrate that reference.
 
 ## Authority
 
@@ -32,13 +32,23 @@ Authority and implementation binding are independent.
 
 | Authority | Meaning |
 |---|---|
-| `normative` | adopted standard, explicit project decision, or designated project specification |
-| `provisional` | inferred from consistent implementation, tests, history, or architecture evidence |
+| `normative` | adopted standard, explicit project decision, or strongly corroborated relation adopted for the stated profile |
+| `provisional` | candidate relation supported only by implementation detail, or with materially incomplete/conflicting evidence or intendedness |
 | `disputed` | conflicts with an adopted source and awaits a project decision |
 | `open` | `GAP` only; no claim has been selected |
 
-A normative statement requires an authority source. Implementation evidence alone
+A normative statement requires an authority source. This may be an adopted standard,
+an explicit project decision, or convergent evidence across enforcing constraints,
+architecture, tests/history, and human references. One implementation location alone
 cannot make a statement normative.
+
+When provisional and adopted relations coexist in one module, append `*` to each
+provisional ID label in the readable body and define the marker once near the top.
+The marker is presentation only: metadata and cross-references use the unmarked
+stable ID.
+
+Every provisional claim, or one clearly bounded provisional group, must be named in
+the `affects` scope of an open `GAP` that states what prevents promotion.
 
 ## Activation
 
@@ -126,17 +136,17 @@ specification content.
 
 ## Current Markdown encoding
 
-Use two bottom tables for ordinary modules. The split keeps semantic dependency data
-readable while allowing implementation traces to be detailed. Every statement ID
-appears once in each applicable table.
+Use one combined bottom table for ordinary modules. This keeps semantic dependency
+data beside its implementation trace. Every statement ID appears exactly once.
 
-| ID | Authority | Activation | Depends / discharged by |
-|---|---|---|---|
-| `REQ-X-001` | provisional | `execute` | `ASM-X-001` |
+| ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
+|---|---|---|---|---|---|---|
+| `REQ-X-001` | provisional | `execute` | `ASM-X-001`; `GAP-X-001` | located | `repo:path#symbol@rev` | `symbol:path#symbol` |
+| `GAP-X-001` | open | — | affects `REQ-X-001`; owner: human | — | no adopted relation identified | — |
 
-| ID | Binding | Source | Anchor / check |
-|---|---|---|---|
-| `REQ-X-001` | located | `repo:path#symbol@rev` | `symbol:path#symbol` |
+A module may split the columns into semantic and implementation tables only when the
+combined table is materially harder to review. Every ID must then appear once in each
+applicable table.
 
 Keep longer gap questions in the readable `Open boundary` section; use their metadata
 row for `affects`, evidence, and owner. Optional fields may be omitted when empty.

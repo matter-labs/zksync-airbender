@@ -48,6 +48,9 @@ The index is not an implicit source of assumptions. Every module declares its ow
 
 > <one-line scope and exclusions>
 
+`*` marks a provisional relation whose support is implementation-only, incomplete or
+conflicting, or whose intendedness remains open.
+
 ## Guarantee
 
 <Two to five terse lines describing the component contract.>
@@ -62,7 +65,7 @@ The index is not an implicit source of assumptions. Every module declares its ow
 
 ## Assumptions
 
-- **ASM-<MODULE>-001 — <name>.** `<imported proposition>`
+- **ASM-<MODULE>-001* — <name>.** `<imported proposition>`
 
 ## Decision tree
 
@@ -75,7 +78,7 @@ The index is not an implicit source of assumptions. Every module declares its ow
 
 ## Requirements
 
-### REQ-<MODULE>-001 — <name>
+### REQ-<MODULE>-001* — <name>
 
 `<atomic enforced relation>`
 
@@ -102,35 +105,30 @@ The index is not an implicit source of assumptions. Every module declares its ow
 - implementation: `<repository>@<commit>[+dirty]`
 - profile: `<profile-id>`
 
-| ID | Authority | Activation | Depends / discharged by |
-|---|---|---|---|
-| `IN-<MODULE>-001` | normative \| provisional | — | — |
-| `ASM-<MODULE>-001` | normative \| provisional | — | `<OUT-ID or external boundary>` |
-| `REQ-<MODULE>-001` | normative \| provisional \| disputed | `<predicate or always>` | `<IDs>` |
-| `INV-<MODULE>-001` | normative \| provisional \| disputed | `<predicate or always>` | `<IDs>` |
-| `REJ-<MODULE>-001` | normative \| provisional \| disputed | `<predicate>` | `<IDs>` |
-| `OUT-<MODULE>-001` | normative \| provisional | — | `<IDs>` |
-| `GAP-<MODULE>-001` | open | — | `<affected IDs/scope; owner>` |
-
-| ID | Binding | Source | Anchor / check |
-|---|---|---|---|
-| `IN-<MODULE>-001` | prose \| located \| pinned \| checked | `<stable locator>` | `<typed anchor or check>` |
-| `ASM-<MODULE>-001` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
-| `REQ-<MODULE>-001` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
-| `INV-<MODULE>-001` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
-| `REJ-<MODULE>-001` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
-| `OUT-<MODULE>-001` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
-| `GAP-<MODULE>-001` | — | `<conflicting/insufficient evidence>` | — |
+| ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
+|---|---|---|---|---|---|---|
+| `IN-<MODULE>-001` | normative \| provisional | — | — | prose \| located \| pinned \| checked | `<stable locator>` | `<typed anchor or check>` |
+| `ASM-<MODULE>-001` | normative \| provisional | — | `<OUT-ID or external boundary>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
+| `REQ-<MODULE>-001` | normative \| provisional \| disputed | `<predicate or always>` | `<IDs>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
+| `INV-<MODULE>-001` | normative \| provisional \| disputed | `<predicate or always>` | `<IDs>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
+| `REJ-<MODULE>-001` | normative \| provisional \| disputed | `<predicate>` | `<IDs>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
+| `OUT-<MODULE>-001` | normative \| provisional | — | `<IDs>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
+| `GAP-<MODULE>-001` | open | — | `<affected IDs/scope; owner>` | — | `<conflicting/insufficient evidence>` | — |
 ```
 
-See `spec/METADATA.md` for field semantics. Every main-body ID has exactly one row in
-each applicable metadata table. Group ranges only when every field is identical and
-no per-ID traceability is lost.
+See `spec/METADATA.md` for field semantics. Every main-body ID has exactly one
+combined metadata row. A module may split the columns into two tables only when the
+combined form is materially less readable; every ID must then occur once in each
+applicable table. Group ranges only when every field is identical and no per-ID
+traceability is lost.
 
 ## Formula conventions
 
 - Define integer and field domains explicitly: `u32 = [0, 2^32)`, `F = GF(p)`.
-- Use `x'` for the next state and subscripts for row/round/layer indices.
+- Use `x <- expression` for architectural state assignment: the right-hand side uses
+  the pre-transition value and unassigned architectural locations remain unchanged.
+  Use `x'` only when both state values must remain explicit in one mathematical
+  relation. Use subscripts for row/round/layer indices.
 - Use `=` for equality in the declared domain; write `= (mod n)` when needed.
 - Use `&&`, `||`, `!`, `=>`, and `<=>` consistently.
 - Quantify non-local variables: `forall i in [0, n)`.

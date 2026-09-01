@@ -30,8 +30,13 @@ user asks whether an existing module still matches its evidence.
    tree ordered from the outer activation/mode gate inward. Treat assumptions as tree
    context, keep stable IDs beside canonical statements, and consolidate provenance
    in the final metadata table.
-5. Preserve uncertainty. Write implementation-derived behavior as `provisional` and
-   unresolved intent as a narrow `GAP`; never choose a plausible meaning silently.
+5. Preserve uncertainty. Mark a claim `provisional` when its evidence is limited to
+   implementation detail, is conflicting, or leaves intendedness genuinely unclear.
+   A relation aligned with an adopted standard, explicit human direction, or
+   convergent constraint, architecture, test, and human evidence may be normative for
+   its stated profile. Every provisional claim or tightly related provisional group
+   must map to a narrow `GAP` stating what evidence, review, or decision would permit
+   promotion.
 6. Surface human decisions that would materially change the accepted relation. Apply
    confirmed decisions and continue with unaffected statements without blocking.
 7. Update `spec/INDEX.md` only when module scope, status, dependencies, or global gaps
@@ -53,10 +58,11 @@ ordinary source-locator maintenance.
 
 ## Evidence discipline
 
-- `normative`: explicit project decision, designated project specification, or
-  adopted external standard with project deviations applied.
-- `provisional`: consistent implementation, tests, history, comments, or architecture
-  evidence without normative confirmation.
+- `normative`: explicit project decision, adopted external standard with project
+  deviations applied, or a strongly corroborated relation adopted for the stated
+  profile from independent constraint, architecture, test, and human evidence.
+- `provisional`: a candidate relation supported only by implementation detail, or one
+  whose evidence or intendedness remains materially incomplete or conflicting.
 - `open`: `GAP` only; one missing decision, conflict, or evidence boundary.
 
 Constraints and verifier checks show what is enforced, not necessarily what was
@@ -65,8 +71,9 @@ enforcement. Trace important statements from inputs/configuration through constr
 or verification to the exported claim.
 
 Record the inspected revision, dirty-worktree state, active profile, and stable source
-symbols. Do not promote a provisional statement merely because it matches current
-code.
+symbols. A single matching code path is not enough for promotion; use the adopted
+standard, human direction, or convergent independent evidence that establishes the
+relation.
 
 ## Modular reasoning
 

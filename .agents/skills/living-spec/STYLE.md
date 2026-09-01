@@ -81,6 +81,10 @@ supposed to do.
 - Define every non-obvious symbol near first use.
 - State domains and arithmetic explicitly: integer, field, bit-vector, or modulo
   `2^n`.
+- For architectural state transitions, use `x <- expression`. The right-hand side
+  denotes the pre-transition value, and unassigned architectural locations remain
+  unchanged. Use a primed symbol only when the relation genuinely needs both state
+  values as simultaneous mathematical objects.
 - State activation and inactive behavior when a selector gates a relation.
 - State boundary cases: first/last row, overflow, padding, segment edges, transcript
   order, and recursion roots/leaves when applicable.
@@ -103,19 +107,16 @@ Current documents use ASCII-style formulas for easy ingestion.
 
 ## Metadata
 
-Metadata belongs at the bottom. Use one row per statement ID in each applicable
-metadata table unless a grouped range has genuinely identical metadata and loses no
-traceability.
+Metadata belongs at the bottom. Use one combined row per statement ID so a reviewer
+can see semantics and implementation traceability together:
 
-Use two tables when complete metadata would make one table too wide:
+| ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
+|---|---|---|---|---|---|---|
+| stable ID | intendedness | applicability | exact claim edges | implementation grip | human locator | typed machine locator or executable assertion |
 
-| ID | Authority | Activation | Depends / discharged by |
-|---|---|---|---|
-| stable ID | intendedness | applicability | exact claim edges |
-
-| ID | Binding | Source | Anchor / check |
-|---|---|---|---|
-| stable ID | implementation grip | human locator | typed machine locator or executable assertion |
+Split this into semantic and implementation tables only when the combined table is
+materially harder to review. Preserve one-to-one rows and identical IDs across both
+tables when split.
 
 `spec/METADATA.md` defines these fields. In particular, authority and binding are
 independent: a normative claim may be unpinned, while a provisional implementation
@@ -127,9 +128,17 @@ the metadata section unless they materially affect how the opening scope is read
 
 ## Uncertainty
 
-- Mark implementation-derived semantics `provisional` in metadata; keep the main
-  statement readable as a candidate contract.
+- Mark only genuinely uncertain semantics `provisional`: implementation-only
+  inferences, incomplete or conflicting evidence, or unresolved intendedness. A
+  relation aligned with an adopted standard, explicit human direction, or convergent
+  constraint, architecture, test, and human evidence may be normative for its stated
+  profile. When a module mixes provisional and adopted relations, append a visible
+  `*` to each provisional main-body ID label and define the marker once near the top.
+  The stable ID itself excludes the marker, so metadata and cross-references remain
+  `REQ-X-001`.
 - Express one unresolved decision per `GAP`. A gap is not a requirement or a finding.
+- Map every provisional claim, or one clearly bounded provisional group, to the `GAP`
+  that explains what prevents promotion.
 - Put a short draft warning near the title only when the entire module is unreliable or
   stale; do not blanket every page with warnings.
 - Never hide uncertainty by selecting the behavior that happens to appear most often
@@ -140,21 +149,23 @@ the metadata section unless they materially affect how the opening scope is read
 ## Preferred example
 
 ```markdown
-### REQ-ADD-001 — Destination value
+### REQ-ADD-001* — Destination value
 
 For an active row:
 
-`rd' = (rs1 + rs2 + imm) mod 2^32`.
+`rd <- (rs1 + rs2 + imm) mod 2^32`.
 
 ## Metadata
 
-| ID | Authority | Activation | Depends / discharged by |
-|---|---|---|---|
-| `REQ-ADD-001` | provisional | `is_add` | `ASM-ADD-001..003` |
+| ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
+|---|---|---|---|---|---|---|
+| `REQ-ADD-001` | provisional | `is_add` | `ASM-ADD-001..003`; `GAP-ADD-001` | located | `repo:path#symbol@revision` | `symbol:path#symbol` |
+| `GAP-ADD-001` | open | — | affects `REQ-ADD-001`; owner: human | — | no adopted relation identified | — |
 
-| ID | Binding | Source | Anchor / check |
-|---|---|---|---|
-| `REQ-ADD-001` | located | `repo:path#symbol@revision` | `symbol:path#symbol` |
+## Open boundary
+
+- **GAP-ADD-001 — Intended arithmetic relation.** Adopt or replace the current
+  implementation-only candidate relation.
 ```
 
 ## Avoid
