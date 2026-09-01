@@ -72,6 +72,12 @@ impl JitRunnerRam {
     pub(crate) fn timestamps_offset(&self) -> u64 {
         *self as u64
     }
+
+    pub(crate) fn memory_holder_buffer_size(&self) -> usize {
+        let num_u32_words = self.ram_size() / core::mem::size_of::<u32>();
+        assert_eq!(num_u32_words % 2, 0);
+        num_u32_words * 3 / 2
+    }
 }
 
 // Memory holder is defined as unsized, and it can/should only be constructed via
@@ -96,10 +102,6 @@ impl MemoryHolder {
 
     pub fn ram_size(&self) -> usize {
         self.num_words() * core::mem::size_of::<u32>()
-    }
-
-    fn timestamps_offset(&self) -> usize {
-        self.ram_size()
     }
 
     pub fn memory(&self) -> &[u32] {
@@ -170,7 +172,7 @@ impl MemoryHolder {
     pub fn allocate_zeroed<A: Allocator>(size: JitRunnerRam, allocator: A) -> Box<Self, A> {
         assert_ne!(size, JitRunnerRam::UninitPlaceholder);
         // performed via raw layout construction
-        let num_words = size.ram_size() / core::mem::size_of::<u32>() / 2 * 3;
+        let num_words = size.memory_holder_buffer_size();
         unsafe {
             let mut layout =
                 Layout::array::<u64>(num_words).expect("proper array layout for [u64]");

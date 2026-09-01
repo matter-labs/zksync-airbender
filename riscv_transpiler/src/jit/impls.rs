@@ -1899,7 +1899,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
                                 ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
                                 ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
-                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp
                                 ; mov [rsi + 8 * rdx], r8 // update timestamp
                                 ; sub rsi, [->timestamps_offset_constant_label]
                                 ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
@@ -1910,7 +1910,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 ; movzx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
                                 ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
                                 ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp
                                 ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
                                 ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
                             );
@@ -1929,14 +1929,12 @@ impl<I: ContextImpl> JittedCode<I> {
                         );
                         touch_register_and_increment_timestamp!(ops, rs1);
                         if large_timestamps_offset {
-                            assert!(timestamps_offset.is_power_of_two());
-                            let offset_shift = timestamps_offset.trailing_zeros();
                             dynasm!(ops
                                 ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
                                 ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
                                 ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
                                 ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
-                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp
                                 ; mov [rsi + 8 * rdx], r8 // update timestamp
                                 ; sub rsi, [->timestamps_offset_constant_label]
                                 ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
@@ -1947,7 +1945,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
                                 ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
                                 ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp
                                 ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
                                 ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
                             );
@@ -1966,14 +1964,12 @@ impl<I: ContextImpl> JittedCode<I> {
                         );
                         touch_register_and_increment_timestamp!(ops, rs1);
                         if large_timestamps_offset {
-                            assert!(timestamps_offset.is_power_of_two());
-                            let offset_shift = timestamps_offset.trailing_zeros();
                             dynasm!(ops
                                 ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
                                 ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
                                 ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
                                 ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
-                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp
                                 ; mov [rsi + 8 * rdx], r8 // update timestamp
                                 ; sub rsi, [->timestamps_offset_constant_label]
                                 ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
@@ -1984,7 +1980,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
                                 ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
                                 ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp
                                 ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
                                 ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
                             );
@@ -2003,8 +1999,6 @@ impl<I: ContextImpl> JittedCode<I> {
                         );
                         touch_register_and_increment_timestamp!(ops, rs1);
                         if large_timestamps_offset {
-                            assert!(timestamps_offset.is_power_of_two());
-                            let offset_shift = timestamps_offset.trailing_zeros();
                             dynasm!(ops
                                 ; mov Rd(out), DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into destination
                                 ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
@@ -2385,12 +2379,10 @@ impl<I: ContextImpl> JittedCode<I> {
                     );
                     let value = load(&mut ops, rs2);
                     if large_timestamps_offset {
-                        assert!(timestamps_offset.is_power_of_two());
-                        let offset_shift = timestamps_offset.trailing_zeros();
                         dynasm!(ops
                             ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value (frees its register)
                             ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
-                            ; mov rdx, [rsi + 8 * rax] // read timestamp (RDX free; frees RBP)
+                            ; mov rdx, [rsi + 8 * rax] // read timestamp
                             ; mov [rsi + 8 * rax], r8 // update timestamp
                             ; sub rsi, [->timestamps_offset_constant_label]
                             ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
@@ -2399,7 +2391,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         let offset = timestamps_offset as u32;
                         dynasm!(ops
                             ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value (frees its register)
-                            ; mov rdx, [rsi + (offset as i32) + 8 * rax] // read timestamp (RDX free; frees RBP)
+                            ; mov rdx, [rsi + (offset as i32) + 8 * rax] // read timestamp
                             ; mov [rsi + (offset as i32) + 8 * rax], r8 // update timestamp
                             ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
                         );
@@ -2426,12 +2418,10 @@ impl<I: ContextImpl> JittedCode<I> {
                     );
                     let value = load(&mut ops, rs2);
                     if large_timestamps_offset {
-                        assert!(timestamps_offset.is_power_of_two());
-                        let offset_shift = timestamps_offset.trailing_zeros();
                         dynasm!(ops
                             ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value (frees its register)
                             ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
-                            ; mov rdx, [rsi + 8 * rax] // read timestamp (RDX free; frees RBP)
+                            ; mov rdx, [rsi + 8 * rax] // read timestamp
                             ; mov [rsi + 8 * rax], r8 // update timestamp
                             ; sub rsi, [->timestamps_offset_constant_label]
                             ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
@@ -2440,7 +2430,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         let offset = timestamps_offset as u32;
                         dynasm!(ops
                             ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value (frees its register)
-                            ; mov rdx, [rsi + (offset as i32) + 8 * rax] // read timestamp (RDX free; frees RBP)
+                            ; mov rdx, [rsi + (offset as i32) + 8 * rax] // read timestamp
                             ; mov [rsi + (offset as i32) + 8 * rax], r8 // update timestamp
                             ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
                         );
@@ -2463,14 +2453,12 @@ impl<I: ContextImpl> JittedCode<I> {
                     touch_register_and_increment_timestamp!(ops, rs1);
                     touch_register_and_increment_timestamp!(ops, rs2);
                     if large_timestamps_offset {
-                        assert!(timestamps_offset.is_power_of_two());
-                        let offset_shift = timestamps_offset.trailing_zeros();
                         dynasm!(ops
                             // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
                             ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
                             ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value (frees its register)
                             ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
-                            ; mov rdx, [rsi + 2 * Rq(SCRATCH_REGISTER)] // read timestamp (RDX free now; frees RBP)
+                            ; mov rdx, [rsi + 2 * Rq(SCRATCH_REGISTER)] // read timestamp
                             ; mov [rsi + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
                             ; sub rsi, [->timestamps_offset_constant_label]
                             ; mov [rdi + r9 * 4], eax // write old value into trace
@@ -2482,7 +2470,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
                             ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
                             ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value (frees its register)
-                            ; mov rdx, [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp (RDX free now; frees RBP)
+                            ; mov rdx, [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp
                             ; mov [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
                             ; mov [rdi + r9 * 4], eax // write old value into trace
                             ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
@@ -3129,7 +3117,7 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
     debug_assert_ne!(machine_state.ram_config, JitRunnerRam::UninitPlaceholder);
     // we must reconstruct it
     let memory_holder = unsafe {
-        let num_u64_word = machine_state.ram_config.ram_size() / core::mem::size_of::<u32>() * 3;
+        let num_u64_word = machine_state.ram_config.memory_holder_buffer_size();
         core::mem::transmute(core::slice::from_raw_parts_mut(
             memory_holder.as_ptr(),
             num_u64_word,

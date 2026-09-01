@@ -1532,8 +1532,8 @@ fn run_and_compare() {
         .collect();
     let mut source = QuasiUARTSource::new_with_reads(witness);
 
-    let step = 1 << 19;
-    let initial_step = 762314752;
+    let step = 1 << 22;
+    let initial_step = 1 << 18;
     let upper_bound = (1 << 30) - 8;
 
     let mut previous_cycles_taken = 0;
@@ -1659,15 +1659,21 @@ fn run_and_compare() {
             .zip(jit_memory.timestamps().iter())
             .enumerate()
         {
-            assert_eq!(
-                reference_value.value, *jit_value,
-                "VALUE diverged for word {} after {} steps",
-                word_idx, num_steps
+            assert!(
+                reference_value.value == *jit_value,
+                "VALUE diverged for word {} after {} steps: reference is {}, JIT is {}",
+                word_idx,
+                num_steps,
+                reference_value.value,
+                jit_value
             );
-            assert_eq!(
-                reference_value.timestamp, *jit_ts,
-                "TIMESTAMP diverged for word {} after {} steps",
-                word_idx, num_steps
+            assert!(
+                reference_value.timestamp == *jit_ts,
+                "TIMESTAMP diverged for word {} after {} steps: reference is {}, JIT is {}",
+                word_idx,
+                num_steps,
+                reference_value.timestamp,
+                jit_ts,
             );
         }
 

@@ -290,7 +290,6 @@ fn collect_inits_and_teardowns(
     let memory = holder.memory();
     let timestamps = holder.timestamps();
     let mem_len_words = memory.len();
-    dbg!(mem_len_words);
     worker.scope(mem_len_words, |scope, geometry| {
         for thread_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(thread_idx);
@@ -397,7 +396,6 @@ struct InitsAndTeardownsPartitioning {
 
 impl InitsAndTeardownsPartitioning {
     fn new(values: Vec<Vec<InitAndTeardownRecord>>, geometry: InitsAndTeardownsGeometry) -> Self {
-        dbg!(&geometry);
         let InitsAndTeardownsGeometry {
             pages_per_set_log2,
             num_sets,
@@ -428,7 +426,6 @@ impl InitsAndTeardownsPartitioning {
                 _ => touched.push((window, 1)),
             }
         }
-        dbg!(&touched);
         let window_schedule = if num_sets as u32 >= windows_in_ram {
             // The sets already span the whole address space (split mode), and
             // `full_statement_verifier::unrolled_proof_statement` asserts
