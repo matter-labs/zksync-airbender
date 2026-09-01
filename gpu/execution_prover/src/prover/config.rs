@@ -76,7 +76,7 @@ impl Default for ExecutionProverConfiguration {
             host_allocators_per_device_count: 128,           // 8 GB
             min_free_host_allocators_per_job: 32,            // 2 GB
             security_level: SecurityLevel::Sec100,
-            ram_config: JitRunnerRam::Medium,                // 1Gb
+            ram_config: JitRunnerRam::Medium, // 1Gb
         }
     }
 }

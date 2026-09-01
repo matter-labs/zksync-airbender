@@ -250,6 +250,9 @@ pub struct MachineState {
     // pointer (held in an XMM lane during execution) across `save_machine_state!`
     // / `after_call!`, which would otherwise clobber that lane.
     pub(crate) non_determinism_responses_ptr: u64,
+    // we need to save memory size in machine state to ensure it is available later on
+    // to reconstruct MemoryHolder
+    pub(crate) ram_config: JitRunnerRam,
     // packed_ts experiment: per-cycle the JIT writes one timestamp (the cycle's 0-mod-4
     // base) into the slot for the instruction's (rs1, rs2, rd) triple (index
     // 33*33*rs1 + 33*rs2 + rd, with rs2=32 for loads and rd=32 for stores). Placed LAST so
@@ -287,6 +290,7 @@ impl MachineState {
     const PC_OFFSET: usize = offset_of!(Self, pc);
     const TIMESTAMP_OFFSET: usize = offset_of!(Self, timestamp);
     const CONTEXT_PTR_OFFSET: usize = offset_of!(Self, context_ptr);
+    const RAM_CONFIG_OFFSET: usize = offset_of!(Self, ram_config);
     const NON_DETERMINISM_RESPONSES_PTR_OFFSET: usize =
         offset_of!(Self, non_determinism_responses_ptr);
 
@@ -298,6 +302,7 @@ impl MachineState {
             counters: MachineCounters::new(),
             pc: 0,
             timestamp: INITIAL_TIMESTAMP,
+            ram_config: JitRunnerRam::UninitPlaceholder,
             context_ptr: core::ptr::dangling_mut(),
             non_determinism_responses_ptr: 0,
             #[cfg(not(feature = "xmm_ts"))]

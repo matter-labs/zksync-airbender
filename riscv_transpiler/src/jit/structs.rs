@@ -1,3 +1,5 @@
+use std::alloc::Layout;
+
 use super::*;
 
 impl TraceChunk {
@@ -54,6 +56,7 @@ impl TraceChunk {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(u64)]
 pub enum JitRunnerRam {
+    UninitPlaceholder = 0,
     Tiny = 32 * (1 << 20),
     Small = 128 * (1 << 20),
     Medium = 1 << 30,
@@ -72,16 +75,23 @@ impl JitRunnerRam {
 }
 
 // Memory holder is defined as unsized, and it can/should only be constructed via
-// boxed allocation
-#[repr(align(4096))]
+// boxed allocation. There is no way to set it's representation here, but it's alignment is
+// guaranteed to be 2Mb - huge page on x86-64
+#[repr(transparent)]
 pub struct MemoryHolder {
     buffer: [u64],
 }
 
 impl MemoryHolder {
+    pub const ALIGNMENT: usize = 1 << 21;
+
     fn num_words(&self) -> usize {
         assert_eq!((self.buffer.len() * 2) % 3, 0);
         self.buffer.len() * 2 / 3
+    }
+
+    pub fn as_mut_ptr(&mut self) -> NonNull<u64> {
+        unsafe { NonNull::new_unchecked(self.buffer.as_mut_ptr()) }
     }
 
     pub fn ram_size(&self) -> usize {
@@ -152,13 +162,33 @@ impl MemoryHolder {
     }
 
     pub fn allocate_uninit<A: Allocator>(size: JitRunnerRam, allocator: A) -> Box<Self, A> {
+        assert_ne!(size, JitRunnerRam::UninitPlaceholder);
         // performed via raw layout construction
         todo!();
     }
 
     pub fn allocate_zeroed<A: Allocator>(size: JitRunnerRam, allocator: A) -> Box<Self, A> {
+        assert_ne!(size, JitRunnerRam::UninitPlaceholder);
         // performed via raw layout construction
-        todo!();
+        let num_words = size.ram_size() / core::mem::size_of::<u32>() / 2 * 3;
+        unsafe {
+            let mut layout =
+                Layout::array::<u64>(num_words).expect("proper array layout for [u64]");
+            layout = layout
+                .align_to(Self::ALIGNMENT)
+                .expect("proper extra alignment for [u64]");
+            let backing = allocator
+                .allocate_zeroed(layout)
+                .expect("MemoryHolder allocated");
+            let backing_u64 =
+                NonNull::slice_from_raw_parts(backing.as_non_null_ptr().cast::<u64>(), num_words);
+            let backing_box = Box::<MemoryHolder, A>::from_non_null_in(
+                core::mem::transmute(backing_u64),
+                allocator,
+            );
+            // Same layout
+            backing_box
+        }
     }
 
     pub fn byte_size(&self) -> usize {
@@ -393,7 +423,7 @@ impl<'a, N: NonDeterminismCSRSource> ContextImpl for DefaultContextImpl<'a, N> {
         mut trace_chunk: NonNull<TraceChunk>,
         machine_state: &MachineState,
     ) {
-        println!("Execution completed");
+        // println!("Execution completed");
         debug_assert!((machine_state as *const MachineState)
             .is_aligned_to(core::mem::align_of::<MachineState>()));
         debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)
@@ -501,7 +531,7 @@ impl<'a> ContextImpl for FlattenedContextImpl<'a> {
         mut trace_chunk: NonNull<TraceChunk>,
         machine_state: &MachineState,
     ) {
-        println!("Execution completed");
+        // println!("Execution completed");
         debug_assert!((machine_state as *const MachineState)
             .is_aligned_to(core::mem::align_of::<MachineState>()));
         debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)

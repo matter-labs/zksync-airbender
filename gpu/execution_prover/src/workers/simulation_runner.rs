@@ -16,7 +16,8 @@ use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use riscv_transpiler::jit::{
-    Context, ContextImpl, JitRunnerRam, JittedCode, MAX_NUM_COUNTERS, MachineState, MemoryHolder, RAM_SIZE, TraceChunk,
+    Context, ContextImpl, JitRunnerRam, JittedCode, MachineState, MemoryHolder, TraceChunk,
+    MAX_NUM_COUNTERS, RAM_SIZE,
 };
 use riscv_transpiler::vm::NonDeterminismCSRSource;
 use std::mem::replace;

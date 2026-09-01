@@ -202,7 +202,7 @@ impl NonDeterminismCSRSource for crate::abstractions::non_determinism::QuasiUART
     fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, _ram: &R, value: u32) {
         self.write_state.process_write(value);
     }
-    fn write_with_memory_access_raw(&mut self, ram: &[u32], value: u32) {
+    fn write_with_memory_access_raw(&mut self, _ram: &[u32], value: u32) {
         self.write_state.process_write(value);
     }
     fn write_with_memory_access_dyn(&mut self, _ram: &dyn RamPeek, value: u32) {
