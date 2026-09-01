@@ -25,7 +25,7 @@ impl<N: NonDeterminismCSRSource> NonDeterminismCSRSource for NonDeterminismWrapp
         value
     }
 
-    fn write_with_memory_access<R: RamPeek>(&mut self, ram: &R, value: u32) {
+    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, ram: &R, value: u32) {
         self.inner.write_with_memory_access(ram, value)
     }
 
