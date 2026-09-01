@@ -257,7 +257,6 @@ impl ExecutionProver {
                     }
                 }
                 let free_trace_chunks_receiver_clone = free_trace_chunks_receiver.clone();
-                let ram_config = self.configuration.ram_config;
                 match execution_kind {
                     ExecutionKind::Unrolled => run_simulator::<_, SplitTracingType>(
                         batch_id,

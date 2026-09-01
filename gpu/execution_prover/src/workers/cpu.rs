@@ -64,7 +64,7 @@ pub(crate) fn run_simulator<
         .lock()
         .expect("simulation worker non-determinism mutex poisoned");
     let non_determinism_source = non_determinism_guard.take().unwrap();
-    let ram_words = memory_holder().memory.len();
+    let ram_words = memory_holder.holder.memory().len();
     let carrier = if T::IS_SPLIT {
         UnrolledCircuitType::InitsAndTeardowns
     } else {

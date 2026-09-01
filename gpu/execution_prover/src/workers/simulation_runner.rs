@@ -293,7 +293,8 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         let trace_ref = unsafe { NonNull::new_unchecked(trace.chunk.as_mut()) };
         self.trace = Some(trace);
         self.instant = Some(Instant::now());
-        let mut context = Context::new(self, self.ram_config);
+        let ram_config = self.ram_config;
+        let mut context = Context::new(self, ram_config);
         jitted_code.run_over_prepared_memory(&mut context, memory_holder, trace_ref);
         let mut runner = context.into_implementation();
         if let Some(trace) = runner.trace.take() {
