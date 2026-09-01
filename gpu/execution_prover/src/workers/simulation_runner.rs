@@ -17,7 +17,7 @@ use riscv_transpiler::ir::{
 };
 use riscv_transpiler::jit::{
     Context, ContextImpl, JitRunnerRam, JittedCode, MachineState, MemoryHolder, TraceChunk,
-    MAX_NUM_COUNTERS, RAM_SIZE,
+    MAX_NUM_COUNTERS,
 };
 use riscv_transpiler::vm::NonDeterminismCSRSource;
 use std::mem::replace;
@@ -182,6 +182,7 @@ pub(crate) struct SimulationRunner<
     pub instant: Option<Instant>,
     pub total_elapsed: Duration,
     pub is_aborted: bool,
+    pub ram_config: JitRunnerRam,
 }
 
 impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
@@ -198,6 +199,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         free_allocators: Receiver<A>,
         abort: Arc<AtomicBool>,
         empty_it_streamer: Option<EmptyInitsAndTeardownsStreamer>,
+        ram_config: JitRunnerRam,
     ) -> Self {
         let tracing_data_producers =
             T::Producers::new(machine_type, free_allocators, results.clone());
@@ -219,6 +221,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             instant: None,
             total_elapsed: Default::default(),
             is_aborted: false,
+            ram_config,
         }
     }
 
@@ -269,6 +272,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
                     &instructions,
                     cycles_bound,
                     riscv_transpiler::jit::MopField::BabyBear,
+                    self.ram_config,
                 );
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiled bytecode");
                 let jitted_code = Arc::new(jitted_code);
@@ -289,13 +293,9 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         let trace_ref = unsafe { NonNull::new_unchecked(trace.chunk.as_mut()) };
         self.trace = Some(trace);
         self.instant = Some(Instant::now());
-        let mut context = Context {
-            implementation: self,
-        };
+        let mut context = Context::new(self, self.ram_config);
         jitted_code.run_over_prepared_memory(&mut context, memory_holder, trace_ref);
-        let Context {
-            implementation: mut runner,
-        } = context;
+        let mut runner = context.into_implementation();
         if let Some(trace) = runner.trace.take() {
             runner
                 .free_trace_chunks_sender
@@ -402,7 +402,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType> ContextImpl
     }
 
     #[inline(always)]
-    fn write_nondeterminism(&mut self, value: u32, memory: &[u32; RAM_SIZE]) {
+    fn write_nondeterminism(&mut self, value: u32, memory: &[u32]) {
         self.non_determinism_source
             .write_with_memory_access(memory, value);
     }

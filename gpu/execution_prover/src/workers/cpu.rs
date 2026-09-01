@@ -15,7 +15,7 @@ use gpu_trace::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_L
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use riscv_transpiler::jit::{MemoryHolder, ReplayerMemChunks};
+use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, ReplayerMemChunks};
 use riscv_transpiler::replayer::ReplayerVM;
 use riscv_transpiler::vm::{InstructionTape, NonDeterminismCSRSource, State};
 use std::cmp::min;
@@ -54,13 +54,17 @@ pub(crate) fn run_simulator<
     free_allocators: Receiver<A>,
     abort: Arc<AtomicBool>,
     worker: &Worker,
+    ram_config: JitRunnerRam,
 ) {
+    assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+    assert_eq!(ram_config.ram_size(), memory_holder.holder.ram_size());
+
     trace!("BATCH[{batch_id}] SIMULATOR started");
     let mut non_determinism_guard = non_determinism
         .lock()
         .expect("simulation worker non-determinism mutex poisoned");
     let non_determinism_source = non_determinism_guard.take().unwrap();
-    let ram_words = memory_holder.memory.len();
+    let ram_words = memory_holder().memory.len();
     let carrier = if T::IS_SPLIT {
         UnrolledCircuitType::InitsAndTeardowns
     } else {
@@ -83,6 +87,7 @@ pub(crate) fn run_simulator<
         free_allocators.clone(),
         abort,
         empty_it_streamer,
+        ram_config,
     );
     let runner = runner.run(
         binary_image,

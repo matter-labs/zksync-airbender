@@ -29,6 +29,10 @@ impl<N: NonDeterminismCSRSource> NonDeterminismCSRSource for NonDeterminismWrapp
         self.inner.write_with_memory_access(ram, value)
     }
 
+    fn write_with_memory_access_raw(&mut self, ram: &[u32], value: u32) {
+        self.inner.write_with_memory_access_raw(ram, value)
+    }
+
     fn write_with_memory_access_dyn(&mut self, ram: &dyn RamPeek, value: u32) {
         self.inner.write_with_memory_access_dyn(ram, value)
     }

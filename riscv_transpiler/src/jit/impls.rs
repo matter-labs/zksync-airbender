@@ -3161,6 +3161,10 @@ impl<I: ContextImpl> Context<I> {
         }
     }
 
+    pub fn into_implementation(self) -> I {
+        self.implementation
+    }
+
     extern "sysv64" fn nondeterminism_as_raw_ptr(&self) -> *const u32 {
         if let Some(ptr) = self.implementation.nondeterminism_as_raw_ptr() {
             ptr
