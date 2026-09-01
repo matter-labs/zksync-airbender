@@ -2958,7 +2958,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
 
-        // println!("Preparing defaut context implementation");
+        // println!("Preparing default context implementation");
         let implementation = DefaultContextImpl {
             non_determinism_source,
             trace_len: 0,
