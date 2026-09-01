@@ -287,15 +287,19 @@ fn collect_inits_and_teardowns(
 ) -> Vec<Vec<InitAndTeardownRecord>> {
     let mut chunks = vec![vec![]; worker.get_num_cores()];
     let mut dst = &mut chunks[..];
-    worker.scope(holder.memory().len(), |scope, geometry| {
+    let memory = holder.memory();
+    let timestamps = holder.timestamps();
+    let mem_len_words = memory.len();
+    dbg!(mem_len_words);
+    worker.scope(mem_len_words, |scope, geometry| {
         for thread_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(thread_idx);
             let chunk_start = geometry.get_chunk_start_pos(thread_idx);
             let range = chunk_start..(chunk_start + chunk_size);
             let (el, rest) = dst.split_at_mut(1);
             dst = rest;
-            let values = &holder.memory()[range.clone()];
-            let timestamps = &holder.timestamps()[range];
+            let values = &memory[range.clone()];
+            let timestamps = &timestamps[range];
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                 let values_ptr = values.as_ptr() as *mut u32;
                 let timestamps_ptr = timestamps.as_ptr() as *mut TimestampScalar;
@@ -339,7 +343,7 @@ fn collect_inits_and_teardowns(
 /// of its `num_sets` sets covers one *window* of `1 << trace_len_log2`
 /// consecutive RAM words, named in the proof by its global window index
 /// (`top_bits`).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct InitsAndTeardownsGeometry {
     pages_per_set_log2: u32,
     num_sets: usize,
@@ -393,12 +397,13 @@ struct InitsAndTeardownsPartitioning {
 
 impl InitsAndTeardownsPartitioning {
     fn new(values: Vec<Vec<InitAndTeardownRecord>>, geometry: InitsAndTeardownsGeometry) -> Self {
+        dbg!(&geometry);
         let InitsAndTeardownsGeometry {
             pages_per_set_log2,
             num_sets,
             windows_in_ram,
         } = geometry;
-        let page_size = 1usize << PAGE_SIZE_LOG2;
+        const PAGE_SIZE_WORDS: usize = 1usize << PAGE_SIZE_LOG2;
         // Keyed by GLOBAL page index: that order is also window-major, which is
         // what lets `into_chunks` group by window in one streaming pass without
         // re-scanning or sorting the page payloads.
@@ -410,7 +415,7 @@ impl InitsAndTeardownsPartitioning {
                 let word_in_page = (word_idx & ((1u32 << PAGE_SIZE_LOG2) - 1)) as usize;
                 let entry = pages
                     .entry(page_idx)
-                    .or_insert_with(|| (vec![0u32; page_size], vec![0u64; page_size]));
+                    .or_insert_with(|| (vec![0u32; PAGE_SIZE_WORDS], vec![0u64; PAGE_SIZE_WORDS]));
                 entry.0[word_in_page] = record.teardown_value;
                 entry.1[word_in_page] = record.teardown_timestamp;
             }
@@ -423,6 +428,7 @@ impl InitsAndTeardownsPartitioning {
                 _ => touched.push((window, 1)),
             }
         }
+        dbg!(&touched);
         let window_schedule = if num_sets as u32 >= windows_in_ram {
             // The sets already span the whole address space (split mode), and
             // `full_statement_verifier::unrolled_proof_statement` asserts

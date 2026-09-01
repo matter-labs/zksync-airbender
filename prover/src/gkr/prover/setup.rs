@@ -23,10 +23,10 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         // we always have range-check 16 bits and timestamp limbs
         let total_width = compiled_circuit.generic_lookup_tables_width;
 
-        println!(
-            "Creating setup with {} columns in total ({} generic lookup tables width)",
-            total_width, compiled_circuit.generic_lookup_tables_width
-        );
+        // println!(
+        //     "Creating setup with {} columns in total ({} generic lookup tables width)",
+        //     total_width, compiled_circuit.generic_lookup_tables_width
+        // );
 
         let mut result = Vec::with_capacity(total_width);
 
