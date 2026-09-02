@@ -1,127 +1,97 @@
 # UNIFIED: Reduced unified ISA profile
 
-> Inventory of the reduced unified executor at `dfb1b2a8a`; instruction semantics,
-> delegation relations, and equivalence with unrolled circuits are specified elsewhere.
-
-`*` marks a profile-specific relation still supported primarily by implementation
-evidence and covered by an explicit gap below.
+> Operation inventory and dispatch boundary for the reduced unified executor
+> at `dfb1b2a8a`; sibling modules own the selected operation relations
 
 ## Guarantee
 
-The profile identifies which preprocessed instructions enter the reduced unified
-circuit, which instruction families are absent, and which delegation circuits can
-fulfil its delegation calls. It also fixes the structural boundary of "unified": one
-executor circuit and setup replace the per-family executor circuits and setups.
+The profile admits one reduced instruction set into circuit family `128`. Each active
+cycle selects exactly one embedded operation body inside a single compiled executor
+circuit. Standard multiply/divide and subword-memory operations are outside this
+profile; delegated precompiles remain separate circuits.
 
-## Supported operations
+## Profile inputs
 
-### REQ-UNIFIED-001* — Unified decoder domain
+- `execute ∈ {0, 1}` activates one machine cycle
+- `op` is the decoder-authenticated preprocessed operation
+- `d₁`, `d₂`, `d₃`, and `d₄` select the add/MOP, jump/branch/compare,
+  binary/shift, and word-memory bodies
+- `ReducedMachineDecoderConfig` enables MOPs and unified XOR-rotate/tri-add, and
+  disables standard multiply/divide, subword memory, and ordinary rotate
 
-After preprocessing, the unified decoder admits exactly the following source
-operations and machine-interface operations:
+## Operation inventory and dispatch
 
-| Class | Operations |
-|---|---|
-| Ordinary integer | `NOP`; `ADD`, `ADDI`, `LUI`; `SUB`; `AUIPC` |
-| Jump, branch, compare | `JAL`, `JALR`; `BEQ`, `BNE`, `BLT`, `BGE`, `BLTU`, `BGEU`; `SLT`, `SLTI`, `SLTU`, `SLTIU` |
-| Bitwise and shift | `AND`, `ANDI`, `OR`, `ORI`, `XOR`, `XORI`; `SLL`, `SLLI`, `SRL`, `SRLI`, `SRA`, `SRAI` |
-| Word memory | `LW`, `SW` |
-| Modular/custom arithmetic | `ZimopAdd`, `ZimopSub`, `ZimopMul`, `ZimopFMA`, `ZimopTriAdd` |
-| Unified xor-rotate | `ZimopIXorRot` with rotation `r in {16, 12, 8, 7}` |
-| Machine interface | `ZicsrDelegation`, `ZicsrNonDeterminismRead`, `ZicsrNonDeterminismWrite` |
+### REQ-UNIFIED-001 — Admitted operations
 
-Source-level register and immediate forms that preprocessing maps to the same decoder
-row share one unified operation class. In particular, `ZimopMul` is a custom modular
-operation and is not the standard RISC-V `MUL` instruction.
+The profile admits exactly the following source operations and machine-interface
+operations after preprocessing. Each row names the module that owns its relation.
 
-### REQ-UNIFIED-002 — Reduced-family boundary
+| Body | Admitted operations | Normalized operation | Relation |
+|---|---|---|---|
+| `d₁` | `NOP`; `ADD`, `ADDI`, `LUI`; `SUB`; `AUIPC` | `Nop`, `Add`, `Sub`, `Auipc` | [UADD](add-sub-mop.md) |
+| `d₁` | `ZimopAdd`, `ZimopSub`, `ZimopMul`, `ZimopFMA`, `ZimopTriAdd` | same name | [UADD](add-sub-mop.md) |
+| `d₁` | delegation CSR call; nondeterminism CSR read or write | `ZicsrDelegation`, `ZicsrNonDeterminismRead`, `ZicsrNonDeterminismWrite` | [UADD](add-sub-mop.md) and [PRECOMP](../precompiles/profile.md) |
+| `d₂` | `JAL`, `JALR`; `BEQ`, `BNE`, `BLT`, `BGE`, `BLTU`, `BGEU`; `SLT`, `SLTI`, `SLTU`, `SLTIU` | `Jal`, `Jalr`, `Branch`, `Slt`, `Sltu` | [UJUMP](jump-branch-slt.md) |
+| `d₃` | `AND`, `ANDI`, `OR`, `ORI`, `XOR`, `XORI`; `SLL`, `SLLI`, `SRL`, `SRLI`, `SRA`, `SRAI` | `And`, `Or`, `Xor`, `Sll`, `Srl`, `Sra` | [UBSHIFT](binary-shifts.md) |
+| `d₃` | `ZimopIXorRot` with `r ∈ {16, 12, 8, 7}` | `ZimopIXorRot` | [UBSHIFT](binary-shifts.md) |
+| `d₄` | `LW`, `SW` | `Lw`, `Sw` | [UMWORD](memory-word.md) |
 
-The profile has no standard multiply/divide family: `MUL`, `MULH`, `MULHSU`, `MULHU`,
-`DIV`, `DIVU`, `REM`, and `REMU` are absent. It also has no subword-memory family:
-`LB`, `LBU`, `LH`, `LHU`, `SB`, and `SH` are absent. These are profile exclusions,
-not unfinished branches of the unified circuit.
+`ZimopMul` is project modular arithmetic, not the standard RISC-V `MUL`
 
-### REQ-UNIFIED-003* — Unified-only custom operations
+Pure destination writes with `rd = x0`, including loads, normalize to the canonical
+`Nop` row before dispatch. Jumps, branches, stores, and delegation calls do not use
+that rewrite merely because their encoded destination field is `x0`.
 
-The two operations added directly by the unified decoder are:
+### REQ-UNIFIED-002 — Active one-hot dispatch
 
-- `ZimopTriAdd`: `rd <- (rd + rs1 + rs2) mod 2^32`;
-- `ZimopIXorRot`: `rd <- rotate_right(rs1 XOR rd, r)` for
-  `r in {16, 12, 8, 7}`, where the right-hand `rd` is its pre-cycle value.
+Under decoder authentication:
 
-The corresponding standalone add/sub and binary/shift decoders do not admit these
-operations at the inspected revision.
+`execute = d₁ + d₂ + d₃ + d₄`
 
-### REQ-UNIFIED-004 — Word-memory alignment
+where each `dᵢ ∈ {0, 1}` and the selected body enforces the relation named by
+`REQ-UNIFIED-001`. The symbols aggregate the body's mutually exclusive operation
+flags; auxiliary flags such as jump destination-is-`x0` are not dispatch selectors.
+All four bodies share one machine-state allocation inside one compiled executor
+circuit; delegated fulfillment uses separate precompile circuits.
 
-For an active unified `LW` or `SW`, the 32-bit effective byte address satisfies
-`addr mod 4 = 0`. The unified word-memory body imposes this restriction for both
-mutable RAM and ROM accesses.
+## Decision tree
 
-## Delegation interface
+- **`execute = 0`**
+  - `d₁ = d₂ = d₃ = d₄ = 0` under `REQ-UNIFIED-002`
+  - no operation relation is active
+- **`execute = 1`**
+  - **`op` occurs in one row of `REQ-UNIFIED-001`**
+    - exactly that row's body is active under `REQ-UNIFIED-002`
+    - the linked sibling module defines the architectural relation
+  - **`op` does not occur in `REQ-UNIFIED-001`**
+    - unreachable under decoder authentication
 
-### REQ-UNIFIED-005* — Delegation variants
+Delegated-precompile admission and fulfillment selection are defined by
+[PRECOMP](../precompiles/profile.md), under its `reduced-unified` profile.
 
-`ZicsrDelegation` emits a delegation request from the unified executor. The inspected
-setup supplies four separate fulfilment-circuit variants:
+## Derived facts
 
-- Blake2s compression with extended control;
-- Blake2s G function;
-- bigint operations with control;
-- Keccak-f special-5.
-
-These circuits are not fused into the unified executor. Their delegation type and
-global invocation/fulfilment argument connect them to the executor profile.
-
-## Circuit structure
-
-### REQ-UNIFIED-006 — Single executor circuit
-
-The unified profile uses one decoder family, one compiled GKR circuit, and one setup
-entry for all operations in `REQ-UNIFIED-001`. Each active row selects one of four
-embedded executor bodies:
-
-1. add/sub/LUI/AUIPC/modular operations and machine-interface operations;
-2. jumps, branches, and comparisons;
-3. bitwise and shift operations;
-4. word loads and stores.
-
-The bodies share one machine-state allocation, three register-or-memory access slots,
-scratch columns, and pooled lookup slots. The unrolled profile instead gives each
-instruction family its own compiled circuit, trace, and setup entry. Delegation
-circuits remain separate in both structures.
+- **Single active body**
+  `execute = 1 ⇒ d₁ + d₂ + d₃ + d₄ = 1`
+- **Inactive dispatch**
+  `execute = 0 ⇒ d₁ = d₂ = d₃ = d₄ = 0`
 
 ## Open boundary
 
 - **GAP-UNIFIED-001 — Common-ISA equivalence.** No reviewed theorem or exhaustive
-  conformance check currently establishes that every ordinary operation shared by
-  the unified and unrolled profiles accepts exactly the same architectural
-  transition after preprocessing. Such a result is required before one
-  implementation-independent ISA relation can discharge both profiles.
-- **GAP-UNIFIED-002 — Profile-specific operation adoption.** Review and adopt the
-  exact unified decoder inventory, custom `ZimopTriAdd`/`ZimopIXorRot` relations, and
-  delegation variants. These claims are currently supported primarily by the unified
-  implementation and setup inventory rather than an independent project reference.
+  conformance check establishes that every standard operation shared by the unified
+  and unrolled profiles accepts exactly the same architectural transition after
+  preprocessing. The profile-specific relation modules remain authoritative until a
+  common implementation-independent ISA layer is adopted.
 
 ## Metadata
 
-The reduced-family boundary, word-alignment rule, and single-circuit structure are
-normative for this selected profile: they reflect explicit project direction and
-convergent decoder, circuit, setup, and shared-memory evidence. Starred claims remain
-provisional because their exact custom inventory or interface is supported primarily
-by the current implementation and is tracked by `GAP-UNIFIED-002`.
-
-- spec revision: `2026-08-28.5`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: `2026-09-02.1`
+- implementation: `matter-labs/zksync-airbender@dfb1b2a8a+dirty`
 - profile: reduced unified machine, circuit family `128`
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
 |---|---|---|---|---|---|---|
-| `REQ-UNIFIED-001` | provisional | decoded executing row | `GAP-UNIFIED-002`; decoder preprocessing boundary | located | `repo:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode@dfb1b2a8a`; `repo:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace@dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace` |
-| `REQ-UNIFIED-002` | normative | profile selection | `REQ-UNIFIED-001` | located | unified decoder dispatch at `dfb1b2a8a`; unrolled-only family setup inventory | `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace`; `symbol:circuit_defs/setups/src/unrolled_circuits/mod.rs#get_unrolled_circuits_setups_for_machine_type` |
-| `REQ-UNIFIED-003` | provisional | `ZimopTriAdd || ZimopIXorRot` | `REQ-UNIFIED-001`; `GAP-UNIFIED-002` | located | `repo:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace@dfb1b2a8a`; unified family bodies | `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/binary_shifts.rs#apply_unified_binary_shifts_inner` |
-| `REQ-UNIFIED-004` | normative | active `LW || SW` | `REQ-UNIFIED-001` | located | `repo:cs/src/gkr_circuits/unified_reduced_machine/mem_word_only_lw_sw.rs#apply_unified_mem_word_only_lw_sw_data_path@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/unified_reduced_machine/mem_word_only_lw_sw.rs#apply_unified_mem_word_only_lw_sw_data_path` |
-| `REQ-UNIFIED-005` | provisional | delegation request and fulfilment | `REQ-UNIFIED-001`; `GAP-UNIFIED-002`; external global delegation argument | located | `repo:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner@dfb1b2a8a`; `repo:circuit_defs/setups/src/circuits/mod.rs#produce_verifier_setup_for_all_delegations@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner`; `symbol:circuit_defs/setups/src/circuits/mod.rs#produce_verifier_setup_for_all_delegations` |
-| `REQ-UNIFIED-006` | normative | profile construction | `REQ-UNIFIED-001` | located | `repo:cs/src/gkr_circuits/unified_reduced_machine/circuit.rs#unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core@dfb1b2a8a`; `repo:circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs#unified_reduced_machine_circuit_setup@dfb1b2a8a`; per-family setup path | `symbol:cs/src/gkr_circuits/unified_reduced_machine/circuit.rs#unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core`; `symbol:circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs#unified_reduced_machine_circuit_setup`; `symbol:circuit_defs/setups/src/unrolled_circuits/mod.rs#get_unrolled_circuits_setups_for_machine_type` |
-| `GAP-UNIFIED-001` | open | — | affects common ISA adoption; owner `human` | — | shared operation names and structurally adapted family bodies; no accepted equivalence artifact | — |
-| `GAP-UNIFIED-002` | open | — | affects `REQ-UNIFIED-001`, `REQ-UNIFIED-003`, `REQ-UNIFIED-005`; owner `human` | — | exact unified-only inventory and relations currently have implementation evidence but no independent adopted project reference | — |
+| `REQ-UNIFIED-001` | normative | profile selection | `REL-UADD-001..004`; `OUT-UADD-001`; `REL-UJUMP-001..003`; `REL-UBSHIFT-001..003`; `REL-UMWORD-001..003`; [PRECOMP](../precompiles/profile.md) | located | explicit reduced-unified profile direction; reduced decoder configuration and unified decoder | `symbol:riscv_transpiler/src/ir/mod.rs#ReducedMachineDecoderConfig`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace` |
+| `REQ-UNIFIED-002` | normative | every unified cycle | `REQ-UNIFIED-001`; `external:DEC` | located | unified decoder row, single compiled executor, and circuit dispatch constraints | `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/circuit.rs#apply_unified_family_dispatch_one_hot`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/circuit.rs#unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core` |
+| `GAP-UNIFIED-001` | open | — | affects common ISA adoption; owner `human` | — | shared standard operations and separate profile relations; no accepted equivalence artifact | — |

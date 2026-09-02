@@ -163,7 +163,7 @@ deliverable:
 | `REQ-W2-001` | `UPROF`, `UNIFIED`, `PRECOMP`, shared machine modules, `MACH`, `BASE`, and `TOPO` | partial; exact segmentation/cardinality and complete recursion interfaces remain open |
 | `REQ-W2-002` | Markdown source under `spec/` | partial; PDF packaging deferred |
 | `REQ-W2-003` | invocation hierarchy and known producer/consumer edges in `TOPO` | partial; exact counts, field-level interfaces, auxiliary edges, and the selected terminal path remain open |
-| `REQ-W2-004` | `ADD`, `BSHIFT`, `JUMP`, `MULDIV`, `MWORD`, `MEMSUB`, shared machine modules, `LOOKUP`, and `BASE` | partial; unified embedded relations, precompile computations, and several proof-layer invocation relations remain incomplete |
+| `REQ-W2-004` | unrolled bodies `ADD`, `BSHIFT`, `JUMP`, `MULDIVU`, `MWORD`, `MEMSUB`; unified bodies `UADD`, `UJUMP`, `UBSHIFT`, `UMWORD`; delegated fulfillments `B2ROUND`, `B2G`, `BIGINT`, `KECCAK`; shared machine modules, `LOOKUP`, and `BASE` | partial; several custom relations remain provisional, and proof-layer invocation relations plus exact public/private input and downstream-consumption edges remain incomplete |
 | `REQ-W2-005` | theorem schema and obligation inventory in `SOUND` | partial; component sketches, concrete errors, and supporting lemmas remain gaps |
 | `REQ-W2-006` | baseline/deviation requirements and empty production ledger in `SOUND` | partial; no adopted vanilla baselines or complete deviation ledger yet |
 | `REQ-W2-007` | machine-side lookup/range relation in `LOOKUP` and placement in `TOPO` | partial; transcript order, PIOP reduction, committed polynomials, openings, and error terms remain gaps |

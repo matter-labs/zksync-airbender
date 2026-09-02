@@ -1,6 +1,6 @@
 # Airbender proof-system specification
 
-- spec revision: `2026-09-01.1`
+- spec revision: `2026-09-02.1`
 - implementation: `matter-labs/zksync-airbender@dfb1b2a8a+dirty`
 - scope: unrolled and reduced-unified ISA implementations, shared machine state, and
   the current proof hierarchy
@@ -26,10 +26,11 @@ proof artifact, not an ISA transition.
 |---|---|
 | `IN` | admitted input domain |
 | `ASM` | guarantee imported from another component |
-| `REQ` | relation enforced or checked by this component |
+| `REL` | mathematical relation enforced by this component |
+| `REQ` | non-relational profile, composition, or acceptance requirement |
 | `INV` | derived or preserved invariant |
 | `REJ` | explicitly forbidden accepting case |
-| `OUT` | value or proposition exported across a real component boundary |
+| `OUT` | state or argument effect exported across a real component boundary |
 | `GAP` | one unresolved decision or missing fact |
 
 An asterisk after a main-body ID marks a genuinely provisional relation: its support
@@ -55,9 +56,27 @@ source locators.
 | `ADD` | [isa/unrolled/add-sub.md](isa/unrolled/add-sub.md) | `ADD`, `ADDI`, `LUI`, `SUB`, `AUIPC`, canonical `NOP` |
 | `BSHIFT` | [isa/unrolled/binary-shifts.md](isa/unrolled/binary-shifts.md) | bitwise and shift operations |
 | `JUMP` | [isa/unrolled/jump-branch-slt.md](isa/unrolled/jump-branch-slt.md) | jumps, branches, and comparisons |
-| `MULDIV` | [isa/unrolled/mul-div.md](isa/unrolled/mul-div.md) | unsigned `MUL`, `MULHU`, `DIVU`, `REMU` |
+| `MULDIVU` | [isa/unrolled/mul-div-unsigned.md](isa/unrolled/mul-div-unsigned.md) | unsigned `MUL`, `MULHU`, `DIVU`, `REMU` |
 | `MWORD` | [isa/unrolled/memory-word.md](isa/unrolled/memory-word.md) | word loads and stores |
 | `MEMSUB` | [isa/unrolled/memory-subword.md](isa/unrolled/memory-subword.md) | byte and halfword loads and stores |
+
+### Unified ISA bodies
+
+| ID | Path | Scope |
+|---|---|---|
+| `UADD` | [isa/unified/add-sub-mop.md](isa/unified/add-sub-mop.md) | standard add/subtract, project MOPs, nondeterminism, and delegation invocation |
+| `UJUMP` | [isa/unified/jump-branch-slt.md](isa/unified/jump-branch-slt.md) | jumps, branches, and comparisons |
+| `UBSHIFT` | [isa/unified/binary-shifts.md](isa/unified/binary-shifts.md) | bitwise, shift, and project xor-rotate operations |
+| `UMWORD` | [isa/unified/memory-word.md](isa/unified/memory-word.md) | aligned word loads/stores and ROM/RAM dispatch |
+
+### Delegated precompiles
+
+| ID | Path | Scope |
+|---|---|---|
+| `B2ROUND` | [isa/precompiles/blake2s-round.md](isa/precompiles/blake2s-round.md) | BLAKE2s round and compression fulfillment |
+| `B2G` | [isa/precompiles/blake2s-g.md](isa/precompiles/blake2s-g.md) | BLAKE2s G-function fulfillment |
+| `BIGINT` | [isa/precompiles/bigint.md](isa/precompiles/bigint.md) | 256-bit arithmetic fulfillment |
+| `KECCAK` | [isa/precompiles/keccak.md](isa/precompiles/keccak.md) | Keccak-f[1600] special-5 fulfillment |
 
 ### Shared machine
 
@@ -90,20 +109,29 @@ TOPO -> BASE, SOUND
 BASE -> MACH, UPROF, PRECOMP, REG, MEM, CONT, LOOKUP
 MACH -> UPROF | UNIFIED, PRECOMP, DEC, LOOKUP, REG, MEM, CONT
 
-UPROF -> ADD, BSHIFT, JUMP, MULDIV, MWORD, MEMSUB, PRECOMP
-UNIFIED -> PRECOMP, MEM, DEC, LOOKUP, REG, CONT
+UPROF -> ADD, BSHIFT, JUMP, MULDIVU, MWORD, MEMSUB, PRECOMP
+UNIFIED -> UADD, UJUMP, UBSHIFT, UMWORD, PRECOMP, DEC, LOOKUP, REG, MEM, CONT
+PRECOMP -> B2ROUND, B2G, BIGINT, KECCAK, DEC, REG, MEM, CONT
 
 DEC -> LOOKUP, CONT
-ADD, BSHIFT, JUMP, MULDIV -> DEC, LOOKUP, REG, CONT
+ADD, BSHIFT, JUMP, MULDIVU -> DEC, LOOKUP, REG, CONT
 MWORD, MEMSUB -> DEC, LOOKUP, REG, MEM, CONT
+UADD, UJUMP, UBSHIFT -> DEC, LOOKUP, REG, CONT
+UMWORD -> DEC, LOOKUP, REG, MEM, CONT
 ```
 
 ## Largest remaining specification gaps
 
 - `GAP-UPROF-001`: project MOP, nondeterminism, and delegation-call branches sharing
   the unrolled add-family circuit still need their own relations.
-- `GAP-PRECOMP-001..002`: delegated precompile computations and their exact register/
-  memory ABIs still need dedicated relation modules.
+- `GAP-PRECOMP-001`: reduced-unified delegation admission is
+  conflicting; direct setup/proving installs four fulfillment types while the named
+  machine configuration declares only the two Blake types.
+- `GAP-UADD-001..003`, `GAP-UBSHIFT-001`, `GAP-B2ROUND-001..003`,
+  `GAP-B2G-001..003`, `GAP-BIGINT-001..002`, and `GAP-KECCAK-001`:
+  implementation-specific custom arithmetic, control, ABI, counter, and
+  pointer-domain relations remain provisional pending the decisions named in their
+  modules.
 - `GAP-UNIFIED-001`: no adopted equivalence result yet supports one common ISA
   relation for operations shared by unrolled and unified implementations.
 - `GAP-DEC-001`: the accepted program image and the separately supplied decoder text
@@ -116,5 +144,5 @@ MWORD, MEMSUB -> DEC, LOOKUP, REG, MEM, CONT
 The jump/branch/comparison witness generator also has a known implementation
 conformance defect at the pinned revision: some not-taken branches around a 16-bit PC
 boundary swap the low-limb carry and final-overflow witnesses. This can reject a valid
-transition described by `REQ-JUMP-002`; it is an implementation defect, not an open
+transition described by `REL-JUMP-002`; it is an implementation defect, not an open
 specification decision.

@@ -29,7 +29,7 @@ primary human navigation view; the identified statements remain the canonical cl
   not hold` into runtime branches; the tree is interpreted under those assumptions.
 - Partition the declared input domain into mutually exclusive branches. Cover the
   domain exhaustively, or mark the omitted branch as an explicit boundary or `GAP`.
-- End each leaf with the controlling `ASM`, `REQ`, `INV`, `REJ`, or `OUT` ID. A leaf
+- End each leaf with the controlling `ASM`, `REL`, `REQ`, `INV`, `REJ`, or `OUT` ID. A leaf
   may instead name an explicit out-of-scope boundary.
 - Distinguish `rejects`, `unreachable under <ASM>`, `inactive/padding relation`, and
   `out of scope`. Never use `irrelevant` without stating which of these it means.
@@ -64,7 +64,9 @@ supposed to do.
 ## Statement presentation
 
 - Give each independently checkable statement one stable ID and a short technical
-  name: `REQ-ADD-001 — Destination value`.
+  name: `REL-ADD-001 — Destination value`.
+- Present short input and notation definitions as a compact bullet list. Use a table
+  only when repeated columns make the interface materially easier to compare.
 - Put the equation or predicate immediately after its heading. Add at most the prose
   needed to define cases, arithmetic domain, activation, or boundary behavior.
 - Use a table when one relation has several instruction/opcode cases with the same
@@ -79,9 +81,12 @@ supposed to do.
 ## Mathematics
 
 - Define every non-obvious symbol near first use.
+- Keep assumptions for guarantees imported from other components. Inline local
+  intermediate expressions in the canonical requirement, or define them beside that
+  requirement when reuse makes a name clearer; do not introduce them as assumptions.
 - State domains and arithmetic explicitly: integer, field, bit-vector, or modulo
   `2^n`.
-- For architectural state transitions, use `x <- expression`. The right-hand side
+- For architectural state transitions, use `x ← expression`. The right-hand side
   denotes the pre-transition value, and unassigned architectural locations remain
   unchanged. Use a primed symbol only when the relation genuinely needs both state
   values as simultaneous mathematical objects.
@@ -90,10 +95,18 @@ supposed to do.
   order, and recursion roots/leaves when applicable.
 - Prefer short inline formulas and compact display equations. Use notation that a
   human can read without decoding a custom mini-language.
-- Use `=>` only for implication and `<=>` only when both directions are intended.
+- In a relation tree, omit sentence-ending punctuation from branch labels and
+  standalone equations.
+- Present derived facts like a compact secondary relation tree: give each consequence
+  a short bold name followed by equations or predicates. Use prose only when the
+  consequence cannot be expressed clearly as a small relation.
+- Prefer Unicode mathematical operators such as `←`, `∈`, `≤`, `≥`, `≠`, `⇒`,
+  and `⇔`. Define overloaded operators such as `≪` and `≫` near first use.
+- Express unsigned word domains as `uN`, for example `u32 = [0, 2³²)`, and use
+  membership such as `pc ∈ u32` instead of restating the corresponding bounds.
+- Use `⇒` only for implication and `⇔` only when both directions are intended.
 
-Whether the project should standardize on ASCII formulas or LaTeX is still open.
-Current documents use ASCII-style formulas for easy ingestion.
+Current documents use plain Unicode mathematics rather than a LaTeX mini-language.
 
 ## Prose and tone
 
@@ -149,18 +162,18 @@ the metadata section unless they materially affect how the opening scope is read
 ## Preferred example
 
 ```markdown
-### REQ-ADD-001* — Destination value
+### REL-ADD-001* — Destination value
 
 For an active row:
 
-`rd <- (rs1 + rs2 + imm) mod 2^32`.
+`rd ← (rs1 + rs2 + imm) mod 2³²`.
 
 ## Metadata
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
 |---|---|---|---|---|---|---|
-| `REQ-ADD-001` | provisional | `is_add` | `ASM-ADD-001..003`; `GAP-ADD-001` | located | `repo:path#symbol@revision` | `symbol:path#symbol` |
-| `GAP-ADD-001` | open | — | affects `REQ-ADD-001`; owner: human | — | no adopted relation identified | — |
+| `REL-ADD-001` | provisional | `is_add` | `ASM-ADD-001..003`; `GAP-ADD-001` | located | `repo:path#symbol@revision` | `symbol:path#symbol` |
+| `GAP-ADD-001` | open | — | affects `REL-ADD-001`; owner: human | — | no adopted relation identified | — |
 
 ## Open boundary
 
@@ -183,7 +196,7 @@ For an active row:
 
 The following choices are intentionally unsettled:
 
-- ASCII formulas versus a restricted LaTeX subset;
+- the exact boundary between plain Unicode notation and a restricted LaTeX subset;
 - the final Markdown encoding of the metadata model;
 - when derived `REJ` and `OUT` statements add enough audit value to retain;
 - ideal module size and instruction-family granularity;

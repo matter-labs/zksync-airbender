@@ -107,10 +107,15 @@ These contributions close each register history under `ASM-REG-001`.
 
 ## Derived facts
 
-- A read changes only `rts[r]`; it does not change any architectural register value.
-- An assignment changes at most one architectural register value.
-- Under `REQ-REG-004`, all accepted register histories start from value zero at
-  timestamp zero and end at the supplied final value and last-access timestamp.
+- **Read effects**
+  `Reg` unchanged
+  `rts[r] <- ts + k`
+- **Assignment effects**
+  `r != 0 => only Reg[r] may change`
+  `r = 0 => Reg[0] = 0`
+- **Boundary history**
+  `initial write = q(Register, r, 0, 0)`
+  `final read = q(Register, r, rts_final[r], Reg_final[r])`
 
 ## Open boundary
 

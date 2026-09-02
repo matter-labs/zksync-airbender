@@ -15,98 +15,99 @@
 - `SLTU rd, rs1, rs2`
 - `SLTIU rd, rs1, imm12`
 
-Comparison instructions with `rd = x0` are rewritten to the canonical `NOP` before
-this family is selected. `JAL` and `JALR` retain their control-flow effect when
-`rd = x0`. Preprocessing normalizes `SLT` with `SLTI`, and `SLTU` with `SLTIU`;
-source operations whose normalized operands coincide have the same family row.
+The standalone family admits comparison operations only when `rd ≠ x0`. The
+preprocessor canonicalizes a comparison with `rd = x0` to `NOP`, which is outside
+this module. `JAL` and `JALR` retain their control-flow effect when `rd = x0`.
 
 ## Inputs
 
-| Name | Meaning |
-|---|---|
-| `pc` | current 32-bit program counter |
-| `execute` | boolean cycle-activation flag |
-| `rs1`, `rs2` | 32-bit values read from the selected source registers |
-| `imm` | preprocessed 32-bit immediate |
-| `rd` | selected destination register |
-| `class` | normalized decoder class: `JAL`, `JALR`, `BRANCH`, or `COMPARE` |
-| `funct3` | branch predicate or signed/unsigned comparison selector |
-
-`imm12`, `imm13`, and `imm21` denote encoded immediate fields before preprocessing.
-For jumps and branches, `imm` is their applicable two's-complement sign extension.
-For comparisons, the normalized second operand is `(rs2 + imm) mod 2^32`: register
-forms use `imm = 0`, while nonzero immediate forms use `rs2 = x0`. `s32(x)` interprets
-the 32-bit word `x` as a signed two's-complement integer.
-
-`x <- expression` denotes the cycle's architectural assignment to `x`. The right-hand
-side uses pre-cycle values. An assignment must remain in the target's declared domain
-unless the expression explicitly says `mod`. Architectural locations not assigned by
-the active relation remain unchanged.
+- `u12 = [0, 2¹²)`, `u13 = [0, 2¹³)`, `u21 = [0, 2²¹)`, and
+  `u32 = [0, 2³²)` are unsigned integer domains
+- `pc ∈ u32` is the current program counter
+- `execute ∈ {0, 1}` activates the cycle
+- `rs1, rs2 ∈ u32` are register values, not register indexes
+- `imm12 ∈ u12` is the encoded I-immediate
+- `imm13 ∈ u13` and `imm13 mod 2 = 0` are the decoded B-immediate
+- `imm21 ∈ u21` and `imm21 mod 2 = 0` are the decoded J-immediate
+- `rd` is the destination register; `rd = x0` is admitted only for `JAL` and `JALR`
+- `op` is one of the supported operations
+- `sign_extend_12`, `sign_extend_13`, and `sign_extend_21` map the corresponding
+  immediate to `u32`
+- `s32(x)` interprets `x ∈ u32` as a signed two's-complement integer
+- `&` denotes bitwise AND on `u32`
+- `x ← expression` assigns the expression to `x`; the right-hand side uses pre-cycle
+  values and unassigned architectural locations remain unchanged
 
 ## Assumptions
 
-- **ASM-JUMP-001 — Normalized decoder binding.** `(class, funct3, rs1_index, rs2_index, rd, imm)` is the normalized row committed for the current `pc`. Comparison rows commit signed versus unsigned comparison and the normalized second operand, but do not retain exact `SLT` versus `SLTI` or `SLTU` versus `SLTIU` source-mnemonic identity when their normalized rows coincide.
-- **ASM-JUMP-002 — Activation and selector exclusivity.** Family composition gates the decoder and state contribution by `execute`. When `execute = 1`, exactly one jump, branch, or comparison class is active.
-- **ASM-JUMP-003 — Register consistency.** Register reads and any destination write satisfy the global register-memory argument.
-- **ASM-JUMP-004 — Zero register.** Reading `x0` returns `0`; writing `x0` preserves `0`.
-- **ASM-JUMP-005 — PC alignment.** `pc mod 4 = 0` at the start of the cycle.
-- **ASM-JUMP-006 — Cycle-end state closure.** The cycle-end PC participates in the global machine-state permutation and represents a 32-bit word. This imports the range/domain closure that is not locally imposed on the family circuit's final high limb.
+- **ASM-JUMP-001 — Decoder authentication.** For an active row, the decoder authenticates one supported `op`, its selected registers, destination, and encoded immediate against the instruction at the current `pc`. Preprocessing may identify register and immediate comparison forms only when their normalized operands give the same relation.
+- **ASM-JUMP-002 — Register consistency.** Register reads and any destination write satisfy the global register-memory argument.
+- **ASM-JUMP-003 — Zero register.** Reading `x0` returns `0`; writing `x0` preserves `0`.
+- **ASM-JUMP-004 — PC alignment.** The active decoder lookup binds `pc` to a table key of the form `4 · i`; therefore `pc mod 4 = 0` at the start of the cycle.
+- **ASM-JUMP-005 — PC word closure.** The cycle-end PC participates in the global machine-state permutation as a value in `u32`.
 
 ## Canonical relation tree
 
-> Interpret this tree under `ASM-JUMP-001..006`. The class branches within
-> `execute = 1` are mutually exclusive and exhaustive.
+> Interpret this tree under `ASM-JUMP-001..005`. Within `execute = 1`, exactly one
+> numbered relation applies. Operation cases within a relation are mutually
+> exclusive.
 
-- **`execute = 0`.** Outside this module's active-row scope.
-- **`execute = 1`.**
-  - **`class = COMPARE`.**
-    - **[`REQ-JUMP-001`] Comparison assignment.** The normalized selector assigns `rd`, then advances `pc`:
-      - **`funct3 = 0b010` (`SLT` or `SLTI`).**
-        `rd <- 1` if `s32(rs1) < s32((rs2 + imm) mod 2^32)`, otherwise `rd <- 0`.
-      - **`funct3 = 0b011` (`SLTU` or `SLTIU`).**
-        `rd <- 1` if `rs1 < (rs2 + imm) mod 2^32` as unsigned 32-bit integers, otherwise `rd <- 0`.
-      - **Both comparison selectors.**
-        `pc <- (pc + 4) mod 2^32`.
-  - **`class = BRANCH`.**
-    - **[`REQ-JUMP-002`] Conditional branch assignment.** `branch_taken` is defined by the selected case:
-      - **`funct3 = 0b000` (`BEQ`).** `branch_taken <=> rs1 = rs2`.
-      - **`funct3 = 0b001` (`BNE`).** `branch_taken <=> rs1 != rs2`.
-      - **`funct3 = 0b100` (`BLT`).** `branch_taken <=> s32(rs1) < s32(rs2)`.
-      - **`funct3 = 0b101` (`BGE`).** `branch_taken <=> s32(rs1) >= s32(rs2)`.
-      - **`funct3 = 0b110` (`BLTU`).** `branch_taken <=> rs1 < rs2` as unsigned 32-bit integers.
-      - **`funct3 = 0b111` (`BGEU`).** `branch_taken <=> rs1 >= rs2` as unsigned 32-bit integers.
-      - **`branch_taken = 0`.**
-        `pc <- (pc + 4) mod 2^32`.
-      - **`branch_taken = 1`.**
-        `((pc + imm) mod 2^32) mod 4 = 0`;
-        `pc <- (pc + imm) mod 2^32`.
-  - **`class = JAL` or `class = JALR`.**
-    - **[`REQ-JUMP-003`] Jump assignment.** First assign the link value:
-      - **`rd != x0`.**
-        `rd <- (pc + 4) mod 2^32`.
-      - **`rd = x0`.**
-        `x0 <- 0`.
-      - **`class = JAL`.**
-        `((pc + imm) mod 2^32) mod 4 = 0`;
-        `pc <- (pc + imm) mod 2^32`.
-      - **`class = JALR`.**
-        `(((rs1 + imm) mod 2^32) & 0xfffffffe) mod 4 = 0`;
-        `pc <- ((rs1 + imm) mod 2^32) & 0xfffffffe`.
+- **`execute = 0`** Outside this module's active-row scope
+- **`execute = 1`**
+  - **`op ∈ {SLT, SLTI, SLTU, SLTIU}` — [`REL-JUMP-001`] Comparison assignment**
+    - **`op = SLT`**
+      `rd ← 1` if `s32(rs1) < s32(rs2)`, otherwise `rd ← 0`
+    - **`op = SLTI`**
+      `rd ← 1` if `s32(rs1) < s32(sign_extend_12(imm12))`, otherwise `rd ← 0`
+    - **`op = SLTU`**
+      `rd ← 1` if `rs1 < rs2`, otherwise `rd ← 0`
+    - **`op = SLTIU`**
+      `rd ← 1` if `rs1 < sign_extend_12(imm12)`, otherwise `rd ← 0`
+    - `pc ← (pc + 4) mod 2³²`
+  - **`op ∈ {BEQ, BNE, BLT, BGE, BLTU, BGEU}` — [`REL-JUMP-002`] Conditional branch assignment**
+    - `taken ∈ {0, 1}`
+    - **`op = BEQ`** `taken ⇔ rs1 = rs2`
+    - **`op = BNE`** `taken ⇔ rs1 ≠ rs2`
+    - **`op = BLT`** `taken ⇔ s32(rs1) < s32(rs2)`
+    - **`op = BGE`** `taken ⇔ s32(rs1) ≥ s32(rs2)`
+    - **`op = BLTU`** `taken ⇔ rs1 < rs2`
+    - **`op = BGEU`** `taken ⇔ rs1 ≥ rs2`
+    - **`taken = 0`**
+      `pc ← (pc + 4) mod 2³²`
+    - **`taken = 1`**
+      `target = (pc + sign_extend_13(imm13)) mod 2³²`
+      `target mod 4 = 0`
+      `pc ← target`
+  - **`op ∈ {JAL, JALR}` — [`REL-JUMP-003`] Jump assignment**
+    - **`rd ≠ x0`**
+      `rd ← (pc + 4) mod 2³²`
+    - **`rd = x0`** No register changes
+    - **`op = JAL`**
+      `target = (pc + sign_extend_21(imm21)) mod 2³²`
+      `target mod 4 = 0`
+      `pc ← target`
+    - **`op = JALR`**
+      `raw_target = (rs1 + sign_extend_12(imm12)) mod 2³²`
+      `target = raw_target − (raw_target mod 2)`
+      `target mod 4 = 0`
+      `pc ← target`
 
 ## Derived facts
 
-For a quick structural view of every active row:
-
-- comparison results are always `0` or `1` by `REQ-JUMP-001`;
-- every assigned `pc` is a 32-bit word divisible by four by `ASM-JUMP-005..006`
-  and `REQ-JUMP-001..003`;
-- JALR clears target bit zero, and its four-byte alignment predicate also requires
-  target bit one to be zero, by `REQ-JUMP-003`;
-- PC-target and link additions wrap modulo `2^32`; this family does not enforce a
-  non-wrapping upper bound analogous to ADD's `pc + 4 < 2^32`;
-- only a comparison or jump destination can change among the registers; branch rows
-  leave all architectural registers unchanged, and `x0` remains zero by
-  `ASM-JUMP-004`.
+- **Comparison result**
+  `op ∈ {SLT, SLTI, SLTU, SLTIU} ⇒ rd ∈ {0, 1}`
+- **32-bit assignments**
+  `rd ∈ u32`
+  `pc ∈ u32`
+- **PC alignment**
+  `pc mod 4 = 0`
+- **JALR target alignment**
+  `op = JALR ⇒ pc[1:0] = 0`
+- **Register effects**
+  `op ∈ {BEQ, BNE, BLT, BGE, BLTU, BGEU} ⇒` no register changes
+  `op ∈ {SLT, SLTI, SLTU, SLTIU, JAL, JALR} ∧ rd ≠ x0 ⇒` only `rd` may change
+  `op ∈ {JAL, JALR} ∧ rd = x0 ⇒` no register changes
+  `x0 = 0`
 
 ## Implementation conformance
 
@@ -114,30 +115,34 @@ At `dfb1b2a8a`, the not-taken-branch witness default in
 `apply_jump_branch_slt_inner` assigns the final-overflow and low-limb-carry witnesses
 in the opposite order. For example, `pc = 0x0000fffc` needs low carry `1` and final
 overflow `0`, but the default witness supplies `0` and `1`, so witness generation can
-fail the low-limb equation for the valid transition in `REQ-JUMP-002`. This is a
+fail the low-limb equation for the valid transition in `REL-JUMP-002`. This is a
 prover-completeness implementation defect; it does not change the specified relation.
 
 ## Metadata
 
 These relations are normative for the stated unrolled profile. Ordinary instruction
-semantics adopt the official [RV32I Base Integer Instruction Set, Version 2.1](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html),
-with Airbender-specific alignment and wrapping behavior supported by project decisions
-and convergent implementation evidence checked at
-`matter-labs/zksync-airbender@dfb1b2a8a`.
+semantics adopt the official [RV32I specification](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html).
+The [RVALP v0.18.4 RV32I reference cards](https://github.com/johnwinans/rvalp/releases/download/v0.18.4/rvalp.pdf)
+corroborate the comparison results, branch predicates, jump targets, link assignments,
+and sequential `pc ← pc + 4` behavior. Airbender additionally makes PC arithmetic
+explicitly modulo `2³²`, canonicalizes comparison instructions with `rd = x0` to
+`NOP`, and makes a four-byte-aligned taken target a satisfiability condition rather
+than modeling the RV32I instruction-address-misaligned exception. These profile
+details are supported by convergent preprocessing, decoder, constraint, table, and
+architecture evidence checked at `matter-labs/zksync-airbender@dfb1b2a8a`.
 
-- spec revision: `2026-08-28.5`
+- spec revision: `2026-09-02.1`
 - profile: unrolled `jump_branch_slt_family`, ordinary integer subrelation
 
 ### Statement metadata
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
 |---|---|---|---|---|---|---|
-| `ASM-JUMP-001` | normative | active row | `external:DEC` | located | `repo:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode@dfb1b2a8a`; `repo:cs/src/gkr_circuits/jump_branch_slt_family/decoder.rs#JumpSltBranchDecoder::define_decoder_subspace@dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/jump_branch_slt_family/decoder.rs#JumpSltBranchDecoder::define_decoder_subspace` |
-| `ASM-JUMP-002` | normative | active row | `external:DEC`; `external:MACH` | located | admitted selector rows in `repo:cs/src/gkr_circuits/jump_branch_slt_family/decoder.rs#JumpSltBranchDecoder::define_decoder_subspace@dfb1b2a8a`; execute-gated decoder lookup in `repo:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/jump_branch_slt_family/decoder.rs#JumpSltBranchDecoder::define_decoder_subspace`; `symbol:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit` |
-| `ASM-JUMP-003` | normative | active row | `external:REG` | located | `repo:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner@dfb1b2a8a`; global register-memory argument | `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner` |
-| `ASM-JUMP-004` | normative | `rs_index = 0 || rd = 0` | `external:REG` | prose | RV32I `x0` semantics; global register-memory argument | — |
-| `ASM-JUMP-005` | normative | active row | `external:DEC` | located | aligned decoder-table keys in `repo:cs/src/gkr_circuits/decoder_trait.rs#materialize_flattened_decoder_table_with_bitmask@dfb1b2a8a`; active current-PC lookup in `repo:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/decoder_trait.rs#materialize_flattened_decoder_table_with_bitmask`; `symbol:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit` |
-| `ASM-JUMP-006` | normative | cycle-end state | `external:MACH` | located | `repo:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit@dfb1b2a8a`; `repo:cs/src/gkr_compiler/memory_like_grand_product.rs#layout_initial_grand_product_accumulation@dfb1b2a8a`; global machine-state permutation | `symbol:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit`; `symbol:cs/src/gkr_compiler/memory_like_grand_product.rs#layout_initial_grand_product_accumulation`; `symbol:cs/src/definitions/gkr/mod.rs#MachineStatePermutationDescription` |
-| `REQ-JUMP-001` | normative | active comparison row | `ASM-JUMP-001..006` | located | RV32I comparisons; `repo:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner@dfb1b2a8a`; `repo:cs/src/tables/jump_branch_opcode_related.rs#create_conditional_op_resolution_table@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner`; `symbol:cs/src/tables/jump_branch_opcode_related.rs#create_conditional_op_resolution_table`; `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#conditional_table_resolves_signed_slti_from_immediate_sign` |
-| `REQ-JUMP-002` | normative | active branch row | `ASM-JUMP-001..006` | located | RV32I conditional branches; `repo:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner@dfb1b2a8a`; `repo:cs/src/tables/jump_branch_opcode_related.rs#create_conditional_op_resolution_table@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner`; `symbol:cs/src/tables/jump_branch_opcode_related.rs#create_conditional_op_resolution_table`; `symbol:cs/src/tables/jump_branch_opcode_related.rs#create_jump_cleanup_offset_table` |
-| `REQ-JUMP-003` | normative | active jump row | `ASM-JUMP-001..006` | located | RV32I `JAL`/`JALR`; `repo:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner@dfb1b2a8a`; `repo:cs/src/tables/jump_branch_opcode_related.rs#create_jump_cleanup_offset_table@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner`; `symbol:cs/src/tables/jump_branch_opcode_related.rs#create_jump_cleanup_offset_table` |
+| `ASM-JUMP-001` | normative | active row | `external:DEC` | located | program preprocessing and normalized family decoder at `dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/jump_branch_slt_family/decoder.rs#JumpSltBranchDecoder::define_decoder_subspace` |
+| `ASM-JUMP-002` | normative | active row | `external:REG` | located | `repo:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner@dfb1b2a8a`; global register-memory argument | `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner` |
+| `ASM-JUMP-003` | normative | a selected source or destination register is `x0` | `external:REG` | prose | [RV32I `x0` semantics](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html); global register-memory argument | — |
+| `ASM-JUMP-004` | normative | active row | `external:DEC` | located | aligned decoder-table keys in `repo:cs/src/gkr_circuits/decoder_trait.rs#materialize_flattened_decoder_table_with_bitmask@dfb1b2a8a`; active current-PC lookup in `repo:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/decoder_trait.rs#materialize_flattened_decoder_table_with_bitmask`; `symbol:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit` |
+| `ASM-JUMP-005` | normative | cycle-end state | `REQ-CONT-003`; `REQ-CONT-005` | located | `repo:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit@dfb1b2a8a`; global machine-state permutation | `symbol:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit`; `symbol:cs/src/gkr_compiler/memory_like_grand_product.rs#layout_initial_grand_product_accumulation`; `symbol:cs/src/definitions/gkr/mod.rs#MachineStatePermutationDescription` |
+| `REL-JUMP-001` | normative | active `SLT`, `SLTI`, `SLTU`, or `SLTIU` row | `ASM-JUMP-001..005` | located | [RV32I comparison semantics](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html); [RVALP v0.18.4 RV32I reference cards](https://github.com/johnwinans/rvalp/releases/download/v0.18.4/rvalp.pdf); `repo:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner@dfb1b2a8a`; `repo:cs/src/tables/jump_branch_opcode_related.rs#create_conditional_op_resolution_table@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner`; `symbol:cs/src/tables/jump_branch_opcode_related.rs#create_conditional_op_resolution_table`; `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#conditional_table_resolves_signed_slti_from_immediate_sign` |
+| `REL-JUMP-002` | normative | active conditional-branch row | `ASM-JUMP-001..005` | located | [RV32I conditional branches](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html); [RVALP v0.18.4 RV32I reference cards](https://github.com/johnwinans/rvalp/releases/download/v0.18.4/rvalp.pdf); `repo:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner@dfb1b2a8a`; `repo:cs/src/tables/jump_branch_opcode_related.rs#create_conditional_op_resolution_table@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner`; `symbol:cs/src/tables/jump_branch_opcode_related.rs#create_conditional_op_resolution_table`; `symbol:cs/src/tables/jump_branch_opcode_related.rs#create_jump_cleanup_offset_table` |
+| `REL-JUMP-003` | normative | active `JAL` or `JALR` row | `ASM-JUMP-001..005` | located | [RV32I `JAL`/`JALR`](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html); [RVALP v0.18.4 RV32I reference cards](https://github.com/johnwinans/rvalp/releases/download/v0.18.4/rvalp.pdf); `repo:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner@dfb1b2a8a`; `repo:cs/src/tables/jump_branch_opcode_related.rs#create_jump_cleanup_offset_table@dfb1b2a8a` | `symbol:cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs#apply_jump_branch_slt_inner`; `symbol:cs/src/tables/jump_branch_opcode_related.rs#create_jump_cleanup_offset_table` |

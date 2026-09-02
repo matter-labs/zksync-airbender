@@ -35,10 +35,11 @@ The index is not an implicit source of assumptions. Every module declares its ow
 |---|---|
 | `IN` | admitted input domain or boundary value |
 | `ASM` | guarantee imported from another module |
-| `REQ` | relation enforced by this module |
+| `REL` | semantic relation enforced by this module |
+| `REQ` | non-relational requirement enforced by this module |
 | `INV` | property preserved across a state transition or proof layer |
 | `REJ` | condition under which acceptance is impossible |
-| `OUT` | guarantee exported to another module |
+| `OUT` | state or argument effect exported across a real component boundary |
 | `GAP` | unresolved decision or missing evidence; not an asserted defect |
 
 ## Module template
@@ -76,20 +77,26 @@ conflicting, or whose intendedness remains open.
   - **`<reachability predicate> = false`.** `<REJ-ID or unreachable under ASM-ID>`
   - **`<reachability predicate> = true`.** `<next selector, requirement, or output IDs>`
 
+## Relations
+
+### REL-<MODULE>-001* — <name>
+
+`<atomic enforced relation>`
+
 ## Requirements
 
 ### REQ-<MODULE>-001* — <name>
 
-`<atomic enforced relation>`
+`<non-relational enforced requirement>`
 
 ## Preserved invariants
 
 - **INV-<MODULE>-001 — <name>.**
-  `<P(state_i) => P(state_{i+1}) or layer analogue>`
+  `<P(state_i) ⇒ P(state_{i+1}) or layer analogue>`
 
 ## Rejections
 
-- **REJ-<MODULE>-001 — <name>.** `<condition => no accepting proof>`
+- **REJ-<MODULE>-001 — <name>.** `<condition ⇒ no accepting proof>`
 
 ## Outputs
 
@@ -109,6 +116,7 @@ conflicting, or whose intendedness remains open.
 |---|---|---|---|---|---|---|
 | `IN-<MODULE>-001` | normative \| provisional | — | — | prose \| located \| pinned \| checked | `<stable locator>` | `<typed anchor or check>` |
 | `ASM-<MODULE>-001` | normative \| provisional | — | `<OUT-ID or external boundary>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
+| `REL-<MODULE>-001` | normative \| provisional \| disputed | `<predicate or always>` | `<IDs>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
 | `REQ-<MODULE>-001` | normative \| provisional \| disputed | `<predicate or always>` | `<IDs>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
 | `INV-<MODULE>-001` | normative \| provisional \| disputed | `<predicate or always>` | `<IDs>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
 | `REJ-<MODULE>-001` | normative \| provisional \| disputed | `<predicate>` | `<IDs>` | `<derived>` | `<stable locator>` | `<typed anchor or check>` |
@@ -124,14 +132,15 @@ traceability is lost.
 
 ## Formula conventions
 
-- Define integer and field domains explicitly: `u32 = [0, 2^32)`, `F = GF(p)`.
-- Use `x <- expression` for architectural state assignment: the right-hand side uses
+- Define integer and field domains explicitly: `u32 = [0, 2³²)`, `F = GF(p)`.
+  Use membership such as `pc ∈ u32` rather than repeating the corresponding bounds.
+- Use `x ← expression` for architectural state assignment: the right-hand side uses
   the pre-transition value and unassigned architectural locations remain unchanged.
   Use `x'` only when both state values must remain explicit in one mathematical
   relation. Use subscripts for row/round/layer indices.
 - Use `=` for equality in the declared domain; write `= (mod n)` when needed.
-- Use `&&`, `||`, `!`, `=>`, and `<=>` consistently.
-- Quantify non-local variables: `forall i in [0, n)`.
+- Use `∧`, `∨`, `¬`, `⇒`, and `⇔` consistently.
+- Quantify non-local variables: `∀ i ∈ [0, n)`.
 - Define named predicates under `Symbols`.
 - State selector domains and inactive behavior.
 - State first/last-row, padding, chunk, transcript, and recursion boundaries where
@@ -146,7 +155,7 @@ traceability is lost.
 - Assumptions define tree context rather than runtime branches.
 - Decision-tree branches are mutually exclusive and exhaustive within their stated domain.
 - Every decision-tree leaf resolves to statement IDs or an explicit scope boundary.
-- Requirements are activated or explicitly unconditional.
+- Relations and requirements are activated or explicitly unconditional.
 - Assumptions identify exact exporting statements.
 - Authority and binding are not conflated.
 - Typed anchors use symbols, delimited regions, or counted patterns rather than line numbers.

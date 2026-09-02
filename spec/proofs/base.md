@@ -155,15 +155,20 @@ This is the implemented acceptance check that binds the proved `pc_f` and
 
 ## Derived facts
 
-- By `REQ-BASE-004`, accepted final register and PC values close the same global
-  history as the initial all-zero register state and `(pc,ts) = (0,4)` boundary.
-- By `REQ-BASE-006..007` and `ASM-BASE-004`, the accepted chain computationally binds
-  `pc_f` to `exit(B)` and `Caps_claim` to `Caps(B,T)`; the verifier does not compare
-  either pair directly.
-- `Y` is always sixteen `u32` words: eight final program-output registers and eight
-  program-chain words.
-- `ts_f` is authenticated through transcript and global-product closure but is not
-  part of the program end parameters.
+- **Initial boundary**
+  `Reg[r] <- 0` at timestamp `0` for every `r in [0, 32)`
+  `pc <- 0` at timestamp `4`
+- **Global closure**
+  `GP_R = GP_W`
+- **Program-chain binding**
+  `Y[8..16] = Chain0(EP(pc_f, Caps_claim))`
+  `Y[8..16] = Chain0(EP(exit(B), Caps(B,T)))`
+- **Output domain**
+  `Y in u32^16`
+  `Y[0..8] = Reg_f[10..18]`
+- **End-parameter inputs**
+  `ep_claim = EP(pc_f, Caps_claim)`
+  `ts_f` is excluded from `ep_claim`
 
 ## Outputs
 

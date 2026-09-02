@@ -116,15 +116,17 @@ padding rows add neither endpoint.
 
 ## Derived facts
 
-- Active timestamps are `4, 8, 12, ...` at cycle start and strictly increase, so no
-  disconnected cycle can satisfy `REQ-CONT-006` inside `T`.
-- `REQ-CONT-002`, `REQ-CONT-003`, and the selected family relation preserve four-byte
-  PC alignment throughout the active chain.
-- Equality uses the complete typed `(pc, ts)` state. Agreement on `pc` alone or `ts`
-  alone does not establish continuity.
-- With no active cycles, `REQ-CONT-006` requires
-  `(pc_final, ts_final) = (0, 4)`. Whether the enclosing proof statement admits that
-  terminal state is outside this module.
+- **Timestamp sequence**
+  `ts_0^start = 4`
+  `ts_j^start in {4, 8, 12, ...}` for active cycle `j`
+  `ts_j^start < ts_(j+1)^start`
+- **PC alignment**
+  `pc_i^start mod 4 = 0`
+  `pc_i^end mod 4 = 0`
+- **Cycle continuity**
+  `C_i^end = C_j^start` for consecutive active cycles `i` and `j`
+- **Empty trace**
+  `(pc_final, ts_final) = (0, 4)`
 
 ## Metadata
 

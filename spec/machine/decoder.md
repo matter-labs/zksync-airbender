@@ -101,16 +101,16 @@ unique setup-table row whose first two columns encode the admitted `pc`.
 
 ## Derived facts
 
-- Every active `pc` is divisible by four by `REQ-DEC-001` and
-  `REQ-DEC-003`.
-- Active operand fields, immediate, retained `funct3`, and retained selectors come
-  from one atomic decoder row; they cannot be mixed across instructions.
-- A `pc` outside the program, a profile-disabled instruction, or an instruction
-  unsupported by the selected family cannot satisfy `REQ-DEC-003` on an active row.
-- In the unrolled profile, setup construction assigns a supported program position
-  to at most one circuit family.
-- For `execute = 0`, this module imposes no decoder-row binding; structural field
-  domains may still constrain the witness values.
+- **Active PC alignment**
+  `execute = 1 => pc mod 4 = 0`
+- **Atomic decoder row**
+  `execute = 1 => active tuple = D[profile, family, P, pc / 4]`
+- **Unsupported position**
+  `D[profile, family, P, pc / 4] = unsupported => execute = 0`
+- **Unique unrolled family**
+  `count({family | D[profile, family, P, pc / 4] != unsupported}) <= 1`
+- **Inactive decoder**
+  `execute = 0 => no decoder query`
 
 ## Open boundary
 

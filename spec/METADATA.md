@@ -52,7 +52,7 @@ the `affects` scope of an open `GAP` that states what prevents promotion.
 
 ## Activation
 
-Every `REQ`, `INV`, and `REJ` states its activation predicate. Use `always` only when
+Every `REL`, `REQ`, `INV`, and `REJ` states its activation predicate. Use `always` only when
 the relation is genuinely unconditional within the module domain.
 
 Activation is separate from dependency:

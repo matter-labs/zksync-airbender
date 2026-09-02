@@ -115,10 +115,12 @@ Over all rows:
 
 ## Derived facts
 
-- `REQ-MACH-001..004` make the states attached to active rows a sequence of
-  profile-admitted transitions connected through the shared state interfaces.
-- Choosing an unrolled or unified profile changes `ISA(P)` and its concrete
-  interface encodings, not this composition rule.
+- **Active transition**
+  `execute_i = 1 => R_i(S_i, S_(i+1), T_i)` for exactly one `R_i in ISA(P)`
+- **Closed interfaces**
+  `Close_X(T^X)` for every `X in {REG, MEM, CONT, LOOKUP, PRECOMP}`
+- **Profile parameterization**
+  `P in {unrolled, unified-reduced}` determines `ISA(P)` and the interface encodings
 
 ## Metadata
 

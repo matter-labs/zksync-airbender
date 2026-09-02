@@ -122,19 +122,20 @@ memory value.
 
 ## Derived facts
 
-- ROM is immutable and its padded suffix is all-zero by `REQ-MEM-001` and
-  `REQ-MEM-002`.
-- Mutable RAM is zero-initialized and every accepted read observes a timestamp-ordered
-  predecessor by `REQ-MEM-004` and `REQ-MEM-005`.
-- A ROM-shaped RAM contribution cannot substitute for the bytecode lookup: its value
-  is deliberately state-preserving and semantically ignored by `REQ-MEM-002`.
-- At the inspected revision, preprocessing selects `NOP` before the load family for
-  `rd = x0`, so that family emits no RAM tuple for the discarded load.
-- Inactive execution rows mask their tuple products to the multiplicative identity;
-  they do not create a memory version.
-- The accepted unrolled word relation is four-byte aligned after global closure even
-  though the standalone word-family relation does not locally constrain mutable-RAM
-  alignment.
+- **ROM padding**
+  `w / 4 >= L && w < ROM_LIMIT => ROM[w] = 0`
+- **ROM immutability**
+  `ROM` unchanged
+- **RAM initialization**
+  `initial(w) = (RAM, w, 0, 0)`
+- **RAM chronology**
+  `q in Q => t_read < t_write`
+- **Read-only contribution**
+  `value_write = value_read`
+- **Discarded load**
+  `rd = x0 => no architectural memory-state change`
+- **Unrolled word alignment**
+  `profile = unrolled && word access => w mod 4 = 0`
 
 ## Metadata
 
