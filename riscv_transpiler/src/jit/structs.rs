@@ -81,9 +81,8 @@ impl JitRunnerRam {
 }
 
 // Memory holder is defined as unsized, and it can/should only be constructed via
-// boxed allocation. There is no way to set it's representation here, but it's alignment is
-// guaranteed to be 2Mb - huge page on x86-64
-#[repr(transparent)]
+// boxed allocation. It's alignment is 2Mb - huge page on x86-64
+#[repr(align(2097152))]
 pub struct MemoryHolder {
     buffer: [u64],
 }

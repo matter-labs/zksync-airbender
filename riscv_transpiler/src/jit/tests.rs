@@ -577,6 +577,7 @@ fn packed_ts_vs_reference() {
         source.clone(),
         jit_state.timestamp,
         false,
+        JitRunnerRam::Medium.ram_size(),
     );
 
     let mut diffs = 0usize;
@@ -1272,6 +1273,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     mut source: impl NonDeterminismCSRSource,
     timestamp_bound: TimestampScalar,
     reduced_isa: bool,
+    ram_bound: usize,
 ) -> (
     State<DelegationsAndFamiliesCounters>,
     RamWithRomRegion<{ common_constants::rom::ROM_SECOND_WORD_BITS }>,
@@ -1288,8 +1290,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-            &binary,
-            1 << 30,
+            &binary, ram_bound,
         );
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
@@ -1521,6 +1522,7 @@ fn measure_register_timestamp_deltas() {
 fn run_and_compare() {
     let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
     let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let ram_config = JitRunnerRam::Full;
 
     let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
@@ -1530,10 +1532,10 @@ fn run_and_compare() {
         .iter()
         .map(|el| u32::from_be_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(witness);
+    let source = QuasiUARTSource::new_with_reads(witness);
 
     let step = 1 << 22;
-    let initial_step = 1 << 18;
+    let initial_step = step;
     let upper_bound = (1 << 30) - 8;
 
     let mut previous_cycles_taken = 0;
@@ -1553,7 +1555,7 @@ fn run_and_compare() {
                 &mut source.clone(),
                 &binary,
                 Some(num_steps),
-                JitRunnerRam::Medium,
+                ram_config,
             );
 
         let cycles_taken = (jit_state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
@@ -1572,6 +1574,7 @@ fn run_and_compare() {
                 source.clone(),
                 jit_state.timestamp,
                 false,
+                ram_config.ram_size(),
             );
 
         assert_eq!(
@@ -1796,6 +1799,7 @@ fn run_recursion_and_compare() {
                 source.clone(),
                 jit_state.timestamp,
                 true,
+                1 << 30,
             );
 
         assert_eq!(
@@ -2082,4 +2086,11 @@ fn test_replayer_over_jit() {
 
     // println!("PC = 0x{:08x}", state.pc);
     // dbg!(state.materialized_registers());
+}
+
+#[test]
+fn test_memory_holder_drop() {
+    let boxed_holder: Box<MemoryHolder> =
+        MemoryHolder::allocate_zeroed(JitRunnerRam::Small, Default::default());
+    drop(boxed_holder);
 }

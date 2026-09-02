@@ -2826,6 +2826,8 @@ impl<I: ContextImpl> JittedCode<I> {
         initial_trace_chunk: NonNull<TraceChunk>,
         initial_memory: &[u32],
     ) {
+        assert!(initial_memory.len() <= common_constants::rom::ROM_WORD_SIZE);
+
         assert_eq!(self.ram_config.ram_size(), memory.ram_size(), "Jitted core was created for the ram size 0x{:08x} bytes, but memory holder received has size of 0x{:08x} bytes", self.ram_config.ram_size(), memory.ram_size());
         assert!(initial_memory.len() <= memory.memory().len());
         assert!(context.final_state_ref().is_none());

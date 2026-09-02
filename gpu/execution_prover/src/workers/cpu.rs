@@ -281,14 +281,14 @@ pub(crate) fn run_replayer<T: TracingType>(
     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
 }
 
+// Collection zeroes the timestamps part of the buffer
 fn collect_inits_and_teardowns(
-    holder: &MemoryHolder,
+    holder: &mut MemoryHolder,
     worker: &Worker,
 ) -> Vec<Vec<InitAndTeardownRecord>> {
     let mut chunks = vec![vec![]; worker.get_num_cores()];
     let mut dst = &mut chunks[..];
-    let memory = holder.memory();
-    let timestamps = holder.timestamps();
+    let (mut memory, mut ts) = holder.memory_and_timestamps_mut();
     let mem_len_words = memory.len();
     worker.scope(mem_len_words, |scope, geometry| {
         for thread_idx in 0..geometry.len() {
@@ -297,8 +297,10 @@ fn collect_inits_and_teardowns(
             let range = chunk_start..(chunk_start + chunk_size);
             let (el, rest) = dst.split_at_mut(1);
             dst = rest;
-            let values = &memory[range.clone()];
-            let timestamps = &timestamps[range];
+            let (values, rest) = memory.split_at_mut(chunk_size);
+            memory = rest;
+            let (timestamps, rest) = ts.split_at_mut(chunk_size);
+            ts = rest;
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                 let values_ptr = values.as_ptr() as *mut u32;
                 let timestamps_ptr = timestamps.as_ptr() as *mut TimestampScalar;

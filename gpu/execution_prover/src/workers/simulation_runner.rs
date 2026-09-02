@@ -281,9 +281,9 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             }
         };
         let binary_image_len = binary_image.len();
-        memory_holder.reset_buffer();
+        // NOTE: during continuous reuse timestamps are zeroed during inits and teardowns collection
         memory_holder.memory_mut()[..binary_image_len].copy_from_slice(&binary_image);
-        // memory_holder.memory_mut()[binary_image_len..].fill(0);
+        memory_holder.memory_mut()[binary_image_len..].fill(0);
         let mut trace = self
             .free_trace_chunks_receiver
             .recv()
