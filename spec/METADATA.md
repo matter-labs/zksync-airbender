@@ -1,156 +1,106 @@
 # Specification metadata
 
-> Metadata supports provenance, dependency analysis, drift detection, and future
-> automation. It does not replace the human-readable claim in each module body.
+Metadata records how to interpret and compose canonical claims. Implementation
+mapping belongs in audit output, not in the specification.
 
 ## Record model
 
-Each statement has one stable ID. The statement beside that ID in the module body is
-its claim. The final metadata section supplies the remaining fields.
+| Field | Encoding | Rule |
+|---|---|---|
+| `id` | inline `KIND-MODULE-NNN` label | one canonical definition |
+| `claim` | text beside the ID | the complete normative statement or open question |
+| `authority` | ID kind and cited basis | never inferred from implementation alone |
+| `activation` | condition in the claim | required when the claim is conditional |
+| `depends` | `## Imports` plus cited IDs | only semantic dependencies, not navigation |
+| `discharged-by` | cited `OUT-*` or external boundary | required for an `ASM-*` consumed by another module |
+| `source` | public standard, paper, or project decision | no repository path, symbol, or line anchor |
+| `exported` | boundary stated in an `OUT-*` claim | distinguish module, system, and public output |
+| `affects` | IDs, ID family, or bounded scope in a `GAP-*` | state what the gap prevents establishing |
 
-| Field | Meaning |
-|---|---|
-| `id` | stable `KIND-MODULE-NNN` identifier |
-| `authority` | why the project treats the claim as intended |
-| `activation` | predicate/domain under which the claim applies, or `always` |
-| `depends` | exact statement IDs required to interpret or derive the claim |
-| `discharged-by` | for `ASM`, the exact exporting `OUT` ID or an explicit external assumption |
-| `source` | standard, project decision, or implementation evidence supporting the claim |
-| `anchor` | typed, machine-resolvable implementation location |
-| `check` | optional executable assertion over a machine-observable projection |
-| `binding` | derived strength of the implementation connection |
-| `exported` | whether an `OUT` crosses a system/public boundary rather than only a module boundary |
-| `tags` | optional classification, such as a bug class or W2 obligation |
+Do not duplicate the claim in a metadata table. Put each field in the canonical claim,
+its enclosing section, or the module's `soundness.md` when it applies to the whole
+module.
 
-Do not duplicate the claim in metadata. Prototype cleanup may delete or renumber IDs;
-do not maintain a retired-ID ledger. Once an adopted ID is cited by an external
-artifact, preserve it or explicitly migrate that reference.
+Prototype cleanup may renumber IDs. Once an ID is cited by an external audit or other
+artifact, preserve it or explicitly migrate the reference.
 
 ## Authority
 
-Authority and implementation binding are independent.
-
-| Authority | Meaning |
+| Prefix | Meaning |
 |---|---|
-| `normative` | adopted standard, explicit project decision, or strongly corroborated relation adopted for the stated profile |
-| `provisional` | candidate relation supported only by implementation detail, or with materially incomplete/conflicting evidence or intendedness |
-| `disputed` | conflicts with an adopted source and awaits a project decision |
-| `open` | `GAP` only; no claim has been selected |
+| `TGT-*` | supported proving or verification target |
+| `IN-*` | relation input |
+| `ASM-*` | imported or external premise |
+| `REQ-*` | normative end-state relation or acceptance condition |
+| `OUT-*` | claim exported across a stated boundary |
+| `DEV-*` | confirmed mismatch in the assessed implementation |
+| `GAP-*` | unresolved decision, fact, or proof obligation |
 
-A normative statement requires an authority source. This may be an adopted standard,
-an explicit project decision, or convergent evidence across enforcing constraints,
-architecture, tests/history, and human references. One implementation location alone
-cannot make a statement normative.
+An authored `REQ-*` is an explicit project choice of intended behavior. Papers define
+protocol baselines and support security claims. External standards define intended ISA
+behavior where adopted. Implementation evidence can confirm a relation or a deviation,
+but cannot by itself weaken a `REQ-*`.
 
-When provisional and adopted relations coexist in one module, append `*` to each
-provisional ID label in the readable body and define the marker once near the top.
-The marker is presentation only: metadata and cross-references use the unmarked
-stable ID.
+Do not encode intended behavior as provisional. If the end state is known, state a
+`REQ-*` and record current drift as a `DEV-*`. If the end state is not known, record a
+`GAP-*` and its affected scope.
 
-Every provisional claim, or one clearly bounded provisional group, must be named in
-the `affects` scope of an open `GAP` that states what prevents promotion.
+## Activation and dependencies
 
-## Activation
+A conditional claim states its activation in the claim itself, for example
+`on execute = 1` or `when the channel is present`. Unconditional claims need no
+repeated `activation: always` annotation.
 
-Every `REQ`, `INV`, and `REJ` states its activation predicate. Use `always` only when
-the relation is genuinely unconditional within the module domain.
+A file with normative cross-file dependencies declares exactly one block of this form,
+using paths relative to `spec/`:
 
-Activation is separate from dependency:
+```text
+## Imports
 
-- `activation` answers when the statement applies;
-- `depends` answers which other statements give it meaning or support.
+- `protocols/sumcheck/verifier.md`
+```
 
-## Sources and anchors
+Only entries in this block are imports. Ordinary Markdown links are navigation.
+Statement-level dependencies cite exact IDs, a validated numeric range, or a validated
+ID family. The import graph must be acyclic.
 
-`source` is for humans. Prefer stable locators:
+## Assumptions, outputs, and gaps
 
-- `standard:<document>#<section>`;
-- `decision:<id>`;
-- `repo:<path>#<symbol>@<revision>`;
-- `derived:<statement-ids>`.
+An `ASM-*` consumed by another module identifies either the `OUT-*` that discharges it
+or an explicit external boundary such as the cryptographic model or admitted program.
 
-`anchor` is for future drift tooling. Supported conceptual kinds are:
+An `OUT-*` states whether it crosses only a module boundary, the proof-system boundary,
+or the public verification boundary.
 
-| Kind | Use |
-|---|---|
-| `symbol` | named function, method, type, constant, or generated verifier entrypoint |
-| `region` | explicitly delimited generated-code span with no stable symbol |
-| `pattern` | expected set/count of structurally repeated matches |
+A `GAP-*` asks one unresolved question and names the IDs, ID family, or narrowly bounded
+scope it affects. Cite available evidence. A decision owner may be named when useful,
+but task assignment is workflow state and is not normative.
 
-Line numbers may supplement an anchor but never define it. A symbol move should not
-look like a semantic deletion.
+## Audit mapping
 
-## Binding
+The specification does not name source files, symbols, or line numbers. An audit maps
+canonical IDs to code in the assessed implementation revision and records that mapping
+in its output. Code movement alone must not require a specification change.
 
-`binding` is derived from available machinery; it is not a confidence claim written
-by the statement author.
+Paper and standard citations use public links. Local reference copies may be used while
+checking the specification but are not part of the published specification.
 
-| Binding | Meaning |
-|---|---|
-| `checked` | an executable assertion decides the stated machine-observable relation |
-| `pinned` | a normalized content hash detects semantic drift of every declared anchor |
-| `located` | typed anchors exist, but no accepted content hash is maintained |
-| `prose` | only human-readable sources/evidence exist |
+Executable conformance checks, content hashes, binding status, and regression-coverage
+tags belong in audit tooling or audit output. `spec/check.py` validates only the
+specification's own structure and references.
 
-An executable shape check does not make a broader semantic claim `checked`. Binding
-must describe the actual projection decided by the check.
+## File shape
 
-The current specification has no pin/check tool. Its implementation-linked statements
-are therefore at most `located`. A future tool may add a generated lockfile; the
-lockfile must not become normative content.
+A mechanism directory contains only the files needed to separate these roles:
 
-## Assumptions and outputs
+- `INDEX.md` — navigation only;
+- `relation.md` — the accepted mathematical relation, including its terminal equality,
+  nonzero, range, and rejection conditions;
+- `protocol.md` — messages, challenges, round structure, and claim flow;
+- `verifier.md` — transcript-driven, stream-driven, or cross-proof acceptance procedure
+  when that procedure is substantial enough to separate from the relation;
+- `soundness.md` — baseline, adaptations, assumptions, and open proof obligations.
 
-An `ASM` either names `discharged-by: OUT-...` or says `external:<boundary>`. A module
-name alone is temporary metadata while the exporting statement is not yet written.
-
-An `OUT` distinguishes an internal cross-module export from a system/public boundary
-when that distinction matters.
-
-## Gaps
-
-A `GAP` records:
-
-| Field | Meaning |
-|---|---|
-| `question` | one decision or missing fact |
-| `affects` | exact IDs or scope blocked by the gap |
-| `evidence` | conflicting or insufficient sources |
-| `owner` | `human` or a named decision owner |
-
-Gaps have `authority = open`; activation and binding do not turn them into claims.
-
-## Regression linkage
-
-For a confirmed historical defect, `tags` may name a stable bug class. Record which
-statement the defective implementation violates; do not infer coverage merely because
-the statement concerns the same component.
-
-- `semantic`: the claim itself is false under the defect;
-- `shape`: an executable count, width, or activation check detects only that projection;
-- `none`: no current statement excludes the defect.
-
-Shape agreement does not imply semantic agreement. A future regression index may map
-bug IDs to statement IDs and these coverage levels; it is audit evidence, not normative
-specification content.
-
-## Current Markdown encoding
-
-Use one combined bottom table for ordinary modules. This keeps semantic dependency
-data beside its implementation trace. Every statement ID appears exactly once.
-
-| ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
-|---|---|---|---|---|---|---|
-| `REQ-X-001` | provisional | `execute` | `ASM-X-001`; `GAP-X-001` | located | `repo:path#symbol@rev` | `symbol:path#symbol` |
-| `GAP-X-001` | open | — | affects `REQ-X-001`; owner: human | — | no adopted relation identified | — |
-
-A module may split the columns into semantic and implementation tables only when the
-combined table is materially harder to review. Every ID must then appear once in each
-applicable table.
-
-Keep longer gap questions in the readable `Open boundary` section; use their metadata
-row for `affects`, evidence, and owner. Optional fields may be omitted when empty.
-
-This table is the current transport, not a permanent serialization decision. A future
-machine-readable representation must preserve the same semantics without forcing
-YAML-like records into the main reading flow.
+Do not create `verifier.md` merely to repeat a relation's terminal checks. When a
+separate verifier exists, it imports the relation or protocol it verifies and states
+only the additional verification procedure.
