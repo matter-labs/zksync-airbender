@@ -221,6 +221,7 @@ impl ExecutionProver {
             let work_results_sender = work_results_sender.clone();
             let abort = abort.clone();
             let worker = self.worker.clone();
+            let ram_config = self.configuration.ram_config;
             self.worker.pool.spawn(move || {
                 let mut memory_holder = {
                     let mut cache = memory_holders_cache
@@ -229,7 +230,7 @@ impl ExecutionProver {
                     if cache.is_empty() {
                         drop(cache);
                         warn!("BATCH[{batch_id}] PROVER memory holders cache is empty, creating a new memory holder");
-                        LockedBoxedMemoryHolder::new()
+                        LockedBoxedMemoryHolder::new(ram_config)
                     } else {
                         cache.pop().unwrap()
                     }
@@ -273,6 +274,7 @@ impl ExecutionProver {
                         free_allocators_receiver,
                         abort,
                         &worker,
+                        ram_config,
                     ),
                     ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType>(
                         batch_id,
@@ -290,6 +292,7 @@ impl ExecutionProver {
                         free_allocators_receiver,
                         abort,
                         &worker,
+                        ram_config,
                     ),
                 };
                 memory_holders_cache

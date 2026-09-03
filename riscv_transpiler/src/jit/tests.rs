@@ -23,7 +23,7 @@ fn assemble_single_instruction(instruction: &str) -> u32 {
 }
 
 fn run_jit_program(program: &[u32]) {
-    JittedCode::<_>::run_alternative_simulator(program, &mut (), &[], None);
+    JittedCode::<_>::run_alternative_simulator(program, &mut (), &[], None, JitRunnerRam::Medium);
 }
 
 /// Assert that an unsupported instruction aborts the process (with `expected`
@@ -114,7 +114,7 @@ fn test_jit_simple_fibonacci() {
     let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
     let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
 
-    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &binary, None);
+    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &binary, None, JitRunnerRam::Medium);
 }
 
 #[test]
@@ -141,7 +141,13 @@ fn test_jit_recursive_verifier() {
         .collect();
     let mut source = QuasiUARTSource::new_with_reads(responses);
 
-    JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
+    JittedCode::<_>::run_alternative_simulator(
+        &text,
+        &mut source,
+        &binary,
+        None,
+        JitRunnerRam::Medium,
+    );
 }
 
 #[test]
@@ -227,7 +233,7 @@ fn test_few_instr() {
     }
     text.push(0x0000006f);
 
-    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &[], None);
+    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &[], None, JitRunnerRam::Medium);
 }
 
 /// `ZimopIXorRot` (MOP-I xor-rotate) computes `rd = (rd_old ^ rs1).rotate_right(imm)` — the
@@ -274,8 +280,13 @@ fn test_jit_zimop_ixor_rot() {
         };
         let expected = (v2 ^ rs1_value).rotate_right(rot);
 
-        let (state, _mem) =
-            JittedCode::<_>::run_alternative_simulator_from_instructions(&prog, &mut (), &[], None);
+        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
+            &prog,
+            &mut (),
+            &[],
+            None,
+            JitRunnerRam::Medium,
+        );
         let got = state.materialized_registers()[rd as usize];
         assert_eq!(
             got, expected,
@@ -338,8 +349,13 @@ fn test_jit_zimop_tri_add() {
         };
         let expected = val_of(rs1).wrapping_add(val_of(rs2)).wrapping_add(v_rd);
 
-        let (state, _mem) =
-            JittedCode::<_>::run_alternative_simulator_from_instructions(&prog, &mut (), &[], None);
+        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
+            &prog,
+            &mut (),
+            &[],
+            None,
+            JitRunnerRam::Medium,
+        );
         let got = state.materialized_registers()[rd as usize];
         assert_eq!(
             got, expected,
@@ -433,6 +449,7 @@ fn test_jit_zimop_field_ops() {
                             &mut (),
                             &[],
                             None,
+                            JitRunnerRam::Medium,
                         );
                     let got = state.materialized_registers()[rd as usize];
                     assert_eq!(
@@ -464,7 +481,13 @@ fn test_jit_full_block() {
         .map(|el| u32::from_be_bytes(*el))
         .collect();
     let mut source = QuasiUARTSource::new_with_reads(witness);
-    let (state, _) = JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
+    let (state, _) = JittedCode::<_>::run_alternative_simulator(
+        &text,
+        &mut source,
+        &binary,
+        None,
+        JitRunnerRam::Full,
+    );
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.materialized_registers());
 }
@@ -486,7 +509,13 @@ fn test_jit_full_block_with_flattened_responder() {
         .iter()
         .map(|el| u32::from_be_bytes(*el))
         .collect();
-    let (state, _) = JittedCode::run_with_flattened_context(&text, &witness[..], &binary, None);
+    let (state, _) = JittedCode::run_with_flattened_context(
+        &text,
+        &witness[..],
+        &binary,
+        None,
+        JitRunnerRam::Medium,
+    );
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.materialized_registers());
 }
@@ -538,6 +567,7 @@ fn packed_ts_vs_reference() {
         &mut source.clone(),
         &binary,
         Some(num_steps),
+        JitRunnerRam::Medium,
     );
     let reconstructed = jit_state.as_replayer_state();
 
@@ -547,6 +577,7 @@ fn packed_ts_vs_reference() {
         source.clone(),
         jit_state.timestamp,
         false,
+        JitRunnerRam::Medium.ram_size(),
     );
 
     let mut diffs = 0usize;
@@ -578,12 +609,12 @@ fn packed_ts_vs_reference() {
             diffs += 1;
         }
     }
-    assert_eq!(reference_ram.backing.len(), jit_memory.memory.len());
+    assert_eq!(reference_ram.backing.len(), jit_memory.memory().len());
     for (word_idx, ((reference_value, jit_value), jit_ts)) in reference_ram
         .backing
         .iter()
-        .zip(jit_memory.memory.iter())
-        .zip(jit_memory.timestamps.iter())
+        .zip(jit_memory.memory().iter())
+        .zip(jit_memory.timestamps().iter())
         .enumerate()
     {
         if reference_value.value != *jit_value {
@@ -611,7 +642,7 @@ fn packed_ts_vs_reference() {
     );
     println!(
         "packed_ts_vs_reference: reconstructed state MATCHES reference (32 regs + {} mem words) at cycle ts={}",
-        jit_memory.memory.len(),
+        jit_memory.memory().len(),
         jit_state.timestamp
     );
 }
@@ -641,7 +672,13 @@ fn packed_ts_state_roundtrip() {
         .map(|el| u32::from_be_bytes(*el))
         .collect();
 
-    let (state, _) = JittedCode::run_with_flattened_context(&text, &witness[..], &binary, None);
+    let (state, _) = JittedCode::run_with_flattened_context(
+        &text,
+        &witness[..],
+        &binary,
+        None,
+        JitRunnerRam::Medium,
+    );
     let replayer = state.as_replayer_state();
     let dump = dump_replayer_state(&replayer);
 
@@ -1236,6 +1273,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     mut source: impl NonDeterminismCSRSource,
     timestamp_bound: TimestampScalar,
     reduced_isa: bool,
+    ram_bound: usize,
 ) -> (
     State<DelegationsAndFamiliesCounters>,
     RamWithRomRegion<{ common_constants::rom::ROM_SECOND_WORD_BITS }>,
@@ -1252,8 +1290,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-            &binary,
-            1 << 30,
+            &binary, ram_bound,
         );
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
@@ -1485,6 +1522,7 @@ fn measure_register_timestamp_deltas() {
 fn run_and_compare() {
     let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
     let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let ram_config = JitRunnerRam::Full;
 
     let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
@@ -1494,10 +1532,10 @@ fn run_and_compare() {
         .iter()
         .map(|el| u32::from_be_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(witness);
+    let source = QuasiUARTSource::new_with_reads(witness);
 
-    let step = 1 << 19;
-    let initial_step = 762314752;
+    let step = 1 << 22;
+    let initial_step = step;
     let upper_bound = (1 << 30) - 8;
 
     let mut previous_cycles_taken = 0;
@@ -1517,6 +1555,7 @@ fn run_and_compare() {
                 &mut source.clone(),
                 &binary,
                 Some(num_steps),
+                ram_config,
             );
 
         let cycles_taken = (jit_state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
@@ -1535,6 +1574,7 @@ fn run_and_compare() {
                 source.clone(),
                 jit_state.timestamp,
                 false,
+                ram_config.ram_size(),
             );
 
         assert_eq!(
@@ -1614,23 +1654,29 @@ fn run_and_compare() {
             }
         }
 
-        assert_eq!(reference_ram.backing.len(), jit_memory.memory.len());
+        assert_eq!(reference_ram.backing.len(), jit_memory.memory().len());
         for (word_idx, ((reference_value, jit_value), jit_ts)) in reference_ram
             .backing
             .iter()
-            .zip(jit_memory.memory.iter())
-            .zip(jit_memory.timestamps.iter())
+            .zip(jit_memory.memory().iter())
+            .zip(jit_memory.timestamps().iter())
             .enumerate()
         {
-            assert_eq!(
-                reference_value.value, *jit_value,
-                "VALUE diverged for word {} after {} steps",
-                word_idx, num_steps
+            assert!(
+                reference_value.value == *jit_value,
+                "VALUE diverged for word {} after {} steps: reference is {}, JIT is {}",
+                word_idx,
+                num_steps,
+                reference_value.value,
+                jit_value
             );
-            assert_eq!(
-                reference_value.timestamp, *jit_ts,
-                "TIMESTAMP diverged for word {} after {} steps",
-                word_idx, num_steps
+            assert!(
+                reference_value.timestamp == *jit_ts,
+                "TIMESTAMP diverged for word {} after {} steps: reference is {}, JIT is {}",
+                word_idx,
+                num_steps,
+                reference_value.timestamp,
+                jit_ts,
             );
         }
 
@@ -1734,6 +1780,7 @@ fn run_recursion_and_compare() {
                 &mut source.clone(),
                 &binary,
                 Some(num_steps),
+                JitRunnerRam::Medium,
             );
 
         let cycles_taken = (jit_state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
@@ -1752,6 +1799,7 @@ fn run_recursion_and_compare() {
                 source.clone(),
                 jit_state.timestamp,
                 true,
+                1 << 30,
             );
 
         assert_eq!(
@@ -1831,12 +1879,12 @@ fn run_recursion_and_compare() {
             }
         }
 
-        assert_eq!(reference_ram.backing.len(), jit_memory.memory.len());
+        assert_eq!(reference_ram.backing.len(), jit_memory.memory().len());
         for (word_idx, ((reference_value, jit_value), jit_ts)) in reference_ram
             .backing
             .iter()
-            .zip(jit_memory.memory.iter())
-            .zip(jit_memory.timestamps.iter())
+            .zip(jit_memory.memory().iter())
+            .zip(jit_memory.timestamps().iter())
             .enumerate()
         {
             assert_eq!(
@@ -1918,6 +1966,7 @@ fn run_recursion_and_compare() {
 #[serial_test::serial]
 fn test_perf_with_trace_keeping() {
     skip_if_ci!();
+    let ram_config = JitRunnerRam::Medium;
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
@@ -1935,16 +1984,14 @@ fn test_perf_with_trace_keeping() {
     let mut source = QuasiUARTSource::new_with_reads(witness);
 
     let instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text);
-    let simulator = JittedCode::<_>::preprocess_bytecode(&instructions, None, mop_field());
+    let simulator =
+        JittedCode::<_>::preprocess_bytecode(&instructions, None, mop_field(), ram_config);
 
     let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
     let initial_chunk = implementation.initial_snapshot();
-    let mut context = Context { implementation };
-    let mut memory: Box<MemoryHolder> = unsafe {
-        let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
-
-        memory
-    };
+    let mut context = Context::new(implementation, ram_config);
+    let mut memory: Box<MemoryHolder> =
+        MemoryHolder::allocate_uninit(ram_config, Default::default());
 
     println!("Running");
     simulator.run(&mut context, &mut memory, initial_chunk, &binary);
@@ -2039,4 +2086,11 @@ fn test_replayer_over_jit() {
 
     // println!("PC = 0x{:08x}", state.pc);
     // dbg!(state.materialized_registers());
+}
+
+#[test]
+fn test_memory_holder_drop() {
+    let boxed_holder: Box<MemoryHolder> =
+        MemoryHolder::allocate_zeroed(JitRunnerRam::Small, Default::default());
+    drop(boxed_holder);
 }

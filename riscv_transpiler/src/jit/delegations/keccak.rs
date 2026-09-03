@@ -47,14 +47,13 @@ pub fn keccak_unrolled_implementation(
     // to read 31 state elements (for snapshot), and then we will work over the
     unsafe {
         let offset = (state_ptr as usize) / core::mem::size_of::<u32>();
-        let keccak_state = memory_holder
-            .memory
+        let (mem, ts) = memory_holder.memory_and_timestamps_mut();
+        let keccak_state = mem
             .as_mut_ptr()
             .add(offset)
             .cast::<[u64; 31]>()
             .as_mut_unchecked();
-        let timestamps = memory_holder
-            .timestamps
+        let timestamps = ts
             .as_mut_ptr()
             .add(offset)
             .cast::<[TimestampScalar; 31 * 2]>()

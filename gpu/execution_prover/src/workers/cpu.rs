@@ -15,7 +15,7 @@ use gpu_trace::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_L
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use riscv_transpiler::jit::{MemoryHolder, ReplayerMemChunks};
+use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, ReplayerMemChunks};
 use riscv_transpiler::replayer::ReplayerVM;
 use riscv_transpiler::vm::{InstructionTape, NonDeterminismCSRSource, State};
 use std::cmp::min;
@@ -54,13 +54,17 @@ pub(crate) fn run_simulator<
     free_allocators: Receiver<A>,
     abort: Arc<AtomicBool>,
     worker: &Worker,
+    ram_config: JitRunnerRam,
 ) {
+    assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+    assert_eq!(ram_config.ram_size(), memory_holder.holder.ram_size());
+
     trace!("BATCH[{batch_id}] SIMULATOR started");
     let mut non_determinism_guard = non_determinism
         .lock()
         .expect("simulation worker non-determinism mutex poisoned");
     let non_determinism_source = non_determinism_guard.take().unwrap();
-    let ram_words = memory_holder.memory.len();
+    let ram_words = memory_holder.holder.memory().len();
     let carrier = if T::IS_SPLIT {
         UnrolledCircuitType::InitsAndTeardowns
     } else {
@@ -83,6 +87,7 @@ pub(crate) fn run_simulator<
         free_allocators.clone(),
         abort,
         empty_it_streamer,
+        ram_config,
     );
     let runner = runner.run(
         binary_image,
@@ -276,21 +281,26 @@ pub(crate) fn run_replayer<T: TracingType>(
     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
 }
 
+// Collection zeroes the timestamps part of the buffer
 fn collect_inits_and_teardowns(
     holder: &mut MemoryHolder,
     worker: &Worker,
 ) -> Vec<Vec<InitAndTeardownRecord>> {
     let mut chunks = vec![vec![]; worker.get_num_cores()];
     let mut dst = &mut chunks[..];
-    worker.scope(holder.memory.len(), |scope, geometry| {
+    let (mut memory, mut ts) = holder.memory_and_timestamps_mut();
+    let mem_len_words = memory.len();
+    worker.scope(mem_len_words, |scope, geometry| {
         for thread_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(thread_idx);
             let chunk_start = geometry.get_chunk_start_pos(thread_idx);
             let range = chunk_start..(chunk_start + chunk_size);
             let (el, rest) = dst.split_at_mut(1);
             dst = rest;
-            let values = &holder.memory[range.clone()];
-            let timestamps = &holder.timestamps[range];
+            let (values, rest) = memory.split_at_mut(chunk_size);
+            memory = rest;
+            let (timestamps, rest) = ts.split_at_mut(chunk_size);
+            ts = rest;
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                 let values_ptr = values.as_ptr() as *mut u32;
                 let timestamps_ptr = timestamps.as_ptr() as *mut TimestampScalar;
@@ -303,12 +313,9 @@ fn collect_inits_and_teardowns(
                         let value_ptr = values_ptr.add(idx);
                         let mut teardown_value = *value_ptr;
                         *value_ptr = 0;
-                        // Documents the 32-bit RAM-word bound: `holder.memory`
-                        // is sized to `NUM_RAM_WORDS = RAM_SIZE / 4` words
-                        // with `RAM_SIZE == 1 << 30` bytes, so word indices
-                        // stay well under `1 << 30` and `<< 2` cannot
-                        // overflow into the address's u32 range today; this
-                        // just guards/documents that architectural bound.
+                        // Documents the 32-bit RAM-word bound: memory holder
+                        // can not back more than 4 Gb, and we take word index into such backing,
+                        // and get raw byte offset
                         debug_assert!(
                             chunk_start + idx < (1usize << 30),
                             "RAM word index {} exceeds 32-bit word-address bound",
@@ -337,7 +344,7 @@ fn collect_inits_and_teardowns(
 /// of its `num_sets` sets covers one *window* of `1 << trace_len_log2`
 /// consecutive RAM words, named in the proof by its global window index
 /// (`top_bits`).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct InitsAndTeardownsGeometry {
     pages_per_set_log2: u32,
     num_sets: usize,
@@ -396,7 +403,7 @@ impl InitsAndTeardownsPartitioning {
             num_sets,
             windows_in_ram,
         } = geometry;
-        let page_size = 1usize << PAGE_SIZE_LOG2;
+        const PAGE_SIZE_WORDS: usize = 1usize << PAGE_SIZE_LOG2;
         // Keyed by GLOBAL page index: that order is also window-major, which is
         // what lets `into_chunks` group by window in one streaming pass without
         // re-scanning or sorting the page payloads.
@@ -408,7 +415,7 @@ impl InitsAndTeardownsPartitioning {
                 let word_in_page = (word_idx & ((1u32 << PAGE_SIZE_LOG2) - 1)) as usize;
                 let entry = pages
                     .entry(page_idx)
-                    .or_insert_with(|| (vec![0u32; page_size], vec![0u64; page_size]));
+                    .or_insert_with(|| (vec![0u32; PAGE_SIZE_WORDS], vec![0u64; PAGE_SIZE_WORDS]));
                 entry.0[word_in_page] = record.teardown_value;
                 entry.1[word_in_page] = record.teardown_timestamp;
             }

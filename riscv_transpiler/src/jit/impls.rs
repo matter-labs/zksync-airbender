@@ -14,6 +14,7 @@ pub struct JittedCode<I: ContextImpl> {
     code: dynasmrt::ExecutableBuffer,
     start: dynasmrt::AssemblyOffset,
     _marker: core::marker::PhantomData<I>,
+    ram_config: JitRunnerRam,
 }
 
 unsafe impl<I: ContextImpl> Send for JittedCode<I> {}
@@ -934,13 +935,19 @@ fn merged_word_run_g(
 /// Emit a fused run of `g` (a power of two in {2,4,8}) consecutive word loads or stores. Does
 /// NOT touch r9; the caller advances r9 by g and does the chunk-full check. Advances r8 by 4*g.
 #[cfg(not(feature = "xmm_ts"))]
-fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start: usize, g: usize) {
+fn emit_merged_word_run(
+    ops: &mut x64::Assembler,
+    program: &[Instruction],
+    start: usize,
+    g: usize,
+    timestamp_offset: i32,
+) {
     use InstructionName as Op;
     let first = &program[start];
     let is_load = matches!(first.name, Op::Lw);
     let rs1 = first.rs1 as u32;
     let imm0 = first.imm as i32;
-    let tso = MemoryHolder::TIMESTAMPS_OFFSET as i32;
+    let tso = timestamp_offset;
     let trtso = TraceChunk::TIMESTAMPS_OFFSET as i32;
 
     // Vector scratch (all free in the packed, non-xmm_ts mode): xmm6/7/13/14.
@@ -1369,7 +1376,14 @@ impl<I: ContextImpl> JittedCode<I> {
         program: &[Instruction],
         cycles_bound: Option<u32>,
         mop_field: MopField,
+        ram_config: JitRunnerRam,
     ) -> Self {
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        let timestamps_offset = ram_config.timestamps_offset();
+        let large_timestamps_offset = timestamps_offset > (1 << 30);
+        assert!(timestamps_offset.is_power_of_two());
+        let timestamps_offset_shift = timestamps_offset.trailing_zeros();
+
         let mut ops = x64::Assembler::new().unwrap();
         let start = ops.offset();
 
@@ -1379,8 +1393,7 @@ impl<I: ContextImpl> JittedCode<I> {
             ; ->start:
             ;; prologue!(ops)
             ; vzeroall
-            // OPTION 1: r10..r13 hold values (a0..a3, init 0); r14/r15/rbx/rbp hold the
-            // timestamps of those 4 (init 0 = untouched). All start zeroed.
+            // All start zeroed.
             ; xor rbx, rbx
             ; xor rbp, rbp
             ; xor r10, r10
@@ -1419,9 +1432,13 @@ impl<I: ContextImpl> JittedCode<I> {
         );
 
         // we expect trace chunk in RDI, and memory in RSI, and context pointer in RDX,
-        // so we need to copy context pointer into our structure
+        // so we need to copy context pointer into our structure. Also copy
+        // ram config
         dynasm!(ops
             ; mov [rsp + (MachineState::CONTEXT_PTR_OFFSET as i32)], rdx
+            ; mov Rq(SCRATCH_REGISTER), 1 // compute absolute address due to large immediate, but use short instructions
+            ; shl Rq(SCRATCH_REGISTER), (timestamps_offset_shift as u8) as i8 // and avoid loading from label, or imm64
+            ; mov [rsp + (MachineState::RAM_CONFIG_OFFSET as i32)], Rq(SCRATCH_REGISTER)
         );
         // // NOTE: potential path for next performance optimization
         // // we will also cache it into XMM for performance
@@ -1521,7 +1538,9 @@ impl<I: ContextImpl> JittedCode<I> {
             // bypasses the per-instruction prologue and dispatch below.
             #[cfg(not(feature = "xmm_ts"))]
             {
-                if matches!(instr.name, InstructionName::Lw | InstructionName::Sw) {
+                if large_timestamps_offset == false
+                    && matches!(instr.name, InstructionName::Lw | InstructionName::Sw)
+                {
                     let g = merged_word_run_g(program, &is_static_target, i, merge_window());
                     if g >= 2 {
                         // Defensively bind the inner instruction labels / jump offsets to the
@@ -1532,7 +1551,13 @@ impl<I: ContextImpl> JittedCode<I> {
                             jump_offsets[i + k] = ops.offset().0;
                             initialized_jump_offsets.insert(i + k);
                         }
-                        emit_merged_word_run(&mut ops, program, i, g);
+                        emit_merged_word_run(
+                            &mut ops,
+                            program,
+                            i,
+                            g,
+                            timestamps_offset as u32 as i32,
+                        );
                         dynasm!(ops ; add r9, g as i32);
                         let pc_for_trace = pc + 4 * g as u32;
                         check_to_save_trace!(ops, pc_for_trace);
@@ -1823,7 +1848,7 @@ impl<I: ContextImpl> JittedCode<I> {
                     }
 
                     // for subword loads we need an extra register to store word index. We have RDX "empty"
-                    // after loading the address. And we need one more register to store timestamp - for that we will push RBP
+                    // after loading the address
 
                     // Loads
                     Op::Lb => {
@@ -1834,14 +1859,28 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; shr rdx, 2
                         );
                         touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; movsx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
-                            ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
-                        );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                                ; movsx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
+                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp (reuse scratch)
+                                ; mov [rsi + 8 * rdx], r8 // update timestamp
+                                ; sub rsi, [->timestamps_offset_constant_label]
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                                ; movsx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
+                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp (reuse scratch)
+                                ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                            );
+                        }
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                         issue_snapshot = true;
@@ -1854,14 +1893,28 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; shr rdx, 2
                         );
                         touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; movzx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
-                            ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
-                        );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                                ; movzx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
+                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp
+                                ; mov [rsi + 8 * rdx], r8 // update timestamp
+                                ; sub rsi, [->timestamps_offset_constant_label]
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                                ; movzx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
+                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp
+                                ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                            );
+                        }
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                         issue_snapshot = true;
@@ -1875,14 +1928,28 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; shr rdx, 2
                         );
                         touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
-                            ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
-                        );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                                ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
+                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp
+                                ; mov [rsi + 8 * rdx], r8 // update timestamp
+                                ; sub rsi, [->timestamps_offset_constant_label]
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                                ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
+                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp
+                                ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                            );
+                        }
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                         issue_snapshot = true;
@@ -1896,14 +1963,28 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; shr rdx, 2
                         );
                         touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
-                            ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
-                        );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                                ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
+                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp
+                                ; mov [rsi + 8 * rdx], r8 // update timestamp
+                                ; sub rsi, [->timestamps_offset_constant_label]
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                                ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
+                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp
+                                ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                            );
+                        }
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                         issue_snapshot = true;
@@ -1917,13 +1998,26 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
                         );
                         touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; mov Rd(out), DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into destination
-                            ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)] // reuse RDX for read timestamp
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
-                            ; mov [rdi + r9 * 4], Rd(out) // write value into trace
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write old value into trace
-                        );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                                ; mov Rd(out), DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into destination
+                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                ; mov rdx, [rsi + 2 * Rq(SCRATCH_REGISTER)] // reuse RDX for read timestamp
+                                ; mov [rsi + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
+                                ; sub rsi, [->timestamps_offset_constant_label]
+                                ; mov [rdi + r9 * 4], Rd(out) // write value into trace
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write old timestamp into trace
+                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                                ; mov Rd(out), DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into destination
+                                ; mov rdx, [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)] // reuse RDX for read timestamp
+                                ; mov [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
+                                ; mov [rdi + r9 * 4], Rd(out) // write value into trace
+                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write old timestamp into trace
+                            );
+                        }
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemWord, 1);
                         issue_snapshot = true;
@@ -2284,12 +2378,24 @@ impl<I: ContextImpl> JittedCode<I> {
                         ; mov [rdi + r9 * 4], edx // write old value into trace
                     );
                     let value = load(&mut ops, rs2);
-                    dynasm!(ops
-                        ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value (frees its register)
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp (RDX free; frees RBP)
-                        ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                    );
+                    if large_timestamps_offset {
+                        dynasm!(ops
+                            ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value (frees its register)
+                            ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                            ; mov rdx, [rsi + 8 * rax] // read timestamp
+                            ; mov [rsi + 8 * rax], r8 // update timestamp
+                            ; sub rsi, [->timestamps_offset_constant_label]
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                        );
+                    } else {
+                        let offset = timestamps_offset as u32;
+                        dynasm!(ops
+                            ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value (frees its register)
+                            ; mov rdx, [rsi + (offset as i32) + 8 * rax] // read timestamp
+                            ; mov [rsi + (offset as i32) + 8 * rax], r8 // update timestamp
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                        );
+                    }
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                     issue_snapshot = true;
@@ -2311,12 +2417,24 @@ impl<I: ContextImpl> JittedCode<I> {
                         ; mov [rdi + r9 * 4], edx // write old value into trace
                     );
                     let value = load(&mut ops, rs2);
-                    dynasm!(ops
-                        ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value (frees its register)
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp (RDX free; frees RBP)
-                        ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                    );
+                    if large_timestamps_offset {
+                        dynasm!(ops
+                            ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value (frees its register)
+                            ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                            ; mov rdx, [rsi + 8 * rax] // read timestamp
+                            ; mov [rsi + 8 * rax], r8 // update timestamp
+                            ; sub rsi, [->timestamps_offset_constant_label]
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                        );
+                    } else {
+                        let offset = timestamps_offset as u32;
+                        dynasm!(ops
+                            ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value (frees its register)
+                            ; mov rdx, [rsi + (offset as i32) + 8 * rax] // read timestamp
+                            ; mov [rsi + (offset as i32) + 8 * rax], r8 // update timestamp
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                        );
+                    }
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                     issue_snapshot = true;
@@ -2334,15 +2452,30 @@ impl<I: ContextImpl> JittedCode<I> {
                     // old value / old timestamp instead of pushing/popping RDX.
                     touch_register_and_increment_timestamp!(ops, rs1);
                     touch_register_and_increment_timestamp!(ops, rs2);
-                    dynasm!(ops
-                        // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
-                        ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
-                        ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value (frees its register)
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp (RDX free now; frees RBP)
-                        ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
-                        ; mov [rdi + r9 * 4], eax // write old value into trace
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                    );
+                    if large_timestamps_offset {
+                        dynasm!(ops
+                            // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
+                            ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
+                            ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value (frees its register)
+                            ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                            ; mov rdx, [rsi + 2 * Rq(SCRATCH_REGISTER)] // read timestamp
+                            ; mov [rsi + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
+                            ; sub rsi, [->timestamps_offset_constant_label]
+                            ; mov [rdi + r9 * 4], eax // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                        );
+                    } else {
+                        let offset = timestamps_offset as u32;
+                        dynasm!(ops
+                            // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
+                            ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
+                            ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value (frees its register)
+                            ; mov rdx, [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp
+                            ; mov [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
+                            ; mov [rdi + r9 * 4], eax // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                        );
+                    }
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemWord, 1);
                     issue_snapshot = true;
@@ -2619,6 +2752,12 @@ impl<I: ContextImpl> JittedCode<I> {
             ; .bytes jump_offsets.into_iter().flat_map(|x| x.to_le_bytes())
         );
 
+        // put timestamps offset into static data
+        dynasm!(ops
+            ; ->timestamps_offset_constant_label:
+            ; .bytes timestamps_offset.to_le_bytes()
+        );
+
         // 16-byte-aligned one-hot constants for the vectorized counter increments
         // (`paddq xmm, [->cve_one_qN]`). q0 increments the low qword lane, q1 the high.
         dynasm!(ops
@@ -2676,6 +2815,7 @@ impl<I: ContextImpl> JittedCode<I> {
             code,
             start,
             _marker: core::marker::PhantomData,
+            ram_config,
         }
     }
 
@@ -2687,18 +2827,19 @@ impl<I: ContextImpl> JittedCode<I> {
         initial_memory: &[u32],
     ) {
         assert!(initial_memory.len() <= common_constants::rom::ROM_WORD_SIZE);
+
+        assert_eq!(self.ram_config.ram_size(), memory.ram_size(), "Jitted core was created for the ram size 0x{:08x} bytes, but memory holder received has size of 0x{:08x} bytes", self.ram_config.ram_size(), memory.ram_size());
+        assert!(initial_memory.len() <= memory.memory().len());
         assert!(context.final_state_ref().is_none());
 
-        memory.memory[..initial_memory.len()].copy_from_slice(initial_memory);
+        memory.memory_mut()[..initial_memory.len()].copy_from_slice(initial_memory);
 
-        let run_program: extern "sysv64" fn(
-            NonNull<TraceChunk>,
-            &mut MemoryHolder,
-            &mut Context<I>,
-        ) = unsafe { std::mem::transmute(self.code.ptr(self.start)) };
+        // NOTE: improper c-types doesn't trigger here for some reason!
+        let run_program: extern "sysv64" fn(NonNull<TraceChunk>, NonNull<u64>, &mut Context<I>) =
+            unsafe { std::mem::transmute(self.code.ptr(self.start)) };
 
         let before = std::time::Instant::now();
-        run_program(initial_trace_chunk, memory, context);
+        run_program(initial_trace_chunk, memory.as_mut_ptr(), context);
         let elapsed = before.elapsed();
 
         if let Some(final_state) = context.final_state_ref() {
@@ -2720,13 +2861,12 @@ impl<I: ContextImpl> JittedCode<I> {
         memory: &mut MemoryHolder,
         initial_trace_chunk: NonNull<TraceChunk>,
     ) {
-        let run_program: extern "sysv64" fn(
-            NonNull<TraceChunk>,
-            &mut MemoryHolder,
-            &mut Context<I>,
-        ) = unsafe { std::mem::transmute(self.code.ptr(self.start)) };
+        assert_eq!(self.ram_config.ram_size(), memory.ram_size(), "Jitted core was created for the ram size 0x{:08x} bytes, but memory holder received has size of 0x{:08x} bytes", self.ram_config.ram_size(), memory.ram_size());
+        // Improper c-types doesn't trigger here, but can not use &mut MemoryHolder
+        let run_program: extern "sysv64" fn(NonNull<TraceChunk>, NonNull<u64>, &mut Context<I>) =
+            unsafe { std::mem::transmute(self.code.ptr(self.start)) };
 
-        run_program(initial_trace_chunk, memory, context);
+        run_program(initial_trace_chunk, memory.as_mut_ptr(), context);
     }
 }
 
@@ -2736,17 +2876,16 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
         non_determinism_responses: &'a [u32],
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
-        let mut context = Context::<FlattenedContextImpl<'_>> {
-            implementation: FlattenedContextImpl::new(non_determinism_responses),
-        };
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        let mut context = Context::<FlattenedContextImpl<'_>>::new(
+            FlattenedContextImpl::new(non_determinism_responses),
+            ram_config,
+        );
 
-        let mut memory: Box<MemoryHolder> = unsafe {
-            // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
-            let memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
-
-            memory
-        };
+        let mut memory: Box<MemoryHolder> =
+            MemoryHolder::allocate_zeroed(ram_config, Default::default());
 
         // println!(
         //     "Memory chunk address = 0x{:x}",
@@ -2769,7 +2908,8 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
+        let runner =
+            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
 
         // Profiling baseline: when RISCV_PROFILE_SKIP_RUN is set we do all of the
         // setup (decode + JIT compile + the large allocations) but skip execution,
@@ -2804,21 +2944,24 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
-        let mut context = Context::<DefaultContextImpl<'_, N>> {
-            implementation: DefaultContextImpl {
-                non_determinism_source,
-                trace_len: 0,
-                final_state: None,
-            },
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+
+        // println!("Preparing default context implementation");
+        let implementation = DefaultContextImpl {
+            non_determinism_source,
+            trace_len: 0,
+            final_state: None,
         };
 
-        let mut memory: Box<MemoryHolder> = unsafe {
-            // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
-            let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
+        // println!("Preparing JIT context");
+        let mut context = Context::<DefaultContextImpl<'_, N>>::new(implementation, ram_config);
 
-            memory
-        };
+        // println!("Allocating `MemoryHolder`");
+        let mut memory: Box<MemoryHolder> =
+            MemoryHolder::allocate_zeroed(ram_config, Default::default());
+        assert_eq!(memory.ram_size(), ram_config.ram_size());
 
         // println!(
         //     "Memory chunk address = 0x{:x}",
@@ -2841,8 +2984,12 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
 
+        // println!("Preprocessing the bytecode");
+        let runner =
+            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+
+        // println!("Running the simulator");
         runner.run(
             &mut context,
             memory.as_mut(),
@@ -2850,6 +2997,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             initial_memory,
         );
 
+        // println!("Obtaining the final machine state");
         let final_state = context
             .implementation
             .take_final_state()
@@ -2866,19 +3014,23 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
-        let mut context = Context::<DefaultContextImpl<'_, N>> {
-            implementation: DefaultContextImpl {
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        let mut context = Context::<DefaultContextImpl<'_, N>>::new(
+            DefaultContextImpl {
                 non_determinism_source,
                 trace_len: 0,
                 final_state: None,
             },
-        };
+            ram_config,
+        );
 
-        let mut memory: Box<MemoryHolder> = unsafe { Box::new_zeroed().assume_init() };
+        let mut memory: Box<MemoryHolder> =
+            MemoryHolder::allocate_zeroed(ram_config, Default::default());
         let mut trace: Box<TraceChunk> = unsafe { Box::new_zeroed().assume_init() };
 
-        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field());
+        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field(), ram_config);
         runner.run(
             &mut context,
             memory.as_mut(),
@@ -2899,17 +3051,16 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>, Box<TraceChunk>) {
-        let mut context = Context::<DefaultContextImpl<'_, N>> {
-            implementation: DefaultContextImpl::new(non_determinism_source),
-        };
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        let mut context = Context::<DefaultContextImpl<'_, N>>::new(
+            DefaultContextImpl::new(non_determinism_source),
+            ram_config,
+        );
 
-        let mut memory: Box<MemoryHolder> = unsafe {
-            // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
-            let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
-
-            memory
-        };
+        let mut memory: Box<MemoryHolder> =
+            MemoryHolder::allocate_zeroed(ram_config, Default::default());
 
         // println!(
         //     "Memory chunk address = 0x{:x}",
@@ -2934,7 +3085,8 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
+        let runner =
+            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
 
         runner.run(
             &mut context,
@@ -2954,7 +3106,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
 
 extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
     trace_piece: &mut TraceChunk,
-    memory_holder: &mut MemoryHolder,
+    memory_holder: NonNull<u64>,
     machine_state: &mut MachineState,
 ) -> u64 {
     debug_assert!(
@@ -2963,9 +3115,16 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
     debug_assert!(
         (trace_piece as *const TraceChunk).is_aligned_to(core::mem::align_of::<TraceChunk>())
     );
-    debug_assert!(
-        (memory_holder as *const MemoryHolder).is_aligned_to(core::mem::align_of::<MemoryHolder>())
-    );
+    debug_assert!(memory_holder.is_aligned_to(MemoryHolder::ALIGNMENT));
+    debug_assert_ne!(machine_state.ram_config, JitRunnerRam::UninitPlaceholder);
+    // we must reconstruct it
+    let memory_holder = unsafe {
+        let num_u64_word = machine_state.ram_config.memory_holder_buffer_size();
+        core::mem::transmute(core::slice::from_raw_parts_mut(
+            memory_holder.as_ptr(),
+            num_u64_word,
+        ))
+    };
     if CSR_NUMBER == KECCAK_SPECIAL5_CSR_REGISTER {
         keccak_unrolled_implementation(trace_piece, memory_holder, machine_state)
     } else if CSR_NUMBER == BIGINT_OPS_WITH_CONTROL_CSR_REGISTER {
@@ -2979,10 +3138,23 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
 
 #[repr(C)]
 pub struct Context<I: ContextImpl> {
-    pub implementation: I,
+    pub(crate) implementation: I,
+    pub(crate) ram_config: JitRunnerRam,
 }
 
 impl<I: ContextImpl> Context<I> {
+    pub fn new(implementation: I, ram_config: JitRunnerRam) -> Self {
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        Self {
+            implementation,
+            ram_config,
+        }
+    }
+
+    pub fn into_implementation(self) -> I {
+        self.implementation
+    }
+
     extern "sysv64" fn nondeterminism_as_raw_ptr(&self) -> *const u32 {
         if let Some(ptr) = self.implementation.nondeterminism_as_raw_ptr() {
             ptr
@@ -2995,26 +3167,40 @@ impl<I: ContextImpl> Context<I> {
         self.implementation.read_nondeterminism()
     }
 
-    extern "sysv64" fn write_nondeterminism(&mut self, value: u32, memory: &RamImage) {
+    extern "sysv64" fn write_nondeterminism(&mut self, value: u32, memory: *const u32) {
+        let memory = unsafe {
+            core::slice::from_raw_parts(
+                memory,
+                self.ram_config.ram_size() / core::mem::size_of::<u32>(),
+            )
+        };
         self.implementation.write_nondeterminism(value, memory)
     }
 
     extern "sysv64" fn receive_trace(
         &mut self,
-        trace_piece: NonNull<TraceChunk>,
+        trace_chunk: NonNull<TraceChunk>,
         machine_state: &MachineState,
     ) -> NonNull<TraceChunk> {
+        debug_assert!((machine_state as *const MachineState)
+            .is_aligned_to(core::mem::align_of::<MachineState>()));
+        debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)
+            .is_aligned_to(core::mem::align_of::<TraceChunk>()));
         self.implementation
-            .receive_trace(trace_piece, machine_state)
+            .receive_trace(trace_chunk, machine_state)
     }
 
     extern "sysv64" fn receive_final_trace_piece(
         &mut self,
-        trace_piece: NonNull<TraceChunk>,
+        trace_chunk: NonNull<TraceChunk>,
         machine_state: &MachineState,
     ) {
+        debug_assert!((machine_state as *const MachineState)
+            .is_aligned_to(core::mem::align_of::<MachineState>()));
+        debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)
+            .is_aligned_to(core::mem::align_of::<TraceChunk>()));
         self.implementation
-            .receive_final_trace_piece(trace_piece, machine_state);
+            .receive_final_trace_piece(trace_chunk, machine_state);
     }
 
     pub fn take_final_state(&mut self) -> Option<MachineState> {

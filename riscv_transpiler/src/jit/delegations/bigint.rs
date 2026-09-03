@@ -35,14 +35,9 @@ pub fn bigint_implementation(
 
     let b = unsafe {
         let offset = (b_ptr as usize) / core::mem::size_of::<u32>();
-        let integer = memory_holder
-            .memory
-            .as_ptr()
-            .add(offset)
-            .cast::<U256>()
-            .as_ref_unchecked();
-        let timestamps = memory_holder
-            .timestamps
+        let (mem, ts) = memory_holder.memory_and_timestamps_mut();
+        let integer = mem.as_ptr().add(offset).cast::<U256>().as_ref_unchecked();
+        let timestamps = ts
             .as_mut_ptr()
             .add(offset)
             .cast::<[TimestampScalar; 8]>()
@@ -63,14 +58,13 @@ pub fn bigint_implementation(
 
     let a = unsafe {
         let offset = (a_ptr as usize) / core::mem::size_of::<u32>();
-        let integer = memory_holder
-            .memory
+        let (mem, ts) = memory_holder.memory_and_timestamps_mut();
+        let integer = mem
             .as_mut_ptr()
             .add(offset)
             .cast::<U256>()
             .as_mut_unchecked();
-        let timestamps = memory_holder
-            .timestamps
+        let timestamps = ts
             .as_mut_ptr()
             .add(offset)
             .cast::<[TimestampScalar; 8]>()
