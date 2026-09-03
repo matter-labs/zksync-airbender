@@ -138,8 +138,8 @@ relations with a reduced conditional-resolution table, separate operand-sign loo
 family-gated lookup requests, and family-gated destination constraints; those are
 implementation adaptations rather than additional architectural behavior.
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: reduced unified machine, embedded family 2
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |

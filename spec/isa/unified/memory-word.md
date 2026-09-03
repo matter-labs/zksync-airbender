@@ -81,8 +81,8 @@ accesses, and forbids PC overflow. The relation is derived directly from the uni
 implementation and these adopted sources; it does not assume equivalence with the
 unrolled family.
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: reduced unified machine, Family 4 `LW`/`SW` subrelation
 
 ### Statement metadata
@@ -95,5 +95,5 @@ unrolled family.
 | `ASM-UMWORD-004` | normative | a selected source register is `x0` | `external:REG` | prose | [RV32I register semantics](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html) | — |
 | `ASM-UMWORD-005` | normative | active row | `external:DEC`; `external:CONT` | located | aligned unified decoder keys and 32-bit PC continuity at `dfb1b2a8a` | `symbol:cs/src/gkr_circuits/decoder_trait.rs#materialize_flattened_decoder_table_with_bitmask`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/circuit.rs#apply_unified_pc_bump` |
 | `REL-UMWORD-001` | normative | active `LW ∨ SW` | `ASM-UMWORD-001..002` | located | [RV32I effective-address semantics](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html); [RVALP v0.18.4 RV32I reference cards](https://github.com/johnwinans/rvalp/releases/download/v0.18.4/rvalp.pdf); unified address-limb constraints at `dfb1b2a8a` | `symbol:cs/src/gkr_circuits/unified_reduced_machine/mem_word_only_lw_sw.rs#apply_unified_mem_word_only_lw_sw_data_path` |
-| `REL-UMWORD-002` | normative | active `LW ∨ SW` | `ASM-UMWORD-001..004`; `REL-UMWORD-001` | located | [RV32I word-memory semantics](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html); `decision:2026-09-01#emulated-memory-has-no-device-side-effects`; unified ROM/RAM dispatch, alignment, and access copying at `dfb1b2a8a` | `symbol:cs/src/gkr_circuits/unified_reduced_machine/mem_word_only.rs#apply_unified_mem_word_only_inner`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/mem_word_only_lw_sw.rs#apply_unified_mem_word_only_lw_sw_data_path`; `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode` |
+| `REL-UMWORD-002` | normative | active `LW ∨ SW` | `ASM-UMWORD-001..004`; `REL-UMWORD-001` | located | [RV32I word-memory semantics](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html); `decision:emulated-memory-has-no-device-side-effects`; unified ROM/RAM dispatch, alignment, and access copying at `dfb1b2a8a` | `symbol:cs/src/gkr_circuits/unified_reduced_machine/mem_word_only.rs#apply_unified_mem_word_only_inner`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/mem_word_only_lw_sw.rs#apply_unified_mem_word_only_lw_sw_data_path`; `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode` |
 | `REL-UMWORD-003` | normative | active `LW ∨ SW` | `ASM-UMWORD-005` | located | [RVALP v0.18.4 sequential PC assignment](https://github.com/johnwinans/rvalp/releases/download/v0.18.4/rvalp.pdf); unified non-overflow enforcement at `dfb1b2a8a` | `symbol:cs/src/gkr_circuits/unified_reduced_machine/circuit.rs#apply_unified_pc_bump` |

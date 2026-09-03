@@ -31,7 +31,7 @@ carries the internal micro-operation control and is not a Keccak state lane.
   state index after `r` accumulated π steps
 - `RC_r ∈ u64`, `r ∈ [0, 24)`, and `ρ[x, y] ∈ [0, 64)` are the Keccak-f[1600]
   round constants and rotation offsets
-- `rotl₆₄(a, n)` rotates `a ∈ u64` left by `n` bits
+- `a ⋘ n` cyclically rotates `a ∈ u64` left by `n` bits
 - `⊕`, `∧`, and `¬` are bitwise XOR, AND, and complement on `u64`
 - Assignments within one micro-operation are simultaneous and use pre-operation values
 
@@ -75,18 +75,18 @@ carries the internal micro-operation control and is not a Keccak state lane.
       `S_{q₀} ← z`
       `S_{25+i} ← z ⊕ S_{q₁} ⊕ S_{q₂} ⊕ S_{q₃} ⊕ S_{q₄}`
     - **`m = 1` — first D-lane mix**
-      `S₂₅ ← S₂₅ ⊕ rotl₆₄(S₂₇, 1)`
-      `S₂₇ ← S₂₇ ⊕ rotl₆₄(S₂₉, 1)`
-      `S₃₀ ← rotl₆₄(S₂₅, 1)`
+      `S₂₅ ← S₂₅ ⊕ (S₂₇ ⋘ 1)`
+      `S₂₇ ← S₂₇ ⊕ (S₂₉ ⋘ 1)`
+      `S₃₀ ← S₂₅ ⋘ 1`
     - **`m = 2` — second D-lane mix**
-      `S₂₆ ← S₂₆ ⊕ rotl₆₄(S₂₈, 1)`
+      `S₂₆ ← S₂₆ ⊕ (S₂₈ ⋘ 1)`
       `S₂₈ ← S₂₈ ⊕ S₃₀`
-      `S₂₉ ← S₂₉ ⊕ rotl₆₄(S₂₆, 1)`
+      `S₂₉ ← S₂₉ ⊕ (S₂₆ ⋘ 1)`
     - **`m = 3` — θ column update**
       `d = S_{[29, 25, 26, 27, 28]_i}`
       `S_{Pᵣ(i,y)} ← S_{Pᵣ(i,y)} ⊕ d` for `y ∈ [0, 5)`
     - **`m = 4` — ρ rotations**
-      `S_{Pᵣ(i,y)} ← rotl₆₄(S_{Pᵣ(i,y)}, ρ[i,y])` for `y ∈ [0, 5)`
+      `S_{Pᵣ(i,y)} ← S_{Pᵣ(i,y)} ⋘ ρ[i,y]` for `y ∈ [0, 5)`
     - **`m = 5` — first χ half-row**
       `q_x = Pᵣ₊₁(x, i)` for `x ∈ [1, 5)`
       `S_{q₁} ← S_{q₁} ⊕ (¬S_{q₂} ∧ S_{q₃})`
@@ -114,9 +114,9 @@ carries the internal micro-operation control and is not a Keccak state lane.
     `A₀[x,y] = S_{P₀(x,y)}`
     For `r ∈ [0, 24)`:
     `C[x] = ⊕_{y=0}⁴ Aᵣ[x,y]`
-    `D[x] = C[(x − 1) mod 5] ⊕ rotl₆₄(C[(x + 1) mod 5], 1)`
+    `D[x] = C[(x − 1) mod 5] ⊕ (C[(x + 1) mod 5] ⋘ 1)`
     `T[x,y] = Aᵣ[x,y] ⊕ D[x]`
-    `B[y,(2x + 3y) mod 5] = rotl₆₄(T[x,y], ρ[x,y])`
+    `B[y,(2x + 3y) mod 5] = T[x,y] ⋘ ρ[x,y]`
     `U[x,y] = B[x,y] ⊕ (¬B[(x + 1) mod 5,y] ∧ B[(x + 2) mod 5,y])`
     `Aᵣ₊₁[0,0] = U[0,0] ⊕ RC_r`
     `Aᵣ₊₁[x,y] = U[x,y]` for `(x,y) ≠ (0,0)`
@@ -151,8 +151,8 @@ The final 25-lane relation adopts [NIST FIPS 202](https://nvlpubs.nist.gov/nistp
 [Keccak specifications summary](https://keccak.team/keccak_specs_summary.html). The
 carrier ABI and micro-operation schedule are Airbender-specific.
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: full unrolled; reduced unified conditional on `GAP-PRECOMP-001`; domain
   size `2²²`
 

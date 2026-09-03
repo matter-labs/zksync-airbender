@@ -159,8 +159,8 @@ constants, preprocessing, circuit constraints, setup construction, replay, and t
 full-statement verifier. Only the conflicting reduced-unified admission policy remains
 provisional
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8ab3c29cd1024ae98dbc2bd4a7d164365+dirty`
+- spec revision: TBD
+- implementation: TBD
 - profile: `full-unrolled; reduced-unrolled-with-delegation; reduced-unified`
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |

@@ -14,18 +14,22 @@ evidence and the corresponding gap below.
 - `SUB rd, rs1, rs2`
 - `AUIPC rd, imm20`
 - `NOP`
-- `ZimopAdd rd, rs1, rs2`
-- `ZimopSub rd, rs1, rs2`
-- `ZimopMul rd, rs1, rs2`
-- `ZimopFMA rd, rs1, rs2`
-- `ZimopTriAdd rd, rs1, rs2`
-- `ZicsrNonDeterminismRead rd`
-- `ZicsrNonDeterminismWrite rs1`
-- `ZicsrDelegation d`, for a delegation type admitted by the selected profile
+- `MOP.RR.0 rd, rs1, rs2` (`ADDMOD`)
+- `MOP.RR.1 rd, rs1, rs2` (`SUBMOD`)
+- `MOP.RR.2 rd, rs1, rs2` (`MULMOD`)
+- `MOP.RR.3 rd, rs1, rs2` (`FMAMOD`)
+- `MOP.RR.4 rd, rs1, rs2` (`TRIADD`)
+- `CSRRW rd, 0x7C0, x0` (`NONDETERMINISM_READ`)
+- `CSRRW x0, 0x7C0, rs1` (`NONDETERMINISM_WRITE`)
+- `CSRRW x0, 0x7C7, x0` (`BLAKE2S_WITH_CONTROL` delegation)
+- `CSRRW x0, 0x7C8, x0` (`BLAKE2S_G_FUNCTION` delegation)
+- `CSRRW x0, 0x7CA, x0` (`BIGINT_WITH_CONTROL` delegation)
+- `CSRRW x0, 0x7CB, x0` (`KECCAK_SPECIAL5` delegation)
 
 The preprocessor canonicalizes ordinary destination-writing instructions with
-`rd = x0` to `NOP`. It also maps nondeterminism writes to the canonical NOP row
-and maps delegation carriers to one or more `ZicsrDelegation d` rows.
+`rd = x0` to `NOP`. It also maps `NONDETERMINISM_WRITE` to the canonical NOP row
+and maps delegation carriers to normalized delegation rows carrying their CSR
+address `d`.
 
 ## Inputs
 
@@ -33,13 +37,14 @@ and maps delegation carriers to one or more `ZicsrDelegation d` rows.
   `u32 = [0, 2³²)` are unsigned integer domains
 - `pc ∈ u32` is the current program counter
 - `execute ∈ {0, 1}` activates the cycle
-- `rs1, rs2, rd_old ∈ u32` are pre-cycle register values
+- `rs1, rs2 ∈ u32` are pre-cycle register values
 - `imm12 ∈ u12` and `imm20 ∈ u20` are encoded immediate fields
 - `rd` is the destination register
 - `η ∈ u32` is the value admitted by a nondeterminism-read row
 - `p = 0x78000001 = 2³¹ − 2²⁷ + 1` is the BabyBear modulus
 - `R = 2³²` is the Montgomery radix and `R⁻¹` is its inverse modulo `p`
-- `d ∈ u16` is the authenticated delegation type
+- `d ∈ {0x7C7, 0x7C8, 0x7CA, 0x7CB}` is the authenticated delegation CSR address;
+  the selected profile may admit a subset
 - `τ₁` is the write timestamp of the executor's shared access slot 1
 - `RegItem(a, t, v) = (Register, a, t, v)` is a register-argument item with
   address, timestamp, and value
@@ -83,26 +88,27 @@ and maps delegation carriers to one or more `ZicsrDelegation d` rows.
       `rd = x0`
       `rd ← 0`
   - **[`REL-UADD-002*`] Custom arithmetic assignment**
-    - **`op = ZimopAdd`**
+    - **`op = MOP.RR.0` (`ADDMOD`)**
       `rd ← (rs1 + rs2) mod p`
-    - **`op = ZimopSub`**
+    - **`op = MOP.RR.1` (`SUBMOD`)**
       `rd ← (rs1 − rs2) mod p`
-    - **`op = ZimopMul`**
+    - **`op = MOP.RR.2` (`MULMOD`)**
       `rd ← (rs1 · rs2 · R⁻¹) mod p`
-    - **`op = ZimopFMA`**
-      `rd ← (rs1 · rs2 · R⁻¹ + rd_old) mod p`
-    - **`op = ZimopTriAdd`**
-      `rd ← (rs1 + rs2 + rd_old) mod 2³²`
-    - The modular cases admit non-canonical `u32` operands and assign `rd ∈ [0, p)`
+    - **`op = MOP.RR.3` (`FMAMOD`)**
+      `rd ← (rs1 · rs2 · R⁻¹ + rd) mod p`
+    - **`op = MOP.RR.4` (`TRIADD`)**
+      `rd ← (rs1 + rs2 + rd) mod 2³²`
+    - `ADDMOD`, `SUBMOD`, `MULMOD`, and `FMAMOD` admit non-canonical `u32`
+      operands and assign `rd ∈ [0, p)`
   - **[`REL-UADD-003*`] Nondeterminism interface**
-    - **`op = ZicsrNonDeterminismRead`**
+    - **`op = CSRRW rd, 0x7C0, x0` (`NONDETERMINISM_READ`)**
       `rd ← η`
-    - **`op = ZicsrNonDeterminismWrite`**
+    - **`op = CSRRW x0, 0x7C0, rs1` (`NONDETERMINISM_WRITE`)**
       `rd = x0`
       `rd ← 0`
     - The executor imposes no predicate on `η` beyond `η ∈ u32`
   - **[`OUT-UADD-001*`] Delegation invocation**
-    - **`op = ZicsrDelegation d`**
+    - **`op = CSRRW x0, d, x0` (`DELEGATION`)**
       `rd = x0`
       `rd ← 0`
       `T_exec^PRECOMP ← ({RegItem(d, 0, 0)}_read, {RegItem(d, τ₁, 0)}_write)`
@@ -133,30 +139,37 @@ and maps delegation carriers to one or more `ZicsrDelegation d` rows.
 ## Open boundary
 
 - **GAP-UADD-001 — Custom arithmetic adoption.** Adopt or replace the exact
-  BabyBear Montgomery `ZimopAdd`, `ZimopSub`, `ZimopMul`, `ZimopFMA`, and
-  wrapping `ZimopTriAdd` relations, including acceptance of non-canonical `u32`
-  operands.
+  BabyBear Montgomery `ADDMOD`, `SUBMOD`, `MULMOD`, `FMAMOD`, and wrapping
+  `TRIADD` redefinitions of `MOP.RR.0..4`, including acceptance of non-canonical
+  `u32` operands.
 - **GAP-UADD-002 — Nondeterminism contract.** Adopt the unconstrained `u32` read
   value and the circuit-level elision of nondeterminism-write values, and identify
   any external ordering or transcript relation intended to bind nondeterminism
-  reads.
+  reads. Decide whether non-`CSRRW` Zicsr encodings currently accepted by
+  preprocessing are admitted carriers or implementation aliases to reject.
 - **GAP-UADD-003 — Delegation invocation adoption.** Adopt the executor-side
   virtual-register encoding and determine the exact delegation-type set admitted
-  by the selected reduced unified profile. PRECOMP separately owns fulfillment
-  arithmetic and ABI relations.
+  by the selected reduced unified profile, including whether non-`CSRRW` Zicsr
+  encodings currently accepted by preprocessing are admitted carriers. PRECOMP
+  separately owns fulfillment arithmetic and ABI relations.
 
 ## Metadata
 
 Ordinary instruction semantics adopt the official
 [RV32I specification](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html).
+Carrier syntax follows the official
+[Zimop](https://docs.riscv.org/reference/isa/unpriv/zimop.html) and
+[Zicsr](https://docs.riscv.org/reference/isa/unpriv/zicsr.html) specifications;
+delegation and nondeterminism addresses occupy the official
+[custom machine CSR range](https://docs.riscv.org/reference/isa/priv/priv-csrs.html).
 The [RVALP v0.18.4 RV32I reference cards](https://github.com/johnwinans/rvalp/releases/download/v0.18.4/rvalp.pdf)
 corroborate the ordinary destination assignments and sequential PC assignment.
 Canonical NOP routing and non-wrapping PC enforcement are Airbender-specific
 boundaries already adopted for the ISA-family specifications. Starred custom
 relations remain implementation-derived.
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: reduced unified machine, circuit family `128`, family-1 subrelation
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
@@ -166,10 +179,10 @@ relations remain implementation-derived.
 | `ASM-UADD-003` | normative | a selected register is `x0` | `external:REG` | prose | RISC-V `x0` semantics; global register-memory argument | — |
 | `ASM-UADD-004` | normative | active row | `external:DEC` | located | aligned decoder-table keys at `dfb1b2a8a` | `symbol:cs/src/gkr_circuits/decoder_trait.rs#materialize_flattened_decoder_table_with_bitmask`; `symbol:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit` |
 | `REL-UADD-001` | normative | active ordinary or NOP row | `ASM-UADD-001..003` | located | [RV32I](https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html); [RVALP v0.18.4](https://github.com/johnwinans/rvalp/releases/download/v0.18.4/rvalp.pdf); unified family-1 constraints at `dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner` |
-| `REL-UADD-002` | provisional | active custom-arithmetic row | `ASM-UADD-001..003`; `GAP-UADD-001` | located | unified decoder, constraints, and MOP replayer at `dfb1b2a8a` | `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner`; `symbol:riscv_transpiler/src/replayer/instructions/add_sub_family/mop.rs#mop_addmod` |
-| `REL-UADD-003` | provisional | active nondeterminism row | `ASM-UADD-001..003`; `GAP-UADD-002` | located | preprocessing, family-1 constraints, and nondeterminism replayer at `dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner`; `symbol:riscv_transpiler/src/replayer/instructions/add_sub_family/non_determinism.rs#nd_read` |
+| `REL-UADD-002` | provisional | active custom-arithmetic row | `ASM-UADD-001..003`; `GAP-UADD-001` | located | [Zimop carrier syntax](https://docs.riscv.org/reference/isa/unpriv/zimop.html); unified decoder, constraints, and MOP replayer at `dfb1b2a8a` | `symbol:common_constants/src/mops.rs#MOP_ADD_MOD`; `symbol:common_constants/src/mops.rs#MOP_SUB_MOD`; `symbol:common_constants/src/mops.rs#MOP_MUL_MOD`; `symbol:common_constants/src/mops.rs#MOP_FMA_MOD`; `symbol:common_constants/src/mops.rs#MOP_TRI_ADD`; `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner`; `symbol:riscv_transpiler/src/replayer/instructions/add_sub_family/mop.rs#mop_addmod` |
+| `REL-UADD-003` | provisional | active nondeterminism row | `ASM-UADD-001..003`; `GAP-UADD-002` | located | [Zicsr carrier syntax](https://docs.riscv.org/reference/isa/unpriv/zicsr.html); preprocessing, family-1 constraints, and nondeterminism replayer at `dfb1b2a8a` | `symbol:common_constants/src/lib.rs#NON_DETERMINISM_CSR`; `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner`; `symbol:riscv_transpiler/src/replayer/instructions/add_sub_family/non_determinism.rs#nd_read` |
 | `REL-UADD-004` | normative | every active family-1 row | `ASM-UADD-001`, `ASM-UADD-004`; 32-bit `pc` domain | located | [RVALP v0.18.4](https://github.com/johnwinans/rvalp/releases/download/v0.18.4/rvalp.pdf); unified PC-bump constraints at `dfb1b2a8a` | `symbol:cs/src/gkr_circuits/unified_reduced_machine/circuit.rs#apply_unified_pc_bump` |
-| `OUT-UADD-001` | provisional | active delegation row | `ASM-UADD-001..003`; `GAP-UADD-003`; discharged by `external:PRECOMP` | located | delegation preprocessing, family-1 constraints, and global memory-like argument at `dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/add_sub_family/decoder.rs#AddSubLuiAuipcMopDecoder::define_decoder_subspace`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner`; `symbol:cs/src/gkr_compiler/memory_like_grand_product.rs#layout_initial_grand_product_accumulation` |
+| `OUT-UADD-001` | provisional | active delegation row | `ASM-UADD-001..003`; `GAP-UADD-003`; discharged by `external:PRECOMP` | located | [Zicsr carrier syntax](https://docs.riscv.org/reference/isa/unpriv/zicsr.html); [custom machine CSR range](https://docs.riscv.org/reference/isa/priv/priv-csrs.html); delegation preprocessing, family-1 constraints, and global memory-like argument at `dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#DelegationType`; `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/add_sub_family/decoder.rs#AddSubLuiAuipcMopDecoder::define_decoder_subspace`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs#apply_unified_add_sub_lui_auipc_mop_inner`; `symbol:cs/src/gkr_compiler/memory_like_grand_product.rs#layout_initial_grand_product_accumulation` |
 | `GAP-UADD-001` | open | — | affects `REL-UADD-002`; owner: human | — | custom arithmetic has convergent circuit and replayer evidence but no adopted independent relation | — |
 | `GAP-UADD-002` | open | — | affects `REL-UADD-003`; owner: human | — | nondeterminism behavior is implementation-defined and its external binding is unspecified | — |
 | `GAP-UADD-003` | open | — | affects `OUT-UADD-001`; owner: human | — | executor and fulfillment encodings are located, but profile admission and ABI adoption remain open | — |

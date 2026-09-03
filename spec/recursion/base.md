@@ -198,8 +198,8 @@ This is the implemented acceptance check that binds the proved `pc_f` and
 
 ## Metadata
 
-- spec revision: `2026-09-01.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: `unrolled full-unsigned base; Sec100 full-statement verifier`
 - W2 coverage: [official `REQ-W2-001,003..004,007`](../ETHPROOFS-W2.md#deliverable-requirements)
 
@@ -210,7 +210,7 @@ This is the implemented acceptance check that binds the proved `pc_f` and
 | `ASM-BASE-001` | provisional | each accepted chunk | `external:MACH`; `external:REG`; `external:MEM`; `external:CONT` | prose | direct machine-module interfaces | — |
 | `ASM-BASE-002` | provisional | global-product equality | `external:LOOKUP`; `external:MEM`; `external:SOUND` | located | `repo:prover/src/definitions/mod.rs#produce_initial_permutation_product_separate_contributions@dfb1b2a8a` | `symbol:prover/src/definitions/mod.rs#produce_initial_permutation_product_separate_contributions` |
 | `ASM-BASE-003` | provisional | every invoked proof | `REQ-TOPO-001..003`; `external:GKR`; `external:WHIR` | prose | [proof topology](topology.md) | — |
-| `ASM-BASE-004` | provisional | transcript and program binding | `external:TRANS`; `external:SOUND` | prose | [soundness accounting](soundness.md) | — |
+| `ASM-BASE-004` | provisional | transcript and program binding | `external:TRANS`; `external:SOUND` | prose | [soundness accounting](../soundness/accounting.md) | — |
 | `REQ-BASE-001` | provisional | artifact verification | `IN-BASE-001..002` | located | `repo:prover_pipeline/src/lib.rs#verify_artifact@dfb1b2a8a`; `repo:prover_pipeline/src/lib.rs#load_and_validate_program@dfb1b2a8a` | `symbol:prover_pipeline/src/lib.rs#verify_artifact`; `symbol:prover_pipeline/src/lib.rs#load_and_validate_program` |
 | `REQ-BASE-002` | provisional | base full-statement verification | `ASM-BASE-003..004`; `REQ-TOPO-001..003` | located | `repo:full_statement_verifier/src/unrolled_proof_statement.rs#verify_full_statement_for_unrolled_circuits@dfb1b2a8a` | `symbol:full_statement_verifier/src/unrolled_proof_statement.rs#verify_full_statement_for_unrolled_circuits` |
 | `REQ-BASE-003` | provisional | each accepted proof invocation | `ASM-BASE-003`; `REQ-BASE-002` | located | `repo:full_statement_verifier/src/unrolled_proof_statement.rs#verify_full_statement_for_unrolled_circuits@dfb1b2a8a` | `symbol:full_statement_verifier/src/unrolled_proof_statement.rs#verify_full_statement_for_unrolled_circuits`; `symbol:full_statement_verifier/src/unrolled_proof_statement.rs#verify_unrolled_base_layer_sec_100` |

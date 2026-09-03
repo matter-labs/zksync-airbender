@@ -158,8 +158,8 @@ constants, VM, replayer, JIT, setup, and public trigger converge on them. Contro
 behavior remains provisional only where the fulfillment constraints and honest runtime
 checks conflict
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: full unrolled; reduced unified conditional on `GAP-PRECOMP-001`;
   `BigIntDelegationCircuit`, delegation type `0x7ca`
 

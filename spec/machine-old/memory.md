@@ -144,8 +144,8 @@ project decisions on emulated-memory effects and alignment with matching ROM tab
 family constraints, RAM chronology, initialization/teardown construction, and
 full-statement closure.
 
-- spec revision: `2026-08-28.5`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: unrolled full/unsigned machine and unified reduced machine
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
@@ -158,4 +158,4 @@ full-statement closure.
 | `REQ-MEM-003` | normative | selected profile | `ASM-MEM-003` | located | unrolled and unified init/teardown address domains and local alignment constraints at `dfb1b2a8a` | `symbol:circuit_defs/unrolled_circuits/inits_and_teardowns/src/lib.rs#NUM_INIT_AND_TEARDOWN_SETS`; `symbol:circuit_defs/unrolled_circuits/inits_and_teardowns/src/lib.rs#TRACE_LEN_LOG2`; `symbol:circuit_defs/unrolled_circuits/inits_and_teardowns/src/lib.rs#WORD_BITS`; `symbol:prover/src/gkr/virtual_polys/init_and_teardown_base.rs#materialize_virtual_inits_and_teardowns_base_address_setup_poly`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/mem_word_only_lw_sw.rs#apply_unified_mem_word_only_lw_sw_data_path`; `symbol:full_statement_verifier/src/unified_circuit_statement.rs#verify_full_statement_for_unified_circuit` |
 | `REQ-MEM-004` | normative | every `q in Q` | `ASM-MEM-002`, `ASM-MEM-003`, `REQ-MEM-003` | located | RAM tuple construction and timestamp comparison at `dfb1b2a8a` | `symbol:cs/src/gkr_compiler/memory_like_grand_product.rs#layout_initial_grand_product_accumulation`; `symbol:cs/src/gkr_compiler/range_check_exprs.rs#compile_timestamp_comparison_range_checks`; `symbol:cs/src/cs/circuit_trait.rs#MemoryAccess::is_readonly` |
 | `REQ-MEM-005` | normative | proof acceptance | `ASM-MEM-003`, `REQ-MEM-003`, `REQ-MEM-004` | located | zero init, teardown, and final product equality at `dfb1b2a8a` | `symbol:cs/src/gkr_compiler/inits_and_teardowns.rs#compile_inits_and_teardowns_circuit`; `symbol:prover/src/gkr/prover/forward_loop/inits_and_teardowns.rs#evaluate_init`; `symbol:prover/src/gkr/prover/forward_loop/inits_and_teardowns.rs#evaluate_teardown`; `symbol:full_statement_verifier/src/unrolled_proof_statement.rs#verify_full_statement_for_unrolled_circuits`; `symbol:full_statement_verifier/src/unified_circuit_statement.rs#verify_full_statement_for_unified_circuit` |
-| `REQ-MEM-006` | normative | load decoded with `rd = x0` | `external:DEC`, `ASM-MEM-002` | located | `decision:2026-09-01#emulated-memory-has-no-device-side-effects`; current canonicalization at `dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#Instruction::pure_from_imm`; `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/cs/circuit_trait.rs#MemoryAccess::is_readonly` |
+| `REQ-MEM-006` | normative | load decoded with `rd = x0` | `external:DEC`, `ASM-MEM-002` | located | `decision:emulated-memory-has-no-device-side-effects`; current canonicalization at `dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#Instruction::pure_from_imm`; `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/cs/circuit_trait.rs#MemoryAccess::is_readonly` |

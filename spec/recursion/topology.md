@@ -133,8 +133,8 @@ acceptance condition.
 
 ## Metadata
 
-- spec revision: `2026-09-01.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: `unrolled IM base -> unrolled reduced continuation -> unified reduced continuation; experimental Proth120 L1 branch`
 - configured security level: `Sec100`; exact per-trace WHIR schedules remain under
   `GAP-TOPO-002`

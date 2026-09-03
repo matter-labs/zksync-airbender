@@ -131,7 +131,8 @@ than modeling the RV32I instruction-address-misaligned exception. These profile
 details are supported by convergent preprocessing, decoder, constraint, table, and
 architecture evidence checked at `matter-labs/zksync-airbender@dfb1b2a8a`.
 
-- spec revision: `2026-09-02.1`
+- spec revision: TBD
+- implementation: TBD
 - profile: unrolled `jump_branch_slt_family`, ordinary integer subrelation
 
 ### Statement metadata

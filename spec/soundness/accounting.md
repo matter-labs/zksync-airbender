@@ -127,8 +127,8 @@ obligations and are not treated as established conclusions.
 
 ## Metadata
 
-- spec revision: `2026-09-01.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: `production candidates; normative target selection open`
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |

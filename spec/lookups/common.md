@@ -177,9 +177,9 @@ inventory. Their exact proof consumers belong in the proof-topology specificatio
 
 ## Metadata
 
-- spec revision: `2026-09-01.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
-- profile: `airbender-v3-gkr-2026-08-11`; unrolled and unified-reduced machine lookup
+- spec revision: TBD
+- implementation: TBD
+- profile: unrolled and unified-reduced machine lookup
   interface
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |

@@ -33,7 +33,7 @@ uses the first seven standard BLAKE2s rounds and is an Airbender-specific varian
 - `red = control[16]`, `right = control[17]`, and `compress = control[18]`
 - `sᵢ = control[19 + i]` for `i ∈ [0, 10)` is the round-selector bit
 - every sum `Σᵢ` in this module ranges over `i ∈ [0, 10)`
-- `ROTRₙ(x)` rotates the `u32` word `x` right by `n` bits
+- `x ⋙ n` cyclically rotates the `u32` word `x` right by `n` bits
 - `⊕` denotes bitwise XOR on `u32`
 - `X || Y` concatenates word vectors; BLAKE2s serializes each word little-endian
 - `x ← expression` assigns the expression to `x`; the right-hand side uses
@@ -82,13 +82,13 @@ uses the first seven standard BLAKE2s rounds and is an Airbender-specific varian
       - `control ← 2¹⁶(red + 2 · right + 4 · compress + 8Σᵢ 2ⁱ · sᵢ′)`
     - **[`REL-B2ROUND-003`] BLAKE2s G function**
       - `a ← (a + b + x) mod 2³²`
-      - `d ← ROTR₁₆(d ⊕ a)`
+      - `d ← (d ⊕ a) ⋙ 16`
       - `c ← (c + d) mod 2³²`
-      - `b ← ROTR₁₂(b ⊕ c)`
+      - `b ← (b ⊕ c) ⋙ 12`
       - `a ← (a + b + y) mod 2³²`
-      - `d ← ROTR₈(d ⊕ a)`
+      - `d ← (d ⊕ a) ⋙ 8`
       - `c ← (c + d) mod 2³²`
-      - `b ← ROTR₇(b ⊕ c)`
+      - `b ← (b ⊕ c) ⋙ 7`
     - **[`REL-B2ROUND-004`] BLAKE2s round `Roundᵣ`**
       - let `mᵢ = B[σ[r][i]]`
       - `G(W, 0, 4, 8, 12, m₀, m₁)`
@@ -201,8 +201,8 @@ and full compression relation adopt
 Airbender's carrier and fulfillment ABI are inspected at the implementation revision
 below.
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: `Blake2sWithCompressionDelegationCircuit`; full and reduced delegated runs
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |

@@ -84,7 +84,8 @@ routing and non-wrapping PC enforcement are Airbender-specific boundaries suppor
 by project decisions and convergent constraint and architecture evidence checked at
 `matter-labs/zksync-airbender@dfb1b2a8a`.
 
-- spec revision: `2026-09-02.1`
+- spec revision: TBD
+- implementation: TBD
 - profile: unrolled `add_sub_lui_auipc_mop`, ordinary integer subrelation
 
 ### Statement metadata

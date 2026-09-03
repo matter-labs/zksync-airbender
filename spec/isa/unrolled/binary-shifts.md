@@ -108,7 +108,8 @@ and circuit boundaries are supported by convergent decoder, constraint, table, a
 architecture evidence checked at
 `matter-labs/zksync-airbender@dfb1b2a8a`.
 
-- spec revision: `2026-09-02.1`
+- spec revision: TBD
+- implementation: TBD
 - profile: unrolled `shift_binop`, ordinary bitwise and shift subrelation
 
 ### Statement metadata

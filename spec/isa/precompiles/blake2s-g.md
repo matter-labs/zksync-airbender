@@ -26,7 +26,7 @@ the reduced variant applies its first seven rounds.
 - `p_m = x11 ∈ u32` points to the 16-word message block `M`
 - `x12 ∈ u8` contains `mode = x12[7]` and `q = x12[6:0]`
 - `RAM[a] ∈ u32` is the word at byte address `a`
-- `rotr_k(z)` rotates the 32-bit word `z` right by `k` bits
+- `z ⋙ k` cyclically rotates the 32-bit word `z` right by `k` bits
 - `⊕` denotes bitwise XOR on `u32`
 - `τ` is the invocation timestamp carried by the delegation argument
 - `x ← expression` assigns the expression to `x`; unassigned state remains unchanged
@@ -96,13 +96,13 @@ The BLAKE2s message permutations are:
     - `Y = M[σ_r[2j + 1]]`
     - `A₀ = V[a]`, `B₀ = V[b]`, `C₀ = V[c]`, `D₀ = V[d]`
     - `A₁ = (A₀ + B₀ + X) mod 2³²`
-    - `D₁ = rotr₁₆(D₀ ⊕ A₁)`
+    - `D₁ = (D₀ ⊕ A₁) ⋙ 16`
     - `C₁ = (C₀ + D₁) mod 2³²`
-    - `B₁ = rotr₁₂(B₀ ⊕ C₁)`
+    - `B₁ = (B₀ ⊕ C₁) ⋙ 12`
     - `A₂ = (A₁ + B₁ + Y) mod 2³²`
-    - `D₂ = rotr₈(D₁ ⊕ A₂)`
+    - `D₂ = (D₁ ⊕ A₂) ⋙ 8`
     - `C₂ = (C₁ + D₂) mod 2³²`
-    - `B₂ = rotr₇(B₁ ⊕ C₂)`
+    - `B₂ = (B₁ ⊕ C₂) ⋙ 7`
   - **[`REL-B2G-004`] Carrier ABI and RAM assignment**
     - `p_s mod 64 = 0`
     - `p_m mod 64 = 0`
@@ -152,8 +152,8 @@ The seven-round variant and carrier ABI are Airbender-specific. Their normal-pat
 relations are supported by convergent API, preprocessing, VM/replayer, lookup-table,
 constraint, and setup evidence.
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: full unrolled; reduced unrolled with delegation; reduced unified
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |

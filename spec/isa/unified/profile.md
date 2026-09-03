@@ -29,14 +29,15 @@ operations after preprocessing. Each row names the module that owns its relation
 | Body | Admitted operations | Normalized operation | Relation |
 |---|---|---|---|
 | `d₁` | `NOP`; `ADD`, `ADDI`, `LUI`; `SUB`; `AUIPC` | `Nop`, `Add`, `Sub`, `Auipc` | [UADD](add-sub-mop.md) |
-| `d₁` | `ZimopAdd`, `ZimopSub`, `ZimopMul`, `ZimopFMA`, `ZimopTriAdd` | same name | [UADD](add-sub-mop.md) |
-| `d₁` | delegation CSR call; nondeterminism CSR read or write | `ZicsrDelegation`, `ZicsrNonDeterminismRead`, `ZicsrNonDeterminismWrite` | [UADD](add-sub-mop.md) and [PRECOMP](../precompiles/profile.md) |
+| `d₁` | `MOP.RR.0` (`ADDMOD`), `MOP.RR.1` (`SUBMOD`), `MOP.RR.2` (`MULMOD`), `MOP.RR.3` (`FMAMOD`), `MOP.RR.4` (`TRIADD`) | internal `ZimopAdd`, `ZimopSub`, `ZimopMul`, `ZimopFMA`, `ZimopTriAdd` | [UADD](add-sub-mop.md) |
+| `d₁` | `CSRRW rd, 0x7C0, x0`; `CSRRW x0, 0x7C0, rs1`; `CSRRW x0, d, x0` for `d ∈ {0x7C7, 0x7C8, 0x7CA, 0x7CB}` | internal `ZicsrNonDeterminismRead`, `ZicsrNonDeterminismWrite`, `ZicsrDelegation` | [UADD](add-sub-mop.md) and [PRECOMP](../precompiles/profile.md) |
 | `d₂` | `JAL`, `JALR`; `BEQ`, `BNE`, `BLT`, `BGE`, `BLTU`, `BGEU`; `SLT`, `SLTI`, `SLTU`, `SLTIU` | `Jal`, `Jalr`, `Branch`, `Slt`, `Sltu` | [UJUMP](jump-branch-slt.md) |
 | `d₃` | `AND`, `ANDI`, `OR`, `ORI`, `XOR`, `XORI`; `SLL`, `SLLI`, `SRL`, `SRLI`, `SRA`, `SRAI` | `And`, `Or`, `Xor`, `Sll`, `Srl`, `Sra` | [UBSHIFT](binary-shifts.md) |
-| `d₃` | `ZimopIXorRot` with `r ∈ {16, 12, 8, 7}` | `ZimopIXorRot` | [UBSHIFT](binary-shifts.md) |
+| `d₃` | `MOP.R.16` (`XORROT16`), `MOP.R.12` (`XORROT12`), `MOP.R.8` (`XORROT8`), `MOP.R.7` (`XORROT7`) | internal `ZimopIXorRot` | [UBSHIFT](binary-shifts.md) |
 | `d₄` | `LW`, `SW` | `Lw`, `Sw` | [UMWORD](memory-word.md) |
 
-`ZimopMul` is project modular arithmetic, not the standard RISC-V `MUL`
+`MOP.RR.2` (`MULMOD`) is project modular arithmetic, not the standard RISC-V
+`MUL`
 
 Pure destination writes with `rd = x0`, including loads, normalize to the canonical
 `Nop` row before dispatch. Jumps, branches, stores, and delegation calls do not use
@@ -86,12 +87,12 @@ Delegated-precompile admission and fulfillment selection are defined by
 
 ## Metadata
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a+dirty`
+- spec revision: TBD
+- implementation: TBD
 - profile: reduced unified machine, circuit family `128`
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
 |---|---|---|---|---|---|---|
-| `REQ-UNIFIED-001` | normative | profile selection | `REL-UADD-001..004`; `OUT-UADD-001`; `REL-UJUMP-001..003`; `REL-UBSHIFT-001..003`; `REL-UMWORD-001..003`; [PRECOMP](../precompiles/profile.md) | located | explicit reduced-unified profile direction; reduced decoder configuration and unified decoder | `symbol:riscv_transpiler/src/ir/mod.rs#ReducedMachineDecoderConfig`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace` |
+| `REQ-UNIFIED-001` | normative | profile selection | `REL-UADD-001..004`; `OUT-UADD-001`; `REL-UJUMP-001..003`; `REL-UBSHIFT-001..003`; `REL-UMWORD-001..003`; [PRECOMP](../precompiles/profile.md) | located | [Zimop carrier syntax](https://docs.riscv.org/reference/isa/unpriv/zimop.html); [Zicsr carrier syntax](https://docs.riscv.org/reference/isa/unpriv/zicsr.html); explicit reduced-unified profile direction; reduced decoder configuration and unified decoder | `symbol:riscv_transpiler/src/ir/mod.rs#ReducedMachineDecoderConfig`; `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace` |
 | `REQ-UNIFIED-002` | normative | every unified cycle | `REQ-UNIFIED-001`; `external:DEC` | located | unified decoder row, single compiled executor, and circuit dispatch constraints | `symbol:cs/src/gkr_circuits/unified_reduced_machine/decoder.rs#UnifiedReducedMachineDecoder::define_decoder_subspace`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/circuit.rs#apply_unified_family_dispatch_one_hot`; `symbol:cs/src/gkr_circuits/unified_reduced_machine/circuit.rs#unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core` |
 | `GAP-UNIFIED-001` | open | — | affects common ISA adoption; owner `human` | — | shared standard operations and separate profile relations; no accepted equivalence artifact | — |

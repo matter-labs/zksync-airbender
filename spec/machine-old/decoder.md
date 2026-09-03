@@ -121,15 +121,15 @@ unique setup-table row whose first two columns encode the admitted `pc`.
 
 ## Metadata
 
-- spec revision: `2026-08-28.5`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a+dirty`
+- spec revision: TBD
+- implementation: TBD
 - profile: unrolled full/unsigned/reduced families and unified reduced machine
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
 |---|---|---|---|---|---|---|
 | `ASM-DEC-001` | normative | active row | `external:CONT` | prose | cycle-start PC state domain | — |
 | `ASM-DEC-002` | provisional | setup construction | `GAP-DEC-001`; external proof/setup identity | located | `repo:circuit_defs/setups/src/unrolled_circuits/mod.rs#get_unrolled_circuits_setups_for_machine_type@dfb1b2a8a`; `repo:circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs#unified_reduced_machine_circuit_setup@dfb1b2a8a` | `symbol:circuit_defs/setups/src/unrolled_circuits/mod.rs#get_unrolled_circuits_setups_for_machine_type`; `symbol:circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs#unified_reduced_machine_circuit_setup` |
-| `ASM-DEC-003` | normative | activated decoder query | `external:LOOKUP` | prose | `spec:machine/lookup.md` | — |
+| `ASM-DEC-003` | normative | activated decoder query | `external:LOOKUP` | prose | `spec:lookups/common.md` | — |
 | `REQ-DEC-001` | provisional | setup construction | `ASM-DEC-002`; `GAP-DEC-001` | located | `repo:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode@dfb1b2a8a`; `repo:cs/src/gkr_circuits/decoder_trait.rs#process_binary_into_separate_tables_ext@dfb1b2a8a`; family decoder implementations; `repo:cs/src/gkr_circuits/decoder_trait.rs#materialize_flattened_decoder_table_with_bitmask@dfb1b2a8a` | `symbol:riscv_transpiler/src/ir/simple_instruction_set.rs#preprocess_bytecode`; `symbol:cs/src/gkr_circuits/decoder_trait.rs#process_binary_into_separate_tables_ext`; `pattern:cs/src/gkr_circuits/*/decoder.rs#OpcodeFamilyDecoder::define_decoder_subspace (7)`; `symbol:cs/src/gkr_circuits/decoder_trait.rs#materialize_flattened_decoder_table_with_bitmask` |
 | `REQ-DEC-002` | normative | every cycle row | `ASM-DEC-003` | located | `repo:cs/src/cs/circuit_impl.rs#BasicAssembly::allocate_machine_state@dfb1b2a8a`; `repo:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit@dfb1b2a8a` | `symbol:cs/src/cs/circuit_impl.rs#BasicAssembly::allocate_machine_state`; `symbol:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit` |
 | `REQ-DEC-003` | provisional | `execute = 1` | `ASM-DEC-001..003`, `REQ-DEC-001..002`; `GAP-DEC-001` | located | `repo:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit@dfb1b2a8a`; `repo:prover/src/gkr/prover/setup.rs#GKRSetup::construct@dfb1b2a8a` | `symbol:cs/src/gkr_compiler/family_circuit.rs#GKRCompiler::compile_family_circuit`; `symbol:prover/src/gkr/prover/setup.rs#GKRSetup::construct` |

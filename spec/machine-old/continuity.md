@@ -136,7 +136,8 @@ are supported by matching constants, compiler constraints, boundary contribution
 and full-statement-verifier checks at
 `matter-labs/zksync-airbender@dfb1b2a8a`.
 
-- spec revision: `2026-08-28.5`
+- spec revision: TBD
+- implementation: TBD
 - profile: unrolled machine families and reduced unified machine
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |

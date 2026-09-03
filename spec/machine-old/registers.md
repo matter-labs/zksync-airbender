@@ -129,8 +129,8 @@ These contributions close each register history under `ASM-REG-001`.
 
 ## Metadata
 
-- spec revision: `2026-08-28.5`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: shared register relation for unrolled and unified machine circuits
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |

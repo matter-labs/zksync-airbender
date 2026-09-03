@@ -49,8 +49,8 @@ The profile inventory is normative for the selected full-unsigned unrolled machi
 It combines explicit project direction with the independently reviewed family
 relations and matching decoder, setup, and global-argument evidence.
 
-- spec revision: `2026-09-02.1`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a+dirty`
+- spec revision: TBD
+- implementation: TBD
 - profile: unrolled full-unsigned base machine
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |

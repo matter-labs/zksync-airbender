@@ -128,8 +128,8 @@ The composition relation is normative for the selected unrolled and reduced-unif
 profiles. It is supported by the adopted module interfaces and matching compiler,
 prover, and full-statement-verifier evidence.
 
-- spec revision: `2026-08-28.5`
-- implementation: `matter-labs/zksync-airbender@dfb1b2a8a`
+- spec revision: TBD
+- implementation: TBD
 - profile: unrolled and unified machine-execution composition
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
