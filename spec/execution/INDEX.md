@@ -1,17 +1,23 @@
 # Execution
 
-> Execution composes selected ISA relations into traces, dispatches active rows, and
-> fixes chunk capacities and chunk-count formulas.
+> Execution binds one program to a logical machine-cycle chain, composes selected ISA
+> relations, and realizes the cycles in profile-specific traces and chunks.
 
 - spec revision: TBD
 - implementation: TBD
-- status: integration stubs
+- status: initial relation drafts
 
-| Layout | Scope |
-|---|---|
-| [unrolled.md](unrolled.md) | per-family unrolled dispatch and chunking |
-| [unified.md](unified.md) | unified dispatch and chunking |
+| Module | Scope | Status |
+|---|---|---|
+| [common.md](common.md) | program binding, logical cycles, machine-state progression, and shared activation semantics | draft with open binding gaps |
+| [unrolled.md](unrolled.md) | family-specific circuit layout, chunk counts, and padding | draft with open proof-structure gap |
+| [unified.md](unified.md) | in-circuit family selection, unified chunk counts, and padding | draft with open proof-structure gap |
 
-Shared decoder, register, PC, activation, and padding relations remain in
-[`machine-old/`](../machine-old/) until they are integrated into these modules or an
-explicit shared module is justified.
+The ISA profile owns the admitted family inventory. Execution owns authenticated
+family dispatch and its physical realization. Concrete decoder-table membership and
+global lookup algebra remain under [lookups](../lookups/); register and memory
+argument algebra remain under [memory](../memory/).
+
+Legacy decoder, register, PC, and continuity material remains in
+[`machine-old/`](../machine-old/) as migration evidence until the open bindings in
+these drafts are reconciled.
