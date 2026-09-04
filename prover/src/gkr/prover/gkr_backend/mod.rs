@@ -38,14 +38,28 @@ mod neon;
 #[cfg(target_arch = "aarch64")]
 pub use neon::NeonGKRBackend;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+mod avx2;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use avx2::Avx2GKRBackend;
+
 /// The GKR backend concrete BabyBear/Ext4 callers should default to: the
-/// NEON-specialized backend on aarch64, the portable naive backend elsewhere.
+/// NEON-specialized backend on aarch64, the AVX2-specialized backend on
+/// AVX2-enabled x86-64 builds, the portable naive backend elsewhere.
 /// Mirrors [`DefaultBabyBearBackend`](super::backend::DefaultBabyBearBackend).
 #[cfg(target_arch = "aarch64")]
 pub type DefaultBabyBearGKRBackend = NeonGKRBackend;
 /// The GKR backend concrete BabyBear/Ext4 callers should default to: the
-/// NEON-specialized backend on aarch64, the portable naive backend elsewhere.
-#[cfg(not(target_arch = "aarch64"))]
+/// AVX2-specialized backend on AVX2-enabled x86-64 builds.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub type DefaultBabyBearGKRBackend = Avx2GKRBackend;
+/// The GKR backend concrete BabyBear/Ext4 callers should default to: the
+/// NEON-specialized backend on aarch64, the AVX2 backend on AVX2-enabled
+/// x86-64 builds, the portable naive backend elsewhere.
+#[cfg(not(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", target_feature = "avx2")
+)))]
 pub type DefaultBabyBearGKRBackend = NaiveGKRBackend;
 
 /// Strategy for the GKR prover's per-layer heavy operations. Methods are

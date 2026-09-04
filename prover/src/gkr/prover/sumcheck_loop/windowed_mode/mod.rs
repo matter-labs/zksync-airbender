@@ -14,6 +14,12 @@ pub(crate) mod neon;
 #[cfg(target_arch = "aarch64")]
 pub(crate) mod lsb_bench;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub(crate) mod avx2;
+
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub(crate) mod lsb_avx2;
+
 pub fn evaluate_claim_from_intermediate_matrix_27<E: Field>(
     eq_prefix: &[E; 4],
     accumulator: &[E; 27],

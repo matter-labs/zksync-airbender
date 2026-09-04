@@ -7,6 +7,7 @@ use cs::gkr_circuits::DecoderTableEntry;
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
 use cs::tables::{TableDriver, TableType};
 use fft::{materialize_powers_serial_starting_with_one, GoodAllocator};
+use field::{Field as _, FieldExtension as _};
 use std::sync::Arc;
 
 pub struct GKRSetup<F: PrimeField + TwoAdicField> {
@@ -363,6 +364,42 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
 
         SetupCommitment::InMemory(commit_trace_part::<F, F, T, _>(
             &crate::gkr::prover::backend::NaiveBackend,
+            &inputs,
+            twiddles,
+            lde_factor,
+            whir_first_fold_step_log2,
+            tree_cap_size,
+            trace_len_log2,
+            worker,
+        ))
+    }
+
+    /// [`Self::commit`] on a caller-chosen [`Backend`] (its twiddle set, its
+    /// LDE schedule and kernels) instead of the naive one — the setup columns
+    /// are few, so on wide machines the backend's under-filled-grid schedule
+    /// matters here most.
+    pub fn commit_with_backend<
+        T: ColumnMajorMerkleTreeConstructor<F>,
+        E: FieldExtension<F> + Field,
+        B: crate::gkr::prover::backend::Backend<F, E>,
+    >(
+        &self,
+        backend: &B,
+        twiddles: &B::TwiddleSet,
+        lde_factor: usize,
+        whir_first_fold_step_log2: usize,
+        tree_cap_size: usize,
+        trace_len_log2: usize,
+        worker: &Worker,
+    ) -> SetupCommitment<F, T>
+    where
+        [(); F::DEGREE]: Sized,
+    {
+        let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
+        use crate::gkr::prover::commitment_utils::commit_trace_part;
+
+        SetupCommitment::InMemory(commit_trace_part::<F, E, T, B>(
+            backend,
             &inputs,
             twiddles,
             lde_factor,

@@ -280,6 +280,154 @@ pub fn multivariate_hypercube_evals_into_coeffs_neon_bb(
     }
 }
 
+/// AVX2 (x86-64) BabyBear variant of
+/// [`multivariate_hypercube_evals_into_coeffs`]: radix-8 sweeps with 8-lane
+/// vector subtractions for strides >= 8 and an in-register `(4, 2, 1)` tail
+/// (lane shifts with zero fill — modular sub of zero is the identity). Works
+/// on the raw canonical Montgomery values (`repr(transparent)`), byte-
+/// identical to the reference; sizes below 16 degrade to the scalar radix-4
+/// path.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub fn multivariate_hypercube_evals_into_coeffs_avx2_bb(
+    input: &mut [::field::baby_bear::base::BabyBearField],
+    size_log2: u32,
+) {
+    use ::field::baby_bear::base::BabyBearField;
+    use core::arch::x86_64::*;
+
+    const P: u32 = BabyBearField::ORDER;
+    let len = 1usize << size_log2;
+    assert_eq!(input.len(), len);
+    if len < 16 {
+        return multivariate_hypercube_evals_into_coeffs_radix4(input, size_log2);
+    }
+
+    #[inline(always)]
+    unsafe fn subv(a: __m256i, b: __m256i) -> __m256i {
+        let d = _mm256_sub_epi32(a, b);
+        _mm256_min_epu32(d, _mm256_add_epi32(d, _mm256_set1_epi32(P as i32)))
+    }
+    #[inline(always)]
+    unsafe fn ld(p: *const u32) -> __m256i {
+        _mm256_loadu_si256(p as *const __m256i)
+    }
+    #[inline(always)]
+    unsafe fn st(p: *mut u32, v: __m256i) {
+        _mm256_storeu_si256(p as *mut __m256i, v)
+    }
+
+    let p = input.as_mut_ptr() as *mut u32;
+    let mut stride = len / 2;
+    let mut remaining = size_log2;
+
+    unsafe {
+        // fused radix-8 sweeps while the smallest stride in the triple >= 8
+        while remaining >= 3 && stride / 4 >= 8 {
+            let s2 = stride / 2;
+            let s4 = stride / 4;
+            let mut base = 0usize;
+            while base < len {
+                let mut j = base;
+                while j < base + s4 {
+                    let offs = [
+                        j,
+                        j + s4,
+                        j + s2,
+                        j + s2 + s4,
+                        j + stride,
+                        j + stride + s4,
+                        j + stride + s2,
+                        j + stride + s2 + s4,
+                    ];
+                    let mut v = [
+                        ld(p.add(offs[0])),
+                        ld(p.add(offs[1])),
+                        ld(p.add(offs[2])),
+                        ld(p.add(offs[3])),
+                        ld(p.add(offs[4])),
+                        ld(p.add(offs[5])),
+                        ld(p.add(offs[6])),
+                        ld(p.add(offs[7])),
+                    ];
+                    for k in 0..4 {
+                        v[k + 4] = subv(v[k + 4], v[k]);
+                    }
+                    for (hi, lo) in [(2usize, 0usize), (3, 1), (6, 4), (7, 5)] {
+                        v[hi] = subv(v[hi], v[lo]);
+                    }
+                    for (hi, lo) in [(1usize, 0usize), (3, 2), (5, 4), (7, 6)] {
+                        v[hi] = subv(v[hi], v[lo]);
+                    }
+                    for k in 1..8 {
+                        st(p.add(offs[k]), v[k]);
+                    }
+                    j += 8;
+                }
+                base += 2 * stride;
+            }
+            stride /= 8;
+            remaining -= 3;
+        }
+
+        // leftover big strides (>= 8) as single vector sweeps until only a
+        // contiguous small-stride tail remains
+        while remaining > 3 && stride >= 8 {
+            let mut base = 0usize;
+            while base < len {
+                let mut j = base;
+                while j < base + stride {
+                    let lo = ld(p.add(j));
+                    let hi = ld(p.add(j + stride));
+                    st(p.add(j + stride), subv(hi, lo));
+                    j += 8;
+                }
+                base += 2 * stride;
+            }
+            stride /= 2;
+            remaining -= 1;
+        }
+
+        // in-register tails on 8-element vectors: stride 4 = high half minus
+        // low half, stride 2 = dword pairs within 128-bit lanes, stride 1 =
+        // odd dword minus even dword within 64-bit lanes
+        if remaining == 3 {
+            debug_assert_eq!(stride, 4);
+            let mut j = 0usize;
+            while j < len {
+                let mut v = ld(p.add(j));
+                v = subv(v, _mm256_permute2x128_si256::<0x08>(v, v));
+                v = subv(v, _mm256_slli_si256::<8>(v));
+                v = subv(v, _mm256_slli_epi64::<32>(v));
+                st(p.add(j), v);
+                j += 8;
+            }
+            remaining = 0;
+        }
+        if remaining == 2 {
+            debug_assert_eq!(stride, 2);
+            let mut j = 0usize;
+            while j < len {
+                let mut v = ld(p.add(j));
+                v = subv(v, _mm256_slli_si256::<8>(v));
+                v = subv(v, _mm256_slli_epi64::<32>(v));
+                st(p.add(j), v);
+                j += 8;
+            }
+            remaining = 0;
+        }
+        if remaining == 1 {
+            let mut j = 0usize;
+            while j < len {
+                let v = ld(p.add(j));
+                st(p.add(j), subv(v, _mm256_slli_epi64::<32>(v)));
+                j += 8;
+            }
+            remaining = 0;
+        }
+        debug_assert_eq!(remaining, 0, "unhandled tail");
+    }
+}
+
 pub fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2: u32) {
     assert_eq!(input.len(), 1 << size_log2);
     let len = 1 << size_log2;

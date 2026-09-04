@@ -33,6 +33,11 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 pub use aarch64::BabyBearNeonWorkStealingBackend;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+mod x86_64;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use x86_64::BabyBearAvx2WorkStealingBackend;
+
 mod naive;
 pub use naive::NaiveBackend;
 
@@ -278,9 +283,18 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
 #[cfg(target_arch = "aarch64")]
 pub type DefaultBabyBearBackend = BabyBearNeonWorkStealingBackend;
 /// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
-/// build target: the NEON backend on aarch64, the generic work-stealing
-/// backend elsewhere.
-#[cfg(not(target_arch = "aarch64"))]
+/// build target: the AVX2 backend on x86-64 builds that enable AVX2
+/// (`-C target-feature=+avx2` / `target-cpu`), the NEON backend on aarch64,
+/// the generic work-stealing backend elsewhere.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub type DefaultBabyBearBackend = BabyBearAvx2WorkStealingBackend;
+/// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
+/// build target: the NEON backend on aarch64, the AVX2 backend on AVX2-
+/// enabled x86-64 builds, the generic work-stealing backend elsewhere.
+#[cfg(not(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", target_feature = "avx2")
+)))]
 pub type DefaultBabyBearBackend = WorkStealingBackend;
 
 /// Coset offsets `root^0..root^{lde_factor-1}` for message length `n`.
@@ -1175,6 +1189,111 @@ mod tests {
             assert_eq!(
                 got, expected,
                 "NEON conv (serial) diverged at 2^{coset_log} vpl {vpl}"
+            );
+        }
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    #[test]
+    fn baby_bear_avx2_backend_matches_naive() {
+        type F = BabyBearField;
+        let backend = BabyBearAvx2WorkStealingBackend;
+
+        // n covers: fallback (8 < 16), AVX2 base fallback (16 < 32), AVX2
+        // with radix-4 + u64-acc passes (1024/4096)
+        for (num_threads, num_cols, n_log, lde) in
+            [(4, 5, 3, 2), (4, 3, 4, 2), (4, 5, 10, 8), (8, 2, 12, 2)]
+        {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let n = 1usize << n_log;
+            let twiddles = Twiddles::<F, Global>::new(n, &worker);
+            let avx2_twiddles = backend.make_twiddles(n, &worker);
+            let cols: Vec<Vec<F>> = rand_cols(num_cols, n);
+            let col_refs: Vec<&[F]> = cols.iter().map(|c| &c[..]).collect();
+
+            let a = Backend::<F, BabyBearExt4>::lde_multiple_polys_from_hypercubes(
+                &NaiveBackend,
+                &col_refs,
+                &twiddles,
+                lde,
+                &worker,
+            );
+            let b =
+                backend.lde_multiple_polys_from_hypercubes(&col_refs, &avx2_twiddles, lde, &worker);
+            check_equal_cosets(&a, &b);
+
+            let mono: Vec<F> = rand_cols::<F>(1, n).pop().unwrap();
+            let a = Backend::<F, BabyBearExt4>::lde_base_poly_from_monomial_form(
+                &NaiveBackend,
+                &mono,
+                &twiddles,
+                lde,
+                &worker,
+            );
+            let b = backend.lde_base_poly_from_monomial_form(&mono, &avx2_twiddles, lde, &worker);
+            assert_eq!(a.len(), b.len());
+            for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
+                assert_eq!(oa, ob);
+                assert_eq!(&da[..], &db[..]);
+            }
+
+            let mono_ext: Vec<BabyBearExt4> = rand_cols::<BabyBearExt4>(1, n).pop().unwrap();
+            let a = Backend::<F, BabyBearExt4>::lde_ext_poly_from_monomial_form(
+                &NaiveBackend,
+                &mono_ext,
+                &twiddles,
+                lde,
+                &worker,
+            );
+            let b =
+                backend.lde_ext_poly_from_monomial_form(&mono_ext, &avx2_twiddles, lde, &worker);
+            assert_eq!(a.len(), b.len());
+            for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
+                assert_eq!(oa, ob);
+                assert_eq!(&da[..], &db[..]);
+            }
+        }
+        check_o1_transform_parity::<BabyBearField, BabyBearExt4, _>(&backend);
+    }
+
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        not(feature = "eval_leaves")
+    ))]
+    #[test]
+    fn baby_bear_avx2_ext_coeff_conv_matches_scalar() {
+        use crate::gkr::whir::ExtCoeffConvCtx;
+        let worker = Worker::new_with_num_threads(4);
+        let mut rng = rand::rng();
+        for (coset_log, vpl) in [(10usize, 8usize), (12, 16), (12, 32), (8, 2), (6, 64)] {
+            let n = 1usize << coset_log;
+            let column: Vec<BabyBearExt4> = (0..n)
+                .map(|_| BabyBearExt4::random_element(&mut rng))
+                .collect();
+            let offset = fft::domain_generator_for_size::<BabyBearField>((n * 2) as u64);
+
+            let ctx = ExtCoeffConvCtx::<BabyBearField>::new(n, vpl);
+            let mut expected = column.clone();
+            ctx.apply(&mut expected, offset, &worker);
+
+            let conv = super::x86_64::BabyBearAvx2ExtCoeffConv::new(n, vpl);
+            let mut got = column.clone();
+            ExtCoeffConversion::<BabyBearField, BabyBearExt4>::apply(
+                &conv, &mut got, offset, &worker,
+            );
+            assert_eq!(
+                got, expected,
+                "AVX2 conv (parallel) diverged at 2^{coset_log} vpl {vpl}"
+            );
+
+            let mut got = column.clone();
+            ExtCoeffConversion::<BabyBearField, BabyBearExt4>::apply_serial(
+                &conv, &mut got, offset,
+            );
+            assert_eq!(
+                got, expected,
+                "AVX2 conv (serial) diverged at 2^{coset_log} vpl {vpl}"
             );
         }
     }

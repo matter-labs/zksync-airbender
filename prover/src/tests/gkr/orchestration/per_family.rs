@@ -99,6 +99,7 @@ pub fn prove_built_family_trace(
 /// instead of building the example config from the security level, so tests
 /// can A/B config variations (e.g. windowed vs all-naive same-size
 /// schedules) over the exact same prove path.
+/// Prove a pre-built family trace on the target-default GKR backend.
 #[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_with_prover_config(
     circuit: &GKRCircuitArtifact<BabyBearField>,
@@ -110,6 +111,36 @@ pub fn prove_built_family_trace_with_prover_config(
     prover_config: &ProverConfig,
     worker: &Worker,
 ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+    prove_built_family_trace_with_prover_config_and_gkr_backend(
+        circuit,
+        table_driver,
+        decoder_table_data,
+        full_trace,
+        trace_len,
+        external_challenges,
+        prover_config,
+        &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
+        worker,
+    )
+}
+
+/// [`prove_built_family_trace_with_prover_config`] with an explicit GKR
+/// backend (backend parity experiments run the same trace through two
+/// backends and compare the proofs byte for byte).
+#[allow(clippy::too_many_arguments)]
+pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
+    GB: crate::gkr::prover::GKRBackend<BabyBearField, BabyBearExt4>,
+>(
+    circuit: &GKRCircuitArtifact<BabyBearField>,
+    table_driver: &TableDriver<BabyBearField>,
+    decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
+    full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    trace_len: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    prover_config: &ProverConfig,
+    gkr_backend: &GB,
+    worker: &Worker,
+) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
     // Concretely BabyBear/Ext4, so pick the target-recommended backend (the
     // NEON one on aarch64) and build ITS twiddle set once — the setup commit
     // reads the plain tables through the set.
@@ -118,14 +149,20 @@ pub fn prove_built_family_trace_with_prover_config(
     let twiddles = <DefaultBabyBearBackend as Backend<BabyBearField, BabyBearExt4>>::make_twiddles(
         &backend, trace_len, worker,
     );
+    let t_setup = std::time::Instant::now();
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
-    let setup_commitment = setup.commit(
-        twiddles.plain(),
+    let setup_commitment = setup.commit_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
+        &backend,
+        &twiddles,
         prover_config.lde_factor,
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
+    );
+    println!(
+        "[timing] setup construct + commit: {:.3?}",
+        t_setup.elapsed()
     );
 
     println!("Trying to prove");
@@ -152,7 +189,7 @@ pub fn prove_built_family_trace_with_prover_config(
         Vec::new(),
         trace_len,
         &backend,
-        &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
+        gkr_backend,
         worker,
     );
     println!("Proving time is {:?}", now.elapsed());
