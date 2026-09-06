@@ -1,0 +1,4 @@
+interface:
+  display_name: "Blind-Eval ZK Verifier Review"
+  short_description: "Blind-test one verifier specialist"
+  default_prompt: "Use $blindeval-zk-verifier-review to test the transcript specialist against example 1 in a sterile evaluation."
