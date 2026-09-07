@@ -1843,7 +1843,9 @@ where
             );
         }
     }
+    let t_drop = std::time::Instant::now();
     drop(gkr_storage);
+    println!("[timing] gkr_storage drop: {:?}", t_drop.elapsed());
 
     // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
     // transcript above already committed everything that feeds this draw. The bit count

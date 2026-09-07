@@ -27,7 +27,7 @@
 #![cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 
 use field::baby_bear::base::BabyBearField;
-use field::{Field, PrimeField};
+use field::Field;
 
 pub const P: u32 = 0x78000001;
 pub const K: u32 = 0x77ffffff;
@@ -83,9 +83,43 @@ impl SplitPowersRaw {
 
 /// 8-lane canonical Montgomery arithmetic + the shared radix-4 butterfly
 /// cores (used by both the base-field and the Ext4 kernels).
+
+/// Chunk spawner for the worker-parallel kernels of this module.
+/// `Worker::smart_spawn` runs the last chunk inline on the CALLING thread;
+/// when the caller is not a pool worker and every CPU is already occupied by
+/// pool workers (a 96-thread pool on a 96-core socket driven from the main
+/// thread), that chunk is time-sliced against them — measured 7.6 ms for a
+/// 0.3 ms chunk, i.e. the whole phase waits on it. So the last chunk runs
+/// inline only when the caller is itself a pool worker; from any other
+/// thread every chunk is spawned and the caller just waits.
+#[inline(always)]
+pub fn spawn_chunk<'scope, BODY>(scope: &worker::rayon::Scope<'scope>, is_last: bool, body: BODY)
+where
+    BODY: FnOnce(&worker::rayon::Scope<'scope>) + Send + 'scope,
+{
+    if is_last && worker::rayon::current_thread_index().is_some() {
+        body(scope);
+    } else {
+        scope.spawn(body);
+    }
+}
+
+/// Balanced chunk `t` of `work` items over `chunks` chunks: sizes differ by
+/// at most one. The worker geometry instead gives the last chunk
+/// `work - (chunks-1)*floor(work/chunks)` — 66 vs 2 blocks for 256 blocks on
+/// 96 threads — so a block phase waited on one 33x chunk (measured 8 ms vs
+/// 0.8 ms at 64 threads). Used by every scope of the x86 kernels.
+#[inline(always)]
+pub fn balanced_chunk(work: usize, chunks: usize, t: usize) -> (usize, usize) {
+    let q = work / chunks;
+    let r = work % chunks;
+    (t * q + t.min(r), q + (t < r) as usize)
+}
+
 pub mod avx2 {
-    use super::{K, P};
+    use super::{balanced_chunk, spawn_chunk, SplitPowersRaw, K, P};
     use core::arch::x86_64::*;
+    use worker::Worker;
 
     #[inline(always)]
     pub unsafe fn pv() -> __m256i {
@@ -436,6 +470,141 @@ pub mod avx2 {
         }
     }
 
+    /// Single-level (radix-2) pass over VECTOR items `(k, j8)`: group `k`
+    /// (twiddle index `k + k_offset`) of size `2*ppg`. `ppg >= 8`.
+    #[inline(always)]
+    pub unsafe fn radix2_items(
+        a: *mut u32,
+        ppg: usize,
+        tw: *const u32,
+        k_offset: usize,
+        item_range: core::ops::Range<usize>,
+    ) {
+        let vecs_per_group = ppg / 8;
+        let mut t = item_range.start;
+        while t < item_range.end {
+            let k = t / vecs_per_group;
+            let j8 = t % vecs_per_group;
+            let s = _mm256_set1_epi32(*tw.add(k + k_offset) as i32);
+            let run = (vecs_per_group - j8).min(item_range.end - t);
+            let mut j = k * ppg * 2 + j8 * 8;
+            for _ in 0..run {
+                let u = _mm256_loadu_si256(a.add(j) as *const __m256i);
+                let v = _mm256_loadu_si256(a.add(j + ppg) as *const __m256i);
+                let (nu, nv) = butterfly(u, v, s);
+                _mm256_storeu_si256(a.add(j) as *mut __m256i, nu);
+                _mm256_storeu_si256(a.add(j + ppg) as *mut __m256i, nv);
+                j += 8;
+            }
+            t += run;
+        }
+    }
+
+    /// One radix-16 butterfly network on 16 vectors: the 4 quads of
+    /// consecutive positions at levels `(ppg, 2ppg)` (twiddle sets `twa[q]`),
+    /// then the 4 quads across the quads at levels `(4ppg, 8ppg)` (`twb`),
+    /// each through the u64-accumulation core.
+    #[inline(always)]
+    pub unsafe fn radix16_core(x: &mut [__m256i; 16], twa: &[[__m256i; 6]; 4], twb: &[__m256i; 6]) {
+        for q in 0..4 {
+            let [s_a, s_b, s_o, s_ao, s_bo, bias] = twa[q];
+            let (z0, z1, z2, z3) = fwd_core(
+                x[4 * q],
+                x[4 * q + 1],
+                x[4 * q + 2],
+                x[4 * q + 3],
+                s_a,
+                s_b,
+                s_o,
+                s_ao,
+                s_bo,
+                bias,
+            );
+            x[4 * q] = z0;
+            x[4 * q + 1] = z1;
+            x[4 * q + 2] = z2;
+            x[4 * q + 3] = z3;
+        }
+        let [s_a, s_b, s_o, s_ao, s_bo, bias] = *twb;
+        for i in 0..4 {
+            let (z0, z1, z2, z3) = fwd_core(
+                x[i],
+                x[4 + i],
+                x[8 + i],
+                x[12 + i],
+                s_a,
+                s_b,
+                s_o,
+                s_ao,
+                s_bo,
+                bias,
+            );
+            x[i] = z0;
+            x[4 + i] = z1;
+            x[8 + i] = z2;
+            x[12 + i] = z3;
+        }
+    }
+
+    /// Radix-16 fused pass — FOUR levels `(ppg, 2ppg, 4ppg, 8ppg)` per
+    /// load/store sweep — over items `(k4, jl)`: item `t` is the 16ppg-group
+    /// `k4 = t / (ppg/16)` (index `k4 + k4_offset` in the level-8ppg twiddle
+    /// table) and the 64-byte LINE `jl` (two vectors) within it; `ppg >= 16`.
+    /// Two in-register radix-4 stages ([`radix16_core`]). LINE-COMPLETE on
+    /// purpose: the 16 streams of a group sit at power-of-two strides and
+    /// alias in the same L1/L2 sets, so a line's two vectors must both be
+    /// consumed while it is resident. Identical values to two radix-4
+    /// passes.
+    #[inline(always)]
+    pub unsafe fn radix16_items(
+        a: *mut u32,
+        ppg: usize,
+        tw: *const u32,
+        tw_ao: *const u32,
+        tw_bo: *const u32,
+        k4_offset: usize,
+        item_range: core::ops::Range<usize>,
+    ) {
+        debug_assert!(ppg >= 16);
+        let lines_per_group = ppg / 16;
+        let mut t = item_range.start;
+        while t < item_range.end {
+            let k4 = t / lines_per_group;
+            let jl = t % lines_per_group;
+            let kg = k4 + k4_offset;
+            let twq = |k2: usize| -> [__m256i; 6] {
+                [
+                    _mm256_set1_epi32(*tw.add(2 * k2) as i32),
+                    _mm256_set1_epi32(*tw.add(2 * k2 + 1) as i32),
+                    _mm256_set1_epi32(*tw.add(k2) as i32),
+                    _mm256_set1_epi32(*tw_ao.add(k2) as i32),
+                    _mm256_set1_epi32(*tw_bo.add(k2) as i32),
+                    bias_all(*tw_bo.add(k2)),
+                ]
+            };
+            let twa: [[__m256i; 6]; 4] = core::array::from_fn(|q| twq(4 * kg + q));
+            let twb = twq(kg);
+            let run = (lines_per_group - jl).min(item_range.end - t);
+            let mut j = k4 * ppg * 16 + jl * 16;
+            for _ in 0..run {
+                let mut x0: [__m256i; 16] = core::array::from_fn(|i| {
+                    _mm256_loadu_si256(a.add(j + i * ppg) as *const __m256i)
+                });
+                let mut x1: [__m256i; 16] = core::array::from_fn(|i| {
+                    _mm256_loadu_si256(a.add(j + 8 + i * ppg) as *const __m256i)
+                });
+                radix16_core(&mut x0, &twa, &twb);
+                radix16_core(&mut x1, &twa, &twb);
+                for i in 0..16 {
+                    _mm256_storeu_si256(a.add(j + i * ppg) as *mut __m256i, x0[i]);
+                    _mm256_storeu_si256(a.add(j + 8 + i * ppg) as *mut __m256i, x1[i]);
+                }
+                j += 16;
+            }
+            t += run;
+        }
+    }
+
     #[inline(always)]
     unsafe fn tail_two_groups_items(
         a: *mut u32,
@@ -473,16 +642,136 @@ pub mod avx2 {
         }
     }
 
-    /// Block size (log2, elements) of the block-local phase of the blocked
-    /// parallel NTT: 2^15 x 4 B = 128 KB per block (L2-resident). The 15
-    /// levels with `ppg < 2^15` only touch elements inside one block.
-    pub const BLOCK_LOG2: u32 = 15;
-
-    /// The block-local levels (`ppg = 1 .. 2^14`) of the DIT NTT on the `b`-th
-    /// 2^15-element block of a larger transform: the serial passes with every
-    /// twiddle group index offset by the block's position.
+    /// In-register 8x8 transpose of eight vectors of eight `u32`s.
     #[inline(always)]
-    unsafe fn ntt_block_local(
+    pub unsafe fn transpose_8x8(r: &mut [__m256i; 8]) {
+        let t0 = _mm256_unpacklo_epi32(r[0], r[1]);
+        let t1 = _mm256_unpackhi_epi32(r[0], r[1]);
+        let t2 = _mm256_unpacklo_epi32(r[2], r[3]);
+        let t3 = _mm256_unpackhi_epi32(r[2], r[3]);
+        let t4 = _mm256_unpacklo_epi32(r[4], r[5]);
+        let t5 = _mm256_unpackhi_epi32(r[4], r[5]);
+        let t6 = _mm256_unpacklo_epi32(r[6], r[7]);
+        let t7 = _mm256_unpackhi_epi32(r[6], r[7]);
+        let u0 = _mm256_unpacklo_epi64(t0, t2);
+        let u1 = _mm256_unpackhi_epi64(t0, t2);
+        let u2 = _mm256_unpacklo_epi64(t1, t3);
+        let u3 = _mm256_unpackhi_epi64(t1, t3);
+        let u4 = _mm256_unpacklo_epi64(t4, t6);
+        let u5 = _mm256_unpackhi_epi64(t4, t6);
+        let u6 = _mm256_unpacklo_epi64(t5, t7);
+        let u7 = _mm256_unpackhi_epi64(t5, t7);
+        r[0] = _mm256_permute2x128_si256(u0, u4, 0x20);
+        r[1] = _mm256_permute2x128_si256(u1, u5, 0x20);
+        r[2] = _mm256_permute2x128_si256(u2, u6, 0x20);
+        r[3] = _mm256_permute2x128_si256(u3, u7, 0x20);
+        r[4] = _mm256_permute2x128_si256(u0, u4, 0x31);
+        r[5] = _mm256_permute2x128_si256(u1, u5, 0x31);
+        r[6] = _mm256_permute2x128_si256(u2, u6, 0x31);
+        r[7] = _mm256_permute2x128_si256(u3, u7, 0x31);
+    }
+
+    /// 4-bit reversal of `l < 16`.
+    const REV4: [usize; 16] = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15];
+
+    /// Fused "scale by the coset powers + bit-reverse + copy" sweep, out of
+    /// place: `dst[rev(k)] = src[k] * pow(k)` (`pow` from the split tables,
+    /// `None` = no scaling). Tile structure: for `k = g*16 + l`,
+    /// `rev(k) = rev4(l) << c | rev_c(g)` with `c = log_n - 4`, so a batch of
+    /// 16 consecutive DESTINATION positions `i0..i0+16` (`g = rev_c(i)`)
+    /// reads 16 full 64-byte source lines (random, never a partial line),
+    /// scales them, transposes them in registers (four 8x8 transposes) and
+    /// writes 16 full destination lines — one streaming read and one
+    /// streaming write of the array instead of the copy sweep plus the
+    /// in-place bit-reversal sweep. Batches are whole lines on both sides on
+    /// purpose (the 16 destination streams alias in the same cache sets).
+    /// `n >= 2^8`; batches are chunked over the worker.
+    pub(super) unsafe fn scaled_bitrev_copy_parallel(
+        src: &[u32],
+        dst: &mut [u32],
+        sp: Option<&SplitPowersRaw>,
+        worker: &Worker,
+    ) {
+        let n = src.len();
+        debug_assert_eq!(dst.len(), n);
+        debug_assert!(n >= 256 && n.is_power_of_two());
+        let log_n = n.trailing_zeros();
+        let c = log_n - 4;
+        let stride = 1usize << c;
+        let src_addr = src.as_ptr() as usize;
+        let dst_addr = dst.as_mut_ptr() as usize;
+        let batches = stride / 16;
+        worker.scope(batches, |scope, geometry| {
+            let (work, chunks) = (batches, geometry.len());
+            for thread_idx in 0..chunks {
+                let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let src = src_addr as *const u32;
+                    let dst = dst_addr as *mut u32;
+                    // [row half][column half]: rows 0..8 / 8..16, lanes 0..8 / 8..16
+                    let mut tiles = [[[_mm256_setzero_si256(); 8]; 2]; 2];
+                    for batch in start..start + size {
+                        let i0 = batch * 16;
+                        for b in 0..16 {
+                            let g = ((i0 + b) as u32).reverse_bits() >> (32 - c);
+                            let k0 = (g as usize) * 16;
+                            let mut lo_v = _mm256_loadu_si256(src.add(k0) as *const __m256i);
+                            let mut hi_v = _mm256_loadu_si256(src.add(k0 + 8) as *const __m256i);
+                            if let Some(sp) = sp {
+                                let hi = _mm256_set1_epi32(sp.hi[k0 >> sp.h] as i32);
+                                let p_lo = _mm256_loadu_si256(
+                                    sp.lo.as_ptr().add(k0 & sp.mask) as *const __m256i
+                                );
+                                let p_hi = _mm256_loadu_si256(
+                                    sp.lo.as_ptr().add((k0 + 8) & sp.mask) as *const __m256i,
+                                );
+                                lo_v = mont_mul(lo_v, mont_mul(p_lo, hi));
+                                hi_v = mont_mul(hi_v, mont_mul(p_hi, hi));
+                            }
+                            tiles[b / 8][0][b % 8] = lo_v;
+                            tiles[b / 8][1][b % 8] = hi_v;
+                        }
+                        for rh in 0..2 {
+                            transpose_8x8(&mut tiles[rh][0]);
+                            transpose_8x8(&mut tiles[rh][1]);
+                        }
+                        for l in 0..16 {
+                            let base = dst.add(i0 + REV4[l] * stride);
+                            _mm256_storeu_si256(base as *mut __m256i, tiles[0][l / 8][l % 8]);
+                            _mm256_storeu_si256(
+                                base.add(8) as *mut __m256i,
+                                tiles[1][l / 8][l % 8],
+                            );
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /// Block size (log2, elements) of the block-local phase of the blocked
+    /// parallel NTT: 2^16 x 4 B = 256 KB per block (L2-resident). The 16
+    /// levels with `ppg < 2^16` only touch elements inside one block, so they
+    /// cost ONE pass over DRAM regardless of how many sweeps run in-cache.
+    pub const BLOCK_LOG2: u32 = 16;
+
+    /// Sub-block size (log2) inside a phase-A block: the first 14 levels run
+    /// on 2^14-element (64 KB) quarter-blocks so the hot footprint (data +
+    /// the twiddle slice of the `ppg = 1` pass) stays far inside one core's
+    /// L2 even when every core of the socket is busy — a 256 KB hot block
+    /// measured 4x slower per block at 96 threads than at 64 (every in-block
+    /// access went to DRAM), while the same block split in quarters does not.
+    pub const SUB_BLOCK_LOG2: u32 = 14;
+
+    /// The block-local levels (`ppg = 1 .. 2^15`) of the DIT NTT on the `b`-th
+    /// 2^16-element block of a larger transform, hierarchically: for each of
+    /// the four 2^14-element quarter-blocks (index `sb = 4b + q`) the shuffle
+    /// passes `ppg = 1, 2, 4`, a radix-4 pass (8, 16), two radix-16 passes
+    /// (32..256), (512..4096) and the single level 8192; then one radix-4
+    /// pass (16384, 32768) over the whole block. Every twiddle group index is
+    /// offset by the (sub-)block's position.
+    #[inline(always)]
+    pub unsafe fn ntt_block_local(
         a: *mut u32,
         b: usize,
         tw: *const u32,
@@ -490,59 +779,80 @@ pub mod avx2 {
         tw_bo: *const u32,
     ) {
         let blk = 1usize << BLOCK_LOG2;
-        pass_ppg1(a, blk, tw.add(b * blk / 2));
-        pass_ppg2(a, blk, tw.add(b * blk / 4));
-        pass_ppg4(a, blk, tw.add(b * blk / 8));
-        let mut ppg = 8usize;
-        // six fused pairs: (8,16) .. (8192,16384)
-        while ppg <= blk / 4 {
-            let outer_groups = blk / (4 * ppg);
-            radix4_items(
-                a,
-                ppg,
-                tw,
-                tw_ao,
-                tw_bo,
-                b * outer_groups,
-                0..outer_groups * (ppg / 8),
-            );
-            ppg *= 4;
+        let sub = 1usize << SUB_BLOCK_LOG2;
+        debug_assert_eq!(blk, 4 * sub);
+        for q in 0..4 {
+            let sb = 4 * b + q;
+            let p = a.add(q * sub);
+            pass_ppg1(p, sub, tw.add(sb * sub / 2));
+            pass_ppg2(p, sub, tw.add(sb * sub / 4));
+            pass_ppg4(p, sub, tw.add(sb * sub / 8));
+            // levels (8, 16)
+            radix4_items(p, 8, tw, tw_ao, tw_bo, sb * (sub / 32), 0..sub / 32);
+            // radix-16 passes (32..256), (512..4096)
+            let mut ppg = 32usize;
+            while ppg <= sub / 32 {
+                let groups16 = sub / (16 * ppg);
+                radix16_items(
+                    p,
+                    ppg,
+                    tw,
+                    tw_ao,
+                    tw_bo,
+                    sb * groups16,
+                    0..groups16 * (ppg / 16),
+                );
+                ppg *= 16;
+            }
+            debug_assert_eq!(ppg, sub / 2);
+            // the last quarter-block-local level (8192) alone
+            radix2_items(p, ppg, tw, sb, 0..ppg / 8);
         }
-        debug_assert_eq!(ppg, blk);
+        // levels (16384, 32768) over the block: one radix-4 pass, 4 streams
+        let ppg = sub;
+        radix4_items(a, ppg, tw, tw_ao, tw_bo, b, 0..ppg / 8);
     }
 
-    /// Blocked WORKER-PARALLEL DIT NTT (`n >= 2^16`): phase A runs the 15
-    /// block-local levels of every 128 KB block as independent tasks (ONE
+    /// Blocked WORKER-PARALLEL DIT NTT (`n >= 2^16`): phase A runs the 16
+    /// block-local levels of every 256 KB block as independent tasks (ONE
     /// DRAM pass over the array, no barriers); phase B runs the remaining
-    /// levels as fused radix-4 passes chunked over the worker (one barrier
-    /// per pass). Identical values to [`ntt_bitrev_to_natural`].
+    /// levels as radix-16 passes (four levels per DRAM sweep — a 2^24 column
+    /// takes exactly two) chunked over the worker, plus at most one short
+    /// leftover. Identical values to [`ntt_bitrev_to_natural`].
     pub unsafe fn ntt_bitrev_to_natural_blocked_parallel(
         a: &mut [u32],
         log_n: u32,
         tw: &[u32],
         tw_ao: &[u32],
         tw_bo: &[u32],
-        worker: &worker::Worker,
+        worker: &Worker,
     ) {
-        use worker::Worker;
-        let n = a.len();
-        debug_assert_eq!(n, 1usize << log_n);
-        let blk = 1usize << BLOCK_LOG2;
-        debug_assert!(n >= 2 * blk);
-        let base_addr = a.as_mut_ptr() as usize;
-        let (t_addr, ao_addr, bo_addr) = (
-            tw.as_ptr() as usize,
-            tw_ao.as_ptr() as usize,
-            tw_bo.as_ptr() as usize,
-        );
+        ntt_phase_a_blocks(a, tw, tw_ao, tw_bo, worker);
+        ntt_phase_b_global(a, log_n, tw, tw_ao, tw_bo, worker);
+    }
 
-        // phase A: block-local levels, blocks over the worker
+    /// Phase A of the blocked parallel NTT: the 16 block-local levels of
+    /// every 2^16-element block, one block per task (no barriers inside).
+    pub unsafe fn ntt_phase_a_blocks(
+        a: &mut [u32],
+        tw: &[u32],
+        tw_ao: &[u32],
+        tw_bo: &[u32],
+        worker: &Worker,
+    ) {
+        let n = a.len();
+        let blk = 1usize << BLOCK_LOG2;
+        debug_assert!(n >= blk);
+        let base_addr = a.as_mut_ptr() as usize;
+        let t_addr = tw.as_ptr() as usize;
+        let ao_addr = tw_ao.as_ptr() as usize;
+        let bo_addr = tw_bo.as_ptr() as usize;
         let num_blocks = n / blk;
         worker.scope(num_blocks, |scope, geometry| {
-            for thread_idx in 0..geometry.len() {
-                let start = geometry.get_chunk_start_pos(thread_idx);
-                let size = geometry.get_chunk_size(thread_idx);
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+            let (work, chunks) = (num_blocks, geometry.len());
+            for thread_idx in 0..chunks {
+                let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| {
                     for b in start..start + size {
                         ntt_block_local(
                             (base_addr as *mut u32).add(b * blk),
@@ -555,18 +865,63 @@ pub mod avx2 {
                 });
             }
         });
+    }
 
-        // phase B: global levels, fused passes chunked over vector items
+    /// Phase B of the blocked parallel NTT: the levels above the block —
+    /// radix-16 passes (four levels per DRAM sweep) chunked over the worker,
+    /// then at most one short leftover (radix-4 pass and/or the twiddle-free
+    /// tails).
+    pub unsafe fn ntt_phase_b_global(
+        a: &mut [u32],
+        log_n: u32,
+        tw: &[u32],
+        tw_ao: &[u32],
+        tw_bo: &[u32],
+        worker: &Worker,
+    ) {
+        let n = a.len();
+        let blk = 1usize << BLOCK_LOG2;
+        debug_assert_eq!(n, 1usize << log_n);
+        let base_addr = a.as_mut_ptr() as usize;
+        let t_addr = tw.as_ptr() as usize;
+        let ao_addr = tw_ao.as_ptr() as usize;
+        let bo_addr = tw_bo.as_ptr() as usize;
+        // phase B: global levels — radix-16 passes (four levels per DRAM
+        // sweep) chunked over vector items, then the short leftover
         let mut ppg = blk;
-        let mut num_groups = n / (2 * blk);
-        while num_groups >= 4 {
-            let items = (num_groups / 2) * (ppg / 8);
+        let mut levels_left = log_n - BLOCK_LOG2;
+        while levels_left >= 4 {
+            let items = n / 256; // (n / 16ppg groups) * (ppg / 16 lines)
             let cur_ppg = ppg;
             worker.scope(items, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let (work, chunks) = (items, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| {
+                        radix16_items(
+                            base_addr as *mut u32,
+                            cur_ppg,
+                            t_addr as *const u32,
+                            ao_addr as *const u32,
+                            bo_addr as *const u32,
+                            0,
+                            start..start + size,
+                        );
+                    });
+                }
+            });
+            ppg *= 16;
+            levels_left -= 4;
+        }
+        if levels_left == 3 {
+            // one radix-4 pass, then the twiddle-free final level below
+            let items = n / 32;
+            let cur_ppg = ppg;
+            worker.scope(items, |scope, geometry| {
+                let (work, chunks) = (items, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| {
                         radix4_items(
                             base_addr as *mut u32,
                             cur_ppg,
@@ -579,15 +934,20 @@ pub mod avx2 {
                     });
                 }
             });
-            ppg *= 4;
-            num_groups /= 4;
+            levels_left = 1;
         }
+        let num_groups = match levels_left {
+            0 => return,
+            1 => 1,
+            2 => 2,
+            _ => unreachable!(),
+        };
         match num_groups {
             2 => worker.scope(n / 32, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let (work, chunks) = (n / 32, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| {
                         tail_two_groups_items(
                             base_addr as *mut u32,
                             n,
@@ -598,10 +958,10 @@ pub mod avx2 {
                 }
             }),
             1 => worker.scope(n / 16, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let (work, chunks) = (n / 16, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| {
                         tail_final_items(base_addr as *mut u32, n, start..start + size);
                     });
                 }
@@ -650,8 +1010,8 @@ pub mod avx2 {
 /// reads a prefix). Depends only on the twiddle table — build once per
 /// proving run and share across every batched call.
 pub struct Avx2TwiddleExt {
-    ao: Vec<u32>,
-    bo: Vec<u32>,
+    pub ao: Vec<u32>,
+    pub bo: Vec<u32>,
 }
 
 impl Avx2TwiddleExt {
@@ -689,7 +1049,7 @@ impl Avx2TwiddleExt {
                 let (b, b_tail) = core::mem::take(&mut bo_rest).split_at_mut(chunk);
                 ao_rest = a_tail;
                 bo_rest = b_tail;
-                worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| {
                     for (i, (a, b)) in a.iter_mut().zip(b.iter_mut()).enumerate() {
                         let k = k0 + i;
                         a.write(mont_mul_scalar(
@@ -777,43 +1137,40 @@ pub fn lde_coset_avx2(
     unsafe { core::mem::transmute::<Vec<u32>, Vec<BabyBearField>>(v) }
 }
 
-/// Worker-PARALLEL base-field LDE coset (all threads on one coset): parallel
-/// scaled copy, parallel bit-reversal, blocked parallel NTT. Byte-identical
-/// to [`lde_coset_avx2`]; sizes below 2^16 run the serial kernel.
-pub fn lde_coset_avx2_parallel(
-    input: &[BabyBearField],
+/// The "prepare" sweep of the parallel LDE: `dst[rev(k)] = src[k] * offset^k`
+/// in ONE fused pass (scale + bit-reverse + copy).
+pub fn lde_prepare_bitrev_scaled_into(
+    src: &[u32],
+    dst: &mut [u32],
     offset: BabyBearField,
-    twiddles: &[BabyBearField],
-    ext: &Avx2TwiddleExt,
     worker: &worker::Worker,
-) -> Vec<BabyBearField> {
-    use worker::Worker;
-    let n = input.len();
-    if n < (2usize << avx2::BLOCK_LOG2) {
-        return lde_coset_avx2(input, offset, twiddles, ext);
-    }
+) {
+    let log_n = src.len().trailing_zeros();
+    let sp = (offset != BabyBearField::ONE).then(|| SplitPowersRaw::new(offset, log_n));
+    unsafe { avx2::scaled_bitrev_copy_parallel(src, dst, sp.as_ref(), worker) };
+}
+
+/// Reference TWO-sweep variant of [`lde_prepare_bitrev_scaled_into`]: a
+/// vectorized scaled copy, then the in-place parallel bit-reversal. Kept for
+/// parity checks and kernel benchmarks.
+pub fn lde_prepare_bitrev_scaled_two_sweeps_into(
+    src: &[u32],
+    dst: &mut [u32],
+    offset: BabyBearField,
+    worker: &worker::Worker,
+) {
+    let n = src.len();
     let log_n = n.trailing_zeros();
-    let input_raw: &[u32] = unsafe { core::slice::from_raw_parts(input.as_ptr() as *const u32, n) };
-    let tw_raw: &[u32] =
-        unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
-
-    let mut v: Vec<u32> = Vec::with_capacity(n);
-    #[allow(clippy::uninit_vec)]
-    unsafe {
-        v.set_len(n)
-    };
-    let src_addr = input_raw.as_ptr() as usize;
-    let dst_addr = v.as_mut_ptr() as usize;
-
+    let src_addr = src.as_ptr() as usize;
+    let dst_addr = dst.as_mut_ptr() as usize;
     if offset != BabyBearField::ONE {
         let sp = SplitPowersRaw::new(offset, log_n);
         let sp_ref = &sp;
-        // vector-granular chunks: 8 consecutive elements share `hi` (lo_len >= 8)
         worker.scope(n / 8, |scope, geometry| {
-            for thread_idx in 0..geometry.len() {
-                let start = geometry.get_chunk_start_pos(thread_idx);
-                let size = geometry.get_chunk_size(thread_idx);
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+            let (work, chunks) = (n / 8, geometry.len());
+            for thread_idx in 0..chunks {
+                let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                     use core::arch::x86_64::*;
                     let src = src_addr as *const u32;
                     let dst = dst_addr as *mut u32;
@@ -832,10 +1189,10 @@ pub fn lde_coset_avx2_parallel(
         });
     } else {
         worker.scope(n, |scope, geometry| {
-            for thread_idx in 0..geometry.len() {
-                let start = geometry.get_chunk_start_pos(thread_idx);
-                let size = geometry.get_chunk_size(thread_idx);
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+            let (work, chunks) = (n, geometry.len());
+            for thread_idx in 0..chunks {
+                let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                     core::ptr::copy_nonoverlapping(
                         (src_addr as *const u32).add(start),
                         (dst_addr as *mut u32).add(start),
@@ -845,8 +1202,35 @@ pub fn lde_coset_avx2_parallel(
             }
         });
     }
+    crate::utils::parallel_bitreverse_enumeration_inplace(dst, worker);
+}
 
-    crate::utils::parallel_bitreverse_enumeration_inplace(&mut v, worker);
+/// Worker-PARALLEL base-field LDE coset (all threads on one coset): parallel
+/// scaled copy, parallel bit-reversal, blocked parallel NTT. Byte-identical
+/// to [`lde_coset_avx2`]; sizes below 2^16 run the serial kernel.
+pub fn lde_coset_avx2_parallel(
+    input: &[BabyBearField],
+    offset: BabyBearField,
+    twiddles: &[BabyBearField],
+    ext: &Avx2TwiddleExt,
+    worker: &worker::Worker,
+) -> Vec<BabyBearField> {
+    let n = input.len();
+    if n < (1usize << avx2::BLOCK_LOG2) {
+        return lde_coset_avx2(input, offset, twiddles, ext);
+    }
+    let log_n = n.trailing_zeros();
+    let input_raw: &[u32] = unsafe { core::slice::from_raw_parts(input.as_ptr() as *const u32, n) };
+    let tw_raw: &[u32] =
+        unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
+
+    let mut v: Vec<u32> = Vec::with_capacity(n);
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        v.set_len(n)
+    };
+    // one sweep: scale + bit-reverse + copy (see `scaled_bitrev_copy_parallel`)
+    lde_prepare_bitrev_scaled_into(input_raw, &mut v, offset, worker);
 
     unsafe {
         avx2::ntt_bitrev_to_natural_blocked_parallel(
@@ -869,8 +1253,8 @@ pub fn lde_coset_avx2_parallel(
 /// the pairing scheme. All kernels are byte-identical to their scalar
 /// references and degrade to them below 16 elements.
 pub mod ext4 {
-    use super::avx2::{add, bias_all, fwd_core, inv_core, mont_mul, sub};
-    use super::{Avx2TwiddleExt, SplitPowersRaw, P};
+    use super::avx2::{add, bias_all, fwd_core, inv_core, mont_mul, radix16_core, sub};
+    use super::{balanced_chunk, spawn_chunk, Avx2TwiddleExt, SplitPowersRaw, P};
     use core::arch::x86_64::*;
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
@@ -1075,6 +1459,50 @@ pub mod ext4 {
         }
     }
 
+    /// FORWARD radix-16 fused pass (levels `ppg .. 8ppg`) over LINE items:
+    /// item `t` is the 16ppg-group `k4 = t / (ppg/4)` (twiddle index
+    /// `k4 + k4_offset`) and the 64-byte line `jl` (four elements, two
+    /// vectors per stream) within it; `ppg >= 4`. Two in-register radix-4
+    /// stages through [`radix16_core`] with the same twiddle sets as
+    /// [`fwd_radix4_items`]; line-complete because the 16 streams alias in
+    /// the same cache sets.
+    #[inline(always)]
+    unsafe fn fwd_radix16_items(
+        a: *mut BabyBearExt4,
+        ppg: usize,
+        tw: *const u32,
+        tw_ao: *const u32,
+        tw_bo: *const u32,
+        k4_offset: usize,
+        item_range: core::ops::Range<usize>,
+    ) {
+        debug_assert!(ppg >= 4);
+        let lines_per_group = ppg / 4;
+        let mut t = item_range.start;
+        while t < item_range.end {
+            let k4 = t / lines_per_group;
+            let jl = t % lines_per_group;
+            let kg = k4 + k4_offset;
+            let twa: [[__m256i; 6]; 4] =
+                core::array::from_fn(|q| fwd_tw_single(4 * kg + q, tw, tw_ao, tw_bo));
+            let twb = fwd_tw_single(kg, tw, tw_ao, tw_bo);
+            let run = (lines_per_group - jl).min(item_range.end - t);
+            let mut j = k4 * ppg * 16 + jl * 4;
+            for _ in 0..run {
+                let mut x0: [__m256i; 16] = core::array::from_fn(|i| ld2(a.add(j + i * ppg)));
+                let mut x1: [__m256i; 16] = core::array::from_fn(|i| ld2(a.add(j + 2 + i * ppg)));
+                radix16_core(&mut x0, &twa, &twb);
+                radix16_core(&mut x1, &twa, &twb);
+                for i in 0..16 {
+                    st2(a.add(j + i * ppg), x0[i]);
+                    st2(a.add(j + 2 + i * ppg), x1[i]);
+                }
+                j += 4;
+            }
+            t += run;
+        }
+    }
+
     /// Forward fused tail (`num_groups == 2`): groups 0/1 + final level.
     #[inline(always)]
     unsafe fn fwd_tail_two_groups(
@@ -1213,8 +1641,9 @@ pub mod ext4 {
 
     /// Blocked WORKER-PARALLEL forward NTT (`n >= 2^14`): the 12 block-local
     /// levels of every 128 KB block as independent tasks (one DRAM pass, no
-    /// barriers), then the remaining levels as fused passes chunked over the
-    /// worker. Identical values to [`ntt_fwd`].
+    /// barriers), then the remaining levels as radix-16 line passes (four
+    /// levels per DRAM sweep) chunked over the worker, plus at most one short
+    /// leftover. Identical values to [`ntt_fwd`].
     pub unsafe fn ntt_fwd_blocked_parallel(
         a: &mut [BabyBearExt4],
         tw_raw: &[u32],
@@ -1224,6 +1653,7 @@ pub mod ext4 {
         let n = a.len();
         let blk = 1usize << BLOCK_LOG2_EXT;
         debug_assert!(n >= 2 * blk);
+        let log_n = n.trailing_zeros();
         let base_addr = a.as_mut_ptr() as usize;
         let (t_addr, ao_addr, bo_addr) = (
             tw_raw.as_ptr() as usize,
@@ -1233,10 +1663,10 @@ pub mod ext4 {
 
         let num_blocks = n / blk;
         worker.scope(num_blocks, |scope, geometry| {
-            for thread_idx in 0..geometry.len() {
-                let start = geometry.get_chunk_start_pos(thread_idx);
-                let size = geometry.get_chunk_size(thread_idx);
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+            let (work, chunks) = (num_blocks, geometry.len());
+            for thread_idx in 0..chunks {
+                let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                     for b in start..start + size {
                         ntt_fwd_block_local(
                             (base_addr as *mut BabyBearExt4).add(b * blk),
@@ -1250,16 +1680,41 @@ pub mod ext4 {
             }
         });
 
+        // global levels: radix-16 line passes (four levels per DRAM sweep),
+        // then at most one short leftover
         let mut ppg = blk / 2;
-        let mut num_groups = n / blk;
-        while num_groups >= 4 {
-            let items = (num_groups / 2) * ppg;
+        let mut levels_left = log_n - (BLOCK_LOG2_EXT - 1);
+        while levels_left >= 4 {
+            let items = n / 64; // (n / 16ppg groups) * (ppg / 4 lines)
             let cur_ppg = ppg;
             worker.scope(items, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let (work, chunks) = (items, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                        fwd_radix16_items(
+                            base_addr as *mut BabyBearExt4,
+                            cur_ppg,
+                            t_addr as *const u32,
+                            ao_addr as *const u32,
+                            bo_addr as *const u32,
+                            0,
+                            start..start + size,
+                        );
+                    });
+                }
+            });
+            ppg *= 16;
+            levels_left -= 4;
+        }
+        if levels_left == 3 {
+            let items = n / 4;
+            let cur_ppg = ppg;
+            worker.scope(items, |scope, geometry| {
+                let (work, chunks) = (items, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         fwd_radix4_items(
                             base_addr as *mut BabyBearExt4,
                             cur_ppg,
@@ -1272,15 +1727,15 @@ pub mod ext4 {
                     });
                 }
             });
-            ppg *= 4;
-            num_groups /= 4;
+            levels_left = 1;
         }
-        match num_groups {
+        match levels_left {
+            0 => {}
             2 => worker.scope(n / 4, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let (work, chunks) = (n / 4, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         fwd_tail_two_groups(
                             base_addr as *mut BabyBearExt4,
                             n,
@@ -1291,10 +1746,10 @@ pub mod ext4 {
                 }
             }),
             1 => worker.scope(n / 2, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let (work, chunks) = (n / 2, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         fwd_tail_final(base_addr as *mut BabyBearExt4, n, start..start + size);
                     });
                 }
@@ -1421,10 +1876,10 @@ pub mod ext4 {
             let sp = SplitPowersRaw::new(offset, log_n);
             let sp_ref = &sp;
             worker.scope(n, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let (work, chunks) = (n, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         scaled_copy_range(
                             src_addr as *const BabyBearExt4,
                             dst_addr as *mut BabyBearExt4,
@@ -1436,10 +1891,10 @@ pub mod ext4 {
             });
         } else {
             worker.scope(n, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let (work, chunks) = (n, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         let src = src_addr as *const BabyBearExt4;
                         let dst = dst_addr as *mut BabyBearExt4;
                         core::ptr::copy_nonoverlapping(src.add(start), dst.add(start), size);
@@ -1460,6 +1915,11 @@ pub mod ext4 {
 
         // small parallel sizes: one worker scope per fused pass
         let tw = &tw_raw[..n / 2];
+        let (tw_addr, ao_addr, bo_addr) = (
+            tw.as_ptr() as usize,
+            ext.ao.as_ptr() as usize,
+            ext.bo.as_ptr() as usize,
+        );
         let base_addr = out.as_mut_ptr() as usize;
         let mut ppg = 1usize;
         let mut num_groups = n / 2;
@@ -1467,18 +1927,16 @@ pub mod ext4 {
             let items = (num_groups / 2) * ppg;
             let cur_ppg = ppg;
             worker.scope(items, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    let (ao, bo) = (ext.ao.as_ptr() as usize, ext.bo.as_ptr() as usize);
-                    let tw_addr = tw.as_ptr() as usize;
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let (work, chunks) = (items, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         fwd_radix4_items(
                             base_addr as *mut BabyBearExt4,
                             cur_ppg,
                             tw_addr as *const u32,
-                            ao as *const u32,
-                            bo as *const u32,
+                            ao_addr as *const u32,
+                            bo_addr as *const u32,
                             0,
                             start..start + size,
                         );
@@ -1491,41 +1949,28 @@ pub mod ext4 {
         match num_groups {
             2 => {
                 worker.scope(n / 4, |scope, geometry| {
-                    for thread_idx in 0..geometry.len() {
-                        let start = geometry.get_chunk_start_pos(thread_idx);
-                        let size = geometry.get_chunk_size(thread_idx);
-                        let tw_addr = tw.as_ptr() as usize;
-                        Worker::smart_spawn(
-                            scope,
-                            thread_idx == geometry.len() - 1,
-                            move |_| unsafe {
-                                fwd_tail_two_groups(
-                                    base_addr as *mut BabyBearExt4,
-                                    n,
-                                    tw_addr as *const u32,
-                                    start..start + size,
-                                );
-                            },
-                        );
+                    let (work, chunks) = (n / 4, geometry.len());
+                    for thread_idx in 0..chunks {
+                        let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                        spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                            fwd_tail_two_groups(
+                                base_addr as *mut BabyBearExt4,
+                                n,
+                                tw_addr as *const u32,
+                                start..start + size,
+                            );
+                        });
                     }
                 });
             }
             1 => {
                 worker.scope(n / 2, |scope, geometry| {
-                    for thread_idx in 0..geometry.len() {
-                        let start = geometry.get_chunk_start_pos(thread_idx);
-                        let size = geometry.get_chunk_size(thread_idx);
-                        Worker::smart_spawn(
-                            scope,
-                            thread_idx == geometry.len() - 1,
-                            move |_| unsafe {
-                                fwd_tail_final(
-                                    base_addr as *mut BabyBearExt4,
-                                    n,
-                                    start..start + size,
-                                );
-                            },
-                        );
+                    let (work, chunks) = (n / 2, geometry.len());
+                    for thread_idx in 0..chunks {
+                        let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                        spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                            fwd_tail_final(base_addr as *mut BabyBearExt4, n, start..start + size);
+                        });
                     }
                 });
             }
@@ -1799,11 +2244,11 @@ pub mod ext4 {
         let mut stages_left = log_n;
         if log_n % 2 == 0 {
             worker.scope(n / 4, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
+                let (work, chunks) = (n / 4, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
                     let tw_addr = tw_raw.as_ptr() as usize;
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         inv_head_two_stages(
                             base_addr as *mut BabyBearExt4,
                             n,
@@ -1817,10 +2262,10 @@ pub mod ext4 {
             stages_left -= 2;
         } else {
             worker.scope(n / 2, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let (work, chunks) = (n / 2, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         inv_head_single(base_addr as *mut BabyBearExt4, n, start..start + size);
                     });
                 }
@@ -1835,12 +2280,12 @@ pub mod ext4 {
             let items = (n / (2 * dist)) * half_d;
             assert_eq!(items, n / 4);
             worker.scope(items, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
+                let (work, chunks) = (items, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
                     let tw_addr = tw_raw.as_ptr() as usize;
                     let (ao, bo) = (inv_ext.ao.as_ptr() as usize, inv_ext.bo.as_ptr() as usize);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         inv_radix4_items(
                             base_addr as *mut BabyBearExt4,
                             half_d,
@@ -1860,10 +2305,10 @@ pub mod ext4 {
         // parallel scale by 1/N + parallel bitrev
         let f_bits = size_inv.raw_u32_value();
         worker.scope(n, |scope, geometry| {
-            for thread_idx in 0..geometry.len() {
-                let start = geometry.get_chunk_start_pos(thread_idx);
-                let size = geometry.get_chunk_size(thread_idx);
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+            let (work, chunks) = (n, geometry.len());
+            for thread_idx in 0..chunks {
+                let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                     let f = bc(f_bits);
                     let base = base_addr as *mut BabyBearExt4;
                     let end = start + size;
@@ -2011,10 +2456,10 @@ pub mod ext4 {
         let base_addr = column.as_mut_ptr() as usize;
         let two_inv_raw = two_inv.raw_u32_value();
         worker.scope(num_leaves, |scope, geometry| {
-            for thread_idx in 0..geometry.len() {
-                let start = geometry.get_chunk_start_pos(thread_idx);
-                let size = geometry.get_chunk_size(thread_idx);
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+            let (work, chunks) = (num_leaves, geometry.len());
+            for thread_idx in 0..chunks {
+                let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                     fold_leaf_range(
                         base_addr as *mut BabyBearExt4,
                         offsets,
@@ -2192,10 +2637,10 @@ pub mod ext4 {
         while left >= 2 {
             let cur_s = s;
             worker.scope(n / 4, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let (work, chunks) = (n / 4, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         add_radix4_items(
                             base_addr as *mut BabyBearExt4,
                             cur_s,
@@ -2210,10 +2655,10 @@ pub mod ext4 {
         if left == 1 {
             let cur_s = s;
             worker.scope(n / 2, |scope, geometry| {
-                for thread_idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(thread_idx);
-                    let size = geometry.get_chunk_size(thread_idx);
-                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let (work, chunks) = (n / 2, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                         add_single_items(
                             base_addr as *mut BabyBearExt4,
                             cur_s,
@@ -2231,7 +2676,7 @@ pub mod ext4 {
 mod tests {
     use super::*;
     use crate::twiddles::precompute_all_twiddles_for_fft_serial;
-    use field::{FieldExtension, Rand, TwoAdicField};
+    use field::{FieldExtension, PrimeField, Rand};
     use std::alloc::Global;
 
     /// Every Ext4 AVX2 kernel must equal its scalar reference exactly, across
@@ -2242,7 +2687,11 @@ mod tests {
         use field::baby_bear::ext4::BabyBearExt4;
         for num_threads in [3usize, 4] {
             let worker = worker::Worker::new_with_num_threads(num_threads);
-            for log_n in [3u32, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16] {
+            // 2^17..2^21 exercise the radix-16 global phase of the blocked
+            // kernel with every leftover class
+            for log_n in [
+                3u32, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+            ] {
                 let n = 1usize << log_n;
                 let mut rng = rand::rng();
                 let input: Vec<BabyBearExt4> = (0..n)
@@ -2314,7 +2763,9 @@ mod tests {
     fn avx2_parallel_lde_matches_reference() {
         for num_threads in [3usize, 8] {
             let worker = worker::Worker::new_with_num_threads(num_threads);
-            for log_n in [16u32, 17, 18, 19] {
+            // 2^16..2^22 covers every phase-B leftover class (0..3 levels)
+            // and the one-/two-pass radix-16 shapes
+            for log_n in [16u32, 17, 18, 19, 20, 21, 22] {
                 let n = 1usize << log_n;
                 let mut rng = rand::rng();
                 let input: Vec<BabyBearField> = (0..n)

@@ -596,13 +596,39 @@ where
     F: PrimeField + TwoAdicField,
     El: FieldExtension<F> + Field,
 {
+    let plan = plan_coset_grid::<El>(lde_factor, worker);
+    ws_lde_single_poly_from_monomial_form_planned(
+        monomial_form_normal_order,
+        twiddles,
+        lde_factor,
+        serial_kernel,
+        parallel_kernel,
+        worker,
+        plan,
+    )
+}
+
+/// [`ws_lde_single_poly_from_monomial_form`] with the coset plan chosen by
+/// the caller (backends with size-dependent rules).
+fn ws_lde_single_poly_from_monomial_form_planned<F, El>(
+    monomial_form_normal_order: &[El],
+    twiddles: &Twiddles<F, Global>,
+    lde_factor: usize,
+    serial_kernel: &(impl Fn(&[El], F, &[F]) -> Vec<El> + Sync),
+    parallel_kernel: &(impl Fn(&[El], F, &[F], &Worker) -> Vec<El> + Sync),
+    worker: &Worker,
+    plan: CosetGridPlan,
+) -> Vec<(Box<[El]>, F)>
+where
+    F: PrimeField + TwoAdicField,
+    El: FieldExtension<F> + Field,
+{
     use worker::rayon::prelude::*;
 
     let n = monomial_form_normal_order.len();
     let root_powers = coset_offsets::<F>(n, lde_factor);
     let tw = &twiddles.forward_twiddles[..];
 
-    let plan = plan_coset_grid::<El>(lde_factor, worker);
     worker.pool.install(|| {
         (0..lde_factor)
             .into_par_iter()
@@ -645,6 +671,33 @@ where
     F: PrimeField + TwoAdicField,
     El: FieldExtension<F> + Field,
 {
+    let plan = plan_coset_grid::<El>(lde_factor, worker);
+    ws_lde_single_poly_continuous_planned(
+        monomial_form_normal_order,
+        twiddles,
+        lde_factor,
+        serial_kernel_into,
+        parallel_kernel_into,
+        worker,
+        plan,
+    )
+}
+
+/// [`ws_lde_single_poly_continuous`] with the coset plan chosen by the
+/// caller (backends with size-dependent rules).
+fn ws_lde_single_poly_continuous_planned<F, El>(
+    monomial_form_normal_order: &[El],
+    twiddles: &Twiddles<F, Global>,
+    lde_factor: usize,
+    serial_kernel_into: &(impl Fn(&[El], F, &[F], &mut [El]) + Sync),
+    parallel_kernel_into: &(impl Fn(&[El], F, &[F], &Worker, &mut [El]) + Sync),
+    worker: &Worker,
+    plan: CosetGridPlan,
+) -> (Box<[El]>, Vec<F>)
+where
+    F: PrimeField + TwoAdicField,
+    El: FieldExtension<F> + Field,
+{
     use worker::rayon::prelude::*;
 
     let n = monomial_form_normal_order.len();
@@ -660,7 +713,7 @@ where
     #[allow(clippy::uninit_assumed_init)]
     let mut buffer: Box<[El]> = unsafe { Box::new_uninit_slice(total).assume_init() };
 
-    match plan_coset_grid::<El>(lde_factor, worker) {
+    match plan {
         CosetGridPlan::ParallelWithinTask => {
             // Few big cosets: all cosets in parallel, each running the
             // worker-parallel kernel — nested scopes land on the shared pool

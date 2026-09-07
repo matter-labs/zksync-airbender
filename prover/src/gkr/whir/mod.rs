@@ -3253,13 +3253,12 @@ fn evaluate_monomial_form<E: Field>(coeffs: &[E], point: &E, worker: &Worker) ->
 
     let geometry = worker.get_geometry_with_threshold(coeffs.len(), PAR_THRESHOLD);
     let num_chunks = geometry.len();
-    let chunk_size = geometry.ordinary_chunk_size;
 
-    // point^chunk_size via binary exponentiation
-    let chunk_power = {
+    // offset_powers[j] = point^(start of chunk j), advanced by point^(size of chunk j)
+    let pow = |exp: usize| {
         let mut result = E::ONE;
         let mut base = *point;
-        let mut exp = chunk_size;
+        let mut exp = exp;
         while exp > 0 {
             if exp & 1 == 1 {
                 result.mul_assign(&base);
@@ -3269,13 +3268,11 @@ fn evaluate_monomial_form<E: Field>(coeffs: &[E], point: &E, worker: &Worker) ->
         }
         result
     };
-
-    // offset_powers[j] = point^(j * chunk_size) = chunk_power^j
     let mut offset_powers = Vec::with_capacity(num_chunks);
     let mut current = E::ONE;
-    for _ in 0..num_chunks {
+    for j in 0..num_chunks {
         offset_powers.push(current);
-        current.mul_assign(&chunk_power);
+        current.mul_assign(&pow(geometry.get_chunk_size(j)));
     }
 
     let mut partial_results = vec![E::ZERO; num_chunks];

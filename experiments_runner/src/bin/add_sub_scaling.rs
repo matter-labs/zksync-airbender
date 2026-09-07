@@ -202,6 +202,7 @@ fn outer_parallel(
     outer: usize,
     inner: usize,
     naive_gkr: bool,
+    pin: bool,
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
     decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
@@ -269,15 +270,62 @@ fn outer_parallel(
         el
     };
 
-    // No-contention baseline: ONE prover on `inner` threads.
+    // Pool threads carry the prover's recursion-heavy serial phases now, so
+    // give them a generous stack (virtual; committed lazily).
+    const POOL_STACK: usize = 256 << 20;
+
+    // No-contention baseline: ONE prover on `inner` threads, driven from
+    // INSIDE its pool (the driving thread is a pool thread; every `scope`
+    // body — including `smart_spawn`'s inline last chunk — runs on pool
+    // threads only).
     let solo = {
-        let worker = Worker::new_with_num_threads(inner);
-        run_one("solo baseline".to_string(), &worker, trace.clone())
+        let worker = Worker::new_with_num_threads_and_stack(inner, POOL_STACK);
+        let tr = trace.clone();
+        worker
+            .pool
+            .install(|| run_one("solo baseline".to_string(), &worker, tr))
     };
+
+    // Pinning plan: prover i owns the consecutive CPU block
+    // `[i*inner, (i+1)*inner)` of the host's complexes flattened in L3-domain
+    // order — whole complexes when `inner` is a multiple of the complex size.
+    let cpu_blocks: Vec<Vec<usize>> = if pin {
+        let complexes = Worker::cpu_complexes();
+        let flat: Vec<usize> = if complexes.is_empty() {
+            println!("[outer] WARNING: no L3 topology available; pinning to CPU ids in order");
+            (0..std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1))
+                .collect()
+        } else {
+            println!(
+                "[outer] host L3 complexes: {} x {} CPUs (first: {:?})",
+                complexes.len(),
+                complexes[0].len(),
+                &complexes[0]
+            );
+            complexes.iter().flatten().copied().collect()
+        };
+        assert!(
+            outer * inner <= flat.len(),
+            "pinning {outer} x {inner} threads needs {} CPUs, host lists {}",
+            outer * inner,
+            flat.len()
+        );
+        (0..outer)
+            .map(|i| flat[i * inner..(i + 1) * inner].to_vec())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    if pin {
+        println!("[outer] pinned: prover 0 -> cpus {:?}", cpu_blocks[0]);
+    }
 
     // `outer` provers at once, each on its own `inner`-thread worker.
     let traces: Vec<_> = (0..outer).map(|_| trace.clone()).collect();
     drop(trace);
+    let cpu_blocks = &cpu_blocks;
     let t_all = std::time::Instant::now();
     let times: Vec<f64> = std::thread::scope(|s| {
         let handles: Vec<_> = traces
@@ -289,8 +337,20 @@ fn outer_parallel(
                     .name(format!("prover-{i}"))
                     .stack_size(1 << 30)
                     .spawn_scoped(s, move || {
-                        let worker = Worker::new_with_num_threads(inner);
-                        run_one(format!("prover {i}"), &worker, tr)
+                        // create the (optionally pinned) worker first, then
+                        // run the whole proof inside its pool
+                        let worker = if pin {
+                            Worker::new_with_num_threads_on_cpus_and_stack(
+                                inner,
+                                &cpu_blocks[i],
+                                POOL_STACK,
+                            )
+                        } else {
+                            Worker::new_with_num_threads_and_stack(inner, POOL_STACK)
+                        };
+                        worker
+                            .pool
+                            .install(|| run_one(format!("prover {i}"), &worker, tr))
                     })
                     .unwrap()
             })
@@ -302,8 +362,9 @@ fn outer_parallel(
     let max = times.iter().cloned().fold(0.0, f64::max);
     let mean = times.iter().sum::<f64>() / times.len() as f64;
     println!(
-        "[outer] SUMMARY: {outer} x {inner}-thread provers: wall {wall:.3} s; per-prover min {min:.3} / mean {mean:.3} / max {max:.3} s; \
+        "[outer] SUMMARY{} (in-pool drivers): {outer} x {inner}-thread provers: wall {wall:.3} s; per-prover min {min:.3} / mean {mean:.3} / max {max:.3} s; \
          solo {inner}-thread prover {solo:.3} s; mean slowdown {:.2}x; throughput {:.3} proofs/s vs solo {:.3} proofs/s ({:.2}x)",
+        if pin { " (pinned)" } else { "" },
         mean / solo,
         outer as f64 / wall,
         1.0 / solo,
@@ -384,6 +445,7 @@ fn main() {
     let mut outer = 0usize;
     let mut inner = 4usize;
     let mut naive_gkr = false;
+    let mut pin = false;
     let mut proof_out: Option<String> = None;
     let trace_len_log2 = 24usize;
 
@@ -410,6 +472,7 @@ fn main() {
                 }
             }
             "--proof-out" => proof_out = Some(value("--proof-out")),
+            "--pin" => pin = true,
             "--inner" => inner = value("--inner").parse().expect("--inner"),
             other => panic!("unknown argument `{other}`"),
         }
@@ -521,6 +584,7 @@ fn main() {
             outer,
             inner,
             naive_gkr,
+            pin,
             &circuit,
             &table_driver,
             decoder_table_data,

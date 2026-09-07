@@ -137,6 +137,22 @@ impl TwiddleSetOps<BabyBearField> for BabyBearAvx2Twiddles {
     }
 }
 
+/// Size-dependent coset plan for Ext4 LDEs. Measured on the 192-core box with
+/// 12 pinned 16-thread provers (the production batch shape): cosets of
+/// 2^20 elements and up run EVERY coset on all threads through the blocked
+/// kernel — the flat serial grid streams a 128 MB coset ~12 times from DRAM
+/// under contention (2^23 x 16: all-threads 0.63 s vs serial grid 0.90 s;
+/// 2^21 x 64: 0.52 vs 0.57) — while smaller cosets keep the tasks/threads
+/// rule (2^18 x 512: serial grid 0.17 s vs all-threads 1.31 s, per-coset
+/// scope overhead).
+fn ext4_coset_plan(n: usize, lde_factor: usize, worker: &Worker) -> CosetGridPlan {
+    if n >= (1usize << 20) {
+        CosetGridPlan::ParallelWithinTask
+    } else {
+        plan_coset_grid::<BabyBearExt4>(lde_factor, worker)
+    }
+}
+
 impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
     type TwiddleSet = BabyBearAvx2Twiddles;
     fn make_twiddles(&self, domain_size: usize, worker: &Worker) -> Self::TwiddleSet {
@@ -168,8 +184,15 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         let ext = &twiddles.forward_ext;
         let num_cols = evals.len();
         let n = evals.first().map(|c| c.len()).unwrap_or(0);
-        let blocked_min = 2usize << fft::baby_bear_avx2::avx2::BLOCK_LOG2;
-        if num_cols == 0 || num_cols * lde_factor >= worker.get_num_cores() || n < blocked_min {
+        let blocked_min = 1usize << fft::baby_bear_avx2::avx2::BLOCK_LOG2;
+        // EXPERIMENT (base-commit scheduling): a 2^24 column is larger than
+        // any L3, so per-column DRAM passes are what the machine pays; the
+        // flat serial grid streams every column ~14 times while the blocked
+        // kernel does it in ~5. Run EVERY column-coset on all threads when
+        // this is set, not only when the grid is under-filled.
+        const ALL_THREADS_PER_COSET: bool = true;
+        let grid_fills_pool = num_cols * lde_factor >= worker.get_num_cores();
+        if num_cols == 0 || n < blocked_min || (grid_fills_pool && !ALL_THREADS_PER_COSET) {
             return ws_lde_multiple_polys_from_hypercubes(
                 evals,
                 &twiddles.plain,
@@ -183,26 +206,21 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
             );
         }
 
-        // UNDER-FILLED grid (column x coset tasks < threads): the flat serial
-        // grid would leave threads idle for a whole serial 2^n NTT (measured
-        // as a ~0.5 s floor per commit part at 96 threads). Instead: one
-        // par-over-columns wave of serial transforms, then every coset FFT
-        // on ALL threads through the blocked parallel kernel (cache-resident
-        // block phase + global passes), no nested scopes.
-        use worker::rayon::prelude::*;
+        // ALL THREADS PER COLUMN: a 2^24 column is larger than any L3, so
+        // what counts is the number of DRAM sweeps per column, not the task
+        // grid. Each column's transform (copy + block-local levels in one
+        // sweep, radix-16 sweeps for the high strides) and then every coset
+        // FFT (fused scale/bit-reverse/copy sweep, block-local phase, radix-16
+        // global passes) run on the whole worker, no nested scopes.
         let root_powers = coset_offsets::<BabyBearField>(n, lde_factor);
         let tw = &twiddles.plain.forward_twiddles[..];
-        let monomials: Vec<Vec<BabyBearField>> = worker.pool.install(|| {
-            evals
-                .par_iter()
-                .map(|col| {
-                    let mut v = col.to_vec();
-                    let size_log2 = v.len().trailing_zeros();
-                    crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_avx2_bb(&mut v, size_log2);
-                    v
-                })
-                .collect()
-        });
+        let size_log2 = n.trailing_zeros();
+        let monomials: Vec<Vec<BabyBearField>> = evals
+            .iter()
+            .map(|col| {
+                crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel(col, size_log2, worker)
+            })
+            .collect();
         (0..lde_factor)
             .map(|coset| {
                 let offset = root_powers[coset];
@@ -251,17 +269,19 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         worker: &Worker,
     ) -> Vec<(Box<[BabyBearExt4]>, BabyBearField)> {
         let ext = &twiddles.forward_ext;
+        let plan = ext4_coset_plan(monomial_form_normal_order.len(), lde_factor, worker);
         // Planner-driven grid (unlike the NEON backend's "every coset on the
         // worker-parallel kernel" mode): with cosets >= threads each coset is
         // one SERIAL task — nesting thousands of barrier scopes per coset on
         // a wide pool measured 13x slower (2^13 x 16384 cosets, 96 threads).
-        ws_lde_single_poly_from_monomial_form(
+        ws_lde_single_poly_from_monomial_form_planned(
             monomial_form_normal_order,
             &twiddles.plain,
             lde_factor,
             &|m, o, t| fft::baby_bear_avx2::ext4::lde_coset(m, o, t, ext),
             &|m, o, t, w| fft::baby_bear_avx2::ext4::lde_coset_parallel(m, o, t, ext, w),
             worker,
+            plan,
         )
     }
 
@@ -273,7 +293,8 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         worker: &Worker,
     ) -> (Box<[BabyBearExt4]>, Vec<BabyBearField>) {
         let ext = &twiddles.forward_ext;
-        ws_lde_single_poly_continuous(
+        let plan = ext4_coset_plan(monomial_form_normal_order.len(), lde_factor, worker);
+        ws_lde_single_poly_continuous_planned(
             monomial_form_normal_order,
             &twiddles.plain,
             lde_factor,
@@ -282,6 +303,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
                 fft::baby_bear_avx2::ext4::lde_coset_parallel_into(m, o, t, ext, w, out)
             },
             worker,
+            plan,
         )
     }
 

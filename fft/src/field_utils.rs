@@ -30,12 +30,12 @@ pub fn distribute_powers_parallel<F: Field, E: FieldExtension<F>>(
     }
     worker.scope(input.len(), |scope, geometry| {
         let num_chunks = geometry.len();
-        let ordinary_step = element_step.pow(geometry.ordinary_chunk_size as u32);
+        // chunk `idx` starts at element_initial * element_step^(start of chunk)
         let mut current = element_initial;
         let mut chunk_starts: Vec<F> = Vec::with_capacity(num_chunks);
-        for _ in 0..num_chunks {
+        for idx in 0..num_chunks {
             chunk_starts.push(current);
-            current.mul_assign(&ordinary_step);
+            current.mul_assign(&element_step.pow(geometry.get_chunk_size(idx) as u32));
         }
 
         input
