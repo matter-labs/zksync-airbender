@@ -281,9 +281,15 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             }
         };
         let binary_image_len = binary_image.len();
-        // NOTE: during continuous reuse timestamps are zeroed during inits and teardowns collection
+        assert!(binary_image_len <= ROM_WORD_SIZE);
+        // NOTE: on reuse the holder is already clean outside the ROM region: every RAM word
+        // the JIT writes is timestamped, and `collect_inits_and_teardowns` zeroes both the
+        // value and the timestamp of every timestamped word (the abort path resets the whole
+        // buffer). The binary image is the exception: it is copied in without timestamps, so
+        // ROM words the program never loads survive collection. Only the ROM tail beyond the
+        // current image needs an explicit clear, in case the previous image was longer.
         memory_holder.memory_mut()[..binary_image_len].copy_from_slice(&binary_image);
-        memory_holder.memory_mut()[binary_image_len..].fill(0);
+        memory_holder.memory_mut()[binary_image_len..ROM_WORD_SIZE].fill(0);
         let mut trace = self
             .free_trace_chunks_receiver
             .recv()
