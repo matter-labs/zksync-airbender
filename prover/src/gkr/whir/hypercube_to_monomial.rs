@@ -758,6 +758,25 @@ pub fn multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel(
     size_log2: u32,
     worker: &Worker,
 ) -> Vec<::field::baby_bear::base::BabyBearField> {
+    multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel_partial(
+        src,
+        size_log2,
+        u32::MAX,
+        worker,
+    )
+}
+
+/// [`multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel`] applying
+/// only the first `high_levels` high-stride levels above the block (the 16
+/// block-local variables are always transformed): callers that fold the
+/// remaining top variables into a later pass.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub fn multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel_partial(
+    src: &[::field::baby_bear::base::BabyBearField],
+    size_log2: u32,
+    high_levels: u32,
+    worker: &Worker,
+) -> Vec<::field::baby_bear::base::BabyBearField> {
     use ::field::baby_bear::base::BabyBearField;
     const BLOCK_LOG2: u32 = 16;
     const SUB_BLOCK_LOG2: u32 = 14;
@@ -820,7 +839,7 @@ pub fn multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel(
 
     // phase B: the high-stride levels, up to four per sweep
     let mut stride = blk;
-    let mut levels_left = size_log2 - BLOCK_LOG2;
+    let mut levels_left = (size_log2 - BLOCK_LOG2).min(high_levels);
     while levels_left > 0 {
         let levels = levels_left.min(4);
         let group = stride << levels;

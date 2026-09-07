@@ -33,6 +33,7 @@ fn main() {
     let mut reps = 5usize;
     let mut pin_base: Option<usize> = None;
     let mut probe_phase_a = false;
+    let mut misalign = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -43,6 +44,10 @@ fn main() {
             "--pin-base" => pin_base = Some(args[i + 1].parse().unwrap()),
             "--probe-phase-a" => {
                 probe_phase_a = true;
+                i -= 1;
+            }
+            "--misalign" => {
+                misalign = true;
                 i -= 1;
             }
             other => panic!("unknown arg {other}"),
@@ -122,6 +127,94 @@ fn main() {
     );
     let after_a = c[0].clone();
     drop(c);
+
+    let after_b_check: Vec<u32> = {
+        let mut a = after_a.clone();
+        unsafe { avx2::ntt_phase_b_global(&mut a, log_n, tw_raw, &ext.ao, &ext.bo, &worker) };
+        a
+    };
+    if misalign {
+        // buffers offset by k elements from a page-aligned allocation: every
+        // kernel below runs on `&mut big[k..k+n]`, so its base address is
+        // 4k bytes into a cache line (k = 0 aligned; k = 8 -> 32 B, no line
+        // straddling; k = 1, 2, 4 -> half the 32 B vectors straddle a line)
+        println!(
+            "[align] input buffer ptr % 64 = {}, prepared buffer ptr % 64 = {}, tw % 64 = {}",
+            input_raw.as_ptr() as usize % 64,
+            dst_fused.as_ptr() as usize % 64,
+            tw_raw.as_ptr() as usize % 64
+        );
+        // what the allocator actually returns for buffers of various sizes
+        for log in [10u32, 14, 16, 18, 20, 22, 24, 26] {
+            let v: Vec<u32> = Vec::with_capacity(1usize << log);
+            let z: Vec<u32> = vec![0u32; 1usize << log];
+            println!(
+                "[align] Vec<u32> 2^{log} ({:>7} KB): with_capacity ptr % 4096 = {:4} (% 64 = {:2}) | zeroed ptr % 4096 = {:4} (% 64 = {:2})",
+                (4usize << log) / 1024,
+                v.as_ptr() as usize % 4096,
+                v.as_ptr() as usize % 64,
+                z.as_ptr() as usize % 4096,
+                z.as_ptr() as usize % 64
+            );
+            std::hint::black_box((&v, &z));
+        }
+        for k in [0usize, 1, 2, 4, 8, 16] {
+            let mut src_big = vec![0u32; n + 64];
+            src_big[k..k + n].copy_from_slice(input_raw);
+            let mut times_prep = Vec::new();
+            let mut times_a = Vec::new();
+            let mut times_b = Vec::new();
+            for r in 0..reps + 1 {
+                let mut big = vec![0u32; n + 64];
+                let t0 = Instant::now();
+                k::lde_prepare_bitrev_scaled_into(
+                    &src_big[k..k + n],
+                    &mut big[k..k + n],
+                    offset,
+                    &worker,
+                );
+                let tp = t0.elapsed();
+                let t0 = Instant::now();
+                unsafe {
+                    avx2::ntt_phase_a_blocks(&mut big[k..k + n], tw_raw, &ext.ao, &ext.bo, &worker)
+                };
+                let ta = t0.elapsed();
+                let t0 = Instant::now();
+                unsafe {
+                    avx2::ntt_phase_b_global(
+                        &mut big[k..k + n],
+                        log_n,
+                        tw_raw,
+                        &ext.ao,
+                        &ext.bo,
+                        &worker,
+                    )
+                };
+                let tb = t0.elapsed();
+                if r > 0 {
+                    times_prep.push(tp.as_secs_f64() * 1e3);
+                    times_a.push(ta.as_secs_f64() * 1e3);
+                    times_b.push(tb.as_secs_f64() * 1e3);
+                }
+                if k == 0 && r == 0 {
+                    assert_eq!(&big[..n], &after_b_check[..], "misalign k=0 diverged");
+                }
+                std::hint::black_box(&big);
+            }
+            let med = |v: &mut Vec<f64>| {
+                v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                v[v.len() / 2]
+            };
+            println!(
+                "[align] offset {k:2} elems ({:2} B, base % 64 = {:2}): prep {:7.2} ms  phase A {:7.2} ms  phase B {:7.2} ms",
+                4 * k,
+                (4 * k) % 64,
+                med(&mut times_prep),
+                med(&mut times_a),
+                med(&mut times_b)
+            );
+        }
+    }
 
     if probe_phase_a {
         // per-task instrumentation of phase A: start offset (µs from scope
