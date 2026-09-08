@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::allocation_pool::AllocationPool;
+use crate::gkr::prover::backend::ConvertedLeaves;
 
 /// Work-stealing backend running Proth120 LAZY-REDUCTION RADIX-8 coset
 /// kernels on BOTH planner branches: values held in `[0, 2p)` through the NTT
@@ -166,6 +167,18 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
     }
 
     type ExtCoeffConv = StandardExtCoeffConv<Proth120>;
+    type CosetLeaves<'a>
+        = ConvertedLeaves<'a, Proth120, Proth120, StandardExtCoeffConv<Proth120>>
+    where
+        Self: 'a;
+    fn coset_leaves<'a>(
+        &self,
+        conv: &'a Self::ExtCoeffConv,
+        column: &'a [Proth120],
+        offset: Proth120,
+    ) -> Self::CosetLeaves<'a> {
+        ConvertedLeaves::new(conv, column, offset)
+    }
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv {
         StandardExtCoeffConv::new(coset_len, values_per_leaf)
     }

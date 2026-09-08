@@ -1,3 +1,4 @@
+use super::CosetLeafAccessor;
 use super::*;
 use crate::definitions::Blake2sForEverythingVerifier;
 use blake2s_u32::*;
@@ -205,6 +206,30 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
                 worker,
             );
 
+        Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
+    }
+
+    fn construct_from_leaf_accessors<
+        E: FieldExtension<BabyBearField> + field::Field,
+        L: CosetLeafAccessor<E>,
+    >(
+        cosets: &[&[L]],
+        cap_size: usize,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> Self
+    where
+        [(); E::DEGREE]: Sized,
+    {
+        use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_leaf_accessors;
+        let leaf_hashes = blake2s_leaf_hashes_from_leaf_accessors::<
+            BabyBearField,
+            E,
+            L,
+            B,
+            USE_REDUCED_BLAKE2_ROUNDS,
+        >(cosets, bitreverse_cosets, bitreverse_leaf_hashes, worker);
         Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
     }
 

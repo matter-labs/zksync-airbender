@@ -74,6 +74,24 @@ pub fn default_pool_for<F: 'static, E: 'static>() -> Arc<dyn AllocationPool<F, E
     GenericAllocationPool::<F, E>::new().share()
 }
 
+/// [`default_pool_for`] in PROXY mode (nothing retained, every buffer freed
+/// when given back): the target's pool for its field pairs — so one-off
+/// commits such as the setup's still get the aligned windows the strided
+/// base LDE needs — else a generic proxy.
+pub fn default_proxy_pool_for<F: 'static, E: 'static>() -> Arc<dyn AllocationPool<F, E>> {
+    use core::any::Any;
+    let candidates: [Box<dyn Any>; 2] = [
+        Box::new(DefaultBabyBearAllocationPool::with_retain(false).share()),
+        Box::new(DefaultProth120AllocationPool::with_retain(false).share()),
+    ];
+    for c in candidates {
+        if let Ok(p) = c.downcast::<Arc<dyn AllocationPool<F, E>>>() {
+            return *p;
+        }
+    }
+    GenericAllocationPool::<F, E>::with_retain(false).share()
+}
+
 /// Base page size of the target: 16 KB on Apple Silicon macOS, 4 KB
 /// elsewhere (Linux x86-64 and aarch64 server kernels).
 pub const PAGE: usize = if cfg!(all(target_arch = "aarch64", target_os = "macos")) {

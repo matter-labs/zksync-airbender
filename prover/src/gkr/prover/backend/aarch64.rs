@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::allocation_pool::AllocationPool;
+use crate::gkr::prover::backend::ConvertedLeaves;
 
 /// Work-stealing backend whose BASE-FIELD flat grid tasks run the NEON
 /// BabyBear serial coset kernel (`fft::baby_bear_neon::lde_coset_neon`):
@@ -26,42 +27,28 @@ pub struct BabyBearNeonWorkStealingBackend;
 /// form entirely in registers with fused `root * 2^-1` twiddles — see
 /// `fft::baby_bear_neon::ext4::leaves_to_coeff_form*`. Byte-identical to the
 /// scalar context (parity-tested); leaf widths outside `2..=32` fall back to
-/// it, and under `eval_leaves` the conversion is the identity.
+/// it.
 pub struct BabyBearNeonExtCoeffConv {
-    #[cfg(not(feature = "eval_leaves"))]
     ctx: crate::gkr::whir::ExtCoeffConvCtx<BabyBearField>,
-    #[cfg(not(feature = "eval_leaves"))]
     hp_raw: Vec<u32>,
-    #[cfg(feature = "eval_leaves")]
-    _unused: (),
 }
 
 impl BabyBearNeonExtCoeffConv {
     pub fn new(coset_len: usize, values_per_leaf: usize) -> Self {
-        #[cfg(not(feature = "eval_leaves"))]
-        {
-            let ctx =
-                crate::gkr::whir::ExtCoeffConvCtx::<BabyBearField>::new(coset_len, values_per_leaf);
-            let hp_raw = ctx
-                .high_powers_offsets
-                .iter()
-                .map(|x| x.raw_u32_value())
-                .collect();
-            Self { ctx, hp_raw }
-        }
-        #[cfg(feature = "eval_leaves")]
-        {
-            let _ = (coset_len, values_per_leaf);
-            Self { _unused: () }
-        }
+        let ctx =
+            crate::gkr::whir::ExtCoeffConvCtx::<BabyBearField>::new(coset_len, values_per_leaf);
+        let hp_raw = ctx
+            .high_powers_offsets
+            .iter()
+            .map(|x| x.raw_u32_value())
+            .collect();
+        Self { ctx, hp_raw }
     }
 
-    #[cfg(not(feature = "eval_leaves"))]
     fn neon_applicable(&self) -> bool {
         (2..=32).contains(&self.ctx.values_per_leaf)
     }
 
-    #[cfg(not(feature = "eval_leaves"))]
     fn root_invs_raw(&self, offset: BabyBearField) -> Vec<u32> {
         let offset_inv = offset.inverse().unwrap();
         self.ctx
@@ -78,46 +65,56 @@ impl BabyBearNeonExtCoeffConv {
 
 impl ExtCoeffConversion<BabyBearField, BabyBearExt4> for BabyBearNeonExtCoeffConv {
     fn apply(&self, column: &mut [BabyBearExt4], offset: BabyBearField, worker: &Worker) {
-        #[cfg(not(feature = "eval_leaves"))]
-        {
-            if !self.neon_applicable() {
-                return self.ctx.apply(column, offset, worker);
-            }
-            let root_invs = self.root_invs_raw(offset);
-            fft::baby_bear_neon::ext4::leaves_to_coeff_form(
-                column,
-                &self.ctx.offsets,
-                &self.hp_raw,
-                self.ctx.two_inv,
-                &root_invs,
-                worker,
-            );
+        if !self.neon_applicable() {
+            return self.ctx.apply(column, offset, worker);
         }
-        #[cfg(feature = "eval_leaves")]
-        {
-            let _ = (column, offset, worker);
-        }
+        let root_invs = self.root_invs_raw(offset);
+        fft::baby_bear_neon::ext4::leaves_to_coeff_form(
+            column,
+            &self.ctx.offsets,
+            &self.hp_raw,
+            self.ctx.two_inv,
+            &root_invs,
+            worker,
+        );
     }
 
     fn apply_serial(&self, column: &mut [BabyBearExt4], offset: BabyBearField) {
-        #[cfg(not(feature = "eval_leaves"))]
-        {
-            if !self.neon_applicable() {
-                return self.ctx.apply_serial(column, offset);
-            }
-            let root_invs = self.root_invs_raw(offset);
-            fft::baby_bear_neon::ext4::leaves_to_coeff_form_serial(
-                column,
-                &self.ctx.offsets,
-                &self.hp_raw,
-                self.ctx.two_inv,
-                &root_invs,
-            );
+        if !self.neon_applicable() {
+            return self.ctx.apply_serial(column, offset);
         }
-        #[cfg(feature = "eval_leaves")]
-        {
-            let _ = (column, offset);
-        }
+        let root_invs = self.root_invs_raw(offset);
+        fft::baby_bear_neon::ext4::leaves_to_coeff_form_serial(
+            column,
+            &self.ctx.offsets,
+            &self.hp_raw,
+            self.ctx.two_inv,
+            &root_invs,
+        );
+    }
+
+    fn values_per_leaf(&self) -> usize {
+        self.ctx.values_per_leaf
+    }
+
+    #[inline(always)]
+    fn convert_gathered_leaf(
+        &self,
+        offset_inv: BabyBearField,
+        leaf_index: usize,
+        leaf: &mut [BabyBearExt4],
+    ) {
+        self.ctx.convert_gathered_leaf(offset_inv, leaf_index, leaf);
+    }
+
+    fn convert_leaf(
+        &self,
+        column: &[BabyBearExt4],
+        offset_inv: BabyBearField,
+        leaf_index: usize,
+        out: &mut [BabyBearExt4],
+    ) {
+        self.ctx.convert_leaf(column, offset_inv, leaf_index, out);
     }
 }
 
@@ -333,6 +330,18 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
     }
 
     type ExtCoeffConv = BabyBearNeonExtCoeffConv;
+    type CosetLeaves<'a>
+        = ConvertedLeaves<'a, BabyBearField, BabyBearExt4, BabyBearNeonExtCoeffConv>
+    where
+        Self: 'a;
+    fn coset_leaves<'a>(
+        &self,
+        conv: &'a Self::ExtCoeffConv,
+        column: &'a [BabyBearExt4],
+        offset: BabyBearField,
+    ) -> Self::CosetLeaves<'a> {
+        ConvertedLeaves::new(conv, column, offset)
+    }
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv {
         BabyBearNeonExtCoeffConv::new(coset_len, values_per_leaf)
     }

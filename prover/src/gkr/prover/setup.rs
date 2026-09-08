@@ -373,7 +373,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             whir_first_fold_step_log2,
             tree_cap_size,
             trace_len_log2,
-            &crate::allocation_pool::GenericAllocationPool::proxy(),
+            &*crate::allocation_pool::default_proxy_pool_for(),
             worker,
         ))
     }
@@ -410,7 +410,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             whir_first_fold_step_log2,
             tree_cap_size,
             trace_len_log2,
-            &crate::allocation_pool::GenericAllocationPool::proxy(),
+            &*crate::allocation_pool::default_proxy_pool_for(),
             worker,
         ))
     }
@@ -449,7 +449,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             tree_cap_size,
             trace_len_log2 + pack_log2,
             pack_log2,
-            &crate::allocation_pool::GenericAllocationPool::proxy(),
+            &*crate::allocation_pool::default_proxy_pool_for(),
             worker,
         )
     }

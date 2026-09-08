@@ -2421,6 +2421,106 @@ pub mod ext4 {
         }
     }
 
+    /// ONE gathered leaf (`leaf.len()` = values per leaf, 2..=32, in the
+    /// tree's leaf order) from evaluation to multilinear-coefficient form, in
+    /// place: the per-leaf kernel of [`leaves_to_coeff_form`] over a
+    /// contiguous buffer (identity offsets). Byte-identical to the scalar
+    /// `evals_to_multilinear_coeffs`.
+    pub fn leaf_to_coeff_form(
+        leaf: &mut [BabyBearExt4],
+        hp_raw: &[u32],
+        two_inv: BabyBearField,
+        root_inv_raw: u32,
+    ) {
+        const IDENTITY: [usize; 32] = {
+            let mut a = [0usize; 32];
+            let mut i = 0;
+            while i < 32 {
+                a[i] = i;
+                i += 1;
+            }
+            a
+        };
+        let n = leaf.len();
+        assert!(n >= 2 && n <= 32 && n.is_power_of_two());
+        unsafe {
+            fold_leaf_range(
+                leaf.as_mut_ptr(),
+                &IDENTITY[..n],
+                hp_raw,
+                two_inv.raw_u32_value(),
+                &[root_inv_raw],
+                0..1,
+            );
+        }
+    }
+
+    /// TWO gathered leaves, slot-interleaved (`pair[2k]` = slot `k` of the
+    /// first leaf, `pair[2k + 1]` of the second; `pair.len() = 2 * values per
+    /// leaf`, 2..=32 values), converted in place through the two-leaves-per-
+    /// vector kernel. Byte-identical to `evals_to_multilinear_coeffs` per leaf.
+    pub fn leaf_pair_to_coeff_form(
+        pair: &mut [BabyBearExt4],
+        hp_raw: &[u32],
+        two_inv: BabyBearField,
+        root_invs_raw: [u32; 2],
+    ) {
+        const STRIDE2: [usize; 32] = {
+            let mut a = [0usize; 32];
+            let mut i = 0;
+            while i < 32 {
+                a[i] = 2 * i;
+                i += 1;
+            }
+            a
+        };
+        let n = pair.len() / 2;
+        assert!(n >= 2 && n <= 32 && n.is_power_of_two() && pair.len() == 2 * n);
+        unsafe {
+            fold_leaf_range(
+                pair.as_mut_ptr(),
+                &STRIDE2[..n],
+                hp_raw,
+                two_inv.raw_u32_value(),
+                &root_invs_raw,
+                0..2,
+            );
+        }
+    }
+
+    /// FOUR gathered leaves, slot-major (`quad[4k + w]` = slot `k` of leaf
+    /// `w`; `quad.len() = 4 * values per leaf`, 2..=32 values), converted in
+    /// place as two vector pairs. Byte-identical to
+    /// `evals_to_multilinear_coeffs` per leaf.
+    pub fn leaf_quad_to_coeff_form(
+        quad: &mut [BabyBearExt4],
+        hp_raw: &[u32],
+        two_inv: BabyBearField,
+        root_invs_raw: [u32; 4],
+    ) {
+        const STRIDE4: [usize; 32] = {
+            let mut a = [0usize; 32];
+            let mut i = 0;
+            while i < 32 {
+                a[i] = 4 * i;
+                i += 1;
+            }
+            a
+        };
+        let n = quad.len() / 4;
+        assert!(n >= 2 && n <= 32 && n.is_power_of_two() && quad.len() == 4 * n);
+        unsafe {
+            fold_leaf_range(
+                quad.as_mut_ptr(),
+                &STRIDE4[..n],
+                hp_raw,
+                two_inv.raw_u32_value(),
+                &root_invs_raw,
+                0..4,
+            );
+        }
+    }
+
     /// Serial coset conversion. Byte-identical to the scalar
     /// `ExtCoeffConvCtx::apply_serial`.
     pub fn leaves_to_coeff_form_serial(

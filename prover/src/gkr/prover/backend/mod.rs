@@ -19,6 +19,7 @@ use super::commitment_utils::{
 };
 use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
 use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
+use crate::merkle_trees::CosetLeafAccessor;
 use fft::{GoodAllocator, Twiddles};
 use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use field::{Field, FieldExtension, PrimeField, Proth120, TwoAdicField};
@@ -51,7 +52,7 @@ pub use work_stealing::WorkStealingBackend;
 
 /// In-place conversion of a materialized intermediate-oracle coset from
 /// evaluation form to the PRODUCTION leaf encoding (multilinear-coefficient
-/// leaves by default; the identity under the `eval_leaves` feature). An
+/// leaves). An
 /// ASSOCIATED TYPE of [`Backend`], so the conversion's tables and scratch
 /// buffers stay implementation-private and alternative backends may supply
 /// specialized (e.g. vectorized) conversions later.
@@ -64,33 +65,215 @@ pub trait ExtCoeffConversion<F: PrimeField + TwoAdicField, E: FieldExtension<F> 
     /// Fully serial variant for flat per-coset task grids (bit-identical to
     /// [`Self::apply`]).
     fn apply_serial(&self, column: &mut [E], offset: F);
+    /// Values per leaf of this conversion.
+    fn values_per_leaf(&self) -> usize;
+    /// Leaf `leaf_index` of an EVALUATION-form coset column (`offset_inv` =
+    /// the inverse of the coset's LDE offset), gathered in the tree's leaf
+    /// order and converted into `out`: the committed leaf the tree hashes
+    /// and the queries return. Bit-identical to what [`Self::apply`] leaves
+    /// in the column.
+    fn convert_leaf(&self, column: &[E], offset_inv: F, leaf_index: usize, out: &mut [E]);
+    /// Leaves `first_leaf .. first_leaf + count` converted into `out`
+    /// (leaf-major); vector implementations batch pairs of leaves here.
+    fn convert_leaves(
+        &self,
+        column: &[E],
+        offset_inv: F,
+        first_leaf: usize,
+        count: usize,
+        out: &mut [E],
+    ) {
+        let vpl = self.values_per_leaf();
+        for (w, chunk) in out[..count * vpl].chunks_exact_mut(vpl).enumerate() {
+            self.convert_leaf(column, offset_inv, first_leaf + w, chunk);
+        }
+    }
+    /// Convert ONE already gathered leaf in place: `leaf` holds the
+    /// evaluations in the tree's leaf order, `leaf_index` is its index in
+    /// the coset and `offset_inv` the inverse of the coset's LDE offset.
+    /// Bit-identical to [`Self::convert_leaf`] on the column the leaf was
+    /// gathered from (the by-coefficient oracle gathers leaves itself).
+    fn convert_gathered_leaf(&self, offset_inv: F, leaf_index: usize, leaf: &mut [E]);
+    /// Leaves `first_leaf .. first_leaf + count` (leaf-major in `leaves`,
+    /// already gathered) converted in place; vector implementations batch
+    /// pairs of leaves here.
+    fn convert_gathered_leaves(
+        &self,
+        offset_inv: F,
+        first_leaf: usize,
+        count: usize,
+        leaves: &mut [E],
+    ) {
+        let vpl = self.values_per_leaf();
+        for (w, chunk) in leaves[..count * vpl].chunks_exact_mut(vpl).enumerate() {
+            self.convert_gathered_leaf(offset_inv, first_leaf + w, chunk);
+        }
+    }
+    /// Leaves `first_leaf .. first_leaf + count` gathered SLOT-MAJOR
+    /// (`block[k * count + w]` = slot `k` of leaf `w`) converted in place —
+    /// the layout a vector gather of consecutive leaves produces and the
+    /// two-leaves-per-vector kernels consume without any re-interleaving.
+    fn convert_gathered_block(
+        &self,
+        offset_inv: F,
+        first_leaf: usize,
+        count: usize,
+        block: &mut [E],
+    ) {
+        let vpl = self.values_per_leaf();
+        let mut leaves = vec![E::ZERO; count * vpl];
+        for w in 0..count {
+            for k in 0..vpl {
+                leaves[w * vpl + k] = block[k * count + w];
+            }
+        }
+        self.convert_gathered_leaves(offset_inv, first_leaf, count, &mut leaves);
+        for w in 0..count {
+            for k in 0..vpl {
+                block[k * count + w] = leaves[w * vpl + k];
+            }
+        }
+    }
 }
 
-/// The standard conversion used by every current backend: wraps the
-/// coefficient-form context (or nothing when `eval_leaves` keeps raw
-/// evaluations committed). The leaf-encoding conditional compilation lives
-/// entirely INSIDE this type.
-pub struct StandardExtCoeffConv<F: PrimeField + TwoAdicField> {
-    #[cfg(not(feature = "eval_leaves"))]
-    ctx: crate::gkr::whir::ExtCoeffConvCtx<F>,
-    #[cfg(feature = "eval_leaves")]
+/// A shared leaf conversion of one oracle (the in-memory oracles keep their
+/// codewords in evaluation form and convert leaves at query time).
+pub struct LeafConversionHandle<F, E>(pub Arc<dyn ExtCoeffConversion<F, E>>);
+
+impl<F, E> Clone for LeafConversionHandle<F, E> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+impl<F, E> core::fmt::Debug for LeafConversionHandle<F, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "LeafConversionHandle")
+    }
+}
+
+impl<F, E> core::ops::Deref for LeafConversionHandle<F, E> {
+    type Target = dyn ExtCoeffConversion<F, E>;
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+/// Leaf accessor of one evaluation-form coset column that converts every
+/// leaf on the fly through a backend's [`ExtCoeffConversion`]: what the
+/// tree constructor hashes ([`CosetLeafAccessor`]).
+pub struct ConvertedLeaves<
+    'a,
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    C: ExtCoeffConversion<F, E>,
+> {
+    conv: &'a C,
+    column: &'a [E],
+    offset_inv: F,
+    _marker: core::marker::PhantomData<E>,
+}
+
+impl<
+        'a,
+        F: PrimeField + TwoAdicField,
+        E: FieldExtension<F> + Field,
+        C: ExtCoeffConversion<F, E>,
+    > ConvertedLeaves<'a, F, E, C>
+{
+    pub fn new(conv: &'a C, column: &'a [E], offset: F) -> Self {
+        assert_eq!(column.len() % conv.values_per_leaf(), 0);
+        Self {
+            conv,
+            column,
+            offset_inv: offset.inverse().unwrap(),
+            _marker: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<
+        'a,
+        F: PrimeField + TwoAdicField,
+        E: FieldExtension<F> + Field,
+        C: ExtCoeffConversion<F, E>,
+    > CosetLeafAccessor<E> for ConvertedLeaves<'a, F, E, C>
+{
+    fn num_leaves(&self) -> usize {
+        self.column.len() / self.conv.values_per_leaf()
+    }
+    fn values_per_leaf(&self) -> usize {
+        self.conv.values_per_leaf()
+    }
+    #[inline(always)]
+    fn leaf_into(&self, leaf_index: usize, out: &mut [E]) {
+        self.conv
+            .convert_leaf(self.column, self.offset_inv, leaf_index, out)
+    }
+    #[inline(always)]
+    fn leaves_into(&self, first_leaf: usize, count: usize, out: &mut [E]) {
+        self.conv
+            .convert_leaves(self.column, self.offset_inv, first_leaf, count, out)
+    }
+}
+
+/// The identity leaf encoding (raw evaluations committed): the
+/// `no_transform` test helper and the small-leaf in-place path, whose
+/// codeword already holds the converted leaves.
+pub struct NoLeafConversion<F> {
+    offsets: Vec<usize>,
     _marker: core::marker::PhantomData<F>,
+}
+
+impl<F: PrimeField + TwoAdicField> NoLeafConversion<F> {
+    pub fn new(coset_len: usize, values_per_leaf: usize) -> Self {
+        Self {
+            offsets: crate::gkr::whir::offsets_vec_for_leaf_construction(
+                coset_len,
+                values_per_leaf,
+            ),
+            _marker: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> ExtCoeffConversion<F, E>
+    for NoLeafConversion<F>
+{
+    fn apply(&self, _column: &mut [E], _offset: F, _worker: &Worker) {}
+    fn apply_serial(&self, _column: &mut [E], _offset: F) {}
+    fn values_per_leaf(&self) -> usize {
+        self.offsets.len()
+    }
+    #[inline(always)]
+    fn convert_leaf(&self, column: &[E], _offset_inv: F, leaf_index: usize, out: &mut [E]) {
+        for (o, off) in out.iter_mut().zip(self.offsets.iter()) {
+            *o = column[off + leaf_index];
+        }
+    }
+    #[inline(always)]
+    fn convert_gathered_leaf(&self, _offset_inv: F, _leaf_index: usize, _leaf: &mut [E]) {}
+    #[inline(always)]
+    fn convert_gathered_block(
+        &self,
+        _offset_inv: F,
+        _first_leaf: usize,
+        _count: usize,
+        _block: &mut [E],
+    ) {
+    }
+}
+
+/// The standard conversion used by every current backend: the scalar
+/// coefficient-form context.
+pub struct StandardExtCoeffConv<F: PrimeField + TwoAdicField> {
+    ctx: crate::gkr::whir::ExtCoeffConvCtx<F>,
 }
 
 impl<F: PrimeField + TwoAdicField> StandardExtCoeffConv<F> {
     pub fn new(coset_len: usize, values_per_leaf: usize) -> Self {
-        #[cfg(not(feature = "eval_leaves"))]
-        {
-            Self {
-                ctx: crate::gkr::whir::ExtCoeffConvCtx::new(coset_len, values_per_leaf),
-            }
-        }
-        #[cfg(feature = "eval_leaves")]
-        {
-            let _ = (coset_len, values_per_leaf);
-            Self {
-                _marker: core::marker::PhantomData,
-            }
+        Self {
+            ctx: crate::gkr::whir::ExtCoeffConvCtx::new(coset_len, values_per_leaf),
         }
     }
 }
@@ -99,21 +282,22 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> ExtCoeffConvers
     for StandardExtCoeffConv<F>
 {
     fn apply(&self, column: &mut [E], offset: F, worker: &Worker) {
-        #[cfg(not(feature = "eval_leaves"))]
         self.ctx.apply(column, offset, worker);
-        #[cfg(feature = "eval_leaves")]
-        {
-            let _ = (column, offset, worker);
-        }
     }
 
     fn apply_serial(&self, column: &mut [E], offset: F) {
-        #[cfg(not(feature = "eval_leaves"))]
         self.ctx.apply_serial(column, offset);
-        #[cfg(feature = "eval_leaves")]
-        {
-            let _ = (column, offset);
-        }
+    }
+    fn values_per_leaf(&self) -> usize {
+        self.ctx.values_per_leaf
+    }
+    #[inline(always)]
+    fn convert_leaf(&self, column: &[E], offset_inv: F, leaf_index: usize, out: &mut [E]) {
+        self.ctx.convert_leaf(column, offset_inv, leaf_index, out);
+    }
+    #[inline(always)]
+    fn convert_gathered_leaf(&self, offset_inv: F, leaf_index: usize, leaf: &mut [E]) {
+        self.ctx.convert_gathered_leaf(offset_inv, leaf_index, leaf);
     }
 }
 
@@ -289,8 +473,34 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
     /// oracles — built once per oracle commit (its tables are coset-length
     /// sized) and shared across all that oracle's cosets. See
     /// [`ExtCoeffConversion`].
-    type ExtCoeffConv: ExtCoeffConversion<F, E>;
+    type ExtCoeffConv: ExtCoeffConversion<F, E> + 'static;
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv;
+
+    /// `Some(n)` when this backend's base-column LDE has a fast path at ONE
+    /// column length `n` (the strided 2^24 pipeline): the WHIR prover then
+    /// commits an intermediate oracle of `n / 2` values BY COEFFICIENT — its
+    /// `E::DEGREE` base-field limb columns, duplicated to length `n` (the
+    /// same codeword), through [`Self::lde_multiple_polys_from_hypercubes`]
+    /// at half the LDE factor — instead of through the extension-field coset
+    /// LDE (see [`crate::gkr::whir::by_coefficient`]). `None`: no such path.
+    fn by_coefficient_lde_len(&self) -> Option<usize> {
+        None
+    }
+
+    /// Leaf accessor of one evaluation-form coset column (the committed,
+    /// converted leaves), built over the oracle-wide conversion context
+    /// [`Self::ext_coeff_conv`] and the coset's LDE offset: the tree
+    /// constructor hashes through it, so the conversion happens while the
+    /// leaves are hashed instead of as a separate pass over the codeword.
+    type CosetLeaves<'a>: CosetLeafAccessor<E> + 'a
+    where
+        Self: 'a;
+    fn coset_leaves<'a>(
+        &self,
+        conv: &'a Self::ExtCoeffConv,
+        column: &'a [E],
+        offset: F,
+    ) -> Self::CosetLeaves<'a>;
 }
 
 /// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
@@ -1266,7 +1476,7 @@ mod tests {
     /// The NEON leaf-fold conversion must be byte-identical to the scalar
     /// context, across the production leaf widths (8/16/32), both scheduling
     /// entry points, and a non-trivial coset offset.
-    #[cfg(all(target_arch = "aarch64", not(feature = "eval_leaves")))]
+    #[cfg(target_arch = "aarch64")]
     #[test]
     fn baby_bear_neon_ext_coeff_conv_matches_scalar() {
         use crate::gkr::whir::ExtCoeffConvCtx;
@@ -1386,11 +1596,7 @@ mod tests {
         check_o1_transform_parity::<BabyBearField, BabyBearExt4, _>(&backend);
     }
 
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        not(feature = "eval_leaves")
-    ))]
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
     #[test]
     fn baby_bear_avx2_ext_coeff_conv_matches_scalar() {
         use crate::gkr::whir::ExtCoeffConvCtx;

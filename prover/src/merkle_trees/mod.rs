@@ -216,6 +216,68 @@ impl<T, A: CosetIndexedAccessor<T> + ?Sized> CosetIndexedAccessor<T> for Box<A> 
     }
 }
 
+/// Leaf-level view of one coset column for tree construction: every leaf's
+/// `values_per_leaf` COMMITTED values in the tree's leaf order (the
+/// bit-reversed stride gather of [`crate::gkr::whir::offsets_vec_for_leaf_construction`]),
+/// produced by the accessor itself — so an encoding such as the WHIR
+/// evaluations -> multilinear-coefficient leaf conversion happens while the
+/// leaves are hashed, and the column stays in evaluation form.
+pub trait CosetLeafAccessor<T>: Sync {
+    fn num_leaves(&self) -> usize;
+    fn values_per_leaf(&self) -> usize;
+    /// Write leaf `leaf_index` into `out` (`values_per_leaf` entries).
+    fn leaf_into(&self, leaf_index: usize, out: &mut [T]);
+    /// Leaves `first_leaf .. first_leaf + count` into `out` (leaf-major,
+    /// `count * values_per_leaf` entries); accessors that convert can batch
+    /// the conversion here.
+    fn leaves_into(&self, first_leaf: usize, count: usize, out: &mut [T]) {
+        let vpl = self.values_per_leaf();
+        for (w, chunk) in out[..count * vpl].chunks_exact_mut(vpl).enumerate() {
+            self.leaf_into(first_leaf + w, chunk);
+        }
+    }
+    /// Leaves `first_leaf .. first_leaf + count` SLOT-MAJOR into `out`
+    /// (`out[k * count + w]` = slot `k` of leaf `w`) when the accessor can
+    /// produce that layout directly (`true`); `false` leaves `out` untouched
+    /// and the caller falls back to [`Self::leaves_into`].
+    fn leaves_into_slot_major(&self, _first_leaf: usize, _count: usize, _out: &mut [T]) -> bool {
+        false
+    }
+}
+
+/// The plain (no conversion) leaf accessor over a contiguous column.
+pub struct PlainCosetLeaves<'a, T> {
+    column: &'a [T],
+    offsets: Vec<usize>,
+}
+
+impl<'a, T> PlainCosetLeaves<'a, T> {
+    pub fn new(column: &'a [T], values_per_leaf: usize) -> Self {
+        Self {
+            column,
+            offsets: crate::gkr::whir::offsets_vec_for_leaf_construction(
+                column.len(),
+                values_per_leaf,
+            ),
+        }
+    }
+}
+
+impl<'a, T: Copy + Sync> CosetLeafAccessor<T> for PlainCosetLeaves<'a, T> {
+    fn num_leaves(&self) -> usize {
+        self.column.len() / self.offsets.len()
+    }
+    fn values_per_leaf(&self) -> usize {
+        self.offsets.len()
+    }
+    #[inline(always)]
+    fn leaf_into(&self, leaf_index: usize, out: &mut [T]) {
+        for (o, off) in out.iter_mut().zip(self.offsets.iter()) {
+            *o = self.column[off + leaf_index];
+        }
+    }
+}
+
 /// A column stored in a block-padded FFT output layout
 /// ([`crate::allocation_pool::PaddedBlocks`]): `data` holds
 /// `geo.padded_len(len)` elements, the gaps between blocks are never read.
@@ -341,6 +403,18 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     /// Byte-identical to the materialized path; the one-coset-at-a-time memory
     /// profile only holds on the disk-writing paths, which call the producer
     /// themselves.
+    /// Tree over leaf-level accessors (`cosets[c]` = the columns of coset
+    /// `c`); the bit-reversed evaluation layout is implied by the accessors.
+    fn construct_from_leaf_accessors<E: FieldExtension<F> + field::Field, L: CosetLeafAccessor<E>>(
+        cosets: &[&[L]],
+        cap_size: usize,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> Self
+    where
+        [(); E::DEGREE]: Sized;
+
     fn construct_from_coset_producer<'a, E: FieldExtension<F> + 'a>(
         num_cosets: usize,
         mut producer: CosetColumnsProducer<'a, E>,

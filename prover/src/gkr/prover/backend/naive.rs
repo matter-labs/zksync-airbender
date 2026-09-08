@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::allocation_pool::AllocationPool;
+use crate::gkr::prover::backend::ConvertedLeaves;
 
 /// The reference implementation: delegates verbatim to the historical free
 /// functions, for any `<F, E>`.
@@ -140,6 +141,18 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
     }
 
     type ExtCoeffConv = StandardExtCoeffConv<F>;
+    type CosetLeaves<'a>
+        = ConvertedLeaves<'a, F, E, StandardExtCoeffConv<F>>
+    where
+        Self: 'a;
+    fn coset_leaves<'a>(
+        &self,
+        conv: &'a Self::ExtCoeffConv,
+        column: &'a [E],
+        offset: F,
+    ) -> Self::CosetLeaves<'a> {
+        ConvertedLeaves::new(conv, column, offset)
+    }
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv {
         StandardExtCoeffConv::new(coset_len, values_per_leaf)
     }

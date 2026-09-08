@@ -10,6 +10,7 @@
 use super::keccak256_hash_leafs::{
     keccak256_leaf_hashes_from_cosets, keccak_digest_to_bytes, KECCAK256_DIGEST_SIZE_U32_WORDS,
 };
+use super::CosetLeafAccessor;
 use super::*;
 use crate::definitions::{LeafInclusionVerifier, MerkleTreeCap};
 use blake2s_u32::AlignedSlice64;
@@ -196,6 +197,29 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
             worker,
         );
 
+        Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
+    }
+
+    fn construct_from_leaf_accessors<
+        E: FieldExtension<Proth120> + field::Field,
+        L: CosetLeafAccessor<E>,
+    >(
+        cosets: &[&[L]],
+        cap_size: usize,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> Self
+    where
+        [(); E::DEGREE]: Sized,
+    {
+        use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_leaf_accessors;
+        let leaf_hashes = keccak256_leaf_hashes_from_leaf_accessors::<E, L, B>(
+            cosets,
+            bitreverse_cosets,
+            bitreverse_leaf_hashes,
+            worker,
+        );
         Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
     }
 

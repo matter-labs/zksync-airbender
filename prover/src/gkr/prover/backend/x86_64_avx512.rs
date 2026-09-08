@@ -29,6 +29,9 @@ const STRIDED_CHUNK_STRIDE: usize = (1 << (STRIDED_LOG_N - 4)) + 1088;
 #[derive(Clone, Copy, Debug)]
 pub struct BabyBearAvx512WorkStealingBackend {
     strided: bool,
+    /// Commit the 2^23-value WHIR oracle by coefficient through the strided
+    /// pipeline (see [`Backend::by_coefficient_lde_len`]); needs `strided`.
+    by_coefficient: bool,
     inner: BabyBearAvx2WorkStealingBackend,
 }
 
@@ -41,19 +44,32 @@ impl BabyBearAvx512WorkStealingBackend {
         );
         Self {
             strided,
+            by_coefficient: strided,
             inner: BabyBearAvx2WorkStealingBackend,
         }
     }
     /// The strided base LDE when the CPU has `avx512f` and env `FFT_STRIDED`
-    /// is not `0`; the plain AVX2 backend otherwise.
+    /// is not `0`; the plain AVX2 backend otherwise. The by-coefficient WHIR
+    /// oracle rides on the strided pipeline unless env `WHIR_BY_COEFF` is `0`.
     pub fn detect() -> Self {
         let wanted = std::env::var("FFT_STRIDED")
             .map(|v| v != "0")
             .unwrap_or(true);
-        Self::new(wanted && is_x86_feature_detected!("avx512f"))
+        let by_coefficient = std::env::var("WHIR_BY_COEFF")
+            .map(|v| v != "0")
+            .unwrap_or(true);
+        Self::new(wanted && is_x86_feature_detected!("avx512f")).with_by_coefficient(by_coefficient)
+    }
+    /// Enable/disable the by-coefficient WHIR oracle (a no-op without `strided`).
+    pub fn with_by_coefficient(mut self, on: bool) -> Self {
+        self.by_coefficient = on && self.strided;
+        self
     }
     pub fn uses_strided(&self) -> bool {
         self.strided
+    }
+    pub fn uses_by_coefficient(&self) -> bool {
+        self.by_coefficient
     }
 }
 
@@ -211,6 +227,14 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx512WorkStealingBackend 
             .lde_multiple_polys_from_hypercubes(evals, twiddles, lde_factor, pool, worker)
     }
 
+    fn by_coefficient_lde_len(&self) -> Option<usize> {
+        if self.by_coefficient {
+            Some(1usize << STRIDED_LOG_N)
+        } else {
+            None
+        }
+    }
+
     fn lde_packed_monomials_into_cosets(
         &self,
         monomials: Vec<Vec<BabyBearField>>,
@@ -318,6 +342,18 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx512WorkStealingBackend 
     }
 
     type ExtCoeffConv = BabyBearAvx2ExtCoeffConv;
+    type CosetLeaves<'a>
+        = ConvertedLeaves<'a, BabyBearField, BabyBearExt4, BabyBearAvx2ExtCoeffConv>
+    where
+        Self: 'a;
+    fn coset_leaves<'a>(
+        &self,
+        conv: &'a Self::ExtCoeffConv,
+        column: &'a [BabyBearExt4],
+        offset: BabyBearField,
+    ) -> Self::CosetLeaves<'a> {
+        ConvertedLeaves::new(conv, column, offset)
+    }
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv {
         self.inner.ext_coeff_conv(coset_len, values_per_leaf)
     }
@@ -347,23 +383,28 @@ mod tests {
         let avx2 = BabyBearAvx2WorkStealingBackend;
         let twiddles = avx2.make_twiddles(2 * n, &worker);
         let pool = crate::allocation_pool::X86BabyBearAllocationPool::new();
-        let reference =
-            avx2.lde_multiple_polys_from_hypercubes(&cols, &twiddles, 2, &pool, &worker);
         let strided = BabyBearAvx512WorkStealingBackend::new(true);
-        let got = strided.lde_multiple_polys_from_hypercubes(&cols, &twiddles, 2, &pool, &worker);
-        assert_eq!(got.len(), reference.len());
-        for (coset, (a, b)) in got.iter().zip(reference.iter()).enumerate() {
-            assert_eq!(a.len(), 1);
-            assert_eq!(a[0].offset, b[0].offset);
-            assert_eq!(a[0].layout, ColumnLayout::PaddedBlocks(PADDED_GEOMETRY));
-            assert_eq!(a[0].len(), n);
-            let x = a[0].to_vec();
-            let y = b[0].to_vec();
-            if x != y {
-                let idx = x.iter().zip(y.iter()).position(|(p, q)| p != q).unwrap();
-                panic!("coset {coset}: first mismatch at natural index {idx}");
+        // the base commits' factor 2 and the by-coefficient WHIR oracle's 8
+        for lde_factor in [2usize, 8] {
+            let reference = avx2
+                .lde_multiple_polys_from_hypercubes(&cols, &twiddles, lde_factor, &pool, &worker);
+            let got = strided
+                .lde_multiple_polys_from_hypercubes(&cols, &twiddles, lde_factor, &pool, &worker);
+            assert_eq!(got.len(), reference.len());
+            for (coset, (a, b)) in got.iter().zip(reference.iter()).enumerate() {
+                assert_eq!(a.len(), 1);
+                assert_eq!(a[0].offset, b[0].offset);
+                assert_eq!(a[0].layout, ColumnLayout::PaddedBlocks(PADDED_GEOMETRY));
+                assert_eq!(a[0].len(), n);
+                let x = a[0].to_vec();
+                let y = b[0].to_vec();
+                if x != y {
+                    let idx = x.iter().zip(y.iter()).position(|(p, q)| p != q).unwrap();
+                    panic!("lde {lde_factor} coset {coset}: first mismatch at natural index {idx}");
+                }
             }
         }
+        let got = strided.lde_multiple_polys_from_hypercubes(&cols, &twiddles, 2, &pool, &worker);
         // the outputs return to the pool once dropped
         let misses_before = pool.stats().misses;
         drop(got);

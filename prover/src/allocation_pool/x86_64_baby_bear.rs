@@ -184,6 +184,22 @@ mod tests {
         pool.give_base(p);
     }
 
+    /// The pool-less prover entries and the setup commit resolve to THIS pool
+    /// for the BabyBear pair (retaining and proxy flavours alike), so every
+    /// padded request has the 64-byte window the strided base LDE needs.
+    #[test]
+    fn default_pools_for_baby_bear_are_aligned() {
+        for pool in [
+            crate::allocation_pool::default_pool_for::<BabyBearField, BabyBearExt4>(),
+            crate::allocation_pool::default_proxy_pool_for::<BabyBearField, BabyBearExt4>(),
+        ] {
+            let p = pool.alloc_base(1 << 20, ColumnLayout::PaddedBlocks(PADDED_GEOMETRY));
+            assert_eq!(p.len(), PADDED_GEOMETRY.padded_len(1 << 20));
+            assert_eq!(p.as_ptr() as usize % WINDOW_ALIGN, 0);
+            pool.give_base(p);
+        }
+    }
+
     #[test]
     fn same_layout_reuses_records() {
         let pool = X86BabyBearAllocationPool::new();
