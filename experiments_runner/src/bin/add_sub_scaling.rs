@@ -31,7 +31,33 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover::GKRExternalChallenges;
-use prover::gkr::prover::{DefaultBabyBearGKRBackend, GKRBackend, NaiveGKRBackend};
+use prover::gkr::prover::{
+    Avx2GKRBackend, DefaultBabyBearGKRBackend, GKRBackend, NaiveGKRBackend, X86GKRBackend,
+};
+
+/// Which GKR backend to prove with (`--gkr-backend
+/// naive|default|avx2|avx2-pool|avx512|avx512-nopool`): `default` is the
+/// runtime-detected x86 backend with the pool, `avx2` the plain AVX2 backend.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum GkrKind {
+    Naive,
+    Default,
+    Avx2,
+    X86 { avx512: bool, pooled: bool },
+}
+impl GkrKind {
+    fn label(&self) -> &'static str {
+        match self {
+            GkrKind::Naive => "naive",
+            GkrKind::Default => "default",
+            GkrKind::Avx2 => "avx2",
+            GkrKind::X86 { avx512: true, pooled: true } => "avx512",
+            GkrKind::X86 { avx512: true, pooled: false } => "avx512-nopool",
+            GkrKind::X86 { avx512: false, pooled: true } => "avx2-pool",
+            GkrKind::X86 { avx512: false, pooled: false } => "avx2-x86",
+        }
+    }
+}
 use prover::gkr::prover_config::{example_configs, ProverConfig};
 use prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use prover::tests::gkr::add_sub_lui_auipc_mop;
@@ -64,7 +90,7 @@ fn file_digest(path: &str) -> u64 {
 /// arch-specialized one when the build enables it, or the portable naive one).
 #[allow(clippy::too_many_arguments)]
 fn prove_with_gkr_backend(
-    naive_gkr: bool,
+    gkr: GkrKind,
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
     decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
@@ -78,8 +104,8 @@ fn prove_with_gkr_backend(
     BabyBearExt4,
     prover::merkle_trees::DefaultTreeConstructor,
 > {
-    if naive_gkr {
-        prove_built_family_trace_with_prover_config_and_gkr_backend(
+    match gkr {
+        GkrKind::Naive => prove_built_family_trace_with_prover_config_and_gkr_backend(
             circuit,
             table_driver,
             decoder_table_data,
@@ -89,9 +115,8 @@ fn prove_with_gkr_backend(
             prover_config,
             &NaiveGKRBackend,
             worker,
-        )
-    } else {
-        prove_built_family_trace_with_prover_config_and_gkr_backend(
+        ),
+        GkrKind::Default => prove_built_family_trace_with_prover_config_and_gkr_backend(
             circuit,
             table_driver,
             decoder_table_data,
@@ -101,7 +126,31 @@ fn prove_with_gkr_backend(
             prover_config,
             &DefaultBabyBearGKRBackend::default(),
             worker,
-        )
+        ),
+        GkrKind::Avx2 => prove_built_family_trace_with_prover_config_and_gkr_backend(
+            circuit,
+            table_driver,
+            decoder_table_data,
+            full_trace,
+            trace_len,
+            external_challenges,
+            prover_config,
+            &Avx2GKRBackend,
+            worker,
+        ),
+        GkrKind::X86 { avx512, pooled } => {
+            prove_built_family_trace_with_prover_config_and_gkr_backend(
+                circuit,
+                table_driver,
+                decoder_table_data,
+                full_trace,
+                trace_len,
+                external_challenges,
+                prover_config,
+                &X86GKRBackend::new(avx512, pooled),
+                worker,
+            )
+        }
     }
 }
 
@@ -192,6 +241,16 @@ impl<GB: GKRBackend<BabyBearField, BabyBearExt4>> GkrDispatch for GB {
     }
 }
 
+/// One backend instance per prover (kept across reps so its pools persist).
+fn make_gkr(gkr: GkrKind) -> Box<dyn GkrDispatch> {
+    match gkr {
+        GkrKind::Naive => Box::new(NaiveGKRBackend),
+        GkrKind::Default => Box::new(DefaultBabyBearGKRBackend::default()),
+        GkrKind::Avx2 => Box::new(Avx2GKRBackend),
+        GkrKind::X86 { avx512, pooled } => Box::new(X86GKRBackend::new(avx512, pooled)),
+    }
+}
+
 /// OUTER-parallelism test: the setup (twiddles + setup construct + commit) is
 /// computed ONCE and shared, then `outer` provers of the same trace run
 /// concurrently, each on its own `inner`-thread worker, all with
@@ -201,7 +260,8 @@ impl<GB: GKRBackend<BabyBearField, BabyBearExt4>> GkrDispatch for GB {
 fn outer_parallel(
     outer: usize,
     inner: usize,
-    naive_gkr: bool,
+    reps: usize,
+    gkr: GkrKind,
     pin: bool,
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -239,29 +299,23 @@ fn outer_parallel(
     let storage = WhirOracleStorage::fully_in_memory_continuous();
     let run_one = |label: String,
                    worker: &Worker,
-                   trace: GKRFullWitnessTrace<BabyBearField, Global, Global>|
+                   trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+                   gb: &dyn GkrDispatch|
      -> f64 {
         let t = std::time::Instant::now();
-        let go = |gb: &dyn GkrDispatch| {
-            gb.prove(
-                circuit,
-                external_challenges,
-                trace,
-                &setup,
-                &setup_commitment,
-                &twiddles,
-                prover_config,
-                storage,
-                trace_len,
-                &backend,
-                worker,
-            )
-        };
-        let proof = if naive_gkr {
-            go(&NaiveGKRBackend)
-        } else {
-            go(&DefaultBabyBearGKRBackend::default())
-        };
+        let proof = gb.prove(
+            circuit,
+            external_challenges,
+            trace,
+            &setup,
+            &setup_commitment,
+            &twiddles,
+            prover_config,
+            storage,
+            trace_len,
+            &backend,
+            worker,
+        );
         let el = t.elapsed().as_secs_f64();
         println!(
             "[outer] {label}: prove {el:.3} s (grand product {:?})",
@@ -278,12 +332,19 @@ fn outer_parallel(
     // INSIDE its pool (the driving thread is a pool thread; every `scope`
     // body — including `smart_spawn`'s inline last chunk — runs on pool
     // threads only).
+    // `reps` proofs per prover with ONE backend instance (its pools persist):
+    // rep 1 is cold, later reps are the steady state of a long-running prover
     let solo = {
         let worker = Worker::new_with_num_threads_and_stack(inner, POOL_STACK);
-        let tr = trace.clone();
-        worker
-            .pool
-            .install(|| run_one("solo baseline".to_string(), &worker, tr))
+        let gb = make_gkr(gkr);
+        let mut last = 0.0;
+        for r in 0..reps {
+            let tr = trace.clone();
+            last = worker.pool.install(|| {
+                run_one(format!("solo baseline rep {}", r + 1), &worker, tr, &*gb)
+            });
+        }
+        last
     };
 
     // Pinning plan: prover i owns the consecutive CPU block
@@ -326,8 +387,11 @@ fn outer_parallel(
     let traces: Vec<_> = (0..outer).map(|_| trace.clone()).collect();
     drop(trace);
     let cpu_blocks = &cpu_blocks;
-    let t_all = std::time::Instant::now();
-    let times: Vec<f64> = std::thread::scope(|s| {
+    // all provers start every rep together, so the k-th rep of each prover
+    // runs against the k-th rep of every other
+    let rep_barrier = std::sync::Barrier::new(outer);
+    let rep_barrier = &rep_barrier;
+    let per_prover: Vec<Vec<f64>> = std::thread::scope(|s| {
         let handles: Vec<_> = traces
             .into_iter()
             .enumerate()
@@ -348,28 +412,40 @@ fn outer_parallel(
                         } else {
                             Worker::new_with_num_threads_and_stack(inner, POOL_STACK)
                         };
-                        worker
-                            .pool
-                            .install(|| run_one(format!("prover {i}"), &worker, tr))
+                        let gb = make_gkr(gkr);
+                        let mut times = Vec::with_capacity(reps);
+                        for r in 0..reps {
+                            let trace = tr.clone();
+                            rep_barrier.wait();
+                            times.push(worker.pool.install(|| {
+                                run_one(format!("prover {i} rep {}", r + 1), &worker, trace, &*gb)
+                            }));
+                        }
+                        times
                     })
                     .unwrap()
             })
             .collect();
         handles.into_iter().map(|h| h.join().unwrap()).collect()
     });
-    let wall = t_all.elapsed().as_secs_f64();
-    let min = times.iter().cloned().fold(f64::MAX, f64::min);
-    let max = times.iter().cloned().fold(0.0, f64::max);
-    let mean = times.iter().sum::<f64>() / times.len() as f64;
-    println!(
-        "[outer] SUMMARY{} (in-pool drivers): {outer} x {inner}-thread provers: wall {wall:.3} s; per-prover min {min:.3} / mean {mean:.3} / max {max:.3} s; \
-         solo {inner}-thread prover {solo:.3} s; mean slowdown {:.2}x; throughput {:.3} proofs/s vs solo {:.3} proofs/s ({:.2}x)",
-        if pin { " (pinned)" } else { "" },
-        mean / solo,
-        outer as f64 / wall,
-        1.0 / solo,
-        (outer as f64 / wall) * solo,
-    );
+    for r in 0..reps {
+        let times: Vec<f64> = per_prover.iter().map(|t| t[r]).collect();
+        // every prover starts the rep at the barrier: the rep's wall is the slowest prover
+        let wall = times.iter().cloned().fold(0.0, f64::max);
+        let min = times.iter().cloned().fold(f64::MAX, f64::min);
+        let max = wall;
+        let mean = times.iter().sum::<f64>() / times.len() as f64;
+        println!(
+            "[outer] SUMMARY{} rep {} of {reps} (in-pool drivers): {outer} x {inner}-thread provers: wall {wall:.3} s; per-prover min {min:.3} / mean {mean:.3} / max {max:.3} s; \
+             solo {inner}-thread prover {solo:.3} s; mean slowdown {:.2}x; throughput {:.3} proofs/s vs solo {:.3} proofs/s ({:.2}x)",
+            if pin { " (pinned)" } else { "" },
+            r + 1,
+            mean / solo,
+            outer as f64 / wall,
+            1.0 / solo,
+            (outer as f64 / wall) * solo,
+        );
+    }
 }
 
 /// STREAM-style probe on the worker's pool: best-of-3 GB/s for a pure read
@@ -444,7 +520,8 @@ fn main() {
     let mut bw_only = false;
     let mut outer = 0usize;
     let mut inner = 4usize;
-    let mut naive_gkr = false;
+    let mut reps = 1usize;
+    let mut gkr = GkrKind::Default;
     let mut pin = false;
     let mut proof_out: Option<String> = None;
     let trace_len_log2 = 24usize;
@@ -464,11 +541,27 @@ fn main() {
             "--skip-bw" => skip_bw = true,
             "--bw-only" => bw_only = true,
             "--outer" => outer = value("--outer").parse().expect("--outer"),
+            "--reps" => reps = value("--reps").parse().expect("--reps"),
             "--gkr-backend" => {
-                naive_gkr = match value("--gkr-backend").as_str() {
-                    "naive" => true,
-                    "default" => false,
-                    other => panic!("unknown gkr backend `{other}` (naive|default)"),
+                gkr = match value("--gkr-backend").as_str() {
+                    "naive" => GkrKind::Naive,
+                    "default" => GkrKind::Default,
+                    "avx2" => GkrKind::Avx2,
+                    "avx2-pool" => GkrKind::X86 {
+                        avx512: false,
+                        pooled: true,
+                    },
+                    "avx512" => GkrKind::X86 {
+                        avx512: true,
+                        pooled: true,
+                    },
+                    "avx512-nopool" => GkrKind::X86 {
+                        avx512: true,
+                        pooled: false,
+                    },
+                    other => panic!(
+                        "unknown gkr backend `{other}` (naive|default|avx2|avx2-pool|avx512|avx512-nopool)"
+                    ),
                 }
             }
             "--proof-out" => proof_out = Some(value("--proof-out")),
@@ -583,7 +676,8 @@ fn main() {
         outer_parallel(
             outer,
             inner,
-            naive_gkr,
+            reps,
+            gkr,
             pin,
             &circuit,
             &table_driver,
@@ -624,7 +718,7 @@ fn main() {
 
         let t = std::time::Instant::now();
         let proof = prove_with_gkr_backend(
-            naive_gkr,
+            gkr,
             &circuit,
             &table_driver,
             decoder_table_data,
@@ -644,7 +738,7 @@ fn main() {
             serialize_to_file(&proof, path);
             println!(
                 "[scaling] threads={n} gkr_backend={} proof_digest=0x{:016x}",
-                if naive_gkr { "naive" } else { "default" },
+                gkr.label(),
                 file_digest(path)
             );
         }

@@ -24,8 +24,12 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
         decoder_relation.lookup_set_index,
         DECODER_LOOKUP_FORMAL_SET_INDEX
     );
-    let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::decoder_lookup_minus_setup(decoder_predicate_address, decoder_relation, multiplicity_address, outputs, gkr_storage, witness_trace, trace_len, preprocessed_generic_lookup, lookup_challenges_additive_part, decoder_lookup_fill_value, worker);
+    }
+    let mut num_destination = gkr_storage.alloc_ext_uninit(trace_len);
+    let mut den_destination = gkr_storage.alloc_ext_uninit(trace_len);
     let mapping_ref = {
         assert!(witness_trace.generic_lookup_mapping.len() > 0);
         witness_trace.generic_lookup_mapping.pop().unwrap()
@@ -169,8 +173,12 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
 ) {
     assert_ne!(inputs[0].lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
     assert_ne!(inputs[1].lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
-    let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::lookup_expressions_pair(inputs, outputs, gkr_storage, witness_trace, expected_output_layer, trace_len, preprocessed_generic_lookup, lookup_challenges_additive_part, worker);
+    }
+    let mut num_destination = gkr_storage.alloc_ext_uninit(trace_len);
+    let mut den_destination = gkr_storage.alloc_ext_uninit(trace_len);
     let lhs_mapping = core::mem::replace(
         &mut witness_trace.generic_lookup_mapping[inputs[0].lookup_set_index],
         Vec::new(),
@@ -293,8 +301,12 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
     worker: &Worker,
 ) {
     assert_ne!(remainder.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
-    let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::lookup_expressions_pair_with_remainder(inputs, remainder, outputs, gkr_storage, witness_trace, expected_output_layer, trace_len, preprocessed_generic_lookup, lookup_challenges_additive_part, worker);
+    }
+    let mut num_destination = gkr_storage.alloc_ext_uninit(trace_len);
+    let mut den_destination = gkr_storage.alloc_ext_uninit(trace_len);
     let mapping = core::mem::replace(
         &mut witness_trace.generic_lookup_mapping[remainder.lookup_set_index],
         Vec::new(),
@@ -408,8 +420,12 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
     worker: &Worker,
 ) {
     assert_ne!(input.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
-    let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::lookup_expression_minus_setup(input, multiplicity_address, outputs, gkr_storage, witness_trace, trace_len, preprocessed_generic_lookup, lookup_challenges_additive_part, worker);
+    }
+    let mut num_destination = gkr_storage.alloc_ext_uninit(trace_len);
+    let mut den_destination = gkr_storage.alloc_ext_uninit(trace_len);
     let mapping = core::mem::replace(
         &mut witness_trace.generic_lookup_mapping[input.lookup_set_index],
         Vec::new(),

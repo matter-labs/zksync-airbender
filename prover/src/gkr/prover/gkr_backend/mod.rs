@@ -43,16 +43,25 @@ mod avx2;
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 pub use avx2::Avx2GKRBackend;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+mod avx512;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+mod avx512_dr;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use avx512::X86GKRBackend;
+
 /// The GKR backend concrete BabyBear/Ext4 callers should default to: the
 /// NEON-specialized backend on aarch64, the AVX2-specialized backend on
 /// AVX2-enabled x86-64 builds, the portable naive backend elsewhere.
 /// Mirrors [`DefaultBabyBearBackend`](super::backend::DefaultBabyBearBackend).
 #[cfg(target_arch = "aarch64")]
 pub type DefaultBabyBearGKRBackend = NeonGKRBackend;
-/// The GKR backend concrete BabyBear/Ext4 callers should default to: the
-/// AVX2-specialized backend on AVX2-enabled x86-64 builds.
+/// The GKR backend concrete BabyBear/Ext4 callers should default to: on
+/// AVX2-enabled x86-64 builds the runtime-dispatching backend (AVX-512
+/// same-size kernels when `avx512f` is detected, AVX2 otherwise) with the
+/// pre-touched fold buffer pool.
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
-pub type DefaultBabyBearGKRBackend = Avx2GKRBackend;
+pub type DefaultBabyBearGKRBackend = X86GKRBackend;
 /// The GKR backend concrete BabyBear/Ext4 callers should default to: the
 /// NEON-specialized backend on aarch64, the AVX2 backend on AVX2-enabled
 /// x86-64 builds, the portable naive backend elsewhere.
@@ -119,6 +128,35 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         max_polys: usize,
         worker: &Worker,
     ) -> Self::DimensionReducingBuffer;
+
+    /// Hands the pass-wide dimension-reducing buffers back after the last
+    /// dimension-reducing layer (pooling backends recycle them; the default
+    /// drops them).
+    fn recycle_dim_reducing_work_buffers(&self, buffers: Self::DimensionReducingBuffer) {
+        drop(buffers);
+    }
+
+    /// Statically resolved fold-buffer shapes of the whole backward pass —
+    /// `[(dimension-reducing: max polys, capacity), (same-size: max polys,
+    /// capacity)]` — offered ONCE before the pass so a pooling backend can
+    /// preallocate and touch its buffers. The default ignores them.
+    fn prepare_fold_pool(&self, _shapes: &[(usize, usize)], _worker: &Worker) {}
+
+    /// Hands a same-size layer's fold buffers back after the layer (pooling
+    /// backends recycle them; the default drops them).
+    fn recycle_same_size_fold_buffers(&self, buffers: Vec<Box<[core::mem::MaybeUninit<E>]>>) {
+        drop(buffers);
+    }
+
+    /// The cross-proof recycling pool for the extension polys held by the
+    /// GKR storage (forward layer outputs, cache relations, dimension-
+    /// reduction outputs), attached to the storage by the prover before the
+    /// forward pass; `None` (the default) keeps plain allocations.
+    fn ext_poly_pool(
+        &self,
+    ) -> Option<std::sync::Arc<crate::gkr::sumcheck::access_and_fold::ExtPolyPool<E>>> {
+        None
+    }
 
     /// Backward (sumcheck) pass over ONE dimension-reducing layer. The
     /// dimension-reducing gate set is fixed (pairwise products and logup

@@ -737,7 +737,8 @@ impl<F: PrimeField> GKRRelation<F> {
                     result.insert(*el);
                 }
             }
-            Self::MaxQuadratic { input, output, .. } => {
+            Self::MaxQuadratic { input, .. }
+            | Self::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 for (a, other) in input.quadratic_terms.iter() {
                     result.insert(*a);
                     for (_, b) in other.iter() {

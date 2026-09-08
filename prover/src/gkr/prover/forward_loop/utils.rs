@@ -20,9 +20,22 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
     decoder_predicate_address: GKRAddress,
     worker: &Worker,
 ) -> Box<[E]> {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::vector_lookup_input(
+            rel,
+            gkr_storage,
+            witness_trace,
+            trace_len,
+            preprocessed_generic_lookup,
+            decoder_lookup_fill_value,
+            decoder_predicate_address,
+            worker,
+        );
+    }
     // we materialize it, but the good thing is that we have a cache of lookups
     let lookup_set_index = rel.lookup_set_index;
-    let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+    let mut destination = gkr_storage.alloc_ext_uninit(trace_len);
     let ext_destination = vec![&mut destination[..]];
     let is_decoder_lookup = lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX;
     let mapping_ref = if is_decoder_lookup == false {
@@ -166,8 +179,21 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
     compiled_circuit: &GKRCircuitArtifact<F>,
     worker: &Worker,
 ) -> Box<[E]> {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2", not(feature = "gkr_test_forge")))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        if let Some(values) = super::avx512::materialize_memory_tuple(
+            rel,
+            gkr_storage,
+            trace_len,
+            external_challenges,
+            compiled_circuit,
+            worker,
+        ) {
+            return values;
+        }
+    }
     unsafe {
-        let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+        let mut destination = gkr_storage.alloc_ext_uninit(trace_len);
         let ext_destination = vec![&mut destination[..]];
         let mut sources = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
         for i in 0..compiled_circuit.memory_layout.total_width {
@@ -698,4 +724,37 @@ pub(crate) fn inits_or_teardowns_as_flattened_relation<
     }
 
     (result, constant_term)
+}
+
+/// `dst = table` zero-padded to `dst.len()`, split over the worker (the
+/// vectorized-lookup setup column).
+pub(crate) fn fill_setup_column<E: Field>(
+    dst: &mut [core::mem::MaybeUninit<E>],
+    table: &[E],
+    worker: &Worker,
+) {
+    let n = dst.len();
+    assert!(table.len() <= n);
+    let (dp, tp, tl) = (dst.as_mut_ptr() as usize, table.as_ptr() as usize, table.len());
+    worker.scope(n, |scope, geometry| {
+        for idx in 0..geometry.len() {
+            let start = geometry.get_chunk_start_pos(idx);
+            let size = geometry.get_chunk_size(idx);
+            Worker::smart_spawn(scope, idx == geometry.len() - 1, move |_| unsafe {
+                let d = dp as *mut core::mem::MaybeUninit<E>;
+                let t = tp as *const E;
+                let copy_end = (start + size).min(tl);
+                if start < copy_end {
+                    core::ptr::copy_nonoverlapping(
+                        t.add(start),
+                        d.add(start) as *mut E,
+                        copy_end - start,
+                    );
+                }
+                for i in start.max(tl)..start + size {
+                    (*d.add(i)).write(E::ZERO);
+                }
+            });
+        }
+    });
 }

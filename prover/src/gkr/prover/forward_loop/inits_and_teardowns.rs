@@ -16,9 +16,21 @@ pub(crate) fn materialize_inits_and_teardowns_tuple_pair<
     compiled_circuit: &GKRCircuitArtifact<F>,
     worker: &Worker,
 ) -> Box<[E]> {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::inits_and_teardowns_pair::<F, E, WORD_BITS>(
+            ts_and_value,
+            address_high_bits,
+            gkr_storage,
+            trace_len,
+            external_challenges,
+            compiled_circuit,
+            worker,
+        );
+    }
     unsafe {
         let high_bits_offset = high_bits_offset_for_inits_and_teardowns::<WORD_BITS>(trace_len);
-        let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+        let mut destination = gkr_storage.alloc_ext_uninit(trace_len);
         let ext_destination = vec![&mut destination[..]];
         let mut sources = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
         for i in 0..compiled_circuit.memory_layout.total_width {

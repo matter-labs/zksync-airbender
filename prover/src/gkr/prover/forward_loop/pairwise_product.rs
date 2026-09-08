@@ -10,6 +10,38 @@ pub fn forward_evaluate_pairwise_product<F: PrimeField, E: FieldExtension<F> + F
     trace_len: usize,
     worker: &Worker,
 ) {
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::pairwise_product(
+            inputs,
+            output,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            worker,
+        );
+    }
+    forward_evaluate_pairwise_product_scalar(
+        inputs,
+        output,
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        worker,
+    )
+}
+
+pub(crate) fn forward_evaluate_pairwise_product_scalar<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    inputs: [GKRAddress; 2],
+    output: GKRAddress,
+    gkr_storage: &mut GKRStorage<F, E>,
+    expected_output_layer: usize,
+    trace_len: usize,
+    worker: &Worker,
+) {
     // we just need to evaluate the corresponding kernel in the forward direction
     let kernel = pairwise_product::SameSizeProductGKRRelation { inputs, output };
     kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
@@ -28,8 +60,23 @@ pub fn forward_evaluate_base_layer_pairwise_product_without_caches<
     trace_len: usize,
     worker: &Worker,
 ) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len)
+        && super::avx512::product_without_caches(
+            inputs,
+            output,
+            gkr_storage,
+            external_challenges,
+            expected_output_layer,
+            compiled_circuit,
+            trace_len,
+            worker,
+        )
+    {
+        return;
+    }
     unsafe {
-        let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+        let mut destination = gkr_storage.alloc_ext_uninit(trace_len);
         let ext_destination = vec![&mut destination[..]];
         let mut sources = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
         for i in 0..compiled_circuit.memory_layout.total_width {

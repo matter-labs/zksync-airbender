@@ -14,7 +14,20 @@ pub(crate) fn evaluate_single_column_lookup_relation<
     trace_len: usize,
     worker: &Worker,
 ) {
-    let mut destination = Box::<[F], Global>::new_uninit_slice(trace_len);
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2", not(feature = "gkr_test_forge")))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::single_column_lookup_cache(
+            layer_idx,
+            output,
+            relation,
+            range_check_width,
+            gkr_storage,
+            witness_trace,
+            trace_len,
+            worker,
+        );
+    }
+    let mut destination = gkr_storage.alloc_base_uninit(trace_len);
     if range_check_width == 16 {
         let source = std::mem::replace(
             &mut witness_trace.range_check_16_lookup_mapping[relation.lookup_set_index],

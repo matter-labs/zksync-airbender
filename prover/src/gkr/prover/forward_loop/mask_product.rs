@@ -11,6 +11,10 @@ pub fn forward_evaluate_mask_into_identity<F: PrimeField, E: FieldExtension<F> +
     trace_len: usize,
     worker: &Worker,
 ) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::mask_into_identity(input, mask, output, gkr_storage, expected_output_layer, trace_len, worker);
+    }
     let kernel = mask_into_identity::MaskIntoIdentityProductGKRRelation {
         input,
         mask,

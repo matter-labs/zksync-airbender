@@ -429,6 +429,7 @@ pub fn evaluate_sumcheck_for_layer<
         usize,
     ) -> Vec<Box<[core::mem::MaybeUninit<E>]>>,
     make_chain: impl FnOnce(OwnedSoaProgram<F, E>) -> C,
+    recycle_fold_buffers: impl FnOnce(Vec<Box<[core::mem::MaybeUninit<E>]>>),
 ) -> SumcheckIntermediateProofValues<F, E>
 where
     [(); E::DEGREE]: Sized,
@@ -552,6 +553,7 @@ where
                 "LSB chain for same-size layer {layer_idx} took {:?}",
                 chain_timer.elapsed()
             );
+            recycle_fold_buffers(fold_buffers);
             outcome
         }
     };

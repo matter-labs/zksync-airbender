@@ -94,9 +94,86 @@ pub struct GKRLayerSource<F: PrimeField, E: FieldExtension<F> + Field> {
         BTreeMap<GKRAddress, (usize, ExtensionFieldPolyIntermediateFoldingStorage<F, E>)>,
 }
 
+/// Cross-proof recycling pool for the extension-field polys that live in
+/// [`GKRStorage`] (forward layer outputs, cache relations, dimension-
+/// reduction outputs): exact-length free lists, filled lazily — the first
+/// proof allocates (and pays the first-touch page faults), every later
+/// proof of the same shape reuses. Buffers come back when the storage purges
+/// a layer or is dropped. Attached to the storage by the GKR backend.
+pub struct ExtPolyPool<E> {
+    free: std::sync::Mutex<BTreeMap<usize, Vec<Box<[MaybeUninit<E>]>>>>,
+    hits: std::sync::atomic::AtomicUsize,
+    misses: std::sync::atomic::AtomicUsize,
+    /// elements currently held by the free lists
+    pooled: std::sync::atomic::AtomicUsize,
+    /// base-poly buffers carved out of this pool (by pointer); they come
+    /// back through `recycle_layer` like the extension polys
+    base_owned: std::sync::Mutex<std::collections::BTreeSet<usize>>,
+}
+
+impl<E> ExtPolyPool<E> {
+    pub fn new() -> Self {
+        Self {
+            free: std::sync::Mutex::new(BTreeMap::new()),
+            hits: Default::default(),
+            misses: Default::default(),
+            pooled: Default::default(),
+            base_owned: Default::default(),
+        }
+    }
+    pub fn take(&self, len: usize) -> Box<[MaybeUninit<E>]> {
+        use std::sync::atomic::Ordering::Relaxed;
+        if let Some(b) = self.free.lock().unwrap().get_mut(&len).and_then(|v| v.pop()) {
+            self.hits.fetch_add(1, Relaxed);
+            self.pooled.fetch_sub(len, Relaxed);
+            return b;
+        }
+        self.misses.fetch_add(1, Relaxed);
+        Box::new_uninit_slice(len)
+    }
+    pub fn give(&self, b: Box<[E]>) {
+        // the elements are plain field values: forgetting them is fine
+        let raw: Box<[MaybeUninit<E>]> =
+            unsafe { Box::from_raw(Box::into_raw(b) as *mut [MaybeUninit<E>]) };
+        self.give_uninit(raw);
+    }
+    pub fn give_uninit(&self, b: Box<[MaybeUninit<E>]>) {
+        use std::sync::atomic::Ordering::Relaxed;
+        let len = b.len();
+        self.pooled.fetch_add(len, Relaxed);
+        self.free.lock().unwrap().entry(len).or_default().push(b);
+    }
+    fn register_base(&self, ptr: usize) {
+        self.base_owned.lock().unwrap().insert(ptr);
+    }
+    fn unregister_base(&self, ptr: usize) -> bool {
+        self.base_owned.lock().unwrap().remove(&ptr)
+    }
+    /// `(hits, misses, pooled elements)` since creation.
+    pub fn stats(&self) -> (usize, usize, usize) {
+        use std::sync::atomic::Ordering::Relaxed;
+        (
+            self.hits.load(Relaxed),
+            self.misses.load(Relaxed),
+            self.pooled.load(Relaxed),
+        )
+    }
+}
+
 #[derive(Default)]
 pub struct GKRStorage<F: PrimeField, E: FieldExtension<F> + Field> {
     pub layers: Vec<GKRLayerSource<F, E>>,
+    /// recycling pool for the extension polys (None: plain allocations)
+    pub pool: Option<std::sync::Arc<ExtPolyPool<E>>>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> Drop for GKRStorage<F, E> {
+    fn drop(&mut self) {
+        let layers = core::mem::take(&mut self.layers);
+        for layer in layers {
+            self.recycle_layer(layer);
+        }
+    }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
@@ -227,7 +304,64 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
     }
 
     pub(crate) fn purge_up_to_layer(&mut self, layer: usize) {
-        self.layers.truncate(layer + 1);
+        if self.layers.len() > layer + 1 {
+            let removed = self.layers.split_off(layer + 1);
+            for l in removed {
+                self.recycle_layer(l);
+            }
+        }
+    }
+
+    /// Uninit buffer for an extension poly of `len` values: from the pool
+    /// when one is attached, a fresh allocation otherwise.
+    pub fn alloc_ext_uninit(&self, len: usize) -> Box<[MaybeUninit<E>]> {
+        match &self.pool {
+            Some(pool) => pool.take(len),
+            None => Box::new_uninit_slice(len),
+        }
+    }
+
+    /// Return a purged layer's uniquely owned extension polys (and the base
+    /// polys carved out of the pool by `alloc_base_uninit`) to the pool.
+    fn recycle_layer(&self, layer: GKRLayerSource<F, E>) {
+        let Some(pool) = &self.pool else {
+            return;
+        };
+        for (_, poly) in layer.extension_field_inputs.into_iter() {
+            if let Ok(values) = std::sync::Arc::try_unwrap(poly.values) {
+                pool.give(values);
+            }
+        }
+        for (_, poly) in layer.base_field_inputs.into_iter() {
+            if let Ok(values) = std::sync::Arc::try_unwrap(poly.values) {
+                if pool.unregister_base(values.as_ptr() as usize) {
+                    // same Layout as the E buffer it was carved from
+                    let len = values.len() / 4;
+                    let raw = Box::into_raw(values) as *mut F as *mut MaybeUninit<E>;
+                    pool.give_uninit(unsafe {
+                        Box::from_raw(core::ptr::slice_from_raw_parts_mut(raw, len))
+                    });
+                }
+            }
+        }
+    }
+
+    /// Uninit buffer for a base poly of `len` values: carved out of the
+    /// extension pool when one is attached and the layouts line up (E is
+    /// four F limbs), a fresh allocation otherwise.
+    pub fn alloc_base_uninit(&self, len: usize) -> Box<[MaybeUninit<F>]> {
+        if let Some(pool) = &self.pool {
+            if len % 4 == 0
+                && core::mem::size_of::<E>() == 4 * core::mem::size_of::<F>()
+                && core::mem::align_of::<E>() == core::mem::align_of::<F>()
+            {
+                let b = pool.take(len / 4);
+                let ptr = Box::into_raw(b) as *mut MaybeUninit<E> as *mut MaybeUninit<F>;
+                pool.register_base(ptr as usize);
+                return unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len)) };
+            }
+        }
+        Box::new_uninit_slice(len)
     }
 
     #[track_caller]

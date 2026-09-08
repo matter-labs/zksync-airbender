@@ -210,6 +210,7 @@ fn test_sumcheck_loop_product() {
                 E,
             >::new(prog)
         },
+        |bufs| drop(bufs),
     );
 
     assert!(
@@ -392,6 +393,7 @@ fn test_sumcheck_loop_multiple_gates() {
                 E,
             >::new(prog)
         },
+        |bufs| drop(bufs),
     );
 
     assert!(claims_storage.contains_key(&0));

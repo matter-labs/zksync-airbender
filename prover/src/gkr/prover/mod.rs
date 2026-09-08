@@ -21,6 +21,8 @@ use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 #[cfg(target_arch = "aarch64")]
 pub use crate::gkr::prover::gkr_backend::NeonGKRBackend;
 pub use crate::gkr::prover::gkr_backend::{DefaultBabyBearGKRBackend, GKRBackend, NaiveGKRBackend};
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use crate::gkr::prover::gkr_backend::{Avx2GKRBackend, X86GKRBackend};
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils;
 use crate::gkr::prover::sumcheck_loop::flatten_claim_point;
@@ -917,6 +919,7 @@ where
             lookup_alpha,
             trace_len,
             &inits_and_teardowns_top_bits,
+            gkr_backend.ext_poly_pool(),
             worker,
         );
 
@@ -1331,6 +1334,7 @@ where
             lookup_alpha,
             trace_len,
             &inits_and_teardowns_top_bits,
+            gkr_backend.ext_poly_pool(),
             worker,
         );
 
@@ -1371,9 +1375,11 @@ fn prepare_layer0_gkr_storage<F: PrimeField + TwoAdicField, E: FieldExtension<F>
     lookup_alpha: E,
     trace_len: usize,
     inits_and_teardowns_top_bits: &[u32],
+    pool: Option<std::sync::Arc<crate::gkr::sumcheck::access_and_fold::ExtPolyPool<E>>>,
     worker: &Worker,
 ) -> (GKRStorage<F, E>, Box<[E]>, E) {
     let mut gkr_storage = GKRStorage::<F, E>::default();
+    gkr_storage.pool = pool;
 
     // Now we can use lookup challenges to preprocess tables into values like (column_0 + alpha * column_1 + ...),
     // but without(!) additive term, so we can use the same values for both cached and copied values,
@@ -1674,6 +1680,28 @@ where
         })
         .max()
         .unwrap_or(0);
+    // statically resolved fold-buffer shapes of the whole backward pass,
+    // offered to pooling backends before anything is allocated: the
+    // dimension-reducing scratch (3/2 of the largest layer's post-reduction
+    // length per poly) and the same-size chain buffers (schedule capacity,
+    // one per input poly of the widest layer)
+    {
+        let dr_m = 1usize << dr_max_rounds;
+        let ss_capacity = gkr_backend::same_size_chain_fold_capacity(
+            prover_config.same_size_sumcheck_schedule.as_slice(),
+            trace_len,
+        );
+        let ss_max_polys = compiled_circuit
+            .layers
+            .iter()
+            .map(|l| l.inputs().len())
+            .max()
+            .unwrap_or(0);
+        gkr_backend.prepare_fold_pool(
+            &[(dr_max_polys, dr_m + dr_m / 2), (ss_max_polys, ss_capacity)],
+            worker,
+        );
+    }
     let mut dr_work_buffers =
         gkr_backend.make_dim_reducing_work_buffers(dr_max_rounds, dr_max_polys, worker);
     let dim_reducing_total = std::time::Instant::now();
@@ -1709,6 +1737,7 @@ where
         "Dimension-reducing sumcheck layers total: {:?}",
         dim_reducing_total.elapsed()
     );
+    gkr_backend.recycle_dim_reducing_work_buffers(dr_work_buffers);
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
@@ -1846,6 +1875,13 @@ where
     let t_drop = std::time::Instant::now();
     drop(gkr_storage);
     println!("[timing] gkr_storage drop: {:?}", t_drop.elapsed());
+    if let Some(pool) = gkr_backend.ext_poly_pool() {
+        let (hits, misses, pooled) = pool.stats();
+        println!(
+            "[pool] ext polys: {hits} hits, {misses} misses (cumulative), {:.1} MB pooled now",
+            (pooled * core::mem::size_of::<E>()) as f64 / 1e6
+        );
+    }
 
     // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
     // transcript above already committed everything that feeds this draw. The bit count

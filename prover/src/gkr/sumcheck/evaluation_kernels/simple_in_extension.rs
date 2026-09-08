@@ -156,7 +156,7 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
         let sources = storage.get_for_sumcheck_round_0(&inputs);
         let mut destinations = Vec::with_capacity(outputs.len());
         for _ in 0..outputs.len() {
-            destinations.push(Box::<[E]>::new_uninit_slice(trace_len));
+            destinations.push(storage.alloc_ext_uninit(trace_len));
         }
         let mut destinations_refs = Vec::with_capacity(outputs.len());
         for el in destinations.iter_mut() {

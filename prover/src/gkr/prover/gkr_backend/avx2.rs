@@ -46,7 +46,7 @@ pub fn forward_pairwise_avx2<F: PrimeField, E: FieldExtension<F> + Field>(
         };
         let sources = gkr_storage.get_for_sumcheck_round_0(&inputs);
         let src: &[E] = sources.extension_field_inputs[0].current_values();
-        let mut destination = Box::<[E]>::new_uninit_slice(output_trace_len);
+        let mut destination = gkr_storage.alloc_ext_uninit(output_trace_len);
         let src_addr = crate::gkr::prover::SendConstPtr(src.as_ptr());
         let dst_addr = crate::gkr::prover::SendPtr(destination.as_mut_ptr());
         worker.scope_with_threshold(output_trace_len, PAR_THRESHOLD, |scope, geometry| {
@@ -107,8 +107,8 @@ pub fn forward_logup_avx2<F: PrimeField, E: FieldExtension<F> + Field>(
         let sources = gkr_storage.get_for_sumcheck_round_0(&gkr_inputs);
         let n_src: &[E] = sources.extension_field_inputs[0].current_values();
         let d_src: &[E] = sources.extension_field_inputs[1].current_values();
-        let mut num_dst = Box::<[E]>::new_uninit_slice(output_trace_len);
-        let mut den_dst = Box::<[E]>::new_uninit_slice(output_trace_len);
+        let mut num_dst = gkr_storage.alloc_ext_uninit(output_trace_len);
+        let mut den_dst = gkr_storage.alloc_ext_uninit(output_trace_len);
         let n_addr = crate::gkr::prover::SendConstPtr(n_src.as_ptr());
         let d_addr = crate::gkr::prover::SendConstPtr(d_src.as_ptr());
         let nd_addr = crate::gkr::prover::SendPtr(num_dst.as_mut_ptr());
@@ -882,6 +882,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
             |s, t, b, e| self.make_uniskip_same_size_fold_buffers(s, t, b, e),
             |s, t, b, e| self.make_windowed_same_size_fold_buffers(s, t, b, e),
             |prog| self.make_same_size_chain(prog),
+            |bufs| drop(bufs),
         )
     }
 }

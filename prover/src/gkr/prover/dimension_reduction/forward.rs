@@ -187,7 +187,7 @@ pub(crate) fn forward_pairwise_specialized<F: PrimeField, E: FieldExtension<F> +
         let sources = gkr_storage.get_for_sumcheck_round_0(&inputs);
         let src: &[E] = sources.extension_field_inputs[0].current_values();
         debug_assert_eq!(src.len(), input_trace_len);
-        let mut destination = Box::<[E]>::new_uninit_slice(output_trace_len);
+        let mut destination = gkr_storage.alloc_ext_uninit(output_trace_len);
         let src_addr = crate::gkr::prover::SendConstPtr(src.as_ptr());
         let dst_addr = crate::gkr::prover::SendPtr(destination.as_mut_ptr());
         worker.scope_with_threshold(output_trace_len, PAR_THRESHOLD, |scope, geometry| {
@@ -239,8 +239,8 @@ pub(crate) fn forward_logup_specialized<F: PrimeField, E: FieldExtension<F> + Fi
         let d_src: &[E] = sources.extension_field_inputs[1].current_values();
         debug_assert_eq!(n_src.len(), input_trace_len);
         debug_assert_eq!(d_src.len(), input_trace_len);
-        let mut num_dst = Box::<[E]>::new_uninit_slice(output_trace_len);
-        let mut den_dst = Box::<[E]>::new_uninit_slice(output_trace_len);
+        let mut num_dst = gkr_storage.alloc_ext_uninit(output_trace_len);
+        let mut den_dst = gkr_storage.alloc_ext_uninit(output_trace_len);
         let n_addr = crate::gkr::prover::SendConstPtr(n_src.as_ptr());
         let d_addr = crate::gkr::prover::SendConstPtr(d_src.as_ptr());
         let nd_addr = crate::gkr::prover::SendPtr(num_dst.as_mut_ptr());

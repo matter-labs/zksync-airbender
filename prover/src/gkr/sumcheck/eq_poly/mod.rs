@@ -539,20 +539,27 @@ pub(crate) fn evaluate_many_with_precomputed_eq_parallel<
             let start = geometry.get_chunk_start_pos(chunk_idx);
             let size = geometry.get_chunk_size(chunk_idx);
             scope.spawn(move |_| {
+                // accumulate in a THREAD-LOCAL buffer and publish once: the
+                // per-chunk `partials` vectors are tiny heap allocations that
+                // can sit in adjacent cache lines, and writing them on every
+                // row made the 16 threads ping-pong those lines (measured
+                // 33 ms -> 250 ms for the same loop depending on heap state)
+                let mut local: Vec<E> = vec![E::ZERO; nb + ne];
                 let eq = &eq[start..start + size];
                 for (i, e) in eq.iter().enumerate() {
                     let row = start + i;
                     for (j, p) in base_polys.iter().enumerate() {
                         let mut t = *e;
                         t.mul_assign_by_base(&p[row]);
-                        acc[j].add_assign(&t);
+                        local[j].add_assign(&t);
                     }
                     for (k, q) in ext_polys.iter().enumerate() {
                         let mut t = *e;
                         t.mul_assign(&q[row]);
-                        acc[nb + k].add_assign(&t);
+                        local[nb + k].add_assign(&t);
                     }
                 }
+                acc.copy_from_slice(&local);
             });
         }
     });

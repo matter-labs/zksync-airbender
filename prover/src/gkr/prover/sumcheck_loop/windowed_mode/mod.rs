@@ -20,6 +20,12 @@ pub(crate) mod avx2;
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 pub(crate) mod lsb_avx2;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub(crate) mod avx512;
+
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub(crate) mod lsb_avx512;
+
 pub fn evaluate_claim_from_intermediate_matrix_27<E: Field>(
     eq_prefix: &[E; 4],
     accumulator: &[E; 27],

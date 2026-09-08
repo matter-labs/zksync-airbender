@@ -201,6 +201,7 @@ where
             |s, t, b, e| self.make_uniskip_same_size_fold_buffers(s, t, b, e),
             |s, t, b, e| self.make_windowed_same_size_fold_buffers(s, t, b, e),
             |prog| self.make_same_size_chain(prog),
+            |bufs| drop(bufs),
         )
     }
 }
