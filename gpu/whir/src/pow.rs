@@ -14,8 +14,6 @@ use gpu_prover_context::ProverContext;
 /// caller; it does not appear here. The PoW nonce is written directly into the
 /// caller-supplied slab slot, so it is not retained here either.
 pub(crate) struct PowAndQueryIndexesState {
-    #[allow(dead_code)]
-    pub(crate) d_raw_bits: Option<DeviceAllocation<u32>>,
     pub(crate) d_indexes: DeviceAllocation<u32>,
 }
 
@@ -103,10 +101,9 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     // Assemble query indexes on device; the caller D2Hs them.
     assemble_query_indexes(&d_raw_bits, &mut d_indexes, query_domain_log2, stream)?;
 
-    Ok(PowAndQueryIndexesState {
-        d_raw_bits: Some(d_raw_bits),
-        d_indexes,
-    })
+    // Raw bits have no readers after index assembly; stream-ordered pool
+    // reuse is safe as soon as that kernel has been enqueued.
+    Ok(PowAndQueryIndexesState { d_indexes })
 }
 
 /// Device-side `draw_random_field_els_with_pow::<BF, E4>(seed, count, pow_bits)` —

@@ -30,8 +30,8 @@ pub struct MemoryCommitmentJob<'a, A: GoodAllocator = std::alloc::Global> {
     callbacks: Callbacks<'a>,
     tree_caps: Box<Option<Vec<MerkleTreeCapVarLength>>>,
     range: Range,
-    /// Holds the per-piece transferless wrappers (decoder, inits_and_teardowns,
-    /// tracing_data) + the bundle's accumulated `Transfer` callbacks. Only
+    /// Holds the bundle's Transfer callbacks and their H2D sources. Device
+    /// input reservations are retired before returning the job. Only
     /// populated when the job came from `commit_memory_from_transfers`; tests
     /// that call `commit_memory` directly leave this `None`.
     _inputs_keepalive: Option<super::memory_transfer::GpuGKRCommitMemoryTransferKeepalive<'a, A>>,
@@ -302,39 +302,23 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
-    // Move the wrappers into the bundle keepalive; raw-pointer into its
-    // device-buffer fields so we can simultaneously hand the keepalive to
-    // `commit_memory_inner` (where it moves into the returned job's
-    // `_inputs_keepalive`).
-    //
-    // SAFETY: `keepalive` is passed by-move into `commit_memory_inner` and
-    // ends up stored in the returned `MemoryCommitmentJob`; the wrappers it
-    // owns therefore outlive every kernel reading from the pointers below,
-    // since `MemoryCommitmentJob::finish()` synchronizes on the completion
-    // event before dropping the keepalive.
     let keepalive = inputs.into_keepalive();
-    let decoder_ptr: Option<*const DeviceSlice<ExecutorFamilyDecoderData>> = keepalive
-        .decoder
-        .as_ref()
-        .map(|t| (&t.data_device[..]) as *const _);
-    let inits_ptr: Option<*const crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice> =
+    // Launchers borrow these descriptors only while enqueueing. Keep their
+    // owners in place until that finishes; no raw pointers to moved wrappers.
+    let mut job = commit_memory_inner::<A>(
+        circuit_type,
+        compiled_circuit,
+        keepalive.decoder.as_ref().map(|t| &t.data_device[..]),
         keepalive
             .inits_and_teardowns
             .as_ref()
-            .map(|t| &t.data_device as *const _);
-    let tracing_ptr: Option<*const TracingDataDevice> = keepalive
-        .tracing_data
-        .as_ref()
-        .map(|t| &t.data_device as *const _);
-    commit_memory_inner::<A>(
-        circuit_type,
-        compiled_circuit,
-        decoder_ptr.map(|p| unsafe { &*p }),
-        inits_ptr.map(|p| unsafe { &*p }),
-        tracing_ptr.map(|p| unsafe { &*p }),
+            .map(|t| &t.data_device),
+        keepalive.tracing_data.as_ref().map(|t| &t.data_device),
         prover_config,
         Callbacks::new(),
-        Some(keepalive),
+        None,
         context,
-    )
+    )?;
+    job._inputs_keepalive = Some(keepalive.retire_device_inputs());
+    Ok(job)
 }

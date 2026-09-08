@@ -13,6 +13,9 @@ use round_phases::{
 
 // pub (not pub(crate)): the apex proof orchestration (`proof/orchestration/whir.rs`)
 // drives the WHIR phase through this entry point across the crate boundary.
+/// Consumes the three sources' raw representations after initial batching and
+/// releases their LDE cosets after base queries are enqueued. Cached trees and
+/// caps remain. All raw backing aliases must be retired before this call.
 pub fn schedule_gpu_whir_fold_with_sources(
     memory_trace_holder: &mut TraceHolder<BF>,
     witness_trace_holder: &mut TraceHolder<BF>,
@@ -81,9 +84,15 @@ pub fn schedule_gpu_whir_fold_with_sources(
 
     let stream = context.get_exec_stream();
     let mut tracing_ranges = Vec::new();
-    memory_trace_holder.ensure_cosets_materialized(context)?;
-    witness_trace_holder.ensure_cosets_materialized(context)?;
-    setup_trace_holder.ensure_cosets_materialized(context)?;
+    for holder in [
+        &mut *memory_trace_holder,
+        &mut *witness_trace_holder,
+        &mut *setup_trace_holder,
+    ] {
+        if !holder.is_materialization_deferred() || !use_hypercube_evals_for_batching {
+            holder.ensure_cosets_materialized(context)?;
+        }
+    }
 
     let schedule_range = Range::new("gkr.whir.schedule")?;
     schedule_range.start(stream)?;
@@ -118,6 +127,18 @@ pub fn schedule_gpu_whir_fold_with_sources(
     initialize_batched_forms_range.end(stream)?;
     tracing_ranges.push(initialize_batched_forms_range);
 
+    // Initial batching enqueued the last raw-hypercube reads. The current
+    // full-LDE opening path needs only cosets from here onward. Keep this
+    // ownership handoff explicit so retained-monomial policies can instead
+    // convert the consumed backing without a copy or an aliased Rust borrow.
+    for holder in [
+        &mut *memory_trace_holder,
+        &mut *witness_trace_holder,
+        &mut *setup_trace_holder,
+    ] {
+        holder.finish_raw_batching(context)?;
+    }
+
     launch_build_eq_values_from_point(
         base_layer_point_device.as_ptr(),
         0,
@@ -134,20 +155,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
     let mut whir_pow_schedule = whir_pow_schedule.into_iter().enumerate();
     let mut rs_oracle: Option<GpuWhirExtensionOracle>;
 
-    // Per-fold-round-group device buffers (challenge + packed coeffs); the
-    // rolling device seed is owned by the caller and threaded in directly.
-    let mut fold_round_group_keepalives = FoldRoundGroupKeepalives::new();
-    // Per-WHIR-round device state for the device-side PoW verify +
-    // query-index assembly. Later callbacks consume the nonce.
-    let mut pow_round_state: Vec<PowAndQueryIndexesState> = Vec::new();
-    // Per-round device-resident OOD points produced by `schedule_ood_sample_phase`
-    // and consumed by `schedule_delinearization_running_powers_phase`. Kept on
-    // the orchestrator so the device buffers outlive all kernels reading them.
-    let mut ood_point_devices: Vec<DeviceAllocation<E4>> = Vec::new();
-    // Per-round device-side ephemerals used by delinearization (delin_base,
-    // anchor_powers, per_query_pows). Kept alive for the duration of the
-    // WHIR schedule.
-    let mut delinearization_ephemerals: Vec<DeviceAllocation<E4>> = Vec::new();
     let mut scheduled_sumcheck_poly_idx = 0usize;
 
     {
@@ -168,7 +175,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
             num_folding_steps,
             &mut state,
             &mut scheduled_sumcheck_poly_idx,
-            &mut fold_round_group_keepalives,
             proof_slab,
             proof_layout,
             final_device_seed,
@@ -204,17 +210,15 @@ pub fn schedule_gpu_whir_fold_with_sources(
 
         let ood_sample_range = Range::new("gkr.whir.base_round.0.ood_sample")?;
         ood_sample_range.start(stream)?;
-        schedule_ood_sample_phase(
+        let ood_point_device = schedule_ood_sample_phase(
             &mut state,
             0,
             proof_slab,
             proof_layout,
             final_device_seed,
-            &mut ood_point_devices,
             stream,
             context,
         )?;
-        let ood_point_device_idx = ood_point_devices.len() - 1;
         ood_sample_range.end(stream)?;
         tracing_ranges.push(ood_sample_range);
 
@@ -225,7 +229,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
             trace_len_log2 + original_lde_factor.trailing_zeros() - num_folding_steps as u32;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        schedule_pow_and_query_indexes_phase(
+        let pow_round_state = schedule_pow_and_query_indexes_phase(
             final_device_seed,
             num_queries,
             pow_bits,
@@ -233,7 +237,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
             query_domain_log2,
             proof_slab,
             proof_layout,
-            &mut pow_round_state,
             context,
         )?;
         pow_and_query_indexes_range.end(stream)?;
@@ -252,12 +255,12 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let delinearization_device = schedule_delinearization_running_powers_phase(
             &mut state,
             num_queries,
-            &ood_point_devices[ood_point_device_idx][..],
+            &ood_point_device[..],
             &mut per_query_pows[..count_per_query],
             final_device_seed,
-            &mut delinearization_ephemerals,
             context,
         )?;
+        drop(ood_point_device);
         delinearization_eq_range.end(stream)?;
         tracing_ranges.push(delinearization_eq_range);
 
@@ -268,10 +271,8 @@ pub fn schedule_gpu_whir_fold_with_sources(
         // into each base oracle's slab `query_indices` range, and let each
         // coset's gather kernel write directly into the slab's `query_leaves`
         // / `query_paths` ranges.
-        let device_query_indexes_for_base: &era_cudart::slice::DeviceSlice<u32> = &pow_round_state
-            .last()
-            .expect("pow_round_state pushed above for base round")
-            .d_indexes[..];
+        let device_query_indexes_for_base: &era_cudart::slice::DeviceSlice<u32> =
+            &pow_round_state.d_indexes[..];
         let log_lde_factor_base = memory_trace_holder.log_lde_factor;
         let coset_tree_size_log2 =
             memory_trace_holder.log_domain_size - memory_trace_holder.log_rows_per_leaf;
@@ -301,9 +302,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
         // oracles and launch the consolidated leaf and partial-path kernels
         // once each instead of filtering each coset three times
         // pattern. Empty-`columns_count` oracles are skipped in-kernel.
-        memory_trace_holder.ensure_cosets_materialized(context)?;
-        witness_trace_holder.ensure_cosets_materialized(context)?;
-        setup_trace_holder.ensure_cosets_materialized(context)?;
         let base_log_domain_size = memory_trace_holder.log_domain_size;
         let base_log_rows_per_leaf = memory_trace_holder.log_rows_per_leaf;
         debug_assert_eq!(witness_trace_holder.log_domain_size, base_log_domain_size);
@@ -314,8 +312,8 @@ pub fn schedule_gpu_whir_fold_with_sources(
         );
         debug_assert_eq!(setup_trace_holder.log_rows_per_leaf, base_log_rows_per_leaf);
         let base_log_total_leaves_count = base_log_domain_size - base_log_rows_per_leaf;
-        let base_oracle_descs = |holders: [&TraceHolder<BF>; 3],
-                                 slab_ptrs: [u64; 6]|
+        let base_oracle_descs = |holders: &[&TraceHolder<BF>],
+                                 slab_ptrs: &[u64]|
          -> (
             [gpu_hash::blake2s::OracleGatherDesc; 3],
             [gpu_hash::blake2s::OraclePartialPathDesc; 3],
@@ -398,38 +396,103 @@ pub fn schedule_gpu_whir_fold_with_sources(
             setup_leaves_ptr,
             setup_paths_ptr,
         ];
-        let (leaves_descs, paths_descs) = base_oracle_descs(
-            [
-                &*memory_trace_holder,
-                &*witness_trace_holder,
-                &*setup_trace_holder,
-            ],
-            slab_ptrs,
-        );
-        gpu_hash::blake2s::gather_leaves_for_queries_physical(
-            &leaves_descs,
-            3,
-            log_lde_factor_base,
-            base_log_domain_size,
-            base_log_rows_per_leaf,
-            device_query_indexes_for_base,
-            stream,
-        )?;
-        // Mirrors `TraceHolder::query_merkle_path_layout`'s `layers_count`
-        // formula. All three base oracles share the inputs (asserted above).
         let base_layers_count = memory_trace_holder.log_domain_size
             - memory_trace_holder.log_rows_per_leaf
             - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor);
-        gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_physical(
-            &paths_descs,
-            3,
-            log_lde_factor_base,
-            base_log_rows_per_leaf,
-            base_log_total_leaves_count,
-            base_layers_count,
-            device_query_indexes_for_base,
-            stream,
-        )?;
+        let gather = |holders: &[&TraceHolder<BF>], slab_ptrs: &[u64]| -> CudaResult<()> {
+            let (leaves_descs, paths_descs) = base_oracle_descs(holders, slab_ptrs);
+            gpu_hash::blake2s::gather_leaves_for_queries_physical(
+                &leaves_descs,
+                holders.len() as u32,
+                log_lde_factor_base,
+                base_log_domain_size,
+                base_log_rows_per_leaf,
+                device_query_indexes_for_base,
+                stream,
+            )?;
+            gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_physical(
+                &paths_descs,
+                holders.len() as u32,
+                log_lde_factor_base,
+                base_log_rows_per_leaf,
+                base_log_total_leaves_count,
+                base_layers_count,
+                device_query_indexes_for_base,
+                stream,
+            )
+        };
+        let separate_openings = memory_trace_holder.is_materialization_deferred()
+            || witness_trace_holder.is_materialization_deferred()
+            || setup_trace_holder.is_materialization_deferred();
+        if separate_openings {
+            // Retire witness's existing LDE first, then expand one deferred
+            // oracle at a time. The unchanged full-coset NTT retains its
+            // cross-coset and cross-column fusion. Slab order is independent
+            // of execution order; every reader is enqueued before release.
+            use gpu_gkr::proof_layout::WhirBaseLayerKind;
+            use gpu_trace::trace::holder::OpeningPolicy;
+            for (holder, kind, destinations) in [
+                (
+                    &mut *witness_trace_holder,
+                    WhirBaseLayerKind::Witness,
+                    &slab_ptrs[2..4],
+                ),
+                (
+                    &mut *memory_trace_holder,
+                    WhirBaseLayerKind::Memory,
+                    &slab_ptrs[0..2],
+                ),
+                (
+                    &mut *setup_trace_holder,
+                    WhirBaseLayerKind::Setup,
+                    &slab_ptrs[4..6],
+                ),
+            ] {
+                if holder.columns_count != 0
+                    && holder.opening_policy() != OpeningPolicy::FullMaterialization
+                {
+                    // SAFETY: these layout-derived leaf/path regions are
+                    // aligned, disjoint, and live throughout scheduling. The
+                    // mutable views are the only writers of this oracle's
+                    // output; all readers/writes are ordered on exec.
+                    let (leaves_ptr, leaves_len) = unsafe {
+                        proof_layout
+                            .whir_base_query_leaves_device_mut(proof_slab.as_ptr() as *mut u8, kind)
+                    };
+                    let (paths_ptr, paths_len) = unsafe {
+                        proof_layout
+                            .whir_base_query_paths_device_mut(proof_slab.as_ptr() as *mut u8, kind)
+                    };
+                    let leaves = unsafe { DeviceSlice::from_raw_parts_mut(leaves_ptr, leaves_len) };
+                    let paths = unsafe { DeviceSlice::from_raw_parts_mut(paths_ptr, paths_len) };
+                    holder.gather_openings_recomputed(
+                        device_query_indexes_for_base,
+                        leaves,
+                        paths,
+                        context,
+                    )?;
+                } else {
+                    holder.prepare_full_opening(context)?;
+                    // Empty setup has no leaf/path output to populate.
+                    if holder.columns_count != 0 {
+                        gather(&[holder], destinations)?;
+                    }
+                    holder.release_cosets();
+                }
+            }
+        } else {
+            gather(
+                &[
+                    &*memory_trace_holder,
+                    &*witness_trace_holder,
+                    &*setup_trace_holder,
+                ],
+                &slab_ptrs,
+            )?;
+            memory_trace_holder.release_cosets();
+            witness_trace_holder.release_cosets();
+            setup_trace_holder.release_cosets();
+        }
         // Materialize all per-query squaring sequences in a single kernel
         // launch reading device-resident query indices. The OOD anchor
         // already lives in slot 0 of per_query_pows
@@ -454,10 +517,10 @@ pub fn schedule_gpu_whir_fold_with_sources(
         )?;
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        delinearization_ephemerals.push(delinearization_device);
-        delinearization_ephemerals.push(per_query_pows);
-        delinearization_ephemerals.push(eq_high_scratch);
-        delinearization_ephemerals.push(eq_low_scratch);
+        drop(delinearization_device);
+        drop(per_query_pows);
+        drop(eq_high_scratch);
+        drop(eq_low_scratch);
         round_range.end(stream)?;
         tracing_ranges.push(round_range);
     }
@@ -480,7 +543,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
             num_folding_steps,
             &mut state,
             &mut scheduled_sumcheck_poly_idx,
-            &mut fold_round_group_keepalives,
             proof_slab,
             proof_layout,
             final_device_seed,
@@ -513,17 +575,15 @@ pub fn schedule_gpu_whir_fold_with_sources(
         tracing_ranges.push(commit_next_oracle_range);
         let mut oracle_to_query = rs_oracle.replace(next_oracle).unwrap();
 
-        schedule_ood_sample_phase(
+        let ood_point_device = schedule_ood_sample_phase(
             &mut state,
             internal_round_idx + 1,
             proof_slab,
             proof_layout,
             final_device_seed,
-            &mut ood_point_devices,
             stream,
             context,
         )?;
-        let ood_point_device_idx = ood_point_devices.len() - 1;
 
         let pow_and_query_indexes_name = format!("{round_name}.pow_and_query_indexes");
         let pow_and_query_indexes_range = Range::new(&*pow_and_query_indexes_name)?;
@@ -532,7 +592,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
             state.current_len.trailing_zeros() + oracle_to_query.lde_factor().trailing_zeros();
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        schedule_pow_and_query_indexes_phase(
+        let pow_round_state = schedule_pow_and_query_indexes_phase(
             final_device_seed,
             num_queries,
             pow_bits,
@@ -540,7 +600,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
             query_domain_log2,
             proof_slab,
             proof_layout,
-            &mut pow_round_state,
             context,
         )?;
         pow_and_query_indexes_range.end(stream)?;
@@ -557,21 +616,19 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let delinearization_device = schedule_delinearization_running_powers_phase(
             &mut state,
             num_queries,
-            &ood_point_devices[ood_point_device_idx][..],
+            &ood_point_device[..],
             &mut per_query_pows[..count_per_query],
             final_device_seed,
-            &mut delinearization_ephemerals,
             context,
         )?;
 
+        drop(ood_point_device);
         let queries_name = format!("{round_name}.queries");
         let queries_range = Range::new(&*queries_name)?;
         queries_range.start(stream)?;
         // Batched device-side tree-index transform + slab-direct gather.
-        let device_query_indexes_for_round: &era_cudart::slice::DeviceSlice<u32> = &pow_round_state
-            .last()
-            .expect("pow_round_state pushed above for this round")
-            .d_indexes[..];
+        let device_query_indexes_for_round: &era_cudart::slice::DeviceSlice<u32> =
+            &pow_round_state.d_indexes[..];
         {
             // SAFETY: layout returns live, non-overlapping mutable regions for
             // this round's intermediate slab subranges.
@@ -645,10 +702,10 @@ pub fn schedule_gpu_whir_fold_with_sources(
         // oracle's backings is enqueued above on the exec stream, so the drop
         // is stream-ordered.
         drop(oracle_to_query);
-        delinearization_ephemerals.push(delinearization_device);
-        delinearization_ephemerals.push(per_query_pows);
-        delinearization_ephemerals.push(eq_high_scratch);
-        delinearization_ephemerals.push(eq_low_scratch);
+        drop(delinearization_device);
+        drop(per_query_pows);
+        drop(eq_high_scratch);
+        drop(eq_low_scratch);
         round_range.end(stream)?;
         tracing_ranges.push(round_range);
     }
@@ -669,7 +726,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
             num_folding_steps,
             &mut state,
             &mut scheduled_sumcheck_poly_idx,
-            &mut fold_round_group_keepalives,
             proof_slab,
             proof_layout,
             final_device_seed,
@@ -741,7 +797,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
             state.current_len.trailing_zeros() + oracle_to_query.lde_factor().trailing_zeros();
         let pow_and_query_indexes_range = Range::new("gkr.whir.final_round.pow_and_query_indexes")?;
         pow_and_query_indexes_range.start(stream)?;
-        schedule_pow_and_query_indexes_phase(
+        let pow_round_state = schedule_pow_and_query_indexes_phase(
             final_device_seed,
             num_queries,
             pow_bits,
@@ -749,7 +805,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
             query_domain_log2,
             proof_slab,
             proof_layout,
-            &mut pow_round_state,
             context,
         )?;
         pow_and_query_indexes_range.end(stream)?;
@@ -758,10 +813,8 @@ pub fn schedule_gpu_whir_fold_with_sources(
         queries_range.start(stream)?;
         let final_oracle_index = num_whir_steps.saturating_sub(1);
         // Batched device-side gather for the final round too.
-        let device_query_indexes_for_round: &era_cudart::slice::DeviceSlice<u32> = &pow_round_state
-            .last()
-            .expect("pow_round_state pushed above for final round")
-            .d_indexes[..];
+        let device_query_indexes_for_round: &era_cudart::slice::DeviceSlice<u32> =
+            &pow_round_state.d_indexes[..];
         {
             // SAFETY: layout returns live, non-overlapping mutable regions for
             // this round's intermediate slab subranges.
@@ -822,9 +875,5 @@ pub fn schedule_gpu_whir_fold_with_sources(
 
     Ok(GpuWhirFoldScheduledExecution {
         _tracing_ranges: tracing_ranges,
-        _fold_round_group_keepalives: fold_round_group_keepalives,
-        _pow_round_state: pow_round_state,
-        _ood_point_devices: ood_point_devices,
-        _delinearization_ephemerals: delinearization_ephemerals,
     })
 }

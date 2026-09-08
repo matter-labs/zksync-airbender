@@ -49,7 +49,7 @@ pub(crate) fn get_gpu_worker_func(
     }
 }
 
-const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
+pub(crate) const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
 enum RequestKind {
     MemoryCommitment,
@@ -81,9 +81,18 @@ struct RequestState {
 }
 
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
-struct PhaseOne<'a> {
+pub(crate) struct PhaseOne<'a> {
     state: RequestState,
     inputs: PhaseOneInputs<'a>,
+    policy: gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy,
+}
+
+impl PhaseOne<'_> {
+    /// The policy phase two will prove with: the production selection, or the
+    /// offline override this phase was scheduled with.
+    pub(crate) fn policy(&self) -> gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy {
+        self.policy
+    }
 }
 
 /// Per-phase-1 bundle, scheduled on h2d_stream against a single shared
@@ -103,7 +112,7 @@ enum PhaseOneInputs<'a> {
 }
 
 /// Phase-2 state: GPU job enqueued, awaiting `finish()`.
-struct PhaseTwo<'a> {
+pub(crate) struct PhaseTwo<'a> {
     state: RequestState,
     job: JobType<'a>,
 }
@@ -137,6 +146,7 @@ fn gpu_worker(
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
     let mut context = ProverContext::new(&prover_context_config)?;
+    crate::memory_policy::validate_device_budget(&context)?;
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
@@ -179,10 +189,19 @@ fn gpu_worker(
     Ok(())
 }
 
-fn schedule_phase_one<'a>(
+pub(crate) fn schedule_phase_one<'a>(
     device_id: i32,
     context: &ProverContext,
     request: GpuWorkRequest<A>,
+) -> CudaResult<PhaseOne<'a>> {
+    schedule_phase_one_with_policy_override(device_id, context, request, None)
+}
+
+pub(crate) fn schedule_phase_one_with_policy_override<'a>(
+    device_id: i32,
+    context: &ProverContext,
+    request: GpuWorkRequest<A>,
+    policy_override: Option<gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy>,
 ) -> CudaResult<PhaseOne<'a>> {
     if let GpuWorkRequest::SetupInitialization(request) = request {
         let SetupInitializationRequest {
@@ -216,6 +235,7 @@ fn schedule_phase_one<'a>(
         return Ok(PhaseOne {
             state,
             inputs: PhaseOneInputs::SetupInitialization,
+            policy: Default::default(),
         });
     }
     // Decompose the request into bookkeeping plus the host buffers that
@@ -279,6 +299,20 @@ fn schedule_phase_one<'a>(
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
     let is_proof = matches!(state.kind, RequestKind::Proof);
+
+    let policy = if is_proof {
+        match policy_override {
+            Some(policy) => policy,
+            None => crate::memory_policy::select(
+                circuit_type,
+                state.security_level,
+                &state.precomputations,
+                context,
+            )?,
+        }
+    } else {
+        Default::default()
+    };
 
     let proof_prover_config = is_proof.then(|| {
         gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
@@ -403,15 +437,29 @@ fn schedule_phase_one<'a>(
         },
     )??;
 
-    Ok(PhaseOne { state, inputs })
+    Ok(PhaseOne {
+        state,
+        inputs,
+        policy,
+    })
 }
 
-fn enqueue_phase_two<'a>(
+pub(crate) fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
     p1: PhaseOne<'a>,
 ) -> CudaResult<PhaseTwo<'a>> {
-    let PhaseOne { state, inputs } = p1;
+    let policy = p1.policy;
+    enqueue_phase_two_with_policy(device_id, context, p1, policy)
+}
+
+pub(crate) fn enqueue_phase_two_with_policy<'a>(
+    device_id: i32,
+    context: &ProverContext,
+    p1: PhaseOne<'a>,
+    policy: gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy,
+) -> CudaResult<PhaseTwo<'a>> {
+    let PhaseOne { state, inputs, .. } = p1;
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
@@ -426,12 +474,13 @@ fn enqueue_phase_two<'a>(
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
-            let job = gpu_circuit_prover::proof::prove::<A>(
+            let job = gpu_circuit_prover::proof::prove_with_memory_policy::<A>(
                 &state.precomputations.gkr_programs,
                 &prover_config,
                 final_trace_size_log_2,
                 bundle,
                 &dr_tail_plan,
+                policy,
                 context,
             )?;
             JobType::Proof(job)
@@ -507,4 +556,33 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
             ))
         }
     }
+}
+
+// The offline port reuses the worker's exact input and proof paths while
+// retaining elapsed times that the normal result message does not carry.
+#[cfg(feature = "memory_sweep")]
+pub(crate) fn finish_sweep_proof(
+    phase: PhaseTwo<'_>,
+) -> CudaResult<(
+    crate::upstream::GKRProof<BF, E4, crate::upstream::DefaultTreeConstructor>,
+    f32,
+)> {
+    let PhaseTwo { state, job } = phase;
+    let JobType::Proof(job) = job else {
+        panic!("sweep expected a proof")
+    };
+    let result = job.finish()?;
+    drop(state);
+    Ok(result)
+}
+
+#[cfg(feature = "memory_sweep")]
+pub(crate) fn finish_sweep_memory(phase: PhaseTwo<'_>) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
+    let PhaseTwo { state, job } = phase;
+    let JobType::MemoryCommitment(job) = job else {
+        panic!("sweep expected a memory commitment")
+    };
+    let (caps, _) = job.finish()?;
+    drop(state);
+    Ok(caps)
 }

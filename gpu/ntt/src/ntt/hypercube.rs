@@ -42,6 +42,10 @@ strided_tiles_stages!(ab_hypercube_evals_to_monomials_first_10_stages_kernel);
 strided_tiles_stages!(ab_hypercube_evals_to_monomials_8_stages_kernel);
 strided_tiles_stages!(ab_hypercube_evals_to_monomials_8_stages_1_role_kernel);
 strided_tiles_stages!(ab_hypercube_evals_to_monomials_8_stages_pdl_kernel);
+strided_tiles_stages!(ab_monomials_to_hypercube_8_stages_kernel);
+strided_tiles_stages!(ab_monomials_to_hypercube_8_stages_1_role_kernel);
+strided_tiles_stages!(ab_monomials_to_hypercube_first_9_stages_kernel);
+strided_tiles_stages!(ab_monomials_to_hypercube_first_10_stages_kernel);
 
 cuda_kernel!(
     EvalsToMonomialsFinal,
@@ -61,6 +65,12 @@ hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_5_stag
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_6_stages_kernel);
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_7_stages_kernel);
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_finest_8_stages_kernel);
+hypercube_evals_to_monomials_final!(ab_monomials_to_hypercube_final_4_stages_kernel);
+hypercube_evals_to_monomials_final!(ab_monomials_to_hypercube_final_5_stages_kernel);
+hypercube_evals_to_monomials_final!(ab_monomials_to_hypercube_final_6_stages_kernel);
+hypercube_evals_to_monomials_final!(ab_monomials_to_hypercube_final_7_stages_kernel);
+hypercube_evals_to_monomials_final!(ab_monomials_to_hypercube_final_8_stages_kernel);
+hypercube_evals_to_monomials_final!(ab_monomials_to_hypercube_last_14_stages_kernel);
 
 cuda_kernel!(
     HypercubeLastCompact,
@@ -177,7 +187,7 @@ mod cpu_dispatch_tests {
 
 /// The two hypercube nonfinal passes for one column (pass 1 reads the
 /// hypercube evals, pass 2 runs in place on the output).
-fn launch_nonfinal_passes(
+pub(crate) fn launch_nonfinal_passes(
     input_matrix: PtrAndStride<BF>,
     output_matrix_const: PtrAndStride<BF>,
     output_matrix_mut: MutPtrAndStride<BF>,
@@ -424,73 +434,15 @@ fn hypercube_evals_to_monomials_lsb_fine_first(
         let input_matrix = input_matrix.as_ptr_and_stride();
         let output_matrix_const = output_matrix_const.as_ptr_and_stride();
         let output_matrix_mut = output_matrix_mut.as_mut_ptr_and_stride();
-        // Finest stages first, out of place from the hypercube evals. A
-        // previous column's fused terminal may already have produced this
-        // exact slab.
-        let threads = 256;
-        let bf_vals_per_block = 1 << 13; // 8192
-        let blocks = n.get_chunks_count(bf_vals_per_block);
-        if !finest_already_computed {
-            let config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
-            let args = EvalsToMonomialsFinalArguments::new(
-                input_matrix,
-                output_matrix_mut,
-                false,
-                log_n as i32,
-            );
-            match log_n {
-                21 => EvalsToMonomialsFinalFunction(
-                    ab_hypercube_evals_to_monomials_final_5_stages_kernel,
-                )
-                .launch(&config, &args)?,
-                22 => EvalsToMonomialsFinalFunction(
-                    ab_hypercube_evals_to_monomials_final_6_stages_kernel,
-                )
-                .launch(&config, &args)?,
-                23 => EvalsToMonomialsFinalFunction(
-                    ab_hypercube_evals_to_monomials_final_7_stages_kernel,
-                )
-                .launch(&config, &args)?,
-                24 => EvalsToMonomialsFinalFunction(
-                    ab_hypercube_evals_to_monomials_finest_8_stages_kernel,
-                )
-                .launch(&config, &args)?,
-                _ => {
-                    unreachable!("hypercube 3-pass kernels are only generated for log_n in 21..=24")
-                }
-            }
-        }
-        // Middle 8 stages in place.
-        let start_stage = 8;
-        let num_exchg_regions = 1usize << start_stage;
-        let exchg_region_size = n >> start_stage;
-        let blocks_per_exchg_region = exchg_region_size / bf_vals_per_block;
-        assert_eq!(
-            blocks_per_exchg_region * num_exchg_regions,
-            n / bf_vals_per_block
-        );
-        let mut grid_dim: Dim3 = (blocks_per_exchg_region as u32).into();
-        grid_dim.y = num_exchg_regions as u32;
-        let pdl_middle = finest_already_computed
-            && matches!(log_n, 22..=24)
-            && shared::supports_tma_pdl(device_properties.compute_capability_major);
-        let pdl_attributes = [CudaLaunchAttribute::ProgrammaticStreamSerialization(true)];
-        let mut config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
-        if pdl_middle {
-            config.attributes = &pdl_attributes;
-        }
-        let args = StridedTilesStagesArguments::new(
+        launch_pre_tail_lsb_column(
+            input_matrix,
             output_matrix_const,
             output_matrix_mut,
-            log_n as i32,
-            start_stage as i32,
-        );
-        let middle = if pdl_middle {
-            ab_hypercube_evals_to_monomials_8_stages_pdl_kernel
-        } else {
-            ab_hypercube_evals_to_monomials_8_stages_kernel
-        };
-        StridedTilesStagesFunction(middle).launch(&config, &args)?;
+            log_n,
+            finest_already_computed,
+            device_properties,
+            stream,
+        )?;
     }
     Ok(())
 }
@@ -529,41 +481,14 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
         let input_matrix = input_matrix.as_ptr_and_stride();
         let output_matrix_const = output_matrix_const.as_ptr_and_stride();
         let output_matrix_mut = output_matrix_mut.as_mut_ptr_and_stride();
-        let bf_vals_per_block = 1 << 14; // 16384
-        let smem_bytes = bf_vals_per_block * size_of::<BF>();
-        let threads = 512;
-        let blocks = n.get_chunks_count(bf_vals_per_block);
-        let mut grid_dim: Dim3 = (blocks as u32).into();
-        grid_dim.y = 1;
-        let mut config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
-        config.dynamic_smem_bytes = smem_bytes;
-        let args =
-            StridedTilesStagesArguments::new(input_matrix, output_matrix_mut, log_n as i32, 0);
-        let function = match log_n {
-            23 => StridedTilesStagesFunction(ab_hypercube_evals_to_monomials_first_9_stages_kernel),
-            24 => {
-                StridedTilesStagesFunction(ab_hypercube_evals_to_monomials_first_10_stages_kernel)
-            }
-            _ => unreachable!("hypercube 2-pass kernels are only generated for log_n in 23..=24"),
-        };
-        shared::set_max_dynamic_smem(&function, smem_bytes)?;
-        function.launch(&config, &args)?;
-        let bf_vals_per_block = 1 << 14; // 16384
-        let smem_bytes = bf_vals_per_block * size_of::<BF>();
-        let threads = 512;
-        let blocks = n.get_chunks_count(bf_vals_per_block);
-        let mut config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
-        config.dynamic_smem_bytes = smem_bytes;
-        let args = EvalsToMonomialsFinalArguments::new(
+        launch_hypercube_two_pass_column(
+            input_matrix,
             output_matrix_const,
             output_matrix_mut,
+            log_n,
             transposed_monomials,
-            log_n as i32,
-        );
-        let function =
-            EvalsToMonomialsFinalFunction(ab_hypercube_evals_to_monomials_last_14_stages_kernel);
-        shared::set_max_dynamic_smem(&function, smem_bytes)?;
-        function.launch(&config, &args)?;
+            stream,
+        )?;
     }
     Ok(())
 }
@@ -748,6 +673,229 @@ pub fn hypercube_evals_to_monomials(
             transposed_monomials,
             stream,
         )?,
+    }
+    Ok(())
+}
+
+// Pointer launch boundary shared by separate-source and consuming in-place APIs.
+pub(crate) fn launch_pre_tail_lsb_column(
+    input_matrix: PtrAndStride<BF>,
+    output_matrix_const: PtrAndStride<BF>,
+    output_matrix_mut: MutPtrAndStride<BF>,
+    log_n: usize,
+    finest_already_computed: bool,
+    device_properties: &DeviceProperties,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = 1usize << log_n;
+    // Finest stages first, out of place from the hypercube evals. A
+    // previous column's fused terminal may already have produced this
+    // exact slab.
+    let threads = 256;
+    let bf_vals_per_block = 1 << 13; // 8192
+    let blocks = n.get_chunks_count(bf_vals_per_block);
+    if !finest_already_computed {
+        let config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
+        let args = EvalsToMonomialsFinalArguments::new(
+            input_matrix,
+            output_matrix_mut,
+            false,
+            log_n as i32,
+        );
+        match log_n {
+            21 => {
+                EvalsToMonomialsFinalFunction(ab_hypercube_evals_to_monomials_final_5_stages_kernel)
+                    .launch(&config, &args)?
+            }
+            22 => {
+                EvalsToMonomialsFinalFunction(ab_hypercube_evals_to_monomials_final_6_stages_kernel)
+                    .launch(&config, &args)?
+            }
+            23 => {
+                EvalsToMonomialsFinalFunction(ab_hypercube_evals_to_monomials_final_7_stages_kernel)
+                    .launch(&config, &args)?
+            }
+            24 => EvalsToMonomialsFinalFunction(
+                ab_hypercube_evals_to_monomials_finest_8_stages_kernel,
+            )
+            .launch(&config, &args)?,
+            _ => {
+                unreachable!("hypercube 3-pass kernels are only generated for log_n in 21..=24")
+            }
+        }
+    }
+    // Middle 8 stages in place.
+    let start_stage = 8;
+    let num_exchg_regions = 1usize << start_stage;
+    let exchg_region_size = n >> start_stage;
+    let blocks_per_exchg_region = exchg_region_size / bf_vals_per_block;
+    assert_eq!(
+        blocks_per_exchg_region * num_exchg_regions,
+        n / bf_vals_per_block
+    );
+    let mut grid_dim: Dim3 = (blocks_per_exchg_region as u32).into();
+    grid_dim.y = num_exchg_regions as u32;
+    let pdl_middle = finest_already_computed
+        && matches!(log_n, 22..=24)
+        && shared::supports_tma_pdl(device_properties.compute_capability_major);
+    let pdl_attributes = [CudaLaunchAttribute::ProgrammaticStreamSerialization(true)];
+    let mut config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
+    if pdl_middle {
+        config.attributes = &pdl_attributes;
+    }
+    let args = StridedTilesStagesArguments::new(
+        output_matrix_const,
+        output_matrix_mut,
+        log_n as i32,
+        start_stage as i32,
+    );
+    let middle = if pdl_middle {
+        ab_hypercube_evals_to_monomials_8_stages_pdl_kernel
+    } else {
+        ab_hypercube_evals_to_monomials_8_stages_kernel
+    };
+    StridedTilesStagesFunction(middle).launch(&config, &args)?;
+    Ok(())
+}
+
+// Pointer launch boundary shared by separate-source and consuming in-place APIs.
+pub(crate) fn launch_hypercube_two_pass_column(
+    input_matrix: PtrAndStride<BF>,
+    output_matrix_const: PtrAndStride<BF>,
+    output_matrix_mut: MutPtrAndStride<BF>,
+    log_n: usize,
+    transposed_monomials: bool,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = 1usize << log_n;
+    let bf_vals_per_block = 1 << 14; // 16384
+    let smem_bytes = bf_vals_per_block * size_of::<BF>();
+    let threads = 512;
+    let blocks = n.get_chunks_count(bf_vals_per_block);
+    let mut grid_dim: Dim3 = (blocks as u32).into();
+    grid_dim.y = 1;
+    let mut config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
+    config.dynamic_smem_bytes = smem_bytes;
+    let args = StridedTilesStagesArguments::new(input_matrix, output_matrix_mut, log_n as i32, 0);
+    let function = match log_n {
+        23 => StridedTilesStagesFunction(ab_hypercube_evals_to_monomials_first_9_stages_kernel),
+        24 => StridedTilesStagesFunction(ab_hypercube_evals_to_monomials_first_10_stages_kernel),
+        _ => unreachable!("hypercube 2-pass kernels are only generated for log_n in 23..=24"),
+    };
+    shared::set_max_dynamic_smem(&function, smem_bytes)?;
+    function.launch(&config, &args)?;
+    let bf_vals_per_block = 1 << 14; // 16384
+    let smem_bytes = bf_vals_per_block * size_of::<BF>();
+    let threads = 512;
+    let blocks = n.get_chunks_count(bf_vals_per_block);
+    let mut config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
+    config.dynamic_smem_bytes = smem_bytes;
+    let args = EvalsToMonomialsFinalArguments::new(
+        output_matrix_const,
+        output_matrix_mut,
+        transposed_monomials,
+        log_n as i32,
+    );
+    let function =
+        EvalsToMonomialsFinalFunction(ab_hypercube_evals_to_monomials_last_14_stages_kernel);
+    shared::set_max_dynamic_smem(&function, smem_bytes)?;
+    function.launch(&config, &args)?;
+    Ok(())
+}
+
+/// Consume one representation with the same multistage Mobius address network.
+/// RESTORE selects additions (M -> E); false selects subtractions (E -> M).
+pub(crate) fn transform_hypercube_in_place<const RESTORE: bool>(
+    values: &mut DeviceSlice<BF>,
+    log_n: usize,
+    properties: &DeviceProperties,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!((20..=24).contains(&log_n));
+    let n = 1usize << log_n;
+    assert_eq!(values.len() % n, 0);
+    assert_eq!(values.as_ptr() as usize % 16, 0);
+    let two_pass = log_n >= 23 && n * size_of::<BF>() >= properties.l2_cache_size_bytes;
+    for column in 0..values.len() / n {
+        // SAFETY: each kernel's complete read/write set is owned by its block
+        // (or warp for the finest pass). Existing barriers finish all reads
+        // before stores. A single exclusive Rust view owns every column.
+        let (input, output) = unsafe {
+            let ptr = values.as_mut_ptr().add(column * n);
+            (
+                PtrAndStride::new(ptr.cast_const(), n),
+                MutPtrAndStride::new(ptr, n),
+            )
+        };
+        if two_pass {
+            let first = StridedTilesStagesFunction(match (log_n, RESTORE) {
+                (23, false) => ab_hypercube_evals_to_monomials_first_9_stages_kernel,
+                (24, false) => ab_hypercube_evals_to_monomials_first_10_stages_kernel,
+                (23, true) => ab_monomials_to_hypercube_first_9_stages_kernel,
+                (24, true) => ab_monomials_to_hypercube_first_10_stages_kernel,
+                _ => unreachable!(),
+            });
+            let last = EvalsToMonomialsFinalFunction(if RESTORE {
+                ab_monomials_to_hypercube_last_14_stages_kernel
+            } else {
+                ab_hypercube_evals_to_monomials_last_14_stages_kernel
+            });
+            let mut config = CudaLaunchConfig::basic((n / 16384) as u32, 512, stream);
+            config.dynamic_smem_bytes = 16384 * size_of::<BF>();
+            shared::set_max_dynamic_smem(&first, config.dynamic_smem_bytes)?;
+            shared::set_max_dynamic_smem(&last, config.dynamic_smem_bytes)?;
+            first.launch(
+                &config,
+                &StridedTilesStagesArguments::new(input, output, log_n as i32, 0),
+            )?;
+            last.launch(
+                &config,
+                &EvalsToMonomialsFinalArguments::new(input, output, false, log_n as i32),
+            )?;
+            continue;
+        }
+        let coarse = |stage: usize| -> CudaResult<()> {
+            let one_role = log_n == 20 && stage == 8;
+            let block_values = if one_role { 4096 } else { 8192 };
+            let grid: Dim3 = ((n / (1 << stage) / block_values) as u32, 1u32 << stage).into();
+            let function = StridedTilesStagesFunction(match (RESTORE, one_role) {
+                (false, false) => ab_hypercube_evals_to_monomials_8_stages_kernel,
+                (false, true) => ab_hypercube_evals_to_monomials_8_stages_1_role_kernel,
+                (true, false) => ab_monomials_to_hypercube_8_stages_kernel,
+                (true, true) => ab_monomials_to_hypercube_8_stages_1_role_kernel,
+            });
+            function.launch(
+                &CudaLaunchConfig::basic(grid, 256, stream),
+                &StridedTilesStagesArguments::new(input, output, log_n as i32, stage as i32),
+            )
+        };
+        let fine = EvalsToMonomialsFinalFunction(match (log_n, RESTORE) {
+            (20, false) => ab_hypercube_evals_to_monomials_final_4_stages_kernel,
+            (21, false) => ab_hypercube_evals_to_monomials_final_5_stages_kernel,
+            (22, false) => ab_hypercube_evals_to_monomials_final_6_stages_kernel,
+            (23, false) => ab_hypercube_evals_to_monomials_final_7_stages_kernel,
+            (24, false) => ab_hypercube_evals_to_monomials_finest_8_stages_kernel,
+            (20, true) => ab_monomials_to_hypercube_final_4_stages_kernel,
+            (21, true) => ab_monomials_to_hypercube_final_5_stages_kernel,
+            (22, true) => ab_monomials_to_hypercube_final_6_stages_kernel,
+            (23, true) => ab_monomials_to_hypercube_final_7_stages_kernel,
+            (24, true) => ab_monomials_to_hypercube_final_8_stages_kernel,
+            _ => unreachable!(),
+        });
+        let config = CudaLaunchConfig::basic((n / 8192) as u32, 256, stream);
+        let args = EvalsToMonomialsFinalArguments::new(input, output, false, log_n as i32);
+        if log_n == 20 {
+            coarse(0)?;
+            coarse(8)?;
+            fine.launch(&config, &args)?;
+        } else {
+            // Mobius stages on distinct index bits commute. Preserve the LSB
+            // schedule used by the fused commitment boundary: fine, middle,
+            // coarse. Only the butterfly addition/subtraction differs.
+            fine.launch(&config, &args)?;
+            coarse(8)?;
+            coarse(0)?;
+        }
     }
     Ok(())
 }

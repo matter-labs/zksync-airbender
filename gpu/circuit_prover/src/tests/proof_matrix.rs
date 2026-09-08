@@ -34,10 +34,43 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
 
 /// Warmup + profiled prove; structure check only (no CPU reference needed).
 pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
+    run_profile_with_schedule(fixture, BaseLdeSchedule::AtQueries)
+}
+
+pub(super) fn run_profile_with_schedule(fixture: &BasicUnrolledFixture, schedule: BaseLdeSchedule) {
+    run_profile_using(fixture, |transfers| {
+        fixture.prove_with_schedule(transfers, schedule)
+    });
+}
+
+pub(super) fn run_profile_with_memory_policy(
+    fixture: &BasicUnrolledFixture,
+    policy: ProofMemoryPolicy,
+) {
+    run_profile_using(fixture, |transfers| {
+        let plan = fixture.dr_tail_plan()?;
+        crate::proof::prove_with_memory_policy::<Global>(
+            &fixture.gkr_programs,
+            &fixture.prover_config,
+            fixture.final_trace_size_log_2,
+            transfers,
+            &plan,
+            policy,
+            &fixture.context,
+        )
+    });
+}
+
+fn run_profile_using(
+    fixture: &BasicUnrolledFixture,
+    mut prove: impl FnMut(
+        BasicUnrolledTransfers<'static>,
+    ) -> CudaResult<GpuGKRProofJob<'static, Global>>,
+) {
     let baseline = fixture.context.get_used_mem_current();
     let warm = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
-    let warm_job = fixture.prove(warm).unwrap();
+    let warm_job = prove(warm).unwrap();
     let (warm_proof, warm_ms) = warm_job.finish().unwrap();
     eprintln!("warmup proof time: {warm_ms} ms");
     assert_gkr_proof_structure_for_test(&warm_proof, &fixture.prover_config.whir_schedule);
@@ -50,7 +83,7 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
             Some("gpu_circuit_prover.tests"),
             "test.gpu.prove.profiled_call",
         );
-        fixture.prove(prof).unwrap().finish().unwrap()
+        prove(prof).unwrap().finish().unwrap()
     };
     eprintln!("profiled proof time: {prof_ms} ms");
     assert_gkr_proof_structure_for_test(&prof_proof, &fixture.prover_config.whir_schedule);
@@ -850,7 +883,7 @@ fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture 
     fixture
 }
 
-fn prepare_blake2_with_compression_profiling_fixture() -> BasicUnrolledFixture {
+pub(super) fn prepare_blake2_with_compression_profiling_fixture() -> BasicUnrolledFixture {
     let (buffer, table_driver) = replay_blake2_with_compression_delegation_buffer();
     prepare_delegation_profiling_fixture(
         DelegationCircuitType::Blake2WithCompression,

@@ -65,6 +65,7 @@ impl LazyGpuGKRSetupHost {
 #[derive(Clone)]
 pub(crate) struct CircuitPrecomputations {
     pub gkr_programs: Arc<GkrPrograms>,
+    pub artifact_fingerprint: u64,
     pub setup_host: Arc<LazyGpuGKRSetupHost>,
     pub decoder_host: Option<Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>>,
 }
@@ -84,6 +85,7 @@ impl CircuitPrecomputations {
             circuit_type.get_domain_size(),
             "compiled circuit trace_len disagrees with CircuitType geometry for {circuit_type:?}"
         );
+        let artifact_fingerprint = crate::memory_policy::stable_hash(&compiled_circuit);
         let compiled_circuit = Arc::new(compiled_circuit);
         let gkr_programs = Arc::new(
             GkrPrograms::compile(circuit_type, Arc::clone(&compiled_circuit))
@@ -108,6 +110,7 @@ impl CircuitPrecomputations {
         };
         Ok(Self {
             gkr_programs,
+            artifact_fingerprint,
             setup_host,
             decoder_host,
         })

@@ -46,7 +46,14 @@ log = "0.4.29"
 rayon = "*"
 type-map = "0.5"
 
+# Same optional tooling dependencies as the v2 sweep; absent from production.
+clap = { workspace = true, optional = true }
+csv = { version = "1", optional = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
 [features]
+memory_sweep = ["dep:clap", "dep:csv", "dep:serde", "dep:serde_json"]
 default = ["deterministic_pow"]
 deterministic_pow = ["gpu_circuit_prover/deterministic_pow"]
 eval_leaves = ["gpu_circuit_prover/eval_leaves"]
@@ -59,3 +66,8 @@ env_logger = "0.11"
 # build script of its own, so declare the cfg here to satisfy `unexpected_cfgs`
 # for the `#[cfg(not(no_cuda))]`-gated GPU tests carried over from gpu_circuit_prover.
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(no_cuda)'] }
+
+[[bin]]
+name = "gpu_memory_sweep"
+path = "src/bin/gpu_memory_sweep.rs"
+required-features = ["memory_sweep"]

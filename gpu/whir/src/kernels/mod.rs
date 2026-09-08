@@ -1033,6 +1033,27 @@ cuda_kernel!(
 partially_evaluate_monomial_form_by_ref!(ab_partially_evaluate_monomial_form_by_ref_kernel);
 
 #[allow(non_snake_case)]
+const MONOMIAL_EVAL_BLOCK_THREADS: u32 = WARP_SIZE * 4;
+const MONOMIAL_EVAL_VALUES_PER_THREAD: usize = 32;
+
+/// Scratch for monomial partial evaluations and their subsequent sum. The
+/// second buffer also holds the large kernel's single point-power adjustment.
+pub(crate) fn monomial_eval_scratch_lens(count: usize) -> (usize, usize) {
+    assert!(count.is_power_of_two());
+    let large = count >= MONOMIAL_EVAL_BLOCK_THREADS as usize * MONOMIAL_EVAL_VALUES_PER_THREAD;
+    let partials = if large {
+        count / MONOMIAL_EVAL_VALUES_PER_THREAD
+    } else {
+        count
+    };
+    let sum_partials = if partials > WHIR_SUM_BLOCK_THREADS as usize {
+        partials.div_ceil(WHIR_SUM_BLOCK_THREADS as usize)
+    } else {
+        0
+    };
+    (partials, sum_partials.max(usize::from(large)))
+}
+
 pub(crate) fn partially_evaluate_monomials_by_ref(
     monomials: &impl DeviceMatrixChunkImpl<BF>,
     scratch0: &mut DeviceSlice<E4>,
@@ -1046,8 +1067,12 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
     let monomials = monomials.as_ptr_and_stride();
     let partial_evals = scratch0.as_mut_ptr();
     let z_ptr = point.as_ptr();
-    let BLOCK_DIM = WARP_SIZE * 4;
-    let VALS_PER_THREAD = 32;
+    let partials_len = monomial_eval_scratch_lens(count).0;
+    assert!(scratch0.len() >= partials_len);
+    // This launcher only needs the point-power slot on its large path.
+    // Scratch for a subsequent whir_sum is the caller's separate requirement.
+    let BLOCK_DIM = MONOMIAL_EVAL_BLOCK_THREADS;
+    let VALS_PER_THREAD = MONOMIAL_EVAL_VALUES_PER_THREAD as u32;
     if count < (BLOCK_DIM * VALS_PER_THREAD) as usize {
         assert!(scratch0.len() >= count);
         let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32);
@@ -1080,7 +1105,7 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
     );
     PartiallyEvaluateMonomialFormByRefFunction(ab_partially_evaluate_monomial_form_by_ref_kernel)
         .launch(&config, &args)?;
-    Ok(count / 32)
+    Ok(count / MONOMIAL_EVAL_VALUES_PER_THREAD)
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -1186,6 +1211,14 @@ cuda_kernel_declaration!(
 /// single-launch combined kernel when `half` fits in one block, otherwise
 /// stage-1 partials + stage-2 finalize. `partials` (typically `state.scratch0`)
 /// must hold at least `num_blocks * 3` E4 on the two-launch path.
+pub(crate) fn whir_three_point_partials_len(half: usize) -> usize {
+    if half <= WHIR_THREE_POINT_BLOCK_THREADS as usize {
+        0
+    } else {
+        half.div_ceil(WHIR_THREE_POINT_BLOCK_THREADS as usize) * 3
+    }
+}
+
 pub(crate) fn launch_whir_three_point_partials(
     eval: &DeviceSlice<E4>,
     eq: &DeviceSlice<E4>,
@@ -1214,7 +1247,7 @@ pub(crate) fn launch_whir_three_point_partials(
     }
 
     let num_blocks = half.div_ceil(block as usize) as u32;
-    assert!(partials.len() >= (num_blocks as usize) * 3);
+    assert!(partials.len() >= whir_three_point_partials_len(half));
     let partials_ptr = partials.as_mut_ptr();
     let stage1_config = CudaLaunchConfig::basic(num_blocks, block, stream);
     let stage1_args =

@@ -2,6 +2,8 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 
+use crate::proof::memory_policy::ProofMemoryPolicy;
+use crate::proof::BaseLdeSchedule;
 use crate::upstream::{GKRCircuitArtifact, WhirSchedule};
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeAccessor};
 use gpu_core::primitives::device_tracing::Range;
@@ -32,6 +34,8 @@ fn materialize_pre_whir_trace_inputs<'a>(
     setup_transfer: &mut Option<GpuGKRSetupTransfer<'a>>,
     synthetic_setup_trace_holder: &mut Option<TraceHolder<BF>>,
     stage1_output: &mut GpuGKRStage1Output,
+    memory_policy: ProofMemoryPolicy,
+    lde_schedule: BaseLdeSchedule,
     context: &ProverContext,
 ) -> CudaResult<[Range; 2]> {
     let stream = context.get_exec_stream();
@@ -41,14 +45,22 @@ fn materialize_pre_whir_trace_inputs<'a>(
     let pre_whir_setup_cosets_range = Range::new("gkr.proof.pre_whir.setup_cosets")?;
     pre_whir_setup_cosets_range.start(stream)?;
     if let Some(setup_transfer) = setup_transfer.as_mut() {
-        setup_transfer
-            .trace_holder
-            .ensure_cosets_materialized(context)?;
+        if lde_schedule.is_deferred() {
+            setup_transfer
+                .trace_holder
+                .defer_materialization_until_queries(memory_policy.setup);
+        } else {
+            setup_transfer
+                .trace_holder
+                .ensure_cosets_materialized(context)?;
+        }
     } else {
         let setup_trace_holder = synthetic_setup_trace_holder
             .as_mut()
             .expect("setup-less proof path must materialize a synthetic setup holder");
-        if setup_trace_holder.columns_count > 0 {
+        if lde_schedule.is_deferred() {
+            setup_trace_holder.defer_materialization_until_queries(memory_policy.setup);
+        } else if setup_trace_holder.columns_count > 0 {
             setup_trace_holder.commit_all(context)?;
         }
     }
@@ -57,20 +69,26 @@ fn materialize_pre_whir_trace_inputs<'a>(
     // Memory: cosets allocated on demand, then build and cache partial trees from cosets.
     let pre_whir_memory_commit_range = Range::new("gkr.proof.pre_whir.memory_commit")?;
     pre_whir_memory_commit_range.start(stream)?;
-    stage1_output
-        .memory_trace_holder
-        .ensure_cosets_materialized(context)?;
-    {
-        let instances_count = 1usize << stage1_output.memory_trace_holder.log_lde_factor;
-        stage1_output.memory_trace_holder.trees = TreesHolder::Partial(allocate_trees(
-            instances_count,
-            stage1_output.memory_trace_holder.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
-            stage1_output.memory_trace_holder.log_rows_per_leaf,
-            context,
-        )?);
+    if lde_schedule.is_deferred() {
         stage1_output
             .memory_trace_holder
-            .build_and_cache_partial_trees(context)?;
+            .defer_materialization_until_queries(memory_policy.memory);
+    } else {
+        stage1_output
+            .memory_trace_holder
+            .ensure_cosets_materialized(context)?;
+        {
+            let instances_count = 1usize << stage1_output.memory_trace_holder.log_lde_factor;
+            stage1_output.memory_trace_holder.trees = TreesHolder::Partial(allocate_trees(
+                instances_count,
+                stage1_output.memory_trace_holder.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                stage1_output.memory_trace_holder.log_rows_per_leaf,
+                context,
+            )?);
+            stage1_output
+                .memory_trace_holder
+                .build_and_cache_partial_trees(context)?;
+        }
     }
     pre_whir_memory_commit_range.end(stream)?;
 
@@ -87,6 +105,8 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     batching_pow_bits: u32,
+    memory_policy: ProofMemoryPolicy,
+    lde_schedule: BaseLdeSchedule,
     context: &ProverContext,
 ) -> CudaResult<WhirPhaseResult> {
     let mut transition_ranges = Vec::new();
@@ -122,6 +142,8 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         setup_transfer,
         synthetic_setup_trace_holder,
         stage1_output,
+        memory_policy,
+        lde_schedule,
         context,
     )?);
 

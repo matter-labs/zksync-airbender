@@ -35,3 +35,8 @@ gpu_native_build = { workspace = true }
 name = "ntt"
 harness = false
 required-features = ["bench"]
+
+[[bench]]
+name = "retained_lde"
+harness = false
+required-features = ["bench"]

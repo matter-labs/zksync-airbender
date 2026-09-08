@@ -174,52 +174,66 @@ fn run_unified_commit_memory_matches_cpu_test() {
     let base = &fixture.base;
     let context = &base.context;
 
-    // Drive the production unified memory-commit path: `commit_memory_from_transfers`
-    // threads the inits/teardowns bundle through to the unified arm (the 6-arg
-    // `commit_memory` hard-codes `None` for i/t and panics on a unified circuit).
-    let decoder = if base.compiled_circuit.has_decoder_lookup {
-        Some(DecoderTableTransfer::new(Arc::clone(&base.decoder_table_host), context).unwrap())
-    } else {
-        None
-    };
-    let inits_and_teardowns = Some(
-        InitsAndTeardownsTransfer::new(
-            base.inits_and_teardowns_host
-                .clone()
-                .expect("unified fixture must carry an inits/teardowns host"),
+    let baseline = context.get_used_mem_current();
+    let enqueue = || {
+        // Drive the production unified memory-commit path: `commit_memory_from_transfers`
+        // threads the inits/teardowns bundle through to the unified arm (the 6-arg
+        // `commit_memory` hard-codes `None` for i/t and panics on a unified circuit).
+        let decoder = if base.compiled_circuit.has_decoder_lookup {
+            Some(DecoderTableTransfer::new(Arc::clone(&base.decoder_table_host), context).unwrap())
+        } else {
+            None
+        };
+        let inits_and_teardowns = Some(
+            InitsAndTeardownsTransfer::new(
+                base.inits_and_teardowns_host
+                    .clone()
+                    .expect("unified fixture must carry an inits/teardowns host"),
+                context,
+            )
+            .unwrap(),
+        );
+        let tracing_data =
+            Some(TracingDataTransfer::new(base.tracing_data_host.clone(), context).unwrap());
+
+        let mut bundle =
+            GpuGKRCommitMemoryTransfer::new(decoder, inits_and_teardowns, tracing_data, context)
+                .unwrap();
+        bundle.schedule(context).unwrap();
+
+        let job = commit_memory_from_transfers(
+            base.circuit_type,
+            &base.compiled_circuit,
+            bundle,
+            &base.prover_config,
             context,
         )
-        .unwrap(),
-    );
-    let tracing_data =
-        Some(TracingDataTransfer::new(base.tracing_data_host.clone(), context).unwrap());
-
-    let mut bundle =
-        GpuGKRCommitMemoryTransfer::new(decoder, inits_and_teardowns, tracing_data, context)
-            .unwrap();
-    bundle.schedule(context).unwrap();
-
-    let job = commit_memory_from_transfers(
-        base.circuit_type,
-        &base.compiled_circuit,
-        bundle,
-        &base.prover_config,
-        context,
-    )
-    .unwrap();
-    let (gpu_caps, elapsed_ms) = job.finish().unwrap();
-    eprintln!("unified GPU memory commitment ready in {elapsed_ms:.1}ms");
-
-    // Compare via the same flatten idiom the per-family helpers use.
-    let mut gpu_flat = vec![];
-    flatten_merkle_caps_iter_into(gpu_caps.into_iter(), &mut gpu_flat);
-    let mut cpu_flat = vec![];
-    flatten_merkle_caps_iter_into(base.memory_tree_caps.iter().cloned(), &mut cpu_flat);
+        .unwrap();
+        job
+    };
+    let first = enqueue();
     assert_eq!(
-        gpu_flat, cpu_flat,
-        "unified GPU memory-tree caps must match the CPU memory commitment"
+        context.get_used_mem_current(),
+        baseline,
+        "commit_memory must retire its device input bundle before finish"
     );
-    eprintln!("unified memory commitment caps match CPU!");
+    let second = enqueue();
+    assert_eq!(context.get_used_mem_current(), baseline);
+    for job in [first, second] {
+        let (gpu_caps, elapsed_ms) = job.finish().unwrap();
+        eprintln!("unified GPU memory commitment ready in {elapsed_ms:.1}ms");
+
+        // Compare via the same flatten idiom the per-family helpers use.
+        let mut gpu_flat = vec![];
+        flatten_merkle_caps_iter_into(gpu_caps.into_iter(), &mut gpu_flat);
+        let mut cpu_flat = vec![];
+        flatten_merkle_caps_iter_into(base.memory_tree_caps.iter().cloned(), &mut cpu_flat);
+        assert_eq!(
+            gpu_flat, cpu_flat,
+            "unified GPU memory-tree caps must match the CPU memory commitment"
+        );
+    }
+    assert_eq!(context.get_used_mem_current(), baseline);
 }
 
 fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(

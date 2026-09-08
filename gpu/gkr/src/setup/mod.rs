@@ -26,6 +26,8 @@ pub(crate) mod kernels;
 pub use kernels::GpuGKRSetupHost;
 pub(crate) use kernels::*;
 
+/// Device setup for one proof. WHIR consumes the raw backing after initial
+/// batching, so create a new transfer for each proof; the host setup is reusable.
 pub struct GpuGKRSetupTransfer<'a> {
     pub host: Arc<GpuGKRSetupHost>,
     pub trace_holder: TraceHolder<BF>,

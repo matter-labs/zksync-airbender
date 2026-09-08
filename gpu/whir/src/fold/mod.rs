@@ -12,8 +12,9 @@ use crate::kernels::whir_fold_adjacent;
 use crate::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
     launch_batched_accumulate_eq_samples, launch_split_accumulate_eq_samples,
-    launch_whir_three_point_partials, partially_evaluate_monomials_by_ref,
-    split_eq_factor_scratch_lens, whir_fold_adjacent_pair, whir_fold_adjacent_vectorized, whir_sum,
+    launch_whir_three_point_partials, monomial_eval_scratch_lens,
+    partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens, whir_fold_adjacent_pair,
+    whir_fold_adjacent_vectorized, whir_sum, whir_three_point_partials_len,
 };
 use crate::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 #[cfg(test)]
@@ -51,14 +52,7 @@ pub(super) struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation<BF>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,
-    /// Out-of-place fold destinations. Half length suffices because the live
-    /// length halves every round.
-    monomial_form_fold_dst: DeviceMatrixOwnsAllocation<BF>,
-    eval_form_fold_dst: DeviceAllocation<E4>,
-    eq_poly_fold_dst: DeviceAllocation<E4>,
     eq_group_tables: DeviceAllocation<E4>,
-    scratch0: DeviceAllocation<E4>,
-    scratch1: DeviceAllocation<E4>,
     #[cfg(test)]
     scalar: DeviceAllocation<E4>,
     reduce_out: DeviceAllocation<E4>,
@@ -66,75 +60,16 @@ pub(super) struct GpuWhirState {
     original_trace_len: usize,
 }
 
-// Per-fold-round-group device buffers. Aggregated into one struct because
-// they have a shared lifetime: every scheduled stream op holding into them
-// remains in flight until the surrounding `GpuWhirFoldScheduledExecution` is
-// dropped. The rolling `device_seed` is owned by the outer scheduler and
-// borrowed in here, so it does not appear in this struct.
-pub(super) struct FoldRoundGroupKeepalives {
-    pub(super) device_challenges: Vec<DeviceAllocation<E4>>,
-}
-
-impl FoldRoundGroupKeepalives {
-    pub(super) fn new() -> Self {
-        Self {
-            device_challenges: Vec::new(),
-        }
-    }
-}
-
-// pub: returned to the apex proof orchestration, which holds it as a scheduled
-// keepalive on the proof job until `prove()` finishes.
+// pub: the apex retains these stream-side tracing ranges through proof scheduling.
 pub struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
     _tracing_ranges: Vec<Range>,
-    #[allow(dead_code)]
-    _fold_round_group_keepalives: FoldRoundGroupKeepalives,
-    // Keepalives for the device-side PoW verify + query index assembly
-    // (one entry per WHIR round that goes through schedule_pow_verify_and_query_indexes).
-    #[allow(dead_code)]
-    _pow_round_state: Vec<PowAndQueryIndexesState>,
-    // Per-round device-resident OOD points produced by `schedule_ood_sample_phase`
-    // and consumed by `schedule_delinearization_running_powers_phase`. Held on
-    // the scheduled-execution keepalive so the device buffers outlive every
-    // kernel reading them.
-    #[allow(dead_code)]
-    _ood_point_devices: Vec<DeviceAllocation<E4>>,
-    // Per-round device-side ephemerals used by delinearization (delin_base,
-    // anchor_powers from `ab_squaring_sequence_e4_kernel`, and per-query
-    // pows from `ab_query_squaring_sequences_bf_to_e4_kernel`) — owned here
-    // so they outlive the kernels reading them.
-    #[allow(dead_code)]
-    _delinearization_ephemerals: Vec<DeviceAllocation<E4>>,
-}
-
-impl GpuWhirFoldScheduledExecution {
-    /// Release the device-resident reservations this scheduled WHIR fold
-    /// execution still owns. All fold / OOD / delinearization / PoW / query
-    /// kernels and the slab-bound D2D/D2H copies that read them have been
-    /// enqueued on `exec_stream` by prove-end, so these pool reservations free
-    /// stream-ordered. The tracing ranges stay (they may still be consumed on
-    /// the exec stream). Each clear is on its
-    /// own line so a single buffer class can be re-retained when bisecting a
-    /// multi-schedule regression.
-    // pub: the apex proof driver (`proof/mod.rs`) releases the WHIR scheduled
-    // execution's device buffers at finish across the crate boundary.
-    pub fn release_device_buffers(&mut self) {
-        // Per-fold-round device challenge buffers.
-        self._fold_round_group_keepalives.device_challenges.clear();
-        // Per-round OOD points + delinearization ephemerals.
-        self._ood_point_devices.clear();
-        self._delinearization_ephemerals.clear();
-        // PoW raw-bits + assembled query-index device buffers.
-        self._pow_round_state.clear();
-    }
 }
 
 impl GpuWhirState {
     fn new(trace_len: usize, context: &ProverContext) -> CudaResult<Self> {
         assert!(trace_len.is_power_of_two());
         assert!(trace_len >= 2);
-        let half_len = trace_len / 2;
         let max_log_n = trace_len.trailing_zeros() as usize;
         Ok(Self {
             sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation::new(
@@ -144,18 +79,10 @@ impl GpuWhirState {
             sumchecked_poly_evaluation_form: context
                 .alloc(trace_len, AllocationPlacement::BestFit)?,
             eq_poly: context.alloc(trace_len, AllocationPlacement::BestFit)?,
-            monomial_form_fold_dst: DeviceMatrixOwnsAllocation::new(
-                context.alloc(half_len * EXT4_DEGREE, AllocationPlacement::BestFit)?,
-                half_len,
-            ),
-            eval_form_fold_dst: context.alloc(half_len, AllocationPlacement::BestFit)?,
-            eq_poly_fold_dst: context.alloc(half_len, AllocationPlacement::BestFit)?,
             eq_group_tables: context.alloc(
                 eq_group_tables_len(max_log_n).max(1),
                 AllocationPlacement::BestFit,
             )?,
-            scratch0: context.alloc(half_len, AllocationPlacement::BestFit)?,
-            scratch1: context.alloc(half_len, AllocationPlacement::BestFit)?,
             #[cfg(test)]
             scalar: context.alloc(1, AllocationPlacement::BestFit)?,
             reduce_out: context.alloc(3, AllocationPlacement::BestFit)?,
@@ -163,6 +90,49 @@ impl GpuWhirState {
             original_trace_len: trace_len,
         })
     }
+}
+
+/// Fold directly into distinct, half-size outputs. An adjacent fold cannot
+/// overwrite its source across blocks; retire the old state only after both
+/// launches have enqueued their reads.
+fn schedule_fold_state(
+    state: &mut GpuWhirState,
+    challenge: &era_cudart::slice::DeviceVariable<E4>,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let current_len = state.current_len;
+    assert!(current_len >= 2);
+    let next_len = current_len / 2;
+    let mut next_monomials = DeviceMatrixOwnsAllocation::new(
+        context.alloc(next_len * EXT4_DEGREE, AllocationPlacement::BestFit)?,
+        next_len,
+    );
+    let mut next_evals = context.alloc(next_len, AllocationPlacement::BestFit)?;
+    let mut next_eq = context.alloc(next_len, AllocationPlacement::BestFit)?;
+    let stream = context.get_exec_stream();
+    whir_fold_adjacent_vectorized(
+        &state.sumchecked_poly_monomial_form,
+        &mut next_monomials,
+        challenge,
+        next_len,
+        stream,
+    )?;
+    whir_fold_adjacent_pair(
+        &state.sumchecked_poly_evaluation_form[..current_len],
+        &mut next_evals,
+        &state.eq_poly[..current_len],
+        &mut next_eq,
+        challenge,
+        stream,
+    )?;
+    // All readers of the consumed state are enqueued on exec; recursive
+    // commitment joins its auxiliary stream before returning to this scheduler.
+    // Assignment releases the old reservations without copying their contents.
+    state.sumchecked_poly_monomial_form = next_monomials;
+    state.sumchecked_poly_evaluation_form = next_evals;
+    state.eq_poly = next_eq;
+    state.current_len = next_len;
+    Ok(())
 }
 
 // Only consumed by test-only reduce-output readback paths
@@ -358,12 +328,16 @@ pub(super) fn schedule_special_three_point_eval_device_compute(
 ) -> CudaResult<()> {
     let half = state.current_len / 2;
     let stream = context.get_exec_stream();
+    let mut partials = context.alloc(
+        whir_three_point_partials_len(half).max(1),
+        AllocationPlacement::BestFit,
+    )?;
     let eval = &state.sumchecked_poly_evaluation_form[..state.current_len];
     let eq = &state.eq_poly[..state.current_len];
     launch_whir_three_point_partials(
         eval,
         eq,
-        &mut state.scratch0[..],
+        &mut partials[..],
         &mut state.reduce_out[..3],
         half,
         stream,
@@ -378,10 +352,13 @@ pub(super) fn schedule_monomial_eval_device_impl(
 ) -> CudaResult<()> {
     let stream = context.get_exec_stream();
 
+    let (scratch0_len, scratch1_len) = monomial_eval_scratch_lens(state.current_len);
+    let mut scratch0 = context.alloc(scratch0_len, AllocationPlacement::BestFit)?;
+    let mut scratch1 = context.alloc(scratch1_len.max(1), AllocationPlacement::BestFit)?;
     let partials_count = partially_evaluate_monomials_by_ref(
         &state.sumchecked_poly_monomial_form,
-        &mut state.scratch0[..],
-        &mut state.scratch1[..],
+        &mut scratch0[..],
+        &mut scratch1[..],
         point,
         state.current_len,
         stream,
@@ -390,12 +367,7 @@ pub(super) fn schedule_monomial_eval_device_impl(
     // `scratch1` is free again here: its only prior use this round
     // (`z_chunk_adjustment`) has been consumed by the stream-ordered
     // monomial-eval kernel above.
-    whir_sum(
-        &state.scratch0[..partials_count],
-        &mut state.scratch1[..],
-        out,
-        stream,
-    )
+    whir_sum(&scratch0[..partials_count], &mut scratch1[..], out, stream)
 }
 
 #[cfg(test)]
@@ -406,8 +378,8 @@ pub(super) fn schedule_monomial_eval_device(
 ) -> CudaResult<Vec<HostAllocation<[E4]>>> {
     // SAFETY: `state.reduce_out[0]` is a live, disjoint single-`E4` slot inside
     // `state.reduce_out`. The impl below only mutably borrows
-    // `state.{scratch0, scratch1, sumchecked_poly_monomial_form,
-    // current_len}`, none of which overlap with `state.reduce_out`. Aliasing
+    // `state.sumchecked_poly_monomial_form` and locally allocated scratch,
+    // none of which overlap with `state.reduce_out`. Aliasing
     // through a raw pointer here sidesteps the borrow checker's inability to
     // split-borrow disjoint fields across a method call; the schedule-time
     // contract for this slot is preserved.

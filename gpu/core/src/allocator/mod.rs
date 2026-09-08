@@ -285,6 +285,12 @@ pub struct StaticAllocation<T, B: StaticAllocationBackend, W: InnerStaticAllocat
 }
 
 impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAllocation<T, B, W> {
+    /// Bytes reserved from the pool, including allocator rounding. Unlike the
+    /// visible element count, this is unchanged by `shrink_len_to`.
+    pub fn allocated_bytes(&self) -> usize {
+        self.data.alloc_len
+    }
+
     /// Shrinks the visible element count without changing the owned allocation.
     pub fn shrink_len_to(&mut self, len: usize) {
         assert!(

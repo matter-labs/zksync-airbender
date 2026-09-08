@@ -37,9 +37,8 @@ pub(super) use whir::{schedule_whir_phase, WhirPhaseResult};
 
 pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     pub(super) _stage1: GpuGKRStage1Keepalive,
-    /// Holds every per-piece transfer wrapper (setup, decoder, inits_and_teardowns,
-    /// tracing_data, memory caps, top_bits, external_challenges) plus the
-    /// shared `Transfer`'s accumulated `Callbacks`.
+    /// Host sources and shared Transfer callbacks; device inputs are retired
+    /// after their last readers are enqueued, before the job is returned.
     pub(super) _inputs: GpuGKRProofTransferKeepalive<'a, A>,
     pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive,
     pub(super) _backward: GpuGKRBackwardScheduledExecution,

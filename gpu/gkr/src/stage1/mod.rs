@@ -12,7 +12,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
 use gpu_ops::simple::set_to_zero;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, WitnessCommitmentMode};
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
@@ -164,9 +164,16 @@ impl GpuGKRStage1Output {
     fn allocate_trace_holder(
         columns_count: usize,
         geometry: GpuGKRTraceGeometry,
+        commitment: WitnessCommitmentMode,
         context: &ProverContext,
     ) -> CudaResult<TraceHolder<BF>> {
-        TraceHolder::new(
+        let constructor = match commitment {
+            WitnessCommitmentMode::FullMaterialization => TraceHolder::new,
+            WitnessCommitmentMode::RetainMonomials | WitnessCommitmentMode::InPlace => {
+                TraceHolder::new_without_cosets
+            }
+        };
+        constructor(
             geometry.log_domain_size,
             geometry.log_lde_factor,
             geometry.log_rows_per_leaf,
@@ -188,6 +195,32 @@ impl GpuGKRStage1Output {
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
+        Self::generate_with_commitment_mode(
+            circuit_type,
+            compiled_circuit,
+            geometry,
+            setup_hypercube_evals,
+            decoder_table,
+            inits_and_teardowns,
+            tracing_data,
+            witness_cap_dst,
+            WitnessCommitmentMode::FullMaterialization,
+            context,
+        )
+    }
+
+    pub fn generate_with_commitment_mode(
+        circuit_type: CircuitType,
+        compiled_circuit: &GKRCircuitArtifact<BF>,
+        geometry: GpuGKRTraceGeometry,
+        setup_hypercube_evals: Option<&DeviceSlice<BF>>,
+        decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
+        inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
+        tracing_data: Option<&TracingDataDevice>,
+        witness_cap_dst: Option<&mut DeviceSlice<u32>>,
+        commitment: WitnessCommitmentMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let strategy = production_witness_strategy(circuit_type);
         Self::generate_with_strategy_impl(
             circuit_type,
@@ -200,6 +233,7 @@ impl GpuGKRStage1Output {
             witness_cap_dst,
             context,
             strategy,
+            commitment,
         )
     }
 
@@ -215,6 +249,7 @@ impl GpuGKRStage1Output {
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
         strategy: WitnessGenerationStrategy,
+        commitment: WitnessCommitmentMode,
     ) -> CudaResult<Self> {
         let trace_len = compiled_circuit.trace_len;
         assert_eq!(trace_len, 1usize << geometry.log_domain_size);
@@ -235,6 +270,7 @@ impl GpuGKRStage1Output {
         let mut witness_trace_holder = Self::allocate_trace_holder(
             compiled_circuit.witness_layout.total_width,
             geometry,
+            commitment,
             context,
         )?;
         let mut scratch_space_trace = if compiled_circuit.scratch_space_size > 0 {
@@ -710,9 +746,17 @@ impl GpuGKRStage1Output {
         if witness_trace_holder.columns_count > 0 {
             let witness_commit_range = Range::new("gkr.stage1.commit.witness_trace")?;
             witness_commit_range.start(stream)?;
-            match witness_cap_dst {
-                Some(dst) => witness_trace_holder.commit_all_into(dst, context)?,
-                None => witness_trace_holder.commit_all(context)?,
+            match commitment {
+                WitnessCommitmentMode::FullMaterialization => match witness_cap_dst {
+                    Some(dst) => witness_trace_holder.commit_all_into(dst, context)?,
+                    None => witness_trace_holder.commit_all(context)?,
+                },
+                WitnessCommitmentMode::RetainMonomials => {
+                    witness_trace_holder.commit_retaining_monomials(witness_cap_dst, context)?
+                }
+                WitnessCommitmentMode::InPlace => {
+                    witness_trace_holder.commit_in_place(witness_cap_dst, context)?
+                }
             }
             witness_commit_range.end(stream)?;
             tracing_ranges.push(witness_commit_range);
@@ -764,5 +808,6 @@ pub fn generate_with_witness_strategy(
         witness_cap_dst,
         context,
         strategy,
+        WitnessCommitmentMode::FullMaterialization,
     )
 }
