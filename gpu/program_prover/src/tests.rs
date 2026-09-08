@@ -666,7 +666,13 @@ fn test_generate_sec100_cost_model_fixtures() {
         .map(std::path::PathBuf::from)
         .expect("set COST_MODEL_FIXTURE_DIR to an empty local output directory");
     std::fs::create_dir_all(&fixture_dir).expect("create cost-model fixture directory");
-    for name in ["base", "base_alt", "recursion0", "recursion1"] {
+    for name in [
+        "base",
+        "base_alt",
+        "recursion0",
+        "recursion0_alt",
+        "recursion1",
+    ] {
         for suffix in ["proof", "setups"] {
             let path = fixture_dir.join(format!("{name}_{suffix}.bin"));
             assert!(!path.exists(), "refusing to overwrite {}", path.display());
@@ -760,6 +766,33 @@ fn test_generate_sec100_cost_model_fixtures() {
         true,
     );
     write_cost_model_fixture(&fixture_dir, "base_alt", &base_alt_proof, &base_alt_setups);
+
+    let base_alt_end_params = compute_end_params(&base_alt_setups, base_alt_proof.final_pc);
+    let base_alt_chain = FsvRecursionChain::begin(&base_alt_end_params);
+    let (base_verifier_bin, base_verifier_text) = load_fsv_program(
+        &fsv_dir,
+        FsvProgram::UnrolledBaseLayer,
+        BlakeMode::Compression,
+    );
+    let (mut recursion0_alt_proof, recursion0_alt_setups) = prove_on_gpu(
+        &mut prover,
+        ExecutionKind::Unrolled,
+        MachineType::Reduced,
+        base_verifier_bin,
+        base_verifier_text,
+        build_unrolled_stream(&base_alt_setups, &base_alt_proof),
+    );
+    recursion0_alt_proof.set_recursion_chain(&base_alt_chain);
+    native_verify_unrolled(
+        build_unrolled_stream(&recursion0_alt_setups, &recursion0_alt_proof),
+        false,
+    );
+    write_cost_model_fixture(
+        &fixture_dir,
+        "recursion0_alt",
+        &recursion0_alt_proof,
+        &recursion0_alt_setups,
+    );
 }
 
 #[cfg(all(not(no_cuda), feature = "verifiers"))]

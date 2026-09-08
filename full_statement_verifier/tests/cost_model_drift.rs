@@ -19,7 +19,7 @@ const EXPECTED: &[(&str, u64)] = &[
     ("mem_subword_only", 1036422),
     ("inits_and_teardowns", 876826),
     ("blake2_with_extended_control", 2976533),
-    ("bigint_with_extended_control", 1572641),
+    ("bigint_with_extended_control", 1541986),
     ("keccak_special5", 1568920),
     ("blake2_g_function", 1068075),
 ];

@@ -612,12 +612,13 @@ fn whir_folding_step(
 #[cfg(test)]
 mod test {
     use crate::{definitions::*, gkr::whir::proximity_testing_modes::PessimisticConjectureMode};
+    use field::{baby_bear::base::BabyBearField, TwoAdicField};
 
     use super::*;
 
     #[test]
     fn example_configs_pass_validation() {
-        for log in [20usize, 22, 23, 24] {
+        for log in [20usize, 21, 22, 23, 24] {
             let config = example_configs::config_for_100_bits_under_pessimistic_conjecture(log);
             assert_eq!(config.trace_len_log2, log);
             config.validate_for_whir_message_size(log);
@@ -625,6 +626,31 @@ mod test {
         let feeder = example_configs::l1_feeder_config_for_2_23();
         assert_eq!(feeder.trace_len_log2, 23);
         feeder.validate_for_whir_message_size(feeder.trace_len_log2);
+    }
+
+    #[test]
+    fn bigint_2_21_whir_parameters_meet_configured_bounds() {
+        let config = example_configs::config_for_100_bits_under_pessimistic_conjecture(21);
+        config.validate_for_whir_message_size(21);
+        let schedule = &config.whir_schedule;
+        let mut poly_size_log2 = config.trace_len_log2;
+        for (round, lde_factor) in std::iter::once(schedule.base_lde_factor)
+            .chain(schedule.whir_steps_lde_factors.iter().copied())
+            .enumerate()
+        {
+            assert!(lde_factor.is_power_of_two());
+            let rate_bits = lde_factor.trailing_zeros();
+            assert!(poly_size_log2 + rate_bits as usize <= BabyBearField::TWO_ADICITY);
+            let required_queries = PessimisticConjectureMode
+                .num_queries_for_rate_and_bits_of_security(
+                    config.security_level.security_bits() as u32
+                        - schedule.whir_pow_schedule[round],
+                    rate_bits,
+                );
+            assert!(schedule.whir_queries_schedule[round] >= required_queries as usize);
+            poly_size_log2 -= schedule.whir_steps_schedule[round];
+        }
+        assert!(poly_size_log2 <= DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2);
     }
 
     #[test]

@@ -16,7 +16,7 @@ pub struct BigIntDelegationCircuit;
 
 impl<F: PrimeField> circuit_common::DelegationCircuit<F> for BigIntDelegationCircuit {
     const DELEGATION_TYPE_ID: u16 = common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16;
-    const DOMAIN_SIZE_LOG2: u32 = 22;
+    const DOMAIN_SIZE_LOG2: u32 = 21;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {
         define_bigint_with_extended_control_delegation_circuit(cs);
