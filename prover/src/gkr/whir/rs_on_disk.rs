@@ -82,14 +82,15 @@ fn mmap_io_err(e: impl core::fmt::Debug) -> std::io::Error {
 /// contiguous byte buffer and written in one bulk `write_all` (efficient; close to
 /// a byte cast). Used both by [`serialize_coset`] and by the memory-light
 /// coset-by-coset setup serializer.
-pub fn serialize_coset_columns<F, W>(
+pub fn serialize_coset_columns<F, W, A>(
     writer: &mut W,
     coset_size_log2: usize,
-    columns: &[&[F]],
+    columns: &[A],
 ) -> std::io::Result<()>
 where
     F: PrimeField + TwoAdicField,
     W: Write,
+    A: crate::merkle_trees::CosetIndexedAccessor<F>,
 {
     let num_columns = columns.len();
     let coset_len = 1usize << coset_size_log2;
@@ -108,8 +109,8 @@ where
             "coset column length must be 2^coset_size_log2"
         );
         buf.clear();
-        for &x in col.iter() {
-            push_field_le(&mut buf, x);
+        for i in 0..col.len() {
+            push_field_le(&mut buf, col.get(i));
         }
         writer.write_all(&buf)?;
     }
@@ -126,10 +127,10 @@ where
     F: PrimeField + TwoAdicField,
     W: Write,
 {
-    let columns: Vec<&[F]> = coset
+    let columns: Vec<crate::merkle_trees::ColumnView<'_, F>> = coset
         .original_values_normal_order
         .iter()
-        .map(|c| &c.column[..])
+        .map(|c| c.view())
         .collect();
     serialize_coset_columns(writer, coset.coset_size_log2, &columns)
 }
@@ -334,10 +335,10 @@ mod test {
                         let data: Vec<BabyBearField> = (0..coset_len)
                             .map(|i| bb((c * 100000 + col * 1000 + i) as u32))
                             .collect();
-                        ColumnMajorCosetBoundTracePart {
-                            column: Arc::new(data.into_boxed_slice()),
-                            offset: BabyBearField::ONE,
-                        }
+                        ColumnMajorCosetBoundTracePart::owned(
+                            data.into_boxed_slice(),
+                            BabyBearField::ONE,
+                        )
                     })
                     .collect();
                 ColumnMajorBaseOracleForCoset {

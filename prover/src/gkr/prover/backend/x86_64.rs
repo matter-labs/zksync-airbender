@@ -4,6 +4,7 @@
 //! tables built once per proving run and shared across every batched call.
 
 use super::*;
+use crate::allocation_pool::AllocationPool;
 
 /// Work-stealing backend whose flat grid tasks run the AVX2 BabyBear coset
 /// kernels (`fft::baby_bear_avx2`): the base-field serial kernel for the
@@ -137,19 +138,24 @@ impl TwiddleSetOps<BabyBearField> for BabyBearAvx2Twiddles {
     }
 }
 
-/// Size-dependent coset plan for Ext4 LDEs. Measured on the 192-core box with
+/// Size-dependent coset plan of this backend, shared by the base-commitment
+/// LDE (`El = BabyBearField`, `num_tasks = columns x cosets`) and the Ext4
+/// LDEs (`num_tasks = cosets`); the AVX-512 backend inherits it for
+/// everything but its 2^24 strided path. Measured on the 192-core box with
 /// 12 pinned 16-thread provers (the production batch shape): cosets of
 /// 2^20 elements and up run EVERY coset on all threads through the blocked
-/// kernel — the flat serial grid streams a 128 MB coset ~12 times from DRAM
+/// kernels — the flat serial grid streams a 128 MB coset ~12 times from DRAM
 /// under contention (2^23 x 16: all-threads 0.63 s vs serial grid 0.90 s;
-/// 2^21 x 64: 0.52 vs 0.57) — while smaller cosets keep the tasks/threads
-/// rule (2^18 x 512: serial grid 0.17 s vs all-threads 1.31 s, per-coset
-/// scope overhead).
-fn ext4_coset_plan(n: usize, lde_factor: usize, worker: &Worker) -> CosetGridPlan {
+/// 2^21 x 64: 0.52 vs 0.57; a 2^24 base column is larger than any L3, so
+/// the number of DRAM sweeps per column is what counts: ~5 for the blocked
+/// kernel vs ~14 for the serial grid) — while smaller cosets keep the
+/// tasks/threads rule of [`plan_coset_grid`] (2^18 x 512: serial grid 0.17 s
+/// vs all-threads 1.31 s, per-coset scope overhead).
+fn coset_plan<El>(n: usize, num_tasks: usize, worker: &Worker) -> CosetGridPlan {
     if n >= (1usize << 20) {
         CosetGridPlan::ParallelWithinTask
     } else {
-        plan_coset_grid::<BabyBearExt4>(lde_factor, worker)
+        plan_coset_grid::<El>(num_tasks, worker)
     }
 }
 
@@ -179,20 +185,16 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         evals: &[&[BabyBearField]],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<BabyBearField, BabyBearField>>> {
         let ext = &twiddles.forward_ext;
         let num_cols = evals.len();
         let n = evals.first().map(|c| c.len()).unwrap_or(0);
+        // the blocked kernels need at least one block per column
         let blocked_min = 1usize << fft::baby_bear_avx2::avx2::BLOCK_LOG2;
-        // EXPERIMENT (base-commit scheduling): a 2^24 column is larger than
-        // any L3, so per-column DRAM passes are what the machine pays; the
-        // flat serial grid streams every column ~14 times while the blocked
-        // kernel does it in ~5. Run EVERY column-coset on all threads when
-        // this is set, not only when the grid is under-filled.
-        const ALL_THREADS_PER_COSET: bool = true;
-        let grid_fills_pool = num_cols * lde_factor >= worker.get_num_cores();
-        if num_cols == 0 || n < blocked_min || (grid_fills_pool && !ALL_THREADS_PER_COSET) {
+        let plan = coset_plan::<BabyBearField>(n, num_cols * lde_factor, worker);
+        if num_cols == 0 || n < blocked_min || plan == CosetGridPlan::FlatSerialTasks {
             return ws_lde_multiple_polys_from_hypercubes(
                 evals,
                 &twiddles.plain,
@@ -206,12 +208,11 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
             );
         }
 
-        // ALL THREADS PER COLUMN: a 2^24 column is larger than any L3, so
-        // what counts is the number of DRAM sweeps per column, not the task
-        // grid. Each column's transform (copy + block-local levels in one
-        // sweep, radix-16 sweeps for the high strides) and then every coset
-        // FFT (fused scale/bit-reverse/copy sweep, block-local phase, radix-16
-        // global passes) run on the whole worker, no nested scopes.
+        // `ParallelWithinTask`, every column-coset on all threads: each
+        // column's transform (copy + block-local levels in one sweep, radix-16
+        // sweeps for the high strides) and then every coset FFT (fused
+        // scale/bit-reverse/copy sweep, block-local phase, radix-16 global
+        // passes) run on the whole worker, no nested scopes.
         let root_powers = coset_offsets::<BabyBearField>(n, lde_factor);
         let tw = &twiddles.plain.forward_twiddles[..];
         let size_log2 = n.trailing_zeros();
@@ -233,10 +234,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
                             ext,
                             worker,
                         );
-                        ColumnMajorCosetBoundTracePart {
-                            column: Arc::new(data.into_boxed_slice()),
-                            offset,
-                        }
+                        ColumnMajorCosetBoundTracePart::owned(data.into_boxed_slice(), offset)
                     })
                     .collect()
             })
@@ -248,6 +246,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         monomials: Vec<Vec<BabyBearField>>,
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<ColumnMajorBaseOracleForCoset<BabyBearField>> {
         let ext = &twiddles.forward_ext;
@@ -266,10 +265,11 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         monomial_form_normal_order: &[BabyBearExt4],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<(Box<[BabyBearExt4]>, BabyBearField)> {
         let ext = &twiddles.forward_ext;
-        let plan = ext4_coset_plan(monomial_form_normal_order.len(), lde_factor, worker);
+        let plan = coset_plan::<BabyBearExt4>(monomial_form_normal_order.len(), lde_factor, worker);
         // Planner-driven grid (unlike the NEON backend's "every coset on the
         // worker-parallel kernel" mode): with cosets >= threads each coset is
         // one SERIAL task — nesting thousands of barrier scopes per coset on
@@ -290,10 +290,11 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         monomial_form_normal_order: &[BabyBearExt4],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> (Box<[BabyBearExt4]>, Vec<BabyBearField>) {
         let ext = &twiddles.forward_ext;
-        let plan = ext4_coset_plan(monomial_form_normal_order.len(), lde_factor, worker);
+        let plan = coset_plan::<BabyBearExt4>(monomial_form_normal_order.len(), lde_factor, worker);
         ws_lde_single_poly_continuous_planned(
             monomial_form_normal_order,
             &twiddles.plain,
@@ -312,6 +313,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         monomial_form_normal_order: &[BabyBearField],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<(Box<[BabyBearField]>, BabyBearField)> {
         let ext = &twiddles.forward_ext;
@@ -329,6 +331,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         &self,
         evals: &[&[BabyBearField]],
         pack_log2: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<Vec<BabyBearField>> {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
@@ -338,6 +341,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         &self,
         source_domain: Vec<BabyBearExt4>,
         twiddles: &Self::TwiddleSet,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<BabyBearExt4> {
         let inv_ext = &twiddles.inverse_ext;
@@ -352,6 +356,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
     fn hypercube_evals_from_monomial_form(
         &self,
         monomial_form: Vec<BabyBearExt4>,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<BabyBearExt4> {
         fft::baby_bear_avx2::ext4::hypercube_evals_from_monomial_form(monomial_form, worker)

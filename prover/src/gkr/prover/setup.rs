@@ -11,7 +11,7 @@ use field::{Field as _, FieldExtension as _};
 use std::sync::Arc;
 
 pub struct GKRSetup<F: PrimeField + TwoAdicField> {
-    pub hypercube_evals: Vec<Arc<Box<[F]>>>,
+    pub hypercube_evals: Vec<Arc<crate::allocation_pool::AllocationType<F>>>,
 }
 
 impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
@@ -114,7 +114,10 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         }
 
         Self {
-            hypercube_evals: result.into_iter().map(Arc::new).collect(),
+            hypercube_evals: result
+                .into_iter()
+                .map(|b| Arc::new(crate::allocation_pool::AllocationType::from(b)))
+                .collect(),
         }
     }
 
@@ -370,6 +373,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             whir_first_fold_step_log2,
             tree_cap_size,
             trace_len_log2,
+            &crate::allocation_pool::GenericAllocationPool::proxy(),
             worker,
         ))
     }
@@ -406,6 +410,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             whir_first_fold_step_log2,
             tree_cap_size,
             trace_len_log2,
+            &crate::allocation_pool::GenericAllocationPool::proxy(),
             worker,
         ))
     }
@@ -444,6 +449,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             tree_cap_size,
             trace_len_log2 + pack_log2,
             pack_log2,
+            &crate::allocation_pool::GenericAllocationPool::proxy(),
             worker,
         )
     }

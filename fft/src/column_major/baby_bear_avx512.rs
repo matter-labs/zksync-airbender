@@ -929,7 +929,11 @@ pub unsafe fn lde_coset_avx512_fused_into(
     );
     assert_eq!(out.len(), n);
     if stream {
-        assert_eq!(out.as_ptr() as usize % 64, 0, "streaming stores need a 64-byte aligned output");
+        assert_eq!(
+            out.as_ptr() as usize % 64,
+            0,
+            "streaming stores need a 64-byte aligned output"
+        );
     }
     let sp = SplitPowers::new(offset, log_n);
     let (in_addr, out_addr) = (input.as_ptr() as usize, out.as_mut_ptr() as usize);
@@ -1191,8 +1195,7 @@ unsafe fn strided_tile(
     line: usize,
     r: &StridedRegs,
 ) -> [__m512i; 16] {
-    let mut v: [__m512i; 16] =
-        core::array::from_fn(|m| ld(part.add(m * chunk_stride + line * 16)));
+    let mut v: [__m512i; 16] = core::array::from_fn(|m| ld(part.add(m * chunk_stride + line * 16)));
     // transform completion: the top four variables (`hi -= lo` on the m bits)
     for b in 0..4 {
         let bit = 1usize << b;
@@ -1311,7 +1314,8 @@ pub unsafe fn transform_partial_chunked_into(
                 let (start, size) = balanced_chunk(work, chunks, idx);
                 spawn_chunk(scope, idx == chunks - 1, move |_| {
                     for b in start..start + size {
-                        let d = (d_addr as *mut u32).add((b / bpc) * chunk_stride + (b % bpc) * blk);
+                        let d =
+                            (d_addr as *mut u32).add((b / bpc) * chunk_stride + (b % bpc) * blk);
                         core::ptr::copy_nonoverlapping((s_addr as *const u32).add(b * blk), d, blk);
                         transform_block(d);
                     }
@@ -1522,19 +1526,32 @@ pub const fn out_len(log_n: u32, blk_log2: u32, out_block_stride: usize) -> usiz
     (1 << (log_n - blk_log2)) * out_block_stride
 }
 
-fn check_strided_args(part: &[u32], chunk_stride: usize, log_n: u32, out: &[u32], cfg: &StridedCfg) {
+fn check_strided_args(
+    part: &[u32],
+    chunk_stride: usize,
+    log_n: u32,
+    out: &[u32],
+    cfg: &StridedCfg,
+) {
     let n = 1usize << log_n;
     assert!(log_n >= 20);
     assert!(part.len() >= 15 * chunk_stride + (n >> 4));
     assert!(cfg.blk_log2 == 16 || cfg.blk_log2 == 14);
     assert!(cfg.out_block_stride >= (1 << cfg.blk_log2) && cfg.out_block_stride % 16 == 0);
-    assert_eq!(out.len(), out_len(log_n, cfg.blk_log2, cfg.out_block_stride));
+    assert_eq!(
+        out.len(),
+        out_len(log_n, cfg.blk_log2, cfg.out_block_stride)
+    );
     assert!(
         cfg.r256 || cfg.blk_log2 == 14 || cfg.out_block_stride == (1 << BLOCK_LOG2),
         "the radix-16 global sweeps need the contiguous layout"
     );
     if cfg.stream {
-        assert_eq!(out.as_ptr() as usize % 64, 0, "streaming stores need a 64-byte aligned output");
+        assert_eq!(
+            out.as_ptr() as usize % 64,
+            0,
+            "streaming stores need a 64-byte aligned output"
+        );
     }
 }
 
@@ -1555,7 +1572,10 @@ pub unsafe fn lde_coset_strided_into(
 ) {
     let n = 1usize << log_n;
     check_strided_args(part, chunk_stride, log_n, out, &cfg);
-    assert_eq!(cfg.blk_log2, 16, "the non-gather strided pipeline uses 2^16 blocks");
+    assert_eq!(
+        cfg.blk_log2, 16,
+        "the non-gather strided pipeline uses 2^16 blocks"
+    );
     let (stream, obs) = (cfg.stream, cfg.out_block_stride);
     let omega = BabyBearField::from_raw_u32(tw[n / 4]);
     let k = StridedConsts::new(omega, offset, log_n);
@@ -1743,7 +1763,18 @@ pub unsafe fn lde_coset_strided_gather_into(
     worker: &Worker,
     cfg: StridedCfg,
 ) {
-    strided_gather_pass_into(part, chunk_stride, log_n, offset, tw, ao, bo, out, worker, cfg);
+    strided_gather_pass_into(
+        part,
+        chunk_stride,
+        log_n,
+        offset,
+        tw,
+        ao,
+        bo,
+        out,
+        worker,
+        cfg,
+    );
     strided_global_phase(out, log_n, tw, ao, bo, worker, cfg);
 }
 
@@ -1856,11 +1887,19 @@ pub unsafe fn phase_b_radix256(
     worker: &Worker,
     cfg: StridedCfg,
 ) {
-    assert_eq!(log_n - BLOCK_LOG2, 8, "radix-256 global pass needs 8 levels above the block");
+    assert_eq!(
+        log_n - BLOCK_LOG2,
+        8,
+        "radix-256 global pass needs 8 levels above the block"
+    );
     assert_eq!(cfg.blk_log2, 16);
     assert_eq!(a.len(), out_len(log_n, 16, cfg.out_block_stride));
     if cfg.stream {
-        assert_eq!(a.as_ptr() as usize % 64, 0, "streaming stores need a 64-byte aligned array");
+        assert_eq!(
+            a.as_ptr() as usize % 64,
+            0,
+            "streaming stores need a 64-byte aligned array"
+        );
     }
     let lines = 1usize << (BLOCK_LOG2 - 4);
     assert!(cfg.group >= 1 && lines % cfg.group == 0);
@@ -2045,11 +2084,18 @@ pub unsafe fn phase_b_radix1024(
     worker: &Worker,
     cfg: StridedCfg,
 ) {
-    assert_eq!(log_n, 24, "radix-1024 global pass needs 10 levels above the 2^14 block");
+    assert_eq!(
+        log_n, 24,
+        "radix-1024 global pass needs 10 levels above the 2^14 block"
+    );
     assert_eq!(cfg.blk_log2, 14);
     assert_eq!(a.len(), out_len(log_n, 14, cfg.out_block_stride));
     if cfg.stream {
-        assert_eq!(a.as_ptr() as usize % 64, 0, "streaming stores need a 64-byte aligned array");
+        assert_eq!(
+            a.as_ptr() as usize % 64,
+            0,
+            "streaming stores need a 64-byte aligned array"
+        );
     }
     let items = 1usize << (14 - 4);
     let base_addr = a.as_mut_ptr() as usize;

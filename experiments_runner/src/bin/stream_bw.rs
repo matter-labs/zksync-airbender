@@ -16,7 +16,8 @@ fn main() {
     use worker::Worker;
 
     let args: Vec<String> = std::env::args().collect();
-    let (mut outer, mut inner, mut mb_per_thread, mut reps, mut pin) = (12usize, 16usize, 256usize, 3usize, true);
+    let (mut outer, mut inner, mut mb_per_thread, mut reps, mut pin) =
+        (12usize, 16usize, 256usize, 3usize, true);
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -35,7 +36,9 @@ fn main() {
     let cpu_blocks: Vec<Vec<usize>> = if pin {
         let flat: Vec<usize> = Worker::cpu_complexes().iter().flatten().copied().collect();
         assert!(outer * inner <= flat.len());
-        (0..outer).map(|w| flat[w * inner..(w + 1) * inner].to_vec()).collect()
+        (0..outer)
+            .map(|w| flat[w * inner..(w + 1) * inner].to_vec())
+            .collect()
     } else {
         Vec::new()
     };
@@ -58,7 +61,10 @@ fn main() {
     unsafe fn copy_plain(s: *const u32, d: *mut u32, n: usize) {
         let mut i = 0;
         while i < n {
-            _mm256_storeu_si256(d.add(i) as *mut __m256i, _mm256_loadu_si256(s.add(i) as *const __m256i));
+            _mm256_storeu_si256(
+                d.add(i) as *mut __m256i,
+                _mm256_loadu_si256(s.add(i) as *const __m256i),
+            );
             i += 8;
         }
     }
@@ -66,13 +72,20 @@ fn main() {
     unsafe fn copy_nt(s: *const u32, d: *mut u32, n: usize) {
         let mut i = 0;
         while i < n {
-            _mm256_stream_si256(d.add(i) as *mut __m256i, _mm256_loadu_si256(s.add(i) as *const __m256i));
+            _mm256_stream_si256(
+                d.add(i) as *mut __m256i,
+                _mm256_loadu_si256(s.add(i) as *const __m256i),
+            );
             i += 8;
         }
         _mm_sfence();
     }
 
-    for kind in ["read-only", "copy (regular stores)", "copy (non-temporal stores)"] {
+    for kind in [
+        "read-only",
+        "copy (regular stores)",
+        "copy (non-temporal stores)",
+    ] {
         let barrier = Arc::new(Barrier::new(outer));
         let rates: Vec<f64> = std::thread::scope(|s| {
             let handles: Vec<_> = (0..outer)
@@ -80,14 +93,22 @@ fn main() {
                     let (barrier, cpu_blocks) = (barrier.clone(), &cpu_blocks);
                     s.spawn(move || {
                         let worker = if pin {
-                            Worker::new_with_num_threads_on_cpus_and_stack(inner, &cpu_blocks[w], 64 << 20)
+                            Worker::new_with_num_threads_on_cpus_and_stack(
+                                inner,
+                                &cpu_blocks[w],
+                                64 << 20,
+                            )
                         } else {
                             Worker::new_with_num_threads_and_stack(inner, 64 << 20)
                         };
                         // per-thread source and destination buffers, 32 B aligned dst
                         let layout = std::alloc::Layout::from_size_align(n * 4, 2 << 20).unwrap();
-                        let srcs: Vec<usize> = (0..inner).map(|_| unsafe { std::alloc::alloc(layout) } as usize).collect();
-                        let dsts: Vec<usize> = (0..inner).map(|_| unsafe { std::alloc::alloc(layout) } as usize).collect();
+                        let srcs: Vec<usize> = (0..inner)
+                            .map(|_| unsafe { std::alloc::alloc(layout) } as usize)
+                            .collect();
+                        let dsts: Vec<usize> = (0..inner)
+                            .map(|_| unsafe { std::alloc::alloc(layout) } as usize)
+                            .collect();
                         // touch
                         worker.scope(inner, |scope, _| {
                             for t in 0..inner {
@@ -113,7 +134,9 @@ fn main() {
                                             "read-only" => {
                                                 std::hint::black_box(read_sum(s_ as *const u32, n));
                                             }
-                                            "copy (regular stores)" => copy_plain(s_ as *const u32, d_ as *mut u32, n),
+                                            "copy (regular stores)" => {
+                                                copy_plain(s_ as *const u32, d_ as *mut u32, n)
+                                            }
                                             _ => copy_nt(s_ as *const u32, d_ as *mut u32, n),
                                         }
                                     });
@@ -123,7 +146,8 @@ fn main() {
                             sink = sink.wrapping_add(1);
                         }
                         std::hint::black_box(sink);
-                        let bytes = (inner * n * 4) as f64 * if kind == "read-only" { 1.0 } else { 2.0 };
+                        let bytes =
+                            (inner * n * 4) as f64 * if kind == "read-only" { 1.0 } else { 2.0 };
                         bytes / best / 1e9
                     })
                 })

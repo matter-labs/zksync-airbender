@@ -125,7 +125,7 @@ fn stage1_caps_from_cpu_cosets(
         .collect_vec();
     let tree = <Blake2sU32MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             BF,
-        >>::construct_from_cosets::<BF>(
+        >>::construct_from_cosets::<BF, _>(
             &source_refs,
             rows_per_leaf,
             total_cap_size,

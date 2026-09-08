@@ -1,4 +1,5 @@
 use super::*;
+use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
 use cs::definitions::gkr::SingleColumnLookupRelation;
 
 pub(crate) fn evaluate_single_column_lookup_relation<
@@ -12,9 +13,14 @@ pub(crate) fn evaluate_single_column_lookup_relation<
     gkr_storage: &mut GKRStorage<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
-    #[cfg(all(target_arch = "x86_64", target_feature = "avx2", not(feature = "gkr_test_forge")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        not(feature = "gkr_test_forge")
+    ))]
     if super::avx512::enabled::<F, E>(trace_len) {
         return super::avx512::single_column_lookup_cache(
             layer_idx,
@@ -24,10 +30,11 @@ pub(crate) fn evaluate_single_column_lookup_relation<
             gkr_storage,
             witness_trace,
             trace_len,
+            pool,
             worker,
         );
     }
-    let mut destination = gkr_storage.alloc_base_uninit(trace_len);
+    let mut destination = pool.alloc_base(trace_len, ColumnLayout::Contiguous);
     if range_check_width == 16 {
         let source = std::mem::replace(
             &mut witness_trace.range_check_16_lookup_mapping[relation.lookup_set_index],
@@ -36,7 +43,7 @@ pub(crate) fn evaluate_single_column_lookup_relation<
         let source_ref = &source;
         assert_eq!(source.len(), trace_len);
         apply_row_wise::<_, E>(
-            vec![&mut destination],
+            vec![destination.as_mut()],
             vec![],
             trace_len,
             worker,
@@ -86,7 +93,7 @@ pub(crate) fn evaluate_single_column_lookup_relation<
         let source_ref = &source;
         assert_eq!(source.len(), trace_len);
         apply_row_wise::<_, E>(
-            vec![&mut destination],
+            vec![destination.as_mut()],
             vec![],
             trace_len,
             worker,
@@ -135,7 +142,8 @@ pub(crate) fn evaluate_single_column_lookup_relation<
         );
     };
 
-    let destination = unsafe { destination.assume_init() };
     output.assert_as_layer(layer_idx);
-    gkr_storage.insert_base_field_at_layer(layer_idx, output, BaseFieldPoly::new(destination));
+    gkr_storage.insert_base_field_at_layer(layer_idx, output, unsafe {
+        BaseFieldPoly::from_pooled(destination)
+    });
 }

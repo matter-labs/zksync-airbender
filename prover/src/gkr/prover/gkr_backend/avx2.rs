@@ -6,6 +6,7 @@
 //! Implemented for the concrete BabyBear pair only; every value it produces
 //! is byte-identical to the naive backend's.
 
+use crate::allocation_pool::AllocationPool;
 use std::collections::BTreeMap;
 
 use super::super::dimension_reduction::forward::{
@@ -33,6 +34,7 @@ pub fn forward_pairwise_avx2<F: PrimeField, E: FieldExtension<F> + Field>(
     output: GKRAddress,
     expected_output_layer: usize,
     input_trace_len: usize,
+    pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
     worker: &Worker,
 ) {
     use crate::gkr::PAR_THRESHOLD;
@@ -46,7 +48,10 @@ pub fn forward_pairwise_avx2<F: PrimeField, E: FieldExtension<F> + Field>(
         };
         let sources = gkr_storage.get_for_sumcheck_round_0(&inputs);
         let src: &[E] = sources.extension_field_inputs[0].current_values();
-        let mut destination = gkr_storage.alloc_ext_uninit(output_trace_len);
+        let mut destination = pool.alloc_ext(
+            output_trace_len,
+            crate::allocation_pool::ColumnLayout::Contiguous,
+        );
         let src_addr = crate::gkr::prover::SendConstPtr(src.as_ptr());
         let dst_addr = crate::gkr::prover::SendPtr(destination.as_mut_ptr());
         worker.scope_with_threshold(output_trace_len, PAR_THRESHOLD, |scope, geometry| {
@@ -76,12 +81,11 @@ pub fn forward_pairwise_avx2<F: PrimeField, E: FieldExtension<F> + Field>(
                 })
             }
         });
-        let values = destination.assume_init();
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(
             expected_output_layer,
             output,
-            crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::new(values),
+            crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::from_pooled(destination),
         );
     }
 }
@@ -93,6 +97,7 @@ pub fn forward_logup_avx2<F: PrimeField, E: FieldExtension<F> + Field>(
     outputs: [GKRAddress; 2],
     expected_output_layer: usize,
     input_trace_len: usize,
+    pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
     worker: &Worker,
 ) {
     use crate::gkr::PAR_THRESHOLD;
@@ -107,8 +112,14 @@ pub fn forward_logup_avx2<F: PrimeField, E: FieldExtension<F> + Field>(
         let sources = gkr_storage.get_for_sumcheck_round_0(&gkr_inputs);
         let n_src: &[E] = sources.extension_field_inputs[0].current_values();
         let d_src: &[E] = sources.extension_field_inputs[1].current_values();
-        let mut num_dst = gkr_storage.alloc_ext_uninit(output_trace_len);
-        let mut den_dst = gkr_storage.alloc_ext_uninit(output_trace_len);
+        let mut num_dst = pool.alloc_ext(
+            output_trace_len,
+            crate::allocation_pool::ColumnLayout::Contiguous,
+        );
+        let mut den_dst = pool.alloc_ext(
+            output_trace_len,
+            crate::allocation_pool::ColumnLayout::Contiguous,
+        );
         let n_addr = crate::gkr::prover::SendConstPtr(n_src.as_ptr());
         let d_addr = crate::gkr::prover::SendConstPtr(d_src.as_ptr());
         let nd_addr = crate::gkr::prover::SendPtr(num_dst.as_mut_ptr());
@@ -153,15 +164,12 @@ pub fn forward_logup_avx2<F: PrimeField, E: FieldExtension<F> + Field>(
                 })
             }
         });
-        for (addr, dst) in outputs
-            .into_iter()
-            .zip([num_dst.assume_init(), den_dst.assume_init()].into_iter())
-        {
+        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst].into_iter()) {
             addr.assert_as_layer(expected_output_layer);
             gkr_storage.insert_extension_at_layer(
                 expected_output_layer,
                 addr,
-                crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::new(dst),
+                crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::from_pooled(dst),
             );
         }
     }
@@ -727,9 +735,18 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
         &self,
         max_rounds: usize,
         max_polys: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Self::DimensionReducingBuffer {
-        DimReducingSumcheckScratch::new(max_rounds, max_polys, worker)
+        DimReducingSumcheckScratch::new(max_rounds, max_polys, pool, worker)
+    }
+
+    fn recycle_dim_reducing_work_buffers(
+        &self,
+        buffers: Self::DimensionReducingBuffer,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
+    ) {
+        buffers.release(pool);
     }
 
     fn dimension_reduction_forward(
@@ -738,6 +755,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
         compiled_circuit: &GKRCircuitArtifact<BabyBearField>,
         initial_trace_log_2: usize,
         final_trace_log_2: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> (
         usize,
@@ -748,6 +766,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
             compiled_circuit,
             initial_trace_log_2,
             final_trace_log_2,
+            pool,
             worker,
             forward_pairwise_avx2,
             forward_logup_avx2,
@@ -765,6 +784,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
         batching_challenge: &mut BabyBearExt4,
         seed: &mut TR::Seed,
         trace_len_after_reduction: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
         buffers: &mut Self::DimensionReducingBuffer,
     ) -> SumcheckIntermediateProofValues<BabyBearField, BabyBearExt4> {
@@ -791,6 +811,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
             batching_challenge,
             seed,
             trace_len_after_reduction,
+            pool,
             worker,
             buffers,
         )
@@ -806,6 +827,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
         _trace_len: usize,
         _num_base_polys: usize,
         _num_ext_polys: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
     ) -> Vec<Self::NaiveSameSizeFoldBuffer> {
         Vec::new()
     }
@@ -816,10 +838,11 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
         trace_len: usize,
         num_base_polys: usize,
         num_ext_polys: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
     ) -> Vec<Self::WindowedSameSizeFoldBuffer> {
         let capacity = super::same_size_chain_fold_capacity(schedule, trace_len);
         (0..num_base_polys + num_ext_polys)
-            .map(|_| Box::new_uninit_slice(capacity))
+            .map(|_| pool.alloc_box(capacity))
             .collect()
     }
 
@@ -829,10 +852,11 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
         trace_len: usize,
         num_base_polys: usize,
         num_ext_polys: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
     ) -> Vec<Self::UniskipSameSizeFoldBuffer> {
         let capacity = super::same_size_chain_fold_capacity(schedule, trace_len);
         (0..num_base_polys + num_ext_polys)
-            .map(|_| Box::new_uninit_slice(capacity))
+            .map(|_| pool.alloc_box(capacity))
             .collect()
     }
 
@@ -861,6 +885,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
         external_challenges: &super::super::GKRExternalChallenges<BabyBearField, BabyBearExt4>,
         prover_config: &crate::gkr::prover_config::ProverConfig,
         seed: &mut TR::Seed,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> SumcheckIntermediateProofValues<BabyBearField, BabyBearExt4> {
         super::super::sumcheck_loop::evaluate_sumcheck_for_layer::<BabyBearField, BabyBearExt4, TR, _>(
@@ -878,11 +903,12 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for Avx2GKRBackend {
             external_challenges,
             prover_config,
             seed,
+            pool,
             worker,
-            |s, t, b, e| self.make_uniskip_same_size_fold_buffers(s, t, b, e),
-            |s, t, b, e| self.make_windowed_same_size_fold_buffers(s, t, b, e),
+            |s, t, b, e| self.make_uniskip_same_size_fold_buffers(s, t, b, e, pool),
+            |s, t, b, e| self.make_windowed_same_size_fold_buffers(s, t, b, e, pool),
             |prog| self.make_same_size_chain(prog),
-            |bufs| drop(bufs),
+            |bufs| self.recycle_same_size_fold_buffers(bufs, pool),
         )
     }
 }

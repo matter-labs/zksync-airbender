@@ -111,17 +111,18 @@ pub(crate) unsafe fn r11v() -> __m512i {
 #[target_feature(enable = "avx512f")]
 pub(crate) unsafe fn bcast_ext(v: &BabyBearExt4) -> [__m512i; 4] {
     let limbs: [u32; 4] = core::mem::transmute(*v);
-    [bc32(limbs[0]), bc32(limbs[1]), bc32(limbs[2]), bc32(limbs[3])]
+    [
+        bc32(limbs[0]),
+        bc32(limbs[1]),
+        bc32(limbs[2]),
+        bc32(limbs[3]),
+    ]
 }
 
 /// Cell-pointwise `Ext4` multiplication in SoA form (flat quartic table).
 #[inline]
 #[target_feature(enable = "avx512f")]
-pub(crate) unsafe fn soa_ext_mul(
-    a: &[__m512i; 4],
-    b: &[__m512i; 4],
-    r11: __m512i,
-) -> [__m512i; 4] {
+pub(crate) unsafe fn soa_ext_mul(a: &[__m512i; 4], b: &[__m512i; 4], r11: __m512i) -> [__m512i; 4] {
     let p00 = mont_mul16(a[0], b[0]);
     let p01 = mont_mul16(a[0], b[1]);
     let p02 = mont_mul16(a[0], b[2]);
@@ -288,10 +289,30 @@ impl ExtTable16 {
         let rows = table_rows(p);
         ExtTable16 {
             m: [
-                [bc32(rows[0][0]), bc32(rows[0][1]), bc32(rows[0][2]), bc32(rows[0][3])],
-                [bc32(rows[1][0]), bc32(rows[1][1]), bc32(rows[1][2]), bc32(rows[1][3])],
-                [bc32(rows[2][0]), bc32(rows[2][1]), bc32(rows[2][2]), bc32(rows[2][3])],
-                [bc32(rows[3][0]), bc32(rows[3][1]), bc32(rows[3][2]), bc32(rows[3][3])],
+                [
+                    bc32(rows[0][0]),
+                    bc32(rows[0][1]),
+                    bc32(rows[0][2]),
+                    bc32(rows[0][3]),
+                ],
+                [
+                    bc32(rows[1][0]),
+                    bc32(rows[1][1]),
+                    bc32(rows[1][2]),
+                    bc32(rows[1][3]),
+                ],
+                [
+                    bc32(rows[2][0]),
+                    bc32(rows[2][1]),
+                    bc32(rows[2][2]),
+                    bc32(rows[2][3]),
+                ],
+                [
+                    bc32(rows[3][0]),
+                    bc32(rows[3][1]),
+                    bc32(rows[3][2]),
+                    bc32(rows[3][3]),
+                ],
             ],
         }
     }
@@ -313,7 +334,12 @@ impl ExtTable16 {
     /// every two products).
     #[inline]
     #[target_feature(enable = "avx512f")]
-    pub(crate) unsafe fn mla_into(&self, acc: &mut [Lazy16; 4], v: &[__m512i; 4], vh: &[__m512i; 4]) {
+    pub(crate) unsafe fn mla_into(
+        &self,
+        acc: &mut [Lazy16; 4],
+        v: &[__m512i; 4],
+        vh: &[__m512i; 4],
+    ) {
         for j in 0..4 {
             acc[j].mla(self.m[j][0], v[0], vh[0]);
             acc[j].mla(self.m[j][1], v[1], vh[1]);
@@ -475,15 +501,35 @@ impl ExtPerm {
             let t: [i32; 16] = core::array::from_fn(|e| (4 * (e % 8) + l) as i32);
             idx(&t)
         });
-        let x_lo: [i32; 16] = core::array::from_fn(|i| if i % 2 == 0 { (i / 2) as i32 } else { 16 + (i / 2) as i32 });
-        let x_hi: [i32; 16] = core::array::from_fn(|i| if i % 2 == 0 { 8 + (i / 2) as i32 } else { 24 + (i / 2) as i32 });
+        let x_lo: [i32; 16] = core::array::from_fn(|i| {
+            if i % 2 == 0 {
+                (i / 2) as i32
+            } else {
+                16 + (i / 2) as i32
+            }
+        });
+        let x_hi: [i32; 16] = core::array::from_fn(|i| {
+            if i % 2 == 0 {
+                8 + (i / 2) as i32
+            } else {
+                24 + (i / 2) as i32
+            }
+        });
         let z_lo: [i32; 16] = core::array::from_fn(|i| {
             let (e, l) = (i / 4, i % 4);
-            if l < 2 { (2 * e + l) as i32 } else { 16 + (2 * e + l - 2) as i32 }
+            if l < 2 {
+                (2 * e + l) as i32
+            } else {
+                16 + (2 * e + l - 2) as i32
+            }
         });
         let z_hi: [i32; 16] = core::array::from_fn(|i| {
             let (e, l) = (i / 4, i % 4);
-            if l < 2 { (8 + 2 * e + l) as i32 } else { 16 + (8 + 2 * e + l - 2) as i32 }
+            if l < 2 {
+                (8 + 2 * e + l) as i32
+            } else {
+                16 + (8 + 2 * e + l - 2) as i32
+            }
         });
         // stage 1 of the fold transpose: lane 4t + q = tap t of row q of the
         // pair (rows 0,1 in the first vector, 2,3 in the second)
@@ -499,7 +545,11 @@ impl ExtPerm {
         let fc: [__m512i; 2] = core::array::from_fn(|pair| {
             let t: [i32; 16] = core::array::from_fn(|i| {
                 let (tp, r) = (i / 8 + 2 * pair, i % 8);
-                if r < 4 { (4 * tp + r) as i32 } else { (16 + 4 * tp + r - 4) as i32 }
+                if r < 4 {
+                    (4 * tp + r) as i32
+                } else {
+                    (16 + 4 * tp + r - 4) as i32
+                }
             });
             idx(&t)
         });
@@ -586,7 +636,12 @@ pub(crate) unsafe fn store_ext16_nt(limbs: &[__m512i; 4], dst: *mut BabyBearExt4
 /// Output store per the policy: [`store_ext16_nt`] or [`store_ext16`].
 #[inline]
 #[target_feature(enable = "avx512f")]
-pub(crate) unsafe fn store_ext16_out(limbs: &[__m512i; 4], dst: *mut BabyBearExt4, p: &ExtPerm, nt: bool) {
+pub(crate) unsafe fn store_ext16_out(
+    limbs: &[__m512i; 4],
+    dst: *mut BabyBearExt4,
+    p: &ExtPerm,
+    nt: bool,
+) {
     if nt {
         store_ext16_nt(limbs, dst, p)
     } else {
@@ -610,8 +665,10 @@ pub(crate) unsafe fn st_nt16(p: *mut u32, v: __m512i) {
 #[inline]
 #[target_feature(enable = "avx512f")]
 pub(crate) unsafe fn transpose_taps16(v: &[__m512i; 8], p: &ExtPerm) -> [__m512i; 8] {
-    let a: [__m512i; 4] = core::array::from_fn(|q| _mm512_permutex2var_epi32(v[2 * q], p.fa, v[2 * q + 1]));
-    let b: [__m512i; 4] = core::array::from_fn(|q| _mm512_permutex2var_epi32(v[2 * q], p.fb, v[2 * q + 1]));
+    let a: [__m512i; 4] =
+        core::array::from_fn(|q| _mm512_permutex2var_epi32(v[2 * q], p.fa, v[2 * q + 1]));
+    let b: [__m512i; 4] =
+        core::array::from_fn(|q| _mm512_permutex2var_epi32(v[2 * q], p.fb, v[2 * q + 1]));
     let mut out = [_mm512_setzero_si512(); 8];
     for (half, src) in [(0usize, &a), (4usize, &b)] {
         for pair in 0..2 {
@@ -629,7 +686,11 @@ pub(crate) unsafe fn transpose_taps16(v: &[__m512i; 8], p: &ExtPerm) -> [__m512i
 /// ext values.
 #[inline]
 #[target_feature(enable = "avx512f")]
-pub(crate) unsafe fn untranspose_grid_to_aos(grid: *const u32, out: *mut BabyBearExt4, p: &ExtPerm) {
+pub(crate) unsafe fn untranspose_grid_to_aos(
+    grid: *const u32,
+    out: *mut BabyBearExt4,
+    p: &ExtPerm,
+) {
     for g in 0..2 {
         let limbs: [__m512i; 4] = core::array::from_fn(|l| ld(grid.add(16 * (4 * g + l))));
         store_ext16(&limbs, out.add(16 * g), p);
@@ -692,7 +753,11 @@ impl LazyRhs {
     #[inline]
     #[target_feature(enable = "avx512f")]
     pub(crate) unsafe fn new(b: &[__m512i; 4], r11: __m512i) -> Self {
-        let s = [mont_mul16(b[1], r11), mont_mul16(b[2], r11), mont_mul16(b[3], r11)];
+        let s = [
+            mont_mul16(b[1], r11),
+            mont_mul16(b[2], r11),
+            mont_mul16(b[3], r11),
+        ];
         LazyRhs {
             b: *b,
             bh: core::array::from_fn(|i| hi64(b[i])),
@@ -707,7 +772,12 @@ impl LazyRhs {
 /// keeps its `< R P` invariant. `ah` = odd-lane halves of `a`.
 #[inline]
 #[target_feature(enable = "avx512f")]
-pub(crate) unsafe fn lazy_mul_acc(acc: &mut [Lazy16; 4], a: &[__m512i; 4], ah: &[__m512i; 4], t: &LazyRhs) {
+pub(crate) unsafe fn lazy_mul_acc(
+    acc: &mut [Lazy16; 4],
+    a: &[__m512i; 4],
+    ah: &[__m512i; 4],
+    t: &LazyRhs,
+) {
     // out0 = a0 b0 + a1 (11 b1) + a2 (11 b3) + a3 (11 b2)
     acc[0].mla_raw(a[0], ah[0], t.b[0], t.bh[0]);
     acc[0].mla_raw(a[1], ah[1], t.s[0], t.sh[0]);
@@ -736,4 +806,43 @@ pub(crate) unsafe fn lazy_mul_acc(acc: &mut [Lazy16; 4], a: &[__m512i; 4], ah: &
     acc[3].mla_raw(a[2], ah[2], t.b[1], t.bh[1]);
     acc[3].mla_raw(a[3], ah[3], t.b[0], t.bh[0]);
     acc[3].condsub();
+}
+
+/// One LSB folding step over AoS `Ext4` pairs: `dst[i] = src[2i] + ch *
+/// (src[2i+1] - src[2i])` for `i < n_pairs` — 16 pairs per iteration (32
+/// elements loaded as two SoA groups, even/odd lanes split by a two-source
+/// permute), scalar tail. The WHIR eq-poly fold of the X86 GKR backend.
+#[target_feature(enable = "avx512f")]
+pub(crate) unsafe fn fold_pairs_avx512(
+    src: *const BabyBearExt4,
+    n_pairs: usize,
+    ch: &BabyBearExt4,
+    dst: *mut BabyBearExt4,
+) {
+    let p = ExtPerm::new();
+    let chl = bcast_ext(ch);
+    let r11 = r11v();
+    let ev = idx(&[0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]);
+    let od = idx(&[1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]);
+    let full = n_pairs / 16;
+    for blk in 0..full {
+        let s = src.add(blk * 32) as *const u32;
+        let z: [__m512i; 8] = core::array::from_fn(|k| ld(s.add(k * 16)));
+        let la = transpose_ext16_vecs(&[z[0], z[1], z[2], z[3]], &p);
+        let lb = transpose_ext16_vecs(&[z[4], z[5], z[6], z[7]], &p);
+        let a: [__m512i; 4] = core::array::from_fn(|l| _mm512_permutex2var_epi32(la[l], ev, lb[l]));
+        let b: [__m512i; 4] = core::array::from_fn(|l| _mm512_permutex2var_epi32(la[l], od, lb[l]));
+        let d: [__m512i; 4] = core::array::from_fn(|l| sub16(b[l], a[l]));
+        let prod = soa_ext_mul(&d, &chl, r11);
+        let out: [__m512i; 4] = core::array::from_fn(|l| add16(a[l], prod[l]));
+        store_ext16(&out, dst.add(blk * 16), &p);
+    }
+    for i in full * 16..n_pairs {
+        let a = *src.add(2 * i);
+        let mut t = *src.add(2 * i + 1);
+        t.sub_assign(&a);
+        t.mul_assign(ch);
+        t.add_assign(&a);
+        dst.add(i).write(t);
+    }
 }

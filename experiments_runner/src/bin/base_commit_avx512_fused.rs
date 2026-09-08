@@ -25,9 +25,9 @@ fn main() {
     use fft::baby_bear_avx2::{lde_coset_avx2_parallel, Avx2TwiddleExt};
     use fft::column_major::baby_bear_avx512::{
         lde_coset_avx512_fused, lde_coset_avx512_fused_into, lde_coset_avx512_into,
-        lde_coset_avx512_parallel, lde_coset_avx512_r256_into, lde_coset_strided_into, out_len, strided_gather_pass_into, strided_global_phase,
-        transform_avx512, transform_avx512_into, transform_partial_chunked_into, AlignedU32,
-        StridedCfg, OUT_BLOCK_STRIDE_PADDED,
+        lde_coset_avx512_parallel, lde_coset_avx512_r256_into, lde_coset_strided_into, out_len,
+        strided_gather_pass_into, strided_global_phase, transform_avx512, transform_avx512_into,
+        transform_partial_chunked_into, AlignedU32, StridedCfg, OUT_BLOCK_STRIDE_PADDED,
     };
     use field::baby_bear::base::BabyBearField as F;
     use field::PrimeField;
@@ -54,11 +54,21 @@ fn main() {
         Strided { chunk_local: bool, cfg: StridedCfg },
         Gather { cfg: StridedCfg },
     }
-    const fn cfg(stream: bool, r256: bool, padded: bool, group: usize, prefetch: bool) -> StridedCfg {
+    const fn cfg(
+        stream: bool,
+        r256: bool,
+        padded: bool,
+        group: usize,
+        prefetch: bool,
+    ) -> StridedCfg {
         StridedCfg {
             stream,
             r256,
-            out_block_stride: if padded { OUT_BLOCK_STRIDE_PADDED } else { 1 << 16 },
+            out_block_stride: if padded {
+                OUT_BLOCK_STRIDE_PADDED
+            } else {
+                1 << 16
+            },
             group,
             prefetch,
             blk_log2: 16,
@@ -79,8 +89,14 @@ fn main() {
         ("AVX-512 transform + separate prep", V::Sep),
         ("AVX-512 transform + fused prep/blocks", V::Fused),
         ("aligned: AVX-512 transform + separate prep", V::SepAligned),
-        ("aligned: fused, plain copy-out", V::FusedAligned { stream: false }),
-        ("aligned: fused, NT copy-out", V::FusedAligned { stream: true }),
+        (
+            "aligned: fused, plain copy-out",
+            V::FusedAligned { stream: false },
+        ),
+        (
+            "aligned: fused, NT copy-out",
+            V::FusedAligned { stream: true },
+        ),
         (
             "strided: 2-sweep partial transform, NT",
             V::Strided {
@@ -153,10 +169,30 @@ fn main() {
                 cfg: cfg(true, true, true, 4, true),
             },
         ),
-        ("r1024: gather blk 2^14, padded, NT, no prefetch", V::Gather { cfg: cfg14(true, false) }),
-        ("r1024: gather blk 2^14, padded, NT, prefetch", V::Gather { cfg: cfg14(true, true) }),
-        ("r1024: gather blk 2^14, contiguous, NT, no prefetch", V::Gather { cfg: cfg14(false, false) }),
-        ("r1024: gather blk 2^14, contiguous, NT, prefetch", V::Gather { cfg: cfg14(false, true) }),
+        (
+            "r1024: gather blk 2^14, padded, NT, no prefetch",
+            V::Gather {
+                cfg: cfg14(true, false),
+            },
+        ),
+        (
+            "r1024: gather blk 2^14, padded, NT, prefetch",
+            V::Gather {
+                cfg: cfg14(true, true),
+            },
+        ),
+        (
+            "r1024: gather blk 2^14, contiguous, NT, no prefetch",
+            V::Gather {
+                cfg: cfg14(false, false),
+            },
+        ),
+        (
+            "r1024: gather blk 2^14, contiguous, NT, prefetch",
+            V::Gather {
+                cfg: cfg14(false, true),
+            },
+        ),
     ];
 
     let args: Vec<String> = std::env::args().collect();
@@ -284,7 +320,9 @@ fn main() {
             }
             V::Sep | V::Fused => {
                 let mono: Vec<F> = unsafe {
-                    core::mem::transmute::<Vec<u32>, Vec<F>>(transform_avx512(col_raw, log_n, worker))
+                    core::mem::transmute::<Vec<u32>, Vec<F>>(transform_avx512(
+                        col_raw, log_n, worker,
+                    ))
                 };
                 for &off in offsets {
                     outs_vec.push(if v == V::Sep {
@@ -304,7 +342,9 @@ fn main() {
                             lde_coset_avx512_into(&mono, off, tw_raw, ext, &mut out, worker)
                         },
                         V::SepAlignedR256 => unsafe {
-                            lde_coset_avx512_r256_into(&mono, off, tw_raw, ext, &mut out, worker, true)
+                            lde_coset_avx512_r256_into(
+                                &mono, off, tw_raw, ext, &mut out, worker, true,
+                            )
                         },
                         V::FusedAligned { stream } => unsafe {
                             lde_coset_avx512_fused_into(
@@ -343,21 +383,39 @@ fn main() {
                         let t1 = Instant::now();
                         unsafe {
                             strided_gather_pass_into(
-                                &part, CHUNK_STRIDE, log_n, off, tw_raw, &ext.ao, &ext.bo,
-                                &mut out, worker, cfg,
+                                &part,
+                                CHUNK_STRIDE,
+                                log_n,
+                                off,
+                                tw_raw,
+                                &ext.ao,
+                                &ext.bo,
+                                &mut out,
+                                worker,
+                                cfg,
                             )
                         };
                         phases[1] += t1.elapsed().as_secs_f64();
                         let t2 = Instant::now();
                         unsafe {
-                            strided_global_phase(&mut out, log_n, tw_raw, &ext.ao, &ext.bo, worker, cfg)
+                            strided_global_phase(
+                                &mut out, log_n, tw_raw, &ext.ao, &ext.bo, worker, cfg,
+                            )
                         };
                         phases[2] += t2.elapsed().as_secs_f64();
                     } else {
                         unsafe {
                             lde_coset_strided_into(
-                                &part, CHUNK_STRIDE, log_n, off, tw_raw, &ext.ao, &ext.bo,
-                                &mut out, worker, cfg,
+                                &part,
+                                CHUNK_STRIDE,
+                                log_n,
+                                off,
+                                tw_raw,
+                                &ext.ao,
+                                &ext.bo,
+                                &mut out,
+                                worker,
+                                cfg,
                             )
                         }
                     }
@@ -378,13 +436,26 @@ fn main() {
             pooled: false,
             als: Default::default(),
         };
-        run_column(V::Avx2, col, &offsets, &tw, &ext, &w, &mut reference, &mut unused, &mut ph, &mut pool);
+        run_column(
+            V::Avx2,
+            col,
+            &offsets,
+            &tw,
+            &ext,
+            &w,
+            &mut reference,
+            &mut unused,
+            &mut ph,
+            &mut pool,
+        );
         for (name, v) in selected.iter() {
             if *v == V::Avx2 {
                 continue;
             }
             let (mut ov, mut oa) = (Vec::new(), Vec::new());
-            run_column(*v, col, &offsets, &tw, &ext, &w, &mut ov, &mut oa, &mut ph, &mut pool);
+            run_column(
+                *v, col, &offsets, &tw, &ext, &w, &mut ov, &mut oa, &mut ph, &mut pool,
+            );
             for (ci, r) in reference.iter().enumerate() {
                 let r_raw: &[u32] =
                     unsafe { core::slice::from_raw_parts(r.as_ptr() as *const u32, N) };
@@ -475,12 +546,22 @@ fn main() {
                                         barrier.wait();
                                         let t0 = Instant::now();
                                         let mut ph = [0.0f64; 3];
-                                        let mut outs_vec: Vec<Vec<F>> = Vec::with_capacity(cols * lde);
-                                        let mut outs_al: Vec<AlignedU32> = Vec::with_capacity(cols * lde);
+                                        let mut outs_vec: Vec<Vec<F>> =
+                                            Vec::with_capacity(cols * lde);
+                                        let mut outs_al: Vec<AlignedU32> =
+                                            Vec::with_capacity(cols * lde);
                                         for col in inputs[w].iter() {
                                             run_column(
-                                                v, col, &offsets, &tw, &ext, &worker, &mut outs_vec,
-                                                &mut outs_al, &mut ph, &mut pool,
+                                                v,
+                                                col,
+                                                &offsets,
+                                                &tw,
+                                                &ext,
+                                                &worker,
+                                                &mut outs_vec,
+                                                &mut outs_al,
+                                                &mut ph,
+                                                &mut pool,
                                             );
                                         }
                                         let el = t0.elapsed().as_secs_f64();

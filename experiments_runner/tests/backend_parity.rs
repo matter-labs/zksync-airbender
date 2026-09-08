@@ -15,6 +15,7 @@
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::Rand;
+use prover::allocation_pool::GenericAllocationPool;
 use prover::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart;
 use prover::gkr::prover::{Backend, DefaultBabyBearBackend, NaiveBackend};
 use worker::Worker;
@@ -76,6 +77,7 @@ fn default_babybear_backend_lde_matches_naive_at_2_20() {
         &col_refs,
         &default_twiddles,
         LDE_FACTOR,
+        &GenericAllocationPool::proxy(),
         &worker,
     );
     let reference = Backend::<BabyBearField, BabyBearExt4>::lde_multiple_polys_from_hypercubes(
@@ -83,6 +85,7 @@ fn default_babybear_backend_lde_matches_naive_at_2_20() {
         &col_refs,
         &naive_twiddles,
         LDE_FACTOR,
+        &GenericAllocationPool::proxy(),
         &worker,
     );
 
@@ -125,6 +128,7 @@ fn no_bitreverse_lde_matches_naive_up_to_in_coset_bitreversal() {
         &[&poly[..]],
         &twiddles,
         LDE_FACTOR,
+        &GenericAllocationPool::proxy(),
         &worker,
     );
 

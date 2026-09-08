@@ -17,6 +17,7 @@ use super::commitment_utils::{
     lde_multiple_polys_parallel_from_hypercubes, lde_packed_monomials_into_cosets,
     pack_polys_parallel_from_hypercubes_to_monomials, ColumnMajorCosetBoundTracePart,
 };
+use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
 use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
 use fft::{GoodAllocator, Twiddles};
 use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
@@ -37,6 +38,10 @@ pub use aarch64::BabyBearNeonWorkStealingBackend;
 mod x86_64;
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 pub use x86_64::BabyBearAvx2WorkStealingBackend;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+mod x86_64_avx512;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use x86_64_avx512::BabyBearAvx512WorkStealingBackend;
 
 mod naive;
 pub use naive::NaiveBackend;
@@ -168,6 +173,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         evals: &[&[F]],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<F, F>>>;
 
@@ -181,6 +187,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         monomials: Vec<Vec<F>>,
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<ColumnMajorBaseOracleForCoset<F>>;
 
@@ -193,6 +200,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         monomial_form_normal_order: &[E],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[E]>, F)>;
 
@@ -209,6 +217,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         monomial_form_normal_order: &[E],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> (Box<[E]>, Vec<F>);
 
@@ -221,6 +230,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         monomial_form_normal_order: &[F],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[F]>, F)>;
 
@@ -231,6 +241,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         &self,
         evals: &[&[F]],
         pack_log2: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<F>>;
 
@@ -244,6 +255,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         &self,
         source_domain: Vec<E>,
         twiddles: &Self::TwiddleSet,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<E>;
 
@@ -252,7 +264,12 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
     /// transformation of the batched Ext poly in `whir_fold`; implementations
     /// should put ALL worker threads on it. Mirrors
     /// `parallel_multivariate_coeffs_into_hypercube_evals` + bitrev.
-    fn hypercube_evals_from_monomial_form(&self, monomial_form: Vec<E>, worker: &Worker) -> Vec<E>;
+    fn hypercube_evals_from_monomial_form(
+        &self,
+        monomial_form: Vec<E>,
+        pool: &dyn AllocationPool<F, E>,
+        worker: &Worker,
+    ) -> Vec<E>;
 
     /// Accumulate one WHIR round's equality-poly contributions into the
     /// (already folded) eq poly: `dst[i] += ch_ood * eq(i, ood_point)` followed
@@ -283,11 +300,12 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
 #[cfg(target_arch = "aarch64")]
 pub type DefaultBabyBearBackend = BabyBearNeonWorkStealingBackend;
 /// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
-/// build target: the AVX2 backend on x86-64 builds that enable AVX2
-/// (`-C target-feature=+avx2` / `target-cpu`), the NEON backend on aarch64,
-/// the generic work-stealing backend elsewhere.
+/// build target: on x86-64 builds that enable AVX2 (`-C target-feature=+avx2`
+/// / `target-cpu`) the AVX2 backend with the runtime-detected AVX-512
+/// strided base LDE on top ([`BabyBearAvx512WorkStealingBackend`]), the NEON
+/// backend on aarch64, the generic work-stealing backend elsewhere.
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
-pub type DefaultBabyBearBackend = BabyBearAvx2WorkStealingBackend;
+pub type DefaultBabyBearBackend = BabyBearAvx512WorkStealingBackend;
 /// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
 /// build target: the NEON backend on aarch64, the AVX2 backend on AVX2-
 /// enabled x86-64 builds, the generic work-stealing backend elsewhere.
@@ -507,10 +525,7 @@ fn ws_lde_multiple_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
                         parallel_kernel,
                         worker,
                     );
-                    ColumnMajorCosetBoundTracePart {
-                        column: Arc::new(data.into_boxed_slice()),
-                        offset,
-                    }
+                    ColumnMajorCosetBoundTracePart::owned(data.into_boxed_slice(), offset)
                 })
                 .collect()
         });
@@ -563,10 +578,7 @@ fn ws_lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
                         parallel_kernel,
                         worker,
                     );
-                    ColumnMajorCosetBoundTracePart {
-                        column: Arc::new(data.into_boxed_slice()),
-                        offset,
-                    }
+                    ColumnMajorCosetBoundTracePart::owned(data.into_boxed_slice(), offset)
                 })
                 .collect()
         });
@@ -789,27 +801,40 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
         );
     }
     // lo covers the LOW `log_c` index bits (the LAST log_c entries of the
-    // squared-powers vector), hi the rest.
+    // squared-powers vector), hi the rest. The split is deliberately NOT
+    // balanced: only the `lo` tensors sit in the inner loop below (every
+    // sample's `lo` is streamed once per `hi` index), so `log_c = 10` keeps
+    // all samples' `lo` tables L2-resident (~88 x 1024 base entries), while
+    // `hi` is read once per `h`. The tensors are tiny (`S x (n / c + c)`
+    // entries) and are built in ONE parallel loop over the samples with the
+    // per-sample builder running inline (one worker scope per sample
+    // measured 4.2 ms vs 0.5 ms at 2^23 x 88 samples).
     let log_c = core::cmp::min(10, log_n - 1).max(1);
     let c = 1usize << log_c;
     let num_hi = n >> log_c;
 
     use crate::gkr::sumcheck::eq_poly::split_eq_tensors;
+    use worker::rayon::prelude::*;
 
-    let ood: Vec<(E, Box<[E]>, Box<[E]>)> = ood_samples
-        .iter()
-        .map(|(point, ch)| {
-            let (hi, lo) = split_eq_tensors(*point, log_n, log_c, worker);
-            (*ch, hi, lo)
-        })
-        .collect();
-    let base: Vec<(E, Box<[F]>, Box<[F]>)> = in_domain_samples
-        .iter()
-        .map(|(point, ch)| {
-            let (hi, lo) = split_eq_tensors(*point, log_n, log_c, worker);
-            (*ch, hi, lo)
-        })
-        .collect();
+    let inline = Worker::new_with_num_threads(1);
+    let (ood, base): (Vec<(E, Box<[E]>, Box<[E]>)>, Vec<(E, Box<[F]>, Box<[F]>)>) =
+        worker.pool.install(|| {
+            let ood: Vec<(E, Box<[E]>, Box<[E]>)> = ood_samples
+                .par_iter()
+                .map(|(point, ch)| {
+                    let (hi, lo) = split_eq_tensors(*point, log_n, log_c, &inline);
+                    (*ch, hi, lo)
+                })
+                .collect();
+            let base: Vec<(E, Box<[F]>, Box<[F]>)> = in_domain_samples
+                .par_iter()
+                .map(|(point, ch)| {
+                    let (hi, lo) = split_eq_tensors(*point, log_n, log_c, &inline);
+                    (*ch, hi, lo)
+                })
+                .collect();
+            (ood, base)
+        });
 
     let base_addr = crate::gkr::prover::SendPtr(eq_poly.as_mut_ptr());
     let ood_ref = &ood;
@@ -941,7 +966,7 @@ mod tests {
             assert_eq!(coset_a.len(), coset_b.len());
             for (ca, cb) in coset_a.iter().zip(coset_b.iter()) {
                 assert_eq!(ca.offset, cb.offset);
-                assert_eq!(&ca.column[..], &cb.column[..]);
+                assert_eq!(ca.to_vec(), cb.to_vec());
             }
         }
     }
@@ -968,6 +993,7 @@ mod tests {
             &col_refs,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         let b = Backend::<F, F>::lde_multiple_polys_from_hypercubes(
@@ -975,6 +1001,7 @@ mod tests {
             &col_refs,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         check_equal_cosets(&a, &b);
@@ -986,6 +1013,7 @@ mod tests {
             monomials.clone(),
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         let b = Backend::<F, F>::lde_packed_monomials_into_cosets(
@@ -993,6 +1021,7 @@ mod tests {
             monomials,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         assert_eq!(a.len(), b.len());
@@ -1009,7 +1038,7 @@ mod tests {
                 .zip(cb.original_values_normal_order.iter())
             {
                 assert_eq!(x.offset, y.offset);
-                assert_eq!(&x.column[..], &y.column[..]);
+                assert_eq!(x.to_vec(), y.to_vec());
             }
         }
     }
@@ -1039,6 +1068,7 @@ mod tests {
             &mono,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         let b = Backend::<F, E>::lde_ext_poly_from_monomial_form(
@@ -1046,6 +1076,7 @@ mod tests {
             &mono,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         assert_eq!(a.len(), b.len());
@@ -1106,17 +1137,25 @@ mod tests {
                 &NaiveBackend,
                 v.clone(),
                 &twiddles,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let bres = b.monomial_form_from_main_domain(v.clone(), &b_twiddles, &worker);
+            let bres = b.monomial_form_from_main_domain(
+                v.clone(),
+                &b_twiddles,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             assert_eq!(a, bres, "monomial_form diverged at n_log={n_log}");
 
             let a = Backend::<F, E>::hypercube_evals_from_monomial_form(
                 &NaiveBackend,
                 v.clone(),
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let bres = b.hypercube_evals_from_monomial_form(v, &worker);
+            let bres =
+                b.hypercube_evals_from_monomial_form(v, &GenericAllocationPool::proxy(), &worker);
             assert_eq!(a, bres, "hypercube_evals diverged at n_log={n_log}");
         }
     }
@@ -1165,10 +1204,16 @@ mod tests {
                 &col_refs,
                 &twiddles,
                 lde,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let b =
-                backend.lde_multiple_polys_from_hypercubes(&col_refs, &neon_twiddles, lde, &worker);
+            let b = backend.lde_multiple_polys_from_hypercubes(
+                &col_refs,
+                &neon_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             check_equal_cosets(&a, &b);
 
             let mono: Vec<F> = rand_cols::<F>(1, n).pop().unwrap();
@@ -1177,9 +1222,16 @@ mod tests {
                 &mono,
                 &twiddles,
                 lde,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let b = backend.lde_base_poly_from_monomial_form(&mono, &neon_twiddles, lde, &worker);
+            let b = backend.lde_base_poly_from_monomial_form(
+                &mono,
+                &neon_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             assert_eq!(a.len(), b.len());
             for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
                 assert_eq!(oa, ob);
@@ -1192,10 +1244,16 @@ mod tests {
                 &mono_ext,
                 &twiddles,
                 lde,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let b =
-                backend.lde_ext_poly_from_monomial_form(&mono_ext, &neon_twiddles, lde, &worker);
+            let b = backend.lde_ext_poly_from_monomial_form(
+                &mono_ext,
+                &neon_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             assert_eq!(a.len(), b.len());
             for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
                 assert_eq!(oa, ob);
@@ -1269,10 +1327,16 @@ mod tests {
                 &col_refs,
                 &twiddles,
                 lde,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let b =
-                backend.lde_multiple_polys_from_hypercubes(&col_refs, &avx2_twiddles, lde, &worker);
+            let b = backend.lde_multiple_polys_from_hypercubes(
+                &col_refs,
+                &avx2_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             check_equal_cosets(&a, &b);
 
             let mono: Vec<F> = rand_cols::<F>(1, n).pop().unwrap();
@@ -1281,9 +1345,16 @@ mod tests {
                 &mono,
                 &twiddles,
                 lde,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let b = backend.lde_base_poly_from_monomial_form(&mono, &avx2_twiddles, lde, &worker);
+            let b = backend.lde_base_poly_from_monomial_form(
+                &mono,
+                &avx2_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             assert_eq!(a.len(), b.len());
             for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
                 assert_eq!(oa, ob);
@@ -1296,10 +1367,16 @@ mod tests {
                 &mono_ext,
                 &twiddles,
                 lde,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let b =
-                backend.lde_ext_poly_from_monomial_form(&mono_ext, &avx2_twiddles, lde, &worker);
+            let b = backend.lde_ext_poly_from_monomial_form(
+                &mono_ext,
+                &avx2_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             assert_eq!(a.len(), b.len());
             for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
                 assert_eq!(oa, ob);
@@ -1366,10 +1443,16 @@ mod tests {
             &col_refs,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
-        let b = Proth120WorkStealingLazyBackend
-            .lde_multiple_polys_from_hypercubes(&col_refs, &twiddles, lde, &worker);
+        let b = Proth120WorkStealingLazyBackend.lde_multiple_polys_from_hypercubes(
+            &col_refs,
+            &twiddles,
+            lde,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        );
         check_equal_cosets(&a, &b);
 
         let mono: Vec<F> = rand_cols::<F>(1, n).pop().unwrap();
@@ -1378,18 +1461,29 @@ mod tests {
             &mono,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
-        let b = Proth120WorkStealingLazyBackend
-            .lde_base_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
+        let b = Proth120WorkStealingLazyBackend.lde_base_poly_from_monomial_form(
+            &mono,
+            &twiddles,
+            lde,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        );
         assert_eq!(a.len(), b.len());
         for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
             assert_eq!(oa, ob);
             assert_eq!(&da[..], &db[..]);
         }
 
-        let c = Proth120WorkStealingLazyBackend
-            .lde_ext_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
+        let c = Proth120WorkStealingLazyBackend.lde_ext_poly_from_monomial_form(
+            &mono,
+            &twiddles,
+            lde,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        );
         assert_eq!(a.len(), c.len());
         for ((da, oa), (dc, oc)) in a.iter().zip(c.iter()) {
             assert_eq!(oa, oc);
@@ -1410,10 +1504,16 @@ mod tests {
             &mono,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
-        let b = Proth120WorkStealingLazyBackend
-            .lde_ext_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
+        let b = Proth120WorkStealingLazyBackend.lde_ext_poly_from_monomial_form(
+            &mono,
+            &twiddles,
+            lde,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        );
         assert_eq!(a.len(), b.len());
         for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
             assert_eq!(oa, ob);

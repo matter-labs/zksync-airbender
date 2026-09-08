@@ -188,6 +188,7 @@ pub trait BatchedGKRKernel<F: PrimeField, E: FieldExtension<F> + Field> {
         storage: &mut GKRStorage<F, E>,
         expected_output_layer: usize,
         input_trace_len: usize,
+        pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
         worker: &Worker,
     );
     fn evaluate_over_storage<const N: usize>(

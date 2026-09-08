@@ -27,7 +27,9 @@ use super::super::dimension_reduction::lsb_backward::{FoldBufferTracker, LsbDimR
 use super::super::{GKRAddress, SendConstPtr};
 use super::avx2::{avx2_continuing_chunk, avx2_initial_chunk};
 use crate::gkr::prover::sumcheck_loop::windowed_mode::avx512 as k;
-use crate::gkr::prover::sumcheck_loop::windowed_mode::avx512::{ExtPerm, ExtTable16, Lazy16, LazyRhs};
+use crate::gkr::prover::sumcheck_loop::windowed_mode::avx512::{
+    ExtPerm, ExtTable16, Lazy16, LazyRhs,
+};
 use ::field::baby_bear::ext4::BabyBearExt4;
 use core::arch::x86_64::*;
 use field::Field;
@@ -79,11 +81,18 @@ unsafe fn stream(t: &[__m512i; 16], s: usize) -> Limbs {
 /// (`out[2 j]`): the even elements of 32 consecutive ones, limb-major.
 #[inline]
 #[target_feature(enable = "avx512f")]
-unsafe fn load_even16(out: *const BabyBearExt4, j0: usize, xp: &ExtPerm, even_idx: __m512i) -> Limbs {
+unsafe fn load_even16(
+    out: *const BabyBearExt4,
+    j0: usize,
+    xp: &ExtPerm,
+    even_idx: __m512i,
+) -> Limbs {
     let za: [__m512i; 4] =
         core::array::from_fn(|i| _mm512_loadu_si512(out.add(2 * j0 + 4 * i) as *const __m512i));
     let zb: [__m512i; 4] =
-        core::array::from_fn(|i| _mm512_loadu_si512(out.add(2 * j0 + 16 + 4 * i) as *const __m512i));
+        core::array::from_fn(
+            |i| _mm512_loadu_si512(out.add(2 * j0 + 16 + 4 * i) as *const __m512i),
+        );
     let la = k::transpose_ext16_vecs(&za, xp);
     let lb = k::transpose_ext16_vecs(&zb, xp);
     core::array::from_fn(|l| _mm512_permutex2var_epi32(la[l], even_idx, lb[l]))
@@ -174,7 +183,8 @@ unsafe fn initial_blocks<E: Field>(
                 let mut j = chunk_start;
                 while j < chunk_start + rows {
                     let t = load_rows16(src, 16, j);
-                    let (a0, b0, a1, b1) = (stream(&t, 0), stream(&t, 1), stream(&t, 2), stream(&t, 3));
+                    let (a0, b0, a1, b1) =
+                        (stream(&t, 0), stream(&t, 1), stream(&t, 2), stream(&t, 3));
                     let pinf = k::soa_ext_mul_lazy(&sub4(&a1, &a0), &sub4(&b1, &b0), r11);
                     let v0 = load_even16(out, j, &xp, even_idx);
                     let tw = load_t16(t_tab, j, &xp, r11);
@@ -207,8 +217,18 @@ unsafe fn initial_blocks<E: Field>(
                 while j < chunk_start + rows {
                     let tn = load_rows16(n_src, 16, j);
                     let td = load_rows16(d_src, 16, j);
-                    let (n0, n1, n2, n3) = (stream(&tn, 0), stream(&tn, 1), stream(&tn, 2), stream(&tn, 3));
-                    let (d0, d1, d2, d3) = (stream(&td, 0), stream(&td, 1), stream(&td, 2), stream(&td, 3));
+                    let (n0, n1, n2, n3) = (
+                        stream(&tn, 0),
+                        stream(&tn, 1),
+                        stream(&tn, 2),
+                        stream(&tn, 3),
+                    );
+                    let (d0, d1, d2, d3) = (
+                        stream(&td, 0),
+                        stream(&td, 1),
+                        stream(&td, 2),
+                        stream(&td, 3),
+                    );
                     let (dn0, dn1) = (sub4(&n2, &n0), sub4(&n3, &n1));
                     let (dd0, dd1) = (sub4(&d2, &d0), sub4(&d3, &d1));
                     let numi = add4(
@@ -226,7 +246,12 @@ unsafe fn initial_blocks<E: Field>(
                     j += 16;
                 }
                 let (an, ad) = (as_bb(alpha_num), as_bb(alpha_den));
-                for (acc, alpha, slot) in [(&sn0, an, 0usize), (&sni, an, 1), (&sd0, ad, 0), (&sdi, ad, 1)] {
+                for (acc, alpha, slot) in [
+                    (&sn0, an, 0usize),
+                    (&sni, an, 1),
+                    (&sd0, ad, 0),
+                    (&sdi, ad, 1),
+                ] {
                     let mut e = reduce_acc(acc);
                     e.mul_assign(alpha);
                     total[slot].add_assign(&e);
@@ -312,7 +337,12 @@ unsafe fn continuing_blocks<E: Field>(
                     j += 16;
                 }
                 let (an, ad) = (as_bb(alpha_num), as_bb(alpha_den));
-                for (acc, alpha, slot) in [(&sn0, an, 0usize), (&sni, an, 1), (&sd0, ad, 0), (&sdi, ad, 1)] {
+                for (acc, alpha, slot) in [
+                    (&sn0, an, 0usize),
+                    (&sni, an, 1),
+                    (&sd0, ad, 0),
+                    (&sdi, ad, 1),
+                ] {
                     let mut e = reduce_acc(acc);
                     e.mul_assign(alpha);
                     total[slot].add_assign(&e);
@@ -431,8 +461,10 @@ unsafe fn load_even_odd16(
     even_idx: __m512i,
     odd_idx: __m512i,
 ) -> (Limbs, Limbs) {
-    let za: [__m512i; 4] = core::array::from_fn(|i| _mm512_loadu_si512(src.add(4 * i) as *const __m512i));
-    let zb: [__m512i; 4] = core::array::from_fn(|i| _mm512_loadu_si512(src.add(16 + 4 * i) as *const __m512i));
+    let za: [__m512i; 4] =
+        core::array::from_fn(|i| _mm512_loadu_si512(src.add(4 * i) as *const __m512i));
+    let zb: [__m512i; 4] =
+        core::array::from_fn(|i| _mm512_loadu_si512(src.add(16 + 4 * i) as *const __m512i));
     let la = k::transpose_ext16_vecs(&za, xp);
     let lb = k::transpose_ext16_vecs(&zb, xp);
     (
@@ -444,7 +476,11 @@ unsafe fn load_even_odd16(
 /// `out[i] = in[2i] (x) in[2i+1]` for outputs `range` (a multiple of 16
 /// wide, 16-aligned).
 #[target_feature(enable = "avx512f")]
-unsafe fn pairwise_blocks(src: *const BabyBearExt4, dst: *mut BabyBearExt4, range: core::ops::Range<usize>) {
+unsafe fn pairwise_blocks(
+    src: *const BabyBearExt4,
+    dst: *mut BabyBearExt4,
+    range: core::ops::Range<usize>,
+) {
     let r11 = k::r11v();
     let xp = ExtPerm::new();
     let (ei, oi) = (k::idx(&EVEN_IDX), k::idx(&ODD_IDX));
@@ -475,7 +511,10 @@ unsafe fn logup_blocks(
     while i < range.end {
         let (n0, n1) = load_even_odd16(n_src.add(2 * i), &xp, ei, oi);
         let (d0, d1) = load_even_odd16(d_src.add(2 * i), &xp, ei, oi);
-        let num = add4(&k::soa_ext_mul_lazy(&n0, &d1, r11), &k::soa_ext_mul_lazy(&n1, &d0, r11));
+        let num = add4(
+            &k::soa_ext_mul_lazy(&n0, &d1, r11),
+            &k::soa_ext_mul_lazy(&n1, &d0, r11),
+        );
         k::store_ext16_out(&num, n_dst.add(i), &xp, nt);
         k::store_ext16_out(&k::soa_ext_mul_lazy(&d0, &d1, r11), d_dst.add(i), &xp, nt);
         i += 16;
@@ -492,6 +531,7 @@ pub fn forward_pairwise_x86<F: field::PrimeField, E: field::FieldExtension<F> + 
     output: GKRAddress,
     expected_output_layer: usize,
     input_trace_len: usize,
+    pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
     worker: &worker::Worker,
     use_avx512: bool,
 ) {
@@ -505,6 +545,7 @@ pub fn forward_pairwise_x86<F: field::PrimeField, E: field::FieldExtension<F> + 
             output,
             expected_output_layer,
             input_trace_len,
+            pool,
             worker,
         );
     }
@@ -517,12 +558,15 @@ pub fn forward_pairwise_x86<F: field::PrimeField, E: field::FieldExtension<F> + 
         };
         let sources = gkr_storage.get_for_sumcheck_round_0(&inputs);
         let src: &[E] = sources.extension_field_inputs[0].current_values();
-        let mut destination = gkr_storage.alloc_ext_uninit(output_trace_len);
+        let mut destination = pool.alloc_ext(
+            output_trace_len,
+            crate::allocation_pool::ColumnLayout::Contiguous,
+        );
         if output_trace_len < FORWARD_VECTOR_MIN {
             for i in 0..output_trace_len {
                 let mut v = src[2 * i];
                 v.mul_assign(&src[2 * i + 1]);
-                destination[i].write(v);
+                destination.as_mut()[i].write(v);
             }
         } else {
             assert_eq!(output_trace_len % 16, 0);
@@ -533,22 +577,25 @@ pub fn forward_pairwise_x86<F: field::PrimeField, E: field::FieldExtension<F> + 
                 for thread_idx in 0..geometry.num_chunks {
                     let start = geometry.get_chunk_start_pos(thread_idx) * 16;
                     let size = geometry.get_chunk_size(thread_idx) * 16;
-                    worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                        pairwise_blocks(
-                            src_addr.get() as *const BabyBearExt4,
-                            dst_addr.get() as *mut BabyBearExt4,
-                            start..start + size,
-                        );
-                    })
+                    worker::Worker::smart_spawn(
+                        scope,
+                        thread_idx == geometry.len() - 1,
+                        move |_| {
+                            pairwise_blocks(
+                                src_addr.get() as *const BabyBearExt4,
+                                dst_addr.get() as *mut BabyBearExt4,
+                                start..start + size,
+                            );
+                        },
+                    )
                 }
             });
         }
-        let values = destination.assume_init();
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(
             expected_output_layer,
             output,
-            crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::new(values),
+            crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::from_pooled(destination),
         );
     }
 }
@@ -560,6 +607,7 @@ pub fn forward_logup_x86<F: field::PrimeField, E: field::FieldExtension<F> + Fie
     outputs: [GKRAddress; 2],
     expected_output_layer: usize,
     input_trace_len: usize,
+    pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
     worker: &worker::Worker,
     use_avx512: bool,
 ) {
@@ -573,6 +621,7 @@ pub fn forward_logup_x86<F: field::PrimeField, E: field::FieldExtension<F> + Fie
             outputs,
             expected_output_layer,
             input_trace_len,
+            pool,
             worker,
         );
     }
@@ -586,11 +635,22 @@ pub fn forward_logup_x86<F: field::PrimeField, E: field::FieldExtension<F> + Fie
         let sources = gkr_storage.get_for_sumcheck_round_0(&gkr_inputs);
         let n_src: &[E] = sources.extension_field_inputs[0].current_values();
         let d_src: &[E] = sources.extension_field_inputs[1].current_values();
-        let mut num_dst = gkr_storage.alloc_ext_uninit(output_trace_len);
-        let mut den_dst = gkr_storage.alloc_ext_uninit(output_trace_len);
+        let mut num_dst = pool.alloc_ext(
+            output_trace_len,
+            crate::allocation_pool::ColumnLayout::Contiguous,
+        );
+        let mut den_dst = pool.alloc_ext(
+            output_trace_len,
+            crate::allocation_pool::ColumnLayout::Contiguous,
+        );
         if output_trace_len < FORWARD_VECTOR_MIN {
             for i in 0..output_trace_len {
-                let (n0, n1, d0, d1) = (n_src[2 * i], n_src[2 * i + 1], d_src[2 * i], d_src[2 * i + 1]);
+                let (n0, n1, d0, d1) = (
+                    n_src[2 * i],
+                    n_src[2 * i + 1],
+                    d_src[2 * i],
+                    d_src[2 * i + 1],
+                );
                 let mut num = n0;
                 num.mul_assign(&d1);
                 let mut t = n1;
@@ -598,8 +658,8 @@ pub fn forward_logup_x86<F: field::PrimeField, E: field::FieldExtension<F> + Fie
                 num.add_assign(&t);
                 let mut den = d0;
                 den.mul_assign(&d1);
-                num_dst[i].write(num);
-                den_dst[i].write(den);
+                num_dst.as_mut()[i].write(num);
+                den_dst.as_mut()[i].write(den);
             }
         } else {
             assert_eq!(output_trace_len % 16, 0);
@@ -612,27 +672,28 @@ pub fn forward_logup_x86<F: field::PrimeField, E: field::FieldExtension<F> + Fie
                 for thread_idx in 0..geometry.num_chunks {
                     let start = geometry.get_chunk_start_pos(thread_idx) * 16;
                     let size = geometry.get_chunk_size(thread_idx) * 16;
-                    worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                        logup_blocks(
-                            n_addr.get() as *const BabyBearExt4,
-                            d_addr.get() as *const BabyBearExt4,
-                            nd_addr.get() as *mut BabyBearExt4,
-                            dd_addr.get() as *mut BabyBearExt4,
-                            start..start + size,
-                        );
-                    })
+                    worker::Worker::smart_spawn(
+                        scope,
+                        thread_idx == geometry.len() - 1,
+                        move |_| {
+                            logup_blocks(
+                                n_addr.get() as *const BabyBearExt4,
+                                d_addr.get() as *const BabyBearExt4,
+                                nd_addr.get() as *mut BabyBearExt4,
+                                dd_addr.get() as *mut BabyBearExt4,
+                                start..start + size,
+                            );
+                        },
+                    )
                 }
             });
         }
-        for (addr, dst) in outputs
-            .into_iter()
-            .zip([num_dst.assume_init(), den_dst.assume_init()].into_iter())
-        {
+        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst].into_iter()) {
             addr.assert_as_layer(expected_output_layer);
             gkr_storage.insert_extension_at_layer(
                 expected_output_layer,
                 addr,
-                crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::new(dst),
+                crate::gkr::sumcheck::access_and_fold::ExtensionFieldPoly::from_pooled(dst),
             );
         }
     }
@@ -660,7 +721,10 @@ mod tests {
         (0..n).map(|_| pseudo_ext(seed)).collect()
     }
     fn addr(i: usize) -> GKRAddress {
-        GKRAddress::InnerLayer { layer: 3, offset: i }
+        GKRAddress::InnerLayer {
+            layer: 3,
+            offset: i,
+        }
     }
 
     #[test]
@@ -701,12 +765,17 @@ mod tests {
             inputs.insert(addr(i), &ins[i][..]);
             outputs.insert(addr(10 + i), &outs[i][..]);
         }
-        let want = unsafe { avx2_initial_chunk::<E>(&inputs, &outputs, &relations, tp, 0, rows, sp) };
-        let got = unsafe { avx512_initial_chunk::<E>(&inputs, &outputs, &relations, tp, 0, rows, sp) };
+        let want =
+            unsafe { avx2_initial_chunk::<E>(&inputs, &outputs, &relations, tp, 0, rows, sp) };
+        let got =
+            unsafe { avx512_initial_chunk::<E>(&inputs, &outputs, &relations, tp, 0, rows, sp) };
         assert_eq!(got, want, "initial round");
         // a sub-range starting inside the chunk
-        let want = unsafe { avx2_initial_chunk::<E>(&inputs, &outputs, &relations, tp, 3, rows - 3, sp) };
-        let got = unsafe { avx512_initial_chunk::<E>(&inputs, &outputs, &relations, tp, 3, rows - 3, sp) };
+        let want =
+            unsafe { avx2_initial_chunk::<E>(&inputs, &outputs, &relations, tp, 3, rows - 3, sp) };
+        let got = unsafe {
+            avx512_initial_chunk::<E>(&inputs, &outputs, &relations, tp, 3, rows - 3, sp)
+        };
         assert_eq!(got, want, "initial round, offset");
 
         // ---- continuing round: 8 inputs per row folded to 4
@@ -717,7 +786,11 @@ mod tests {
         let mut make = |pools: &mut Vec<Vec<E>>| -> BTreeMap<GKRAddress, FoldBufferTracker<E>> {
             let mut m = BTreeMap::new();
             for i in 0..3 {
-                let mut tr = FoldBufferTracker::new_with_first_output(pools[i].as_mut_ptr(), pools[i].len(), 4 * rows);
+                let mut tr = FoldBufferTracker::new_with_first_output(
+                    pools[i].as_mut_ptr(),
+                    pools[i].len(),
+                    4 * rows,
+                );
                 tr.set_external_input(&origs[i]);
                 m.insert(addr(i), tr);
             }
@@ -729,7 +802,11 @@ mod tests {
         let got = unsafe { avx512_continuing_chunk::<E>(&bufs_b, &relations, r, tp, 0, rows, sp) };
         assert_eq!(got, want, "continuing round");
         for i in 0..3 {
-            assert_eq!(&pools_a[i][..4 * rows], &pools_b[i][..4 * rows], "folded values of poly {i}");
+            assert_eq!(
+                &pools_a[i][..4 * rows],
+                &pools_b[i][..4 * rows],
+                "folded values of poly {i}"
+            );
         }
     }
 
@@ -756,14 +833,63 @@ mod tests {
                 );
             }
             let a = |off| GKRAddress::InnerLayer { layer, offset: off };
-            let o = |off| GKRAddress::InnerLayer { layer: layer + 1, offset: off };
-            super::super::avx2::forward_pairwise_avx2(&mut storage, a(0), o(0), layer + 1, n_in, &worker);
-            forward_pairwise_x86(&mut storage, a(0), o(1), layer + 1, n_in, &worker, true);
-            assert_eq!(storage.try_get_ext_poly(o(0)), storage.try_get_ext_poly(o(1)), "pairwise {log_in}");
-            super::super::avx2::forward_logup_avx2(&mut storage, [a(1), a(2)], [o(2), o(3)], layer + 1, n_in, &worker);
-            forward_logup_x86(&mut storage, [a(1), a(2)], [o(4), o(5)], layer + 1, n_in, &worker, true);
-            assert_eq!(storage.try_get_ext_poly(o(2)), storage.try_get_ext_poly(o(4)), "logup num {log_in}");
-            assert_eq!(storage.try_get_ext_poly(o(3)), storage.try_get_ext_poly(o(5)), "logup den {log_in}");
+            let o = |off| GKRAddress::InnerLayer {
+                layer: layer + 1,
+                offset: off,
+            };
+            super::super::avx2::forward_pairwise_avx2(
+                &mut storage,
+                a(0),
+                o(0),
+                layer + 1,
+                n_in,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
+                &worker,
+            );
+            forward_pairwise_x86(
+                &mut storage,
+                a(0),
+                o(1),
+                layer + 1,
+                n_in,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
+                &worker,
+                true,
+            );
+            assert_eq!(
+                storage.try_get_ext_poly(o(0)),
+                storage.try_get_ext_poly(o(1)),
+                "pairwise {log_in}"
+            );
+            super::super::avx2::forward_logup_avx2(
+                &mut storage,
+                [a(1), a(2)],
+                [o(2), o(3)],
+                layer + 1,
+                n_in,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
+                &worker,
+            );
+            forward_logup_x86(
+                &mut storage,
+                [a(1), a(2)],
+                [o(4), o(5)],
+                layer + 1,
+                n_in,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
+                &worker,
+                true,
+            );
+            assert_eq!(
+                storage.try_get_ext_poly(o(2)),
+                storage.try_get_ext_poly(o(4)),
+                "logup num {log_in}"
+            );
+            assert_eq!(
+                storage.try_get_ext_poly(o(3)),
+                storage.try_get_ext_poly(o(5)),
+                "logup den {log_in}"
+            );
         }
     }
 }

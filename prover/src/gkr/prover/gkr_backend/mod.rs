@@ -20,6 +20,7 @@
 //!    bracket-preserving compiled relations);
 //! 3. remaining glue (eq-table maintenance, folds).
 
+use crate::allocation_pool::AllocationPool;
 use std::collections::BTreeMap;
 
 use super::dimension_reduction::forward::DimensionReducingInputOutput;
@@ -28,7 +29,7 @@ use crate::gkr::prover::EvaluationPointEntry;
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use field::{Field, FieldExtension, PrimeField};
 use transcript::Transcript;
-use worker::Worker;
+use worker::{IterableWithGeometry, Worker};
 
 mod naive;
 pub use naive::NaiveGKRBackend;
@@ -104,6 +105,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         compiled_circuit: &GKRCircuitArtifact<F>,
         initial_trace_log_2: usize,
         final_trace_log_2: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> (
         usize,
@@ -126,36 +128,43 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         &self,
         max_rounds: usize,
         max_polys: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Self::DimensionReducingBuffer;
 
     /// Hands the pass-wide dimension-reducing buffers back after the last
-    /// dimension-reducing layer (pooling backends recycle them; the default
-    /// drops them).
-    fn recycle_dim_reducing_work_buffers(&self, buffers: Self::DimensionReducingBuffer) {
+    /// dimension-reducing layer (the bundled backends return the scratch to
+    /// the pool; the default drops it).
+    fn recycle_dim_reducing_work_buffers(
+        &self,
+        buffers: Self::DimensionReducingBuffer,
+        _pool: &dyn AllocationPool<F, E>,
+    ) {
         drop(buffers);
     }
 
     /// Statically resolved fold-buffer shapes of the whole backward pass —
     /// `[(dimension-reducing: max polys, capacity), (same-size: max polys,
-    /// capacity)]` — offered ONCE before the pass so a pooling backend can
-    /// preallocate and touch its buffers. The default ignores them.
-    fn prepare_fold_pool(&self, _shapes: &[(usize, usize)], _worker: &Worker) {}
-
-    /// Hands a same-size layer's fold buffers back after the layer (pooling
-    /// backends recycle them; the default drops them).
-    fn recycle_same_size_fold_buffers(&self, buffers: Vec<Box<[core::mem::MaybeUninit<E>]>>) {
-        drop(buffers);
+    /// capacity)]` — offered ONCE before the pass so the pool can be
+    /// pre-filled with touched buffers. The default ignores them.
+    fn prepare_fold_pool(
+        &self,
+        _shapes: &[(usize, usize)],
+        _pool: &dyn AllocationPool<F, E>,
+        _worker: &Worker,
+    ) {
     }
 
-    /// The cross-proof recycling pool for the extension polys held by the
-    /// GKR storage (forward layer outputs, cache relations, dimension-
-    /// reduction outputs), attached to the storage by the prover before the
-    /// forward pass; `None` (the default) keeps plain allocations.
-    fn ext_poly_pool(
+    /// Hands a same-size layer's fold buffers back after the layer: to the
+    /// pool.
+    fn recycle_same_size_fold_buffers(
         &self,
-    ) -> Option<std::sync::Arc<crate::gkr::sumcheck::access_and_fold::ExtPolyPool<E>>> {
-        None
+        buffers: Vec<Box<[core::mem::MaybeUninit<E>]>>,
+        pool: &dyn AllocationPool<F, E>,
+    ) {
+        for b in buffers {
+            pool.give_box(b);
+        }
     }
 
     /// Backward (sumcheck) pass over ONE dimension-reducing layer. The
@@ -177,6 +186,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         batching_challenge: &mut E,
         seed: &mut TR::Seed,
         trace_len_after_reduction: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
         buffers: &mut Self::DimensionReducingBuffer,
     ) -> SumcheckIntermediateProofValues<F, E>
@@ -199,12 +209,30 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     /// validated schedule, the trace length, and the input poly counts
     /// (base, extension) that require a buffer; returns one buffer per poly
     /// that needs one.
+    /// One LSB folding step of a WHIR-style poly: `dst[i] = src[2i] +
+    /// challenge * (src[2i+1] - src[2i])` for `i < src.len() / 2`, written
+    /// into a SEPARATE buffer (ping-pong) so no serial compaction pass is
+    /// needed. Used for the WHIR equality poly (see
+    /// [`crate::gkr::whir::ping_pong::PingPongPoly`]); the values must equal
+    /// [`crate::gkr::whir::fold_eq_poly`]'s. The default is the worker-parallel
+    /// scalar loop; backends override it with vector kernels.
+    fn fold_eq_poly_into(
+        &self,
+        src: &[E],
+        challenge: &E,
+        dst: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        fold_eq_poly_into_scalar::<F, E>(src, challenge, dst, worker);
+    }
+
     fn make_naive_same_size_fold_buffers(
         &self,
         schedule: &[crate::gkr::prover_config::SumcheckStep],
         trace_len: usize,
         num_base_polys: usize,
         num_ext_polys: usize,
+        pool: &dyn AllocationPool<F, E>,
     ) -> Vec<Self::NaiveSameSizeFoldBuffer>;
 
     /// Constructor for the windowed-chain fold buffers (same contract as
@@ -215,6 +243,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         trace_len: usize,
         num_base_polys: usize,
         num_ext_polys: usize,
+        pool: &dyn AllocationPool<F, E>,
     ) -> Vec<Self::WindowedSameSizeFoldBuffer>;
 
     /// Constructor for the uniskip-chain fold buffers (same contract as
@@ -225,6 +254,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         trace_len: usize,
         num_base_polys: usize,
         num_ext_polys: usize,
+        pool: &dyn AllocationPool<F, E>,
     ) -> Vec<Self::UniskipSameSizeFoldBuffer>;
 
     /// The per-layer same-size chain EXECUTOR (compiled SoA program +
@@ -266,6 +296,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         external_challenges: &super::GKRExternalChallenges<F, E>,
         prover_config: &crate::gkr::prover_config::ProverConfig,
         seed: &mut TR::Seed,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> SumcheckIntermediateProofValues<F, E>
     where
@@ -315,18 +346,68 @@ pub struct DimReducingSumcheckScratch<E, S> {
 }
 
 impl<E, S> DimReducingSumcheckScratch<E, S> {
-    pub fn new(max_rounds: usize, max_polys: usize, worker: &Worker) -> Self {
+    pub fn new<F, EE>(
+        max_rounds: usize,
+        max_polys: usize,
+        pool: &dyn AllocationPool<F, EE>,
+        worker: &Worker,
+    ) -> Self {
         let m = 1usize << max_rounds;
         let tri_cap = (m / 2)
             .div_ceil(worker.num_cores)
             .max(crate::gkr::PAR_THRESHOLD);
         Self {
             fold: (0..max_polys)
-                .map(|_| Box::new_uninit_slice(m + m / 2))
+                .map(|_| pool.alloc_box::<E>(m + m / 2))
                 .collect(),
             tri: (0..worker.num_cores)
-                .map(|_| Box::new_uninit_slice(tri_cap))
+                .map(|_| pool.alloc_box::<S>(tri_cap))
                 .collect(),
         }
     }
+
+    /// Return every buffer to the pool.
+    pub fn release<F, EE>(self, pool: &dyn AllocationPool<F, EE>) {
+        for b in self.fold {
+            pool.give_box(b);
+        }
+        for b in self.tri {
+            pool.give_box(b);
+        }
+    }
+}
+
+/// The scalar, worker-parallel reference of [`GKRBackend::fold_eq_poly_into`].
+pub fn fold_eq_poly_into_scalar<F: PrimeField, E: FieldExtension<F> + Field>(
+    src: &[E],
+    challenge: &E,
+    dst: &mut [core::mem::MaybeUninit<E>],
+    worker: &Worker,
+) {
+    let half = src.len() / 2;
+    assert!(src.len().is_power_of_two());
+    assert!(dst.len() >= half);
+    if half == 0 {
+        return;
+    }
+    let pairs = src.as_chunks::<2>().0;
+    let dst = &mut dst[..half];
+    let ch = *challenge;
+    worker.scope_with_threshold(half, crate::gkr::PAR_THRESHOLD, |scope, geometry| {
+        pairs
+            .chunks_for_geometry(geometry)
+            .zip(dst.chunks_for_geometry_mut(geometry))
+            .enumerate()
+            .for_each(|(idx, (src_chunk, dst_chunk))| {
+                Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
+                    for ([a, b], d) in src_chunk.iter().zip(dst_chunk.iter_mut()) {
+                        let mut t = *b;
+                        t.sub_assign(a);
+                        t.mul_assign(&ch);
+                        t.add_assign(a);
+                        d.write(t);
+                    }
+                });
+            })
+    });
 }

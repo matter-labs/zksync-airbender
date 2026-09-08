@@ -29,11 +29,23 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use cs::tables::TableDriver;
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
+use prover::allocation_pool::{AllocationPool, DefaultBabyBearAllocationPool};
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::{
     Avx2GKRBackend, DefaultBabyBearGKRBackend, GKRBackend, NaiveGKRBackend, X86GKRBackend,
 };
+use std::sync::Arc;
+
+/// How the provers get their [`AllocationPool`] (`--pool
+/// per-prover|shared|proxy`): one retaining pool per prover (NUMA-local
+/// reuse), one pool shared by every prover, or the plain allocator.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PoolMode {
+    PerProver,
+    Shared,
+    Proxy,
+}
 
 /// Which GKR backend to prove with (`--gkr-backend
 /// naive|default|avx2|avx2-pool|avx512|avx512-nopool`): `default` is the
@@ -51,10 +63,22 @@ impl GkrKind {
             GkrKind::Naive => "naive",
             GkrKind::Default => "default",
             GkrKind::Avx2 => "avx2",
-            GkrKind::X86 { avx512: true, pooled: true } => "avx512",
-            GkrKind::X86 { avx512: true, pooled: false } => "avx512-nopool",
-            GkrKind::X86 { avx512: false, pooled: true } => "avx2-pool",
-            GkrKind::X86 { avx512: false, pooled: false } => "avx2-x86",
+            GkrKind::X86 {
+                avx512: true,
+                pooled: true,
+            } => "avx512",
+            GkrKind::X86 {
+                avx512: true,
+                pooled: false,
+            } => "avx512-nopool",
+            GkrKind::X86 {
+                avx512: false,
+                pooled: true,
+            } => "avx2-pool",
+            GkrKind::X86 {
+                avx512: false,
+                pooled: false,
+            } => "avx2-x86",
         }
     }
 }
@@ -138,7 +162,7 @@ fn prove_with_gkr_backend(
             &Avx2GKRBackend,
             worker,
         ),
-        GkrKind::X86 { avx512, pooled } => {
+        GkrKind::X86 { avx512, pooled: _ } => {
             prove_built_family_trace_with_prover_config_and_gkr_backend(
                 circuit,
                 table_driver,
@@ -147,7 +171,7 @@ fn prove_with_gkr_backend(
                 trace_len,
                 external_challenges,
                 prover_config,
-                &X86GKRBackend::new(avx512, pooled),
+                &X86GKRBackend::new(avx512),
                 worker,
             )
         }
@@ -177,6 +201,7 @@ trait GkrDispatch: Sync {
         storage: prover::gkr::prover::WhirOracleStorage,
         trace_len: usize,
         backend: &prover::gkr::prover::DefaultBabyBearBackend,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> prover::gkr::prover::GKRProof<
         BabyBearField,
@@ -204,6 +229,7 @@ impl<GB: GKRBackend<BabyBearField, BabyBearExt4>> GkrDispatch for GB {
         storage: prover::gkr::prover::WhirOracleStorage,
         trace_len: usize,
         backend: &prover::gkr::prover::DefaultBabyBearBackend,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> prover::gkr::prover::GKRProof<
         BabyBearField,
@@ -211,11 +237,11 @@ impl<GB: GKRBackend<BabyBearField, BabyBearExt4>> GkrDispatch for GB {
         prover::merkle_trees::DefaultTreeConstructor,
     > {
         use prover::gkr::prover::{
-            prove_configured_with_gkr_with_storage_and_backend, CommitmentMode,
+            prove_configured_with_gkr_with_storage_and_backend_and_pool, CommitmentMode,
         };
         use prover::merkle_trees::DefaultTreeConstructor;
         use prover::transcript::Blake2sTranscript;
-        prove_configured_with_gkr_with_storage_and_backend::<
+        prove_configured_with_gkr_with_storage_and_backend_and_pool::<
             BabyBearField,
             BabyBearExt4,
             DefaultTreeConstructor,
@@ -236,6 +262,7 @@ impl<GB: GKRBackend<BabyBearField, BabyBearExt4>> GkrDispatch for GB {
             trace_len,
             backend,
             self,
+            pool,
             worker,
         )
     }
@@ -247,7 +274,7 @@ fn make_gkr(gkr: GkrKind) -> Box<dyn GkrDispatch> {
         GkrKind::Naive => Box::new(NaiveGKRBackend),
         GkrKind::Default => Box::new(DefaultBabyBearGKRBackend::default()),
         GkrKind::Avx2 => Box::new(Avx2GKRBackend),
-        GkrKind::X86 { avx512, pooled } => Box::new(X86GKRBackend::new(avx512, pooled)),
+        GkrKind::X86 { avx512, pooled: _ } => Box::new(X86GKRBackend::new(avx512)),
     }
 }
 
@@ -263,6 +290,8 @@ fn outer_parallel(
     reps: usize,
     gkr: GkrKind,
     pin: bool,
+    pool_mode: PoolMode,
+    fft_strided: Option<bool>,
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
     decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
@@ -275,7 +304,28 @@ fn outer_parallel(
     use prover::gkr::prover::setup::GKRSetup;
     use prover::gkr::prover::{Backend, DefaultBabyBearBackend, TwiddleSetOps, WhirOracleStorage};
 
-    let backend = DefaultBabyBearBackend::default();
+    let backend = match fft_strided {
+        Some(strided) => DefaultBabyBearBackend::new(strided),
+        None => DefaultBabyBearBackend::default(),
+    };
+    println!(
+        "[outer] fft backend: {} base LDE, pool mode {:?}",
+        if backend.uses_strided() {
+            "AVX-512 strided"
+        } else {
+            "AVX2"
+        },
+        pool_mode
+    );
+    // one pool for everybody in `Shared` mode; the others make their own
+    let shared_pool = DefaultBabyBearAllocationPool::new().share();
+    let make_pool = |mode: PoolMode| -> Arc<dyn AllocationPool<BabyBearField, BabyBearExt4>> {
+        match mode {
+            PoolMode::PerProver => DefaultBabyBearAllocationPool::new().share(),
+            PoolMode::Shared => Arc::clone(&shared_pool),
+            PoolMode::Proxy => DefaultBabyBearAllocationPool::proxy().share(),
+        }
+    };
     let t = std::time::Instant::now();
     let twiddles = <DefaultBabyBearBackend as Backend<BabyBearField, BabyBearExt4>>::make_twiddles(
         &backend,
@@ -300,6 +350,7 @@ fn outer_parallel(
     let run_one = |label: String,
                    worker: &Worker,
                    trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+                   pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
                    gb: &dyn GkrDispatch|
      -> f64 {
         let t = std::time::Instant::now();
@@ -314,6 +365,7 @@ fn outer_parallel(
             storage,
             trace_len,
             &backend,
+            pool,
             worker,
         );
         let el = t.elapsed().as_secs_f64();
@@ -337,11 +389,18 @@ fn outer_parallel(
     let solo = {
         let worker = Worker::new_with_num_threads_and_stack(inner, POOL_STACK);
         let gb = make_gkr(gkr);
+        let pool = make_pool(pool_mode);
         let mut last = 0.0;
         for r in 0..reps {
             let tr = trace.clone();
             last = worker.pool.install(|| {
-                run_one(format!("solo baseline rep {}", r + 1), &worker, tr, &*gb)
+                run_one(
+                    format!("solo baseline rep {}", r + 1),
+                    &worker,
+                    tr,
+                    &*pool,
+                    &*gb,
+                )
             });
         }
         last
@@ -397,6 +456,7 @@ fn outer_parallel(
             .enumerate()
             .map(|(i, tr)| {
                 let run_one = &run_one;
+                let pool = make_pool(pool_mode);
                 std::thread::Builder::new()
                     .name(format!("prover-{i}"))
                     .stack_size(1 << 30)
@@ -418,7 +478,13 @@ fn outer_parallel(
                             let trace = tr.clone();
                             rep_barrier.wait();
                             times.push(worker.pool.install(|| {
-                                run_one(format!("prover {i} rep {}", r + 1), &worker, trace, &*gb)
+                                run_one(
+                                    format!("prover {i} rep {}", r + 1),
+                                    &worker,
+                                    trace,
+                                    &*pool,
+                                    &*gb,
+                                )
                             }));
                         }
                         times
@@ -523,6 +589,8 @@ fn main() {
     let mut reps = 1usize;
     let mut gkr = GkrKind::Default;
     let mut pin = false;
+    let mut pool_mode = PoolMode::PerProver;
+    let mut fft_strided: Option<bool> = None;
     let mut proof_out: Option<String> = None;
     let trace_len_log2 = 24usize;
 
@@ -565,6 +633,21 @@ fn main() {
                 }
             }
             "--proof-out" => proof_out = Some(value("--proof-out")),
+            "--pool" => {
+                pool_mode = match value("--pool").as_str() {
+                    "per-prover" => PoolMode::PerProver,
+                    "shared" => PoolMode::Shared,
+                    "proxy" => PoolMode::Proxy,
+                    other => panic!("unknown pool mode `{other}` (per-prover|shared|proxy)"),
+                }
+            }
+            "--fft" => {
+                fft_strided = Some(match value("--fft").as_str() {
+                    "strided" => true,
+                    "avx2" => false,
+                    other => panic!("unknown fft mode `{other}` (strided|avx2)"),
+                })
+            }
             "--pin" => pin = true,
             "--inner" => inner = value("--inner").parse().expect("--inner"),
             other => panic!("unknown argument `{other}`"),
@@ -679,6 +762,8 @@ fn main() {
             reps,
             gkr,
             pin,
+            pool_mode,
+            fft_strided,
             &circuit,
             &table_driver,
             decoder_table_data,

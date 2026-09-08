@@ -15,6 +15,7 @@
 //! AVX2-enabled x86-64 builds. `X86GKRBackend::new(use_avx512, pooled)`
 //! selects explicitly (for A/B runs).
 
+use crate::allocation_pool::AllocationPool;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
@@ -32,136 +33,6 @@ use transcript::Transcript;
 use worker::Worker;
 
 pub type FoldBuf = Box<[core::mem::MaybeUninit<BabyBearExt4>]>;
-
-/// Pre-touched pool of uninit fold buffers, handed out by capacity (the
-/// smallest sufficient buffers first) and returned after each layer. Sized
-/// once per proving run from the circuit's shapes by
-/// [`GKRBackend::prepare_fold_pool`]; misses fall back to fresh
-/// allocations (and are reported).
-pub struct FoldBufferPool {
-    free: Mutex<Vec<FoldBuf>>,
-    enabled: bool,
-}
-
-impl FoldBufferPool {
-    fn new(enabled: bool) -> Self {
-        Self {
-            free: Mutex::new(Vec::new()),
-            enabled,
-        }
-    }
-
-    /// Allocate + first-touch the buffers of every `(count, capacity)` shape
-    /// (touching in parallel over the worker so the page faults are paid
-    /// here, once, instead of inside the first fold of every layer).
-    fn prefill(&self, shapes: &[(usize, usize)], worker: &Worker) {
-        if !self.enabled {
-            return;
-        }
-        let t = std::time::Instant::now();
-        // top up: buffers already in the pool (from a previous proof) cover
-        // the shapes largest-first, only the shortfall is allocated + touched
-        let mut have: Vec<FoldBuf> = core::mem::take(&mut *self.free.lock().unwrap());
-        have.sort_by_key(|b| core::cmp::Reverse(b.len()));
-        let mut ordered: Vec<(usize, usize)> = shapes.to_vec();
-        ordered.sort_by_key(|&(_, cap)| core::cmp::Reverse(cap));
-        let mut bufs: Vec<FoldBuf> = Vec::new();
-        let mut kept: Vec<FoldBuf> = Vec::new();
-        for &(count, cap) in ordered.iter() {
-            let mut covered = 0usize;
-            while covered < count {
-                match have.iter().position(|b| b.len() >= cap) {
-                    Some(pos) => {
-                        // largest-first: the first sufficient one is the largest left
-                        kept.push(have.remove(pos));
-                        covered += 1;
-                    }
-                    None => break,
-                }
-            }
-            for _ in covered..count {
-                bufs.push(Box::new_uninit_slice(cap));
-            }
-        }
-        let total: usize = bufs.iter().map(|b| b.len()).sum();
-        let fresh = bufs.len();
-        let addrs: Vec<(usize, usize)> = bufs
-            .iter_mut()
-            .map(|b| (b.as_mut_ptr() as usize, b.len() * core::mem::size_of::<BabyBearExt4>()))
-            .collect();
-        // touch: one write per 4 KB page of every buffer, pages split over the worker
-        let pages: Vec<(usize, usize)> = addrs
-            .iter()
-            .flat_map(|&(a, bytes)| (0..bytes).step_by(4096).map(move |o| (a, o)))
-            .collect();
-        if !pages.is_empty() {
-            worker.scope(pages.len(), |scope, geometry| {
-                for idx in 0..geometry.len() {
-                    let start = geometry.get_chunk_start_pos(idx);
-                    let size = geometry.get_chunk_size(idx);
-                    let pages = &pages;
-                    Worker::smart_spawn(scope, idx == geometry.len() - 1, move |_| {
-                        for &(a, o) in &pages[start..start + size] {
-                            unsafe { core::ptr::write_volatile((a as *mut u8).add(o), 0u8) };
-                        }
-                    });
-                }
-            });
-        }
-        let mut free = self.free.lock().unwrap();
-        // everything back: the reused ones, the previously unmatched ones, the fresh ones
-        free.extend(kept);
-        free.extend(have);
-        free.extend(bufs);
-        free.sort_by_key(|b| b.len());
-        println!(
-            "[pool] fold buffers: {} in pool, {fresh} fresh ({:.1} MB) for shapes {:?}, in {:?}",
-            free.len(),
-            (total * core::mem::size_of::<BabyBearExt4>()) as f64 / 1e6,
-            shapes,
-            t.elapsed()
-        );
-    }
-
-    /// `count` buffers of at least `cap` elements: the smallest sufficient
-    /// pooled ones, fresh allocations for the rest.
-    fn take(&self, count: usize, cap: usize) -> Vec<FoldBuf> {
-        let mut out = Vec::with_capacity(count);
-        if self.enabled {
-            let mut free = self.free.lock().unwrap();
-            // sorted ascending by len: the first sufficient index and onwards
-            while out.len() < count {
-                let Some(pos) = free.iter().position(|b| b.len() >= cap) else {
-                    break;
-                };
-                out.push(free.remove(pos));
-            }
-        }
-        if out.len() < count {
-            if self.enabled {
-                println!(
-                    "[pool] miss: {} of {} buffers of {} elements allocated fresh",
-                    count - out.len(),
-                    count,
-                    cap
-                );
-            }
-            while out.len() < count {
-                out.push(Box::new_uninit_slice(cap));
-            }
-        }
-        out
-    }
-
-    fn give(&self, bufs: Vec<FoldBuf>) {
-        if !self.enabled {
-            return;
-        }
-        let mut free = self.free.lock().unwrap();
-        free.extend(bufs);
-        free.sort_by_key(|b| b.len());
-    }
-}
 
 /// The x86-64 AVX-512 + BabyBear/Ext4 same-size chain executor: window
 /// passes and folds through the `lsb_avx512` kernels, the (unreachable)
@@ -199,9 +70,15 @@ impl Avx512SameSizeChain {
             .collect();
         // the per-row L1 footprint of the initial pass: every base slot and
         // form grid is 128 B, every ext grid 512 B (two rows per block)
-        let (nb, ne, nf) = (prog.base_interp.len(), prog.ext_interp.len(), prog.forms.len());
+        let (nb, ne, nf) = (
+            prog.base_interp.len(),
+            prog.ext_interp.len(),
+            prog.forms.len(),
+        );
         use crate::gkr::prover::sumcheck_loop::windowed_mode::program::ProgramStep;
-        let count = |f: &dyn Fn(&ProgramStep<BabyBearExt4>) -> bool| prog.rest_steps.iter().filter(|s| f(s)).count();
+        let count = |f: &dyn Fn(&ProgramStep<BabyBearExt4>) -> bool| {
+            prog.rest_steps.iter().filter(|s| f(s)).count()
+        };
         println!(
             "[ss-program] {nb} base slots ({} interpolated), {ne} ext slots, {nf} forms, {} factored products, {} rest steps (QuadBB {}, LinB {}, QuadBE {}, QuadEE {}, LinE {}); per-row grids {:.1} KB (x2 rows), continuing {:.1} KB",
             prog.base_interp.iter().filter(|b| **b).count(),
@@ -452,7 +329,10 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         out_size: usize,
         worker: &Worker,
     ) -> [BabyBearExt4; 16] {
-        x86_chain_delegate!(self, uniskip_initial_pass(base_polys, ext_polys, eq_suffix, out_size, worker))
+        x86_chain_delegate!(
+            self,
+            uniskip_initial_pass(base_polys, ext_polys, eq_suffix, out_size, worker)
+        )
     }
     fn uniskip_continuing_pass(
         &self,
@@ -461,7 +341,10 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         out_size: usize,
         worker: &Worker,
     ) -> [BabyBearExt4; 16] {
-        x86_chain_delegate!(self, uniskip_continuing_pass(folded, eq_suffix, out_size, worker))
+        x86_chain_delegate!(
+            self,
+            uniskip_continuing_pass(folded, eq_suffix, out_size, worker)
+        )
     }
     fn window_initial_pass(
         &self,
@@ -471,7 +354,10 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         out_size: usize,
         worker: &Worker,
     ) -> [BabyBearExt4; 27] {
-        x86_chain_delegate!(self, window_initial_pass(base_polys, ext_polys, eq_suffix, out_size, worker))
+        x86_chain_delegate!(
+            self,
+            window_initial_pass(base_polys, ext_polys, eq_suffix, out_size, worker)
+        )
     }
     fn window_continuing_pass(
         &self,
@@ -480,7 +366,10 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         out_size: usize,
         worker: &Worker,
     ) -> [BabyBearExt4; 27] {
-        x86_chain_delegate!(self, window_continuing_pass(folded, eq_suffix, out_size, worker))
+        x86_chain_delegate!(
+            self,
+            window_continuing_pass(folded, eq_suffix, out_size, worker)
+        )
     }
     fn fold_initial(
         &self,
@@ -490,7 +379,10 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         trackers: &mut [FoldBufferTracker<BabyBearExt4>],
         worker: &Worker,
     ) {
-        x86_chain_delegate!(self, fold_initial(base_polys, ext_polys, weights, trackers, worker))
+        x86_chain_delegate!(
+            self,
+            fold_initial(base_polys, ext_polys, weights, trackers, worker)
+        )
     }
     fn fold_continuing(
         &self,
@@ -515,30 +407,21 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
 /// and the fold buffer pool.
 pub struct X86GKRBackend {
     use_avx512: bool,
-    pool: FoldBufferPool,
-    /// cross-proof pool of the storage's extension polys (enabled with `pooled`)
-    ext_pool: Option<std::sync::Arc<crate::gkr::sumcheck::access_and_fold::ExtPolyPool<BabyBearExt4>>>,
 }
 
 impl X86GKRBackend {
     /// Explicit selection: `use_avx512` requires `avx512f` (panics
-    /// otherwise); `pooled` enables the pre-touched fold buffer pool.
-    pub fn new(use_avx512: bool, pooled: bool) -> Self {
+    /// otherwise). Buffer pooling is the [`AllocationPool`]'s business.
+    pub fn new(use_avx512: bool) -> Self {
         assert!(
             !use_avx512 || is_x86_feature_detected!("avx512f"),
             "X86GKRBackend: avx512f requested but not available"
         );
-        Self {
-            use_avx512,
-            pool: FoldBufferPool::new(pooled),
-            ext_pool: pooled.then(|| {
-                std::sync::Arc::new(crate::gkr::sumcheck::access_and_fold::ExtPolyPool::new())
-            }),
-        }
+        Self { use_avx512 }
     }
-    /// Runtime-detected kernels (AVX-512 when `avx512f` is present) with the pool.
+    /// Runtime-detected kernels (AVX-512 when `avx512f` is present).
     pub fn detect() -> Self {
-        Self::new(is_x86_feature_detected!("avx512f"), true)
+        Self::new(is_x86_feature_detected!("avx512f"))
     }
     pub fn uses_avx512(&self) -> bool {
         self.use_avx512
@@ -552,45 +435,64 @@ impl Default for X86GKRBackend {
 }
 
 impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
-    type DimensionReducingBuffer = DimReducingSumcheckScratch<BabyBearExt4, [u128; 2]>;
-
-    fn ext_poly_pool(
+    fn fold_eq_poly_into(
         &self,
-    ) -> Option<std::sync::Arc<crate::gkr::sumcheck::access_and_fold::ExtPolyPool<BabyBearExt4>>>
-    {
-        self.ext_pool.clone()
+        src: &[BabyBearExt4],
+        challenge: &BabyBearExt4,
+        dst: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        if self.use_avx512 {
+            fold_eq_poly_into_avx512(src, challenge, dst, worker);
+        } else {
+            super::fold_eq_poly_into_scalar::<BabyBearField, BabyBearExt4>(
+                src, challenge, dst, worker,
+            );
+        }
     }
 
-    fn prepare_fold_pool(&self, shapes: &[(usize, usize)], worker: &Worker) {
-        // the same-size shape's count must cover the DR count too when its
-        // buffers are the smaller ones: hand the DR path the LARGER size and
-        // keep the remaining same-size buffers at their own size
-        let (dr, ss) = (shapes[0], shapes[1]);
-        let big = dr.1.max(ss.1);
-        let merged = [(dr.0, big), (ss.0.saturating_sub(dr.0), ss.1)];
-        self.pool.prefill(&merged, worker);
+    type DimensionReducingBuffer = DimReducingSumcheckScratch<BabyBearExt4, [u128; 2]>;
+
+    fn prepare_fold_pool(
+        &self,
+        shapes: &[(usize, usize)],
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
+        worker: &Worker,
+    ) {
+        // pre-touch the fold scratch of both passes: the dimension-reducing
+        // scratch and the same-size chain buffers are exact-length boxes
+        let t = std::time::Instant::now();
+        let before = pool.stats();
+        for &(count, cap) in shapes.iter() {
+            if count > 0 && cap > 0 {
+                pool.prefill_boxes::<BabyBearExt4>(cap, count, worker);
+            }
+        }
+        let after = pool.stats();
+        println!(
+            "[pool] fold buffers: shapes {:?}, {:.1} MB fresh, in {:?}",
+            shapes,
+            (after.retained_bytes as f64 - before.retained_bytes as f64) / 1e6,
+            t.elapsed()
+        );
     }
 
     fn make_dim_reducing_work_buffers(
         &self,
         max_rounds: usize,
         max_polys: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Self::DimensionReducingBuffer {
-        let m = 1usize << max_rounds;
-        let mut scratch = DimReducingSumcheckScratch::new(0, 0, worker);
-        scratch.fold = self.pool.take(max_polys, m + m / 2);
-        let tri_cap = (m / 2)
-            .div_ceil(worker.num_cores)
-            .max(crate::gkr::PAR_THRESHOLD);
-        scratch.tri = (0..worker.num_cores)
-            .map(|_| Box::new_uninit_slice(tri_cap))
-            .collect();
-        scratch
+        DimReducingSumcheckScratch::new(max_rounds, max_polys, pool, worker)
     }
 
-    fn recycle_dim_reducing_work_buffers(&self, buffers: Self::DimensionReducingBuffer) {
-        self.pool.give(buffers.fold);
+    fn recycle_dim_reducing_work_buffers(
+        &self,
+        buffers: Self::DimensionReducingBuffer,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
+    ) {
+        buffers.release(pool);
     }
 
     fn dimension_reduction_forward(
@@ -599,6 +501,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
         compiled_circuit: &GKRCircuitArtifact<BabyBearField>,
         initial_trace_log_2: usize,
         final_trace_log_2: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> (
         usize,
@@ -610,9 +513,14 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
             compiled_circuit,
             initial_trace_log_2,
             final_trace_log_2,
+            pool,
             worker,
-            |s, i, o, l, n, w| super::avx512_dr::forward_pairwise_x86(s, i, o, l, n, w, use_avx512),
-            |s, i, o, l, n, w| super::avx512_dr::forward_logup_x86(s, i, o, l, n, w, use_avx512),
+            |s, i, o, l, n, p, w| {
+                super::avx512_dr::forward_pairwise_x86(s, i, o, l, n, p, w, use_avx512)
+            },
+            |s, i, o, l, n, p, w| {
+                super::avx512_dr::forward_logup_x86(s, i, o, l, n, p, w, use_avx512)
+            },
         )
     }
 
@@ -627,6 +535,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
         batching_challenge: &mut BabyBearExt4,
         seed: &mut TR::Seed,
         trace_len_after_reduction: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
         buffers: &mut Self::DimensionReducingBuffer,
     ) -> SumcheckIntermediateProofValues<BabyBearField, BabyBearExt4> {
@@ -641,14 +550,18 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
         >(
             |cur, outs, rels, tp, cs, cl, sp| unsafe {
                 if use_avx512 {
-                    super::avx512_dr::avx512_initial_chunk::<BabyBearExt4>(cur, outs, rels, tp, cs, cl, sp)
+                    super::avx512_dr::avx512_initial_chunk::<BabyBearExt4>(
+                        cur, outs, rels, tp, cs, cl, sp,
+                    )
                 } else {
                     avx2_initial_chunk::<BabyBearExt4>(cur, outs, rels, tp, cs, cl, sp)
                 }
             },
             |buffers, rels, r, tp, cs, cl, sp| unsafe {
                 if use_avx512 {
-                    super::avx512_dr::avx512_continuing_chunk::<BabyBearExt4>(buffers, rels, r, tp, cs, cl, sp)
+                    super::avx512_dr::avx512_continuing_chunk::<BabyBearExt4>(
+                        buffers, rels, r, tp, cs, cl, sp,
+                    )
                 } else {
                     avx2_continuing_chunk::<BabyBearExt4>(buffers, rels, r, tp, cs, cl, sp)
                 }
@@ -662,6 +575,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
             batching_challenge,
             seed,
             trace_len_after_reduction,
+            pool,
             worker,
             buffers,
         )
@@ -677,6 +591,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
         _trace_len: usize,
         _num_base_polys: usize,
         _num_ext_polys: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
     ) -> Vec<Self::NaiveSameSizeFoldBuffer> {
         Vec::new()
     }
@@ -687,9 +602,12 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
         trace_len: usize,
         num_base_polys: usize,
         num_ext_polys: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
     ) -> Vec<Self::WindowedSameSizeFoldBuffer> {
         let capacity = super::same_size_chain_fold_capacity(schedule, trace_len);
-        self.pool.take(num_base_polys + num_ext_polys, capacity)
+        (0..num_base_polys + num_ext_polys)
+            .map(|_| pool.alloc_box(capacity))
+            .collect()
     }
 
     fn make_uniskip_same_size_fold_buffers(
@@ -698,13 +616,12 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
         trace_len: usize,
         num_base_polys: usize,
         num_ext_polys: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
     ) -> Vec<Self::UniskipSameSizeFoldBuffer> {
         let capacity = super::same_size_chain_fold_capacity(schedule, trace_len);
-        self.pool.take(num_base_polys + num_ext_polys, capacity)
-    }
-
-    fn recycle_same_size_fold_buffers(&self, buffers: Vec<FoldBuf>) {
-        self.pool.give(buffers);
+        (0..num_base_polys + num_ext_polys)
+            .map(|_| pool.alloc_box(capacity))
+            .collect()
     }
 
     type SameSizeChain = X86SameSizeChain;
@@ -736,6 +653,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
         external_challenges: &super::super::GKRExternalChallenges<BabyBearField, BabyBearExt4>,
         prover_config: &crate::gkr::prover_config::ProverConfig,
         seed: &mut TR::Seed,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> SumcheckIntermediateProofValues<BabyBearField, BabyBearExt4> {
         super::super::sumcheck_loop::evaluate_sumcheck_for_layer::<BabyBearField, BabyBearExt4, TR, _>(
@@ -753,11 +671,110 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
             external_challenges,
             prover_config,
             seed,
+            pool,
             worker,
-            |s, t, b, e| self.make_uniskip_same_size_fold_buffers(s, t, b, e),
-            |s, t, b, e| self.make_windowed_same_size_fold_buffers(s, t, b, e),
+            |s, t, b, e| self.make_uniskip_same_size_fold_buffers(s, t, b, e, pool),
+            |s, t, b, e| self.make_windowed_same_size_fold_buffers(s, t, b, e, pool),
             |prog| self.make_same_size_chain(prog),
-            |bufs| self.recycle_same_size_fold_buffers(bufs),
+            |bufs| self.recycle_same_size_fold_buffers(bufs, pool),
         )
+    }
+}
+
+/// Worker-parallel [`GKRBackend::fold_eq_poly_into`] on the AVX-512 pair
+/// kernel: the pairs are split into chunks that are multiples of 16 (so only
+/// the last chunk can have a scalar tail).
+fn fold_eq_poly_into_avx512(
+    src: &[BabyBearExt4],
+    challenge: &BabyBearExt4,
+    dst: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+    worker: &Worker,
+) {
+    use worker::rayon::prelude::*;
+    assert!(src.len().is_power_of_two());
+    let half = src.len() / 2;
+    assert!(dst.len() >= half);
+    if half < 256 {
+        super::fold_eq_poly_into_scalar::<BabyBearField, BabyBearExt4>(src, challenge, dst, worker);
+        return;
+    }
+    let chunk = half
+        .div_ceil(worker.get_num_cores())
+        .max(crate::gkr::PAR_THRESHOLD)
+        .next_multiple_of(16);
+    let n_chunks = half.div_ceil(chunk);
+    let src_addr = src.as_ptr() as usize;
+    let dst_addr = dst.as_mut_ptr() as usize;
+    worker.pool.install(|| {
+        (0..n_chunks).into_par_iter().for_each(|c| {
+            let lo = c * chunk;
+            let hi = (lo + chunk).min(half);
+            unsafe {
+                crate::gkr::prover::sumcheck_loop::windowed_mode::avx512::fold_pairs_avx512(
+                    (src_addr as *const BabyBearExt4).add(2 * lo),
+                    hi - lo,
+                    challenge,
+                    (dst_addr as *mut BabyBearExt4).add(lo),
+                );
+            }
+        });
+    });
+}
+
+#[cfg(test)]
+mod fold_eq_tests {
+    use super::*;
+    use field::Rand;
+
+    #[test]
+    fn avx512_fold_eq_poly_matches_scalar() {
+        if !is_x86_feature_detected!("avx512f") {
+            eprintln!("avx512f not available: skipping");
+            return;
+        }
+        let worker = Worker::new_with_num_threads(4);
+        let mut rng = rand::thread_rng();
+        for log_n in [6usize, 12, 16] {
+            let n = 1usize << log_n;
+            let src: Vec<BabyBearExt4> = (0..n)
+                .map(|_| BabyBearExt4::random_element(&mut rng))
+                .collect();
+            let ch = BabyBearExt4::random_element(&mut rng);
+            let mut a: Vec<core::mem::MaybeUninit<BabyBearExt4>> = Vec::with_capacity(n / 2);
+            let mut b: Vec<core::mem::MaybeUninit<BabyBearExt4>> = Vec::with_capacity(n / 2);
+            unsafe {
+                a.set_len(n / 2);
+                b.set_len(n / 2);
+            }
+            super::super::fold_eq_poly_into_scalar::<BabyBearField, BabyBearExt4>(
+                &src, &ch, &mut a, &worker,
+            );
+            fold_eq_poly_into_avx512(&src, &ch, &mut b, &worker);
+            let a: Vec<BabyBearExt4> = a.iter().map(|x| unsafe { x.assume_init() }).collect();
+            let b: Vec<BabyBearExt4> = b.iter().map(|x| unsafe { x.assume_init() }).collect();
+            assert_eq!(a, b, "log_n {log_n}");
+        }
+        // the raw kernel's scalar tail
+        let n_pairs = 37usize;
+        let src: Vec<BabyBearExt4> = (0..2 * n_pairs)
+            .map(|_| BabyBearExt4::random_element(&mut rng))
+            .collect();
+        let ch = BabyBearExt4::random_element(&mut rng);
+        let mut out = vec![BabyBearExt4::ZERO; n_pairs];
+        unsafe {
+            crate::gkr::prover::sumcheck_loop::windowed_mode::avx512::fold_pairs_avx512(
+                src.as_ptr(),
+                n_pairs,
+                &ch,
+                out.as_mut_ptr(),
+            );
+        }
+        for i in 0..n_pairs {
+            let mut t = src[2 * i + 1];
+            t.sub_assign(&src[2 * i]);
+            t.mul_assign(&ch);
+            t.add_assign(&src[2 * i]);
+            assert_eq!(out[i], t, "pair {i}");
+        }
     }
 }

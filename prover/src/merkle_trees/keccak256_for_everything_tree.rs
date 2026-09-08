@@ -175,9 +175,8 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
         crate::merkle_trees::on_disk::open_disk_artifacts::<Self>(base_path, layout, num_cosets)
     }
 
-    fn construct_from_coset_producer<'a, E: FieldExtension<Proth120> + 'a>(
-        num_cosets: usize,
-        mut producer: CosetColumnsProducer<'a, E>,
+    fn construct_from_cosets<E: FieldExtension<Proth120>, A: CosetIndexedAccessor<E>>(
+        trace: &[&[A]],
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,
@@ -188,14 +187,8 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
     where
         [(); E::DEGREE]: Sized,
     {
-        let cosets: Vec<Vec<Cow<'a, [E]>>> = (0..num_cosets).map(|c| producer(c)).collect();
-        let trace: Vec<Vec<&[E]>> = cosets
-            .iter()
-            .map(|coset| coset.iter().map(|c| c.as_ref()).collect())
-            .collect();
-        let trace_refs: Vec<&[&[E]]> = trace.iter().map(|c| &c[..]).collect();
-        let leaf_hashes = keccak256_leaf_hashes_from_cosets::<E, B>(
-            &trace_refs,
+        let leaf_hashes = keccak256_leaf_hashes_from_cosets::<E, A, B>(
+            trace,
             combine_by,
             bitreverse_evaluations,
             bitreverse_cosets,
@@ -421,7 +414,7 @@ mod test {
 
         let tree = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             Proth120,
-        >>::construct_from_cosets::<Proth120>(
+        >>::construct_from_cosets::<Proth120, _>(
             trace, COMBINE_BY, CAP_SIZE, /* bitreverse_evaluations */ true,
             /* bitreverse_cosets */ false, /* bitreverse_leaf_hashes */ false, &worker,
         );
@@ -494,7 +487,7 @@ mod test {
 
         let tree = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             Proth120,
-        >>::construct_from_cosets::<Proth120>(
+        >>::construct_from_cosets::<Proth120, _>(
             trace, COMBINE_BY, CAP_SIZE, true, false, false, &worker,
         );
 

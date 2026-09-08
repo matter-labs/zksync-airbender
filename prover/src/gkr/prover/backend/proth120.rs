@@ -2,6 +2,7 @@
 //! both planner branches. See the struct docs for the measured wins.
 
 use super::*;
+use crate::allocation_pool::AllocationPool;
 
 /// Work-stealing backend running Proth120 LAZY-REDUCTION RADIX-8 coset
 /// kernels on BOTH planner branches: values held in `[0, 2p)` through the NTT
@@ -37,6 +38,7 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         evals: &[&[Proth120]],
         twiddles: &Twiddles<Proth120, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<Proth120, Proth120>,
         worker: &Worker,
     ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<Proth120, Proth120>>> {
         ws_lde_multiple_polys_from_hypercubes(
@@ -57,6 +59,7 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         monomials: Vec<Vec<Proth120>>,
         twiddles: &Twiddles<Proth120, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<Proth120, Proth120>,
         worker: &Worker,
     ) -> Vec<ColumnMajorBaseOracleForCoset<Proth120>> {
         ws_lde_packed_monomials_into_cosets(
@@ -74,6 +77,7 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         monomial_form_normal_order: &[Proth120],
         twiddles: &Twiddles<Proth120, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<Proth120, Proth120>,
         worker: &Worker,
     ) -> Vec<(Box<[Proth120]>, Proth120)> {
         ws_lde_single_poly_from_monomial_form(
@@ -91,6 +95,7 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         monomial_form_normal_order: &[Proth120],
         twiddles: &Twiddles<Proth120, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<Proth120, Proth120>,
         worker: &Worker,
     ) -> (Box<[Proth120]>, Vec<Proth120>) {
         ws_lde_single_poly_continuous(
@@ -108,6 +113,7 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         monomial_form_normal_order: &[Proth120],
         twiddles: &Twiddles<Proth120, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<Proth120, Proth120>,
         worker: &Worker,
     ) -> Vec<(Box<[Proth120]>, Proth120)> {
         ws_lde_single_poly_from_monomial_form(
@@ -124,6 +130,7 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         &self,
         evals: &[&[Proth120]],
         pack_log2: usize,
+        _pool: &dyn AllocationPool<Proth120, Proth120>,
         worker: &Worker,
     ) -> Vec<Vec<Proth120>> {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
@@ -133,6 +140,7 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         &self,
         source_domain: Vec<Proth120>,
         twiddles: &Twiddles<Proth120, Global>,
+        _pool: &dyn AllocationPool<Proth120, Proth120>,
         worker: &Worker,
     ) -> Vec<Proth120> {
         ws_monomial_form_from_main_domain(source_domain, twiddles, worker)
@@ -141,6 +149,7 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
     fn hypercube_evals_from_monomial_form(
         &self,
         monomial_form: Vec<Proth120>,
+        _pool: &dyn AllocationPool<Proth120, Proth120>,
         worker: &Worker,
     ) -> Vec<Proth120> {
         ws_hypercube_evals_from_monomial_form::<Proth120, Proth120>(monomial_form, worker)

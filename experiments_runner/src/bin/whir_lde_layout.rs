@@ -8,6 +8,7 @@
 //! together (barrier) so the batch is measured under full contention.
 #![feature(allocator_api)]
 
+use prover::allocation_pool::GenericAllocationPool;
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {
     eprintln!("x86-64 + avx2 only");
@@ -173,14 +174,14 @@ fn main() {
                                             "ext4 continuous" => {
                                                 let out = backend
                                                     .lde_ext_poly_from_monomial_form_continuous(
-                                                        poly, &twiddles, lde, &worker,
+                                                        poly, &twiddles, lde, &GenericAllocationPool::proxy(), &worker,
                                                     );
                                                 std::hint::black_box(&out);
                                                 drop(out);
                                             }
                                             "base packed (4 cols)" => {
                                                 let out = backend.lde_packed_monomials_into_cosets(
-                                                    cols_owned, &twiddles, lde, &worker,
+                                                    cols_owned, &twiddles, lde, &GenericAllocationPool::proxy(), &worker,
                                                 );
                                                 std::hint::black_box(&out);
                                                 drop(out);
@@ -189,7 +190,7 @@ fn main() {
                                                 for c in cols.iter() {
                                                     let out = backend
                                                         .lde_base_poly_from_monomial_form(
-                                                            c, &twiddles, lde, &worker,
+                                                            c, &twiddles, lde, &GenericAllocationPool::proxy(), &worker,
                                                         );
                                                     std::hint::black_box(&out);
                                                     drop(out);

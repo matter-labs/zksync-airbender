@@ -358,7 +358,7 @@ where
             let col_refs: Vec<&[F]> = coset_columns.iter().map(|c| &c[..]).collect();
             let coset_refs: &[&[F]] = &col_refs[..];
             let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
-            let subtree = T::construct_from_cosets::<F>(
+            let subtree = T::construct_from_cosets::<F, _>(
                 trace,
                 self.values_per_leaf,
                 1,
@@ -445,7 +445,7 @@ where
     let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
 
     let subtree =
-        T::construct_from_cosets::<F>(trace, values_per_leaf, 1, true, false, false, worker);
+        T::construct_from_cosets::<F, _>(trace, values_per_leaf, 1, true, false, false, worker);
     subtree.get_cap().cap[0]
 }
 
@@ -522,7 +522,7 @@ where
         }
         coset_cols
             .into_iter()
-            .map(|c| Cow::Owned(c.into_vec()))
+            .map(|c| Box::new(c) as Box<dyn crate::merkle_trees::CosetIndexedAccessor<F>>)
             .collect()
     });
 
@@ -683,7 +683,7 @@ where
     let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
     let trace: &[&[&[E]]] = &coset_slices;
     let subtree =
-        T::construct_from_cosets::<E>(trace, values_per_leaf, 1, true, false, false, worker);
+        T::construct_from_cosets::<E, _>(trace, values_per_leaf, 1, true, false, false, worker);
     subtree.get_cap().cap[0]
 }
 
@@ -870,7 +870,7 @@ where
         let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
         let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
         let trace: &[&[&[E]]] = &coset_slices;
-        let subtree = T::construct_from_cosets::<E>(
+        let subtree = T::construct_from_cosets::<E, _>(
             trace,
             self.values_per_leaf,
             1,
@@ -957,7 +957,7 @@ where
             let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
             let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
             let trace: &[&[&[E]]] = &coset_slices;
-            let subtree = T::construct_from_cosets::<E>(
+            let subtree = T::construct_from_cosets::<E, _>(
                 trace,
                 self.values_per_leaf,
                 1,
@@ -1065,6 +1065,7 @@ mod test {
                 cap_size,
                 packed_trace_len_log2,
                 pack_log2,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
 
@@ -1166,6 +1167,7 @@ mod test {
                 first_fold_log2,
                 cap_size,
                 trace_len_log2,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
         let coset = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(
@@ -1265,6 +1267,7 @@ mod test {
                 first_fold_log2,
                 cap_size,
                 trace_len_log2,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
         let coset = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(

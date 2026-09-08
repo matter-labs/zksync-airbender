@@ -159,7 +159,10 @@ unsafe fn form_acc<const N: usize>(dst: *mut u32, src: *const u32, op: &FormOp<B
             let cv = k::bc32(c.raw_u32_value());
             for i in 0..N {
                 let p = dst.add(16 * i);
-                k::st(p, k::add16(k::ld(p), k::mont_mul16(k::ld(src.add(16 * i)), cv)));
+                k::st(
+                    p,
+                    k::add16(k::ld(p), k::mont_mul16(k::ld(src.add(16 * i)), cv)),
+                );
             }
         }
     }
@@ -170,18 +173,39 @@ unsafe fn form_acc<const N: usize>(dst: *mut u32, src: *const u32, op: &FormOp<B
 #[target_feature(enable = "avx512f")]
 unsafe fn form_const(dst: *mut u32, c: BabyBearField) {
     let v = k::ld(dst);
-    k::st(dst, _mm512_mask_mov_epi32(v, 0x00FF, k::add16(v, k::bc32(c.raw_u32_value()))));
+    k::st(
+        dst,
+        _mm512_mask_mov_epi32(v, 0x00FF, k::add16(v, k::bc32(c.raw_u32_value()))),
+    );
 }
 
 /// A rest step with its coefficient pre-split into raw limbs (base steps)
 /// or pre-built as a lazy multiplication table (ext steps).
 #[derive(Clone, Copy)]
 enum RStep {
-    QuadBB { a: usize, b: usize, c: [u32; 4] },
-    LinB { i: usize, c: [u32; 4] },
-    QuadBE { base: usize, ext: usize, c: [u32; 4] },
-    QuadEE { a: usize, b: usize, c: [u32; 4] },
-    LinE { i: usize, c: [u32; 4] },
+    QuadBB {
+        a: usize,
+        b: usize,
+        c: [u32; 4],
+    },
+    LinB {
+        i: usize,
+        c: [u32; 4],
+    },
+    QuadBE {
+        base: usize,
+        ext: usize,
+        c: [u32; 4],
+    },
+    QuadEE {
+        a: usize,
+        b: usize,
+        c: [u32; 4],
+    },
+    LinE {
+        i: usize,
+        c: [u32; 4],
+    },
 }
 
 /// The ext steps' coefficient tables, built once per chunk (they are
@@ -399,7 +423,11 @@ unsafe fn eval_row_initial(
                 settle!();
                 let tb = &tables.tables[si];
                 for g in 0..2 {
-                    let v = k::soa_ext_mul_lazy(&load_limbs(xp.add(a * ES), g), &load_limbs(xp.add(b * ES), g), r11);
+                    let v = k::soa_ext_mul_lazy(
+                        &load_limbs(xp.add(a * ES), g),
+                        &load_limbs(xp.add(b * ES), g),
+                        r11,
+                    );
                     let vh: [__m512i; 4] = core::array::from_fn(|l| k::hi64(v[l]));
                     tb.mla_into(&mut acc[g], &v, &vh);
                 }
@@ -408,7 +436,8 @@ unsafe fn eval_row_initial(
                 settle!();
                 let tb = &tables.tables[si];
                 let raw = load_limbs(xp.add(i * ES), 0);
-                let v: [__m512i; 4] = core::array::from_fn(|l| _mm512_maskz_mov_epi32(0x00FF, raw[l]));
+                let v: [__m512i; 4] =
+                    core::array::from_fn(|l| _mm512_maskz_mov_epi32(0x00FF, raw[l]));
                 let vh: [__m512i; 4] = core::array::from_fn(|l| k::hi64(v[l]));
                 tb.mla_into(&mut acc[0], &v, &vh);
             }
@@ -471,7 +500,10 @@ unsafe fn finish_chunk(cacc: *mut u64, xp: &ExtPerm) -> [BabyBearExt4; OUT] {
     let mut grid = [0u32; ES];
     for g in 0..2 {
         for l in 0..4 {
-            k::st(grid.as_mut_ptr().add(eoff(g, l)), Lazy16::load(cacc.add(loff(g, l))).redc());
+            k::st(
+                grid.as_mut_ptr().add(eoff(g, l)),
+                Lazy16::load(cacc.add(loff(g, l))).redc(),
+            );
         }
     }
     let mut aos = [BabyBearExt4::ZERO; 32];
@@ -638,7 +670,10 @@ pub(crate) fn lsb_soa_full_parallel_w3(
     let prods: Vec<(FormRef, FormRef, [u32; 4])> = if knob("SS_SKIP_PRODUCTS") {
         Vec::new()
     } else {
-        products.iter().map(|(a, b, c)| (*a, *b, limbs(c))).collect()
+        products
+            .iter()
+            .map(|(a, b, c)| (*a, *b, limbs(c)))
+            .collect()
     };
     let (skip_ext, skip_base) = (knob("SS_SKIP_EXT_STEPS"), knob("SS_SKIP_BASE_STEPS"));
     let rest: Vec<RStep> = to_rsteps(rest_steps)
@@ -741,7 +776,18 @@ unsafe fn ext_chunk(
             }
         }
         let eq = ExtTable16::new(&t_suffix[row]);
-        eval_row_ext(xptr, fptr, &prods, &quads, &lins, rptr, r11, &const_bcast, &eq, cptr);
+        eval_row_ext(
+            xptr,
+            fptr,
+            &prods,
+            &quads,
+            &lins,
+            rptr,
+            r11,
+            &const_bcast,
+            &eq,
+            cptr,
+        );
     }
     finish_chunk(cptr, &xperm)
 }
@@ -1131,10 +1177,20 @@ mod tests {
         let ext: Vec<BabyBearExt4> = (0..8 * rows).map(|_| pseudo_ext(&mut seed)).collect();
         let mut want = vec![BabyBearExt4::ZERO; rows];
         let mut got = vec![BabyBearExt4::ZERO; rows];
-        lsb_avx2::lsb_fold_base_soa_parallel(base.as_ptr() as *const u8, &mut want, &weights, &worker);
+        lsb_avx2::lsb_fold_base_soa_parallel(
+            base.as_ptr() as *const u8,
+            &mut want,
+            &weights,
+            &worker,
+        );
         lsb_fold_base_parallel(base.as_ptr() as *const u8, &mut got, &weights, &worker);
         assert_eq!(got, want, "base fold");
-        lsb_avx2::lsb_fold_ext_soa_parallel(ext.as_ptr() as *const u8, &mut want, &weights, &worker);
+        lsb_avx2::lsb_fold_ext_soa_parallel(
+            ext.as_ptr() as *const u8,
+            &mut want,
+            &weights,
+            &worker,
+        );
         lsb_fold_ext_parallel(ext.as_ptr() as *const u8, &mut got, &weights, &worker);
         assert_eq!(got, want, "ext fold");
     }

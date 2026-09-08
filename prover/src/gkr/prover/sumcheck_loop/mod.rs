@@ -112,6 +112,7 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     batching_challenge: &mut E,
     seed: &mut TR::Seed,
     trace_len_after_reduction: usize,
+    pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
     worker: &Worker,
     scratch: &mut crate::gkr::prover::gkr_backend::DimReducingSumcheckScratch<E, S>,
 ) -> SumcheckIntermediateProofValues<F, E>
@@ -266,7 +267,7 @@ where
 
     // the output layer is fully consumed by round 0: free it now so the
     // fold scratch reuses the pages fault-free
-    gkr_storage.purge_up_to_layer(layer_idx);
+    gkr_storage.purge_up_to_layer(layer_idx, pool);
 
     // ---- rounds 1..: the trivial fold-and-evaluate cycle; only the INPUT
     // polys are re-selected after the purge — round 1 reads them as
@@ -349,7 +350,7 @@ where
             .collect::<Vec<_>>(),
     );
 
-    gkr_storage.purge_up_to_layer(layer_idx);
+    gkr_storage.purge_up_to_layer(layer_idx, pool);
 
     *batching_challenge = next_batching_challenge;
 
@@ -415,6 +416,7 @@ pub fn evaluate_sumcheck_for_layer<
     external_challenges: &GKRExternalChallenges<F, E>,
     prover_config: &crate::gkr::prover_config::ProverConfig,
     seed: &mut TR::Seed,
+    pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
     worker: &Worker,
     make_uniskip_fold_buffers: impl FnOnce(
         &[crate::gkr::prover_config::SumcheckStep],
@@ -571,6 +573,7 @@ where
         external_challenges,
         lookup_challenges_multiplicative_part,
         seed,
+        pool,
         worker,
     );
     times.postlude = t_post.elapsed();
@@ -1242,6 +1245,7 @@ fn finish_same_size_layer<
     external_challenges: &GKRExternalChallenges<F, E>,
     lookup_challenges_multiplicative_part: E,
     seed: &mut TR::Seed,
+    pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
     worker: &Worker,
 ) -> SumcheckIntermediateProofValues<F, E>
 where
@@ -1389,7 +1393,7 @@ where
     let t_store = std::time::Instant::now();
     claims_storage.insert(layer_idx, new_claims);
     claim_point_entries.insert(layer_idx, point_entries);
-    gkr_storage.purge_up_to_layer(layer_idx);
+    gkr_storage.purge_up_to_layer(layer_idx, pool);
     *batching_challenge = next_batching_challenge;
     let t_purge = t_store.elapsed();
     println!(

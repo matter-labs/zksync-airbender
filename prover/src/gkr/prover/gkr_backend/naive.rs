@@ -3,6 +3,7 @@
 //! chunk kernel on the backward path. Its pass-wide buffer carries plainly
 //! typed `[E; 2]` tri rows — no vector-compatible type-erased slots.
 
+use crate::allocation_pool::AllocationPool;
 use std::collections::BTreeMap;
 
 use super::super::dimension_reduction::forward::DimensionReducingInputOutput;
@@ -30,9 +31,18 @@ where
         &self,
         max_rounds: usize,
         max_polys: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Self::DimensionReducingBuffer {
-        DimReducingSumcheckScratch::new(max_rounds, max_polys, worker)
+        DimReducingSumcheckScratch::new(max_rounds, max_polys, pool, worker)
+    }
+
+    fn recycle_dim_reducing_work_buffers(
+        &self,
+        buffers: Self::DimensionReducingBuffer,
+        pool: &dyn AllocationPool<F, E>,
+    ) {
+        buffers.release(pool);
     }
 
     fn dimension_reduction_forward(
@@ -41,6 +51,7 @@ where
         compiled_circuit: &GKRCircuitArtifact<F>,
         initial_trace_log_2: usize,
         final_trace_log_2: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> (
         usize,
@@ -51,6 +62,7 @@ where
             compiled_circuit,
             initial_trace_log_2,
             final_trace_log_2,
+            pool,
             worker,
             super::super::dimension_reduction::forward::forward_pairwise_specialized,
             super::super::dimension_reduction::forward::forward_logup_specialized,
@@ -68,6 +80,7 @@ where
         batching_challenge: &mut E,
         seed: &mut TR::Seed,
         trace_len_after_reduction: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
         buffers: &mut Self::DimensionReducingBuffer,
     ) -> SumcheckIntermediateProofValues<F, E>
@@ -101,6 +114,7 @@ where
             batching_challenge,
             seed,
             trace_len_after_reduction,
+            pool,
             worker,
             buffers,
         )
@@ -116,6 +130,7 @@ where
         _trace_len: usize,
         _num_base_polys: usize,
         _num_ext_polys: usize,
+        _pool: &dyn AllocationPool<F, E>,
     ) -> Vec<Self::NaiveSameSizeFoldBuffer> {
         // the naive loop's lazy folds live inside GKRStorage
         Vec::new()
@@ -127,10 +142,11 @@ where
         trace_len: usize,
         num_base_polys: usize,
         num_ext_polys: usize,
+        pool: &dyn AllocationPool<F, E>,
     ) -> Vec<Self::WindowedSameSizeFoldBuffer> {
         let capacity = super::same_size_chain_fold_capacity(schedule, trace_len);
         (0..num_base_polys + num_ext_polys)
-            .map(|_| Box::new_uninit_slice(capacity))
+            .map(|_| pool.alloc_box(capacity))
             .collect()
     }
 
@@ -140,10 +156,11 @@ where
         trace_len: usize,
         num_base_polys: usize,
         num_ext_polys: usize,
+        pool: &dyn AllocationPool<F, E>,
     ) -> Vec<Self::UniskipSameSizeFoldBuffer> {
         let capacity = super::same_size_chain_fold_capacity(schedule, trace_len);
         (0..num_base_polys + num_ext_polys)
-            .map(|_| Box::new_uninit_slice(capacity))
+            .map(|_| pool.alloc_box(capacity))
             .collect()
     }
 
@@ -176,6 +193,7 @@ where
         external_challenges: &super::super::GKRExternalChallenges<F, E>,
         prover_config: &crate::gkr::prover_config::ProverConfig,
         seed: &mut TR::Seed,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> SumcheckIntermediateProofValues<F, E>
     where
@@ -197,11 +215,12 @@ where
             external_challenges,
             prover_config,
             seed,
+            pool,
             worker,
-            |s, t, b, e| self.make_uniskip_same_size_fold_buffers(s, t, b, e),
-            |s, t, b, e| self.make_windowed_same_size_fold_buffers(s, t, b, e),
+            |s, t, b, e| self.make_uniskip_same_size_fold_buffers(s, t, b, e, pool),
+            |s, t, b, e| self.make_windowed_same_size_fold_buffers(s, t, b, e, pool),
             |prog| self.make_same_size_chain(prog),
-            |bufs| drop(bufs),
+            |bufs| self.recycle_same_size_fold_buffers(bufs, pool),
         )
     }
 }

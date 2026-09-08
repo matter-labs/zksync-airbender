@@ -307,7 +307,7 @@ pub(crate) fn make_pows<E: Field>(el: E, num_powers: usize) -> Vec<E> {
 /// `2^log_n` table factors EXACTLY into `hi (x) lo` over the bit split
 /// (field multiplication is exact), so consumers can weigh elements with
 /// two tiny tensors instead of one full-size table.
-pub(crate) fn split_eq_tensors<T: Field>(
+pub fn split_eq_tensors<T: Field>(
     point: T,
     log_n: usize,
     log_c: usize,

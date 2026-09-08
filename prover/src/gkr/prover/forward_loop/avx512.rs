@@ -12,6 +12,7 @@
 //! tiny). Each scalar entry point checks [`enabled`] first and hands over.
 //! The module only exists on `x86_64 + avx2` builds; the hooks are cfg-gated.
 
+use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
 use crate::definitions::GKRExternalChallenges;
 use crate::gkr::prover::sumcheck_loop::windowed_mode::avx512 as k;
 use crate::gkr::prover::sumcheck_loop::windowed_mode::avx512::ExtPerm;
@@ -26,7 +27,8 @@ use cs::definitions::gkr::{
     DECODER_LOOKUP_FORMAL_SET_INDEX,
 };
 use cs::definitions::{
-    GKRAddress, VirtualSetupPoly, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX as ADDR_HIGH,
+    GKRAddress, VirtualSetupPoly,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX as ADDR_HIGH,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX as ADDR_LOW,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX as TS_HIGH,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX as TS_LOW,
@@ -224,38 +226,37 @@ fn fetch_ptrs<F: PrimeField, E: FieldExtension<F> + Field>(
 /// inserted at the layer.
 fn with_outputs<F: PrimeField, E: FieldExtension<F> + Field>(
     storage: &mut GKRStorage<F, E>,
+    pool: &dyn AllocationPool<F, E>,
     outputs: &[GKRAddress],
     expected_output_layer: usize,
     trace_len: usize,
     fill: impl FnOnce(&[usize]),
 ) {
-    let mut dsts: Vec<Box<[MaybeUninit<E>]>> = outputs
+    let mut dsts: Vec<Buffer<E>> = outputs
         .iter()
-        .map(|_| storage.alloc_ext_uninit(trace_len))
+        .map(|_| pool.alloc_ext(trace_len, ColumnLayout::Contiguous))
         .collect();
     let ptrs: Vec<usize> = dsts.iter_mut().map(|d| d.as_mut_ptr() as usize).collect();
     ptrs.iter().for_each(|&p| check_out_alignment(p));
     fill(&ptrs);
     for (addr, dst) in outputs.iter().zip(dsts.into_iter()) {
         addr.assert_as_layer(expected_output_layer);
-        storage.insert_extension_at_layer(
-            expected_output_layer,
-            *addr,
-            ExtensionFieldPoly::new(unsafe { dst.assume_init() }),
-        );
+        storage.insert_extension_at_layer(expected_output_layer, *addr, unsafe {
+            ExtensionFieldPoly::from_pooled(dst)
+        });
     }
 }
 
 /// One pooled extension buffer filled by `fill(dst_ptr)`.
 fn make_ext<F: PrimeField, E: FieldExtension<F> + Field>(
-    storage: &GKRStorage<F, E>,
+    pool: &dyn AllocationPool<F, E>,
     trace_len: usize,
     fill: impl FnOnce(usize),
-) -> Box<[E]> {
-    let mut dst = storage.alloc_ext_uninit(trace_len);
+) -> AllocationType<E> {
+    let mut dst = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     check_out_alignment(dst.as_mut_ptr() as usize);
     fill(dst.as_mut_ptr() as usize);
-    unsafe { dst.assume_init() }
+    unsafe { AllocationType::from_initialized(dst) }
 }
 
 // ---------------------------------------------------------------------------
@@ -497,7 +498,12 @@ unsafe fn lookup_base_pair_block(src: [usize; 2], dst: [usize; 2], g: &[u32; 4],
     let bb = add_base(&gv, ld_base16(src[0] as *const BF, row0));
     let dd = add_base(&gv, ld_base16(src[1] as *const BF, row0));
     st_ext16(&add4(&bb, &dd), dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&bb, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&bb, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// 1/(b+g) + 1/(d+g) over extension inputs; ext [b, d]
@@ -509,7 +515,12 @@ unsafe fn lookup_ext_pair_block(src: [usize; 2], dst: [usize; 2], g: &[u32; 4], 
     let bb = add4(&ld_ext16(src[0] as *const BE, row0, &xp), &gv);
     let dd = add4(&ld_ext16(src[1] as *const BE, row0, &xp), &gv);
     st_ext16(&add4(&bb, &dd), dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&bb, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&bb, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// a/b + 1/(d+g) -> (a D + b), (b D); base remainder d, ext [a, b]
@@ -528,7 +539,12 @@ unsafe fn unbalanced_base_block(
     let b = ld_ext16(ab[1] as *const BE, row0, &xp);
     let num = add4(&k::soa_ext_mul_lazy(&a, &dd, r11), &b);
     st_ext16(&num, dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&b, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&b, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// a/b + 1/(d+g) with an extension remainder d; ext [a, b, d]
@@ -541,7 +557,12 @@ unsafe fn unbalanced_ext_block(src: [usize; 3], dst: [usize; 2], g: &[u32; 4], r
     let dd = add4(&ld_ext16(src[2] as *const BE, row0, &xp), &bcast4(g));
     let num = add4(&k::soa_ext_mul_lazy(&a, &dd, r11), &b);
     st_ext16(&num, dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&b, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&b, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// 1/(b+g) - c/(d+g) -> (D - c B), (B D); base [b, c, d]
@@ -555,7 +576,12 @@ unsafe fn base_minus_mult_block(src: [usize; 3], dst: [usize; 2], g: &[u32; 4], 
     let dd = add_base(&gv, ld_base16(src[2] as *const BF, row0));
     let num = sub4(&dd, &mul_base(&bb, c));
     st_ext16(&num, dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&bb, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&bb, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// 1/(b+g) - c/(d+g) with extension b, d and base multiplicity c
@@ -575,7 +601,12 @@ unsafe fn ext_minus_mult_block(
     let cv = ld_base16(c as *const BF, row0);
     let num = sub4(&dd, &mul_base(&bb, cv));
     st_ext16(&num, dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&bb, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&bb, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// a/(b+g) - c/(d+g) -> (a D - c B), (B D); base [a, c], ext [b, d]
@@ -596,7 +627,12 @@ unsafe fn masked_lookup_setup_block(
     let dd = add4(&ld_ext16(bd[1] as *const BE, row0, &xp), &gv);
     let num = sub4(&mul_base(&dd, a), &mul_base(&bb, c));
     st_ext16(&num, dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&bb, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&bb, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// (val - 1) mask + 1; base mask, ext val
@@ -679,7 +715,12 @@ unsafe fn range_check_pair_block<const U16: bool>(
     let lhs = add_base(&gv, k::mont_mul16(load(maps[0]), r2v));
     let rhs = add_base(&gv, k::mont_mul16(load(maps[1]), r2v));
     st_ext16(&add4(&lhs, &rhs), dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&lhs, &rhs, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&lhs, &rhs, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// table[map[row]], optionally `pred ? table[map] : fill`. A pure gather:
@@ -732,7 +773,11 @@ pub fn fill_setup_column<E: Field>(dst: &mut [MaybeUninit<E>], table: &[E], work
     assert_eq!(core::mem::size_of::<E>(), 16);
     let n = dst.len();
     assert!(table.len() <= n);
-    let (dp, tp, tl) = (dst.as_mut_ptr() as usize, table.as_ptr() as usize, table.len());
+    let (dp, tp, tl) = (
+        dst.as_mut_ptr() as usize,
+        table.as_ptr() as usize,
+        table.len(),
+    );
     worker.scope(n, |scope, geometry| {
         for idx in 0..geometry.len() {
             let start = geometry.get_chunk_start_pos(idx);
@@ -797,7 +842,12 @@ unsafe fn decoder_minus_setup_block(
     let mv = ld_base16(mult as *const BF, row0);
     let num = sub4(&mul_base(&dd, pv), &mul_base(&bb, mv));
     st_ext16(&num, dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&bb, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&bb, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// 1/(table[m1]+g) + 1/(table[m2]+g)
@@ -813,10 +863,21 @@ unsafe fn expressions_pair_block(
     let r11 = k::r11v();
     let gv = bcast4(g);
     let t = table as *const BE;
-    let bb = add4(&gather_ext16(t, ld_u32x16(maps[0] as *const u32, row0)), &gv);
-    let dd = add4(&gather_ext16(t, ld_u32x16(maps[1] as *const u32, row0)), &gv);
+    let bb = add4(
+        &gather_ext16(t, ld_u32x16(maps[0] as *const u32, row0)),
+        &gv,
+    );
+    let dd = add4(
+        &gather_ext16(t, ld_u32x16(maps[1] as *const u32, row0)),
+        &gv,
+    );
     st_ext16(&add4(&dd, &bb), dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&bb, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&bb, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// a/b + 1/(table[map]+g) -> (a D + b), (b D); ext [a, b]
@@ -839,7 +900,12 @@ unsafe fn expressions_pair_with_remainder_block(
     let b = ld_ext16(ab[1] as *const BE, row0, &xp);
     let num = add4(&k::soa_ext_mul_lazy(&dd, &a, r11), &b);
     st_ext16(&num, dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&b, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&b, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 /// 1/(table[map]+g) - mult/(table[row]+g) -> (D - mult B), (B D)
@@ -863,7 +929,12 @@ unsafe fn expression_minus_setup_block(
     let mv = ld_base16(mult as *const BF, row0);
     let num = sub4(&dd, &mul_base(&bb, mv));
     st_ext16(&num, dst[0] as *mut BE, row0, &xp);
-    st_ext16(&k::soa_ext_mul_lazy(&bb, &dd, r11), dst[1] as *mut BE, row0, &xp);
+    st_ext16(
+        &k::soa_ext_mul_lazy(&bb, &dd, r11),
+        dst[1] as *mut BE,
+        row0,
+        &xp,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -877,26 +948,75 @@ pub(crate) mod core_ops {
     pub(crate) fn lookup_pair(src: [usize; 4], dst: [usize; 2], n: usize, w: &Worker) {
         run_blocks(n, w, |r| unsafe { lookup_pair_block(src, dst, r) });
     }
-    pub(crate) fn lookup_base_pair(src: [usize; 2], dst: [usize; 2], g: [u32; 4], n: usize, w: &Worker) {
+    pub(crate) fn lookup_base_pair(
+        src: [usize; 2],
+        dst: [usize; 2],
+        g: [u32; 4],
+        n: usize,
+        w: &Worker,
+    ) {
         run_blocks(n, w, |r| unsafe { lookup_base_pair_block(src, dst, &g, r) });
     }
-    pub(crate) fn lookup_ext_pair(src: [usize; 2], dst: [usize; 2], g: [u32; 4], n: usize, w: &Worker) {
+    pub(crate) fn lookup_ext_pair(
+        src: [usize; 2],
+        dst: [usize; 2],
+        g: [u32; 4],
+        n: usize,
+        w: &Worker,
+    ) {
         run_blocks(n, w, |r| unsafe { lookup_ext_pair_block(src, dst, &g, r) });
     }
-    pub(crate) fn unbalanced_base(rem: usize, ab: [usize; 2], dst: [usize; 2], g: [u32; 4], n: usize, w: &Worker) {
-        run_blocks(n, w, |r| unsafe { unbalanced_base_block(rem, ab, dst, &g, r) });
+    pub(crate) fn unbalanced_base(
+        rem: usize,
+        ab: [usize; 2],
+        dst: [usize; 2],
+        g: [u32; 4],
+        n: usize,
+        w: &Worker,
+    ) {
+        run_blocks(n, w, |r| unsafe {
+            unbalanced_base_block(rem, ab, dst, &g, r)
+        });
     }
-    pub(crate) fn unbalanced_ext(src: [usize; 3], dst: [usize; 2], g: [u32; 4], n: usize, w: &Worker) {
+    pub(crate) fn unbalanced_ext(
+        src: [usize; 3],
+        dst: [usize; 2],
+        g: [u32; 4],
+        n: usize,
+        w: &Worker,
+    ) {
         run_blocks(n, w, |r| unsafe { unbalanced_ext_block(src, dst, &g, r) });
     }
-    pub(crate) fn base_minus_mult(src: [usize; 3], dst: [usize; 2], g: [u32; 4], n: usize, w: &Worker) {
+    pub(crate) fn base_minus_mult(
+        src: [usize; 3],
+        dst: [usize; 2],
+        g: [u32; 4],
+        n: usize,
+        w: &Worker,
+    ) {
         run_blocks(n, w, |r| unsafe { base_minus_mult_block(src, dst, &g, r) });
     }
-    pub(crate) fn ext_minus_mult(c: usize, bd: [usize; 2], dst: [usize; 2], g: [u32; 4], n: usize, w: &Worker) {
+    pub(crate) fn ext_minus_mult(
+        c: usize,
+        bd: [usize; 2],
+        dst: [usize; 2],
+        g: [u32; 4],
+        n: usize,
+        w: &Worker,
+    ) {
         run_blocks(n, w, |r| unsafe { ext_minus_mult_block(c, bd, dst, &g, r) });
     }
-    pub(crate) fn masked_lookup_setup(ac: [usize; 2], bd: [usize; 2], dst: [usize; 2], g: [u32; 4], n: usize, w: &Worker) {
-        run_blocks(n, w, |r| unsafe { masked_lookup_setup_block(ac, bd, dst, &g, r) });
+    pub(crate) fn masked_lookup_setup(
+        ac: [usize; 2],
+        bd: [usize; 2],
+        dst: [usize; 2],
+        g: [u32; 4],
+        n: usize,
+        w: &Worker,
+    ) {
+        run_blocks(n, w, |r| unsafe {
+            masked_lookup_setup_block(ac, bd, dst, &g, r)
+        });
     }
     pub(crate) fn mask_identity(mask: usize, val: usize, dst: usize, n: usize, w: &Worker) {
         run_blocks(n, w, |r| unsafe { mask_identity_block(mask, val, dst, r) });
@@ -906,26 +1026,86 @@ pub(crate) mod core_ops {
     }
     pub(crate) fn single_column<const U16: bool>(map: usize, dst: usize, n: usize, w: &Worker) {
         let r2 = mont_r2();
-        run_blocks(n, w, |r| unsafe { single_column_block::<U16>(map, dst, r2, r) });
+        run_blocks(n, w, |r| unsafe {
+            single_column_block::<U16>(map, dst, r2, r)
+        });
     }
-    pub(crate) fn range_check_pair<const U16: bool>(maps: [usize; 2], dst: [usize; 2], g: [u32; 4], n: usize, w: &Worker) {
+    pub(crate) fn range_check_pair<const U16: bool>(
+        maps: [usize; 2],
+        dst: [usize; 2],
+        g: [u32; 4],
+        n: usize,
+        w: &Worker,
+    ) {
         let r2 = mont_r2();
-        run_blocks(n, w, |r| unsafe { range_check_pair_block::<U16>(maps, dst, &g, r2, r) });
+        run_blocks(n, w, |r| unsafe {
+            range_check_pair_block::<U16>(maps, dst, &g, r2, r)
+        });
     }
-    pub(crate) fn vector_lookup(table: usize, map: usize, pred: Option<(usize, [u32; 4])>, dst: usize, n: usize, w: &Worker) {
-        run_blocks(n, w, |r| unsafe { vector_lookup_block(table, map, pred, dst, r) });
+    pub(crate) fn vector_lookup(
+        table: usize,
+        map: usize,
+        pred: Option<(usize, [u32; 4])>,
+        dst: usize,
+        n: usize,
+        w: &Worker,
+    ) {
+        run_blocks(n, w, |r| unsafe {
+            vector_lookup_block(table, map, pred, dst, r)
+        });
     }
-    pub(crate) fn decoder_minus_setup(table: (usize, usize), map: usize, pred: usize, mult: usize, fill: [u32; 4], g: [u32; 4], dst: [usize; 2], n: usize, w: &Worker) {
-        run_blocks(n, w, |r| unsafe { decoder_minus_setup_block(table, map, pred, mult, &fill, &g, dst, r) });
+    pub(crate) fn decoder_minus_setup(
+        table: (usize, usize),
+        map: usize,
+        pred: usize,
+        mult: usize,
+        fill: [u32; 4],
+        g: [u32; 4],
+        dst: [usize; 2],
+        n: usize,
+        w: &Worker,
+    ) {
+        run_blocks(n, w, |r| unsafe {
+            decoder_minus_setup_block(table, map, pred, mult, &fill, &g, dst, r)
+        });
     }
-    pub(crate) fn expressions_pair(table: usize, maps: [usize; 2], g: [u32; 4], dst: [usize; 2], n: usize, w: &Worker) {
-        run_blocks(n, w, |r| unsafe { expressions_pair_block(table, maps, &g, dst, r) });
+    pub(crate) fn expressions_pair(
+        table: usize,
+        maps: [usize; 2],
+        g: [u32; 4],
+        dst: [usize; 2],
+        n: usize,
+        w: &Worker,
+    ) {
+        run_blocks(n, w, |r| unsafe {
+            expressions_pair_block(table, maps, &g, dst, r)
+        });
     }
-    pub(crate) fn expressions_pair_with_remainder(table: usize, map: usize, ab: [usize; 2], g: [u32; 4], dst: [usize; 2], n: usize, w: &Worker) {
-        run_blocks(n, w, |r| unsafe { expressions_pair_with_remainder_block(table, map, ab, &g, dst, r) });
+    pub(crate) fn expressions_pair_with_remainder(
+        table: usize,
+        map: usize,
+        ab: [usize; 2],
+        g: [u32; 4],
+        dst: [usize; 2],
+        n: usize,
+        w: &Worker,
+    ) {
+        run_blocks(n, w, |r| unsafe {
+            expressions_pair_with_remainder_block(table, map, ab, &g, dst, r)
+        });
     }
-    pub(crate) fn expression_minus_setup(table: (usize, usize), map: usize, mult: usize, g: [u32; 4], dst: [usize; 2], n: usize, w: &Worker) {
-        run_blocks(n, w, |r| unsafe { expression_minus_setup_block(table, map, mult, &g, dst, r) });
+    pub(crate) fn expression_minus_setup(
+        table: (usize, usize),
+        map: usize,
+        mult: usize,
+        g: [u32; 4],
+        dst: [usize; 2],
+        n: usize,
+        w: &Worker,
+    ) {
+        run_blocks(n, w, |r| unsafe {
+            expression_minus_setup_block(table, map, mult, &g, dst, r)
+        });
     }
 }
 
@@ -940,6 +1120,7 @@ pub fn lookup_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (_, e) = fetch_ptrs(
@@ -947,9 +1128,14 @@ pub fn lookup_pair<F: PrimeField, E: FieldExtension<F> + Field>(
         vec![],
         vec![inputs[0][0], inputs[0][1], inputs[1][0], inputs[1][1]],
     );
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::lookup_pair([e[0], e[1], e[2], e[3]], [d[0], d[1]], trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::lookup_pair([e[0], e[1], e[2], e[3]], [d[0], d[1]], trace_len, worker),
+    );
 }
 
 /// LookupPairFromMaterializedBaseInputs
@@ -960,13 +1146,19 @@ pub fn lookup_base_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     expected_output_layer: usize,
     trace_len: usize,
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (b, _) = fetch_ptrs(storage, inputs.to_vec(), vec![]);
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::lookup_base_pair([b[0], b[1]], [d[0], d[1]], g, trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::lookup_base_pair([b[0], b[1]], [d[0], d[1]], g, trace_len, worker),
+    );
 }
 
 /// LookupPairFromMaterializedVectorInputs
@@ -977,13 +1169,19 @@ pub fn lookup_ext_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     expected_output_layer: usize,
     trace_len: usize,
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (_, e) = fetch_ptrs(storage, vec![], inputs.to_vec());
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::lookup_ext_pair([e[0], e[1]], [d[0], d[1]], g, trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::lookup_ext_pair([e[0], e[1]], [d[0], d[1]], g, trace_len, worker),
+    );
 }
 
 /// LookupUnbalancedPairWithMaterializedBaseInputs
@@ -995,13 +1193,19 @@ pub fn lookup_unbalanced_base<F: PrimeField, E: FieldExtension<F> + Field>(
     expected_output_layer: usize,
     trace_len: usize,
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (b, e) = fetch_ptrs(storage, vec![remainder], inputs.to_vec());
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::unbalanced_base(b[0], [e[0], e[1]], [d[0], d[1]], g, trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::unbalanced_base(b[0], [e[0], e[1]], [d[0], d[1]], g, trace_len, worker),
+    );
 }
 
 /// LookupUnbalancedPairWithMaterializedVectorInputs
@@ -1013,13 +1217,19 @@ pub fn lookup_unbalanced_ext<F: PrimeField, E: FieldExtension<F> + Field>(
     expected_output_layer: usize,
     trace_len: usize,
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (_, e) = fetch_ptrs(storage, vec![], vec![inputs[0], inputs[1], remainder]);
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::unbalanced_ext([e[0], e[1], e[2]], [d[0], d[1]], g, trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::unbalanced_ext([e[0], e[1], e[2]], [d[0], d[1]], g, trace_len, worker),
+    );
 }
 
 /// LookupFromMaterializedBaseInputWithSetup
@@ -1031,13 +1241,19 @@ pub fn lookup_base_minus_multiplicity<F: PrimeField, E: FieldExtension<F> + Fiel
     expected_output_layer: usize,
     trace_len: usize,
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (b, _) = fetch_ptrs(storage, vec![input, setup[0], setup[1]], vec![]);
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::base_minus_mult([b[0], b[1], b[2]], [d[0], d[1]], g, trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::base_minus_mult([b[0], b[1], b[2]], [d[0], d[1]], g, trace_len, worker),
+    );
 }
 
 /// LookupFromMaterializedVectorInputWithSetup
@@ -1049,13 +1265,19 @@ pub fn lookup_ext_minus_multiplicity<F: PrimeField, E: FieldExtension<F> + Field
     expected_output_layer: usize,
     trace_len: usize,
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (b, e) = fetch_ptrs(storage, vec![setup[0]], vec![input, setup[1]]);
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::ext_minus_mult(b[0], [e[0], e[1]], [d[0], d[1]], g, trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::ext_minus_mult(b[0], [e[0], e[1]], [d[0], d[1]], g, trace_len, worker),
+    );
 }
 
 /// LookupWithCachedDensAndSetup
@@ -1067,13 +1289,28 @@ pub fn masked_lookup_with_setup<F: PrimeField, E: FieldExtension<F> + Field>(
     expected_output_layer: usize,
     trace_len: usize,
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (b, e) = fetch_ptrs(storage, vec![input[0], setup[0]], vec![input[1], setup[1]]);
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::masked_lookup_setup([b[0], b[1]], [e[0], e[1]], [d[0], d[1]], g, trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| {
+            core_ops::masked_lookup_setup(
+                [b[0], b[1]],
+                [e[0], e[1]],
+                [d[0], d[1]],
+                g,
+                trace_len,
+                worker,
+            )
+        },
+    );
 }
 
 /// MaskIntoIdentityProduct
@@ -1084,12 +1321,18 @@ pub fn mask_into_identity<F: PrimeField, E: FieldExtension<F> + Field>(
     storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (b, e) = fetch_ptrs(storage, vec![mask], vec![input]);
-    with_outputs(storage, &[output], expected_output_layer, trace_len, |d| {
-        core_ops::mask_identity(b[0], e[0], d[0], trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &[output],
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::mask_identity(b[0], e[0], d[0], trace_len, worker),
+    );
 }
 
 /// TrivialProduct / InitialGrandProductFromCaches
@@ -1099,12 +1342,18 @@ pub fn pairwise_product<F: PrimeField, E: FieldExtension<F> + Field>(
     storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let (_, e) = fetch_ptrs(storage, vec![], inputs.to_vec());
-    with_outputs(storage, &[output], expected_output_layer, trace_len, |d| {
-        core_ops::pairwise([e[0], e[1]], d[0], trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &[output],
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::pairwise([e[0], e[1]], d[0], trace_len, worker),
+    );
 }
 
 /// Cache::MemoryTuple / MaterializeGrandProductTermExpression, or `None`
@@ -1115,11 +1364,12 @@ pub fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
     trace_len: usize,
     external_challenges: &GKRExternalChallenges<F, E>,
     compiled_circuit: &GKRCircuitArtifact<F>,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> Option<Box<[E]>> {
+) -> Option<AllocationType<E>> {
     let cols = mem_col_ptrs(storage, compiled_circuit);
     let plan = compile_mem_query(rel, challenges_bb(external_challenges), &cols)?;
-    Some(make_ext(storage, trace_len, |dst| {
+    Some(make_ext(pool, trace_len, |dst| {
         run_blocks(trace_len, worker, |r| unsafe { plan_block(&plan, dst, r) })
     }))
 }
@@ -1133,6 +1383,7 @@ pub fn product_without_caches<F: PrimeField, E: FieldExtension<F> + Field>(
     expected_output_layer: usize,
     compiled_circuit: &GKRCircuitArtifact<F>,
     trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> bool {
     let cols = mem_col_ptrs(storage, compiled_circuit);
@@ -1143,24 +1394,35 @@ pub fn product_without_caches<F: PrimeField, E: FieldExtension<F> + Field>(
     ) else {
         return false;
     };
-    let values = make_ext(storage, trace_len, |dst| {
-        run_blocks(trace_len, worker, |r| unsafe { plan_product_block(&pl, &pr, dst, r) })
+    let values = make_ext(pool, trace_len, |dst| {
+        run_blocks(trace_len, worker, |r| unsafe {
+            plan_product_block(&pl, &pr, dst, r)
+        })
     });
     output.assert_as_layer(expected_output_layer);
-    storage.insert_extension_at_layer(expected_output_layer, output, ExtensionFieldPoly::new(values));
+    storage.insert_extension_at_layer(
+        expected_output_layer,
+        output,
+        ExtensionFieldPoly::from_allocation(values),
+    );
     true
 }
 
 /// InitsOrTeardownsInitialPair
-pub fn inits_and_teardowns_pair<F: PrimeField, E: FieldExtension<F> + Field, const WORD_BITS: u32>(
+pub fn inits_and_teardowns_pair<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    const WORD_BITS: u32,
+>(
     ts_and_value: &InitsOrTeardownsTimestampAndValue,
     address_high_bits: [u32; 2],
     storage: &GKRStorage<F, E>,
     trace_len: usize,
     external_challenges: &GKRExternalChallenges<F, E>,
     compiled_circuit: &GKRCircuitArtifact<F>,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> Box<[E]> {
+) -> AllocationType<E> {
     let high_bits_offset =
         crate::gkr::high_bits_offset_for_inits_and_teardowns::<WORD_BITS>(trace_len);
     let cols = mem_col_ptrs(storage, compiled_circuit);
@@ -1183,10 +1445,28 @@ pub fn inits_and_teardowns_pair<F: PrimeField, E: FieldExtension<F> + Field, con
             Some((*rhs_timestamp, *rhs_value)),
         ],
     };
-    let pl = compile_init_or_teardown(ch, address_high_bits[0], high_bits_offset, sides[0], &cols, low, high);
-    let pr = compile_init_or_teardown(ch, address_high_bits[1], high_bits_offset, sides[1], &cols, low, high);
-    make_ext(storage, trace_len, |dst| {
-        run_blocks(trace_len, worker, |r| unsafe { plan_product_block(&pl, &pr, dst, r) })
+    let pl = compile_init_or_teardown(
+        ch,
+        address_high_bits[0],
+        high_bits_offset,
+        sides[0],
+        &cols,
+        low,
+        high,
+    );
+    let pr = compile_init_or_teardown(
+        ch,
+        address_high_bits[1],
+        high_bits_offset,
+        sides[1],
+        &cols,
+        low,
+        high,
+    );
+    make_ext(pool, trace_len, |dst| {
+        run_blocks(trace_len, worker, |r| unsafe {
+            plan_product_block(&pl, &pr, dst, r)
+        })
     })
 }
 
@@ -1200,9 +1480,10 @@ pub fn single_column_lookup_cache<F: PrimeField, E: FieldExtension<F> + Field>(
     storage: &mut GKRStorage<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
-    let mut dst = storage.alloc_base_uninit(trace_len);
+    let mut dst: Buffer<F> = pool.alloc_base(trace_len, ColumnLayout::Contiguous);
     let dp = dst.as_mut_ptr() as usize;
     check_out_alignment(dp);
     if range_check_width == 16 {
@@ -1226,11 +1507,9 @@ pub fn single_column_lookup_cache<F: PrimeField, E: FieldExtension<F> + Field>(
         );
     }
     output.assert_as_layer(layer_idx);
-    storage.insert_base_field_at_layer(
-        layer_idx,
-        output,
-        BaseFieldPoly::new(unsafe { dst.assume_init() }),
-    );
+    storage.insert_base_field_at_layer(layer_idx, output, unsafe {
+        BaseFieldPoly::from_pooled(dst)
+    });
 }
 
 /// LookupPairFromBaseInputs (range check 16 / timestamp range check)
@@ -1243,6 +1522,7 @@ pub fn range_check_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     gamma: E,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     range_check_width: u32,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let g = limbs(&gamma);
@@ -1259,11 +1539,19 @@ pub fn range_check_pair<F: PrimeField, E: FieldExtension<F> + Field>(
         assert_eq!(l.len(), trace_len);
         assert_eq!(r.len(), trace_len);
         let maps = [l.as_ptr() as usize, r.as_ptr() as usize];
-        with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-            core_ops::range_check_pair::<true>(maps, [d[0], d[1]], g, trace_len, worker)
-        });
+        with_outputs(
+            storage,
+            pool,
+            &outputs,
+            expected_output_layer,
+            trace_len,
+            |d| core_ops::range_check_pair::<true>(maps, [d[0], d[1]], g, trace_len, worker),
+        );
     } else {
-        assert_eq!(range_check_width, common_constants::TIMESTAMP_COLUMNS_NUM_BITS);
+        assert_eq!(
+            range_check_width,
+            common_constants::TIMESTAMP_COLUMNS_NUM_BITS
+        );
         let l = core::mem::replace(
             &mut witness_trace.timestamp_range_check_lookup_mapping[lhs.lookup_set_index],
             vec![],
@@ -1275,9 +1563,14 @@ pub fn range_check_pair<F: PrimeField, E: FieldExtension<F> + Field>(
         assert_eq!(l.len(), trace_len);
         assert_eq!(r.len(), trace_len);
         let maps = [l.as_ptr() as usize, r.as_ptr() as usize];
-        with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-            core_ops::range_check_pair::<false>(maps, [d[0], d[1]], g, trace_len, worker)
-        });
+        with_outputs(
+            storage,
+            pool,
+            &outputs,
+            expected_output_layer,
+            trace_len,
+            |d| core_ops::range_check_pair::<false>(maps, [d[0], d[1]], g, trace_len, worker),
+        );
     }
 }
 
@@ -1291,8 +1584,9 @@ pub fn vector_lookup_input<F: PrimeField, E: FieldExtension<F> + Field>(
     preprocessed_generic_lookup: &[E],
     decoder_lookup_fill_value: E,
     decoder_predicate_address: GKRAddress,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> Box<[E]> {
+) -> AllocationType<E> {
     let lookup_set_index = rel.lookup_set_index;
     let is_decoder_lookup = lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX;
     let mapping = if is_decoder_lookup == false {
@@ -1310,8 +1604,11 @@ pub fn vector_lookup_input<F: PrimeField, E: FieldExtension<F> + Field>(
     } else {
         None
     };
-    let (table, map) = (ext_ptr(preprocessed_generic_lookup), mapping.as_ptr() as usize);
-    make_ext(storage, trace_len, |dst| {
+    let (table, map) = (
+        ext_ptr(preprocessed_generic_lookup),
+        mapping.as_ptr() as usize,
+    );
+    make_ext(pool, trace_len, |dst| {
         core_ops::vector_lookup(table, map, pred, dst, trace_len, worker)
     })
 }
@@ -1328,9 +1625,13 @@ pub fn decoder_lookup_minus_setup<F: PrimeField, E: FieldExtension<F> + Field>(
     preprocessed_generic_lookup: &[E],
     gamma: E,
     decoder_lookup_fill_value: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
-    assert_eq!(decoder_relation.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
+    assert_eq!(
+        decoder_relation.lookup_set_index,
+        DECODER_LOOKUP_FORMAL_SET_INDEX
+    );
     let mapping = {
         assert!(witness_trace.generic_lookup_mapping.len() > 0);
         witness_trace.generic_lookup_mapping.pop().unwrap()
@@ -1338,11 +1639,24 @@ pub fn decoder_lookup_minus_setup<F: PrimeField, E: FieldExtension<F> + Field>(
     assert_eq!(mapping.len(), trace_len);
     let pred = base_ptr(storage.get_base_layer(decoder_predicate_address));
     let mult = base_ptr(storage.get_base_layer(multiplicity_address));
-    let table = (ext_ptr(preprocessed_generic_lookup), preprocessed_generic_lookup.len());
+    let table = (
+        ext_ptr(preprocessed_generic_lookup),
+        preprocessed_generic_lookup.len(),
+    );
     let (g, fill) = (limbs(&gamma), limbs(&decoder_lookup_fill_value));
     let map = mapping.as_ptr() as usize;
-    with_outputs(storage, &outputs, 1, trace_len, |d| {
-        core_ops::decoder_minus_setup(table, map, pred, mult, fill, g, [d[0], d[1]], trace_len, worker)
+    with_outputs(storage, pool, &outputs, 1, trace_len, |d| {
+        core_ops::decoder_minus_setup(
+            table,
+            map,
+            pred,
+            mult,
+            fill,
+            g,
+            [d[0], d[1]],
+            trace_len,
+            worker,
+        )
     });
 }
 
@@ -1356,6 +1670,7 @@ pub fn lookup_expressions_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     assert_ne!(inputs[0].lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
@@ -1373,9 +1688,14 @@ pub fn lookup_expressions_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     let table = ext_ptr(preprocessed_generic_lookup);
     let maps = [l.as_ptr() as usize, r.as_ptr() as usize];
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::expressions_pair(table, maps, g, [d[0], d[1]], trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| core_ops::expressions_pair(table, maps, g, [d[0], d[1]], trace_len, worker),
+    );
 }
 
 /// LookupUnbalancedPairWithVectorInputs
@@ -1389,6 +1709,7 @@ pub fn lookup_expressions_pair_with_remainder<F: PrimeField, E: FieldExtension<F
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     assert_ne!(remainder.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
@@ -1404,9 +1725,24 @@ pub fn lookup_expressions_pair_with_remainder<F: PrimeField, E: FieldExtension<F
     let table = ext_ptr(preprocessed_generic_lookup);
     let map = mapping.as_ptr() as usize;
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, expected_output_layer, trace_len, |d| {
-        core_ops::expressions_pair_with_remainder(table, map, ab, g, [d[0], d[1]], trace_len, worker)
-    });
+    with_outputs(
+        storage,
+        pool,
+        &outputs,
+        expected_output_layer,
+        trace_len,
+        |d| {
+            core_ops::expressions_pair_with_remainder(
+                table,
+                map,
+                ab,
+                g,
+                [d[0], d[1]],
+                trace_len,
+                worker,
+            )
+        },
+    );
 }
 
 /// LookupFromVectorInputWithSetup
@@ -1419,6 +1755,7 @@ pub fn lookup_expression_minus_setup<F: PrimeField, E: FieldExtension<F> + Field
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
     gamma: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     assert_ne!(input.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
@@ -1428,10 +1765,13 @@ pub fn lookup_expression_minus_setup<F: PrimeField, E: FieldExtension<F> + Field
     );
     assert_eq!(mapping.len(), trace_len);
     let mult = base_ptr(storage.get_base_layer(multiplicity_address));
-    let table = (ext_ptr(preprocessed_generic_lookup), preprocessed_generic_lookup.len());
+    let table = (
+        ext_ptr(preprocessed_generic_lookup),
+        preprocessed_generic_lookup.len(),
+    );
     let map = mapping.as_ptr() as usize;
     let g = limbs(&gamma);
-    with_outputs(storage, &outputs, 1, trace_len, |d| {
+    with_outputs(storage, pool, &outputs, 1, trace_len, |d| {
         core_ops::expression_minus_setup(table, map, mult, g, [d[0], d[1]], trace_len, worker)
     });
 }
@@ -1530,15 +1870,28 @@ mod tests {
             ext_vec(n, &mut seed),
             ext_vec(n, &mut seed),
         );
-        let (x, y, z) = (base_vec(n, &mut seed), base_vec(n, &mut seed), base_vec(n, &mut seed));
+        let (x, y, z) = (
+            base_vec(n, &mut seed),
+            base_vec(n, &mut seed),
+            base_vec(n, &mut seed),
+        );
         let mask = bool_vec(n, &mut seed);
 
         // lookup pair: a d + c b, b d
         let (mut o0, mut o1) = (out(n), out(n));
-        core_ops::lookup_pair([p(&a), p(&b), p(&c), p(&d)], [pm(&mut o0), pm(&mut o1)], n, &w);
+        core_ops::lookup_pair(
+            [p(&a), p(&b), p(&c), p(&d)],
+            [pm(&mut o0), pm(&mut o1)],
+            n,
+            &w,
+        );
         let (o0, o1) = (done(o0), done(o1));
         for i in 0..n {
-            assert_eq!(o0[i], add(mul(a[i], d[i]), mul(c[i], b[i])), "lookup pair num {i}");
+            assert_eq!(
+                o0[i],
+                add(mul(a[i], d[i]), mul(c[i], b[i])),
+                "lookup pair num {i}"
+            );
             assert_eq!(o1[i], mul(b[i], d[i]), "lookup pair den {i}");
         }
         // lookup base pair: (x+g) + (y+g), (x+g)(y+g)
@@ -1597,11 +1950,22 @@ mod tests {
         }
         // masked lookup with setup: x (b+g) - y (a+g), (a+g)(b+g)
         let (mut o0, mut o1) = (out(n), out(n));
-        core_ops::masked_lookup_setup([p(&x), p(&y)], [p(&a), p(&b)], [pm(&mut o0), pm(&mut o1)], gl, n, &w);
+        core_ops::masked_lookup_setup(
+            [p(&x), p(&y)],
+            [p(&a), p(&b)],
+            [pm(&mut o0), pm(&mut o1)],
+            gl,
+            n,
+            &w,
+        );
         let (o0, o1) = (done(o0), done(o1));
         for i in 0..n {
             let (bb, dd) = (add(a[i], g), add(b[i], g));
-            assert_eq!(o0[i], sub(mulb(dd, x[i]), mulb(bb, y[i])), "masked setup num {i}");
+            assert_eq!(
+                o0[i],
+                sub(mulb(dd, x[i]), mulb(bb, y[i])),
+                "masked setup num {i}"
+            );
             assert_eq!(o1[i], mul(bb, dd), "masked setup den {i}");
         }
         // mask into identity: (a - 1) mask + 1
@@ -1642,8 +2006,12 @@ mod tests {
         let table = ext_vec(table_len, &mut seed);
         let m1 = idx_vec(n, table_len as u32, &mut seed);
         let m2 = idx_vec(n, table_len as u32, &mut seed);
-        let m16: Vec<u16> = (0..n).map(|_| (pseudo_base(&mut seed).raw_u32_value() & 0xffff) as u16).collect();
-        let m19: Vec<u32> = (0..n).map(|_| pseudo_base(&mut seed).raw_u32_value() & ((1 << 19) - 1)).collect();
+        let m16: Vec<u16> = (0..n)
+            .map(|_| (pseudo_base(&mut seed).raw_u32_value() & 0xffff) as u16)
+            .collect();
+        let m19: Vec<u32> = (0..n)
+            .map(|_| pseudo_base(&mut seed).raw_u32_value() & ((1 << 19) - 1))
+            .collect();
         let pred = bool_vec(n, &mut seed);
         let mult = base_vec(n, &mut seed);
         let (a, b) = (ext_vec(n, &mut seed), ext_vec(n, &mut seed));
@@ -1661,16 +2029,32 @@ mod tests {
             let o = unsafe { o.assume_init() };
             for i in 0..n {
                 let v = if u16_case { m16[i] as u32 } else { m19[i] };
-                assert_eq!(o[i], BF::from_u32_unchecked(v), "single column {u16_case} {i}");
+                assert_eq!(
+                    o[i],
+                    BF::from_u32_unchecked(v),
+                    "single column {u16_case} {i}"
+                );
             }
         }
         // range check pairs
         for u16_case in [true, false] {
             let (mut o0, mut o1) = (out(n), out(n));
             if u16_case {
-                core_ops::range_check_pair::<true>([p(&m16), p(&m16[8..])], [pm(&mut o0), pm(&mut o1)], gl, n - 16, &w);
+                core_ops::range_check_pair::<true>(
+                    [p(&m16), p(&m16[8..])],
+                    [pm(&mut o0), pm(&mut o1)],
+                    gl,
+                    n - 16,
+                    &w,
+                );
             } else {
-                core_ops::range_check_pair::<false>([p(&m19), p(&m19[8..])], [pm(&mut o0), pm(&mut o1)], gl, n - 16, &w);
+                core_ops::range_check_pair::<false>(
+                    [p(&m19), p(&m19[8..])],
+                    [pm(&mut o0), pm(&mut o1)],
+                    gl,
+                    n - 16,
+                    &w,
+                );
             }
             let (o0, o1) = (done(o0), done(o1));
             for i in 0..n - 16 {
@@ -1696,23 +2080,52 @@ mod tests {
         core_ops::vector_lookup(p(&table), p(&m1), Some((p(&pred), fl)), pm(&mut o0), n, &w);
         let o0 = done(o0);
         for i in 0..n {
-            let e = if pred[i].as_boolean() { table[m1[i] as usize] } else { fill };
+            let e = if pred[i].as_boolean() {
+                table[m1[i] as usize]
+            } else {
+                fill
+            };
             assert_eq!(o0[i], e, "masked vector lookup {i}");
         }
         // decoder minus setup
         let (mut o0, mut o1) = (out(n), out(n));
-        core_ops::decoder_minus_setup(tbl, p(&m1), p(&pred), p(&mult), fl, gl, [pm(&mut o0), pm(&mut o1)], n, &w);
+        core_ops::decoder_minus_setup(
+            tbl,
+            p(&m1),
+            p(&pred),
+            p(&mult),
+            fl,
+            gl,
+            [pm(&mut o0), pm(&mut o1)],
+            n,
+            &w,
+        );
         let (o0, o1) = (done(o0), done(o1));
         for i in 0..n {
-            let looked = if pred[i].as_boolean() { table[m1[i] as usize] } else { fill };
+            let looked = if pred[i].as_boolean() {
+                table[m1[i] as usize]
+            } else {
+                fill
+            };
             let bb = add(looked, g);
             let dd = add(setup(i), g);
-            assert_eq!(o0[i], sub(mulb(dd, pred[i]), mulb(bb, mult[i])), "decoder num {i}");
+            assert_eq!(
+                o0[i],
+                sub(mulb(dd, pred[i]), mulb(bb, mult[i])),
+                "decoder num {i}"
+            );
             assert_eq!(o1[i], mul(bb, dd), "decoder den {i}");
         }
         // expressions pair
         let (mut o0, mut o1) = (out(n), out(n));
-        core_ops::expressions_pair(p(&table), [p(&m1), p(&m2)], gl, [pm(&mut o0), pm(&mut o1)], n, &w);
+        core_ops::expressions_pair(
+            p(&table),
+            [p(&m1), p(&m2)],
+            gl,
+            [pm(&mut o0), pm(&mut o1)],
+            n,
+            &w,
+        );
         let (o0, o1) = (done(o0), done(o1));
         for i in 0..n {
             let (bb, dd) = (add(table[m1[i] as usize], g), add(table[m2[i] as usize], g));
@@ -1721,7 +2134,15 @@ mod tests {
         }
         // expressions pair with remainder
         let (mut o0, mut o1) = (out(n), out(n));
-        core_ops::expressions_pair_with_remainder(p(&table), p(&m2), [p(&a), p(&b)], gl, [pm(&mut o0), pm(&mut o1)], n, &w);
+        core_ops::expressions_pair_with_remainder(
+            p(&table),
+            p(&m2),
+            [p(&a), p(&b)],
+            gl,
+            [pm(&mut o0), pm(&mut o1)],
+            n,
+            &w,
+        );
         let (o0, o1) = (done(o0), done(o1));
         for i in 0..n {
             let dd = add(table[m2[i] as usize], g);
@@ -1730,7 +2151,15 @@ mod tests {
         }
         // expression minus setup
         let (mut o0, mut o1) = (out(n), out(n));
-        core_ops::expression_minus_setup(tbl, p(&m1), p(&mult), gl, [pm(&mut o0), pm(&mut o1)], n, &w);
+        core_ops::expression_minus_setup(
+            tbl,
+            p(&m1),
+            p(&mult),
+            gl,
+            [pm(&mut o0), pm(&mut o1)],
+            n,
+            &w,
+        );
         let (o0, o1) = (done(o0), done(o1));
         for i in 0..n {
             let bb = add(table[m1[i] as usize], g);
@@ -1764,7 +2193,11 @@ mod tests {
             constant: one,
         });
         plan.linear(&ch[0], vec![(one, col_ptrs[1])], k7.raw_u32_value());
-        plan.linear(&ch[1], vec![(one, col_ptrs[2]), (two.raw_u32_value(), col_ptrs[3])], 0);
+        plan.linear(
+            &ch[1],
+            vec![(one, col_ptrs[2]), (two.raw_u32_value(), col_ptrs[3])],
+            0,
+        );
         plan.linear(&ch[2], vec![(k7.raw_u32_value(), col_ptrs[4])], 0);
         let mut plan_r = Plan::new(&ch[3]);
         plan_r.linear(&ch[4], vec![(one, col_ptrs[5])], one);
@@ -1796,7 +2229,9 @@ mod tests {
         let o0 = done(o0);
         let mut o1 = out(n);
         let dp = pm(&mut o1);
-        run_blocks(n, &w, |r| unsafe { plan_product_block(&plan, &plan_r, dp, r) });
+        run_blocks(n, &w, |r| unsafe {
+            plan_product_block(&plan, &plan_r, dp, r)
+        });
         let o1 = done(o1);
         for i in 0..n {
             assert_eq!(o0[i], scalar(i), "plan {i}");

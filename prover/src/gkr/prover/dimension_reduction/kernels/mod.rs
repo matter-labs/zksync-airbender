@@ -1,4 +1,5 @@
 use super::*;
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
 use crate::gkr::sumcheck::access_and_fold::*;
 use std::mem::MaybeUninit;
 
@@ -163,6 +164,7 @@ pub fn forward_evaluate_dimension_reducing_kernel<
     storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     input_trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     assert!(input_trace_len.is_power_of_two());
@@ -177,11 +179,11 @@ pub fn forward_evaluate_dimension_reducing_kernel<
         let sources = storage.get_for_sumcheck_round_0(&inputs);
         let mut destinations = Vec::with_capacity(outputs.len());
         for _ in 0..outputs.len() {
-            destinations.push(storage.alloc_ext_uninit(output_trace_len));
+            destinations.push(pool.alloc_ext(output_trace_len, ColumnLayout::Contiguous));
         }
         let mut destinations_refs = Vec::with_capacity(outputs.len());
         for el in destinations.iter_mut() {
-            destinations_refs.push(&mut el[..]);
+            destinations_refs.push(el.as_mut());
         }
 
         let inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
@@ -205,11 +207,10 @@ pub fn forward_evaluate_dimension_reducing_kernel<
         );
 
         for (output, destination) in outputs.into_iter().zip(destinations.into_iter()) {
-            let values = destination.assume_init();
             storage.insert_extension_at_layer(
                 expected_output_layer,
                 output,
-                ExtensionFieldPoly::new(values),
+                ExtensionFieldPoly::from_pooled(destination),
             );
         }
     }

@@ -21,9 +21,12 @@ fn main() {
         let mut hit = false;
         for line in text.lines() {
             let first = line.split_whitespace().next().unwrap_or("");
-            let header = first
-                .split_once('-')
-                .and_then(|(lo, hi)| Some((usize::from_str_radix(lo, 16).ok()?, usize::from_str_radix(hi, 16).ok()?)));
+            let header = first.split_once('-').and_then(|(lo, hi)| {
+                Some((
+                    usize::from_str_radix(lo, 16).ok()?,
+                    usize::from_str_radix(hi, 16).ok()?,
+                ))
+            });
             if let Some((lo, hi)) = header {
                 if hit {
                     break;
@@ -73,7 +76,12 @@ fn main() {
     let mbs = [1usize, 4, 64, 256];
     for &mb in &mbs {
         let len = mb << 18; // u32 elements
-        for kind in ["Vec::with_capacity", "alloc align 4K", "alloc align 2M", "alloc align 2M + madvise"] {
+        for kind in [
+            "Vec::with_capacity",
+            "alloc align 4K",
+            "alloc align 2M",
+            "alloc align 2M + madvise",
+        ] {
             for threads in [1usize, 16] {
                 let (ptr, layout, vec): (*mut u32, Option<Layout>, Option<Vec<u32>>) = match kind {
                     "Vec::with_capacity" => {
@@ -89,7 +97,9 @@ fn main() {
                         let l = Layout::from_size_align(len * 4, 2 << 20).unwrap();
                         let p = unsafe { alloc(l) } as *mut u32;
                         if kind.ends_with("madvise") {
-                            let r = unsafe { libc::madvise(p as *mut libc::c_void, len * 4, libc::MADV_HUGEPAGE) };
+                            let r = unsafe {
+                                libc::madvise(p as *mut libc::c_void, len * 4, libc::MADV_HUGEPAGE)
+                            };
                             assert_eq!(r, 0, "madvise failed");
                         }
                         (p, Some(l), None)
@@ -140,7 +150,8 @@ fn main() {
                 .collect();
             hs.into_iter().map(|h| h.join().unwrap()).collect()
         });
-        let mean = |f: fn(&(f64, f64, f64)) -> f64| res.iter().map(f).sum::<f64>() / res.len() as f64;
+        let mean =
+            |f: fn(&(f64, f64, f64)) -> f64| res.iter().map(f).sum::<f64>() / res.len() as f64;
         println!(
             "[thp] contention: {workers:>2} concurrent workers, 64 MB alloc+touch(16 thr)+free per iteration: alloc {:.2} ms, touch {:.2} ms, free {:.2} ms (per worker, mean over {iters} iters)",
             mean(|r| r.0),

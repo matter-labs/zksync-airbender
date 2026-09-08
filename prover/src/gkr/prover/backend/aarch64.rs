@@ -3,6 +3,7 @@
 //! batched call. See the struct docs for the measured wins.
 
 use super::*;
+use crate::allocation_pool::AllocationPool;
 
 /// Work-stealing backend whose BASE-FIELD flat grid tasks run the NEON
 /// BabyBear serial coset kernel (`fft::baby_bear_neon::lde_coset_neon`):
@@ -163,6 +164,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         evals: &[&[BabyBearField]],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<BabyBearField, BabyBearField>>> {
         let ext = &twiddles.forward_ext;
@@ -184,6 +186,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         monomials: Vec<Vec<BabyBearField>>,
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<ColumnMajorBaseOracleForCoset<BabyBearField>> {
         let ext = &twiddles.forward_ext;
@@ -202,6 +205,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         monomial_form_normal_order: &[BabyBearExt4],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<(Box<[BabyBearExt4]>, BabyBearField)> {
         use worker::rayon::prelude::*;
@@ -242,6 +246,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         monomial_form_normal_order: &[BabyBearExt4],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> (Box<[BabyBearExt4]>, Vec<BabyBearField>) {
         let ext = &twiddles.forward_ext;
@@ -268,6 +273,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         monomial_form_normal_order: &[BabyBearField],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<(Box<[BabyBearField]>, BabyBearField)> {
         let ext = &twiddles.forward_ext;
@@ -285,6 +291,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         &self,
         evals: &[&[BabyBearField]],
         pack_log2: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<Vec<BabyBearField>> {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
@@ -294,6 +301,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         &self,
         source_domain: Vec<BabyBearExt4>,
         twiddles: &Self::TwiddleSet,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<BabyBearExt4> {
         let inv_ext = &twiddles.inverse_ext;
@@ -308,6 +316,7 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
     fn hypercube_evals_from_monomial_form(
         &self,
         monomial_form: Vec<BabyBearExt4>,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
         worker: &Worker,
     ) -> Vec<BabyBearExt4> {
         fft::baby_bear_neon::ext4::hypercube_evals_from_monomial_form(monomial_form, worker)

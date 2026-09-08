@@ -178,9 +178,10 @@ impl LeafHashScratch {
 unsafe fn hash_coset_leaf_range<
     F: PrimeField,
     E: FieldExtension<F>,
+    A: CosetIndexedAccessor<E>,
     const USE_REDUCED_BLAKE2_ROUNDS: bool,
 >(
-    coset: &[&[E]],
+    coset: &[A],
     offsets: &[usize],
     src_range: core::ops::Range<usize>,
     mut dst_ptr: *mut core::mem::MaybeUninit<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]>,
@@ -204,7 +205,7 @@ unsafe fn hash_coset_leaf_range<
         for column in coset.iter() {
             for offset in offsets.iter() {
                 for w in 0..WAYS {
-                    let el = column[i + w + *offset];
+                    let el = column.get(i + w + *offset);
                     let as_base =
                         extension_field_into_base_coeffs(el).map(|el| el.as_u32_raw_repr_reduced());
                     buffers[w].extend(as_base);
@@ -258,7 +259,7 @@ unsafe fn hash_coset_leaf_range<
         buffer.clear();
         for column in coset.iter() {
             for offset in offsets.iter() {
-                let el = column[i + *offset];
+                let el = column.get(i + *offset);
                 let as_base =
                     extension_field_into_base_coeffs(el).map(|el| el.as_u32_raw_repr_reduced());
                 buffer.extend(as_base);
@@ -299,10 +300,11 @@ unsafe fn hash_coset_leaf_range<
 pub fn blake2s_leaf_hashes_from_cosets<
     F: PrimeField,
     E: FieldExtension<F>,
+    A: CosetIndexedAccessor<E>,
     B: GoodAllocator,
     const USE_REDUCED_BLAKE2_ROUNDS: bool,
 >(
-    trace: &[&[&[E]]],
+    trace: &[&[A]],
     combine_by: usize,
     bitreverse_evaluations: bool,
     bitreverse_cosets: bool,
@@ -387,7 +389,7 @@ where
                             let mut scratch = LeafHashScratch::new(leaf_width_in_field_elements);
                             for (coset_index, dest) in idx_chunk.iter().zip(dests.into_iter()) {
                                 let coset = &trace[*coset_index];
-                                hash_coset_leaf_range::<F, E, USE_REDUCED_BLAKE2_ROUNDS>(
+                                hash_coset_leaf_range::<F, E, A, USE_REDUCED_BLAKE2_ROUNDS>(
                                     coset,
                                     offsets_ref,
                                     0..coset_tree_size,
@@ -429,7 +431,7 @@ where
                                 coset_indexes_ref.iter().zip(dests.into_iter())
                             {
                                 let coset = &trace[*coset_index];
-                                hash_coset_leaf_range::<F, E, USE_REDUCED_BLAKE2_ROUNDS>(
+                                hash_coset_leaf_range::<F, E, A, USE_REDUCED_BLAKE2_ROUNDS>(
                                     coset,
                                     offsets_ref,
                                     src_range.clone(),
@@ -512,7 +514,7 @@ mod tests {
                 .collect();
             let trace: Vec<&[&[F]]> = coset_refs.iter().map(|c| &c[..]).collect();
 
-            let got = blake2s_leaf_hashes_from_cosets::<F, F, std::alloc::Global, true>(
+            let got = blake2s_leaf_hashes_from_cosets::<F, F, _, std::alloc::Global, true>(
                 &trace, combine_by, true, true, false, &worker,
             );
 

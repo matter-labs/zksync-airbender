@@ -169,6 +169,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         first_fold_log2,
         cap_size,
         n,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -188,7 +189,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
 
     log("running whir_fold (folding rounds + PoW grinding)");
     let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup_oracle);
-    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript, _>(
+    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript, _, _>(
         mem_oracle,
         mem_claims.clone(),
         wit_oracle,
@@ -203,7 +204,9 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         cap_size,
         n,
         &crate::gkr::prover::backend::NaiveBackend,
+        &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
         WhirIntermediateOracleMode::CosetByCoset,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 

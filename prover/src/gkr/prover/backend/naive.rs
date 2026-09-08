@@ -3,6 +3,7 @@
 //! byte-compared against.
 
 use super::*;
+use crate::allocation_pool::AllocationPool;
 
 /// The reference implementation: delegates verbatim to the historical free
 /// functions, for any `<F, E>`.
@@ -20,6 +21,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         evals: &[&[F]],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<F, F>>> {
         lde_multiple_polys_parallel_from_hypercubes(evals, twiddles, lde_factor, worker)
@@ -30,6 +32,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         monomials: Vec<Vec<F>>,
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<ColumnMajorBaseOracleForCoset<F>> {
         lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, worker)
@@ -40,6 +43,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         monomial_form_normal_order: &[E],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[E]>, F)> {
         compute_column_major_lde_from_monomial_form(
@@ -55,6 +59,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         monomial_form_normal_order: &[E],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> (Box<[E]>, Vec<F>) {
         // No historical free function exists for the contiguous layout; the
@@ -74,6 +79,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         monomial_form_normal_order: &[F],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[F]>, F)> {
         compute_column_major_lde_from_monomial_form(
@@ -88,6 +94,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         &self,
         evals: &[&[F]],
         pack_log2: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<F>> {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
@@ -97,6 +104,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         &self,
         source_domain: Vec<E>,
         twiddles: &Twiddles<F, Global>,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<E> {
         // worker-parallel inverse NTT + scaling + bit-reversal, byte-identical
@@ -104,7 +112,12 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         super::ws_monomial_form_from_main_domain::<F, E>(source_domain, twiddles, worker)
     }
 
-    fn hypercube_evals_from_monomial_form(&self, monomial_form: Vec<E>, worker: &Worker) -> Vec<E> {
+    fn hypercube_evals_from_monomial_form(
+        &self,
+        monomial_form: Vec<E>,
+        _pool: &dyn AllocationPool<F, E>,
+        worker: &Worker,
+    ) -> Vec<E> {
         // historical whir_fold sequence: worker-parallel ADD transform, then a
         // SERIAL bit-reversal
         let mut v = monomial_form;

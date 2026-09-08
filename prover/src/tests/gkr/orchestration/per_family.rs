@@ -260,7 +260,10 @@ pub fn prove_built_family_trace_on_disk_setup(
             materialized.cosets[coset]
                 .original_values_normal_order
                 .iter()
-                .map(|c| std::borrow::Cow::Borrowed(&c.column[..]))
+                .map(|c| {
+                    Box::new(c.view())
+                        as Box<dyn crate::merkle_trees::CosetIndexedAccessor<BabyBearField>>
+                })
                 .collect()
         });
     <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::write_disk_artifacts::<

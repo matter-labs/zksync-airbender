@@ -883,6 +883,15 @@ impl<F: PrimeField> GKRRelation<F> {
                 result.insert(input[0]);
                 result.insert(input[1]);
             }
+            Self::LookupUnbalancedPairWithMaterializedVectorInputs {
+                input,
+                remainder,
+                output: _,
+            } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+                result.insert(*remainder);
+            }
             Self::LookupFromMaterializedVectorInputWithSetup { input, setup, .. } => {
                 result.insert(*input);
                 result.insert(setup[0]);
@@ -894,8 +903,58 @@ impl<F: PrimeField> GKRRelation<F> {
                 result.insert(input[1][0]);
                 result.insert(input[1][1]);
             }
-            a @ _ => {
-                panic!("Not yet implemented for relation {:?}", a);
+            Self::LookupUnbalancedPairWithVectorInputs {
+                input,
+                remainder,
+                output: _,
+            } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+                for el in remainder.columns.iter() {
+                    for (_, el) in el.linear_terms.iter() {
+                        result.insert(*el);
+                    }
+                }
+            }
+            Self::LookupFromVectorInputWithSetup {
+                input,
+                setup,
+                output: _,
+            } => {
+                for el in input.columns.iter() {
+                    for (_, el) in el.linear_terms.iter() {
+                        result.insert(*el);
+                    }
+                }
+                result.insert(setup.0);
+                for el in setup.1.iter() {
+                    result.insert(*el);
+                }
+            }
+            Self::LookupWithDensAndSetupExpressions {
+                input,
+                setup,
+                output: _,
+            } => {
+                result.insert(input.0);
+                for el in input.1.columns.iter() {
+                    for (_, el) in el.linear_terms.iter() {
+                        result.insert(*el);
+                    }
+                }
+                result.insert(setup.0);
+                for el in setup.1.iter() {
+                    result.insert(*el);
+                }
+            }
+            Self::MaterializeGrandProductTermExpression { input, output: _ } => {
+                input.dump_inputs(result);
+            }
+            Self::InitsOrTeardownsInitialPair { setup, .. } => {
+                // the timestamps and values come from the inits/teardowns
+                // storage, not from GKR addresses; the setup columns are read
+                result.insert(setup[0]);
+                result.insert(setup[1]);
             }
         }
     }

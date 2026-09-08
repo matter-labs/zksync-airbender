@@ -56,8 +56,8 @@ pub(crate) fn encode_proth120_be_into(el: &Proth120, dst: &mut Vec<u8>) {
     dst.extend_from_slice(&el.to_u128().to_be_bytes());
 }
 
-pub fn keccak256_leaf_hashes_from_cosets<E, B>(
-    trace: &[&[&[E]]],
+pub fn keccak256_leaf_hashes_from_cosets<E, A, B>(
+    trace: &[&[A]],
     combine_by: usize,
     bitreverse_evaluations: bool,
     bitreverse_cosets: bool,
@@ -66,6 +66,7 @@ pub fn keccak256_leaf_hashes_from_cosets<E, B>(
 ) -> Vec<[u32; KECCAK256_DIGEST_SIZE_U32_WORDS], B>
 where
     E: FieldExtension<Proth120>,
+    A: CosetIndexedAccessor<E>,
     B: GoodAllocator,
     [(); E::DEGREE]: Sized,
 {
@@ -130,7 +131,7 @@ where
                         preimage.clear();
                         for column in coset.iter() {
                             for offset in offsets_ref.iter() {
-                                let el = column[row + *offset];
+                                let el = column.get(row + *offset);
                                 let coeffs = extension_field_into_base_coeffs::<Proth120, E>(el);
                                 for c in coeffs.iter() {
                                     encode_proth120_be_into(c, &mut preimage);

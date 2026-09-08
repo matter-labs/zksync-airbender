@@ -61,6 +61,7 @@
 // - then we draw a challenge and evaluate p(alpha) = \sum_{X'} eq(r1, ...., alpha, X') f(alpha, X') =
 // = \sum_{X''} eq(r1, ...., alpha, 0, X'') f(alpha, 0, X'') + eq(r1, ...., alpha, 1, X'') f(alpha, 1, X'')
 
+use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
 use crate::gkr::prover::backend::TwiddleSetOps;
 use crate::gkr::prover::stages::commitment_utils::{
     compute_column_major_lde_from_monomial_form,
@@ -80,8 +81,8 @@ use crate::query_utils::assemble_query_index;
 use crate::{
     gkr::prover::apply_row_wise,
     merkle_trees::{
-        ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueryable,
-        RSQueryable, SingleCosetRSQueryable,
+        ColumnMajorMerkleTreeConstructor, ColumnView, CosetIndexedAccessor, MainDomainColumn,
+        MerkleTreeCapVarLength, PathQueryable, RSQueryable, SingleCosetRSQueryable,
     },
 };
 use fft::{
@@ -97,6 +98,8 @@ use worker::{IterableWithGeometry, Worker};
 
 pub mod coset_commit;
 pub mod hypercube_to_monomial;
+pub mod ping_pong;
+use ping_pong::PingPongPoly;
 pub mod proximity_testing_modes;
 pub mod queries;
 pub mod rs_on_disk;
@@ -135,7 +138,7 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
                 for src_poly in self.original_values_normal_order.iter() {
                     for (j, offset) in offsets.iter().enumerate() {
                         let i = *offset + index;
-                        let value = src_poly.column[i];
+                        let value = src_poly.get(i);
                         result[j].push(value);
                     }
                 }
@@ -145,7 +148,7 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
                 for src_poly in self.original_values_normal_order.iter() {
                     for (j, offset) in offsets.iter().enumerate() {
                         let i = *offset + index;
-                        let value = src_poly.column[i];
+                        let value = src_poly.get(i);
                         result[j].push(value);
                     }
                 }
@@ -155,7 +158,7 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
                 for src_poly in self.original_values_normal_order.iter() {
                     for (j, offset) in offsets.iter().enumerate() {
                         let i = *offset + index;
-                        let value = src_poly.column[i];
+                        let value = src_poly.get(i);
                         result[j].push(value);
                     }
                 }
@@ -165,7 +168,7 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
                 for src_poly in self.original_values_normal_order.iter() {
                     for (j, offset) in offsets.iter().enumerate() {
                         let i = *offset + index;
-                        let value = src_poly.column[i];
+                        let value = src_poly.get(i);
                         result[j].push(value);
                     }
                 }
@@ -175,7 +178,7 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
                 for src_poly in self.original_values_normal_order.iter() {
                     for (j, offset) in offsets.iter().enumerate() {
                         let i = *offset + index;
-                        let value = src_poly.column[i];
+                        let value = src_poly.get(i);
                         result[j].push(value);
                     }
                 }
@@ -222,9 +225,7 @@ impl<F: PrimeField + TwoAdicField> RSQueryable<F> for MaterializedCosets<F> {
 
     fn main_domain_column(&self, column_index: usize) -> MainDomainColumn<'_, F> {
         // Materialized cosets hold main-domain EVALUATIONS.
-        MainDomainColumn::Evals(Cow::Borrowed(
-            &self.cosets[0].original_values_normal_order[column_index].column[..],
-        ))
+        self.cosets[0].original_values_normal_order[column_index].main_domain_column()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -290,9 +291,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
 
     /// Column `c` on the MAIN evaluation domain (LDE coset 0), as evaluations.
     pub fn main_domain_column(&self, column_index: usize) -> MainDomainColumn<'_, F> {
-        MainDomainColumn::Evals(Cow::Borrowed(
-            &self.cosets.cosets[0].original_values_normal_order[column_index].column[..],
-        ))
+        self.cosets.cosets[0].original_values_normal_order[column_index].main_domain_column()
     }
 
     pub fn query_for_folded_index(
@@ -409,6 +408,29 @@ pub enum ColumnMajorBaseOracleForLDE<
 > {
     InMemory(InMemoryBaseOracle<F, T>),
     CosetRecompute(CosetByCosetBaseCommitment<F, T>),
+}
+
+impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
+    ColumnMajorBaseOracleForLDE<F, T>
+{
+    /// Tear the oracle down, handing every uniquely owned pooled codeword
+    /// column back to `pool` (owned columns and the tree are dropped).
+    pub fn release_into<E>(self, pool: &dyn AllocationPool<F, E>) {
+        match self {
+            Self::InMemory(oracle) => {
+                let InMemoryBaseOracle { cosets, tree, .. } = oracle;
+                drop(tree);
+                for coset in cosets.cosets.into_iter() {
+                    for part in coset.original_values_normal_order.into_iter() {
+                        if let Ok(column) = Arc::try_unwrap(part.column) {
+                            column.release_base(pool);
+                        }
+                    }
+                }
+            }
+            Self::CosetRecompute(c) => drop(c),
+        }
+    }
 }
 
 impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -557,7 +579,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
     ColumnMajorExtensionOracleForCoset<F, E>
 {
     pub fn values_for_folded_index(&self, index: usize, values_per_leaf: usize) -> Vec<E> {
-        let trace_len = self.values_normal_order.column.len() as usize;
+        let trace_len = self.values_normal_order.len();
         assert!(values_per_leaf.is_power_of_two());
         assert!(
             index < trace_len / values_per_leaf,
@@ -574,7 +596,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                 let offsets = offsets_for_leaf_construction::<2>(trace_len);
                 for offset in offsets.iter() {
                     let i = *offset + index;
-                    let value = self.values_normal_order.column[i];
+                    let value = self.values_normal_order.get(i);
                     result.push(value);
                 }
             }
@@ -582,7 +604,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                 let offsets = offsets_for_leaf_construction::<4>(trace_len);
                 for offset in offsets.iter() {
                     let i = *offset + index;
-                    let value = self.values_normal_order.column[i];
+                    let value = self.values_normal_order.get(i);
                     result.push(value);
                 }
             }
@@ -590,7 +612,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                 let offsets = offsets_for_leaf_construction::<8>(trace_len);
                 for offset in offsets.iter() {
                     let i = *offset + index;
-                    let value = self.values_normal_order.column[i];
+                    let value = self.values_normal_order.get(i);
                     result.push(value);
                 }
             }
@@ -598,7 +620,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                 let offsets = offsets_for_leaf_construction::<16>(trace_len);
                 for offset in offsets.iter() {
                     let i = *offset + index;
-                    let value = self.values_normal_order.column[i];
+                    let value = self.values_normal_order.get(i);
                     result.push(value);
                 }
             }
@@ -606,7 +628,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                 let offsets = offsets_for_leaf_construction::<32>(trace_len);
                 for offset in offsets.iter() {
                     let i = *offset + index;
-                    let value = self.values_normal_order.column[i];
+                    let value = self.values_normal_order.get(i);
                     result.push(value);
                 }
             }
@@ -835,6 +857,7 @@ fn build_intermediate_oracle<F, E, T, B: crate::gkr::prover::backend::Backend<F,
     tree_cap_size: usize,
     mode: WhirIntermediateOracleMode,
     twiddles: &B::TwiddleSet,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> (MerkleTreeCapVarLength, IntermediateOracle<F, E, T>)
 where
@@ -850,6 +873,7 @@ where
                 monomial_form,
                 twiddles,
                 lde_factor,
+                pool,
                 worker,
             );
             let t_lde = t_lde.elapsed();
@@ -876,6 +900,7 @@ where
                 monomial_form,
                 twiddles,
                 lde_factor,
+                pool,
                 worker,
             );
             let t_lde = t_lde.elapsed();
@@ -918,6 +943,7 @@ pub fn whir_fold<
     T: ColumnMajorMerkleTreeConstructor<F>,
     TR: Transcript<F, E>,
     B: crate::gkr::prover::backend::Backend<F, E>,
+    GB: crate::gkr::prover::gkr_backend::GKRBackend<F, E>,
 >(
     mem_oracle: ColumnMajorBaseOracleForLDE<F, T>,
     mem_polys_claims: Vec<E>,
@@ -935,11 +961,14 @@ pub fn whir_fold<
     // Compute backend for the in-memory-path heavy ops (intermediate-oracle LDEs,
     // the batching IFFT). The backend must not change any produced values.
     backend: &B,
+    // The GKR backend's vector kernels for the WHIR-side folds (the eq poly).
+    gkr_backend: &GB,
     // How to materialize each intermediate (folded) RS oracle. Independent from the
     // storage policy of the base oracles: the base oracles carry their own policy in
     // their `ColumnMajorBaseOracleForLDE` variant, so e.g. recompute-based base
     // oracles can be combined with fully materialized intermediate oracles.
     intermediate_oracle_mode: WhirIntermediateOracleMode,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> WhirPolyCommitProof<F, E, T>
 where
@@ -960,18 +989,22 @@ where
     let set_caps = [mem_oracle.get_cap(), wit_oracle.get_cap(), setup.get_cap()];
 
     let t_eq_init = std::time::Instant::now();
-    let mut eq_poly_box = {
+    let mut eq_pp = {
         assert_eq!(
             original_evaluation_point.len(),
             trace_len_log2,
             "claim coordinate must have one entry per variable"
         );
-        // scalar points are stored in VARIABLE order (LSB round order)
-        crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(
-            &original_evaluation_point[..],
-            worker,
-        )
-        .into_boxed_slice()
+        // scalar points are stored in VARIABLE order (LSB round order); the
+        // table lives in a pooled ping-pong buffer pair and every fold writes
+        // the other buffer (no in-place compaction), see `ping_pong`
+        PingPongPoly::<E>::new_ext::<F>(1usize << trace_len_log2, pool, |dst| {
+            crate::gkr::sumcheck::eq_poly::fill_eq_table_lsb_first_uninit::<E>(
+                &original_evaluation_point[..],
+                dst,
+                worker,
+            )
+        })
     };
     println!(
         "  [timing] initial eq-poly build: {:.3?}",
@@ -1010,7 +1043,7 @@ where
                 );
                 use crate::gkr::whir::eq_poly::evaluate_with_precomputed_eq;
                 let recomputed_claim =
-                    evaluate_with_precomputed_eq(&sumcheck_evals, &eq_poly_box[..]);
+                    evaluate_with_precomputed_eq(&sumcheck_evals, eq_pp.as_slice());
                 assert_eq!(
                     recomputed_claim, *eval,
                     "claim recomputation diverged for poly {} in oracle set {}",
@@ -1127,8 +1160,8 @@ where
     //   monomial_form = IFFT(sum_i c_i * evals_i) + sum_j c_j * monomials_j
     // When every source is materialized (all evals) this reduces to the original
     // single IFFT; a monomial-storing source contributes with no transform at all.
-    let mut eval_cols: Vec<(E, &[F])> = Vec::new();
-    let mut monomial_cols: Vec<(E, &[F])> = Vec::new();
+    let mut eval_cols: Vec<(E, ColumnView<'_, F>)> = Vec::new();
+    let mut monomial_cols: Vec<(E, ColumnView<'_, F>)> = Vec::new();
     for (challenges_set, values_set) in [
         (base_mem_powers, &main_domain_cols[0]),
         (base_witness_powers, &main_domain_cols[1]),
@@ -1136,8 +1169,8 @@ where
     ] {
         assert_eq!(challenges_set.len(), values_set.len());
         for (batch_challenge, column) in challenges_set.iter().zip(values_set.iter()) {
-            let src = column.as_slice();
-            assert_eq!(src.len(), 1 << trace_len_log2);
+            let src = column.view();
+            assert_eq!(CosetIndexedAccessor::len(&src), 1 << trace_len_log2);
             if column.is_monomials() {
                 monomial_cols.push((*batch_challenge, src));
             } else {
@@ -1146,9 +1179,24 @@ where
         }
     }
 
+    // `dest[i] += challenge * src[chunk_start + i]` over one row chunk; generic
+    // so the contiguous layout inlines plain indexing.
+    fn accumulate_chunk<F: PrimeField, E: FieldExtension<F> + Field, A: CosetIndexedAccessor<F>>(
+        dest: &mut [E],
+        batch_challenge: E,
+        src: &A,
+        chunk_start: usize,
+    ) {
+        for (i, d) in dest.iter_mut().enumerate() {
+            let mut result = batch_challenge;
+            result.mul_assign_by_base(&src.get(chunk_start + i));
+            d.add_assign(&result);
+        }
+    }
+
     // Weighted sum of a set of same-length base-field columns into an E-valued
     // accumulator (`dest += challenge * column`), parallelized over rows.
-    let batch_columns = |cols: &[(E, &[F])], worker: &Worker| -> Vec<E> {
+    let batch_columns = |cols: &[(E, ColumnView<'_, F>)], worker: &Worker| -> Vec<E> {
         let mut acc = vec![E::ZERO; 1 << trace_len_log2];
         if !cols.is_empty() {
             apply_row_wise::<F, E>(
@@ -1159,11 +1207,15 @@ where
                 |_, dest, chunk_start, chunk_size| {
                     let mut dest = dest;
                     let dest = dest.pop().unwrap();
+                    let dest = &mut dest[..chunk_size];
                     for (batch_challenge, src) in cols.iter() {
-                        for i in 0..chunk_size {
-                            let mut result = *batch_challenge;
-                            result.mul_assign_by_base(&src[chunk_start + i]);
-                            dest[i].add_assign(&result);
+                        match src {
+                            ColumnView::Contiguous(s) => {
+                                accumulate_chunk::<F, E, _>(dest, *batch_challenge, s, chunk_start)
+                            }
+                            ColumnView::Padded(p) => {
+                                accumulate_chunk::<F, E, _>(dest, *batch_challenge, p, chunk_start)
+                            }
                         }
                     }
                 },
@@ -1183,7 +1235,7 @@ where
         // form is itself — skip the (otherwise wasted) inverse transform.
         batched_evals
     } else {
-        backend.monomial_form_from_main_domain(batched_evals, twiddles, worker)
+        backend.monomial_form_from_main_domain(batched_evals, twiddles, pool, worker)
     };
     // `monomial_form += batched_monomials_direct` (both are `1 << trace_len_log2`
     // long — `batch_columns` always returns a full zero-filled buffer), parallelized
@@ -1209,7 +1261,8 @@ where
 
     // O(1)-per-proof transform of the full batched poly: backends put all
     // worker threads on it (ADD Mobius transform + bit-reversal).
-    let sumcheck_evals = backend.hypercube_evals_from_monomial_form(monomial_form.clone(), worker);
+    let sumcheck_evals =
+        backend.hypercube_evals_from_monomial_form(monomial_form.clone(), pool, worker);
     println!(
         "  [timing] batching stage (columns+IFFT+hc evals): {:.3?}",
         t_batching.elapsed()
@@ -1251,8 +1304,6 @@ where
     // so we can NOT easily use the same trick with splitting out eq poly highest coordinate in sumcheck.
     // So we make EQ poly explicitly, and then we will update it after every step, and use naively
 
-    let mut eq_poly = &mut eq_poly_box[..];
-
     let mut sumchecked_poly_evaluation_form_vec = sumcheck_evals;
     let mut sumchecked_poly_evaluation_form = &mut sumchecked_poly_evaluation_form_vec[..];
     let mut sumchecked_poly_monomial_form = monomial_form;
@@ -1262,12 +1313,13 @@ where
 
     #[cfg(feature = "gkr_self_checks")]
     {
-        let recomputed_claim = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
+        let recomputed_claim =
+            dot_product(&sumchecked_poly_evaluation_form, eq_pp.as_slice(), worker);
         assert_eq!(recomputed_claim, claim);
     }
 
-    assert_eq!(eq_poly.len(), sumchecked_poly_evaluation_form.len());
-    assert_eq!(eq_poly.len(), sumchecked_poly_monomial_form.len());
+    assert_eq!(eq_pp.len(), sumchecked_poly_evaluation_form.len());
+    assert_eq!(eq_pp.len(), sumchecked_poly_monomial_form.len());
 
     let mut folding_challenges = vec![];
     let mut delinearization_challenges_per_round = vec![];
@@ -1307,7 +1359,7 @@ where
         for _ in 0..num_initial_folding_rounds {
             let (f0, f1, f_half) = special_three_point_eval(
                 &sumchecked_poly_evaluation_form[..],
-                &eq_poly[..],
+                eq_pp.as_slice(),
                 worker,
             );
             let evaluation_point = E::from_base(two_inv);
@@ -1367,8 +1419,8 @@ where
             }
 
             // and so we fold equality poly too
-            eq_poly = fold_eq_poly(eq_poly, &folding_challenge, worker);
-            assert_eq!(sumchecked_poly_evaluation_form.len(), eq_poly.len());
+            eq_pp.fold::<F, GB>(&folding_challenge, gkr_backend, worker);
+            assert_eq!(sumchecked_poly_evaluation_form.len(), eq_pp.len());
         }
         println!(
             "  [timing] round sumcheck+eq folds: {:.3?}",
@@ -1378,11 +1430,11 @@ where
 
         assert_eq!(sumchecked_poly_evaluation_form.len(), 1 << poly_size_log2);
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
-        assert_eq!(eq_poly.len(), 1 << poly_size_log2);
+        assert_eq!(eq_pp.len(), 1 << poly_size_log2);
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
+            let full_sum = dot_product(&sumchecked_poly_evaluation_form, eq_pp.as_slice(), worker);
             assert_eq!(full_sum, claim);
         }
 
@@ -1402,6 +1454,7 @@ where
                 tree_cap_size,
                 intermediate_oracle_mode,
                 twiddles,
+                pool,
                 worker,
             );
             println!(
@@ -1545,7 +1598,13 @@ where
         // fully in-memory base oracles this deallocates hundreds of GB —
         // seconds of page-table teardown — so the drop runs on a DETACHED
         // thread and overlaps the folding rounds instead of stalling them.
-        std::thread::spawn(move || drop((mem_oracle, wit_oracle)));
+        // Pooled codeword buffers go back to the pool (a shared handle, so
+        // the release can run on the detached thread too).
+        let release_pool = pool.share();
+        std::thread::spawn(move || {
+            mem_oracle.release_into(&*release_pool);
+            wit_oracle.release_into(&*release_pool);
+        });
         println!("  [timing] base oracle drop offloaded to background thread");
 
         for &query_index in query_indexes.iter() {
@@ -1641,7 +1700,7 @@ where
         {
             let t_upd = std::time::Instant::now();
             backend.update_eq_poly(
-                eq_poly,
+                eq_pp.as_mut_slice(),
                 &contributions_to_eq_poly,
                 &contributions_to_eq_poly_with_base_points,
                 worker,
@@ -1699,7 +1758,7 @@ where
         for _ in 0..num_folding_steps {
             let (f0, f1, f_half) = special_three_point_eval(
                 &sumchecked_poly_evaluation_form[..],
-                &eq_poly[..],
+                eq_pp.as_slice(),
                 worker,
             );
             let evaluation_point = E::from_base(two_inv);
@@ -1746,8 +1805,8 @@ where
                 sumchecked_poly_monomial_form.len(),
                 sumchecked_poly_evaluation_form.len()
             );
-            eq_poly = fold_eq_poly(eq_poly, &folding_challenge, worker);
-            assert_eq!(sumchecked_poly_evaluation_form.len(), eq_poly.len());
+            eq_pp.fold::<F, GB>(&folding_challenge, gkr_backend, worker);
+            assert_eq!(sumchecked_poly_evaluation_form.len(), eq_pp.len());
         }
 
         println!(
@@ -1758,11 +1817,11 @@ where
 
         assert_eq!(sumchecked_poly_evaluation_form.len(), 1 << poly_size_log2);
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
-        assert_eq!(eq_poly.len(), 1 << poly_size_log2);
+        assert_eq!(eq_pp.len(), 1 << poly_size_log2);
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
+            let full_sum = dot_product(&sumchecked_poly_evaluation_form, eq_pp.as_slice(), worker);
             assert_eq!(full_sum, claim);
         }
 
@@ -1782,6 +1841,7 @@ where
                 tree_cap_size,
                 intermediate_oracle_mode,
                 twiddles,
+                pool,
                 worker,
             );
             println!(
@@ -1957,7 +2017,7 @@ where
         {
             let t_upd = std::time::Instant::now();
             backend.update_eq_poly(
-                eq_poly,
+                eq_pp.as_mut_slice(),
                 &contributions_to_eq_poly,
                 &contributions_to_eq_poly_with_base_points,
                 worker,
@@ -1996,7 +2056,7 @@ where
         for _folding_round in 0..num_folding_steps {
             let (f0, f1, f_half) = special_three_point_eval(
                 &sumchecked_poly_evaluation_form[..],
-                &eq_poly[..],
+                eq_pp.as_slice(),
                 worker,
             );
             let evaluation_point = E::from_base(two_inv);
@@ -2044,8 +2104,8 @@ where
                 sumchecked_poly_evaluation_form.len()
             );
 
-            eq_poly = fold_eq_poly(eq_poly, &folding_challenge, worker);
-            assert_eq!(sumchecked_poly_evaluation_form.len(), eq_poly.len());
+            eq_pp.fold::<F, GB>(&folding_challenge, gkr_backend, worker);
+            assert_eq!(sumchecked_poly_evaluation_form.len(), eq_pp.len());
         }
 
         println!(
@@ -2056,11 +2116,11 @@ where
 
         assert_eq!(sumchecked_poly_evaluation_form.len(), 1 << poly_size_log2);
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
-        assert_eq!(eq_poly.len(), 1 << poly_size_log2);
+        assert_eq!(eq_pp.len(), 1 << poly_size_log2);
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
+            let full_sum = dot_product(&sumchecked_poly_evaluation_form, eq_pp.as_slice(), worker);
             assert_eq!(full_sum, claim);
         }
 
@@ -2159,7 +2219,11 @@ where
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let value = dot_product(&sumchecked_poly_evaluation_form[..], &eq_poly[..], worker);
+            let value = dot_product(
+                &sumchecked_poly_evaluation_form[..],
+                eq_pp.as_slice(),
+                worker,
+            );
             assert_eq!(value, claim);
         }
     }
@@ -2172,6 +2236,7 @@ where
     println!("  [timing] final round total: {:.3?}", t_round.elapsed());
 
     proof.final_monomials = sumchecked_poly_monomial_form;
+    eq_pp.release::<F>(pool);
 
     #[cfg(feature = "gkr_self_checks")]
     {
@@ -2517,21 +2582,23 @@ where
     let mut t = Vec::with_capacity(cosets.len());
     for (column, offset) in cosets.into_iter() {
         let el = ColumnMajorExtensionOracleForCoset {
-            values_normal_order: ColumnMajorCosetBoundTracePart {
-                column: Arc::new(column),
-                offset,
-            },
+            values_normal_order: ColumnMajorCosetBoundTracePart::owned(column, offset),
         };
         t.push(el);
     }
 
     let source: Vec<_> = t
         .iter()
-        .map(|el| vec![&el.values_normal_order.column[..]])
+        .map(|el| {
+            vec![el
+                .values_normal_order
+                .as_contiguous()
+                .expect("contiguous ext oracle column")]
+        })
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<E>(
+    let tree = T::construct_from_cosets::<E, _>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -2608,7 +2675,7 @@ where
     let source: Vec<Vec<&[E]>> = buffer.chunks(trace_len).map(|coset| vec![coset]).collect();
     let source_ref: Vec<&[&[E]]> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<E>(
+    let tree = T::construct_from_cosets::<E, _>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -2651,21 +2718,23 @@ where
     for (column, offset) in cosets.into_iter() {
         assert!(!column.is_empty());
         let el = ColumnMajorExtensionOracleForCoset {
-            values_normal_order: ColumnMajorCosetBoundTracePart {
-                column: Arc::new(column),
-                offset,
-            },
+            values_normal_order: ColumnMajorCosetBoundTracePart::owned(column, offset),
         };
         t.push(el);
     }
 
     let source: Vec<_> = t
         .iter()
-        .map(|el| vec![&el.values_normal_order.column[..]])
+        .map(|el| {
+            vec![el
+                .values_normal_order
+                .as_contiguous()
+                .expect("contiguous ext oracle column")]
+        })
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<E>(
+    let tree = T::construct_from_cosets::<E, _>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -2734,21 +2803,23 @@ where
     for (column, offset) in cosets.into_iter() {
         assert!(!column.is_empty());
         let el = ColumnMajorExtensionOracleForCoset {
-            values_normal_order: ColumnMajorCosetBoundTracePart {
-                column: Arc::new(column),
-                offset,
-            },
+            values_normal_order: ColumnMajorCosetBoundTracePart::owned(column, offset),
         };
         t.push(el);
     }
 
     let source: Vec<_> = t
         .iter()
-        .map(|el| vec![&el.values_normal_order.column[..]])
+        .map(|el| {
+            vec![el
+                .values_normal_order
+                .as_contiguous()
+                .expect("contiguous ext oracle column")]
+        })
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<E>(
+    let tree = T::construct_from_cosets::<E, _>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -2858,21 +2929,23 @@ where
         }
 
         let el = ColumnMajorExtensionOracleForCoset {
-            values_normal_order: ColumnMajorCosetBoundTracePart {
-                column: Arc::new(column),
-                offset,
-            },
+            values_normal_order: ColumnMajorCosetBoundTracePart::owned(column, offset),
         };
         t.push(el);
     }
 
     let source: Vec<_> = t
         .iter()
-        .map(|el| vec![&el.values_normal_order.column[..]])
+        .map(|el| {
+            vec![el
+                .values_normal_order
+                .as_contiguous()
+                .expect("contiguous ext oracle column")]
+        })
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<E>(
+    let tree = T::construct_from_cosets::<E, _>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -2890,7 +2963,7 @@ where
     }
 }
 
-fn fold_monomial_form<E: Field>(
+pub fn fold_monomial_form<E: Field>(
     input: &mut Vec<E>,
     buffer: &mut Vec<E>,
     challenge: &E,
@@ -2982,7 +3055,7 @@ fn fold_evaluation_form_serial<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     &mut input[..half_len]
 }
 
-fn fold_evaluation_form<'a, F: PrimeField, E: FieldExtension<F> + Field>(
+pub fn fold_evaluation_form<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     input: &'a mut [E],
     challenge: &E,
     worker: &Worker,
@@ -3052,7 +3125,7 @@ fn fold_eq_poly_serial<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     &mut eq_poly[..half_len]
 }
 
-fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
+pub fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     eq_poly: &'a mut [E],
     challenge: &E,
     worker: &Worker,
@@ -3180,7 +3253,7 @@ fn special_three_point_eval_serial<F: PrimeField, E: FieldExtension<F> + Field>(
     (f0, f1, f_half)
 }
 
-fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
+pub fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
     worker: &Worker,
@@ -3246,7 +3319,7 @@ fn evaluate_monomial_form_serial<E: Field>(coeffs: &[E], point: &E) -> E {
     result
 }
 
-fn evaluate_monomial_form<E: Field>(coeffs: &[E], point: &E, worker: &Worker) -> E {
+pub fn evaluate_monomial_form<E: Field>(coeffs: &[E], point: &E, worker: &Worker) -> E {
     if coeffs.is_empty() {
         return E::ZERO;
     }
@@ -3430,7 +3503,7 @@ fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
     result
 }
 
-fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker) -> E {
+pub fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker) -> E {
     let eq = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(point, worker);
     assert_eq!(eq.len(), evals.len());
     let mut result = E::ZERO;
@@ -3992,6 +4065,37 @@ mod test {
     }
 
     #[test]
+    fn ping_pong_fold_matches_fold_eq_poly() {
+        use crate::allocation_pool::GenericAllocationPool;
+        use crate::gkr::prover::gkr_backend::NaiveGKRBackend;
+        use field::Rand;
+        let worker = Worker::new_with_num_threads(4);
+        let mut rng = rand::thread_rng();
+        let n = 1usize << 12;
+        let table: Vec<E> = (0..n).map(|_| E::random_element(&mut rng)).collect();
+        let challenges: Vec<E> = (0..5).map(|_| E::random_element(&mut rng)).collect();
+        let pool = GenericAllocationPool::<F, E>::new();
+        let mut pp = PingPongPoly::<E>::new_ext::<F>(n, &pool, |dst| {
+            for (d, v) in dst.iter_mut().zip(table.iter()) {
+                d.write(*v);
+            }
+        });
+        let mut reference = table.clone();
+        let mut reference_slice: &mut [E] = &mut reference[..];
+        for ch in challenges.iter() {
+            reference_slice = fold_eq_poly::<F, E>(reference_slice, ch, &worker);
+            pp.fold::<F, NaiveGKRBackend>(ch, &NaiveGKRBackend, &worker);
+            assert_eq!(pp.len(), reference_slice.len());
+            assert_eq!(pp.as_slice(), &*reference_slice);
+        }
+        pp.release::<F>(&pool);
+        assert_eq!(
+            pool.stats().retained_bytes,
+            (n + n / 2) * core::mem::size_of::<E>()
+        );
+    }
+
+    #[test]
     fn test_fold_eq_poly() {
         let mut rng = rand::rng();
         let size = 1 << 13;
@@ -4252,7 +4356,7 @@ mod test {
         };
 
         let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup);
-        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _>(
+        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
             mem,
             a,
             wit,
@@ -4267,7 +4371,9 @@ mod test {
             1,
             size.trailing_zeros() as usize,
             &crate::gkr::prover::backend::NaiveBackend,
+            &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
             WhirIntermediateOracleMode::Monolithic,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
     }
