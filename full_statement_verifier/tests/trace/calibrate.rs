@@ -32,11 +32,6 @@ pub const ALL_FIXTURES: &[Fixture] = &[
         calibrated: true,
     },
     Fixture {
-        name: "recursion0_alt",
-        program: FsvProgram::UnrolledRecursionLayer,
-        calibrated: true,
-    },
-    Fixture {
         name: "recursion1",
         program: FsvProgram::UnrolledRecursionLayer,
         calibrated: false,
@@ -207,7 +202,7 @@ pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCens
         v.insert(*circuit, pooled);
     }
 
-    let mut fits: Vec<(FsvProgram, Vec<(CensusVec, CensusVec)>)> = Vec::new();
+    let mut fits: Vec<(FsvProgram, CensusVec, CensusVec)> = Vec::new();
     for (name, program, c) in cals {
         let fitted: CensusVec = core::array::from_fn(|d| {
             let priced: u64 = c
@@ -231,8 +226,7 @@ pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCens
                 )
             })
         });
-        if let Some((_, observations)) = fits.iter_mut().find(|(p, _)| p == program) {
-            let (existing, existing_total) = &observations[0];
+        if let Some((_, existing, existing_total)) = fits.iter().find(|(p, _, _)| p == program) {
             for d in 0..NUM_CENSUS_DIMS {
                 let spread = fitted[d].max(existing[d]) - fitted[d].min(existing[d]);
                 let scale = c.total[d].min(existing_total[d]);
@@ -245,26 +239,11 @@ pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCens
                     existing[d]
                 );
             }
-            observations.push((fitted, c.total));
         } else {
-            fits.push((*program, vec![(fitted, c.total)]));
+            fits.push((*program, fitted, c.total));
         }
     }
-    // Pool fixed overheads just like per-proof costs, rather than fitting C0
-    // exactly to whichever calibration fixture happened to come first.
-    let c0 = fits
-        .into_iter()
-        .map(|(program, observations)| {
-            let pooled = core::array::from_fn(|d| {
-                observations
-                    .iter()
-                    .map(|(fitted, _)| fitted[d])
-                    .sum::<u64>()
-                    / observations.len() as u64
-            });
-            (program, pooled)
-        })
-        .collect();
+    let c0 = fits.into_iter().map(|(p, fitted, _)| (p, fitted)).collect();
 
     PooledCensus { v, c0 }
 }
@@ -307,24 +286,4 @@ pub fn render_census_tables(pooled: &PooledCensus) -> String {
         );
     }
     out
-}
-
-#[test]
-fn pooled_overhead_uses_all_fixtures_independent_of_order() {
-    let calibration = |overhead| CensusCalibration {
-        total: [overhead; NUM_CENSUS_DIMS],
-        v: vec![],
-        counts: vec![],
-        spans: vec![],
-    };
-    let program = FsvProgram::UnrolledBaseLayer;
-    let mut fixtures = vec![
-        ("first", program, calibration(1000)),
-        ("second", program, calibration(1004)),
-        ("third", program, calibration(1014)),
-    ];
-    let expected = vec![(program, [1006; NUM_CENSUS_DIMS])];
-    assert_eq!(pool_census(&fixtures).c0, expected);
-    fixtures.reverse();
-    assert_eq!(pool_census(&fixtures).c0, expected);
 }

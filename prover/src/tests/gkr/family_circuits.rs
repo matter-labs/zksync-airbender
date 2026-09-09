@@ -1,4 +1,3 @@
-use super::orchestration::common::MUL_DIV_NUM_CYCLES_PER_CHUNK;
 use super::*;
 use crate::definitions::produce_initial_permutation_product_contribution;
 use ::field::baby_bear::base::BabyBearField;
@@ -23,6 +22,7 @@ const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 // invalid locations
 const TRACE_LEN_LOG2: usize = 24;
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
+const MUL_DIV_NUM_CYCLES_PER_CHUNK: usize = 1 << 23;
 const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 21;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;

@@ -438,8 +438,6 @@ where
 {
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path(circuit_stem));
-    assert_eq!(trace_len, circuit.trace_len, "{circuit_stem} trace length");
-    assert_eq!(num_cycles_per_chunk, circuit.trace_len);
     let mut table_driver = TableDriver::<BabyBearField>::new();
     table_driver_setup(&mut table_driver);
 

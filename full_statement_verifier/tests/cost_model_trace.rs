@@ -3,13 +3,13 @@
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
 //! Manual calibration harness for `src/host_utils/cost_model/census.rs`. Every
-//! calibration test here needs freshly generated local recursion proofs, so those
-//! tests are `#[ignore]`d. CI runs `cost_model_drift.rs`; that detects verifier
+//! test here needs freshly generated local recursion proofs, so all of them are
+//! `#[ignore]`d. CI runs only `cost_model_drift.rs`; that detects verifier
 //! codegen drift but does not validate the committed model's accuracy.
 //!
 //! Fixtures live in `$COST_MODEL_FIXTURE_DIR` as `<fixture>_proof.bin` /
 //! `<fixture>_setups.bin`: zlib-compressed bincode of `ProgramProof` and `Setups`.
-//! Generate all five Sec100 Compression fixtures with the ignored GPU test
+//! Generate all four Sec100 Compression fixtures with the ignored GPU test
 //! `gpu_program_prover::tests::test_generate_sec100_cost_model_fixtures`. It
 //! proves the recursion layers explicitly instead of depending on the production
 //! scheduling threshold. From the repository root:
@@ -25,9 +25,7 @@
 //!
 //! `base` is zkSync OS block 23620012; `base_alt` is hashed Fibonacci with
 //! `(n=15, h=1_200_000)`; `recursion0` and `recursion1` explicitly prove the
-//! Sec100 unrolled base and recursion verifiers. `recursion0_alt` proves the
-//! base verifier on `base_alt`, giving each verifier program two calibration
-//! inputs; `recursion1` remains held out. The files are non-authoritative
+//! Sec100 unrolled base and recursion verifiers. The files are non-authoritative
 //! local calibration inputs and must not be committed or consumed by CI.
 //!
 //! `emit_census_tables` prints the tables to paste into
@@ -47,23 +45,6 @@ fn load_base_layer() -> (Vec<u32>, Vec<u32>) {
         FsvProgram::UnrolledBaseLayer,
         BlakeMode::Compression,
     )
-}
-
-#[test]
-#[ignore = "needs a freshly generated base fixture in $COST_MODEL_FIXTURE_DIR"]
-fn regenerate_bigint_proof_json() {
-    let (_, proof) = trace::load_calibration_proof("base");
-    let bigint = proof
-        .delegation_proofs
-        .get(&common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER)
-        .and_then(|proofs| proofs.first())
-        .expect("the zkSync OS base fixture must contain a bigint proof");
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../prover/test_proofs/bigint_with_extended_control_sec_100_gkr_proof.json");
-    let file = std::fs::File::create(&path).expect("create bigint proof JSON");
-    serde_json::to_writer_pretty(std::io::BufWriter::new(file), bigint)
-        .expect("serialize bigint proof JSON");
-    println!("wrote {}", path.display());
 }
 
 #[test]

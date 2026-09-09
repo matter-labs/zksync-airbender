@@ -90,7 +90,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
                 whir_pow_schedule: vec![28, 27, 25, 25, 21],
             },
         },
-        21 | 22 => ProverConfig {
+        21 => ProverConfig {
             trace_len_log2: trace_len_log_2,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
@@ -104,9 +104,27 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
-                // Keep the 2^22 rates, queries, and PoW for 2^21; shorten
-                // only the final fold so both schedules leave a 2^1 tail.
-                whir_steps_schedule: vec![1, 5, 5, 5, trace_len_log_2 - 17],
+                whir_steps_schedule: vec![1, 5, 5, 5, 4],
+                whir_queries_schedule: vec![87, 15, 8, 6, 5],
+                whir_steps_lde_factors: vec![64, 2048, 32768, 524288],
+                whir_pow_schedule: vec![28, 25, 27, 25, 21],
+            },
+        },
+        22 => ProverConfig {
+            trace_len_log2: trace_len_log_2,
+            same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
+                trace_len_log_2,
+            ),
+            dimension_reducing_sumcheck_schedule: Default::default(),
+            lde_factor: DEFAULT_LDE_FACTOR,
+            cap_size: DEFAULT_CAP_SIZE,
+            base_oracles_values_per_leaf: 2,
+            sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
+            security_level: SecurityLevel::Sec100,
+            whir_schedule: WhirSchedule {
+                base_lde_factor: DEFAULT_LDE_FACTOR,
+                cap_size: DEFAULT_CAP_SIZE,
+                whir_steps_schedule: vec![1, 5, 5, 5, 5],
                 whir_queries_schedule: vec![87, 15, 8, 6, 5],
                 whir_steps_lde_factors: vec![64, 2048, 32768, 524288],
                 whir_pow_schedule: vec![28, 25, 27, 25, 21],
