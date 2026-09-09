@@ -14,7 +14,7 @@ const EXPECTED: &[(&str, u64)] = &[
     ("add_sub_lui_auipc_mop", 1031431),
     ("jump_branch_slt", 1057906),
     ("shift_binop", 1092174),
-    ("unsigned_mul_div", 1053645),
+    ("unsigned_mul_div", 1017883),
     ("mem_word_only", 1017323),
     ("mem_subword_only", 1036422),
     ("inits_and_teardowns", 876826),

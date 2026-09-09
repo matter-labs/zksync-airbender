@@ -12,10 +12,12 @@ use riscv_transpiler::vm::{Counters, RamWithRomRegion, SimpleSnapshotter, Simple
 use std::alloc::Global;
 use worker::Worker;
 
-/// log2 of the trace length used by every executor-family circuit (per-family,
-/// unified, i/t). Must match the cs-side compile constant.
+/// Default trace length for per-family executor circuits and standalone i/t.
+/// Mul/div uses its own smaller trace. These must match the cs-side settings.
 pub const TRACE_LEN_LOG2: usize = 24;
 pub const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
+pub const MUL_DIV_TRACE_LEN_LOG2: usize = 23;
+pub const MUL_DIV_NUM_CYCLES_PER_CHUNK: usize = 1 << MUL_DIV_TRACE_LEN_LOG2;
 pub const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 
 /// Per-family path: how many init+teardown sets the standalone

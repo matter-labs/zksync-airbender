@@ -1,3 +1,4 @@
+use super::orchestration::common::MUL_DIV_NUM_CYCLES_PER_CHUNK;
 use super::*;
 use crate::definitions::produce_initial_permutation_product_contribution;
 use ::field::baby_bear::base::BabyBearField;
@@ -183,7 +184,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
             < NUM_CYCLES_PER_CHUNK
     );
     assert!(
-        counters.get_calls_to_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>() < NUM_CYCLES_PER_CHUNK
+        counters.get_calls_to_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>()
+            < MUL_DIV_NUM_CYCLES_PER_CHUNK
     );
     assert!(
         counters.get_calls_to_circuit_family::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>()
@@ -326,8 +328,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
             counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>(),
             &preprocessing_data[&CIRCUIT_TYPE],
             cs::gkr_circuits::mul_div::mul_div_table_driver_fn::<BabyBearField, false>,
-            trace_len,
-            NUM_CYCLES_PER_CHUNK,
+            MUL_DIV_NUM_CYCLES_PER_CHUNK,
+            MUL_DIV_NUM_CYCLES_PER_CHUNK,
             &external_challenges,
             level,
             PROVE_EMPTY,
