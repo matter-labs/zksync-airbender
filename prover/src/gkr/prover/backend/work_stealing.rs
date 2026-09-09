@@ -134,25 +134,6 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
     }
 
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<E>,
-        twiddles: &Twiddles<F, Global>,
-        _pool: &dyn AllocationPool<F, E>,
-        worker: &Worker,
-    ) -> Vec<E> {
-        ws_monomial_form_from_main_domain(source_domain, twiddles, worker)
-    }
-
-    fn hypercube_evals_from_monomial_form(
-        &self,
-        monomial_form: Vec<E>,
-        _pool: &dyn AllocationPool<F, E>,
-        worker: &Worker,
-    ) -> Vec<E> {
-        ws_hypercube_evals_from_monomial_form::<F, E>(monomial_form, worker)
-    }
-
     fn update_eq_poly(
         &self,
         eq_poly: &mut [E],

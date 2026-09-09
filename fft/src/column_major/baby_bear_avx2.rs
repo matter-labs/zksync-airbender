@@ -2702,6 +2702,206 @@ pub mod ext4 {
         }
     }
 
+    /// Radix-4 fused SUB sweep (strides `s`, `2s`) over items: the inverse of
+    /// [`add_radix4_items`]. The per-variable stages of the Mobius transform
+    /// commute, so the SUB transform runs the same 1 -> n/2 stride order.
+    #[inline(always)]
+    unsafe fn sub_radix4_items(
+        a: *mut BabyBearExt4,
+        s: usize,
+        item_range: core::ops::Range<usize>,
+    ) {
+        let (start, end) = (item_range.start, item_range.end);
+        let core = |x0: __m256i, x1: __m256i, x2: __m256i, x3: __m256i| {
+            // stride s: x1 -= x0; x3 -= x2. stride 2s: x2 -= x0; x3 -= x1'
+            let n1 = sub(x1, x0);
+            let n3 = sub(sub(x3, x2), n1);
+            let n2 = sub(x2, x0);
+            (n1, n2, n3)
+        };
+        if s == 1 {
+            let mut t = start;
+            while t + 1 < end {
+                let j = 4 * t;
+                let a01 = ld2(a.add(j));
+                let a23 = ld2(a.add(j + 2));
+                let b01 = ld2(a.add(j + 4));
+                let b23 = ld2(a.add(j + 6));
+                let x0 = lows(a01, b01);
+                let (n1, n2, n3) = core(x0, highs(a01, b01), lows(a23, b23), highs(a23, b23));
+                st2(a.add(j), lows(x0, n1));
+                st2(a.add(j + 2), lows(n2, n3));
+                st2(a.add(j + 4), highs(x0, n1));
+                st2(a.add(j + 6), highs(n2, n3));
+                t += 2;
+            }
+            if t < end {
+                let j = 4 * t;
+                let (n1, n2, n3) = core(
+                    ld1(a.add(j)),
+                    ld1(a.add(j + 1)),
+                    ld1(a.add(j + 2)),
+                    ld1(a.add(j + 3)),
+                );
+                st1(a.add(j + 1), n1);
+                st1(a.add(j + 2), n2);
+                st1(a.add(j + 3), n3);
+            }
+            return;
+        }
+        let mut t = start;
+        let single = |t: usize| {
+            let blk = t / s;
+            let j = blk * (4 * s) + (t % s);
+            let (n1, n2, n3) = core(
+                ld1(a.add(j)),
+                ld1(a.add(j + s)),
+                ld1(a.add(j + 2 * s)),
+                ld1(a.add(j + 3 * s)),
+            );
+            st1(a.add(j + s), n1);
+            st1(a.add(j + 2 * s), n2);
+            st1(a.add(j + 3 * s), n3);
+        };
+        if t < end && t % 2 == 1 {
+            single(t);
+            t += 1;
+        }
+        while t + 1 < end {
+            let blk = t / s;
+            let j = blk * (4 * s) + (t % s);
+            let (n1, n2, n3) = core(
+                ld2(a.add(j)),
+                ld2(a.add(j + s)),
+                ld2(a.add(j + 2 * s)),
+                ld2(a.add(j + 3 * s)),
+            );
+            st2(a.add(j + s), n1);
+            st2(a.add(j + 2 * s), n2);
+            st2(a.add(j + 3 * s), n3);
+            t += 2;
+        }
+        if t < end {
+            single(t);
+        }
+    }
+
+    /// Single SUB sweep (stride `s`) over items.
+    #[inline(always)]
+    unsafe fn sub_single_items(
+        a: *mut BabyBearExt4,
+        s: usize,
+        item_range: core::ops::Range<usize>,
+    ) {
+        let (start, end) = (item_range.start, item_range.end);
+        if s == 1 {
+            let mut t = start;
+            while t + 1 < end {
+                let j = 2 * t;
+                let a01 = ld2(a.add(j));
+                let b01 = ld2(a.add(j + 2));
+                let x0 = lows(a01, b01);
+                let n1 = sub(highs(a01, b01), x0);
+                st2(a.add(j), lows(x0, n1));
+                st2(a.add(j + 2), highs(x0, n1));
+                t += 2;
+            }
+            if t < end {
+                let j = 2 * t;
+                st1(a.add(j + 1), sub(ld1(a.add(j + 1)), ld1(a.add(j))));
+            }
+            return;
+        }
+        let mut t = start;
+        let single = |t: usize| {
+            let blk = t / s;
+            let j = blk * (2 * s) + (t % s);
+            st1(a.add(j + s), sub(ld1(a.add(j + s)), ld1(a.add(j))));
+        };
+        if t < end && t % 2 == 1 {
+            single(t);
+            t += 1;
+        }
+        while t + 1 < end {
+            let blk = t / s;
+            let j = blk * (2 * s) + (t % s);
+            st2(a.add(j + s), sub(ld2(a.add(j + s)), ld2(a.add(j))));
+            t += 2;
+        }
+        if t < end {
+            single(t);
+        }
+    }
+
+    /// Worker-parallel `hypercube evals -> monomial coefficients` (the SUB
+    /// Mobius transform, radix-4 fused vector subs), all threads on one
+    /// array. Byte-identical to `multivariate_hypercube_evals_into_coeffs`
+    /// (natural LSB order): the inverse of [`hypercube_evals_from_monomial_form`].
+    pub fn monomial_form_from_hypercube_evals(
+        mut v: Vec<BabyBearExt4>,
+        worker: &Worker,
+    ) -> Vec<BabyBearExt4> {
+        let n = v.len();
+        let log_n = n.trailing_zeros();
+        const PAR_THRESHOLD: usize = 1 << 12;
+        let base_addr = v.as_mut_ptr() as usize;
+
+        if n < PAR_THRESHOLD {
+            unsafe {
+                let p = v.as_mut_ptr();
+                let mut s = 1usize;
+                let mut left = log_n;
+                while left >= 2 {
+                    sub_radix4_items(p, s, 0..n / 4);
+                    s *= 4;
+                    left -= 2;
+                }
+                if left == 1 {
+                    sub_single_items(p, s, 0..n / 2);
+                }
+            }
+            return v;
+        }
+
+        let mut s = 1usize;
+        let mut left = log_n;
+        while left >= 2 {
+            let cur_s = s;
+            worker.scope(n / 4, |scope, geometry| {
+                let (work, chunks) = (n / 4, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                        sub_radix4_items(
+                            base_addr as *mut BabyBearExt4,
+                            cur_s,
+                            start..start + size,
+                        );
+                    });
+                }
+            });
+            s *= 4;
+            left -= 2;
+        }
+        if left == 1 {
+            let cur_s = s;
+            worker.scope(n / 2, |scope, geometry| {
+                let (work, chunks) = (n / 2, geometry.len());
+                for thread_idx in 0..chunks {
+                    let (start, size) = balanced_chunk(work, chunks, thread_idx);
+                    spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                        sub_single_items(
+                            base_addr as *mut BabyBearExt4,
+                            cur_s,
+                            start..start + size,
+                        );
+                    });
+                }
+            });
+        }
+        v
+    }
+
     /// Worker-parallel `monomial coefficients -> hypercube evals` (the ADD
     /// Mobius transform, strides 1 -> n/2, radix-4 fused vector adds), all
     /// threads on one array. Byte-identical to
@@ -2852,6 +3052,35 @@ mod tests {
                 }
                 let got = ext4::hypercube_evals_from_monomial_form(input.clone(), &worker);
                 assert_eq!(got, expected, "ext4 hc-evals diverged at log_n={log_n}");
+
+                // the SUB transform is the inverse (scalar reference: strides
+                // n/2 -> 1, `b -= a`), and it inverts the ADD kernel exactly
+                let mut expected = input.clone();
+                {
+                    let mut stride = n / 2;
+                    while stride >= 1 {
+                        let mut i = 0usize;
+                        while i < n {
+                            for _ in 0..stride {
+                                let lhs = expected[i];
+                                expected[i + stride].sub_assign(&lhs);
+                                i += 1;
+                            }
+                            i += stride;
+                        }
+                        stride /= 2;
+                    }
+                }
+                let got_sub = ext4::monomial_form_from_hypercube_evals(input.clone(), &worker);
+                assert_eq!(
+                    got_sub, expected,
+                    "ext4 sub-transform diverged at log_n={log_n}"
+                );
+                let round_trip = ext4::monomial_form_from_hypercube_evals(got, &worker);
+                assert_eq!(
+                    round_trip, input,
+                    "ext4 transform round trip diverged at log_n={log_n}"
+                );
             }
         }
     }

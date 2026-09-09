@@ -309,25 +309,12 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx512WorkStealingBackend 
             .pack_polys_from_hypercubes_to_monomials(evals, pack_log2, pool, worker)
     }
 
-    fn monomial_form_from_main_domain(
+    fn monomial_form_from_hypercube_evals(
         &self,
-        source_domain: Vec<BabyBearExt4>,
-        twiddles: &Self::TwiddleSet,
-        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
+        evals: &[BabyBearExt4],
         worker: &Worker,
     ) -> Vec<BabyBearExt4> {
-        self.inner
-            .monomial_form_from_main_domain(source_domain, twiddles, pool, worker)
-    }
-
-    fn hypercube_evals_from_monomial_form(
-        &self,
-        monomial_form: Vec<BabyBearExt4>,
-        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
-        worker: &Worker,
-    ) -> Vec<BabyBearExt4> {
-        self.inner
-            .hypercube_evals_from_monomial_form(monomial_form, pool, worker)
+        self.inner.monomial_form_from_hypercube_evals(evals, worker)
     }
 
     fn update_eq_poly(

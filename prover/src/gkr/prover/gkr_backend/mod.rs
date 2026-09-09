@@ -205,6 +205,23 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     /// poly of the layer's batched relation).
     type UniskipSameSizeFoldBuffer;
 
+    /// The batched WHIR proximity polynomial straight from the base-layer
+    /// columns: `dst[t.dst_offset + i] += t.power * t.column[i]` over every
+    /// term (`ext += ext * base`), every `dst` element written exactly once
+    /// (zero where no term lands). `dst` is `k` slices of one column length
+    /// (`k > 1` only for packed commitments, whose sub-polys are concatenated
+    /// block by block). The default is the worker-parallel scalar loop;
+    /// backends override it with vector kernels. The values must equal
+    /// [`accumulate_base_columns_into_scalar`]'s.
+    fn accumulate_base_columns_into(
+        &self,
+        dst: &mut [core::mem::MaybeUninit<E>],
+        terms: &[BatchedBaseColumn<'_, F, E>],
+        worker: &Worker,
+    ) {
+        accumulate_base_columns_into_scalar::<F, E>(dst, terms, worker);
+    }
+
     /// Constructor for the all-naive same-size fold buffers: takes the
     /// validated schedule, the trace length, and the input poly counts
     /// (base, extension) that require a buffer; returns one buffer per poly
@@ -373,6 +390,134 @@ impl<E, S> DimReducingSumcheckScratch<E, S> {
         }
         for b in self.tri {
             pool.give_box(b);
+        }
+    }
+}
+
+/// One base-layer column's share of the batched WHIR proximity polynomial
+/// (see [`GKRBackend::accumulate_base_columns_into`]).
+#[derive(Clone, Copy)]
+pub struct BatchedBaseColumn<'a, F, E> {
+    /// The column's boolean-hypercube evaluations.
+    pub column: &'a [F],
+    /// Its batching weight (a power of the batching challenge).
+    pub power: E,
+    /// Where the column lands in `dst` (a multiple of the column length).
+    pub dst_offset: usize,
+}
+
+/// Rows per accumulation block: the block of the destination stays in L1
+/// while the columns stream through it once each.
+const ACCUMULATE_BLOCK: usize = 1 << 12;
+
+/// The scalar, worker-parallel reference of
+/// [`GKRBackend::accumulate_base_columns_into`].
+pub fn accumulate_base_columns_into_scalar<F: PrimeField, E: FieldExtension<F> + Field>(
+    dst: &mut [core::mem::MaybeUninit<E>],
+    terms: &[BatchedBaseColumn<'_, F, E>],
+    worker: &Worker,
+) {
+    let n = terms.first().map(|t| t.column.len()).unwrap_or(dst.len());
+    assert!(n > 0 && dst.len() % n == 0);
+    for t in terms.iter() {
+        assert_eq!(t.column.len(), n);
+        assert!(t.dst_offset % n == 0 && t.dst_offset + n <= dst.len());
+    }
+    let slices = dst.len() / n;
+    for y in 0..slices {
+        let off = y * n;
+        let slice_terms: Vec<&BatchedBaseColumn<'_, F, E>> =
+            terms.iter().filter(|t| t.dst_offset == off).collect();
+        let dst_slice = &mut dst[off..off + n];
+        let slice_terms = &slice_terms;
+        worker.scope_with_threshold(n, crate::gkr::PAR_THRESHOLD, |scope, geometry| {
+            dst_slice
+                .chunks_for_geometry_mut(geometry)
+                .enumerate()
+                .for_each(|(idx, chunk)| {
+                    let row0 = geometry.get_chunk_start_pos(idx);
+                    Worker::smart_spawn(scope, idx == geometry.len() - 1, move |_| {
+                        for (b, block) in chunk.chunks_mut(ACCUMULATE_BLOCK).enumerate() {
+                            let start = row0 + b * ACCUMULATE_BLOCK;
+                            for d in block.iter_mut() {
+                                d.write(E::ZERO);
+                            }
+                            // SAFETY: just initialized
+                            let block: &mut [E] = unsafe {
+                                core::slice::from_raw_parts_mut(
+                                    block.as_mut_ptr() as *mut E,
+                                    block.len(),
+                                )
+                            };
+                            for t in slice_terms.iter() {
+                                let src = &t.column[start..start + block.len()];
+                                for (d, s) in block.iter_mut().zip(src.iter()) {
+                                    d.add_assign_product_with_base(&t.power, s);
+                                }
+                            }
+                        }
+                    });
+                })
+        });
+    }
+}
+
+#[cfg(test)]
+mod accumulate_scalar_tests {
+    use super::*;
+    use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+    use field::Rand;
+
+    /// The scalar accumulation against the definition, over odd lengths,
+    /// two packed slices and the empty term list.
+    #[test]
+    fn accumulate_base_columns_scalar_matches_definition() {
+        let worker = Worker::new_with_num_threads(3);
+        let mut rng = rand::thread_rng();
+        for (n, slices, num_cols) in [
+            (1usize << 10, 1usize, 5usize),
+            (4097, 2, 7),
+            (37, 1, 3),
+            (1 << 13, 1, 0),
+        ] {
+            let cols: Vec<Vec<BabyBearField>> = (0..num_cols)
+                .map(|_| {
+                    (0..n)
+                        .map(|_| BabyBearField::random_element(&mut rng))
+                        .collect()
+                })
+                .collect();
+            let terms: Vec<BatchedBaseColumn<'_, BabyBearField, BabyBearExt4>> = cols
+                .iter()
+                .enumerate()
+                .map(|(j, c)| BatchedBaseColumn {
+                    column: &c[..],
+                    power: BabyBearExt4::random_element(&mut rng),
+                    dst_offset: (j % slices) * n,
+                })
+                .collect();
+            let len = n * slices;
+            let mut a: Vec<core::mem::MaybeUninit<BabyBearExt4>> = Vec::with_capacity(len);
+            unsafe { a.set_len(len) };
+            accumulate_base_columns_into_scalar::<BabyBearField, BabyBearExt4>(
+                &mut a, &terms, &worker,
+            );
+            let a: Vec<BabyBearExt4> = a.iter().map(|x| unsafe { x.assume_init() }).collect();
+            for y in 0..slices {
+                for i in 0..n {
+                    let mut v = BabyBearExt4::ZERO;
+                    for t in terms.iter().filter(|t| t.dst_offset == y * n) {
+                        let mut w = t.power;
+                        w.mul_assign_by_base(&t.column[i]);
+                        v.add_assign(&w);
+                    }
+                    assert_eq!(
+                        a[y * n + i],
+                        v,
+                        "n {n} slices {slices} cols {num_cols} at {y}/{i}"
+                    );
+                }
+            }
         }
     }
 }

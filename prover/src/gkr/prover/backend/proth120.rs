@@ -137,25 +137,6 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
     }
 
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<Proth120>,
-        twiddles: &Twiddles<Proth120, Global>,
-        _pool: &dyn AllocationPool<Proth120, Proth120>,
-        worker: &Worker,
-    ) -> Vec<Proth120> {
-        ws_monomial_form_from_main_domain(source_domain, twiddles, worker)
-    }
-
-    fn hypercube_evals_from_monomial_form(
-        &self,
-        monomial_form: Vec<Proth120>,
-        _pool: &dyn AllocationPool<Proth120, Proth120>,
-        worker: &Worker,
-    ) -> Vec<Proth120> {
-        ws_hypercube_evals_from_monomial_form::<Proth120, Proth120>(monomial_form, worker)
-    }
-
     fn update_eq_poly(
         &self,
         eq_poly: &mut [Proth120],

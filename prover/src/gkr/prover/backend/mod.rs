@@ -12,10 +12,9 @@
 //! values are identical; only the execution strategy may differ.
 
 use super::commitment_utils::{
-    compute_column_major_lde_from_monomial_form,
-    compute_column_major_monomial_form_from_main_domain_owned,
-    lde_multiple_polys_parallel_from_hypercubes, lde_packed_monomials_into_cosets,
-    pack_polys_parallel_from_hypercubes_to_monomials, ColumnMajorCosetBoundTracePart,
+    compute_column_major_lde_from_monomial_form, lde_multiple_polys_parallel_from_hypercubes,
+    lde_packed_monomials_into_cosets, pack_polys_parallel_from_hypercubes_to_monomials,
+    ColumnMajorCosetBoundTracePart,
 };
 use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
 use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
@@ -429,31 +428,22 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         worker: &Worker,
     ) -> Vec<Vec<F>>;
 
-    /// Main-domain (coset 0) evaluations → multilinear monomial coefficients
-    /// (inverse NTT + 1/N + bit-reversal), consuming the input. Used for the
-    /// batched proximity polynomial in `whir_fold` — an O(1)-per-proof
-    /// transformation of a full trace-length Ext poly, so implementations
-    /// should put ALL worker threads on it. Mirrors
-    /// `compute_column_major_monomial_form_from_main_domain_owned`.
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<E>,
-        twiddles: &Self::TwiddleSet,
-        pool: &dyn AllocationPool<F, E>,
-        worker: &Worker,
-    ) -> Vec<E>;
-
-    /// Monomial coefficients → boolean-hypercube evaluations (the ADD Mobius
-    /// transform) followed by the bit-reversal — the second O(1)-per-proof
-    /// transformation of the batched Ext poly in `whir_fold`; implementations
-    /// should put ALL worker threads on it. Mirrors
-    /// `parallel_multivariate_coeffs_into_hypercube_evals` + bitrev.
-    fn hypercube_evals_from_monomial_form(
-        &self,
-        monomial_form: Vec<E>,
-        pool: &dyn AllocationPool<F, E>,
-        worker: &Worker,
-    ) -> Vec<E>;
+    /// Boolean-hypercube evaluations → multilinear monomial coefficients (the
+    /// SUB Mobius transform, natural LSB order), OUT OF PLACE: `whir_fold`'s
+    /// batched proximity polynomial keeps its evaluation form for the
+    /// sumcheck and needs its monomial form for the OOD evaluations, the
+    /// coefficient folds and the extension-field oracle LDEs. An
+    /// O(1)-per-proof pass over a full trace-length Ext poly, so
+    /// implementations should put ALL worker threads on it. Mirrors
+    /// `parallel_multivariate_hypercube_evals_into_coeffs`.
+    fn monomial_form_from_hypercube_evals(&self, evals: &[E], worker: &Worker) -> Vec<E> {
+        let mut v = parallel_copy_to_vec(evals, worker);
+        let log_n = v.len().trailing_zeros();
+        crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs(
+            &mut v, log_n, worker,
+        );
+        v
+    }
 
     /// Accumulate one WHIR round's equality-poly contributions into the
     /// (already folded) eq poly: `dst[i] += ch_ood * eq(i, ood_point)` followed
@@ -529,6 +519,69 @@ pub type DefaultBabyBearBackend = WorkStealingBackend;
 /// The per-coset multiplicative offsets of an `lde_factor`-times blowup of a
 /// size-`n` domain: the first `lde_factor` powers of the `n * lde_factor`
 /// root. The single source for every commit path that enumerates cosets.
+/// `src.to_vec()` with all worker threads writing disjoint chunks (a full
+/// trace-length Ext poly is hundreds of MB).
+pub fn parallel_copy_to_vec<T: Copy + Send + Sync>(src: &[T], worker: &Worker) -> Vec<T> {
+    let n = src.len();
+    let mut v: Vec<T> = Vec::with_capacity(n);
+    worker.scope(n, |scope, geometry| {
+        let mut dst_rest = &mut v.spare_capacity_mut()[..n];
+        let mut src_rest = src;
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let (d, d_tail) = dst_rest.split_at_mut(chunk_size);
+            dst_rest = d_tail;
+            let (s, s_tail) = src_rest.split_at(chunk_size);
+            src_rest = s_tail;
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                for (dst, src) in d.iter_mut().zip(s.iter()) {
+                    dst.write(*src);
+                }
+            });
+        }
+    });
+    // SAFETY: every one of the `n` slots was written by exactly one chunk
+    unsafe { v.set_len(n) };
+    v
+}
+
+/// Test-only window of the historical all-threads `main domain -> monomial
+/// form` (worker-parallel inverse NTT, parallel `1/N` scaling, parallel
+/// bit-reversal; byte-identical to the serial reference) for the LSB
+/// self-checks.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn test_helpers_monomial_from_main_domain<F: PrimeField + TwoAdicField>(
+    source_domain: Vec<F>,
+    twiddles: &Twiddles<F, Global>,
+    worker: &Worker,
+) -> Vec<F> {
+    let n = source_domain.len();
+    let log_n = n.trailing_zeros();
+    let mut ifft = source_domain;
+    let size_inv = F::from_u32_unchecked(n as u32).inverse().unwrap();
+    fft::naive::parallel_ct_ntt_natural_to_bitreversed(
+        &mut ifft,
+        log_n,
+        &twiddles.inverse_twiddles[..(n / 2).max(1)],
+        worker,
+    );
+    worker.scope(n, |scope, geometry| {
+        let mut rest = &mut ifft[..];
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let (chunk, tail) = rest.split_at_mut(chunk_size);
+            rest = tail;
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                for el in chunk.iter_mut() {
+                    el.mul_assign(&size_inv);
+                }
+            });
+        }
+    });
+    fft::parallel_bitreverse_enumeration_inplace(&mut ifft, worker);
+    ifft
+}
+
 pub(crate) fn coset_offsets<F: PrimeField + TwoAdicField>(n: usize, lde_factor: usize) -> Vec<F> {
     let next_root = fft::domain_generator_for_size::<F>((n * lde_factor) as u64);
     fft::materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor)
@@ -1090,70 +1143,6 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
     });
 }
 
-/// All-threads `main domain -> monomial form` for the work-stealing backends:
-/// worker-parallel inverse NTT, parallel `1/N` scaling, parallel bit-reversal.
-/// Byte-identical to the serial reference.
-fn ws_monomial_form_from_main_domain<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
-    source_domain: Vec<E>,
-    twiddles: &Twiddles<F, Global>,
-    worker: &Worker,
-) -> Vec<E> {
-    let n = source_domain.len();
-    let log_n = n.trailing_zeros();
-    let mut ifft = source_domain;
-    let size_inv = F::from_u32_unchecked(n as u32).inverse().unwrap();
-    fft::naive::parallel_ct_ntt_natural_to_bitreversed(
-        &mut ifft,
-        log_n,
-        &twiddles.inverse_twiddles[..(n / 2).max(1)],
-        worker,
-    );
-    worker.scope(n, |scope, geometry| {
-        let mut rest = &mut ifft[..];
-        for thread_idx in 0..geometry.len() {
-            let chunk_size = geometry.get_chunk_size(thread_idx);
-            let (chunk, tail) = rest.split_at_mut(chunk_size);
-            rest = tail;
-            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                for el in chunk.iter_mut() {
-                    el.mul_assign_by_base(&size_inv);
-                }
-            });
-        }
-    });
-    fft::parallel_bitreverse_enumeration_inplace(&mut ifft, worker);
-    ifft
-}
-
-/// All-threads `monomial form -> hypercube evals` (+ bitrev) for the
-/// work-stealing backends. Byte-identical to the serial reference.
-fn ws_hypercube_evals_from_monomial_form<
-    F: PrimeField + TwoAdicField,
-    E: FieldExtension<F> + Field,
->(
-    mut v: Vec<E>,
-    worker: &Worker,
-) -> Vec<E> {
-    let log_n = v.len().trailing_zeros();
-    crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_coeffs_into_hypercube_evals(
-        &mut v, log_n, worker,
-    );
-    // NATURAL order: index bit b <-> variable b, matching the LSB-binding
-    // sumcheck track (the old bitreverse adapted MSB-array kernels)
-    v
-}
-
-/// Test-only window into [`ws_monomial_form_from_main_domain`] for the LSB
-/// consistency baseline.
-#[cfg(test)]
-pub(crate) fn test_helpers_monomial_from_main_domain<F: PrimeField + TwoAdicField>(
-    source_domain: Vec<F>,
-    twiddles: &Twiddles<F, Global>,
-    worker: &Worker,
-) -> Vec<F> {
-    ws_monomial_form_from_main_domain::<F, F>(source_domain, twiddles, worker)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1339,34 +1328,23 @@ mod tests {
         }
         for n_log in [3u32, 8, 13, 14] {
             let n = 1usize << n_log;
-            let twiddles = Twiddles::<F, Global>::new(n, &worker);
-            let b_twiddles = b.make_twiddles(n, &worker);
             let v: Vec<E> = rand_cols::<E>(1, n).pop().unwrap();
 
-            let a = Backend::<F, E>::monomial_form_from_main_domain(
-                &NaiveBackend,
-                v.clone(),
-                &twiddles,
-                &GenericAllocationPool::proxy(),
-                &worker,
+            let a = Backend::<F, E>::monomial_form_from_hypercube_evals(&NaiveBackend, &v, &worker);
+            let bres = b.monomial_form_from_hypercube_evals(&v, &worker);
+            assert_eq!(
+                a, bres,
+                "monomial_form_from_hypercube_evals diverged at n_log={n_log}"
             );
-            let bres = b.monomial_form_from_main_domain(
-                v.clone(),
-                &b_twiddles,
-                &GenericAllocationPool::proxy(),
-                &worker,
+            let mut reference = v.clone();
+            crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs(
+                &mut reference,
+                n_log,
             );
-            assert_eq!(a, bres, "monomial_form diverged at n_log={n_log}");
-
-            let a = Backend::<F, E>::hypercube_evals_from_monomial_form(
-                &NaiveBackend,
-                v.clone(),
-                &GenericAllocationPool::proxy(),
-                &worker,
+            assert_eq!(
+                a, reference,
+                "monomial_form_from_hypercube_evals reference at n_log={n_log}"
             );
-            let bres =
-                b.hypercube_evals_from_monomial_form(v, &GenericAllocationPool::proxy(), &worker);
-            assert_eq!(a, bres, "hypercube_evals diverged at n_log={n_log}");
         }
     }
 

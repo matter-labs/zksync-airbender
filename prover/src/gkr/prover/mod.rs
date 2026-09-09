@@ -2045,9 +2045,16 @@ where
             );
         }
     }
+    // everything WHIR does not need goes back to the pool now (layers above
+    // the base one, virtual/extension/cached polys of the base layer); the
+    // committed columns travel into `whir_fold`, which accumulates the batched
+    // proximity polynomial from them and releases them
     let t_drop = std::time::Instant::now();
-    gkr_storage.release_into(pool);
-    println!("[timing] gkr_storage release: {:?}", t_drop.elapsed());
+    gkr_storage.release_all_but_committed_columns_into(pool);
+    println!(
+        "[timing] gkr_storage release (all but committed columns): {:?}",
+        t_drop.elapsed()
+    );
     {
         let s = pool.stats();
         println!(
@@ -2201,6 +2208,10 @@ where
         "[timing] GKR phase (layers + sumcheck loops): {:.3?}",
         t_gkr_phase.elapsed()
     );
+    // the packing of the base commitments (0 = unpacked): the batched
+    // proximity polynomial is accumulated from the base-layer columns inside
+    // `whir_fold`, which consumes the GKR storage
+    let pack_log2_for_whir = trace_len_log2_for_whir - trace_len.trailing_zeros() as usize;
     let t_whir = std::time::Instant::now();
     let whir_proof = whir_fold::<F, E, T, TR, B, GB>(
         mem_oracle,
@@ -2209,6 +2220,8 @@ where
         wit_polys_claims,
         setup_commitment,
         setup_polys_claims,
+        gkr_storage,
+        pack_log2_for_whir,
         base_layer_z.clone(),
         whir_batching_challenge,
         &prover_config.whir_schedule,

@@ -64,28 +64,25 @@
 use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
 use crate::gkr::prover::backend::LeafConversionHandle;
 use crate::gkr::prover::backend::TwiddleSetOps;
+use crate::gkr::prover::gkr_backend::BatchedBaseColumn;
 use crate::gkr::prover::stages::commitment_utils::{
-    compute_column_major_lde_from_monomial_form,
-    compute_column_major_monomial_form_from_main_domain_owned, ColumnMajorCosetBoundTracePart,
+    compute_column_major_lde_from_monomial_form, ColumnMajorCosetBoundTracePart,
 };
 use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
 use crate::gkr::prover::WhirSchedule;
+use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
-use crate::gkr::whir::hypercube_to_monomial::{
-    multivariate_coeffs_into_hypercube_evals, parallel_multivariate_coeffs_into_hypercube_evals,
-};
+use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 use crate::gkr::PAR_THRESHOLD;
-use crate::query_utils::assemble_query_index;
-use crate::{
-    gkr::prover::apply_row_wise,
-    merkle_trees::{
-        ColumnMajorMerkleTreeConstructor, ColumnView, CosetIndexedAccessor, MainDomainColumn,
-        MerkleTreeCapVarLength, PathQueryable, RSQueryable, SingleCosetRSQueryable,
-    },
+use crate::merkle_trees::{
+    ColumnMajorMerkleTreeConstructor, CosetIndexedAccessor, MainDomainColumn,
+    MerkleTreeCapVarLength, PathQueryable, RSQueryable, SingleCosetRSQueryable,
 };
+use crate::query_utils::assemble_query_index;
+use cs::definitions::GKRAddress;
 use fft::{
     batch_inverse_inplace, bitreverse_enumeration_inplace, bitreverse_index,
     domain_generator_for_size, materialize_powers_serial_starting_with_one, Twiddles,
@@ -1089,6 +1086,13 @@ pub fn whir_fold<
     wit_polys_claims: Vec<E>,
     setup: &crate::gkr::prover::SetupCommitment<F, T>,
     setup_polys_claims: Vec<E>,
+    // The GKR storage, CONSUMED: its base layer holds the committed columns'
+    // hypercube evaluations the batched proximity polynomial is accumulated
+    // from; it is released to `pool` right after.
+    gkr_storage: GKRStorage<F, E>,
+    // log2 of the packing factor of the base commitments (0 = unpacked):
+    // `trace_len_log2 - pack_log2` is the base-layer column length.
+    pack_log2: usize,
     original_evaluation_point: Vec<E>,
     batching_challenge: E,
     whir_schedule: &WhirSchedule,
@@ -1097,9 +1101,12 @@ pub fn whir_fold<
     tree_cap_size: usize,
     trace_len_log2: usize,
     // Compute backend for the in-memory-path heavy ops (intermediate-oracle LDEs,
-    // the batching IFFT). The backend must not change any produced values.
+    // the batched poly's hypercube -> monomial transform). The backend must not
+    // change any produced values.
     backend: &B,
-    // The GKR backend's vector kernels for the WHIR-side folds (the eq poly).
+    // The GKR backend's vector kernels for the WHIR-side passes: the base
+    // column accumulation and the LSB folds (the eq poly and the batched
+    // poly's evaluation form).
     gkr_backend: &GB,
     // How to materialize each intermediate (folded) RS oracle. Independent from the
     // storage policy of the base oracles: the base oracles carry their own policy in
@@ -1150,48 +1157,6 @@ where
         "  [timing] initial eq-poly build: {:.3?}",
         t_eq_init.elapsed()
     );
-
-    #[cfg(feature = "gkr_self_checks")]
-    {
-        // just blindly compute consistency of RS oracles and evaluation points
-        let main_domain_column_for_set = |set_idx: usize, c: usize| -> MainDomainColumn<'_, F> {
-            match set_idx {
-                0 => mem_oracle.main_domain_column(c),
-                1 => wit_oracle.main_domain_column(c),
-                2 => setup.main_domain_column(c),
-                _ => unreachable!(),
-            }
-        };
-        for (j, evals) in evals_refs.iter().enumerate() {
-            for (i, eval) in evals.iter().enumerate() {
-                let column = main_domain_column_for_set(j, i);
-                // Reduce to monomial form: evals need the inverse transform,
-                // monomials are already there.
-                let monomial_form = if column.is_monomials() {
-                    column.into_owned()
-                } else {
-                    compute_column_major_monomial_form_from_main_domain_owned(
-                        column.into_owned(),
-                        twiddles.plain(),
-                    )
-                };
-                assert_eq!(monomial_form.len(), 1 << trace_len_log2);
-                let mut sumcheck_evals = monomial_form;
-                multivariate_coeffs_into_hypercube_evals(
-                    &mut sumcheck_evals,
-                    trace_len_log2 as u32,
-                );
-                use crate::gkr::whir::eq_poly::evaluate_with_precomputed_eq;
-                let recomputed_claim =
-                    evaluate_with_precomputed_eq(&sumcheck_evals, eq_pp.as_slice());
-                assert_eq!(
-                    recomputed_claim, *eval,
-                    "claim recomputation diverged for poly {} in oracle set {}",
-                    i, j
-                );
-            }
-        }
-    }
 
     let mut commitments = Vec::with_capacity(3);
     for (i, cap) in set_caps.into_iter().enumerate() {
@@ -1277,134 +1242,79 @@ where
     ];
 
     println!("Computing batched poly for proximity testing");
-
-    // Materialize each oracle set's MAIN-domain columns once. A source returns
-    // whichever form it holds cheaply: materialized cosets give EVALUATIONS, a
-    // monomial-storing recompute source gives MONOMIAL coefficients directly.
-    let main_domain_cols: [Vec<MainDomainColumn<'_, F>>; 3] = [
-        (0..set_num_columns[0])
-            .map(|c| mem_oracle.main_domain_column(c))
-            .collect(),
-        (0..set_num_columns[1])
-            .map(|c| wit_oracle.main_domain_column(c))
-            .collect(),
-        (0..set_num_columns[2])
-            .map(|c| setup.main_domain_column(c))
-            .collect(),
-    ];
-
-    // Split the columns by representation. Both batching and the evals→coefficients
-    // inverse transform are linear, so we can accumulate the eval-form and the
-    // monomial-form columns into separate batched polynomials and combine in
-    // monomial space:
-    //   monomial_form = IFFT(sum_i c_i * evals_i) + sum_j c_j * monomials_j
-    // When every source is materialized (all evals) this reduces to the original
-    // single IFFT; a monomial-storing source contributes with no transform at all.
-    let mut eval_cols: Vec<(E, ColumnView<'_, F>)> = Vec::new();
-    let mut monomial_cols: Vec<(E, ColumnView<'_, F>)> = Vec::new();
-    for (challenges_set, values_set) in [
-        (base_mem_powers, &main_domain_cols[0]),
-        (base_witness_powers, &main_domain_cols[1]),
-        (base_setup_powers, &main_domain_cols[2]),
-    ] {
-        assert_eq!(challenges_set.len(), values_set.len());
-        for (batch_challenge, column) in challenges_set.iter().zip(values_set.iter()) {
-            let src = column.view();
-            assert_eq!(CosetIndexedAccessor::len(&src), 1 << trace_len_log2);
-            if column.is_monomials() {
-                monomial_cols.push((*batch_challenge, src));
-            } else {
-                eval_cols.push((*batch_challenge, src));
-            }
-        }
-    }
-
-    // `dest[i] += challenge * src[chunk_start + i]` over one row chunk; generic
-    // so the contiguous layout inlines plain indexing.
-    fn accumulate_chunk<F: PrimeField, E: FieldExtension<F> + Field, A: CosetIndexedAccessor<F>>(
-        dest: &mut [E],
-        batch_challenge: E,
-        src: &A,
-        chunk_start: usize,
-    ) {
-        for (i, d) in dest.iter_mut().enumerate() {
-            let mut result = batch_challenge;
-            result.mul_assign_by_base(&src.get(chunk_start + i));
-            d.add_assign(&result);
-        }
-    }
-
-    // Weighted sum of a set of same-length base-field columns into an E-valued
-    // accumulator (`dest += challenge * column`), parallelized over rows.
-    let batch_columns = |cols: &[(E, ColumnView<'_, F>)], worker: &Worker| -> Vec<E> {
-        let mut acc = vec![E::ZERO; 1 << trace_len_log2];
-        if !cols.is_empty() {
-            apply_row_wise::<F, E>(
-                vec![],
-                vec![&mut acc],
-                1 << trace_len_log2,
-                worker,
-                |_, dest, chunk_start, chunk_size| {
-                    let mut dest = dest;
-                    let dest = dest.pop().unwrap();
-                    let dest = &mut dest[..chunk_size];
-                    for (batch_challenge, src) in cols.iter() {
-                        match src {
-                            ColumnView::Contiguous(s) => {
-                                accumulate_chunk::<F, E, _>(dest, *batch_challenge, s, chunk_start)
-                            }
-                            ColumnView::Padded(p) => {
-                                accumulate_chunk::<F, E, _>(dest, *batch_challenge, p, chunk_start)
-                            }
-                        }
-                    }
-                },
-            );
-        }
-        acc
-    };
-
     let t_batching = std::time::Instant::now();
-    let batched_evals = batch_columns(&eval_cols, worker);
-    let batched_monomials_direct = batch_columns(&monomial_cols, worker);
-
-    // Eval-form contribution needs the inverse transform; the monomial-form
-    // contribution is already in coefficient space and is simply added on.
-    let mut monomial_form = if eval_cols.is_empty() {
-        // No eval columns: `batched_evals` is the zero polynomial, whose monomial
-        // form is itself — skip the (otherwise wasted) inverse transform.
-        batched_evals
-    } else {
-        backend.monomial_form_from_main_domain(batched_evals, twiddles, pool, worker)
+    // The batched proximity polynomial straight from the base layer: the
+    // committed columns' hypercube evaluations weighted by the powers of the
+    // batching challenge (no codeword batching / IFFT round trip). The
+    // columns come in commitment order — memory then witness (one committed
+    // set when the commitment merged them, two otherwise: the same sequence
+    // either way), then setup; virtual setup polys are not committed. Each
+    // set is packed by `2^pack_log2` consecutive columns into one committed
+    // column (sub-poly `y` of a pack is block `y` of the packed poly) and the
+    // batching powers run over the COMMITTED columns.
+    let base_len = 1usize << (trace_len_log2 - pack_log2);
+    let pack = 1usize << pack_log2;
+    let base_columns = |key: fn(usize) -> GKRAddress| -> Vec<&[F]> {
+        (0..)
+            .map_while(|i| gkr_storage.try_get_base_poly(key(i)))
+            .collect()
     };
-    // `monomial_form += batched_monomials_direct` (both are `1 << trace_len_log2`
-    // long — `batch_columns` always returns a full zero-filled buffer), parallelized
-    // over disjoint row chunks.
-    worker.scope(monomial_form.len(), |scope, geometry| {
-        let mut m_rest = &mut monomial_form[..];
-        let mut d_rest = &batched_monomials_direct[..];
-        for thread_idx in 0..geometry.len() {
-            let chunk_size = geometry.get_chunk_size(thread_idx);
-            let (m_chunk, m_tail) = m_rest.split_at_mut(chunk_size);
-            m_rest = m_tail;
-            let (d_chunk, d_tail) = d_rest.split_at(chunk_size);
-            d_rest = d_tail;
-            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                for (m, d) in m_chunk.iter_mut().zip(d_chunk.iter()) {
-                    m.add_assign(d);
-                }
+    let mut mem_wit_columns = base_columns(GKRAddress::BaseLayerMemory);
+    mem_wit_columns.extend(base_columns(GKRAddress::BaseLayerWitness));
+    let setup_columns = base_columns(GKRAddress::Setup);
+    let mut terms: Vec<BatchedBaseColumn<'_, F, E>> =
+        Vec::with_capacity(mem_wit_columns.len() + setup_columns.len());
+    let mut committed = 0usize;
+    for set in [&mem_wit_columns, &setup_columns] {
+        for (c, column) in set.iter().enumerate() {
+            assert_eq!(column.len(), base_len, "base-layer column length");
+            terms.push(BatchedBaseColumn {
+                column,
+                power: challenge_powers[committed + c / pack],
+                dst_offset: (c % pack) * base_len,
             });
         }
+        committed += set.len().div_ceil(pack);
+    }
+    assert_eq!(
+        committed, total_base_oracles,
+        "one committed (packed) column per group of base-layer columns"
+    );
+
+    #[cfg(feature = "gkr_self_checks")]
+    if pack_log2 == 0 {
+        use crate::gkr::sumcheck::eq_poly::evaluate_with_precomputed_eq;
+        // every claim is its base column's multilinear evaluation at the claim point
+        let claims: Vec<E> = evals_refs.iter().flat_map(|c| c.iter().copied()).collect();
+        assert_eq!(claims.len(), terms.len());
+        for (i, (term, claim)) in terms.iter().zip(claims.iter()).enumerate() {
+            let recomputed = evaluate_with_precomputed_eq::<F, E>(term.column, eq_pp.as_slice());
+            assert_eq!(
+                recomputed, *claim,
+                "claim recomputation diverged for base column {i}"
+            );
+        }
+    }
+
+    // the evaluation form lives in a pooled ping-pong buffer pair: every LSB
+    // fold writes the other buffer through the backend's kernel
+    let mut evals_pp = PingPongPoly::<E>::new_ext::<F>(1usize << trace_len_log2, pool, |dst| {
+        gkr_backend.accumulate_base_columns_into(dst, &terms, worker)
     });
-
-    assert_eq!(monomial_form.len(), 1 << trace_len_log2);
-
-    // O(1)-per-proof transform of the full batched poly: backends put all
-    // worker threads on it (ADD Mobius transform + bit-reversal).
-    let sumcheck_evals =
-        backend.hypercube_evals_from_monomial_form(monomial_form.clone(), pool, worker);
+    drop(terms);
+    drop(mem_wit_columns);
+    drop(setup_columns);
+    let t_release = std::time::Instant::now();
+    gkr_storage.release_into(pool);
     println!(
-        "  [timing] batching stage (columns+IFFT+hc evals): {:.3?}",
+        "  [timing] gkr_storage release: {:.3?}",
+        t_release.elapsed()
+    );
+    let mut sumchecked_poly_monomial_form =
+        backend.monomial_form_from_hypercube_evals(evals_pp.as_slice(), worker);
+    assert_eq!(sumchecked_poly_monomial_form.len(), 1 << trace_len_log2);
+    println!(
+        "  [timing] batching stage (base columns -> hypercube evals -> monomials): {:.3?}",
         t_batching.elapsed()
     );
     let t_round = std::time::Instant::now();
@@ -1444,21 +1354,17 @@ where
     // so we can NOT easily use the same trick with splitting out eq poly highest coordinate in sumcheck.
     // So we make EQ poly explicitly, and then we will update it after every step, and use naively
 
-    let mut sumchecked_poly_evaluation_form_vec = sumcheck_evals;
-    let mut sumchecked_poly_evaluation_form = &mut sumchecked_poly_evaluation_form_vec[..];
-    let mut sumchecked_poly_monomial_form = monomial_form;
     let mut monomial_form_buffer = Vec::with_capacity(sumchecked_poly_monomial_form.len());
 
     let mut claim = batched_claim;
 
     #[cfg(feature = "gkr_self_checks")]
     {
-        let recomputed_claim =
-            dot_product(&sumchecked_poly_evaluation_form, eq_pp.as_slice(), worker);
+        let recomputed_claim = dot_product(evals_pp.as_slice(), eq_pp.as_slice(), worker);
         assert_eq!(recomputed_claim, claim);
     }
 
-    assert_eq!(eq_pp.len(), sumchecked_poly_evaluation_form.len());
+    assert_eq!(eq_pp.len(), evals_pp.len());
     assert_eq!(eq_pp.len(), sumchecked_poly_monomial_form.len());
 
     let mut folding_challenges = vec![];
@@ -1500,11 +1406,8 @@ where
         // this sumcheck; none exist yet
         assert_eq!(in_domain.len(), 0);
         for _ in 0..num_initial_folding_rounds {
-            let (f0, f1, f_half) = special_three_point_eval(
-                &sumchecked_poly_evaluation_form[..],
-                eq_pp.as_slice(),
-                worker,
-            );
+            let (f0, f1, f_half) =
+                special_three_point_eval(evals_pp.as_slice(), eq_pp.as_slice(), worker);
             let evaluation_point = E::from_base(two_inv);
             let univariate_coeffs = special_lagrange_interpolate(f0, f1, f_half, evaluation_point);
             // commit
@@ -1540,16 +1443,9 @@ where
                 worker,
             );
 
-            sumchecked_poly_evaluation_form = fold_evaluation_form(
-                &mut sumchecked_poly_evaluation_form[..],
-                &folding_challenge,
-                worker,
-            );
+            evals_pp.fold::<F, GB>(&folding_challenge, gkr_backend, worker);
 
-            assert_eq!(
-                sumchecked_poly_monomial_form.len(),
-                sumchecked_poly_evaluation_form.len()
-            );
+            assert_eq!(sumchecked_poly_monomial_form.len(), evals_pp.len());
 
             #[cfg(feature = "gkr_self_checks")]
             {
@@ -1558,12 +1454,12 @@ where
                     &mut source,
                     sumchecked_poly_monomial_form.len().trailing_zeros(),
                 );
-                assert_eq!(source, sumchecked_poly_evaluation_form);
+                assert_eq!(&source[..], evals_pp.as_slice());
             }
 
             // and so we fold equality poly too
             eq_pp.fold::<F, GB>(&folding_challenge, gkr_backend, worker);
-            assert_eq!(sumchecked_poly_evaluation_form.len(), eq_pp.len());
+            assert_eq!(evals_pp.len(), eq_pp.len());
         }
         println!(
             "  [timing] round sumcheck+eq folds: {:.3?}",
@@ -1571,14 +1467,13 @@ where
         );
         poly_size_log2 -= num_initial_folding_rounds;
 
-        assert_eq!(sumchecked_poly_evaluation_form.len(), 1 << poly_size_log2);
+        assert_eq!(evals_pp.len(), 1 << poly_size_log2);
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
         assert_eq!(eq_pp.len(), 1 << poly_size_log2);
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let mut full_sum =
-                dot_product(&sumchecked_poly_evaluation_form, eq_pp.as_slice(), worker);
+            let mut full_sum = dot_product(evals_pp.as_slice(), eq_pp.as_slice(), worker);
             full_sum.add_assign(&in_domain.sum_at_current());
             assert_eq!(full_sum, claim);
         }
@@ -1594,7 +1489,7 @@ where
             let (cap, next_oracle, split) = build_intermediate_oracle::<F, E, T, B>(
                 backend,
                 &sumchecked_poly_monomial_form,
-                &sumchecked_poly_evaluation_form[..],
+                evals_pp.as_slice(),
                 lde_factor,
                 1 << next_folding_steps,
                 tree_cap_size,
@@ -1637,11 +1532,8 @@ where
         commit_field_els::<F, E, TR>(&mut transcript_seed, &[ood_value]);
         #[cfg(feature = "gkr_self_checks")]
         {
-            let pows = make_pows(
-                ood_point,
-                sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
-            );
-            let value = evaluate_multivariate(&sumchecked_poly_evaluation_form, &pows, worker);
+            let pows = make_pows(ood_point, evals_pp.len().trailing_zeros() as usize);
+            let value = evaluate_multivariate(evals_pp.as_slice(), &pows, worker);
             assert_eq!(value, ood_value);
         }
 
@@ -1829,12 +1721,9 @@ where
                     "diverged at query {}",
                     i
                 );
-                let pows = make_pows(
-                    root,
-                    sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
-                );
+                let pows = make_pows(root, evals_pp.len().trailing_zeros() as usize);
                 let eval_from_multivariate =
-                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows, worker);
+                    evaluate_multivariate_at_base(evals_pp.as_slice(), &pows, worker);
                 assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
             query_references.clear();
@@ -1904,11 +1793,8 @@ where
         println!("  running sumcheck for {} rounds...", num_folding_steps);
         let t_sumcheck = std::time::Instant::now();
         for _ in 0..num_folding_steps {
-            let (f0, f1, f_half) = special_three_point_eval(
-                &sumchecked_poly_evaluation_form[..],
-                eq_pp.as_slice(),
-                worker,
-            );
+            let (f0, f1, f_half) =
+                special_three_point_eval(evals_pp.as_slice(), eq_pp.as_slice(), worker);
             let evaluation_point = E::from_base(two_inv);
             let mut univariate_coeffs =
                 special_lagrange_interpolate(f0, f1, f_half, evaluation_point);
@@ -1955,19 +1841,12 @@ where
                 worker,
             );
 
-            sumchecked_poly_evaluation_form = fold_evaluation_form(
-                &mut sumchecked_poly_evaluation_form[..],
-                &folding_challenge,
-                worker,
-            );
+            evals_pp.fold::<F, GB>(&folding_challenge, gkr_backend, worker);
 
-            assert_eq!(
-                sumchecked_poly_monomial_form.len(),
-                sumchecked_poly_evaluation_form.len()
-            );
+            assert_eq!(sumchecked_poly_monomial_form.len(), evals_pp.len());
             eq_pp.fold::<F, GB>(&folding_challenge, gkr_backend, worker);
             in_domain.fold(&folding_challenge);
-            assert_eq!(sumchecked_poly_evaluation_form.len(), eq_pp.len());
+            assert_eq!(evals_pp.len(), eq_pp.len());
         }
 
         println!(
@@ -1976,14 +1855,13 @@ where
         );
         poly_size_log2 -= num_folding_steps;
 
-        assert_eq!(sumchecked_poly_evaluation_form.len(), 1 << poly_size_log2);
+        assert_eq!(evals_pp.len(), 1 << poly_size_log2);
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
         assert_eq!(eq_pp.len(), 1 << poly_size_log2);
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let mut full_sum =
-                dot_product(&sumchecked_poly_evaluation_form, eq_pp.as_slice(), worker);
+            let mut full_sum = dot_product(evals_pp.as_slice(), eq_pp.as_slice(), worker);
             full_sum.add_assign(&in_domain.sum_at_current());
             assert_eq!(full_sum, claim);
         }
@@ -1999,7 +1877,7 @@ where
             let (cap, next_oracle, split) = build_intermediate_oracle::<F, E, T, B>(
                 backend,
                 &sumchecked_poly_monomial_form,
-                &sumchecked_poly_evaluation_form[..],
+                evals_pp.as_slice(),
                 lde_factor,
                 1 << next_folding_steps,
                 tree_cap_size,
@@ -2041,11 +1919,8 @@ where
         commit_field_els::<F, E, TR>(&mut transcript_seed, &[ood_value]);
         #[cfg(feature = "gkr_self_checks")]
         {
-            let pows = make_pows(
-                ood_point,
-                sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
-            );
-            let value = evaluate_multivariate(&sumchecked_poly_evaluation_form, &pows, worker);
+            let pows = make_pows(ood_point, evals_pp.len().trailing_zeros() as usize);
+            let value = evaluate_multivariate(evals_pp.as_slice(), &pows, worker);
             assert_eq!(value, ood_value);
         }
 
@@ -2164,12 +2039,9 @@ where
                     "diverged at query {}",
                     i
                 );
-                let pows = make_pows(
-                    root,
-                    sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
-                );
+                let pows = make_pows(root, evals_pp.len().trailing_zeros() as usize);
                 let eval_from_multivariate =
-                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows, worker);
+                    evaluate_multivariate_at_base(evals_pp.as_slice(), &pows, worker);
                 assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
             query_references.clear();
@@ -2220,11 +2092,8 @@ where
         println!("  running sumcheck for {} rounds...", num_folding_steps);
         let t_sumcheck = std::time::Instant::now();
         for _folding_round in 0..num_folding_steps {
-            let (f0, f1, f_half) = special_three_point_eval(
-                &sumchecked_poly_evaluation_form[..],
-                eq_pp.as_slice(),
-                worker,
-            );
+            let (f0, f1, f_half) =
+                special_three_point_eval(evals_pp.as_slice(), eq_pp.as_slice(), worker);
             let evaluation_point = E::from_base(two_inv);
             let mut univariate_coeffs =
                 special_lagrange_interpolate(f0, f1, f_half, evaluation_point);
@@ -2271,20 +2140,13 @@ where
                 worker,
             );
 
-            sumchecked_poly_evaluation_form = fold_evaluation_form(
-                &mut sumchecked_poly_evaluation_form[..],
-                &folding_challenge,
-                worker,
-            );
+            evals_pp.fold::<F, GB>(&folding_challenge, gkr_backend, worker);
 
-            assert_eq!(
-                sumchecked_poly_monomial_form.len(),
-                sumchecked_poly_evaluation_form.len()
-            );
+            assert_eq!(sumchecked_poly_monomial_form.len(), evals_pp.len());
 
             eq_pp.fold::<F, GB>(&folding_challenge, gkr_backend, worker);
             in_domain.fold(&folding_challenge);
-            assert_eq!(sumchecked_poly_evaluation_form.len(), eq_pp.len());
+            assert_eq!(evals_pp.len(), eq_pp.len());
         }
 
         println!(
@@ -2293,14 +2155,13 @@ where
         );
         poly_size_log2 -= num_folding_steps;
 
-        assert_eq!(sumchecked_poly_evaluation_form.len(), 1 << poly_size_log2);
+        assert_eq!(evals_pp.len(), 1 << poly_size_log2);
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
         assert_eq!(eq_pp.len(), 1 << poly_size_log2);
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let mut full_sum =
-                dot_product(&sumchecked_poly_evaluation_form, eq_pp.as_slice(), worker);
+            let mut full_sum = dot_product(evals_pp.as_slice(), eq_pp.as_slice(), worker);
             full_sum.add_assign(&in_domain.sum_at_current());
             assert_eq!(full_sum, claim);
         }
@@ -2369,7 +2230,7 @@ where
         }
 
         #[cfg(feature = "gkr_self_checks")]
-        if sumchecked_poly_evaluation_form.len() > 1 {
+        if evals_pp.len() > 1 {
             let omega = domain_generator_for_size::<F>(query_domain_size);
             for (i, &query_index) in query_indexes.iter().enumerate() {
                 let root = omega.pow(query_index as u32);
@@ -2384,12 +2245,9 @@ where
                     "diverged at query {}",
                     i
                 );
-                let pows = make_pows(
-                    root,
-                    sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
-                );
+                let pows = make_pows(root, evals_pp.len().trailing_zeros() as usize);
                 let eval_from_multivariate =
-                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows, worker);
+                    evaluate_multivariate_at_base(evals_pp.as_slice(), &pows, worker);
                 assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
             query_references.clear();
@@ -2397,11 +2255,7 @@ where
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let mut value = dot_product(
-                &sumchecked_poly_evaluation_form[..],
-                eq_pp.as_slice(),
-                worker,
-            );
+            let mut value = dot_product(evals_pp.as_slice(), eq_pp.as_slice(), worker);
             value.add_assign(&in_domain.sum_at_current());
             assert_eq!(value, claim);
         }
@@ -2422,12 +2276,14 @@ where
         let final_len = 1usize << final_poly_log2;
         let mut hypercube_evals = proof.final_monomials.clone();
         multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, final_poly_log2 as u32);
+        assert_eq!(evals_pp.len(), final_len);
         assert_eq!(
             &hypercube_evals[..],
-            &sumchecked_poly_evaluation_form_vec[..final_len],
+            evals_pp.as_slice(),
             "final monomials → hypercube evals mismatch"
         );
     }
+    evals_pp.release::<F>(pool);
 
     proof
 }
@@ -4617,6 +4473,24 @@ mod test {
         };
 
         let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup);
+        let mut gkr_storage = GKRStorage::<F, E>::default();
+        for (key, monomial) in [
+            GKRAddress::BaseLayerMemory(0),
+            GKRAddress::BaseLayerWitness(0),
+            GKRAddress::Setup(0),
+        ]
+        .into_iter()
+        .zip(monomial_forms.iter())
+        {
+            let mut t = monomial.to_vec();
+            bitreverse_enumeration_inplace(&mut t);
+            multivariate_coeffs_into_hypercube_evals(&mut t, size.trailing_zeros());
+            gkr_storage.insert_base_field_at_layer(
+                0,
+                key,
+                crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(t.into_boxed_slice()),
+            );
+        }
         let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
             mem,
             a,
@@ -4624,6 +4498,8 @@ mod test {
             b,
             &setup_commitment,
             c,
+            gkr_storage,
+            0,
             original_evaluation_point,
             E::from_base(F::from_u32_with_reduction(7)),
             &whir_schedule,

@@ -294,31 +294,6 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
     }
 
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<BabyBearExt4>,
-        twiddles: &Self::TwiddleSet,
-        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
-        worker: &Worker,
-    ) -> Vec<BabyBearExt4> {
-        let inv_ext = &twiddles.inverse_ext;
-        fft::baby_bear_neon::ext4::monomial_form_from_main_domain(
-            source_domain,
-            &twiddles.plain.inverse_twiddles,
-            inv_ext,
-            worker,
-        )
-    }
-
-    fn hypercube_evals_from_monomial_form(
-        &self,
-        monomial_form: Vec<BabyBearExt4>,
-        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
-        worker: &Worker,
-    ) -> Vec<BabyBearExt4> {
-        fft::baby_bear_neon::ext4::hypercube_evals_from_monomial_form(monomial_form, worker)
-    }
-
     fn update_eq_poly(
         &self,
         eq_poly: &mut [BabyBearExt4],

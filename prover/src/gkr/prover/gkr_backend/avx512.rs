@@ -28,7 +28,7 @@ use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_avx2, lsb_avx512, lsb
 use crate::gkr::prover::EvaluationPointEntry;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
-use field::Field;
+use field::{Field, FieldExtension};
 use transcript::Transcript;
 use worker::Worker;
 
@@ -451,6 +451,21 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
         }
     }
 
+    fn accumulate_base_columns_into(
+        &self,
+        dst: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        terms: &[super::BatchedBaseColumn<'_, BabyBearField, BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        if self.use_avx512 {
+            accumulate_base_columns_into_avx512(dst, terms, worker);
+        } else {
+            super::accumulate_base_columns_into_scalar::<BabyBearField, BabyBearExt4>(
+                dst, terms, worker,
+            );
+        }
+    }
+
     type DimensionReducingBuffer = DimReducingSumcheckScratch<BabyBearExt4, [u128; 2]>;
 
     fn prepare_fold_pool(
@@ -719,6 +734,158 @@ fn fold_eq_poly_into_avx512(
             }
         });
     });
+}
+
+/// AVX-512 [`GKRBackend::accumulate_base_columns_into`]: per 16 rows the
+/// accumulator lives in limb-major registers; every column contributes one
+/// 16-lane load and four `mont_mul + add` (its base value times each limb
+/// of the column's weight), then the 16 ext values are streamed out
+/// (non-temporal — the destination is read next by the whole-poly
+/// transform, far beyond any cache). Byte-identical to the scalar loop.
+fn accumulate_base_columns_into_avx512(
+    dst: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+    terms: &[super::BatchedBaseColumn<'_, BabyBearField, BabyBearExt4>],
+    worker: &Worker,
+) {
+    use worker::rayon::prelude::*;
+    let n = terms.first().map(|t| t.column.len()).unwrap_or(dst.len());
+    assert!(n > 0 && dst.len() % n == 0);
+    for t in terms.iter() {
+        assert_eq!(t.column.len(), n);
+        assert!(t.dst_offset % n == 0 && t.dst_offset + n <= dst.len());
+    }
+    let slices = dst.len() / n;
+    let chunk = n
+        .div_ceil(worker.get_num_cores())
+        .max(crate::gkr::PAR_THRESHOLD)
+        .next_multiple_of(16);
+    let n_chunks = n.div_ceil(chunk);
+    for y in 0..slices {
+        let off = y * n;
+        let slice_terms: Vec<(usize, BabyBearExt4)> = terms
+            .iter()
+            .filter(|t| t.dst_offset == off)
+            .map(|t| (t.column.as_ptr() as usize, t.power))
+            .collect();
+        let dst_addr = dst[off..].as_mut_ptr() as usize;
+        let slice_terms = &slice_terms;
+        worker.pool.install(|| {
+            (0..n_chunks).into_par_iter().for_each(|c| {
+                let lo = c * chunk;
+                let hi = (lo + chunk).min(n);
+                unsafe {
+                    accumulate_rows_avx512(
+                        (dst_addr as *mut BabyBearExt4).add(lo),
+                        hi - lo,
+                        lo,
+                        slice_terms,
+                    );
+                }
+            });
+        });
+    }
+}
+
+/// `rows` rows from `row0` of every term into `dst` (see
+/// [`accumulate_base_columns_into_avx512`]).
+#[target_feature(enable = "avx512f")]
+unsafe fn accumulate_rows_avx512(
+    dst: *mut BabyBearExt4,
+    rows: usize,
+    row0: usize,
+    terms: &[(usize, BabyBearExt4)],
+) {
+    use crate::gkr::prover::sumcheck_loop::windowed_mode::avx512::{
+        add16, bcast_ext, ld, mont_mul16, store_ext16_nt, zero, ExtPerm,
+    };
+    use core::arch::x86_64::*;
+    let p = ExtPerm::new();
+    let weights: Vec<[__m512i; 4]> = terms.iter().map(|(_, w)| bcast_ext(w)).collect();
+    let full = rows / 16;
+    for blk in 0..full {
+        let mut acc = [zero(); 4];
+        for ((col, _), w) in terms.iter().zip(weights.iter()) {
+            let b = ld((*col as *const u32).add(row0 + blk * 16));
+            for l in 0..4 {
+                acc[l] = add16(acc[l], mont_mul16(b, w[l]));
+            }
+        }
+        store_ext16_nt(&acc, dst.add(blk * 16), &p);
+    }
+    for i in full * 16..rows {
+        let mut v = BabyBearExt4::ZERO;
+        for (col, w) in terms.iter() {
+            let s = *(*col as *const BabyBearField).add(row0 + i);
+            v.add_assign_product_with_base(w, &s);
+        }
+        dst.add(i).write(v);
+    }
+    _mm_sfence();
+}
+
+#[cfg(test)]
+mod accumulate_tests {
+    use super::*;
+    use field::Rand;
+
+    #[test]
+    fn avx512_accumulate_base_columns_matches_scalar() {
+        if !is_x86_feature_detected!("avx512f") {
+            eprintln!("avx512f not available: skipping");
+            return;
+        }
+        let worker = Worker::new_with_num_threads(4);
+        let mut rng = rand::thread_rng();
+        for (n, slices, num_cols) in [
+            (1usize << 10, 1usize, 5usize),
+            ((1 << 12) + 48, 2, 7),
+            (37, 1, 3),
+            (1 << 13, 1, 0),
+        ] {
+            let cols: Vec<Vec<BabyBearField>> = (0..num_cols)
+                .map(|_| {
+                    (0..n)
+                        .map(|_| BabyBearField::random_element(&mut rng))
+                        .collect()
+                })
+                .collect();
+            let terms: Vec<super::super::BatchedBaseColumn<'_, BabyBearField, BabyBearExt4>> = cols
+                .iter()
+                .enumerate()
+                .map(|(j, c)| super::super::BatchedBaseColumn {
+                    column: &c[..],
+                    power: BabyBearExt4::random_element(&mut rng),
+                    dst_offset: (j % slices) * n,
+                })
+                .collect();
+            let len = n * slices;
+            let mut a: Vec<core::mem::MaybeUninit<BabyBearExt4>> = Vec::with_capacity(len);
+            let mut b: Vec<core::mem::MaybeUninit<BabyBearExt4>> = Vec::with_capacity(len);
+            unsafe {
+                a.set_len(len);
+                b.set_len(len);
+            }
+            super::super::accumulate_base_columns_into_scalar::<BabyBearField, BabyBearExt4>(
+                &mut a, &terms, &worker,
+            );
+            accumulate_base_columns_into_avx512(&mut b, &terms, &worker);
+            let a: Vec<BabyBearExt4> = a.iter().map(|x| unsafe { x.assume_init() }).collect();
+            let b: Vec<BabyBearExt4> = b.iter().map(|x| unsafe { x.assume_init() }).collect();
+            assert_eq!(a, b, "n {n} slices {slices} cols {num_cols}");
+            // the scalar reference itself against the definition
+            for y in 0..slices {
+                for i in 0..n {
+                    let mut v = BabyBearExt4::ZERO;
+                    for t in terms.iter().filter(|t| t.dst_offset == y * n) {
+                        let mut w = t.power;
+                        w.mul_assign_by_base(&t.column[i]);
+                        v.add_assign(&w);
+                    }
+                    assert_eq!(a[y * n + i], v);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

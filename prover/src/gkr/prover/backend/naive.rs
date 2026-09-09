@@ -101,35 +101,6 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
     }
 
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<E>,
-        twiddles: &Twiddles<F, Global>,
-        _pool: &dyn AllocationPool<F, E>,
-        worker: &Worker,
-    ) -> Vec<E> {
-        // worker-parallel inverse NTT + scaling + bit-reversal, byte-identical
-        // to the serial `compute_column_major_monomial_form_from_main_domain_owned`
-        super::ws_monomial_form_from_main_domain::<F, E>(source_domain, twiddles, worker)
-    }
-
-    fn hypercube_evals_from_monomial_form(
-        &self,
-        monomial_form: Vec<E>,
-        _pool: &dyn AllocationPool<F, E>,
-        worker: &Worker,
-    ) -> Vec<E> {
-        // historical whir_fold sequence: worker-parallel ADD transform, then a
-        // SERIAL bit-reversal
-        let mut v = monomial_form;
-        let log_n = v.len().trailing_zeros();
-        crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_coeffs_into_hypercube_evals(
-            &mut v, log_n, worker,
-        );
-        // natural order out (LSB convention)
-        v
-    }
-
     fn update_eq_poly(
         &self,
         eq_poly: &mut [E],
