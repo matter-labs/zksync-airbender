@@ -498,6 +498,10 @@ pub(crate) fn launch_window_program(
     launch: &WindowLaunch,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    #[cfg(feature = "r0_diagnostics")]
+    if let Some(result) = super::diagnostics::launch_override(launch, context) {
+        return result;
+    }
     let config = CudaLaunchConfig::basic(
         launch.row_tiles as u32,
         WINDOWED_R0_BLOCK_THREADS,

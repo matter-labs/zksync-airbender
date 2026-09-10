@@ -2,6 +2,8 @@ pub(crate) mod bank;
 pub(crate) mod binding;
 pub(crate) mod coefficient_bank;
 pub(crate) mod common;
+#[cfg(feature = "r0_diagnostics")]
+pub mod diagnostics;
 pub(crate) mod generated_registry;
 pub(crate) mod state;
 pub(crate) mod tail;

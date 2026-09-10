@@ -14,3 +14,6 @@ target_sources(gpu_gkr_native PRIVATE
         window_geometry.cuh
         window_source.cuh
 )
+if (GPU_GKR_R0_DIAGNOSTICS)
+    target_sources(gpu_gkr_native PRIVATE diagnostics.cu)
+endif ()

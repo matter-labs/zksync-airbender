@@ -44,6 +44,12 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             claim_batching,
             context,
         )?;
+        #[cfg(feature = "r0_diagnostics")]
+        super::super::window::diagnostics::schedule_probe(
+            self.layer_idx,
+            &windowed.window,
+            context,
+        )?;
         launch_window_program(&windowed.window, context)?;
         let row_tiles = windowed.window.row_tiles;
         let reduced_tensor = windowed.window.reduced_tensor;

@@ -52,3 +52,52 @@ cargo test -p gpu_circuit_prover run_add_sub_profile_test --release --no-run --m
       --print-run-command \
       --test-name tests::proof_matrix::run_add_sub_profile_test
 ```
+
+## Optional MAIN R0 Diagnostics
+
+The non-default `r0_diagnostics` feature adds an experimental kernel bank and
+test hooks. Default builds exclude these kernels and hooks. Build before taking
+the GPU lock:
+
+```bash
+cargo nextest run -p gpu_circuit_prover --release --features r0_diagnostics --no-run
+```
+
+For a resident-input comparison of the current add/sub L0 production entry
+with the other universal launch bound:
+
+```bash
+mkdir -p target/profiling/r0
+AB_R0_DIAG_PAIR=corpus AB_R0_DIAG_NATIVE=3f7 AB_R0_DIAG_LAYER=0 \
+AB_R0_DIAG_SAMPLES=20 AB_R0_DIAG_SESSION=0 \
+AB_R0_DIAG_OUTPUT="$PWD/target/profiling/r0/add-sub-L0.csv" \
+  .agents/bin/with_gpu_lock.sh cargo nextest run -p gpu_circuit_prover \
+    --release --features r0_diagnostics \
+    -E 'test(=tests::proof_matrix::run_add_sub_profile_test)' \
+    --run-ignored only --no-capture
+```
+
+The harness checks the native mask, deduplicates identical bank entries, poisons
+and compares every output limb, and injects a mismatch to check the comparison
+path. After five warmups per arm it rotates arm order and records kernel CUDA
+events. The CSV includes the actual mask/bound, tensor size, and descriptor
+fingerprint; a companion `.descriptor.txt` contains the program. The production
+launch restores partials before the rest of the proof, so these timings are
+resident-kernel diagnostics, not candidate-fed proof timings.
+
+`AB_R0_DIAG_GRID_DIVISOR` accepts powers of two for prefix-grid diagnostics;
+these do not represent smaller complete circuits. `AB_R0_DIAG_EXTRA` accepts
+comma-separated `compiled_mask:bound` entries from the compiled diagnostic bank.
+Masks use hexadecimal without a `0x` prefix.
+
+For candidate-fed full-proof comparisons, use `AB_R0_BANK_TABLE` instead of
+`AB_R0_DIAG_PAIR`. It accepts a complete comma-separated
+`native_mask:compiled_mask:bound` table covering the production dispatch map,
+or `program` to reevaluate the current program selector. Set
+`AB_R0_BANK_OUTPUT`, optionally `AB_R0_BANK_PAIRS` (default 20) and
+`AB_R0_BANK_SESSION` (default 0), and run the same profile test. This mode records
+proof CUDA-event intervals after input transfers and checks every proof against
+the baseline proof. The existing CPU proof-parity tests also accept the table.
+The two modes are mutually exclusive; unset the other mode's environment
+variables before running. Retain device identity, launch coverage, raw samples,
+and matching controls when using either mode for a performance claim.
