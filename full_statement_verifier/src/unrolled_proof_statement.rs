@@ -132,7 +132,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // then init/teardown circuits
     {
         let num_circuits = nd_source.read_word();
-        assert!(num_circuits > 1); // at least one is needed
+        assert!(num_circuits > 0); // at least one is needed
         assert!(num_circuits <= MAX_INITS_AND_TEARDOWN_CIRCUITS);
         if num_circuits > 0 {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
@@ -149,7 +149,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             // ensure sorted and unique case across all circuits
             for &top_bit in proof_output.inits_and_teardowns_top_bits.iter() {
                 assert!(top_bit < TOP_BITS_UPPER_BOUND);
-                if top_bits_previous_el == u32::MAX {
+                if top_bits_previous_el != u32::MAX {
                     assert!(top_bit > top_bits_previous_el);
                 }
                 top_bits_previous_el = top_bit;
@@ -157,6 +157,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 
             // and commit memory caps
             transcript.absorb(proof_output.memory_caps_flattened());
+            transcript.absorb(&proof_output.inits_and_teardowns_top_bits);
 
             // there is no setup for inits/teardowns
             debug_assert_eq!(proof_output.setup_caps.len(), 0);

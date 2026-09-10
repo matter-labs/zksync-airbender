@@ -654,12 +654,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
     println!("Touched {} unique addresses", total_unique_teardowns);
 
-    assert_eq!(
-        (setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
-            << setups::inits_and_teardowns::TRACE_LEN_LOG2)
-            << setups::inits_and_teardowns::WORD_BITS,
-        1 << 30
-    );
+    todo!();
 
     let mut inits_and_teardowns =
         Vec::with_capacity(setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS);
@@ -777,7 +772,7 @@ pub fn prove_unrolled_execution_with_replayer<
     }
 
     // and inits and teardowns
-    let mut inits_and_teardown_trees = vec![];
+    let mut inits_and_teardown_trees_and_top_bits = vec![];
     {
         let trace_len = inits_and_teardowns_setup.trace_len;
         let twiddles_for_size = twiddles
@@ -800,7 +795,7 @@ pub fn prove_unrolled_execution_with_replayer<
             worker,
         );
 
-        inits_and_teardown_trees.push(cap);
+        inits_and_teardown_trees_and_top_bits.push((vec![], cap));
     }
 
     // same for delegation circuits
@@ -1000,7 +995,7 @@ pub fn prove_unrolled_execution_with_replayer<
         final_pc,
         final_timestamp,
         &memory_trees,
-        &inits_and_teardown_trees,
+        &inits_and_teardown_trees_and_top_bits,
         &delegation_memory_trees_vec,
     );
 
@@ -1445,7 +1440,7 @@ pub fn prove_unrolled_execution_with_replayer<
     }
 
     // inits and teardowns
-    let mut aux_inits_and_teardown_trees = vec![];
+    let mut aux_inits_and_teardown_trees_and_top_bits = vec![];
     let mut inits_and_teardowns_proofs = vec![];
     {
         let setup = &inits_and_teardowns_setup;
@@ -1522,8 +1517,10 @@ pub fn prove_unrolled_execution_with_replayer<
 
         permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
 
-        aux_inits_and_teardown_trees
-            .push(proof.whir_proof.memory_commitment.commitment.cap.clone());
+        aux_inits_and_teardown_trees_and_top_bits.push((
+            vec![],
+            proof.whir_proof.memory_commitment.commitment.cap.clone(),
+        ));
         inits_and_teardowns_proofs.push(proof);
     }
 
@@ -1686,7 +1683,10 @@ pub fn prove_unrolled_execution_with_replayer<
     }
 
     assert_eq!(&aux_memory_trees, &memory_trees);
-    assert_eq!(&aux_inits_and_teardown_trees, &inits_and_teardown_trees);
+    assert_eq!(
+        &aux_inits_and_teardown_trees_and_top_bits,
+        &inits_and_teardown_trees_and_top_bits
+    );
     assert_eq!(&aux_delegation_memory_trees, &delegation_memory_trees_vec);
 
     // compare challenge
@@ -1695,7 +1695,7 @@ pub fn prove_unrolled_execution_with_replayer<
         final_pc,
         final_timestamp,
         &aux_memory_trees,
-        &aux_inits_and_teardown_trees,
+        &aux_inits_and_teardown_trees_and_top_bits,
         &aux_delegation_memory_trees,
     );
 
