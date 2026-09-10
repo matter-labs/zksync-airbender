@@ -628,7 +628,7 @@ mod tests {
     /// The AVX2 backend (its LDE kernels and its gathered-leaf conversion),
     /// contiguous storage, both LDE plans (flat grid below 2^20, every coset
     /// on all threads from 2^20 up).
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
     #[test]
     fn by_coefficient_oracle_matches_continuous_avx2() {
         let worker = Worker::new_with_num_threads(8);
