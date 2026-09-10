@@ -1,7 +1,7 @@
 //! Affine census of the next verifier run: per-family cycles and delegation
 //! calls, `c0 + Σ n_c · v_c` over the proof's per-circuit counts. Family dims
-//! partition total cycles. No i&t dim: always 1 on unrolled recursion layers,
-//! inline on unified.
+//! partition total cycles. Standalone i&t is priced per proof; its verification
+//! work contributes to the same family and delegation dimensions.
 //!
 //! The committed table is calibrated for the Sec100 Compression verifier
 //! programs. Regenerate it locally via `emit_census_tables` when a guest
@@ -87,7 +87,7 @@ fn totals_from_counts(
     counts: &[(CircuitId, usize)],
     inits_and_teardowns: usize,
 ) -> Result<CensusVec, EstimateError> {
-    if inits_and_teardowns != 1 {
+    if inits_and_teardowns == 0 {
         return Err(EstimateError::UnexpectedInitsAndTeardowns {
             found: inits_and_teardowns,
         });
@@ -111,43 +111,47 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
         FsvProgram::UnrolledBaseLayer,
         BlakeMode::Compression,
         CensusTable {
-            c0: [567409, 72746, 40958, 0, 330438, 0, 32872, 0, 0, 0],
+            c0: [21184, 5094, 572, 0, 104376, 0, 455, 0, 0, 0],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [637898, 77338, 48447, 0, 267897, 0, 57484, 0, 0, 0],
+                    [637953, 77368, 48411, 0, 267892, 0, 57484, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [653646, 78511, 48728, 0, 277832, 0, 58730, 0, 0, 0],
+                    [653733, 78611, 48668, 0, 277827, 0, 58730, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [662504, 79133, 49039, 0, 281888, 0, 58800, 0, 0, 0],
+                    [662674, 79258, 48982, 0, 281883, 0, 58800, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(4),
-                    [627146, 75220, 47643, 0, 266770, 0, 54880, 0, 0, 0],
+                    [627062, 75013, 47379, 0, 266765, 0, 54880, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [626689, 76689, 48557, 0, 267016, 0, 57491, 0, 0, 0],
+                    [626614, 76632, 48624, 0, 267011, 0, 57491, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(17),
-                    [639324, 77537, 48965, 0, 272097, 0, 58128, 0, 0, 0],
+                    [639139, 77322, 48851, 0, 272092, 0, 58128, 0, 0, 0],
+                ),
+                (
+                    CircuitId::InitsAndTeardowns,
+                    [504969, 62712, 40310, 0, 200778, 0, 29526, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1919507, 164190, 57273, 0, 799263, 0, 111489, 0, 0, 0],
+                    [1919595, 164276, 57288, 0, 799260, 0, 111489, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1994),
-                    [979146, 91719, 50226, 0, 402478, 0, 65835, 0, 0, 0],
+                    [979192, 91753, 50261, 0, 402475, 0, 65835, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1995),
-                    [996933, 94883, 50820, 0, 408702, 0, 67914, 0, 0, 0],
+                    [996946, 94886, 50807, 0, 408699, 0, 67914, 0, 0, 0],
                 ),
             ],
         },
@@ -156,35 +160,39 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
         FsvProgram::UnrolledRecursionLayer,
         BlakeMode::Compression,
         CensusTable {
-            c0: [564381, 71786, 41577, 0, 322001, 0, 32746, 0, 0, 0],
+            c0: [18909, 4511, 224, 0, 96297, 0, 364, 0, 0, 0],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [637898, 77338, 48447, 0, 267897, 0, 57484, 0, 0, 0],
+                    [637953, 77368, 48411, 0, 267892, 0, 57484, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [653646, 78511, 48728, 0, 277832, 0, 58730, 0, 0, 0],
+                    [653733, 78611, 48668, 0, 277827, 0, 58730, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [662504, 79133, 49039, 0, 281888, 0, 58800, 0, 0, 0],
+                    [662674, 79258, 48982, 0, 281883, 0, 58800, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [626689, 76689, 48557, 0, 267016, 0, 57491, 0, 0, 0],
+                    [626614, 76632, 48624, 0, 267011, 0, 57491, 0, 0, 0],
+                ),
+                (
+                    CircuitId::InitsAndTeardowns,
+                    [504969, 62712, 40310, 0, 200778, 0, 29526, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1919507, 164190, 57273, 0, 799263, 0, 111489, 0, 0, 0],
+                    [1919595, 164276, 57288, 0, 799260, 0, 111489, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1994),
-                    [979146, 91719, 50226, 0, 402478, 0, 65835, 0, 0, 0],
+                    [979192, 91753, 50261, 0, 402475, 0, 65835, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1995),
-                    [996933, 94883, 50820, 0, 408702, 0, 67914, 0, 0, 0],
+                    [996946, 94886, 50807, 0, 408699, 0, 67914, 0, 0, 0],
                 ),
             ],
         },
@@ -209,21 +217,24 @@ mod tests {
         out
     }
 
-    const TEST_ROWS: [(CircuitId, CensusVec); 3] = [
+    const TEST_ROWS: [(CircuitId, CensusVec); 4] = [
         (ADD_SUB, vec0(10)),
         (JUMP_BR, vec0(100)),
         (KECCAK, vec0(1_000)),
+        (CircuitId::InitsAndTeardowns, vec0(200)),
     ];
 
     fn test_table() -> CensusTable {
         CensusTable {
-            c0: vec0(1_000),
+            c0: vec0(800),
             v: &TEST_ROWS,
         }
     }
 
     fn total0(counts: &[(CircuitId, usize)], inits: usize) -> Result<u64, EstimateError> {
-        totals_from_counts(&test_table(), counts, inits).map(|t| t[0])
+        let mut counts = counts.to_vec();
+        counts.push((CircuitId::InitsAndTeardowns, inits));
+        totals_from_counts(&test_table(), &counts, inits).map(|t| t[0])
     }
 
     #[test]
@@ -255,13 +266,13 @@ mod tests {
     }
 
     #[test]
-    fn inits_and_teardowns_must_be_exactly_one() {
-        for found in [0usize, 2] {
-            assert!(matches!(
-                total0(&[(ADD_SUB, 1)], found),
-                Err(EstimateError::UnexpectedInitsAndTeardowns { found: f }) if f == found
-            ));
-        }
+    fn inits_and_teardowns_counts_are_priced() {
+        assert!(matches!(
+            total0(&[(ADD_SUB, 1)], 0),
+            Err(EstimateError::UnexpectedInitsAndTeardowns { found: 0 })
+        ));
+        assert_eq!(total0(&[(ADD_SUB, 1)], 2).unwrap(), 1_210);
+        assert_eq!(total0(&[(ADD_SUB, 1)], 8).unwrap(), 2_410);
     }
 
     #[test]

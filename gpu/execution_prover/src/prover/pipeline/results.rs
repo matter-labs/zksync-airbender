@@ -150,9 +150,9 @@ pub(super) struct ResultAccumulator {
         BTreeMap<usize, BTreeSet<(CircuitType, usize)>>,
     pub(super) unpaired_unified_inits_and_teardowns: BTreeMap<usize, InitsAndTeardownsData>,
     pub(super) unpaired_unified_tracing_data: BTreeMap<usize, TracingData<A>>,
-    /// Unified mode: the i&t address windows each real i&t-carrying instance was
-    /// assigned. Trivial (leading) instances are absent.
-    pub(super) unified_inits_and_teardowns_top_bits: BTreeMap<usize, Vec<u32>>,
+    /// The i&t address windows assigned to each instance, keyed by sequence ID.
+    /// Trivial leading unified instances are absent.
+    pub(super) inits_and_teardowns_top_bits: BTreeMap<usize, Vec<u32>>,
     pub(super) simulation_result: Option<SimulationResult>,
     pub(super) circuit_families_memory_caps:
         BTreeMap<u8, BTreeMap<usize, Vec<MerkleTreeCapVarLength>>>,
@@ -187,6 +187,9 @@ impl ResultAccumulator {
             }
             WorkerResult::InitsAndTeardownsData(data) => match data.circuit_type {
                 CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                    let host = data.inits_and_teardowns.as_ref().unwrap();
+                    self.inits_and_teardowns_top_bits
+                        .insert(data.sequence_id, host.top_bits.clone());
                     let request = request_context.build_gpu_work_request(prover, Some(data), None);
                     gpu_work_requests.push_back(request);
                 }
@@ -196,7 +199,7 @@ impl ResultAccumulator {
                         assert!(data.inits_and_teardowns.is_none());
                     }
                     if let Some(host) = data.inits_and_teardowns.as_ref() {
-                        self.unified_inits_and_teardowns_top_bits
+                        self.inits_and_teardowns_top_bits
                             .insert(sequence_id, host.top_bits.clone());
                     }
                     if !request_context.proving

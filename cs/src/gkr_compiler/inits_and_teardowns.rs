@@ -251,7 +251,7 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let gkr_compiled = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(16, 24, false);
+        let gkr_compiled = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(8, 24, false);
 
         serialize_to_file(
             &gkr_compiled,
@@ -264,7 +264,7 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let gkr_compiled = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(16, 24, true);
+        let gkr_compiled = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(8, 24, true);
 
         serialize_to_file(
             &gkr_compiled,

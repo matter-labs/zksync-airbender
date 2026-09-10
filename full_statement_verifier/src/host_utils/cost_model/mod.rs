@@ -6,6 +6,7 @@ use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum CircuitId {
     Riscv(u32),
+    InitsAndTeardowns,
     Delegation(u32),
 }
 
@@ -41,7 +42,10 @@ impl core::fmt::Display for EstimateError {
                  --test cost_model_trace -- --ignored`"
             ),
             Self::UnexpectedInitsAndTeardowns { found } => {
-                write!(f, "expected exactly 1 inits/teardowns proof, found {found}")
+                write!(
+                    f,
+                    "expected at least 1 inits/teardowns proof, found {found}"
+                )
             }
         }
     }
@@ -66,6 +70,10 @@ pub fn proof_counts(proof: &ProgramProof) -> Vec<(CircuitId, usize)> {
         .riscv_proofs
         .iter()
         .map(|(k, v)| (CircuitId::Riscv(*k), v.len()))
+        .chain(std::iter::once((
+            CircuitId::InitsAndTeardowns,
+            proof.inits_and_teardown_proofs.len(),
+        )))
         .chain(
             proof
                 .delegation_proofs
@@ -108,6 +116,7 @@ pub fn compiled_circuits(program: FsvProgram) -> Vec<CircuitId> {
     riscv_order(program)
         .iter()
         .map(|k| CircuitId::Riscv(*k))
+        .chain(std::iter::once(CircuitId::InitsAndTeardowns))
         .chain(DELEGATION_TYPES.iter().map(|k| CircuitId::Delegation(*k)))
         .collect()
 }
@@ -136,7 +145,7 @@ mod order_tests {
             crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<I, E>(
             )
             .iter()
-            .map(|(k, _)| *k)
+            .map(|(k, _, _)| *k)
             .collect();
         assert_eq!(
             riscv_order(FsvProgram::UnrolledBaseLayer),
@@ -152,7 +161,7 @@ mod order_tests {
                 E,
             >()
             .iter()
-            .map(|(k, _)| *k)
+            .map(|(k, _, _)| *k)
             .collect();
         assert_eq!(
             riscv_order(FsvProgram::UnrolledRecursionLayer),

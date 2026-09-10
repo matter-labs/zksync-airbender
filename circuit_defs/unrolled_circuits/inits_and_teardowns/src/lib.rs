@@ -11,7 +11,7 @@ use prover::*;
 
 pub const FAMILY_IDX: u8 = INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX;
 pub const TRACE_LEN_LOG2: u32 = 24;
-pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
+pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 8;
 pub const WORD_BITS: u32 = 2;
 
 fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {

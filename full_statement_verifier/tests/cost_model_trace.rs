@@ -9,7 +9,7 @@
 //!
 //! Fixtures live in `$COST_MODEL_FIXTURE_DIR` as `<fixture>_proof.bin` /
 //! `<fixture>_setups.bin`: zlib-compressed bincode of `ProgramProof` and `Setups`.
-//! Generate all four Sec100 Compression fixtures with the ignored GPU test
+//! Generate the Sec100 Compression fixtures with the ignored GPU test
 //! `gpu_program_prover::tests::test_generate_sec100_cost_model_fixtures`. It
 //! proves the recursion layers explicitly instead of depending on the production
 //! scheduling threshold. From the repository root:
@@ -25,7 +25,8 @@
 //!
 //! `base` is zkSync OS block 23620012; `base_alt` is hashed Fibonacci with
 //! `(n=15, h=1_200_000)`; `recursion0` and `recursion1` explicitly prove the
-//! Sec100 unrolled base and recursion verifiers. The files are non-authoritative
+//! Sec100 unrolled base and recursion verifiers. `memory_windows` touches enough
+//! address windows to require two i&t proofs. The files are non-authoritative
 //! local calibration inputs and must not be committed or consumed by CI.
 //!
 //! `emit_census_tables` prints the tables to paste into
@@ -112,7 +113,10 @@ fn stream_plan_matches_the_actual_stream() {
                 region.circuit
             );
         }
-        assert_eq!(stream[plan.inits_count_word], 1);
+        assert_eq!(
+            stream[plan.inits_count_word] as usize,
+            proof.inits_and_teardown_proofs.len()
+        );
 
         let riscv: Vec<_> = plan
             .regions
@@ -221,7 +225,8 @@ fn estimate_matches_measurement_on_every_fixture() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn emit_census_tables() {
-    let cals: Vec<_> = trace::calibrate::calibration_fixtures()
+    let cals: Vec<_> = trace::calibrate::ALL_FIXTURES
+        .iter()
         .map(|f| {
             (
                 f.name,
@@ -296,7 +301,7 @@ fn per_proof_census_spans_agree_within_a_circuit() {
         name: fixture,
         program,
         ..
-    } in trace::calibrate::calibration_fixtures()
+    } in trace::calibrate::ALL_FIXTURES
     {
         let c = trace::calibrate::calibrate_census_fixture(fixture, *program);
         for (circuit, spans) in &c.spans {

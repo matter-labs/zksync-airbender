@@ -666,7 +666,13 @@ fn test_generate_sec100_cost_model_fixtures() {
         .map(std::path::PathBuf::from)
         .expect("set COST_MODEL_FIXTURE_DIR to an empty local output directory");
     std::fs::create_dir_all(&fixture_dir).expect("create cost-model fixture directory");
-    for name in ["base", "base_alt", "recursion0", "recursion1"] {
+    for name in [
+        "base",
+        "base_alt",
+        "recursion0",
+        "recursion1",
+        "memory_windows",
+    ] {
         for suffix in ["proof", "setups"] {
             let path = fixture_dir.join(format!("{name}_{suffix}.bin"));
             assert!(!path.exists(), "refusing to overwrite {}", path.display());
@@ -760,6 +766,34 @@ fn test_generate_sec100_cost_model_fixtures() {
         true,
     );
     write_cost_model_fixture(&fixture_dir, "base_alt", &base_alt_proof, &base_alt_setups);
+
+    // Touch one more window than a single i&t proof can carry.
+    let mut memory_binary = Vec::new();
+    let window_bits =
+        setups::inits_and_teardowns::TRACE_LEN_LOG2 + setups::inits_and_teardowns::WORD_BITS;
+    for window in 0..=setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS {
+        let address =
+            ((window << window_bits) as u32).max(common_constants::rom::ROM_BYTE_SIZE as u32);
+        memory_binary.push(address | (5 << 7) | 0x37); // lui x5, address >> 12
+        memory_binary.push(0x0052_a023); // sw x5, 0(x5)
+    }
+    memory_binary.push(0x0000_006f); // jal x0, 0
+    let (memory_proof, memory_setups) = prove_on_gpu(
+        &mut prover,
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        memory_binary.clone(),
+        memory_binary,
+        vec![],
+    );
+    assert_eq!(memory_proof.inits_and_teardown_proofs.len(), 2);
+    native_verify_unrolled(build_unrolled_stream(&memory_setups, &memory_proof), true);
+    write_cost_model_fixture(
+        &fixture_dir,
+        "memory_windows",
+        &memory_proof,
+        &memory_setups,
+    );
 }
 
 #[cfg(all(not(no_cuda), feature = "verifiers"))]

@@ -3,16 +3,16 @@ use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_
 use verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
 pub const GKR_ROUNDS: usize = 24usize;
 pub const TRACE_LEN_LOG2: u32 = 24u32;
-pub const GKR_ADDRS: usize = 66usize;
+pub const GKR_ADDRS: usize = 34usize;
 pub const GKR_EVALS: usize = 32usize;
-pub const INIT_AND_TEARDOWN_SETS: usize = 16usize;
+pub const INIT_AND_TEARDOWN_SETS: usize = 8usize;
 pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize = EXT_DEGREE * (6usize + 1);
 pub const CAP_SIZE: usize = 16usize;
 pub const NUM_MEMORY_COMMITS: usize = 1usize;
 pub const NUM_WITNESS_COMMITS: usize = 0usize;
 pub const NUM_SETUP_COMMITS: usize = 0usize;
 pub const PADDING_WORDS: usize = {
-    let mut total = 16usize;
+    let mut total = 8usize;
     total += EXT_DEGREE
         * (::verifier_common::cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES
             + 1);
@@ -27,8 +27,8 @@ pub const PADDING_WORDS: usize = {
     }
 };
 pub const GKR_EVAL_BUF: usize = {
-    let dim_reducing = 66usize * DIM_REDUCE_EVAL_POINTS * EXT_DEGREE;
-    let standard = 66usize * STANDARD_EVAL_POINTS * EXT_DEGREE;
+    let dim_reducing = 34usize * DIM_REDUCE_EVAL_POINTS * EXT_DEGREE;
+    let standard = 34usize * STANDARD_EVAL_POINTS * EXT_DEGREE;
     let evals = 32usize * EXT_DEGREE;
     let max_data = if dim_reducing > standard {
         dim_reducing
@@ -60,13 +60,13 @@ pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 5usize, 5usize, 5usize, 4u
 pub const WHIR_QUERIES: [usize; 6usize] = [87usize, 23usize, 10usize, 7usize, 5usize, 5usize];
 pub const WHIR_POW_BITS: [u32; 6usize] = [28u32, 24u32, 25u32, 19u32, 21u32, 21u32];
 pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 0u32;
-pub const BATCHED_PROXIMITY_POW_BITS: u32 = 8u32;
+pub const BATCHED_PROXIMITY_POW_BITS: u32 = 7u32;
 pub const MAX_POW_ENTRIES: usize = 137usize;
 pub const FINAL_MONOMIALS_LEN: usize = 2usize;
 pub const NUM_ORACLES: usize = 1usize;
-pub const ORACLE_NUM_COLS: [usize; 1usize] = [64usize];
+pub const ORACLE_NUM_COLS: [usize; 1usize] = [32usize];
 pub const ORACLE_DEPTHS: [usize; 1usize] = [20usize];
-pub const TOTAL_ORACLE_COLS: usize = 64usize;
+pub const TOTAL_ORACLE_COLS: usize = 32usize;
 pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [18usize, 18usize, 18usize, 19usize, 16usize];
 pub const WHIR_CAP_WORDS: usize = 128usize;
 use verifier_common::field::baby_bear::base::BabyBearField;

@@ -7,6 +7,12 @@ cd "$(dirname "$0")"
 # Keep compiler layouts and SSA in sync with the production artifacts.
 RUST_MIN_STACK=100000000 cargo test -p cs --lib compile_bigint_with_extended_control
 RUST_MIN_STACK=100000000 cargo test -p cs --lib compile_unsigned_mul_div
+RUST_MIN_STACK=100000000 cargo test -p cs --lib compile_inits_and_teardowns
+RUST_MIN_STACK=100000000 cargo run -p gpu_gkr_compiler --profile cli --features search \
+    --bin gkr-forward-artifact -- --circuit inits_and_teardowns \
+    --layout cs/compiled_circuits/inits_and_teardowns_layout_gkr.json \
+    --output cs/compiled_circuits/inits_and_teardowns_schedule_b4_gkr.json \
+    --seed 0 --cache-buckets 4 --population 64 --evaluations 20000 --replace
 RUST_MIN_STACK=100000000 cargo test -p witness_eval_generator --lib gen_for_gkr
 
 circuit_names=(
