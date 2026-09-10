@@ -1264,7 +1264,8 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
     let num_linearization_challenges =
         ::cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 
-    let trace_len_log2 = compiled_circuit.trace_len.trailing_zeros() as usize;
+    let trace_len_log2_u32 = compiled_circuit.trace_len.trailing_zeros();
+    let trace_len_log2 = trace_len_log2_u32 as usize;
 
     let address_high_bits_shift_val: u32 = if num_teardown_sets > 0 {
         let word_bits = compiled_circuit
@@ -2121,7 +2122,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
 
         // Upper bound on GKR sumcheck rounds for internal buffers
         pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
-
+        pub const TRACE_LEN_LOG2: u32 = #trace_len_log2_u32;
         pub const GKR_ADDRS: usize = #max_addrs;
         pub const GKR_EVALS: usize = #max_evals;
 
