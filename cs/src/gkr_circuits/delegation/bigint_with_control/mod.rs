@@ -891,7 +891,7 @@ mod test {
             &|cs| {
                 let _ = define_bigint_with_extended_control_delegation_circuit(cs);
             },
-            22,
+            21,
         );
 
         serialize_to_file(
@@ -927,7 +927,7 @@ mod test {
             &|cs| {
                 let _ = define_bigint_with_extended_control_delegation_circuit(cs);
             },
-            22,
+            21,
         );
 
         serialize_to_file(

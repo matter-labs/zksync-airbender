@@ -617,7 +617,7 @@ mod test {
 
     #[test]
     fn example_configs_pass_validation() {
-        for log in [20usize, 22, 23, 24] {
+        for log in [20usize, 21, 22, 23, 24] {
             let config = example_configs::config_for_100_bits_under_pessimistic_conjecture(log);
             assert_eq!(config.trace_len_log2, log);
             config.validate_for_whir_message_size(log);

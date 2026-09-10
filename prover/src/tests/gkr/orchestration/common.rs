@@ -12,8 +12,8 @@ use riscv_transpiler::vm::{Counters, RamWithRomRegion, SimpleSnapshotter, Simple
 use std::alloc::Global;
 use worker::Worker;
 
-/// log2 of the trace length used by every executor-family circuit (per-family,
-/// unified, i/t). Must match the cs-side compile constant.
+/// Default log2 trace length for executor circuits and standalone i/t.
+/// Must match the corresponding CS compile settings.
 pub const TRACE_LEN_LOG2: usize = 24;
 pub const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 pub const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
@@ -29,7 +29,7 @@ const _: () =
 
 /// Per-delegation-circuit chunk sizes (mirrors `family_circuits.rs` consts).
 pub const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
-pub const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+pub const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 21;
 pub const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 pub const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 

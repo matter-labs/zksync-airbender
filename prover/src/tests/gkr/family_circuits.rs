@@ -22,8 +22,9 @@ const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 // invalid locations
 const TRACE_LEN_LOG2: usize = 24;
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
+const MUL_DIV_NUM_CYCLES_PER_CHUNK: usize = 1 << 23;
 const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
-const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 21;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const RAM_BOUND_BYTES: usize = 1 << 30;
@@ -183,7 +184,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
             < NUM_CYCLES_PER_CHUNK
     );
     assert!(
-        counters.get_calls_to_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>() < NUM_CYCLES_PER_CHUNK
+        counters.get_calls_to_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>()
+            < MUL_DIV_NUM_CYCLES_PER_CHUNK
     );
     assert!(
         counters.get_calls_to_circuit_family::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>()
@@ -326,8 +328,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
             counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>(),
             &preprocessing_data[&CIRCUIT_TYPE],
             cs::gkr_circuits::mul_div::mul_div_table_driver_fn::<BabyBearField, false>,
-            trace_len,
-            NUM_CYCLES_PER_CHUNK,
+            MUL_DIV_NUM_CYCLES_PER_CHUNK,
+            MUL_DIV_NUM_CYCLES_PER_CHUNK,
             &external_challenges,
             level,
             PROVE_EMPTY,

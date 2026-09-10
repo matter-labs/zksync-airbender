@@ -16,7 +16,7 @@ pub struct UnsignedMulDivCircuit;
 
 impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, false> for UnsignedMulDivCircuit {
     const CIRCUIT_FAMILY: u8 = common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX;
-    const DOMAIN_SIZE_LOG2: u32 = 24;
+    const DOMAIN_SIZE_LOG2: u32 = 23;
     const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 0;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {
