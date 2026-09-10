@@ -570,7 +570,9 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
         for (top_bits, caps) in inits_and_teardowns_memory_caps.iter() {
             let caps = flatten_merkle_cap(caps);
             memory_trace_transcript.absorb(&caps);
-            memory_trace_transcript.absorb(top_bits);
+            let mut top_bits_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            top_bits_buffer[..top_bits.len()].copy_from_slice(top_bits);
+            memory_trace_transcript.absorb(&top_bits_buffer);
         }
     }
 

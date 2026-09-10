@@ -142,7 +142,10 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             transcript.absorb(&buffer);
         }
 
+        // Padded buffer for a case of small number of inits/teardowns
+        let mut top_bits_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
         let mut top_bits_previous_el = u32::MAX; // we will not use option here
+
         for _circuit_sequence in 0..num_circuits {
             let proof_output = (inits_and_teardowns_verifier)(&external_challenges, nd_source)?;
 
@@ -157,7 +160,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 
             // and commit memory caps
             transcript.absorb(proof_output.memory_caps_flattened());
-            transcript.absorb(&proof_output.inits_and_teardowns_top_bits);
+            top_bits_buffer[..proof_output.inits_and_teardowns_top_bits.len()]
+                .copy_from_slice(&proof_output.inits_and_teardowns_top_bits);
+            transcript.absorb(&top_bits_buffer);
 
             // there is no setup for inits/teardowns
             debug_assert_eq!(proof_output.setup_caps.len(), 0);
