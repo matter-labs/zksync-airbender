@@ -5,13 +5,13 @@
 
 - spec revision: TBD
 - implementation: TBD
-- status: integration stubs
+- status: partial integration
 
 | Module | Scope |
 |---|---|
-| [common.md](common.md) | shared ROM/RAM and global consistency relation |
+| [common.md](common.md) | shared ROM/RAM scope and PC-state permutation closure |
 | [init-teardown-unrolled.md](init-teardown-unrolled.md) | separate unrolled initialization/teardown proof |
 | [init-teardown-unified.md](init-teardown-unified.md) | initialization/teardown folded into unified chunks |
 
-Current material remains in [machine-old/memory.md](../machine-old/memory.md) until it
-is integrated here.
+Remaining ROM/RAM material stays in [machine-old/memory.md](../machine-old/memory.md)
+until it is integrated here.

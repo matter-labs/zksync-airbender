@@ -36,8 +36,8 @@ capacities in their ISA modules.
 
 ## Assumptions
 
-- **ASM-UNROLLED-001 — Shared cycle relation.** Every active row satisfies
-  `REL-EXEC-001..007`.
+- **ASM-UNROLLED-001 — Shared cycle relation.** The supplied rows are governed by
+  `REL-EXEC-001..006`; every active row satisfies its active-cycle clauses.
 - **ASM-UNROLLED-002 — Family decoder.** An active row in a family-`f` circuit can
   authenticate only decoder data selecting `f`.
 - **ASM-UNROLLED-003* — Verifier structure binding.** The verifier accepts exactly
@@ -83,7 +83,7 @@ capacities in their ISA modules.
 ## Metadata
 
 - spec revision: TBD
-- implementation: `matter-labs/zksync-airbender@87b9d98ce+dirty`
+- implementation: `matter-labs/zksync-airbender@303ea6fa+dirty`
 - profile: base-unrolled-full-unsigned and recursion-unrolled-reduced
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
@@ -91,8 +91,8 @@ capacities in their ISA modules.
 | `IN-UNROLLED-001` | normative | — | — | prose | [unrolled ISA profile](../isa/unrolled/profile.md); [proof profiles](../profiles/INDEX.md) | — |
 | `IN-UNROLLED-002` | provisional | — | `GAP-UNROLLED-001` | prose | current execution design | — |
 | `IN-UNROLLED-003` | normative | — | selected execution profile | prose | [hierarchy](../HIERARCHY.md); [proof profiles](../profiles/INDEX.md) | — |
-| `ASM-UNROLLED-001` | normative | all supplied rows | `REL-EXEC-001..007` | prose | [common execution](common.md) | — |
-| `ASM-UNROLLED-002` | normative | active family row | `REL-EXEC-001`, `REL-EXEC-003`, `REL-EXEC-005` | prose | [common execution](common.md); current unrolled ISA organization | — |
+| `ASM-UNROLLED-001` | normative | all supplied rows | `REL-EXEC-001..006` | prose | [common execution](common.md) | — |
+| `ASM-UNROLLED-002` | normative | active family row | `REL-EXEC-001..002`, `REL-EXEC-004` | prose | [common execution](common.md); current unrolled ISA organization | — |
 | `ASM-UNROLLED-003` | provisional | all supplied chunks | `GAP-UNROLLED-001` | prose | proof-format binding not yet reconciled | — |
 | `REL-UNROLLED-001` | normative | active family row | `ASM-UNROLLED-001..002`; `IN-UNROLLED-001` | prose | `decision:execution-structure-2026-09-04`; [hierarchy](../HIERARCHY.md) | — |
 | `REL-UNROLLED-002` | normative | each admitted family | `IN-UNROLLED-002..003` | prose | [hierarchy](../HIERARCHY.md) | — |

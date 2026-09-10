@@ -35,8 +35,8 @@ experimental L1 profile selects one chunk with `K_P = 2²²`.
 
 ## Assumptions
 
-- **ASM-UNIFIED-001 — Shared cycle relation.** Every active row satisfies
-  `REL-EXEC-001..007`.
+- **ASM-UNIFIED-001 — Shared cycle relation.** The supplied rows are governed by
+  `REL-EXEC-001..006`; every active row satisfies its active-cycle clauses.
 - **ASM-UNIFIED-002 — Unified decoder.** An active row's authenticated decoder data
   binds the in-circuit family selector.
 - **ASM-UNIFIED-003* — Verifier structure binding.** The verifier accepts exactly the
@@ -81,7 +81,7 @@ experimental L1 profile selects one chunk with `K_P = 2²²`.
 ## Metadata
 
 - spec revision: TBD
-- implementation: `matter-labs/zksync-airbender@87b9d98ce+dirty`
+- implementation: `matter-labs/zksync-airbender@303ea6fa+dirty`
 - profile: bridge-unified-reduced, recursion-unified-reduced, and l1-proth120
 
 | ID | Authority | Activation | Depends / discharged by | Binding | Source | Anchor / check |
@@ -89,8 +89,8 @@ experimental L1 profile selects one chunk with `K_P = 2²²`.
 | `IN-UNIFIED-001` | normative | — | — | prose | [unified ISA profile](../isa/unified/profile.md); [proof profiles](../profiles/INDEX.md) | — |
 | `IN-UNIFIED-002` | provisional | — | `GAP-UNIFIED-001` | prose | current execution design | — |
 | `IN-UNIFIED-003` | normative | — | selected execution profile | prose | [hierarchy](../HIERARCHY.md); [proof profiles](../profiles/INDEX.md) | — |
-| `ASM-UNIFIED-001` | normative | all supplied rows | `REL-EXEC-001..007` | prose | [common execution](common.md) | — |
-| `ASM-UNIFIED-002` | normative | active unified row | `REL-EXEC-001`, `REL-EXEC-003`, `REL-EXEC-005` | prose | [common execution](common.md); current unified ISA organization | — |
+| `ASM-UNIFIED-001` | normative | all supplied rows | `REL-EXEC-001..006` | prose | [common execution](common.md) | — |
+| `ASM-UNIFIED-002` | normative | active unified row | `REL-EXEC-001..002`, `REL-EXEC-004` | prose | [common execution](common.md); current unified ISA organization | — |
 | `ASM-UNIFIED-003` | provisional | all supplied chunks | `GAP-UNIFIED-001` | prose | proof-format binding not yet reconciled | — |
 | `REL-UNIFIED-001` | normative | every supplied row | `ASM-UNIFIED-001..002`; `IN-UNIFIED-001` | prose | [hierarchy](../HIERARCHY.md); current unified execution design | — |
 | `REL-UNIFIED-002` | normative | selected unified profile | `IN-UNIFIED-002..003` | prose | [hierarchy](../HIERARCHY.md); [proof profiles](../profiles/INDEX.md) | — |
