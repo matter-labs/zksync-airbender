@@ -650,7 +650,7 @@ mod tests {
 
     /// The production shape through the AVX-512 strided pipeline (block-padded
     /// storage): 2^23 values, 16 logical cosets = 8 strided 2^24 cosets.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
     #[test]
     fn by_coefficient_oracle_matches_continuous_strided() {
         if !is_x86_feature_detected!("avx512f") {
