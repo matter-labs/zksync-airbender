@@ -8,23 +8,23 @@ use super::binding::WindowLaunchBinding;
 /// `gpu_gkr_compiler::backward::WINDOWED_R0_DISPATCH`.
 pub(crate) const WINDOWED_R0_DISPATCH: [(u16, u16, u32); 14] = [
     (0x001, 0x471, 4),
-    (0x020, 0x4f6, 3),
-    (0x1b1, 0x1b1, 3),
-    (0x1b7, 0x5f7, 4),
-    (0x3f7, 0x7ff, 4),
-    (0x3fb, 0x3ff, 4),
-    (0x460, 0xc78, 3),
-    (0x470, 0x7f7, 3),
+    (0x020, 0xfff, 3),
+    (0x1b1, 0xfff, 3),
+    (0x1b7, 0xfff, 4),
+    (0x3f7, 0xfff, 4),
+    (0x3fb, 0xfff, 3),
+    (0x460, 0xfff, 3),
+    (0x470, 0xfff, 3),
     (0x4f6, 0x4f6, 3),
     (0x9bf, 0xfff, 4),
-    (0xbfb, 0xffb, 4),
+    (0xbfb, 0xfff, 3),
     (0xbff, 0xfff, 4),
-    (0xc78, 0xc7a, 3),
-    (0xc7a, 0xc7a, 3),
+    (0xc78, 0xfff, 3),
+    (0xc7a, 0xfff, 3),
 ];
 
-/// Universal compiled mask for a shape the dispatch map does not name.
-pub(crate) const WINDOWED_R0_UNIVERSAL_MASK: u16 = 0xfff;
+/// Fixed universal entry for a shape absent from the dispatch map.
+pub(crate) const WINDOWED_R0_FALLBACK: (u16, u32) = (0xfff, 4);
 
 /// Threads per block every generated window kernel is compiled for.
 pub(crate) const WINDOWED_R0_BLOCK_THREADS: u32 = 288;
@@ -41,50 +41,19 @@ pub(crate) struct WindowKernelEntry {
 }
 
 cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_r0_window3_shape_1b1_b3_kernel(desc: WindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_r0_window3_shape_3ff_b4_kernel(desc: WindowLaunchBinding)
-);
-cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_r0_window3_shape_471_b4_kernel(desc: WindowLaunchBinding)
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_r0_window3_shape_4f6_b3_kernel(desc: WindowLaunchBinding)
 );
 cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_r0_window3_shape_5f7_b4_kernel(desc: WindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_r0_window3_shape_7f7_b3_kernel(desc: WindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_r0_window3_shape_7ff_b4_kernel(desc: WindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_r0_window3_shape_c78_b3_kernel(desc: WindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_r0_window3_shape_c7a_b3_kernel(desc: WindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_r0_window3_shape_ffb_b4_kernel(desc: WindowLaunchBinding)
+    pub(crate) ab_gkr_bwd_r0_window3_shape_fff_b3_kernel(desc: WindowLaunchBinding)
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_r0_window3_shape_fff_b4_kernel(desc: WindowLaunchBinding)
 );
 
-pub(crate) const WINDOWED_R0_KERNELS: [WindowKernelEntry; 11] = [
-    WindowKernelEntry {
-        mask: 0x1b1,
-        min_blocks: 3,
-        symbol: ab_gkr_bwd_r0_window3_shape_1b1_b3_kernel,
-    },
-    WindowKernelEntry {
-        mask: 0x3ff,
-        min_blocks: 4,
-        symbol: ab_gkr_bwd_r0_window3_shape_3ff_b4_kernel,
-    },
+pub(crate) const WINDOWED_R0_KERNELS: [WindowKernelEntry; 4] = [
     WindowKernelEntry {
         mask: 0x471,
         min_blocks: 4,
@@ -96,34 +65,9 @@ pub(crate) const WINDOWED_R0_KERNELS: [WindowKernelEntry; 11] = [
         symbol: ab_gkr_bwd_r0_window3_shape_4f6_b3_kernel,
     },
     WindowKernelEntry {
-        mask: 0x5f7,
-        min_blocks: 4,
-        symbol: ab_gkr_bwd_r0_window3_shape_5f7_b4_kernel,
-    },
-    WindowKernelEntry {
-        mask: 0x7f7,
+        mask: 0xfff,
         min_blocks: 3,
-        symbol: ab_gkr_bwd_r0_window3_shape_7f7_b3_kernel,
-    },
-    WindowKernelEntry {
-        mask: 0x7ff,
-        min_blocks: 4,
-        symbol: ab_gkr_bwd_r0_window3_shape_7ff_b4_kernel,
-    },
-    WindowKernelEntry {
-        mask: 0xc78,
-        min_blocks: 3,
-        symbol: ab_gkr_bwd_r0_window3_shape_c78_b3_kernel,
-    },
-    WindowKernelEntry {
-        mask: 0xc7a,
-        min_blocks: 3,
-        symbol: ab_gkr_bwd_r0_window3_shape_c7a_b3_kernel,
-    },
-    WindowKernelEntry {
-        mask: 0xffb,
-        min_blocks: 4,
-        symbol: ab_gkr_bwd_r0_window3_shape_ffb_b4_kernel,
+        symbol: ab_gkr_bwd_r0_window3_shape_fff_b3_kernel,
     },
     WindowKernelEntry {
         mask: 0xfff,

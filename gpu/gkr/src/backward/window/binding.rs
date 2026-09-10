@@ -17,8 +17,7 @@ use gpu_prover_context::ProverContext;
 
 use super::generated_registry::{
     GkrBwdR0Window3Arguments, GkrBwdR0Window3Signature, WindowKernelEntry,
-    WINDOWED_R0_BLOCK_THREADS, WINDOWED_R0_DISPATCH, WINDOWED_R0_KERNELS,
-    WINDOWED_R0_UNIVERSAL_MASK,
+    WINDOWED_R0_BLOCK_THREADS, WINDOWED_R0_DISPATCH, WINDOWED_R0_FALLBACK, WINDOWED_R0_KERNELS,
 };
 use super::tail::WINDOW_TAIL_TENSOR_CELLS;
 use crate::backward::window::bank::family_read_place;
@@ -122,11 +121,7 @@ pub(crate) enum WindowBindError {
     },
     NoKernelForMask {
         mask: u16,
-    },
-    DispatchBoundMismatch {
-        mask: u16,
-        ruled: u32,
-        compiled: u32,
+        min_blocks: u32,
     },
     Capacity {
         resource: &'static str,
@@ -203,23 +198,39 @@ pub(crate) fn resolve_window_kernel(
     if mask & !WINDOW_SHAPE_DEFINED_BITS != 0 {
         return Err(WindowBindError::UndefinedShapeBits { bits: mask });
     }
-    let (compiled, ruled_min_blocks) = WINDOWED_R0_DISPATCH
+    let (compiled, min_blocks) = WINDOWED_R0_DISPATCH
         .iter()
         .find(|(native, ..)| *native == mask)
         .map(|(_, compiled, min_blocks)| (*compiled, *min_blocks))
-        .unwrap_or((WINDOWED_R0_UNIVERSAL_MASK, 0));
-    let entry = WINDOWED_R0_KERNELS
+        .unwrap_or(WINDOWED_R0_FALLBACK);
+    WINDOWED_R0_KERNELS
         .iter()
-        .find(|entry| entry.mask == compiled)
-        .ok_or(WindowBindError::NoKernelForMask { mask: compiled })?;
-    if ruled_min_blocks != 0 && ruled_min_blocks != entry.min_blocks {
-        return Err(WindowBindError::DispatchBoundMismatch {
-            mask,
-            ruled: ruled_min_blocks,
-            compiled: entry.min_blocks,
-        });
-    }
-    Ok(entry)
+        .find(|entry| entry.mask == compiled && entry.min_blocks == min_blocks)
+        .ok_or(WindowBindError::NoKernelForMask {
+            mask: compiled,
+            min_blocks,
+        })
+}
+
+/// Resolve the weighted-score selector to an existing registry entry.
+pub(crate) fn resolve_window_program_kernel(
+    mask: u16,
+    sections: &[u32; WINDOW_SECTION_WORDS],
+) -> Result<&'static WindowKernelEntry, WindowBindError> {
+    // Keep the typed runtime rejection for unsupported feature bits.
+    resolve_window_kernel(mask)?;
+    let (compiled, min_blocks) =
+        gpu_gkr_compiler::backward::window_manifest::resolve_windowed_r0_program_dispatch(
+            mask, sections,
+        )
+        .expect("shape validated by the runtime resolver");
+    WINDOWED_R0_KERNELS
+        .iter()
+        .find(|entry| entry.mask == compiled && entry.min_blocks == min_blocks)
+        .ok_or(WindowBindError::NoKernelForMask {
+            mask: compiled,
+            min_blocks,
+        })
 }
 
 /// The window's runtime addressing: one slot per storage chunk actually read,
@@ -458,7 +469,7 @@ pub(crate) fn bind_window_launch<E: Copy>(
     scratch: WindowRuntimeScratch,
 ) -> Result<WindowLaunch, WindowBindError> {
     let addressing = intern_window_addressing(storage, program)?;
-    let kernel = resolve_window_kernel(program.shape.bits())?;
+    let kernel = resolve_window_program_kernel(program.shape.bits(), &program.sections)?;
     let binding = build_window_binding(program, &addressing, folding_steps, scratch)?;
     let row_tiles = window_row_tiles(1usize << folding_steps);
     // SAFETY: the capacity check above covers the tensor past the partials.
@@ -495,4 +506,48 @@ pub(crate) fn launch_window_program(
     launch
         .kernel
         .launch(&config, &GkrBwdR0Window3Arguments::new(*launch.binding))
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+
+    #[test]
+    fn cpu_program_dispatch_matches_compiler_for_every_defined_shape() {
+        use gpu_gkr_compiler::backward::window_manifest::resolve_windowed_r0_program_dispatch;
+        for mask in 0..=WINDOW_SHAPE_DEFINED_BITS {
+            for (singletons, pairs) in [(0, 0), (15, 0), (16, 0), (57, 1), (58, 1), (0, 30)] {
+                let mut sections = [0; WINDOW_SECTION_WORDS];
+                sections[2] = singletons;
+                sections[3] = singletons + 3 * pairs;
+                let entry = resolve_window_program_kernel(mask, &sections).unwrap();
+                assert_eq!(
+                    (entry.mask, entry.min_blocks),
+                    resolve_windowed_r0_program_dispatch(mask, &sections).unwrap(),
+                    "shape {mask:#05x} sections={sections:?}"
+                );
+            }
+        }
+        assert!(matches!(
+            resolve_window_program_kernel(0x1000, &[0; WINDOW_SECTION_WORDS]),
+            Err(WindowBindError::UndefinedShapeBits { .. })
+        ));
+    }
+
+    #[test]
+    fn cpu_runtime_dispatch_matches_compiler_for_every_defined_shape() {
+        use gpu_gkr_compiler::backward::window_manifest::resolve_windowed_r0_dispatch;
+        for mask in 0..=WINDOW_SHAPE_DEFINED_BITS {
+            let entry = resolve_window_kernel(mask).unwrap();
+            assert_eq!(
+                (entry.mask, entry.min_blocks),
+                resolve_windowed_r0_dispatch(mask).unwrap(),
+                "shape {mask:#05x}"
+            );
+        }
+        assert!(matches!(
+            resolve_window_kernel(0x1000),
+            Err(WindowBindError::UndefinedShapeBits { .. })
+        ));
+    }
 }

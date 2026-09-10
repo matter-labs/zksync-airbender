@@ -1,42 +1,45 @@
 //! Production dispatch manifest for the windowed R0 executor.
 //!
-//! Dispatch is a pure function of a lowered program's shape mask. The map below
-//! is the RULED selection: fourteen native masks — the retained circuit corpus
-//! is exactly those fourteen — each sent to one compiled mask at one launch
-//! bound, with an eleven-kernel image. A well-formed mask the map does not name
-//! uses the universal `0xfff` entry; a mask carrying an undefined
-//! feature bit is rejected, because the universal kernel cannot implement
-//! semantics it has never heard of.
+//! The map supplies baseline choices for fourteen native masks using four
+//! kernels. Known universal programs reaching the weighted product score
+//! threshold select guarded b3; all other entries retain their baseline choice.
+//! A well-formed unknown mask keeps the fixed `0xfff` b4 fallback; undefined
+//! feature bits are rejected because no kernel implements them.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use super::window::{WindowLoweringError, WindowShape, WINDOW_SHAPE_DEFINED_BITS};
+use super::window::{
+    WindowLoweringError, WindowShape, WINDOW_SECTION_WORDS, WINDOW_SHAPE_DEFINED_BITS,
+};
 
 /// `(native shape mask, compiled kernel mask, min blocks per SM)`.
 pub const WINDOWED_R0_DISPATCH: [(u16, u16, u32); 14] = [
     (0x001, 0x471, 4),
-    (0x020, 0x4f6, 3),
-    (0x1b1, 0x1b1, 3),
-    (0x1b7, 0x5f7, 4),
-    (0x3f7, 0x7ff, 4),
-    (0x3fb, 0x3ff, 4),
-    (0x460, 0xc78, 3),
-    (0x470, 0x7f7, 3),
+    (0x020, 0xfff, 3),
+    (0x1b1, 0xfff, 3),
+    (0x1b7, 0xfff, 4),
+    (0x3f7, 0xfff, 4),
+    (0x3fb, 0xfff, 3),
+    (0x460, 0xfff, 3),
+    (0x470, 0xfff, 3),
     (0x4f6, 0x4f6, 3),
     (0x9bf, 0xfff, 4),
-    (0xbfb, 0xffb, 4),
+    (0xbfb, 0xfff, 3),
     (0xbff, 0xfff, 4),
-    (0xc78, 0xc7a, 3),
-    (0xc7a, 0xc7a, 3),
+    (0xc78, 0xfff, 3),
+    (0xc7a, 0xfff, 3),
 ];
 
 /// Every mask of defined feature bits is a subset of this one, so it can execute
 /// any well-formed program the map does not name.
 pub const WINDOWED_R0_UNIVERSAL_MASK: u16 = WINDOW_SHAPE_DEFINED_BITS;
 
-/// Generated entry points, i.e. the size of the dispatch map's image.
-pub const WINDOWED_R0_KERNEL_COUNT: usize = 11;
+/// Fixed entry for well-formed shapes absent from the dispatch map.
+pub const WINDOWED_R0_FALLBACK: (u16, u32) = (WINDOWED_R0_UNIVERSAL_MASK, 4);
+
+/// Generated entry points, including the fixed fallback.
+pub const WINDOWED_R0_KERNEL_COUNT: usize = 4;
 
 /// Threads per block every generated window kernel is compiled for.
 pub const WINDOWED_R0_BLOCK_THREADS: u32 = 288;
@@ -46,9 +49,9 @@ const MANIFEST_HEADER_NAME: &str = "windowed_r0_manifest.cuh";
 
 /// The generated bank: one `(mask, min_blocks)` per compiled kernel, ascending.
 pub fn windowed_r0_bank() -> Vec<(u16, u32)> {
-    let mut bank = BTreeMap::new();
+    let mut bank = BTreeSet::from([WINDOWED_R0_FALLBACK]);
     for (_, mask, min_blocks) in WINDOWED_R0_DISPATCH {
-        bank.insert(mask, min_blocks);
+        bank.insert((mask, min_blocks));
     }
     bank.into_iter().collect()
 }
@@ -62,17 +65,45 @@ pub fn resolve_windowed_r0_dispatch(mask: u16) -> Result<(u16, u32), WindowLower
     {
         return Ok((*compiled, *min_blocks));
     }
-    let min_blocks = windowed_r0_bank()
-        .into_iter()
-        .find(|(bank_mask, _)| *bank_mask == WINDOWED_R0_UNIVERSAL_MASK)
-        .map(|(_, min_blocks)| min_blocks)
-        .ok_or_else(|| {
-            WindowLoweringError::Encoding("the dispatch bank omits the universal mask".to_owned())
-        })?;
-    Ok((WINDOWED_R0_UNIVERSAL_MASK, min_blocks))
+    Ok(WINDOWED_R0_FALLBACK)
 }
 
-/// The properties the ruling fixes, checked as data rather than trusted.
+/// Empirical reuse thresholds shared with the native executor through codegen.
+/// These are atom-count cutoffs, not cache-capacity bounds.
+pub const WINDOWED_R0_REUSE_SCORE: u32 = 120;
+pub const WINDOWED_R0_REUSE_SINGLETONS: u32 = 16;
+
+/// Whether the program reaches the weighted product threshold for b3 selection.
+/// The executor also guards singleton-only programs; that lower threshold does
+/// not justify changing b4 dispatch (bigint and Keccak are counterexamples).
+/// Endpoints come from a validated lowered program. Match CUDA u32 arithmetic.
+pub fn windowed_r0_prefers_guarded_b3(sections: &[u32; WINDOW_SECTION_WORDS]) -> bool {
+    let singletons = sections[2] - sections[1];
+    let pairs = (sections[3] - sections[2]) / 3;
+    singletons
+        .wrapping_mul(2)
+        .wrapping_add(pairs.wrapping_mul(4))
+        >= WINDOWED_R0_REUSE_SCORE
+}
+
+/// Select guarded b3 for reuse-heavy known universal programs. All other mask
+/// choices, dedicated kernels, and the unknown-mask fallback stay fixed.
+pub fn resolve_windowed_r0_program_dispatch(
+    mask: u16,
+    sections: &[u32; WINDOW_SECTION_WORDS],
+) -> Result<(u16, u32), WindowLoweringError> {
+    let entry = resolve_windowed_r0_dispatch(mask)?;
+    if entry.0 == WINDOWED_R0_UNIVERSAL_MASK
+        && WINDOWED_R0_DISPATCH.iter().any(|row| row.0 == mask)
+        && windowed_r0_prefers_guarded_b3(sections)
+    {
+        Ok((entry.0, 3))
+    } else {
+        Ok(entry)
+    }
+}
+
+/// Validate native masks, compatible compiled entries, and bank size.
 pub fn validate_windowed_r0_dispatch() -> Result<(), String> {
     let mut natives = BTreeMap::new();
     for (native, compiled, min_blocks) in WINDOWED_R0_DISPATCH {
@@ -98,25 +129,11 @@ pub fn validate_windowed_r0_dispatch() -> Result<(), String> {
             ));
         }
     }
-    let mut bounds: BTreeMap<u16, u32> = BTreeMap::new();
-    for (_, compiled, min_blocks) in WINDOWED_R0_DISPATCH {
-        if let Some(previous) = bounds.insert(compiled, min_blocks) {
-            if previous != min_blocks {
-                return Err(format!(
-                    "compiled mask {compiled:#05x} appears at both bounds {previous} and {min_blocks}"
-                ));
-            }
-        }
-    }
-    if bounds.len() != WINDOWED_R0_KERNEL_COUNT {
+    let bank = windowed_r0_bank();
+    if bank.len() != WINDOWED_R0_KERNEL_COUNT {
         return Err(format!(
-            "dispatch image is {} masks, expected {WINDOWED_R0_KERNEL_COUNT}",
-            bounds.len()
-        ));
-    }
-    if !bounds.contains_key(&WINDOWED_R0_UNIVERSAL_MASK) {
-        return Err(format!(
-            "the universal mask {WINDOWED_R0_UNIVERSAL_MASK:#05x} is not in the bank"
+            "dispatch bank is {} entries, expected {WINDOWED_R0_KERNEL_COUNT}",
+            bank.len()
         ));
     }
     Ok(())
@@ -126,8 +143,8 @@ pub fn windowed_r0_kernel_symbol(mask: u16, min_blocks: u32) -> String {
     format!("ab_gkr_bwd_r0_window3_shape_{mask:03x}_b{min_blocks}_kernel")
 }
 
-pub fn windowed_r0_translation_unit_name(mask: u16) -> String {
-    format!("r0_window_shape_{mask:03x}.cu")
+pub fn windowed_r0_translation_unit_name(mask: u16, min_blocks: u32) -> String {
+    format!("r0_window_shape_{mask:03x}_b{min_blocks}.cu")
 }
 
 /// Repository root, resolved from `CARGO_MANIFEST_DIR` so the process working
@@ -157,7 +174,7 @@ pub fn windowed_r0_generated_artifacts() -> Result<Vec<(String, String)>, String
         artifacts.push((
             format!(
                 "{WINDOWED_R0_GENERATED_NATIVE_DIR}/{}",
-                windowed_r0_translation_unit_name(mask)
+                windowed_r0_translation_unit_name(mask, min_blocks)
             ),
             render_windowed_r0_translation_unit(mask, min_blocks),
         ));
@@ -179,6 +196,8 @@ pub fn render_windowed_r0_manifest() -> String {
          \n\
          inline constexpr unsigned BWD_WINDOW_R0_KERNEL_COUNT = {WINDOWED_R0_KERNEL_COUNT};\n\
          inline constexpr unsigned BWD_WINDOW_R0_DISPATCH_ROWS = {rows};\n\
+         inline constexpr unsigned BWD_WINDOW_R0_REUSE_SCORE = {WINDOWED_R0_REUSE_SCORE};\n\
+         inline constexpr unsigned BWD_WINDOW_R0_REUSE_SINGLETONS = {WINDOWED_R0_REUSE_SINGLETONS};\n\
          \n\
          }} // namespace airbender::gkr::backward\n"
     )
@@ -223,9 +242,10 @@ pub fn render_windowed_r0_registry() -> String {
         ));
     }
     out.push_str("];\n\n");
-    out.push_str("/// Universal compiled mask for a shape the dispatch map does not name.\n");
+    out.push_str("/// Fixed universal entry for a shape absent from the dispatch map.\n");
     out.push_str(&format!(
-        "pub(crate) const WINDOWED_R0_UNIVERSAL_MASK: u16 = {WINDOWED_R0_UNIVERSAL_MASK:#05x};\n\n"
+        "pub(crate) const WINDOWED_R0_FALLBACK: (u16, u32) = ({:#05x}, {});\n\n",
+        WINDOWED_R0_FALLBACK.0, WINDOWED_R0_FALLBACK.1
     ));
     out.push_str("/// Threads per block every generated window kernel is compiled for.\n");
     out.push_str(&format!(
@@ -266,6 +286,47 @@ pub fn render_windowed_r0_registry() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cpu_program_selector_boundaries_and_fixed_entries() {
+        // Weighted-score boundaries and singleton-only counterexamples, plus u32 wrap.
+        for (singletons, pairs, reuse) in [
+            (0, 0, false),
+            (15, 0, false),
+            (16, 0, false),
+            (59, 0, false),
+            (60, 0, true),
+            (57, 1, false),
+            (58, 1, true),
+            (59, 1, true),
+            (0, 29, false),
+            (0, 30, true),
+            (u32::MAX - 3, 1, true),
+            (1 << 31, 1, false),
+        ] {
+            let mut sections = [0; WINDOW_SECTION_WORDS];
+            sections[2] = singletons;
+            sections[3] = singletons + 3 * pairs;
+            assert_eq!(windowed_r0_prefers_guarded_b3(&sections), reuse);
+            for mask in 0..=WINDOW_SHAPE_DEFINED_BITS {
+                let fixed = resolve_windowed_r0_dispatch(mask).unwrap();
+                let expected = if reuse
+                    && fixed.0 == WINDOWED_R0_UNIVERSAL_MASK
+                    && WINDOWED_R0_DISPATCH.iter().any(|row| row.0 == mask)
+                {
+                    (0xfff, 3)
+                } else {
+                    fixed
+                };
+                assert_eq!(
+                    resolve_windowed_r0_program_dispatch(mask, &sections).unwrap(),
+                    expected,
+                    "mask {mask:03x}, singletons={singletons}, pairs={pairs}"
+                );
+            }
+        }
+        assert!(resolve_windowed_r0_program_dispatch(0x1000, &[0; WINDOW_SECTION_WORDS]).is_err());
+    }
 
     #[test]
     fn cpu_dispatch_is_well_formed() {
@@ -317,10 +378,46 @@ mod tests {
     }
 
     #[test]
+    fn cpu_bank_preserves_both_universal_entries() {
+        let bank = windowed_r0_bank();
+        assert!(bank.contains(&(WINDOWED_R0_UNIVERSAL_MASK, 3)));
+        assert!(bank.contains(&(WINDOWED_R0_UNIVERSAL_MASK, 4)));
+        let names: BTreeSet<_> = bank
+            .iter()
+            .map(|&(mask, bound)| windowed_r0_translation_unit_name(mask, bound))
+            .collect();
+        assert_eq!(
+            names.len(),
+            bank.len(),
+            "translation-unit paths must be unique"
+        );
+    }
+
+    #[test]
     fn cpu_committed_generated_artifacts_are_current() {
         let root = repo_root();
         let artifacts = windowed_r0_generated_artifacts().unwrap();
         assert_eq!(artifacts.len(), WINDOWED_R0_KERNEL_COUNT + 2);
+        let expected: BTreeSet<_> = artifacts
+            .iter()
+            .filter_map(|(relative, _)| {
+                relative
+                    .ends_with(".cu")
+                    .then(|| Path::new(relative).file_name().unwrap().to_owned())
+            })
+            .collect();
+        let present: BTreeSet<_> = std::fs::read_dir(root.join(WINDOWED_R0_GENERATED_NATIVE_DIR))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| {
+                name.to_str()
+                    .is_some_and(|s| s.starts_with("r0_window_shape_") && s.ends_with(".cu"))
+            })
+            .collect();
+        assert_eq!(
+            present, expected,
+            "obsolete or missing R0 translation units"
+        );
         for (relative, rendered) in artifacts {
             let path = root.join(&relative);
             let committed = std::fs::read_to_string(&path)

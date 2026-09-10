@@ -26,6 +26,43 @@ const CORPUS: &[&str] = &[
     "unsigned_mul_div_layout_gkr.json",
 ];
 
+#[test]
+fn cpu_window_program_selector_retained_corpus() {
+    use super::window_manifest::{
+        resolve_windowed_r0_dispatch, resolve_windowed_r0_program_dispatch, windowed_r0_bank,
+    };
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let bank = windowed_r0_bank();
+    let mut coordinates = 0;
+    let mut changes = 0;
+    for layout_name in CORPUS {
+        let artifact: GKRCircuitArtifact<BabyBearField> =
+            serde_json::from_slice(&std::fs::read(directory.join(layout_name)).unwrap()).unwrap();
+        let dag = lower_dag(&artifact).unwrap();
+        for layer in compile_r0(&dag).unwrap().layers {
+            let program = super::lower_window_program(&layer).unwrap();
+            let mask = program.shape.bits();
+            let bf = program.sections[0];
+            let e4 = program.sections[3] - bf;
+            let selected = resolve_windowed_r0_program_dispatch(mask, &program.sections).unwrap();
+            let baseline = resolve_windowed_r0_dispatch(mask).unwrap();
+            let expected = match (*layout_name, layer.layer) {
+                ("blake2_with_extended_control_layout_gkr.json", 0) => (0xfff, 3),
+                _ => baseline,
+            };
+            assert_eq!(selected, expected, "{layout_name} L{}", layer.layer);
+            assert!(bank.contains(&selected));
+            assert_eq!(mask & !selected.0, 0);
+            changes += usize::from(selected != baseline);
+            coordinates += 1;
+            eprintln!("R0_PROGRAM layout={layout_name} layer={} native={mask:03x} bf={bf} e4={e4} compiled={:03x} bound={}",
+                layer.layer, selected.0, selected.1);
+        }
+    }
+    assert_eq!(coordinates, 57);
+    assert_eq!(changes, 1);
+}
+
 struct Resolver;
 
 fn lift(value: u32) -> Ext {

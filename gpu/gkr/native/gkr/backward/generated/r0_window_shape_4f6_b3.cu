@@ -4,8 +4,8 @@
 
 namespace airbender::gkr::backward {
 
-AB_GKR_BWD_WINDOW_DEFINE_KERNEL(ab_gkr_bwd_r0_window3_shape_5f7_b4_kernel, 0x5f7, 4);
+AB_GKR_BWD_WINDOW_DEFINE_KERNEL(ab_gkr_bwd_r0_window3_shape_4f6_b3_kernel, 0x4f6, 3);
 
-static_assert(BWD_WINDOW_R0_KERNEL_COUNT == 11, "shape_5f7 window manifest drift");
+static_assert(BWD_WINDOW_R0_KERNEL_COUNT == 4, "shape_4f6 window manifest drift");
 
 } // namespace airbender::gkr::backward

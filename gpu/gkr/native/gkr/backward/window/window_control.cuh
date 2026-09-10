@@ -3,6 +3,7 @@
 // The sectioned window-3 executor: four straight-line sections walked in wire
 // order, each specialized at compile time by the program's shape mask so a
 // feature no program in the section uses costs no instruction.
+#include "../generated/windowed_r0_manifest.cuh"
 #include "window_geometry.cuh"
 
 namespace airbender::gkr::backward {
@@ -312,7 +313,7 @@ DEVICE_FORCEINLINE void bwd_window_execute_loaded_pair(const bwd_window_desc &de
 
 // ── Driver ──────────────────────────────────────────────────────────────────
 
-template <u16 Shape>
+template <u16 Shape, bool GuardReuse = false>
 DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc, const u32 row, const bwd_window_selector_pair selector, e4 (&values)[3]) {
   const u16 *program = desc.program;
   bwd_window_u96_accumulator outer[3][4]{};
@@ -333,13 +334,28 @@ DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc
     bwd_window_accumulate_linear_wide(desc, instruction, row, selector, outer);
   }
   bwd_window_reduce_outer(outer, values);
+  // Descriptor endpoints and program counters are block-uniform. Inactive rows
+  // still execute every barrier; only publication is masked by row validity.
+  // These empirical atom-count cutoffs are not cache-capacity bounds.
+  bool synchronize = false;
+  if constexpr (GuardReuse) {
+    const u32 singleton_atoms = desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4] - desc.sections[BWD_WINDOW_SECTION_LINEAR_E4];
+    const u32 pair_atoms = (desc.sections[BWD_WINDOW_SECTION_PAIR_E4] - desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4]) / 3;
+    synchronize = 2 * singleton_atoms + 4 * pair_atoms >= BWD_WINDOW_R0_REUSE_SCORE || (pair_atoms == 0 && singleton_atoms >= BWD_WINDOW_R0_REUSE_SINGLETONS);
+  }
+  if (synchronize)
+    __syncthreads();
   constexpr bool has_e4_singleton = (Shape & (BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_3 | BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_5)) != 0;
   if constexpr (has_e4_singleton) {
     while (pc < desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4]) {
       const bwd_window_instruction instruction = bwd_window_read(program, pc++);
       bwd_window_execute_singleton<Shape>(desc, instruction, row, selector, values);
+      if (synchronize && (pc & 15) == 0)
+        __syncthreads();
     }
   }
+  if (synchronize)
+    __syncthreads();
   constexpr bool has_e4_pair = (Shape & BWD_WINDOW_SHAPE_E4_FIXED_PAIR) != 0;
   if constexpr (has_e4_pair) {
     while (pc < desc.sections[BWD_WINDOW_SECTION_PAIR_E4]) {
@@ -347,11 +363,14 @@ DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc
       const bwd_window_instruction first = bwd_window_read(program, pc++);
       const bwd_window_instruction second = bwd_window_read(program, pc++);
       bwd_window_execute_loaded_pair<Shape>(desc, head, first, second, row, selector, values);
+      // Each pair advances pc by three, so this fires every 16 pair atoms.
+      if (synchronize && (pc & 15) == 0)
+        __syncthreads();
     }
   }
 }
 
-template <u16 Shape> DEVICE_FORCEINLINE void bwd_window_execute(const bwd_window_desc &desc) {
+template <u16 Shape, bool GuardReuse = false> DEVICE_FORCEINLINE void bwd_window_execute(const bwd_window_desc &desc) {
   const u32 lane = bwd_window_lane();
   const u32 row_tile = bwd_window_row_tile();
   const bwd_window_selector_pair selector = bwd_window_selector(bwd_window_selector_id());
@@ -359,7 +378,7 @@ template <u16 Shape> DEVICE_FORCEINLINE void bwd_window_execute(const bwd_window
   const bool active = global_row < (1u << desc.log_rows);
   const u32 row = active ? global_row : 0;
   e4 values[3]{e4::ZERO(), e4::ZERO(), e4::ZERO()};
-  bwd_window_evaluate_selector<Shape>(desc, row, selector, values);
+  bwd_window_evaluate_selector<Shape, GuardReuse>(desc, row, selector, values);
   bwd_window_publish(desc, row_tile, lane, active, selector, values);
 }
 
@@ -368,7 +387,7 @@ template <u16 Shape> DEVICE_FORCEINLINE void bwd_window_execute(const bwd_window
                                       MinBlocks) void Name(const __grid_constant__ airbender::gkr::backward::bwd_window_desc desc) {                           \
     if (blockDim.x != airbender::gkr::backward::BWD_WINDOW_BLOCK_THREADS)                                                                                      \
       return;                                                                                                                                                  \
-    airbender::gkr::backward::bwd_window_execute<Shape>(desc);                                                                                                 \
+    airbender::gkr::backward::bwd_window_execute<Shape, Shape == 0xfff>(desc);                                                                                 \
   }
 
 } // namespace airbender::gkr::backward

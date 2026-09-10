@@ -3,7 +3,9 @@
 
 namespace airbender::gkr::backward {
 
-inline constexpr unsigned BWD_WINDOW_R0_KERNEL_COUNT = 11;
+inline constexpr unsigned BWD_WINDOW_R0_KERNEL_COUNT = 4;
 inline constexpr unsigned BWD_WINDOW_R0_DISPATCH_ROWS = 14;
+inline constexpr unsigned BWD_WINDOW_R0_REUSE_SCORE = 120;
+inline constexpr unsigned BWD_WINDOW_R0_REUSE_SINGLETONS = 16;
 
 } // namespace airbender::gkr::backward
