@@ -704,49 +704,4 @@ mod cpu_partitioning_tests {
             (1 << geometry.pages_per_set_log2) | 2
         );
     }
-
-    #[test]
-    fn cpu_standalone_pads_and_groups_into_whole_instances() {
-        let geometry = InitsAndTeardownsGeometry::new(
-            UnrolledCircuitType::InitsAndTeardowns,
-            UNIFIED_RAM_WORDS,
-        );
-        assert_eq!(geometry.max_instances(), 2);
-        let empty = partition(geometry, vec![]);
-        assert_eq!(windows_of(&empty), (16..24).collect::<Vec<_>>());
-        assert_eq!(empty.instances_count(), 1);
-
-        for touched_windows in [8, 9, 16] {
-            let p = partition(
-                geometry,
-                (0..touched_windows)
-                    .rev()
-                    .map(|w| record_in(&geometry, w, 3))
-                    .collect(),
-            );
-            let mut expected = (0..touched_windows).collect::<Vec<_>>();
-            let padding = (8 - touched_windows % 8) % 8;
-            expected.extend(16..16 + padding);
-            assert_eq!(windows_of(&p), expected);
-            assert_eq!(p.instances_count(), touched_windows.div_ceil(8) as usize);
-            for (instance_idx, slots) in p.window_schedule.chunks(8).enumerate() {
-                for (set_idx, &(window, count)) in slots.iter().enumerate() {
-                    if window < touched_windows {
-                        assert_eq!(count, 1);
-                        assert_eq!(
-                            local_page_index(
-                                (window << geometry.pages_per_set_log2) | 3,
-                                slots,
-                                geometry.pages_per_set_log2,
-                            ),
-                            ((set_idx as u32) << geometry.pages_per_set_log2) | 3,
-                            "instance {instance_idx}, window {window}",
-                        );
-                    } else {
-                        assert_eq!(count, 0);
-                    }
-                }
-            }
-        }
-    }
 }

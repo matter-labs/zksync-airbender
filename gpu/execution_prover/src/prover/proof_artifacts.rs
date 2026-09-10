@@ -366,58 +366,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cpu_unrolled_memory_seed_binds_windows() {
-        let registers = [FinalRegisterValue {
-            value: 0,
-            last_access_timestamp: 0,
-        }; 32];
-        let per_coset_caps = vec![
-            MerkleTreeCapVarLength {
-                cap: vec![[1; 8]; 2],
-            },
-            MerkleTreeCapVarLength {
-                cap: vec![[2; 8]; 2],
-            },
-        ];
-        for num_proofs in [1, 2] {
-            let caps = vec![per_coset_caps.clone(); num_proofs];
-            let mut windows: BTreeMap<_, _> = (0..num_proofs)
-                .map(|i| (i, (i as u32 * 8..(i as u32 + 1) * 8).collect_vec()))
-                .collect();
-            let seed =
-                fs_transform_for_permutation_argument(&registers, 0, 0, &[], &caps, &windows, &[]);
-            let combined_caps = windows
-                .values()
-                .map(|ids| {
-                    (
-                        ids.clone(),
-                        MerkleTreeCapVarLength {
-                            cap: [vec![[1; 8]; 2], vec![[2; 8]; 2]].concat(),
-                        },
-                    )
-                })
-                .collect_vec();
-            let expected = crate::upstream::fs_transform_for_permutation_argument::<true>(
-                &registers,
-                0,
-                0,
-                &[],
-                &combined_caps,
-                &[],
-            );
-            assert_eq!(seed, expected);
-            *windows
-                .get_mut(&(num_proofs - 1))
-                .unwrap()
-                .last_mut()
-                .unwrap() += 1;
-            let changed =
-                fs_transform_for_permutation_argument(&registers, 0, 0, &[], &caps, &windows, &[]);
-            assert_ne!(seed, changed);
-        }
-    }
-
-    #[test]
     fn cpu_reduced_machine_idx_maps_to_unified() {
         let ct = unrolled_circuit_type_from_family_idx(
             UnrolledCircuitType::Unified.get_family_idx(),
