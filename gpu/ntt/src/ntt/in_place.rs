@@ -1,5 +1,3 @@
-//! Transforms that consume and replace a single polynomial representation.
-
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -11,9 +9,7 @@ use gpu_core::primitives::field::BF;
 use super::kernels::*;
 use super::{select_ntt_strategy, shared, NttDirection, NttKernelKind, OMEGA_LOG_ORDER};
 
-/// Replace natural monomials with bitreversed evaluations of one shifted
-/// coset. One mutable slab describes exact aliasing; no aliased Rust slices
-/// or auxiliary allocations are constructed.
+/// Replace natural monomials with bitreversed evaluations of one shifted coset.
 pub fn monomials_to_coset_in_place(
     values: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -260,8 +256,7 @@ pub fn monomials_to_hypercube_in_place(
 }
 
 /// Replace bitreversed evaluations on `coset_index` with natural monomials.
-/// Each column is one polynomial of size 2^log_n. No allocation, copy or
-/// bit-reversal pass is needed. All prior readers must be ordered on `stream`.
+/// All prior readers must be ordered on `stream`.
 pub fn coset_to_monomials_in_place(
     values: &mut DeviceSlice<BF>,
     log_n: usize,

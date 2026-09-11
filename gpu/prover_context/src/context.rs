@@ -57,7 +57,6 @@ pub struct ProverContext {
     side_stream: CudaStream,
     h2d_stream: CudaStream,
     device_allocator_mem_size: usize,
-    exact_device_budget: bool,
     device_id: i32,
     device_properties: DeviceProperties,
     reversed_allocation_placement: bool,
@@ -184,7 +183,6 @@ impl ProverContext {
             side_stream,
             h2d_stream,
             device_allocator_mem_size,
-            exact_device_budget: !allow_smaller_arena,
             device_id,
             device_properties,
             reversed_allocation_placement: false,
@@ -284,10 +282,6 @@ impl ProverContext {
     ///
     pub unsafe fn alloc_host_uninit_slice<T: Sized>(&self, len: usize) -> HostAllocation<[T]> {
         HostAllocation::new_uninit_slice_in(len, self.get_host_allocator())
-    }
-
-    pub fn has_exact_device_budget(&self) -> bool {
-        self.exact_device_budget
     }
 
     pub fn config(&self) -> &ProverContextConfig {

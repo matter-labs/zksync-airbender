@@ -1,10 +1,10 @@
 // Offline budget sweep ported from dev's gpu_prover harness.
 use super::factory::{PreparedCircuit, SyntheticRequestFactory};
 use super::model::{
-    all_circuits, circuit_stable_name, generate_policy, mark_preferred, policy_fields,
-    stable_cases, stable_name, write_csv, SweepRow, TimingSummary,
+    all_circuits, circuit_stable_name, generate_policy, mark_preferred, policy_fields, stable_name,
+    write_csv, SweepRow, TimingSummary,
 };
-use super::probe::{commit_memory, drain, input_footprint, run_replay_case, run_sweep_case};
+use super::probe::{commit_memory, drain, input_footprint, run_case};
 use crate::memory_policy::{validate_device_budget, PolicyGeometry};
 use crate::upstream::SecurityLevel;
 use clap::Parser;
@@ -47,26 +47,9 @@ struct Arguments {
     /// Print selectors without creating a CUDA context.
     #[arg(long)]
     list: bool,
-    /// Validate installed presets: every selected circuit is proved with the
-    /// policy production selection picks (no overrides) after the worker's
-    /// exact-budget admission check. `--configuration` then only asserts
-    /// which policies production may select.
-    #[arg(long)]
+    /// Replay production selection; --configuration asserts the expected policy.
+    #[arg(long, conflicts_with_all = ["fit_only", "generate_policy", "list"])]
     replay_presets: bool,
-}
-
-fn validate_mode(a: &Arguments) -> Result<(), SweepError> {
-    if a.replay_presets && (a.fit_only || a.generate_policy || a.list) {
-        return Err(SweepError(
-            "--replay-presets measures production selection only; it cannot be combined with --fit-only, --generate-policy or --list".into(),
-        ));
-    }
-    if a.replay_presets && a.rounds == 0 {
-        return Err(SweepError(
-            "--replay-presets requires positive --rounds".into(),
-        ));
-    }
-    Ok(())
 }
 
 #[derive(Debug)]
@@ -78,17 +61,11 @@ impl Display for SweepError {
 }
 impl Error for SweepError {}
 
-enum FitOutcome<T> {
-    Fits(T),
-    DoesNotFit,
-}
-
 pub(super) fn main_entry() -> Result<(), Box<dyn Error>> {
     run_arguments(Arguments::parse())
 }
 
 fn run_arguments(a: Arguments) -> Result<(), Box<dyn Error>> {
-    validate_mode(&a)?;
     if a.list {
         for c in all_circuits() {
             println!("circuit {}", circuit_stable_name(c));
@@ -143,11 +120,7 @@ fn run_arguments(a: Arguments) -> Result<(), Box<dyn Error>> {
     set_device(a.device_id).map_err(cuda_error)?;
     let mut rows = Vec::new();
     for &arena in &a.arena_gib {
-        if a.replay_presets {
-            replay_arena(&a, arena, &mut rows)?;
-        } else {
-            sweep_arena(&a, arena, &mut rows)?;
-        }
+        sweep_arena(&a, arena, &mut rows)?;
         write_csv(File::create(output)?, &rows)?;
     }
     Ok(())
@@ -198,7 +171,7 @@ fn prepare_arena(
                 drain(&context)?;
                 result
             })?,
-            FitOutcome::DoesNotFit
+            None
         ) {
             assert_empty(&context);
             record_arena_failure(
@@ -241,8 +214,8 @@ fn prepare_arena(
                 prepared[i].memory_commitment_request(sequence),
             )
         })? {
-            FitOutcome::Fits(caps) => caps,
-            FitOutcome::DoesNotFit => {
+            Some(caps) => caps,
+            None => {
                 assert_empty(&context);
                 record_arena_failure(
                     a,
@@ -288,54 +261,60 @@ fn sweep_arena(
         mut sequence,
     }) = prepare_arena(a, arena_bytes, rows)?
     else {
+        if a.replay_presets {
+            return Err(SweepError("replay arena preparation does not fit".into()).into());
+        }
         return Ok(());
     };
-    let policies: Vec<_> = MemoryPolicy::candidates()
-        .filter(|p| a.configuration.is_empty() || a.configuration.contains(&stable_name(*p)))
-        .collect();
-    let cases = stable_cases(
-        prepared
-            .iter()
-            .filter(|p| is_selected(a, p))
-            .map(|p| p.circuit),
-        policies,
-    );
+    let mut cases = Vec::new();
+    for (i, circuit) in prepared
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| is_selected(a, p))
+    {
+        if a.replay_presets {
+            let policy = crate::memory_policy::select(
+                circuit.circuit,
+                SecurityLevel::Sec100,
+                &circuit.precomputations,
+                &context,
+            )
+            .map_err(cuda_error)?;
+            let name = stable_name(policy);
+            if !a.configuration.is_empty() && !a.configuration.contains(&name) {
+                return Err(SweepError(format!(
+                    "production selected {name}; not among --configuration"
+                ))
+                .into());
+            }
+            cases.push((i, policy));
+        } else {
+            cases.extend(
+                MemoryPolicy::candidates()
+                    .filter(|p| {
+                        a.configuration.is_empty() || a.configuration.contains(&stable_name(*p))
+                    })
+                    .map(|policy| (i, policy)),
+            );
+        }
+    }
     let mut fingerprints = BTreeMap::new();
     let mut fitting = Vec::new();
     let start = rows.len();
-    for case in cases {
-        let i = prepared
-            .iter()
-            .position(|p| p.circuit == case.circuit)
-            .unwrap();
+    for (i, policy) in cases {
         let geometry = PolicyGeometry::new(
-            case.circuit,
+            prepared[i].circuit,
             SecurityLevel::Sec100,
             &prepared[i].precomputations,
             &context,
         );
-        let (setup, memory, witness_commitment, witness_opening) = policy_fields(case.policy);
-        let mut row = SweepRow {
+        let mut row = new_row(
             arena_bytes,
-            circuit: circuit_stable_name(case.circuit).into(),
-            configuration: stable_name(case.policy),
-            geometry: serde_json::to_string(&geometry)?,
-            setup,
-            memory,
-            witness_commitment,
-            witness_opening,
-            failure_stage: None,
-            raw_samples_ms: "[]".into(),
-            proof_fingerprint: None,
-            fits: false,
-            input_bytes: input_bytes[i],
-            peak_bytes: None,
-            timing_samples: 0,
-            median_ms: None,
-            min_ms: None,
-            max_ms: None,
-            preferred: false,
-        };
+            circuit_stable_name(prepared[i].circuit),
+            policy,
+            serde_json::to_string(&geometry)?,
+            input_bytes[i],
+        );
         // First two successful runs warm this exact policy; their timings are
         // retained separately in logs and excluded from the measured median.
         let runs = if a.fit_only { 1 } else { 2 };
@@ -346,19 +325,31 @@ fn sweep_arena(
             let follower = prepared[follower_index].proof_request(sequence + 1)?;
             sequence += 2;
             match classify(|| {
-                run_sweep_case(a.device_id, &mut context, target, case.policy, follower)
+                run_case(
+                    a.device_id,
+                    &mut context,
+                    target,
+                    (!a.replay_presets).then_some(policy),
+                    follower,
+                )
             })? {
-                FitOutcome::DoesNotFit => {
-                    if iteration > 0 {
+                None => {
+                    if iteration > 0 || a.replay_presets {
                         return Err(SweepError(
-                            "policy stopped fitting after a successful run".into(),
+                            "replay or previously fitting policy does not fit".into(),
                         )
                         .into());
                     }
                     row.failure_stage = Some("target_with_largest_follower".into());
                     break;
                 }
-                FitOutcome::Fits(sample) => {
+                Some((sample, selected)) => {
+                    if selected != policy {
+                        return Err(SweepError(
+                            "production selection changed between proofs".into(),
+                        )
+                        .into());
+                    }
                     let expected = fingerprints.entry(i).or_insert(sample.fingerprint);
                     if *expected != sample.fingerprint {
                         return Err(SweepError(format!(
@@ -385,7 +376,7 @@ fn sweep_arena(
             row.circuit, row.configuration, row.fits
         );
         if row.fits {
-            fitting.push((rows.len(), i, case.policy));
+            fitting.push((rows.len(), i, policy));
         }
         rows.push(row);
         write_csv(File::create(a.output_csv.as_ref().unwrap())?, rows)?;
@@ -401,11 +392,17 @@ fn sweep_arena(
                 let target = prepared[i].proof_request(sequence)?;
                 let follower = prepared[follower_index].proof_request(sequence + 1)?;
                 sequence += 2;
-                let sample = match classify(|| {
-                    run_sweep_case(a.device_id, &mut context, target, policy, follower)
+                let (sample, selected) = match classify(|| {
+                    run_case(
+                        a.device_id,
+                        &mut context,
+                        target,
+                        (!a.replay_presets).then_some(policy),
+                        follower,
+                    )
                 })? {
-                    FitOutcome::Fits(sample) => sample,
-                    FitOutcome::DoesNotFit => {
+                    Some(sample) => sample,
+                    None => {
                         return Err(
                             SweepError("policy stopped fitting in a timed round".into()).into()
                         )
@@ -413,9 +410,9 @@ fn sweep_arena(
                 };
                 assert_empty(&context);
                 let row = &mut rows[row_index];
-                if row.proof_fingerprint != Some(sample.fingerprint) {
+                if selected != policy || row.proof_fingerprint != Some(sample.fingerprint) {
                     return Err(SweepError(format!(
-                        "proof changed during timing for {}",
+                        "selection or proof changed during timing for {}",
                         row.circuit
                     ))
                     .into());
@@ -437,24 +434,25 @@ fn sweep_arena(
             write_csv(File::create(a.output_csv.as_ref().unwrap())?, rows)?;
         }
     }
-    mark_preferred(&mut rows[start..])?;
+    if !a.replay_presets {
+        mark_preferred(&mut rows[start..])?;
+    }
     Ok(())
 }
 
 fn new_row(
     arena_bytes: usize,
     circuit_name: &str,
-    configuration: String,
     policy: MemoryPolicy,
-    geometry: &PolicyGeometry,
+    geometry: String,
     input_bytes: usize,
-) -> Result<SweepRow, Box<dyn Error>> {
+) -> SweepRow {
     let (setup, memory, witness_commitment, witness_opening) = policy_fields(policy);
-    Ok(SweepRow {
+    SweepRow {
         arena_bytes,
         circuit: circuit_name.into(),
-        configuration,
-        geometry: serde_json::to_string(geometry)?,
+        configuration: stable_name(policy),
+        geometry,
         setup,
         memory,
         witness_commitment,
@@ -470,180 +468,7 @@ fn new_row(
         min_ms: None,
         max_ms: None,
         preferred: false,
-    })
-}
-
-/// Prove every selected circuit with the policy production selection picks for
-/// this arena, through the production phase-one/phase-two worker paths, and
-/// record one row per circuit with the same fingerprint and timing evidence as
-/// a sweep row. Rows are never marked preferred: replay validates presets, it
-/// does not choose them.
-fn replay_arena(
-    a: &Arguments,
-    arena_bytes: usize,
-    rows: &mut Vec<SweepRow>,
-) -> Result<(), Box<dyn Error>> {
-    let Some(PreparedArena {
-        mut context,
-        prepared,
-        input_bytes,
-        follower_index,
-        mut sequence,
-    }) = prepare_arena(a, arena_bytes, rows)?
-    else {
-        write_csv(File::create(a.output_csv.as_ref().unwrap())?, rows)?;
-        return Err(SweepError(format!(
-            "replay: setup initialization or memory commitment does not fit at {arena_bytes} bytes"
-        ))
-        .into());
-    };
-    struct Replay {
-        row: usize,
-        i: usize,
-        policy: MemoryPolicy,
     }
-    let mut replays = Vec::new();
-    let mut failures = Vec::new();
-    for i in (0..prepared.len()).filter(|&i| is_selected(a, &prepared[i])) {
-        let circuit_name = circuit_stable_name(prepared[i].circuit);
-        let geometry = PolicyGeometry::new(
-            prepared[i].circuit,
-            SecurityLevel::Sec100,
-            &prepared[i].precomputations,
-            &context,
-        );
-        let mut row: Option<SweepRow> = None;
-        let mut selected: Option<MemoryPolicy> = None;
-        // Two warm proofs with the production-selected policy; the first also
-        // fixes which policy that is.
-        for _ in 0..2 {
-            assert_empty(&context);
-            context.reset_used_mem_peak();
-            let target = prepared[i].proof_request(sequence)?;
-            let follower = prepared[follower_index].proof_request(sequence + 1)?;
-            sequence += 2;
-            match classify(|| run_replay_case(a.device_id, &mut context, target, follower))? {
-                FitOutcome::DoesNotFit => {
-                    let mut failed = new_row(
-                        arena_bytes,
-                        circuit_name,
-                        "production_selection".into(),
-                        MemoryPolicy::default(),
-                        &geometry,
-                        input_bytes[i],
-                    )?;
-                    failed.failure_stage = Some("replay_target_with_largest_follower".into());
-                    failures.push(circuit_name.to_owned());
-                    row = Some(failed);
-                    break;
-                }
-                FitOutcome::Fits((sample, policy)) => {
-                    let name = stable_name(policy);
-                    if !a.configuration.is_empty() && !a.configuration.contains(&name) {
-                        return Err(SweepError(format!(
-                            "production selected {name} for {circuit_name}; not among --configuration"
-                        ))
-                        .into());
-                    }
-                    if *selected.get_or_insert(policy) != policy {
-                        return Err(SweepError(format!(
-                            "production selection changed between proofs for {circuit_name}"
-                        ))
-                        .into());
-                    }
-                    let current = match row.as_mut() {
-                        Some(current) => current,
-                        None => row.insert(new_row(
-                            arena_bytes,
-                            circuit_name,
-                            name,
-                            policy,
-                            &geometry,
-                            input_bytes[i],
-                        )?),
-                    };
-                    if current
-                        .proof_fingerprint
-                        .is_some_and(|f| f != sample.fingerprint)
-                    {
-                        return Err(SweepError(format!(
-                            "proof changed between proofs for {circuit_name}"
-                        ))
-                        .into());
-                    }
-                    current.fits = true;
-                    current.proof_fingerprint = Some(sample.fingerprint);
-                    let peak = context.get_used_mem_peak();
-                    current.peak_bytes = Some(current.peak_bytes.unwrap_or(0).max(peak));
-                    eprintln!(
-                        "replay {circuit_name} {} ms={} peak={peak}",
-                        current.configuration, sample.elapsed_ms
-                    );
-                }
-            }
-            assert_empty(&context);
-        }
-        let row = row.expect("replay produces one row per circuit");
-        if row.fits {
-            replays.push(Replay {
-                row: rows.len(),
-                i,
-                policy: selected.unwrap(),
-            });
-        }
-        rows.push(row);
-        write_csv(File::create(a.output_csv.as_ref().unwrap())?, rows)?;
-    }
-    let mut all_samples = vec![Vec::with_capacity(a.rounds); replays.len()];
-    for round in 0..a.rounds {
-        for (slot, replay) in replays.iter().enumerate() {
-            assert_empty(&context);
-            context.reset_used_mem_peak();
-            let target = prepared[replay.i].proof_request(sequence)?;
-            let follower = prepared[follower_index].proof_request(sequence + 1)?;
-            sequence += 2;
-            let (sample, policy) =
-                match classify(|| run_replay_case(a.device_id, &mut context, target, follower))? {
-                    FitOutcome::Fits(result) => result,
-                    FitOutcome::DoesNotFit => {
-                        return Err(SweepError(
-                            "production selection stopped fitting in a timed round".into(),
-                        )
-                        .into())
-                    }
-                };
-            assert_empty(&context);
-            let row = &mut rows[replay.row];
-            if policy != replay.policy || row.proof_fingerprint != Some(sample.fingerprint) {
-                return Err(SweepError(format!(
-                    "selection or proof changed during timing for {}",
-                    row.circuit
-                ))
-                .into());
-            }
-            all_samples[slot].push(sample.elapsed_ms);
-            let summary = TimingSummary::from_samples(&all_samples[slot])
-                .ok_or_else(|| SweepError("invalid elapsed proof time".into()))?;
-            row.raw_samples_ms = serde_json::to_string(&all_samples[slot])?;
-            row.timing_samples = summary.samples;
-            row.median_ms = Some(summary.median_ms);
-            row.min_ms = Some(summary.min_ms);
-            row.max_ms = Some(summary.max_ms);
-            row.peak_bytes = Some(row.peak_bytes.unwrap().max(context.get_used_mem_peak()));
-            eprintln!(
-                "replay timed {} {} round={round} ms={}",
-                row.circuit, row.configuration, sample.elapsed_ms
-            );
-        }
-        write_csv(File::create(a.output_csv.as_ref().unwrap())?, rows)?;
-    }
-    if !failures.is_empty() {
-        return Err(SweepError(format!(
-            "replay: production selection does not fit at {arena_bytes} bytes for {failures:?}"
-        ))
-        .into());
-    }
-    Ok(())
 }
 
 fn record_arena_failure(a: &Arguments, arena_bytes: usize, stage: &str, rows: &mut Vec<SweepRow>) {
@@ -654,45 +479,30 @@ fn record_arena_failure(a: &Arguments, arena_bytes: usize, stage: &str, rows: &m
         for policy in MemoryPolicy::candidates()
             .filter(|p| a.configuration.is_empty() || a.configuration.contains(&stable_name(*p)))
         {
-            let (setup, memory, witness_commitment, witness_opening) = policy_fields(policy);
-            rows.push(SweepRow {
+            let mut row = new_row(
                 arena_bytes,
-                circuit: circuit_stable_name(circuit).into(),
-                configuration: stable_name(policy),
-                geometry: "{}".into(),
-                setup,
-                memory,
-                witness_commitment,
-                witness_opening,
-                failure_stage: Some(stage.into()),
-                raw_samples_ms: "[]".into(),
-                proof_fingerprint: None,
-                fits: false,
-                input_bytes: 0,
-                peak_bytes: None,
-                timing_samples: 0,
-                median_ms: None,
-                min_ms: None,
-                max_ms: None,
-                preferred: false,
-            });
+                circuit_stable_name(circuit),
+                policy,
+                "{}".into(),
+                0,
+            );
+            row.failure_stage = Some(stage.into());
+            rows.push(row);
         }
     }
 }
 
-fn classify<T>(
-    operation: impl FnOnce() -> Result<T, CudaError>,
-) -> Result<FitOutcome<T>, SweepError> {
+fn classify<T>(operation: impl FnOnce() -> Result<T, CudaError>) -> Result<Option<T>, SweepError> {
     let prior = era_cudart::error::get_last_error();
     if prior != CudaError::Success {
         return Err(cuda_error(prior));
     }
     match operation() {
-        Ok(value) => Ok(FitOutcome::Fits(value)),
+        Ok(value) => Ok(Some(value)),
         Err(CudaError::ErrorMemoryAllocation)
             if era_cudart::error::get_last_error() == CudaError::Success =>
         {
-            Ok(FitOutcome::DoesNotFit)
+            Ok(None)
         }
         Err(error) => Err(cuda_error(error)),
     }
@@ -742,50 +552,4 @@ fn parse_arena_gib(value: &str) -> Result<usize, String> {
 
 fn cuda_error(error: CudaError) -> SweepError {
     SweepError(format!("CUDA error: {error:?}"))
-}
-
-#[cfg(test)]
-mod cpu_cli_tests {
-    use super::*;
-
-    fn parse(args: &[&str]) -> Arguments {
-        Arguments::try_parse_from(std::iter::once("gpu_memory_sweep").chain(args.iter().copied()))
-            .expect("arguments parse")
-    }
-
-    #[test]
-    fn cpu_replay_rejects_list_through_the_entry_path() {
-        assert!(run_arguments(parse(&["--replay-presets", "--list"])).is_err());
-    }
-
-    #[test]
-    fn cpu_replay_mode_flag_compatibility() {
-        let base = [
-            "--replay-presets",
-            "--arena-gib",
-            "36",
-            "--output-csv",
-            "replay.csv",
-        ];
-        assert!(validate_mode(&parse(&base)).is_ok());
-        let with_filter: Vec<&str> = base
-            .iter()
-            .copied()
-            .chain(["--configuration", "x"])
-            .collect();
-        assert!(validate_mode(&parse(&with_filter)).is_ok());
-        let fit_only: Vec<&str> = base.iter().copied().chain(["--fit-only"]).collect();
-        assert!(validate_mode(&parse(&fit_only)).is_err());
-        assert!(validate_mode(&parse(&["--replay-presets", "--generate-policy"])).is_err());
-        let zero_rounds: Vec<&str> = base.iter().copied().chain(["--rounds", "0"]).collect();
-        assert!(validate_mode(&parse(&zero_rounds)).is_err());
-        assert!(validate_mode(&parse(&[
-            "--arena-gib",
-            "36",
-            "--output-csv",
-            "s.csv",
-            "--fit-only"
-        ]))
-        .is_ok());
-    }
 }

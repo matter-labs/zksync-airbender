@@ -55,7 +55,7 @@ mod lde;
 mod retained;
 pub use retained::{
     hypercube_to_retained_monomials_and_coset, hypercube_to_retained_monomials_and_coset_in_place,
-    retained_monomials_to_coset, RetainedLdeOptions,
+    retained_monomials_to_coset,
 };
 mod shared;
 mod strategy;

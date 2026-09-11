@@ -201,15 +201,14 @@ fn run_unified_commit_memory_matches_cpu_test() {
                 .unwrap();
         bundle.schedule(context).unwrap();
 
-        let job = commit_memory_from_transfers(
+        commit_memory_from_transfers(
             base.circuit_type,
             &base.compiled_circuit,
             bundle,
             &base.prover_config,
             context,
         )
-        .unwrap();
-        job
+        .unwrap()
     };
     let first = enqueue();
     assert_eq!(
@@ -223,7 +222,6 @@ fn run_unified_commit_memory_matches_cpu_test() {
         let (gpu_caps, elapsed_ms) = job.finish().unwrap();
         eprintln!("unified GPU memory commitment ready in {elapsed_ms:.1}ms");
 
-        // Compare via the same flatten idiom the per-family helpers use.
         let mut gpu_flat = vec![];
         flatten_merkle_caps_iter_into(gpu_caps.into_iter(), &mut gpu_flat);
         let mut cpu_flat = vec![];

@@ -7,7 +7,6 @@ use super::super::{
     hypercube_to_multi_coset_bitrev_evals_fused, hypercube_to_retained_monomials_and_coset,
     hypercube_to_retained_monomials_and_coset_in_place,
     natural_monomials_to_bitreversed_evals_multi_coset, retained_monomials_to_coset,
-    RetainedLdeOptions,
 };
 use super::{make_context, multivariate_hypercube_evals_into_coeffs};
 
@@ -102,89 +101,78 @@ fn run(log_n: usize, log_f: usize, force_two_pass: bool) {
     memory_copy_async(&mut expected_cosets[..], &d_full, stream).unwrap();
     stream.synchronize().unwrap();
     for in_place in [false, true] {
-        for (streamed, prefetch) in [(false, false), (false, true), (true, false), (true, true)] {
-            let options = RetainedLdeOptions {
-                stream_first_coset_stores: streamed,
-                prefetch_next_monomial_column: prefetch,
-            };
-            // Nonzero recycled contents, overwritten by the first raw pass.
-            memory_copy_async(&mut d_m, &raw[..], stream).unwrap();
-            memory_copy_async(&mut d_coset, &raw[..], stream).unwrap();
-            if in_place {
-                hypercube_to_retained_monomials_and_coset_in_place(
-                    &mut d_m,
-                    &mut d_coset,
-                    log_n,
-                    log_f,
-                    1,
-                    options,
-                    &properties,
-                    stream,
-                )
-                .unwrap();
-            } else {
-                hypercube_to_retained_monomials_and_coset(
-                    &d_raw,
-                    &mut d_m,
-                    &mut d_coset,
-                    log_n,
-                    log_f,
-                    1,
-                    options,
-                    &properties,
-                    stream,
-                )
-                .unwrap();
-            }
-            let label = format!(
-                "n={log_n} f={log_f} two={force_two_pass} in_place={in_place} streamed={streamed} prefetch={prefetch}"
-            );
-            let mut actual_m = vec![BF::new(0); len];
-            let mut actual_c = vec![BF::new(0); len];
-            let mut actual_raw = vec![BF::new(0); len];
-            memory_copy_async(&mut actual_m[..], &d_m, stream).unwrap();
+        // Nonzero recycled contents, overwritten by the first raw pass.
+        memory_copy_async(&mut d_m, &raw[..], stream).unwrap();
+        memory_copy_async(&mut d_coset, &raw[..], stream).unwrap();
+        if in_place {
+            hypercube_to_retained_monomials_and_coset_in_place(
+                &mut d_m,
+                &mut d_coset,
+                log_n,
+                log_f,
+                1,
+                &properties,
+                stream,
+            )
+            .unwrap();
+        } else {
+            hypercube_to_retained_monomials_and_coset(
+                &d_raw,
+                &mut d_m,
+                &mut d_coset,
+                log_n,
+                log_f,
+                1,
+                &properties,
+                stream,
+            )
+            .unwrap();
+        }
+        let label = format!("n={log_n} f={log_f} two={force_two_pass} in_place={in_place}");
+        let mut actual_m = vec![BF::new(0); len];
+        let mut actual_c = vec![BF::new(0); len];
+        let mut actual_raw = vec![BF::new(0); len];
+        memory_copy_async(&mut actual_m[..], &d_m, stream).unwrap();
+        memory_copy_async(&mut actual_c[..], &d_coset, stream).unwrap();
+        memory_copy_async(&mut actual_raw[..], &d_raw, stream).unwrap();
+        stream.synchronize().unwrap();
+        compare(
+            &actual_m,
+            &expected_monomials,
+            &format!("{label} monomials"),
+        );
+        compare(
+            &actual_c,
+            &expected_cosets[len..2 * len],
+            &format!("{label} first coset"),
+        );
+        compare(&actual_raw, &raw, &format!("{label} preserved raw"));
+        for coset in (0..f).rev() {
+            retained_monomials_to_coset(
+                &d_m,
+                &mut d_coset,
+                log_n,
+                log_f,
+                coset,
+                &properties,
+                stream,
+            )
+            .unwrap();
             memory_copy_async(&mut actual_c[..], &d_coset, stream).unwrap();
-            memory_copy_async(&mut actual_raw[..], &d_raw, stream).unwrap();
             stream.synchronize().unwrap();
-            compare(
-                &actual_m,
-                &expected_monomials,
-                &format!("{label} monomials"),
-            );
             compare(
                 &actual_c,
-                &expected_cosets[len..2 * len],
-                &format!("{label} first coset"),
-            );
-            compare(&actual_raw, &raw, &format!("{label} preserved raw"));
-            for coset in (0..f).rev() {
-                retained_monomials_to_coset(
-                    &d_m,
-                    &mut d_coset,
-                    log_n,
-                    log_f,
-                    coset,
-                    options,
-                    &properties,
-                    stream,
-                )
-                .unwrap();
-                memory_copy_async(&mut actual_c[..], &d_coset, stream).unwrap();
-                stream.synchronize().unwrap();
-                compare(
-                    &actual_c,
-                    &expected_cosets[coset * len..(coset + 1) * len],
-                    &format!("{label} coset={coset}"),
-                );
-            }
-            memory_copy_async(&mut actual_m[..], &d_m, stream).unwrap();
-            stream.synchronize().unwrap();
-            compare(
-                &actual_m,
-                &expected_monomials,
-                &format!("{label} retained after regeneration"),
+                &expected_cosets[coset * len..(coset + 1) * len],
+                &format!("{label} coset={coset}"),
             );
         }
+        memory_copy_async(&mut actual_m[..], &d_m, stream).unwrap();
+        stream.synchronize().unwrap();
+        compare(
+            &actual_m,
+            &expected_monomials,
+            &format!("{label} retained after regeneration"),
+        );
     }
 }
 
@@ -196,21 +184,15 @@ macro_rules! case {
         }
     };
 }
-case!(retained_n20_f2, 20, 1, false);
-case!(retained_n20_f4, 20, 2, false);
 case!(retained_n20_f8, 20, 3, false);
 case!(retained_n21_f2, 21, 1, false);
-case!(retained_n21_f4, 21, 2, false);
 case!(retained_n21_f8, 21, 3, false);
 case!(retained_n24_f2, 24, 1, false);
-case!(retained_n24_f4, 24, 2, false);
 case!(retained_n24_f8, 24, 3, false);
-case!(retained_n24_f2_two_pass, 24, 1, true);
-case!(retained_n24_f4_two_pass, 24, 2, true);
 case!(retained_n24_f8_two_pass, 24, 3, true);
 
 case!(retained_n22_f2, 22, 1, false);
 case!(retained_n22_f8, 22, 3, false);
 case!(retained_n23_f2, 23, 1, false);
 case!(retained_n23_f8, 23, 3, false);
-case!(retained_n23_f2_two_pass, 23, 1, true);
+case!(retained_n23_f8_two_pass, 23, 3, true);

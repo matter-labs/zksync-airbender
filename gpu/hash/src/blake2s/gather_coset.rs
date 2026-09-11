@@ -1,6 +1,3 @@
-//! Base-oracle openings from one resident coset. Query slots keep their original
-//! positions; each launch writes only queries whose low LDE bits name this coset.
-
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;

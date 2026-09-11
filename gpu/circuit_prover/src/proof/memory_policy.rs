@@ -10,9 +10,7 @@ pub enum FullWitnessWhirPolicy {
     Recompute(OpeningPolicy),
 }
 
-/// The commitment strategy determines the valid WHIR choices. Each strategy
-/// carries its own opening choices so the offline sweep cannot select an
-/// opening that requires a representation the commitment did not preserve.
+/// Opening choices must use only representations preserved by commitment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WitnessMemoryPolicy {
     FullMaterialization {
@@ -38,9 +36,7 @@ impl Default for WitnessMemoryPolicy {
     }
 }
 
-/// Explicit representation choices for offline measurement. Setup and memory
-/// are always opened separately at query time. Their full materialization
-/// preserves the existing fused all-coset schedule and is the default.
+/// Setup and memory open separately at query time.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ProofMemoryPolicy {
     pub setup: OpeningPolicy,
@@ -49,8 +45,6 @@ pub struct ProofMemoryPolicy {
 }
 
 impl ProofMemoryPolicy {
-    /// Enumerate supported representation choices for an offline sweep. This
-    /// does not allocate memory, run a proof, or select a production policy.
     pub fn candidates() -> impl Iterator<Item = Self> {
         const OPENINGS: [OpeningPolicy; 3] = [
             OpeningPolicy::FullMaterialization,

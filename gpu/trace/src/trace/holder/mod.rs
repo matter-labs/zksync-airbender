@@ -60,7 +60,6 @@ pub enum OpeningPolicy {
     InPlace,
 }
 
-/// Witness commitment strategies implemented by the trace layer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WitnessCommitmentMode {
     #[default]
@@ -321,21 +320,16 @@ impl<T> TraceHolder<T> {
     /// enqueued. The returned allocation can be converted to an opening
     /// representation or released when materialized cosets suffice.
     ///
-    /// Panics if another owner still holds the backing; a rejected handoff
-    /// preserves the holder's raw representation.
+    /// Panics if another owner still holds the backing.
     // pub: WHIR owns the raw-to-opening handoff after initial batching.
     pub fn take_raw_hypercube_backing(&mut self) -> DeviceAllocation<T> {
         let backing = self
             .raw_hypercube_evals
             .take()
             .expect("raw hypercube values are unavailable for this holder");
-        match std::sync::Arc::try_unwrap(backing) {
-            Ok(backing) => backing,
-            Err(shared) => {
-                self.raw_hypercube_evals = Some(shared);
-                panic!("raw hypercube backing must be exclusively owned at the opening handoff");
-            }
-        }
+        std::sync::Arc::try_unwrap(backing).unwrap_or_else(|_| {
+            panic!("raw hypercube backing must be exclusively owned at the opening handoff")
+        })
     }
 
     /// Defer LDE materialization until this oracle's queries. Configure before
@@ -670,7 +664,6 @@ impl TraceHolder<BF> {
                 )?);
             }
             if self.columns_count == 0 {
-                // Empty setup oracles need neither a source nor NTT scratch.
                 self.cosets_materialized = true;
             } else if let Some(monomials) = self.opening_monomials.take() {
                 let matrix = DeviceMatrix::new(&monomials, 1usize << self.log_domain_size);
@@ -706,8 +699,6 @@ impl TraceHolder<BF> {
     /// or materialized cosets already supply the opening representation.
     pub fn finish_raw_batching(&mut self, context: &ProverContext) -> CudaResult<()> {
         if self.opening_monomials.is_some() {
-            // Witness commitment preserved true M separately. Initial batching
-            // was the last raw reader; openings will use the retained M owner.
             drop(self.take_raw_hypercube_backing());
         } else if self.defer_opening {
             assert!(self.opening_raw.is_none());

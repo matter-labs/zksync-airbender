@@ -1,26 +1,9 @@
 #!/usr/bin/env python3
-"""Offline coordinator for the `gpu_memory_sweep` binary.
+"""Measure explicit arena budgets; emit presets only when every circuit fits.
 
-Drives one binary invocation per (budget, circuit) inside the machine GPU
-lock, releasing the lock between circuits. A budget is accepted only when
-every supported circuit has at least one fitting, fully timed policy; bigint
-runs first so a hopeless budget is rejected before the other circuits are
-swept. Every invocation's CSV rows and log are kept. The accepted-only merged
-CSV feeds the binary's existing `--generate-policy` mode; nothing partial is
-ever written there.
-
-    gpu/execution_prover/scripts/memory_sweep.py \
-        --binary target/release/gpu_memory_sweep --output-dir target/memory-policy/sweep-01
-
-`--resume` continues an interrupted sweep after validating the binary hash and
-run identity; every previously recorded run is re-read and re-validated.
-`--fit-only` collects fit results for every circuit at every budget without
-timing and never produces presets. Explicit `--budgets-gib` / `--circuits`
-restrict a diagnostic run; a restricted circuit set never produces presets.
-
-GPU-side work (device snapshot, empty-device check, binary execution) happens
-in a private worker process that the lock script wraps, so the snapshots
-describe this sweep and not a peer workload.
+Each (budget, circuit) invocation holds the GPU lock separately. --resume
+revalidates saved results and binary identity. --fit-only and --circuits are
+for diagnostics and cannot produce presets.
 """
 
 import argparse
@@ -39,20 +22,13 @@ from pathlib import Path
 
 GIB = 1 << 30
 MIB = 1 << 20
-COARSE_STEP = 2 * GIB
-FINE_STEP = GIB // 2
-DEFAULT_BUDGETS = [gib * GIB for gib in range(48, 15, -2)]
+DEFAULT_BUDGETS = [30 * GIB]
 BIGINT = "delegation_big_int_with_control"
 STATE_FILE = "state.json"
 DIAGNOSTICS_CSV = "diagnostics.csv"
 ACCEPTED_CSV = "accepted.csv"
 TERMINATE_GRACE_SECONDS = 30
 RELATIVE_TOLERANCE = 1e-5
-
-
-# --------------------------------------------------------------------------
-# Pure helpers (covered by test_memory_sweep.py)
-# --------------------------------------------------------------------------
 
 
 def sha256_of(path):
@@ -210,23 +186,6 @@ def qualify(rows_by_circuit, circuits, rounds, fit_only, full_circuit_set):
     return {"status": "accepted", "fits": fits, "winners": winners, "missing": [], "reason": None}
 
 
-def refinement_candidates(budgets_state, coarse_budgets):
-    """0.5 GiB points below accepted coarse budgets whose lower neighbour was
-    rejected (boundary) or accepted with different winners (winner change)."""
-    decided = {b: r for b, r in budgets_state.items() if r["status"] in ("accepted", "rejected")}
-    coarse = sorted(b for b in decided if b in coarse_budgets)
-    plan = []
-    for lower, upper in zip(coarse, coarse[1:]):
-        if upper - lower != COARSE_STEP or decided[upper]["status"] != "accepted":
-            continue
-        lower_record = decided[lower]
-        boundary = lower_record["status"] == "rejected"
-        winner_change = lower_record["status"] == "accepted" and lower_record["winners"] != decided[upper]["winners"]
-        if boundary or winner_change:
-            plan.append((upper, [upper - FINE_STEP * k for k in (1, 2, 3)]))
-    return plan
-
-
 def write_json(path, value):
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
@@ -244,11 +203,7 @@ def write_rows(path, fieldnames, rows):
         writer = csv.DictWriter(sink, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
-
-
-# --------------------------------------------------------------------------
 # Locked worker: everything that touches the GPU runs inside the lock
-# --------------------------------------------------------------------------
 
 
 def command_output(command):
@@ -310,11 +265,7 @@ def locked_worker(spec_path):
         meta["orphaned_gpu_process"] = True
     write_json(Path(spec["meta"]), meta)
     return 0 if meta["status"] == "exited" else 1
-
-
-# --------------------------------------------------------------------------
 # Coordinator
-# --------------------------------------------------------------------------
 
 
 def list_selectors(binary):
@@ -369,8 +320,6 @@ class Coordinator:
         self.state = self.load_or_create_state()
         self.fieldnames = None
 
-    # -- state ---------------------------------------------------------------
-
     def load_or_create_state(self):
         if self.state_path.exists():
             if not self.args.resume:
@@ -402,8 +351,6 @@ class Coordinator:
 
     def save(self):
         write_json(self.state_path, self.state)
-
-    # -- one invocation ------------------------------------------------------
 
     def run_dir(self, budget, circuit):
         return self.out / "runs" / gib_label(budget) / circuit
@@ -481,8 +428,6 @@ class Coordinator:
         print(f"[sweep] {gib_label(budget)} GiB {circuit}: reusing validated run", flush=True)
         return rows
 
-    # -- budget evaluation ---------------------------------------------------
-
     def evaluate_budget(self, budget):
         """Always re-derive the verdict from validated run artifacts; never from stored status alone."""
         label = gib_label(budget)
@@ -501,25 +446,6 @@ class Coordinator:
         reason = f" ({record['reason']})" if record["reason"] else ""
         print(f"[sweep] {label} GiB: {record['status']}{reason}", flush=True)
         return record
-
-    def refine(self):
-        budgets_state = {int(b): r for b, r in self.state["budgets"].items()}
-        remaining = self.args.max_refinement_points
-        for upper, candidates in refinement_candidates(budgets_state, set(self.args.budgets)):
-            for budget in candidates:
-                if remaining is not None and remaining <= 0:
-                    print("[sweep] explicit refinement cap reached; later boundaries not refined", flush=True)
-                    return
-                # A previously visited refinement budget is re-derived from its
-                # validated runs (complete runs are reused, nothing is trusted
-                # from stored status alone).
-                record = self.evaluate_budget(budget)
-                if remaining is not None:
-                    remaining -= 1
-                if record["status"] == "rejected":
-                    break  # descending below an accepted point: the first rejection ends the descent
-
-    # -- outputs -------------------------------------------------------------
 
     def derive_verdicts(self):
         """Re-derive every budget verdict from validated run artifacts.
@@ -599,8 +525,6 @@ class Coordinator:
     def run(self):
         for budget in sorted(self.args.budgets, reverse=True):
             self.evaluate_budget(budget)
-        if self.args.refine and self.full_circuit_set and not self.args.fit_only:
-            self.refine()
         self.write_outputs()
 
 
@@ -623,8 +547,6 @@ def build_parser():
                         help="terminate the whole prover process group after this many seconds")
     parser.add_argument("--resume", action="store_true", help="continue a sweep in --output-dir after validating identity")
     parser.add_argument("--keep-going", action="store_true", help="record a failed invocation and continue")
-    parser.add_argument("--no-refine", dest="refine", action="store_false")
-    parser.add_argument("--max-refinement-points", type=int, default=None, help="unlimited unless given")
     parser.add_argument("--emit-rust", type=Path, help="also run --generate-policy on the accepted-only CSV")
     parser.add_argument("--locked-worker", type=Path, help=argparse.SUPPRESS)
     return parser

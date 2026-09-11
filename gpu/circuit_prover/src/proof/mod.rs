@@ -2,19 +2,6 @@ pub mod inputs;
 pub mod memory_policy;
 
 use memory_policy::ProofMemoryPolicy;
-/// Pre-WHIR materialization is retained only as an offline timing control.
-#[derive(Clone, Copy)]
-pub(crate) enum BaseLdeSchedule {
-    AtQueries,
-    #[cfg(test)]
-    PreWhir,
-}
-
-impl BaseLdeSchedule {
-    pub(crate) fn is_deferred(self) -> bool {
-        matches!(self, Self::AtQueries)
-    }
-}
 mod orchestration;
 
 use std::sync::Arc;
@@ -148,30 +135,6 @@ pub fn prove_with_memory_policy<'a, A: GoodAllocator + 'a>(
         inputs,
         dr_tail_plan,
         memory_policy,
-        BaseLdeSchedule::AtQueries,
-        None,
-        context,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn prove_with_lde_schedule<'a, A: GoodAllocator + 'a>(
-    gkr_programs: &Arc<GkrPrograms>,
-    prover_config: &ProverConfig,
-    final_trace_size_log_2: u32,
-    inputs: GpuGKRProofTransfer<'a, A>,
-    dr_tail_plan: &gpu_gkr::DrTailProofPlan,
-    lde_schedule: BaseLdeSchedule,
-    context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
-    prove_inner(
-        gkr_programs,
-        prover_config,
-        final_trace_size_log_2,
-        inputs,
-        dr_tail_plan,
-        ProofMemoryPolicy::default(),
-        lde_schedule,
         None,
         context,
     )
@@ -198,7 +161,6 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         inputs,
         &dr_tail_plan,
         ProofMemoryPolicy::default(),
-        BaseLdeSchedule::AtQueries,
         Some(Box::default()),
         context,
     )
@@ -211,7 +173,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     dr_tail_plan: &gpu_gkr::DrTailProofPlan,
     memory_policy: ProofMemoryPolicy,
-    lde_schedule: BaseLdeSchedule,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
@@ -362,7 +323,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     let batching_pow_bits =
         crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
     let WhirPhaseResult {
-        transition_ranges,
         mut base_layer_claims_scheduled,
         base_layer_claims_shared_state,
         whir_scheduled,
@@ -377,10 +337,8 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         &proof_layout,
         batching_pow_bits,
         memory_policy,
-        lde_schedule,
         context,
     )?;
-    ranges.extend(transition_ranges);
 
     // `backward_scheduled` itself is the keepalive — the per-layer device
     // handles were already taken by the orchestrator (or remain as `Some`

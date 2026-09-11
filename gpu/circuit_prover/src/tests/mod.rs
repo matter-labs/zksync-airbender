@@ -1,6 +1,5 @@
 use crate::proof::memory_policy::ProofMemoryPolicy;
-use crate::proof::BaseLdeSchedule;
-use crate::proof::{preflight_windowed_backward, prove, prove_with_lde_schedule, GpuGKRProofJob};
+use crate::proof::{preflight_windowed_backward, prove, GpuGKRProofJob};
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -318,19 +317,17 @@ impl BasicUnrolledFixture {
         Ok(transfers)
     }
 
-    fn prove_with_schedule(
+    fn prove(
         &self,
         transfers: BasicUnrolledTransfers<'static>,
-        schedule: BaseLdeSchedule,
     ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
         let dr_tail_plan = self.dr_tail_plan()?;
-        prove_with_lde_schedule::<Global>(
+        prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
             &dr_tail_plan,
-            schedule,
             &self.context,
         )
     }
@@ -349,19 +346,12 @@ impl BasicUnrolledFixture {
     }
 
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
-        self.schedule_prove_with_optional_policy(None)
+        self.schedule_prove_with_memory_policy(ProofMemoryPolicy::default())
     }
 
     fn schedule_prove_with_memory_policy(
         &self,
         policy: ProofMemoryPolicy,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
-        self.schedule_prove_with_optional_policy(Some(policy))
-    }
-
-    fn schedule_prove_with_optional_policy(
-        &self,
-        policy: Option<ProofMemoryPolicy>,
     ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
         let mem_before_inputs = self.context.get_used_mem_current();
         let mut transfers = self.create_transfers()?;
@@ -373,26 +363,15 @@ impl BasicUnrolledFixture {
         transfer_range.end(h2d_stream)?;
 
         let dr_tail_plan = self.dr_tail_plan()?;
-        let mut proof_job = if let Some(policy) = policy {
-            crate::proof::prove_with_memory_policy::<Global>(
-                &self.gkr_programs,
-                &self.prover_config,
-                self.final_trace_size_log_2,
-                transfers,
-                &dr_tail_plan,
-                policy,
-                &self.context,
-            )
-        } else {
-            prove::<Global>(
-                &self.gkr_programs,
-                &self.prover_config,
-                self.final_trace_size_log_2,
-                transfers,
-                &dr_tail_plan,
-                &self.context,
-            )
-        }?;
+        let mut proof_job = crate::proof::prove_with_memory_policy::<Global>(
+            &self.gkr_programs,
+            &self.prover_config,
+            self.final_trace_size_log_2,
+            transfers,
+            &dr_tail_plan,
+            policy,
+            &self.context,
+        )?;
         let mem_after_prove = self.context.get_used_mem_current();
         assert_eq!(mem_after_prove, mem_before_inputs,
             "prove() must retire all device reservations, including its input bundle, before finish()");

@@ -1,5 +1,3 @@
-//! Fused LDE generation with retained natural monomials and one coset output.
-
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -19,23 +17,6 @@ use super::hypercube::{
 };
 use super::kernels::*;
 use super::{select_ntt_strategy, NttDirection, NttKernelKind, OMEGA_LOG_ORDER};
-
-/// Launch choices for measuring the retained-monomial schedule. These affect
-/// cache traffic, never the representation, output ordering or allocation bound.
-#[derive(Clone, Copy, Debug)]
-pub struct RetainedLdeOptions {
-    pub stream_first_coset_stores: bool,
-    pub prefetch_next_monomial_column: bool,
-}
-
-impl Default for RetainedLdeOptions {
-    fn default() -> Self {
-        Self {
-            stream_first_coset_stores: false,
-            prefetch_next_monomial_column: true,
-        }
-    }
-}
 
 fn check_shape(
     monomials: &DeviceSlice<BF>,
@@ -65,7 +46,6 @@ fn three_pass(log_n: usize, properties: &DeviceProperties) -> bool {
 /// Preserve `raw` while producing true natural monomials and one bitreversed
 /// coset. The monomial allocation serves as pre-tail scratch; the boundary
 /// completes monomials, writes them back before scaling, and starts the coset.
-/// No allocation or bulk copy is performed by this function.
 pub fn hypercube_to_retained_monomials_and_coset(
     raw: &DeviceSlice<BF>,
     monomials: &mut DeviceSlice<BF>,
@@ -73,7 +53,6 @@ pub fn hypercube_to_retained_monomials_and_coset(
     log_n: usize,
     log_f: usize,
     coset_index: usize,
-    options: RetainedLdeOptions,
     properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -90,7 +69,6 @@ pub fn hypercube_to_retained_monomials_and_coset(
             log_n,
             log_f,
             coset_index,
-            options,
             properties,
             stream,
         )
@@ -100,14 +78,12 @@ pub fn hypercube_to_retained_monomials_and_coset(
 /// Consumes the hypercube representation in `raw_to_monomials`, leaving true
 /// natural monomials there and one bitreversed coset in separate output storage.
 /// All earlier readers of raw values must be ordered before these launches.
-/// The single mutable source argument avoids constructing aliased Rust views.
 pub fn hypercube_to_retained_monomials_and_coset_in_place(
     raw_to_monomials: &mut DeviceSlice<BF>,
     coset: &mut DeviceSlice<BF>,
     log_n: usize,
     log_f: usize,
     coset_index: usize,
-    options: RetainedLdeOptions,
     properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -123,7 +99,6 @@ pub fn hypercube_to_retained_monomials_and_coset_in_place(
             log_n,
             log_f,
             coset_index,
-            options,
             properties,
             stream,
         )
@@ -137,7 +112,6 @@ unsafe fn initialize(
     log_n: usize,
     log_f: usize,
     coset_index: usize,
-    options: RetainedLdeOptions,
     properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -165,15 +139,7 @@ unsafe fn initialize(
                 stream,
             )?;
             let config = CudaLaunchConfig::basic((n / 8192) as u32, 256, stream);
-            launch_boundary(
-                m_mut,
-                c_mut,
-                log_n,
-                log_f,
-                coset_index,
-                options.stream_first_coset_stores,
-                &config,
-            )?;
+            launch_boundary(m_mut, c_mut, log_n, log_f, coset_index, &config)?;
             let next = (column + 1 < columns).then(|| {
                 (
                     PtrAndStride::new(raw.add(offset + n), n),
@@ -223,19 +189,14 @@ fn launch_boundary(
     log_n: usize,
     log_f: usize,
     coset_index: usize,
-    stream_stores: bool,
     config: &CudaLaunchConfig,
 ) -> CudaResult<()> {
     if log_f == 1 && coset_index == 1 {
-        let kernel = match (log_n, stream_stores) {
-            (21, true) => ab_natural_lde_fused_boundary_writeback_out_cs_log_n_21_c1_kernel,
-            (22, true) => ab_natural_lde_fused_boundary_writeback_out_cs_log_n_22_c1_kernel,
-            (23, true) => ab_natural_lde_fused_boundary_writeback_out_cs_log_n_23_c1_kernel,
-            (24, true) => ab_natural_lde_fused_boundary_writeback_out_cs_log_n_24_c1_kernel,
-            (21, false) => ab_natural_lde_fused_boundary_writeback_out_cg_log_n_21_c1_kernel,
-            (22, false) => ab_natural_lde_fused_boundary_writeback_out_cg_log_n_22_c1_kernel,
-            (23, false) => ab_natural_lde_fused_boundary_writeback_out_cg_log_n_23_c1_kernel,
-            (24, false) => ab_natural_lde_fused_boundary_writeback_out_cg_log_n_24_c1_kernel,
+        let kernel = match log_n {
+            21 => ab_natural_lde_fused_boundary_writeback_out_cg_log_n_21_c1_kernel,
+            22 => ab_natural_lde_fused_boundary_writeback_out_cg_log_n_22_c1_kernel,
+            23 => ab_natural_lde_fused_boundary_writeback_out_cg_log_n_23_c1_kernel,
+            24 => ab_natural_lde_fused_boundary_writeback_out_cg_log_n_24_c1_kernel,
             _ => unreachable!(),
         };
         let args = LdeFusedWritebackFixedArguments::new(monomials, coset);
@@ -250,12 +211,8 @@ fn launch_boundary(
             1,
             0,
         );
-        let kernel = if stream_stores {
-            ab_natural_lde_fused_boundary_writeback_out_cs_kernel
-        } else {
-            ab_natural_lde_fused_boundary_writeback_out_cg_kernel
-        };
-        LdeFusedWritebackFunction(kernel).launch(config, &args)
+        LdeFusedWritebackFunction(ab_natural_lde_fused_boundary_writeback_out_cg_kernel)
+            .launch(config, &args)
     }
 }
 
@@ -267,7 +224,6 @@ pub fn retained_monomials_to_coset(
     log_n: usize,
     log_f: usize,
     coset_index: usize,
-    options: RetainedLdeOptions,
     properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -316,8 +272,7 @@ pub fn retained_monomials_to_coset(
 
     for column in 0..columns {
         let offset = column * n;
-        let next = (options.prefetch_next_monomial_column && column + 1 < columns)
-            .then(|| unsafe { monomials.as_ptr().add(offset + n) });
+        let next = (column + 1 < columns).then(|| unsafe { monomials.as_ptr().add(offset + n) });
         generate_column(
             &monomials[offset..offset + n],
             &mut coset[offset..offset + n],

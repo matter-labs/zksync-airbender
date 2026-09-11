@@ -303,8 +303,6 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
     let keepalive = inputs.into_keepalive();
-    // Launchers borrow these descriptors only while enqueueing. Keep their
-    // owners in place until that finishes; no raw pointers to moved wrappers.
     let mut job = commit_memory_inner::<A>(
         circuit_type,
         compiled_circuit,

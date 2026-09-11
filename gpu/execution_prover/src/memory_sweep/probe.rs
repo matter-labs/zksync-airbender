@@ -63,37 +63,7 @@ pub(super) struct Sample {
     pub fingerprint: u64,
 }
 
-/// One sweep case with an explicit policy override for the target.
-pub(super) fn run_sweep_case(
-    device_id: i32,
-    context: &mut ProverContext,
-    target_request: GpuWorkRequest<A>,
-    target_policy: ProofMemoryPolicy,
-    follower_request: GpuWorkRequest<A>,
-) -> CudaResult<Sample> {
-    run_case(
-        device_id,
-        context,
-        target_request,
-        Some(target_policy),
-        follower_request,
-    )
-    .map(|(sample, _)| sample)
-}
-
-/// One replay case: the target and follower go through production policy
-/// selection (`memory_policy::select`) and the production phase-two path.
-/// Returns the policy production selected for the target.
-pub(super) fn run_replay_case(
-    device_id: i32,
-    context: &mut ProverContext,
-    target_request: GpuWorkRequest<A>,
-    follower_request: GpuWorkRequest<A>,
-) -> CudaResult<(Sample, ProofMemoryPolicy)> {
-    run_case(device_id, context, target_request, None, follower_request)
-}
-
-fn run_case(
+pub(super) fn run_case(
     device_id: i32,
     context: &mut ProverContext,
     target_request: GpuWorkRequest<A>,
@@ -132,8 +102,6 @@ fn run_case(
     );
     context.set_reversed_allocation_placement(false);
     let result = match &follower {
-        // Phase two proves with the policy phase one recorded, exactly as the
-        // production worker does.
         Ok(_) => enqueue_phase_two(device_id, context, target).and_then(finish_sweep_proof),
         Err(error) => {
             drain(context)?;

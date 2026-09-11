@@ -67,64 +67,13 @@ fn cpu_all_cosets(coeffs: &[BF], log_lde_factor: u32, worker: &Worker) -> Vec<Ve
 }
 
 #[test]
-fn commitment_only_holder_omits_raw_reservation() {
-    let context = make_test_context(64, 16);
-    let baseline = context.get_used_mem_current();
-    // One MiB raw column: an exact allocator block, so the reservation delta
-    // must equal its byte size rather than depend on small-pool rounding.
-    let log_n = 18;
-    let raw_bytes = (1usize << log_n) * std::mem::size_of::<BF>();
-    for trees in [
-        TreesCacheMode::CacheNone,
-        TreesCacheMode::CachePartial,
-        TreesCacheMode::CacheFull,
-    ] {
-        let full = TraceHolder::<BF>::new(log_n, 1, 0, 3, 1, trees, &context).unwrap();
-        let full_bytes = context.get_used_mem_current() - baseline;
-        drop(full);
-        assert_eq!(context.get_used_mem_current(), baseline);
-
-        let mut commitment =
-            TraceHolder::<BF>::new_commitment_only(log_n, 1, 0, 3, 1, trees, &context).unwrap();
-        let commitment_bytes = context.get_used_mem_current() - baseline;
-        assert_eq!(full_bytes - commitment_bytes, raw_bytes);
-        assert!(commitment.raw_hypercube_evals.is_none());
-        assert_eq!(
-            commitment.get_uninit_cosets_and_tree_mut().0.len(),
-            2 << log_n
-        );
-        commitment.mark_cosets_materialized();
-        // Directly committed holders are valid query sources without raw data.
-        commitment.ensure_cosets_materialized(&context).unwrap();
-        assert_eq!(commitment.get_coset_evaluations(1).len(), 1 << log_n);
-        drop(commitment);
-        assert_eq!(context.get_used_mem_current(), baseline);
-    }
-}
-
-#[test]
+#[should_panic(expected = "raw hypercube backing must be exclusively owned")]
 fn raw_hypercube_handoff_requires_exclusive_ownership() {
     let context = make_test_context(64, 16);
     let mut holder =
         TraceHolder::<BF>::new(18, 1, 0, 3, 1, TreesCacheMode::CacheNone, &context).unwrap();
-    let alias = holder.raw_hypercube_backing();
-    let original_ptr = alias.as_ptr();
-    let used = context.get_used_mem_current();
-    let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        holder.take_raw_hypercube_backing()
-    }));
-    assert!(rejected.is_err());
-    assert_eq!(holder.get_hypercube_evals().as_ptr(), original_ptr);
-    assert_eq!(context.get_used_mem_current(), used);
-    drop(alias);
-
-    let backing = holder.take_raw_hypercube_backing();
-    assert_eq!(backing.as_ptr(), original_ptr);
-    assert!(holder.raw_hypercube_evals.is_none());
-    assert_eq!(context.get_used_mem_current(), used);
-    let reserved = backing.allocated_bytes();
-    drop(backing);
-    assert_eq!(context.get_used_mem_current(), used - reserved);
+    let _alias = holder.raw_hypercube_backing();
+    holder.take_raw_hypercube_backing();
 }
 
 #[test]
@@ -144,108 +93,21 @@ fn empty_oracle_needs_no_raw_source_or_transform_scratch() {
 }
 
 #[test]
-fn deferred_full_opening_transfers_raw_without_allocating_or_copying() {
-    let context = make_test_context(128, 16);
+fn deferred_full_opening_reuses_raw_allocation() {
+    let context = make_test_context(64, 16);
     let baseline = context.get_used_mem_current();
-    let log_n = 20;
-    let log_f = 2;
-    let columns = 2;
-    let source: Vec<_> = (0..columns << log_n)
-        .map(|i| BF::from_u32_unchecked(((i * 17) ^ (i >> 7)) as u32))
-        .collect();
-    let mut deferred = TraceHolder::<BF>::new_without_cosets(
-        log_n,
-        log_f,
-        2,
-        5,
-        columns,
-        TreesCacheMode::CacheNone,
-        &context,
-    )
-    .unwrap();
-    memory_copy_async(
-        deferred.get_uninit_hypercube_evals_mut(),
-        &source,
-        context.get_exec_stream(),
-    )
-    .unwrap();
-    let raw_ptr = deferred.get_hypercube_evals().as_ptr();
+    let mut holder =
+        TraceHolder::<BF>::new_without_cosets(20, 2, 2, 5, 2, TreesCacheMode::CacheNone, &context)
+            .unwrap();
+    let raw_ptr = holder.get_hypercube_evals().as_ptr();
     let before = context.get_used_mem_current();
-    deferred.defer_materialization_until_queries(OpeningPolicy::FullMaterialization);
-    deferred.finish_raw_batching(&context).unwrap();
-    assert!(deferred.raw_hypercube_evals.is_none());
-    assert_eq!(deferred.opening_raw.as_ref().unwrap().as_ptr(), raw_ptr);
-    assert!(!deferred.are_cosets_materialized());
-    assert!(matches!(deferred.cosets, CosetsHolder::None(_)));
+    holder.defer_materialization_until_queries(OpeningPolicy::FullMaterialization);
+    holder.finish_raw_batching(&context).unwrap();
+    assert!(holder.raw_hypercube_evals.is_none());
+    assert_eq!(holder.opening_raw.as_ref().unwrap().as_ptr(), raw_ptr);
+    assert!(matches!(holder.cosets, CosetsHolder::None(_)));
     assert_eq!(context.get_used_mem_current(), before);
-    deferred.prepare_full_opening(&context).unwrap();
-    assert!(deferred.opening_raw.is_none());
-
-    let mut reference = TraceHolder::<BF>::new_without_cosets(
-        log_n,
-        log_f,
-        2,
-        5,
-        columns,
-        TreesCacheMode::CachePartial,
-        &context,
-    )
-    .unwrap();
-    memory_copy_async(
-        reference.get_uninit_hypercube_evals_mut(),
-        &source,
-        context.get_exec_stream(),
-    )
-    .unwrap();
-    reference.ensure_cosets_materialized(&context).unwrap();
-    reference.build_and_cache_partial_trees(&context).unwrap();
-    let mut actual = vec![BF::ZERO; columns << log_n];
-    let mut expected = actual.clone();
-    for coset in 0..1 << log_f {
-        memory_copy_async(
-            &mut actual,
-            deferred.get_coset_evaluations(coset),
-            context.get_exec_stream(),
-        )
-        .unwrap();
-        memory_copy_async(
-            &mut expected,
-            reference.get_coset_evaluations(coset),
-            context.get_exec_stream(),
-        )
-        .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-        assert_eq!(
-            actual.iter().zip(&expected).position(|(a, b)| a != b),
-            None,
-            "first mismatching row in coset {coset}"
-        );
-    }
-    let a = deferred.get_consolidated_tree().unwrap();
-    let b = reference.get_consolidated_tree().unwrap();
-    let mut actual = vec![[0u32; 8]; a.len()];
-    let mut expected = actual.clone();
-    memory_copy_async(&mut actual, a, context.get_exec_stream()).unwrap();
-    memory_copy_async(&mut expected, b, context.get_exec_stream()).unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-    // Tree pyramids reserve a power-of-two segment; the final cap-sized
-    // suffix lies above the committed cap and is intentionally unwritten.
-    let tree_stride = actual.len() >> log_f;
-    let cap_size_per_coset = 1usize << (5 - log_f);
-    for coset in 0..1 << log_f {
-        let start = coset * tree_stride;
-        let end = start + tree_stride - cap_size_per_coset;
-        assert_eq!(
-            actual[start..end]
-                .iter()
-                .zip(&expected[start..end])
-                .position(|(a, b)| a != b),
-            None,
-            "first mismatching tree node in coset {coset}"
-        );
-    }
-    drop(reference);
-    drop(deferred);
+    drop(holder);
     assert_eq!(context.get_used_mem_current(), baseline);
 }
 

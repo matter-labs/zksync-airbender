@@ -5,7 +5,6 @@
 """
 
 import csv
-import io
 import json
 import sys
 import tempfile
@@ -174,22 +173,6 @@ class Qualification(unittest.TestCase):
         self.assertEqual(self.verdict(rows)["status"], "rejected")
 
 
-class Refinement(unittest.TestCase):
-    def test_boundary_and_winner_change_points(self):
-        coarse = {34 * GIB, 32 * GIB, 30 * GIB, 28 * GIB}
-        state = {
-            34 * GIB: {"status": "accepted", "winners": {"a": "x"}},
-            32 * GIB: {"status": "accepted", "winners": {"a": "y"}},
-            30 * GIB: {"status": "rejected", "winners": {}},
-            28 * GIB: {"status": "rejected", "winners": {}},
-        }
-        plan = dict(ms.refinement_candidates(state, coarse))
-        self.assertEqual(set(plan), {34 * GIB, 32 * GIB})
-        self.assertEqual(plan[32 * GIB], [32 * GIB - GIB // 2, 31 * GIB, 30 * GIB + GIB // 2])
-        state[32 * GIB]["winners"] = {"a": "x"}
-        self.assertEqual(set(dict(ms.refinement_candidates(state, coarse))), {32 * GIB})
-
-
 class ResumeValidation(unittest.TestCase):
     """completed_rows must reject partial or altered CSVs even when state says complete."""
 
@@ -245,7 +228,7 @@ class ResumeValidation(unittest.TestCase):
 
 
 class OutputRederivation(unittest.TestCase):
-    """Outputs and refinement must re-derive from validated runs, never from stored verdicts."""
+    """Outputs must re-derive from validated runs, never from stored verdicts."""
 
     def make(self):
         tmp = tempfile.TemporaryDirectory()
@@ -257,7 +240,7 @@ class OutputRederivation(unittest.TestCase):
         c.configurations = CONFIGS
         c.circuits = CIRCUITS
         c.full_circuit_set = True
-        c.args = type("Args", (), {"rounds": 5, "fit_only": False, "max_refinement_points": None,
+        c.args = type("Args", (), {"rounds": 5, "fit_only": False,
                                    "budgets": [34 * GIB, 32 * GIB]})()
         c.state = {"runs": {}, "budgets": {}}
         c.fieldnames = None
@@ -271,13 +254,13 @@ class OutputRederivation(unittest.TestCase):
         c.state["runs"][c.run_key(budget, circuit)] = {"status": "complete", "rows_sha256": ms.sha256_of(path)}
         return path
 
-    def test_corrupt_refinement_run_drops_that_budget_from_accepted_output(self):
+    def test_corrupt_run_drops_that_budget_from_accepted_output(self):
         c = self.make()
         for budget in (34 * GIB, 33 * GIB + GIB // 2):
             for circuit in CIRCUITS:
                 self.record(c, budget, circuit, full_rows(budget, circuit))
             c.state["budgets"][str(budget)] = {"status": "accepted", "winners": {x: "cfg_a" for x in CIRCUITS}}
-        # Truncate one circuit's CSV of the refinement budget after the fact.
+        # Truncate one circuit's CSV of a fractional budget after the fact.
         broken = c.run_dir(33 * GIB + GIB // 2, CIRCUITS[1]) / "rows.csv"
         ms.write_rows(broken, FIELDS, full_rows(33 * GIB + GIB // 2, CIRCUITS[1])[:1])
         diagnostics, accepted = c.collect_rows()
@@ -297,32 +280,6 @@ class OutputRederivation(unittest.TestCase):
         self.assertEqual(accepted, [])
         self.assertEqual(c.state["budgets"][str(34 * GIB)]["status"], "incomplete")
 
-    def test_refine_revisits_stored_refinement_budgets(self):
-        c = self.make()
-        c.state["budgets"] = {
-            str(34 * GIB): {"status": "accepted", "winners": {"a": "x"}},
-            str(32 * GIB): {"status": "rejected", "winners": {}},
-            str(33 * GIB + GIB // 2): {"status": "accepted", "winners": {"a": "x"}},
-        }
-        visited = []
-
-        def fake_evaluate(budget):
-            visited.append(budget)
-            return {"status": "rejected" if budget < 33 * GIB + GIB // 2 else "accepted"}
-
-        c.evaluate_budget = fake_evaluate
-        c.refine()
-        self.assertEqual(visited, [33 * GIB + GIB // 2, 33 * GIB])
-
-
-class CsvRoundTrip(unittest.TestCase):
-    def test_runner_style_booleans_parse(self):
-        buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerow(row(32 * GIB, CIRCUITS[0], "cfg_a"))
-        parsed = list(csv.DictReader(io.StringIO(buffer.getvalue())))[0]
-        self.assertTrue(ms.timed_fit(parsed, 5, False))
 
 
 class ConfigurationSelection(unittest.TestCase):

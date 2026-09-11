@@ -10,16 +10,10 @@ use gpu_ntt::ntt::{
     coset_to_monomials_in_place, hypercube_to_coset_in_place,
     hypercube_to_retained_monomials_and_coset, hypercube_to_retained_monomials_and_coset_in_place,
     monomials_to_coset_in_place, monomials_to_hypercube_in_place, retained_monomials_to_coset,
-    RetainedLdeOptions,
 };
 
 impl TraceHolder<BF> {
-    /// Consume the post-batching raw or monomial owner and gather each coset.
-    /// RetainMonomials preserves M and uses one reusable coset workspace;
-    /// InPlace transforms the source itself and allocates no coset workspace.
-    /// Witness and setup supply cached partial trees; memory builds one partial
-    /// tree at a time.
-    /// All coset readers are enqueued on exec before overwriting the workspace.
+    /// All coset readers must be enqueued on exec before reusing the workspace.
     pub fn gather_openings_recomputed(
         &mut self,
         queries: &DeviceSlice<u32>,
@@ -66,7 +60,6 @@ impl TraceHolder<BF> {
         };
         let stream = context.get_exec_stream();
         let properties = context.get_device_properties();
-        let options = RetainedLdeOptions::default();
         let first_coset = usize::from(log_f != 0);
         for (iteration, coset_index) in std::iter::once(first_coset)
             .chain((0..1usize << log_f).filter(|&c| c != first_coset))
@@ -80,7 +73,6 @@ impl TraceHolder<BF> {
                         log_n as usize,
                         log_f as usize,
                         coset_index,
-                        options,
                         properties,
                         stream,
                     )?;
@@ -91,7 +83,6 @@ impl TraceHolder<BF> {
                         log_n as usize,
                         log_f as usize,
                         coset_index,
-                        options,
                         properties,
                         stream,
                     )?;
@@ -174,13 +165,9 @@ impl TraceHolder<BF> {
                 stream,
             )?;
         }
-        // The source, optional workspace and tree drop after their final exec readers have
-        // been scheduled. No device-to-device copy or host readback is needed.
         Ok(())
     }
-}
 
-impl TraceHolder<BF> {
     /// Commit one coset at a time, preserving raw evaluations for GKR and true
     /// monomials for WHIR. The only coset workspace is released on return.
     pub fn commit_retaining_monomials(
@@ -222,7 +209,6 @@ impl TraceHolder<BF> {
         let mut coset = context.alloc(source.len(), AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
         let properties = context.get_device_properties();
-        let options = RetainedLdeOptions::default();
         let first_coset = usize::from(log_f != 0);
         for (iteration, index) in std::iter::once(first_coset)
             .chain((0..1usize << log_f).filter(|&c| c != first_coset))
@@ -236,7 +222,6 @@ impl TraceHolder<BF> {
                     log_n as usize,
                     log_f as usize,
                     index,
-                    options,
                     properties,
                     stream,
                 )?;
@@ -247,7 +232,6 @@ impl TraceHolder<BF> {
                     log_n as usize,
                     log_f as usize,
                     index,
-                    options,
                     properties,
                     stream,
                 )?;
@@ -263,9 +247,7 @@ impl TraceHolder<BF> {
         self.opening_monomials = Some(monomials);
         Ok(())
     }
-}
 
-impl TraceHolder<BF> {
     fn gather_cached_cap(
         &self,
         cap_dst: &mut DeviceSlice<u32>,
@@ -374,7 +356,6 @@ impl TraceHolder<BF> {
         }
         self.gather_cached_cap(cap_dst, context)?;
         // The final tree reader is queued before overwriting the last coset.
-        // Stage 1 returns the original E representation for all later readers.
         coset_to_monomials_in_place(
             &mut values,
             log_n as usize,

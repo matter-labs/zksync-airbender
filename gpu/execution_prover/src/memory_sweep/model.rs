@@ -69,27 +69,6 @@ impl TimingSummary {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SweepCase {
-    pub circuit: CircuitType,
-    pub policy: MemoryPolicy,
-}
-
-pub fn stable_cases(
-    circuits: impl IntoIterator<Item = CircuitType>,
-    policies: impl IntoIterator<Item = MemoryPolicy> + Clone,
-) -> Vec<SweepCase> {
-    circuits
-        .into_iter()
-        .flat_map(|circuit| {
-            policies
-                .clone()
-                .into_iter()
-                .map(move |policy| SweepCase { circuit, policy })
-        })
-        .collect()
-}
-
 #[derive(Debug)]
 pub enum SweepModelError {
     Csv(csv::Error),
@@ -217,7 +196,7 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Sweep
             .map_err(|e| SweepModelError::Invalid(e.to_string()))?;
         let key = (
             row.circuit.clone(),
-            serde_json::to_string(&geometry.allocation_key())
+            serde_json::to_string(&geometry)
                 .map_err(|e| SweepModelError::Invalid(e.to_string()))?,
             row.arena_bytes,
         );

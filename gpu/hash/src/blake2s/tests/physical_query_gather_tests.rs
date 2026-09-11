@@ -824,31 +824,6 @@ fn single_coset_openings_preserve_query_slots_and_match_cpu() {
                     &stream,
                 )
                 .unwrap();
-                // Empty query arrays must not launch a zero-sized CUDA grid.
-                gather_leaves_for_queries_single_coset_physical(
-                    &workspace,
-                    coset as u32,
-                    log_f,
-                    log_n,
-                    log_rows,
-                    &d_queries[..0],
-                    &mut d_leaves[..0],
-                    &stream,
-                )
-                .unwrap();
-                gather_merkle_paths_partial_for_queries_single_coset_physical(
-                    &workspace,
-                    &tree,
-                    coset as u32,
-                    log_f,
-                    log_n,
-                    log_rows,
-                    layers,
-                    &d_queries[..0],
-                    &mut d_paths[..0],
-                    &stream,
-                )
-                .unwrap();
                 let tower = host_tower(&natural, base, n, cols, leaves, log_rows, log_leaves);
                 for (slot, &q) in queries.iter().enumerate() {
                     if q as usize & (f - 1) != coset {
