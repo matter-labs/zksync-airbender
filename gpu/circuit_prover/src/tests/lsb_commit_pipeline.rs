@@ -128,6 +128,7 @@ fn cpu_reference(shape: &Shape, hypercube_evals: &[BF], queries: &[u32]) -> CpuR
         shape.log_rows_per_leaf as usize,
         1usize << shape.log_tree_cap_size(),
         shape.log_domain_size as usize,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         &worker,
     );
     let ColumnMajorBaseOracleForLDE::InMemory(in_memory) = oracle else {

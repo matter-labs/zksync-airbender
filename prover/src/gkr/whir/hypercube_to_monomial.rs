@@ -280,6 +280,154 @@ pub fn multivariate_hypercube_evals_into_coeffs_neon_bb(
     }
 }
 
+/// AVX2 (x86-64) BabyBear variant of
+/// [`multivariate_hypercube_evals_into_coeffs`]: radix-8 sweeps with 8-lane
+/// vector subtractions for strides >= 8 and an in-register `(4, 2, 1)` tail
+/// (lane shifts with zero fill — modular sub of zero is the identity). Works
+/// on the raw canonical Montgomery values (`repr(transparent)`), byte-
+/// identical to the reference; sizes below 16 degrade to the scalar radix-4
+/// path.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub fn multivariate_hypercube_evals_into_coeffs_avx2_bb(
+    input: &mut [::field::baby_bear::base::BabyBearField],
+    size_log2: u32,
+) {
+    use ::field::baby_bear::base::BabyBearField;
+    use core::arch::x86_64::*;
+
+    const P: u32 = BabyBearField::ORDER;
+    let len = 1usize << size_log2;
+    assert_eq!(input.len(), len);
+    if len < 16 {
+        return multivariate_hypercube_evals_into_coeffs_radix4(input, size_log2);
+    }
+
+    #[inline(always)]
+    unsafe fn subv(a: __m256i, b: __m256i) -> __m256i {
+        let d = _mm256_sub_epi32(a, b);
+        _mm256_min_epu32(d, _mm256_add_epi32(d, _mm256_set1_epi32(P as i32)))
+    }
+    #[inline(always)]
+    unsafe fn ld(p: *const u32) -> __m256i {
+        _mm256_loadu_si256(p as *const __m256i)
+    }
+    #[inline(always)]
+    unsafe fn st(p: *mut u32, v: __m256i) {
+        _mm256_storeu_si256(p as *mut __m256i, v)
+    }
+
+    let p = input.as_mut_ptr() as *mut u32;
+    let mut stride = len / 2;
+    let mut remaining = size_log2;
+
+    unsafe {
+        // fused radix-8 sweeps while the smallest stride in the triple >= 8
+        while remaining >= 3 && stride / 4 >= 8 {
+            let s2 = stride / 2;
+            let s4 = stride / 4;
+            let mut base = 0usize;
+            while base < len {
+                let mut j = base;
+                while j < base + s4 {
+                    let offs = [
+                        j,
+                        j + s4,
+                        j + s2,
+                        j + s2 + s4,
+                        j + stride,
+                        j + stride + s4,
+                        j + stride + s2,
+                        j + stride + s2 + s4,
+                    ];
+                    let mut v = [
+                        ld(p.add(offs[0])),
+                        ld(p.add(offs[1])),
+                        ld(p.add(offs[2])),
+                        ld(p.add(offs[3])),
+                        ld(p.add(offs[4])),
+                        ld(p.add(offs[5])),
+                        ld(p.add(offs[6])),
+                        ld(p.add(offs[7])),
+                    ];
+                    for k in 0..4 {
+                        v[k + 4] = subv(v[k + 4], v[k]);
+                    }
+                    for (hi, lo) in [(2usize, 0usize), (3, 1), (6, 4), (7, 5)] {
+                        v[hi] = subv(v[hi], v[lo]);
+                    }
+                    for (hi, lo) in [(1usize, 0usize), (3, 2), (5, 4), (7, 6)] {
+                        v[hi] = subv(v[hi], v[lo]);
+                    }
+                    for k in 1..8 {
+                        st(p.add(offs[k]), v[k]);
+                    }
+                    j += 8;
+                }
+                base += 2 * stride;
+            }
+            stride /= 8;
+            remaining -= 3;
+        }
+
+        // leftover big strides (>= 8) as single vector sweeps until only a
+        // contiguous small-stride tail remains
+        while remaining > 3 && stride >= 8 {
+            let mut base = 0usize;
+            while base < len {
+                let mut j = base;
+                while j < base + stride {
+                    let lo = ld(p.add(j));
+                    let hi = ld(p.add(j + stride));
+                    st(p.add(j + stride), subv(hi, lo));
+                    j += 8;
+                }
+                base += 2 * stride;
+            }
+            stride /= 2;
+            remaining -= 1;
+        }
+
+        // in-register tails on 8-element vectors: stride 4 = high half minus
+        // low half, stride 2 = dword pairs within 128-bit lanes, stride 1 =
+        // odd dword minus even dword within 64-bit lanes
+        if remaining == 3 {
+            debug_assert_eq!(stride, 4);
+            let mut j = 0usize;
+            while j < len {
+                let mut v = ld(p.add(j));
+                v = subv(v, _mm256_permute2x128_si256::<0x08>(v, v));
+                v = subv(v, _mm256_slli_si256::<8>(v));
+                v = subv(v, _mm256_slli_epi64::<32>(v));
+                st(p.add(j), v);
+                j += 8;
+            }
+            remaining = 0;
+        }
+        if remaining == 2 {
+            debug_assert_eq!(stride, 2);
+            let mut j = 0usize;
+            while j < len {
+                let mut v = ld(p.add(j));
+                v = subv(v, _mm256_slli_si256::<8>(v));
+                v = subv(v, _mm256_slli_epi64::<32>(v));
+                st(p.add(j), v);
+                j += 8;
+            }
+            remaining = 0;
+        }
+        if remaining == 1 {
+            let mut j = 0usize;
+            while j < len {
+                let v = ld(p.add(j));
+                st(p.add(j), subv(v, _mm256_slli_epi64::<32>(v)));
+                j += 8;
+            }
+            remaining = 0;
+        }
+        debug_assert_eq!(remaining, 0, "unhandled tail");
+    }
+}
+
 pub fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2: u32) {
     assert_eq!(input.len(), 1 << size_log2);
     let len = 1 << size_log2;
@@ -568,5 +716,214 @@ mod test {
 
             assert_eq!(serial, parallel, "mismatch at size_log2 = {size_log2}");
         }
+    }
+
+    /// The blocked worker-parallel AVX2 transform must equal the serial AVX2
+    /// kernel exactly: below the block size (delegation), one block, and
+    /// every high-stride leftover class (1..4 levels, one and two sweeps).
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    #[test]
+    fn test_avx2_blocked_parallel_matches_serial() {
+        let worker = Worker::new_with_num_threads(4);
+        for size_log2 in [10u32, 16, 17, 18, 19, 20, 21, 22] {
+            let size = 1usize << size_log2;
+            let evals: Vec<F> = (0..size)
+                .map(|el| F::from_u32_with_reduction((el as u32).wrapping_mul(2654435761)))
+                .collect();
+
+            let mut serial = evals.clone();
+            multivariate_hypercube_evals_into_coeffs_avx2_bb(&mut serial, size_log2);
+
+            let parallel = multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel(
+                &evals, size_log2, &worker,
+            );
+
+            assert_eq!(serial, parallel, "mismatch at size_log2 = {size_log2}");
+        }
+    }
+}
+
+/// Blocked WORKER-PARALLEL, out-of-place twin of
+/// [`multivariate_hypercube_evals_into_coeffs_avx2_bb`]: `src` is copied and
+/// transformed into a fresh vector. The per-variable subtractions commute, so
+/// for `len > 2^16` the 16 low-stride levels run block-locally (each 256 KB
+/// block is copied from `src` and transformed in cache by one task — ONE
+/// DRAM sweep) and the high-stride levels run as in-register radix-16 sweeps
+/// (four levels per DRAM sweep) chunked over the worker: a 2^24 column takes
+/// three sweeps instead of nine (copy + eight radix-8 sweeps). Byte-identical
+/// to the serial kernel.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub fn multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel(
+    src: &[::field::baby_bear::base::BabyBearField],
+    size_log2: u32,
+    worker: &Worker,
+) -> Vec<::field::baby_bear::base::BabyBearField> {
+    multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel_partial(
+        src,
+        size_log2,
+        u32::MAX,
+        worker,
+    )
+}
+
+/// [`multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel`] applying
+/// only the first `high_levels` high-stride levels above the block (the 16
+/// block-local variables are always transformed): callers that fold the
+/// remaining top variables into a later pass.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub fn multivariate_hypercube_evals_into_coeffs_avx2_bb_parallel_partial(
+    src: &[::field::baby_bear::base::BabyBearField],
+    size_log2: u32,
+    high_levels: u32,
+    worker: &Worker,
+) -> Vec<::field::baby_bear::base::BabyBearField> {
+    use ::field::baby_bear::base::BabyBearField;
+    const BLOCK_LOG2: u32 = 16;
+    const SUB_BLOCK_LOG2: u32 = 14;
+    let len = 1usize << size_log2;
+    assert_eq!(src.len(), len);
+    let mut dst: Vec<BabyBearField> = Vec::with_capacity(len);
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        dst.set_len(len)
+    };
+    if size_log2 <= BLOCK_LOG2 {
+        dst.copy_from_slice(src);
+        multivariate_hypercube_evals_into_coeffs_avx2_bb(&mut dst, size_log2);
+        return dst;
+    }
+    let blk = 1usize << BLOCK_LOG2;
+    let num_blocks = len / blk;
+    let src_addr = src.as_ptr() as usize;
+    let dst_addr = dst.as_mut_ptr() as usize;
+
+    // phase A: copy + the 16 block-local levels, one block per task
+    worker.scope(num_blocks, |scope, geometry| {
+        let (work, chunks) = (num_blocks, geometry.len());
+        for thread_idx in 0..chunks {
+            let (start, size) = fft::baby_bear_avx2::balanced_chunk(work, chunks, thread_idx);
+            fft::baby_bear_avx2::spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| {
+                for b in start..start + size {
+                    let block = unsafe {
+                        core::slice::from_raw_parts_mut(
+                            (dst_addr as *mut BabyBearField).add(b * blk),
+                            blk,
+                        )
+                    };
+                    let source = unsafe {
+                        core::slice::from_raw_parts(
+                            (src_addr as *const BabyBearField).add(b * blk),
+                            blk,
+                        )
+                    };
+                    block.copy_from_slice(source);
+                    // hierarchical: the 14 lowest strides on 2^14-element
+                    // (64 KB) quarter-blocks so the hot footprint stays deep
+                    // inside L2 at full socket occupancy, then strides 2^14
+                    // and 2^15 as one 4-stream sweep over the block
+                    for quarter in block.chunks_exact_mut(1 << SUB_BLOCK_LOG2) {
+                        multivariate_hypercube_evals_into_coeffs_avx2_bb(quarter, SUB_BLOCK_LOG2);
+                    }
+                    unsafe {
+                        avx2_bb_sub_levels_items(
+                            block.as_mut_ptr() as *mut u32,
+                            1 << SUB_BLOCK_LOG2,
+                            2,
+                            0..(1usize << SUB_BLOCK_LOG2) / 16,
+                        )
+                    };
+                }
+            });
+        }
+    });
+
+    // phase B: the high-stride levels, up to four per sweep
+    let mut stride = blk;
+    let mut levels_left = (size_log2 - BLOCK_LOG2).min(high_levels);
+    while levels_left > 0 {
+        let levels = levels_left.min(4);
+        let group = stride << levels;
+        let items = (len / group) * (stride / 16);
+        worker.scope(items, |scope, geometry| {
+            let (work, chunks) = (items, geometry.len());
+            for thread_idx in 0..chunks {
+                let (start, size) = fft::baby_bear_avx2::balanced_chunk(work, chunks, thread_idx);
+                fft::baby_bear_avx2::spawn_chunk(
+                    scope,
+                    thread_idx == geometry.len() - 1,
+                    move |_| unsafe {
+                        avx2_bb_sub_levels_items(
+                            dst_addr as *mut u32,
+                            stride,
+                            levels,
+                            start..start + size,
+                        );
+                    },
+                );
+            }
+        });
+        stride = group;
+        levels_left -= levels;
+    }
+    dst
+}
+
+/// `levels` (1..=4) consecutive "upper half minus lower half" levels with the
+/// smallest stride `stride >= 16`, fused in registers, over LINE items
+/// `(group, jl)`: group `k` spans `stride << levels` elements, item `t` is
+/// its `t % (stride/16)`-th 64-byte line (two vectors per stream — the
+/// `2^levels` streams sit at power-of-two strides and alias in the same
+/// cache sets, so a line is consumed whole while resident). Lower halves are
+/// never modified, so only the `2^levels - 1` upper vectors are stored.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+unsafe fn avx2_bb_sub_levels_items(
+    p: *mut u32,
+    stride: usize,
+    levels: u32,
+    item_range: core::ops::Range<usize>,
+) {
+    use core::arch::x86_64::*;
+    const P: u32 = ::field::baby_bear::base::BabyBearField::ORDER;
+    #[inline(always)]
+    unsafe fn subv(a: __m256i, b: __m256i) -> __m256i {
+        let d = _mm256_sub_epi32(a, b);
+        _mm256_min_epu32(d, _mm256_add_epi32(d, _mm256_set1_epi32(P as i32)))
+    }
+    #[inline(always)]
+    unsafe fn network(v: &mut [__m256i; 16], m_count: usize, levels: u32) {
+        for b in 0..levels {
+            let bit = 1usize << b;
+            for m in 0..m_count {
+                if m & bit != 0 {
+                    v[m] = subv(v[m], v[m ^ bit]);
+                }
+            }
+        }
+    }
+    debug_assert!(stride >= 16);
+    let m_count = 1usize << levels;
+    let lines_per_group = stride / 16;
+    let mut t = item_range.start;
+    while t < item_range.end {
+        let k = t / lines_per_group;
+        let jl = t % lines_per_group;
+        let run = (lines_per_group - jl).min(item_range.end - t);
+        let mut j = k * stride * m_count + jl * 16;
+        for _ in 0..run {
+            let mut v0 = [_mm256_setzero_si256(); 16];
+            let mut v1 = [_mm256_setzero_si256(); 16];
+            for m in 0..m_count {
+                v0[m] = _mm256_loadu_si256(p.add(j + m * stride) as *const __m256i);
+                v1[m] = _mm256_loadu_si256(p.add(j + 8 + m * stride) as *const __m256i);
+            }
+            network(&mut v0, m_count, levels);
+            network(&mut v1, m_count, levels);
+            for m in 1..m_count {
+                _mm256_storeu_si256(p.add(j + m * stride) as *mut __m256i, v0[m]);
+                _mm256_storeu_si256(p.add(j + 8 + m * stride) as *mut __m256i, v1[m]);
+            }
+            j += 16;
+        }
+        t += run;
     }
 }

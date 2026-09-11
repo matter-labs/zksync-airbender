@@ -1,3 +1,5 @@
+pub mod baby_bear_avx2;
+pub mod baby_bear_avx512;
 pub mod baby_bear_neon;
 pub mod four_step;
 pub mod fused;

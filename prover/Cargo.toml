@@ -66,9 +66,6 @@ gkr_check_satisfied = []
 gkr_test_forge = []
 # When set, prover tests load no-caches circuit variants
 no_caches = []
-# When set, WHIR intermediate-oracle leaves are committed in evaluation form
-# (the pre-coefficient-encoding behavior). Default (feature off) is coefficient form.
-eval_leaves = []
 # Exposes test-only helpers (e.g. the whir `commit_single_ext_poly_*_for_test`
 # functions) to downstream crates' tests; not compiled into the normal library.
 test-utils = []

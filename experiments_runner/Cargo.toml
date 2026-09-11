@@ -25,6 +25,7 @@ prover = { workspace = true, features = ["prover", "cs_debug", "bincode", "test"
 cs.workspace = true
 riscv_transpiler.workspace = true
 field.workspace = true
+fft.workspace = true
 common_constants.workspace = true
 worker.workspace = true
 # Only to turn on `keccak/parallel` (hybrid-array): the cfg-selected
@@ -40,3 +41,6 @@ gkr_self_checks = ["prover/gkr_self_checks"]
 deterministic_pow = ["prover/deterministic_pow"]
 gkr_check_satisfied = ["prover/gkr_check_satisfied"]
 no_caches = ["prover/no_caches"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

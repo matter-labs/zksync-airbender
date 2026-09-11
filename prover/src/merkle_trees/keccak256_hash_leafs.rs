@@ -8,6 +8,7 @@
 //! byte string the EVM verifier hashes (it packs two 128-bit values per 32-byte
 //! word and takes `keccak256` over the packed words).
 
+use super::CosetLeafAccessor;
 use super::*;
 use crate::gkr::whir::offsets_vec_for_leaf_construction;
 use crate::utils::extension_field_into_base_coeffs;
@@ -56,8 +57,86 @@ pub(crate) fn encode_proth120_be_into(el: &Proth120, dst: &mut Vec<u8>) {
     dst.extend_from_slice(&el.to_u128().to_be_bytes());
 }
 
-pub fn keccak256_leaf_hashes_from_cosets<E, B>(
-    trace: &[&[&[E]]],
+/// [`keccak256_leaf_hashes_from_cosets`] over leaf-level accessors (every
+/// accessor produces its leaves' committed values itself).
+pub fn keccak256_leaf_hashes_from_leaf_accessors<E, L, B>(
+    cosets: &[&[L]],
+    bitreverse_cosets: bool,
+    bitreverse_leaf_hashes: bool,
+    worker: &Worker,
+) -> Vec<[u32; KECCAK256_DIGEST_SIZE_U32_WORDS], B>
+where
+    E: FieldExtension<Proth120> + field::Field,
+    L: CosetLeafAccessor<E>,
+    B: GoodAllocator,
+    [(); E::DEGREE]: Sized,
+{
+    let num_cosets = cosets.len();
+    let num_columns = cosets[0].len();
+    let values_per_leaf = cosets[0][0].values_per_leaf();
+    let coset_tree_size = cosets[0][0].num_leaves();
+    for coset in cosets.iter() {
+        assert_eq!(coset.len(), num_columns);
+        for accessor in coset.iter() {
+            assert_eq!(accessor.values_per_leaf(), values_per_leaf);
+            assert_eq!(accessor.num_leaves(), coset_tree_size);
+        }
+    }
+    assert!(coset_tree_size.is_power_of_two());
+    let tree_size = num_cosets * coset_tree_size;
+    assert!(tree_size.is_power_of_two());
+    let mut coset_indexes: Vec<usize> = (0..num_cosets).collect();
+    if bitreverse_cosets {
+        bitreverse_enumeration_inplace(&mut coset_indexes);
+    }
+    let leaf_width_bytes = num_columns * values_per_leaf * E::DEGREE * 16;
+    let mut leaf_hashes: Vec<[u32; KECCAK256_DIGEST_SIZE_U32_WORDS], B> =
+        Vec::with_capacity_in(tree_size, B::default());
+    let coset_indexes_ref = &coset_indexes[..];
+    unsafe {
+        worker.scope(tree_size, |scope, geometry| {
+            let mut dst = &mut leaf_hashes.spare_capacity_mut()[..tree_size];
+            for thread_idx in 0..geometry.len() {
+                let chunk_size = geometry.get_chunk_size(thread_idx);
+                let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                let (dst_chunk, rest) = dst.split_at_mut_unchecked(chunk_size);
+                dst = rest;
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let mut preimage: Vec<u8> = Vec::with_capacity(leaf_width_bytes);
+                    let mut leaf: Vec<E> = vec![E::ZERO; values_per_leaf];
+                    for (local, slot) in dst_chunk.iter_mut().enumerate() {
+                        let flat_index = chunk_start + local;
+                        let coset_slot = flat_index / coset_tree_size;
+                        let row = flat_index % coset_tree_size;
+                        let coset = &cosets[coset_indexes_ref[coset_slot]];
+                        preimage.clear();
+                        for accessor in coset.iter() {
+                            accessor.leaf_into(row, &mut leaf[..]);
+                            for el in leaf.iter() {
+                                let coeffs = extension_field_into_base_coeffs::<Proth120, E>(*el);
+                                for c in coeffs.iter() {
+                                    encode_proth120_be_into(c, &mut preimage);
+                                }
+                            }
+                        }
+                        debug_assert_eq!(preimage.len(), leaf_width_bytes);
+                        let mut digest = [0u8; 32];
+                        digest.copy_from_slice(Keccak256::digest(&preimage).as_slice());
+                        slot.write(keccak_digest_from_bytes(digest));
+                    }
+                });
+            }
+        });
+        leaf_hashes.set_len(tree_size);
+    }
+    if bitreverse_leaf_hashes {
+        bitreverse_enumeration_inplace(&mut leaf_hashes);
+    }
+    leaf_hashes
+}
+
+pub fn keccak256_leaf_hashes_from_cosets<E, A, B>(
+    trace: &[&[A]],
     combine_by: usize,
     bitreverse_evaluations: bool,
     bitreverse_cosets: bool,
@@ -66,6 +145,7 @@ pub fn keccak256_leaf_hashes_from_cosets<E, B>(
 ) -> Vec<[u32; KECCAK256_DIGEST_SIZE_U32_WORDS], B>
 where
     E: FieldExtension<Proth120>,
+    A: CosetIndexedAccessor<E>,
     B: GoodAllocator,
     [(); E::DEGREE]: Sized,
 {
@@ -130,7 +210,7 @@ where
                         preimage.clear();
                         for column in coset.iter() {
                             for offset in offsets_ref.iter() {
-                                let el = column[row + *offset];
+                                let el = column.get(row + *offset);
                                 let coeffs = extension_field_into_base_coeffs::<Proth120, E>(el);
                                 for c in coeffs.iter() {
                                     encode_proth120_be_into(c, &mut preimage);

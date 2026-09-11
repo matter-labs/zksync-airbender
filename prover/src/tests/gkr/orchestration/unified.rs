@@ -400,6 +400,7 @@ fn commit_memory_cap(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.cap_size,
         trace_len_log2,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
     mem.get_cap()

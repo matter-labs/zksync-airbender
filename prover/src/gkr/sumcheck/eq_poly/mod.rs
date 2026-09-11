@@ -307,7 +307,7 @@ pub(crate) fn make_pows<E: Field>(el: E, num_powers: usize) -> Vec<E> {
 /// `2^log_n` table factors EXACTLY into `hi (x) lo` over the bit split
 /// (field multiplication is exact), so consumers can weigh elements with
 /// two tiny tensors instead of one full-size table.
-pub(crate) fn split_eq_tensors<T: Field>(
+pub fn split_eq_tensors<T: Field>(
     point: T,
     log_n: usize,
     log_c: usize,
@@ -465,6 +465,115 @@ pub(crate) fn evaluate_with_precomputed_eq_ext<E: Field>(ext_field_values: &[E],
     }
 
     result
+}
+
+/// Worker-parallel [`evaluate_with_precomputed_eq`]: balanced row chunks,
+/// one partial sum per chunk, reduced in chunk order (field addition is
+/// exact, so the value is identical to the serial loop).
+pub(crate) fn evaluate_with_precomputed_eq_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+    base_field_values: &[F],
+    eq: &[E],
+    worker: &Worker,
+) -> E {
+    let (base, ext) =
+        evaluate_many_with_precomputed_eq_parallel(&[base_field_values], &[], eq, worker);
+    debug_assert!(ext.is_empty());
+    base[0]
+}
+
+/// Worker-parallel [`evaluate_with_precomputed_eq_ext`].
+pub(crate) fn evaluate_with_precomputed_eq_ext_parallel<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    ext_field_values: &[E],
+    eq: &[E],
+    worker: &Worker,
+) -> E {
+    let (base, ext) =
+        evaluate_many_with_precomputed_eq_parallel::<F, E>(&[], &[ext_field_values], eq, worker);
+    debug_assert!(base.is_empty());
+    ext[0]
+}
+
+/// FUSED worker-parallel evaluation of many polynomials at one point: one
+/// pass over the eq table computes every dot product (`sum_i eq[i] * p[i]`
+/// for each base-field `p` and each extension-field `q`). Each row's eq
+/// value is loaded once and applied to all polys, so the 256 MB table is
+/// streamed once instead of once per poly; per-chunk partial sums are
+/// reduced in chunk order — exact field arithmetic, identical values to
+/// the serial evaluators. Returns the base-field results in slot order,
+/// then the extension-field results.
+pub(crate) fn evaluate_many_with_precomputed_eq_parallel<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    base_polys: &[&[F]],
+    ext_polys: &[&[E]],
+    eq: &[E],
+    worker: &Worker,
+) -> (Vec<E>, Vec<E>) {
+    let n = eq.len();
+    for p in base_polys {
+        assert_eq!(p.len(), n);
+    }
+    for q in ext_polys {
+        assert_eq!(q.len(), n);
+    }
+    let (nb, ne) = (base_polys.len(), ext_polys.len());
+    if nb + ne == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    if n == 0 {
+        return (vec![E::ZERO; nb], vec![E::ZERO; ne]);
+    }
+    let num_chunks = worker.get_num_cores().min(n).max(1);
+    let mut partials: Vec<Vec<E>> = vec![vec![E::ZERO; nb + ne]; num_chunks];
+    worker.scope(n, |scope, geometry| {
+        let chunks = geometry.len().min(num_chunks);
+        let mut rest = &mut partials[..];
+        for chunk_idx in 0..chunks {
+            let (mine, tail) = core::mem::take(&mut rest).split_at_mut(1);
+            rest = tail;
+            let acc = &mut mine[0];
+            let start = geometry.get_chunk_start_pos(chunk_idx);
+            let size = geometry.get_chunk_size(chunk_idx);
+            scope.spawn(move |_| {
+                // accumulate in a THREAD-LOCAL buffer and publish once: the
+                // per-chunk `partials` vectors are tiny heap allocations that
+                // can sit in adjacent cache lines, and writing them on every
+                // row made the 16 threads ping-pong those lines (measured
+                // 33 ms -> 250 ms for the same loop depending on heap state)
+                let mut local: Vec<E> = vec![E::ZERO; nb + ne];
+                let eq = &eq[start..start + size];
+                for (i, e) in eq.iter().enumerate() {
+                    let row = start + i;
+                    for (j, p) in base_polys.iter().enumerate() {
+                        let mut t = *e;
+                        t.mul_assign_by_base(&p[row]);
+                        local[j].add_assign(&t);
+                    }
+                    for (k, q) in ext_polys.iter().enumerate() {
+                        let mut t = *e;
+                        t.mul_assign(&q[row]);
+                        local[nb + k].add_assign(&t);
+                    }
+                }
+                acc.copy_from_slice(&local);
+            });
+        }
+    });
+    let mut base = vec![E::ZERO; nb];
+    let mut ext = vec![E::ZERO; ne];
+    for part in partials.iter() {
+        for j in 0..nb {
+            base[j].add_assign(&part[j]);
+        }
+        for k in 0..ne {
+            ext[k].add_assign(&part[nb + k]);
+        }
+    }
+    (base, ext)
 }
 
 pub(crate) fn evaluate_constant_and_quadratic_coeffs_with_precomputed_eq<

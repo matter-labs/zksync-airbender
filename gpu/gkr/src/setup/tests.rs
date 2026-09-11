@@ -38,7 +38,10 @@ fn make_test_cpu_setup(
     }
 
     CpuGKRSetup {
-        hypercube_evals: columns.into_iter().map(Arc::new).collect(),
+        hypercube_evals: columns
+            .into_iter()
+            .map(|c| Arc::new(prover::allocation_pool::AllocationType::from(c)))
+            .collect(),
     }
 }
 

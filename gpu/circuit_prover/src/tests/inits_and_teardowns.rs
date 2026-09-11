@@ -327,6 +327,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 whir_schedule.whir_steps_schedule[0],
                 whir_schedule.cap_size,
                 trace_len.trailing_zeros() as usize,
+                &prover::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
         stage1_subcaps_from_cap(

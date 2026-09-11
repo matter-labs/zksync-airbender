@@ -358,7 +358,7 @@ where
             let col_refs: Vec<&[F]> = coset_columns.iter().map(|c| &c[..]).collect();
             let coset_refs: &[&[F]] = &col_refs[..];
             let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
-            let subtree = T::construct_from_cosets::<F>(
+            let subtree = T::construct_from_cosets::<F, _>(
                 trace,
                 self.values_per_leaf,
                 1,
@@ -445,7 +445,7 @@ where
     let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
 
     let subtree =
-        T::construct_from_cosets::<F>(trace, values_per_leaf, 1, true, false, false, worker);
+        T::construct_from_cosets::<F, _>(trace, values_per_leaf, 1, true, false, false, worker);
     subtree.get_cap().cap[0]
 }
 
@@ -522,7 +522,7 @@ where
         }
         coset_cols
             .into_iter()
-            .map(|c| Cow::Owned(c.into_vec()))
+            .map(|c| Box::new(c) as Box<dyn crate::merkle_trees::CosetIndexedAccessor<F>>)
             .collect()
     });
 
@@ -546,21 +546,18 @@ where
 // Coset-by-coset commitment for a SINGLE extension-field oracle (the WHIR
 // intermediate/folded RS oracles). Analogous to `CosetByCosetBaseCommitment` but:
 //   * one column, given already in monomial form (the folded polynomial),
-//   * DEFAULT: each leaf is converted to multilinear-coefficient form (as the
-//     monolithic `commit_single_ext_poly` does). Under the `eval_leaves` feature the
-//     raw evaluations are committed instead (mirroring the `eval_leaves` monolithic
-//     path; the EVM verifier folds those with `fold_coset`, see whir.sol EVAL_LEAVES),
+//   * each leaf is converted to multilinear-coefficient form (as the
+//     monolithic `commit_single_ext_poly` does),
 //   * generic over the tree `T` (uses `construct_from_cosets` for per-coset
 //     subtrees and `build_over_leaf_hashes` for the top tree).
 // ============================================================================
 
 /// Coset-independent factors hoisted out of the per-coset loop in `commit`: the LDE
-/// coset offsets, and (default) the coeff-conversion context whose `num_leaves`-long
-/// power table would otherwise be rebuilt for every coset.
+/// coset offsets, and the coeff-conversion context whose `num_leaves`-long power
+/// table would otherwise be rebuilt for every coset.
 struct ExtCommonCtx<F: PrimeField + TwoAdicField> {
     root_powers: Vec<F>,
     values_per_leaf: usize,
-    #[cfg(not(feature = "eval_leaves"))]
     conv: super::ExtCoeffConvCtx<F>,
 }
 
@@ -570,14 +567,13 @@ impl<F: PrimeField + TwoAdicField> ExtCommonCtx<F> {
         Self {
             root_powers,
             values_per_leaf,
-            #[cfg(not(feature = "eval_leaves"))]
             conv: super::ExtCoeffConvCtx::new(trace_len, values_per_leaf),
         }
     }
 }
 
 /// One coset's leaf column: LDE of the monomial form at `root_powers[coset_index]`,
-/// then (default) rewritten to coeff form. Under `eval_leaves` the raw evals stand.
+/// then rewritten to coeff form.
 fn ext_coset_column<F, E>(
     monomial_form: &[E],
     twiddles: &Twiddles<F, Global>,
@@ -590,10 +586,8 @@ where
     E: FieldExtension<F> + Field,
 {
     let offset = ctx.root_powers[coset_index];
-    #[allow(unused_mut)]
     let mut column =
         compute_column_major_lde_single_coset_with_offset(monomial_form, twiddles, offset, worker);
-    #[cfg(not(feature = "eval_leaves"))]
     ctx.conv.apply(&mut column, offset, worker);
     column
 }
@@ -611,10 +605,8 @@ where
     E: FieldExtension<F> + Field,
 {
     let offset = ctx.root_powers[coset_index];
-    #[allow(unused_mut)]
     let mut column =
         compute_column_major_lde_single_coset_with_offset_serial(monomial_form, twiddles, offset);
-    #[cfg(not(feature = "eval_leaves"))]
     ctx.conv.apply_serial(&mut column, offset);
     column
 }
@@ -683,7 +675,7 @@ where
     let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
     let trace: &[&[&[E]]] = &coset_slices;
     let subtree =
-        T::construct_from_cosets::<E>(trace, values_per_leaf, 1, true, false, false, worker);
+        T::construct_from_cosets::<E, _>(trace, values_per_leaf, 1, true, false, false, worker);
     subtree.get_cap().cap[0]
 }
 
@@ -870,7 +862,7 @@ where
         let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
         let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
         let trace: &[&[&[E]]] = &coset_slices;
-        let subtree = T::construct_from_cosets::<E>(
+        let subtree = T::construct_from_cosets::<E, _>(
             trace,
             self.values_per_leaf,
             1,
@@ -957,7 +949,7 @@ where
             let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
             let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
             let trace: &[&[&[E]]] = &coset_slices;
-            let subtree = T::construct_from_cosets::<E>(
+            let subtree = T::construct_from_cosets::<E, _>(
                 trace,
                 self.values_per_leaf,
                 1,
@@ -1065,6 +1057,7 @@ mod test {
                 cap_size,
                 packed_trace_len_log2,
                 pack_log2,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
 
@@ -1166,6 +1159,7 @@ mod test {
                 first_fold_log2,
                 cap_size,
                 trace_len_log2,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
         let coset = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(
@@ -1265,6 +1259,7 @@ mod test {
                 first_fold_log2,
                 cap_size,
                 trace_len_log2,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
         let coset = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(
@@ -1380,10 +1375,12 @@ mod test {
                 lde_factor,
                 Some(&worker),
             );
-            let conv =
-                crate::gkr::prover::backend::StandardExtCoeffConv::<Proth120>::new(trace_len, vpl);
-            let mono = super::super::commit_single_ext_poly::<Proth120, Proth120, Tree>(
-                rs, vpl, cap, &conv, &worker,
+            let mono = super::super::commit_single_ext_poly::<Proth120, Proth120, Tree, _>(
+                rs,
+                vpl,
+                cap,
+                &crate::gkr::prover::backend::NaiveBackend,
+                &worker,
             );
             let coset = CosetByCosetExtCommitment::<Proth120, Proth120, Tree>::commit(
                 &monomial, &twiddles, lde_factor, vpl, cap, &worker,

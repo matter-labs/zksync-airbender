@@ -1,4 +1,5 @@
 use super::*;
+use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
 use crate::gkr::prover::apply_row_wise;
 use cs::definitions::gkr::AddressSpaceType;
 use cs::definitions::gkr::LinearRelation;
@@ -18,12 +19,27 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
     decoder_lookup_fill_value: E,
     offset_for_decoder_table: u32,
     decoder_predicate_address: GKRAddress,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> Box<[E]> {
+) -> AllocationType<E> {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::vector_lookup_input(
+            rel,
+            gkr_storage,
+            witness_trace,
+            trace_len,
+            preprocessed_generic_lookup,
+            decoder_lookup_fill_value,
+            decoder_predicate_address,
+            pool,
+            worker,
+        );
+    }
     // we materialize it, but the good thing is that we have a cache of lookups
     let lookup_set_index = rel.lookup_set_index;
-    let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let ext_destination = vec![&mut destination[..]];
+    let mut destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
+    let ext_destination = vec![destination.as_mut()];
     let is_decoder_lookup = lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX;
     let mapping_ref = if is_decoder_lookup == false {
         // println!("Mapping lookup access number {}", lookup_set_index);
@@ -153,9 +169,7 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
             }
         },
     );
-    let destination = unsafe { destination.assume_init() };
-
-    destination
+    unsafe { AllocationType::from_initialized(destination) }
 }
 
 pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
@@ -164,11 +178,30 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
     trace_len: usize,
     external_challenges: &GKRExternalChallenges<F, E>,
     compiled_circuit: &GKRCircuitArtifact<F>,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> Box<[E]> {
+) -> AllocationType<E> {
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        not(feature = "gkr_test_forge")
+    ))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        if let Some(values) = super::avx512::materialize_memory_tuple(
+            rel,
+            gkr_storage,
+            trace_len,
+            external_challenges,
+            compiled_circuit,
+            pool,
+            worker,
+        ) {
+            return values;
+        }
+    }
     unsafe {
-        let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-        let ext_destination = vec![&mut destination[..]];
+        let mut destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
+        let ext_destination = vec![destination.as_mut()];
         let mut sources = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
         for i in 0..compiled_circuit.memory_layout.total_width {
             let src = gkr_storage.get_base_layer_mem(i);
@@ -211,7 +244,7 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
             },
         );
 
-        destination.assume_init()
+        AllocationType::from_initialized(destination)
     }
 }
 
@@ -698,4 +731,41 @@ pub(crate) fn inits_or_teardowns_as_flattened_relation<
     }
 
     (result, constant_term)
+}
+
+/// `dst = table` zero-padded to `dst.len()`, split over the worker (the
+/// vectorized-lookup setup column).
+pub(crate) fn fill_setup_column<E: Field>(
+    dst: &mut [core::mem::MaybeUninit<E>],
+    table: &[E],
+    worker: &Worker,
+) {
+    let n = dst.len();
+    assert!(table.len() <= n);
+    let (dp, tp, tl) = (
+        dst.as_mut_ptr() as usize,
+        table.as_ptr() as usize,
+        table.len(),
+    );
+    worker.scope(n, |scope, geometry| {
+        for idx in 0..geometry.len() {
+            let start = geometry.get_chunk_start_pos(idx);
+            let size = geometry.get_chunk_size(idx);
+            Worker::smart_spawn(scope, idx == geometry.len() - 1, move |_| unsafe {
+                let d = dp as *mut core::mem::MaybeUninit<E>;
+                let t = tp as *const E;
+                let copy_end = (start + size).min(tl);
+                if start < copy_end {
+                    core::ptr::copy_nonoverlapping(
+                        t.add(start),
+                        d.add(start) as *mut E,
+                        copy_end - start,
+                    );
+                }
+                for i in start.max(tl)..start + size {
+                    (*d.add(i)).write(E::ZERO);
+                }
+            });
+        }
+    });
 }

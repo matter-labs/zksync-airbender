@@ -201,6 +201,7 @@ fn test_sumcheck_loop_product() {
         &GKRExternalChallenges::default(),
         &test_prover_config(),
         &mut seed,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         &worker,
         |_, _, _, _| Vec::new(),
         |_, _, _, _| Vec::new(),
@@ -210,6 +211,7 @@ fn test_sumcheck_loop_product() {
                 E,
             >::new(prog)
         },
+        |bufs| drop(bufs),
     );
 
     assert!(
@@ -383,6 +385,7 @@ fn test_sumcheck_loop_multiple_gates() {
         &GKRExternalChallenges::default(),
         &test_prover_config(),
         &mut seed,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         &worker,
         |_, _, _, _| Vec::new(),
         |_, _, _, _| Vec::new(),
@@ -392,6 +395,7 @@ fn test_sumcheck_loop_multiple_gates() {
                 E,
             >::new(prog)
         },
+        |bufs| drop(bufs),
     );
 
     assert!(claims_storage.contains_key(&0));

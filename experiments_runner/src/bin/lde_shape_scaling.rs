@@ -117,6 +117,7 @@ fn main() {
                     &poly,
                     &twiddles,
                     lde_factor,
+                    &prover::allocation_pool::GenericAllocationPool::proxy(),
                     &worker,
                 );
             let el = start.elapsed().as_secs_f64();
@@ -140,7 +141,12 @@ fn main() {
                 Proth120,
                 Proth120,
             >>::lde_ext_poly_from_monomial_form_continuous(
-                &backend, &poly, &twiddles, lde_factor, &worker,
+                &backend,
+                &poly,
+                &twiddles,
+                lde_factor,
+                &prover::allocation_pool::GenericAllocationPool::proxy(),
+                &worker,
             );
             let el = start.elapsed().as_secs_f64();
             assert_eq!(buffer.len(), lde_factor << p);

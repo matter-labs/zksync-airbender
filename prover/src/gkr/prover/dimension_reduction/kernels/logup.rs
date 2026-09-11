@@ -27,6 +27,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         storage: &mut GKRStorage<F, E>,
         expected_output_layer: usize,
         input_trace_len: usize,
+        pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
         worker: &Worker,
     ) {
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
@@ -38,6 +39,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             storage,
             expected_output_layer,
             input_trace_len,
+            pool,
             worker,
         );
     }

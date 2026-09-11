@@ -1,3 +1,4 @@
+use crate::allocation_pool::AllocationPool;
 use std::alloc::Global;
 use std::collections::BTreeMap;
 
@@ -13,6 +14,10 @@ pub use crate::definitions::GKRExternalChallenges;
 use crate::fft::Twiddles;
 #[cfg(target_arch = "aarch64")]
 pub use crate::gkr::prover::backend::BabyBearNeonWorkStealingBackend;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use crate::gkr::prover::backend::{
+    BabyBearAvx2WorkStealingBackend, BabyBearAvx512WorkStealingBackend,
+};
 pub use crate::gkr::prover::backend::{
     Backend, DefaultBabyBearBackend, NaiveBackend, Proth120WorkStealingLazyBackend, TwiddleSetOps,
     WorkStealingBackend,
@@ -20,6 +25,8 @@ pub use crate::gkr::prover::backend::{
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 #[cfg(target_arch = "aarch64")]
 pub use crate::gkr::prover::gkr_backend::NeonGKRBackend;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use crate::gkr::prover::gkr_backend::{Avx2GKRBackend, X86GKRBackend};
 pub use crate::gkr::prover::gkr_backend::{DefaultBabyBearGKRBackend, GKRBackend, NaiveGKRBackend};
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils;
@@ -565,6 +572,8 @@ where
             WhirOracleStorage::fully_in_memory()
         }
     };
+    let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
+    let pool: &dyn AllocationPool<F, E> = &*pool_handle;
     prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
         compiled_circuit,
         external_challenges,
@@ -579,6 +588,7 @@ where
         trace_len,
         &WorkStealingBackend,
         &NaiveGKRBackend,
+        pool,
         worker,
     )
 }
@@ -594,7 +604,7 @@ where
 /// Proof bytes are identical across backends; only the execution strategy
 /// differs.
 #[allow(clippy::too_many_arguments)]
-pub fn prove_configured_with_gkr_with_backends<
+pub fn prove_configured_with_gkr_with_backends_and_pool<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -614,6 +624,7 @@ pub fn prove_configured_with_gkr_with_backends<
     trace_len: usize,
     backend: &B,
     gkr_backend: &GB,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
@@ -642,6 +653,54 @@ where
         trace_len,
         backend,
         gkr_backend,
+        pool,
+        worker,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn prove_configured_with_gkr_with_backends<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &B::TwiddleSet,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    backend: &B,
+    gkr_backend: &GB,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
+    let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
+    let pool: &dyn AllocationPool<F, E> = &*pool_handle;
+    prove_configured_with_gkr_with_backends_and_pool::<F, E, T, TR, B, GB>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        backend,
+        gkr_backend,
+        pool,
         worker,
     )
 }
@@ -678,6 +737,8 @@ where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
 {
+    let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
+    let pool: &dyn AllocationPool<F, E> = &*pool_handle;
     prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
         compiled_circuit,
         external_challenges,
@@ -692,6 +753,7 @@ where
         trace_len,
         &WorkStealingBackend,
         &NaiveGKRBackend,
+        pool,
         worker,
     )
 }
@@ -703,6 +765,54 @@ where
 /// lazy-reduction [`Proth120WorkStealingLazyBackend`] or the aarch64-only
 /// BabyBear [`DefaultBabyBearGKRBackend`]) are selected HERE by callers that
 /// concretely know their field — there is no runtime dispatch.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_configured_with_gkr_with_storage_and_backend_and_pool<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &B::TwiddleSet,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    storage: WhirOracleStorage,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    backend: &B,
+    gkr_backend: &GB,
+    pool: &dyn AllocationPool<F, E>,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
+    prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        storage,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        backend,
+        gkr_backend,
+        pool,
+        worker,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage_and_backend<
     F: PrimeField + TwoAdicField,
@@ -731,7 +841,9 @@ where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
 {
-    prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
+    let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
+    let pool: &dyn AllocationPool<F, E> = &*pool_handle;
+    prove_configured_with_gkr_with_storage_and_backend_and_pool::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -745,6 +857,7 @@ where
         trace_len,
         backend,
         gkr_backend,
+        pool,
         worker,
     )
 }
@@ -755,6 +868,56 @@ where
 /// pre-challenge commitment pass and the proof share ONE witness evaluation
 /// and ONE merged commitment instead of repeating both. The caller must pass
 /// the exact oracle whose cap seeded the permutation-argument Fiat-Shamir.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_configured_with_gkr_merged_with_precommitted_oracle_and_pool<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+    B: Backend<F, E>,
+    GB: GKRBackend<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    merged_oracle: ColumnMajorBaseOracleForLDE<F, T>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &B::TwiddleSet,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    storage: WhirOracleStorage,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    backend: &B,
+    gkr_backend: &GB,
+    pool: &dyn AllocationPool<F, E>,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
+    prove_configured_with_gkr_merged_precommitted_impl::<F, E, T, TR, B, GB>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        merged_oracle,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        storage,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        backend,
+        gkr_backend,
+        pool,
+        worker,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_merged_with_precommitted_oracle<
     F: PrimeField + TwoAdicField,
@@ -784,7 +947,9 @@ where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
 {
-    prove_configured_with_gkr_merged_precommitted_impl::<F, E, T, TR, B, GB>(
+    let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
+    let pool: &dyn AllocationPool<F, E> = &*pool_handle;
+    prove_configured_with_gkr_merged_with_precommitted_oracle_and_pool::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
         witness_eval_data,
@@ -799,6 +964,7 @@ where
         trace_len,
         backend,
         gkr_backend,
+        pool,
         worker,
     )
 }
@@ -829,6 +995,7 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
     trace_len: usize,
     backend: &B,
     gkr_backend: &GB,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
@@ -950,6 +1117,7 @@ where
         t_gkr_phase,
         backend,
         gkr_backend,
+        pool,
         worker,
     )
 }
@@ -976,6 +1144,7 @@ fn prove_configured_with_gkr_impl<
     trace_len: usize,
     backend: &B,
     gkr_backend: &GB,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
@@ -1038,6 +1207,7 @@ where
                         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                         prover_config.cap_size,
                         trace_len.trailing_zeros() as usize,
+                        pool,
                         worker,
                     )
                 }
@@ -1125,6 +1295,7 @@ where
                         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                         prover_config.cap_size,
                         trace_len.trailing_zeros() as usize,
+                        pool,
                         worker,
                     )
                 }
@@ -1222,6 +1393,7 @@ where
                         prover_config.cap_size,
                         trace_len.trailing_zeros() as usize,
                         pack_log2,
+                        pool,
                         worker,
                     )
                 }
@@ -1358,6 +1530,7 @@ where
         t_gkr_phase,
         backend,
         gkr_backend,
+        pool,
         worker,
     )
 }
@@ -1466,6 +1639,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     t_gkr_phase: std::time::Instant,
     backend: &B,
     gkr_backend: &GB,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
@@ -1491,6 +1665,7 @@ where
             lookup_alpha,
             lookup_additive_part,
             decoder_lookup_fill_value,
+            pool,
             worker,
         );
         println!(
@@ -1544,6 +1719,7 @@ where
             compiled_circuit,
             trace_len.trailing_zeros() as usize,
             final_trace_size_log_2,
+            pool,
             worker,
         );
 
@@ -1674,8 +1850,31 @@ where
         })
         .max()
         .unwrap_or(0);
+    // statically resolved fold-buffer shapes of the whole backward pass,
+    // offered to pooling backends before anything is allocated: the
+    // dimension-reducing scratch (3/2 of the largest layer's post-reduction
+    // length per poly) and the same-size chain buffers (schedule capacity,
+    // one per input poly of the widest layer)
+    {
+        let dr_m = 1usize << dr_max_rounds;
+        let ss_capacity = gkr_backend::same_size_chain_fold_capacity(
+            prover_config.same_size_sumcheck_schedule.as_slice(),
+            trace_len,
+        );
+        let ss_max_polys = compiled_circuit
+            .layers
+            .iter()
+            .map(|l| l.inputs().len())
+            .max()
+            .unwrap_or(0);
+        gkr_backend.prepare_fold_pool(
+            &[(dr_max_polys, dr_m + dr_m / 2), (ss_max_polys, ss_capacity)],
+            pool,
+            worker,
+        );
+    }
     let mut dr_work_buffers =
-        gkr_backend.make_dim_reducing_work_buffers(dr_max_rounds, dr_max_polys, worker);
+        gkr_backend.make_dim_reducing_work_buffers(dr_max_rounds, dr_max_polys, pool, worker);
     let dim_reducing_total = std::time::Instant::now();
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
         let dr_schedule: &[crate::gkr::prover_config::SumcheckStep] = {
@@ -1699,6 +1898,7 @@ where
             &mut sumcheck_batching_challenge,
             &mut seed,
             1 << reduced_trace_size_log_2,
+            pool,
             worker,
             &mut dr_work_buffers,
         );
@@ -1709,6 +1909,7 @@ where
         "Dimension-reducing sumcheck layers total: {:?}",
         dim_reducing_total.elapsed()
     );
+    gkr_backend.recycle_dim_reducing_work_buffers(dr_work_buffers, pool);
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
@@ -1738,6 +1939,7 @@ where
             &external_challenges,
             prover_config,
             &mut seed,
+            pool,
             worker,
         );
         println!(
@@ -1843,7 +2045,25 @@ where
             );
         }
     }
-    drop(gkr_storage);
+    // everything WHIR does not need goes back to the pool now (layers above
+    // the base one, virtual/extension/cached polys of the base layer); the
+    // committed columns travel into `whir_fold`, which accumulates the batched
+    // proximity polynomial from them and releases them
+    let t_drop = std::time::Instant::now();
+    gkr_storage.release_all_but_committed_columns_into(pool);
+    println!(
+        "[timing] gkr_storage release (all but committed columns): {:?}",
+        t_drop.elapsed()
+    );
+    {
+        let s = pool.stats();
+        println!(
+            "[pool] {} hits, {} misses (cumulative), {:.1} MB retained now",
+            s.hits,
+            s.misses,
+            s.retained_bytes as f64 / 1e6
+        );
+    }
 
     // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
     // transcript above already committed everything that feeds this draw. The bit count
@@ -1925,7 +2145,7 @@ where
                         column.into_owned()
                     } else {
                         compute_column_major_monomial_form_from_main_domain::<F, F, Global>(
-                            column.as_slice(),
+                            &column.as_slice(),
                             twiddles.plain(),
                         )
                     };
@@ -1988,14 +2208,20 @@ where
         "[timing] GKR phase (layers + sumcheck loops): {:.3?}",
         t_gkr_phase.elapsed()
     );
+    // the packing of the base commitments (0 = unpacked): the batched
+    // proximity polynomial is accumulated from the base-layer columns inside
+    // `whir_fold`, which consumes the GKR storage
+    let pack_log2_for_whir = trace_len_log2_for_whir - trace_len.trailing_zeros() as usize;
     let t_whir = std::time::Instant::now();
-    let whir_proof = whir_fold::<F, E, T, TR, B>(
+    let whir_proof = whir_fold::<F, E, T, TR, B, GB>(
         mem_oracle,
         mem_polys_claims,
         wit_oracle,
         wit_polys_claims,
         setup_commitment,
         setup_polys_claims,
+        gkr_storage,
+        pack_log2_for_whir,
         base_layer_z.clone(),
         whir_batching_challenge,
         &prover_config.whir_schedule,
@@ -2004,7 +2230,9 @@ where
         prover_config.whir_schedule.cap_size,
         trace_len_log2_for_whir,
         backend,
+        gkr_backend,
         intermediate_oracle_mode,
+        pool,
         worker,
     );
     println!("[timing] whir_fold total: {:.3?}", t_whir.elapsed());
